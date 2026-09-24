@@ -406,12 +406,12 @@ void main() {
           <String, dynamic>{
             'evidence_id': 'e1',
             'relation': 'decides',
-            'source': 'gbif-backbone',
+            'source': 'gbif',
           },
           <String, dynamic>{
             'evidence_id': 'e2',
             'relation': 'contradicts',
-            'source': 'catalogue-of-life',
+            'source': 'col',
           },
         ],
       });

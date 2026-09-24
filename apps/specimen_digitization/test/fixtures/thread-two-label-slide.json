@@ -162,7 +162,7 @@
   "tool_calls": [
     {
       "call_key": "call-1", "phase": "lookup", "tool": "name_check", "tool_version": "1",
-      "source": "global-names-verifier", "field_keys": ["taxon"],
+      "source": "gnv", "field_keys": ["taxon"],
       "input_source": "decided_transcript", "region_id": "region-left", "observation_id": null,
       "attempt": 1, "arguments": {"name": "Tachinidae"}, "outcome": "success",
       "result": {"matched": "Tachinidae"}, "error": null, "retry_after": null,
@@ -189,7 +189,7 @@
     },
     {
       "call_key": "call-4", "phase": "lookup", "tool": "species_match", "tool_version": "1",
-      "source": "gbif-backbone", "field_keys": ["taxon"],
+      "source": "gbif", "field_keys": ["taxon"],
       "input_source": "raw_reading", "region_id": "region-left", "observation_id": "obs-left-muse",
       "attempt": 1, "arguments": {"name": "Tachinidae"}, "outcome": "no_match",
       "result": {"matches": []}, "error": null, "retry_after": null,

@@ -58,15 +58,19 @@ class FirstPassSummary extends StatelessWidget {
   /// The label over the decided transcript.
   static const String decidedLabel = 'Decided transcript';
 
+  /// The words for where a text came from: the decided transcript, or a
+  /// reader's own raw reading. An input source this client does not know
+  /// keeps the server's word.
+  static String sourceWords(ThreadInputSource? source, String? name) =>
+      switch (source) {
+        ThreadInputSource.decidedTranscript => 'decided transcript',
+        ThreadInputSource.rawReading => 'raw reading',
+        null => vocabularyLabel(name ?? 'not recorded'),
+      };
+
   /// The words for what one reader handed over.
-  static String handoff(String reader, ThreadHandoff handoff) {
-    final String role = switch (handoff.source) {
-      ThreadInputSource.decidedTranscript => 'decided transcript',
-      ThreadInputSource.rawReading => 'raw reading',
-      null => vocabularyLabel(handoff.roleName ?? 'not recorded'),
-    };
-    return '$reader · $role';
-  }
+  static String handoff(String reader, ThreadHandoff handoff) =>
+      '$reader · ${sourceWords(handoff.source, handoff.roleName)}';
 
   String _title(ThreadFirstPass pass) => switch (pass.kind) {
     ThreadDecisionKind.identicalReadings => readingsMatch,

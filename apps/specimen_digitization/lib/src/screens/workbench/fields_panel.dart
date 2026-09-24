@@ -15,10 +15,12 @@ import 'package:specimen_ui/specimen_ui.dart' hide FieldLayer;
 
 import '../../models.dart';
 import '../../review_context.dart';
+import '../../thread/thread.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import 'evidence_picker.dart';
 import 'pending_changes.dart';
+import 'reader_name.dart';
 
 /// The record's fields, their evidence and their corrections.
 class WorkbenchFields extends StatefulWidget {
@@ -30,6 +32,7 @@ class WorkbenchFields extends StatefulWidget {
     required this.onPendingChanged,
     required this.onFocusRegion,
     this.fieldBlockedReason,
+    this.thread,
   });
 
   final Specimen specimen;
@@ -48,6 +51,10 @@ class WorkbenchFields extends StatefulWidget {
 
   /// Why correcting a field is unavailable, or null when it is not.
   final String? fieldBlockedReason;
+
+  /// The run's thread, which says who wrote each field's text and what
+  /// settled its value (UI.md T2.3). Null until the thread has loaded.
+  final SpecimenThread? thread;
 
   /// The heading over the fields the record cannot be cleared without.
   static const String requiredTitle = 'Required fields';
@@ -216,6 +223,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     final SpecimenStatus state = SpecimenStatus.fromWire(
       pending?.state ?? field['state'] as String?,
     );
+    final ThreadField? run = _asRunLeftIt(field, pending);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -251,6 +259,13 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
           readAs: _layerValue(field, pending, FieldLayer.readAs),
           standardized: _layerValue(field, pending, FieldLayer.standardized),
           authority: _authorityLine(field, pending),
+          writtenBy: _writtenBy(run),
+          readAsNote: _centuryNote(run),
+          evidence: <String>[
+            for (final ThreadEvidence item
+                in run?.evidence ?? const <ThreadEvidence>[])
+              _evidenceLine(item),
+          ],
           onEdit: blocked != null
               ? null
               : (FieldLayer layer) => _startEdit(field, layer),
@@ -310,6 +325,102 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     return source.isEmpty || source == 'Not recorded'
         ? 'Authority match $id'
         : 'Authority match $id from ${vocabularyLabel(source)}';
+  }
+
+  /// The thread's account of [field], while the record's field stands
+  /// exactly as the run left it: no pending correction, and the same state,
+  /// text, reading, standardized value and authority record (UI.md T2.3).
+  /// A saved correction changes one of them, and the row then shows the
+  /// record alone, so the run's account never sits beside a value it does
+  /// not describe.
+  ThreadField? _asRunLeftIt(Json field, PendingFieldChange? pending) {
+    if (pending != null) return null;
+    final ThreadField? run = widget.thread?.fields
+        .where((ThreadField f) => f.fieldKey == field['field_key'])
+        .firstOrNull;
+    if (run == null) return null;
+    String? present(Object? value) =>
+        value is String && value.isNotEmpty ? value : null;
+    final List<ThreadVerbatim> written = run.verbatim;
+    final String? literal = present(field['literal_value']);
+    // One text is the record's text; one per reader leaves the record none.
+    final bool sameText = written.length == 1
+        ? literal == written.single.text
+        : literal == null;
+    final bool same =
+        sameText &&
+        field['state'] == run.state &&
+        present(field['parsed_value']) == run.parsed &&
+        present(field['normalized']) == run.normalized &&
+        present(field['authority_id']) == run.authorityId;
+    return same ? run : null;
+  }
+
+  /// Who wrote each text, where that is news: every reader's text when the
+  /// first pass chose none (G27, G28), or the one reader a single text was
+  /// taken from (G20). The decided transcript's text names no reader: the
+  /// Readings segment shows how the transcript was decided.
+  List<AttributedText> _writtenBy(ThreadField? run) {
+    final List<ThreadVerbatim> written =
+        run?.verbatim ?? const <ThreadVerbatim>[];
+    if (written.length == 1 &&
+        written.single.inputSource != ThreadInputSource.rawReading) {
+      return const <AttributedText>[];
+    }
+    return <AttributedText>[
+      for (final ThreadVerbatim item in written)
+        if (item.text case final String text)
+          (
+            source:
+                '${readerName(widget.specimen, widget.thread, item.observationId)}'
+                ' · '
+                '${FirstPassSummary.sourceWords(item.inputSource, item.inputSourceName)}',
+            text: text,
+          ),
+    ];
+  }
+
+  /// A Google locator, `place/{place id}` (DATA_CONTRACT.md rule 1.6).
+  static const String _placePrefix = 'place/';
+
+  /// How one source bears on the value (G23), with where in the source. A
+  /// Google record is named only by its place ID (G26). A source, relation
+  /// or outcome this client does not know keeps the server's word.
+  static String _evidenceLine(ThreadEvidence evidence) {
+    final String source = switch (evidence.source) {
+      final String id => vocabularyLabel(id),
+      null => 'A source',
+    };
+    final String claim = switch (evidence.relation) {
+      'decides' => '$source decides this value',
+      'supports' => '$source supports this value',
+      'contradicts' => '$source contradicts this value',
+      final String other => '$source: ${vocabularyLabel(other)}',
+      null => source,
+    };
+    final String? locator = evidence.locator;
+    final String? outcome = evidence.outcome;
+    return <String>[
+      claim,
+      if (locator != null)
+        locator.startsWith(_placePrefix)
+            ? 'place ID ${locator.substring(_placePrefix.length)}'
+            : locator,
+      if (outcome != null && outcome != 'success') vocabularyLabel(outcome),
+    ].join(' · ');
+  }
+
+  /// The century a rule set for a two-digit year (G24), in the words the
+  /// coordinator chose on 2026-09-23. Null for a four-digit year and for
+  /// anything that is not a date.
+  static String? _centuryNote(ThreadField? run) {
+    final String? rule = run?.centuryRule;
+    if (rule == null) return null;
+    const String said = "Century from the profile's rule";
+    final String? century = RegExp(
+      r'century=(\d{4})',
+    ).firstMatch(rule)?.group(1);
+    return century == null ? said : '$said: ${century}s';
   }
 }
 

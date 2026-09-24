@@ -457,7 +457,7 @@ class ThreadEvidence extends _View {
   /// `decides`, `supports` or `contradicts` (G23), as sent.
   String? get relation => _t('relation');
 
-  /// The database, as an identifier (`gbif-backbone`).
+  /// The database, as an identifier (`gbif`).
   String? get source => _t('source');
 
   /// Where in that source (`place/{place id}` for Google, G26).
