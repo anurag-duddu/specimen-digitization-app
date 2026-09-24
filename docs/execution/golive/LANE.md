@@ -447,6 +447,8 @@ pilot's worker is unchanged and still needs its launch files.
   (`SPECIMEN_WORKER_JOB`, for the hand-over) are optional. An error names the
   setting, never its value. The SQL endpoint and the bucket are the API's. The
   worker resolves profiles with the same published registries as the API.
+- **Collections.** The actor's operator-or-above memberships, one collection at
+  a time.
 - **Fence.** Two executions of the job must never process two runs of one
   collection at once (G13). A snapshot's compare-and-set alone cannot prevent
   that when both executions act as the same actor, because they replay each
@@ -460,6 +462,40 @@ pilot's worker is unchanged and still needs its launch files.
     worker also writes, are marked not sensitive for the same reason. A
     circuit document left sensitive by an earlier worker can be neither read
     nor replaced by this one.
+  - A worker that stalls past its lease and loses the fence leaves the
+    collection to the new holder.
+- **Order.**
+  - The run a dead execution left under the fence is finished first, once it
+    is due. Its step's own lease can outlive the fence's, so a run still
+    leased is waited for like a retry.
+  - After that, the oldest due run is stepped until it stops. It comes by
+    `queued_at` through `ListDueWorkV2`: never sensitive, and only `pending`,
+    `running` or `retry_scheduled`. The SQLite store lists the same states. The
+    run stops at a disposition, a block, a pause, a cancellation, a scheduled
+    retry or an unknown outcome. Then the next one is taken.
+  - A save that conflicts with a concurrent edit is read again and stepped
+    again, up to three times in a row.
+  - A due run whose step changes nothing would be taken again and again. It is
+    blocked with `lane_run_not_progressing`, where people can see it, and the
+    queue moves on. Its resume action requests it again.
+- **Retries.** A run that stops with a scheduled retry is waited for, once no
+  other run is due, if the retry falls inside the window. Nothing else would
+  start the job for it. Retry delays are at most 300 s plus jitter.
+- **Window.** The worker takes no new run 600 s before its task deadline
+  (3600 s). It exits 0 when nothing is due and no retry is pending in the
+  window. On `SIGTERM` it stops taking work, lets the current step's result
+  save, and releases the fence.
+- **Output.** One JSON summary: the status (`drained`, `window_closed` or
+  `stopped`), the specimens processed, the collections skipped and the retries
+  pending.
+- **Blocks the drain records.** It is an operational block, never a queue
+  outcome (QUE-005). The operator's `retry` or `resume` action requests the
+  run again, as for every operational block.
+
+  | Code | What it means | What to check |
+  | --- | --- | --- |
+  | `lane_run_not_progressing` | The worker stepped this due run and the step changed nothing. | The run's last step in the thread, and the worker's log for that step. Then retry. |
+
 - **Readiness before the first drain.** On 2026-09-23 S2 confirmed, read-only,
   that the production Data Connect schema is the empty placeholder, and the
   first initialization applies the schema to an empty database. Before the
