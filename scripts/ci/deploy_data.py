@@ -35,6 +35,18 @@ REVISION = re.compile(r"[\x21-\x7e]{1,500}")
 EXTENSION = re.compile(r"[a-z][a-z0-9_-]{0,62}")
 COUNTS = ("relations", "views", "routines", "types")
 APPLICATION_ROLES = {role: f"firebase{role}_{DATABASE}_public" for role in ("owner", "writer", "reader")}
+# RELEASE.md 4.3 step 3 reads a diff statement as tokens: ASCII space, a quoted identifier, a string, a word, a number,
+# punctuation, an operator run or any other character. A backslash or an "other" token refuses it, so no escape string
+# or dollar quote can move a statement boundary. release_sql.mjs reads each statement the same way before it runs.
+SQL_TOKEN = re.compile(r"""(?P<space>[ \t\n\r\f\v]+)|(?P<ident>"(?:[^"]|"")+")|(?P<string>'(?:[^']|'')*')"""
+                       r"|(?P<word>[A-Za-z_][A-Za-z0-9_]*)|(?P<number>[0-9]+(?:\.[0-9]+)?)|(?P<punct>[(),.;\[\]])"
+                       r"|(?P<operator>[-+*/<>=~!@#%^&|`?:]+)|(?P<other>[\s\S])")
+# A diff statement is named by its longest leading keywords in this list, else "other"; never by its own text.
+KINDS = frozenset(("CREATE TABLE", "CREATE VIEW", "CREATE INDEX", "CREATE UNIQUE INDEX", "ALTER TABLE", "CREATE EXTENSION",
+    "CREATE SCHEMA", "CREATE OR REPLACE", "CREATE MATERIALIZED VIEW", "CREATE FUNCTION", "CREATE TRIGGER", "CREATE TYPE",
+    "CREATE SEQUENCE", "CREATE ROLE", "CREATE", "ALTER", "DROP TABLE", "DROP INDEX", "DROP VIEW", "DROP SCHEMA",
+    "DROP EXTENSION", "DROP", "TRUNCATE", "GRANT", "REVOKE", "DO", "COMMENT", "INSERT", "UPDATE", "DELETE", "SELECT", "SET",
+    "RESET", "COPY", "CALL", "VACUUM", "ANALYZE", "REINDEX", "LOCK", "REFRESH"))
 # Empty-scope creation modes. Each requires the reviewed evidence recipient and
 # publishes its own signed receipt; the legacy first-admin mode does neither.
 FIRST_SCOPE_MODES = {"first-scope-owner-bootstrap/v1", "first-scope-hierarchy-bootstrap/v1"}
@@ -805,6 +817,108 @@ def deploy_released_data(path, output):
         output.write_text(json.dumps({"version": "data-released/v1", "source_sha": record["source_sha"],
                                       "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"],
                                       **facts}, sort_keys=True) + "\n")
+
+
+class _Refused(ValueError):
+    """A diff statement's fixed refusal reason."""
+
+
+def migration_statement(sql, relaxed):
+    """One diff statement's (kind, refusal); no refusal only for one statement of an allowed kind (RELEASE.md 4.3 step 3).
+    Both are fixed text, never the statement's. relaxed: the (table, column) pairs whose NOT NULL may drop."""
+    tokens = [(m.lastgroup, m.group()) for m in SQL_TOKEN.finditer(sql if isinstance(sql, str) else "") if m.lastgroup != "space"]
+    words = []
+    for token, text in tokens[:3]:
+        if token != "word":
+            break
+        words.append(text.upper())
+    kind = next((" ".join(words[:n]) for n in (3, 2, 1) if " ".join(words[:n]) in KINDS), "other")
+    if not isinstance(sql, str) or not 0 < len(sql) <= 65536 or "\\" in sql or any(k == "other" for k, _ in tokens):
+        return kind, "an unsupported character"
+    if any(k == "operator" and ("--" in text or "/*" in text or "*/" in text) for k, text in tokens):
+        return kind, "a comment"
+    tokens = tokens[:-1] if tokens[-1:] == [("punct", ";")] else tokens
+    if ("punct", ";") in tokens:
+        return kind, "more than one statement"
+    depth = 0
+    for token in tokens:
+        depth += {("punct", "("): 1, ("punct", ")"): -1}.get(token, 0)
+        if depth < 0:
+            break
+    if depth:
+        return kind, "unbalanced parentheses"
+    try:
+        return kind, None if _allowed(tokens, relaxed) else "not an allowed kind"
+    except _Refused as refusal:
+        return kind, str(refusal)
+
+
+def _allowed(t, relaxed):
+    """The allowed kinds over one statement's tokens: create table or view, create [unique] index, and alter table
+    actions that add a column, add a unique or foreign key constraint, or drop NOT NULL on a relaxed column."""
+    def word(at, *words):
+        return at + len(words) if all(at + i < len(t) and t[at + i][0] == "word" and t[at + i][1].upper() == value
+                                      for i, value in enumerate(words)) else None
+
+    def name(at):
+        kind, text = t[at] if at < len(t) else ("end", "")
+        if kind not in ("word", "ident"):
+            raise _Refused("not an allowed kind")
+        return (text.lower() if kind == "word" else text[1:-1].replace('""', '"')), at + 1
+
+    def table(at):
+        value, at = name(at)
+        if t[at:at + 1] == [("punct", ".")]:
+            if value != "public":
+                raise _Refused("outside the public schema")
+            value, at = name(at + 1)
+        return value, at
+
+    def close(at):
+        depth = 0
+        for index in range(at, len(t)):
+            depth += {("punct", "("): 1, ("punct", ")"): -1}.get(t[index], 0)
+            if not depth:
+                return index
+        return -1
+
+    if (at := word(0, "CREATE", "TABLE")) is not None:
+        _, at = table(word(at, "IF", "NOT", "EXISTS") or at)
+        return t[at:at + 1] == [("punct", "(")] and close(at) == len(t) - 1
+    if (at := word(0, "CREATE", "VIEW")) is not None:
+        _, at = table(at)
+        at = close(at) + 1 if t[at:at + 1] == [("punct", "(")] else at
+        return word(at, "AS") is not None and any(word(at + 1, key) is not None for key in ("SELECT", "WITH", "VALUES"))
+    if (at := word(0, "CREATE", "INDEX") or word(0, "CREATE", "UNIQUE", "INDEX")) is not None:
+        at = word(at, "IF", "NOT", "EXISTS") or at
+        if word(at, "CONCURRENTLY") is not None or (at := word(name(at)[1], "ON")) is None:
+            return False
+        _, at = table(at)
+        return t[at:at + 1] == [("punct", "(")] or word(at, "USING") is not None
+    if (at := word(0, "ALTER", "TABLE")) is None:
+        return False
+    relation, at = table(at)
+    starts, depth = [at], 0
+    for index in range(at, len(t)):
+        depth += {("punct", "("): 1, ("punct", ")"): -1}.get(t[index], 0)
+        if t[index] == ("punct", ",") and not depth:
+            starts.append(index + 1)
+    for start, end in zip(starts, [index - 1 for index in starts[1:]] + [len(t)]):
+        if (at := word(start, "ADD", "COLUMN")) is not None:
+            allowed = name(word(at, "IF", "NOT", "EXISTS") or at)[1] < end
+        elif (at := word(start, "ADD", "CONSTRAINT")) is not None:
+            at = name(at)[1]
+            allowed = word(at, "UNIQUE") is not None or word(at, "FOREIGN", "KEY") is not None
+        elif (at := word(start, "ALTER", "COLUMN")) is not None:
+            column, at = name(at)
+            allowed = word(at, "DROP", "NOT", "NULL") == end
+            if allowed and (relation, column) not in relaxed:
+                raise _Refused("DROP NOT NULL outside the schema gate's named relaxations")
+        else:
+            allowed = False
+        if not allowed:
+            return False
+    return True
 
 
 @stage("data.receipt")
