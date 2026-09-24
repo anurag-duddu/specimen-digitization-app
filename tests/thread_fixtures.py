@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime, timezone
+from typing import Literal
 
 from specimen_digitization.application.domain import (
     Asset,
@@ -37,8 +38,8 @@ from test_projection_decisions import (
     Handoff,
     HarnessRun,
     ToolCallRecord,
-    TracedField,
 )
+from test_projection_decisions import TracedField as DecisionsField
 
 
 class ThreadRun(HarnessRun):
@@ -46,6 +47,13 @@ class ThreadRun(HarnessRun):
 
     program_allowance: dict | None = None
     paid_calls: list[dict] = []
+
+
+class TracedField(DecisionsField):
+    """G38's layer and the fields a derived value came from (S4's `FieldValue`, #144)."""
+
+    layer: Literal["verbatim", "settled", "derived"] | None = None
+    derived_from: list[str] = []
 
 
 PROFILE = {
@@ -618,18 +626,23 @@ def synthetic_run(
     ]
     literals = [item.id for item in run.evidence]
     decided = {"input_source": "decided_transcript", "source_region_id": left.id}
+    # G38's layers as S4's harness records them (HARNESS.md 13, #144): a lookup's success or the
+    # one text on every label is settled, a lookup that did not settle keeps the verbatim, and a
+    # field with neither a literal nor a lookup has no layer.
     run.fields = {
         "province_state": TracedField(
             state=ValueState.SUPPORTED,
             literal="Ill.",
             evidence_ids=[place.id],
             evidence_relations={place.id: "supports"},
+            layer="settled",
             **decided,
         ),
         # G32: each label brings its own entry, the left its decided reading and the right its
         # readers' one text; both labels settled to the same place id.
         "city": TracedField(
             state=ValueState.SUPPORTED,
+            layer="settled",
             verbatim_by_observation={left_qwen.id: "Chicago", right_qwen.id: "Chicago"},
             input_source_by_observation={
                 left_qwen.id: "decided_transcript",
@@ -645,6 +658,7 @@ def synthetic_run(
             state=ValueState.UNRESOLVED,
             literal="Cook Co.",
             reason="No single match for the county",
+            layer="verbatim",
             **decided,
         ),
         "date_visited_from": TracedField(
@@ -653,11 +667,13 @@ def synthetic_run(
             parsed="1946-07",
             precision="month",
             century_rule="date-rules-v1:two_digit_year_century=1900",
+            layer="settled",
             **decided,
         ),
         # G19, G20: no pick, so each reader keeps its verbatim; GBIF confirmed the qwen reading.
         "taxon": TracedField(
             state=ValueState.SUPPORTED,
+            layer="settled",
             verbatim_by_observation={
                 right_qwen.id: "Aedes aegypti L.",
                 right_muse.id: "Aedes aegypti Linn.",

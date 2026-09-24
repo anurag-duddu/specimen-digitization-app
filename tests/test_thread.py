@@ -21,6 +21,7 @@ from specimen_digitization.application.domain import (
     Run,
     ValueState,
 )
+from specimen_digitization.application.integrity import EvidenceIntegrityError
 from specimen_digitization.application.projection import derived_id, writes
 from specimen_digitization.application.thread import (
     CALIBRATION,
@@ -36,8 +37,8 @@ from specimen_digitization.application.thread import (
 )
 
 from test_projection import locate, size
-from test_projection_decisions import Handoff, ToolCallRecord, TracedField
-from thread_fixtures import TRACE, fixed, hexid, rows, synthetic_run
+from test_projection_decisions import Handoff, ToolCallRecord
+from thread_fixtures import TRACE, TracedField, fixed, hexid, rows, synthetic_run
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / "docs/execution/golive/thread-example.json"
@@ -477,6 +478,17 @@ def test_a_field_on_two_labels_in_conflict_settles_nothing_though_its_evidence_l
     assert "labels_conflict:city" in result["decision"]["reason_codes"]
 
 
+def test_an_entry_the_writers_rule_settles_is_listed_though_its_candidate_carries_no_value():
+    s = synthetic_run()
+    left_qwen, _, right_qwen, _ = s.run.observations
+    # Both labels settled with no normalized, authority or parsed form, so no candidate carries
+    # a value; the writer's rule (projection.settled_entries) still settles both entries.
+    s.run.fields["city"] = s.run.fields["city"].model_copy(update={"authority_id": None})
+    city = by_key(thread(s)["fields"], "field_key")["city"]
+    assert (city["normalized"], city["authority_id"], city["parsed"]) == (None, None, None)
+    assert city["settled_observation_ids"] == [left_qwen.id, right_qwen.id]
+
+
 def test_readers_that_agree_without_a_pick_keep_one_verbatim_and_each_readers_evidence():
     s = synthetic_run()
     _, right = s.run.regions
@@ -721,6 +733,39 @@ def test_labels_that_settle_a_date_alike_are_each_named():
     assert (date["parsed"], date["precision"], date["normalized"]) == ("1946-07", "month", None)
 
 
+def test_each_field_shows_its_layer_and_a_derived_one_the_fields_it_came_from():
+    s = synthetic_run()
+    fields = by_key(thread(s)["fields"], "field_key")
+    # G38's layers as the snapshot records them; a field with neither literal nor lookup has none.
+    assert {key: (f["layer"], f["derived_from"]) for key, f in fields.items()} == {
+        "province_state": ("settled", []),
+        "city": ("settled", []),
+        "county": ("verbatim", []),
+        "date_visited_from": ("settled", []),
+        "taxon": ("settled", []),
+        "identified_by_irn": (None, []),
+    }
+    # G37: a label that leaves the county out has it filled from the settled city (S4's #144).
+    s.run.fields["county"] = TracedField(
+        state=ValueState.SUPPORTED,
+        parsed="Cook County",
+        authority_id="fixture-county",
+        reason="derived:containment",
+        layer="derived",
+        derived_from=["city"],
+    )
+    s.run.reasons = []
+    county = by_key(thread(s)["fields"], "field_key")["county"]
+    # Its value reaches SQL with T6's AppendFieldCandidateV3; until then the record's field row
+    # gives its state, and the snapshot its layer and inputs.
+    assert (county["layer"], county["derived_from"], county["state"], county["verbatim"]) == (
+        "derived",
+        ["city"],
+        "supported",
+        [],
+    )
+
+
 def link(evidence_id, relation):
     return {"evidenceId": hexid(evidence_id), "relation": relation}
 
@@ -749,34 +794,44 @@ def call_row(evidence_id, reading, source="raw_reading"):
     return {"evidenceId": hexid(evidence_id), "inputSource": source, "observationId": hexid(reading)}
 
 
+def ids_of(*candidates):
+    return {candidate["id"] for candidate in candidates}
+
+
 def test_settled_readings_follow_section_8_for_each_shape_of_field():
-    # A per-label map (G32): each settled label in verbatim order, decided labels by their
-    # selected reading, raw readings by their own.
+    # A per-label map (G32): each entry the writer's rule settles, in verbatim order, decided
+    # labels by their selected reading, raw readings by their own.
     left, right = fixed(20), fixed(22)
     both = [
         candidate_row(0, selected=left, authority="fixture-place", links=[link(fixed(30), "supports")]),
         candidate_row(1, selected=right, authority="fixture-place", links=[link(fixed(35), "supports")]),
     ]
     calls = [call_row(fixed(30), None, "decided_transcript"), call_row(fixed(35), None, "decided_transcript")]
-    assert settled_observation_ids(both, calls, mapped=True) == [left, right]
-    assert settled_observation_ids(list(reversed(both)), calls, mapped=True) == [right, left]
-    assert settled_observation_ids([both[0], candidate_row(1, selected=right)], calls, mapped=True) == [left]
+    assert settled_observation_ids(both, calls, mapped=True, settled=ids_of(*both)) == [left, right]
+    assert settled_observation_ids(list(reversed(both)), calls, mapped=True, settled=ids_of(*both)) == [right, left]
+    assert settled_observation_ids(both, calls, mapped=True, settled=ids_of(both[0])) == [left]
     raw = candidate_row(2, source="raw_reading", reading=fixed(23), normalized="Chicago")
-    assert settled_observation_ids([candidate_row(0, authority="fixture-place"), raw], [], mapped=True) == [fixed(23)]
-    # A parsed value alone settles an entry; a link alone does not.
-    dated = candidate_row(3, source="raw_reading", reading=fixed(24), parsed={"value": "1946-07", "precision": "month", "century_rule": None})
-    linked = candidate_row(4, source="raw_reading", reading=fixed(25), links=[link(fixed(38), "supports")])
-    assert settled_observation_ids([dated, linked], [call_row(fixed(38), fixed(25))], mapped=True) == [fixed(24)]
+    assert settled_observation_ids([candidate_row(0, authority="fixture-place"), raw], [], mapped=True, settled=ids_of(raw)) == [fixed(23)]
+    # A candidate's values and links decide nothing: an entry the rule settles is listed without
+    # a value, and one it does not settle is left out with one.
+    bare = candidate_row(3, source="raw_reading", reading=fixed(24))
+    dated = candidate_row(4, source="raw_reading", reading=fixed(25), parsed={"value": "1946-07", "precision": "month", "century_rule": None}, links=[link(fixed(38), "supports")])
+    assert settled_observation_ids([bare, dated], [call_row(fixed(38), fixed(25))], mapped=True, settled=ids_of(bare)) == [fixed(24)]
     # A map's decided entry settled through the fallback lists the raw reading the lookup confirmed.
     fell_back = candidate_row(0, selected=left, authority="fixture-place", links=[link(fixed(39), "supports")])
-    assert settled_observation_ids([fell_back, both[1]], [call_row(fixed(39), fixed(21)), *calls], mapped=True) == [fixed(21), right]
-    # A single decided transcript: only G20's fallback names a reading, each reading once.
+    assert settled_observation_ids([fell_back, both[1]], [call_row(fixed(39), fixed(21)), *calls], mapped=True, settled=ids_of(fell_back, both[1])) == [fixed(21), right]
+    # A single decided transcript: only G20's fallback names a reading, each reading once, with
+    # or without a value on its candidate.
     confirmed = candidate_row(0, selected=left, authority="fixture-place", links=[link(fixed(36), "supports")])
     assert settled_observation_ids([confirmed], [call_row(fixed(36), fixed(21))], mapped=False) == [fixed(21)]
+    plain = candidate_row(0, selected=left, links=[link(fixed(36), "supports")])
+    assert settled_observation_ids([plain], [call_row(fixed(36), fixed(21))], mapped=False) == [fixed(21)]
     twice = candidate_row(0, selected=left, authority="k", links=[link(fixed(36), "decides"), link(fixed(37), "supports")])
     assert settled_observation_ids([twice], [call_row(fixed(36), fixed(21)), call_row(fixed(37), fixed(21))], mapped=False) == [fixed(21)]
     assert settled_observation_ids([confirmed], [call_row(fixed(36), None, "decided_transcript")], mapped=False) == []
-    # Otherwise the list is empty: nothing settled, or one raw reading outside a map.
+    contradicted = candidate_row(0, selected=left, links=[link(fixed(36), "contradicts")])
+    assert settled_observation_ids([contradicted], [call_row(fixed(36), fixed(21))], mapped=False) == []
+    # Otherwise the list is empty: no fallback, or one raw reading outside a map.
     assert settled_observation_ids([candidate_row(0, selected=left)], [], mapped=False) == []
     assert settled_observation_ids([raw], [], mapped=False) == []
     assert settled_observation_ids([], [], mapped=True) == []
@@ -929,10 +984,17 @@ def test_the_keys_are_the_ids_of_the_rows_the_writer_writes():
         "candidateIds": ids["AppendFieldCandidateV2"],
         "recordIds": ids["AppendRecordVersionV2"],
     }
-    # A run holding a key is refused by the writer, and so its thread is (rule 1.6).
-    s.run.tool_calls[0] = s.run.tool_calls[0].model_copy(update={"result": {"place_ids": ["fixture-place"], "names": ["x"]}})
-    with pytest.raises(ValueError):
+    # The writer refuses a run whose stored calls hold a credential, and so the thread does (rule
+    # 1.6), as a stored-evidence integrity failure whose message names where, never the value.
+    call = s.run.tool_calls[0]
+    s.run.tool_calls[0] = call.model_copy(update={"result": {"place_ids": ["fixture-place"], "names": ["x"]}})
+    with pytest.raises(EvidenceIntegrityError, match=r"^tool call 0 \(geocode\) keeps more than place ids"):
         keys(s, s.run)
+    credential = "AIza" + "0" * 35
+    s.run.tool_calls[0] = call.model_copy(update={"arguments": {"query": "Chicago, Ill.", "key": credential}})
+    with pytest.raises(EvidenceIntegrityError) as refused:
+        assemble(s, s.run, {}, status="completed")
+    assert str(refused.value) == "tool call 0 (geocode) holds a credential (rule 1.6)"
 
 
 def test_the_limits_are_the_operations():

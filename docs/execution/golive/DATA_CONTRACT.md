@@ -650,6 +650,7 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     "error": null, "retry_after": null, "evidence_id": "…",
     "started_at": "…", "completed_at": "…"}],
   "fields": [{"field_key": "city", "group": "mandatory", "state": "supported",
+    "layer": "settled", "derived_from": [],
     "verbatim": [{"text": "…", "input_source": "decided_transcript", "region_id": "…",
       "observation_id": null}],
     "parsed": null, "precision": null, "century_rule": null,
@@ -737,6 +738,12 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   - otherwise it is empty.
   `parsed` stays a string; `precision` and `century_rule` sit beside it and are
   null for non-dates (G24).
+- `layer` is the value's layer in G38, from the snapshot's `FieldValue.layer`
+  (S4, #144): `verbatim` as written and not settled, `settled` by a lookup's
+  success or as the one text every label has (G32), or `derived` for a field
+  the label leaves out, filled from others (G37). It is null when the snapshot
+  records none. `derived_from` names the fields a derived value came from, and
+  is empty for any other.
 - `decision.findings` lists the hard, warning and info findings, each with its
   evidence ids. Warnings and info never change the disposition.
 - `geometry` is in the original raster's pixels (CONTRACTS.md geometry rules).
@@ -778,18 +785,28 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   with empty lists, a null `decision` and the snapshot's trace id.
 - **Status.** `run.status` applies the summary's rule to the run read, so a
   previous run shows the status its last state gives.
+- **Stored credential.** The writer refuses a run whose stored calls hold a
+  credential (rule 1.6, `projection.CredentialStored`), so it has no thread:
+  the route answers 503 `runtime_unavailable`, as for any stored-evidence
+  integrity failure, with a message that names where, never the credential.
 - **Field values.** A field's `normalized`, `authority_id` and `parsed` are the
-  first set on its candidates in verbatim order, and its `evidence` is every
-  candidate's linked evidence, each item once. Only the settled entries'
-  candidates carry these values (section 4.3), so a candidate settled exactly
-  when it carries `normalizedValue`, `authorityId` or `parsedValue`; its links
-  do not say so, since evidence links to the entry it names, settled or not.
+  first set on its candidates in verbatim order, since only the settled
+  entries' candidates carry them (section 4.3), and its `evidence` is every
+  candidate's linked evidence, each item once.
 - **Settled readings.** A field is a verbatim map when the snapshot's field has
-  `verbatim_by_observation`. A settled raw-reading entry lists its
-  `sourceObservationId`. A settled decided entry lists the readings of the
-  raw-reading `ToolCall`s whose evidence is linked to it and decides or
-  supports the value (the G20 fallback); without one, a map's decided entry
-  lists its selected reading and a single decided transcript lists none.
+  `verbatim_by_observation`. A map entry settled exactly when the writer's own
+  rule, `projection.settled_entries`, names its reading, read from the
+  snapshot: a candidate's values and links never decide it, so an entry settled
+  on a value with no normalized, authority or parsed form is still listed. Each
+  entry's candidate is the one the writer writes for it, in the map's order.
+  - A settled raw-reading entry lists its `sourceObservationId`.
+  - A settled decided entry lists the readings of the raw-reading `ToolCall`s
+    whose evidence is linked to it and decides or supports the value (the G20
+    fallback); without one, it lists its selected reading.
+  - A single decided transcript lists its fallback readings the same way, or
+    none; any other field lists none.
+- **Layers.** `layer` and `derived_from` are read from the snapshot's field;
+  SQL holds neither until T6's `AppendFieldCandidateV3`.
 - **Coverage.** `coverage_check.status` is `passed` for S3's outcome
   `confirmed`, `failed` for any other, and `not_run` without a check.
   `evidence_id` is the run's latest `EvidenceItem` from `label-coverage-check`,
@@ -900,7 +917,8 @@ count, the authority identity, the Google refusal and the review call.
 For the thread (T3): `tests/test_thread.py` (the assembly, section 8 field by
 field, and the canonical example) and `tests/test_thread_api.py` (the workspace
 route's authorization, not found for another specimen's run and an unknown one,
-the active run by default, no thread on SQLite) run in CI. Both read
+the active run by default, 503 without the credential for a run that holds
+one, no thread on SQLite) run in CI. Both read
 `GetRunThreadV1`'s rows as `tests/thread_fixtures.py` emulates them from the
 writer's writes; `tests/test_sqlconnect_thread.py`, opt-in like the writer's
 emulator test, saves the synthetic run through `SqlConnectRepository` and checks

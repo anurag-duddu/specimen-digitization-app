@@ -22,6 +22,8 @@ from specimen_digitization.application.api import (
 )
 from specimen_digitization.application.domain import (
     Asset,
+    Lookup,
+    LookupStatus,
     Observation,
     Principal,
     Profile,
@@ -31,7 +33,7 @@ from specimen_digitization.application.domain import (
     Specimen,
     Transcript,
 )
-from specimen_digitization.application.projection import Write, writes
+from specimen_digitization.application.projection import CredentialStored, Write, writes
 from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository, digest
 from specimen_digitization.application.thread import TRACE_URL_SETTING
 from specimen_digitization.application.workflow import SyntheticAdapters
@@ -55,7 +57,11 @@ class ProjectedSQLite(SQLiteRepository):
 
     def _commit(self, principal, specimen, expected, key, request_digest):
         saved = super()._commit(principal, specimen, expected, key, request_digest)
-        self.projected += writes(saved, locate, size, principal.user_id, reviewer=True)
+        try:
+            self.projected += writes(saved, locate, size, principal.user_id, reviewer=True)
+        except CredentialStored:
+            # As in production: the snapshot is committed, and the projection writes nothing.
+            pass
         return saved
 
     def record_trace(self, run_id, trace_id):
@@ -234,6 +240,36 @@ def test_without_a_run_id_the_active_run_is_read_and_a_previous_run_by_its_id(tm
     assert previous["regions"][0]["region_id"] == body["regions"][0]["region_id"]
     assert [r["observation_id"] for r in previous["regions"][0]["readings"]] == [o.id for o in first.observations]
     assert thread(http, s.id, run_id=s.run.id).json() == body
+
+
+def test_a_run_holding_a_credential_has_no_thread_and_the_answer_never_holds_it(tmp_path, repo):
+    s = recorded(repo)
+    # Built at run time, so no key-shaped literal is in the repository.
+    credential = "AIza" + "0" * 35
+    s.run.lookups.append(
+        Lookup(
+            provider="google-maps-geocoding",
+            adapter_version="geocode-1",
+            query={"address": "Chicago, Ill.", "key": credential},
+            status=LookupStatus.SUCCESS,
+            metadata={"locator": "place/fixture-place"},
+            raw_ref=f"{'b' * 64}:7",
+            digest="b" * 64,
+        )
+    )
+    principal = Principal(user_id=USER, scope=SCOPE, role="reviewer")
+    s = repo.save(principal, s, s.version, "lookup:" + s.id, digest({"lookup": s.id}))
+    response = thread(client(tmp_path, repo, [membership()]), s.id)
+    # The writer refuses the run (rule 1.6), so the thread answers as for failed stored evidence.
+    assert response.status_code == 503, response.text
+    error = response.json()["error"]
+    assert (error["code"], error["message"]) == (
+        "runtime_unavailable",
+        "lookup 0 (google-maps-geocoding) holds a credential in its query (rule 1.6)",
+    )
+    assert credential not in response.text
+    # Refused before SQL is read.
+    assert s.run.id not in repo.asked
 
 
 def test_the_trace_link_uses_the_configured_template(tmp_path, repo, monkeypatch):
