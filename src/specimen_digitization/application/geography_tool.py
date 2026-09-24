@@ -5,8 +5,9 @@ ID, our outcome and a sha256 fingerprint of the full response. Google's names,
 address components and coordinates are read in memory to compute outcomes and are
 never returned, stored or logged; the key is redacted from httpx's request logs.
 Label notations such as "Prov." are dropped before comparing, and aliases the
-harness supplies count as matches (G29). An accepted S8 plan replaces this module
-(G12).
+harness supplies count as matches (G29). precise_location only helps form the
+address: it is verbatim text that no geocoder result settles (PRD 515). An
+accepted S8 plan replaces this module (G12).
 """
 
 from __future__ import annotations
@@ -129,6 +130,15 @@ def assigned_literals(query: GeographyQuery) -> dict[str, list[str]]:
     return fields
 
 
+def reported_literals(query: GeographyQuery) -> dict[str, list[str]]:
+    """The assigned fields the tool reports on: all but precise_location, which
+    stays verbatim locality text that no geocoder result settles (PRD 515;
+    where such a phrase is waits for S8's D3)."""
+    fields = assigned_literals(query)
+    fields.pop("precise_location", None)
+    return fields
+
+
 def geocoding_address(query: GeographyQuery) -> str:
     """Unassigned locality text if any, else the assigned literals in order."""
     unassigned = [item.literal for item in query.literals if item.field_key is None]
@@ -150,7 +160,7 @@ def map_geocoding_response(
     maps a folded literal to more folded names that count as matches (G29).
     Google's names are compared here in memory; only outcomes and the place
     ID leave (G26)."""
-    fields = assigned_literals(query)
+    fields = reported_literals(query)
     body = payload if isinstance(payload, dict) else {}
     status, results = body.get("status"), body.get("results")
     if http_status != 200:
@@ -170,13 +180,6 @@ def map_geocoding_response(
     outcomes = {
         key: _confirmed(key, texts, result, table) for key, texts in fields.items()
     }
-    # precise_location is input only and never compared: it holds only when a
-    # sibling corroborates the one result and none contradicts it; otherwise the
-    # place is ambiguous, with no candidate (a Denali for a Mindanao label).
-    if "precise_location" in outcomes:
-        siblings = [v for k, v in outcomes.items() if k != "precise_location"]
-        if LookupStatus.SUCCESS not in siblings or LookupStatus.NO_MATCH in siblings:
-            outcomes["precise_location"] = LookupStatus.AMBIGUOUS
     places = [
         PlaceCandidate(
             field_key=key, source=SOURCE, source_record_id=result["place_id"]
@@ -192,9 +195,7 @@ def _confirmed(
 ) -> LookupStatus:
     """SUCCESS when every literal of the field, folded or through an alias,
     equals the folded long or short name of a component at one of the field's
-    levels; an empty fold never matches. The caller settles precise_location."""
-    if key == "precise_location":
-        return LookupStatus.SUCCESS
+    levels; an empty fold never matches."""
     levels, names = LEVELS.get(key, frozenset()), set()
     parts = result.get("address_components")
     for part in parts if isinstance(parts, list) else []:
@@ -308,7 +309,7 @@ def geocode_locality(
         with httpx.Client() if client is None else nullcontext(client) as http:
             calls = with_retries(partial(attempt, http), sleep=sleep)
     final = calls[-1]
-    everywhere = dict.fromkeys(assigned_literals(query), final.outcome)
+    everywhere = dict.fromkeys(reported_literals(query), final.outcome)
     fields, places = mapped.get(final.attempt, (everywhere, []))
     return ToolResult(
         tool="geography_lookup",
