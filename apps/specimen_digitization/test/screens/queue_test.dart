@@ -542,7 +542,8 @@ void main() {
         <String, String>{
           'running': 'Processing',
           'completed': 'Completed',
-          'processing_blocked': 'Blocked',
+          // The rows' word; the segment chip, with less room, says "Blocked".
+          'processing_blocked': 'Processing blocked',
           'retry_scheduled': 'Retry scheduled',
           'paused': 'Paused',
           'cancelled': 'Cancelled',

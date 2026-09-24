@@ -432,9 +432,10 @@ from S4's `policy.py`:
 Today's status chips stay: All, Needs review, Cleared, Deferred, Blocked
 and Processing. Each row already shows its record's state (T1.2). The
 filter sheet's new "Run state" picker chooses any one state the search
-API filters, in the rows' words: Processing, Completed, Blocked, Retry
-scheduled, Paused and Cancelled (the coordinator's ruling (c),
-2026-09-24). Waiting (`pending`, G13) joins once #85 adds it to the
+API filters, in the rows' words: Processing, Completed, Processing
+blocked, Retry scheduled, Paused and Cancelled (the coordinator's ruling
+(c), 2026-09-24). The rows' chips say "Processing blocked", where the
+segment chip, with less room, says "Blocked". Waiting (`pending`, G13) joins once #85 adds it to the
 search API, so the picker never offers a value the server refuses.
 
 - The Blocked and Processing chips choose a run state too, so whichever
