@@ -290,11 +290,12 @@ and the tree file stay fully scanned by both tools.
 
 Reviewed 2026-09-23. The go-live data contract
 (`docs/execution/golive/DATA_CONTRACT.md`) changes `dataconnect/schema/schema.gql`
-and `dataconnect/connector/paging.gql` and adds
-`dataconnect/connector/projection.gql`, so the `source_files` digests in the
-three data plan templates (`data-apply`, `data-bootstrap` and
-`data-initialize-missing`) change for those files and gain one entry for the new
-file. They are the same shape as the seventeen digests recorded above: SHA256 of
+and `dataconnect/connector/paging.gql`, and adds
+`dataconnect/connector/projection.gql` and, with the projection writer (T2a),
+`dataconnect/sql/drop-specimen-unique-1.sql`. So the `source_files` digests in
+the three data plan templates (`data-apply`, `data-bootstrap` and
+`data-initialize-missing`) change for those files and gain one entry for each
+new file. They are the same shape as the seventeen digests recorded above: SHA256 of
 committed repository bytes, recomputed and compared by
 `scripts/ci/test_release_plan_templates.py`.
 
@@ -304,12 +305,13 @@ regenerated, with `is_secret` unset and the existing key order; no filter,
 plugin, threshold or other entry was changed, and no path exclusion was
 introduced.
 
-Gitleaks 8.30.1 then flags the new `hashed_secret` scanner metadata lines. Three
-identifiers, `21278b4f11c26d6df13314ba601efef30119af89`,
-`c6868c3eb8b0c137d07d184b825898dda1b70331` and
-`e4821d76810cd204eae742b9b97cc318fcda8ad9`, were appended to the existing
+Gitleaks 8.30.1 then flags the new `hashed_secret` scanner metadata lines. Four
+identifiers, `06e81594ebb746015377b29d9b2abd834f4ebdf4`,
+`21278b4f11c26d6df13314ba601efef30119af89`,
+`aba49eafb6ae9e7722b0adc0a90305e76aa18647` and
+`c6868c3eb8b0c137d07d184b825898dda1b70331`, were appended to the existing
 rule-local AND exception for the release plan template fingerprints. Each was
-independently confirmed to be SHA-1 of the new digest of one of those three
+independently confirmed to be SHA-1 of the new digest of one of those four
 source files. The two identifiers for the digests these files replaced,
 `65b1d497136fde826ef46828b394f64693f3bb0d` and
 `95a923f3e2d110d938ebf698add693fb40277963`, matched nothing any more and were

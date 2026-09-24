@@ -119,7 +119,7 @@ if (mode === 'restore') {
   proof.afterConnectorReconciliation = reconciled;
   proof.supplementalIndexesRemovedByEmulator = supplemental.filter(name =>
     !reconciled.supplementalIndexes.some(index => index.name === name));
-  proof.requiredPostSchemaPhase = ['dataconnect/sql/paging-indexes.sql', 'dataconnect/sql/search-indexes.sql'];
+  proof.requiredPostSchemaPhase = ['dataconnect/sql/paging-indexes.sql', 'dataconnect/sql/search-indexes.sql', 'dataconnect/sql/drop-specimen-unique-1.sql'];
   proof.reconciliationRounds.push({inventory: reconciled, removedIndexes: proof.supplementalIndexesRemovedByEmulator});
   writeFileSync(evidencePath, `${JSON.stringify(proof, null, 2)}\n`, {mode: 0o600});
   if (proof.supplementalIndexesRemovedByEmulator.length) {

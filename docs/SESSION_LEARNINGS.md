@@ -11941,3 +11941,29 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (5) A statement about real data, such as "import the ten as not sensitive", is a classification only the owner can verify (`CONTRACTS.md` 169-170). Ask for it before writing it as a plan step.
   - (6) Merging main can shift the line numbers the plan cites. #76 moved the PRD's open items by three lines, so G rows appeared to settle other owner-only items. After each merge, map the citations of every file it touched from the old version to the new.
 - Remaining follow-ups: the owner's field list (G8); S2's IAM list and the T3e membership run; the owner's rulings on S8's D1-D13 after the steward reviews #94; the G15 calibration sign-off; the lab's re-measurement of the harness model with G29's prompt.
+
+### 2026-09-24 — Go-live projection writer, stages 1 to 5, and step 2 of the SourceAsset swap (S5 T2a)
+
+- Task: S5 T2a, the projection writer's first half; pull request "[golive:data] The projection writer, stages 1 to 5, and step 2 of the SourceAsset swap".
+- Branch/worktree: `golive/data-projection` in `.claude/worktrees/epic-rhodes-d168f3`, from `origin/main` at `08861f5` (#88 merged).
+- Commits: `65aebf3` and `9fc64d6` (the pure mapping, red then green); `a457c36` (locating blobs without reading them); `7300490` and `f292161` (the repository writes the projection after every save); `cad3d18` and `7eb7acc` (#88's second review); `f5afb4c` and `de476e1` (the fixed drop of `specimen_unique_1`); `ebd038a` and `362efb9` (#88's final review); this entry.
+- Outcome:
+  - `application/projection.py` maps a specimen to the connector writes of stages 1 to 5, parents first, with UUIDv5 ids under one fixed namespace: the original, the profile version, the run and its trace (`RecordRunTraceV1`, set once), regions (`region/{run}/{domain region id}` with `domainRegionId`), readings with their raw-response assets, and comparisons in the fixed pair order.
+  - Asset rows are keyed per specimen (`asset/{specimen}/{bucket}/{object}/{generation}`), because the content-addressed, create-only blob store makes byte-identical assets of different specimens one object.
+  - `SqlConnectRepository.write_projection` runs after every save and never raises. A primary-key conflict counts as already written, and a pass stops at the first failed write, since later rows may reference it.
+  - Step 2 of the swap (coordinator ruling on #88; PLAN 4.4 in #124): the schema declares only `source_asset_specimen_object`, and `dataconnect/sql/drop-specimen-unique-1.sql` is one `DROP INDEX CONCURRENTLY IF EXISTS`. The local runners apply it after reading the new constraint back; the release's T3d does the same live. The three data plan templates, `.secrets.baseline`, `.gitleaks.toml` and `SECRET_SCAN_REVIEW.md` carry the new file's fingerprint.
+  - #88's final review: every masked refusal test now breaks exactly one rule. The contract lists G25 and G30 to G32, gives #124's reason for two applies, labels the coordinator's rulings, and follows #109's taxonomy codes.
+- Validation actually run, at `362efb9`:
+  - `uv run pytest -q`: 3063 passed, 82 skipped;
+  - `pre-commit run --all-files`: exit 0;
+  - the release pinning tests in `scripts/ci`: 53 passed;
+  - `projection-test.mjs` against PostgreSQL 18 and the Data Connect emulator 3.2.0: 12 PASS;
+  - a scratchpad copy with a valid-value control beside each generic refusal: all 5 controls accepted;
+  - `tests/test_sqlconnect_projection.py` against `serve-local.sh`: 1 passed.
+- Durable learnings:
+  - (1) A Data Connect `@check` without a message fails as "permission denied", and one membership check here carries many rules in a conjunction. A refusal test can then pass on an unrelated conjunct. Prove each refusal with a control that changes only the field under test, in a scratchpad copy, so the committed test stays clean.
+  - (2) The emulator's compatible migration drops before it creates, each statement in autocommit, while production's `COMPATIBLE` never drops what the schema stops declaring (firebase-tools 15.8.0 `schemaMigration.js` 512-517). A unique swap therefore takes two applies and a fixed, reviewed drop after a live read-back.
+  - (3) zsh does not word-split an unquoted `$var`: a list of test paths in one variable reaches pytest as one path, and it reports "no tests ran". Use `${=var}` or pass the paths.
+  - (4) `serve-local.sh` puts PostgreSQL's socket in `$TMPDIR`. A long `TMPDIR`, such as a session scratchpad, overflows the Unix socket path limit and `pg_ctl` cannot start; keep the default.
+- Failed approaches: one migration that swapped the unique (the emulator dropped the old index before creating the new one); removing `specimen_unique_1` from `schema.gql` alone (a `COMPATIBLE` apply never drops it).
+- Remaining follow-ups: S2's named-exception sync in #99, so CI admits step 2; S2's T3d before any release runs the drop on a database where #88's step 1 is live; T2b (stages 6 to 8), stacked on this; T3, the thread API.

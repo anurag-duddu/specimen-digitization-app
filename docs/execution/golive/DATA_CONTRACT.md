@@ -16,9 +16,16 @@ specimen record/id". These owner decisions are included:
 - G23, GBIF decides a taxonomy outcome, and Global Names Verifier and Catalogue of
   Life support it, with a disagreement flagged but GBIF's result unchanged;
 - G24, dates clear at the precision written;
+- G25, a confirmed, accepted genus satisfies the taxon field of a label that
+  identifies only to genus;
 - G26, only the place id from Google;
 - G27 and G28, a place or taxon field keeps both its verbatim and its settled
-  value.
+  value;
+- G30, paid model calls spend at most USD 5, each reserving its worst-case cost
+  before it starts;
+- G31, the ten pilot slides are not sensitive;
+- G32, a field found on two labels is settled per label on its own evidence, and
+  clears when both labels settle to the same value.
 
 This page fixes what SQL holds for every run, which domain fields each row comes
 from, and the exact schema and connector additions. The lane (S3) and the first
@@ -30,12 +37,13 @@ reads them.
 
 1. The snapshot stays the workflow's source of truth. The normalized rows are a
    projection of it, written by `SqlConnectRepository` after each successful
-   `SaveSpecimenV3`, and caught up on the next save if a write was lost.
+   `SaveSpecimenV3`, and caught up on the next save if a write was lost, and
+   after a run's final save by the lane's bounded re-projection (section 11).
 2. Additive only: three new tables, new nullable columns, four dropped `NOT
-   NULL` constraints, a second unique constraint on `SourceAsset` over a strict
-   superset of an existing one's columns (step 1 of the section 3.3 swap), new
-   operations. Nothing is dropped, renamed or retyped, and no existing operation
-   changes. The emulator migrates a database holding `main`'s schema to this
+   NULL` constraints, `SourceAsset`'s object uniqueness made per specimen in the
+   two applies of section 3.3, new operations. The second apply drops
+   `specimen_unique_1`, the ruled exception; nothing else is dropped, renamed or
+   retyped, and no existing operation changes. The emulator migrates a database holding `main`'s schema to this
    one in place with its rows intact.
 3. One row per mutation. Data Connect rejects table input types as variables
    ("cannot use LabelRegion_Data as a variable"), so there is no batch write
@@ -182,17 +190,18 @@ region.
 ### 3.3 Relaxed constraints
 
 Each relaxation only admits rows the old constraint refused; every existing row
-satisfies the new one. PLAN 4.4 (as amended by #104, merged as 129c47e) allows a dropped
-`NOT NULL` named here with its reason, and one closed exception: `SourceAsset`'s
-object uniqueness becomes per specimen, in two applies. S2's schema gate reads
-the same list, with these reasons.
+satisfies the new one. PLAN 4.4 (as amended by #104, merged as 129c47e) allows a
+dropped `NOT NULL` named here with its reason, and one closed exception
+(coordinator ruling on #88, worded in #124's PLAN 4.4): `SourceAsset`'s object
+uniqueness becomes per specimen, in two applies. S2's schema gate reads the same
+list, with these reasons.
 
 | Constraint | Change | Why |
 |---|---|---|
 | `SourceAsset.width`, `SourceAsset.height` | drop `NOT NULL` | Raw provider responses and check evidence are assets without pixels, and `ModelObservation.rawAssetId` and `EvidenceItem.rawAssetId` point at them. The operation still requires both, positive, for image kinds (`original`, `crop`, `mask`). |
 | `LabelRegion.cropAssetId` | drop `NOT NULL` | SAM regions carry no crop (`Region.crop_ref` is always null from SAM), so a region is written as soon as segmentation finishes. The crop each reader saw is identified by `ModelObservation.inputSha256`. |
 | `EvidenceItem.locator` | drop `NOT NULL` | A lookup that found no single match (`no_match`, `ambiguous`, an error) has nothing to locate, and G26 allows no Google value but a place id (rule 1.6). The operation keeps the locator set on every `recorded` row, and on a lookup exactly when its outcome is `success`, so it is optional nowhere else. |
-| `SourceAsset` unique `specimen_unique_1` on (`bucket`, `objectName`, `generation`) | replaced by `source_asset_specimen_object` on (`organizationId`, `collectionId`, `specimenId`, `bucket`, `objectName`, `generation`), in two applies: this PR declares the new constraint beside the old one, and T2a, the writer that needs it, drops `specimen_unique_1` | The blob store is content-addressed and create-only (`GcsBlobs.put`), so byte-identical assets of different specimens are one stored object: the same GBIF answer for the same name, the same model response, or one image in two collections. Each specimen still records a stored object once. Nothing looks an asset up by its object: the key stays (`organizationId`, `collectionId`, `id`), and the only other write inserts by id. Every column the new constraint adds (`organizationId`, `collectionId`, `specimenId`) is `NOT NULL`, as the exception requires. Two applies, because within one the compatible migration drops the old index before it creates the new one, each statement in its own transaction, so writers running during the apply would meet no constraint; created first, the new constraint cannot fail on existing rows, since it is weaker. |
+| `SourceAsset` unique `specimen_unique_1` on (`bucket`, `objectName`, `generation`) | replaced by `source_asset_specimen_object` on (`organizationId`, `collectionId`, `specimenId`, `bucket`, `objectName`, `generation`), in two applies: #88 added the new constraint beside the old one, and T2a, the writer that needs it, drops `specimen_unique_1` once the first apply is live. The second step is one fixed, reviewed statement, `dataconnect/sql/drop-specimen-unique-1.sql`, a `DROP INDEX` of exactly that index, since S2's migration allowlist admits no drop, whatever Data Connect's diff carries. The data release runs it before it computes that diff, and only after its own read-back of the live database at apply time shows `source_asset_specimen_object` in place, over its six columns and valid, since S2's gate compares committed text only (PLAN 4.4 in #124). The local runners apply it behind the same read-back, `scripts/data/source-asset-read-back.sh` | The blob store is content-addressed and create-only (`GcsBlobs.put`), so byte-identical assets of different specimens are one stored object: the same GBIF answer for the same name, the same model response, or one image in two collections. Each specimen still records a stored object once. Nothing looks an asset up by its object: the key stays (`organizationId`, `collectionId`, `id`), and the only other write inserts by id. Every column the new constraint adds (`organizationId`, `collectionId`, `specimenId`) is `NOT NULL`, as the exception requires. Two applies, so that a unique constraint governs the table at every moment while writers run: the first adds the new constraint beside the old, which keeps governing, and cannot fail on existing rows, since it is weaker; the second drops the old only once the new one is read back in place, over its six columns and valid. |
 
 ## 4. Domain fields the writer reads
 
@@ -312,10 +321,11 @@ run, not in SQL.
     settled candidate. The other candidates carry their literal and the field's
     state. `ResolvedField.candidateId` points at the first settled candidate in
     verbatim order, and is null when none settled.
-  - The pointer selects the settled value only, never a verbatim: every
-    label's and reader's verbatim stays on its own candidate. A field that
-    clears across labels with differing spellings also gets the warning
-    `spelling_disagreement`. Place and taxon fields are treated alike.
+  - The pointer selects the settled value only, never a verbatim: every label's
+    and reader's verbatim stays on its own candidate. A field that clears across
+    labels with differing spellings also gets the warning
+    `spelling_disagreement` (S4's G32 rule, #131's `HARNESS.md`). Place and
+    taxon fields are treated alike.
 - The settled value stays on the field: `authority_id` (Google's place id, or
   GBIF's usage key) and `normalized` (rule 1.6 for Google; GBIF's accepted name
   for GBIF). Both are set only from a call whose outcome is `success`. A field
@@ -332,15 +342,18 @@ run, not in SQL.
     the reviewer's `taxonomy_resolution` decision can select it: the
     accepted usage is proposed separately and never replaces the verbatim.
 - `evidence_relations: dict[str, Literal["decides", "supports", "contradicts"]]`
-  (G23). It has exactly one entry per id in `evidence_ids`, with no default,
-  and maps each to that source's relation to the value: GBIF `decides`; Global
-  Names Verifier and Catalogue of Life `support` or `contradict`; Google
-  `supports` (rule 1.6). Only a `success` call's evidence, or recorded
-  evidence that is not a lookup, is in `evidence_ids`. A call with any other
-  outcome stays a `ToolCall` row with its `EvidenceItem`, and a Global Names
-  Verifier or Catalogue of Life `no_match` becomes the warning
-  `taxonomy_source_disagreement`, never support. The writer stores the
-  relation on `CandidateEvidence` and writes no link without one.
+  (G23). It has exactly one entry per id in `evidence_ids`, with no default, and
+  maps each to that source's relation to the value: GBIF `decides`; Global Names
+  Verifier and Catalogue of Life `support` or `contradict`; Google `supports`
+  (rule 1.6). Only a `success` call's evidence, or recorded evidence that is not
+  a lookup, is in `evidence_ids`. A call with any other outcome stays a
+  `ToolCall` row with its `EvidenceItem` and is never support. A Global Names
+  Verifier or Catalogue of Life answer that differs from GBIF's (a success
+  against anything else) becomes the warning
+  `taxonomy_source_disagreement:{source}`, and one unavailable after its retries
+  `taxonomy_support_unavailable:{source}` (#109, `taxonomy_tool.py` 230-236).
+  The writer stores the relation on `CandidateEvidence` and writes no link
+  without one.
 - `precision` and `century_rule` (G24). A parsed date carries its precision
   (`day`, `month` or `year`, exactly as written, never widened) and the rule
   that set its century: the pinned profile's rule version and value, for
@@ -353,14 +366,17 @@ run, not in SQL.
   list[Finding]`, never in `Run.reasons`, because any reason means needs human
   review (`policy.py` 176). Each Finding has `rule_id`, `rule_version`,
   `severity` (`warning` or `info`), `field_key`, `reason_code` and
-  `evidence_ids`. They carry G23's source disagreement
-  (`taxonomy_source_disagreement:{source}`, #109) and G27's
-  `spelling_disagreement` check (S8, #94 section 3.3). The writer stores each as
-  a `ValidationFinding` with that severity and its recorded `evidence_ids`, each
-  once, in `evidenceIds`, beside the hard finding it writes per reason
-  code. Every finding the writer writes records a rule that did not pass, so
-  its `outcome` is `fail`; `pass`, `unresolved` and `not_applicable` stay
-  available to checks that record passing results, which none does today.
+  `evidence_ids`. They carry the taxonomy tool's warnings under G23
+  (`taxonomy_source_disagreement:{source}` and
+  `taxonomy_support_unavailable:{source}`, #109) and `spelling_disagreement`,
+  the readers' spelling difference under G27 that PLAN 4.1 stage 8 records as a
+  finding (the code and its trigger are S4's, #131's `HARNESS.md`, after S8's
+  #94 section 3.3). The writer stores each as a `ValidationFinding` with that
+  severity and its recorded `evidence_ids`, each once, in `evidenceIds`, beside
+  the hard finding it writes per reason code. Every finding the writer writes
+  records a rule that did not pass, so its `outcome` is `fail`; `pass`,
+  `unresolved` and `not_applicable` stay available to checks that record passing
+  results, which none does today.
 - The queue decision's summary (QUE-006) is `Run.disposition_summary`, a
   deterministic sentence built from the rule version and the reason codes. It
   maps to `RecordVersion.summary`.
@@ -478,14 +494,14 @@ On top of that rule:
 - **Findings.** `AppendValidationFindingV2` takes the run id. The record version
   and every one of the finding's `evidenceIds` must be of that run, each named
   once, at most 64.
-- **Approval claims.** `AppendProfileVersionV2` admits operators, because the
-  worker writes the profile snapshot each run used. A non-null `approvedBy` is
-  an approval claim and needs `main`'s rule: a reviewer or above with sensitive
-  access, claiming for themselves (`approvedBy` is the caller). The worker
-  writes null. The published profile's approval stays where
-  it happened: the PR review and the release's `collection_profile_bytes` and
-  `evidence_profile_sha256`. No client-facing API path passes user input into
-  `approvedBy`.
+- **Approval claims** (coordinator ruling on #88). `AppendProfileVersionV2`
+  admits operators, because the worker writes the profile snapshot each run
+  used. A non-null `approvedBy` is an approval claim and needs `main`'s rule: a
+  reviewer or above with sensitive access, claiming for themselves (`approvedBy`
+  is the caller). The worker writes null. The published profile's approval stays
+  where it happened: the PR review and the release's `collection_profile_bytes`
+  and `evidence_profile_sha256`. No client-facing API path passes user input
+  into `approvedBy`.
 
 ## 7. Operations
 
@@ -681,9 +697,9 @@ against real PostgreSQL and the Data Connect emulator. It checks:
 - cross-collection references are refused;
 - a replayed row is refused with a primary-key conflict, and a natural-key
   duplicate by its unique constraint;
-- step 1 of the `SourceAsset` swap: both unique constraints exist with their
-  columns, and `specimen_unique_1` still refuses a second specimen's row for
-  one stored object (T2a's step 2 flips this test);
+- the `SourceAsset` swap's step 2: two specimens each record one stored object,
+  one specimen cannot record it twice, and only `source_asset_specimen_object`
+  remains (read from PostgreSQL);
 - a second run of the same specimen writes its own row for a region id the
   first run used, and a new run superseding the first is accepted;
 - the writes the pipeline makes are accepted:
@@ -712,3 +728,66 @@ against real PostgreSQL and the Data Connect emulator. It checks:
 the emulator. It does not compile the GraphQL, run the `@check`s, test replays,
 cursors or the migration from `main`. Those run locally, and each PR records
 the result.
+
+For the writer: `tests/test_projection.py` (the mapping) and
+`tests/test_projection_writer.py` (order, scope and actor, primary-key
+conflicts, stop-and-resume on any other failure, a save that survives the
+projection, sizes read once) run in CI; `tests/test_sqlconnect_projection.py`
+runs against the emulator (`SPECIMEN_TEST_SQL_EMULATOR=true` with
+`scripts/data/serve-local.sh`): stage 1 to 5 rows land once, and a fresh process
+replays without duplicates or warnings.
+
+## 11. Projection writer (S5 T2)
+
+`application/projection.py` maps a specimen to the section 7 writes, in
+foreign-key order, with the section 5 ids. It is pure: the repository supplies
+the scope, the actor, a function that locates a blob by its ref and one that
+measures it. Cloud Storage refs (`sha256:generation`) locate to the bucket,
+`application/sha256/{sha256}` and the generation; local refs (a bare digest) to
+bucket `local`, the digest and generation `0`. A size is read once per blob
+per process, and only for raw responses: the original's size is on its asset.
+`SqlConnectRepository.write_projection` runs after every successful
+`CreateSpecimenV3` or `SaveSpecimenV3`, and after a replayed save.
+
+- A write whose primary key already exists counts as written. Any other error
+  stops the projection for that save, because later rows may depend on the
+  failed one; it is logged with the specimen, run and operation, and the next
+  save retries. The projection never fails a save: the snapshot is committed
+  first.
+- Each pass returns a `ProjectionResult`: `complete`, or the step it
+  `stopped_at` (a connector operation, or `not_computed` when the rows could not
+  be computed), never row data. After a run's final save, S3's lane calls
+  `write_projection` again with bounded retries and backoff until a pass is
+  complete. If none completes, the lane logs an error-level event with the
+  specimen and run ids and leaves the disposition unchanged, and the next save
+  catches up (coordinator ruling, 2026-09-24; DoD-4). S7's lab checks that SQL
+  holds every artifact of each run. `SQLiteRepository` writes no normalized
+  rows, so its passes are complete.
+- The repository remembers the rows it wrote in this process, so a save sends
+  only rows it has not sent. A new process sends each row once more, and the
+  primary keys absorb the repeats.
+- T2a writes stages 1 to 5: the original image, the profile version and the run
+  (the trace id is recorded once when it appears), the regions, each reading
+  with its raw response asset, and the reading comparisons. T2b adds the first
+  pass, the harness, the queue decision and review decisions on S4's domain
+  fields.
+- `Checkpoint` rows are not written: the domain keeps no input digest per
+  attempt. Attempts stay in the snapshot, and the harness's attempts are
+  `ToolCall` rows.
+- Without a blob store the pass is skipped and logged; the workflow supplies
+  the store before its first save, and the next save catches up.
+- The acceptance lab runs the same writer against the emulator
+  (`--persistence sql-emulator`), so it sees the same rows as production.
+  `SQLiteRepository` writes no normalized rows.
+
+T2a mapping:
+
+| Row | Mapping |
+|---|---|
+| `SourceAsset` original | id `Asset.id`; object from `Asset.blob_ref`; `mimeType`, `byteSize`, `width`, `height` from the asset; `acquisitionMethod` `intake`; `uploaderUid` `Asset.uploader` |
+| `ProfileVersion` | `Run.profile.id` and `.version`; `configObject` the canonical JSON of `Run.profile_snapshot`; `configSha256` `Run.dependencies["profile_snapshot_sha256"]` |
+| `PipelineRun` | id `Run.id`; `supersedesRunId` the previous run's id; `pinnedVersions` the profile's key, version, registry version and digest, its routes, schema and policy versions, its segmentation settings, and `Run.dependencies`; `inputSha256` the original's SHA-256; `traceId` `Run.trace_id` |
+| `LabelRegion` | id `region/{run}/{Region.id}` (section 5); `domainRegionId` `Region.id`; `sourceAssetId` the original; `geometry` `{x, y, width, height, rotation_quarter_turns, pixel_basis}`; `ordinal` `Region.order`; `regionType` `label`; `segmentationVersion` `{method}:{version}` |
+| `SourceAsset` raw response | id `asset/{specimen}/{bucket}/{object}/{generation}`, so byte-identical responses of two specimens are two rows of one stored object; kind `raw_response`, `application/json`, no dimensions, `acquisitionMethod` `model_response`, `uploaderUid` the writing actor |
+| `ModelObservation` reading | id `Observation.id`; `regionId` the region row's id, while `stepKey` keeps the domain region id; `modelVersion` `model_id`; `parameters` `{model_settings, provider_model_id, input_tokens, output_tokens, latency_seconds, latency_basis}`; `outcome` `completion_state`, else `finish_state`; `independent` true; `routeId`; `unreadableSpans` |
+| `ReadingComparison` | for a region's transcript with exactly two readings and an alignment algorithm; `regionId` the region row's id; readings in the fixed id order (section 3.1); `lengthBasis` the longer literal's length, at least 1; `editDistance` `ratio × lengthBasis`, rounded |
