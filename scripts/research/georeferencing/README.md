@@ -7,6 +7,10 @@ against real answers rather than examples. It is research code from session S8
 (2026-09-23). Nothing imports it, and the harness's geography tool will follow
 the plan, not this script.
 
+The probe predates PLAN 4.8. It sent a year range and label locality strings to
+GBIF's occurrence search, which the place tool never does: that check is off
+while D4 is held, and every request the tool sends follows PLAN 4.8.
+
 ```bash
 uv run python scripts/research/georeferencing/pilot_probe.py --out /tmp/geo-probe
 ```
