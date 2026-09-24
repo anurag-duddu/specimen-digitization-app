@@ -3,11 +3,11 @@
 Pure: assembles GetRunThreadV1's rows and the specimen's snapshot into the response S6's client
 reads. The rows are the SQL projection (section 11): regions, readings, comparisons, the first
 pass, handoffs, tool calls, field candidates and the queue decision. The snapshot, which stays
-the source of truth, gives the run's state and cost, the image, segmentation and the coverage
-check, and says which decision, candidates and record version are current: those are keyed by
-their content, so the ids come from what the writer writes for the snapshot and the operation
-reads exactly them. A region shows the model's decision and a reviewer's beside it, never one in place of the
-other.
+the source of truth, gives the run's state and cost, the image, segmentation, the coverage check,
+each field's layer and which of its entries settled, by the writer's own rule. It also says which
+decision, candidates and record version are current: those are keyed by their content, so the
+ids come from what the writer writes for the snapshot and the operation reads exactly them. A
+region shows the model's decision and a reviewer's beside it, never one in place of the other.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import re
 from collections import defaultdict
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -22,7 +23,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from .projection import LINKABLE, Blob, writes
+from .integrity import EvidenceIntegrityError
+from .projection import LINKABLE, Blob, CredentialStored, settled_entries, writes
 
 TRACE_URL_SETTING = "SPECIMEN_TRACE_URL_TEMPLATE"
 TRACE_PLACEHOLDER = "{trace_id}"
@@ -237,6 +239,9 @@ class FieldThread(Part):
     field_key: str
     group: str
     state: str
+    # G38's layer and a derived value's input fields, from the snapshot (S4's FieldValue, #144).
+    layer: Literal["verbatim", "settled", "derived"] | None
+    derived_from: list[str]
     verbatim: list[Verbatim]
     parsed: str | None
     precision: str | None
@@ -330,11 +335,16 @@ def current(specimen, run) -> Current:
     """What `projection.writes` writes for the run's state, run without storage.
 
     The writer's own output, so the thread never keys a row differently from how it was
-    written. It refuses a run whose tool calls hold a key, as the writer does (rule 1.6).
+    written. A run the writer refuses for a stored credential (rule 1.6) has no thread: that is
+    a stored-evidence integrity failure, whose message names where, never the credential.
     """
     view = specimen if run is specimen.run else specimen.model_copy(update={"run": run})
+    try:
+        written = writes(view, _nowhere, _unsized, "thread", reviewer=True)
+    except CredentialStored as exc:
+        raise EvidenceIntegrityError(str(exc)) from exc
     decisions, fields, record = {}, defaultdict(list), None
-    for write in writes(view, _nowhere, _unsized, "thread", reviewer=True):
+    for write in written:
         found = write.variables
         if write.operation == "AppendTranscriptionVersionV2":
             decisions[_id(found["regionId"])] = (_id(found["id"]), found["decisionKind"])
@@ -674,15 +684,23 @@ def _fields(run, row: dict, written: Current, evidence: list[dict], tool_calls: 
     items = {_id(e["id"]): e for e in evidence}
     # The readings stored evidence quotes (section 4.3); a lookup quotes none.
     quoted = {item.id: list(item.observation_ids) for item in run.evidence}
+    # Each reading's region, for the writer's settle rule.
+    regions = {o.id: o.region_id for o in run.observations}
     result = []
     for key, value in run.fields.items():
         # The field's current candidates, in the domain map's order.
-        present = [rows[c] for c in written.candidates.get(key, []) if c in rows]
+        ids = written.candidates.get(key, [])
+        present = [rows[c] for c in ids if c in rows]
         field = resolved.get(key)
         if not present and field is None:
             continue
         # A per-label or per-reader map (G27, G28, G32), rather than one verbatim.
-        mapped = bool(getattr(value, "verbatim_by_observation", None))
+        verbatim = getattr(value, "verbatim_by_observation", None) or {}
+        mapped = bool(verbatim)
+        # The writer writes one candidate per map entry, in the map's order, and the entry settled
+        # exactly when its own rule names the entry's reading (section 4.3).
+        settling = settled_entries(value, regions) if mapped else set()
+        settled = [c for c, reading in zip(ids, verbatim) if reading in settling]
         # Evidence links to the entry it names, settled or not (section 4.3); each item once.
         links, seen = [], set()
         for found in present:
@@ -698,6 +716,8 @@ def _fields(run, row: dict, written: Current, evidence: list[dict], tool_calls: 
                 field_key=key,
                 group=(field or {}).get("fieldGroup") or _group(run, key),
                 state=field["state"] if field else present[0]["state"],
+                layer=getattr(value, "layer", None),
+                derived_from=list(getattr(value, "derived_from", None) or []),
                 verbatim=[
                     Verbatim(
                         text=found.get("literalValue"),
@@ -712,7 +732,9 @@ def _fields(run, row: dict, written: Current, evidence: list[dict], tool_calls: 
                 century_rule=stated.get("century_rule"),
                 normalized=_first(present, "normalizedValue"),
                 authority_id=_first(present, "authorityId"),
-                settled_observation_ids=settled_observation_ids(present, tool_calls, mapped=mapped),
+                settled_observation_ids=settled_observation_ids(
+                    present, tool_calls, mapped=mapped, settled=settled
+                ),
                 evidence=[
                     FieldEvidence(
                         evidence_id=_id(link["evidenceId"]),
@@ -740,33 +762,41 @@ def _reading(candidate: dict) -> str | None:
     return _id(candidate.get("sourceObservationId"))
 
 
-SETTLED_VALUES = ("normalizedValue", "authorityId", "parsedValue")
-
-
 def settled_observation_ids(
-    candidate_rows: list[dict], tool_calls: list[dict], *, mapped: bool
+    candidate_rows: list[dict],
+    tool_calls: list[dict],
+    *,
+    mapped: bool,
+    settled: Collection[str] = (),
 ) -> list[str]:
     """The readings through which the field's value settled, in verbatim order (section 8).
 
     `candidate_rows` are the field's current candidates in the domain map's order and
     `tool_calls` the run's, as GetRunThreadV1 returns them; `mapped` says the field is a verbatim
-    map. Only a settled entry's candidate carries a value (section 4.3), so a candidate settled
-    exactly when it carries one; evidence links to entries settled or not, so links say nothing.
-    A settled raw-reading entry names its reading. A settled decided entry names the raw readings
-    a fallback lookup confirmed (G20): those of the raw-reading calls whose evidence, linked to
-    it, decides or supports the value; without one, a map's decided entry names its selected
-    reading and a single decided transcript none. A single raw-reading verbatim names none.
+    map, and `settled` names the candidates of the map entries that settled by the writer's own
+    rule (`projection.settled_entries`), never by their values or links.
+    - A settled raw-reading entry names its reading.
+    - A settled decided entry names the raw readings a fallback lookup confirmed (G20): those of
+      the raw-reading calls whose evidence, linked to it, decides or supports the value. Without
+      one it names its selected reading.
+    - A single decided transcript names its fallback readings the same way, or none, and any
+      other field names none.
     """
-    settled = [c for c in candidate_rows if any(c.get(name) is not None for name in SETTLED_VALUES)]
+    if not mapped:
+        only = candidate_rows[0] if len(candidate_rows) == 1 else None
+        if only is not None and only.get("inputSource") == "decided_transcript":
+            return _fallback(only, tool_calls)
+        return []
+    chosen = {_id(ident) for ident in settled}
     result = []
-    for candidate in settled:
-        if candidate.get("inputSource") == "decided_transcript":
-            confirmed = _fallback(candidate, tool_calls)
-            if confirmed:
-                result += confirmed
-            elif mapped and (reading := _reading(candidate)) is not None:
-                result.append(reading)
-        elif mapped and (reading := _reading(candidate)) is not None:
+    for candidate in candidate_rows:
+        if _id(candidate["id"]) not in chosen:
+            continue
+        decided = candidate.get("inputSource") == "decided_transcript"
+        confirmed = _fallback(candidate, tool_calls) if decided else []
+        if confirmed:
+            result += confirmed
+        elif (reading := _reading(candidate)) is not None:
             result.append(reading)
     return result
 

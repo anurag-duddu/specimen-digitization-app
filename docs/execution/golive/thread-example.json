@@ -456,6 +456,8 @@
       "field_key": "province_state",
       "group": "mandatory",
       "state": "supported",
+      "layer": "settled",
+      "derived_from": [],
       "verbatim": [
         {
           "text": "Ill.",
@@ -485,6 +487,8 @@
       "field_key": "city",
       "group": "mandatory",
       "state": "supported",
+      "layer": "settled",
+      "derived_from": [],
       "verbatim": [
         {
           "text": "Chicago",
@@ -551,6 +555,8 @@
       "field_key": "county",
       "group": "mandatory",
       "state": "unresolved",
+      "layer": "verbatim",
+      "derived_from": [],
       "verbatim": [
         {
           "text": "Cook Co.",
@@ -571,6 +577,8 @@
       "field_key": "date_visited_from",
       "group": "mandatory",
       "state": "supported",
+      "layer": "settled",
+      "derived_from": [],
       "verbatim": [
         {
           "text": "VII-46",
@@ -591,6 +599,8 @@
       "field_key": "taxon",
       "group": "mandatory",
       "state": "supported",
+      "layer": "settled",
+      "derived_from": [],
       "verbatim": [
         {
           "text": "Aedes aegypti L.",
@@ -636,6 +646,8 @@
       "field_key": "identified_by_irn",
       "group": "optional",
       "state": "unknown",
+      "layer": null,
+      "derived_from": [],
       "verbatim": [],
       "parsed": null,
       "precision": null,
