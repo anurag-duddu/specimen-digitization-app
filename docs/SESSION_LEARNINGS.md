@@ -12028,3 +12028,20 @@ because the hooks runner hands a native asset hook only `PATH`.
   - words for `field_harness`, `review_decision` and derivation sources (S5 confirmed the ids on 2026-09-24);
   - re-copy the canonical example when S5 sends the corrected commit (`col`);
   - the fetch (T2f part two) after S5's T4.
+
+### 2026-09-24 — Go-live S6 T2.3 part three, point four: a label's fallback line
+
+- Task: go-live workstream S6, brief T2 ("the thread view"). The G32 per-label case of the settled marks, from section 8 at #171.
+- Branch/worktree: `golive/ui-g32-fallback`, stacked on `golive/ui-reviewer-decision` (#175); `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome: UI.md T2.3 part three, point 4.
+  - In a per-label map, a reading in `settled_observation_ids` that no entry shows gets one line under the texts, led by its label: "Label 2 · <reader> · raw reading · settled the value". That is the raw reading a fallback lookup confirmed for a decided entry. The label's own entry stays unmarked.
+  - `FieldRow` had silently dropped `asWrittenNote` under attributed texts. It now draws the note under them as a semantics node of its own, and design/03's anatomy sentence says so.
+- Commits/PRs: red `3897bb1`; green ``2bbbb80``; the pull request opened from this branch depends on #175 and the chain below it.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; `fields_thread_test.dart` and `field_row_test.dart` 32 passed; the full app suite 1,736 passed, 8 skipped, 0 failed, run with `TZ=America/Chicago` (see learning 3).
+- Durable learnings: (1) A slot a component renders in only one of its branches is a trap for the next caller. `asWrittenNote` worked for a single text and vanished under attributed texts, with no error. The red test caught it only because it asserted the line on screen, not the value passed in. A screen test should assert what the reviewer sees, not what the screen hands a component. (2) Keeping one rule ("a settled reading no entry shows gets a line") in place of two cases (single, per label) made the per-label case fall out of the single one, with the label added where the field spans labels. (3) Goldens can depend on the machine, not the code. Six `workbench-history` goldens failed by 0.05% to 0.14% because `/etc/localtime` switched from Central to America/New_York at 18:55. The History card renders local times with the zone name, and the goldens were made in CDT. Bisecting by file showed no code cause (all `lib` changes reverted, still failing). A diff confined to the frosted bar, behind which those rows sit, pointed at the text under it. `TZ=America/Chicago` restores the goldens' zone, and every gate here now runs with it.
+- Failed approaches: I first suspected the `FieldRow` change, then the fields panel. Reverting each, then all `lib` changes, kept the six failures, which ruled out the code before any golden was touched.
+- Remaining follow-ups:
+  - the layer label on every value (coordinator ruling (b), 2026-09-24: "As written", "Settled", "Derived from ...");
+  - field findings and the authority identity with its credit;
+  - words for `field_harness`, `review_decision` and derivation sources;
+  - the fetch (T2f part two) after S5's T4.
