@@ -11997,3 +11997,28 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (5) Before widening a reading, check what the owner declined earlier. The coordinator read G37's "like other fields" as allowing unit conversion and filled endpoints, which the owner had declined by name at G22. #124's review caught it, and the owner then chose them explicitly (G41). A reading never overturns an explicit refusal; ask instead.
 - Failed approach: none. The first draft of section 4.4 turned one list item into separate sentences, which cut the rest of the list off from its lead-in, so it was rewritten with semicolons.
 - Remaining follow-ups: owner questions saved for a natural moment: D4, D5, and what `verbatim_dts` holds (`PRD.md`'s open question 3). D8, D10 and D12 wait for their phase. Still open: relaying #119's IAM list after its review, then #123's window packet; the G15 calibration sign-off. When #78 merges, re-map the citations into the files it changes (PRD, RELEASE_RUNTIME, RELEASE_AUTHORIZATION, DEPLOYMENT).
+
+### 2026-09-24 — Go-live program: plan corrections after #124
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-5`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #124's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/124#issuecomment-5813970741):
+    - the place-request filter covers what is sent, and a request's fixed parts are reviewed constants;
+    - the reviewer's value counts only in a place field;
+    - notation expansions happen inside S4's single filter (coordinator ruling);
+    - S4's brief points to PLAN section 4.8 instead of restating it;
+    - G45's `verbatim_dts` exception appears at stage 8 and in T4;
+    - S5's T6 names G44;
+    - D4's queries go to the owner as an explicit exception to 4.8 when D4 is taken up.
+  - Re-maps PLAN's DEPLOYMENT citation after #165.
+  - Correction to the entry "2026-09-24 — Go-live program: plan after #104, owner decisions G32 to G45" above. Its follow-ups say to re-map #78's citations when #78 merges; #124 did that, and #165's re-map is in this pull request.
+- Validation actually run: the edit scripts' exact-single-match and table-width checks, and the citation re-map by content match against main. CI on the pull request: Not confirmed at the time of writing.
+- Durable learnings:
+  - (1) A security rule must say what it limits. "Place text only" was first read as a rule on what S8's tiers receive. It now states that it covers every value that leaves, and that a request's fixed parts are reviewed constants.
+  - (2) Point a brief to the plan section instead of restating a rule there. S4's brief kept an older copy of the filter that would have refused `derive_rest`.
+  - (3) Five review rounds of the same filter each found a real gap: G40's narrowing, S8's own requests, a name before its marker, month names, and a reviewer's non-place values. A filter specification needs worked cases from the real labels ("H. Hoogstraal leg.", "3 Sept. '46") in its first draft.
+- Remaining follow-ups:
+  - Owner questions saved for a natural moment: D4 (with its queries as a 4.8 exception), D5, and what `verbatim_dts` holds (`PRD.md`'s open question 3).
+  - The first production run waits for #163's live initialization and #170's V3 apply.
+  - The owner's pending actions: the readiness marker, #119's IAM list after its review, the curator sheets, and the dataset upload.
