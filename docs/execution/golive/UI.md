@@ -393,5 +393,13 @@ from S4's `policy.py`:
   a piece of evidence's, is left out, because it means nothing to a
   reviewer and the record shows where the problem is.
 - A code this client does not know still reads as its own words.
-- Until S5's T5 search lands, a picked code finds only the records whose
-  code is stored without a suffix (S5, 2026-09-24).
+- Until S5's T5 search lands, the search API matches a code exactly, so a
+  picked code finds only the records whose code is stored without a suffix
+  (S5, 2026-09-24). The "Issue" picker therefore offers only the codes
+  stored without one: the institutional policy, required field meanings,
+  label coverage, the two date codes, the catalog number, reviewer approval
+  and the two taxonomy codes. The fourteen codes stored with a suffix, from
+  `independent_observations_missing` to `elevation_units_conflict` (S3,
+  2026-09-24), come back when T5 lands. A filter that silently returns
+  nothing is worse than a shorter list (the coordinator's ruling (b),
+  2026-09-24).

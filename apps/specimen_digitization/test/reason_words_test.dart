@@ -3,11 +3,16 @@
 // The lane policy's reason codes, S3's list of 2026-09-24 generated from
 // S4's `policy.py`, read as words wherever a reason is shown.
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/reason_codes.dart';
 import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
 import 'package:specimen_digitization/src/screens/workbench/blockers.dart';
+import 'package:specimen_digitization/src/search_filters.dart';
+import 'package:specimen_ui/specimen_ui.dart';
+
+import 'widgets/harness.dart';
 
 /// Every code `policy.evaluate` emits today, with the words it reads as.
 const Map<String, String> policyReasons = <String, String>{
@@ -87,6 +92,49 @@ void main() {
     expect(
       blockers.map((ClearanceBlocker b) => b.message),
       contains('Taxonomy not resolved to one accepted name'),
+    );
+  });
+
+  testWidgets('the Issue picker offers only codes a filter can find', (
+    WidgetTester tester,
+  ) async {
+    // Until S5's T5 search matches `code:suffix`, a picked code stored with a
+    // suffix would find nothing (the coordinator's ruling (b), 2026-09-24).
+    await pumpComponent(
+      tester,
+      SingleChildScrollView(
+        child: SearchFilters(
+          initial: const <String, String>{},
+          configuration: <String, dynamic>{
+            'reason_codes': policyReasons.keys.toList(),
+          },
+        ),
+      ),
+      size: const Size(1000, 2400),
+    );
+    final UiSelect<String> issue = tester.widget<UiSelect<String>>(
+      find.byWidgetPredicate(
+        (Widget w) => w is UiSelect<String> && w.label == 'Issue',
+      ),
+    );
+    final Set<String> offered = <String>{
+      for (final UiSelectOption<String> option in issue.options)
+        if (option.value.isNotEmpty) option.value,
+    };
+    expect(offered, <String>{
+      'institutional_policy_unapproved',
+      'mandatory_semantics_unconfirmed',
+      'label_coverage_unconfirmed',
+      'date_order',
+      'date_precision_requires_review',
+      'identifier_format',
+      'human_approval_required',
+      'taxonomy_lookup_missing',
+      'taxonomy_unresolved',
+    });
+    expect(
+      issue.options.map((UiSelectOption<String> o) => o.label),
+      contains('Reviewer approval needed'),
     );
   });
 }
