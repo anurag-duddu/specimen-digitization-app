@@ -3,7 +3,7 @@
   "source_sha": "<OWNER:source_sha>",
   "database_etag": "<OWNER:sql_settings_version>",
   "initialization_files": {
-    "scripts/ci/release_initialize.py": "0eb5f3492344a249db25e8dee4c7e369496ce383d3b4f1def5b2fb18d1083434",
+    "scripts/ci/release_initialize.py": "af118d73ce6a7a6cfc9e49cd44f3287534cc8e711a078ce390097c1272fd1b79",
     "scripts/ci/release_initialize.mjs": "64e9512840a66687158c1d1b3e477a720385a68f8334e02e3a5a845296eb076f",
     "scripts/ci/initialize_database.sql": "a48409621264c6918b9f2bddb01366df022a01d4d149aca5768a8fc3f0d2a52b",
     "scripts/ci/initialize_catalog.sql": "d7262f8fc62d823e0a27ad602035c4cd144b003cfb7efadfadc506c03e5083dd",

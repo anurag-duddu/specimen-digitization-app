@@ -844,9 +844,8 @@ def main():
         if args.cleanup:
             cleanup_rehearsal(Google(args.packet, "data", cleanup=True), args.packet.parent)
             return
-        if args.dispose_initializer:
+        if args.dispose_initializer and args.receipt is not None:
             from release_initialize import verified_disposal_inputs, dispose_initializer_target
-            require(args.receipt is not None, "signed recovery and creation journals required")
             google = Google(args.packet, "data", cleanup=True)
             recovery, journals = verified_disposal_inputs(google.packet, args.receipt, args.packet.parent)
             failures = []
@@ -861,12 +860,23 @@ def main():
         with stage("data.admission"):
             packet = admit(args.packet, plane)
             gate = release_gate.is_gate_record(packet)
-            # G11: a gate record replaces the envelope, its plan and --prepare-inputs; release_gate.py writes it
-            # and only the data deploy reads it.
-            require(not gate or (args.deploy and args.output is not None), "a gate record releases only through --deploy")
+            # G11: a gate record replaces the envelope, its plan, --prepare-inputs and --receipt; release_gate.py
+            # writes it, and only the release, initialize and dispose-initializer jobs read it (RELEASE.md 4.3).
+            require(gate or not args.dispose_initializer, "signed recovery and creation journals required")
+            require(not gate or args.receipt is None and (args.prepare_initializer_intents or args.dispose_initializer
+                    or (args.deploy or args.initialize) and args.output is not None), "a gate record releases only through its jobs")
         if gate:
-            deploy_released_data(args.packet, args.output)
-            emit_result_digest(args.output)
+            import release_initialize as initializer
+            if args.deploy:
+                deploy_released_data(args.packet, args.output)
+            elif args.initialize:
+                initializer.initialize_existing(Google(args.packet, plane), args.packet.parent, args.output)
+            elif args.prepare_initializer_intents:
+                initializer.prepare_owned_initializer(Google(args.packet, plane), args.packet.parent)
+            else:
+                initializer.dispose_owned_initializer(Google(args.packet, plane), args.packet.parent)
+            if args.deploy or args.initialize:
+                emit_result_digest(args.output)
             return
         with stage("data.plan"):
             plan = validate_plan(read_bound_plan(args.packet.parent / "plan.json", packet), packet)

@@ -297,3 +297,7 @@ and lines. The three superseded identifiers left the rule-local AND exception
 for the release plan templates, and `5ff370eb…`, `7c4f19c2…` and `d2aeecb9…`
 joined it, each confirmed to be SHA-1 of one regenerated digest. Nothing else
 in either scanner's configuration changed.
+
+The gate-path initializer and disposal that follow change
+`scripts/ci/release_initialize.py` too. Its regenerated digest's identifier,
+`6928ffa0…`, replaced its predecessor in the same exception on the same terms.

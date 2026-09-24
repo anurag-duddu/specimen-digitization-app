@@ -438,6 +438,7 @@ regexes = [
   '''^\s*"hashed_secret": "5353cc238975fcc565619b3c8283d18c76578363",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "5ff370ebbd9d00436eedb6197973fb5dfe4e6aad",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "65b1d497136fde826ef46828b394f64693f3bb0d",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "6928ffa0be2b94d07099d3570869eea3d4a0bb4f",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "6ecf651fee1dc46b0b24bfd50bca7341a7713ba1",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "7c4f19c206084043f74ee677d63c9eccb7d8ece6",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "896ce803625f9dfca4219af8d51fb926616769f3",?\s*$''', # pragma: allowlist secret
@@ -445,7 +446,6 @@ regexes = [
   '''^\s*"hashed_secret": "8cc34447cdfde82692ee4a63e4b93ab5a0da67b6",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "8cd05e3d52a3b154e59ec2125c5a7e597bc60d88",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "8ced6067c2e99ddda0e9862bf89cd91386fcd507",?\s*$''', # pragma: allowlist secret
-  '''^\s*"hashed_secret": "8e904963b906c78ce0ba3805b24a8e68608bb4b0",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "8f511b724d469e728a38d7ebed328b4f4f9376b4",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "95a923f3e2d110d938ebf698add693fb40277963",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "9950390232e4a7a61d83adb57e546c20ec5067b7",?\s*$''', # pragma: allowlist secret
