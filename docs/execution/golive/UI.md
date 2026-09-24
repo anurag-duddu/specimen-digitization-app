@@ -426,3 +426,23 @@ from S4's `policy.py`:
   2026-09-24), come back when T5 lands. A filter that silently returns
   nothing is worse than a shorter list (the coordinator's ruling (b),
   2026-09-24).
+
+### T3.3 Run states in the filter sheet
+
+Today's status chips stay: All, Needs review, Cleared, Deferred, Blocked
+and Processing. Each row already shows its record's state (T1.2). The
+filter sheet's new "Run state" picker chooses any one state the search
+API filters, in the rows' words: Processing, Completed, Blocked, Retry
+scheduled, Paused and Cancelled (the coordinator's ruling (c),
+2026-09-24). Waiting (`pending`, G13) joins once #85 adds it to the
+search API, so the picker never offers a value the server refuses.
+
+- The Blocked and Processing chips choose a run state too, so whichever
+  was chosen last wins. Applying a state from the sheet returns a state
+  chip to All, and tapping Blocked or Processing clears the sheet's state.
+  A queue chip (Needs review, Cleared, Deferred) combines with the sheet's
+  state, as the API intends.
+- An active filter's chip names its value in words: "Run state: Retry
+  scheduled", "Issue: Reviewer approval needed". It no longer shows the
+  wire value (`retry_scheduled`, `human_approval_required`). An
+  identifier, a date or a number stays as typed.
