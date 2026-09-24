@@ -23,6 +23,33 @@ BOTH = ("resource.service == 'sqladmin.googleapis.com' && resource.type == 'sqla
         " || resource.name == 'projects/specimen-digitization/instances/specimen-digitization-restore-20260908-r1')")
 CLAIM = ("resource.name == 'projects/_/buckets/specimen-digitization.firebasestorage.app/objects/"
          "application/release-control/first-production-restore.json'")
+# The exact text after the two time bounds of each time-bounded role's live binding, as read on 2026-09-23.
+LIVE_ON_CLONE = (
+    " && resource.service == 'sqladmin.googleapis.com' && resource.type == 'sqladmin.googleapis.com/Instance'"
+    " && (resource.name == 'projects/specimen-digitization/instances/specimen-digitization-restore-20260908-r1')")
+LIVE_ON_SOURCE_OR_CLONE = (
+    " && resource.service == 'sqladmin.googleapis.com' && resource.type == 'sqladmin.googleapis.com/Instance'"
+    " && (resource.name == 'projects/specimen-digitization/instances/specimen-digitization-instance'"
+    " || resource.name == 'projects/specimen-digitization/instances/specimen-digitization-restore-20260908-r1')")
+LIVE_PREDICATES = {
+    "specimenDataInitializeTemporary": LIVE_ON_SOURCE_OR_CLONE,
+    "specimenDataInitializerDisposal": LIVE_ON_SOURCE_OR_CLONE,
+    "specimenDataCloneControl": LIVE_ON_CLONE,
+    "specimenDataCloneCreate": LIVE_ON_CLONE,
+    "specimenDataRestoreAllowanceClaim": (
+        " && resource.name == 'projects/_/buckets/specimen-digitization.firebasestorage.app/objects/"
+        "application/release-control/first-production-restore.json'"),
+    "specimenDataRuntimeAbsence": "",
+}
+# The roles that stay time-bounded (golive/RELEASE.md section 1), each with its approved member and minutes of access.
+TIME_BOUNDED = (("specimenDataInitializeTemporary", INIT, 75), ("specimenDataInitializerDisposal", DATA, 115),
+                ("specimenDataCloneControl", DATA, 120), ("specimenDataCloneCreate", DATA, 120),
+                ("specimenDataRestoreAllowanceClaim", DATA, 120), ("specimenDataRuntimeAbsence", DATA, 120))
+# Every role the window manages: the time-bounded ones and the one-time bootstrap grant.
+MANAGED = [(role_id, member) for role_id, member, _ in TIME_BOUNDED] + [("specimenDataOwnerBootstrap", DATA)]
+# The roles G11 made standing, and the inventory roles, standing already with their conditions.
+STANDING = ("specimenDataSchemaPublish", "specimenDataSourceBackup", "specimenDataStorageRules")
+INVENTORY = ("specimenDataInventoryProjectRead", "specimenDataInventorySqlConnect")
 
 
 def timed(end, rest=""):
@@ -38,7 +65,8 @@ def binding(role_id, member, expression=None, title=None):
 
 
 def policy():
-    """The live policy's shape on 2026-09-22: nine expired time-bound bindings, two inventory ones, two unrelated."""
+    """The policy the window next reads: the six time-bounded bindings as they expired on 2026-09-13, the three roles
+    G11 made standing, the two inventory ones with their conditions, and two unrelated."""
     return {"version": 3, "etag": "BwFakeEtag0=", "bindings": [
         binding("specimenDataCloneControl", DATA, timed("2026-09-13T22:25:15Z", INSTANCE)),
         binding("specimenDataCloneCreate", DATA, timed("2026-09-13T22:25:15Z", INSTANCE)),
@@ -51,9 +79,7 @@ def policy():
         binding("specimenDataRestoreAllowanceClaim", DATA, timed("2026-09-13T22:25:15Z", CLAIM),
                 title="specimen_first_restore_claim"),
         binding("specimenDataRuntimeAbsence", DATA, timed("2026-09-13T22:25:15Z")),
-        binding("specimenDataSchemaPublish", DATA, timed("2026-09-13T22:25:15Z")),
-        binding("specimenDataSourceBackup", DATA, timed("2026-09-13T22:25:15Z")),
-        binding("specimenDataStorageRules", DATA, timed("2026-09-13T22:25:15Z")),
+        *(binding(role_id, DATA) for role_id in STANDING),
         {"role": "roles/firebasehosting.admin",
          "members": [f"serviceAccount:github-firebase-hosting@{PROJECT}.iam.gserviceaccount.com"]},
         {"role": "roles/storage.admin",
@@ -61,16 +87,42 @@ def policy():
     ]}
 
 
+def expired(role_id):
+    """The time-bound binding a standing role held until it expired on 2026-09-13."""
+    return binding(role_id, DATA, timed("2026-09-13T22:25:15Z"))
+
+
+def beside_expired(policy_):
+    """The owner granted the three roles standing and left their expired bindings in place."""
+    policy_["bindings"] += [expired(role_id) for role_id in STANDING]
+    return policy_
+
+
+def not_yet_standing(policy_):
+    """The shape of 2026-09-22, before the owner's grants: the three roles hold only their expired bindings."""
+    policy_["bindings"] = [expired(role_of(b)) if role_of(b) in STANDING else b for b in policy_["bindings"]]
+    return policy_
+
+
+def role_of(binding_):
+    return binding_["role"].rsplit("/", 1)[1]
+
+
+def standing(policy_):
+    """The bindings of the five standing roles, in policy order."""
+    return [b for b in policy_["bindings"] if role_of(b) in (*STANDING, *INVENTORY)]
+
+
 def find(policy_, role_id):
     return [b for b in policy_["bindings"] if b["role"] == f"projects/{PROJECT}/roles/{role_id}"]
 
 
-def test_plan_renews_exactly_eighteen_timestamps_and_adds_the_bootstrap_grant():
+def test_plan_renews_exactly_twelve_timestamps_and_adds_the_bootstrap_grant():
     before = policy()
     packet = W.plan(before, START, START - 120)
     renewal = packet["effects"][2]
-    assert (renewal["bindings"], renewal["timestamps"]) == (9, 18)
-    assert sum(len(re.findall(STAMP, c["before"])) for c in renewal["changes"]) == 18
+    assert (renewal["bindings"], renewal["timestamps"]) == (6, 12)
+    assert sum(len(re.findall(STAMP, c["before"])) for c in renewal["changes"]) == 12
     for change in renewal["changes"]:
         # Only the two instants differ; the resource predicates are byte-identical.
         assert re.sub(STAMP, "T", change["before"]) == re.sub(STAMP, "T", change["after"])
@@ -103,7 +155,22 @@ def test_plan_renews_exactly_eighteen_timestamps_and_adds_the_bootstrap_grant():
     assert packet["window"]["deadline_unix"] - packet["window"]["start_unix"] == 600
     assert before == policy(), "planning never mutates its input"
     text = W.summary(packet)
-    assert text.count("becomes") == 9 and W.BOOTSTRAP_ROLE in text and "18 timestamps in 9 bindings" in text
+    assert text.count("becomes") == 6 and W.BOOTSTRAP_ROLE in text and "12 timestamps in 6 bindings" in text
+
+
+def test_the_window_renews_only_the_six_time_bounded_roles_and_keeps_the_bootstrap_grant():
+    """RELEASE.md T4c: the renewals drop the three roles G11 made standing; the bootstrap handling is unchanged."""
+    assert W.RENEWALS == TIME_BOUNDED
+    assert not {role_id for role_id, _, _ in W.RENEWALS} & {*STANDING, *INVENTORY, W.BOOTSTRAP_ROLE_ID}
+    packet = W.plan(policy(), START, START - 60)
+    create, grant, renewal = packet["effects"]
+    assert [(c["role"], c["member"], c["minutes"]) for c in renewal["changes"]] == [
+        (f"projects/{PROJECT}/roles/{role_id}", member, minutes) for role_id, member, minutes in TIME_BOUNDED]
+    assert (W.BOOTSTRAP_ROLE, W.BOOTSTRAP_MINUTES) == (f"projects/{PROJECT}/roles/specimenDataOwnerBootstrap", 120)
+    assert (create["effect"], create["role"], create["body"]) == ("role_create", W.BOOTSTRAP_ROLE, W.role_body())
+    assert (grant["effect"], grant["binding"]) == ("role_grant", W.bootstrap_binding(START))
+    assert grant["binding"]["members"] == [DATA]
+    assert W.TIME_CONDITION.fullmatch(grant["binding"]["condition"]["expression"])["end"] == W.stamp(START + 7200)
 
 
 def without(policy_, role_id):
@@ -142,9 +209,9 @@ def downgraded(policy_):
 
 
 @pytest.mark.parametrize("mutate, message", [
-    (lambda p: without(p, "specimenDataSchemaPublish"), "exactly one binding"),
-    (lambda p: duplicated(p, "specimenDataSourceBackup"), "exactly one binding"),
-    (lambda p: rebound(p, "specimenDataStorageRules", INIT), "single approved identity"),
+    (lambda p: without(p, "specimenDataRestoreAllowanceClaim"), "exactly one binding"),
+    (lambda p: duplicated(p, "specimenDataInitializeTemporary"), "exactly one binding"),
+    (lambda p: rebound(p, "specimenDataRuntimeAbsence", INIT), "single approved identity"),
     (lambda p: reshaped(p, "specimenDataRuntimeAbsence", INSTANCE), "time-bound shape"),
     (lambda p: reshaped(p, "specimenDataCloneCreate", timed("2026-09-13T22:25:15Z") + " || true"), "time-bound shape"),
     (lambda p: reshaped(p, "specimenDataCloneControl", "request.time < timestamp('2026-09-13T22:25:15Z')"),
@@ -344,7 +411,7 @@ def test_cli_plan_writes_a_private_packet_from_a_saved_policy(tmp_path, capsys):
     assert packet["schema"] == W.SCHEMA and stat.S_IMODE(output.stat().st_mode) == 0o600
     assert packet["window"]["start_unix"] - int(packet["window"]["start_unix"]) == 0
     printed = capsys.readouterr().out
-    assert "Nothing was changed" in printed and "Effect 3: renew 18 timestamps" in printed
+    assert "Nothing was changed" in printed and "Effect 3: renew 12 timestamps" in printed
 
 
 def test_cli_execute_requires_an_owner_only_packet(tmp_path):
@@ -353,3 +420,131 @@ def test_cli_execute_requires_an_owner_only_packet(tmp_path):
     os.chmod(packet, 0o644)
     with pytest.raises(ValueError, match="owned private regular file"):
         W.main(["execute", "--packet", str(packet), "--receipt", str(tmp_path / "r.json")])
+
+
+@pytest.mark.parametrize("shape", [
+    lambda p: p, beside_expired, not_yet_standing,
+    # Each was a refusal while the window renewed these roles; none is the window's concern any longer.
+    lambda p: without(p, "specimenDataSchemaPublish"),
+    lambda p: duplicated(p, "specimenDataSourceBackup"),
+    lambda p: rebound(p, "specimenDataStorageRules", INIT),
+], ids=["standing", "beside-expired", "not-yet-standing", "absent", "duplicated", "rebound"])
+def test_standing_roles_plan_cleanly_and_are_never_renewed_or_revoked(tmp_path, shape):
+    before = shape(policy())
+    kept = standing(before)
+    assert set(INVENTORY) <= {role_of(b) for b in kept}
+    packet = W.plan(before, START, START - 60)
+    assert [role_of(change) for change in packet["effects"][2]["changes"]] == [r for r, _, _ in TIME_BOUNDED]
+    assert standing(packet["policy"]["after"]) == kept, "every standing binding is carried over byte for byte"
+    fake = FakeCloud(before)
+    assert run(tmp_path, fake, packet)["verified"] is True
+    assert standing(fake.set_policy) == kept, "the one policy write keeps every standing binding"
+
+
+def revocation(role_id, member):
+    """The exact command that removes an unconditional binding, as the owner runs it."""
+    return (f"gcloud projects remove-iam-policy-binding {PROJECT} --member={member} "
+            f"--role=projects/{PROJECT}/roles/{role_id} --condition=None")
+
+
+@pytest.mark.parametrize("replacing", [False, True], ids=["beside-its-timed-binding", "replacing-it"])
+@pytest.mark.parametrize("role_id, member", MANAGED, ids=[role_id for role_id, _ in MANAGED])
+def test_an_untimed_binding_of_each_managed_role_is_refused_with_its_revocation_command(role_id, member, replacing):
+    before = without(policy(), role_id) if replacing else policy()
+    if role_id == "specimenDataOwnerBootstrap" and not replacing:
+        before = prebound(before)  # an earlier window's grant, which carries its time bound
+    before["bindings"].append(binding(role_id, member))
+    with pytest.raises(ValueError, match="untimed binding") as refused:
+        W.plan(before, START, START - 60)
+    assert str(refused.value).splitlines()[1:] == [f"  {revocation(role_id, member)}"]
+
+
+def test_the_refusal_lists_every_untimed_binding_and_prints_no_condition_or_other_member():
+    before = reshaped(policy(), "specimenDataRuntimeAbsence", INSTANCE)
+    before["bindings"] += [binding("specimenDataCloneCreate", DATA),
+                           binding("specimenDataCloneControl", "user:owner@example.com")]
+    with pytest.raises(ValueError, match="time-bound shape") as refused:
+        W.plan(before, START, START - 60)
+    text, role = str(refused.value), f"projects/{PROJECT}/roles/"
+    assert text.splitlines()[1:] == [
+        f"  - remove {role}specimenDataRuntimeAbsence for {DATA} on project {PROJECT}; its binding has a condition "
+        "without request.time, whose text is not printed",
+        f"  {revocation('specimenDataCloneCreate', DATA)}",
+        f"  - remove {role}specimenDataCloneControl for a member whose id is not printed on project {PROJECT}"]
+    assert "sqladmin" not in text and "example.com" not in text
+
+
+def test_a_standing_grant_made_after_planning_stops_execute_instead_of_being_revoked(tmp_path):
+    before = not_yet_standing(policy())
+    packet = W.plan(before, START, START - 60)
+    granted = copy.deepcopy(before)
+    granted["bindings"].append(binding("specimenDataSchemaPublish", DATA))
+    granted["etag"] = "BwGranted1="
+    fake = FakeCloud(granted)
+    with pytest.raises(ValueError, match="differs from the planned packet"):
+        run(tmp_path, fake, packet)
+    assert len(fake.calls) == 1 and fake.set_policy is None and fake.role_body is None
+
+
+def with_rest(policy_, role_id, rest):
+    """The role's binding keeps its two time bounds; only the text after them becomes ``rest``."""
+    condition = find(policy_, role_id)[0]["condition"]
+    bounds = W.TIME_CONDITION.fullmatch(condition["expression"])
+    condition["expression"] = condition["expression"][:bounds.start("rest")] + rest
+    return policy_
+
+
+def test_each_time_bounded_role_accepts_exactly_its_live_predicate():
+    assert W.PREDICATES == LIVE_PREDICATES, "the composed predicates reproduce the live bindings exactly"
+    assert set(W.PREDICATES) == {role_id for role_id, _, _ in W.RENEWALS}
+    before = policy()
+    assert {role_id: W.TIME_CONDITION.fullmatch(find(before, role_id)[0]["condition"]["expression"])["rest"]
+            for role_id in LIVE_PREDICATES} == LIVE_PREDICATES, "the fixture carries the live predicates"
+    packet = W.plan(before, START, START - 60)
+    assert {role_of(change): change["after"] for change in packet["effects"][2]["changes"]} == {
+        role_id: W.time_bound(START, minutes) + LIVE_PREDICATES[role_id] for role_id, _, minutes in TIME_BOUNDED}
+    assert packet["effects"][1]["binding"]["condition"]["expression"] == W.time_bound(START, 120), \
+        "the bootstrap grant the window creates carries the time bound only, as before"
+
+
+def other_predicates():
+    """Every text after the time bounds that some role must refuse, each labelled."""
+    renamed = {"specimen-digitization-restore-20260908-r1": "specimen-digitization-restore-20260909-r1",
+               "first-production-restore.json": "second-production-restore.json"}
+    for role_id, own in LIVE_PREDICATES.items():
+        cases = {"or-true": own + " || true", "ternary": own + " ? true : true",
+                 "another-role": next(other for other in LIVE_PREDICATES.values() if other != own),
+                 "and-true": own + " && true"}
+        if own:
+            cases["missing"] = ""
+        else:  # RuntimeAbsence has no predicate to miss: any text at all is refused, even a narrowing one.
+            cases["non-empty"] = " && resource.service == 'sqladmin.googleapis.com'"
+        for old, new in renamed.items():
+            if old in own:
+                cases["changed-name"] = own.replace(old, new)
+        for case, rest in cases.items():
+            yield pytest.param(role_id, rest, id=f"{role_id}-{case}")
+
+
+@pytest.mark.parametrize("role_id, rest", list(other_predicates()))
+def test_each_time_bounded_role_refuses_any_other_predicate_without_printing_it(role_id, rest):
+    with pytest.raises(ValueError) as refused:
+        W.plan(with_rest(policy(), role_id, rest), START, START - 60)
+    assert str(refused.value) == f"{role_id} condition is not the approved time-bound shape"
+
+
+@pytest.mark.parametrize("shape", [lambda p: p, beside_expired], ids=["standing", "beside-expired"])
+def test_an_old_packet_cannot_replay_once_the_standing_grants_move_the_policy(tmp_path, monkeypatch, shape):
+    """A packet planned before T4c renews nine roles; the owner's standing grants change the policy it is bound to."""
+    monkeypatch.setattr(W, "RENEWALS", (*W.RENEWALS, *((role_id, DATA, 120) for role_id in STANDING)))
+    monkeypatch.setattr(W, "PREDICATES", {**W.PREDICATES, **dict.fromkeys(STANDING, "")})
+    old = W.plan(not_yet_standing(policy()), START, START - 60)
+    monkeypatch.undo()
+    assert (old["schema"], old["effects"][2]["bindings"], old["effects"][2]["timestamps"]) == (W.SCHEMA, 9, 18)
+    live = shape(policy())
+    live["etag"] = "BwStanding1="
+    fake = FakeCloud(live)
+    with pytest.raises(ValueError, match="differs from the planned packet"):
+        run(tmp_path, fake, old)
+    assert len(fake.calls) == 1 and fake.set_policy is None and fake.role_body is None
+    assert not list(tmp_path.glob("*.intent.json")) and run.receipt["verified"] is False
