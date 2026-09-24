@@ -730,7 +730,14 @@ shared agent setup.
   - The first request is not checked here. The lane sizes the call's
     reservation for it from the crop (LANE.md T2d).
   - With no budget, nothing changes.
-- **A reading stopped by its limits** fails as `model_usage_limit`, a known
-  operational block with no automatic retry (G6), where it used to end as
-  `external_outcome_unknown`. The limits are its token limits or its
-  reservation. The provider answered, and what it billed is known.
+- **A reading stopped by its limits is a failed reading** (the coordinator's
+  reading of G6 and G30, 2026-09-24). The limits are its token limits or its
+  reservation. The model child reports it as `stopped` with the code
+  `model_usage_limit`, where it used to end as `external_outcome_unknown`.
+  - Its `transcribe` step completes with no observation, and the run goes on.
+    The step's cost record keeps the call.
+  - The region is then one reading short: no first pass runs, its transcript
+    stays unresolved, and the queue decision sends the record to review with
+    `independent_observations_missing`.
+  - An operational block would only park the record, since a retry of the
+    same crop under the same limits would likely stop the same way.
