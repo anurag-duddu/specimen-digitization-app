@@ -18,6 +18,7 @@ from specimen_digitization.application.domain import (
     Asset,
     BudgetUsage,
     Disposition,
+    Evidence,
     Lookup,
     LookupStatus,
     Observation,
@@ -322,7 +323,8 @@ def synthetic_run(
     (G19) and each reader keeps its verbatim (G27, G28); GBIF confirms one reader's taxon and
     decides it, and Catalogue of Life contradicts it, which is a warning (G23). The city is on
     both labels and each settles to the same place id, so it clears with both labels' readings
-    kept (G32). `put` stores a blob and returns its ref.
+    kept (G32); the right label's readers agree on it, so that label brings one entry and each
+    reader's literal is its own evidence. `put` stores a blob and returns its ref.
     """
     image = put("a", b"synthetic slide image")
     asset = Asset(
@@ -560,6 +562,24 @@ def synthetic_run(
     )
     # The writer records the coverage check's evidence itself (section 2).
     run.lookups = [place, nowhere, gbif, col, place_right]
+    # The right label's readers both read the city alike, so the harness keeps each reader's
+    # literal as its own evidence (#131; agreed with S4).
+    run.evidence = [
+        Evidence(
+            id=ident(35 + n),
+            kind="literal",
+            asset_id=asset.id,
+            region_id=right.id,
+            observation_ids=[reader.id],
+            source="field_harness",
+            locator=f"region:{right.id}",
+            excerpt="Chicago",
+            raw_ref=put(fill, f"literal {reader.id}".encode()),
+            digest=fill * 64,
+            created_at=TIMES[5],
+        )
+        for n, (reader, fill) in enumerate(((right_qwen, "6"), (right_muse, "8")))
+    ]
 
     def call(tool, source, fields, source_kind, arguments, outcome, result, evidence, *, region=None, reading=None):
         # {phase}:{tool}:{input_source}:{region}:{reading}:{16 hex of the arguments' digest}:{attempt}
@@ -583,18 +603,20 @@ def synthetic_run(
             completed_at=TIMES[5],
         )
 
+    # A Google call keeps place ids only (rule 1.6).
     run.tool_calls = [
         call("geocode", "google-maps-geocoding", ["province_state", "city"], "decided_transcript",
-             {"query": "Chicago, Ill."}, "success", {"candidates": [{"place_id": "fixture-place"}]}, place.id, region=left.id),
+             {"query": "Chicago, Ill."}, "success", {"place_ids": ["fixture-place"]}, place.id, region=left.id),
         call("geocode", "google-maps-geocoding", ["county"], "decided_transcript",
-             {"query": "Cook Co."}, "no_match", {"candidates": []}, nowhere.id, region=left.id),
+             {"query": "Cook Co."}, "no_match", {"place_ids": []}, nowhere.id, region=left.id),
         call("gbif", "gbif", ["taxon"], "raw_reading", {"name": "Aedes aegypti L."}, "success",
              {"candidates": [{"usage_key": 1651891}]}, gbif.id, region=right.id, reading=right_qwen.id),
         call("catalogue-of-life", "catalogue-of-life", ["taxon"], "raw_reading", {"name": "Aedes aegypti L."},
              "success", {"candidates": [{"id": "fixture-col-taxon"}]}, col.id, region=right.id, reading=right_qwen.id),
         call("geocode", "google-maps-geocoding", ["city"], "raw_reading", {"query": "Chicago"}, "success",
-             {"candidates": [{"place_id": "fixture-place"}]}, place_right.id, region=right.id, reading=right_qwen.id),
+             {"place_ids": ["fixture-place"]}, place_right.id, region=right.id, reading=right_qwen.id),
     ]
+    literals = [item.id for item in run.evidence]
     decided = {"input_source": "decided_transcript", "source_region_id": left.id}
     run.fields = {
         "province_state": TracedField(
@@ -604,23 +626,20 @@ def synthetic_run(
             evidence_relations={place.id: "supports"},
             **decided,
         ),
-        # G32: one entry per label's source reading; both labels settled to the same place id.
+        # G32: each label brings its own entry, the left its decided reading and the right its
+        # readers' one text; both labels settled to the same place id.
         "city": TracedField(
             state=ValueState.SUPPORTED,
-            verbatim_by_observation={
-                left_qwen.id: "Chicago",
-                right_qwen.id: "Chicago",
-                right_muse.id: "Chicago",
-            },
+            verbatim_by_observation={left_qwen.id: "Chicago", right_qwen.id: "Chicago"},
             input_source_by_observation={
                 left_qwen.id: "decided_transcript",
                 right_qwen.id: "raw_reading",
-                right_muse.id: "raw_reading",
             },
             settled_observation_ids=[left_qwen.id, right_qwen.id],
             authority_id="fixture-place",
-            evidence_ids=[place.id, place_right.id],
-            evidence_relations={place.id: "supports", place_right.id: "supports"},
+            evidence_ids=[place.id, place_right.id, *literals],
+            evidence_relations={place.id: "supports", place_right.id: "supports"}
+            | {item: "supports" for item in literals},
         ),
         "county": TracedField(
             state=ValueState.UNRESOLVED,

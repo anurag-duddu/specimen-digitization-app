@@ -65,9 +65,9 @@ def test_a_saved_run_reads_back_as_its_thread(tmp_path, caplog):
             return saved
 
         s, other = recorded(), recorded()
-        data = repo.run_thread(scope, s.id, s.run.id, keys(s.run))
+        data = repo.run_thread(scope, s.id, s.run.id, keys(s, s.run))
         real = thread(s, data)
-        emulated = thread(s, rows(writes(s, repo.locate, repo._sized, ACTOR, True), s.id, s.run.id, keys(s.run)))
+        emulated = thread(s, rows(writes(s, repo.locate, repo._sized, ACTOR, True), s.id, s.run.id, keys(s, s.run)))
         assert real == emulated
         # The whole run came back, keyed by the domain's ids.
         left, right = s.run.regions
@@ -81,16 +81,19 @@ def test_a_saved_run_reads_back_as_its_thread(tmp_path, caplog):
         assert fields["taxon"]["settled_observation_ids"] == [right_qwen.id]
         # G32: the city on both labels, each label's settled reading in verbatim order.
         assert fields["city"]["settled_observation_ids"] == [left_qwen.id, right_qwen.id]
-        assert [v["observation_id"] for v in fields["city"]["verbatim"]][:2] == [left_qwen.id, right_qwen.id]
+        assert [v["observation_id"] for v in fields["city"]["verbatim"]] == [left_qwen.id, right_qwen.id]
+        # Each agreeing reader's literal evidence names its reader.
+        literals = [e["observation_ids"] for e in fields["city"]["evidence"] if e["source"] == "field_harness"]
+        assert literals == [[right_qwen.id], [s.run.observations[3].id]]
         assert [e["relation"] for e in fields["taxon"]["evidence"]] == ["decides", "contradicts"]
         assert real["decision"]["findings"][1]["evidence_ids"] == [s.run.lookups[3].id]
         # The writer records the coverage check's evidence, and the thread finds it.
         coverage = derived_id("coverage", s.run.id, s.run.coverage_check["evidence_sha256"])
         assert real["coverage_check"]["evidence_id"] == coverage
         # Another specimen's run and an unknown run read as empty through this specimen.
-        assert repo.run_thread(scope, s.id, other.run.id, keys(other.run))["runs"] == []
-        assert repo.run_thread(scope, s.id, str(uuid4()), keys(s.run))["runs"] == []
+        assert repo.run_thread(scope, s.id, other.run.id, keys(other, other.run))["runs"] == []
+        assert repo.run_thread(scope, s.id, str(uuid4()), keys(s, s.run))["runs"] == []
         with pytest.raises(Missing):
-            repo.run_thread(scope, str(uuid4()), s.run.id, keys(s.run))
+            repo.run_thread(scope, str(uuid4()), s.run.id, keys(s, s.run))
     finally:
         actor_uid.reset(token)

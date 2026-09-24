@@ -655,7 +655,7 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     "parsed": null, "precision": null, "century_rule": null,
     "normalized": null, "authority_id": "…", "settled_observation_ids": [],
     "evidence": [{"evidence_id": "…", "relation": "supports", "source": "google-maps-geocoding",
-      "locator": "place/…", "outcome": "success"}]}],
+      "locator": "place/…", "outcome": "success", "observation_ids": []}]}],
   "decision": {"disposition": "needs_human_review", "policy_version": "…",
     "reason_codes": ["…"], "summary": "…",
     "findings": [{"rule_id": "…", "rule_version": "…", "severity": "warning", "outcome": "fail",
@@ -721,7 +721,11 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   entry of a per-label map carries its label's selected reading. The settled
   value is `normalized` and `authority_id` (rule 1.6), and `evidence` gives each
   linked source's G23 relation: `success` or `recorded` evidence only, while
-  every other outcome is in `tool_calls`.
+  every other outcome is in `tool_calls`. An `evidence` entry's
+  `observation_ids` are the readings its stored evidence quotes, from the
+  domain `Evidence.observation_ids`, and empty for a lookup; so readers that
+  agree without a pick keep one verbatim and show each agreeing reader's own
+  literal evidence (agreed with S4).
 - `settled_observation_ids` lists, in `verbatim` order (the domain map's), the
   readings through which the field's value settled (G20, G32):
   - with a verbatim map (several labels, or a no-pick label), the settled
@@ -750,11 +754,12 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   so a run of another specimen reads as empty.
 - **Current rows.** A decision, a field candidate and a record version are keyed
   by their content (section 5), so a run can hold several of each. The API
-  passes the ids the snapshot's run yields for them, from the writer's own
-  functions in `application/projection.py`, and the operation reads only those:
-  the thread shows the run as the snapshot has it, also after a change back to
-  an earlier state. Regions, readings, comparisons, evidence and tool calls are
-  read whole, in the order they were written, regions by `ordinal`.
+  passes the ids of the rows the writer writes for the snapshot's run: it runs
+  `projection.writes` on the snapshot, without storage, and keeps those ids and
+  the candidates' order. The operation reads only those, so the thread shows the
+  run as the snapshot has it, also after a change back to an earlier state.
+  Regions, readings, comparisons, evidence and tool calls are read whole, in the
+  order they were written, regions by `ordinal`.
 - **Decisions.** The run's model decisions (`first_pass`, `identical_readings`)
   are read whole with their handoffs, newest first. A region's `first_pass` is
   the one the snapshot's decision names when it is of those kinds, and
@@ -776,11 +781,15 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
 - **Field values.** A field's `normalized`, `authority_id` and `parsed` are the
   first set on its candidates in verbatim order, and its `evidence` is every
   candidate's linked evidence, each item once. Only the settled entries'
-  candidates carry these (section 4.3), each linking its own call's evidence,
-  so a field cleared across labels shows every label's evidence. A field is a
-  per-label or per-reader map when the snapshot's field has
-  `verbatim_by_observation`; its settled entries are the candidates carrying
-  `normalizedValue` or `authorityId`.
+  candidates carry these values (section 4.3), so a candidate settled exactly
+  when it carries `normalizedValue`, `authorityId` or `parsedValue`; its links
+  do not say so, since evidence links to the entry it names, settled or not.
+- **Settled readings.** A field is a verbatim map when the snapshot's field has
+  `verbatim_by_observation`. A settled raw-reading entry lists its
+  `sourceObservationId`. A settled decided entry lists the readings of the
+  raw-reading `ToolCall`s whose evidence is linked to it and decides or
+  supports the value (the G20 fallback); without one, a map's decided entry
+  lists its selected reading and a single decided transcript lists none.
 - **Coverage.** `coverage_check.status` is `passed` for S3's outcome
   `confirmed`, `failed` for any other, and `not_run` without a check.
   `evidence_id` is the run's latest `EvidenceItem` from `label-coverage-check`,
@@ -789,8 +798,8 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   comparisons, 400 model decisions with 64 handoffs each, 1,000 evidence items,
   1,000 tool calls, 64 evidence links per candidate, 500 resolved fields and 200
   findings; the ids passed are at most 100 decisions, 500 candidates and one
-  record version. A run at a limit
-  is refused with 413 `thread_limit_exceeded` rather than shown in part.
+  record version. A run at a limit is refused with 413 `thread_limit_exceeded`
+  rather than shown in part.
 - **Trace link.** `SPECIMEN_TRACE_URL_TEMPLATE` is an `https` URL holding
   `{trace_id}` exactly once, read when the API starts; a malformed value stops
   the start. `trace.url` is the template with the run's trace id, from its
