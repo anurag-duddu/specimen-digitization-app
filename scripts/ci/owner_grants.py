@@ -128,7 +128,9 @@ DATA_READS = {"firebasedataconnect.schemas.get": "specimenDataSchemaPublish",
               "firebaserules.releases.get": "specimenDataStorageRules",
               "firebaserules.rulesets.get": "specimenDataStorageRules",
               "cloudsql.instances.get": "specimenDataInventorySqlConnect",
-              "cloudsql.databases.get": "specimenDataInventorySqlConnect"}
+              "cloudsql.databases.get": "specimenDataInventorySqlConnect",
+              # every apply's backup reads its backup run back (T3d, RELEASE.md 4.4)
+              "cloudsql.backupRuns.get": "specimenDataSourceBackup"}
 SECTIONS = {"roles": "Custom roles to create", "reads": "Data release read permissions", "missing": "Missing "
             "standing grants", "replace": "Grants to replace", "remove": "Grants to remove", "release": "Waits for "
             "the first runtime release", "digest": "Waits for the SAM 3 checkpoint digest", "window": "Time-bounded, "
