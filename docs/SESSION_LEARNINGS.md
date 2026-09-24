@@ -11884,9 +11884,17 @@ because the hooks runner hands a native asset hook only `PATH`.
     - the ten's not-sensitive declaration rests on the owner's verified classification (G31);
     - S4's G20 line points at G27;
     - the upload-screen notice is part of the ruling;
-    - an unmatched place keeps the place ID with no name until the owner decides S8's D2;
+    - an unmatched place keeps the place ID with no name and clears under G1 until the owner decides S8's D15 (#94);
     - "the admin document" wording is fixed;
     - S5 owns `scripts/data/`.
+  - The second fix round (https://github.com/anurag-duddu/specimen-digitization-app/pull/104#issuecomment-5804939504):
+    - the NOT NULL rule now also excludes key columns and every unique constraint's columns;
+    - S8's D15 is cited, with option (b) holding under G1;
+    - the old unique is dropped only after a read-back;
+    - the Geocoding URL ban covers logs, exceptions, stored errors and tool-call results;
+    - the worker's membership resolves the committed `insects` key and is applied by the protected release;
+    - citations are re-pointed after #76;
+    - S4's `normalized` rule, "is not processed" for Sensitive uploads, S3's G30 text and the no-pick grounding.
 - Owner decisions (chat, 2026-09-23):
   - G27: a place field keeps its verbatim as written, and its final value is what the harness settled; both are stored.
   - G28: taxon names work the same way.
@@ -11895,8 +11903,9 @@ because the hooks runner hands a native asset hook only `PATH`.
   - G31: the owner checked the ten pilot slides and classified them not sensitive.
 - Durable learnings:
   - (1) Quote the owner's chosen option from the question itself, not from a coordinator's relay of it. The relay wording ("a warning finding, not a change of outcome") reached a review as if it were G23's own words.
-  - (2) G29 is the rule for format questions. The harness works through every reading a notation allows, settles with evidence, and sends what remains to human review with the candidates. That is `PRD.md` 43 and HAR-013 made explicit, so check a new format question against it before asking the owner.
+  - (2) G29 is the rule for format questions. The harness works through every reading a notation allows, settles with evidence, and sends what remains to human review with the candidates. That is `PRD.md` 44 and HAR-013 made explicit, so check a new format question against it before asking the owner.
   - (3) An owner can answer a narrow question with a broader principle (G27, G29). Record the answer verbatim, then write the engineering reading separately, so reviewers can check one against the other.
   - (4) A rule that relaxes a safety property must be a closed exception. "No existing operation uses it" cannot see idempotency uniques enforced by plain inserts (`ModelObservation` (runId, stepKey), `Checkpoint`, `OutboxEvent`). A column added to a unique constraint must also be NOT NULL.
   - (5) A statement about real data, such as "import the ten as not sensitive", is a classification only the owner can verify (`CONTRACTS.md` 169-170). Ask for it before writing it as a plan step.
+  - (6) Merging main can shift the line numbers the plan cites. #76 moved the PRD's open items by three lines, so G rows appeared to settle other owner-only items. After each merge, map the citations of every file it touched from the old version to the new.
 - Remaining follow-ups: the owner's field list (G8); S2's IAM list and the T3e membership run; the owner's rulings on S8's D1-D13 after the steward reviews #94; the G15 calibration sign-off; the lab's re-measurement of the harness model with G29's prompt.

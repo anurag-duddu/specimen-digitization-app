@@ -34,7 +34,9 @@ with the endpoint's existing authorization (synthetic only today, `api.py`
 2387-2396): it creates the run with a budget from the collection's allowance,
 marks it due, and starts one execution of the worker job through the Cloud Run
 Admin API (an injected client, faked in tests). Processing starts on intake for
-every upload (`PRD.md` 9.1 step 6; synthetic only today, `api.py` 1292-1293). A
+every upload declared not sensitive (`PRD.md` 9.1 step 6; synthetic only today,
+`api.py` 1292-1293); a Sensitive upload is not processed, so it creates no due
+run and never holds G13's per-collection queue (PLAN section 2.2). A
 request during an active run in the same collection waits and runs in request
 order (G13), and the intake collection selects the profile (G14): set
 `run.classification_selection` from it, which the `classify` step requires
@@ -49,9 +51,14 @@ imported from Storage.
 lane: it claims due runs one at a time, runs each to a final disposition or an
 operational block, and exits when nothing is due. The exactly-ten pilot worker
 and launch contract are not used by the lane; do not break their tests without
-replacing them. Enforce the per-run budget and the program allowance (G9) with
-the existing cost fields (`domain.py` 286; `workflow.py` 208-213) and record
-the actual cost of every paid call.
+replacing them. Enforce the per-run budget and the program allowance, USD 5 for
+production model calls (G30), with the existing cost fields (`domain.py` 286;
+`workflow.py` 208-213); a paid step past it blocks as
+`program_allowance_exhausted`, an operational block (QUE-005). Record every
+paid call's cost as PLAN section 4.3 rules: usage, reservation, and a cost
+computed from a pinned price list whose version and date are recorded, or the
+billed amount where a provider returns one; SAM 3 by request seconds at the
+service's vCPU and memory rates.
 
 **T3. SAM 3 per run.** The client binding (`production.py` 851-852) and the
 server (`sam3_server.py` 358-380, 590-622) authorize each run the worker sends
@@ -64,7 +71,7 @@ five pilot slides, with the locality on the right-hand one (PLAN section 3); a
 missed label goes to human review under G15, and retuning the pinned SAM 3
 settings needs the coordinator first. Confirm coverage automatically (G15):
 check the segmentation result with the specification's region-count and
-full-image cross-checks (`PRD.md` 871), set `run.coverage_confirmed` from the
+full-image cross-checks (`PRD.md` 874), set `run.coverage_confirmed` from the
 result, record the evidence, and let a failed check send the record to the
 human queue with `label_coverage_unconfirmed`. The segment step's body in
 `workflow.py` is yours. Write the concrete check into `LANE.md` and send it to
@@ -96,8 +103,8 @@ ids (helpers exist unused in `tracing.py` 48-68); a span per stage carrying
 `specimen.processing.stage` (the existing helper's attribute, `tracing.py` 65);
 SAM 3 spans on both sides; the trace id stored on the run (S5
 adds the column) and exposed to the thread API; identities and secrets
-scrubbed, and no span records the Geocoding request URL, which carries the key
-(G26).
+scrubbed, and no span, log line, exception text, stored error or tool-call
+result records the Geocoding request URL, which carries the key (G26).
 Update the leak tests to the new approval instead of deleting them. Wire the
 Logfire project and token with S2. The unmerged branch `codex/reader-trace-linkage`
 (four commits) may have reusable pieces.

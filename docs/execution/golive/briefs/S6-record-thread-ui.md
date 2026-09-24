@@ -52,8 +52,10 @@ to the package with its own tests.
 
 **T3. Queue and processing.** Needs human review (filterable by reason),
 deferred, cleared, processing and blocked; a record declared Sensitive shows
-that it waits because automated reading never runs on sensitive records, and
-the upload screen says so before submission (PLAN section 2.2); a Process action
+that it is not processed, because automated reading never runs on sensitive
+records, and the upload screen says so before submission, with the Sensitive
+default left preselected (`design/03` §1.7, `design/01` H2.6, in `design/02`
+§1.8's neutral wording; PLAN section 2.2); a Process action
 (`POST /specimens/{id}/process`); intake that starts processing and shows live
 status; upload rows linked to the specimen they created (`api.py` 1283 already
 returns `specimen_id`).

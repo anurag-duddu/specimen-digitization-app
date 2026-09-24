@@ -44,7 +44,7 @@ workstation or an agent shell" all stay.
 - The auto-mode classifier blocks IAM writes, branch protection changes and
   repository visibility changes from agent shells. Prepare the exact commands for
   the owner instead. Branch protection and repository visibility stay as they
-  are (`DEPLOYMENT.md` 561-566).
+  are (`DEPLOYMENT.md` 581-586).
 
 ## Pull requests, in order
 
@@ -65,8 +65,9 @@ word. `APPROVED_LOGFIRE_TRACING.md`
 gets G3's content scope (system prompts, text inputs and outputs, SAM 3
 parameters, tool calls with arguments and results; no images; identities and
 secrets scrubbed), narrowed by G26: the geocoding tool's result is only the
-place ID, the outcome and the fingerprint, and no span records the Geocoding
-request URL, which carries the key. `APPROVED_RELEASE_BUDGET.md` gets USD 25 (G9).
+place ID, the outcome and the fingerprint, and no span, log line, exception
+text, stored error or tool-call result records the Geocoding request URL, which
+carries the key. `APPROVED_RELEASE_BUDGET.md` gets USD 25 (G9).
 
 **T2. Runtime plane, automatic on merge.** `runtime-release.yml` and
 `scripts/ci/deploy_runtime.py` (and the admission modules as needed): on a push
@@ -98,11 +99,14 @@ supplemental indexes, the connector and the Storage rules, working while the
 runtime runs (the `no_runtime_exists` gate becomes the additive-only gate); a
 one-time, idempotent hierarchy bootstrap from the private artifacts, followed in
 the same window (T3e) by the worker's membership from S5's reviewed document
-(#96): an active organization membership and one collection membership on the
-pilot collection (Insects) only, role `operator`, `canViewSensitive: false`,
-with the UID from the temporary environment secret `DATA_WORKER_ACTOR_UID`,
-which the owner sets for that run and deletes afterwards; read back, skip if
-identical, fail if different. Never the admin membership document of
+(#96), applied once by the protected data release, never from an agent shell:
+an active organization membership and one collection membership on the pilot
+collection only, resolved from the committed key `insects` against the approved
+hierarchy artifact, role `operator`, `canViewSensitive: false`, with the UID
+from the temporary environment secret `DATA_WORKER_ACTOR_UID`, which the owner
+sets for that run and deletes afterwards. First a read-only account lookup that
+refuses unless the account exists, is disabled or has no sign-in provider, and
+has no email; then write, read back, skip if identical, fail if different. Never the admin membership document of
 `scripts/data/bootstrap_admin.py`, which hard-codes role `admin`. Retire the
 envelope admission for this plane, but keep the checks that live inside it:
 `GITHUB_REF_PROTECTED=true` and the five required checks successful on the
@@ -128,7 +132,7 @@ only, since running a job needs no act-as; Firebase user lookup for the API);
 `allUsers` invoker on the API. The one-time roles get no standing grant: the
 initializer, `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal`
 stay one-time and time-bounded through the existing setup-window path
-(`data_setup_window.py`) and are revoked after use; `DEPLOYMENT.md` 809-815
+(`data_setup_window.py`) and are revoked after use; `DEPLOYMENT.md` 889-895
 caps the initializer's privilege window after native parity at ten minutes. The
 setup-window path requires every binding to stay time-bound
 (`data_setup_window.py` 126-138): run the window first or adapt the path, never

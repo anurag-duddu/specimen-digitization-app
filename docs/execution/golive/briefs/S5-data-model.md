@@ -22,14 +22,19 @@ endpoint.
 ## Constraints
 
 - Additive only, as PLAN section 4.4 defines it: expand-only. Dropping NOT NULL
-  is allowed only on columns your contract names with a reason, never on
-  provenance or idempotency keys (`ModelObservation.runId`, `regionId`,
-  `provider`, `modelVersion`, `stepKey`, and the TRN-005 provenance
-  `rawAssetId`, `promptVersion` and `inputSha256`); S2's gate reads a checked-in
-  list of the allowed columns and refuses these keys even when the list names
-  them. Every new connector operation is
-  `@auth(level: NO_ACCESS)` with the membership `@check`s (`DATA.md` 73).
-  Never destructive.
+  is allowed only on columns your contract names with a reason, never on a key
+  column, a column of any unique constraint, or the provenance and idempotency
+  keys (`ModelObservation.runId`, `regionId`, `provider`, `modelVersion`,
+  `stepKey`, and the TRN-005 provenance `rawAssetId`, `promptVersion` and
+  `inputSha256`); S2's gate reads a checked-in list of the allowed columns and
+  refuses all of these even when the list names them. Every new connector
+  operation is `@auth(level: NO_ACCESS)` with the membership `@check`s
+  (`DATA.md` 73). Never destructive.
+- The one unique-constraint exception (PLAN section 4.4): #88 adds
+  `source_asset_specimen_object` on (organizationId, collectionId, specimenId,
+  bucket, objectName, generation) beside `specimen_unique_1`, which keeps
+  governing; your writer PR drops `specimen_unique_1` only after a read-back of
+  the live database shows the new constraint in place.
 - Key everything per region: a specimen can carry several labels, and five
   pilot slides carry two (PLAN section 3).
 - `Run.field_groups` is new, and you decide its shape. From Google geocoding only
