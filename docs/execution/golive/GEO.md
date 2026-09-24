@@ -123,8 +123,8 @@ the source gives it.
 **Requests.** Both requests go to the Action API. During the research it answered
 more than twenty calls without throttling, whereas the query service throttled
 after two (HTTP 429, a 120 s `Retry-After`) (#94, S15 and S16).
-- `wbsearchentities` finds items for each reading (section 1): English, items
-  only, seven hits.
+- `wbsearchentities` finds items for each search string PLAN 4.8's filter
+  returns: English, items only, seven hits.
 - `wbgetentities` reads up to 50 items at a time. It returns labels and aliases
   in English, Spanish and the multilingual default, the English description, and
   these statements:
@@ -138,9 +138,10 @@ after two (HTTP 429, a 120 s `Retry-After`) (#94, S15 and S16).
   - P1366, replaced by;
   - P297, ISO 3166-1 code.
 - A second `wbgetentities` call names the items those statements point to.
-- A request carries place text only: one reading's name, or item ids. It never
-  carries collectors, dates or other transcribed text (the coordinator's ruling
-  for every gazetteer and Google, PLAN 4.8 in #124).
+- What a request carries follows PLAN 4.8. Every search string comes from S4's
+  filter (`place_request_text`), item ids come from Wikidata's own answers, and
+  the fixed parameters (action, language, type, limit, properties) are reviewed
+  constants that carry no label text.
 
 **Reading.**
 - **Statement order.** Deprecated statements are ignored, and preferred ones come

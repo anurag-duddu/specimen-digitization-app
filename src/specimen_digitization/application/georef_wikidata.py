@@ -3,7 +3,9 @@
 The module builds `wbsearchentities` and `wbgetentities` parameters and reads the
 answers into `Place` records, with one `LookupStatus` per answer. It sends
 nothing: the tool sends each request with retries and records it as a sub-call
-(G23). A request carries place text only, a reading's name or item ids (PLAN 4.8).
+(G23). Every search string comes from PLAN 4.8's filter (S4's `place_request_text`),
+item ids come from Wikidata's own answers, and the fixed parameters are reviewed
+constants that carry no label text.
 """
 
 from __future__ import annotations
