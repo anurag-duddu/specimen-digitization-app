@@ -177,7 +177,7 @@ def _later_request_input(messages):
 
 
 def run_agent_bounded(
-    agent, prompt, *, timeout_seconds: float, usage_limits, budget=None
+    agent, prompt, *, timeout_seconds: float, usage_limits, budget=None, usage=None
 ):
     import asyncio
     from pydantic_ai.messages import ModelResponse
@@ -227,6 +227,8 @@ def run_agent_bounded(
                 prompt,
                 usage_limits=usage_limits,
                 model_settings=bounded_settings,
+                # Counted in place, so a stopped run still reports its usage.
+                usage=usage,
             ),
             timeout=timeout_seconds,
         )

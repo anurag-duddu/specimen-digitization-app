@@ -17,9 +17,10 @@ import string
 import time
 
 from pydantic import BaseModel, Field
-from pydantic_ai import Agent, BinaryContent, ModelRetry
+from pydantic_ai import Agent, BinaryContent, ModelRetry, capture_run_messages
+from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.messages import ModelMessagesTypeAdapter
-from pydantic_ai.usage import UsageLimits
+from pydantic_ai.usage import RunUsage, UsageLimits
 
 from ..model_gateway import HuggingFaceModelGateway
 from ..prompts import PromptName, ResolvedPrompt
@@ -191,6 +192,10 @@ def output_problems(output: FirstPassOutput, letters, count: int) -> list[str]:
 # G30: every request reserves its worst case, so its output is capped from the
 # measured runs (T1: at most 406 output tokens in 16 first passes).
 MAX_OUTPUT_TOKENS = 1024
+# G30: a first pass stopped by its cap is the raw fallback (HARNESS.md section 3).
+CAP_RATIONALE = (
+    "The first pass reached its G30 cap before an answer; no reading was selected."
+)
 
 
 def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
@@ -240,20 +245,66 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
             raise ModelRetry("; ".join(problems))
         return output
 
+    usage = RunUsage()  # Counted in place, so a stopped call still reports it.
     started = time.monotonic()
-    result = run_agent_bounded(
-        agent,
-        [request, BinaryContent(data=image, media_type="image/png")],
-        timeout_seconds=timeout,
-        usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
-    )
+    with capture_run_messages() as messages:
+        try:
+            result = run_agent_bounded(
+                agent,
+                [request, BinaryContent(data=image, media_type="image/png")],
+                timeout_seconds=timeout,
+                usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
+                usage=usage,
+            )
+        except UsageLimitExceeded:
+            result = None  # G30: a cap hit is the raw fallback.
     latency_seconds = time.monotonic() - started
     # Every provider response, retries included; the image-bearing request is not.
-    responses = [m for m in result.all_messages() if m.kind == "response"]
+    history = result.all_messages() if result is not None else messages
+    responses = [m for m in history if m.kind == "response"]
     raw = ModelMessagesTypeAdapter.dump_json(responses)
     last = responses[-1] if responses else None
-    output = result.output
     ids = {letter: reading.id for letter, reading in letters.items()}
+    call = Observation(
+        latency_seconds=latency_seconds,
+        latency_basis="validated_agent_call_wall_seconds",
+        finish_state=getattr(last, "finish_reason", None),
+        completion_state="validated_output" if result is not None else "usage_limit",
+        parameters=agent.model_settings,
+        provider_model_id=getattr(last, "model_name", None),
+        input_asset_id=specimen.asset.id,
+        input_crop_ref=adapter.blobs.put(image),
+        region_id=region.id,
+        route_id=route_id,
+        model_id=selected.model_id,
+        provider=selected.provider,
+        prompt_version=hashlib.sha256(prompt.text.encode()).hexdigest(),
+        input_sha256=hashlib.sha256(image + request.encode()).hexdigest(),
+        literal_text="",
+        raw_ref=adapter.blobs.put(raw),
+        raw_sha256=hashlib.sha256(raw).hexdigest(),
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+    )
+    if result is None:
+        # No reading is selected, and every difference stays open for G19.
+        return FirstPassDecision(
+            region_id=region.id,
+            selected_observation_id=None,
+            rationale=CAP_RATIONALE,
+            notes={},
+            differences=[
+                FirstPassDifference(
+                    number=number,
+                    spans=dict(zip(ids.values(), spans)),
+                    verdict="uncertain",
+                    material=True,
+                )
+                for number, spans in enumerate(differences, 1)
+            ],
+            call=call,
+        )
+    output = result.output
     return FirstPassDecision(
         region_id=region.id,
         selected_observation_id=ids.get(output.selected_reader),
@@ -268,27 +319,7 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
             )
             for verdict in sorted(output.verdicts, key=lambda v: v.number)
         ],
-        call=Observation(
-            latency_seconds=latency_seconds,
-            latency_basis="validated_agent_call_wall_seconds",
-            finish_state=getattr(last, "finish_reason", None),
-            completion_state="validated_output",
-            parameters=agent.model_settings,
-            provider_model_id=getattr(last, "model_name", None),
-            input_asset_id=specimen.asset.id,
-            input_crop_ref=adapter.blobs.put(image),
-            region_id=region.id,
-            route_id=route_id,
-            model_id=selected.model_id,
-            provider=selected.provider,
-            prompt_version=hashlib.sha256(prompt.text.encode()).hexdigest(),
-            input_sha256=hashlib.sha256(image + request.encode()).hexdigest(),
-            literal_text="",
-            raw_ref=adapter.blobs.put(raw),
-            raw_sha256=hashlib.sha256(raw).hexdigest(),
-            input_tokens=result.usage.input_tokens,
-            output_tokens=result.usage.output_tokens,
-        ),
+        call=call,
     )
 
 

@@ -14,7 +14,14 @@ from functools import partial
 
 from ..model_gateway import HuggingFaceModelGateway
 from ..prompts import PromptName, ResolvedPrompt
-from .domain import Evidence, FieldValue, Lookup, RunFinding, ToolCallRecord
+from .domain import (
+    Evidence,
+    FieldValue,
+    HarnessCall,
+    Lookup,
+    RunFinding,
+    ToolCallRecord,
+)
 
 
 def harness_payload(run) -> dict:
@@ -127,6 +134,7 @@ def harness_direct(adapter, specimen, payload: dict) -> dict:
         timeout_seconds=timeout,
     )
     usage = outcome.usage
+    google = sum(1 for c in outcome.tool_calls if c.source == "google-maps-geocoding")
     return {
         "fields": {k: v.model_dump(mode="json") for k, v in outcome.fields.items()},
         "evidence": [e.model_dump(mode="json") for e in outcome.evidence],
@@ -139,6 +147,13 @@ def harness_direct(adapter, specimen, payload: dict) -> dict:
             "input_tokens": getattr(usage, "input_tokens", 0) or 0,
             "output_tokens": getattr(usage, "output_tokens", 0) or 0,
             "requests": getattr(usage, "requests", 0) or 0,
+        },
+        # The model call and its geocoding, for the lane's cost record.
+        "call": {
+            "route_id": route_id,
+            "model_id": selected.model_id,
+            "provider": selected.provider,
+            "geocoding_requests": google,
         },
     }
 
@@ -155,11 +170,25 @@ def merge_harness(run, value: dict) -> str | None:
     counts = (usage["input_tokens"], usage["output_tokens"], usage["requests"])
     if set(fields) != expected or any(type(n) is not int or n < 0 for n in counts):
         raise OperationalBlock("external_outcome_unknown")
+    # Tokens a provider did not report are unknown, not zero (S3's record_step
+    # then keeps the step reserved).
+    reported = usage["input_tokens"] > 0 or usage["requests"] == 0
+    try:
+        call = HarnessCall(
+            attempt=run.attempts.get("parse", 1),
+            **value["call"],
+            requests=usage["requests"],
+            input_tokens=usage["input_tokens"] if reported else None,
+            output_tokens=usage["output_tokens"] if reported else None,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise OperationalBlock("external_outcome_unknown") from exc
     run.fields = fields
     run.evidence.extend(Evidence.model_validate(e) for e in value["evidence"])
     run.findings.extend(RunFinding.model_validate(f) for f in value["findings"])
     run.tool_calls.extend(ToolCallRecord.model_validate(c) for c in value["tool_calls"])
     run.lookups.extend(Lookup.model_validate(item) for item in value["lookups"])
     run.usage.tokens += usage["input_tokens"] + usage["output_tokens"]
+    run.harness_calls.append(call)
     run.harness_failure = value["failure"]
     return value["blocker"]

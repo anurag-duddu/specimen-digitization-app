@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pydantic import Field
 from pydantic_ai import Agent, ModelRetry
 from pydantic_ai.exceptions import UsageLimitExceeded
-from pydantic_ai.usage import UsageLimits
+from pydantic_ai.usage import RunUsage, UsageLimits
 
 from .derivations import Found, apply_derivations, elevation_derivations
 from .domain import Evidence, FieldValue, LookupStatus, Record
@@ -80,7 +80,7 @@ class HarnessOutcome:
     lookups: list
     blocker: str | None
     failure: str | None = None  # A harness failure (G6): the fields go to review.
-    usage: object | None = None
+    usage: RunUsage | None = None  # The provider's, up to any stop.
 
 
 def labelled(readings: Sequence[Reading]) -> dict[str, Reading]:
@@ -187,7 +187,9 @@ def run_harness(
             raise ModelRetry("; ".join(problems))
         return output
 
-    failure, output, usage = None, HarnessOutput(), None
+    # Counted in place: a run stopped by a cap or an invalid answer still
+    # reports what it spent (the lane's cost record, HARNESS.md section 14).
+    failure, output, usage = None, HarnessOutput(), RunUsage()
     request = build_request(plan, names, notes)
     size = len((instructions + request).encode()) + TOOL_DEFINITION_BYTES
     try:
@@ -201,8 +203,9 @@ def run_harness(
                 usage_limits=UsageLimits(
                     request_limit=REQUEST_LIMIT, input_tokens_limit=INPUT_TOKEN_LIMIT
                 ),
+                usage=usage,
             )
-            output, usage = result.output, result.usage
+            output = result.output
     except UsageLimitExceeded:
         failure = "harness_usage_limit"  # A G30 cap: a harness failure (G6).
     except AdapterFailure as exc:

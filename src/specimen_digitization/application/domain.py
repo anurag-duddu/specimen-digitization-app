@@ -296,6 +296,22 @@ class ToolCallRecord(Record):
     completed_at: str
 
 
+class HarnessCall(Record):
+    """The harness's model call in one attempt of the `parse` step, as its
+    provider reported it (HARNESS.md section 14): what the lane's cost record
+    reads (S3's `record_step`). Tokens are None when the provider reported no
+    usage, so the step stays reserved rather than settling at zero."""
+
+    attempt: int = Field(ge=1)
+    route_id: str
+    model_id: str
+    provider: str
+    requests: int = Field(ge=0)
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    geocoding_requests: int = Field(ge=0)
+
+
 class RunFinding(Record):
     """A warning or note that never routes the record by itself (G23, G27):
     unlike a reason, it does not send the record to review."""
@@ -494,6 +510,8 @@ class Run(Record):
     # A harness failure (G6): no field was decided, and the record goes to
     # review (HARNESS.md 11).
     harness_failure: str | None = None
+    # The harness's model calls, one per parse attempt that returned.
+    harness_calls: list[HarnessCall] = Field(default_factory=list)
     blocker: str | None = None
     attempts: dict[str, int] = Field(default_factory=dict)
     capability_reason: str | None = None
