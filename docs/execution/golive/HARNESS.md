@@ -306,3 +306,104 @@ harness settles which one the evidence supports (G29):
 **`catalog_number_validator`**: an optional `FMNH INS` prefix (any spacing,
 `-` or `#`, including a line break) and five to nine digits, nothing else; the
 digits are the catalog number. Anything else is `no_match`.
+
+## 9. Field resolution from recorded outcomes (stage 7, part 4)
+
+G19, G20, G23, G24, G27, G28, G29, G32, G33; the data contract's section 4.3
+(#88), with the multi-label shape agreed with S5.
+`application/field_resolution.py` decides every field from the recorded
+outcomes of its tool calls. The harness agent (the next part) proposes each
+field's literal as each reading has it and makes the calls; it never decides a
+field, and nothing here invents a value (HAR-019).
+
+**What it reads.** Per region, the decided transcript (the reading the first
+pass selected) and the raw readings: every reading when the first pass
+selected none (G19), otherwise the unselected ones, for the fallback (G20). Per
+field, each reading's literal, which must occur in that reading's text exactly;
+any other literal is refused. A field no reading has stays unknown, and
+nothing is called for it.
+
+**With a decided transcript,** its literal is the field's verbatim (G27).
+
+- The field is looked up on that literal, and a `success` settles it.
+- Otherwise each raw reading whose literal differs is looked up, one call per
+  distinct literal. When the successes agree on one value, that value settles
+  the field (G20): the verbatim stays the decided literal, and the confirmed
+  reading appears only as the settled value's provenance, through its call, that
+  call's evidence and the name the call settled (#88, 4.3).
+- Raw successes that disagree leave the field `ambiguous` with
+  `readings_conflict`. With no success, the field keeps the decided literal
+  with the first lookup's state (`ambiguous`, or `unresolved` for any other
+  outcome) and the reason `lookup_{outcome}`, and goes to review.
+
+**Without one (G19),** literals identical in every reading are one lookup and
+keep that literal. Differing literals are looked up once each. When the
+successes agree on one value, the field clears with no single verbatim:
+`verbatim_by_observation` keeps each reader's literal as captured, and
+`settled_observation_ids` names the first confirmed reader (G27, G28).
+Otherwise the field is `ambiguous` with `readings_conflict`, keeps every
+literal and names no reader. Whenever `verbatim_by_observation` is set,
+`literal`, `input_source` and the source ids stay empty, and
+`input_source_by_observation` gives each reading's own input source.
+
+**A field on several labels** (G32) is settled on each label separately, by
+the rules above. It clears only when every label settled the same value: the
+same place ID or GBIF usage, or for a field no tool checks the same text. It
+then keeps each label's reading in `verbatim_by_observation`, even when the
+texts are identical, and lists each label's settled reading in
+`settled_observation_ids`. Its `normalized` is the one text every label has
+for a field no tool checks, and otherwise the first label's settled name.
+Differing spellings of the one value record `spelling_disagreement`. Otherwise it is `ambiguous` with `labels_conflict` and
+goes to review with each label's reading and only their literal evidence. A
+label without the field does not count.
+
+**Only `success` settles.** An operational outcome after retries (rate limit,
+timeout, authentication, authorization, provider, malformed response, policy)
+blocks the run as `harness_{tool}_{outcome}` (QUE-005). The field stays
+`unresolved`, and no fallback call follows.
+
+**The settled value** is `authority_id` (Google's place ID or GBIF's usage key),
+`parsed` (a validator's verdict), `normalized`, and a date's `precision` and
+`century_rule`. `normalized` is only the name the tool settled: GBIF's name for
+a taxon; for a place, the reader's literal the lookup matched exactly, never a
+Google name (G26, rule 1.6). Validators leave it empty. Two successes agree
+when their `authority_id` and `parsed` are equal.
+
+**Evidence and findings.**
+
+- Every literal a field cites is recorded as `literal` evidence of its reading
+  (source `field_harness`).
+- `evidence_relations` has one entry per evidence id. Literals `support`; a
+  success's evidence has the relation the tool reports: GBIF `decides`, Global
+  Names Verifier and Catalogue of Life `support` or `contradict`, and Google
+  `supports` (G23). Only a success's evidence is linked.
+- A tool's warnings (`taxonomy_source_disagreement:{source}`,
+  `taxonomy_support_unavailable:{source}`) and `spelling_disagreement` go to
+  `Run.findings` as warnings with their evidence, never to `Run.reasons`.
+  `spelling_disagreement` is recorded when a value settles through the
+  fallback (G20), or without a decided transcript when the readers' literals
+  differ (S8's plan, #94 section 3.3); a decided literal that settles itself
+  records none.
+
+**Fields no tool checks** keep the decided literal, or the literal identical in
+every reading, as transcribed (`supported`). Differing literals without a
+decided transcript are `ambiguous` with `readings_conflict`. `precise_location`
+is one of them: it stays verbatim locality text, never replaced or settled by a
+geocoder result (PRD 515). Where such a phrase actually is waits for the
+owner's ruling on S8's D3.
+
+**A numeric date's order** (G29, G33) comes only from the dates in every
+model's reading of the specimen, not only the decided transcript. A date with
+exactly one reading and a day different from its month, such as 13-5-48, fixes
+its order; 5-5-48 fixes none. When the specimen's dates fix exactly one order,
+the reading of `4-5-48` in that order is the date. When they fix none, or
+disagree, the date stays `ambiguous` with its readings as the candidates: a
+misread can block a choice but never make one. A date that settles keeps the
+precision its literal writes and the century rule it used (G24).
+
+**Domain.** `FieldValue` gains `input_source`, `source_region_id`,
+`source_observation_id`, `verbatim_by_observation`,
+`input_source_by_observation`, `settled_observation_ids`, `evidence_relations`,
+`precision` and `century_rule`; `Run` gains `findings: list[RunFinding]`, each
+with `rule_id`, `rule_version`, `severity`, `field_key`, `reason_code` and
+`evidence_ids`. All default to empty, so stored runs load unchanged.
