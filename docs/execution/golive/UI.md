@@ -261,7 +261,8 @@ status strip's blockers).
 
 - A failed coverage check is one entry in the blockers list, "Label
   coverage not confirmed". Its detail says what each failed check measured,
-  from the detail S5 pins for the thread (#88):
+  from the detail S5 pins for the thread (section 8, with S5's thread-API
+  PR; #88 takes no pushes during its review):
   - the region count: "Found 3 label regions; the profile allows 1 to 2",
     "Found no label regions", or "A label region lies outside the
     photograph";
@@ -325,12 +326,19 @@ app says so where an upload's sensitivity is chosen and on the record (brief
 T3; the coordinator's correction of 2026-09-23: it is not processed, never
 "waiting").
 
-- Where sensitivity is chosen, each option names its consequence
-  (`design/01` H2.6): "Sensitive: not processed" and "Not sensitive:
-  processed". Sensitive stays preselected.
-- The line under the control says what the choice does before anything is
-  sent (`design/03` section 1.7): "Applies to photographs you add next.
-  Sensitive photographs are stored and never processed automatically."
+- Where sensitivity is chosen, the options keep their names, "Sensitive"
+  and "Not sensitive", and Sensitive stays preselected. Named by their
+  consequence ("Sensitive: not processed"), they no longer fit the
+  control's track in the capture card's column: the control fell to its
+  icon-only rung, and the regenerated goldens showed two padlocks with no
+  words. So the consequence is the line directly under the control, where
+  the operator reads it with the choice (`design/01` H2.6's aim: an
+  operator no longer guesses).
+- That line says what the choice does before anything is sent (`design/03`
+  section 1.7), in the coordinator's words: "Applies to photographs you add
+  next. Sensitive photographs are not processed." It stays that short so
+  the capture card keeps its place above the fold on a phone at 200 percent
+  text (13 section 2.5); a longer first draft pushed it 1 dp below.
 - The caveat beside the upload action keeps "Sensitivity cannot be changed
   after an upload starts", and its "Why" ends with the way round it, in
   neutral words (`design/02` section 1.8): "To have a sensitive photograph
@@ -339,5 +347,5 @@ T3; the coordinator's correction of 2026-09-23: it is not processed, never
   (S3's blocker, status `processing_blocked`) reads "Blocked: sensitive
   record not processed" wherever a blocker is named. The Processing
   disclosure explains it: "This record was uploaded as sensitive, so it is
-  not processed automatically. To have it processed, upload the photograph
-  again as not sensitive."
+  not processed. To have it processed, upload the photograph again as not
+  sensitive."

@@ -196,9 +196,8 @@ void main() {
     );
     expect(
       find.text(
-        'This record was uploaded as sensitive, so it is not processed '
-        'automatically. To have it processed, upload the photograph again as '
-        'not sensitive.',
+        'This record was uploaded as sensitive, so it is not processed. To '
+        'have it processed, upload the photograph again as not sensitive.',
       ),
       findsOneWidget,
     );

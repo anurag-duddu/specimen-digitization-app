@@ -153,7 +153,7 @@ void main() {
         });
         addTearDown(repo.close);
         await mount(tester, repo, onComplete: () => accepted++);
-        await selectSensitivity(tester, 'Not sensitive: processed');
+        await selectSensitivity(tester, 'Not sensitive');
         await choose(tester);
         await submit(tester);
         expect(items, 0);
@@ -197,13 +197,10 @@ void main() {
     addTearDown(repo.close);
     await mount(tester, repo, onComplete: () => accepted++);
     expect(
-      find.descendant(
-        of: sensitivityControl,
-        matching: find.text('Sensitive: not processed'),
-      ),
+      find.descendant(of: sensitivityControl, matching: find.text('Sensitive')),
       findsOneWidget,
     );
-    await selectSensitivity(tester, 'Not sensitive: processed');
+    await selectSensitivity(tester, 'Not sensitive');
     await choose(tester);
     await submit(tester);
     expect(bodies.map((body) => body['sensitive']), [false, false]);
@@ -240,11 +237,11 @@ void main() {
     });
     addTearDown(repo.close);
     await mount(tester, repo, onComplete: () => accepted++);
-    await selectSensitivity(tester, 'Not sensitive: processed');
+    await selectSensitivity(tester, 'Not sensitive');
     await choose(tester);
     await submit(tester);
     expect(accepted, 0);
-    await selectSensitivity(tester, 'Sensitive: not processed');
+    await selectSensitivity(tester, 'Sensitive');
     await choose(tester);
     await submit(tester);
     expect(bodies.map((body) => body['sensitive']), [
@@ -286,8 +283,7 @@ void main() {
         });
         addTearDown(repo.close);
         await mount(tester, repo, onComplete: () => accepted++);
-        if (sensitive)
-          await selectSensitivity(tester, 'Not sensitive: processed');
+        if (sensitive) await selectSensitivity(tester, 'Not sensitive');
         await choose(tester);
         await submit(tester);
         expect(accepted, 1);
@@ -301,7 +297,7 @@ void main() {
       (request) async => fail('nothing is sent before an upload: $request'),
     );
 
-    testWidgets('each option names its consequence, Sensitive preselected', (
+    testWidgets('Sensitive stays preselected, both options in words', (
       tester,
     ) async {
       final repo = unused();
@@ -311,10 +307,14 @@ void main() {
         sensitivityControl,
       );
       expect(control.value, isTrue);
-      expect(control.segments.map((UiSegment<bool> s) => s.label), <String>[
-        'Sensitive: not processed',
-        'Not sensitive: processed',
-      ]);
+      // Both drawn as words, not fallen to the icon-only rung: names long
+      // enough to carry the consequence did not fit this column.
+      for (final String option in <String>['Sensitive', 'Not sensitive']) {
+        expect(
+          find.descendant(of: sensitivityControl, matching: find.text(option)),
+          findsOneWidget,
+        );
+      }
     });
 
     testWidgets('the consequence is said before anything is sent', (
@@ -325,8 +325,8 @@ void main() {
       await mount(tester, repo, onComplete: () {});
       expect(
         find.text(
-          'Applies to photographs you add next. Sensitive photographs are '
-          'stored and never processed automatically.',
+          'Applies to photographs you add next. Sensitive photographs are not '
+          'processed.',
         ),
         findsOneWidget,
       );

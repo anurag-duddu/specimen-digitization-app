@@ -156,6 +156,16 @@ class ProcessingDetail extends StatelessWidget {
         'Processing resumes when the owner raises it.';
   }
 
+  /// The blocker of a run the lane never starts, because the upload was
+  /// declared Sensitive (UI.md T3.1; PLAN section 2.2).
+  static const String sensitiveBlocker = 'sensitive_record_not_processed';
+
+  /// That record's plain words: it is not processed, never "waiting", and
+  /// how to have it processed, since sensitivity cannot be changed.
+  static const String sensitiveNotProcessed =
+      'This record was uploaded as sensitive, so it is not processed. To have '
+      'it processed, upload the photograph again as not sensitive.';
+
   Future<void> _confirm(
     BuildContext context,
     String action,
@@ -245,6 +255,8 @@ class ProcessingDetail extends StatelessWidget {
           ),
           const AdministratorContactLine(),
         ],
+        if (blocker == sensitiveBlocker)
+          Text(sensitiveNotProcessed, style: ui.type.body),
         if (run['next_retry_at'] != null)
           _Measurement(
             label: 'Next scheduled retry',
