@@ -71,9 +71,9 @@ LISTING = 'api.getAttribute("storage.googleapis.com/objectListPrefix", "")'
 APP = (f'resource.name.startsWith("{OBJECTS}application/sha256/")', "specimen_application_objects")
 SLIDES = (f'resource.name.startsWith("{OBJECTS}microscopic-slides/") || {LISTING}.startsWith("microscopic-slides/")',
           "specimen_source_slides")
-# The existing inventory binding's condition, reused exactly.
-SQL_SOURCE = (f'resource.name == "projects/{PROJECT}/instances/{PROJECT}-instance" && resource.service == '
-              '"sqladmin.googleapis.com" && resource.type == "sqladmin.googleapis.com/Instance"',
+# The existing inventory binding's condition, reused exactly, single quotes included.
+SQL_SOURCE = (f"resource.name == 'projects/{PROJECT}/instances/{PROJECT}-instance' && resource.service == "
+              "'sqladmin.googleapis.com' && resource.type == 'sqladmin.googleapis.com/Instance'",
               "specimen_source_inventory_only")
 RELEASE_WHY = "define the services and the job, read their invoker policies; no delete, no jobs.run, no setIamPolicy"
 CONNECTOR_WHY = "call the named operations of the connector only, never arbitrary GraphQL"
@@ -217,9 +217,11 @@ def add_lines(grant: Grant) -> list[str]:
     if grant.condition is None:
         return [command("add-iam-policy-binding", grant.resource, grant.member, grant.role)]
     expression, title = grant.condition
-    require(KINDS[grant.resource[0]][3] and "'" not in expression and "\n" not in expression
+    require(KINDS[grant.resource[0]][3] and "\n" not in expression
             and re.fullmatch(r"[a-z0-9_]+", title) is not None, "a condition must print exactly")
-    return [f"cat > {title}.yaml <<'EOF'", f"expression: '{expression}'", f"title: {title}", "EOF",
+    # A YAML single-quoted scalar writes each ' as ''.
+    return [f"cat > {title}.yaml <<'EOF'", f"expression: '{expression.replace(chr(39), chr(39) * 2)}'",
+            f"title: {title}", "EOF",
             command("add-iam-policy-binding", grant.resource, grant.member, grant.role,
                     f"--condition-from-file={title}.yaml")]
 
