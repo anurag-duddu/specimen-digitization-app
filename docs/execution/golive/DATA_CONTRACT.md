@@ -509,9 +509,10 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     "profile": {"key": "zoology_insects_slides", "version": "1.0.0"},
     "allowance": {"allowance_micros": 5000000, "reserved_total_micros": 0,
       "remaining_micros": 5000000, "at": "…"},
-    "paid_calls": [{"step": "…", "attempt": 1, "reserved_micros": 0,
-      "usage": {"input_tokens": 0, "output_tokens": 0}, "outcome": "…",
-      "cost_micros": 0, "cost_basis": "computed", "price_list": {"version": "…", "as_of": "…"}}],
+    "paid_calls": [{"step": "…", "attempt": 1, "kind": "model", "route_id": "…",
+      "reserved_micros": 0, "usage": {"input_tokens": 0, "output_tokens": 0},
+      "outcome": "completed", "cost_micros": 0, "cost_basis": "computed",
+      "price_list": {"version": "…", "as_of": "…"}, "at": "…"}],
     "actual_cost_micros": 0},
   "trace": {"trace_id": "0af7…", "url": "https://…"},
   "image": {"asset_id": "…", "sha256": "…", "width": 4000, "height": 3000,
@@ -570,8 +571,16 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     reservation, which is never released. Only `computed` or `billed` settles a
     call, and a settled cost above its reservation counts in full (coordinator
     ruling under G30).
-  - Each entry is passed through as S3 records it on the run, so keys S3 adds
-    reach the client unchanged.
+  - Each entry is passed through as S3 records it on the run (LANE.md T2c):
+    `step`, `attempt`, `kind` and its target, `reserved_micros`, `usage`,
+    `outcome`, `cost_micros`, `cost_basis`, `price_list {version, as_of}` and
+    `at`.
+    - The target is `route_id` for kind `model`, `service` for kind `service`
+      (`sam3`), and `tool_id` for kind `tool`.
+    - `usage` is `{input_tokens, output_tokens}`, `{seconds, vcpus,
+      memory_gib}` or `{requests}`, and null for a reserved call.
+    - `outcome` is `completed`, `failed` or `unknown`.
+    - Keys S3 adds later reach the client unchanged.
 - `region_id` throughout is the domain region id (`LabelRegion.domainRegionId`),
   the id the app and the snapshot use.
 - `coverage_check.status` is `passed`, `failed` or `not_run` (G15). A failed
