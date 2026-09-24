@@ -78,6 +78,26 @@ class Sam3Parameters(FrozenRecord):
         }
 
 
+class CoverageRule(FrozenRecord):
+    """G15's automatic label-coverage check (LANE.md T3). The values are the
+    approved starting values; the owner signs off the final ones after the lab."""
+
+    version: Literal["coverage-check-v1"] = "coverage-check-v1"
+    min_label_regions: int = Field(ge=0, le=64)
+    max_label_regions: int = Field(ge=1, le=64)
+    # Label regions overlapping at this IoU or more count as one label.
+    merge_iou: float = Field(gt=0, le=1)
+    # Cross-check detections at this score or more must lie inside the labels.
+    cross_check_threshold: float = Field(gt=0, lt=1)
+    min_inside_fraction: float = Field(gt=0, le=1)
+
+    @model_validator(mode="after")
+    def ordered_range(self):
+        if self.min_label_regions > self.max_label_regions:
+            raise ValueError("coverage range must not be empty")
+        return self
+
+
 class SegmentationSettings(FrozenRecord):
     version: Literal["sam3-settings-v1"] = "sam3-settings-v1"
     adapter_version: Literal["sam3-http-v1"] = "sam3-http-v1"
@@ -87,6 +107,9 @@ class SegmentationSettings(FrozenRecord):
     )
     prompt: str = Field(min_length=1, max_length=1000)
     parameters: Sam3Parameters = Field(default_factory=Sam3Parameters)
+    coverage: CoverageRule | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class DateRules(FrozenRecord):

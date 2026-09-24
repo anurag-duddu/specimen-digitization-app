@@ -138,6 +138,14 @@
           "record_floor": 0.1,
           "max_detections": 64,
           "cross_check_concept": "text"
+        },
+        "coverage": {
+          "version": "coverage-check-v1",
+          "min_label_regions": 1,
+          "max_label_regions": 3,
+          "merge_iou": 0.9,
+          "cross_check_threshold": 0.5,
+          "min_inside_fraction": 0.5
         }
       },
       "tools": [
