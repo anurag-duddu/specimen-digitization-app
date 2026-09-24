@@ -21,6 +21,36 @@ PLACEHOLDERS = {
 }
 
 
+# Every code evaluate() emits, in the order it checks them, without a
+# `:detail` suffix. The collection configuration publishes it for the queue's
+# filter; tests/test_reason_codes.py keeps it in step with the rules below.
+REASON_CODES = (
+    "institutional_policy_unapproved",
+    "mandatory_semantics_unconfirmed",
+    "label_coverage_unconfirmed",
+    "independent_observations_missing",
+    "raw_provenance_missing",
+    "unresolved_transcription",
+    "evidence_lineage_invalid",
+    "mandatory_unresolved",
+    "evidence_missing",
+    "evidence_does_not_support_value",
+    "pixel_lineage_missing",
+    "unsupported_parsed",
+    "unsupported_normalized",
+    "unsupported_authority_id",
+    "elevation_range",
+    "elevation_invalid",
+    "elevation_units_conflict",
+    "date_order",
+    "date_precision_requires_review",
+    "identifier_format",
+    "human_approval_required",
+    "taxonomy_lookup_missing",
+    "taxonomy_unresolved",
+)
+
+
 def evaluate(run: Run) -> list[str]:
     failures = []
     for label in run.label_language_handling.get("labels", []):

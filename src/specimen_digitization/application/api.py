@@ -54,7 +54,7 @@ from .lane import (
     run_status,
 )
 from .lane_dispatch import UNCONFIGURED
-from .policy import finalize
+from .policy import REASON_CODES, finalize
 from .reliability import has_active_lease
 from .production import actor_uid
 from .storage import (
@@ -733,6 +733,8 @@ def create_app(
                     "classification_nodes": [
                         node.model_dump(mode="json") for node in registry.nodes
                     ],
+                    # The policy's reason codes, for the queue's filter (LANE.md).
+                    "reason_codes": list(REASON_CODES),
                 }
                 for m in member_rows(user)
                 if m["organization_id"] == organization_id
