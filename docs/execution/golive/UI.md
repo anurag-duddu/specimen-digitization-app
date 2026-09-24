@@ -293,6 +293,12 @@ per label's source reading (#88 at `4f9997a`).
 3. A single decided transcript whose value a fallback lookup settled from
    another reader's raw reading (G20) says so under the text: "<reader> ·
    raw reading · settled the value".
+4. A per-label map follows the same rule, one line per label. Section 8 at
+   #171 lists "the raw reading the lookup confirmed" for a decided entry
+   settled through a fallback. That reading is not among the texts, so the
+   line under them names it, led by its label: "Label 2 · <reader> · raw
+   reading · settled the value". The label's own entry stays unmarked,
+   since its reading did not settle the value.
 
 The guard of part two is unchanged. A field with a verbatim map has no
 record literal, so it matches the record on the settled value (S5 and S4,

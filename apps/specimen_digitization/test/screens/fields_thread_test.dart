@@ -503,5 +503,49 @@ void main() {
         reason: 'one label, so no entry names it',
       );
     });
+
+    testWidgets("a label's fallback names the label and the reading it used", (
+      WidgetTester tester,
+    ) async {
+      // Label 1 settled on its own decided reading; label 2 through a
+      // fallback lookup on its other reader's raw reading (#171, section 8).
+      final SpecimenThread thread = countryAs(
+        verbatim: <Json>[
+          entry(
+            'GUATEMALA',
+            'decided_transcript',
+            'region-left',
+            'obs-left-qwen',
+          ),
+          entry(
+            'GUATEMALA',
+            'decided_transcript',
+            'region-right',
+            'obs-right-muse',
+          ),
+        ],
+        settled: <String>['obs-left-qwen', 'obs-right-qwen'],
+      );
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      expect(
+        inRow(
+          'country',
+          find.text('Label 1 · $qwen · decided transcript · settled the value'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        inRow('country', find.text('Label 2 · $muse · decided transcript')),
+        findsOneWidget,
+        reason: 'its own reading did not settle the value',
+      );
+      expect(
+        inRow(
+          'country',
+          find.text('Label 2 · $qwen · raw reading · settled the value'),
+        ),
+        findsOneWidget,
+      );
+    });
   });
 }
