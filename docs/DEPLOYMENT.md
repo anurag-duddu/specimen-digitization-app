@@ -819,8 +819,9 @@ expansion requires user review and approval of end-to-end results.
   > program by
   > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
   > G1 and G2. Each specimen is checked through the full pipeline as it is
-  > processed (PLAN section 8), and the workflow, marker and revision evidence
-  > stay. The rest of product acceptance stands, including every case the
+  > processed (PLAN section 8), a record the harness resolves is cleared without
+  > a human (G1), and the workflow, marker and revision evidence stay. The rest
+  > of product acceptance stands, including every UI and live case the
   > human-review checker (`scripts/qa/live/human_review.py`) requires: the ten
   > UI cases of [`RELEASE_ACCEPTANCE.md`](execution/RELEASE_ACCEPTANCE.md)
   > (UI-SIGN-IN, UI-INTAKE, UI-PROCESSING, UI-IMAGE-REGIONS,
@@ -835,7 +836,10 @@ expansion requires user review and approval of end-to-end results.
   > cross-collection, viewer-write and revoked-access denials, in which stale
   > responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
   > and with the ten, in order and beside new uploads, in place of a frozen
-  > manifest (G2) and the gate record in place of a release packet (G11).
+  > manifest (G2), G9's USD 25 ceiling in place of the cohort budget, and the
+  > release packet and the cohort ledger retired (G11), so DEPLOY-IDENTITY
+  > compares the deployed image digests and SQL and rules revisions with the
+  > merged commit's own release runs.
 
 The coordinator may perform only the approved, independently reviewed setup
 actions after live inventory and recording the exact bounded action packet.

@@ -11977,3 +11977,24 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (5) A statement about real data, such as "import the ten as not sensitive", is a classification only the owner can verify (`CONTRACTS.md` 169-170). Ask for it before writing it as a plan step.
   - (6) Merging main can shift the line numbers the plan cites. #76 moved the PRD's open items by three lines, so G rows appeared to settle other owner-only items. After each merge, map the citations of every file it touched from the old version to the new.
 - Remaining follow-ups: the owner's field list (G8); S2's IAM list and the T3e membership run; the owner's rulings on S8's D1-D13 after the steward reviews #94; the G15 calibration sign-off; the lab's re-measurement of the harness model with G29's prompt.
+
+### 2026-09-24 — Go-live release workstream (S2), T1c: #78's acceptance follow-ups
+
+- Task: the S2 session, the PR steward's should-fix list from #78's merge review (comment 5808938104).
+- Branch/worktree: `golive/release-docs-acceptance-followups`, from `main` at `0632994`, in this session's worktree.
+- Outcome:
+  - The five acceptance notes now keep "every UI and live case" the human-review checker requires. It also requires four manual subcriteria and `HUMAN-RECORDS`, which the notes leave under "the rest stands".
+  - The notes no longer name the gate record, which main doesn't define, as the packet's replacement. The release packet and the cohort ledger retire (G11), G9's USD 25 replaces the cohort budget, and DEPLOY-IDENTITY compares the deployed image digests and SQL and rules revisions with the merged commit's own release runs.
+  - `PROTECTED_RELEASE_HARNESS.md` step 8 and `DEPLOYMENT.md`'s completion item state G1: a record the harness resolves is cleared without a human.
+  - `golive/RELEASE.md` section 2.1 tracks the `human_review.py` lines that still enforce what G1, G2, G9 and G11 retire:
+    - `HUMAN-NO-AUTOMATIC-CLEARANCE` (52, 124);
+    - the review block with a null disposition (194-200);
+    - the frozen manifest (103, 168-175);
+    - the `cohort-budget/v2` ledger (300-302).
+
+    No owner is named, because PLAN section 6 assigns `scripts/qa/live/` to no session.
+- Commits/PRs: this PR's single commit.
+- Validation actually run: pre-commit; `tests/test_deployment_policy.py`; `git diff --check`; the relative-link check; the acceptance sweep (5 of 5 notes carry the updated sentence).
+- Durable learnings: a replacement named in a note must exist where the reader is, on main. Name what retires, and say what the check compares against now.
+- Failed approaches: none.
+- Remaining follow-ups: the coordinator assigns the `human_review.py` changes.

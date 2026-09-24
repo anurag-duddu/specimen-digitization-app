@@ -223,11 +223,11 @@ original-ten product journeys described in [DEPLOYMENT.md](../DEPLOYMENT.md).
 > independent review; all five checks on the exact merged commit and the
 > separate protected workflows stay; and the ten pilot specimens are checked one
 > at a time, in order (PLAN section 8), with matching deployed revisions still
-> required. The rest of acceptance stands, including every case the human-review
-> checker (`scripts/qa/live/human_review.py`) requires: the ten UI cases of
-> [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN, UI-INTAKE,
-> UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN,
-> UI-SEARCH-QUEUE, UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and
+> required. The rest of acceptance stands, including every UI and live case the
+> human-review checker (`scripts/qa/live/human_review.py`) requires: the ten UI
+> cases of [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN,
+> UI-INTAKE, UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY,
+> UI-SAVE-REOPEN, UI-SEARCH-QUEUE, UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and
 > UI-NO-SYNTHETIC-FALLBACK) and the fifteen live cases of
 > [`LIVE_QA.md`](LIVE_QA.md) (AUTH-IDENTITY, AUTH-APPCHECK, AUTH-MEMBERSHIP,
 > AUTH-REVOKE, AUTH-CROSS-SCOPE, DATA-TEN, DATA-GENERATION, DATA-RESTORE,
@@ -237,8 +237,11 @@ original-ten product journeys described in [DEPLOYMENT.md](../DEPLOYMENT.md).
 > cross-collection, viewer-write and revoked-access denials, in which stale
 > responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
 > and with the ten, in order and beside new uploads, in place of a frozen
-> manifest (G2) and the gate record in place of a release packet (G11).
-> Retention admission is not settled by G2 or G11 and stays open.
+> manifest (G2), G9's USD 25 ceiling in place of the cohort budget, and the
+> release packet and the cohort ledger retired (G11), so DEPLOY-IDENTITY
+> compares the deployed image digests and SQL and rules revisions with the
+> merged commit's own release runs. Retention admission is not settled by G2 or
+> G11 and stays open.
 
 ## Go-live amendment, 2026-09-23 (G3)
 
