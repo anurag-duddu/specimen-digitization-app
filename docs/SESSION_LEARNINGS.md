@@ -11942,13 +11942,13 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (6) Merging main can shift the line numbers the plan cites. #76 moved the PRD's open items by three lines, so G rows appeared to settle other owner-only items. After each merge, map the citations of every file it touched from the old version to the new.
 - Remaining follow-ups: the owner's field list (G8); S2's IAM list and the T3e membership run; the owner's rulings on S8's D1-D13 after the steward reviews #94; the G15 calibration sign-off; the lab's re-measurement of the harness model with G29's prompt.
 
-### 2026-09-24 — Go-live program: plan after #104, owner decisions G32 to G40
+### 2026-09-24 — Go-live program: plan after #104, owner decisions G32 to G41
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
 - Branch/worktree: `golive/plan-review-corrections-4`, in `.claude/worktrees/frontend-design-dev-2580c8`.
 - Outcome:
   - Records owner decisions G32 to G34. G34 decides S8's D15 for the Google tool and makes the retrospective georeferencing tool of #94 a build; D1 to D13 stay the owner's.
-  - Records owner decisions G35 to G40: S8's D1, D2, D3, D6, D7 and D9, plus the harness's job. G37 revises G22 for elevation. Also records the coordinator reading from #88's review: a field without a lookup whose readers all agree takes that text and clears. D4 and D5 are on hold.
+  - Records owner decisions G35 to G41: S8's D1, D2, D3, D6, D7 and D9, plus the harness's job. G37 and G41 revise G22 for elevation. Also records the coordinator reading from #88's review: a field without a lookup whose readers all agree takes that text and clears. D4 and D5 are on hold.
   - Addresses the steward's final review of #104 (https://github.com/anurag-duddu/specimen-digitization-app/pull/104#issuecomment-5805226880). Covered: G30's mechanism in section 4.3 (worst-case reservation, what settles a call, the atomic ledger, token and request caps, SAM 3's startup); the worker-account rule labelled a coordinator ruling; the owner-held approval hash; the live read-back as the release's own check; who writes G29's rules and notations; the URL ban in fixtures and lab folders; the NOT NULL ban on every table with TRN-005's columns; the lab's ledger.
   - Records coordinator rulings: `cost_basis: reserved` for an unknown outcome; `url_launcher` for #122; S6's reason filter and run-state picker; S5's reason-code search as its T5.
   - Correction to the entry "2026-09-23 — Go-live program: plan after #87, owner decisions G27 to G29" above. That entry also records G30 and G31, and its follow-ups should list D15 with D1 to D13.
@@ -11958,5 +11958,6 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (2) Under `schemaValidation: COMPATIBLE`, Data Connect never drops an object the schema stops declaring. The drop appears only in firebase-tools' STRICT diff. A planned drop needs its own reviewed statement, run after a live read-back.
   - (3) A summary of another session's option can be broader than the option. The plan's wording of D15's option (b), a place ID whenever Google settles one place, would have cleared a Philippine label to Denali, Alaska; S8's D15 covers only a near spelling. Quote the proposer's condition, and put the question to the owner with the regression case in hand.
   - (4) An owner's free-text answer can add scope ("fully implemented"). Record it verbatim, turn the new scope into owned work, and keep the owner's other pending decisions pending rather than reading acceptance into them.
+  - (5) Before widening a reading, check what the owner declined earlier. The coordinator read G37's "like other fields" as allowing unit conversion and filled endpoints, which the owner had declined by name at G22. #124's review caught it, and the owner then chose them explicitly (G41). A reading never overturns an explicit refusal; ask instead.
 - Failed approach: none. The first draft of section 4.4 turned one list item into separate sentences, which cut the rest of the list off from its lead-in, so it was rewritten with semicolons.
 - Remaining follow-ups: D1 to D13 go to the owner after S8 revises #94. Still open: the owner's field list (G8); relaying #119's IAM list after its review, then #123's window packet; the G15 calibration sign-off. When #78 merges, re-map the citations into the files it changes (PRD, RELEASE_RUNTIME, RELEASE_AUTHORIZATION, DEPLOYMENT).

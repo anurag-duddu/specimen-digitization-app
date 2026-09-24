@@ -110,6 +110,23 @@ the wire examples from a non-production app (production disables
 `/openapi.json`, `api.py` 458-461), and update the client's contract-test
 amendments together with the UI workstream (S6).
 
+**T6. Layers and derivations (G37, G38, G41),** once S4's derivation action
+exists. `FieldValue.layer` (verbatim, settled or derived) and `derived_from`,
+agreed with S4; additive SQL under PLAN section 4.4 (`FieldCandidate.derivation`
+takes `derived`; a nullable `derivedFromFieldKeys` written by a new
+`AppendFieldCandidateV3`, with V2 unchanged); the writer maps them; the
+contract's elevation rules follow G37 and G41; and the "fill the rest" route,
+a POST on the specimen with the field the reviewer filled and the expected
+revision, which runs S4's `derive_rest` and returns the derived values with
+their evidence, unsaved, for the reviewer to edit and approve through the
+existing decision route.
+
+**T5. Reason-code search, last.** A new view beside the search view carrying
+each reason's code, and `SearchSpecimensV2` matching a code with its own
+entries and every `code:suffix` entry, never a shared stem; SQLite the same;
+the API moves to V2; the old view and `SearchSpecimens` stay unchanged,
+since the gate refuses a changed view.
+
 ## Coordination
 
 S3 supplies the run fields and the trace id; S4 supplies the shapes of the

@@ -103,11 +103,11 @@ functional one comes first (G6).
   `near_spelling` warning finding that never routes the record. Otherwise it
   goes to review with the candidate. S8 builds the retrospective
   georeferencing tool behind your T3a interface (G34).
-- G22, revised by G37: the four elevation fields stay mandatory and are
-  filled like other fields, with authority and evidence: a stated elevation
-  fills the other unit's fields by exact conversion, a single stated value
-  fills both endpoints, and a missing one is derived by S8's tool from the
-  settled location.
+- G22, revised by G37 and G41: the four elevation fields stay mandatory. A
+  single stated value fills From and To, and the other unit is converted
+  exactly (G41; both ways, coordinator reading), each marked as derived with
+  evidence; an elevation the label doesn't state is derived by S8's tool from
+  the settled location (G37).
 - G35 to G40 (PLAN section 2.1): the place tool's three tiers and open-source
   coordinates (G35, S8's build behind your interface); no conclusion without
   evidence, and curator-confirmed places (G36); fill in what the label leaves
@@ -203,7 +203,7 @@ under QUE-004. Validate the separately parsed date, not the verbatim text
 written, a two-digit year reads as 19xx for Insects (G24), and a Roman numeral
 in the month position is that month (G29). Keep the
 elevation gate (99-106), which accepts elevation values filled with authority
-and evidence (G37, revising G22). `unresolved_transcription` (46-48) yields to G19 and G20: a
+and evidence (G37 and G41, revising G22). `unresolved_transcription` (46-48) yields to G19 and G20: a
 region whose first pass picked no reading passes when every field drawn from it
 resolved, on its own evidence or through a lookup that settled the
 disagreement; a field still left with conflicting readings sends the record to

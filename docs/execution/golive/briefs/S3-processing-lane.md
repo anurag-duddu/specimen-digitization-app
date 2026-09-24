@@ -93,8 +93,8 @@ carries the segmentation settings (`label`, thresholds 0.5, at most 64
 regions); the two readers; the tools per field (S4 implements the tools); the
 mandatory and optional groups (G8: the specification's list until the owner's
 list arrives, with `identified_by_irn` optional (G16) and no Parties tool
-mapped to it, and the four elevation fields mandatory, filled like other fields with
-authority and evidence (G37, revising G22); changing the groups must be one configuration edit); the
+mapped to it, and the four elevation fields mandatory, filled with authority and evidence
+(G37 and G41, revising G22); changing the groups must be one configuration edit); the
 existing uncalibrated risk policy, labelled uncalibrated; and the clearance rule
 reference (S4); the Insects date rules of G24 (a two-digit year reads as 19xx)
 and G29 (a Roman numeral I to XII in the month position is that month),
