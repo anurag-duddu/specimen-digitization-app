@@ -646,15 +646,18 @@ class ProductionAdapters:
             name.value: resolve_prompt(name, inputs).model_dump(mode="json")
             for name in PromptName
         }
-        # An unregistered first-pass route stays unpinned, so its step blocks.
-        first_pass = run.profile.first_pass_route
+        # An unregistered stage route stays unpinned, so its step blocks.
+        stages = tuple(
+            route
+            for route in (run.profile.first_pass_route, run.profile.harness_route)
+            if route in STAGE_HUGGINGFACE_ROUTES
+        )
         routes = {
             route: {
                 "model_id": HUGGINGFACE_ROUTES[route].model_id,
                 "provider": HUGGINGFACE_ROUTES[route].provider,
             }
-            for route in run.profile.routes
-            + ((first_pass,) if first_pass in STAGE_HUGGINGFACE_ROUTES else ())
+            for route in run.profile.routes + stages
         }
         return {
             "prompts": prompts,
@@ -786,6 +789,13 @@ class ProductionAdapters:
         from .model_runtime import invoke_model
 
         return invoke_model(self, specimen, "extract")
+
+    def harness(self, specimen):
+        """The field harness in the isolated model child (HARNESS.md 14); returns
+        a harness tool's operational block, if any."""
+        from .model_runtime import invoke_model
+
+        return invoke_model(self, specimen, "harness")
 
     def _extract_direct(self, specimen):
         if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
