@@ -11909,3 +11909,20 @@ because the hooks runner hands a native asset hook only `PATH`.
   3. SQLite's `state` column holds the raw stage while PostgreSQL's holds the wire status, so SQLite mirrors the production filter through `lane.SQLITE_STATUS`.
 - Failed approaches: none.
 - Remaining follow-ups: the drain loop, its hand-over and its command line follow as the next three PRs.
+
+### 2026-09-23 — Go-live lane T2a (2 of 4): the drain loop
+
+- Task: Claude Code session "Build the on-demand processing lane" (go-live workstream S3), the second of four PRs for T2's drain in `docs/execution/golive/LANE.md`.
+- Branch/worktree: `golive/lane-drain-loop` from `golive/lane-drain-fence`, in `.claude/worktrees/elated-bun-0d9b24`.
+- Outcome:
+  - `lane_worker.DrainWorker` drains the actor's operator-or-above collections one at a time, behind the fence.
+  - It finishes a dead holder's run first, waiting while that run's step lease is live. Then it steps the oldest due run until the run stops.
+  - It waits for retries inside its window and starts no new run in the last 600 s. On `SIGTERM` it finishes the step and releases the fence.
+  - A conflicting concurrent edit is read again, up to three times in a row.
+  - A due run whose step saves nothing is blocked with `lane_run_not_progressing` and the queue moves on. The operator's retry action requests it again.
+- Validation actually run: `tests/test_lane_drain.py` (31 passed) and the other lane tests; the full gates as listed in the pull request.
+- Durable learnings:
+  1. Receipt keys that repeat across executions (`step:1`) make a later execution's save replay an earlier one's result. Key by revision.
+  2. A dead holder's run can still be leased after the fence expires, because the step's lease starts after the fence's last renewal. Resuming it at once would read as a stall.
+- Failed approaches: none.
+- Remaining follow-ups: the hand-over and the command line.
