@@ -31,6 +31,9 @@ enum FieldLayer {
   final String label;
 }
 
+/// One text and where it came from, such as a reader's raw reading.
+typedef AttributedText = ({String source, String text});
+
 /// A field name, its state, its three layers and what they are backed by.
 class FieldRow extends StatelessWidget {
   const FieldRow({
@@ -46,6 +49,9 @@ class FieldRow extends StatelessWidget {
     this.editSemanticsLabel,
     this.editBlockedReason,
     this.findings,
+    this.writtenBy = const <AttributedText>[],
+    this.readAsNote,
+    this.evidence = const <String>[],
   });
 
   /// The disclosure the three layers sit behind (10 section 5).
@@ -98,6 +104,20 @@ class FieldRow extends StatelessWidget {
   /// Validation findings for this field, rendered under the layers.
   final Widget? findings;
 
+  /// The text as written, attributed: one entry per reader when no single
+  /// reading was chosen, or the one reader a single text was taken from.
+  /// When there is any, the "As written" layer shows each text under its
+  /// source in place of [asWritten] (UI.md T2.3).
+  final List<AttributedText> writtenBy;
+
+  /// One line under the "Read as" value saying how a derived part of it was
+  /// derived, such as a century a rule set.
+  final String? readAsNote;
+
+  /// One line per source that bears on the standardized value, saying how
+  /// it bears on it. When there is any, these stand in place of [authority].
+  final List<String> evidence;
+
   String? _valueOf(FieldLayer layer) => switch (layer) {
     FieldLayer.asWritten => asWritten,
     FieldLayer.readAs => readAs,
@@ -121,8 +141,26 @@ class FieldRow extends StatelessWidget {
   String get _spoken => <String>[
     required ? '$name, required' : name,
     for (final FieldLayer layer in FieldLayer.values)
-      '${layer.label}: ${_valueOf(layer) ?? _abstention}',
+      '${layer.label}: ${_spokenValue(layer)}',
   ].map(_withoutTrailingStop).join('. ');
+
+  /// What one layer holds, in words: each attributed text with its source,
+  /// or the value, or the abstention.
+  String _spokenValue(FieldLayer layer) =>
+      layer == FieldLayer.asWritten && writtenBy.isNotEmpty
+      ? writtenBy
+            .map((AttributedText item) => '${item.source}, ${item.text}')
+            .join('; ')
+      : _valueOf(layer) ?? _abstention;
+
+  /// The "As written" value the closed disclosure previews: the text, or
+  /// the first attributed text and how many more there are.
+  String get _asWrittenPreview => switch (writtenBy) {
+    <AttributedText>[] => asWritten ?? _abstention,
+    <AttributedText>[final AttributedText only] => only.text,
+    <AttributedText>[final AttributedText first, ...] =>
+      '${first.text} and ${writtenBy.length - 1} more',
+  };
 
   /// Everything the row says, with its state at the end.
   ///
@@ -173,9 +211,7 @@ class FieldRow extends StatelessWidget {
           ),
         UiDisclosure(
           title: layersTitle,
-          summary:
-              '${FieldLayer.asWritten.label}: '
-              '${asWritten ?? _abstention}',
+          summary: '${FieldLayer.asWritten.label}: $_asWrittenPreview',
           semanticsLabel: '$layersTitle, $name',
           initiallyExpanded: !compact,
           child: Column(
@@ -186,32 +222,40 @@ class FieldRow extends StatelessWidget {
                 _Layer(
                   layer: layer,
                   value: _valueOf(layer),
+                  written: layer == FieldLayer.asWritten
+                      ? writtenBy
+                      : const <AttributedText>[],
+                  note: layer == FieldLayer.readAs ? readAsNote : null,
                   state: state,
                   onEdit: onEdit == null ? null : () => onEdit!(layer),
                   editLabel: editSemanticsLabel?.call(layer),
                 ),
-              if (authority != null) ...<Widget>[
-                SizedBox(height: ui.space.s1),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    UiIcon(
-                      UiIcons.authority,
-                      size: UiIconSize.inline,
-                      color: ui.color.status.authority.content,
-                    ),
-                    SizedBox(width: ui.space.s1),
-                    Expanded(
-                      child: Text(
-                        authority!,
-                        style: ui.type.bodySmall.copyWith(
-                          color: ui.color.inkSecondary,
+              // Each source's line where the thread gives them, otherwise
+              // the one authority line.
+              for (final String line
+                  in evidence.isNotEmpty ? evidence : <String>[?authority])
+                Padding(
+                  padding: EdgeInsetsDirectional.only(top: ui.space.s1),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      UiIcon(
+                        UiIcons.authority,
+                        size: UiIconSize.inline,
+                        color: ui.color.status.authority.content,
+                      ),
+                      SizedBox(width: ui.space.s1),
+                      Expanded(
+                        child: Text(
+                          line,
+                          style: ui.type.bodySmall.copyWith(
+                            color: ui.color.inkSecondary,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ],
             ],
           ),
         ),
@@ -235,6 +279,8 @@ class _Layer extends StatelessWidget {
     required this.layer,
     required this.value,
     required this.state,
+    this.written = const <AttributedText>[],
+    this.note,
     this.onEdit,
     this.editLabel,
   });
@@ -242,6 +288,12 @@ class _Layer extends StatelessWidget {
   final FieldLayer layer;
   final String? value;
   final SpecimenStatus state;
+
+  /// Attributed texts shown in place of [value], each under its source.
+  final List<AttributedText> written;
+
+  /// One line under the value, heard with it.
+  final String? note;
   final VoidCallback? onEdit;
   final String? editLabel;
 
@@ -251,6 +303,9 @@ class _Layer extends StatelessWidget {
     final String? text = value;
     final bool verbatim = layer == FieldLayer.asWritten;
     final String edit = editLabel ?? 'Edit ${layer.label.toLowerCase()}';
+    final TextStyle secondary = ui.type.bodySmall.copyWith(
+      color: ui.color.inkSecondary,
+    );
 
     return Padding(
       padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
@@ -271,7 +326,28 @@ class _Layer extends StatelessWidget {
                     color: ui.color.inkSecondary,
                   ),
                 ),
-                if (text == null)
+                if (written.isNotEmpty)
+                  // Each text under its source, one node apiece, so a reader
+                  // hears who wrote it with what they wrote.
+                  for (final (int index, AttributedText item)
+                      in written.indexed)
+                    Padding(
+                      padding: EdgeInsetsDirectional.only(
+                        top: index == 0 ? 0 : ui.space.s1,
+                      ),
+                      child: Semantics(
+                        container: true,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Text(item.source, style: secondary),
+                            Text(item.text, style: ui.type.mono.literalDense),
+                          ],
+                        ),
+                      ),
+                    )
+                else if (text == null)
                   // A missing layer shows the field's own abstention, never a
                   // blank, so absence is a value the reviewer can read.
                   _Abstention(state: state)
@@ -281,11 +357,19 @@ class _Layer extends StatelessWidget {
                   // utterance rather than beside the layer it belongs to.
                   Semantics(
                     container: true,
-                    child: Text(
-                      text,
-                      style: verbatim
-                          ? ui.type.mono.literalDense
-                          : ui.type.body,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          text,
+                          style: verbatim
+                              ? ui.type.mono.literalDense
+                              : ui.type.body,
+                        ),
+                        if (note case final String said)
+                          Text(said, style: secondary),
+                      ],
                     ),
                   ),
               ],
