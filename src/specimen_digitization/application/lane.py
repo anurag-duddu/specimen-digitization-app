@@ -27,6 +27,14 @@ class LaneConflict(Conflict):
         self.code = code
 
 
+# `run_status` in SQL, for SQLite, whose state column holds the raw stage.
+SQLITE_STATUS = (
+    "CASE WHEN json_extract(payload,'$.run.disposition') IS NOT NULL THEN 'completed' "
+    "WHEN state IN ('processing_blocked','retry_scheduled','paused','cancelled','pending') "
+    "THEN state ELSE 'running' END"
+)
+
+
 def run_status(run: Run) -> str:
     """The wire status of a run: `summary().status` and the SQL listing `state`."""
     if run.disposition:

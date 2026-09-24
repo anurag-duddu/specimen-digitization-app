@@ -421,3 +421,105 @@ policy gate (`policy.py` 35-36) sends it to needs human review.
   becomes 240 s and the request timeout 300 s. The pilot's allowance sets the
   worker's external-call timeout to 270 s with a 300 s lease, and keeps readers
   at 120 s. The allowance refuses timeouts that do not fit the lease.
+
+## T2. The worker drains the queue, within the budget
+
+Implements PLAN 4.3 and 4.6 (the worker's part) with G2, G6, G9 and G13. The
+coordinator approved the mechanism and the cost basis on 2026-09-23, and the
+owner set the model allowance (G30).
+
+### Drain mode
+
+`specimen-worker --mode production --drain` runs the lane's worker. The frozen
+pilot's worker is unchanged and still needs its launch files.
+
+- **Settings.** No launch policy, manifest or timing files. Before it takes any
+  work, the worker checks its settings and exits 2 if any of these is missing
+  or wrong:
+  - its actor (`SPECIMEN_WORKER_ACTOR_UID`);
+  - the inference switch;
+  - the SAM 3 service on Cloud Run (`SPECIMEN_SAM3_ENDPOINT`), pinned at the
+    reviewed revision (`SPECIMEN_SAM3_REVISION`);
+  - the readers' `HF_TOKEN`.
+
+  It also refuses emulator settings and SAM 3 lab mode. The collection bindings
+  (`SPECIMEN_COLLECTION_BINDINGS_JSON`) and the worker job
+  (`SPECIMEN_WORKER_JOB`, for the hand-over) are optional. An error names the
+  setting, never its value. The SQL endpoint and the bucket are the API's. The
+  worker resolves profiles with the same published registries as the API.
+- **Fence.** Two executions of the job must never process two runs of one
+  collection at once (G13). A snapshot's compare-and-set alone cannot prevent
+  that when both executions act as the same actor, because they replay each
+  other's receipts. So the worker first takes the collection's fence: a
+  compare-and-set document holding the execution's id, the run it is working on,
+  and a lease of 300 s renewed after every step.
+  - A live fence held by another execution means that execution is draining the
+    collection, and this one moves on. An expired fence is taken over.
+  - The document is marked not sensitive, since the worker's membership cannot
+    view sensitive records. The provider circuit's state documents, which the
+    worker also writes, are marked not sensitive for the same reason. A
+    circuit document left sensitive by an earlier worker can be neither read
+    nor replaced by this one.
+- **Readiness before the first drain.** On 2026-09-23 S2 confirmed, read-only,
+  that the production Data Connect schema is the empty placeholder, and the
+  first initialization applies the schema to an empty database. Before the
+  first drain, the owner or S2 runs three read-only counts on the protected
+  path. Each must be zero:
+  1. `worker_cursor` documents marked sensitive, which the worker could neither
+     read nor replace;
+  2. specimens in `pending`, `running` or `retry_scheduled` with a due time
+     that no lane request set (`queued_at` absent);
+  3. rows in those states with no due time (#88, section 9).
+
+### Program allowance (G9)
+
+The published profiles carry the program's model allowance in micro-dollars.
+The owner set it at USD 5 (G30): 5,000,000 micro-dollars for production's
+readers, SAM 3, first pass and harness. The lab's USD 5 share is separate, and
+the rest of G9's USD 25 is left for infrastructure. It rises only by the owner's
+decision, through a profile edit.
+
+The ledger is a compare-and-set document in the scope of the collection the
+setting names. It adds every paid step's reservation before the call, alongside
+the run's own budget check (`workflow.py` 191-231). A step whose reservation
+would cross the allowance is not called. The run blocks with
+`program_allowance_exhausted`, an operational block with no queue outcome
+(QUE-005).
+
+G30 caps what production's model calls spend (PLAN 4.3, #104; the coordinator's
+ruling of 2026-09-23). T2b and T2c build it:
+
+- Every reservation is one atomic check-and-reserve on the shared ledger,
+  before the call. Once the allowance is spent, paid steps block with
+  `program_allowance_exhausted`.
+- A call settles to its cost when the provider reports usage or returns a
+  billed amount, which releases the rest of its reservation. A settled cost
+  above its reservation counts in full.
+- An unknown outcome (a timeout, a transport error, a 5xx, or a response
+  without usage) stays reserved at its full amount, recorded as
+  `cost_basis: reserved`. A retry reserves again.
+- The run's own budget keeps its rule: its reservations are never refunded
+  (`domain.py` 222-227). With no allowance configured, the ledger is not
+  consulted.
+
+Every reservation also records the program's position on the run: the
+allowance, the total reserved after this step, and what remains. The thread
+shows it, so a block is never a surprise.
+
+### Cost of every paid call
+
+`Run.paid_calls` records one entry per paid call:
+
+- the step key and attempt;
+- the reservation;
+- the usage: tokens for a model call, measured seconds for SAM 3;
+- the outcome;
+- a cost labelled `computed`, from the profile's pinned price list, with that
+  list's version and date. Where a provider returns a billed amount, it is
+  recorded instead and labelled `billed`.
+
+Model calls are priced per million input and output tokens for their route.
+SAM 3 is priced by its measured request seconds times the service's configured
+vCPUs and memory at the pinned Cloud Run rates. A price changes only through a
+reviewed profile edit. The run's `usage.actual_cost_micros` is the sum of its
+calls' costs.

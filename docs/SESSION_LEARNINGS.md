@@ -11892,3 +11892,20 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: the exact share of a box inside a union of rectangles is a sweep over x-strips, merging each strip's y-intervals. That is exact and cheap for the few labels a slide carries, with no rasterizing.
 - Failed approaches: a first draft checked every compressed grid cell against every rectangle, which is quadratic in the edges.
 - Remaining follow-ups: the lab measures hits and misses per subject against its label boxes, and "text" against "handwriting"; the coordinator takes the final values to the owner before the first production run.
+
+### 2026-09-23 — Go-live lane T2a (1 of 4): the due-work query and the collection fence
+
+- Task: Claude Code session "Build the on-demand processing lane" (go-live workstream S3). This is the first of four PRs for T2's drain in `docs/execution/golive/LANE.md`; the steward split #118 into four.
+- Branch/worktree: `golive/lane-drain-fence` from `golive/lane-coverage-check`, in `.claude/worktrees/elated-bun-0d9b24`.
+- Outcome:
+  - `oldest_due` lists due, non-sensitive work, oldest first. Production uses S5's `ListDueWorkV2`. SQLite applies the same states through `lane.SQLITE_STATUS`, which search now shares.
+  - `lane_worker.CollectionFence` is a non-sensitive `worker_cursor` compare-and-set document with a renewed 300 s lease, one holder at a time.
+  - `drain_settings` fails closed before any work, naming a setting but never its value.
+  - The provider circuit's state documents are written with `"sensitive": false`. Without the flag, every external step of the drain would have stopped at `provider_circuit:circuit_cas_contention` in production.
+- Validation actually run: `tests/test_lane_drain.py` (18 passed). `tests/test_lane_documents_sqlconnect.py` against `scripts/data/serve-local.sh` on isolated ports: an operator without sensitive access creates and saves the fence and a circuit document, and is refused a document not marked non-sensitive (3 passed). Also the full gates as listed in the pull request.
+- Durable learnings:
+  1. S5's `SaveDocumentV2` requires `canViewSensitive` for any document whose payload does not say `"sensitive": false`, and the worker's release membership has none. SQLite accepted what production refuses, so the tests use a repository that enforces the rule.
+  2. `ListDueWorkV2` checks `cutoff <= request.time`, so a worker cannot query for work due later.
+  3. SQLite's `state` column holds the raw stage while PostgreSQL's holds the wire status, so SQLite mirrors the production filter through `lane.SQLITE_STATUS`.
+- Failed approaches: none.
+- Remaining follow-ups: the drain loop, its hand-over and its command line follow as the next three PRs.
