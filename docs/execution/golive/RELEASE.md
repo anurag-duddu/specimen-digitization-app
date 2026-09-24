@@ -168,10 +168,10 @@ Line numbers are as of `709ae3c`.
 | `src/specimen_digitization/application/sam3_server.py` 617-618 | The manifest binding and the self-shutdown within an hour | G2 | S3 |
 | `src/specimen_digitization/observability.py`, `bounded_telemetry.py`, the worker's forced metadata mode | Metadata-only tracing | G3 | S3 |
 | `src/specimen_digitization/application/policy.py` 31-34 and 138-139, for the lane | The institutional-approval and semantics gates, and the human-approval gate | G1 | S4 |
-| `scripts/qa/live/human_review.py` 52 and 124 | `HUMAN-NO-AUTOMATIC-CLEARANCE` as a required manual subcriterion | G1 | Not yet assigned: PLAN section 6 names no owner for `scripts/qa/live/` |
-| `scripts/qa/live/human_review.py` 194-200 | Every run blocked for review: a null disposition, stage `processing_blocked`, blocker `pilot_evidence_review_required` | G1 | Not yet assigned: PLAN section 6 names no owner for `scripts/qa/live/` |
-| `scripts/qa/live/human_review.py` 103 and 168-175 | The frozen manifest's digest on every human case, and exactly its ten records | G2 | Not yet assigned: PLAN section 6 names no owner for `scripts/qa/live/` |
-| `scripts/qa/live/human_review.py` 300-302 | The `cohort-budget/v2` ledger the human scope requires | G9, G11 | Not yet assigned: PLAN section 6 names no owner for `scripts/qa/live/` |
+| `scripts/qa/live/human_review.py` 52 and 124 | `HUMAN-NO-AUTOMATIC-CLEARANCE` as a required manual subcriterion | G1 | S2, after T3d (the coordinator's assignment of 2026-09-24) |
+| `scripts/qa/live/human_review.py` 194-200 | Every run blocked for review: a null disposition, stage `processing_blocked`, blocker `pilot_evidence_review_required` | G1 | S2, after T3d (the coordinator's assignment of 2026-09-24) |
+| `scripts/qa/live/human_review.py` 103 and 168-175 | The frozen manifest's digest on every human case, and exactly its ten records | G2 | S2, after T3d (the coordinator's assignment of 2026-09-24) |
+| `scripts/qa/live/human_review.py` 300-302 | The `cohort-budget/v2` ledger the human scope requires | G9, G11 | S2, after T3d (the coordinator's assignment of 2026-09-24) |
 | `scripts/ci/worker_trace_setup.py` `grant` | A worker-only writer-secret binding that expires within 24 hours | G3, G11 | S2 T4 (standing grants per identity and secret) |
 | `src/specimen_digitization/application/cli.py` 84-90 | The API never sends traces | G3 | S3 |
 | `scripts/ci/data_setup_window.py` 55-65, 126-138 | Renews three of the standing roles (`specimenDataSchemaPublish`, `specimenDataSourceBackup`, `specimenDataStorageRules`) together with the time-bounded ones, for 120 minutes (the initializer role for 75, `specimenDataInitializerDisposal` for 115), and refuses any untimed binding | G11 | S2 T4c, PR #123 (narrows the renewals to the time-bounded roles) |

@@ -11992,9 +11992,9 @@ because the hooks runner hands a native asset hook only `PATH`.
     - the frozen manifest (103, 168-175);
     - the `cohort-budget/v2` ledger (300-302).
 
-    No owner is named, because PLAN section 6 assigns `scripts/qa/live/` to no session.
+    The coordinator assigned these to S2, after T3d, on 2026-09-24, and adds `scripts/qa/live/` to PLAN section 6.
 - Commits/PRs: this PR's single commit.
 - Validation actually run: pre-commit; `tests/test_deployment_policy.py`; `git diff --check`; the relative-link check; the acceptance sweep (5 of 5 notes carry the updated sentence).
 - Durable learnings: a replacement named in a note must exist where the reader is, on main. Name what retires, and say what the check compares against now.
 - Failed approaches: none.
-- Remaining follow-ups: the coordinator assigns the `human_review.py` changes.
+- Remaining follow-ups: S2 changes those `human_review.py` lines after T3d.
