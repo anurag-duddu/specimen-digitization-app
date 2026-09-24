@@ -112,6 +112,9 @@ def check_coverage(rule: CoverageRule, specimen) -> None:
         "version": VERSION,
         "outcome": "unconfirmed" if reasons else "confirmed",
         "region_count": region_count,
+        # The rule's range, so the record explains itself (S5's thread detail).
+        "min_label_regions": rule.min_label_regions,
+        "max_label_regions": rule.max_label_regions,
         "cross_check": {
             "concept": cross.get("concept"),
             "threshold": rule.cross_check_threshold,

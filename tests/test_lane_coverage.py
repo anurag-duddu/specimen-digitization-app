@@ -110,6 +110,7 @@ def test_labels_that_hold_every_text_detection_confirm_coverage():
     assert evidence["version"] == "coverage-check-v1"
     assert evidence["outcome"] == "confirmed"
     assert evidence["region_count"] == 2
+    assert (evidence["min_label_regions"], evidence["max_label_regions"]) == (1, 3)
     assert evidence["reason_codes"] == []
     assert evidence["cross_check"]["counted"] == 2
     assert evidence["cross_check"]["uncovered_boxes"] == []
