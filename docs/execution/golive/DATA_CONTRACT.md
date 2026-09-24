@@ -182,7 +182,7 @@ region.
 ### 3.3 Relaxed constraints
 
 Each relaxation only admits rows the old constraint refused; every existing row
-satisfies the new one. PLAN 4.4 (as amended by #104, 2641474) allows a dropped
+satisfies the new one. PLAN 4.4 (as amended by #104, merged as 129c47e) allows a dropped
 `NOT NULL` named here with its reason, and one closed exception: `SourceAsset`'s
 object uniqueness becomes per specimen, in two applies. S2's schema gate reads
 the same list, with these reasons.
