@@ -249,3 +249,33 @@ GBIF, `gnv` is Global Names Verifier, `col` is Catalogue of Life, and
 not know shows in the server's own word. Corrections are unchanged: every
 layer, the text and the standardized value alike, opens the same editor
 (G27: corrections on both).
+
+### T2.4 The coverage check and the decision's findings
+
+The thread explains what the record states; it never adds a blocker the
+record does not have. A reviewer can confirm label coverage after the run,
+so the thread's failed check is shown only while the record still carries
+the check's reason, `label_coverage_unconfirmed` (G15: show the reason and
+the evidence with the queue decision; the coordinator placed it in the
+status strip's blockers).
+
+- A failed coverage check is one entry in the blockers list, "Label
+  coverage not confirmed". Its detail says what each failed check measured,
+  from the detail S5 pins for the thread (#88):
+  - the region count: "Found 3 label regions; the profile allows 1 to 2",
+    "Found no label regions", or "A label region lies outside the
+    photograph";
+  - the full-image cross-check: "1 of 4 label-like detections lies outside
+    the label regions".
+  A range the check does not record is not guessed ("Found 3 label
+  regions"), and a check this client does not know is named ("Failed: …").
+  The entry takes the place of the workspace's generic finding and reason
+  code for the check, so the check is stated once, and "Go to" opens
+  Readings, beside the label regions the check judged. Without the thread,
+  the reason reads "Label coverage not confirmed" too.
+- The decision's warning and info findings attach to their fields, "Worth
+  checking" and "For information", in the caution and secondary tones
+  rather than the error role, because they never change the disposition.
+  They follow the Fields segment's rule: shown while the field stands as
+  the run left it. Hard findings keep coming from the workspace, in the
+  blockers list and on their fields, so none is stated twice.

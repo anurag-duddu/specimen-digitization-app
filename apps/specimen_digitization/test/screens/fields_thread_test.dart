@@ -307,4 +307,69 @@ void main() {
     );
     expect(find.textContaining('Google Maps'), findsNothing);
   });
+
+  group("the decision's findings on their fields (UI.md T2.4)", () {
+    /// The fixture with [finding] added to the decision's findings.
+    SpecimenThread withFinding(Json finding) {
+      final Json json = fixtureJson();
+      ((json['decision'] as Json)['findings'] as List<dynamic>).add(finding);
+      return SpecimenThread.fromJson(json);
+    }
+
+    Json finding(String severity) => <String, dynamic>{
+      'rule_id': 'authority-sources-agree',
+      'severity': severity,
+      'field_key': 'country',
+      'reason_code': 'authority_sources_disagree',
+    };
+
+    testWidgets('a warning attaches to its field as worth checking', (
+      WidgetTester tester,
+    ) async {
+      final SpecimenThread thread = withFinding(finding('warning'));
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      expect(
+        inRow('country', find.text('Authority sources disagree')),
+        findsOneWidget,
+      );
+      expect(
+        inRow('country', find.text('Worth checking · authority-sources-agree')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('an info finding is for information', (
+      WidgetTester tester,
+    ) async {
+      final SpecimenThread thread = withFinding(finding('info'));
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      expect(
+        inRow(
+          'country',
+          find.text('For information · authority-sources-agree'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a hard finding comes from the record, not the thread', (
+      WidgetTester tester,
+    ) async {
+      // The fixture's decision carries a hard finding on habitat, and this
+      // record publishes none.
+      final SpecimenThread thread = SpecimenThread.fromJson(fixtureJson());
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      expect(inRow('habitat', find.textContaining('Mandatory')), findsNothing);
+    });
+
+    testWidgets('a field changed since the run shows no run findings', (
+      WidgetTester tester,
+    ) async {
+      final SpecimenThread thread = withFinding(finding('warning'));
+      final Json record = recordJson(thread);
+      fieldIn(record, 'country')['authority_id'] = 'reviewer-place-id';
+      await pumpFields(tester, record, thread: thread);
+      expect(find.text('Authority sources disagree'), findsNothing);
+    });
+  });
 }

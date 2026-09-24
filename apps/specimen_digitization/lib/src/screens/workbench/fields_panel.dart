@@ -224,6 +224,15 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
       pending?.state ?? field['state'] as String?,
     );
     final ThreadField? run = _asRunLeftIt(field, pending);
+    // The decision's warnings and notes for this field, while it stands as
+    // the run left it. Hard findings come from the record, above, so none
+    // is stated twice (UI.md T2.4).
+    final List<ThreadFinding> noted = <ThreadFinding>[
+      if (run != null)
+        for (final ThreadFinding f
+            in widget.thread?.decision?.findings ?? const <ThreadFinding>[])
+          if (f.fieldKey == key && _notedSeverities.contains(f.severity)) f,
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -275,13 +284,14 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
           editSemanticsLabel: (FieldLayer layer) =>
               'Edit ${layer.label.toLowerCase()} for '
               '${textOf(field['display_name'], key)}',
-          findings: findings.isEmpty
+          findings: findings.isEmpty && noted.isEmpty
               ? null
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
                     for (final Json f in findings) _Finding(finding: f),
+                    for (final ThreadFinding f in noted) _Noted(finding: f),
                   ],
                 ),
         ),
@@ -383,6 +393,9 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
   /// A Google locator, `place/{place id}` (DATA_CONTRACT.md rule 1.6).
   static const String _placePrefix = 'place/';
 
+  /// The findings that never change the disposition.
+  static const Set<String> _notedSeverities = <String>{'warning', 'info'};
+
   /// How one source bears on the value (G23), with where in the source. A
   /// Google record is named only by its place ID (G26). A source, relation
   /// or outcome this client does not know keeps the server's word.
@@ -462,6 +475,69 @@ class _Finding extends StatelessWidget {
                       ]
                       .where((String s) => s.isNotEmpty && s != 'Not recorded')
                       .join(' · '),
+                  style: ui.type.bodySmall.copyWith(
+                    color: ui.color.inkSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A warning or a note from the run's decision, attached to its field
+/// (UI.md T2.4). It never changes the disposition, so it takes the caution
+/// or the secondary tone rather than the error role, and it is not a live
+/// region: nothing about it happened just now.
+class _Noted extends StatelessWidget {
+  const _Noted({required this.finding});
+
+  final ThreadFinding finding;
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final bool warning = finding.severity == 'warning';
+    final Color tone = warning
+        ? ui.color.status.needsReview.content
+        : ui.color.inkSecondary;
+    final String words = vocabularyLabel(
+      finding.reasonCode ?? finding.ruleId ?? 'finding',
+    );
+    return Semantics(
+      container: true,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Padding(
+            padding: EdgeInsetsDirectional.only(top: ui.space.s1),
+            child: UiIcon(
+              warning ? UiIcons.needsReview : UiIcons.info,
+              size: UiIconSize.inline,
+              color: tone,
+            ),
+          ),
+          SizedBox(width: ui.space.s1),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                // A reason code read as words starts a sentence here.
+                Text(
+                  '${words[0].toUpperCase()}${words.substring(1)}',
+                  style: ui.type.bodySmall.copyWith(
+                    color: warning ? tone : ui.color.ink,
+                  ),
+                ),
+                Text(
+                  <String>[
+                    vocabularyLabel(finding.severity ?? 'finding'),
+                    ?finding.ruleId,
+                  ].join(' · '),
                   style: ui.type.bodySmall.copyWith(
                     color: ui.color.inkSecondary,
                   ),
