@@ -302,6 +302,8 @@ and the trace id".
   the thread the sentence names no amount. Cost appears nowhere else (the
   coordinator, 2026-09-23).
 
-"Open trace" is `url_launcher`'s `Link`, which the owner approved for it:
-on the web it is a real link that opens in a new tab, and elsewhere it
-opens the system browser.
+"Open trace" is `url_launcher`'s `Link`. The coordinator approved the
+dependency for it on 2026-09-23 (22:07 UTC, in the message confirming the
+four placements: "Adding `url_launcher` as a dependency for the real 'Open
+trace' link is fine"). On the web it is a real link that opens in a new
+tab, and elsewhere it opens the system browser.
