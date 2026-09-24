@@ -24,7 +24,9 @@ What it does, per locality:
 4. Collects the Field Museum's own published georeferences for records whose
    locality names the feature (GBIF occurrence search, facet then exact
    locality strings).
-5. Checks each candidate point's GADM containment (GBIF reverse geocoder) and
+5. Checks each candidate point's containment through GBIF's reverse geocoder,
+   which reads GADM (research only: the tool uses geoBoundaries and never GADM,
+   PLAN 4.8), and
    its SRTM elevation (OpenTopoData) against the label elevation, and samples
    an elevation transect along a slope direction ("E. slope").
 
