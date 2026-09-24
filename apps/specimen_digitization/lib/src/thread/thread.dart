@@ -149,6 +149,11 @@ class ThreadRun extends _View {
   String? get nextRetryAt => _t('next_retry_at');
   String? get profileKey => _text(_map('profile')['key']);
   String? get profileVersion => _text(_map('profile')['version']);
+
+  /// The program's model allowance in micro-dollars, from S3's G30 record,
+  /// or null when the run does not carry it (S5 adds it to #88's section 8
+  /// after `6b97508`).
+  int? get allowanceMicros => _int(_map('allowance')['allowance_micros']);
 }
 
 /// The run's Logfire trace.

@@ -4,18 +4,24 @@
 /// plain words with the next retry time. Open, it lists the attempts, the
 /// usage as labelled values with units, and only the run actions the server
 /// permits. A measurement the server did not record is never rendered as
-/// zero, and an action the server forbids is never rendered at all.
+/// zero, and an action the server forbids is never rendered at all. From the
+/// thread it names where the run came from: the run, its profile, the
+/// policy, and the trace with "Open trace" (UI.md T2.5).
 library;
 
+import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
+import 'package:url_launcher/link.dart';
 
 import 'administrator_contact.dart';
 import 'models.dart';
 import 'review_context.dart';
 import 'screens/workbench/moments.dart';
+import 'thread/thread.dart';
 import 'vocabulary.dart';
 import 'widgets/widgets.dart';
 
@@ -47,12 +53,16 @@ class ProcessingDisclosure extends StatelessWidget {
     required this.canOperate,
     required this.busy,
     required this.onAction,
+    this.thread,
   });
 
   final Specimen specimen;
   final bool canOperate;
   final bool busy;
   final Future<void> Function(Json) onAction;
+
+  /// The run's thread, when it has loaded (UI.md T2.5).
+  final SpecimenThread? thread;
 
   /// The disclosure's own title, fixed so the strip and its tests agree.
   static const String title = 'Processing';
@@ -88,6 +98,7 @@ class ProcessingDisclosure extends StatelessWidget {
         canOperate: canOperate,
         busy: busy,
         onAction: onAction,
+        thread: thread,
       ),
     );
   }
@@ -101,12 +112,49 @@ class ProcessingDetail extends StatelessWidget {
     required this.canOperate,
     required this.busy,
     required this.onAction,
+    this.thread,
   });
 
   final Specimen specimen;
   final bool canOperate;
   final bool busy;
   final Future<void> Function(Json) onAction;
+
+  /// The run's thread, which names where the run came from (UI.md T2.5).
+  final SpecimenThread? thread;
+
+  /// The labels of the run's provenance.
+  static const String runLabel = 'Run';
+  static const String profileLabel = 'Profile';
+  static const String policyLabel = 'Policy';
+  static const String traceLabel = 'Trace';
+
+  /// The control that opens the run's trace in Logfire.
+  static const String openTraceLabel = 'Open trace';
+
+  /// What the control that copies the trace id is called.
+  static const String copyTraceLabel = 'Copy the trace ID';
+
+  /// What the toast says once the trace id is on the clipboard.
+  static const String traceCopiedMessage = 'Trace ID copied';
+
+  /// A run that recorded no trace.
+  static const String noTrace = 'No trace recorded';
+
+  /// The blocker of a run stopped by the program's spent allowance (G30).
+  static const String allowanceBlocker = 'program_allowance_exhausted';
+
+  /// That run's plain words: the allowance, with the amount the thread
+  /// records, is spent, and processing resumes when the owner raises it
+  /// (the coordinator's wording, 2026-09-23). Without an amount, none is
+  /// named.
+  static String allowanceSpent(int? micros) {
+    final String allowance = micros == null
+        ? 'The model allowance'
+        : 'The USD ${(micros / 1000000).toStringAsFixed(2)} model allowance';
+    return '$allowance for this program is spent. '
+        'Processing resumes when the owner raises it.';
+  }
 
   Future<void> _confirm(
     BuildContext context,
@@ -190,6 +238,13 @@ class ProcessingDetail extends StatelessWidget {
           ),
           const AdministratorContactLine(),
         ],
+        if (blocker == allowanceBlocker) ...<Widget>[
+          Text(
+            allowanceSpent(thread?.run.allowanceMicros),
+            style: ui.type.body,
+          ),
+          const AdministratorContactLine(),
+        ],
         if (run['next_retry_at'] != null)
           _Measurement(
             label: 'Next scheduled retry',
@@ -212,6 +267,7 @@ class ProcessingDetail extends StatelessWidget {
             style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
           ),
         ],
+        if (thread case final SpecimenThread loaded) ..._provenance(ui, loaded),
         if (attempts.isNotEmpty) ...<Widget>[
           SizedBox(height: ui.space.s2),
           Text('Attempts', style: ui.type.label),
@@ -285,6 +341,29 @@ class ProcessingDetail extends StatelessWidget {
           _runActions(context, actions, run, activeLease: activeLease),
       ],
     );
+  }
+
+  /// Where the run came from: the run, its profile and version, the policy
+  /// the queue decided under, and its trace (UI.md T2.5). A part the thread
+  /// does not carry is left out rather than drawn empty.
+  static List<Widget> _provenance(UiThemeData ui, SpecimenThread thread) {
+    final ThreadRun run = thread.run;
+    final String? profile = switch (run.profileKey) {
+      final String key => <String>[
+        vocabularyLabel(key),
+        ?run.profileVersion,
+      ].join(' '),
+      null => null,
+    };
+    return <Widget>[
+      SizedBox(height: ui.space.s2),
+      if (run.runId case final String id)
+        _Measurement(label: runLabel, value: id),
+      if (profile != null) _Measurement(label: profileLabel, value: profile),
+      if (thread.decision?.policyVersion case final String policy)
+        _Measurement(label: policyLabel, value: policy),
+      _TraceLine(trace: thread.trace),
+    ];
   }
 
   /// The permitted run actions, arranged by `UiButtonRow`.
@@ -418,6 +497,74 @@ class _Measurement extends StatelessWidget {
   }
 }
 
+/// The run's trace: its id, which can be copied, and "Open trace", a link to
+/// it in Logfire (UI.md T2.5). The model keeps the address only when it is
+/// an absolute https URL, so nothing else the payload carries becomes a
+/// link. A trace id without an address is still named, and a run with
+/// neither says so.
+class _TraceLine extends StatelessWidget {
+  const _TraceLine({required this.trace});
+
+  final ThreadTrace trace;
+
+  Future<void> _copy(BuildContext context, String id) async {
+    await Clipboard.setData(ClipboardData(text: id));
+    if (!context.mounted) return;
+    UiToasts.show(
+      context,
+      message: ProcessingDetail.traceCopiedMessage,
+      icon: UiIcons.copy,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final String? id = trace.traceId;
+    final Uri? url = trace.url;
+    final TextStyle secondary = ui.type.bodySmall.copyWith(
+      color: ui.color.inkSecondary,
+    );
+    return Padding(
+      padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s1),
+      child: id == null && url == null
+          ? Text(ProcessingDetail.noTrace, style: secondary)
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(ProcessingDetail.traceLabel, style: secondary),
+                if (id != null)
+                  Row(
+                    children: <Widget>[
+                      Expanded(child: Text(id, style: ui.type.mono.identifier)),
+                      UiIconButton(
+                        icon: UiIcons.copy,
+                        semanticsLabel: ProcessingDetail.copyTraceLabel,
+                        tooltip: ProcessingDetail.copyTraceLabel,
+                        onPressed: () => unawaited(_copy(context, id)),
+                      ),
+                    ],
+                  ),
+                if (url != null)
+                  // A real link on the web, opening in a new tab; the system
+                  // browser elsewhere.
+                  Link(
+                    uri: url,
+                    target: LinkTarget.blank,
+                    builder: (BuildContext context, FollowLink? follow) =>
+                        UiButton(
+                          label: ProcessingDetail.openTraceLabel,
+                          variant: UiButtonVariant.secondary,
+                          onPressed: follow,
+                        ),
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
 /// The processing card, as the large record fallback still shows it.
 class OperationalPanel extends StatelessWidget {
   const OperationalPanel({
@@ -426,11 +573,15 @@ class OperationalPanel extends StatelessWidget {
     required this.canOperate,
     required this.busy,
     required this.onAction,
+    this.thread,
   });
 
   final Specimen specimen;
   final bool canOperate, busy;
   final Future<void> Function(Json) onAction;
+
+  /// The run's thread, when it has loaded (UI.md T2.5).
+  final SpecimenThread? thread;
 
   /// The pane's own heading.
   static const String heading = 'Processing and recovery';
@@ -465,6 +616,7 @@ class OperationalPanel extends StatelessWidget {
             canOperate: canOperate,
             busy: busy,
             onAction: onAction,
+            thread: thread,
           ),
         ],
       ),

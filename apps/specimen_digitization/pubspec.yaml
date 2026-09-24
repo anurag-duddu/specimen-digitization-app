@@ -58,6 +58,11 @@ dependencies:
   # Pinned: 17.5.0 is the last go_router that resolves on Flutter 3.38.5
   # and Dart 3.10.4. Newer majors raise the Flutter floor.
   go_router: 17.5.0
+  # "Open trace" in the Processing disclosure (UI.md T2.5), approved by the
+  # owner for it: its `Link` is a real link on the web, opening in a new tab,
+  # and opens the system browser elsewhere. Only an https address the
+  # thread supplies is ever handed to it.
+  url_launcher: ^6.3.2
 
 # firebase_core_web 3.11.0 requires a JS interop API not available in the
 # repository's Flutter 3.38 / Dart 3.10 toolchain. Remove this override after
