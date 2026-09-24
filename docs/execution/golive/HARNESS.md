@@ -224,9 +224,12 @@ rule 1.6).
 result without `partial_match` is `success`; a partial match or several results
 is `ambiguous`; `ZERO_RESULTS` is `no_match`. Per field, a success needs every
 literal of the field to equal, after folding (case, accents, punctuation and
-label notations such as "Prov.", G29), the name of an address component at one
-of the field's levels, or a name the profile's aliases give for it ("P.I." as
-the Philippines); otherwise that field is `no_match`. `precise_location` is
+label notations such as "Prov."), the name of an address component at one of
+the field's levels, or a name the profile's aliases give for it ("P.I." as the
+Philippines); otherwise that field is `no_match`. The folding and the aliases
+are G29 applied to places: PLAN's G29 row makes it the harness's principle to
+work through every reading a notation allows, "for dates and for every other
+field", from the harness knowledge each subcollection's profile carries. `precise_location` is
 never replaced and is not compared: it holds only when at least one sibling
 field matched and none contradicted the result; otherwise it is `ambiguous`, so
 a result in the wrong place (Denali for a Mindanao label) never vouches for it.
