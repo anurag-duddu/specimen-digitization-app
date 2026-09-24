@@ -9,10 +9,20 @@ approved one fresh bounded setup window with exactly three IAM effects:
    and ``firebasedataconnect.services.executeGraphqlRead``;
 2. grant it at project scope to the existing DATA release identity for at most
    two hours;
-3. renew only the 18 timestamps in the nine existing conditional DATA and
-   restore-claim bindings, preserving every other permission, member and
-   resource predicate. Initializer, disposal and ordinary access expire 75, 115
-   and 120 minutes after the window opens.
+3. renew only the timestamps in the existing conditional DATA and restore-claim
+   bindings, preserving every other permission, member and resource predicate.
+   Initializer, disposal and ordinary access expire 75, 115 and 120 minutes
+   after the window opens.
+
+The amendment's note of 2026-09-23 (G11; docs/execution/golive/RELEASE.md
+section 1) made ``specimenDataSchemaPublish``, ``specimenDataStorageRules`` and
+``specimenDataSourceBackup`` standing, beside the two inventory roles. Effect 3
+therefore renews the 12 timestamps in the six bindings of the roles that stay
+time-bounded. Every standing binding is carried through unchanged, never
+renewed, revoked or refused. The window refuses an untimed binding of any role
+it manages and prints how to revoke it, and it renews a binding only when the
+text after its two time bounds is exactly its role's live resource predicate
+(``PREDICATES``), so nothing appended can make it outlast them.
 
 ``plan`` reads the live project policy (one read) and records an exact action
 packet bound to the policy's etag; nothing changes. ``execute`` re-reads the
@@ -31,6 +41,7 @@ import copy
 import json
 from pathlib import Path
 import re
+import shlex
 import shutil
 import sys
 import tempfile
@@ -41,6 +52,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from owner_gcloud import (Gcloud, STAMP, canonical, durable_write, parse_stamp,  # noqa: E402
                           sha256_bytes, stamp)
 from release_admission import private_bytes, require, strict_json  # noqa: E402
+from release_clone import BUCKET, CLONE, KEY, SOURCE  # noqa: E402
 from release_context import PROJECT  # noqa: E402
 
 SCHEMA = "data-setup-window/v1"
@@ -51,7 +63,10 @@ REQUEST_CEILING = 187
 PLANNED_REQUESTS = 6
 DATA_IDENTITY = f"serviceAccount:specimen-data-release@{PROJECT}.iam.gserviceaccount.com"
 INITIALIZER_IDENTITY = f"serviceAccount:specimen-data-initialize@{PROJECT}.iam.gserviceaccount.com"
-# Role id, its single approved member, and the minutes of access after the window opens.
+# Role id, its single approved member, and the minutes of access after the window opens: only the roles that stay
+# time-bounded (docs/execution/golive/RELEASE.md section 1). The standing data-release roles are never renewed, revoked
+# or refused here: specimenDataSchemaPublish, specimenDataStorageRules and specimenDataSourceBackup since G11, and
+# specimenDataInventorySqlConnect and specimenDataInventoryProjectRead with their conditions unchanged.
 RENEWALS = (
     ("specimenDataInitializeTemporary", INITIALIZER_IDENTITY, 75),
     ("specimenDataInitializerDisposal", DATA_IDENTITY, 115),
@@ -59,10 +74,20 @@ RENEWALS = (
     ("specimenDataCloneCreate", DATA_IDENTITY, 120),
     ("specimenDataRestoreAllowanceClaim", DATA_IDENTITY, 120),
     ("specimenDataRuntimeAbsence", DATA_IDENTITY, 120),
-    ("specimenDataSchemaPublish", DATA_IDENTITY, 120),
-    ("specimenDataSourceBackup", DATA_IDENTITY, 120),
-    ("specimenDataStorageRules", DATA_IDENTITY, 120),
 )
+# Each renewed role's exact text after its two time bounds, as its live binding carries it (read on 2026-09-23). A
+# renewal requires it exactly: CEL binds && tighter than || and ?:, so anything appended, such as `|| true`, could
+# outlast the time bounds. The initializer's and disposal's predicates hold a parenthesized || of their own.
+SQL_INSTANCE = "resource.service == 'sqladmin.googleapis.com' && resource.type == 'sqladmin.googleapis.com/Instance'"
+ON_SOURCE, ON_CLONE = (f"resource.name == 'projects/{PROJECT}/instances/{name}'" for name in (SOURCE, CLONE))
+PREDICATES = {
+    "specimenDataInitializeTemporary": f" && {SQL_INSTANCE} && ({ON_SOURCE} || {ON_CLONE})",
+    "specimenDataInitializerDisposal": f" && {SQL_INSTANCE} && ({ON_SOURCE} || {ON_CLONE})",
+    "specimenDataCloneControl": f" && {SQL_INSTANCE} && ({ON_CLONE})",
+    "specimenDataCloneCreate": f" && {SQL_INSTANCE} && ({ON_CLONE})",
+    "specimenDataRestoreAllowanceClaim": f" && resource.name == 'projects/_/buckets/{BUCKET}/objects/{KEY}'",
+    "specimenDataRuntimeAbsence": "",
+}
 BOOTSTRAP_ROLE_ID = "specimenDataOwnerBootstrap"
 BOOTSTRAP_ROLE = f"projects/{PROJECT}/roles/{BOOTSTRAP_ROLE_ID}"
 BOOTSTRAP_PERMISSIONS = ("firebaseauth.users.get",
@@ -70,6 +95,8 @@ BOOTSTRAP_PERMISSIONS = ("firebaseauth.users.get",
                          "firebasedataconnect.services.executeGraphqlRead")
 BOOTSTRAP_MINUTES = 120
 BOOTSTRAP_TITLE = "specimen_owner_bootstrap_window"
+# Every role the window manages, each only ever granted for a bounded time: the renewals and the bootstrap grant.
+MANAGED_ROLES = (*(f"projects/{PROJECT}/roles/{role_id}" for role_id, _, _ in RENEWALS), BOOTSTRAP_ROLE)
 TIME_CONDITION = re.compile(
     rf"request\.time >= timestamp\('(?P<start>{STAMP})'\) && "
     rf"request\.time < timestamp\('(?P<end>{STAMP})'\)(?P<rest>.*)", re.DOTALL)
@@ -111,8 +138,35 @@ def binding_multiset(policy: dict) -> list[str]:
     return sorted(canonical(binding) for binding in policy.get("bindings", []))
 
 
+def untimed_revocations(bindings: list[dict]) -> list[str]:
+    """How to revoke each binding of a managed role that carries no time bound, one line per member.
+
+    Such a binding is a standing grant the invariants forbid (golive/RELEASE.md section 1). The exact command is
+    printed for an unconditional binding of the window's own identities; a condition's text and any other member's
+    id are never printed, only that the binding is to be removed.
+    """
+    lines = []
+    for binding in bindings:
+        condition = binding.get("condition")
+        if binding.get("role") not in MANAGED_ROLES or (
+                isinstance(condition, dict) and "request.time" in str(condition.get("expression"))):
+            continue
+        members = binding.get("members")
+        for member in members if isinstance(members, list) and members else [None]:
+            known = member in (DATA_IDENTITY, INITIALIZER_IDENTITY)
+            if condition is None and known:
+                lines.append(shlex.join(["gcloud", "projects", "remove-iam-policy-binding", PROJECT,
+                                         f"--member={member}", f"--role={binding['role']}", "--condition=None"]))
+                continue
+            held = "" if condition is None else ("; its binding has a condition without request.time, "
+                                                 "whose text is not printed")
+            who = member if known else "a member whose id is not printed"
+            lines.append(f"- remove {binding['role']} for {who} on project {PROJECT}{held}")
+    return lines
+
+
 def renewed_policy(policy: dict, start: int) -> tuple[dict, list[dict]]:
-    """The exact after-policy: nine renewed conditions plus the one bootstrap grant."""
+    """The exact after-policy: the six time-bounded conditions renewed plus the one bootstrap grant."""
     require(isinstance(policy, dict) and policy.get("version") == 3
             and isinstance(policy.get("etag"), str) and policy["etag"]
             and set(policy) <= {"version", "etag", "bindings", "auditConfigs"},
@@ -120,6 +174,10 @@ def renewed_policy(policy: dict, start: int) -> tuple[dict, list[dict]]:
     after = copy.deepcopy(policy)
     bindings = after.get("bindings")
     require(isinstance(bindings, list) and all(isinstance(b, dict) for b in bindings), "policy bindings required")
+    revocations = untimed_revocations(bindings)
+    require(not revocations, "a role this window manages has an untimed binding, a standing grant outside the "
+            "approved time-bound shape; revoke each, then plan again:\n"
+            + "\n".join(f"  {line}" for line in revocations))
     require(all(b.get("role") != BOOTSTRAP_ROLE for b in bindings),
             "the bootstrap role is already bound; reconcile by hand, never replay")
     changes = []
@@ -134,7 +192,7 @@ def renewed_policy(policy: dict, start: int) -> tuple[dict, list[dict]]:
                 and all(isinstance(condition[key], str) for key in condition),
                 f"{role_id} must carry a titled, described condition")
         match = TIME_CONDITION.fullmatch(condition["expression"])
-        require(match is not None and (match["rest"] == "" or match["rest"].startswith(" && ")),
+        require(match is not None and match["rest"] == PREDICATES.get(role_id),
                 f"{role_id} condition is not the approved time-bound shape")
         renewed = time_bound(start, minutes) + match["rest"]
         changes.append({"role": role, "member": member, "minutes": minutes,
@@ -146,7 +204,7 @@ def renewed_policy(policy: dict, start: int) -> tuple[dict, list[dict]]:
 
 def plan(policy: dict, start: int, now: float) -> dict:
     after, changes = renewed_policy(policy, start)
-    require(len(changes) == len(RENEWALS), "nine renewed bindings required")
+    require(len(changes) == len(RENEWALS), "one renewed binding per time-bounded role required")
     return {
         "schema": SCHEMA, "project": PROJECT, "authority": AUTHORITY, "planned_at": stamp(now),
         "window": {"start": stamp(start), "start_unix": start, "seconds": WINDOW_SECONDS,
