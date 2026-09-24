@@ -86,12 +86,13 @@ For each head SHA you have not reviewed:
    the owning session with the excerpt.
 5. **Merge** when all of these hold: required checks green on the current head;
    the swarm for that head approved with no open blocking finding; the branch
-   is up to date with `main`; dependencies merged; `~/specimen-golive/MERGE_ORDER.md`
-   does not hold it. Then `gh pr merge N --merge` (a merge commit keeps the red
+   is up to date with `main`; dependencies merged; a change to a file another
+   session owns carries that session's sign-off comment (PLAN section 6);
+   `~/specimen-golive/MERGE_ORDER.md` does not hold it. Then `gh pr merge N --merge` (a merge commit keeps the red
    and green commits visible). Merge one PR at a time. Auto-merge stays off
-   (G17), and the owner is switching the repository's "Allow auto-merge" off
-   (G21). Until that is done, if you find it enabled on a go-live pull request,
-   tell the coordinator and leave the setting alone.
+   (G17), and the repository's "Allow auto-merge" is off (G21, done 2026-09-23).
+   If you find auto-merge enabled on a go-live pull request, report it to the
+   coordinator and leave the setting alone.
 6. **After each merge**, watch the push-to-`main` runs for the merge commit:
    CI/CD (Hosting deploy and public marker check) and Runtime candidate CI, and,
    once the release workstream's auto-deploy PRs have merged, the data and
