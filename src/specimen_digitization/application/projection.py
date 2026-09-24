@@ -424,6 +424,28 @@ def _first_pass(
 def _evidence(run: Run, asset) -> list[Write]:
     """Lookups and evidence with a stored response; the rest stay in the snapshot."""
     result = []
+    coverage = getattr(run, "coverage_check", None) or {}
+    if coverage.get("evidence_ref") and coverage.get("evidence_sha256"):
+        # G15's check, recorded evidence of its own (section 2).
+        version = str(coverage.get("version") or "unversioned")
+        result.append(
+            _write(
+                "AppendEvidenceItemV2",
+                {
+                    "id": derived_id("coverage", run.id, coverage["evidence_sha256"]),
+                    "runId": run.id,
+                    "source": "label-coverage-check",
+                    "sourceVersion": version,
+                    "adapterVersion": version,
+                    "query": {},
+                    "outcome": "recorded",
+                    "locator": f"coverage/{version}",
+                    "responseSha256": coverage["evidence_sha256"],
+                    "capturedAt": coverage.get("checked_at"),
+                    "rawAssetId": asset(coverage["evidence_ref"], "evidence_record"),
+                },
+            )
+        )
     for found in run.lookups:
         if not (found.raw_ref and found.digest):
             continue
@@ -512,15 +534,36 @@ def _derivation(value, relations: dict) -> str:
     return "parsed" if value.parsed else "literal"
 
 
+def _evidence_sources(run: Run) -> dict:
+    """The source each evidence's tool call ran on: a reading, or a region's decided transcript."""
+    made = {}
+    for record in getattr(run, "tool_calls", None) or []:
+        if record.evidence_id:
+            made[record.evidence_id] = (
+                ("raw", record.observation_id)
+                if record.input_source == "raw_reading"
+                else ("decided", record.region_id)
+            )
+    return made
+
+
 def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[Write]:
-    """A candidate per verbatim value; the settling one carries the value and evidence."""
+    """A candidate per verbatim value; the settled ones carry the value and evidence."""
     result = []
+    regions = {o.id: o.region_id for o in run.observations}
+    made_by = _evidence_sources(run)
     for key, value in run.fields.items():
         verbatim = getattr(value, "verbatim_by_observation", None) or {}
         source = getattr(value, "input_source", None)
+        settled: set = set()
         if verbatim:
-            # G27, G28: no reading was selected, so each reader's literal is kept.
-            entries = [(text, "raw_reading", reading) for reading, text in verbatim.items()]
+            # G27, G28, G32: each reader's, or each label's, verbatim is kept as written.
+            sources = getattr(value, "input_source_by_observation", None) or {}
+            settled = set(getattr(value, "settled_observation_ids", None) or [])
+            entries = [
+                (text, sources.get(reading, "raw_reading"), reading)
+                for reading, text in verbatim.items()
+            ]
         elif value.literal is not None:
             reading = getattr(value, "source_observation_id", None)
             entries = [(value.literal, source, reading if source == "raw_reading" else None)]
@@ -536,14 +579,22 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[
         )
         relations = getattr(value, "evidence_relations", None) or {}
         content = digest(value.model_dump(mode="json"))
-        # With no pick, the settled value belongs to the reader a lookup confirmed (G20).
-        confirmed = getattr(value, "source_observation_id", None) if verbatim else None
         candidates[key] = None
         for text, entry_source, reading in entries:
             candidate = derived_id("candidate", run.id, key, reading or "-", content)
-            settles = not verbatim or (confirmed is not None and reading == confirmed)
-            if settles:
+            # With a verbatim map, only the entries that settled carry the value (G20, G32).
+            settles = not verbatim or reading in settled
+            if settles and candidates[key] is None:
                 candidates[key] = candidate
+            decided = entry_source == "decided_transcript"
+            if verbatim:
+                own = ("decided", regions.get(reading)) if decided else ("raw", reading)
+                transcription = decisions.get(regions.get(reading)) if decided else None
+                observation = None if decided else reading
+            else:
+                own = None
+                transcription = decisions.get(region) if decided else None
+                observation = reading
             result.append(
                 _write(
                     "AppendFieldCandidateV2",
@@ -558,10 +609,8 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[
                         "authorityId": value.authority_id if settles else None,
                         "derivation": _derivation(value, relations) if settles else "literal",
                         "inputSource": entry_source,
-                        "sourceTranscriptionId": decisions.get(region)
-                        if entry_source == "decided_transcript"
-                        else None,
-                        "sourceObservationId": reading,
+                        "sourceTranscriptionId": transcription,
+                        "sourceObservationId": observation,
                     },
                 )
             )
@@ -569,7 +618,9 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[
                 continue
             for evidence in value.evidence_ids:
                 # Only a success or recorded evidence, and only with its relation: no default (G23).
-                if evidence in linkable and relations.get(evidence):
+                # Of several settled entries, each links the evidence its own tool call made.
+                mine = own is None or made_by.get(evidence, own) == own
+                if evidence in linkable and relations.get(evidence) and mine:
                     result.append(
                         _write(
                             "AppendCandidateEvidenceV2",
