@@ -12089,6 +12089,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (3) A green step that adds a key to a response entry breaks every test that compares a whole entry. Put the key in those expectations in the red step.
 - Open questions and follow-ups:
   - The entry above's remaining ones stand: a compacted previous run answers 404; a superseded run's status; a lost final projection pass; `Run.paid_calls` is not in S3's code yet; the release must set `SPECIMEN_TRACE_URL_TEMPLATE`.
+- Correction (2026-09-24, when the stack opened as PRs): T3 was rebased once more, onto T2c's `e6c169a`, and then merged with T2b-1, T2b-2 and T2c (`8a6ae5b`), so the ids above name commits that no longer exist. The same commits are now: `01e21ec`, `38c3da9` and `23113e7` (the API, red and green, and its closeout); `2e099f4` and `eb0380a` (G32's settled readings); `7eea233` and `386c417` (`8ebd25da`'s writer and G32 fields); `9daeab9` and `ab29a66` (the reviewer's decision); `26a339a` and `c6fde95` (`0f3acca`'s settle and link rules); `792b7e8` (the emulator checks); `7041f03` (closeout update); `6d4c77a` and `e5336ed` (`b6a6226`'s settle rule, credentials and layers); `7ca5e1f` (closeout); `4953c60` (the fingerprint refresh); `d2c3ab5` and `b02fff9` (T2c's derived values, identities, review calls and G45); `036bdc3` (closeout); this correction.
 
 ### 2026-09-24 — Go-live projection writer, stages 6 to 8 (S5 T2b-1)
 
