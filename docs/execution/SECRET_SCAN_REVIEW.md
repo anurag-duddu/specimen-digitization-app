@@ -306,7 +306,7 @@ introduced.
 
 Gitleaks 8.30.1 then flags the new `hashed_secret` scanner metadata lines. Three
 identifiers, `21278b4f11c26d6df13314ba601efef30119af89`,
-`3f19f60f95fe1e39ff47bf9b038d8950aca1aeca` and
+`c6868c3eb8b0c137d07d184b825898dda1b70331` and
 `e4821d76810cd204eae742b9b97cc318fcda8ad9`, were appended to the existing
 rule-local AND exception for the release plan template fingerprints. Each was
 independently confirmed to be SHA-1 of the new digest of one of those three
