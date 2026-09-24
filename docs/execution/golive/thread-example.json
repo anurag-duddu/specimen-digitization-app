@@ -1,0 +1,579 @@
+{
+  "specimen_id": "00000000-0000-4000-8000-000000000003",
+  "revision": 12,
+  "run": {
+    "run_id": "00000000-0000-4000-8000-000000000002",
+    "status": "completed",
+    "stage": "finalized",
+    "blocker": null,
+    "next_retry_at": null,
+    "profile": {
+      "key": "zoology_insects_slides",
+      "version": "1.0.0"
+    },
+    "allowance": {
+      "allowance_micros": 5000000,
+      "reserved_total_micros": 60000,
+      "remaining_micros": 4940000,
+      "at": "2026-09-23T12:02:00+00:00"
+    },
+    "paid_calls": [
+      {
+        "step": "transcribe:00000000-0000-4000-8000-000000000010:handwriting-qwen",
+        "attempt": 1,
+        "reserved_micros": 20000,
+        "usage": {
+          "input_tokens": 1200,
+          "output_tokens": 40
+        },
+        "outcome": "validated_output",
+        "cost_micros": 2600,
+        "cost_basis": "computed",
+        "price_list": {
+          "version": "prices-v1",
+          "as_of": "2026-09-01"
+        }
+      },
+      {
+        "step": "transcribe:00000000-0000-4000-8000-000000000011:handwriting-qwen",
+        "attempt": 1,
+        "reserved_micros": 20000,
+        "usage": {
+          "input_tokens": 1180,
+          "output_tokens": 38
+        },
+        "outcome": "validated_output",
+        "cost_micros": 2600,
+        "cost_basis": "computed",
+        "price_list": {
+          "version": "prices-v1",
+          "as_of": "2026-09-01"
+        }
+      }
+    ],
+    "actual_cost_micros": 5200
+  },
+  "trace": {
+    "trace_id": "0af70af70af70af70af70af70af70af7",
+    "url": "https://logfire.example.test/trace/0af70af70af70af70af70af70af70af7"
+  },
+  "image": {
+    "asset_id": "00000000-0000-4000-8000-000000000001",
+    "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "width": 4000,
+    "height": 3000,
+    "pixel_basis": "original_pixel_edges"
+  },
+  "segmentation": {
+    "model_revision": "sam3-fixture-revision",
+    "settings": {
+      "prompt": "label",
+      "parameters": {
+        "label_threshold": 0.5
+      }
+    }
+  },
+  "coverage_check": {
+    "status": "passed",
+    "checks": [
+      {
+        "name": "region_count",
+        "passed": true,
+        "detail": {
+          "found": 2,
+          "min": 1,
+          "max": 3,
+          "reason_codes": []
+        }
+      },
+      {
+        "name": "full_image",
+        "passed": true,
+        "detail": {
+          "counted": 2,
+          "outside": 0,
+          "threshold": 0.5,
+          "min_inside_fraction": 0.5,
+          "reason_codes": []
+        }
+      }
+    ],
+    "evidence_id": "00000000-0000-4000-8000-000000000034",
+    "checked_at": "2026-09-23T12:01:00+00:00"
+  },
+  "regions": [
+    {
+      "region_id": "00000000-0000-4000-8000-000000000010",
+      "ordinal": 0,
+      "rotation_quarter_turns": 0,
+      "geometry": {
+        "x": 180,
+        "y": 1210,
+        "width": 1320,
+        "height": 640
+      },
+      "readings": [
+        {
+          "observation_id": "00000000-0000-4000-8000-000000000020",
+          "route_id": "handwriting-qwen",
+          "model": "model/handwriting-qwen",
+          "provider": "fixture-provider",
+          "prompt_version": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+          "literal_text": "Chicago, Ill. VII-46 Cook Co.",
+          "unreadable_spans": [],
+          "outcome": "validated_output",
+          "raw_response": {
+            "asset_id": "44b12726-63af-5e2d-9e21-eae105c60853",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        },
+        {
+          "observation_id": "00000000-0000-4000-8000-000000000021",
+          "route_id": "handwriting-muse",
+          "model": "model/handwriting-muse",
+          "provider": "fixture-provider",
+          "prompt_version": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+          "literal_text": "Chicago, Il1. VII-46 Cook Co.",
+          "unreadable_spans": [
+            "Il1."
+          ],
+          "outcome": "validated_output",
+          "raw_response": {
+            "asset_id": "df298f3e-58f2-51a4-aed7-11af44d386df",
+            "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          }
+        }
+      ],
+      "comparisons": [
+        {
+          "left_observation_id": "00000000-0000-4000-8000-000000000020",
+          "right_observation_id": "00000000-0000-4000-8000-000000000021",
+          "algorithm": "bounded-levenshtein-fraction-v1",
+          "ratio": 0.034482758620689655,
+          "edit_distance": 1,
+          "length_basis": 29,
+          "status": "difference",
+          "reasons": [
+            "one_substitution"
+          ],
+          "calibration": "uncalibrated review priority"
+        }
+      ],
+      "first_pass": {
+        "decision_kind": "first_pass",
+        "selected_observation_id": "00000000-0000-4000-8000-000000000020",
+        "decided_text": "Chicago, Ill. VII-46 Cook Co.",
+        "unresolved": false,
+        "rationale": "The crop shows a lowercase l.",
+        "model_call": {
+          "observation_id": "00000000-0000-4000-8000-000000000024",
+          "route_id": "first-pass",
+          "model": "model/first-pass",
+          "provider": "fixture-provider",
+          "prompt_version": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+          "outcome": "validated_output",
+          "raw_response": {
+            "asset_id": "6e7e1ecb-b16c-5314-a3ec-22fc5473b35f",
+            "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          }
+        },
+        "handoffs": [
+          {
+            "observation_id": "00000000-0000-4000-8000-000000000020",
+            "role": "decided_transcript",
+            "handed_text": "Chicago, Ill. VII-46 Cook Co.",
+            "note": null
+          }
+        ]
+      }
+    },
+    {
+      "region_id": "00000000-0000-4000-8000-000000000011",
+      "ordinal": 1,
+      "rotation_quarter_turns": 1,
+      "geometry": {
+        "x": 2480,
+        "y": 1190,
+        "width": 1360,
+        "height": 700
+      },
+      "readings": [
+        {
+          "observation_id": "00000000-0000-4000-8000-000000000022",
+          "route_id": "handwriting-qwen",
+          "model": "model/handwriting-qwen",
+          "provider": "fixture-provider",
+          "prompt_version": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+          "literal_text": "Aedes aegypti L.",
+          "unreadable_spans": [],
+          "outcome": "validated_output",
+          "raw_response": {
+            "asset_id": "4a5f2e3d-3be5-5157-ad64-05557e4c0072",
+            "sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+          }
+        },
+        {
+          "observation_id": "00000000-0000-4000-8000-000000000023",
+          "route_id": "handwriting-muse",
+          "model": "model/handwriting-muse",
+          "provider": "fixture-provider",
+          "prompt_version": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+          "literal_text": "Aedes aegypti Linn.",
+          "unreadable_spans": [],
+          "outcome": "validated_output",
+          "raw_response": {
+            "asset_id": "e1461e5e-3405-57c0-bfa2-e6378c3deaa6",
+            "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+          }
+        }
+      ],
+      "comparisons": [
+        {
+          "left_observation_id": "00000000-0000-4000-8000-000000000022",
+          "right_observation_id": "00000000-0000-4000-8000-000000000023",
+          "algorithm": "bounded-levenshtein-fraction-v1",
+          "ratio": 0.15789473684210525,
+          "edit_distance": 3,
+          "length_basis": 19,
+          "status": "difference",
+          "reasons": [],
+          "calibration": "uncalibrated review priority"
+        }
+      ],
+      "first_pass": {
+        "decision_kind": "first_pass",
+        "selected_observation_id": null,
+        "decided_text": "",
+        "unresolved": true,
+        "rationale": "The authority abbreviation is L. or Linn.; the crop does not settle it.",
+        "model_call": {
+          "observation_id": "00000000-0000-4000-8000-000000000025",
+          "route_id": "first-pass",
+          "model": "model/first-pass",
+          "provider": "fixture-provider",
+          "prompt_version": "pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp",
+          "outcome": "validated_output",
+          "raw_response": {
+            "asset_id": "fe29e822-408a-5dd1-83e1-f42565885e5a",
+            "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
+          }
+        },
+        "handoffs": [
+          {
+            "observation_id": "00000000-0000-4000-8000-000000000022",
+            "role": "raw_reading",
+            "handed_text": "Aedes aegypti L.",
+            "note": "Reads the authority as L."
+          },
+          {
+            "observation_id": "00000000-0000-4000-8000-000000000023",
+            "role": "raw_reading",
+            "handed_text": "Aedes aegypti Linn.",
+            "note": "Reads the authority as Linn."
+          }
+        ]
+      }
+    }
+  ],
+  "tool_calls": [
+    {
+      "call_key": "lookup:geocode:decided_transcript:00000000-0000-4000-8000-000000000010:-:aa5e0a2682587409:1",
+      "phase": "lookup",
+      "tool": "geocode",
+      "tool_version": "geocode-1",
+      "source": "google-maps-geocoding",
+      "field_keys": [
+        "province_state",
+        "city"
+      ],
+      "input_source": "decided_transcript",
+      "region_id": "00000000-0000-4000-8000-000000000010",
+      "observation_id": null,
+      "attempt": 1,
+      "arguments": {
+        "query": "Chicago, Ill."
+      },
+      "outcome": "success",
+      "result": {
+        "candidates": [
+          {
+            "place_id": "fixture-place"
+          }
+        ]
+      },
+      "error": null,
+      "retry_after": null,
+      "evidence_id": "00000000-0000-4000-8000-000000000030",
+      "started_at": "2026-09-23T12:04:00.000000Z",
+      "completed_at": "2026-09-23T12:05:00.000000Z"
+    },
+    {
+      "call_key": "lookup:geocode:decided_transcript:00000000-0000-4000-8000-000000000010:-:7eec9f39d956b7d3:1",
+      "phase": "lookup",
+      "tool": "geocode",
+      "tool_version": "geocode-1",
+      "source": "google-maps-geocoding",
+      "field_keys": [
+        "county"
+      ],
+      "input_source": "decided_transcript",
+      "region_id": "00000000-0000-4000-8000-000000000010",
+      "observation_id": null,
+      "attempt": 1,
+      "arguments": {
+        "query": "Cook Co."
+      },
+      "outcome": "no_match",
+      "result": {
+        "candidates": []
+      },
+      "error": null,
+      "retry_after": null,
+      "evidence_id": "00000000-0000-4000-8000-000000000031",
+      "started_at": "2026-09-23T12:04:00.000000Z",
+      "completed_at": "2026-09-23T12:05:00.000000Z"
+    },
+    {
+      "call_key": "lookup:gbif:raw_reading:00000000-0000-4000-8000-000000000011:00000000-0000-4000-8000-000000000022:664d9b3ca44ab81e:1",
+      "phase": "lookup",
+      "tool": "gbif",
+      "tool_version": "gbif-1",
+      "source": "gbif",
+      "field_keys": [
+        "taxon"
+      ],
+      "input_source": "raw_reading",
+      "region_id": "00000000-0000-4000-8000-000000000011",
+      "observation_id": "00000000-0000-4000-8000-000000000022",
+      "attempt": 1,
+      "arguments": {
+        "name": "Aedes aegypti L."
+      },
+      "outcome": "success",
+      "result": {
+        "candidates": [
+          {
+            "usage_key": 1651891
+          }
+        ]
+      },
+      "error": null,
+      "retry_after": null,
+      "evidence_id": "00000000-0000-4000-8000-000000000032",
+      "started_at": "2026-09-23T12:04:00.000000Z",
+      "completed_at": "2026-09-23T12:05:00.000000Z"
+    },
+    {
+      "call_key": "lookup:catalogue-of-life:raw_reading:00000000-0000-4000-8000-000000000011:00000000-0000-4000-8000-000000000022:664d9b3ca44ab81e:1",
+      "phase": "lookup",
+      "tool": "catalogue-of-life",
+      "tool_version": "catalogue-of-life-1",
+      "source": "catalogue-of-life",
+      "field_keys": [
+        "taxon"
+      ],
+      "input_source": "raw_reading",
+      "region_id": "00000000-0000-4000-8000-000000000011",
+      "observation_id": "00000000-0000-4000-8000-000000000022",
+      "attempt": 1,
+      "arguments": {
+        "name": "Aedes aegypti L."
+      },
+      "outcome": "success",
+      "result": {
+        "candidates": [
+          {
+            "id": "fixture-col-taxon"
+          }
+        ]
+      },
+      "error": null,
+      "retry_after": null,
+      "evidence_id": "00000000-0000-4000-8000-000000000033",
+      "started_at": "2026-09-23T12:04:00.000000Z",
+      "completed_at": "2026-09-23T12:05:00.000000Z"
+    }
+  ],
+  "fields": [
+    {
+      "field_key": "province_state",
+      "group": "mandatory",
+      "state": "supported",
+      "verbatim": [
+        {
+          "text": "Ill.",
+          "input_source": "decided_transcript",
+          "region_id": "00000000-0000-4000-8000-000000000010",
+          "observation_id": null
+        }
+      ],
+      "parsed": null,
+      "precision": null,
+      "century_rule": null,
+      "normalized": null,
+      "authority_id": null,
+      "confirmed_observation_id": null,
+      "evidence": [
+        {
+          "evidence_id": "00000000-0000-4000-8000-000000000030",
+          "relation": "supports",
+          "source": "google-maps-geocoding",
+          "locator": "place/fixture-place",
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "field_key": "city",
+      "group": "mandatory",
+      "state": "supported",
+      "verbatim": [
+        {
+          "text": "Chicago",
+          "input_source": "decided_transcript",
+          "region_id": "00000000-0000-4000-8000-000000000010",
+          "observation_id": null
+        }
+      ],
+      "parsed": null,
+      "precision": null,
+      "century_rule": null,
+      "normalized": null,
+      "authority_id": "fixture-place",
+      "confirmed_observation_id": null,
+      "evidence": [
+        {
+          "evidence_id": "00000000-0000-4000-8000-000000000030",
+          "relation": "supports",
+          "source": "google-maps-geocoding",
+          "locator": "place/fixture-place",
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "field_key": "county",
+      "group": "mandatory",
+      "state": "unresolved",
+      "verbatim": [
+        {
+          "text": "Cook Co.",
+          "input_source": "decided_transcript",
+          "region_id": "00000000-0000-4000-8000-000000000010",
+          "observation_id": null
+        }
+      ],
+      "parsed": null,
+      "precision": null,
+      "century_rule": null,
+      "normalized": null,
+      "authority_id": null,
+      "confirmed_observation_id": null,
+      "evidence": []
+    },
+    {
+      "field_key": "date_visited_from",
+      "group": "mandatory",
+      "state": "supported",
+      "verbatim": [
+        {
+          "text": "VII-46",
+          "input_source": "decided_transcript",
+          "region_id": "00000000-0000-4000-8000-000000000010",
+          "observation_id": null
+        }
+      ],
+      "parsed": "1946-07",
+      "precision": "month",
+      "century_rule": "date-rules-v1:two_digit_year_century=1900",
+      "normalized": null,
+      "authority_id": null,
+      "confirmed_observation_id": null,
+      "evidence": []
+    },
+    {
+      "field_key": "taxon",
+      "group": "mandatory",
+      "state": "supported",
+      "verbatim": [
+        {
+          "text": "Aedes aegypti L.",
+          "input_source": "raw_reading",
+          "region_id": "00000000-0000-4000-8000-000000000011",
+          "observation_id": "00000000-0000-4000-8000-000000000022"
+        },
+        {
+          "text": "Aedes aegypti Linn.",
+          "input_source": "raw_reading",
+          "region_id": "00000000-0000-4000-8000-000000000011",
+          "observation_id": "00000000-0000-4000-8000-000000000023"
+        }
+      ],
+      "parsed": null,
+      "precision": null,
+      "century_rule": null,
+      "normalized": "Aedes aegypti",
+      "authority_id": "gbif:1651891",
+      "confirmed_observation_id": "00000000-0000-4000-8000-000000000022",
+      "evidence": [
+        {
+          "evidence_id": "00000000-0000-4000-8000-000000000032",
+          "relation": "decides",
+          "source": "gbif",
+          "locator": "gbif/species/1651891",
+          "outcome": "success"
+        },
+        {
+          "evidence_id": "00000000-0000-4000-8000-000000000033",
+          "relation": "contradicts",
+          "source": "catalogue-of-life",
+          "locator": "col/taxon/fixture-col-taxon",
+          "outcome": "success"
+        }
+      ]
+    },
+    {
+      "field_key": "identified_by_irn",
+      "group": "optional",
+      "state": "unknown",
+      "verbatim": [],
+      "parsed": null,
+      "precision": null,
+      "century_rule": null,
+      "normalized": null,
+      "authority_id": null,
+      "confirmed_observation_id": null,
+      "evidence": []
+    }
+  ],
+  "decision": {
+    "disposition": "needs_human_review",
+    "policy_version": "insects-clearance-v1",
+    "reason_codes": [
+      "mandatory_unresolved:county"
+    ],
+    "summary": "Needs human review under insects-clearance-v1: county unresolved.",
+    "findings": [
+      {
+        "rule_id": "mandatory_unresolved",
+        "rule_version": "insects-clearance-v1",
+        "severity": "hard",
+        "outcome": "fail",
+        "field_key": "county",
+        "reason_code": "mandatory_unresolved:county",
+        "evidence_ids": []
+      },
+      {
+        "rule_id": "taxonomy_source_disagreement",
+        "rule_version": "g23-v1",
+        "severity": "warning",
+        "outcome": "fail",
+        "field_key": "taxon",
+        "reason_code": "taxonomy_source_disagreement",
+        "evidence_ids": [
+          "00000000-0000-4000-8000-000000000033"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,56 @@
+# The record thread of one run (docs/execution/golive/DATA_CONTRACT.md 8, S5 T3). Server only,
+# through :impersonateQuery. It admits whom the workspace route admits (GetSpecimen): an active
+# organization member, an active collection member of any role, and a specimen that is not
+# sensitive or a member who can view sensitive records. The run is found by its id and its
+# specimen together, and every other row is read nested under it, so a run of another specimen
+# reads as empty (Specimen.activeRunId has no foreign key). A decision, a field candidate and a
+# record version are keyed by their content, so the caller passes the ids of the snapshot's
+# current ones; an empty list selects none. Every list is bounded; the API refuses a run that
+# reaches a limit rather than show it in part.
+query GetRunThreadV1(
+  $organizationId: UUID!, $collectionId: UUID!, $actorUid: String!,
+  $specimenId: UUID!, $runId: UUID!,
+  $decisionIds: [UUID!]!, $candidateIds: [UUID!]!, $recordIds: [UUID!]!
+) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid})
+    @check(expr: "this.active") { active }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid})
+    @check(expr: "this.active && size(vars.decisionIds) <= 100 && size(vars.candidateIds) <= 500 && size(vars.recordIds) <= 1") { active canViewSensitive }
+  specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId})
+    @check(expr: "this == null || !this.sensitive || response.collectionMember.canViewSensitive", message: "access denied") { id sensitive }
+  runs: pipelineRuns(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $runId}, specimenId: {eq: $specimenId}}, limit: 1) {
+    id traceId
+    regions: labelRegions_on_run(orderBy: [{createdAt: ASC}, {id: ASC}], limit: 100) { id domainRegionId geometry ordinal }
+    observations: modelObservations_on_run(orderBy: [{createdAt: ASC}, {id: ASC}], limit: 400) {
+      id regionId routeId modelVersion provider promptVersion literalText unreadableSpans outcome independent rawAssetId rawAsset { sha256 }
+    }
+    comparisons: readingComparisons_on_run(orderBy: [{createdAt: ASC}, {id: ASC}], limit: 100) {
+      regionId leftObservationId rightObservationId algorithm ratio editDistance lengthBasis status reasons
+    }
+    decisions: transcriptionVersions_on_run(where: {id: {in: $decisionIds}}, orderBy: [{createdAt: ASC}, {id: ASC}], limit: 100) {
+      id regionId decisionKind selectedObservationId firstPassObservationId literalText unresolved rationale
+    }
+    handoffs: harnessInputs_on_run(where: {transcriptionVersionId: {in: $decisionIds}}, orderBy: [{createdAt: ASC}, {id: ASC}], limit: 400) {
+      transcriptionVersionId observationId role handedText note
+    }
+    evidence: evidenceItems_on_run(orderBy: [{createdAt: ASC}, {id: ASC}], limit: 1000) { id source locator outcome capturedAt }
+    toolCalls: toolCalls_on_run(orderBy: [{createdAt: ASC}, {id: ASC}], limit: 1000) {
+      callKey phase tool toolVersion source fieldKeys inputSource attempt arguments outcome result evidenceId startedAt completedAt observationId
+      transcriptionVersion { region { domainRegionId } }
+      observation { region { domainRegionId } }
+    }
+    candidates: fieldCandidates_on_run(where: {id: {in: $candidateIds}}, orderBy: [{createdAt: ASC}, {id: ASC}], limit: 500) {
+      id fieldKey state literalValue parsedValue normalizedValue authorityId inputSource sourceObservationId
+      sourceTranscription { region { domainRegionId } }
+      sourceObservation { region { domainRegionId } }
+      links: candidateEvidences_on_candidate(orderBy: [{createdAt: ASC}, {id: ASC}], limit: 64) { evidenceId relation }
+    }
+    records: recordVersions_on_run(where: {id: {in: $recordIds}}, limit: 1) {
+      id disposition policyVersion reasonCodes summary
+      fields: resolvedFields_on_recordVersion(orderBy: [{createdAt: ASC}, {id: ASC}], limit: 500) { fieldKey state fieldGroup candidateId }
+      findings: validationFindings_on_recordVersion(orderBy: [{createdAt: ASC}, {id: ASC}], limit: 200) {
+        ruleId ruleVersion severity outcome fieldKey reasonCode evidenceIds
+      }
+    }
+  }
+}

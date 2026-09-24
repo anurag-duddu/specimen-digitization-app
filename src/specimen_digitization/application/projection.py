@@ -873,3 +873,118 @@ def _review_decisions(specimen: Specimen) -> list[Write]:
         for event in specimen.audit
         if event.action.startswith("review_")
     ]
+
+
+# The thread's keys (DATA_CONTRACT.md 8), rebuilt from the writer's own rules above.
+
+
+@dataclass(frozen=True)
+class Decision:
+    """A region's recorded decision and its row's id, as `_first_pass` keys it (section 5)."""
+
+    id: str
+    kind: str
+
+
+def decision(run: Run, transcript: Transcript) -> Decision | None:
+    """The region's decision as `_first_pass` keys it; None for a region without one."""
+    kind = _decision_kind(run, transcript)
+    if kind is None:
+        return None
+    call = getattr(transcript, "first_pass_call", None) if kind == "first_pass" else None
+    if hasattr(transcript, "selected_observation_id"):
+        selected = transcript.selected_observation_id
+    else:
+        selected = transcript.observation_ids[0] if kind == "identical_readings" else None
+    differences = [_plain(d) for d in getattr(transcript, "differences", None) or []]
+    unresolved = not transcript.resolved if kind == "human" else selected is None
+    content = {
+        "kind": kind,
+        "selected": selected,
+        "text": transcript.text or "",
+        "differences": differences,
+        "unresolved": unresolved,
+        "rationale": transcript.reason,
+        "call": call.id if call else None,
+    }
+    return Decision(derived_id("transcription", run.id, transcript.region_id, digest(content)), kind)
+
+
+@dataclass(frozen=True)
+class Candidate:
+    """One verbatim entry of a field and its row's id, as `_fields` keys it (section 5)."""
+
+    id: str
+    text: str
+    input_source: str | None
+    reading: str | None
+    settles: bool
+
+
+def candidates(run: Run, key: str, value) -> list[Candidate]:
+    """A field's candidates as `_fields` writes them, in the domain map's order."""
+    regions = {o.id: o.region_id for o in run.observations}
+    verbatim = getattr(value, "verbatim_by_observation", None) or {}
+    source = getattr(value, "input_source", None)
+    if verbatim:
+        sources = getattr(value, "input_source_by_observation", None) or {}
+        named = set(getattr(value, "settled_observation_ids", None) or [])
+        entries = [
+            (text, sources.get(reading, "raw_reading"), reading)
+            for reading, text in verbatim.items()
+        ]
+        settled = {
+            reading
+            for _, entry_source, reading in entries
+            if reading in named
+            or (
+                entry_source == "decided_transcript"
+                and any(o != reading and regions.get(o) == regions.get(reading) for o in named)
+            )
+        }
+    elif value.literal is not None:
+        reading = getattr(value, "source_observation_id", None)
+        reading = reading if source == "raw_reading" else None
+        entries = [(value.literal, source, reading)]
+        settled = {reading}
+    else:
+        return []
+    content = digest(value.model_dump(mode="json"))
+    return [
+        Candidate(
+            derived_id("candidate", run.id, key, reading or "-", content),
+            text,
+            entry_source,
+            reading,
+            reading in settled,
+        )
+        for text, entry_source, reading in entries
+    ]
+
+
+def record_id(run: Run) -> str | None:
+    """The queue decision's record version id, as `_record` keys it; None until it decides."""
+    if not run.disposition:
+        return None
+    fields = {key: _value(value.state) for key, value in run.fields.items()}
+    reasons = list(run.reasons)
+    disposition = _value(run.disposition)
+    first = {
+        key: next((c.id for c in candidates(run, key, value) if c.settles), None)
+        for key, value in run.fields.items()
+    }
+    content = {
+        "disposition": disposition,
+        "reasons": reasons,
+        "summary": getattr(run, "disposition_summary", None) or "; ".join(reasons) or disposition,
+        "findings": [_plain(finding) for finding in getattr(run, "findings", None) or []],
+        "fields": fields,
+        "candidates": {key: first.get(key) for key in fields},
+    }
+    return derived_id("record", run.id, digest(content))
+
+
+def field_group(run: Run, key: str) -> str:
+    """A field's group, as `_record` pins it."""
+    groups = getattr(run, "field_groups", None) or {}
+    return groups.get(key) or ("mandatory" if key in run.profile.mandatory_fields else "optional")

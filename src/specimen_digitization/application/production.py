@@ -280,6 +280,21 @@ class SqlConnectRepository:
 
         return unpack(payload, self.graph_blobs)
 
+    def run_thread(self, scope, specimen_id, run_id, keys):
+        """One run's normalized rows for its thread (GetRunThreadV1, DATA_CONTRACT.md 8).
+
+        The run is found by its id and its specimen together, so another specimen's run reads
+        as empty. `keys` names the current decisions, field candidates and record version
+        (`thread.keys`); an empty list reads none.
+        """
+        data = self.execute(
+            "GetRunThreadV1",
+            dict(self.variables(scope), specimenId=specimen_id, runId=run_id, **keys),
+        )
+        if not data.get("specimen"):
+            raise Missing(specimen_id)
+        return data
+
     def history_page(
         self, scope, ident, after_revision=0, through_revision=None, limit=50
     ):
