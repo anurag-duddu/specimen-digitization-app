@@ -237,20 +237,72 @@ jobs:
           RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
         run: uv run python scripts/ci/deploy_data.py --dispose-initializer --packet "$RUNNER_TEMP/data-release/packet.json"
 
-  # T3c2 replaces this job with the migration. Until then every run over the initialize phase fails here
-  # or earlier, so the runtime's wait for it (D3) never passes over an uninitialized database.
+  # RELEASE.md 4.3 steps 3 to 5: after this run's own initializer, Data Connect's SQL diff runs client-side as the
+  # owner role, then the merged files are released and the catalog is checked. A run over the initialize phase
+  # succeeds only here, so the runtime's wait for it (D3) never passes over an uninitialized database.
   migrate:
-    name: Migrate the initialized database
+    name: Migrate the initialized database as its owner and release the merged files
     needs: [release, initialize, dispose-initializer]
     if: >-
       always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.release.outputs.phase == 'initialize'
       && (needs.dispose-initializer.result == 'success' || needs.release.outputs.init_step == 'migrate')
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 30
+    environment: data-production
+    concurrency:
+      group: specimen-protected-mutation
+      cancel-in-progress: false
     permissions:
       contents: read
+      actions: read
+      pull-requests: read
+      id-token: write
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DEPLOYMENT_ENVIRONMENT: data-production
+      RELEASE_PROJECT: specimen-digitization
+      RELEASE_SERVICE_ACCOUNT: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
     steps:
-      - name: Fail closed until the migration arrives
-        run: |
-          echo "::error::Data release blocked: the migration arrives with T3c2."
-          exit 1
+      - name: Check out the merged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install pinned uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "0.12.5"
+          python-version: "3.12"
+      - name: Install locked dependencies
+        run: uv sync --frozen
+      - name: Install pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: Install the pinned native IAM SQL connector
+        run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
+      - name: Re-admit the exact merged commit before data credentials
+        id: admission
+        run: uv run python scripts/ci/release_gate.py --plane data --output "$RUNNER_TEMP/data-release/packet.json"
+      - name: Authenticate only the approved data identity
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: specimen-digitization
+          workload_identity_provider: ${{ steps.admission.outputs.provider }}
+          service_account: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
+      - name: Verify this run's initializer, migrate as the owner role, release the merged files and check the catalog
+        id: migrate
+        env:
+          RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
+        run: uv run python scripts/ci/deploy_data.py --migrate --packet "$RUNNER_TEMP/data-release/packet.json" --output "$RUNNER_TEMP/data-initialized.json"
+      - name: Attest the initialization receipt
+        if: success() && steps.migrate.outcome == 'success'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: ${{ runner.temp }}/data-initialized.json
+      - name: Retain the initialization receipt without private values
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: data-initialized-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/data-initialized.json
+          if-no-files-found: warn
+          retention-days: 30

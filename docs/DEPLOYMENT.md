@@ -944,10 +944,26 @@ every push to `main` without an envelope. The specification is
 4. **Dispose**, in `data-production`, whenever `initialize` ran. It revokes
    and deletes only the principal this run's attested intent names. It holds
    no concurrency lock, so a queued disposal is never cancelled.
-5. **Migrate** fails the run until T3c2, so the runtime gate, which waits
-   for this run to succeed (D3), never passes over an uninitialized database.
+5. **Migrate**, in `data-production`, after a successful disposal or when
+   `init_step` is `migrate`. It re-admits and authenticates as
+   `specimen-data-release`. It needs this run's one attested
+   `data-initializer/v1` receipt, the postconditions exactly as that receipt
+   records them, and the initializer's SQL principal gone. A validate-only
+   `COMPATIBLE` schema update returns Data Connect's SQL diff. Every statement
+   must be one non-destructive statement of an allowed kind, or none runs and
+   the log names each refused one by its kind alone. The job runs the diff
+   itself in one transaction as the `firebaseowner` role; Data Connect's
+   server-side `MIGRATE_COMPATIBLE`, which would run it as the service agent,
+   is never sent. It then applies the schema as `COMPATIBLE` on the live etag,
+   creates the supplemental indexes as the owner role, deploys the connector
+   and the Storage rules, and checks the catalog: exactly the declared tables,
+   all owned by `firebaseowner` with the initializer's privileges, and the
+   extensions `plpgsql` and `uuid-ossp`. It uploads the `data-initialized/v1`
+   receipt on every exit and attests it on success. The runtime gate waits
+   for this run to succeed (D3), so it never passes over an uninitialized
+   database.
 
-The release and initialize jobs share the `specimen-protected-mutation`
+The release, initialize and migrate jobs share the `specimen-protected-mutation`
 concurrency group with the runtime release job, so none of them run at the same
 time. The
 workflow reads no secret and no configuration variable. After a failure,
