@@ -11967,6 +11967,129 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (4) `serve-local.sh` puts PostgreSQL's socket in `$TMPDIR`. A long `TMPDIR`, such as a session scratchpad, overflows the Unix socket path limit and `pg_ctl` cannot start; keep the default.
 - Failed approaches: one migration that swapped the unique (the emulator dropped the old index before creating the new one); removing `specimen_unique_1` from `schema.gql` alone (a `COMPATIBLE` apply never drops it).
 - Remaining follow-ups: S2's named-exception sync in #99, so CI admits step 2; S2's T3d before any release runs the drop on a database where #88's step 1 is live; T2b (stages 6 to 8), stacked on this; T3, the thread API.
+### 2026-09-23 — Go-live thread API (S5 T3): GetRunThreadV1, the assembly, the route and the canonical example
+
+- Task: S5 T3 (the record thread API), done by a worktree agent on behalf of session S5 (the data-model session).
+- Branch/worktree: `golive/data-thread-api` from S5's local T2b head `a86fc16`, in `.claude/worktrees/agent-a6de9727be50c7412`. Local only: not pushed, no pull request. Nothing deployed; no gcloud or firebase call; `firebase dataconnect:sql:diff` not run.
+- Commits: red `17297d7` (the contract's "How T3 serves it" and the failing tests), green `fcf8a6e` (implementation, example and release bookkeeping), and this closeout.
+- Outcome:
+  - `dataconnect/connector/thread.gql` adds `GetRunThreadV1` (`NO_ACCESS`, `:impersonateQuery`). It admits whom `GetSpecimen` admits, finds the run by its id and its specimen, and reads every other row nested under that run, so another specimen's run reads as empty. Decisions, field candidates and the record version are read only by the ids passed, and every list is bounded.
+  - `application/thread.py` assembles section 8's response from the snapshot and those rows as typed models. `application/projection.py` exposes the writer's own keys (`decision`, `candidates`, `record_id`, `field_group`), so the thread reads the rows of the snapshot's current state; the writer's output did not change.
+  - `SqlConnectRepository.run_thread` runs the operation. `SQLiteRepository.run_thread` answers not found, since SQLite writes no normalized rows (the `configured_sources` convention). The route reuses the workspace route's `find`, answers 404 for a run the snapshot does not hold, builds `trace.url` from `SPECIMEN_TRACE_URL_TEMPLATE` (read when the API starts), and refuses a run at a list bound with 413 `thread_limit_exceeded`.
+  - `docs/execution/golive/thread-example.json` is the canonical example for S6. `tests/test_thread.py` fails when it drifts from the assembly, and `uv run python tests/test_thread.py` rewrites it.
+  - The coordinator's coverage-detail ruling is in the contract, the assembly and the tests.
+  - Release bookkeeping: `thread.gql`'s digest in the three data plan templates, their `.secrets.baseline` entries, a fourth go-live gitleaks identifier (`54623f3…`, confirmed as SHA-1 of the new digest) and the `SECRET_SCAN_REVIEW.md` prose.
+- Validation actually run:
+  - Red: `uv run pytest tests/test_thread.py tests/test_thread_api.py tests/test_sqlconnect_thread.py -q` stopped at collection, `ModuleNotFoundError` for `application.thread`.
+  - After the writer's refactor, `tests/test_projection.py`, `test_projection_decisions.py` and `test_projection_writer.py`: 31 passed. Green: `tests/test_thread.py` and `tests/test_thread_api.py`: 33 passed.
+  - Private stack `SPECIMEN_TEST_PG_PORT=5613 SPECIMEN_TEST_DC_PORT=9613 scripts/data/serve-local.sh`:
+    - `node scripts/data/projection-test.mjs`: 13 PASS lines, exit 0, the last for `GetRunThreadV1`.
+    - `SPECIMEN_TEST_SQL_EMULATOR=true uv run pytest tests/test_sqlconnect_thread.py tests/test_sqlconnect_projection.py -q`: 3 passed.
+    - A probe of the operation's raw JSON for `Any` columns.
+    - The stack was stopped through its trap and its retained directory deleted.
+  - `scripts/ci/test_release_plan_templates.py` and `test_data_release.py`: 75 passed. `tests/test_api_runtime.py`, `test_source_authorization.py`, `test_history_paging.py` and `test_decisions_batch.py`: 66 passed, 1 skipped.
+  - `uv run pytest tests/ -q`: 1521 passed, 34 skipped. It started at a one-minute load of 14.9, although the gate had read below 12 moments before.
+  - `uv run pytest scripts/ -q`: 1547 passed, 50 skipped, started at a load of 9.8. A first run without `LANG` and `LC_ALL` exported failed only `test_native_index_catalog_matches_ddl_and_rejects_valid_wrong_same_name`, where `pg_ctl` could not start; that test passes alone with them.
+  - Pre-commit hooks ran on every commit. `scripts/ci/verify.sh` and `scripts/data/test-postgres.sh` were not run, as instructed.
+- Durable learnings:
+  - (1) Data Connect 3.2.0 returns `Timestamp` fields in UTC with six fractional digits (`2026-09-23T12:00:00.000000Z`), whatever form was written.
+  - (2) Nested reverse-relation lists (`labelRegions_on_run`, `candidateEvidences_on_candidate`, `resolvedFields_on_recordVersion`) accept `where`, `orderBy` and `limit`. Reading every child under a run found by `where: {id, specimenId}` makes another specimen's run read as empty in one operation.
+  - (3) `id: {in: $ids}` with a non-null empty list selects nothing. Declare such lists `[UUID!]!`, since an absent filter would select everything.
+  - (4) A `@check` on a key lookup sees only the selected fields: `this.sensitive` fails to compile ("undefined field") unless `sensitive` is selected.
+  - (5) Rows keyed by their content (decisions, candidates, record versions) cannot say from SQL alone which one is current. A change back to an earlier state reuses the old row with its old `createdAt`, so "latest wins" would show the stale state. The thread passes the ids the snapshot yields instead.
+  - (6) Python's `==` treats `1651891` and `1651891.0` as equal, so comparing assembled outputs cannot see int-versus-double drift. A probe of the raw JSON showed Data Connect returns whole numbers in `Any` columns as JSON ints.
+  - (7) PostgreSQL limits a Unix socket path to 103 bytes, so the session scratchpad cannot be `serve-local.sh`'s `TMPDIR`. The default `/var/folders/.../T/` works.
+  - (8) The worktree-isolation guard reads "digitization" as naming git and refuses compound commands and heredocs. Use plain commands, the Edit tool, and a message file for `git commit -F`; a script run that way needs its own `LANG` and `LC_ALL` exports.
+- Failed approaches: a first `serve-local.sh` start with `TMPDIR` in the scratchpad (socket path too long); a `user:pass@` URL literal in a test, which detect-secrets reported as "Basic Auth Credentials", replaced by a username-only one.
+- Open questions and follow-ups:
+  - No code writes an `EvidenceItem` from `label-coverage-check` yet: the writer records only `Run.lookups` and `Run.evidence`, and S3's `check_coverage` adds no `Evidence`. `coverage_check.evidence_id` stays null until one of them does.
+  - `Run.paid_calls` is not in S3's code yet; the thread reads each entry by section 8's keys.
+  - Once a reviewer decides a region, the current decision is the reviewer's. The thread then shows it with no model call and no handoffs, and the LLM's first pass for that region leaves the thread, although its rows stay in SQL.
+  - A previous run that `compact_history` moved out of the current snapshot answers 404; reading it would mean walking the history chain one revision at a time.
+  - A superseded run's status follows the summary's rule on its last state (for example `running`); the vocabulary has no `superseded`.
+  - A lost final projection pass leaves a finalized run without its decision rows until another save, since T2's catch-up needs a later save.
+  - The release must set `SPECIMEN_TRACE_URL_TEMPLATE` on the API service for `trace.url` to be non-null.
+### 2026-09-23 — Go-live thread API (S5 T3), update: G32, the reviewer's decision and T2b's head `0f3acca`
+
+- Task: the S5 T3 follow-ups the coordinator relayed after the entry above: G32's `settled_observation_ids`, the rebase onto `8ebd25da`, the reviewer-decision ruling, then the rebase onto T2b's head `0f3acca` (#88's final review) and its settle and link rules.
+- Branch/worktree: `golive/data-thread-api` in `.claude/worktrees/agent-a6de9727be50c7412`, now on `0f3acca` through `git rebase --onto 0f3acca 8ebd25da`. Local only: not pushed, no pull request. Nothing deployed; no gcloud or firebase call.
+- Correction, 2026-09-23, to the entry above ("Go-live thread API (S5 T3): GetRunThreadV1, the assembly, the route and the canonical example"):
+  - Its commits are now `543d0157` (red), `cdb65fce` (green) and `48d79c0d` (closeout), after the rebase onto T2c's `cd722021` (last entry). `17297d7` and `fcf8a6e` predate the rebases.
+  - `application/projection.py` no longer exposes the writer's keys and equals `0f3acca`. The thread takes the current ids from `projection.writes` itself (below).
+  - Its gitleaks identifier `54623f3…` is gone. `thread.gql` changed since, and its identifier is `592164baade33957e7da97ea64e5875cf49a1ceb`, the fifth in `SECRET_SCAN_REVIEW.md`.
+  - Two of its open questions are settled. A region shows the model's `first_pass` and the reviewer's decision beside it (`regions[].reviewer_decision`, coordinator ruling). Since `8ebd25da` the writer records the coverage check's `EvidenceItem`, and the thread finds it.
+- Commits since, oldest first, with their ids after the rebase onto `cd722021`: `3dd52de5`/`93408d7e` (G32, red/green), `70aa3460`/`8bbf1c31` (`8ebd25da`'s writer and G32 fields), `9d65b9d6`/`c09b49e4` (the reviewer's decision), `7e40c9c7`/`4fb4481a` (`0f3acca`'s settle and link rules), `2737c840` (the emulator checks), and this closeout, `901a7b54`.
+- Outcome:
+  - Rebase conflicts: `projection.py` resolved to T2b's `_fields`, `_evidence_names`, `_named_links` and `_refuse_keys`. The thread's key helpers were first rebuilt from T2b's code below them, so the intermediate commits import, then dropped in `4fb4481a`. `DATA_CONTRACT.md` sections 1.6, 1.7, 4.3, 5, 8 and 11 are T2b's, with the thread's deltas on top: `reviewer_decision`, the evidence entry's `observation_ids` and the "How T3 serves it" subsection.
+  - Current rows: `thread.current` runs `projection.writes` on the snapshot's run with no storage and keeps the ids and order of the decisions, candidates and record version it writes. `keys(specimen, run)` passes them to `GetRunThreadV1`.
+  - Settled: a candidate settled exactly when it carries `normalizedValue`, `authorityId` or `parsedValue`, since evidence now links to the entry it names whether or not it settled. A settled raw entry lists its reading. A settled decided entry lists the raw readings its fallback lookup confirmed, else its selected reading in a map and none alone.
+  - Each `evidence` entry carries `observation_ids` from the domain `Evidence.observation_ids`, empty for a lookup. A test shows two agreeing readers as one verbatim with each reader's literal evidence.
+  - Google tool-call results are `{"place_ids": [...]}` in every fixture and the example; `_refuse_keys` refuses anything more.
+  - G38's `fields[].layer` and `derived_from` are left out until S4's domain fields exist.
+- Validation actually run:
+  - Red `7e40c9c7`: 30 thread tests failed as intended.
+  - Green: `tests/test_thread.py` 31, `test_thread_api.py` 13, `test_projection.py` 11 and `test_projection_decisions.py` 32: 87 passed, 3 opt-in skipped. `scripts/ci/test_release_plan_templates.py` and `test_data_release.py`: 75 passed.
+  - `uv run pytest tests/ -q`: 1589 passed, 34 skipped. `uv run pytest scripts/ -q`: 1550 passed, 50 skipped. Both started at a one-minute load below 6.
+  - A fresh cluster and emulator on 5597/9597, from a copy of the scratchpad's `exp5/run.sh` with its ports changed: `projection-test.mjs` printed 13 PASS lines. A second one, seeded as `serve-local.sh` seeds: `SPECIMEN_TEST_SQL_EMULATOR=true` with `tests/test_sqlconnect_thread.py` and `test_sqlconnect_projection.py`, 3 passed. Each stopped through its trap and deleted its directory.
+  - `thread.gql` did not change in this round. Its digest in the plan templates and its identifier were recomputed and match, so no refresh.
+  - Pre-commit hooks ran on every commit. `scripts/ci/verify.sh` and `scripts/data/test-postgres.sh` were not run, as instructed.
+- Durable learnings:
+  - (1) A reader that keys rows the way a writer does should take the keys from the writer's own output: run the pure writer with stub storage and keep the ids of the operations it reads. Key functions rebuilt beside the writer drifted each time T2b changed its rules.
+  - (2) Once evidence links name entries whether or not they settled, a link cannot show that an entry settled. The candidate's value columns can, because only settled entries carry them (section 4.3).
+  - (3) Rows another session adds to the shared emulator run change later sections' counts without a text conflict. After `0f3acca` the thread section saw a fifth model decision and a second hard finding. Run `projection-test.mjs` after every rebase.
+  - (4) The raw emulator binary serves no members. The opt-in Python tests need `seed-integration.mjs` and the index SQL, as `serve-local.sh` runs them; otherwise every call is rejected, `GetReceipt` first.
+- Failed approaches: the opt-in tests against an unseeded stack (3 failed with "SQL Connect transaction rejected").
+- Open questions and follow-ups:
+  - A run whose stored tool calls hold a key: `writes` refuses it (rule 1.6), so the thread route answers 422 `invalid_input` for it rather than a thread.
+  - A settled map entry of a field with no normalized, authority or parsed value carries nothing, so the thread cannot list its reading. The domain's `settled_observation_ids` names it, if the thread may read that from the snapshot.
+  - The entry above's remaining ones stand: a compacted previous run answers 404; a superseded run's status; a lost final projection pass; `Run.paid_calls` is not in S3's code yet; the release must set `SPECIMEN_TRACE_URL_TEMPLATE`.
+### 2026-09-24 — Go-live thread API (S5 T3), update: T2b's head `b6a6226` and the coordinator's answers
+
+- Task: the coordinator's next S5 T3 round: the rebase onto T2b's head `b6a6226` (T2b rebased onto T2a's #146 head `7bddf00`, plus two commits), the answers to the two open questions of the entry above, and G38's layers, now in T3.
+- Branch/worktree: `golive/data-thread-api` in `.claude/worktrees/agent-a6de9727be50c7412`, now on `b6a6226` through `git rebase --onto b6a6226 0f3acca5`. Local only: not pushed, no pull request. Nothing deployed; no gcloud or firebase call.
+- Commits, with their ids after the rebase onto `cd722021`: the thirteen above, as the entry above cites them; `0fb05c14` (red), `0aea537a` (green), and this closeout, `b90a21cf`.
+- Outcome:
+  - The rebase stopped on no conflict. `.gitattributes`' `merge=union` driver joined this file with T2a's closeout entry first and this session's after it. `projection.py`, `scripts/ci/test_source_asset_uniqueness.py`, `scripts/data/source-asset-read-back.sh`, `serve-local.sh` and `DATA_CONTRACT.md` section 3.3 equal `b6a6226`'s.
+  - Settled readings, the answer to the first question: a map entry settled exactly when `projection.settled_entries(value, regions)` names its reading, read from the snapshot. A candidate's values and links no longer decide it. The writer writes one candidate per map entry, in the map's order, so each candidate pairs with its entry's reading. Section 8's output rule is unchanged, and a test lists a settled entry whose candidate carries no value.
+  - A stored credential, the answer to the second: `thread.current` catches exactly `projection.CredentialStored` around `writes` and raises `EvidenceIntegrityError` with its message. The route answers 503 `runtime_unavailable`, naming where, never the credential. The route test builds the credential at run time and checks that the body never holds it.
+  - G38: `fields[].layer` and `fields[].derived_from` come from the snapshot's field with `getattr`, null and `[]` when absent (S4's #144). The `TracedField` stand-in in `tests/thread_fixtures.py` has both, and the synthetic run's fields carry the layers HARNESS.md section 13 gives them. The SQL side is T6's `AppendFieldCandidateV3`.
+- Validation actually run:
+  - Red `0fb05c14`: 5 tests failed as intended: the valueless settled entry, the layers, the rule function's `settled` argument, `keys()` raising `CredentialStored`, and the route answering 422.
+  - Green: `tests/test_thread.py` 33, `test_thread_api.py` 14, `test_projection.py` 11 and `test_projection_decisions.py` 35: 93 passed, 3 opt-in skipped. `scripts/ci/test_release_plan_templates.py`, `test_data_release.py` and `test_source_asset_uniqueness.py`: 80 passed.
+  - `uv run pytest tests/ -q`: 1595 passed, 34 skipped, started at a one-minute load of 10.9 after waiting for it to fall below 12. `uv run pytest scripts/ -q`: 1552 passed, 50 skipped.
+  - Fresh stacks on 5597/9597: `projection-test.mjs` printed 13 PASS lines. Seeded as `serve-local.sh` now seeds, with T2a's read-back before the drop, the opt-in SQL Connect thread and projection tests: 3 passed. Each stopped through its trap and deleted its directory.
+  - `thread.gql` did not change: its digest still matches the plan templates, so no refresh.
+  - Pre-commit hooks ran on every commit. `scripts/ci/verify.sh` and `scripts/data/test-postgres.sh` were not run, as instructed.
+- Durable learnings:
+  - (1) Rebasing onto a branch that also appends to this file needs no hand resolution: the union driver keeps the upstream entry first. Check the order afterwards, and fix the commit ids the entries cite, since a rebase changes every one.
+  - (2) A settle rule shared by name (`settled_entries`) keeps the reader and the writer from disagreeing. Inferring it from the writer's output, the values on candidates, missed an entry settled on a value with no normalized, authority or parsed form.
+- Open questions and follow-ups:
+  - Until T6, a derived field has no candidate row: without a literal the writer writes none. The thread shows its state, layer and `derived_from`, but no `parsed`, `authority_id` or evidence. Should the thread read those from the snapshot meanwhile?
+  - The entry above's remaining ones stand: a compacted previous run answers 404; a superseded run's status; a lost final projection pass; `Run.paid_calls` is not in S3's code yet; the release must set `SPECIMEN_TRACE_URL_TEMPLATE`.
+### 2026-09-24 — Go-live thread API (S5 T3), update: T2c's derived values and G45
+
+- Task: the coordinator's next S5 T3 round. T3 now stacks on T2c (`golive/data-derived` at `cd722021`, on T2b's `9ea855e8`), whose derived values reach SQL: the coordinator's answer to the derived-field question of the entry above. The thread reads T2c's derived values, authority identities and review calls, and shows G45's findings on their fields.
+- Branch/worktree: `golive/data-thread-api` in `.claude/worktrees/agent-a6de9727be50c7412`, rebased with `git rebase --onto cd722021 9ea855e8`. Before this round the branch had been rebased onto `9ea855e8` outside this session (its reflog shows it a minute after this session's last commit), with the same changes. Local only: not pushed, no pull request. Nothing deployed; no gcloud or firebase call.
+- Commits: the sixteen above, with the ids the entries above now cite; `0402fcf6` (the fingerprint refresh after the rebase), `a428a2f9` (red), `696fc478` (green), and this closeout.
+- Outcome:
+  - Rebase: `SECRET_SCAN_REVIEW.md` conflicted three times and `.gitleaks.toml` twice, each resolved to T2c's side. After the rebase the six fingerprint files were reset to `cd722021`'s and the scratchpad refresh rerun: the templates and the baseline already matched, `.gitleaks.toml` gained thread.gql's identifier beside T2c's four, and the prose names thread.gql again. `projection.py` equals `cd722021`'s.
+  - The thread reads T2c's `AppendFieldCandidateV3` rows. Any `projection.RefusedContent`, a credential or Google content (a result beyond place ids, or an identity with a name), is an `EvidenceIntegrityError`, so the route answers 503 `runtime_unavailable`.
+  - `GetRunThreadV1` selects `authorityIdentity`, `derivedFromFieldKeys` and `reviewDecisionId`. `fields[].authority_identity` is the settled candidate's. A derived candidate gives its field the value, identity and evidence, like any settled field, and adds no verbatim entry; `derived_from` is its `derivedFromFieldKeys`, else the snapshot's. `tool_calls[].review_decision_id` names a review call's decision.
+  - G45: `fields[].findings` are the record's findings that name the field, built by the helper `decision.findings` uses, so S4's `value_shape_mismatch:{field}` shows on its field.
+  - `thread.gql` changed, so the refresh ran again: `10188370075cecf438d000ceba073b30ef37f51f` replaces `592164baade33957e7da97ea64e5875cf49a1ceb`, and `SECRET_SCAN_REVIEW.md` names both beside T2c's two replaced ones.
+- Validation actually run:
+  - Red `a428a2f9`: 22 tests failed as intended: the rebase's operation renames and the new tests.
+  - Green: `tests/test_thread.py` 37, `test_thread_api.py` 15, `test_projection.py` 11, `test_projection_decisions.py` 35 and `test_projection_derived.py` 12: 110 passed, 3 opt-in skipped. The fingerprint pins and T2a's uniqueness test: 80 passed.
+  - `uv run pytest tests/ -q`: 1614 passed, 34 skipped, started at a one-minute load of 6.2. `uv run pytest scripts/ -q`: 1552 passed, 50 skipped.
+  - Fresh stacks on 5597/9597: `projection-test.mjs` printed 14 PASS lines, T2c's section included, and its thread section now checks the review call's decision and the derived and identified candidates. The opt-in SQL Connect thread and projection tests: 3 passed. Each stopped through its trap and deleted its directory.
+  - Pre-commit hooks ran on every commit. `scripts/ci/verify.sh` and `scripts/data/test-postgres.sh` were not run, as instructed.
+- Durable learnings:
+  - (1) Another session may rebase this branch between rounds. Read the branch's reflog before a rebase whose cut point you were given, and compare trees rather than assume.
+  - (2) When fingerprint files conflict across a rebase, reset the six files to the new base and rerun the refresh once. Per-commit resolutions leave the intermediate trees inconsistent anyway.
+  - (3) A green step that adds a key to a response entry breaks every test that compares a whole entry. Put the key in those expectations in the red step.
+- Open questions and follow-ups:
+  - The entry above's remaining ones stand: a compacted previous run answers 404; a superseded run's status; a lost final projection pass; `Run.paid_calls` is not in S3's code yet; the release must set `SPECIMEN_TRACE_URL_TEMPLATE`.
+- Correction (2026-09-24, when the stack opened as PRs): T3 was rebased once more, onto T2c's `e6c169a`, and then merged with T2b-1, T2b-2 and T2c (`8a6ae5b`), so the ids above name commits that no longer exist. The same commits are now: `01e21ec`, `38c3da9` and `23113e7` (the API, red and green, and its closeout); `2e099f4` and `eb0380a` (G32's settled readings); `7eea233` and `386c417` (`8ebd25da`'s writer and G32 fields); `9daeab9` and `ab29a66` (the reviewer's decision); `26a339a` and `c6fde95` (`0f3acca`'s settle and link rules); `792b7e8` (the emulator checks); `7041f03` (closeout update); `6d4c77a` and `e5336ed` (`b6a6226`'s settle rule, credentials and layers); `7ca5e1f` (closeout); `4953c60` (the fingerprint refresh); `d2c3ab5` and `b02fff9` (T2c's derived values, identities, review calls and G45); `036bdc3` (closeout); this correction.
 
 ### 2026-09-24 — Go-live projection writer, stages 6 to 8 (S5 T2b-1)
 

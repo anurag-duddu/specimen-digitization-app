@@ -941,10 +941,15 @@ replays without duplicates or warnings. `tests/test_projection_derived.py` (T2c)
 checks the derived candidate, that a derived value without its record does not
 count, the authority identity, the Google refusal and the review call.
 
-For the thread (T3): `tests/test_thread.py` (the assembly of section 8 through
-the regions, tool calls and coverage check, the current rows' ids and the read
-bounds) runs in CI. It reads `GetRunThreadV1`'s rows as `tests/thread_fixtures.py`
-emulates them from the writer's writes.
+For the thread (T3): `tests/test_thread.py` (the assembly, section 8 field by
+field, and the canonical example) and `tests/test_thread_api.py` (the workspace
+route's authorization, not found for another specimen's run and an unknown one,
+the active run by default, 503 without the content for a run that holds a
+credential or a Google name, no thread on SQLite) run in CI. Both read
+`GetRunThreadV1`'s rows as `tests/thread_fixtures.py` emulates them from the
+writer's writes; `tests/test_sqlconnect_thread.py`, opt-in like the writer's
+emulator test, saves the synthetic run through `SqlConnectRepository` and checks
+that the real operation's thread equals the emulated one.
 
 ## 11. Projection writer (S5 T2)
 
