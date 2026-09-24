@@ -119,6 +119,9 @@ def writes(
     decisions: dict[str, str] = {}
     for transcript in run.transcripts:
         result += _first_pass(run, transcript, asset, decisions, reviewer)
+    if reviewer:
+        # Before tool calls: a review call names its decision (T2c).
+        result += _review_decisions(specimen)
     evidence = _evidence(run, asset)
     result += evidence
     recorded = {w.variables["id"] for w in evidence}
@@ -131,8 +134,6 @@ def writes(
     result += _fields(run, decisions, linkable, candidates)
     if run.disposition:
         result += _record(run, candidates, recorded)
-    if reviewer:
-        result += _review_decisions(specimen)
     return result
 
 
@@ -508,8 +509,10 @@ def _evidence(run: Run, asset) -> list[Write]:
 
 def _tool_call(run: Run, record, decisions: dict, recorded: set) -> Write:
     decided = record.input_source == "decided_transcript"
+    # A call on a reviewer's text names the review decision it ran for, and no reading (T2c).
+    review = record.input_source == "review"
     return _write(
-        "AppendToolCallV1",
+        "AppendToolCallV2",
         {
             "id": derived_id("tool-call", run.id, record.call_key),
             "runId": run.id,
@@ -521,7 +524,8 @@ def _tool_call(run: Run, record, decisions: dict, recorded: set) -> Write:
             "fieldKeys": list(record.field_keys),
             "inputSource": record.input_source,
             "transcriptionVersionId": decisions.get(record.region_id) if decided else None,
-            "observationId": None if decided else record.observation_id,
+            "observationId": None if decided or review else record.observation_id,
+            "reviewDecisionId": getattr(record, "review_decision_id", None) if review else None,
             "attempt": record.attempt,
             "arguments": _plain(record.arguments),
             "outcome": _value(record.outcome),
@@ -555,7 +559,8 @@ class GoogleContentStored(RefusedContent):
 
 
 def _refuse_keys(run: Run) -> None:
-    """Rule 1.6: no stored call holds a credential, and a Google call keeps only place ids.
+    """Rule 1.6 and G26: no stored call holds a credential, a Google call keeps only place ids,
+    and a Google identity has no name.
 
     The error names where, never the value, because the repository logs it.
     """
@@ -571,11 +576,15 @@ def _refuse_keys(run: Run) -> None:
                 or not isinstance(ids, list)
                 or not all(isinstance(i, str) and PLACE_ID.fullmatch(i) for i in ids)
             ):
-                raise CredentialStored(f"{where} keeps more than place ids (rule 1.6)")
+                raise GoogleContentStored(f"{where} keeps more than place ids (rule 1.6)")
     for n, found in enumerate(run.lookups):
         stored = found.raw_ref and found.digest
         if stored and KEYS.search(json.dumps(found.query, default=str)):
             raise CredentialStored(f"lookup {n} ({found.provider}) holds a credential in its query (rule 1.6)")
+    for key, value in run.fields.items():
+        identity = getattr(value, "authority_identity", None) or {}
+        if identity.get("source") == GOOGLE and "name" in identity:
+            raise GoogleContentStored(f"field {key} keeps a Google name (G26)")
 
 
 def _evidence_names(run: Run) -> dict:
@@ -628,12 +637,26 @@ def settled_entries(value, regions: dict) -> set:
     }
 
 
+def _counts(run: Run, value, relations: dict, derivations: set) -> bool:
+    """PLAN 4.8: a derived value counts only when it names inputs that are settled fields of the
+    run, and a stored derivation record decides it; the record holds the authority, its version and
+    the calls behind it (S4's `Derivation`)."""
+    inputs = list(getattr(value, "derived_from", None) or [])
+    settled = all(
+        (field := run.fields.get(name)) is not None and _value(field.state) == "supported"
+        for name in inputs
+    )
+    decided = any(relations.get(item) == "decides" for item in value.evidence_ids if item in derivations)
+    return bool(inputs) and settled and decided
+
+
 def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[Write]:
     """A candidate per verbatim value; the settled ones carry the value, and each candidate
     links the evidence that names it."""
     result = []
     regions = {o.id: o.region_id for o in run.observations}
     names = _evidence_names(run)
+    derivations = {item.id for item in run.evidence if item.kind == "derivation"} & linkable
     for key, value in run.fields.items():
         verbatim = getattr(value, "verbatim_by_observation", None) or {}
         source = getattr(value, "input_source", None)
@@ -654,6 +677,12 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[
             reading = reading if source == "raw_reading" else None
             entries = [(value.literal, source, reading)]
             settled, links = {reading}, {reading: evidence}
+        elif getattr(value, "layer", None) == "derived":
+            # G37, G38: a derived value counts only when its record does (PLAN 4.8).
+            if not _counts(run, value, relations, derivations):
+                continue
+            entries = [(None, None, None)]
+            settled, links = {None}, {None: evidence}
         else:
             continue
         region = getattr(value, "source_region_id", None)
@@ -679,9 +708,10 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[
             else:
                 transcription = decisions.get(region) if decided else None
                 observation = reading
+            derived = getattr(value, "layer", None) == "derived" and not verbatim and value.literal is None
             result.append(
                 _write(
-                    "AppendFieldCandidateV2",
+                    "AppendFieldCandidateV3",
                     {
                         "id": candidate,
                         "runId": run.id,
@@ -691,7 +721,9 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[
                         "parsedValue": parsed if settles else None,
                         "normalizedValue": value.normalized if settles else None,
                         "authorityId": value.authority_id if settles else None,
-                        "derivation": _derivation(value, relations) if settles else "literal",
+                        "authorityIdentity": getattr(value, "authority_identity", None) if settles else None,
+                        "derivation": "derived" if derived else _derivation(value, relations) if settles else "literal",
+                        "derivedFromFieldKeys": list(value.derived_from) if derived else None,
                         "inputSource": entry_source,
                         "sourceTranscriptionId": transcription,
                         "sourceObservationId": observation,

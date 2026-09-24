@@ -21,7 +21,13 @@ from specimen_digitization.application.domain import (
     Transcript,
     ValueState,
 )
-from specimen_digitization.application.projection import CredentialStored, derived_id, settled_entries, writes
+from specimen_digitization.application.projection import (
+    CredentialStored,
+    GoogleContentStored,
+    derived_id,
+    settled_entries,
+    writes,
+)
 from specimen_digitization.application.storage import digest
 
 from test_projection import TracedRun, locate, pinned, read, reading, size, specimen
@@ -1089,7 +1095,7 @@ def test_a_google_call_keeps_only_place_ids(kept, allowed):
         (call,) = rows(writes(s, locate, size, "worker-uid"), "AppendToolCallV2")
         assert call["result"] == kept
     else:
-        with pytest.raises(CredentialStored):
+        with pytest.raises(GoogleContentStored):
             writes(s, locate, size, "worker-uid")
 
 
