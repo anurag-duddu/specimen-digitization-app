@@ -1,5 +1,8 @@
 """Field resolution from recorded tool outcomes (HARNESS.md section 9)."""
 
+import hashlib
+import json
+
 import pytest
 
 from specimen_digitization.application.domain import FieldValue
@@ -561,3 +564,51 @@ def test_dates_that_disagree_on_the_order_fix_none():
     assert orders == {"day-month-year", "month-day-year"}
     assert choose_reading(open_, orders) is None
     assert choose_reading(open_, set()) is None
+
+
+def test_a_label_settled_by_its_fallback_names_the_confirmed_raw_reading():
+    # G32 with G20: label 1's decided "Chimaltenago" fails and its raw reading
+    # settles the place; label 2 settles the same place directly.
+    resolver = Resolver([MUSE, QWEN, LABEL_2], "asset-1")
+    call = tool(
+        Chimaltenago=failed(S.NO_MATCH),
+        Chimaltenango=google("p-1", matched="Chimaltenango"),
+    )
+
+    value = resolver.settle(
+        "province_state", {**PLACE, "o-muse-2": "Chimaltenango"}, call
+    )
+
+    assert (value.state, value.authority_id) == (V.SUPPORTED, "p-1")
+    assert value.settled_observation_ids == ["o-qwen", "o-muse-2"]
+    assert value.verbatim_by_observation == {
+        "o-muse": "Chimaltenago",  # The decided verbatim stays (G27).
+        "o-muse-2": "Chimaltenango",
+    }
+
+
+class Blobs:
+    def __init__(self):
+        self.puts = {}
+
+    def put(self, data: bytes) -> str:
+        ref = "blob/" + hashlib.sha256(data).hexdigest()[:8]
+        self.puts[ref] = data
+        return ref
+
+
+def test_literal_evidence_stores_its_record_so_it_projects_like_any_evidence():
+    blobs = Blobs()
+    resolver = Resolver([MUSE], "asset-1", blobs=blobs)
+
+    value = resolver.transcribed("country_text", {"o-muse": "GUAT."})
+
+    (item,) = resolver.evidence
+    assert item.id in value.evidence_ids and item.kind == "literal"
+    record = blobs.puts[item.raw_ref]
+    assert json.loads(record) == {
+        "region_id": "r1",
+        "observation_ids": ["o-muse"],
+        "excerpt": "GUAT.",
+    }
+    assert item.digest == hashlib.sha256(record).hexdigest()
