@@ -18,7 +18,6 @@ from specimen_digitization.application.domain import (
     Asset,
     BudgetUsage,
     Disposition,
-    Evidence,
     Lookup,
     LookupStatus,
     Observation,
@@ -42,9 +41,8 @@ from test_projection_decisions import (
 
 
 class ThreadRun(HarnessRun):
-    """S3's coverage check, program allowance and paid calls (LANE.md T2b, T3)."""
+    """S3's program allowance and paid calls (LANE.md T2b, T2c)."""
 
-    coverage_check: dict | None = None
     program_allowance: dict | None = None
     paid_calls: list[dict] = []
 
@@ -307,11 +305,13 @@ def synthetic_run(
 ) -> Specimen:
     """A two-label slide read to its queue decision, covering every part of section 8.
 
-    The left label's readings differ by one character and the first pass picks one; Google
-    confirms the locality on the decided transcript and finds nothing for the county. The right
-    label's readings differ materially, so the first pass picks none (G19) and each reader keeps
-    its verbatim (G27, G28); GBIF confirms one reader's taxon and decides it, and Catalogue of
-    Life contradicts it, which is a warning (G23). `put` stores a blob and returns its ref.
+    The left label's readings differ by one character and the first pass picks one, handing the
+    other reading over too; Google confirms the state on the decided transcript and finds nothing
+    for the county. The right label's readings differ materially, so the first pass picks none
+    (G19) and each reader keeps its verbatim (G27, G28); GBIF confirms one reader's taxon and
+    decides it, and Catalogue of Life contradicts it, which is a warning (G23). The city is on
+    both labels and each settles to the same place id, so it clears with both labels' readings
+    kept (G32). `put` stores a blob and returns its ref.
     """
     image = put("a", b"synthetic slide image")
     asset = Asset(
@@ -369,7 +369,7 @@ def synthetic_run(
             "ledger_revision": 4,
             "at": TIMES[2],
         },
-        usage=BudgetUsage(actual_cost_micros=5200),
+        usage=BudgetUsage(actual_cost_micros=23200),
     )
     left = Region(
         id=ident(10), asset_id=asset.id, x=180, y=1210, width=1320, height=640, order=0,
@@ -400,8 +400,8 @@ def synthetic_run(
 
     left_qwen = reading(20, left, "handwriting-qwen", "Chicago, Ill. VII-46 Cook Co.", "c")
     left_muse = reading(21, left, "handwriting-muse", "Chicago, Il1. VII-46 Cook Co.", "d", ["Il1."])
-    right_qwen = reading(22, right, "handwriting-qwen", "Aedes aegypti L.", "1")
-    right_muse = reading(23, right, "handwriting-muse", "Aedes aegypti Linn.", "2")
+    right_qwen = reading(22, right, "handwriting-qwen", "Aedes aegypti L. Chicago", "1")
+    right_muse = reading(23, right, "handwriting-muse", "Aedes aegypti Linn. Chicago", "2")
     left_call = reading(24, left, "first-pass", "", "f")
     right_call = reading(25, right, "first-pass", "", "3")
     run.regions = [left, right]
@@ -432,12 +432,19 @@ def synthetic_run(
                     material=True,
                 )
             ],
+            # The selected reading is the decided transcript; the other goes over with its note.
             handoffs=[
                 Handoff(
                     observation_id=left_qwen.id,
                     role="decided_transcript",
                     handed_text=left_qwen.literal_text,
-                )
+                ),
+                Handoff(
+                    observation_id=left_muse.id,
+                    role="raw_reading",
+                    handed_text=left_muse.literal_text,
+                    note="Reads the l as a one.",
+                ),
             ],
         ),
         DecidedTranscript(
@@ -447,7 +454,7 @@ def synthetic_run(
             alternatives=[right_qwen.literal_text, right_muse.literal_text],
             resolved=False,
             reason="The authority abbreviation is L. or Linn.; the crop does not settle it.",
-            disagreement_ratio=3 / 19,
+            disagreement_ratio=3 / 27,
             alignment_status="difference",
             alignment_algorithm="bounded-levenshtein-fraction-v1",
             decision_kind="first_pass",
@@ -527,18 +534,21 @@ def synthetic_run(
         digest="1" * 64,
         retrieved_at=TIMES[5],
     )
-    coverage = Evidence(
+    # The right label's own place lookup, on the reader that wrote the city (G32).
+    place_right = Lookup(
         id=ident(34),
-        kind="coverage",
-        source="label-coverage-check",
-        locator="coverage/coverage-check-v1",
-        excerpt="",
-        raw_ref=run.coverage_check["evidence_ref"],
-        digest="e" * 64,
-        created_at=TIMES[1],
+        provider="google-maps-geocoding",
+        adapter_version="geocode-1",
+        query={"address": "Chicago"},
+        status=LookupStatus.SUCCESS,
+        candidates=[{"place_id": "fixture-place"}],
+        metadata={"locator": "place/fixture-place", "source_version": "v1"},
+        raw_ref=put("4", b"second place record"),
+        digest="b" * 64,
+        retrieved_at=TIMES[5],
     )
-    run.lookups = [place, nowhere, gbif, col]
-    run.evidence = [coverage]
+    # The writer records the coverage check's evidence itself (section 2).
+    run.lookups = [place, nowhere, gbif, col, place_right]
 
     def call(tool, source, fields, source_kind, arguments, outcome, result, evidence, *, region=None, reading=None):
         # {phase}:{tool}:{input_source}:{region}:{reading}:{16 hex of the arguments' digest}:{attempt}
@@ -571,6 +581,8 @@ def synthetic_run(
              {"candidates": [{"usage_key": 1651891}]}, gbif.id, region=right.id, reading=right_qwen.id),
         call("catalogue-of-life", "catalogue-of-life", ["taxon"], "raw_reading", {"name": "Aedes aegypti L."},
              "success", {"candidates": [{"id": "fixture-col-taxon"}]}, col.id, region=right.id, reading=right_qwen.id),
+        call("geocode", "google-maps-geocoding", ["city"], "raw_reading", {"query": "Chicago"}, "success",
+             {"candidates": [{"place_id": "fixture-place"}]}, place_right.id, region=right.id, reading=right_qwen.id),
     ]
     decided = {"input_source": "decided_transcript", "source_region_id": left.id}
     run.fields = {
@@ -581,13 +593,23 @@ def synthetic_run(
             evidence_relations={place.id: "supports"},
             **decided,
         ),
+        # G32: one entry per label's source reading; both labels settled to the same place id.
         "city": TracedField(
             state=ValueState.SUPPORTED,
-            literal="Chicago",
+            verbatim_by_observation={
+                left_qwen.id: "Chicago",
+                right_qwen.id: "Chicago",
+                right_muse.id: "Chicago",
+            },
+            input_source_by_observation={
+                left_qwen.id: "decided_transcript",
+                right_qwen.id: "raw_reading",
+                right_muse.id: "raw_reading",
+            },
+            settled_observation_ids=[left_qwen.id, right_qwen.id],
             authority_id="fixture-place",
-            evidence_ids=[place.id],
-            evidence_relations={place.id: "supports"},
-            **decided,
+            evidence_ids=[place.id, place_right.id],
+            evidence_relations={place.id: "supports", place_right.id: "supports"},
         ),
         "county": TracedField(
             state=ValueState.UNRESOLVED,
@@ -603,20 +625,22 @@ def synthetic_run(
             century_rule="date-rules-v1:two_digit_year_century=1900",
             **decided,
         ),
+        # G19, G20: no pick, so each reader keeps its verbatim; GBIF confirmed the qwen reading.
         "taxon": TracedField(
             state=ValueState.SUPPORTED,
-            literal=None,
             verbatim_by_observation={
-                right_qwen.id: right_qwen.literal_text,
-                right_muse.id: right_muse.literal_text,
+                right_qwen.id: "Aedes aegypti L.",
+                right_muse.id: "Aedes aegypti Linn.",
             },
+            input_source_by_observation={
+                right_qwen.id: "raw_reading",
+                right_muse.id: "raw_reading",
+            },
+            settled_observation_ids=[right_qwen.id],
             normalized="Aedes aegypti",
             authority_id="gbif:1651891",
             evidence_ids=[gbif.id, col.id],
             evidence_relations={gbif.id: "decides", col.id: "contradicts"},
-            input_source="raw_reading",
-            source_region_id=right.id,
-            source_observation_id=right_qwen.id,
         ),
         "identified_by_irn": TracedField(),
     }
@@ -641,26 +665,48 @@ def synthetic_run(
     run.disposition = Disposition.REVIEW
     run.reasons = ["mandatory_unresolved:county"]
     run.disposition_summary = "Needs human review under insects-clearance-v1: county unresolved."
+    # As S3 records them (LANE.md T2c): a model call, SAM 3's service call, and a call whose
+    # outcome is unknown, which costs its full reservation (G30).
+    prices = {"version": "prices-v1", "as_of": "2026-09-01"}
     run.paid_calls = [
+        {
+            "step": "segment",
+            "attempt": 1,
+            "kind": "service",
+            "service": "sam3",
+            "reserved_micros": 20000,
+            "usage": {"seconds": 4.5, "vcpus": 4, "memory_gib": 16},
+            "outcome": "completed",
+            "cost_micros": 600,
+            "cost_basis": "computed",
+            "price_list": prices,
+            "at": TIMES[1],
+        },
         {
             "step": f"transcribe:{left.id}:handwriting-qwen",
             "attempt": 1,
+            "kind": "model",
+            "route_id": "handwriting-qwen",
             "reserved_micros": 20000,
             "usage": {"input_tokens": 1200, "output_tokens": 40},
-            "outcome": "validated_output",
+            "outcome": "completed",
             "cost_micros": 2600,
             "cost_basis": "computed",
-            "price_list": {"version": "prices-v1", "as_of": "2026-09-01"},
+            "price_list": prices,
+            "at": TIMES[3],
         },
         {
-            "step": f"transcribe:{right.id}:handwriting-qwen",
+            "step": f"transcribe:{right.id}:handwriting-muse",
             "attempt": 1,
+            "kind": "model",
+            "route_id": "handwriting-muse",
             "reserved_micros": 20000,
-            "usage": {"input_tokens": 1180, "output_tokens": 38},
-            "outcome": "validated_output",
-            "cost_micros": 2600,
-            "cost_basis": "computed",
-            "price_list": {"version": "prices-v1", "as_of": "2026-09-01"},
+            "usage": None,
+            "outcome": "unknown",
+            "cost_micros": 20000,
+            "cost_basis": "reserved",
+            "price_list": prices,
+            "at": TIMES[3],
         },
     ]
     return Specimen(

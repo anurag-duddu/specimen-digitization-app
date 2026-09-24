@@ -21,7 +21,7 @@ from specimen_digitization.application.production import (
     actor_uid,
     sql_emulator_host,
 )
-from specimen_digitization.application.projection import writes
+from specimen_digitization.application.projection import derived_id, writes
 from specimen_digitization.application.storage import LocalBlobs, Missing, digest
 from specimen_digitization.application.thread import assemble, keys
 
@@ -77,11 +77,16 @@ def test_a_saved_run_reads_back_as_its_thread(tmp_path, caplog):
         assert real["trace"] == {"trace_id": TRACE, "url": f"https://logfire.example.test/trace/{TRACE}"}
         assert real["tool_calls"][0]["started_at"] == "2026-09-23T12:04:00.000000Z"
         fields = {f["field_key"]: f for f in real["fields"]}
-        assert fields["taxon"]["settled_observation_ids"] == [s.run.observations[2].id]
-        assert fields["city"]["settled_observation_ids"] == [s.run.observations[0].id]
+        left_qwen, _, right_qwen, _ = s.run.observations
+        assert fields["taxon"]["settled_observation_ids"] == [right_qwen.id]
+        # G32: the city on both labels, each label's settled reading in verbatim order.
+        assert fields["city"]["settled_observation_ids"] == [left_qwen.id, right_qwen.id]
+        assert [v["observation_id"] for v in fields["city"]["verbatim"]][:2] == [left_qwen.id, right_qwen.id]
         assert [e["relation"] for e in fields["taxon"]["evidence"]] == ["decides", "contradicts"]
         assert real["decision"]["findings"][1]["evidence_ids"] == [s.run.lookups[3].id]
-        assert real["coverage_check"]["evidence_id"] == s.run.evidence[0].id
+        # The writer records the coverage check's evidence, and the thread finds it.
+        coverage = derived_id("coverage", s.run.id, s.run.coverage_check["evidence_sha256"])
+        assert real["coverage_check"]["evidence_id"] == coverage
         # Another specimen's run and an unknown run read as empty through this specimen.
         assert repo.run_thread(scope, s.id, other.run.id, keys(other.run))["runs"] == []
         assert repo.run_thread(scope, s.id, str(uuid4()), keys(s.run))["runs"] == []

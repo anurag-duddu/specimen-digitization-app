@@ -80,6 +80,8 @@ def test_the_canonical_example_is_the_assembly_of_its_synthetic_run():
 
 def test_the_run_its_image_and_segmentation_come_from_the_snapshot():
     s = synthetic_run()
+    # Paid calls pass through as S3 records them, keys it adds later included (LANE.md T2c).
+    s.run.paid_calls[0]["later_key"] = {"kept": True}
     result = thread(s)
     assert (result["specimen_id"], result["revision"]) == (s.id, 12)
     assert result["run"] == {
@@ -97,8 +99,16 @@ def test_the_run_its_image_and_segmentation_come_from_the_snapshot():
             "at": "2026-09-23T12:02:00+00:00",
         },
         "paid_calls": s.run.paid_calls,
-        "actual_cost_micros": 5200,
+        "actual_cost_micros": 23200,
     }
+    reserved = result["run"]["paid_calls"][2]
+    assert (reserved["kind"], reserved["route_id"], reserved["usage"], reserved["cost_basis"]) == (
+        "model",
+        "handwriting-muse",
+        None,
+        "reserved",
+    )
+    assert result["run"]["paid_calls"][0]["later_key"] == {"kept": True}
     assert result["trace"] == {
         "trace_id": TRACE,
         "url": f"https://logfire.example.test/trace/{TRACE}",
@@ -198,13 +208,20 @@ def test_a_first_pass_decision_shows_its_call_its_rationale_and_its_handoff():
         "decided_text": qwen.literal_text,
         "unresolved": False,
         "rationale": "The crop shows a lowercase l.",
+        # What each reader returned to the harness: the selected one, and the other with its note.
         "handoffs": [
             {
                 "observation_id": qwen.id,
                 "role": "decided_transcript",
                 "handed_text": qwen.literal_text,
                 "note": None,
-            }
+            },
+            {
+                "observation_id": muse.id,
+                "role": "raw_reading",
+                "handed_text": muse.literal_text,
+                "note": "Reads the l as a one.",
+            },
         ],
     }
     # The first pass's call is not a reading of the region.
@@ -246,7 +263,7 @@ def test_a_no_pick_decision_hands_every_raw_reading_and_each_reader_keeps_its_ve
     # With no reader confirmed, no settled value and no single verbatim is implied.
     field = s.run.fields["taxon"]
     s.run.fields["taxon"] = field.model_copy(
-        update={"source_observation_id": None, "normalized": None, "authority_id": None, "evidence_ids": [], "evidence_relations": {}}
+        update={"settled_observation_ids": [], "normalized": None, "authority_id": None, "evidence_ids": [], "evidence_relations": {}}
     )
     unconfirmed = by_key(thread(s)["fields"], "field_key")["taxon"]
     assert len(unconfirmed["verbatim"]) == 2
@@ -286,8 +303,8 @@ def test_google_keeps_a_place_id_and_a_no_match_appears_only_in_tool_calls():
     }
     assert (no_match["outcome"], no_match["evidence_id"], no_match["field_keys"]) == ("no_match", nowhere.id, ["county"])
     fields = by_key(result["fields"], "field_key")
-    city = fields["city"]
-    assert city["evidence"] == [
+    state = fields["province_state"]
+    assert state["evidence"] == [
         {
             "evidence_id": place.id,
             "relation": "supports",
@@ -296,19 +313,63 @@ def test_google_keeps_a_place_id_and_a_no_match_appears_only_in_tool_calls():
             "outcome": "success",
         }
     ]
-    # G26: Google confirms the label's own literal; it never supplies the value. The settled
-    # place id rests on the decided transcript, so on the reading the first pass selected (G32).
-    qwen = s.run.observations[0]
-    assert (city["normalized"], city["authority_id"], city["settled_observation_ids"]) == (None, "fixture-place", [qwen.id])
-    assert city["verbatim"] == [
-        {"text": "Chicago", "input_source": "decided_transcript", "region_id": left.id, "observation_id": None}
+    # G26: Google confirms the label's own literal; it never supplies the value. A single-label
+    # decided transcript keeps a null reading, and without a fallback it names none.
+    assert (state["normalized"], state["authority_id"], state["settled_observation_ids"]) == (None, None, [])
+    assert state["verbatim"] == [
+        {"text": "Ill.", "input_source": "decided_transcript", "region_id": left.id, "observation_id": None}
     ]
-    # Supporting evidence alone settles no value, so it names no reading.
-    assert (fields["province_state"]["authority_id"], fields["province_state"]["settled_observation_ids"]) == (None, [])
     county = fields["county"]
     assert (county["state"], county["evidence"], county["authority_id"], county["settled_observation_ids"]) == ("unresolved", [], None, [])
     linked = {e["evidence_id"] for f in result["fields"] for e in f["evidence"]}
     assert nowhere.id not in linked
+
+
+def test_a_field_on_two_labels_that_settled_alike_clears_with_every_labels_reading():
+    s = synthetic_run()
+    left, right = s.run.regions
+    left_qwen, _, right_qwen, right_muse = s.run.observations
+    place, place_right = s.run.lookups[0], s.run.lookups[4]
+    city = by_key(thread(s)["fields"], "field_key")["city"]
+    # G32: one entry per label's source reading, each with its own input source; the decided
+    # label's entry names the reading its first pass selected.
+    assert city["verbatim"] == [
+        {"text": "Chicago", "input_source": "decided_transcript", "region_id": left.id, "observation_id": left_qwen.id},
+        {"text": "Chicago", "input_source": "raw_reading", "region_id": right.id, "observation_id": right_qwen.id},
+        {"text": "Chicago", "input_source": "raw_reading", "region_id": right.id, "observation_id": right_muse.id},
+    ]
+    assert (city["state"], city["group"], city["authority_id"], city["normalized"]) == ("supported", "mandatory", "fixture-place", None)
+    # Each label settled on its own evidence, named in verbatim order.
+    assert city["settled_observation_ids"] == [left_qwen.id, right_qwen.id]
+    assert [(e["evidence_id"], e["relation"]) for e in city["evidence"]] == [
+        (place.id, "supports"),
+        (place_right.id, "supports"),
+    ]
+
+
+def test_a_field_on_two_labels_in_conflict_settles_nothing_and_keeps_each_reading():
+    s = synthetic_run()
+    left_qwen, _, right_qwen, right_muse = s.run.observations
+    s.run.fields["city"] = s.run.fields["city"].model_copy(
+        update={
+            "state": ValueState.UNRESOLVED,
+            "verbatim_by_observation": {left_qwen.id: "Chicago", right_qwen.id: "Cicero", right_muse.id: "Cicero"},
+            "settled_observation_ids": [],
+            "authority_id": None,
+            "evidence_ids": [],
+            "evidence_relations": {},
+        }
+    )
+    s.run.reasons = ["mandatory_unresolved:county", "labels_conflict:city"]
+    result = thread(s)
+    city = by_key(result["fields"], "field_key")["city"]
+    assert [(v["text"], v["observation_id"]) for v in city["verbatim"]] == [
+        ("Chicago", left_qwen.id),
+        ("Cicero", right_qwen.id),
+        ("Cicero", right_muse.id),
+    ]
+    assert (city["state"], city["settled_observation_ids"], city["authority_id"], city["evidence"]) == ("unresolved", [], None, [])
+    assert "labels_conflict:city" in result["decision"]["reason_codes"]
 
 
 def test_every_other_outcome_stays_in_tool_calls_with_its_error_and_retry():
@@ -333,7 +394,7 @@ def test_every_other_outcome_stays_in_tool_calls_with_its_error_and_retry():
 
 def test_gbif_decides_and_catalogue_of_life_contradicts():
     s = synthetic_run()
-    gbif, col = s.run.lookups[2:]
+    gbif, col = s.run.lookups[2:4]
     taxon = by_key(thread(s)["fields"], "field_key")["taxon"]
     assert taxon["evidence"] == [
         {"evidence_id": gbif.id, "relation": "decides", "source": "gbif", "locator": "gbif/species/1651891", "outcome": "success"},
@@ -458,12 +519,16 @@ def test_a_value_confirmed_on_a_raw_reading_names_it_after_a_pick():
     ]
     # G20's fallback: the reading the confirming call ran on, not the one the first pass selected.
     assert (county["authority_id"], county["settled_observation_ids"]) == ("fixture-county", [muse.id])
-    # A value settled on the decided transcript names the reading the first pass selected.
-    assert fields["city"]["settled_observation_ids"] == [qwen.id]
+    assert qwen.id not in county["settled_observation_ids"]
     # A raw-reading call whose evidence contradicts the value confirms nothing.
     field = s.run.fields["county"]
     s.run.fields["county"] = field.model_copy(update={"evidence_relations": {confirming.id: "contradicts"}})
-    assert by_key(thread(s)["fields"], "field_key")["county"]["settled_observation_ids"] == [qwen.id]
+    assert by_key(thread(s)["fields"], "field_key")["county"]["settled_observation_ids"] == []
+    # A value settled on the decided transcript itself names no reading.
+    decided_call = s.run.tool_calls[-1].model_copy(update={"input_source": "decided_transcript", "observation_id": None})
+    s.run.tool_calls[-1] = decided_call
+    s.run.fields["county"] = field
+    assert by_key(thread(s)["fields"], "field_key")["county"]["settled_observation_ids"] == []
 
 
 def link(evidence_id, relation):
@@ -471,7 +536,7 @@ def link(evidence_id, relation):
 
 
 def candidate_row(n, *, source="decided_transcript", selected=None, reading=None, authority=None, normalized=None, links=()):
-    """A field candidate as GetRunThreadV1 returns it, for shapes the writer does not make yet."""
+    """A field candidate as GetRunThreadV1 returns it, for rule cases the fixture does not cover."""
     return {
         "id": hexid(fixed(900 + n)),
         "fieldKey": "city",
@@ -494,30 +559,30 @@ def call_row(evidence_id, reading, source="raw_reading"):
     return {"evidenceId": hexid(evidence_id), "inputSource": source, "observationId": hexid(reading)}
 
 
-def test_a_field_on_two_labels_names_each_labels_settled_reading_in_verbatim_order():
-    # G32: each label settles on its own evidence; both carry the settled place id.
+def test_settled_readings_follow_section_8_for_each_shape_of_field():
+    # A per-label map (G32): each settled label in verbatim order, decided labels by their
+    # selected reading, raw readings by their own.
     left, right = fixed(20), fixed(22)
     both = [
         candidate_row(0, selected=left, authority="fixture-place", links=[link(fixed(30), "supports")]),
         candidate_row(1, selected=right, authority="fixture-place", links=[link(fixed(35), "supports")]),
     ]
     calls = [call_row(fixed(30), None, "decided_transcript"), call_row(fixed(35), None, "decided_transcript")]
-    assert settled_observation_ids(both, calls) == [left, right]
-    assert settled_observation_ids(list(reversed(both)), calls) == [right, left]
-    # A label that did not settle is not named.
-    assert settled_observation_ids([both[0], candidate_row(1, selected=right)], calls) == [left]
-    # A raw reading names itself; a label without a selected reading names nothing.
+    assert settled_observation_ids(both, calls, mapped=True) == [left, right]
+    assert settled_observation_ids(list(reversed(both)), calls, mapped=True) == [right, left]
+    assert settled_observation_ids([both[0], candidate_row(1, selected=right)], calls, mapped=True) == [left]
     raw = candidate_row(2, source="raw_reading", reading=fixed(23), normalized="Chicago")
-    assert settled_observation_ids([candidate_row(0, authority="fixture-place"), raw], []) == [fixed(23)]
-    # G20's fallback applies to a single decided-transcript candidate only.
+    assert settled_observation_ids([candidate_row(0, authority="fixture-place"), raw], [], mapped=True) == [fixed(23)]
+    # A single decided transcript: only G20's fallback names a reading, each reading once.
     confirmed = candidate_row(0, selected=left, authority="fixture-place", links=[link(fixed(36), "supports")])
-    assert settled_observation_ids([confirmed], [call_row(fixed(36), fixed(21))]) == [fixed(21)]
-    assert settled_observation_ids([confirmed, both[1]], [call_row(fixed(36), fixed(21))]) == [left, right]
-    # Several confirming calls on one reading name it once; nothing settled names nothing.
+    assert settled_observation_ids([confirmed], [call_row(fixed(36), fixed(21))], mapped=False) == [fixed(21)]
     twice = candidate_row(0, selected=left, authority="k", links=[link(fixed(36), "decides"), link(fixed(37), "supports")])
-    assert settled_observation_ids([twice], [call_row(fixed(36), fixed(21)), call_row(fixed(37), fixed(21))]) == [fixed(21)]
-    assert settled_observation_ids([candidate_row(0, selected=left)], []) == []
-    assert settled_observation_ids([], []) == []
+    assert settled_observation_ids([twice], [call_row(fixed(36), fixed(21)), call_row(fixed(37), fixed(21))], mapped=False) == [fixed(21)]
+    assert settled_observation_ids([confirmed], [call_row(fixed(36), None, "decided_transcript")], mapped=False) == []
+    # Otherwise the list is empty: nothing settled, or one raw reading outside a map.
+    assert settled_observation_ids([candidate_row(0, selected=left)], [], mapped=False) == []
+    assert settled_observation_ids([raw], [], mapped=False) == []
+    assert settled_observation_ids([], [], mapped=True) == []
 
 
 def test_the_thread_shows_the_state_the_snapshot_has_after_a_change_back():
@@ -577,13 +642,12 @@ def test_the_coverage_check_reports_each_check():
                 "detail": {"counted": 2, "outside": 0, "threshold": 0.5, "min_inside_fraction": 0.5, "reason_codes": []},
             },
         ],
-        "evidence_id": s.run.evidence[0].id,
+        # The evidence item the writer records from the check (section 2).
+        "evidence_id": derived_id("coverage", s.run.id, "e" * 64),
         "checked_at": "2026-09-23T12:01:00+00:00",
     }
-    # A failed check names its own codes; the range comes from the pinned profile when the check
-    # does not record it.
+    # A failed check names its own codes.
     check = dict(s.run.coverage_check)
-    check.pop("min_label_regions"), check.pop("max_label_regions")
     check.update(
         outcome="unconfirmed",
         region_count=4,
@@ -611,13 +675,17 @@ def test_the_coverage_check_reports_each_check():
             },
         },
     ]
-    s.run.profile_snapshot = {k: v for k, v in s.run.profile_snapshot.items() if k != "segmentation_settings"}
+    # The range is null when the check did not record it, although the pinned profile has one.
+    unranged = {k: v for k, v in check.items() if k not in ("min_label_regions", "max_label_regions")}
+    s.run.coverage_check = unranged
+    assert s.run.profile_snapshot["segmentation_settings"]["coverage"]["max_label_regions"] == 3
     region_count = thread(s)["coverage_check"]["checks"][0]["detail"]
     assert (region_count["min"], region_count["max"]) == (None, None)
     s.run.coverage_check = dict(check, outcome="unconfirmed", reason_codes=["label_coverage_unconfirmed", "zero_regions"], region_count=0)
     zero = thread(s)["coverage_check"]["checks"]
     assert (zero[0]["passed"], zero[0]["detail"]["reason_codes"], zero[1]["passed"]) == (False, ["zero_regions"], True)
-    s.run.evidence = []
+    # Without its evidence blob the check has no evidence item.
+    s.run.coverage_check = {**check, "evidence_ref": None}
     assert thread(s)["coverage_check"]["evidence_id"] is None
 
 

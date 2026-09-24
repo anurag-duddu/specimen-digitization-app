@@ -443,8 +443,10 @@ const current = {decisionIds: [work.transcription.id], candidateIds: [work.candi
 const [read] = ok(await threadOf('worker', open, work.run.id, current)).runs;
 same(read.id, work.run.id);
 same(read.decisions.map(d => [d.id, d.decisionKind, d.selectedObservationId]), [[work.transcription.id, 'first_pass', work.left.id]]);
-same(read.handoffs.map(h => [h.role, h.observationId, h.handedText]), [['decided_transcript', work.left.id, work.left.literalText]]);
-same(read.candidates.map(c => [c.id, c.links.map(l => l.relation)]), [[work.candidate.id, ['supports', 'contradicts']]]);
+// The selected reading as the decided transcript, and the other reading with its note.
+same(read.handoffs.map(h => [h.role, h.observationId, h.note]), [['decided_transcript', work.left.id, null], ['raw_reading', work.right.id, 'Reads the l as a one.']]);
+// Its evidence as linked above: Google's support, a contradiction, and the coverage check.
+same(read.candidates.map(c => [c.id, c.links.map(l => [l.evidenceId, l.relation])]), [[work.candidate.id, [[work.evidence.id, 'supports'], [work.evidence.id, 'contradicts'], [coverage.id, 'supports']]]]);
 // A candidate's decision gives its region and, for G32, the reading it selected.
 same([read.candidates[0].sourceTranscription.region.domainRegionId, read.candidates[0].sourceTranscription.selectedObservationId], [work.region.domainRegionId, work.left.id]);
 same(read.records.map(r => [r.id, r.fields.map(f => f.fieldKey), r.findings.map(f => f.severity)]), [[work.record.id, ['city'], ['hard', 'warning', 'warning']]]);

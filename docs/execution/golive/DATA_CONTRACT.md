@@ -752,20 +752,25 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   from the snapshot and those rows. The route reuses the workspace route's
   lookup, so authorization and its errors are the same.
 - **Not found.** `run_id` names the active run or one of the snapshot's
-  `previous_runs`. Any other value is refused with 404 `not_found` before SQL is
-  read, the same answer for an unknown run and for another specimen's, so the
-  response never shows that another specimen's run exists. A previous run that
-  history compaction (`storage.compact_history`) moved out of the current
-  snapshot is not found either. A run the snapshot holds but SQL has no rows for
-  yet reads with empty lists, a null `decision` and the snapshot's trace id.
+  `previous_runs`; any other value, unknown or another specimen's, is refused
+  with 404 `not_found` before SQL is read. A previous run that history
+  compaction (`storage.compact_history`) moved out of the current snapshot is
+  not found either. A run the snapshot holds but SQL has no rows for yet reads
+  with empty lists, a null `decision` and the snapshot's trace id.
 - **Status.** `run.status` applies the summary's rule to the run read, so a
   previous run shows the status its last state gives.
 - **Field values.** A field's `normalized`, `authority_id` and `parsed` are the
   first set on its candidates in verbatim order, and its `evidence` is every
-  candidate's linked evidence, each item once. Only a candidate carrying the
-  settled value carries these (section 11), so one label shows that
-  candidate's, and two labels that settled alike (G32) show both labels'
-  evidence.
+  candidate's linked evidence, each item once. Only the settled entries'
+  candidates carry these (section 4.3), each linking its own call's evidence,
+  so a field cleared across labels shows every label's evidence. A field is a
+  per-label or per-reader map when the snapshot's field has
+  `verbatim_by_observation`; its settled entries are the candidates carrying
+  `normalizedValue` or `authorityId`.
+- **Coverage.** `coverage_check.status` is `passed` for S3's outcome
+  `confirmed`, `failed` for any other, and `not_run` without a check.
+  `evidence_id` is the run's latest `EvidenceItem` from `label-coverage-check`,
+  the one the writer records from the check.
 - **Bounds.** Every list has a fixed limit: 100 regions, 400 model outputs, 100
   comparisons, 400 handoffs, 1,000 evidence items, 1,000 tool calls, 64 evidence
   links per candidate, 500 resolved fields and 200 findings; the ids passed are
@@ -776,27 +781,6 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   the start. `trace.url` is the template with the run's trace id, from its
   `PipelineRun` row, else its snapshot, and null when the setting is unset or
   the id is not 32 lowercase hex.
-- **Cost.** `run.allowance` keeps `Run.program_allowance`'s `allowance_micros`,
-  `reserved_total_micros`, `remaining_micros` and `at`. `run.paid_calls` reads
-  each `Run.paid_calls` entry by section 8's keys, with `usage` as recorded:
-  tokens for a model call, seconds for SAM 3 (LANE.md T2b).
-- **Coverage detail** (coordinator ruling, 2026-09-23), from `Run.coverage_check`
-  as `label_coverage.py` records it (S3):
-  - `status` is `passed` for the outcome `confirmed`, `failed` otherwise, and
-    `not_run` without a check;
-  - `region_count`: `{found, min, max, reason_codes}`, where `found` is the
-    region count, `min` and `max` are the check's `min_label_regions` and
-    `max_label_regions`, else the pinned profile's
-    `segmentation_settings.coverage`, else null, and `reason_codes` are the
-    check's codes among `zero_regions`, `region_out_of_bounds` and
-    `label_region_count_out_of_range`;
-  - `full_image`: `{counted, outside, threshold, min_inside_fraction,
-    reason_codes}` from the cross check, where `outside` counts its uncovered
-    boxes and `reason_codes` is `cross_check_detection_outside_labels` when the
-    check has it;
-  - a check passes exactly when its `reason_codes` is empty;
-  - `evidence_id` is the run's latest `EvidenceItem` from `label-coverage-check`,
-    else null, and `checked_at` is the check's.
 - **Local runtime.** `SQLiteRepository` writes no normalized rows (section 11),
   so the local runtime has no thread: the route answers 404 `not_found`, as a
   runtime without source configuration has no sources.
