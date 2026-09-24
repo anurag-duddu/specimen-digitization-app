@@ -12009,3 +12009,37 @@ because the hooks runner hands a native asset hook only `PATH`.
   - A superseded run's status follows the summary's rule on its last state (for example `running`); the vocabulary has no `superseded`.
   - A lost final projection pass leaves a finalized run without its decision rows until another save, since T2's catch-up needs a later save.
   - The release must set `SPECIMEN_TRACE_URL_TEMPLATE` on the API service for `trace.url` to be non-null.
+### 2026-09-23 — Go-live thread API (S5 T3), update: G32, the reviewer's decision and T2b's head `0f3acca`
+
+- Task: the S5 T3 follow-ups the coordinator relayed after the entry above: G32's `settled_observation_ids`, the rebase onto `8ebd25da`, the reviewer-decision ruling, then the rebase onto T2b's head `0f3acca` (#88's final review) and its settle and link rules.
+- Branch/worktree: `golive/data-thread-api` in `.claude/worktrees/agent-a6de9727be50c7412`, now on `0f3acca` through `git rebase --onto 0f3acca 8ebd25da`. Local only: not pushed, no pull request. Nothing deployed; no gcloud or firebase call.
+- Correction, 2026-09-23, to the entry above ("Go-live thread API (S5 T3): GetRunThreadV1, the assembly, the route and the canonical example"):
+  - Its commits are now `624eac32` (red), `1a51ed22` (green) and `55cde7ff` (closeout). `17297d7` and `fcf8a6e` predate the two rebases.
+  - `application/projection.py` no longer exposes the writer's keys and equals `0f3acca`. The thread takes the current ids from `projection.writes` itself (below).
+  - Its gitleaks identifier `54623f3…` is gone. `thread.gql` changed since, and its identifier is `592164baade33957e7da97ea64e5875cf49a1ceb`, the fifth in `SECRET_SCAN_REVIEW.md`.
+  - Two of its open questions are settled. A region shows the model's `first_pass` and the reviewer's decision beside it (`regions[].reviewer_decision`, coordinator ruling). Since `8ebd25da` the writer records the coverage check's `EvidenceItem`, and the thread finds it.
+- Commits since, oldest first: `375f00ae`/`927beb43` (G32, red/green), `adcef0d1`/`815f1218` (`8ebd25da`'s writer and G32 fields), `f00a8009`/`83dfe1f0` (the reviewer's decision), `2fd7ae4f`/`18d6c511` (`0f3acca`'s settle and link rules), `ebe0d9b8` (the emulator checks), and this closeout.
+- Outcome:
+  - Rebase conflicts: `projection.py` resolved to T2b's `_fields`, `_evidence_names`, `_named_links` and `_refuse_keys`. The thread's key helpers were first rebuilt from T2b's code below them, so the intermediate commits import, then dropped in `18d6c511`. `DATA_CONTRACT.md` sections 1.6, 1.7, 4.3, 5, 8 and 11 are T2b's, with the thread's deltas on top: `reviewer_decision`, the evidence entry's `observation_ids` and the "How T3 serves it" subsection.
+  - Current rows: `thread.current` runs `projection.writes` on the snapshot's run with no storage and keeps the ids and order of the decisions, candidates and record version it writes. `keys(specimen, run)` passes them to `GetRunThreadV1`.
+  - Settled: a candidate settled exactly when it carries `normalizedValue`, `authorityId` or `parsedValue`, since evidence now links to the entry it names whether or not it settled. A settled raw entry lists its reading. A settled decided entry lists the raw readings its fallback lookup confirmed, else its selected reading in a map and none alone.
+  - Each `evidence` entry carries `observation_ids` from the domain `Evidence.observation_ids`, empty for a lookup. A test shows two agreeing readers as one verbatim with each reader's literal evidence.
+  - Google tool-call results are `{"place_ids": [...]}` in every fixture and the example; `_refuse_keys` refuses anything more.
+  - G38's `fields[].layer` and `derived_from` are left out until S4's domain fields exist.
+- Validation actually run:
+  - Red `2fd7ae4f`: 30 thread tests failed as intended.
+  - Green: `tests/test_thread.py` 31, `test_thread_api.py` 13, `test_projection.py` 11 and `test_projection_decisions.py` 32: 87 passed, 3 opt-in skipped. `scripts/ci/test_release_plan_templates.py` and `test_data_release.py`: 75 passed.
+  - `uv run pytest tests/ -q`: 1589 passed, 34 skipped. `uv run pytest scripts/ -q`: 1550 passed, 50 skipped. Both started at a one-minute load below 6.
+  - A fresh cluster and emulator on 5597/9597, from a copy of the scratchpad's `exp5/run.sh` with its ports changed: `projection-test.mjs` printed 13 PASS lines. A second one, seeded as `serve-local.sh` seeds: `SPECIMEN_TEST_SQL_EMULATOR=true` with `tests/test_sqlconnect_thread.py` and `test_sqlconnect_projection.py`, 3 passed. Each stopped through its trap and deleted its directory.
+  - `thread.gql` did not change in this round. Its digest in the plan templates and its identifier were recomputed and match, so no refresh.
+  - Pre-commit hooks ran on every commit. `scripts/ci/verify.sh` and `scripts/data/test-postgres.sh` were not run, as instructed.
+- Durable learnings:
+  - (1) A reader that keys rows the way a writer does should take the keys from the writer's own output: run the pure writer with stub storage and keep the ids of the operations it reads. Key functions rebuilt beside the writer drifted each time T2b changed its rules.
+  - (2) Once evidence links name entries whether or not they settled, a link cannot show that an entry settled. The candidate's value columns can, because only settled entries carry them (section 4.3).
+  - (3) Rows another session adds to the shared emulator run change later sections' counts without a text conflict. After `0f3acca` the thread section saw a fifth model decision and a second hard finding. Run `projection-test.mjs` after every rebase.
+  - (4) The raw emulator binary serves no members. The opt-in Python tests need `seed-integration.mjs` and the index SQL, as `serve-local.sh` runs them; otherwise every call is rejected, `GetReceipt` first.
+- Failed approaches: the opt-in tests against an unseeded stack (3 failed with "SQL Connect transaction rejected").
+- Open questions and follow-ups:
+  - A run whose stored tool calls hold a key: `writes` refuses it (rule 1.6), so the thread route answers 422 `invalid_input` for it rather than a thread.
+  - A settled map entry of a field with no normalized, authority or parsed value carries nothing, so the thread cannot list its reading. The domain's `settled_observation_ids` names it, if the thread may read that from the snapshot.
+  - The entry above's remaining ones stand: a compacted previous run answers 404; a superseded run's status; a lost final projection pass; `Run.paid_calls` is not in S3's code yet; the release must set `SPECIMEN_TRACE_URL_TEMPLATE`.
