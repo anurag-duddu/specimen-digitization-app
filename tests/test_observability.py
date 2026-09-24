@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from unittest.mock import Mock
 
 import logfire
@@ -24,6 +25,8 @@ def test_configure_observability_uses_metadata_policy_by_default(
     monkeypatch.setenv("LOGFIRE_HEAD_SAMPLE_RATE", "1.0")
     monkeypatch.setenv("LOGFIRE_DISTRIBUTED_TRACING", "false")
     monkeypatch.setattr(observability, "_configured_settings", None)
+    # Configuring installs the key-scrubbing log-record factory (LANE.md T5d).
+    monkeypatch.setattr(logging, "_logRecordFactory", logging.getLogRecordFactory())
     configure = Mock()
     instrument = Mock()
     sampling = object()
@@ -44,6 +47,7 @@ def test_configure_observability_uses_metadata_policy_by_default(
         resource_attributes={
             "specimen.telemetry.capture_mode": "metadata",
         },
+        scrubbing=observability.scrubbing_options(),
         send_to_logfire=False,
     )
     instrument.assert_called_once_with(

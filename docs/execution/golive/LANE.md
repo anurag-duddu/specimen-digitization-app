@@ -787,13 +787,26 @@ linked from the record. Four pull requests: the run's trace (T5a), content
 
 ### The Geocoding key (T5d)
 
-- Logfire's scrubber gets a pattern for a `key` query parameter. Its callback
-  replaces only the parameter's value, so a URL keeps its shape. A logging
-  filter does the same for log records.
-- Logfire never scrubs `exception.message`, so the geography client raises
-  only exceptions without the request URL (S4, S8).
-- A lane test sends a failing fake geocode through the workflow and asserts
-  the key appears in no exported span, event or log record.
+The Geocoding API takes its key as the request's `key` query parameter, so a
+URL can carry the key into a span, a log record or an exception.
+
+- **Spans and logs sent to Logfire.** `configure_observability` adds a pattern
+  for a `key` query parameter to Logfire's scrubbing. Its callback replaces
+  only the parameter's value (`key=[Scrubbed]`), so a URL keeps its shape. A
+  value in which anything else matches Logfire's patterns is redacted whole,
+  as before. The bounded export path, which exports metadata only, is
+  unchanged.
+- **Log records.** A log-record factory does the same for every record's
+  message and arguments as the record is created, whichever handler later
+  writes it. httpx logs each request's URL at INFO.
+- **Exceptions.** Logfire never scrubs `exception.message`, so the geography
+  client raises only exceptions without the request URL (S4, S8).
+- **Tests.**
+  - Part one, here: an attribute, a span's message and a log record that
+    carry a key keep the URL and lose the key's value.
+  - Part two, once S4's geography tool and the lane are both on `main`: a
+    lane test sends a failing fake geocode through the workflow and asserts
+    the key appears in no exported span, event or log record.
 - Settings for S2:
   - the worker job and the SAM 3 service: `LOGFIRE_TOKEN` (the secret),
     `LOGFIRE_SERVICE_NAME` (`specimen-worker`, `specimen-sam3`), `APP_ENV`, and
