@@ -89,7 +89,7 @@ def test_the_organization_and_collection_come_from_the_approved_hierarchy(hierar
 
 @pytest.mark.parametrize(
     "keys",
-    [["insects", "other"], ["mammals"], ["Insects"], ["insects", "insects"], [], [None], "insects"],
+    [["insects", "mammals"], ["mammals"], ["Insects"], ["insects", "insects"], [], [None], "insects"],
     ids=["insects-and-other", "mammals", "case", "repeated", "empty", "none", "string"],
 )
 def test_only_the_committed_allow_list_is_accepted(hierarchy, keys):
