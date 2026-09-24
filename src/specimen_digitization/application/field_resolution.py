@@ -20,6 +20,8 @@ invents a value (HAR-019).
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
@@ -87,13 +89,17 @@ class Resolver:
     """Resolves one specimen's fields; collects the literal evidence and the
     findings it creates, and the first operational block."""
 
-    def __init__(self, readings: Sequence[Reading], asset_id: str) -> None:
+    def __init__(self, readings: Sequence[Reading], asset_id: str, blobs=None) -> None:
         self.readings = {r.observation_id: r for r in readings}
         self.asset_id = asset_id
+        self.blobs = blobs  # Stores each literal evidence item's record.
         self.evidence: list[Evidence] = []
         self.findings: list[RunFinding] = []
         self.blocker: str | None = None
         self._literals: set[str] = set()  # Literal evidence ids.
+        # The raw reading that settled a decided label by the fallback (G20),
+        # by field and region, which a field on several labels names (G32).
+        self._confirmed: dict[tuple[str, str | None], str] = {}
 
     def transcribed(self, key: str, literals: Mapping[str, str | None]) -> FieldValue:
         """A field no tool checks: its literal as written (PRD 12.4). On two
@@ -174,7 +180,8 @@ class Resolver:
         if len({c.settled for c in wins.values()}) != 1:
             state = (ValueState.AMBIGUOUS, "readings_conflict") if wins else failed
             return self._field(key, region, *state, source, grounded)
-        called = next(iter(wins.values()))
+        confirmed, called = next(iter(wins.items()))
+        self._confirmed[(key, region)] = confirmed
         value = self._field(
             key,
             region,
@@ -264,7 +271,11 @@ class Resolver:
                 settled_ids += value.settled_observation_ids
             else:
                 verbatims[value.source_observation_id] = value.literal
-                settled_ids.append(value.source_observation_id)
+                settled_ids.append(
+                    self._confirmed.get(
+                        (key, value.source_region_id), value.source_observation_id
+                    )
+                )
         roles = {o: self.readings[o].role for o in verbatims}
         agreed = all(v.state == ValueState.SUPPORTED for v in present) and (
             len({settled(v) for v in present}) == 1
@@ -315,10 +326,18 @@ class Resolver:
         return decided
 
     def _ground(self, observation_id: str, literal: str) -> str:
-        """Literal evidence: the text exactly as that reading has it."""
+        """Literal evidence: the text exactly as that reading has it, with its
+        record stored so that the evidence projects like any other (#88)."""
         reading = self.readings[observation_id]
         if literal not in reading.text:
             raise ValueError(f"literal_not_in_source:{observation_id}")
+        record = {
+            "region_id": reading.region_id,
+            "observation_ids": [observation_id],
+            "excerpt": literal,
+        }
+        raw = json.dumps(record, sort_keys=True).encode()
+        stored = self.blobs is not None
         item = Evidence(
             kind="literal",
             asset_id=self.asset_id,
@@ -327,6 +346,8 @@ class Resolver:
             source="field_harness",
             locator=f"region:{reading.region_id}",
             excerpt=literal,
+            raw_ref=self.blobs.put(raw) if stored else None,
+            digest=hashlib.sha256(raw).hexdigest() if stored else None,
         )
         self.evidence.append(item)
         self._literals.add(item.id)
