@@ -301,3 +301,54 @@ them under CC BY 4.0. The tests check:
 - Yepocapa's town lies inside its municipio and department.
 - Codes never reach the one-letter gate.
 - Every row of the outcome table.
+
+## 5. History: was a place in use, and what replaced it
+
+The owner's tier 1 evaluates "the historical name + date active" and returns
+modern equivalents (G35). `georef_history.py` answers those two questions for a
+`Place` (section 2). It is pure: it makes no request.
+
+**Dates are intervals.** A label's date is read at the precision written (G24):
+"1946" means the whole year and "1946-09" the whole month. A place's start and
+end are intervals too, at the precision its source states. `use_on(place,
+date)` returns one of five states:
+
+| State | When |
+|---|---|
+| `in_use` | the place certainly started before the label's first day and certainly lasted past its last |
+| `partly` | it was in use for only part of the label's interval |
+| `ended` | its latest possible end falls before the label's first day; the gap in days is recorded as a finding |
+| `not_started` | its earliest possible start falls after the label's last day |
+| `undated` | the source gives neither a start nor an end |
+
+The owner held D5, so no tolerance widens a place's dates. A name used after
+its place ended, such as "P.I." on a label of September 1946, two months after
+the Commonwealth ended, is `ended`, and its 59 days are a finding. The tool
+decides nothing from that gap.
+
+**Roles.** A place its source says ended is `historical`, and any other place is
+`modern`. The two roles map onto `PlaceCandidate.role`.
+
+**Units on a date.** `parents_on(place, date)` keeps the units a place lay in on
+the label's date. A unit counts when its link states no start or end, or when
+the stated start and end (Wikidata's P580 and P582 qualifiers on P131) cover
+the whole date.
+
+**Successors.** `modern_successors(place, places)` follows "replaced by" (P1366)
+through the places the tool has read, until it reaches a successor without an
+end. A successor the tool has not read is kept as it is. A cycle stops.
+
+**Tests.** `tests/test_georef_history.py` uses the recorded Wikidata items of
+section 2 and checks:
+- The 1914-1967 Davao province is `in_use` on 3 September 1946 and in 1946,
+  `partly` in 1914 and in May 1967, `ended` in 1970 (969 days), and
+  `not_started` in 1900.
+- Mount Apo Natural Park, founded 2004, is `not_started` in November 1946.
+- The Commonwealth, ended 4 July 1946 and built with Wikidata's dates, is
+  `ended` for September 1946 with a gap of 59 days.
+- The Philippines is `in_use`.
+- Mount Apo is `undated`.
+- The 1946 province has three modern successors: Davao del Norte, Davao del
+  Sur and Davao Oriental.
+- A successor chain is followed and a cycle is stopped.
+- Units are selected by the dates of their links.
