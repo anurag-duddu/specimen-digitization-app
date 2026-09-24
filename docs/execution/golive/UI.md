@@ -216,3 +216,36 @@ optional fields"; G16: `identified_by_irn` is optional).
 - A group heading has the weight and treatment of a Readings region
   heading, from one shared `GroupHeading`: a label, not a title, set without
   leading, whose node is the size of its words.
+
+Part two adds, from the thread, what was written, by whom, and what settled
+it. It applies only while the record's field stands exactly as the run left
+it: no pending correction, and the same state, text, reading, standardized
+value and authority record. A saved correction changes one of them, and the
+row then shows the record alone, so the run's account never sits beside a
+value it does not describe.
+
+1. Each reader's text. When the first pass chose no reading, the thread
+   gives one text per reader (G27, G28), and the "As written" layer lists
+   each under its reader: "<reader> · raw reading". A single text the
+   harness took from one reader's raw reading (G20) names that reader the
+   same way. The decided transcript's text names no reader, because the
+   Readings segment shows how the transcript was decided.
+2. Each source's relation to the value (G23): "GBIF decides this value",
+   "Global Names Verifier supports this value", "Catalogue of Life
+   contradicts this value", followed by the source's locator. A Google
+   record is named only by its place ID (G26): "Google Maps supports this
+   value · place ID …". These lines take the place of the single authority
+   line. The thread lists only linked evidence, so a lookup that failed or
+   was retried appears in the lookups timeline, not here.
+3. A century a rule set (G24; the coordinator's wording, 2026-09-23): one
+   line under "Read as", "Century from the profile's rule: 1900s". A
+   four-digit year, or a field that is not a date, has none. The precision
+   needs no line, because the parsed form shows it.
+
+The sources go by the names the services use, from the ids the thread
+carries (S5, 2026-09-23): `google-maps-geocoding` is Google Maps, `gbif` is
+GBIF, `gnv` is Global Names Verifier, `col` is Catalogue of Life, and
+`label-coverage-check` is the label coverage check. An id the client does
+not know shows in the server's own word. Corrections are unchanged: every
+layer, the text and the standardized value alike, opens the same editor
+(G27: corrections on both).

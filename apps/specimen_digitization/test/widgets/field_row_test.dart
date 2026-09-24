@@ -157,4 +157,153 @@ void main() {
       await expectAccessible(tester);
     }
   });
+
+  group('what was written, by whom, and what settled it (UI.md T2.3)', () {
+    const List<AttributedText> twoReaders = <AttributedText>[
+      (source: 'Reader one · raw reading', text: 'GUATEMALA'),
+      (source: 'Reader two · raw reading', text: 'GUATEMALA.'),
+    ];
+
+    testWidgets('each text stands under its source, in As written', (
+      WidgetTester tester,
+    ) async {
+      await pumpComponent(
+        tester,
+        const SizedBox(
+          width: 700,
+          child: FieldRow(
+            name: 'Country',
+            state: SpecimenStatus.unresolved,
+            writtenBy: twoReaders,
+          ),
+        ),
+      );
+      final double label = tester.getTopLeft(find.text('As written')).dy;
+      final double readAs = tester.getTopLeft(find.text('Read as')).dy;
+      for (final String text in <String>[
+        'Reader one · raw reading',
+        'GUATEMALA',
+        'Reader two · raw reading',
+        'GUATEMALA.',
+      ]) {
+        expect(
+          tester.getTopLeft(find.text(text)).dy,
+          inExclusiveRange(label, readAs),
+        );
+      }
+      expect(
+        tester.getTopLeft(find.text('Reader one · raw reading')).dy,
+        lessThan(tester.getTopLeft(find.text('GUATEMALA')).dy),
+      );
+      expect(find.text('As written: GUATEMALA and 1 more'), findsOneWidget);
+    });
+
+    testWidgets('a screen reader hears each text with its source', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pumpComponent(
+        tester,
+        const SizedBox(
+          width: 700,
+          child: FieldRow(
+            name: 'Country',
+            state: SpecimenStatus.unresolved,
+            writtenBy: twoReaders,
+          ),
+        ),
+      );
+      expect(
+        find.bySemanticsLabel(
+          RegExp(
+            'As written: Reader one · raw reading, GUATEMALA; '
+            'Reader two · raw reading, GUATEMALA',
+          ),
+        ),
+        findsOneWidget,
+      );
+      handle.dispose();
+    });
+
+    testWidgets('source lines stand in place of the authority line', (
+      WidgetTester tester,
+    ) async {
+      await pumpComponent(
+        tester,
+        const SizedBox(
+          width: 700,
+          child: FieldRow(
+            name: 'Country',
+            state: SpecimenStatus.supported,
+            asWritten: 'GUATEMALA',
+            authority: 'Authority match fixture-place',
+            evidence: <String>[
+              'Google Maps supports this value · place ID fixture-place',
+            ],
+          ),
+        ),
+      );
+      expect(
+        find.text('Google Maps supports this value · place ID fixture-place'),
+        findsOneWidget,
+      );
+      expect(find.text('Authority match fixture-place'), findsNothing);
+    });
+
+    testWidgets('a note under Read as says how it was derived', (
+      WidgetTester tester,
+    ) async {
+      const String note = "Century from the profile's rule: 1900s";
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pumpComponent(
+        tester,
+        const SizedBox(
+          width: 700,
+          child: FieldRow(
+            name: 'Date collected',
+            state: SpecimenStatus.supported,
+            asWritten: '12.v.78',
+            readAs: '1978-05-12',
+            readAsNote: note,
+          ),
+        ),
+      );
+      expect(
+        tester.getTopLeft(find.text(note)).dy,
+        greaterThan(tester.getTopLeft(find.text('1978-05-12')).dy),
+      );
+      expect(
+        tester.getSemantics(find.text(note)),
+        matchesSemantics(label: '1978-05-12\n$note'),
+        reason: 'the note is heard with the value it explains',
+      );
+      handle.dispose();
+    });
+
+    testWidgets('meets the guidelines in both themes', (
+      WidgetTester tester,
+    ) async {
+      for (final ThemeData theme in productThemes.values) {
+        await pumpComponent(
+          tester,
+          SizedBox(
+            width: 700,
+            child: FieldRow(
+              name: 'Country',
+              state: SpecimenStatus.unresolved,
+              writtenBy: twoReaders,
+              readAs: '1978-05-12',
+              readAsNote: "Century from the profile's rule: 1900s",
+              evidence: const <String>[
+                'GBIF decides this value · species/1111111',
+              ],
+              onEdit: (FieldLayer _) {},
+            ),
+          ),
+          theme: theme,
+        );
+        await expectAccessible(tester);
+      }
+    });
+  });
 }
