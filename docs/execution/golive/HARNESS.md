@@ -351,7 +351,9 @@ the rules above. It clears only when every label settled the same value: the
 same place ID or GBIF usage, or for a field no tool checks the same text. It
 then keeps each label's reading in `verbatim_by_observation`, even when the
 texts are identical, and lists each label's settled reading in
-`settled_observation_ids`. Its `normalized` is the one text every label has
+`settled_observation_ids`: for a label its raw-reading fallback settled (G20),
+the confirmed raw reading, while its decided verbatim stays in
+`verbatim_by_observation`. Its `normalized` is the one text every label has
 for a field no tool checks, and otherwise the first label's settled name.
 Differing spellings of the one value record `spelling_disagreement`. Otherwise it is `ambiguous` with `labels_conflict` and
 goes to review with each label's reading and only their literal evidence. A
@@ -372,7 +374,9 @@ when their `authority_id` and `parsed` are equal.
 **Evidence and findings.**
 
 - Every literal a field cites is recorded as `literal` evidence of its reading
-  (source `field_harness`).
+  (source `field_harness`). Its record (the region, the reading and the
+  excerpt) is stored, and the evidence carries its reference and SHA-256, so it
+  projects like any other evidence (#88).
 - `evidence_relations` has one entry per evidence id. Literals `support`; a
   success's evidence has the relation the tool reports: GBIF `decides`, Global
   Names Verifier and Catalogue of Life `support` or `contradict`, and Google
