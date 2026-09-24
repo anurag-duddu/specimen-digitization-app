@@ -396,11 +396,11 @@
       "completed_at": "2026-09-23T12:05:00.000000Z"
     },
     {
-      "call_key": "lookup:catalogue-of-life:raw_reading:00000000-0000-4000-8000-000000000011:00000000-0000-4000-8000-000000000022:664d9b3ca44ab81e:1",
+      "call_key": "lookup:col:raw_reading:00000000-0000-4000-8000-000000000011:00000000-0000-4000-8000-000000000022:664d9b3ca44ab81e:1",
       "phase": "lookup",
-      "tool": "catalogue-of-life",
-      "tool_version": "catalogue-of-life-1",
-      "source": "catalogue-of-life",
+      "tool": "col",
+      "tool_version": "col-1",
+      "source": "col",
       "field_keys": [
         "taxon"
       ],
@@ -667,7 +667,7 @@
         {
           "evidence_id": "00000000-0000-4000-8000-000000000033",
           "relation": "contradicts",
-          "source": "catalogue-of-life",
+          "source": "col",
           "locator": "col/taxon/fixture-col-taxon",
           "outcome": "success",
           "observation_ids": []

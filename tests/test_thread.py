@@ -547,7 +547,7 @@ def test_gbif_decides_and_catalogue_of_life_contradicts():
     taxon = by_key(thread(s)["fields"], "field_key")["taxon"]
     assert taxon["evidence"] == [
         {"evidence_id": gbif.id, "relation": "decides", "source": "gbif", "locator": "gbif/species/1651891", "outcome": "success", "observation_ids": []},
-        {"evidence_id": col.id, "relation": "contradicts", "source": "catalogue-of-life", "locator": "col/taxon/fixture-col-taxon", "outcome": "success", "observation_ids": []},
+        {"evidence_id": col.id, "relation": "contradicts", "source": "col", "locator": "col/taxon/fixture-col-taxon", "outcome": "success", "observation_ids": []},
     ]
     assert (taxon["group"], taxon["state"]) == ("mandatory", "supported")
 
