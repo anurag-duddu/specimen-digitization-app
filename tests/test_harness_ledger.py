@@ -9,6 +9,7 @@ from specimen_digitization.application.domain import Lookup
 from specimen_digitization.application.domain import LookupStatus as S
 from specimen_digitization.application.field_resolution import Reading
 from specimen_digitization.application.harness_ledger import (
+    PlaceContext,
     ToolLedger,
     Tools,
     call_key,
@@ -455,3 +456,31 @@ def test_an_open_source_settles_its_licensed_name_with_the_credit():
     }
     assert (evidence.source, evidence.locator) == ("geonames", "place/geonames:3598572")
     assert city.evidence == {evidence.id: "supports"}
+
+
+def test_a_place_request_carries_its_filters_context_which_is_not_its_identity():
+    # PLAN 4.8 (HARNESS.md sections 7 and 11): the tool's filter reads the
+    # context; the same literals again reuse the recorded request.
+    fakes = Fakes(place=geography({"city": S.SUCCESS}))
+    book = ledger(fakes)
+    arguments = {"literals": [["city", "Chimaltenango"]]}
+    context = PlaceContext(
+        reading_texts=(DECIDED.text, RAW.text),
+        non_place_literals=("12-VI-1946", "FMNH INS 0123456"),
+        knowledge_id="insects",
+        unassigned=("GUAT.",),
+    )
+
+    book.run("geography_lookup", DECIDED, arguments, ["city"], context)
+    book.run("geography_lookup", DECIDED, arguments, ["city"], PlaceContext())
+
+    ((_, (query,), _),) = fakes.calls
+    assert [(item.field_key, item.literal) for item in query.literals] == [
+        ("city", "Chimaltenango"),
+        (None, "GUAT."),
+    ]
+    assert query.reading_texts == [DECIDED.text, RAW.text]
+    assert query.non_place_literals == ["12-VI-1946", "FMNH INS 0123456"]
+    assert query.knowledge_id == "insects"
+    (record,) = book.records
+    assert record.arguments == arguments and record.field_keys == ["city"]

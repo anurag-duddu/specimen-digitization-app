@@ -218,8 +218,8 @@ first version of the geography tool behind the interface of section 6; an
 accepted S8 plan replaces this module, not the interface.
 
 **One call per reading** carries every locality literal of that reading. The
-address is the reading's unassigned locality text when there is any, otherwise
-its assigned literals from the most to the least precise field. The key comes
+address is its place-field literals from the most to the least precise field,
+each as PLAN 4.8's filter lets it leave (below). The key comes
 from `SPECIMEN_GOOGLE_MAPS_API_KEY`; a missing or rejected key is
 `authentication_error`, an operational block (QUE-005). Retries follow section
 6; an HTTP 401 or 403 is final at once. Every call's source is exactly
@@ -283,6 +283,67 @@ is `timeout`, any other `httpx` transport error is `provider_error`
 (`geocoding_transport_error`), and every other failure, including the `httpx`
 errors outside its `HTTPError` family such as `InvalidURL`, is `provider_error`
 with the fixed code `geocoding_unexpected_error`.
+
+**What a request may carry** (PLAN 4.8 as #174 left it on main, 275b399, with
+the coordinator's rulings and the steward's clarifications of 2026-09-24).
+`application/place_text.py` is the one filter. This tool applies it to every
+request, and S8's tiers import it for every value they send.
+- A value a request takes from the reading, from tier 1 or from a reviewer
+  draws only on exact substrings of its sources: the record's readings, the
+  names tier 1 returns, and in "fill the rest" the reviewer's values in place
+  fields (`country`, `province_state`, `county`, `city`, `precise_location`).
+  The check runs on each value before the cuts and the full forms. A value
+  drawn from anything else refuses the whole query. Nothing is sent, and the
+  tool answers `policy_blocked` with the fixed code `place_text_refused`, which
+  blocks the run (QUE-005). A query naming no knowledge is refused the same way
+  (`place_knowledge_unavailable`).
+- From those values, and only there, the filter cuts, comparing tokens by their
+  folded words:
+  - every token of every literal any reading assigns to a non-place field, year
+    literals included, and of every value a reviewer puts in one: a corrected
+    collector's spelling matches no reading's literal;
+  - every token of every clause, between commas, semicolons or line breaks, that
+    holds a collector or determiner marker the knowledge names ("leg.", "coll.",
+    "det."), wherever the marker sits in it and in whichever source. A name a
+    marker accompanies never leaves, whatever field it was given;
+  - every token that carries a digit, so no date, elevation or catalogue number
+    leaves;
+  - the month names and abbreviations the knowledge lists, and a token whose
+    every word is a Roman month, I to XII (the coordinator's ruling of
+    2026-09-24, 4.8 in #180). So "3 VIII 1946" leaves nothing, while the "I" of
+    "P.I." stays.
+- A notation token that survived may then be written out in full from the
+  knowledge's table (the coordinator's ruling, option c). The table expands
+  only notations assigned to place fields alone, never a month, a year or a
+  marker. A notation is cut whenever one of its full forms is, so every full
+  form that leaves has passed the same cuts. A full form adds only the table's
+  fixed words and never brings back a cut token, and a source written out in
+  full is a source too.
+- What survives keeps its clauses, single-spaced and joined by their own
+  separators, with a line break wherever the dropped text held one, as S8's
+  parser reads them. `place_request_forms` returns the value as written after
+  the cuts first, then one form for each way of writing every notation in each
+  of its full forms (G29): "Davao Prov." leaves as "Davao Prov." or "Davao
+  Province", and "Camiguin Is." as "Camiguin Is.", "Camiguin Island" or
+  "Camiguin Islands". `place_request_text` returns the first form.
+- Text the filter cannot recognize, such as a name no reading assigns to any
+  field and no marker accompanies, can still leave. That is its stated limit.
+
+Google gets the first form, as written after the cuts, which keeps the address
+behind the live checks of G34; S8's name searches take the full forms (the
+coordinator's ruling of 2026-09-24; 4.8's "may replace" covers both). Google's
+row of 4.8 sends a literal with its reading's place fields, so the address holds
+the place-field literals only. The reading's unassigned locality text, the part
+of its lines holding place fields that no reading assigns to any field
+("Mindanao" on FMNH 105526321), comes in the query as literals with no field,
+for S8's tiers; it must be drawn from the readings like the rest, and Google
+gets none of it. When nothing survives, nothing is sent (coordinator ruling):
+every field is `no_match` with the fixed code `place_text_empty`, so field
+resolution tries the raw readings (G20) and the record goes to review. A
+request that never left records no Google call. The fixed parts of a request,
+the URL, the parameter names and the headers, are reviewed constants and carry
+no label text. The key is the Secret Manager credential: the filter never
+touches it, and nothing records it (above).
 
 ## 8. The date and catalog-number validators (stage 7, part 3)
 
@@ -444,7 +505,8 @@ sees for section 9.
 tool id is refused before anything is called (HAR-007). The implementations are
 injected, so tests use fakes. A request is one tool, one reading and its
 arguments; the same request again returns the recorded result and records
-nothing new.
+nothing new. A geography request also carries what PLAN 4.8's filter reads
+(section 11), which is not part of its identity.
 
 **Records.** Each source-call attempt is one `ToolCallRecord` in
 `Run.tool_calls`. A validator's call is one attempt with no source.
@@ -537,13 +599,27 @@ reading.
 
 **Tools.** Only the profile's tools, each run through the ledger:
 - `verify_taxon`: GBIF's usage, name, rank and status (G28);
-- `geocode`: a reading's locality literals together, returning the outcome and
-  each field's outcome, never a Google name (G26);
+- `geocode`: a reading's locality literals together, with the reading's
+  literals for its other fields (`others`) so that none of them leaves (PLAN
+  4.8), returning the outcome and each field's outcome, never a Google name
+  (G26);
 - `parse_date`: every reading a date's notation allows;
 - `check_catalog_number`.
 
 Geography arguments are in field order, so the agent's check and the final
 call on the same literals are one request.
+
+**Place requests** (PLAN 4.8, section 7). The agent's check and the final call
+build requests the same way. Each query carries what the filter reads: every
+reading's text, the non-place literals, the knowledge's id, and the reading's
+unassigned locality text.
+- For the agent's check, the non-place literals are those it has named so far
+  in `others`. A field there that is a locality field or not the profile's, or a
+  literal that is not character for character in its reading, is returned for
+  a retry, and no request is made.
+- The final call takes every reading's final literals, year literals included.
+- The context is not part of a request's identity, so the agent's check and the
+  final call on the same literals stay one request.
 
 **Deciding.** After the agent answers, every field is resolved by section 9 from
 the ledger's records, and any tool call the agent did not make on its final
@@ -600,7 +676,7 @@ variable with its default in code, pinned on the run. It states:
 - the copy rule: never invent, complete, correct, expand or translate a literal.
 
 **The Insects knowledge** (`harness_knowledge/insects.py`, id `insects`, version
-`insects-harness-knowledge-v2`) is the pilot's. S3's profile names it. It lists
+`insects-harness-knowledge-v3`) is the pilot's. S3's profile names it. It lists
 the label notations and every reading each allows, each with the fields it can
 belong to:
 - "P.I.", "Guat.", "Prov.", "Dept.", "Mt.", "Is.", "nr." and the directions
@@ -645,6 +721,20 @@ collection date such as 14-5-48.
 
 Its place aliases, written as the geography tool folds them, are the only extra
 names that tool accepts ("P.I." as the Philippines).
+
+It also holds what PLAN 4.8's filter reads (section 7):
+- the collector and determiner markers its notations name ("leg.", "coll.",
+  "Coll.", "det.");
+- the month names with the abbreviations its date notation lists, and the Roman
+  months I to XII;
+- the full forms of the place notations that have fixed ones: "P.I." is
+  "Philippine Islands", "Guat." "Guatemala", "Prov." "Province", "Dept."
+  "Department", "Mt." "Mount", and "Is." "Island" or "Islands". "nr." is left
+  out: it relates a place, it isn't part of its name.
+
+Version 3 adds them, so a run's version names the tables that cut its requests;
+the instructions the agent reads are unchanged. The profile switch names v3 and
+lands after the filter (coordinator ruling, 2026-09-24).
 
 ## 13. Layers and derived values (stage 7, part 8)
 
@@ -738,7 +828,8 @@ S5 stores. The reviewer edits it and approves it through the decision route.
 - Today the derivations are G41's elevation rules: a reviewer's 6,400 ft fills
   the other end and the metres. S8's geographic derivations join once S8's tool
   lands and review calls can be recorded (S5's SQL side for a `review` input
-  source).
+  source). Their requests take the reviewer's values in place fields as sources
+  and every other value as a non-place literal (section 7).
 - The proposal (`domain.Proposal`) carries the proposed fields, the new
   evidence they cite, and the tool calls, lookups and findings. Those stay empty
   until a derivation makes a call.
@@ -769,16 +860,17 @@ the adapter has a harness and the run's profile names a `harness_route`.
   each field's tool from the profile's `field_tools`.
 - The profile's `date_rules` and its `harness_knowledge`, by id and version.
 
-Outward requests carry place text only: one reading's locality literals to
-geography, a scientific name to taxonomy (PLAN 4.8).
+Outward requests carry place text only (PLAN 4.8): to geography, one reading's
+locality literals as section 7's filter lets them leave; to taxonomy, a
+scientific name.
 
 **What the child does** (`harness_direct`):
 - It requires approved inference, the pinned harness route, the pinned prompt
   `field-harness` and the named knowledge; otherwise it blocks with a fixed
   code.
 - It runs the harness (section 11) with the production tools through the
-  ledger. The geography tool gets the knowledge's place aliases, and the date
-  tool the profile's date rules.
+  ledger. The geography tool gets the knowledge's place aliases and each of its
+  queries the knowledge's id; the date tool gets the profile's date rules.
 - It returns the fields, evidence, findings, tool calls, GBIF lookups, any
   block, any harness failure, and the reported token usage.
 

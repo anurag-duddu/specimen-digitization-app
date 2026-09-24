@@ -283,6 +283,25 @@ def test_the_child_needs_approved_inference(child, monkeypatch):
         call()
 
 
+def test_every_place_query_names_the_profiles_knowledge(child, monkeypatch):
+    # PLAN 4.8's filter reads the knowledge the profile names (HARNESS.md 7).
+    from specimen_digitization.application import geography_tool
+
+    call, _ = child
+    queries = []
+
+    def recorded(query, **kwargs):
+        queries.append(query)
+        return geocode(query, **kwargs)
+
+    monkeypatch.setattr(geography_tool, "geocode_locality", recorded)
+
+    call()
+
+    (query,) = queries
+    assert (query.knowledge_id, query.reading_texts) == ("insects", [DECIDED])
+
+
 def outcome(fields, blocker=None, failure=None):
     return {
         "fields": {k: v.model_dump(mode="json") for k, v in fields.items()},
