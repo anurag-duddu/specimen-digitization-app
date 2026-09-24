@@ -11967,3 +11967,45 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (4) `serve-local.sh` puts PostgreSQL's socket in `$TMPDIR`. A long `TMPDIR`, such as a session scratchpad, overflows the Unix socket path limit and `pg_ctl` cannot start; keep the default.
 - Failed approaches: one migration that swapped the unique (the emulator dropped the old index before creating the new one); removing `specimen_unique_1` from `schema.gql` alone (a `COMPATIBLE` apply never drops it).
 - Remaining follow-ups: S2's named-exception sync in #99, so CI admits step 2; S2's T3d before any release runs the drop on a database where #88's step 1 is live; T2b (stages 6 to 8), stacked on this; T3, the thread API.
+### 2026-09-23 — Go-live thread API (S5 T3): GetRunThreadV1, the assembly, the route and the canonical example
+
+- Task: S5 T3 (the record thread API), done by a worktree agent on behalf of session S5 (the data-model session).
+- Branch/worktree: `golive/data-thread-api` from S5's local T2b head `a86fc16`, in `.claude/worktrees/agent-a6de9727be50c7412`. Local only: not pushed, no pull request. Nothing deployed; no gcloud or firebase call; `firebase dataconnect:sql:diff` not run.
+- Commits: red `17297d7` (the contract's "How T3 serves it" and the failing tests), green `fcf8a6e` (implementation, example and release bookkeeping), and this closeout.
+- Outcome:
+  - `dataconnect/connector/thread.gql` adds `GetRunThreadV1` (`NO_ACCESS`, `:impersonateQuery`). It admits whom `GetSpecimen` admits, finds the run by its id and its specimen, and reads every other row nested under that run, so another specimen's run reads as empty. Decisions, field candidates and the record version are read only by the ids passed, and every list is bounded.
+  - `application/thread.py` assembles section 8's response from the snapshot and those rows as typed models. `application/projection.py` exposes the writer's own keys (`decision`, `candidates`, `record_id`, `field_group`), so the thread reads the rows of the snapshot's current state; the writer's output did not change.
+  - `SqlConnectRepository.run_thread` runs the operation. `SQLiteRepository.run_thread` answers not found, since SQLite writes no normalized rows (the `configured_sources` convention). The route reuses the workspace route's `find`, answers 404 for a run the snapshot does not hold, builds `trace.url` from `SPECIMEN_TRACE_URL_TEMPLATE` (read when the API starts), and refuses a run at a list bound with 413 `thread_limit_exceeded`.
+  - `docs/execution/golive/thread-example.json` is the canonical example for S6. `tests/test_thread.py` fails when it drifts from the assembly, and `uv run python tests/test_thread.py` rewrites it.
+  - The coordinator's coverage-detail ruling is in the contract, the assembly and the tests.
+  - Release bookkeeping: `thread.gql`'s digest in the three data plan templates, their `.secrets.baseline` entries, a fourth go-live gitleaks identifier (`54623f3…`, confirmed as SHA-1 of the new digest) and the `SECRET_SCAN_REVIEW.md` prose.
+- Validation actually run:
+  - Red: `uv run pytest tests/test_thread.py tests/test_thread_api.py tests/test_sqlconnect_thread.py -q` stopped at collection, `ModuleNotFoundError` for `application.thread`.
+  - After the writer's refactor, `tests/test_projection.py`, `test_projection_decisions.py` and `test_projection_writer.py`: 31 passed. Green: `tests/test_thread.py` and `tests/test_thread_api.py`: 33 passed.
+  - Private stack `SPECIMEN_TEST_PG_PORT=5613 SPECIMEN_TEST_DC_PORT=9613 scripts/data/serve-local.sh`:
+    - `node scripts/data/projection-test.mjs`: 13 PASS lines, exit 0, the last for `GetRunThreadV1`.
+    - `SPECIMEN_TEST_SQL_EMULATOR=true uv run pytest tests/test_sqlconnect_thread.py tests/test_sqlconnect_projection.py -q`: 3 passed.
+    - A probe of the operation's raw JSON for `Any` columns.
+    - The stack was stopped through its trap and its retained directory deleted.
+  - `scripts/ci/test_release_plan_templates.py` and `test_data_release.py`: 75 passed. `tests/test_api_runtime.py`, `test_source_authorization.py`, `test_history_paging.py` and `test_decisions_batch.py`: 66 passed, 1 skipped.
+  - `uv run pytest tests/ -q`: 1521 passed, 34 skipped. It started at a one-minute load of 14.9, although the gate had read below 12 moments before.
+  - `uv run pytest scripts/ -q`: 1547 passed, 50 skipped, started at a load of 9.8. A first run without `LANG` and `LC_ALL` exported failed only `test_native_index_catalog_matches_ddl_and_rejects_valid_wrong_same_name`, where `pg_ctl` could not start; that test passes alone with them.
+  - Pre-commit hooks ran on every commit. `scripts/ci/verify.sh` and `scripts/data/test-postgres.sh` were not run, as instructed.
+- Durable learnings:
+  - (1) Data Connect 3.2.0 returns `Timestamp` fields in UTC with six fractional digits (`2026-09-23T12:00:00.000000Z`), whatever form was written.
+  - (2) Nested reverse-relation lists (`labelRegions_on_run`, `candidateEvidences_on_candidate`, `resolvedFields_on_recordVersion`) accept `where`, `orderBy` and `limit`. Reading every child under a run found by `where: {id, specimenId}` makes another specimen's run read as empty in one operation.
+  - (3) `id: {in: $ids}` with a non-null empty list selects nothing. Declare such lists `[UUID!]!`, since an absent filter would select everything.
+  - (4) A `@check` on a key lookup sees only the selected fields: `this.sensitive` fails to compile ("undefined field") unless `sensitive` is selected.
+  - (5) Rows keyed by their content (decisions, candidates, record versions) cannot say from SQL alone which one is current. A change back to an earlier state reuses the old row with its old `createdAt`, so "latest wins" would show the stale state. The thread passes the ids the snapshot yields instead.
+  - (6) Python's `==` treats `1651891` and `1651891.0` as equal, so comparing assembled outputs cannot see int-versus-double drift. A probe of the raw JSON showed Data Connect returns whole numbers in `Any` columns as JSON ints.
+  - (7) PostgreSQL limits a Unix socket path to 103 bytes, so the session scratchpad cannot be `serve-local.sh`'s `TMPDIR`. The default `/var/folders/.../T/` works.
+  - (8) The worktree-isolation guard reads "digitization" as naming git and refuses compound commands and heredocs. Use plain commands, the Edit tool, and a message file for `git commit -F`; a script run that way needs its own `LANG` and `LC_ALL` exports.
+- Failed approaches: a first `serve-local.sh` start with `TMPDIR` in the scratchpad (socket path too long); a `user:pass@` URL literal in a test, which detect-secrets reported as "Basic Auth Credentials", replaced by a username-only one.
+- Open questions and follow-ups:
+  - No code writes an `EvidenceItem` from `label-coverage-check` yet: the writer records only `Run.lookups` and `Run.evidence`, and S3's `check_coverage` adds no `Evidence`. `coverage_check.evidence_id` stays null until one of them does.
+  - `Run.paid_calls` is not in S3's code yet; the thread reads each entry by section 8's keys.
+  - Once a reviewer decides a region, the current decision is the reviewer's. The thread then shows it with no model call and no handoffs, and the LLM's first pass for that region leaves the thread, although its rows stay in SQL.
+  - A previous run that `compact_history` moved out of the current snapshot answers 404; reading it would mean walking the history chain one revision at a time.
+  - A superseded run's status follows the summary's rule on its last state (for example `running`); the vocabulary has no `superseded`.
+  - A lost final projection pass leaves a finalized run without its decision rows until another save, since T2's catch-up needs a later save.
+  - The release must set `SPECIMEN_TRACE_URL_TEMPLATE` on the API service for `trace.url` to be non-null.
