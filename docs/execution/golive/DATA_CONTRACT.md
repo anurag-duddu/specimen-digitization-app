@@ -93,6 +93,9 @@ reads them.
      returned, and the call's sanitized `error` and `retry_after` (S4's tool
      ledger, #138). The writer refuses any other key there.
    - GBIF's accepted names may be stored (G28).
+   - A Google-confirmed value's `authority_identity` holds its place id and no
+     name. The writer refuses a run whose Google-sourced identity carries a
+     name, and `AppendFieldCandidateV3` refuses one too (T2c).
    - No credential is stored with a call (PLAN 4.8 in #124): no request URL that
      carries one (the Maps key's `key=`, GeoNames' `username=`) and no API key
      (Google's begin `AIza`), in a `ToolCall`'s `arguments` or `result` (its
@@ -194,7 +197,8 @@ region.
 | `LabelRegion` | `domainRegionId` (the domain's region id: SAM's, a corrected one, or `new-{microseconds}` for a region a person added; the row's own id is per run, section 5) |
 | `ModelObservation` | `routeId`, `unreadableSpans: [String!]` |
 | `TranscriptionVersion` | `regionId` (CONTRACTS.md 185), `decisionKind` (`identical_readings`, `first_pass` or `human`), `selectedObservationId` (the reading whose raw transcript the harness runs against; null only when no reading was selected), `firstPassObservationId` (the first pass's model call), `rationale`. `unresolved` follows the one rule in section 4.2 |
-| `FieldCandidate` | `inputSource` (`decided_transcript` or `raw_reading`), `sourceTranscriptionId`, `sourceObservationId` |
+| `ToolCall` | T2c: `reviewDecisionId`, the `ReviewDecision` a call on a reviewer's text ran for (G38's "fill the rest"), set exactly when `inputSource` is `review` |
+| `FieldCandidate` | `inputSource` (`decided_transcript` or `raw_reading`), `sourceTranscriptionId`, `sourceObservationId`; T2c adds `derivedFromFieldKeys: [String!]` (the settled fields a derived value comes from, G37, G38, G44; set exactly when `derivation` is `derived`) and `authorityIdentity: Any` (the settled value's authority: `name`, `source`, `source_record_id` and `credit`, PLAN 4.8; a Google-sourced one has no `name`, G26) |
 | `ResolvedField` | `fieldGroup` (`mandatory` or `optional`) |
 | `ValidationFinding` | `evidenceIds: [UUID!]` (the evidence behind the finding, all of the record version's run) |
 
@@ -277,7 +281,8 @@ stage and blocker say why.
 - `call_key`, in section 3.1's form;
 - `phase`, `tool`, `tool_version`, `source` and `field_keys`;
 - `input_source`, plus `region_id` and `observation_id` when the call ran on
-  one region's text;
+  one region's text; `input_source` `review` for a call on a reviewer's text
+  ("fill the rest", T2c), with `review_decision_id` naming its review decision;
 - `attempt`, `arguments: dict`, `outcome` and `result: dict | None`;
 - `evidence_id`, the `Evidence` or `Lookup` the call produced;
 - `started_at` and `completed_at`.
@@ -385,6 +390,16 @@ per-call cost record on the run, not in SQL.
   `taxonomy_support_unavailable:{source}` (#109, `taxonomy_tool.py` 230-236).
   The writer stores the relation on `CandidateEvidence` and writes no link
   without one.
+- `layer` (`verbatim`, `settled` or `derived`) and `derived_from: list[str]`
+  (G38; S4's #144). A derived value (G37, G41, G44) fills a field the label
+  leaves out. `apply_derivations` gives it `parsed` and `authority_id`, and one
+  `derivation` evidence item that `decides` it. That item's stored record is
+  the `Derivation`: its method, inputs, value, and authority with version, plus
+  the evidence ids of the calls behind it. Its inputs' and calls' evidence
+  `supports` it.
+- `authority_identity: {name, source, source_record_id, credit}` (PLAN 4.8;
+  S4): the settled value's authority and the credit its licence asks for.
+  Google's has no `name` (G26).
 - `precision` and `century_rule` (G24). A parsed date carries its precision
   (`day`, `month` or `year`, exactly as written, never widened) and the rule
   that set its century: the pinned profile's rule version and value, for
@@ -530,6 +545,16 @@ On top of that rule:
 - **Findings.** `AppendValidationFindingV2` takes the run id. The record version
   and every one of the finding's `evidenceIds` must be of that run, each named
   once, at most 64.
+- **Derived values** (T2c; G37, G38, G44, PLAN 4.8). `AppendFieldCandidateV3`'s
+  `derivation` is `literal`, `parsed`, `normalized`, `lookup`, `human` or
+  `derived`. A `derived` candidate names at least one field in
+  `derivedFromFieldKeys` and has no literal and no input source. Any other
+  candidate has no `derivedFromFieldKeys`. An `authorityIdentity` whose `source`
+  is `google-maps-geocoding` has no `name` (G26).
+- **Review input** (T2c; G38). `AppendToolCallV2` admits `inputSource`
+  `review`. Such a call names a `ReviewDecision` of the run's specimen in
+  `reviewDecisionId`, and no decision version and no observation. A call with
+  any other input source has no `reviewDecisionId`.
 - **Approval claims** (coordinator ruling on #88). `AppendProfileVersionV2`
   admits operators, because the worker writes the profile snapshot each run
   used. A non-null `approvedBy` is an approval claim and needs `main`'s rule: a
@@ -558,7 +583,9 @@ The projection writes are in `dataconnect/connector/projection.gql`, all
 | `AppendHarnessInputV1` | `HarnessInput`, its role matching the decision's selection |
 | `AppendEvidenceItemV2` | `EvidenceItem`, locator optional; Google's rules in section 6 |
 | `AppendToolCallV1` | `ToolCall` |
+| `AppendToolCallV2` | `ToolCall`, with the `review` input and its `reviewDecisionId` (T2c); the writer uses it for every call |
 | `AppendFieldCandidateV2` | `FieldCandidate` with its input source |
+| `AppendFieldCandidateV3` | `FieldCandidate` with its input source, `derivedFromFieldKeys` and `authorityIdentity` (T2c); the writer uses it for every candidate |
 | `AppendCandidateEvidenceV2` | `CandidateEvidence` with its relation, for `success` or `recorded` evidence only |
 | `AppendRecordVersionV2` | `RecordVersion` |
 | `AppendResolvedFieldV2` | `ResolvedField` with its group |
@@ -760,6 +787,10 @@ against real PostgreSQL and the Data Connect emulator. It checks:
   identical readings' rationale and notes, the review revisions, the locator
   rule, the 64 evidence ids, and the Google rules of section 6 on evidence and
   tool calls are enforced;
+- T2c: a `derived` candidate names its inputs and has no literal or input
+  source, no other candidate names inputs, a Google identity with a name is
+  refused, and a `review` call names a review decision of its own run's
+  specimen and nothing else;
 - `ListDueWorkV2` lists the oldest due time first, with ties by id, pages one
   row at a time across a tie at a microsecond stamp, hides sensitive rows from
   the worker, and skips finished and undated runs; a stuck cursor fails the
@@ -776,7 +807,9 @@ conflicts, stop-and-resume on any other failure, a save that survives the
 projection, sizes read once) run in CI; `tests/test_sqlconnect_projection.py`
 runs against the emulator (`SPECIMEN_TEST_SQL_EMULATOR=true` with
 `scripts/data/serve-local.sh`): stage 1 to 5 rows land once, and a fresh process
-replays without duplicates or warnings.
+replays without duplicates or warnings. `tests/test_projection_derived.py` (T2c)
+checks the derived candidate, that a derived value without its record does not
+count, the authority identity, the Google refusal and the review call.
 
 ## 11. Projection writer (S5 T2)
 
@@ -843,7 +876,7 @@ T2b mapping. It reads the first-pass, harness and field names agreed with S4
 | `HarnessInput` | each `Transcript.handoffs` entry with its handed text and note, as S4 writes them: the selected reading as the decided transcript and every other reading as a raw reading, or every reading as a raw reading without a selection (G19) |
 | `SourceAsset` lookup response, `EvidenceItem` | each `Run.lookups` entry and each `Run.evidence` entry with a stored response: id the domain id; `source`, versions, `query`, `outcome`; a lookup's `locator` its own for a `success` (else `lookup/{id}`) and null for any other outcome, while recorded evidence keeps its own; `responseSha256` the recorded digest (for Google the full response's, G26); `capturedAt`. Google's stored record is an `evidence_record` asset, every other lookup's a `lookup_response` |
 | `EvidenceItem` coverage check (G15) | `Run.coverage_check` with an evidence blob: id `coverage/{run}/{evidence sha256}`; `source` `label-coverage-check`; `sourceVersion` and `adapterVersion` the check's version; `outcome` `recorded`; `locator` `coverage/{version}`; `responseSha256` the evidence digest; `capturedAt` when it ran; an `evidence_record` asset for the blob |
-| `ToolCall` | each `Run.tool_calls` record; `transcriptionVersionId` the region's decision when the call used the decided transcript; `evidenceId` only when that evidence has a row |
-| `FieldCandidate`, `CandidateEvidence` | each field with a literal, or one candidate per `verbatim_by_observation` entry: each differing reader without a pick (G19), or each label's own entries for a field on more than one label (G32). An entry's `inputSource` comes from `input_source_by_observation`; a decided-transcript entry names its region's decision, and a raw-reading entry its reading. The settled `normalizedValue`, `authorityId` and `parsedValue` go on the field's candidate, or, with a verbatim map, on the settled entries' candidates: each entry `settled_observation_ids` names, and a decided entry whose region's raw reading it names (G20). Evidence links go on the field's candidate, or, with a verbatim map, on the entry each evidence names, settled or not: the reading its call ran on, else its call's region; for literal evidence, the reading it quotes, else its region; else every settled entry (section 4.3). The other candidates carry their literal and the field's state. `derivation` is `lookup` only when a source `decides` the value and set `normalized`, else `normalized`, `parsed` or `literal`, so a Google-confirmed field keeps the label's own (rule 1.6); `parsedValue` per G24; one `CandidateEvidence` per evidence id that has a row with outcome `success` or `recorded` and a relation in `evidence_relations`: no default |
+| `ToolCall` | each `Run.tool_calls` record, through `AppendToolCallV2`; `transcriptionVersionId` the region's decision when the call used the decided transcript; `reviewDecisionId` the record's `review_decision_id` for a `review` call (T2c), whose decision a reviewer's pass writes first; `evidenceId` only when that evidence has a row |
+| `FieldCandidate`, `CandidateEvidence` | each field with a literal, or one candidate per `verbatim_by_observation` entry: each differing reader without a pick (G19), or each label's own entries for a field on more than one label (G32). An entry's `inputSource` comes from `input_source_by_observation`; a decided-transcript entry names its region's decision, and a raw-reading entry its reading. The settled `normalizedValue`, `authorityId` and `parsedValue` go on the field's candidate, or, with a verbatim map, on the settled entries' candidates: each entry `settled_observation_ids` names, and a decided entry whose region's raw reading it names (G20). Evidence links go on the field's candidate, or, with a verbatim map, on the entry each evidence names, settled or not: the reading its call ran on, else its call's region; for literal evidence, the reading it quotes, else its region; else every settled entry (section 4.3). The other candidates carry their literal and the field's state. `derivation` is `lookup` only when a source `decides` the value and set `normalized`, else `normalized`, `parsed` or `literal`, so a Google-confirmed field keeps the label's own (rule 1.6); `parsedValue` per G24; one `CandidateEvidence` per evidence id that has a row with outcome `success` or `recorded` and a relation in `evidence_relations`: no default. All candidates go through `AppendFieldCandidateV3`, and `authorityIdentity` is the field's `authority_identity` on the candidates that carry the settled value. A field in the derived layer (`layer` `derived`, G38) is one candidate with `derivation` `derived`: no literal and no input source, its `parsed`, `normalized` and `authority_id`, and its `derived_from` as `derivedFromFieldKeys`. It counts only when its record does. `derived_from` must name only fields of the run that are settled (`supported`), and the value must cite a `derivation` evidence item with relation `decides` whose stored record has a row. Otherwise no candidate is written, and the field's `ResolvedField` has no candidate (T2c; PLAN 4.8) |
 | `RecordVersion`, `ResolvedField`, `ValidationFinding` | once the run has a disposition: `policyVersion` the profile's, `reasonCodes`, `summary` `Run.disposition_summary` (else the reason codes joined, else the disposition); a resolved field for every field, its group from `Run.field_groups`, else `mandatory` when the profile lists it and `optional` otherwise, and its candidate the field's, or with a verbatim map the first settled one, else null; a hard, failed finding per reason code with `ruleId` the code before its first colon and `fieldKey` the rest when it names a field, and a failed finding per `Run.findings` entry with its own rule, version, severity and field, and the evidence ids the run recorded; every finding carries `runId` and its recorded evidence ids, each once, and its id covers its severity, rule, field and evidence (section 5); the record's id covers its findings and each field's resolved candidate |
-| `ReviewDecision` | each `review_*` audit event, only on saves by a reviewer, manager or admin, whom the operation requires: id the event's; `correction` `{action, before, after}`; revisions as of the save that first writes it |
+| `ReviewDecision` | each `review_*` audit event, only on saves by a reviewer, manager or admin, whom the operation requires: id the event's; `correction` `{action, before, after}`; revisions as of the save that first writes it; written before evidence and tool calls, so a `review` call's decision exists (T2c) |

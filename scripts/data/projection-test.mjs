@@ -286,6 +286,38 @@ const second = {...work.region, id: rid(), domainRegionId: rid(), ordinal: 1};
 ok(await op('AppendLabelRegionV2', second));
 const secondReading = {...work.left, id: rid(), stepKey: rid(), regionId: second.id};
 ok(await op('AppendModelObservationV2', secondReading));
+// T2c (DATA_CONTRACT.md 3.2, 6): a derived candidate names the settled fields it came from and has no
+// literal or input source; a settled value keeps its authority's identity, never a Google name (G26);
+// a call on a reviewer's text names a review decision of its own run's specimen, and nothing else.
+// An omitted variable is a missing key to CEL, not null, so every call passes the new ones.
+const candidate3 = {...work.candidate, derivedFromFieldKeys: null, authorityIdentity: null};
+const toolCall2 = {...work.toolCall, reviewDecisionId: null};
+const derived = {...candidate3, id: randomUUID(), fieldKey: 'elevation_from_m', literalValue: null, parsedValue: '1950.72', authorityId: null, derivation: 'derived', inputSource: null, sourceTranscriptionId: null, sourceObservationId: null, derivedFromFieldKeys: ['elevation_from_ft'], authorityIdentity: null};
+ok(await op('AppendFieldCandidateV3', derived));
+denied(await op('AppendFieldCandidateV3', {...derived, id: randomUUID(), derivedFromFieldKeys: []}));
+denied(await op('AppendFieldCandidateV3', {...derived, id: randomUUID(), derivedFromFieldKeys: null}));
+denied(await op('AppendFieldCandidateV3', {...derived, id: randomUUID(), literalValue: '6400'}));
+denied(await op('AppendFieldCandidateV3', {...derived, id: randomUUID(), inputSource: 'decided_transcript', sourceTranscriptionId: work.transcription.id}));
+denied(await op('AppendFieldCandidateV3', {...candidate3, id: randomUUID(), derivedFromFieldKeys: ['city']}));
+denied(await op('AppendFieldCandidateV3', {...candidate3, id: randomUUID(), derivation: 'guessed'}));
+const nameless = {source: 'google-maps-geocoding', source_record_id: 'fixture-place'};
+ok(await op('AppendFieldCandidateV3', {...candidate3, id: randomUUID(), authorityIdentity: nameless}));
+denied(await op('AppendFieldCandidateV3', {...candidate3, id: randomUUID(), authorityIdentity: {...nameless, name: 'fixture-google-name'}}));
+ok(await op('AppendFieldCandidateV3', {...candidate3, id: randomUUID(), authorityIdentity: {source: 'gbif', source_record_id: 'fixture-gbif-1', name: 'Apis', credit: 'fixture credit'}}));
+const asked = {...scope, actorUid: 'reviewer', id: randomUUID(), specimenId: open, baseRevision: 0, resultingRevision: 1, reason: 'Filled the county', correction: {action: 'review_fill_the_rest', before: {}, after: {county: 'Cook'}}};
+ok(await op('AppendReviewDecisionV1', asked));
+const elsewhere2 = {...asked, id: randomUUID(), specimenId: closed, baseRevision: 1, resultingRevision: 2};
+ok(await op('AppendReviewDecisionV1', elsewhere2));
+const reviewCall = {...toolCall2, id: randomUUID(), callKey: `review:${randomUUID()}`, inputSource: 'review', transcriptionVersionId: null, observationId: null, evidenceId: null, reviewDecisionId: asked.id};
+ok(await op('AppendToolCallV2', reviewCall));
+denied(await op('AppendToolCallV2', {...reviewCall, id: randomUUID(), callKey: randomUUID(), reviewDecisionId: null}));
+denied(await op('AppendToolCallV2', {...reviewCall, id: randomUUID(), callKey: randomUUID(), transcriptionVersionId: work.transcription.id}));
+denied(await op('AppendToolCallV2', {...reviewCall, id: randomUUID(), callKey: randomUUID(), observationId: work.left.id}));
+denied(await op('AppendToolCallV2', {...toolCall2, id: randomUUID(), callKey: randomUUID(), reviewDecisionId: asked.id}));
+denied(await op('AppendToolCallV2', {...reviewCall, id: randomUUID(), callKey: randomUUID(), reviewDecisionId: elsewhere2.id}));
+ok(await op('AppendToolCallV2', {...toolCall2, id: randomUUID(), callKey: randomUUID()}));
+console.log('PASS T2c: a derived candidate names its settled inputs, a Google identity carries no name, and a review call names its own specimen\'s review decision');
+
 const crossings = [
   ['AppendSourceAssetV2', {...work.envelope, id: rid(), objectName: rid(), parentAssetId: b.original.id}],
   ['AppendPipelineRunV2', {...work.run, id: rid(), supersedesRunId: b.run.id}],
@@ -310,6 +342,11 @@ const crossings = [
   ['AppendToolCallV1', {...work.toolCall, id: rid(), callKey: rid(), inputSource: 'raw_reading', transcriptionVersionId: null, observationId: b.left.id}],
   ['AppendFieldCandidateV2', {...work.candidate, id: rid(), sourceTranscriptionId: b.transcription.id}],
   ['AppendFieldCandidateV2', {...work.candidate, id: rid(), inputSource: 'raw_reading', sourceTranscriptionId: null, sourceObservationId: b.left.id}],
+  ['AppendFieldCandidateV3', {...candidate3, id: rid(), sourceTranscriptionId: b.transcription.id}],
+  ['AppendFieldCandidateV3', {...candidate3, id: rid(), inputSource: 'raw_reading', sourceTranscriptionId: null, sourceObservationId: b.left.id}],
+  ['AppendToolCallV2', {...toolCall2, id: rid(), callKey: rid(), transcriptionVersionId: b.transcription.id}],
+  ['AppendToolCallV2', {...toolCall2, id: rid(), callKey: rid(), evidenceId: b.evidence.id}],
+  ['AppendToolCallV2', {...toolCall2, id: rid(), callKey: rid(), inputSource: 'raw_reading', transcriptionVersionId: null, observationId: b.left.id}],
   ['AppendCandidateEvidenceV2', {...work.link, id: rid(), evidenceId: b.evidence.id}],
   ['AppendRecordVersionV2', {...work.record, id: rid(), predecessorId: b.record.id}],
   ['AppendResolvedFieldV2', {...work.resolved, id: rid(), candidateId: b.candidate.id}],

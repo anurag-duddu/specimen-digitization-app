@@ -12006,3 +12006,28 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (2) Linking evidence by the source its call ran on misses the G20 fallback, where a raw reading's call settles a decided entry. Link by the reading the evidence names, else by its region.
   - (3) A rule that settles an entry by its region must guard a reading with no region, or `None == None` settles it.
 - Remaining follow-ups: T2c, stacked on this; S4's domain types in place of the stand-ins once #131 merges.
+
+### 2026-09-24 — Go-live derived values in SQL (S5 T2c)
+
+- Task: S5 T2c, the SQL half of T6 moved ahead of T3 by coordinator ruling (2026-09-24). Pull request "[golive:data] Derived values, authority identities and review calls in SQL", stacked on T2b-2.
+- Branch/worktree: `golive/data-derived` in `.claude/worktrees/epic-rhodes-d168f3`.
+- Commits: `2a371d0` (spec and failing tests); `cd72202` (schema, operations, writer, fingerprints); `e6c169a` (G44's derived date); the merge of T2b-2; this entry.
+- Outcome:
+  - Schema: `FieldCandidate` gains nullable `derivedFromFieldKeys` and `authorityIdentity`. `ToolCall` gains a nullable `reviewDecisionId`, with a foreign key to `ReviewDecision`.
+  - `AppendFieldCandidateV3` has a closed derivation vocabulary with `derived`. A `derived` candidate names at least one input and has no literal, input source or source ids, and no other candidate names inputs. A Google identity with a name is refused (G26).
+  - `AppendToolCallV2` admits the `review` input, which names a review decision of the run's specimen and nothing else.
+  - The writer uses both operations for every write, and writes review decisions before tool calls.
+  - A derived value counts only when it names settled inputs and a stored derivation record decides it (PLAN 4.8). Otherwise no candidate is written, and the field stays unresolved.
+  - `RefusedContent` is the base of `CredentialStored` and `GoogleContentStored`.
+- Validation actually run:
+  - the unit tests, 73 passed (13 in `tests/test_projection_derived.py`);
+  - `projection-test.mjs`, 13 of 13;
+  - the opt-in SQL tests, 2 of 2;
+  - `test-postgres.sh`, exit 0 with 80 PASS;
+  - the release pins, 55 passed;
+  - a scratchpad copy that prints every refusal's message. Each new crossing hits its parent check, and the other-specimen review decision gives its own message.
+  The full suites ran on T3's head, which contains this branch.
+- Durable learnings:
+  - (1) Data Connect's CEL reads an omitted variable as a missing key, not as null. `vars.x == null` then errors, the membership check refuses first, and the intended check never runs, which masked every new crossing test. Tests must pass every variable explicitly, as the writer does, and a refusal counts only with the message of the check it names.
+  - (2) A candidate's id digests the field's content. A row written before a new column exists keeps the same id, and a later pass counts it as already written, so columns such as `derivedFromFieldKeys` and `authorityIdentity` must be applied before production writes. The coordinator encodes this in MERGE_ORDER: V3 on main and applied before the first production run.
+- Remaining follow-ups: S2's sign-off, with #99's gate admitting V3 and V2 as additive; the MERGE_ORDER constraint; T6's route and proposal; S4's review calls, which wait for V2 on main.

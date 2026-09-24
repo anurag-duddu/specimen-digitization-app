@@ -284,6 +284,10 @@ type ToolCall @table(key: ["organizationId", "collectionId", "id"]) @unique(inde
   result: Any
   evidenceId: UUID
   evidence: EvidenceItem @ref(fields: ["organizationId", "collectionId", "evidenceId"], constraintName: "tool_call_evidence")
+  # T2c: the review decision a call on a reviewer's text ran for ("fill the rest", G38); set exactly
+  # when inputSource is "review" (DATA_CONTRACT.md 3.2).
+  reviewDecisionId: UUID
+  reviewDecision: ReviewDecision @ref(fields: ["organizationId", "collectionId", "reviewDecisionId"], constraintName: "tool_call_review_decision")
   startedAt: Timestamp
   completedAt: Timestamp
   createdAt: Timestamp! @default(expr: "request.time")
@@ -309,6 +313,11 @@ type FieldCandidate @table(key: ["organizationId", "collectionId", "id"]) {
   sourceTranscription: TranscriptionVersion @ref(constraintName: "candidate_transcription", fields: ["organizationId", "collectionId", "sourceTranscriptionId"])
   sourceObservationId: UUID
   sourceObservation: ModelObservation @ref(constraintName: "candidate_observation", fields: ["organizationId", "collectionId", "sourceObservationId"])
+  # T2c: the settled fields a derived value comes from (G37, G38); set exactly when derivation is
+  # "derived" (DATA_CONTRACT.md 3.2).
+  derivedFromFieldKeys: [String!]
+  # T2c: the settled value's authority, name and credit (PLAN 4.8); Google's has no name (G26).
+  authorityIdentity: Any
   createdAt: Timestamp! @default(expr: "request.time")
 }
 

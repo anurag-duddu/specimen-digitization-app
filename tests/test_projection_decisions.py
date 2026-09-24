@@ -21,7 +21,13 @@ from specimen_digitization.application.domain import (
     Transcript,
     ValueState,
 )
-from specimen_digitization.application.projection import CredentialStored, derived_id, settled_entries, writes
+from specimen_digitization.application.projection import (
+    CredentialStored,
+    GoogleContentStored,
+    derived_id,
+    settled_entries,
+    writes,
+)
 from specimen_digitization.application.storage import digest
 
 from test_projection import TracedRun, locate, pinned, read, reading, size, specimen
@@ -375,7 +381,7 @@ def test_tool_calls_point_at_the_decision_they_ran_on_and_the_evidence_they_made
     result = writes(s, locate, size, "worker-uid")
     references_come_first(result)
     decision = rows(result, "AppendTranscriptionVersionV2")[0]
-    geocode, gbif = rows(result, "AppendToolCallV1")
+    geocode, gbif = rows(result, "AppendToolCallV2")
     assert geocode["id"] == derived_id("tool-call", s.run.id, geocode["callKey"])
     assert geocode["transcriptionVersionId"] == decision["id"]
     assert geocode["observationId"] is None
@@ -431,7 +437,7 @@ def test_fields_carry_their_source_date_precision_and_evidence():
     result = writes(s, locate, size, "worker-uid")
     references_come_first(result)
     decision = rows(result, "AppendTranscriptionVersionV2")[0]
-    date, city, country = rows(result, "AppendFieldCandidateV2")
+    date, city, country = rows(result, "AppendFieldCandidateV3")
     assert date["fieldKey"] == "date_visited_from"
     assert date["parsedValue"] == {
         "value": "1946-07",
@@ -469,7 +475,7 @@ def test_a_deciding_source_makes_a_lookup_and_every_relation_is_kept():
         )
     }
     result = writes(s, locate, size, "worker-uid")
-    (taxon,) = rows(result, "AppendFieldCandidateV2")
+    (taxon,) = rows(result, "AppendFieldCandidateV3")
     assert (taxon["derivation"], taxon["normalizedValue"]) == ("lookup", "Aedes aegypti")
     links = rows(result, "AppendCandidateEvidenceV2")
     assert [(link["evidenceId"], link["relation"]) for link in links] == [
@@ -497,7 +503,7 @@ def test_each_reader_keeps_its_verbatim_when_the_first_pass_picked_none():
     }
     s.run.disposition, s.run.reasons = Disposition.CLEARED, []
     result = writes(s, locate, size, "worker-uid")
-    candidates = rows(result, "AppendFieldCandidateV2")
+    candidates = rows(result, "AppendFieldCandidateV3")
     assert [(c["literalValue"], c["sourceObservationId"], c["inputSource"]) for c in candidates] == [
         ("Chimaltenango", left.id, "raw_reading"),
         ("Chimaltenago", right.id, "raw_reading"),
@@ -515,7 +521,7 @@ def test_each_reader_keeps_its_verbatim_when_the_first_pass_picked_none():
         update={"settled_observation_ids": [], "normalized": None, "authority_id": None, "evidence_ids": [], "evidence_relations": {}}
     )
     unconfirmed = writes(s, locate, size, "worker-uid")
-    assert all(c["authorityId"] is None for c in rows(unconfirmed, "AppendFieldCandidateV2"))
+    assert all(c["authorityId"] is None for c in rows(unconfirmed, "AppendFieldCandidateV3"))
     assert rows(unconfirmed, "AppendResolvedFieldV2")[0]["candidateId"] is None
 
 
@@ -539,7 +545,7 @@ def test_a_disposition_writes_the_record_its_fields_and_a_finding_per_reason():
     assert record["reasonCodes"] == ["mandatory_unresolved:county", "label_coverage_unconfirmed"]
     assert record["summary"] == s.run.disposition_summary
     assert record["predecessorId"] is None
-    candidate = rows(result, "AppendFieldCandidateV2")[0]
+    candidate = rows(result, "AppendFieldCandidateV3")[0]
     resolved = rows(result, "AppendResolvedFieldV2")
     assert [(r["fieldKey"], r["state"], r["fieldGroup"], r["candidateId"]) for r in resolved] == [
         ("city", "supported", "mandatory", candidate["id"]),
@@ -643,7 +649,6 @@ def test_review_decisions_are_written_only_by_reviewers():
             },
         }
     ]
-    assert ops(result)[-1] == "AppendReviewDecisionV1"
 
 
 def test_record_ids_depend_on_the_decision_content():
@@ -731,7 +736,7 @@ def test_a_field_on_two_labels_keeps_one_candidate_per_label():
     s.run.disposition, s.run.reasons = Disposition.CLEARED, []
     result = writes(s, locate, size, "worker-uid")
     label_one = rows(result, "AppendTranscriptionVersionV2")[0]
-    first, second = rows(result, "AppendFieldCandidateV2")
+    first, second = rows(result, "AppendFieldCandidateV3")
     # Each label keeps its own candidate and provenance, even with identical texts.
     assert (first["inputSource"], first["sourceTranscriptionId"], first["sourceObservationId"]) == (
         "decided_transcript",
@@ -761,7 +766,7 @@ def test_labels_in_conflict_settle_nothing():
     }
     s.run.disposition, s.run.reasons = Disposition.REVIEW, ["labels_conflict:locality"]
     result = writes(s, locate, size, "worker-uid")
-    candidates = rows(result, "AppendFieldCandidateV2")
+    candidates = rows(result, "AppendFieldCandidateV3")
     assert [c["literalValue"] for c in candidates] == ["Chicago", "Chimaltenango"]
     assert all((c["normalizedValue"], c["authorityId"], c["derivation"]) == (None, None, "literal") for c in candidates)
     assert rows(result, "AppendResolvedFieldV2")[0]["candidateId"] is None
@@ -797,7 +802,7 @@ def test_each_settled_label_links_the_evidence_its_own_call_made():
         )
     }
     result = writes(s, locate, size, "worker-uid")
-    first, second = rows(result, "AppendFieldCandidateV2")
+    first, second = rows(result, "AppendFieldCandidateV3")
     links = rows(result, "AppendCandidateEvidenceV2")
     assert [(link["candidateId"], link["evidenceId"]) for link in links] == [
         (first["id"], found.id),
@@ -872,7 +877,7 @@ def test_two_labels_with_one_text_keep_two_candidate_ids():
         normalized="Chicago",
     )
     s.run.fields = {"locality": field}
-    first, second = rows(writes(s, locate, size, "worker-uid"), "AppendFieldCandidateV2")
+    first, second = rows(writes(s, locate, size, "worker-uid"), "AppendFieldCandidateV3")
     # A decided entry is keyed by its label's selected reading, not by "-" (section 5).
     content = digest(field.model_dump(mode="json"))
     assert first["id"] == derived_id("candidate", s.run.id, "locality", picked.id, content)
@@ -913,7 +918,7 @@ def test_a_decided_label_settled_through_the_fallback_settles_with_its_call(name
     s.run.disposition, s.run.reasons = Disposition.CLEARED, []
     result = writes(s, locate, size, "worker-uid")
     references_come_first(result)
-    decided, unsettled, settled = rows(result, "AppendFieldCandidateV2")
+    decided, unsettled, settled = rows(result, "AppendFieldCandidateV3")
     assert [c["authorityId"] for c in (decided, unsettled, settled)] == ["fixture-place", None, "fixture-place"]
     # The fallback call ran on a raw reading of label one: its evidence goes to label one's entry.
     links = rows(result, "AppendCandidateEvidenceV2")
@@ -941,7 +946,7 @@ def test_evidence_links_to_the_entry_it_names_settled_or_not():
     s.run.disposition, s.run.reasons = Disposition.REVIEW, ["labels_conflict:locality"]
     result = writes(s, locate, size, "worker-uid")
     references_come_first(result)
-    first, second = rows(result, "AppendFieldCandidateV2")
+    first, second = rows(result, "AppendFieldCandidateV3")
     # Each label's reading goes to review with its own literal evidence.
     links = rows(result, "AppendCandidateEvidenceV2")
     assert [(link["candidateId"], link["evidenceId"], link["relation"]) for link in links] == [
@@ -972,7 +977,7 @@ def test_readers_that_agree_without_a_pick_are_one_verbatim():
     s.run.fields = {"locality": field}
     s.run.disposition, s.run.reasons = Disposition.CLEARED, []
     result = writes(s, locate, size, "worker-uid")
-    (candidate,) = rows(result, "AppendFieldCandidateV2")
+    (candidate,) = rows(result, "AppendFieldCandidateV3")
     assert (candidate["literalValue"], candidate["inputSource"]) == ("Chicago", "raw_reading")
     assert (candidate["sourceObservationId"], candidate["sourceTranscriptionId"]) == (right.id, None)
     assert (candidate["derivation"], candidate["normalizedValue"]) == ("literal", None)
@@ -1004,7 +1009,7 @@ def test_an_unsettled_date_keeps_every_reading_on_its_call():
             result=kept,
         )
     ]
-    (call,) = rows(writes(s, locate, size, "worker-uid"), "AppendToolCallV1")
+    (call,) = rows(writes(s, locate, size, "worker-uid"), "AppendToolCallV2")
     assert (call["outcome"], call["result"]) == ("ambiguous", kept)
 
 
@@ -1087,10 +1092,10 @@ def test_a_google_call_keeps_only_place_ids(kept, allowed):
         )
     ]
     if allowed:
-        (call,) = rows(writes(s, locate, size, "worker-uid"), "AppendToolCallV1")
+        (call,) = rows(writes(s, locate, size, "worker-uid"), "AppendToolCallV2")
         assert call["result"] == kept
     else:
-        with pytest.raises(CredentialStored):
+        with pytest.raises(GoogleContentStored):
             writes(s, locate, size, "worker-uid")
 
 
@@ -1106,7 +1111,7 @@ def test_an_entry_of_no_known_reading_never_settles_by_region():
             normalized="Chicago",
         )
     }
-    unknown, known = rows(writes(s, locate, size, "worker-uid"), "AppendFieldCandidateV2")
+    unknown, known = rows(writes(s, locate, size, "worker-uid"), "AppendFieldCandidateV3")
     assert (unknown["normalizedValue"], known["normalizedValue"]) == (None, "Chicago")
 
 

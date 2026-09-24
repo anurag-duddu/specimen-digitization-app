@@ -176,6 +176,24 @@ mutation AppendToolCallV1($organizationId: UUID!, $collectionId: UUID!, $id: UUI
   }
   toolCall_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, callKey: $callKey, phase: $phase, tool: $tool, toolVersion: $toolVersion, source: $source, fieldKeys: $fieldKeys, inputSource: $inputSource, transcriptionVersionId: $transcriptionVersionId, observationId: $observationId, attempt: $attempt, arguments: $arguments, outcome: $outcome, result: $result, evidenceId: $evidenceId, startedAt: $startedAt, completedAt: $completedAt})
 }
+# T2c: a call on a reviewer's text ("fill the rest", G38) has the review input and names a review decision
+# of its own run's specimen; any other call names none (DATA_CONTRACT.md 6).
+mutation AppendToolCallV2($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $callKey: String!, $phase: String!, $tool: String!, $toolVersion: String!, $source: String, $fieldKeys: [String!]!, $inputSource: String!, $transcriptionVersionId: UUID, $observationId: UUID, $reviewDecisionId: UUID, $attempt: Int!, $arguments: Any!, $outcome: String!, $result: Any, $evidenceId: UUID, $startedAt: Timestamp, $completedAt: Timestamp, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.phase in ['parse', 'plan', 'lookup', 'resolve', 'normalize', 'validate', 'finalize'] && (vars.source == null || !vars.source.matches('(?i)google') || vars.source == 'google-maps-geocoding') && vars.inputSource in ['decided_transcript', 'raw_reading', 'review'] && (vars.inputSource == 'review' ? (vars.reviewDecisionId != null && vars.transcriptionVersionId == null && vars.observationId == null) : (vars.reviewDecisionId == null && (vars.inputSource == 'decided_transcript' ? vars.observationId == null : vars.transcriptionVersionId == null))) && vars.attempt >= 1 && vars.outcome in ['success', 'no_match', 'ambiguous', 'empty_response', 'rate_limited', 'timeout', 'authentication_error', 'authorization_error', 'provider_error', 'malformed_response', 'policy_blocked']") { active role canViewSensitive }
+  }
+  scope: query @redact {
+    pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimenId specimen { sensitive } }
+  }
+  parents: query @redact {
+    decisions: transcriptionVersions(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $transcriptionVersionId}, runId: {eq: $runId}}, limit: 2) @check(expr: "vars.transcriptionVersionId == null || this.size() == 1", message: "decision of another run") { id }
+    readings: modelObservations(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $observationId}, runId: {eq: $runId}, independent: {eq: true}}, limit: 2) @check(expr: "vars.observationId == null || this.size() == 1", message: "reading of another run") { id }
+    evidence: evidenceItems(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $evidenceId}, runId: {eq: $runId}}, limit: 2) @check(expr: "vars.evidenceId == null || this.size() == 1", message: "evidence of another run") { id }
+    reviews: reviewDecisions(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $reviewDecisionId}}, limit: 2) @check(expr: "vars.reviewDecisionId == null || (this.size() == 1 && this[0].specimenId == response.scope.pipelineRun.specimenId)", message: "review decision of another specimen") { specimenId }
+  }
+  toolCall_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, callKey: $callKey, phase: $phase, tool: $tool, toolVersion: $toolVersion, source: $source, fieldKeys: $fieldKeys, inputSource: $inputSource, transcriptionVersionId: $transcriptionVersionId, observationId: $observationId, reviewDecisionId: $reviewDecisionId, attempt: $attempt, arguments: $arguments, outcome: $outcome, result: $result, evidenceId: $evidenceId, startedAt: $startedAt, completedAt: $completedAt})
+}
 mutation AppendFieldCandidateV2($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $fieldKey: String!, $state: String!, $literalValue: String, $parsedValue: Any, $normalizedValue: Any, $authorityId: String, $derivation: String!, $inputSource: String, $sourceTranscriptionId: UUID, $sourceObservationId: UUID, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
@@ -189,6 +207,22 @@ mutation AppendFieldCandidateV2($organizationId: UUID!, $collectionId: UUID!, $i
     readings: modelObservations(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $sourceObservationId}, runId: {eq: $runId}, independent: {eq: true}}, limit: 2) @check(expr: "vars.sourceObservationId == null || this.size() == 1", message: "reading of another run") { id }
   }
   fieldCandidate_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, fieldKey: $fieldKey, state: $state, literalValue: $literalValue, parsedValue: $parsedValue, normalizedValue: $normalizedValue, authorityId: $authorityId, derivation: $derivation, inputSource: $inputSource, sourceTranscriptionId: $sourceTranscriptionId, sourceObservationId: $sourceObservationId})
+}
+# T2c: a derived candidate names the settled fields it came from and has no literal or input source; a
+# settled value keeps its authority's identity, and a Google identity has no name (G26; DATA_CONTRACT.md 6).
+mutation AppendFieldCandidateV3($organizationId: UUID!, $collectionId: UUID!, $id: UUID!, $runId: UUID!, $fieldKey: String!, $state: String!, $literalValue: String, $parsedValue: Any, $normalizedValue: Any, $authorityId: String, $authorityIdentity: Any, $derivation: String!, $derivedFromFieldKeys: [String!], $inputSource: String, $sourceTranscriptionId: UUID, $sourceObservationId: UUID, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (vars.inputSource == null || vars.inputSource in ['decided_transcript', 'raw_reading']) && (vars.inputSource != 'decided_transcript' || vars.sourceObservationId == null) && (vars.inputSource != 'raw_reading' || vars.sourceTranscriptionId == null) && vars.derivation in ['literal', 'parsed', 'normalized', 'lookup', 'human', 'derived'] && (vars.derivation == 'derived' ? (vars.derivedFromFieldKeys != null && size(vars.derivedFromFieldKeys) > 0 && vars.literalValue == null && vars.inputSource == null && vars.sourceTranscriptionId == null && vars.sourceObservationId == null) : vars.derivedFromFieldKeys == null) && (vars.authorityIdentity == null || !('source' in vars.authorityIdentity) || vars.authorityIdentity.source != 'google-maps-geocoding' || !('name' in vars.authorityIdentity))") { active role canViewSensitive }
+  }
+  scope: query @redact {
+    pipelineRun(key: {organizationId: $organizationId, collectionId: $collectionId, id: $runId}) @check(expr: "this != null && (!this.specimen.sensitive || response.query.collectionMember.canViewSensitive)", message: "access denied") { specimen { sensitive } }
+  }
+  parents: query @redact {
+    decisions: transcriptionVersions(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $sourceTranscriptionId}, runId: {eq: $runId}}, limit: 2) @check(expr: "vars.sourceTranscriptionId == null || this.size() == 1", message: "decision of another run") { id }
+    readings: modelObservations(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, id: {eq: $sourceObservationId}, runId: {eq: $runId}, independent: {eq: true}}, limit: 2) @check(expr: "vars.sourceObservationId == null || this.size() == 1", message: "reading of another run") { id }
+  }
+  fieldCandidate_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, runId: $runId, fieldKey: $fieldKey, state: $state, literalValue: $literalValue, parsedValue: $parsedValue, normalizedValue: $normalizedValue, authorityId: $authorityId, authorityIdentity: $authorityIdentity, derivation: $derivation, derivedFromFieldKeys: $derivedFromFieldKeys, inputSource: $inputSource, sourceTranscriptionId: $sourceTranscriptionId, sourceObservationId: $sourceObservationId})
 }
 # G23: the source that decides a value, one that supports it, or one that contradicts it. Only
 # evidence of a successful call, or recorded evidence that is not a lookup, is linked. Google
