@@ -233,7 +233,7 @@ clearance authority (`review_risk.py` 165, 329-331).
 | Tools per field | `taxon`: `taxonomy_verifier`. `country`, `province_state`, `county`, `city`, `precise_location`: `geography_lookup`. `fmnh_ins_number`: `catalog_number_validator`. The three dates: `date_parser`. Every other field: none (transcribed as seen). `tools` is their union | PLAN 4.2; S4 owns the tools |
 | Risk policy | the existing uncalibrated policy, above | brief T4 |
 | Clearance policy | `insects-clearance-v1`. S4's G1 change moves it to v2 with a new profile version | S4 |
-| Allowance | `run_cost_limit_micros` 500,000 (USD 0.50). Reservations: `segment` 33,000; each reader 20,000; `parse` 20,000. Each bounds its step's worst case (T2). `max_tokens` 480,000; `max_external_calls` 96. Provisional; the owner's USD 25 ceiling (G9) bounds them all | T1, G9 |
+| Allowance | `run_cost_limit_micros` 500,000 (USD 0.50). Reservations: `segment` 66,000; each reader 20,000; `parse` 20,000. Each bounds its step's worst case (T2). `max_tokens` 480,000; `max_external_calls` 96. Provisional; the owner's USD 25 ceiling (G9) bounds them all | T1, G9 |
 | Routes for the first pass and the harness | `first_pass_route` and `harness_route` fields exist, unset until S4's routes are approved | S4 |
 | Date rules | `date-rules-v1`: a two-digit year reads as 19xx (`two_digit_year_century` 1900), and a Roman numeral I to XII in the month position is that month (`roman_numeral_months`). S4's date parser stamps each rule, its version and the profile on every parsed date that uses it, so the reading stays visibly derived (`CONTRACTS.md` 234-235) | G24, G29 |
 
@@ -573,9 +573,11 @@ Every reservation bounds its step's worst case, so no call can cross the
 allowance. The worst cases behind the pilot's reservations, at the pinned
 prices (T2c):
 
-- `segment` 33,000: SAM 3's 240 s hard deadline × 136 micro-dollars a second
-  (4 vCPU and 16 GiB at Cloud Run's request-based rates) plus the request,
-  about 32,641.
+- `segment` 66,000: a cold start plus SAM 3's 240 s hard deadline, at 136
+  micro-dollars a second (4 vCPU and 16 GiB at Cloud Run's request-based
+  rates). Cloud Run bills startup too, and the service loads its checkpoint
+  before it opens its port, so the default startup probe's 240 s bounds the
+  start (S2). (240 s + 240 s) × 136 plus the request is about 65,281.
 - Each reader 20,000: two requests, each output capped at 4,096 tokens, and
   about 16,000 tokens before the second request is refused. That is at most
   about 8,200 output and 24,000 input tokens, or about 17,030 at the muse
