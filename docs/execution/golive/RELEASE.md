@@ -488,7 +488,21 @@ first apply's claim and the rollback guard's record.
        owner opens for that run.
 
      If a claim already exists, the apply stops and the coordinator decides,
-     because deleting a claim never refunds the allowance.
+     because deleting a claim never refunds the allowance. There is one
+     exception, below.
+   - **A re-run after a spent claim** (the coordinator's ruling of
+     2026-09-24). The claim is unreadable to the data identity, so the
+     evidence is an earlier attempt of this run, for this commit, whose
+     attested receipt records `first_restore: "checked"`. That attempt made
+     D1's one restore proof. The apply then continues without a second claim
+     or clone, and records `first_restore: "proven"`.
+     - An earlier attempt that recorded only `claimed` stops the apply before
+       any effect.
+     - Anything else stops for the coordinator: a different commit, a missing
+       or unattested receipt, or any other value.
+
+     The release job therefore attests its receipt on every exit, not only
+     on success.
 2. The gate of section 4.1 must pass, and the merged commit must be the one
    the plane last applied or a descendant of it, checked like the runtime's
    rollback guard against a commit the apply records. A manual re-run of an
