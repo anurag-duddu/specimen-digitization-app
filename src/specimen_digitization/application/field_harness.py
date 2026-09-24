@@ -18,6 +18,7 @@ from pydantic_ai import Agent, ModelRetry
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import UsageLimits
 
+from .derivations import Found, apply_derivations, elevation_derivations
 from .domain import Evidence, FieldValue, LookupStatus, Record
 from .field_resolution import (
     Called,
@@ -27,7 +28,7 @@ from .field_resolution import (
     choose_reading,
     date_order_evidence,
 )
-from .harness_ledger import ToolLedger, called
+from .harness_ledger import ToolLedger, called, served
 from .reliability import AdapterFailure, run_agent_bounded
 
 # G30: every request reserves its worst case, so a run is bounded by these caps
@@ -229,6 +230,7 @@ def resolve(
     dates = _date_calls(plan, literals, years, by_id, ledger)
     localities = {k for k, tool in plan.tools.items() if tool == GEOGRAPHY}
     budget = budget or Budget()
+    derivations: list = []  # Those in the geography results (S8's tool, G37).
     fields: dict[str, FieldValue] = {}
     for key in plan.fields:
         found = literals.get(key)
@@ -245,12 +247,35 @@ def resolve(
             fields[key] = resolver.transcribed(key, per_reading)
         else:
             call = _field_call(
-                key, tool, literals, years, dates, ledger, localities, budget
+                key,
+                tool,
+                literals,
+                years,
+                dates,
+                ledger,
+                localities,
+                budget,
+                derivations,
             )
             fields[key] = resolver.settle(key, per_reading, call)
+    # G37: what the label leaves out, filled from settled fields with evidence:
+    # the elevation rules of G41 and the geography results' derivations.
+    unique = {(f.derivation.model_dump_json(), f.call_evidence): f for f in derivations}
+    derived, filled_evidence = apply_derivations(
+        fields,
+        [*elevation_derivations(fields), *unique.values()],
+        asset_id=asset_id,
+        blobs=blobs,
+    )
+    fields.update(derived)
     return HarnessOutcome(
         fields=fields,
-        evidence=[*resolver.evidence, *ledger.evidence, *dates.evidence],
+        evidence=[
+            *resolver.evidence,
+            *ledger.evidence,
+            *dates.evidence,
+            *filled_evidence,
+        ],
         findings=resolver.findings,
         tool_calls=ledger.records,
         lookups=ledger.lookups,
@@ -302,7 +327,15 @@ def _date_calls(plan, literals, years, by_id, ledger) -> _Dates:
 
 
 def _field_call(
-    key, tool, literals, years, dates: _Dates, ledger: ToolLedger, localities, budget
+    key,
+    tool,
+    literals,
+    years,
+    dates: _Dates,
+    ledger: ToolLedger,
+    localities,
+    budget,
+    derivations: list,
 ) -> FieldCall:
     if tool == GEOGRAPHY:
 
@@ -315,13 +348,18 @@ def _field_call(
             }
             return geography_arguments(own)
 
-        settle = ledger.field_call(key, tool, geography)
-
         def bounded(literal: str, reading: Reading) -> Called:
-            if not budget.geocode(reading, geography(literal, reading)):
+            arguments = geography(literal, reading)
+            if not budget.geocode(reading, arguments):
                 # A request past the run's cap is refused: an operational block.
                 return Called(LookupStatus.POLICY, tool)
-            return settle(literal, reading)
+            result, evidence = ledger.run(
+                tool, reading, arguments, served(tool, arguments, key)
+            )
+            # Each derivation names the call that returned it (#124, 4.8).
+            calls = tuple(evidence.values())
+            derivations.extend(Found(d, calls) for d in result.derivations)
+            return called(key, literal, result, evidence)
 
         return bounded
     if tool != "date_parser":
