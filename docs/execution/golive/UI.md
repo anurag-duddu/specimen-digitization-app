@@ -175,9 +175,9 @@ a null the screen names.
     source is named, its words are "reviewer's text", the contract's own;
   - an evidence entry's `observation_ids`, the readings it quotes;
   - a Google call's result as `place_ids` only (G26).
-  S5's `thread-example.json` from #171 is now the canonical fixture
-  (`test/fixtures/thread-example.json`, byte for byte), so the client and
-  the server test one file. The synthetic two-label fixture stays for the
+  S5's `thread-example.json` from #171 (at `c149115`, with S4's source ids)
+  is now the canonical fixture (`test/fixtures/thread-example.json`, byte
+  for byte), so the client and the server test one file. The synthetic two-label fixture stays for the
   screen tests that change its values.
 
 ### T2.2 Readings: one section per label region
