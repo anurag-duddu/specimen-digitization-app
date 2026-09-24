@@ -11927,6 +11927,7 @@ because the hooks runner hands a native asset hook only `PATH`.
     - an untimed binding of a time-bounded role is listed for removal.
   - It never prints a member outside the watched identities, or any live condition text.
 - Commits/PRs: spec `2ac7951`, `4f71810`, `8be715a`, `e068379`; red `3ef75c5`, green `4795607`; the condition fix `test` + `release` pair; this closeout.
+  - 2026-09-24, for T3d (#176): every apply's backup reads its backup run back. `cloudsql.backupRuns.get` joins the data release's reads, in `specimenDataSourceBackup`, with a spec commit, then red (2 failed, 9 passed), then green (11 passed). Whether the backup's operation poll passes the inventory binding's condition is unconfirmed; a refusal fails closed before the migration.
 - Validation actually run:
   - Report tests: 17 passed, 1 skipped (the `runtime_settings.py` cross-check, which needs #100). The subagent ran the skipped test with #100's file on the path, and it passed.
   - `scripts/` passed on the subagent's head: 1,737 passed, 51 skipped. pre-commit passed.
