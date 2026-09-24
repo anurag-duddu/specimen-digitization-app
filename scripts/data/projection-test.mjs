@@ -168,12 +168,12 @@ ok(await op('AppendProfileVersionV2', {...profile, actorUid: 'reviewer', id: ran
 console.log('PASS only a sensitive-capable reviewer may claim a profile approval, and only for themselves');
 
 // Closed vocabularies and image dimensions are enforced.
-denied(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), observationId: work.firstPassCall.id, role: 'decided'}));
-denied(await op('AppendToolCallV1', {...work.toolCall, id: randomUUID(), callKey: 'x', inputSource: 'decided'}));
+denied(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), observationId: work.third.id, handedText: work.third.literalText, role: 'decided'}));
+denied(await op('AppendToolCallV1', {...work.toolCall, id: randomUUID(), callKey: 'x', inputSource: 'decided', transcriptionVersionId: null}));
 denied(await op('AppendToolCallV1', {...work.toolCall, id: randomUUID(), callKey: 'y', attempt: 0}));
 denied(await op('AppendToolCallV1', {...work.toolCall, id: randomUUID(), callKey: 'z', outcome: 'unavailable'}));
 denied(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), observationId: work.firstPassCall.id, handedText: null}));
-denied(await op('AppendTranscriptionVersionV2', {...work.transcription, id: randomUUID(), decisionKind: 'llm'}));
+denied(await op('AppendTranscriptionVersionV2', {...work.transcription, id: randomUUID(), decisionKind: 'llm', firstPassObservationId: null}));
 denied(await op('AppendFieldCandidateV2', {...work.candidate, id: randomUUID(), inputSource: 'raw'}));
 denied(await op('AppendResolvedFieldV2', {...work.resolved, id: randomUUID(), fieldGroup: 'required'}));
 denied(await op('AppendReadingComparisonV1', {...work.comparison, id: randomUUID(), ...pair(work.left.id, work.third.id), editDistance: -1}));
@@ -186,7 +186,15 @@ denied(await op('AppendCandidateEvidenceV2', {...work.link, id: randomUUID(), re
 denied(await op('AppendValidationFindingV2', {...work.finding, id: randomUUID(), severity: 'fatal'}));
 denied(await op('AppendValidationFindingV2', {...work.finding, id: randomUUID(), outcome: 'failed'}));
 denied(await op('AppendValidationFindingV2', {...work.finding, id: randomUUID(), evidenceIds: [work.evidence.id, work.evidence.id]}));
-denied(await op('AppendValidationFindingV2', {...work.finding, id: randomUUID(), evidenceIds: Array.from({length: 65}, () => randomUUID())}));
+// 65 real evidence rows of the run: only the cap refuses them, and 64 are accepted.
+const many = [];
+for (let i = 0; i < 65; i++) {
+  const row = {...work.evidence, id: randomUUID(), source: 'gbif', outcome: 'no_match', locator: null};
+  ok(await op('AppendEvidenceItemV2', row));
+  many.push(row.id);
+}
+denied(await op('AppendValidationFindingV2', {...work.finding, id: randomUUID(), evidenceIds: many}));
+ok(await op('AppendValidationFindingV2', {...work.finding, id: randomUUID(), evidenceIds: many.slice(0, 64)}));
 ok(await op('AppendValidationFindingV2', {...work.finding, id: randomUUID(), severity: 'warning', ruleId: 'taxonomy_source_disagreement', fieldKey: 'taxon', reasonCode: 'taxonomy_source_disagreement'}));
 // A decision other than a reviewer's is unresolved exactly when it selects no reading, and only a
 // first-pass decision names a model call.
@@ -195,9 +203,14 @@ denied(await op('AppendTranscriptionVersionV2', {...work.transcription, id: rand
 denied(await op('AppendTranscriptionVersionV2', {...work.transcription, id: randomUUID(), unresolved: true}));
 denied(await op('AppendTranscriptionVersionV2', {...work.transcription, id: randomUUID(), decisionKind: 'identical_readings'}));
 denied(await op('AppendTranscriptionVersionV2', {...work.transcription, id: randomUUID(), decisionKind: 'identical_readings', firstPassObservationId: null}));
-// A decided transcript is the decision's selected reading; any other reading is a raw reading.
-denied(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), observationId: work.right.id, handedText: work.right.literalText}));
-denied(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), role: 'raw_reading'}));
+// A decided transcript is the decision's selected reading; any other reading is a raw reading. A fresh
+// decision, so no earlier handoff's unique constraint answers first.
+const fresh = {...work.transcription, id: randomUUID(), rationale: 'A second first-pass decision.'};
+ok(await op('AppendTranscriptionVersionV2', fresh));
+denied(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), transcriptionVersionId: fresh.id, observationId: work.right.id, handedText: work.right.literalText}));
+denied(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), transcriptionVersionId: fresh.id, role: 'raw_reading'}));
+ok(await op('AppendHarnessInputV1', {...work.decided, id: randomUUID(), transcriptionVersionId: fresh.id}));
+ok(await op('AppendHarnessInputV1', {...work.fallback, id: randomUUID(), transcriptionVersionId: fresh.id}));
 denied(await op('AppendLabelRegionV2', {...work.region, id: randomUUID(), domainRegionId: randomUUID(), sourceAssetId: work.envelope.id}));
 denied(await op('AppendSourceAssetV2', {...work.original, id: randomUUID(), objectName: randomUUID(), kind: 'originals'}));
 denied(await op('AppendSourceAssetV2', {...work.original, id: randomUUID(), objectName: randomUUID(), width: 0}));
@@ -205,7 +218,7 @@ denied(await op('AppendSourceAssetV2', {...work.original, id: randomUUID(), obje
 denied(await op('AppendSourceAssetV2', {...work.original, id: randomUUID(), objectName: randomUUID(), sha256: hex('d')}));
 denied(await op('AppendLabelRegionV2', {...work.region, id: randomUUID(), domainRegionId: null}));
 denied(await op('AppendReadingComparisonV1', {...work.comparison, id: randomUUID(), rightObservationId: work.comparison.leftObservationId}));
-denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), outcome: 'found'}));
+denied(await op('AppendEvidenceItemV2', {...work.evidence, id: randomUUID(), outcome: 'found', locator: null}));
 ok(await op('AppendFieldCandidateV2', {...work.candidate, id: randomUUID(), derivation: 'human', inputSource: null, sourceTranscriptionId: null}));
 console.log('PASS closed vocabularies, decisions, handoff roles, the fixed pair order, image dimensions and the original checksum are enforced');
 
@@ -239,7 +252,7 @@ ok(await op('AppendEvidenceItemV2', coverage));
 ok(await op('AppendCandidateEvidenceV2', {...work.link, id: randomUUID(), evidenceId: coverage.id}));
 console.log('PASS a lookup has a locator exactly when it succeeded; Google keeps a place id only, points at an evidence record, and never decides');
 
-// Sensitive specimens: a sensitive-capable reviewer writes the run; the worker and a viewer cannot.
+// Sensitive specimens: a sensitive-capable reviewer writes the run; the worker cannot (a viewer is refused below).
 const kept = await chain(closed, 'reviewer');
 await writeAll(kept);
 // Each write is refused for the worker, then the same write succeeds for the reviewer.
@@ -289,8 +302,8 @@ const crossings = [
   ['AppendTranscriptionVersionV2', {...work.transcription, id: rid(), firstPassObservationId: b.firstPassCall.id}],
   ['AppendTranscriptionVersionV2', {...work.transcription, id: rid(), selectedObservationId: secondReading.id}],
   ['AppendHarnessInputV1', {...work.decided, id: rid(), transcriptionVersionId: b.transcription.id}],
-  ['AppendHarnessInputV1', {...work.decided, id: rid(), observationId: b.left.id}],
-  ['AppendHarnessInputV1', {...work.decided, id: rid(), observationId: secondReading.id}],
+  ['AppendHarnessInputV1', {...work.fallback, id: rid(), observationId: b.left.id}],
+  ['AppendHarnessInputV1', {...work.fallback, id: rid(), observationId: secondReading.id}],
   ['AppendEvidenceItemV2', {...work.evidence, id: rid(), rawAssetId: kept.placeRecord.id}],
   ['AppendToolCallV1', {...work.toolCall, id: rid(), callKey: rid(), transcriptionVersionId: b.transcription.id}],
   ['AppendToolCallV1', {...work.toolCall, id: rid(), callKey: rid(), evidenceId: b.evidence.id}],
