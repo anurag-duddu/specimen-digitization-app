@@ -430,9 +430,11 @@ nothing to restore, and backups with point-in-time recovery are on.
    built-in `plpgsql`: `uuid-ossp`. The tables and views must be owned by
    `firebaseowner`, with the writer and reader privileges the postconditions
    define. A `@view` with `sql` persists nothing, because Data Connect plans
-   its SQL inline in each query, so today's schema persists no view. (This is
-   S2's reading of Data Connect's migration engine: the emulator that
-   `firebase-tools` 15.8 pins generates no `CREATE VIEW`.)
+   its SQL inline in each query, so today's schema persists no view. That is
+   the coordinator's ruling of 2026-09-24 on S2's reading of the migration
+   engine: the emulator that `firebase-tools` 15.8 pins generates no
+   `CREATE VIEW`. The first catalog read confirms it. Any view the schema does
+   not persist fails the check, and the receipt records the view count.
 
 **Jobs.** T3c lands in stacked pull requests. T3c1 adds steps 1 and 2 (#147),
 and T3c1b their jobs (#148). T3c2 adds steps 3 to 5 in two pull requests, the
