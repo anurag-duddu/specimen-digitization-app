@@ -12048,3 +12048,26 @@ because the hooks runner hands a native asset hook only `PATH`.
   - Owner questions saved for a natural moment: D4 (with its queries as a 4.8 exception), D5, and what `verbatim_dts` holds (`PRD.md`'s open question 3).
   - The first production run waits for #163's live initialization and #170's V3 apply.
   - The owner's pending actions: the readiness marker, #119's IAM list after its review, the curator sheets, and the dataset upload.
+
+### 2026-09-24 — Go-live release workstream (S2), T1d: #165's merge follow-ups and the acceptance documents' notes
+
+- Task: the S2 session, the PR steward's follow-ups from #165's merge review (comment 5814254045), and #165 round 1's deferred nit (dated notes in `RELEASE_ACCEPTANCE.md` and `LIVE_QA.md`, which `golive/RELEASE.md` section 2 requires).
+- Branch/worktree: `golive/release-docs-checker-rows`, from `main` at `275b399`, in this session's worktree. A Sonnet documents subagent drafted the two documents' banners and notes in its own worktree; this session audited every note and rewrote the ones that needed it.
+- Outcome:
+  - **`golive/RELEASE.md` section 2.1's checker rows** name exactly what a decision retires and what stays, since the checker pull request follows them:
+    - "or risk" in `HUMAN-NO-AUTOMATIC-CLEARANCE`'s retired clause;
+    - the frozen manifest as only the cohort's anchor (103, 168), with 169, 175 and 290 re-anchored to the ten, and G1 for fewer human records;
+    - G9's USD 25 and G30 on COST-BOUNDS;
+    - new rows for `human_review.py` 315, the command-line manifest pin, and the coverage checks drawn from the manifest.
+  - **`RELEASE_ACCEPTANCE.md` and `LIVE_QA.md`** gain their banners and a dated note beside every clause the owner decisions contradict, including the projection section, the cost evidence contract, the retained record list, and LIVE_QA's DATA-TEN, COST-BOUNDS, DEPLOY-IDENTITY and BROWSER-E2E rows.
+  - **#165's entry:** its stale lines are corrected.
+- Commits/PRs: rows `ecefacd`; the subagent's notes `7f13272`; this session's audit `af66a3f`; this closeout.
+- Validation actually run:
+  - the G30 sweep over every dated note: 56 of 56 carry the sentence;
+  - the acceptance sweep: the one note here that describes acceptance carries the full sentence;
+  - pre-commit; `tests/test_deployment_policy.py`; `git diff --check`; the relative-link check.
+- Durable learnings:
+  - The PR steward's review replaces pull-request review, not acceptance. G11 retires the independent-review reports; the evidence-based acceptance harness and the coordinator still decide acceptance.
+  - Carry one settled wording across every document ("each run is authorized on its own instead of per frozen manifest"). A paraphrase reads as a new claim.
+- Failed approaches: the subagent's first draft handed acceptance to the steward's pull-request review in three notes, and called the cohort "verified". The audit caught both.
+- Remaining follow-ups: the checker pull request (`scripts/qa/live/`, after T3d) follows the corrected rows, including the SAM commit-SHA equality check.
