@@ -549,3 +549,7 @@ class SQLiteRepository:
                 ),
             )
         return payload
+
+    def write_projection(self, scope: Scope, specimen: Specimen) -> ProjectionResult:
+        """No normalized rows locally (DATA_CONTRACT.md 11), so every pass is complete."""
+        return ProjectionResult(True)

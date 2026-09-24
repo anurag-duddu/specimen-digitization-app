@@ -28,6 +28,7 @@ from .storage import (
     compact_history,
     Conflict,
     Missing,
+    ProjectionResult,
     digest,
     check_snapshot,
     work_available_at,
@@ -478,11 +479,12 @@ class SqlConnectRepository:
         self.write_projection(principal.scope, specimen)
         return specimen
 
-    def write_projection(self, scope, specimen):
+    def write_projection(self, scope, specimen) -> ProjectionResult:
         """Write the normalized rows this revision supports (DATA_CONTRACT.md 11).
 
         Never raises: the snapshot is already committed, and the next save resumes
-        wherever this pass stopped.
+        wherever this pass stopped. The result says whether every row is written, or
+        the step the pass stopped at, so the lane can re-project a run's final save.
         """
         try:
             base = self.variables(scope)
@@ -499,7 +501,7 @@ class SqlConnectRepository:
             LOGGER.warning(
                 "Projection for specimen %s not computed: %s", specimen.id, error
             )
-            return
+            return ProjectionResult(False, "not_computed")
         for write in pending:
             try:
                 self._insert(write.operation, {**base, **write.variables})
@@ -512,8 +514,9 @@ class SqlConnectRepository:
                     write.operation,
                     error,
                 )
-                return
+                return ProjectionResult(False, write.operation)
             written.add(write.key)
+        return ProjectionResult(True)
 
     @guarded
     def _insert(self, operation, variables):
