@@ -152,19 +152,13 @@ def first_pass(s, *, selected=True, verdict=None):
                     role="decided_transcript" if selected else "raw_reading",
                     handed_text=left.literal_text,
                 ),
-            ]
-            + (
-                []
-                if selected
-                else [
-                    Handoff(
-                        observation_id=right.id,
-                        role="raw_reading",
-                        handed_text=right.literal_text,
-                        note="Reads the l as a one.",
-                    )
-                ]
-            ),
+                Handoff(
+                    observation_id=right.id,
+                    role="raw_reading",
+                    handed_text=right.literal_text,
+                    note="Reads the l as a one.",
+                ),
+            ],
         )
     ]
     return s
@@ -209,6 +203,7 @@ def test_the_first_pass_writes_its_call_its_decision_and_each_handoff():
         "AppendModelObservationV2",
         "AppendTranscriptionVersionV2",
         "AppendHarnessInputV1",
+        "AppendHarnessInputV1",
     ]
     region_row = derived_id("region", s.run.id, region.id)
     written_call = rows(result, "AppendModelObservationV2")[-1]
@@ -227,10 +222,16 @@ def test_the_first_pass_writes_its_call_its_decision_and_each_handoff():
     assert decision["spans"] == [transcript.differences[0].model_dump(mode="json")]
     assert decision["alternatives"] == []
     assert decision["unresolved"] is False
-    (handoff,) = rows(result, "AppendHarnessInputV1")
+    handoff, fallback = rows(result, "AppendHarnessInputV1")
     assert (handoff["observationId"], handoff["role"]) == (left.id, "decided_transcript")
     assert handoff["id"] == derived_id("handoff", decision["id"], left.id)
-    assert handoff["transcriptionVersionId"] == decision["id"]
+    # What the other reader returned to the harness is recorded too (S4, #98).
+    assert (fallback["observationId"], fallback["role"], fallback["note"]) == (
+        right.id,
+        "raw_reading",
+        "Reads the l as a one.",
+    )
+    assert all(h["transcriptionVersionId"] == decision["id"] for h in (handoff, fallback))
 
 
 def test_only_a_decision_without_a_selected_reading_is_unresolved():
@@ -548,9 +549,10 @@ def test_a_disposition_writes_the_record_its_fields_and_a_finding_per_reason():
     ]
     assert all((f["severity"], f["outcome"]) == ("hard", "fail") for f in findings)
     assert all((f["runId"], f["evidenceIds"]) == (s.run.id, None) for f in findings)
+    none = digest([])
     assert [f["id"] for f in findings] == [
-        derived_id(record["id"], "finding", "hard", "mandatory_unresolved", "county", "mandatory_unresolved:county"),
-        derived_id(record["id"], "finding", "hard", "label_coverage_unconfirmed", "-", "label_coverage_unconfirmed"),
+        derived_id(record["id"], "finding", "hard", "mandatory_unresolved", "county", "mandatory_unresolved:county", none),
+        derived_id(record["id"], "finding", "hard", "label_coverage_unconfirmed", "-", "label_coverage_unconfirmed", none),
     ]
     found = lookup(s)
     s.run.findings = [
@@ -560,7 +562,7 @@ def test_a_disposition_writes_the_record_its_fields_and_a_finding_per_reason():
             severity="warning",
             field_key="taxon",
             reason_code="taxonomy_source_disagreement",
-            evidence_ids=[found.id, "no-such-evidence"],
+            evidence_ids=[found.id, "no-such-evidence", found.id],
         ),
         # Two spelling warnings on different fields keep distinct ids (G27).
         Finding(rule_id="spelling_disagreement", rule_version="g27-v1", severity="warning", field_key="city", reason_code="spelling_disagreement"),
@@ -575,8 +577,17 @@ def test_a_disposition_writes_the_record_its_fields_and_a_finding_per_reason():
         "g23-v1",
     )
     assert (extra["fieldKey"], extra["reasonCode"]) == ("taxon", "taxonomy_source_disagreement")
-    # Only evidence the run recorded is named.
+    # Only evidence the run recorded is named, each once, and the id covers it.
     assert extra["evidenceIds"] == [found.id]
+    assert extra["id"] == derived_id(
+        rows(warned, "AppendRecordVersionV2")[0]["id"],
+        "finding",
+        "warning",
+        "taxonomy_source_disagreement",
+        "taxon",
+        "taxonomy_source_disagreement",
+        digest([found.id]),
+    )
     assert city_spelling["id"] != county_spelling["id"]
     assert city_spelling["evidenceIds"] is None
     assert rows(warned, "AppendRecordVersionV2")[0]["disposition"] == "needs_human_review"
@@ -641,5 +652,16 @@ def test_record_ids_depend_on_the_decision_content():
         "summary": "cleared",
         "findings": [],
         "fields": {key: value.state.value for key, value in s.run.fields.items()},
+        "candidates": {key: None for key in s.run.fields},
     }
     assert record["id"] == derived_id("record", s.run.id, digest(content))
+
+
+def test_a_new_resolved_candidate_is_a_new_record_version():
+    s = first_pass(base())
+    s.run.fields = {"city": TracedField(state=ValueState.SUPPORTED, literal="Chicago")}
+    s.run.disposition, s.run.reasons = Disposition.CLEARED, []
+    first = rows(writes(s, locate, size, "worker-uid"), "AppendRecordVersionV2")[0]["id"]
+    # Same state, another value: an authority selection that keeps the state still changes the record.
+    s.run.fields["city"] = s.run.fields["city"].model_copy(update={"literal": "Chicago, Ill."})
+    assert rows(writes(s, locate, size, "worker-uid"), "AppendRecordVersionV2")[0]["id"] != first
