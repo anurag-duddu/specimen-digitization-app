@@ -129,7 +129,7 @@ Any state that calls out can leave for the operational branch. Rate limits, time
 | Tier 2 | modern units through successors and containment; the coordinate of record from storable sources; Google only as D1 allows | a storable source for the coordinate | `ambiguous`, reason `coordinate_not_storable` |
 | Uncertainty | corrected center, geographic radial, direction-only sector, precision and datum (3.8) | one feature: unrelated same-name features are not georeferenced [S13] | `ambiguous` |
 | Validation | checks typed `supports`, `conflicts` or `not_assessable`: containment, DEM elevation (feet become meters only inside the comparison, G22), itinerary, occurrences, profile checks (3.7) | no conflict beyond tolerance (D5) | `ambiguous`, with the conflict as reason |
-| Decide | review-priority score (3.4); one outcome per field key into `field_outcomes` | at or above the cut-off (D5) | `ambiguous` |
+| Decide | review-priority score (3.4); one outcome each for `country`, `province_state`, `county` and `city` into `field_outcomes`, each checked against its own literal; the georeference's outcome travels with `georeferences`; `precise_location` gets none, since no geocoder result settles or replaces it and where "E. slope Mt. McKinley" lies waits for D3 (S4's #113) | at or above the cut-off (D5) | `ambiguous` |
 
 ### 3.2 Anachronism filter
 
@@ -340,7 +340,7 @@ class SourceResult(BaseModel):  # one sub-adapter run
     calls: list[SubCall] = []
     retry_after_seconds: int | None = None
 class FieldOutcome(SourceResult):  # ToolResult.field_outcomes[field_key] with its candidates
-    field_key: str  # country, province_state, county, city, georeference
+    field_key: str  # country, province_state, county, city; "georeference" for the point-radius
     reasons: list[str] = []
 class SourceAdapter(Protocol):  # typed outcomes only; a sub-adapter never raises
     async def run(self, state: "State", gate: "HttpGate") -> SourceResult: ...
@@ -477,6 +477,8 @@ class GeoreferenceTool:  # S4's geography_lookup (T3a draft): GeographyQuery -> 
             state.add(results)  # sub-adapters of one tier run concurrently; hosts stay paced
             if any(r.status in OPERATIONAL for r in results):
                 break  # the gate has already spent the bounded retries
+        # ToolResult.field_outcomes holds the four units; precise_location gets no outcome (S4's #113),
+        # and the "georeference" entry becomes ToolResult.georeferences, not a field outcome.
         return {key: decide(key, state.results_for(key), state.radius_for(key), self.policy)
                 for key in ("country", "province_state", "county", "city", "georeference")}
 ```
