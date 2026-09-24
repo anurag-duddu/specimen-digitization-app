@@ -219,11 +219,12 @@ original-ten product journeys described in [DEPLOYMENT.md](../DEPLOYMENT.md).
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G2 and G11. The PR steward's review of each pull request replaces the separate
-> independent review; all five checks on the exact merged commit and the
-> separate protected workflows stay; and the ten pilot specimens are checked one
+> G1, G2, G9 and G11. The PR steward's review of each pull request replaces the
+> separate independent review; all five checks on the exact merged commit and
+> the separate protected workflows stay; the ten pilot specimens are checked one
 > at a time, in order (PLAN section 8), with matching deployed revisions still
-> required. The rest of acceptance stands, including every UI and live case the
+> required; and a record the harness resolves is cleared without a human (G1).
+> The rest of acceptance stands, including every UI and live case the
 > human-review checker (`scripts/qa/live/human_review.py`) requires: the ten UI
 > cases of [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN,
 > UI-INTAKE, UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY,
@@ -238,10 +239,13 @@ original-ten product journeys described in [DEPLOYMENT.md](../DEPLOYMENT.md).
 > responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
 > and with the ten, in order and beside new uploads, in place of a frozen
 > manifest (G2), G9's USD 25 ceiling in place of the cohort budget, and the
-> release packet and the cohort ledger retired (G11), so DEPLOY-IDENTITY
-> compares the deployed image digests and SQL and rules revisions with the
-> merged commit's own release runs. Retention admission is not settled by G2 or
-> G11 and stays open.
+> release packet and the cohort ledger retired (G11). G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
+> S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
+> and worker SHAs and image digests and the SQL and rules revisions with the
+> release runs on main that deployed them, in place of the packet; the rest of
+> DEPLOY-IDENTITY stands. Retention admission is not settled by G2 or G11 and
+> stays open.
 
 ## Go-live amendment, 2026-09-23 (G3)
 

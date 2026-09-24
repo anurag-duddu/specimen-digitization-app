@@ -818,10 +818,10 @@ expansion requires user review and approval of end-to-end results.
   > 2026-09-23: The full-cohort product evidence is superseded for the go-live
   > program by
   > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G1 and G2. Each specimen is checked through the full pipeline as it is
-  > processed (PLAN section 8), a record the harness resolves is cleared without
-  > a human (G1), and the workflow, marker and revision evidence stay. The rest
-  > of product acceptance stands, including every UI and live case the
+  > G1, G2, G9 and G11. Each specimen is checked through the full pipeline as it
+  > is processed (PLAN section 8), a record the harness resolves is cleared
+  > without a human (G1), and the workflow, marker and revision evidence stay.
+  > The rest of product acceptance stands, including every UI and live case the
   > human-review checker (`scripts/qa/live/human_review.py`) requires: the ten
   > UI cases of [`RELEASE_ACCEPTANCE.md`](execution/RELEASE_ACCEPTANCE.md)
   > (UI-SIGN-IN, UI-INTAKE, UI-PROCESSING, UI-IMAGE-REGIONS,
@@ -837,9 +837,12 @@ expansion requires user review and approval of end-to-end results.
   > responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
   > and with the ten, in order and beside new uploads, in place of a frozen
   > manifest (G2), G9's USD 25 ceiling in place of the cohort budget, and the
-  > release packet and the cohort ledger retired (G11), so DEPLOY-IDENTITY
-  > compares the deployed image digests and SQL and rules revisions with the
-  > merged commit's own release runs.
+  > release packet and the cohort ledger retired (G11). G30's per-call
+  > reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
+  > S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
+  > and worker SHAs and image digests and the SQL and rules revisions with the
+  > release runs on main that deployed them, in place of the packet; the rest of
+  > DEPLOY-IDENTITY stands.
 
 The coordinator may perform only the approved, independently reviewed setup
 actions after live inventory and recording the exact bounded action packet.
