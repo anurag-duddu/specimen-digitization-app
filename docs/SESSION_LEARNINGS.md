@@ -12024,3 +12024,12 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: a per-agent `InstrumentationSettings` wins over `instrument_pydantic_ai`'s global setting. So an override written for privacy silently defeats a later global content mode. Derive the override from the configured mode.
 - Failed approaches: none.
 - Remaining follow-ups: T5c (SAM 3's span on both sides) and T5d (the Geocoding key backstop and the Logfire settings for S2).
+
+### 2026-09-24 — Go-live S3: SAM 3 in the run's trace (T5c)
+
+- Task: go-live S3, topic T5c (PLAN 4.5): SAM 3's call is part of the run's trace on both sides of the request.
+- Branch/worktree: `golive/lane-tracing-sam`, stacked on `golive/lane-tracing-content` (#145), in `.claude/worktrees/elated-bun-0d9b24`.
+- Outcome: `Sam3Service.segment_per_run` opens "Segment specimen with SAM 3" with `sam3_effect.span_attributes` (ids, concepts, thresholds, recording floor, detection limit, revision, checkpoint digest) and hands the isolated child only `observability.w3c_carrier()`. `_exchange` sends it as the `traceparent` header. The service configures Logfire in the metadata mode in `serve_runs`, and its segment endpoint attaches the header as a third-party context before opening "Serve SAM 3 segmentation", so `LOGFIRE_DISTRIBUTED_TRACING` decides whether it joins the run's trace. Spec: `docs/execution/golive/LANE.md` T5c.
+- Validation actually run: the new tests fail without the change and pass with it; the SAM 3 client, server, detection, lifecycle and tracing suites pass; the full Python suite and pre-commit pass.
+- Durable learnings: (1) `logfire.attach_context(..., third_party=True)` is what makes a service honour `distributed_tracing`; without `third_party` Logfire strips its own guard and always extracts. (2) One `span_attributes` for both sides keeps the worker's and the service's spans comparable, since both record the parameters as applied. (3) detect-secrets flags hex trace ids in tests as high-entropy strings; low-entropy fakes such as `"a" * 32` avoid pragma noise.
+- Remaining follow-ups: T5d (the Geocoding key's scrubbing) and S2's settings for the SAM 3 service: `LOGFIRE_TOKEN`, `LOGFIRE_SERVICE_NAME=specimen-sam3`, `APP_ENV`, `LOGFIRE_HEAD_SAMPLE_RATE=1` and `LOGFIRE_DISTRIBUTED_TRACING=true`.

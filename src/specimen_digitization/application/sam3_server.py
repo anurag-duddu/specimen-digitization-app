@@ -21,6 +21,7 @@ import time
 from typing import Literal
 from uuid import UUID, NAMESPACE_URL, uuid5
 
+import logfire
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -30,7 +31,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from ..hub_models import SAM3_MODEL
 from .collection_profiles import Sam3Parameters, SegmentationSettings
 from .domain import Region
-from .sam3_effect import canonical_bytes
+from .sam3_effect import SERVE_SPAN, canonical_bytes, span_attributes
 
 SAM3_IMPLEMENTATION = "transformers/5.14.0;torch/2.8.0;cpu"
 MAX_PIXELS = 16_000_000
@@ -793,25 +794,37 @@ def create_app(segmenter, authenticate, *, hard_deadline=False, deadline_seconds
         return {"status": "live"}
 
     @app.post("/v1/segment")
-    def segment(request: SegmentRequest):
-        # A hosting request timeout does not stop model execution. A hard process
-        # deadline does; durable claims ensure that restart cannot replay it.
-        timer = (
-            threading.Timer(deadline_seconds, lambda: os._exit(70))
-            if hard_deadline
-            else None
+    def segment(request: SegmentRequest, http: Request):
+        # The worker's trace, when distributed tracing is on (LANE.md T5c).
+        parent = http.headers.get("traceparent")
+        engine = getattr(segmenter, "engine", None)
+        attributes = span_attributes(
+            request.model_dump(), getattr(engine, "checkpoint_sha256", None)
         )
-        if timer:
-            timer.start()
-        try:
-            return segmenter.segment(request)
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(503, "sam3_failed_requires_reconciliation") from None
-        finally:
+        with logfire.attach_context(
+            {"traceparent": parent} if parent else {}, third_party=True
+        ), logfire.span(SERVE_SPAN, **attributes):
+            # A hosting request timeout does not stop model execution. A hard
+            # process deadline does; durable claims ensure that restart cannot
+            # replay it.
+            timer = (
+                threading.Timer(deadline_seconds, lambda: os._exit(70))
+                if hard_deadline
+                else None
+            )
             if timer:
-                timer.cancel()
+                timer.start()
+            try:
+                return segmenter.segment(request)
+            except HTTPException:
+                raise
+            except Exception:
+                raise HTTPException(
+                    503, "sam3_failed_requires_reconciliation"
+                ) from None
+            finally:
+                if timer:
+                    timer.cancel()
 
     return app
 
@@ -855,6 +868,10 @@ def serve_runs(mode):
     """Per-run serving: Cloud Run behind the worker identity, or the local lab."""
     import uvicorn
 
+    from ..observability import CaptureMode, configure_observability
+
+    # Metadata only: the service reads images and never exports them (T5c).
+    configure_observability(capture_mode=CaptureMode.METADATA)
     offline_checkpoint_digest()
     if mode == "lab":
         authenticate = lab_authenticator(os.environ["SPECIMEN_SAM3_LAB_TOKEN"])

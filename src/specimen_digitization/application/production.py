@@ -893,12 +893,16 @@ class Sam3Service:
     def segment_per_run(self, specimen):
         """One claimed inference per run; failures retry safely (LANE.md T3)."""
         import base64
+
+        import logfire
+
         from . import bounded_effect
         from .collection_profiles import SegmentationSettings
         from .domain import LookupStatus, Region
         from .reliability import AdapterFailure
-        from .sam3_effect import canonical_sha256
+        from .sam3_effect import SEGMENT_SPAN, canonical_sha256, span_attributes
         from ..hub_models import SAM3_MODEL
+        from ..observability import w3c_carrier
 
         try:
             settings = SegmentationSettings.model_validate(
@@ -935,22 +939,25 @@ class Sam3Service:
             "settings_version": settings.version,
         }
         timeout = specimen.run.profile.execution.effect_timeout_for_step("segment")
-        result = bounded_effect.run_isolated(
-            self.effect,
-            {
-                "endpoint": self.endpoint,
-                "request": request,
-                "pins": {
-                    "checkpoint_sha256": checkpoint,
-                    "lab": self.lab_token is not None,
+        # The call's span; the child sends its traceparent on (LANE.md T5c).
+        with logfire.span(SEGMENT_SPAN, **span_attributes(request, checkpoint)):
+            result = bounded_effect.run_isolated(
+                self.effect,
+                {
+                    "endpoint": self.endpoint,
+                    "request": request,
+                    "pins": {
+                        "checkpoint_sha256": checkpoint,
+                        "lab": self.lab_token is not None,
+                    },
+                    "lab_token": self.lab_token,
+                    "timeout_seconds": timeout,
+                    "max_response_bytes": 1024 * 1024,
+                    "trace": w3c_carrier(),
                 },
-                "lab_token": self.lab_token,
-                "timeout_seconds": timeout,
-                "max_response_bytes": 1024 * 1024,
-            },
-            timeout,
-            2 * 1024 * 1024,
-        )
+                timeout,
+                2 * 1024 * 1024,
+            )
         # The service's per-run claim makes a repeat safe: it returns a finished
         # inference instead of running it again, so these failures retry (G6).
         if result.status == "deadline_exceeded":
