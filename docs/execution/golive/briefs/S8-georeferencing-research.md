@@ -36,8 +36,13 @@ and `docs/execution/golive/GEO.md`.
 
 Each task starts with its spec delta in `docs/execution/golive/GEO.md` and
 failing tests, on its own branch, merged by the steward. PLAN section 4.8
-governs every outside request: every request your tool sends, its
-parameters included, goes through 4.8's place-request filter. Dates are
+governs every outside request: every value your tool takes from the
+record, in any parameter of any request, goes through 4.8's place-request
+filter, which is S4's single filter and which your request builder calls
+(coordinator ruling). A request template's own constants, such as P625 or
+LIMIT 10, are reviewed fixed parts, not record values. The profile's notation
+expansions may be sent as 4.8 allows, and your parser passes the literal to
+the filter, which expands it. Dates are
 compared locally and never sent, so the charter's target-year constraint is
 applied to results, never put in a query; elevation phrases stay as written
 for local parsing and are never sent. Tests show the filter's guarantees on
@@ -52,8 +57,8 @@ your own requests (coordinator ruling).
    variants from each reader's literal (G19, G20, G27), and the one-letter
    comparison on full names, never codes (G34).
 2. Tier 1 gazetteers (G35): GeoNames, Wikidata, Getty TGN and NGA behind fakes
-   and recorded fixtures, one source call per request, place text only,
-   credited.
+   and recorded fixtures, one source call per request, each built through S4's filter (PLAN
+   section 4.8), credited.
 3. History: validity windows, successor chains, and historical and modern
    roles. The label-lag tolerance waits for D5.
 4. Curated entries (G36): drafted with their sources and confirmed only

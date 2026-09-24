@@ -12047,3 +12047,23 @@ because the hooks runner hands a native asset hook only `PATH`.
   - Owner questions saved for a natural moment: D4 (with its queries as a 4.8 exception), D5, and what `verbatim_dts` holds (`PRD.md`'s open question 3).
   - The first production run waits for #163's live initialization and #170's V3 apply.
   - The owner's pending actions: the readiness marker, #119's IAM list after its review, the curator sheets, and the dataset upload.
+
+### 2026-09-24 — Go-live program: plan corrections after #174
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-6`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #174's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/174#issuecomment-5823796196). PLAN 4.8's filter now lists, in order:
+    - its sources, checked first, including each full form the notation table lists for a notation assigned to place fields only;
+    - its cuts, including Roman-numeral months, with the reviewer's own place value exempt from the readings' non-place cuts;
+    - the expansion, whose full forms go through the same cuts;
+    - the fixed request parts, with the key treated as the Secret Manager credential it is and record values entering SPARQL only as escaped literals;
+    - the named tests, among them "3 VIII 1946" and a reviewer's corrected collector spelling.
+  - S8's request builder calling S4's single filter is recorded as a labelled ruling in 4.8 and in S8's brief.
+  - The agreeing no-lookup clear carries G45's `verbatim_dts` exception. S5's T6 names the rule alternative for G41 and G44 fills.
+  - Correction to the entry "2026-09-24 — Go-live program: plan corrections after #124" above:
+    - its outcome omits that S2's brief line 143 was re-mapped with PLAN 190;
+    - its learning (3) paired gaps with rounds loosely: G40's narrowing came in round 4, S8's own requests in round 5, and the name before its marker, month names and a reviewer's non-place values in the rounds after.
+- Validation actually run: the edit script's exact-single-match checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: a filter specification is a pipeline. State its steps in order: source check, cuts, expansion, then the cuts again on what the expansion added. Several review findings came from steps whose order was only implied.
+- Remaining follow-ups: unchanged from the entry above.
