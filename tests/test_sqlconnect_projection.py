@@ -219,7 +219,7 @@ def test_saves_project_the_first_pass_harness_fields_and_decision(tmp_path, capl
         found = Lookup(provider="google-maps-geocoding", adapter_version="geocode-1", query={"address": "Chicago, Ill."}, status=LookupStatus.SUCCESS, metadata={"locator": "place/fixture-place"}, raw_ref=record, digest="8" * 64)
         run.lookups = [found]
         run.tool_calls = [
-            ToolCallRecord(call_key=f"lookup:geocode:google-maps-geocoding:decided_transcript:{region.id}:-:0af70af70af70af7:1", phase="lookup", tool="geocode", tool_version="t1", source="google-maps-geocoding", field_keys=["country", "city"], input_source="decided_transcript", region_id=region.id, arguments={"query": "Chicago, Ill."}, outcome="success", result={"candidates": [{"place_id": "fixture-place"}]}, evidence_id=found.id, started_at="2026-09-23T12:00:00+00:00", completed_at="2026-09-23T12:00:01+00:00"),
+            ToolCallRecord(call_key=f"lookup:geocode:google-maps-geocoding:decided_transcript:{region.id}:-:0af70af70af70af7:1", phase="lookup", tool="geocode", tool_version="t1", source="google-maps-geocoding", field_keys=["country", "city"], input_source="decided_transcript", region_id=region.id, arguments={"query": "Chicago, Ill."}, outcome="success", result={"place_ids": ["fixture-place"]}, evidence_id=found.id, started_at="2026-09-23T12:00:00+00:00", completed_at="2026-09-23T12:00:01+00:00"),
         ]
         run.fields = {
             "city": TracedField(state=ValueState.SUPPORTED, literal="Chicago", authority_id="fixture-place", evidence_ids=[found.id], evidence_relations={found.id: "supports"}, input_source="decided_transcript", source_region_id=region.id),

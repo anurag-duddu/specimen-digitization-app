@@ -6,6 +6,7 @@ subclasses carry them until they reach the shared domain model.
 
 from __future__ import annotations
 
+import pytest
 from pydantic import BaseModel
 
 from specimen_digitization.application.domain import (
@@ -350,7 +351,7 @@ def test_tool_calls_point_at_the_decision_they_ran_on_and_the_evidence_they_made
             region_id=region.id,
             arguments={"query": "Chicago, Ill."},
             outcome="success",
-            result={"candidates": [{"place_id": "fixture-place"}]},
+            result={"place_ids": ["fixture-place"]},
             evidence_id=found.id,
             started_at="2026-09-23T12:00:00+00:00",
             completed_at="2026-09-23T12:00:01+00:00",
@@ -830,3 +831,250 @@ def test_the_coverage_check_is_recorded_evidence():
     # A check without an evidence blob has no evidence item.
     s.run.coverage_check = {**s.run.coverage_check, "evidence_ref": None}
     assert "label-coverage-check" not in {w["source"] for w in rows(writes(s, locate, size, "worker-uid"), "AppendEvidenceItemV2")}
+
+
+def another(found, fill, **fields):
+    """A second stored lookup, like `found`."""
+    return found.model_copy(
+        update={
+            "id": Lookup.model_fields["id"].default_factory(),
+            "raw_ref": f"{fill * 64}:4",
+            "digest": fill * 64,
+            **fields,
+        }
+    )
+
+
+def literal(s, reading, text, fill):
+    """The harness's literal evidence of one reading's text, stored (#131)."""
+    item = Evidence(
+        kind="literal",
+        asset_id=s.asset.id,
+        region_id=reading.region_id,
+        observation_ids=[reading.id],
+        source="field_harness",
+        locator=f"region:{reading.region_id}",
+        excerpt=text,
+        raw_ref=f"{fill * 64}:5",
+        digest=fill * 64,
+    )
+    s.run.evidence.append(item)
+    return item
+
+
+def test_two_labels_with_one_text_keep_two_candidate_ids():
+    s, picked, _, left = two_labels()
+    field = TracedField(
+        state=ValueState.SUPPORTED,
+        verbatim_by_observation={picked.id: "Chicago", left.id: "Chicago"},
+        input_source_by_observation={picked.id: "decided_transcript", left.id: "raw_reading"},
+        settled_observation_ids=[picked.id, left.id],
+        normalized="Chicago",
+    )
+    s.run.fields = {"locality": field}
+    first, second = rows(writes(s, locate, size, "worker-uid"), "AppendFieldCandidateV2")
+    # A decided entry is keyed by its label's selected reading, not by "-" (section 5).
+    content = digest(field.model_dump(mode="json"))
+    assert first["id"] == derived_id("candidate", s.run.id, "locality", picked.id, content)
+    assert second["id"] == derived_id("candidate", s.run.id, "locality", left.id, content)
+    assert first["id"] != second["id"]
+
+
+@pytest.mark.parametrize("named", ["its decided reading", "the confirmed reading"])
+def test_a_decided_label_settled_through_the_fallback_settles_with_its_call(named):
+    """G20 inside G32: S4 names the label's decided reading or the raw reading a lookup confirmed."""
+    s, picked, region, left = two_labels()
+    one = s.run.regions[0]
+    confirmed = s.run.observations[0]
+    right = next(o for o in s.run.observations if o.region_id == region.id and o.id != left.id)
+    missed = lookup(s).model_copy(update={"status": LookupStatus.NO_MATCH, "metadata": {"source_version": "v1"}})
+    place = {"locator": "place/fixture-place", "source_version": "v1"}
+    fallback = another(missed, "4", status=LookupStatus.SUCCESS, metadata=place)
+    second = another(missed, "3", status=LookupStatus.SUCCESS, metadata=place)
+    s.run.lookups = [missed, fallback, second]
+    call = dict(phase="lookup", tool="geocode", tool_version="t1", source="google-maps-geocoding", field_keys=["locality"], arguments={})
+    s.run.tool_calls = [
+        ToolCallRecord(call_key="decided", input_source="decided_transcript", region_id=one.id, outcome="no_match", result={"place_ids": []}, evidence_id=missed.id, **call),
+        ToolCallRecord(call_key="fallback", input_source="raw_reading", region_id=one.id, observation_id=confirmed.id, outcome="success", result={"place_ids": ["fixture-place"]}, evidence_id=fallback.id, **call),
+        ToolCallRecord(call_key="label-two", input_source="raw_reading", region_id=region.id, observation_id=left.id, outcome="success", result={"place_ids": ["fixture-place"]}, evidence_id=second.id, **call),
+    ]
+    s.run.fields = {
+        "locality": TracedField(
+            state=ValueState.SUPPORTED,
+            verbatim_by_observation={picked.id: "Chicago, Ill", right.id: "Chicago, Il1", left.id: "Chicago, Ill"},
+            input_source_by_observation={picked.id: "decided_transcript", right.id: "raw_reading", left.id: "raw_reading"},
+            settled_observation_ids=[picked.id if named == "its decided reading" else confirmed.id, left.id],
+            normalized="Chicago, Ill",
+            authority_id="fixture-place",
+            evidence_ids=[fallback.id, second.id],
+            evidence_relations={fallback.id: "supports", second.id: "supports"},
+        )
+    }
+    s.run.disposition, s.run.reasons = Disposition.CLEARED, []
+    result = writes(s, locate, size, "worker-uid")
+    references_come_first(result)
+    decided, unsettled, settled = rows(result, "AppendFieldCandidateV2")
+    assert [c["authorityId"] for c in (decided, unsettled, settled)] == ["fixture-place", None, "fixture-place"]
+    # The fallback call ran on a raw reading of label one: its evidence goes to label one's entry.
+    links = rows(result, "AppendCandidateEvidenceV2")
+    assert [(link["candidateId"], link["evidenceId"]) for link in links] == [
+        (decided["id"], fallback.id),
+        (settled["id"], second.id),
+    ]
+    assert rows(result, "AppendResolvedFieldV2")[0]["candidateId"] == decided["id"]
+
+
+def test_evidence_links_to_the_entry_it_names_settled_or_not():
+    s, picked, _, left = two_labels()
+    one = literal(s, picked, "Chicago", "5")
+    two = literal(s, left, "Chimaltenango", "6")
+    s.run.fields = {
+        "locality": TracedField(
+            state=ValueState.AMBIGUOUS,
+            reason="labels_conflict",
+            verbatim_by_observation={picked.id: "Chicago", left.id: "Chimaltenango"},
+            input_source_by_observation={picked.id: "decided_transcript", left.id: "raw_reading"},
+            evidence_ids=[one.id, two.id],
+            evidence_relations={one.id: "supports", two.id: "supports"},
+        )
+    }
+    s.run.disposition, s.run.reasons = Disposition.REVIEW, ["labels_conflict:locality"]
+    result = writes(s, locate, size, "worker-uid")
+    references_come_first(result)
+    first, second = rows(result, "AppendFieldCandidateV2")
+    # Each label's reading goes to review with its own literal evidence.
+    links = rows(result, "AppendCandidateEvidenceV2")
+    assert [(link["candidateId"], link["evidenceId"], link["relation"]) for link in links] == [
+        (first["id"], one.id, "supports"),
+        (second["id"], two.id, "supports"),
+    ]
+    assert all((c["normalizedValue"], c["authorityId"]) == (None, None) for c in (first, second))
+    assert rows(result, "AppendResolvedFieldV2")[0]["candidateId"] is None
+
+
+def test_readers_that_agree_without_a_pick_are_one_verbatim():
+    """A field without a lookup whose readers all read the same text takes it and clears
+    (coordinator ruling on #88's final review; #131's `_verbatim_source`)."""
+    s = first_pass(base(), selected=False)
+    right, _ = s.run.observations
+    field = TracedField(
+        state=ValueState.SUPPORTED,
+        reason="transcribed_as_seen",
+        literal="Chicago",
+        input_source="raw_reading",
+        source_region_id=s.run.regions[0].id,
+        source_observation_id=right.id,
+    )
+    s.run.fields = {"locality": field}
+    s.run.disposition, s.run.reasons = Disposition.CLEARED, []
+    result = writes(s, locate, size, "worker-uid")
+    (candidate,) = rows(result, "AppendFieldCandidateV2")
+    assert (candidate["literalValue"], candidate["inputSource"]) == ("Chicago", "raw_reading")
+    assert (candidate["sourceObservationId"], candidate["sourceTranscriptionId"]) == (right.id, None)
+    assert (candidate["derivation"], candidate["normalizedValue"]) == ("literal", None)
+    assert candidate["id"] == derived_id("candidate", s.run.id, "locality", right.id, digest(field.model_dump(mode="json")))
+    assert rows(result, "AppendResolvedFieldV2")[0]["candidateId"] == candidate["id"]
+
+
+def test_an_unsettled_date_keeps_every_reading_on_its_call():
+    """G29, G33: the date parser's call is ambiguous and keeps its readings in `result` (#121, #138)."""
+    s = first_pass(base())
+    readings = [
+        {"year": 1948, "month": 5, "day": 4, "precision": "day"},
+        {"year": 1948, "month": 4, "day": 5, "precision": "day"},
+    ]
+    kept = {"parsed": {"readings": readings, "year_literal": None}, "warnings": ["several_readings"]}
+    s.run.tool_calls = [
+        ToolCallRecord(
+            call_key="validate:date_parser:decided_transcript:-:1",
+            phase="validate",
+            tool="date_parser",
+            tool_version="d1",
+            source=None,
+            field_keys=["date_visited_from"],
+            input_source="decided_transcript",
+            region_id=s.run.regions[0].id,
+            arguments={"literal": "4-5-48"},
+            outcome="ambiguous",
+            result=kept,
+        )
+    ]
+    (call,) = rows(writes(s, locate, size, "worker-uid"), "AppendToolCallV1")
+    assert (call["outcome"], call["result"]) == ("ambiguous", kept)
+
+
+# Built at run time, so no scanner finds a key in this file.
+FAKE_KEY = "AIza" + "0" * 35
+
+
+@pytest.mark.parametrize(
+    "where",
+    ["a key-bearing URL in arguments", "an API key in arguments", "a URL in the error", "a key in a lookup query"],
+)
+def test_a_key_with_a_call_refuses_the_projection_and_is_never_logged(where):
+    """Rule 1.6: no key is stored with a call, and the refusal names where, never the key."""
+    s = first_pass(base())
+    found = lookup(s)
+    url = "https://maps.example.test/geocode/json?address=Chicago&key=" + ("k3y" if "URL" in where else FAKE_KEY)
+    record = ToolCallRecord(
+        call_key="lookup:geocode:1",
+        phase="lookup",
+        tool="geocode",
+        tool_version="t1",
+        source="google-maps-geocoding",
+        field_keys=["city"],
+        input_source="decided_transcript",
+        region_id=s.run.regions[0].id,
+        arguments={"query": "Chicago, Ill."},
+        outcome="success",
+        result={"place_ids": ["fixture-place"]},
+        evidence_id=found.id,
+    )
+    if where == "a key-bearing URL in arguments":
+        record = record.model_copy(update={"arguments": {"url": url}})
+    elif where == "an API key in arguments":
+        record = record.model_copy(update={"arguments": {"query": "Chicago, Ill.", "key": FAKE_KEY}})
+    elif where == "a URL in the error":
+        record = record.model_copy(update={"outcome": "authorization_error", "result": {"error": f"403 for {url}"}, "evidence_id": None})
+    else:
+        s.run.lookups = [found.model_copy(update={"query": {"address": "Chicago, Ill.", "key": FAKE_KEY}})]
+    s.run.tool_calls = [record]
+    with pytest.raises(ValueError) as refused:
+        writes(s, locate, size, "worker-uid")
+    assert FAKE_KEY not in str(refused.value) and "k3y" not in str(refused.value)
+
+
+@pytest.mark.parametrize(
+    ("kept", "allowed"),
+    [
+        ({"place_ids": ["fixture-place"]}, True),
+        ({"place_ids": [], "error": "rate limited", "retry_after": 30}, True),
+        ({"candidates": [{"place_id": "fixture-place"}]}, False),
+        ({"place_ids": ["fixture-place"], "names": ["x"]}, False),
+        ({"place_ids": [{"place_id": "fixture-place", "name": "x"}]}, False),
+    ],
+)
+def test_a_google_call_keeps_only_place_ids(kept, allowed):
+    """Rule 1.6: a Google call's result holds only place ids, its error and its retry time."""
+    s = first_pass(base())
+    s.run.tool_calls = [
+        ToolCallRecord(
+            call_key="lookup:geocode:1",
+            phase="lookup",
+            tool="geocode",
+            tool_version="t1",
+            source="google-maps-geocoding",
+            field_keys=["city"],
+            input_source="decided_transcript",
+            region_id=s.run.regions[0].id,
+            arguments={"query": "Chicago, Ill."},
+            outcome="success",
+            result=kept,
+        )
+    ]
+    if allowed:
+        (call,) = rows(writes(s, locate, size, "worker-uid"), "AppendToolCallV1")
+        assert call["result"] == kept
+    else:
+        with pytest.raises(ValueError):
+            writes(s, locate, size, "worker-uid")
