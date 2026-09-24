@@ -33,8 +33,8 @@
   "coverage_check": {
     "status": "passed",
     "checks": [
-      {"name": "region_count", "passed": true, "detail": {"regions": 2}},
-      {"name": "full_image", "passed": true, "detail": {"uncovered_text": false}}
+      {"name": "region_count", "passed": true, "detail": {"found": 2, "min": 1, "max": 2, "reason_codes": []}},
+      {"name": "full_image", "passed": true, "detail": {"counted": 2, "outside": 0, "threshold": 0.5, "min_inside_fraction": 0.9, "reason_codes": []}}
     ],
     "evidence_id": "evidence-coverage-1",
     "checked_at": "2026-09-23T14:31:02Z"
