@@ -765,10 +765,25 @@ linked from the record. Four pull requests: the run's trace (T5a), content
 
 ### SAM 3 (T5c)
 
-- SAM 3's call opens "Segment specimen with SAM 3" with its parameters: the
-  concepts, thresholds, recording floor, limit, revision and checkpoint digest.
-  The request carries the W3C `traceparent`, and the service continues the
-  trace in its own span, with distributed tracing on.
+- **The worker's span.** SAM 3's call opens "Segment specimen with SAM 3" in
+  the `segment` step's span. It records the specimen and run ids and the
+  parameters as the service applies them: the concepts (the prompt and any
+  cross-check concept), the label and mask thresholds, the recording floor, the
+  detection limit, the model revision and the pinned checkpoint digest. It
+  records no image, mask or specimen text.
+- **The request carries the trace.** The worker hands the isolated child only
+  the span's W3C `traceparent`, validated, with no baggage or `tracestate`. The
+  child sends it as the request's `traceparent` header.
+- **The service continues it.** The SAM 3 service configures Logfire in the
+  metadata mode when it starts. Its segment endpoint attaches the request's
+  `traceparent` as a third-party context and opens "Serve SAM 3 segmentation",
+  with the same attributes and the checkpoint digest it serves. The
+  third-party context follows `LOGFIRE_DISTRIBUTED_TRACING`:
+  - on (S2 sets it on the service), the span is a child of the worker's, in
+    the run's trace;
+  - off, the service starts its own trace, and the traceparent is ignored.
+
+  Health checks and requests refused at the perimeter open no span.
 
 ### The Geocoding key (T5d)
 
