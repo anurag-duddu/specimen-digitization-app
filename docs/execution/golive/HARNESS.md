@@ -473,3 +473,88 @@ Only a success names a value:
 
 An operational outcome passes through unchanged, for section 9 to block on.
 `Evidence.locator` becomes optional for the failed lookups.
+
+## 11. The harness agent (stage 7, part 6)
+
+G6, G7, G19, G20, G26, G29, G30, G32, G33, G36, G37 and G40; HAR-007 and
+HAR-019. The owner's rule: "agentic harness takes the finally decided raw
+transcript runs lookups (can rely on raw for a final check if LLM decided
+transcript output fails, if both fail send to relevant queue)". G40 names the
+job: "the harness is looking at everything transcribed for context, the system
+prompt should factor in all possibilities and the agents search and try to
+figure out what it could be". `application/field_harness.py` runs a Pydantic
+AI agent on the profile's harness route (section 5). The agent proposes
+literals and checks them with the tools. Field resolution (section 9) decides
+every field from the ledger's records (section 10).
+
+**What the agent reads** (G40): everything transcribed on the specimen, as
+context for every field. That is each label's decided transcript and its raw
+readings with the first pass's note on each (section 4), named by label and
+reading (`1A`, `1B`, `2A`), never by model or route. It also reads the
+profile's mandatory and optional fields, each with the tool it may use.
+
+**Instructions** are the pinned managed prompt `field-harness` followed by the
+harness knowledge the profile names by id and version. The prompt states:
+- G40: everything transcribed is context; keep looking up and weighing the
+  evidence until a field settles or is shown not to;
+- G29: every reading a notation allows;
+- G37: a field the label leaves out is filled only by derivation from settled
+  fields, with authority and evidence;
+- G36: no conclusion without evidence;
+- the copy rule: never invent, complete, correct, expand or translate a literal.
+
+The Insects knowledge (`harness_knowledge/insects.py`, id `insects`, version
+`insects-harness-knowledge-v1`) lists the pilot's label notations and every
+reading each allows: "P.I.", Roman and named months, both orders of a numeric
+date, two-digit years under the century rule, and more. Its place aliases are
+the only extra names the geography tool accepts. A knowledge id or version the
+code does not have is refused.
+
+**What it returns.** For every field, the literal exactly as each reading has
+it, and for a date the year literal the same label states elsewhere. Code
+validates the answer and returns one fault per problem for a retry: a field the
+profile does not have, a reading it was not given, a literal that is not
+character for character in its reading, or two literals for one field in one
+reading.
+
+**Tools.** Only the profile's tools, each run through the ledger:
+- `verify_taxon`: GBIF's usage, name, rank and status (G28);
+- `geocode`: a reading's locality literals together, returning the outcome and
+  each field's outcome, never a Google name (G26);
+- `parse_date`: every reading a date's notation allows;
+- `check_catalog_number`.
+
+Geography arguments are in field order, so the agent's check and the final
+call on the same literals are one request.
+
+**Deciding.** After the agent answers, every field is resolved by section 9 from
+the ledger's records, and any tool call the agent did not make on its final
+literals is made then, once.
+- A field with no tool is transcribed as written, and so is
+  `precise_location`, which no geocoder settles (PRD 515).
+- Every date literal of every reading is parsed first, so the order the dates
+  fix can settle an ambiguous numeric date (G33). The date then cites one
+  `date_order` evidence item naming the dates that fixed it.
+- Each literal's evidence stores its record through the run's blob store.
+
+**Budget (G30).** Each request reserves its worst case, and S3 sizes the `parse`
+reservation from these caps together, so they change together:
+- 8 requests per run, each at most 2,048 output tokens;
+- 60,000 input tokens per run, checked after each response;
+- a prompt of at most 12,000 bytes, instructions, readings and tool definitions
+  together;
+- at most 12 tool calls by the agent;
+- at most 4 geocoding requests per run, the agent's and the final ones
+  together, each with at most 3 attempts.
+
+A tool call past its cap returns a refusal and makes no lookup. A final
+geocoding request past the cap is refused as `policy_blocked`, which blocks the
+run. T1's probe used 3 requests and 1,285 output tokens.
+
+**Failures** (G6, QUE-005):
+- A harness failure decides no field and sends the record to review:
+  - a prompt over its cap, before any call (`harness_input_too_large`);
+  - a run that reaches a usage cap (`harness_usage_limit`);
+  - an answer still invalid after its retries (`harness_malformed_output`).
+- A provider error stays an operational block, as for every model call.
+- An operational tool outcome blocks the run (section 9).
