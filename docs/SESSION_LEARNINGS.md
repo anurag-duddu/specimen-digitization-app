@@ -11986,3 +11986,23 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (2) Reviewer-only operations must never be attempted on a worker's pass, or the pass stops there for good. The writer skips them and keeps their ids, so a later reviewer's pass writes them in order.
 - Failed approaches: refusing every `raw_reading` handoff on a decision that selected a reading (first #88 review): S4 hands the unselected readers to the harness as raw readings.
 - Remaining follow-ups: T2b-2, stacked on this; S4's domain types in place of the test stand-ins once #131 merges.
+
+### 2026-09-24 — Go-live projection writer: G32, the coverage evidence and #88's final review (S5 T2b-2)
+
+- Task: S5 T2b, second part; pull request "[golive:data] The writer's G32 candidates, coverage evidence and #88's final review", stacked on T2b-1.
+- Branch/worktree: `golive/data-projection-decisions` in `.claude/worktrees/epic-rhodes-d168f3`.
+- Commits: `8cd302e` and `a4c8c37` (G32 and the coverage evidence); `5a7cbd3` and `6ce64f3` (#88's final review); `c747934` and `dcd4d12` (a GeoNames username is a credential, PLAN 4.8); `053ef2e` and `e6d2e6e` (the region guard); `3e30a3c` (`settled_entries`); `9ea855e` (`CredentialStored`); the merge of T2b-1; this entry.
+- Outcome:
+  - G32: every label keeps its own candidate, keyed by the entry's own reading.
+  - An entry settles when `settled_observation_ids` names its reading, or, for a decided entry, a raw reading of its region (G20 inside G32). This rule is `projection.settled_entries`, which the thread shares.
+  - Evidence links to the entry it names, whether or not that entry settled.
+  - The coverage check is recorded evidence.
+  - Readers that agree without a pick are one literal (coordinator ruling), and each agreeing reader's literal is its own evidence (agreed with S4).
+  - A no-pick decision's `literalText` is `""`.
+  - Rule 1.6 refusals (`CredentialStored`), raised when a stored call or lookup query holds a key-bearing URL, an API key or a GeoNames username, or when a Google result holds more than place ids.
+- Validation actually run at `9ea855e`: the projection, writer and uniqueness tests, 61 passed and 2 skipped; the opt-in SQL tests against `serve-local.sh`, 2 of 2. The full suites ran on T3's head, which contains this branch.
+- Durable learnings:
+  - (1) The repository logs a refusal raised in `writes()`, so its message names where the key is and never the key. The tests build a fake key at run time and check the message never contains it.
+  - (2) Linking evidence by the source its call ran on misses the G20 fallback, where a raw reading's call settles a decided entry. Link by the reading the evidence names, else by its region.
+  - (3) A rule that settles an entry by its region must guard a reading with no region, or `None == None` settles it.
+- Remaining follow-ups: T2c, stacked on this; S4's domain types in place of the stand-ins once #131 merges.

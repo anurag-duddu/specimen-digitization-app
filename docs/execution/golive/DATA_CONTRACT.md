@@ -89,11 +89,22 @@ reads them.
      decides. Its `authorityId` is at most the place id in that evidence's
      locator, and its `normalizedValue` is at most a reader's exactly matching
      literal, never a Google name.
+   - A Google `ToolCall`'s `result` holds only `place_ids`, the place ids Google
+     returned, and the call's sanitized `error` and `retry_after` (S4's tool
+     ledger, #138). The writer refuses any other key there.
    - GBIF's accepted names may be stored (G28).
+   - No credential is stored with a call (PLAN 4.8 in #124): no request URL that
+     carries one (the Maps key's `key=`, GeoNames' `username=`) and no API key
+     (Google's begin `AIza`), in a `ToolCall`'s `arguments` or `result` (its
+     `error` included) or an `EvidenceItem`'s `query`. The writer refuses to
+     project a run that holds one: the snapshot is already committed, and the
+     projection writes nothing for that specimen and logs where the
+     credential is, never the credential, until the run no longer holds one.
 7. A place or taxon field keeps both its verbatim, as written on the label, and
    its settled value, as the harness settled it (G27, G28). When the first pass
-   selected no reading, the verbatim is one value per reader, each attributed to
-   its reading.
+   selected no reading and the readers' literals differ, the verbatim is one
+   value per reader, each attributed to its reading; readers that all read the
+   same text have that one verbatim (coordinator ruling on #88's final review).
 
 ## 2. What SQL holds, stage by stage
 
@@ -275,9 +286,13 @@ stage and blocker say why.
 `ambiguous`, `empty_response`, `rate_limited`, `timeout`,
 `authentication_error`, `authorization_error`, `provider_error`,
 `malformed_response` and `policy_blocked`. A missing or rejected Maps key is
-`authentication_error`. Deterministic validators record `success` with their
-verdict in `result`. A paid call's cost is in S3's per-call cost record on the
-run, not in SQL.
+`authentication_error`. A deterministic validator's call keeps its verdict in
+`result` as `{parsed, warnings}` (S4's ledger, #138): `success` when the literal
+reads one way, `no_match` when it reads none, and `ambiguous` when it reads
+several. So a date whose order the specimen's readings do not fix keeps every
+reading in `result.parsed.readings` on its `ToolCall` row, and its field stays
+`ambiguous` (G29, G33; #121's `date_parser`). A paid call's cost is in S3's
+per-call cost record on the run, not in SQL.
 
 **Fields.** Each `FieldValue` in `Run.fields` gains these:
 - `input_source`, `source_region_id` and `source_observation_id`. A field's
@@ -293,44 +308,60 @@ run, not in SQL.
   - If the first pass picked none, the field uses the verbatim map below.
 - `verbatim_by_observation: dict[str, str]`, `input_source_by_observation:
   dict[str, Literal["decided_transcript", "raw_reading"]]` and
-  `settled_observation_ids: list[str]` (G27, G28, G32; agreed with S4). The
-  three are set together, in two cases:
+  `settled_observation_ids: list[str]` (G27, G28, G32; agreed with S4, #131).
+  The three are set together when a field has no single verbatim, in two cases:
+  - A single-label field whose first pass selected no reading (G19), when the
+    readers' literals differ: one entry per reader, each `raw_reading`. Readers
+    that all read the same text have one verbatim, not a map: the field keeps
+    that text as `literal` from the first reading (`raw_reading`), and a field
+    without a lookup takes it as its value and clears (coordinator ruling on
+    #88's final review; #131's `_verbatim_source`). Each agreeing reader's
+    literal is its own `literal` evidence (agreed with S4), so the provenance
+    names every reader that agreed.
   - A field found on more than one label (G32: the harness settles each label
     separately, and the field clears when every label settles to the same
-    value; PLAN in #124, 18958e0). There is one entry per label's source reading,
-    even when the texts are identical, so every label keeps its own candidate: a
-    label with a decided transcript contributes its selected reading
-    (`decided_transcript`), and a no-pick label its readers (`raw_reading`).
-  - A single-label field whose first pass selected no reading (G19): one entry
-    per reader, each `raw_reading`.
+    value; PLAN in #124, 18958e0). Each label brings its own entries, even when
+    the labels' texts are identical, so every label keeps its own candidate: a
+    label with one verbatim (its decided transcript, or its readers' one text)
+    brings that reading, and a label whose readers differ brings each reader.
   - Whenever the map is set, `literal`, `input_source`, `source_region_id` and
     `source_observation_id` are None. Single-label fields with a decided
     transcript stay as above, the G20 fallback included.
-  - `settled_observation_ids` names the entries whose own verbatim settled to
-    the field's value: one per label when the field cleared across labels (its
-    decided reading, or the reader a lookup confirmed in a no-pick label), the
-    confirmed reader in the single-label no-pick case, and none when the field
-    is in review (labels or readings conflict).
+  - `settled_observation_ids` names the readings through which the value
+    settled: the reader a lookup confirmed in a no-pick label and, when the
+    field cleared across labels, each label's own (its one verbatim's reading,
+    or its confirmed reader). A decided label settled through the G20 fallback
+    is named by its decided reading or by the raw reading the lookup confirmed
+    (agreed with S4). It is empty when the field is in review, because the
+    labels or the readings conflict.
   - The writer emits one `FieldCandidate` per entry with that entry's
     `inputSource`: a decided-transcript entry names its region's decision in
     `sourceTranscriptionId`, and a raw-reading entry its reading in
-    `sourceObservationId`. Only the settled entries' candidates carry
-    `normalizedValue`, `authorityId`, `parsedValue` and evidence links, each
-    linking the evidence whose tool call ran on its own source (its reading, or
-    its region's decided transcript); evidence from no tool call links to every
-    settled candidate. The other candidates carry their literal and the field's
-    state. `ResolvedField.candidateId` points at the first settled candidate in
-    verbatim order, and is null when none settled.
-  - The pointer selects the settled value only, never a verbatim: every label's
-    and reader's verbatim stays on its own candidate. A field that clears across
-    labels with differing spellings also gets the warning
-    `spelling_disagreement` (S4's G32 rule, #131's `HARNESS.md`). Place and
-    taxon fields are treated alike.
-- The settled value stays on the field: `authority_id` (Google's place id, or
-  GBIF's usage key) and `normalized` (rule 1.6 for Google; GBIF's accepted name
-  for GBIF). Both are set only from a call whose outcome is `success`. A field
-  without a lookup that clears across labels on identical texts has that common
-  text in `normalized`, since `literal` is None there (G32).
+    `sourceObservationId`. An entry settles when `settled_observation_ids`
+    names its reading or, for a decided-transcript entry, a raw reading of its
+    region. Only the settled entries' candidates carry `normalizedValue`,
+    `authorityId` and `parsedValue`; the others carry their literal and the
+    field's state.
+  - Each evidence id links to the entry it names, whether or not that entry
+    settled: a tool call's evidence to the entry of the reading the call ran
+    on, else to the entry of the call's region (a decided transcript's call, or
+    a G20 fallback call on a raw reading of a decided label); literal evidence
+    (`field_harness`) to the entry of the reading it quotes, else of its
+    region. Evidence that names no entry's reading or region links to every
+    settled entry.
+  - `ResolvedField.candidateId` points at the first settled entry in the domain
+    map's order, and is null when none settled; SQL keeps that choice in the
+    pointer, not the order. The pointer selects the settled value only, never a
+    verbatim: every label's and reader's verbatim stays on its own candidate. A
+    field that clears across labels with differing spellings also gets the
+    warning `spelling_disagreement` (S4's G32 rule, #131's `HARNESS.md`). Place
+    and taxon fields are treated alike.
+- The settled value stays on the field: `authority_id`, Google's place id or
+  GBIF's usage key, set only from a call whose outcome is `success`; and
+  `normalized`, the settled text: the name a `success` call settled (rule 1.6
+  for Google; GBIF's accepted name for GBIF), or the one text of a field
+  without a lookup that cleared across labels on identical texts, where
+  `literal` is None (G32).
   - GBIF's `success` (S4's T3a, under the coordinator's GBIF.md ruling and G25)
     is an `EXACT` match of an `ACCEPTED` usage with a key, in class Insecta, at
     the rank the label's name gives (a genus alone `GENUS`, a binomial
@@ -388,8 +419,12 @@ evidence, and a review decision (its audit event's id). A region's domain id
 repeats across runs (rule 1.5), so a region row's id is derived like the rest.
 Every other row gets a UUIDv5 under one namespace fixed in the writer, from a
 key that includes a content digest wherever a row can have several versions.
-`{region}` is the domain region id, and `{left}` and `{right}` are in the
-comparison's fixed order (section 3.1):
+`{region}` is the domain region id; `{left}` and `{right}` are in the
+comparison's fixed order (section 3.1); and `{reading}` is a candidate's own
+reading: its key in `verbatim_by_observation` for an entry of a verbatim map (a
+decided entry's is its label's selected reading, so two labels with one text
+keep two candidates), else the field's raw source reading, and `-` for a
+decided transcript's single literal:
 
 | Row | Key |
 |---|---|
@@ -400,7 +435,8 @@ comparison's fixed order (section 3.1):
 | `HarnessInput` | `handoff/{transcription version}/{observation}` |
 | `ReadingComparison` | `comparison/{run}/{region}/{left}/{right}` |
 | `ToolCall` | `tool-call/{run}/{call_key}` |
-| `FieldCandidate` | `candidate/{run}/{field key}/{observation or "-"}/{digest of value}` |
+| `EvidenceItem` of the coverage check (G15) | `coverage/{run}/{evidence sha256}`; its locator is `coverage/{check version}` |
+| `FieldCandidate` | `candidate/{run}/{field key}/{reading or "-"}/{digest of value}` |
 | `RecordVersion` | `record/{run}/{digest of disposition, reasons, summary, findings, field states and each field's resolved candidate}` |
 | `ResolvedField` | `{record version}/field/{field key}` |
 | `CandidateEvidence` | `candidate-evidence/{candidate}/{evidence}` |
@@ -582,7 +618,7 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   "tool_calls": [{"call_key": "…", "phase": "lookup", "tool": "geocode", "tool_version": "…",
     "source": "google-maps-geocoding", "field_keys": ["country", "province_state", "county", "city"],
     "input_source": "decided_transcript", "region_id": "…", "observation_id": null, "attempt": 1,
-    "arguments": {}, "outcome": "success", "result": {"candidates": [{"place_id": "…"}]},
+    "arguments": {}, "outcome": "success", "result": {"place_ids": ["…"]},
     "error": null, "retry_after": null, "evidence_id": "…",
     "started_at": "…", "completed_at": "…"}],
   "fields": [{"field_key": "city", "group": "mandatory", "state": "supported",
@@ -641,19 +677,24 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
 - `first_pass` is null for a region with no recorded decision; the run's
   `stage` and `blocker` say why. Its `unresolved` follows the rule in section
   4.2.
-- Each field's `verbatim` has one entry, the decided transcript's literal; one
-  entry per reader when the first pass selected no reading (G27, G28); or one
-  entry per label's source reading when the field was found on more than one
-  label (G32), each with its own `input_source`. The
-  settled value is `normalized` and `authority_id` (rule 1.6), and `evidence`
-  gives each linked source's G23 relation: `success` or `recorded` evidence
-  only, while every other outcome is in `tool_calls`.
-- `settled_observation_ids` lists, in verbatim order, the readings whose own
-  literal settled the field's value (G20, G32):
+- Each field's `verbatim` has one entry per candidate: one for a single verbatim
+  (the decided transcript's literal, or the one text every reader has); one per
+  reader when the first pass selected no reading and the readers differ (G27,
+  G28); or each label's own entries when the field was found on more than one
+  label (G32), each with its own `input_source`. An entry's `observation_id` is
+  its reading: null for a decided transcript's single literal, while a decided
+  entry of a per-label map carries its label's selected reading. The settled
+  value is `normalized` and `authority_id` (rule 1.6), and `evidence` gives each
+  linked source's G23 relation: `success` or `recorded` evidence only, while
+  every other outcome is in `tool_calls`.
+- `settled_observation_ids` lists, in `verbatim` order (the domain map's), the
+  readings through which the field's value settled (G20, G32):
   - with a verbatim map (several labels, or a no-pick label), the settled
-    entries' readings, one per label when the field cleared across labels;
+    entries' readings, one per label when the field cleared across labels,
+    where a decided entry settled through a fallback lookup lists the raw
+    reading the lookup confirmed;
   - with a single decided transcript, the raw reading a fallback lookup
-    confirmed;
+    confirmed, and none when the decided literal settled itself;
   - otherwise it is empty.
   `parsed` stays a string; `precision` and `century_rule` sit beside it and are
   null for non-dates (G24).
@@ -798,10 +839,11 @@ T2b mapping. It reads the first-pass, harness and field names agreed with S4
 | Row | Mapping |
 |---|---|
 | `SourceAsset` first-pass response, `ModelObservation` first-pass call | `Transcript.first_pass_call`, mapped like a reading with `independent` false, `regionId` the region row, `stepKey` `first_pass:{region_id}` and its empty literal |
-| `TranscriptionVersion` | per region with a decision: `decisionKind` from `Transcript.decision_kind`, else `human` when a reviewer resolved it (`actor` set), else `identical_readings` when it is resolved and its two or more readings are identical; `selectedObservationId` from the first pass, else the first reading when the readings are identical; `literalText` the decided text; `spans` the first pass's `differences`; `alternatives` the material differences still `neither` or `uncertain`, else the distinct reading texts; `regionId` the region row; `unresolved` exactly when no reading is selected (section 4.2; for a reviewer's decision, not `resolved`); `rationale` `Transcript.reason`; `firstPassObservationId` only for `first_pass`. A `human` decision is written only on a reviewer's, manager's or admin's save, as the operation requires; a worker's pass skips it |
+| `TranscriptionVersion` | per region with a decision: `decisionKind` from `Transcript.decision_kind`, else `human` when a reviewer resolved it (`actor` set), else `identical_readings` when it is resolved and its two or more readings are identical; `selectedObservationId` from the first pass, else the first reading when the readings are identical; `literalText` the decided text, and `""` when no reading is selected (the column is `String!`); `spans` the first pass's `differences`; `alternatives` the material differences still `neither` or `uncertain`, else the distinct reading texts; `regionId` the region row; `unresolved` exactly when no reading is selected (section 4.2; for a reviewer's decision, not `resolved`); `rationale` `Transcript.reason`; `firstPassObservationId` only for `first_pass`. A `human` decision is written only on a reviewer's, manager's or admin's save, as the operation requires; a worker's pass skips it |
 | `HarnessInput` | each `Transcript.handoffs` entry with its handed text and note, as S4 writes them: the selected reading as the decided transcript and every other reading as a raw reading, or every reading as a raw reading without a selection (G19) |
 | `SourceAsset` lookup response, `EvidenceItem` | each `Run.lookups` entry and each `Run.evidence` entry with a stored response: id the domain id; `source`, versions, `query`, `outcome`; a lookup's `locator` its own for a `success` (else `lookup/{id}`) and null for any other outcome, while recorded evidence keeps its own; `responseSha256` the recorded digest (for Google the full response's, G26); `capturedAt`. Google's stored record is an `evidence_record` asset, every other lookup's a `lookup_response` |
+| `EvidenceItem` coverage check (G15) | `Run.coverage_check` with an evidence blob: id `coverage/{run}/{evidence sha256}`; `source` `label-coverage-check`; `sourceVersion` and `adapterVersion` the check's version; `outcome` `recorded`; `locator` `coverage/{version}`; `responseSha256` the evidence digest; `capturedAt` when it ran; an `evidence_record` asset for the blob |
 | `ToolCall` | each `Run.tool_calls` record; `transcriptionVersionId` the region's decision when the call used the decided transcript; `evidenceId` only when that evidence has a row |
-| `FieldCandidate`, `CandidateEvidence` | each field with a literal, or one candidate per `verbatim_by_observation` entry (each `raw_reading` with its observation) when the first pass selected no reading. The settled `normalizedValue`, `authorityId` and `parsedValue` and the evidence links go on the field's candidate, or, with no pick, on the confirmed reader's (`source_observation_id`); the other readers' candidates carry their literal and the field's state. `derivation` is `lookup` only when a source `decides` the value and set `normalized`, else `normalized`, `parsed` or `literal`, so a Google-confirmed field keeps the label's own (rule 1.6); `parsedValue` per G24; one `CandidateEvidence` per evidence id that has a row with outcome `success` or `recorded` and a relation in `evidence_relations`: no default |
-| `RecordVersion`, `ResolvedField`, `ValidationFinding` | once the run has a disposition: `policyVersion` the profile's, `reasonCodes`, `summary` `Run.disposition_summary` (else the reason codes joined, else the disposition); a resolved field for every field, its group from `Run.field_groups`, else `mandatory` when the profile lists it and `optional` otherwise, and its candidate the field's, or with no pick the confirmed reader's, else null; a hard, failed finding per reason code with `ruleId` the code before its first colon and `fieldKey` the rest when it names a field, and a failed finding per `Run.findings` entry with its own rule, version, severity and field, and the evidence ids the run recorded; every finding carries `runId` and its recorded evidence ids, each once, and its id covers its severity, rule, field and evidence (section 5); the record's id covers its findings and each field's resolved candidate |
+| `FieldCandidate`, `CandidateEvidence` | each field with a literal, or one candidate per `verbatim_by_observation` entry: each differing reader without a pick (G19), or each label's own entries for a field on more than one label (G32). An entry's `inputSource` comes from `input_source_by_observation`; a decided-transcript entry names its region's decision, and a raw-reading entry its reading. The settled `normalizedValue`, `authorityId` and `parsedValue` go on the field's candidate, or, with a verbatim map, on the settled entries' candidates: each entry `settled_observation_ids` names, and a decided entry whose region's raw reading it names (G20). Evidence links go on the field's candidate, or, with a verbatim map, on the entry each evidence names, settled or not: the reading its call ran on, else its call's region; for literal evidence, the reading it quotes, else its region; else every settled entry (section 4.3). The other candidates carry their literal and the field's state. `derivation` is `lookup` only when a source `decides` the value and set `normalized`, else `normalized`, `parsed` or `literal`, so a Google-confirmed field keeps the label's own (rule 1.6); `parsedValue` per G24; one `CandidateEvidence` per evidence id that has a row with outcome `success` or `recorded` and a relation in `evidence_relations`: no default |
+| `RecordVersion`, `ResolvedField`, `ValidationFinding` | once the run has a disposition: `policyVersion` the profile's, `reasonCodes`, `summary` `Run.disposition_summary` (else the reason codes joined, else the disposition); a resolved field for every field, its group from `Run.field_groups`, else `mandatory` when the profile lists it and `optional` otherwise, and its candidate the field's, or with a verbatim map the first settled one, else null; a hard, failed finding per reason code with `ruleId` the code before its first colon and `fieldKey` the rest when it names a field, and a failed finding per `Run.findings` entry with its own rule, version, severity and field, and the evidence ids the run recorded; every finding carries `runId` and its recorded evidence ids, each once, and its id covers its severity, rule, field and evidence (section 5); the record's id covers its findings and each field's resolved candidate |
 | `ReviewDecision` | each `review_*` audit event, only on saves by a reviewer, manager or admin, whom the operation requires: id the event's; `correction` `{action, before, after}`; revisions as of the save that first writes it |

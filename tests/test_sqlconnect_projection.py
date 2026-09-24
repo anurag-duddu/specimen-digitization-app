@@ -219,7 +219,7 @@ def test_saves_project_the_first_pass_harness_fields_and_decision(tmp_path, capl
         found = Lookup(provider="google-maps-geocoding", adapter_version="geocode-1", query={"address": "Chicago, Ill."}, status=LookupStatus.SUCCESS, metadata={"locator": "place/fixture-place"}, raw_ref=record, digest="8" * 64)
         run.lookups = [found]
         run.tool_calls = [
-            ToolCallRecord(call_key=f"lookup:geocode:google-maps-geocoding:decided_transcript:{region.id}:-:0af70af70af70af7:1", phase="lookup", tool="geocode", tool_version="t1", source="google-maps-geocoding", field_keys=["country", "city"], input_source="decided_transcript", region_id=region.id, arguments={"query": "Chicago, Ill."}, outcome="success", result={"candidates": [{"place_id": "fixture-place"}]}, evidence_id=found.id, started_at="2026-09-23T12:00:00+00:00", completed_at="2026-09-23T12:00:01+00:00"),
+            ToolCallRecord(call_key=f"lookup:geocode:google-maps-geocoding:decided_transcript:{region.id}:-:0af70af70af70af7:1", phase="lookup", tool="geocode", tool_version="t1", source="google-maps-geocoding", field_keys=["country", "city"], input_source="decided_transcript", region_id=region.id, arguments={"query": "Chicago, Ill."}, outcome="success", result={"place_ids": ["fixture-place"]}, evidence_id=found.id, started_at="2026-09-23T12:00:00+00:00", completed_at="2026-09-23T12:00:01+00:00"),
         ]
         run.fields = {
             "city": TracedField(state=ValueState.SUPPORTED, literal="Chicago", authority_id="fixture-place", evidence_ids=[found.id], evidence_relations={found.id: "supports"}, input_source="decided_transcript", source_region_id=region.id),
@@ -228,6 +228,9 @@ def test_saves_project_the_first_pass_harness_fields_and_decision(tmp_path, capl
         }
         run.field_groups = {"city": "mandatory", "date_visited_from": "mandatory", "county": "mandatory"}
         run.disposition, run.reasons = Disposition.REVIEW, ["mandatory_unresolved:county"]
+        # G15: the coverage check's evidence blob becomes a recorded evidence item.
+        coverage = blobs.put(b'{"regions": 1, "cross_check": "synthetic"}')
+        run.coverage_check = {"version": "label-coverage-v1", "outcome": "confirmed", "region_count": 1, "reason_codes": [], "evidence_ref": coverage, "evidence_sha256": coverage, "checked_at": "2026-09-23T12:00:00+00:00"}
         run.disposition_summary = "Needs human review: county unresolved."
         created.audit.append(AuditEvent(actor=principal.user_id, action="review_field", reason="Checked the label", after={"literal": "Cook"}))
         with caplog.at_level(logging.WARNING):
@@ -251,8 +254,9 @@ def test_saves_project_the_first_pass_harness_fields_and_decision(tmp_path, capl
         assert bare(decision["selectedObservationId"]) == bare(left.id)
         assert bare(decision["firstPassObservationId"]) == bare(call.id)
         assert sorted((h["role"], h["note"]) for h in found_rows["harnessInputs"]) == [("decided_transcript", None), ("raw_reading", "Reads the l as a one.")]
-        (evidence,) = found_rows["evidenceItems"]
+        evidence, checked = sorted(found_rows["evidenceItems"], key=lambda e: e["source"] != "google-maps-geocoding")
         assert (evidence["locator"], evidence["responseSha256"]) == ("place/fixture-place", "8" * 64)
+        assert (checked["source"], checked["locator"]) == ("label-coverage-check", "coverage/label-coverage-v1")
         (tool,) = found_rows["toolCalls"]
         assert tool["fieldKeys"] == ["country", "city"] and bare(tool["evidenceId"]) == bare(found.id)
         candidates = {c["fieldKey"]: c for c in found_rows["fieldCandidates"]}
