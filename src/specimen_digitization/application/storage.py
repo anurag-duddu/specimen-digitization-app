@@ -290,6 +290,11 @@ class SQLiteRepository:
             include_sensitive,
         )
 
+    def run_thread(self, scope, specimen_id, run_id, keys):
+        """No thread here: SQLite writes no normalized rows (DATA_CONTRACT.md 11), so a
+        runtime without SQL Connect has none, as one without sources configured has none."""
+        raise Missing("thread")
+
     def history_page(
         self, scope, ident, after_revision=0, through_revision=None, limit=50
     ):

@@ -12031,3 +12031,27 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (1) Data Connect's CEL reads an omitted variable as a missing key, not as null. `vars.x == null` then errors, the membership check refuses first, and the intended check never runs, which masked every new crossing test. Tests must pass every variable explicitly, as the writer does, and a refusal counts only with the message of the check it names.
   - (2) A candidate's id digests the field's content. A row written before a new column exists keeps the same id, and a later pass counts it as already written, so columns such as `derivedFromFieldKeys` and `authorityIdentity` must be applied before production writes. The coordinator encodes this in MERGE_ORDER: V3 on main and applied before the first production run.
 - Remaining follow-ups: S2's sign-off, with #99's gate admitting V3 and V2 as additive; the MERGE_ORDER constraint; T6's route and proposal; S4's review calls, which wait for V2 on main.
+### 2026-09-24 — Go-live thread read (S5 T3-1): GetRunThreadV1, the repository read and the assembly through the evidence
+
+- Task: the steward's split of #171 (T3) into two parts, by merge and with no rewriting (relayed by the coordinator). T3-1 is the read of one run's thread. T3-2 (#171, `golive/data-thread-api`) keeps the fields, the queue decision, the route and the example, and merges this branch.
+- Branch/worktree: `golive/data-thread-read` from T2c's head `caf271ef` (`golive/data-derived`, #170), in `.claude/worktrees/agent-a6de9727be50c7412`. Local only: not pushed, no pull request. Nothing deployed; no gcloud or firebase call.
+- Commits: `67a1469d` (red), `c4205d85` (green), `291de244` (the fixtures use S4's source ids), and this closeout.
+- Outcome:
+  - Every file is T3's final version (`a73b3230`) or a part of it:
+    - `thread.gql`, `SqlConnectRepository.run_thread` and `SQLiteRepository.run_thread`, whole.
+    - `thread.py` without `Verbatim`, `FieldEvidence`, `FindingThread`, `FieldThread`, `DecisionThread`, `_group`, `_fields`, `_first`, `_reading`, `settled_observation_ids`, `_fallback`, `_decision` and `_finding`, so `Thread` has no `fields` or `decision`.
+    - `thread_fixtures.py` and `projection-test.mjs`, whole.
+    - `test_thread.py` with its 19 tests of these parts, four of them without their field and decision checks.
+  - `DATA_CONTRACT.md` section 8 whole, the API's spec. T3-1 implements its operation, current rows, decisions, refused content, bounds, coverage, trace link and the repository read, and the response's `run`, `trace`, `image`, `segmentation`, `coverage_check`, `regions` and `tool_calls`. Section 10 names the emulator's thread checks and `test_thread.py`.
+  - Code: 592 lines (`git diff caf271ef c4205d85 -- src dataconnect/connector | grep -c '^+[^+]'`), under the steward's 600.
+  - Fingerprints: the refresh gives the plan templates `thread.gql`'s digest and `.gitleaks.toml` its identifier `10188370075cecf438d000ceba073b30ef37f51f` beside T2c's four, replacing none. `SECRET_SCAN_REVIEW.md` was rewrapped by hand.
+  - The fixtures' Catalogue of Life source is S4's `col`, not the invented `catalogue-of-life` (coordinator).
+- Validation actually run:
+  - Red `67a1469d`: `tests/test_thread.py` stopped at collection (`ModuleNotFoundError` for `application.thread`).
+  - Green: `tests/test_thread.py` 19 and the projection tests 59 passed; the pins and T2a's uniqueness test, 80. After the source-id fix, the thread tests, the projection tests and the pins: 158 passed.
+  - `projection-test.mjs` on a fresh stack on 5597/9597: 14 PASS lines, started at a one-minute load of 11.9. The stack stopped through its trap and its directory was deleted.
+  - Pre-commit hooks ran on every commit. `scripts/ci/verify.sh`, `scripts/data/test-postgres.sh` and the full suites were not run.
+- Durable learnings:
+  - (1) To split a pushed branch without rewriting it, build the lower part as a new branch from the base, out of the upper branch's final files. Then merge it into the upper branch, keeping the upper side on every conflict. The upper tree stays as it was, except for the union-merged log.
+  - (2) Write the lower part's files from `git show <final>:<path>`, with scripted cuts that each assert they matched once, so nothing else changes.
+- Open questions and follow-ups: none new. The T3 entries of #171 hold the open ones.
