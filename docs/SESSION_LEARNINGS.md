@@ -11990,3 +11990,27 @@ because the hooks runner hands a native asset hook only `PATH`.
   - geoBoundaries' entries, with the derivations;
   - S2's upload command from the merged manifest;
   - part 2b, the GeoNames reader, which reads these pinned dumps.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 2b: tier 1 GeoNames from pinned dumps
+
+- Task: read the GeoNames country dumps pinned in #151 for tier 1 (G35). Nothing is sent to GeoNames (PLAN 4.8).
+- Branch and worktree: `golive/geo-geonames` in `.claude/worktrees/geo-build`, stacked on #151. PR #152.
+- Outcome: `georef_geonames.py` does three things.
+  - `read_dump` indexes every name a row carries by section 1's comparison key.
+  - `find` returns the places a reading names exactly, or, for a full-name reading with no exact match, the places one letter off through a full name only (G34).
+  - Places carry their administrative parents from the same dump, their class and code, and the dump's country.
+- Validation:
+  - 12 tests on 23 rows copied from the pinned dumps (CC BY 4.0, credited in the fixtures' README).
+  - Full pinned dumps, run in the scratchpad:
+    - PH: 96,646 rows indexed in 1.95 s at a 151 MB peak.
+    - GT: 36,721 rows indexed in 0.97 s at a 56 MB peak.
+    - A one-letter search took about 0.1 s.
+    - The pilot results held at full scale: "Davao Province" (ADM2) named only 1715347, "Mt. Apo" named exactly three features, no Philippine "Mount McKinley" existed, and "Chimaltenago" was one letter from 3598570 and 3598571.
+  - `uv run pytest tests/ -q` (1,601 passed, 31 skipped), `uv run pytest scripts/ -q` (1,547 passed, 50 skipped), and pre-commit.
+- Durable learnings:
+  - (1) Section 1's key drops unit words, so "Davao Province" keys as "davao" and also names the region and the city. The unit's level has to filter (`kinds={"A.ADM2"}`). Which level a unit word means in each country is the tool's mapping.
+  - (2) GeoNames files Davao City (ADM3) under Davao del Sur (ADM2 25), as GADM does. Davao City's charter-city status (#94, 4.2) therefore needs another source.
+  - (3) GeoNames carries no validity dates. Its historical feature codes (ADM1H and the like) mark former units, but the pilot's dumps name the 1914-1967 Davao Province only as an alternate name of its successor. So history (task 3) relies on Wikidata.
+  - (4) Load a dump once per worker process. It costs about 2 s and 150 MB for the Philippines, and a search is then cheap.
+- Failed approaches: none.
+- Remaining follow-ups: NGA GNS and Getty TGN (2c), history (task 3), and the tool (task 4) with PLAN 4.8's request filter and its tests.
