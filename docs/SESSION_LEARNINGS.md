@@ -12004,3 +12004,12 @@ because the hooks runner hands a native asset hook only `PATH`.
   - G44, "Fill To, derived": one written collecting date fills Date Visited To, derived from Date Visited From with its record (`stated_date`, rule `one_date_both_ends`) and From's precision. Review's "fill the rest" does the same.
   - G45, "Yes, check the kind": the Insects knowledge's `SHAPES` name what a value in a field no lookup checks must not look like. Each rule is a real run's case. On the harness's runs the queue decision sends a failing value to review with `value_shape_mismatch:{field}`; in `verbatim_dts`, whose meaning PRD 522 leaves unconfirmed, it is a finding that never routes. Spec: HARNESS.md sections 12, 13 and 16.
 - Remaining follow-ups: S7's lab condition 8 fails a run with a preparation code in any field, the same check from the other side. PRD open question 3, on `verbatim_dts`, goes to the owner with D4 and D5 when there's a natural moment.
+
+### 2026-09-24 — Go-live S4: an end the agent copied is derived, not stated
+
+- Task: go-live S4: keep To's layer honest when the agent copies one written elevation or collecting date into both ends. This is the coordinator's ruling of 2026-09-24, implementing G41, G44 and G38.
+- Branch/worktree: `golive/harness-range-copies`, stacked on `golive/harness-knowledge-v2` (#167), in `.claude/worktrees/cool-haslett-aa79b5`.
+- Outcome: `field_harness._drop_copied_ends`. When both ends of an elevation or date pair carry the same literal and the reading contains that text once, To's literal is dropped as a copy, and G41 or G44 derives To with its record. Two occurrences, or a range, keep both ends as stated. Spec: `docs/execution/golive/HARNESS.md` section 13.
+- Validation actually run: the copy tests (the real run on 105526321) fail without the guard and pass with it; two equal written dates and a range keep both ends; the harness, queue-decision, derivation and runtime suites pass; the full Python suites and pre-commit.
+- Durable learnings: an instruction in the knowledge reduced the copying but did not stop it. On a rerun, 105526330 gave its elevation once, while 105526321 still copied both its elevation and its date. When an owner rule can be checked from the reading itself ("written once"), a deterministic guard makes it hold whatever the model does. The value and the clearance stay the same; the provenance becomes true.
+- Remaining follow-ups: none for this change.
