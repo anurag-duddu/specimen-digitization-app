@@ -12026,7 +12026,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - Spec: `docs/execution/golive/HARNESS.md` sections 7, 10, 11, 12, 13 and 14.
 - Validation actually run: the red tests failed on the missing module, symbol and fields. With the filter, the filter, knowledge, geography, ledger, harness, runtime and queue-decision suites pass, including an end-to-end run on the real Google tool against a fake endpoint where no cut token leaves. Then the full Python suites and pre-commit.
 - Durable learnings:
-  - (1) Word-level matching is right for names and wrong for Roman numerals: "P.I." folds to the words "p i", so an "I" cut by word would have cut the Philippines. Roman months are cut only when every word of a token is one.
+  - (1) Word-level matching is right for names and wrong for Roman numerals: "P.I." folds to the words "p i", so an "I" cut by word would have cut the Philippines. A Roman month is cut only when every word of a token is one and, by the coordinator's later ruling, only beside a day or a year (the month position), so "Camp IV" stays too.
   - (2) A marker clause has to be cut from the reading, not only from the text being sent. Otherwise a collector the agent gives to a place field leaves on its own.
   - (3) Unassigned text as a no-field literal broke two test fakes that built outcomes for every literal; fakes have to model which fields the real tool reports.
 - Remaining follow-ups: S8 imports `place_request_forms` for its tiers once this is on a branch it can stack on. S3's profile switch names v3 and lands after this PR (coordinator ruling). The coordinator's next plan PR (#180) records the Roman-month cut and the key's wording.

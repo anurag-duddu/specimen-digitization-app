@@ -11,12 +11,12 @@ filter cuts every token of every literal any reading assigns to a non-place
 field and of every value a reviewer puts in one; every token of every clause,
 between commas, semicolons or line breaks, that holds a collector or determiner
 marker the profile's notations name, wherever the marker sits in it; every
-token that carries a digit; and the month names, abbreviations and Roman months
-the profile lists. A notation token that survives may then be written out in
-each of its full forms from the profile's table, and a notation is cut whenever
-one of its full forms is. Text the filter cannot recognize, such as a name no
-reading assigns to any field and no marker accompanies, can still leave: that
-is its stated limit.
+token that carries a digit; the month names and abbreviations the profile
+lists; and a Roman month beside a day or a year. A notation token that survives
+may then be written out in each of its full forms from the profile's table, and
+a notation is cut whenever one of its full forms is. Text the filter cannot
+recognize, such as a name no reading assigns to any field and no marker
+accompanies, can still leave: that is its stated limit.
 """
 
 from __future__ import annotations
@@ -33,6 +33,9 @@ PLACE_FIELDS = ("country", "province_state", "county", "city", "precise_location
 # A clause ends at a comma, a semicolon or a line break.
 SEPARATOR = re.compile(r"(\r?\n|[,;])")
 TOKEN = re.compile(r"([^\s,;]+)")
+# A day or a year as written, which puts a Roman numeral beside it in the month
+# position: 3, 14, 1946 or '46.
+DATE_NUMBER = re.compile(r"\d{1,2}|\d{4}|['’]\d{2}")
 
 
 class PlaceKnowledge(Protocol):
@@ -153,17 +156,45 @@ def _forms(text: str, table: Mapping[str, tuple[str, ...]]) -> list[str]:
 def _surviving(text: str, cut: frozenset[str], roman: frozenset[str]) -> str:
     """The clauses of `text` that keep a word after the cuts, single-spaced and
     joined by their own separators."""
+    months = _roman_months(text, roman)
     parts = SEPARATOR.split(text)
     left: list[str] = []
     between: list[str] = []
+    start = 0  # Where the clause starts in `text`.
     for index, clause in enumerate(parts[::2]):
-        tokens = [token for token in clause.split() if not _cut(token, cut, roman)]
+        tokens = [
+            token.group()
+            for token in re.finditer(r"\S+", clause)
+            if start + token.start() not in months and not _cut(token.group(), cut)
+        ]
         if fold(" ".join(tokens)):
             left.append((_joint(between) if left else "") + " ".join(tokens))
             between = []
+        start += len(clause)
         if 2 * index + 1 < len(parts):
             between.append(parts[2 * index + 1])
+            start += len(parts[2 * index + 1])
     return "".join(left)
+
+
+def _roman_months(text: str, roman: frozenset[str]) -> set[int]:
+    """Where each Roman month in the month position starts: a token whose every
+    word is a numeral I to XII, beside a day or a year, before or after it,
+    across separators ("3 VIII 1946", "Mindanao, VIII, 1946"), and never the
+    "I" of "P.I." or the "IV" of "Camp IV" (the coordinator's ruling of
+    2026-09-24)."""
+    tokens = list(TOKEN.finditer(text))
+    starts = set()
+    for index, token in enumerate(tokens):
+        words = fold(token.group()).split()
+        beside = tokens[max(index - 1, 0) : index] + tokens[index + 1 : index + 2]
+        if (
+            words
+            and roman.issuperset(words)
+            and any(DATE_NUMBER.fullmatch(t.group().strip(".()[]:")) for t in beside)
+        ):
+            starts.add(token.start())
+    return starts
 
 
 def _cut_words(
@@ -192,16 +223,9 @@ def _cut_words(
     return frozenset(words)
 
 
-def _cut(token: str, words: frozenset[str], roman: frozenset[str]) -> bool:
-    """A token that carries a digit or any word the cuts name, or whose every
-    word is a Roman month ("VIII", never the "I" of "P.I.")."""
-    found = fold(token).split()
-    return (
-        any(c.isdigit() for c in token)
-        or not words.isdisjoint(found)
-        or bool(found)
-        and roman.issuperset(found)
-    )
+def _cut(token: str, words: frozenset[str]) -> bool:
+    """A token that carries a digit, or any word the cuts name."""
+    return any(c.isdigit() for c in token) or not words.isdisjoint(fold(token).split())
 
 
 def _joint(separators: Sequence[str]) -> str:
