@@ -46,6 +46,9 @@ BEGIN
   END IF;
 END
 $guard$;
+-- The one extension the schema needs: @default(expr: "uuidV4()") compiles to uuid_generate_v4().
+-- Created while public still belongs to the database owner; named because search_path is pg_catalog.
+CREATE EXTENSION "uuid-ossp" SCHEMA public;
 CREATE ROLE "firebaseowner_specimen-digitization-database_public"
   NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
 CREATE ROLE "firebasewriter_specimen-digitization-database_public"
@@ -83,7 +86,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE "firebaseowner_specimen-digitization-database_
 ALTER DEFAULT PRIVILEGES FOR ROLE "firebaseowner_specimen-digitization-database_public"
   IN SCHEMA public GRANT USAGE ON SEQUENCES TO "firebasewriter_specimen-digitization-database_public";
 -- No user objects existed, so there are no existing tables/sequences/functions to grant.
--- Add no extensions, function EXECUTE defaults, owner elevation, or arbitrary SQL here.
+-- Add no other extension, no function EXECUTE defaults, owner elevation, or arbitrary SQL here.
 -- Executor must run fixed postconditions in this transaction before COMMIT, including
 -- exact role flags/membership directions, schema owner/ACL, no source object changes,
 -- default privileges, and no ownership/grant dependency on the initializer identity.

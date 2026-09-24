@@ -52,6 +52,7 @@ jobs:
     environment: data-production
     outputs:
       phase: ${{ steps.deploy.outputs.phase }}
+      init_step: ${{ steps.deploy.outputs.init_step }}
     # The runtime release job holds the same lock and never waits for data while holding it.
     concurrency:
       group: specimen-protected-mutation
@@ -77,6 +78,12 @@ jobs:
           python-version: "3.12"
       - name: Install locked dependencies
         run: uv sync --frozen
+      - name: Install pinned Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - name: Install the pinned native IAM SQL connector
+        run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
       - name: Re-admit the exact merged commit before data credentials
         id: admission
         run: uv run python scripts/ci/release_gate.py --plane data --output "$RUNNER_TEMP/data-release/packet.json"
@@ -88,6 +95,8 @@ jobs:
           service_account: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
       - name: Read the live state, choose the phase and release it
         id: deploy
+        env:
+          RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
         run: uv run python scripts/ci/deploy_data.py --deploy --packet "$RUNNER_TEMP/data-release/packet.json" --output "$RUNNER_TEMP/data-receipt.json"
       - name: Attest the data receipt
         if: success() && steps.deploy.outcome == 'success'

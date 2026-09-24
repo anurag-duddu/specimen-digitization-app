@@ -11955,3 +11955,29 @@ because the hooks runner hands a native asset hook only `PATH`.
   - T3c replaces the fail-closed step and adds its own job, which needs `data-initialization-production`, back to the policy test.
   - T3d raises the release job's 20-minute timeout and adds the rollback guard now in section 4.4.
   - The data wait rises to 5,400 seconds with T2c.
+
+### 2026-09-24 — Go-live release workstream (S2), T3c1: the first initialization of the existing, empty database
+
+- Task: the S2 session, brief item T3, first initialization, code half (`docs/execution/golive/RELEASE.md` section 4.3, steps 1 and 2). T3c1b wires the jobs into the workflow; T3c2 migrates.
+- Branch/worktree: `golive/release-data-init`, stacked on #115's branch. An Opus subagent implemented it test-first in an isolated worktree. This session reviewed and integrated it.
+- Outcome:
+  - **Step 1.** The release job reads a value-free summary of the application database as `specimen-data-release`: counts, which of Data Connect's three roles exist, and extension names. It then outputs `init_step`. `initialize` means the database is empty. `migrate` means the roles exist and an earlier attempt of this run published its initializer receipt. Anything else stops for a ruling.
+  - **SQL.** The initializer creates `uuid-ossp` in `public` right after its guard, in the same transaction. The postconditions pin the extensions to `plpgsql` and `uuid-ossp` and allow no other routine in `public`.
+  - **Gate-path orchestration** (`release_initialize.py`):
+    - it publishes a write-once creation intent;
+    - it creates its own Cloud SQL IAM principal with `cloudsqlsuperuser` exactly once, with operation-ownership proof inside the gate record's window;
+    - it runs the SQL and the postconditions in one transaction on the existing database, which it never creates;
+    - it writes a `data-initializer/v1` receipt.
+  - **Disposal** revokes and deletes only the principal named by this run's latest attested intent.
+- Commits/PRs: spec `a236fd9`; red `3fcc60a`, green `2c58670`; red `73f8b26`, green `6002999`; this closeout.
+- Validation actually run:
+  - Subagent: `scripts/` 1,850 passed, 56 skipped; `tests/` 1,457 passed; 22 of 22 mutations caught.
+  - This session: the focused set, 176 passed; the opt-in local PostgreSQL 18 tests, 42 passed. They cover uuid-ossp created as `cloudsqlsuperuser`, the writer calling `uuid_generate_v4()`, and four drift cases.
+- Durable learnings:
+  - A database created by Data Connect's own service agent (Cloud SQL `CREATE_DATABASE` on 2026-09-22) inverts the envelope design's "absent database" precondition. Reading the catalog first turns "exists" into three safe cases instead of a refusal.
+  - GitHub's "Re-run failed jobs" keeps successful jobs' outputs and every attempt's artifacts. So step 1 counts only receipts from earlier attempts, and disposal takes the latest attempt's intent.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - T3c1b: the workflow jobs. `dispose-initializer` must stay off the shared mutation lock, because GitHub replaces a pending job in a concurrency group, which would leave the principal behind. `DEPLOYMENT.md` must also stop saying `initialize` fails until T3c.
+  - T3c2's migrate must require the initializer principal to be absent.
+  - Open risk: whether Cloud SQL assigns uuid-ossp's objects to `cloudsqlsuperuser` is proven only on vanilla PostgreSQL. If Cloud SQL gives them to the session user instead, the postconditions refuse, so it fails closed.

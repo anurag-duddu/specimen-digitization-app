@@ -184,7 +184,8 @@ class Google:
         require(method != "PUT" or self.plane == "data-initialization", "PUT is reserved for fixed initializer role replacement")
         if self.plane == "data-initialization":
             from release_initialize import validate_request
-            validate_request(api, method, resource, body, params)
+            import release_gate
+            validate_request(api, method, resource, body, params, gate=release_gate.is_gate_record(self.packet))
         aliases = {PROJECT, self.packet["identity"]["project_number"]}
         require(any(resource.startswith(f"projects/{value}/") or resource == f"projects/{value}" for value in aliases), "foreign Google resource")
         require(not any(value in resource for value in ("?", "#", "..", "%", "\\")), "invalid Google resource")
@@ -304,7 +305,11 @@ class Google:
     def dispose_initializer(self, instance, action):
         from release_initialize import user_request
         require(self.plane == "data" and action in {"revoke", "delete"}, "ordinary disposal cannot create or grant roles")
-        cleanup_packet(self.path, dict(os.environ))
+        import release_gate
+        if release_gate.is_gate_record(self.packet):
+            self.packet = admit(self.path, self.plane)  # G11: the job's own gate record, re-admitted; no envelope permit.
+        else:
+            cleanup_packet(self.path, dict(os.environ))
         method, resource, args = user_request(instance, action)
         remaining = getattr(self, "sql_read_deadline", 0) - time.time()
         require(remaining > 0, "ordinary disposal deadline reached")
