@@ -30,6 +30,7 @@ from specimen_digitization.application.lane_allowance import (
 )
 from specimen_digitization.application.lane_costs import (
     record_model_usage,
+    record_reserved,
     record_segmentation,
     record_tool_usage,
     segmentation_cost,
@@ -52,10 +53,22 @@ PRICES = PriceList(
         "handwriting-qwen": {
             "input_micros_per_million": 200_000,
             "output_micros_per_million": 700_000,
+            "context_tokens": 131_072,
+            "image_tokens": {
+                "pixels_per_token": 32,
+                "max_tokens": 16_384,
+                "source": "https://models.example.test/qwen/preprocessor_config.json",
+            },
         },
         "handwriting-muse": {
             "input_micros_per_million": 300_000,
             "output_micros_per_million": 1_200_000,
+            "context_tokens": 131_072,
+            "image_tokens": {
+                "pixels_per_token": 28,
+                "max_tokens": 4_096,
+                "source": "https://models.example.test/muse/processor_config.json",
+            },
         },
     },
     segmentation={
@@ -225,7 +238,7 @@ class TokenAdapters(ProductionLikeAdapters):
         return observation.model_copy(update={"input_tokens": 1_000, "output_tokens": 500})
 
 
-def lab(tmp_path, busy=0, unknown=0):
+def lab(tmp_path, busy=0, unknown=0, registry=None):
     blobs = LocalBlobs(tmp_path / "blobs")
     adapters = TokenAdapters(blobs, SYNTHETIC_TEXT)
     adapters.busy, adapters.unknown = busy, unknown
@@ -243,7 +256,7 @@ def lab(tmp_path, busy=0, unknown=0):
                 "can_view_sensitive": True,
             }
         ],
-        profile_registry=priced_registry(),
+        profile_registry=registry or priced_registry(),
         risk_registry=published_risk_registry(),
         worker_dispatcher=RecordingDispatcher(),
     )
@@ -356,17 +369,24 @@ def test_a_step_without_recorded_calls_stays_reserved(tmp_path):
     assert ProgramLedger(repository, SCOPE).read()["reserved_total_micros"] == 20_000
 
 
-def test_the_pilot_pins_the_prices_read_on_2026_09_23():
+def test_the_pilot_pins_the_prices_read_on_2026_09_24():
     prices = published_registry().resolve("insects").profile.processing.price_list
-    assert (prices.version, prices.as_of) == ("pilot-prices-2026-09-23", "2026-09-23")
-    assert prices.models["handwriting-qwen"].model_dump() == {
-        "input_micros_per_million": 200_000,
-        "output_micros_per_million": 700_000,
-    }
-    assert prices.models["handwriting-muse"].model_dump() == {
-        "input_micros_per_million": 300_000,
-        "output_micros_per_million": 1_200_000,
-    }
+    assert (prices.version, prices.as_of) == ("pilot-prices-2026-09-24", "2026-09-24")
+    qwen, muse = prices.models["handwriting-qwen"], prices.models["handwriting-muse"]
+    assert (qwen.input_micros_per_million, qwen.output_micros_per_million) == (
+        200_000,
+        700_000,
+    )
+    assert (muse.input_micros_per_million, muse.output_micros_per_million) == (
+        300_000,
+        1_200_000,
+    )
+    # The router's context lengths and the processors' documented image rules.
+    assert qwen.context_tokens == muse.context_tokens == 131_072
+    assert (qwen.image_tokens.pixels_per_token, qwen.image_tokens.max_tokens) == (32, 16_384)
+    assert (muse.image_tokens.pixels_per_token, muse.image_tokens.max_tokens) == (28, 4_096)
+    assert qwen.image_tokens.source.endswith("preprocessor_config.json")
+    assert muse.image_tokens.source.endswith("processor_config.json")
     assert prices.tools == {"geography_lookup": 5_000}
     # SAM 3 on 4 vCPU and 16 GiB: 136 micro-dollars a second. One call is billed
     # at most its 300 s request timeout, cold start included, plus 10 s of
@@ -374,3 +394,50 @@ def test_the_pilot_pins_the_prices_read_on_2026_09_23():
     worst = segmentation_cost(prices.model_dump(mode="json"), 310)
     assert worst == 42_161
     assert worst <= published_registry().resolve("insects").profile.processing.stage_cost_micros.for_step("segment")
+
+
+def settled_run(tmp_path, cost_basis="computed", billed=None, allowance=True):
+    """A reading reserved at 20,000 on the run's budget, recorded, then settled."""
+    repository = NonSensitiveMember(tmp_path / "state.sqlite3")
+    run = priced_run()
+    if allowance:
+        run.profile.execution = run.profile.execution.model_copy(
+            update={
+                "program_allowance_micros": 5_000_000,
+                "program_ledger_collection": SYNTHETIC_COLLECTION,
+            }
+        )
+    specimen = specimen_with(run)
+    principal = Principal(user_id=USER, scope=SCOPE, role="reviewer")
+    if allowance:
+        assert reserve_step(repository, principal, specimen, QWEN, 20_000) is None
+    run.usage.reserved_cost_micros += 20_000
+    run.attempts[QWEN] = 1
+    run.completed_steps.append(QWEN)
+    if cost_basis == "reserved":
+        record_reserved(run, QWEN, "model", outcome="unknown", route_id="handwriting-qwen")
+    else:
+        record_model_usage(
+            run, QWEN, "handwriting-qwen", input_tokens=1_000, output_tokens=500,
+            billed_micros=billed,
+        )
+    settle_step(repository, principal, specimen, QWEN, 20_000)
+    return run
+
+
+def test_the_runs_own_budget_settles_to_what_the_step_cost(tmp_path):
+    # 1,000 in and 500 out at qwen's price: 550 of the 20,000 stays counted.
+    assert settled_run(tmp_path).usage.reserved_cost_micros == 550
+
+
+def test_an_unknown_outcome_keeps_the_runs_reservation_in_full(tmp_path):
+    run = settled_run(tmp_path, cost_basis="reserved")
+    assert run.usage.reserved_cost_micros == 20_000
+
+
+def test_a_cost_above_the_reservation_counts_in_full_on_the_run_too(tmp_path):
+    assert settled_run(tmp_path, billed=25_000).usage.reserved_cost_micros == 25_000
+
+
+def test_the_runs_budget_settles_without_a_program_allowance(tmp_path):
+    assert settled_run(tmp_path, allowance=False).usage.reserved_cost_micros == 550
