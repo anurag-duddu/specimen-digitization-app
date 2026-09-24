@@ -368,14 +368,80 @@ workflow.
 
 ### 4.3 First initialization (T3c)
 
-The one-time initializer creates the Data Connect roles and grants in one
-transaction with postconditions, through the existing time-bounded window. It
-skips the clone rehearsal: the database holds nothing to restore, and backups
-with point-in-time recovery are on. The ordinary identity then:
-1. applies the schema with `MIGRATE_COMPATIBLE`;
-2. applies the supplemental indexes, the connector and the Storage rules;
-3. checks that the catalog lists exactly the tables the merged schema
-   declares.
+The application database already exists. Data Connect's service agent
+created it on 2026-09-22 (a Cloud SQL `CREATE_DATABASE` operation). So the
+first release initializes an existing, empty database. It never creates or
+drops a database, and it skips the clone rehearsal: the database holds
+nothing to restore, and backups with point-in-time recovery are on.
+
+1. **Read first.** As `specimen-data-release`, the release reads the
+   database's catalog. It stops unless no schema other than the system
+   schemas holds a user relation, view, routine, type or extension. It also
+   reads whether Data Connect's three roles for `public` exist
+   (`firebaseowner`, `firebasewriter` and `firebasereader` for
+   `specimen-digitization-database`), and prints a summary without values.
+2. **Roles.** If the three roles are absent, the one-time initializer
+   (`specimen-data-initialize`, with `specimenDataInitializeTemporary` open in
+   the owner's setup window) runs `initialize_database.sql` and its
+   postconditions in one transaction on the existing database. It is then
+   disposed of as before. The roles follow Data Connect's standard setup:
+   `firebaseowner` owns `public` and is granted to `specimen-data-release`,
+   and `firebasewriter` goes to Data Connect's service agent.
+   - **Extension.** Right after its guard, in the same transaction, the
+     initializer creates the one extension the schema needs:
+     `CREATE EXTENSION "uuid-ossp" SCHEMA public`. The reason is that
+     `@default(expr: "uuidV4()")` compiles to `uuid_generate_v4()`. The
+     postconditions pin the extensions to exactly `plpgsql` and that one.
+   - **Existing roles.** The release never adopts roles it did not create.
+     A re-run of the same workflow run may continue past this step only with
+     the attested receipt of that run's own initializer, after re-checking
+     the postconditions exactly. Otherwise, if any of the three roles or
+     `uuid-ossp` already exists, the release stops and prints the catalog
+     summary for the coordinator; adopting them needs its own ruling.
+   - **Timing.** The owner opens the window before this run and closes it
+     after.
+3. **Migration, client-side,** as `firebase-tools` 15.8 does for an existing
+   instance:
+   - A validate-only schema update with `schemaValidation: COMPATIBLE`
+     returns Data Connect's SQL diff.
+   - Every statement must be non-destructive and of an allowed kind: create
+     table or view, add column, create index or unique constraint, add
+     foreign key, or drop NOT NULL on a column the gate of section 4.1
+     permits (never a key, unique or provenance column). `CREATE EXTENSION`
+     and every drop are refused.
+   - The release identity runs them after `SET ROLE` to the owner role, in
+     one transaction that sets `lock_timeout` and `statement_timeout` as the
+     initializer does. A timeout rolls the transaction back and fails the
+     run, which can be re-run. The tables are then owned by `firebaseowner`,
+     and the service agent keeps writer only.
+   - The schema is then applied with `schemaValidation: COMPATIBLE`,
+     conditional on the live etag.
+
+   Server-side `schemaMigration: MIGRATE_COMPATIBLE` is not used.
+   `firebase-tools` sends it only while an instance is still being created,
+   and it would run the DDL as the service agent.
+4. **Then:** the supplemental indexes (`CREATE INDEX CONCURRENTLY IF NOT
+   EXISTS`, as the owner role), the connector and the Storage rules.
+5. **Catalog check.** The catalog must list exactly the tables and views the
+   merged schema declares, and one extension besides the built-in
+   `plpgsql`: `uuid-ossp`. The tables
+   and views must be owned by `firebaseowner`, with the writer and reader
+   privileges the postconditions define.
+
+**Jobs.** T3c lands in two pull requests. T3c1 adds steps 1 and 2; T3c2 adds
+steps 3 to 5 and replaces T3b2's fail-closed step. Each job re-admits through
+the gate before it authenticates.
+
+| Job | Environment and identity | Does |
+|---|---|---|
+| `release` | `data-production`, `specimen-data-release` | On `initialize`, runs step 1 and outputs `init_step`: `initialize` (a new, empty database), `migrate` (this run's own attested initializer receipt exists) or a stop. |
+| `initialize` | `data-initialization-production`, `specimen-data-initialize` (gate plane `data-initialization`) | Only when `init_step` is `initialize`. Creates its own Cloud SQL IAM user with `cloudsqlsuperuser`, runs `initialize_database.sql` and the postconditions in one transaction on the existing database, then uploads and attests the initializer receipt, which names this run. |
+| `dispose-initializer` | `data-production`, `specimen-data-release` | Always after `initialize`. Revokes and deletes the initializer's SQL user after proving this run created it, as before. |
+| `migrate` | `data-production`, `specimen-data-release` | After a successful `dispose-initializer`, or when `init_step` is `migrate`. Verifies the attested receipt, re-checks the postconditions exactly, then runs steps 3 to 5 and uploads and attests a `data-initialized/v1` receipt. |
+
+A run that fails after `initialize` is re-run with "Re-run failed jobs".
+`migrate` then consumes the earlier attempt's receipt. The owner's window
+must still be open for any job that needs a time-bounded role.
 
 ### 4.4 Apply while the runtime runs (T3d)
 
@@ -388,8 +454,15 @@ with point-in-time recovery are on. The ordinary identity then:
    rollback guard against a commit the apply records. A manual re-run of an
    older run could otherwise roll the Storage rules back; the gate already
    refuses a stale schema's apparent removals.
-3. The schema is applied with `MIGRATE_COMPATIBLE`: validate-only first, then
-   conditional on the live etag.
+3. The schema is migrated client-side, exactly as in 4.3 step 3, and applied
+   with `schemaValidation: COMPATIBLE`, conditional on the live etag. Before a
+   change that drops `specimen_unique_1` (step two of the exception in 4.1),
+   the release reads the live catalog. It proceeds only if
+   `source_asset_specimen_object` is in place, so a failed or superseded
+   step one can never turn step two into a one-step swap. A COMPATIBLE diff
+   lists no drops, so step two's drop is one fixed, reviewed statement for
+   exactly `specimen_unique_1`, kept with the supplemental index files, and
+   run only after that read-back. The diff's allowlist stays free of drops.
 4. The supplemental indexes are created concurrently, then the connector and
    the Storage rules are applied.
 5. The catalog must list exactly the declared tables.
