@@ -1014,7 +1014,13 @@ FAKE_KEY = "AIza" + "0" * 35
 
 @pytest.mark.parametrize(
     "where",
-    ["a key-bearing URL in arguments", "an API key in arguments", "a URL in the error", "a key in a lookup query"],
+    [
+        "a key-bearing URL in arguments",
+        "an API key in arguments",
+        "a URL in the error",
+        "a key in a lookup query",
+        "a GeoNames URL in the error",
+    ],
 )
 def test_a_key_with_a_call_refuses_the_projection_and_is_never_logged(where):
     """Rule 1.6: no key is stored with a call, and the refusal names where, never the key."""
@@ -1041,6 +1047,9 @@ def test_a_key_with_a_call_refuses_the_projection_and_is_never_logged(where):
         record = record.model_copy(update={"arguments": {"query": "Chicago, Ill.", "key": FAKE_KEY}})
     elif where == "a URL in the error":
         record = record.model_copy(update={"outcome": "authorization_error", "result": {"error": f"403 for {url}"}, "evidence_id": None})
+    elif where == "a GeoNames URL in the error":
+        geonames = "https://geonames.example.test/searchJSON?q=Chicago&username=k3y"
+        record = record.model_copy(update={"source": "geonames", "outcome": "authentication_error", "result": {"error": f"401 for {geonames}"}, "evidence_id": None})
     else:
         s.run.lookups = [found.model_copy(update={"query": {"address": "Chicago, Ill.", "key": FAKE_KEY}})]
     s.run.tool_calls = [record]

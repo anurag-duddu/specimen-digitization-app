@@ -93,12 +93,13 @@ reads them.
      returned, and the call's sanitized `error` and `retry_after` (S4's tool
      ledger, #138). The writer refuses any other key there.
    - GBIF's accepted names may be stored (G28).
-   - No key is stored with a call: no request URL that carries one (`key=`) and
-     no API key (Google's begin `AIza`), in a `ToolCall`'s `arguments` or
-     `result` (its `error` included) or an `EvidenceItem`'s `query`. The writer
-     refuses to project a run that holds one: the snapshot is already committed,
-     and the projection writes nothing for that specimen and logs where the key
-     is, never the key, until the run no longer holds one.
+   - No credential is stored with a call (PLAN 4.8 in #124): no request URL that
+     carries one (the Maps key's `key=`, GeoNames' `username=`) and no API key
+     (Google's begin `AIza`), in a `ToolCall`'s `arguments` or `result` (its
+     `error` included) or an `EvidenceItem`'s `query`. The writer refuses to
+     project a run that holds one: the snapshot is already committed, and the
+     projection writes nothing for that specimen and logs where the
+     credential is, never the credential, until the run no longer holds one.
 7. A place or taxon field keeps both its verbatim, as written on the label, and
    its settled value, as the harness settled it (G27, G28). When the first pass
    selected no reading and the readers' literals differ, the verbatim is one
