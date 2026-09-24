@@ -55,7 +55,10 @@ replacing them. Enforce the per-run budget and the program allowance, USD 5 for
 production model calls (G30), with the existing cost fields (`domain.py` 286;
 `workflow.py` 208-213); a paid step past it blocks as
 `program_allowance_exhausted`, an operational block (QUE-005). Each paid call
-reserves its worst-case cost first, in one atomic check-and-reserve on the
+reserves its worst-case cost first, bounded per request as PLAN 4.3 states
+(context length at the pinned input price plus the output cap, or the
+documented image-token rule, for each request a call may make, with 20,000 as
+the floor), in one atomic check-and-reserve on the
 ledger (your T2b `worker_cursor` document, written only at the revision it was
 checked against), so a step's reservation must bound its worst case (SAM 3's
 startup, its 300-second request timeout and its 10-second shutdown, as #132
@@ -94,8 +97,9 @@ pilot (G1), mapped to `Insects` beneath `Zoology`, with inheritance down the
 collection tree (`collection_profiles.py` 198-224 does not walk parents). It
 carries the segmentation settings (`label`, thresholds 0.5, at most 64
 regions); the two readers; the tools per field (S4 implements the tools); the
-mandatory and optional groups (G8: the specification's list until the owner's
-list arrives, with `identified_by_irn` optional (G16) and no Parties tool
+mandatory and optional groups (G8: the owner's list, which is the
+specification's (G42), with `identified_by_irn` non-blocking until EMu
+Parties is connected (G16, G43) and no Parties tool
 mapped to it, and the four elevation fields mandatory, filled with authority and evidence
 (G37 and G41, revising G22); changing the groups must be one configuration edit); the
 existing uncalibrated risk policy, labelled uncalibrated; and the clearance rule

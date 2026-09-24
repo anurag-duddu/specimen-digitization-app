@@ -50,7 +50,7 @@ endpoint.
   (T6). G37 and G41 revise G22 in the contract. A field without a lookup whose readers all
   read the same text takes that text as its verbatim and its value, on one
   label as on several (coordinator reading of G27 and G32); its contract
-  change (`DATA_CONTRACT.md` 295-304 and 321-323) lands in T2b's delta, and T6
+  change (`DATA_CONTRACT.md` 295-304 and 321-323) lands in T2b's delta (T2's second PR, after T2a's #146), and T6
   carries it only if T2b slips. G39: no georeference fields for the pilot.
 - Key everything per region: a specimen can carry several labels, and five
   pilot slides carry two (PLAN section 3).
@@ -101,6 +101,13 @@ decisions. Emulator-backed tests (`--persistence sql-emulator`). Give the
 acceptance lab (S7) a way to see the same rows locally: the emulator, or SQLite
 parity.
 
+**T2c. Derived values in SQL,** right after T2b and before T3 (coordinator
+ruling): the nullable `derivedFromFieldKeys` and `authorityIdentity`,
+`AppendFieldCandidateV3` with `derived`, `AppendToolCallV2` with
+`reviewDecisionId`, the writer mapping, and the test that a derived value
+lacking its record does not count. V3 must be on main and applied before the
+first production run. T6 keeps the route and the proposal.
+
 **T3. The thread API.** `GET /specimens/{id}/thread` in a new module, reading
 the normalized rows (and the snapshot for anything not yet normalized),
 returning everything PLAN section 4.7 lists, with the trace id, a typed response
@@ -113,9 +120,7 @@ amendments together with the UI workstream (S6).
 
 **T6. Layers and derivations (G37, G38, G41),** once S4's derivation action
 exists. `FieldValue.layer` (verbatim, settled or derived) and `derived_from`,
-agreed with S4; additive SQL under PLAN section 4.4 (`FieldCandidate.derivation`
-takes `derived`; a nullable `derivedFromFieldKeys` written by a new
-`AppendFieldCandidateV3`, with V2 unchanged); the writer maps them; the
+agreed with S4, whose SQL T2c adds; the
 contract's elevation rules follow G37 and G41; a derived candidate stores
 its settled inputs, its dataset or authority with version, and its tool-call
 id or `apply_derivations` rule, with a test that a value without them is not

@@ -155,6 +155,14 @@ alert. Bind every grant to a named resource with a one-line reason; never Owner
 or Editor. Write the commands into `~/specimen-golive/OWNER_ACTIONS.md` and
 message the coordinator. Never run IAM writes yourself.
 
+**T4d. The reference-data upload command** (PLAN section 4.8), once S8's
+manifest PR merges. Write the owner's command from the merged manifest: the
+GeoNames files from `~/specimen-golive/datasets/geonames/<dump date>/`,
+checked for size and SHA-256 and never downloaded again; the Copernicus tiles
+and geoBoundaries files downloaded and checked; each uploaded with
+`--no-clobber` to `application/sha256/<sha256>`, then listed. Never from an
+agent shell. Send it to the coordinator to relay.
+
 **T5. First releases.** After T2 to T4 are merged and the owner has run T4's
 list: watch the data release (initialization, schema, connector, rules,
 bootstrap) and then the runtime deploy, and check them against DoD-2 and DoD-3.

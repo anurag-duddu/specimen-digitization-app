@@ -14,8 +14,8 @@ functional one comes first (G6).
 
 ## Read first
 
-1. `docs/execution/golive/PLAN.md`: sections 1, 2, 4.1 rows 5 to 8, and 6 (your
-   row).
+1. `docs/execution/golive/PLAN.md`: sections 1, 2, 4.1 rows 5 to 8, 4.3, 4.8,
+   and 6 (your row).
 2. `~/specimen-golive/research/06-product-spec-and-approvals.md` sections 1 and
    4, and `01-backend-pipeline-stages.md` stages 5 to 8.
 3. `docs/product-requirements/PRD.md` HAR-001 to HAR-019 (323-341), QUE-001 to
@@ -93,15 +93,15 @@ functional one comes first (G6).
 - A field without a lookup whose readers all read the same text takes that
   text as its verbatim and its value and clears, on one label as on several
   (coordinator reading of G27 and G32, matching your #131).
-- The place tool's outside requests carry place text only, built from the
-  named place fields and never from agent text; the agent's mid-run geocoding
-  tool is withdrawn, and the deterministic final call builds one request per
-  reading, cutting other fields' literals, digit-bearing tokens and text after
-  collector or determiner markers, with tests that a collector, a date and a
-  catalogue number never leave (coordinator ruling); taxonomy requests carry the
-  taxon name and ranks (`GBIF.md` 107-114); every credential follows the Maps
-  key's rules (PLAN section 4.8). `derive_rest` runs in the worker's
-  derivation job, never in the API.
+- The place tool's outside requests carry place text only, under PLAN section
+  4.8's filter. Your mid-run place-lookup tool (G40) and the deterministic
+  final call build requests the same way: from the reading's place fields,
+  its unassigned locality text and tier 1's names; refusing a query not drawn
+  from them; and cutting from what leaves every reading's non-place literals,
+  marker clauses, digit tokens and month tokens, with tests for exactly those
+  guarantees (coordinator ruling). Taxonomy requests carry the taxon name and
+  ranks (`GBIF.md` 107-114). Every credential follows the Maps key's rules.
+  `derive_rest` runs in the worker's derivation job, never in the API.
 - G33: the numeric dates of every reading, the decided transcript's and the raw
   readings', are the evidence for an all-numeric date's day and month order;
   any disagreement among them fixes no order, and the date goes to review with
@@ -126,7 +126,8 @@ functional one comes first (G6).
   out, with authority and evidence, harness-wide (G37); every value records
   its layer, and `derive_rest` serves review's "fill the rest" (G38); the
   georeference stays in the tool result (G39); the agent reads everything
-  transcribed and keeps looking things up (G40), stated in its system prompt.
+  transcribed and keeps looking things up (G40), its place lookups through
+  PLAN 4.8's filter, stated in its system prompt.
   S8 builds the geographic derivations; you build those that need no outside
   data (coordinator ruling).
 - G5: when the specification is silent or contradictory, ask the coordinator.
@@ -151,7 +152,10 @@ before building on them. Approved 2026-09-23: `first-pass-glm`
 the lab re-measures it with the real harness and G29's prompt,
 `harness-deepseek` (deepseek-ai/DeepSeek-V4.1-Flash on deepinfra, text only).
 
-**T2. The first pass (stage 6).** Persist the decision and the per-reader
+**T2. The first pass (stage 6).** Its reservation follows PLAN 4.3: each of
+its up to two requests is bounded by the route's context length at the pinned
+input price plus the output cap, or by the documented image-token rule where
+the route has one, with 20,000 as the floor. Persist the decision and the per-reader
 records into S5's contract.
 
 **T3. The harness (stage 7).** A Pydantic AI agent over typed tools from the
@@ -164,7 +168,8 @@ accepted at the expected rank, which for a genus-only label is the genus (G25);
 synonym, fuzzy, variant and higher-rank matches are `ambiguous`, which changes
 today's adapter: `lookup.py` 105-118 returns `success` for an exact synonym and
 `malformed_response` for VARIANT); Google Maps geocoding
-for geography (G10; the key comes from Secret Manager as
+for geography, which the agent calls mid-run and the final call uses, both
+through PLAN 4.8's filter (G10, G40; the key comes from Secret Manager as
 `specimen-google-maps-key`, and a missing or rejected key is
 `authentication_error`, an operational block: `CONTRACTS.md` 244-246,
 `PRD.md` 682; keep only the place ID, the outcome and the response digest,
@@ -211,8 +216,9 @@ with its record: its settled inputs, its dataset or authority with version,
 and its tool call or `apply_derivations` rule, with a test that a value the
 model asserts without one does not count.
 
-**T4. The queue decision (stage 8).** The policy applies G1. For the lane,
-remove the gates that contradict it: `policy.py` 31-34 (institutional approval
+**T4. The queue decision (stage 8).** The policy applies G1. For runs whose
+profile names `harness_route` (coordinator reading of G1, #158), remove the
+gates that contradict it: `policy.py` 31-34 (institutional approval
 and semantics) and 138-139 (`human_approval_required`). Keep
 `label_coverage_unconfirmed` (35-36): the lane's automatic coverage check (S3,
 G15) satisfies it, and a failed check sends the record to needs human review.

@@ -36,8 +36,14 @@ and `docs/execution/golive/GEO.md`.
 
 Each task starts with its spec delta in `docs/execution/golive/GEO.md` and
 failing tests, on its own branch, merged by the steward. PLAN section 4.8
-governs every outside request.
+governs every outside request: the harness applies its place-request filter
+before any of your tiers is called, so your tiers receive only filtered text,
+and tests show its guarantees (coordinator ruling).
 
+0. Manifest: pin each dataset file's source, version or dump date, size and
+   SHA-256, with its credit text. Keep the GeoNames files in
+   `~/specimen-golive/datasets/geonames/<dump date>/`. S2 writes the owner's
+   upload command from the merged manifest (PLAN section 4.8).
 1. Locality text: the parts of a locality, label notations and their readings
    (G29), slope and bearing phrases, elevation phrases kept as written, query
    variants from each reader's literal (G19, G20, G27), and the one-letter
@@ -117,8 +123,8 @@ Read before researching, so the plan fits the product that exists:
    `scripts/research/georeferencing/` exercising the public endpoints read-only
    on the pilot labels' place names, with its results summarized in the plan.
    No production code, no secrets in the repository, no paid calls without the
-   coordinator's go-ahead. GeoNames needs a free account username; if you need
-   one, put that request in `~/specimen-golive/OWNER_ACTIONS.md`.
+   coordinator's go-ahead. GeoNames is read from its pinned dumps, so no account
+   is needed (PLAN section 4.8).
 3. One docs pull request through the PR steward, following PLAN section 7.
 
 ## Research charter (supplied by the owner, verbatim)
