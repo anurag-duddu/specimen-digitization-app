@@ -26,15 +26,22 @@ endpoint.
   column, a column of any unique constraint, or the provenance and idempotency
   keys (`ModelObservation.runId`, `regionId`, `provider`, `modelVersion`,
   `stepKey`, and the TRN-005 provenance `rawAssetId`, `promptVersion` and
-  `inputSha256`); S2's gate reads a checked-in list of the allowed columns and
+  `inputSha256` on every table that carries them); S2's gate reads a checked-in list of the allowed columns and
   refuses all of these even when the list names them. Every new connector
   operation is `@auth(level: NO_ACCESS)` with the membership `@check`s
   (`DATA.md` 73). Never destructive.
 - The one unique-constraint exception (PLAN section 4.4): #88 adds
   `source_asset_specimen_object` on (organizationId, collectionId, specimenId,
   bucket, objectName, generation) beside `specimen_unique_1`, which keeps
-  governing; your writer PR drops `specimen_unique_1` only after a read-back of
-  the live database shows the new constraint in place.
+  governing; your writer PR (T2a) removes it from the schema and adds one fixed
+  statement in `dataconnect/sql/` dropping exactly that unique index, because a
+  `COMPATIBLE` apply never drops an object the schema stops declaring; S2's
+  release runs it only after its own read-back of the live database shows the
+  new constraint in place.
+- G30's ledger is S3's `worker_cursor` document (`AuxiliaryDocument`), written
+  through `SaveDocumentV2` only at the revision it was checked against;
+  `cost_basis` is `computed`, `billed` or `reserved`, the last for a call whose
+  outcome is unknown, held at its full reservation (coordinator rulings).
 - Key everything per region: a specimen can carry several labels, and five
   pilot slides carry two (PLAN section 3).
 - `Run.field_groups` is new, and you decide its shape. From Google geocoding only

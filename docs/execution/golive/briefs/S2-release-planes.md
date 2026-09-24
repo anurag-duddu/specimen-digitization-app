@@ -96,17 +96,24 @@ closed unique-constraint exception and its `NO_ACCESS` rule; refuse anything
 else) and a `COMPATIBLE`
 apply, the
 supplemental indexes, the connector and the Storage rules, working while the
-runtime runs (the `no_runtime_exists` gate becomes the additive-only gate); a
+runtime runs (the `no_runtime_exists` gate becomes the additive-only gate); before step two of the one unique
+exception, the release reads the live database itself and runs S5's fixed drop
+statement only if `source_asset_specimen_object` is in place, since the gate
+compares committed text only; a
 one-time, idempotent hierarchy bootstrap from the private artifacts, followed in
 the same window (T3e) by the worker's membership from S5's reviewed document
 (#96), applied once by the protected data release, never from an agent shell:
 an active organization membership and one collection membership on the pilot
 collection only, resolved from the committed key `insects` against the approved
-hierarchy artifact, role `operator`, `canViewSensitive: false`, with the UID
+hierarchy artifact, whose approval hash the owner holds and supplies apart from
+the artifact, never computed from it (#96's `WORKER_MEMBERSHIP.md`; the
+hierarchy bootstrap follows the same rule), role `operator`,
+`canViewSensitive: false`, with the UID
 from the temporary environment secret `DATA_WORKER_ACTOR_UID`, which the owner
 sets for that run and deletes afterwards. First a read-only account lookup that
 refuses unless the account exists, is disabled, and has no email, password,
-phone or sign-in provider; then write, read back, skip if identical, fail if different. Never the admin membership document of
+phone or sign-in provider (coordinator ruling, from #96's security review);
+then write, read back, skip if identical, fail if different. Never the admin membership document of
 `scripts/data/bootstrap_admin.py`, which hard-codes role `admin`. Retire the
 envelope admission for this plane, but keep the checks that live inside it:
 `GITHUB_REF_PROTECTED=true` and the five required checks successful on the

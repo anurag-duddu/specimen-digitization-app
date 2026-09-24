@@ -55,14 +55,19 @@ replacing them. Enforce the per-run budget and the program allowance, USD 5 for
 production model calls (G30), with the existing cost fields (`domain.py` 286;
 `workflow.py` 208-213); a paid step past it blocks as
 `program_allowance_exhausted`, an operational block (QUE-005). Each paid call
-reserves its worst-case cost first, so a step's reservation must bound its
-worst case (SAM 3's 240-second deadline included), and settles to its computed
-or billed cost once its outcome is known; an unknown outcome stays reserved, a
-retry reserves again, and the run's own budget is never refunded. Record every
+reserves its worst-case cost first, in one atomic check-and-reserve on the
+ledger (your T2b `worker_cursor` document, written only at the revision it was
+checked against), so a step's reservation must bound its worst case (SAM 3's
+startup bound plus its 240-second deadline). Only usage the provider reports,
+or a billed amount it returns, settles a call and releases the rest of its
+reservation; a timeout, a transport error, a 5xx or a response without usage
+stays reserved in full as `cost_basis: reserved`; a settled cost above its
+reservation counts in full; a retry reserves again; nothing settled or held
+reserved is given back when a run fails or is retried. Record every
 paid call's cost as PLAN section 4.3 rules: usage, reservation, and a cost
 computed from a pinned price list whose version and date are recorded, or the
-billed amount where a provider returns one; SAM 3 by request seconds at the
-service's vCPU and memory rates.
+billed amount where a provider returns one; SAM 3 by its measured seconds,
+startup included, at the service's vCPU and memory rates.
 
 **T3. SAM 3 per run.** The client binding (`production.py` 851-852) and the
 server (`sam3_server.py` 358-380, 590-622) authorize each run the worker sends
@@ -91,8 +96,12 @@ list arrives, with `identified_by_irn` optional (G16) and no Parties tool
 mapped to it, and the four elevation fields mandatory with nothing derived
 (G22); changing the groups must be one configuration edit); the
 existing uncalibrated risk policy, labelled uncalibrated; and the clearance rule
-reference (S4); the Insects date rule of G24 (a two-digit year reads as 19xx),
-recorded as a versioned rule. Optional fields must survive at runtime and reach the run as
+reference (S4); the Insects date rules of G24 (a two-digit year reads as 19xx)
+and G29 (a Roman numeral I to XII in the month position is that month),
+recorded as versioned rules that S4's date tool reads, and the id and version
+of the Insects harness knowledge that S4 writes (PLAN section 4.2); the lane
+policy's reason codes under the configuration's `reason_codes` key, generated
+from S4's `policy.py`, for S6's queue filter (coordinator ruling). Optional fields must survive at runtime and reach the run as
 `Run.field_groups`, a new field whose shape S5 decides (today they are dropped: `domain.py` 324-336,
 `collection_runtime.py` 106-118); S4 changes `parse` (`workflow.py` 685-719)
 to extract them.

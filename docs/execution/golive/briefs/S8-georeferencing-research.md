@@ -13,6 +13,16 @@ the production harness by itself. Until the owner accepts a plan, the harness
 workstream (S4) keeps geography behind its typed tool interface with the Google
 Maps tool of owner decision G10 as the initial, fully functional version (G6).
 
+G34 (2026-09-24): the owner decided D15 for the Google tool and added: "clear
+with place ID byt I want the harness for location retrospective
+georeferencing fully implemented". So this workstream now also builds the
+retrospective georeferencing tool behind S4's T3a geography interface, spec
+first and test first as PLAN section 7 requires, in modules it owns, merged
+by the steward. D1 to D13 remain the owner's: revise #94 for G34 (D1's
+recommendation that a Google-only `success` does not by itself clear a field
+conflicts with it), send the coordinator D1 to D13 as neutral questions, and
+let each part of the build wait for the D items that decide it.
+
 ## Grounding in this repository
 
 Read before researching, so the plan fits the product that exists:

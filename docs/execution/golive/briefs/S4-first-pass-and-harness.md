@@ -72,15 +72,37 @@ functional one comes first (G6).
   settled value with a success outcome. S5's contract has the shape. For a
   place, the final value's name (`FieldValue.normalized`) is only a reader's
   literal the lookup matched exactly; otherwise the final value is the place ID
-  and the outcome with no name (G26), and the field clears under G1 until the
-  owner decides S8's D15 (#94). For a taxon it is GBIF's settled name.
+  and the outcome with no name (G26). Where no reader's literal matches even
+  after folding or through an alias, the field clears only as G34 decides D15
+  for the Google tool (below), and otherwise goes to review. For a taxon it is
+  GBIF's settled name.
 - G29: a Roman numeral I to XII in the month position is that month. The
   harness works through every reading a notation allows, for dates (month
   names, Roman numerals, both day and month orders, two-digit years under G24)
   and for every other field, and settles the one the evidence supports; what
-  it cannot settle goes to needs human review with the candidates. The
-  notations go in the Insects harness's system prompt; each subcollection gets
-  its own.
+  it cannot settle goes to needs human review with the candidates. You write
+  the notations, and every reading each allows, as the Insects harness
+  knowledge in a module you own, with an id and a version, and render it into
+  the Insects harness's system prompt; S3's profile names it, so each
+  subcollection gets its own, and carries G24's and G29's date rules for your
+  date tool (PLAN section 4.2).
+- G32: a field on two labels is settled per label on its own evidence and
+  clears when every label settles to the same value: the same place ID or GBIF
+  usage, or, for a field without a lookup, the same text. Otherwise it goes to
+  review with each label's reading kept.
+- G33: the numeric dates of every reading, the decided transcript's and the raw
+  readings', are the evidence for an all-numeric date's day and month order;
+  any disagreement among them fixes no order, and the date goes to review with
+  its readings.
+- G34 (D15 for the Google tool): a place field whose literal matches no
+  component by fold or alias clears with the place ID and no name only when
+  the long name of Google's component at the field's levels, never a short
+  name or code, is within one edit of the folded literal, is the only such
+  component, and every other admin field of
+  the reading, at least one, matches by fold or alias; it carries a
+  `near_spelling` warning finding that never routes the record. Otherwise it
+  goes to review with the candidate. S8 builds the retrospective
+  georeferencing tool behind your T3a interface (G34).
 - G22: the four elevation fields stay mandatory and nothing is derived.
 - G5: when the specification is silent or contradictory, ask the coordinator.
 
@@ -89,7 +111,8 @@ functional one comes first (G6).
 Each starts with its spec delta in `docs/execution/golive/HARNESS.md` and
 failing tests (fakes for Hugging Face and HTTP; recorded real responses as
 fixtures, a Google geocoding response first reduced to the place ID, the
-outcome and the fingerprint, G26), then the implementation.
+outcome and the fingerprint, and no recorded request keeping its URL, which
+carries the key, G26), then the implementation.
 
 **T1. Hugging Face routes (G7).** The first pass sees the label crop, so it
 needs a vision model; the harness needs reliable tool calling or structured
@@ -136,8 +159,11 @@ section 3). No Parties tool: `identified_by_irn` is optional for the
 slide pilot (G16), and the other fields outside taxonomy and geography are
 transcribed as seen. Every outcome is one of HAR-008's, as `LookupStatus`
 encodes them (`domain.py` 43-54); add none. Phases as the specification lists
-them; the raw-reading fallback; retries with backoff; a budget check per paid
-call; every tool call recorded for S5 and traced with Pydantic AI
+them; the raw-reading fallback; retries with backoff; a worst-case reservation
+before every model request (G30, PLAN section 4.3), which needs a cap on output
+tokens per request and on the agent's model requests per run, set from the
+lab's measured runs, a run reaching the cap being a harness failure under G6;
+every tool call recorded for S5 and traced with Pydantic AI
 instrumentation, content on and binary content off (G3; `include_binary_content`
 defaults to on, and the first pass sends the crop; coordinate with S3's tracing
 topic).
