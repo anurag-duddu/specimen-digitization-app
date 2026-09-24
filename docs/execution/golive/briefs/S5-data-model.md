@@ -49,8 +49,9 @@ endpoint.
   reviewer decision; the "fill the rest" route follows PLAN section 4.8
   (T6). G37 and G41 revise G22 in the contract. A field without a lookup whose readers all
   read the same text takes that text as its verbatim and its value, on one
-  label as on several (coordinator reading of G27 and G32). G39: no
-  georeference fields for the pilot.
+  label as on several (coordinator reading of G27 and G32); its contract
+  change (`DATA_CONTRACT.md` 295-304 and 321-323) lands in T2b's delta, and T6
+  carries it only if T2b slips. G39: no georeference fields for the pilot.
 - Key everything per region: a specimen can carry several labels, and five
   pilot slides carry two (PLAN section 3).
 - `Run.field_groups` is new, and you decide its shape. From Google geocoding only
@@ -118,10 +119,7 @@ takes `derived`; a nullable `derivedFromFieldKeys` written by a new
 contract's elevation rules follow G37 and G41; a derived candidate stores
 its settled inputs, its dataset or authority with version, and its tool-call
 id or `apply_derivations` rule, with a test that a value without them is not
-a derived value; the contract change for the single-label agreement (a
-no-pick single-label field whose readers agree keeps the shared text as its
-literal and value, which `DATA_CONTRACT.md` 295-304 and 321-323 do not allow
-today); and the "fill the rest" route, a POST on the specimen with the field
+a derived value; and the "fill the rest" route, a POST on the specimen with the field
 the reviewer filled and the expected revision, which refuses a record
 declared Sensitive, requires review rights, and enqueues a derivation job
 that S3's worker runs with S4's `derive_rest`, reserving each paid call under
