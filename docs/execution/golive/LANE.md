@@ -713,3 +713,60 @@ How T2c builds it:
 - **Sensitive intake.** Processing starts on intake only for records declared
   not sensitive (#104). A Sensitive upload or import creates no due run and
   never holds a collection's queue. A test now covers the import path.
+
+## T5. Tracing
+
+Implements PLAN 4.5 with G3, G26 and DoD-5: each run is one Logfire trace,
+linked from the record. Three pull requests: the run's trace (T5a), content and
+SAM 3 (T5b), and the Geocoding key (T5c).
+
+### The run's trace (T5a)
+
+- **Mode.** The drain configures the standard Logfire path in its
+  `approved-content` mode. Binary content stays off, since images stay in
+  Storage, and sensitive records never reach the worker. `APP_ENV` sets the
+  environment: `production`, or `lab` for the acceptance lab.
+- **One trace per run.** A run's first step opens its root span, "Process
+  specimen run", with the specimen, run, collection and profile ids. The run
+  keeps the root's W3C context (`Run.trace_context`) and its trace id
+  (`Run.trace_id`, 32 lowercase hex). Every later step, in whatever execution,
+  attaches that context, so its span is a child of the root and the run stays
+  one trace.
+  - The id is set once and never changes. A reprocessed run is a new run, with
+    a new trace.
+  - A first step that saves nothing leaves no trace on the run. The next step
+    opens the root again.
+- **A span per stage.** Each step opens "Run specimen processing stage", with
+  `specimen.processing.stage` (the stage) and `specimen.processing.step` (the
+  step's key).
+- **The queue decision.** The finalize step logs "Specimen queue decision" with
+  the disposition and the reason codes.
+- **The trace id reaches the app.** S5's projection writer records
+  `Run.trace_id` through `RecordRunTraceV1` once the run's profile is pinned,
+  and the thread API links the record's trace from it. The lane never calls it.
+
+### Content and SAM 3 (T5b)
+
+- Readers, the first pass and the harness follow the configured capture mode,
+  so system prompts, messages and tool calls are visible. The per-agent
+  settings that force content off give way to it: the lane changes the readers
+  and the model-runtime child spans, and S4 changes its agents.
+- SAM 3's call opens "Segment specimen with SAM 3" with its parameters: the
+  concepts, thresholds, recording floor, limit, revision and checkpoint digest.
+  The request carries the W3C `traceparent`, and the service continues the
+  trace in its own span, with distributed tracing on.
+
+### The Geocoding key (T5c)
+
+- Logfire's scrubber gets a pattern for a `key` query parameter. Its callback
+  replaces only the parameter's value, so a URL keeps its shape. A logging
+  filter does the same for log records.
+- Logfire never scrubs `exception.message`, so the geography client raises
+  only exceptions without the request URL (S4, S8).
+- A lane test sends a failing fake geocode through the workflow and asserts
+  the key appears in no exported span, event or log record.
+- Settings for S2:
+  - the worker job and the SAM 3 service: `LOGFIRE_TOKEN` (the secret),
+    `LOGFIRE_SERVICE_NAME` (`specimen-worker`, `specimen-sam3`), `APP_ENV`, and
+    `LOGFIRE_HEAD_SAMPLE_RATE=1`;
+  - the service also `LOGFIRE_DISTRIBUTED_TRACING=true`.
