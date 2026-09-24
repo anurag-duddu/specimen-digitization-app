@@ -11869,3 +11869,44 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (1) `PRD.md` 12.4's open items (558-564) mark what only the owner can settle. Plan wording must not settle any of them by implication, as "keeping partial precision" and "store matched names" did.
   - (2) The worker's connector identity is also its audit identity. Defaulting it to the administrator's UID would record every automated step as that person. `LIVE_PROCESSING.md` 62-63 already required a separate operator account.
 - Remaining follow-ups: the owner's Hugging Face credits, field list, source-registry secret and worker account; S2's IAM list; the G15 calibration.
+
+### 2026-09-23 — Go-live program: plan after #87, owner decisions G27 to G29
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-review-corrections-3` (PR #104), in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Records owner decisions G27 to G29.
+  - Records two coordinator rulings from #88's review: sensitive uploads are never processed by the worker, as the spec requires; `approvedBy` is null unless the caller is a reviewer with sensitive access.
+  - Addresses the steward's merge review of #87 (https://github.com/anurag-duddu/specimen-digitization-app/pull/87#issuecomment-5804177173). The worker's membership step is specified. G26 now reaches traces, fixtures, lab folders and the request URL. The two gates that read only the last lookup are named. G21 is standing. The steward no longer updates branches. The TRN-005 keys join the never-drop list. `search.py` gets an owner.
+  - One nit is declined with its reason: a separate lab read token (the owner reuses existing credentials). Docs only.
+  - Adds a coordinator ruling for #88, narrowed in the fix round to one closed exception. `SourceAsset`'s object uniqueness becomes per specimen on (organizationId, collectionId, specimenId, bucket, objectName, generation), because identical bytes share one content-addressed object. The added columns are NOT NULL, and the change takes two applies. The first adds the new constraint beside the old; a later one drops the old. One apply drops before it creates, each statement in autocommit, as S5 measured with statement logging.
+  - The fix round for the security review (https://github.com/anurag-duddu/specimen-digitization-app/pull/104#issuecomment-5804585044):
+    - the ten's not-sensitive declaration rests on the owner's verified classification (G31);
+    - S4's G20 line points at G27;
+    - the upload-screen notice is part of the ruling;
+    - an unmatched place keeps the place ID with no name and clears under G1 until the owner decides S8's D15 (#94);
+    - "the admin document" wording is fixed;
+    - S5 owns `scripts/data/`.
+  - The second fix round (https://github.com/anurag-duddu/specimen-digitization-app/pull/104#issuecomment-5804939504):
+    - the NOT NULL rule now also excludes key columns and every unique constraint's columns;
+    - S8's D15 is cited, with option (b) holding under G1;
+    - the old unique is dropped only after a read-back;
+    - the Geocoding URL ban covers logs, exceptions, stored errors and tool-call results;
+    - the worker's membership resolves the committed `insects` key and is applied by the protected release;
+    - the worker account must be disabled, with no email, password, phone or sign-in provider (from #96's security review: email-link sign-in allows sign-up);
+    - citations are re-pointed after #76;
+    - S4's `normalized` rule, "is not processed" for Sensitive uploads, S3's G30 text and the no-pick grounding.
+- Owner decisions (chat, 2026-09-23):
+  - G27: a place field keeps its verbatim as written, and its final value is what the harness settled; both are stored.
+  - G28: taxon names work the same way.
+  - G29: a Roman-numeral month is the month. The harness works through every reading a notation allows and settles with evidence; each subcollection has its own harness, Insects first.
+  - G30: production model calls may spend USD 5 of the USD 25; the lab's USD 5 is separate. The coordinator's mechanism: each call reserves its worst case and settles to its cost, since counting reservations alone would stop the pilot near 48 runs instead of about 238.
+  - G31: the owner checked the ten pilot slides and classified them not sensitive.
+- Durable learnings:
+  - (1) Quote the owner's chosen option from the question itself, not from a coordinator's relay of it. The relay wording ("a warning finding, not a change of outcome") reached a review as if it were G23's own words.
+  - (2) G29 is the rule for format questions. The harness works through every reading a notation allows, settles with evidence, and sends what remains to human review with the candidates. That is `PRD.md` 44 and HAR-013 made explicit, so check a new format question against it before asking the owner.
+  - (3) An owner can answer a narrow question with a broader principle (G27, G29). Record the answer verbatim, then write the engineering reading separately, so reviewers can check one against the other.
+  - (4) A rule that relaxes a safety property must be a closed exception. "No existing operation uses it" cannot see idempotency uniques enforced by plain inserts (`ModelObservation` (runId, stepKey), `Checkpoint`, `OutboxEvent`). A column added to a unique constraint must also be NOT NULL.
+  - (5) A statement about real data, such as "import the ten as not sensitive", is a classification only the owner can verify (`CONTRACTS.md` 169-170). Ask for it before writing it as a plan step.
+  - (6) Merging main can shift the line numbers the plan cites. #76 moved the PRD's open items by three lines, so G rows appeared to settle other owner-only items. After each merge, map the citations of every file it touched from the old version to the new.
+- Remaining follow-ups: the owner's field list (G8); S2's IAM list and the T3e membership run; the owner's rulings on S8's D1-D13 after the steward reviews #94; the G15 calibration sign-off; the lab's re-measurement of the harness model with G29's prompt.
