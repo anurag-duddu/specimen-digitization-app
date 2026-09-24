@@ -86,7 +86,7 @@ five pilot slides, with the locality on the right-hand one (PLAN section 3); a
 missed label goes to human review under G15, and retuning the pinned SAM 3
 settings needs the coordinator first. Confirm coverage automatically (G15):
 check the segmentation result with the specification's region-count and
-full-image cross-checks (`PRD.md` 874), set `run.coverage_confirmed` from the
+full-image cross-checks (`PRD.md` 880), set `run.coverage_confirmed` from the
 result, record the evidence, and let a failed check send the record to the
 human queue with `label_coverage_unconfirmed`. The segment step's body in
 `workflow.py` is yours. Write the concrete check into `LANE.md` and send it to

@@ -18,7 +18,7 @@ functional one comes first (G6).
    and 6 (your row).
 2. `~/specimen-golive/research/06-product-spec-and-approvals.md` sections 1 and
    4, and `01-backend-pipeline-stages.md` stages 5 to 8.
-3. `docs/product-requirements/PRD.md` HAR-001 to HAR-019 (323-341), QUE-001 to
+3. `docs/product-requirements/PRD.md` HAR-001 to HAR-019 (326-344), QUE-001 to
    QUE-005 (387-391), section 12.4 (487-567) and the failure table (676-688);
    `docs/execution/CONTRACTS.md` 210-270; `docs/GBIF.md`;
    `docs/product-requirements/HUGGINGFACE_MODEL_ROUTING.md` and
@@ -172,7 +172,7 @@ for geography, which the agent calls mid-run and the final call uses, both
 through PLAN 4.8's filter (G10, G40; the key comes from Secret Manager as
 `specimen-google-maps-key`, and a missing or rejected key is
 `authentication_error`, an operational block: `CONTRACTS.md` 244-246,
-`PRD.md` 682; keep only the place ID, the outcome and the response digest,
+`PRD.md` 688; keep only the place ID, the outcome and the response digest,
 everywhere including traces, fixtures and lab folders, and drop Google's names,
 address parts and coordinates (G26); the tool hands the agent only those, and no
 span, log line, exception text, stored error or tool-call result records the

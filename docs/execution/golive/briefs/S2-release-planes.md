@@ -44,7 +44,7 @@ workstation or an agent shell" all stay.
 - The auto-mode classifier blocks IAM writes, branch protection changes and
   repository visibility changes from agent shells. Prepare the exact commands for
   the owner instead. Branch protection and repository visibility stay as they
-  are (`DEPLOYMENT.md` 581-586).
+  are (`DEPLOYMENT.md` 584-589).
 
 ## Pull requests, in order
 
@@ -140,7 +140,7 @@ only, since running a job needs no act-as; Firebase user lookup for the API);
 `allUsers` invoker on the API. The one-time roles get no standing grant: the
 initializer, `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal`
 stay one-time and time-bounded through the existing setup-window path
-(`data_setup_window.py`) and are revoked after use; `DEPLOYMENT.md` 889-895
+(`data_setup_window.py`) and are revoked after use; `DEPLOYMENT.md` 917-923
 caps the initializer's privilege window after native parity at ten minutes. The
 setup-window path requires every binding to stay time-bound
 (`data_setup_window.py` 126-138): run the window first or adapt the path, never

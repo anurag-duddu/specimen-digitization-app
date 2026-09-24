@@ -81,11 +81,11 @@ Read before researching, so the plan fits the product that exists:
    (`PRD.md` HAR-019); no data found for a mandatory field goes to the human
    queue; errors retry;
    "something that harness was able to resolve is cleared".
-2. `docs/product-requirements/PRD.md` section 12.4 (487-567): the Insects field
+2. `docs/product-requirements/PRD.md` section 12.4 (490-573): the Insects field
    keys `country`, `province_state`, `county`, `city`, `precise_location`
    (verbatim, never replaced by a geocoder result), the four elevation fields
    (filled only with authority and evidence, G37 and G41), and the named geography sources; the typed lookup
-   outcomes (HAR-008) and the failure table (676-688).
+   outcomes (HAR-008) and the failure table (682-694).
 3. `docs/GBIF.md` 256-274 (its GADM use is superseded: GADM is not used,
    PLAN section 4.8) and
    `docs/execution/CONTRACTS.md` 210-270 (field value states; only `supported`
