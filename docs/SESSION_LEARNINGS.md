@@ -11988,3 +11988,16 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the new ledger, harness and derivation tests fail before the change and pass after it; the resolution, geography and queue-decision suites pass; the full Python suites and pre-commit.
 - Durable learnings: (1) The ledger had Google baked in (`evidence[GOOGLE]`, a Google-only locator). Keying the evidence and the locator by the place's own source is what lets S8's tool sit behind the same interface without a second code path. (2) The credit belongs with the value, not only with the dataset: an open-source name that becomes a field's value must carry its attribution into the record (S5 adds `authorityIdentity` to SQL's candidates before the first production run).
 - Remaining follow-ups: S5's `AppendFieldCandidateV3` (authorityIdentity), before go-live; replacing the ported comparison functions with S8's imports once both chains are on main.
+
+### 2026-09-24 — Go-live S4: Insects knowledge v2, from the real runs
+
+- Task: go-live S4: apply the coordinator's rulings of 2026-09-24 on the real-run findings to the Insects harness knowledge (G29).
+- Branch/worktree: `golive/harness-knowledge-v2`, stacked on `golive/harness-place-names` (#166), in `.claude/worktrees/cool-haslett-aa79b5`.
+- Outcome: `insects-harness-knowledge-v2`.
+  - Slide-preparation codes at a label's top edge (IX-17-66-2, IV-29-68-a, VI-24-68-7, 10-6-78-la) belong in no field (S8's pilot research).
+  - A single written elevation is given once, as From, so G41's rules derive the rest with their record.
+  - A single written date is given once. Date Visited To stays empty for review until the owner rules whether one date fills both.
+  - Spec: `docs/execution/golive/HARNESS.md` section 12. S3's profile switch names v2.
+- Validation actually run: the new knowledge tests fail without the change and pass with it; the knowledge, runtime, harness and telemetry suites pass; the full Python suites and pre-commit.
+- Durable learnings: (1) The real runs (USD 0.0135, three pilot slides) found what no fake would: the agent put preparation codes into the catalogue number, the collectors, the dates and even the locality. It also copied one written value into both From and To, which made the To fields look stated by the label rather than derived. (2) Tools caught the fields they check. Fields with no tool keep what the agent assigns, so the knowledge is the first defence there. Whether a per-field check belongs in the queue decision is before the owner.
+- Remaining follow-ups: the owner's answers on a single date filling Date Visited To and on a shape check for no-tool fields; S7's lab condition 8 now fails a run with a preparation code in any field.
