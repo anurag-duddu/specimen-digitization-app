@@ -11925,3 +11925,12 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the new test fails without the cap and passes with it; the full Python suites and pre-commit pass.
 - Durable learnings: `run_agent_bounded` already caps each request at the lower of 4,096 and what the usage limits leave, so a per-agent `max_tokens` is the lever for a measured cap; the worst case S3 reserves is requests × (input + cap).
 - Remaining follow-ups: T3c (the harness in `parse`) and S3's `record_model_usage` once `lane_costs` lands.
+
+### 2026-09-24 — Go-live S4: the harness in the `parse` step (T3c)
+
+- Task: go-live S4, topic T3c: run the field harness in the workflow's `parse` step, in the isolated model child, and keep its records on the run.
+- Branch/worktree: `golive/harness-parse`, stacked on `golive/harness-first-pass-cap`, in `.claude/worktrees/cool-haslett-aa79b5`.
+- Outcome: `application/harness_runtime.py` (`harness_payload`, `harness_direct`, `merge_harness`), a `harness` operation in `model_runtime.py`, `ProductionAdapters.harness`, `Profile.harness_route` (pinned like `first_pass_route`), `Run.harness_failure`, and in `workflow.py` the harness in `parse`, a tool's operational block raised after the effect settles, and no second GBIF call in `lookup`. Spec: `docs/execution/golive/HARNESS.md` section 14.
+- Validation actually run: the new tests fail without the module and pass with it; the model-runtime tests of the old extraction are unchanged; the full Python suites and pre-commit pass.
+- Durable learnings: (1) Classify rebuilds `run.profile` from the published profile without the stage routes, so in production neither the first pass nor the harness would have run. Found while wiring this, handed to S3's profile follow-up, and the coordinator made it a blocker. (2) A tool's operational block must be raised after the model call settles. Otherwise the workflow charges the model route's circuit for GBIF's outage. (3) Gating the harness on a configured route rather than on the adapter keeps today's extraction running until the profile names the route, so the switch-over needs no flag day.
+- Remaining follow-ups: T4 (the queue decision, which reads `harness_failure` and the new field shapes), T3d part b (`derive_rest`), S3's cost recording (`record_model_usage`, `record_tool_usage`) once `lane_costs` lands, and the geography name-key alignment with S8.
