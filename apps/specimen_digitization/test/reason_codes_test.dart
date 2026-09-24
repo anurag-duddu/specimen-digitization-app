@@ -105,7 +105,10 @@ void main() {
             ],
           }),
         ),
-        <String>['Human approval required', 'Mandatory unresolved: country'],
+        <String>[
+          'Reviewer approval needed',
+          'Required field has no supported value: country',
+        ],
       );
     });
 
@@ -118,7 +121,7 @@ void main() {
             ],
           }),
         ),
-        <String>['Unresolved transcription'],
+        <String>['Transcription not resolved'],
       );
     });
 

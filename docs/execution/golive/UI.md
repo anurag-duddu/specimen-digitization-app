@@ -349,3 +349,49 @@ T3; the coordinator's correction of 2026-09-23: it is not processed, never
   disclosure explains it: "This record was uploaded as sensitive, so it is
   not processed. To have it processed, upload the photograph again as not
   sensitive."
+
+### T3.2 The review queue's reasons in words
+
+The lane policy's reason codes read as words that pass `design/02`
+wherever a reason is shown: the queue's rows, the blockers list, and the
+filter sheet's "Issue" picker. The picker fills from the collection
+configuration's `reason_codes` once S3 publishes it (the coordinator's
+ruling of 2026-09-24). The codes are S3's list of 2026-09-24, generated
+from S4's `policy.py`:
+
+| Code | Reads |
+| --- | --- |
+| `institutional_policy_unapproved` | Institutional policy not approved |
+| `mandatory_semantics_unconfirmed` | Required field meanings not confirmed |
+| `label_coverage_unconfirmed` | Label coverage not confirmed |
+| `independent_observations_missing` | Two independent readings needed |
+| `raw_provenance_missing` | Raw reading not stored |
+| `unresolved_transcription` | Transcription not resolved |
+| `evidence_lineage_invalid` | Evidence not traced to a label region |
+| `mandatory_unresolved` | Required field has no supported value |
+| `evidence_missing` | Required field cites no evidence |
+| `evidence_does_not_support_value` | Evidence does not contain the value |
+| `pixel_lineage_missing` | Evidence not from a label region |
+| `unsupported_parsed` | Read as not supported by evidence |
+| `unsupported_normalized` | Standardized value not supported by evidence |
+| `unsupported_authority_id` | Authority match not supported by evidence |
+| `elevation_range` | Elevation range reversed |
+| `elevation_invalid` | Elevation is not a number |
+| `elevation_units_conflict` | Meters and feet disagree |
+| `date_order` | Dates out of order |
+| `date_precision_requires_review` | Date is not a full calendar date |
+| `identifier_format` | Catalog number format not recognized |
+| `human_approval_required` | Reviewer approval needed |
+| `taxonomy_lookup_missing` | No taxonomy lookup ran |
+| `taxonomy_unresolved` | Taxonomy not resolved to one accepted name |
+
+- The words use the product's own terms: "required", not "mandatory", and
+  "Read as", "Standardized" and "Authority match" for the three layers.
+- A code stored with a suffix reads as its words and the field or unit it
+  names: `mandatory_unresolved:country` reads "Required field has no
+  supported value: country". A suffix that is an identifier, a region's or
+  a piece of evidence's, is left out, because it means nothing to a
+  reviewer and the record shows where the problem is.
+- A code this client does not know still reads as its own words.
+- Until S5's T5 search lands, a picked code finds only the records whose
+  code is stored without a suffix (S5, 2026-09-24).
