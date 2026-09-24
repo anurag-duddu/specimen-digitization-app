@@ -91,7 +91,7 @@ misses per subject. Slides 324 to 328 are from Mindanao with right-hand labels;
 328 to 330 are from Yepocapa, Guatemala, 1948 (R.D. Mitchell). The codes on the
 top edge are slide-preparation codes, not collection dates.
 
-### Expected outcome for the ten (G22, G35 to G37)
+### Expected outcome for the ten (G22, G35 to G37, G41)
 
 All ten go to needs human review, with the right reasons. No label carries a
 determination date and none can be derived, so no slide can clear. A run that
@@ -104,6 +104,22 @@ reason changed on 2026-09-24:
   fields that have final values, with its authority and evidence recorded, and
   it then counts, mandatory fields included. A derived value without recorded
   evidence, or derived from unsettled inputs, is a failure.
+- **A stated elevation is converted and filled (G41, revising G22).** Where a
+  label states one elevation, that number fills both endpoints in its own unit,
+  and the other unit is converted exactly (1 ft = 0.3048 m); each filled value is
+  marked derived, with evidence. A stated range keeps its own endpoints. Nine
+  slides state one elevation in feet, so their four elevation fields are
+  expected to resolve as follows:
+
+  | Slides | Feet, from and to | Metres, from and to |
+  |---|---|---|
+  | 321-323 | 6400 | 1950.72 |
+  | 324-326 | 3300 | 1005.84 |
+  | 328-330 (Guatemala) | 4800 | 1463.04 |
+
+  A run fails if it leaves these unresolved, converts by any other factor, or
+  fills them from map data. 327 states no elevation; map data may fill it only
+  at a settled place (G37).
 - **Unconfirmed places never settle (G36).** Slides 321 to 326 name a
   "Mt. McKinley" in Davao Province, Mindanao, that no gazetteer holds; it is
   not Denali. Their place stays unsettled until a curator confirms an entry,
