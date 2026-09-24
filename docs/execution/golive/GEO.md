@@ -94,3 +94,92 @@ lines two ways, as S8 read them and as the S7 baseline readers wrote them. The
 readers' versions include their slips ("ESlope", "Elev.6400", "Yepocapa,4800
 ft.", "Chimaltenago"). Further tests cover the notations, headings, offsets and
 elevation forms, and the comparison rules.
+
+## 2. Tier 1: Wikidata
+
+The owner's tier 1 (G35) asks gazetteers for "the historical name and when it
+was in use", returning modern equivalents. `georef_places.py` holds the record
+that every gazetteer returns. `georef_wikidata.py` builds Wikidata's requests
+and reads the answers into those records. It sends nothing itself: the tool
+(section 4) sends each request with retries, and records its provenance as a
+sub-call (G23).
+
+**The record.** A `Place` holds:
+- the source and its record id;
+- the name, and the other names as the source gives them;
+- a description;
+- its classes;
+- the country it lies in;
+- the ISO code, when the place is itself a country;
+- the units it lies in, each with the start and end the source states;
+- a point;
+- the earliest start and the latest end;
+- the places it replaced and those that replaced it;
+- the license.
+
+A class, a country, a unit or a successor is a reference: an id and the name
+the source gives it.
+
+**Requests.** Both requests go to the Action API. During the research it answered
+more than twenty calls without throttling, whereas the query service throttled
+after two (HTTP 429, a 120 s `Retry-After`) (#94, S15 and S16).
+- `wbsearchentities` finds items for each reading (section 1): English, items
+  only, seven hits.
+- `wbgetentities` reads up to 50 items at a time. It returns labels and aliases
+  in English, Spanish and the multilingual default, the English description, and
+  these statements:
+  - P31, instance of;
+  - P17, country;
+  - P131, located in, with its P580 and P582 qualifiers;
+  - P571 and P580, start;
+  - P576 and P582, end;
+  - P625, point;
+  - P1365, replaces;
+  - P1366, replaced by;
+  - P297, ISO 3166-1 code.
+- A second `wbgetentities` call names the items those statements point to.
+- A request carries place text only: one reading's name, or item ids. It never
+  carries collectors, dates or other transcribed text (the coordinator's ruling
+  for every gazetteer and Google, PLAN 4.8 in #124).
+
+**Reading.**
+- **Statement order.** Deprecated statements are ignored, and preferred ones come
+  first.
+- **Name.** A place's name is its English label, else the multilingual one, else
+  the Spanish one, else its id. Its other labels and aliases follow, without
+  repeats.
+- **Dates.** A date keeps the precision Wikidata states: day, month or year.
+- **Point.** A point is read only on Earth.
+- **Missing items.** An item Wikidata reports as missing is skipped.
+
+**Outcomes.**
+
+| Answer | Outcome |
+|---|---|
+| HTTP 200 with one or more items | `success` |
+| HTTP 200 with none, or error `no-such-entity` | `no_match` |
+| HTTP 200 with an empty body | `empty_response` |
+| a body that isn't a JSON object | `malformed_response` |
+| HTTP 429, or error `maxlag` or `ratelimited` | `rate_limited` |
+| HTTP 401 | `authentication_error` |
+| HTTP 403 (Wikimedia refuses requests without a descriptive User-Agent) | `authorization_error` |
+| any other status, or any other API error | `provider_error` |
+
+A timeout is the caller's to record.
+
+Every place carries the license CC0-1.0.
+
+**Tests.** `tests/test_georef_wikidata.py` reads recorded answers from
+`tests/fixtures/georeferencing/`:
+- S8's searches of 2026-09-23 for the nine pilot names;
+- the pilot places' items and the names of the items they point to, retrieved
+  2026-09-24 and reduced to the fields read here.
+
+The tests check:
+- "Mount McKinley" finds Denali first and nothing in the Philippines.
+- "Davao Province" finds only the province of 1914 to 1967, with its three
+  successors.
+- Mount Apo Natural Park starts in 2004.
+- The Philippines' aliases include the code "RP", which section 1's full-name
+  test excludes.
+- Every row of the outcome table.
