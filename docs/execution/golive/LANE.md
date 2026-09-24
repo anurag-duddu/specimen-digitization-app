@@ -570,8 +570,8 @@ ruling of 2026-09-23). T2b and T2c build it:
   consulted.
 
 Every reservation bounds its step's worst case, so no call can cross the
-allowance. The worst cases behind the pilot's reservations, at the pinned
-prices (T2c):
+allowance, except in the one case the last item describes. The worst cases
+behind the pilot's reservations, at the pinned prices (T2c):
 
 - `segment` 45,000: at 136 micro-dollars a second (4 vCPU and 16 GiB at Cloud
   Run's request-based rates). Cloud Run bills a request-based instance while it
@@ -581,14 +581,21 @@ prices (T2c):
   10 s grace period. (300 s + 10 s) × 136 plus the request is about 42,161.
   The rest is margin for anything else billed at start, such as an image
   pull, which the pages do not mention.
-- Each reader 20,000: two requests, each output capped at 4,096 tokens, and
-  about 16,000 tokens before the second request is refused. That is at most
-  about 8,200 output and 24,000 input tokens, or about 17,030 at the muse
-  route's price and 10,530 at qwen's.
+- Each reader 20,000: at most two requests. `run_agent_bounded` caps each
+  answer at 4,096 tokens and at what is left of the 16,000-token limit. The
+  second request resends the first with its answer, and goes only while the
+  first stayed under the limit. The costliest mix is about 19,700 input and
+  8,200 output tokens, plus the retry's short message: about 16,000 at the
+  muse route's price and 10,000 at qwen's.
 - `parse` 20,000: today's extraction agent has the same limits on the qwen
-  route, about 10,530. The harness (S4) replaces it with its own route and up
+  route, about 10,000. The harness (S4) replaces it with its own route and up
   to three geocodes; its reservation moves with it, bounded the same way. The
   first pass joins with its own bounded reservation.
+- The limit counts a request's input only once the answer is back, so a first
+  request is bounded by its prompt and image alone. At the muse route's price,
+  only an image of about 50,000 tokens would cross 20,000. Such a call gets no
+  second request, reports no usage and stays reserved, so its cost above
+  20,000 would go uncounted.
 
 Every reservation also records the program's position on the run: the
 allowance, the total reserved after this step, and what remains. The thread
