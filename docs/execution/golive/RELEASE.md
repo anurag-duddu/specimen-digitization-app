@@ -450,7 +450,10 @@ the owner next opens a window. Its renewals drop the three
 roles that become standing (`specimenDataSchemaPublish`,
 `specimenDataSourceBackup`, `specimenDataStorageRules`). The window keeps
 refusing any untimed binding of the roles it manages, and prints their
-revocation commands.
+revocation commands. A renewal also requires each role's condition to be
+exactly its two time bounds plus that role's pinned resource predicate, as
+the live bindings carry them. Nothing appended, such as `|| true`, can make a
+binding outlast its window.
 
 The script also prints the other owner steps:
 - public access prevention on the bucket;
