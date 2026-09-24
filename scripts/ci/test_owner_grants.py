@@ -35,8 +35,9 @@ SLIDES = ('resource.name.startsWith("projects/_/buckets/specimen-digitization.fi
           '.startsWith("microscopic-slides/")', "specimen_source_slides")
 CHECKPOINT = ('api.getAttribute("storage.googleapis.com/objectListPrefix", "").startsWith("application/sha256/'
               f'{DIGEST}/sam3-cache")', "specimen_sam3_checkpoint_listing")
-SQL_SOURCE = ('resource.name == "projects/specimen-digitization/instances/specimen-digitization-instance" && '
-              'resource.service == "sqladmin.googleapis.com" && resource.type == "sqladmin.googleapis.com/Instance"',
+# The live inventory condition's exact text, single quotes included; the report reuses it, never rewrites it.
+SQL_SOURCE = ("resource.name == 'projects/specimen-digitization/instances/specimen-digitization-instance' && "
+              "resource.service == 'sqladmin.googleapis.com' && resource.type == 'sqladmin.googleapis.com/Instance'",
               "specimen_source_inventory_only")
 EXPIRED = ("request.time >= timestamp('2026-09-13T20:25:15Z') && request.time < timestamp('2026-09-13T22:25:15Z')",
            "specimen_pr21_window")
