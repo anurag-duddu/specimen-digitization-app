@@ -12045,3 +12045,26 @@ because the hooks runner hands a native asset hook only `PATH`.
   - field findings and the authority identity with its credit;
   - words for `field_harness`, `review_decision` and derivation sources;
   - the fetch (T2f part two) after S5's T4.
+
+### 2026-09-24 — Go-live S6 T2.3 part four: each value names its layer
+
+- Task: go-live workstream S6. PLAN 4.7 ("The thread marks each value's layer, verbatim, settled or derived") under the coordinator's ruling (b) of 2026-09-24.
+- Branch/worktree: `golive/ui-layer-labels`, stacked on `golive/ui-g32-fallback` (#179); `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome: UI.md T2.3 part four.
+  - `FieldRow` gains `layerLabel`, drawn in the `UiListRow` subtitle slot under the field's name and spoken after it.
+  - The fields panel reads it from the guarded thread field: "As written", "Settled", or "Derived from …" naming each field as the record names it, "A, B and C".
+  - No recorded layer shows no label, and an unknown one keeps the server's word.
+  - `vocabulary.dart` gains `sentenceCase`, and design/03's FieldRow anatomy names the line.
+- Commits/PRs: red `e849ac7`; green `15ea382`; the pull request depends on #179 and the chain below it.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the two test files 38 passed; `check_ui_strings.py` 0 violations; the full app suite 1,742 passed, 8 skipped, 0 failed, with `TZ=America/Chicago` (this branch predates #181), no golden moved.
+- Durable learnings:
+  1. Ask the design question before writing the spec delta. PLAN 4.7 could be read as marking every layer or only the new one. A neutral two-option question got the coordinator's (b), the exact words and a correction ("not settled" reads as a fault) in one round, before any code existed.
+  2. A test of absence passes vacuously before the feature exists. Say so in the red commit, so the passing guard test reads as intended.
+  3. Test data should be plausible, not just valid. "Elevation derived from a date and collectors" satisfied the joiner but would mislead the next reader. G37's county from the coordinates tests the same code and teaches the domain.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - words for `field_harness`, `review_decision` and derivation sources such as `derivation-rules-v1` (S5's ids, 2026-09-24);
+  - field findings in place of the filtered `decision.findings`, and the authority identity with its credit;
+  - the fetch (T2f part two) after S5's T4;
+  - "Fill the rest" when S5's T6 publishes its job and proposal shapes;
+  - fold the two private sentence-case helpers into `sentenceCase`.

@@ -130,6 +130,11 @@ String vocabularyLabel(String value) {
       .join(' ');
 }
 
+/// [value] with its first letter capitalized, for words that start a line
+/// of their own (02 section 1: sentence case).
+String sentenceCase(String value) =>
+    value.isEmpty ? value : '${value[0].toUpperCase()}${value.substring(1)}';
+
 /// The environment name used in the non-production banner (guideline 5.1).
 ///
 /// Sentence case, never shouted: capitals for extended text read as

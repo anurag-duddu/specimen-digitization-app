@@ -53,6 +53,7 @@ class FieldRow extends StatelessWidget {
     this.asWrittenNote,
     this.readAsNote,
     this.evidence = const <String>[],
+    this.layerLabel,
   });
 
   /// The disclosure the three layers sit behind (10 section 5).
@@ -125,6 +126,11 @@ class FieldRow extends StatelessWidget {
   /// it bears on it. When there is any, these stand in place of [authority].
   final List<String> evidence;
 
+  /// The value's layer in a few words, such as "Settled", under the field's
+  /// name on every row, so it shows while the layers are closed; heard right
+  /// after the name (UI.md T2.3 part four).
+  final String? layerLabel;
+
   String? _valueOf(FieldLayer layer) => switch (layer) {
     FieldLayer.asWritten => asWritten,
     FieldLayer.readAs => readAs,
@@ -147,6 +153,7 @@ class FieldRow extends StatelessWidget {
   /// changed by how its children are built.
   String get _spoken => <String>[
     required ? '$name, required' : name,
+    ?layerLabel,
     for (final FieldLayer layer in FieldLayer.values)
       '${layer.label}: ${_spokenValue(layer)}',
   ].map(_withoutTrailingStop).join('. ');
@@ -201,6 +208,7 @@ class FieldRow extends StatelessWidget {
         // which field they are standing on.
         UiListRow(
           title: _title,
+          subtitle: layerLabel,
           semanticsLabel: _rowSpoken,
           trailing: compact ? null : chip,
           disabledReason: editBlockedReason,

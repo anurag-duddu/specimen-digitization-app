@@ -63,9 +63,26 @@ class WorkbenchFields extends StatefulWidget {
   /// The heading over the rest.
   static const String optionalTitle = 'Optional fields';
 
+  /// The layer label of a value a lookup, or every label, settled (G38;
+  /// coordinator ruling for S6, 2026-09-24). A verbatim value's label is
+  /// the "As written" slot's own name.
+  static const String settledLayer = 'Settled';
+
+  /// The layer label of a value filled from [fields], in G44's words.
+  static String derivedFrom(List<String> fields) =>
+      'Derived from ${_listed(fields)}';
+
   @override
   State<WorkbenchFields> createState() => _WorkbenchFieldsState();
 }
+
+/// "A", "A and B", "A, B and C".
+String _listed(List<String> items) => switch (items) {
+  <String>[] => '',
+  <String>[final String only] => only,
+  <String>[...final List<String> rest, final String last] =>
+    '${rest.join(', ')} and $last',
+};
 
 class _WorkbenchFieldsState extends State<WorkbenchFields> {
   String? _editing;
@@ -269,6 +286,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
           readAs: _layerValue(field, pending, FieldLayer.readAs),
           standardized: _layerValue(field, pending, FieldLayer.standardized),
           authority: _authorityLine(field, pending),
+          layerLabel: _layerLabel(run),
           writtenBy: _writtenBy(run),
           asWrittenNote: _settledElsewhere(run),
           readAsNote: _centuryNote(run),
@@ -447,6 +465,32 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
 
   /// What an entry whose reading settled the value adds to its source line.
   static const String settledWords = 'settled the value';
+
+  /// The value's layer in a few words (UI.md T2.3 part four): null when
+  /// the run recorded none, and an unknown layer in the server's word.
+  String? _layerLabel(ThreadField? run) {
+    if (run == null) return null;
+    return switch (run.layer) {
+      ThreadFieldLayer.verbatim => FieldLayer.asWritten.label,
+      ThreadFieldLayer.settled => WorkbenchFields.settledLayer,
+      ThreadFieldLayer.derived when run.derivedFrom.isNotEmpty =>
+        WorkbenchFields.derivedFrom(<String>[
+          for (final String key in run.derivedFrom) _fieldName(key),
+        ]),
+      _ => switch (run.layerName) {
+        final String word => sentenceCase(vocabularyLabel(word)),
+        null => null,
+      },
+    };
+  }
+
+  /// A field as the record names it, or in words for one it does not list.
+  String _fieldName(String key) {
+    for (final Json field in widget.specimen.fields) {
+      if (field['field_key'] == key) return textOf(field['display_name'], key);
+    }
+    return sentenceCase(vocabularyLabel(key));
+  }
 
   /// A Google locator, `place/{place id}` (DATA_CONTRACT.md rule 1.6).
   static const String _placePrefix = 'place/';

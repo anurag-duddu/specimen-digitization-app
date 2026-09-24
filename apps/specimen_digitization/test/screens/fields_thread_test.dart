@@ -6,6 +6,7 @@ import 'dart:io';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/workbench/fields_panel.dart';
 import 'package:specimen_digitization/src/screens/workbench/pending_changes.dart';
@@ -546,6 +547,176 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+  });
+
+  group("each value's layer (UI.md T2.3 part four)", () {
+    /// The row's face: its name and the one label under it.
+    Finder onFace(String key, String text) => inRow(
+      key,
+      find.descendant(of: find.byType(UiListRow), matching: find.text(text)),
+    );
+
+    /// The fixture with each named field's layer set, and [extra] fields.
+    SpecimenThread withLayers(
+      Map<String, String?> layers, {
+      List<Json> extra = const <Json>[],
+    }) {
+      final Json json = fixtureJson();
+      for (final MapEntry<String, String?> entry in layers.entries) {
+        fieldIn(json, entry.key)['layer'] = entry.value;
+      }
+      (json['fields'] as List<dynamic>).addAll(extra);
+      return SpecimenThread.fromJson(json);
+    }
+
+    /// A derived field of the run, filled from [from] (G37, G41, G44).
+    Json derived(String key, List<String> from) => <String, dynamic>{
+      'field_key': key,
+      'group': 'mandatory',
+      'state': 'supported',
+      'layer': 'derived',
+      'derived_from': from,
+      'verbatim': <Json>[],
+      'parsed': '1978-05-12',
+      'precision': 'day',
+      'century_rule': null,
+      'normalized': null,
+      'authority_id': null,
+      'evidence': <Json>[
+        <String, dynamic>{
+          'evidence_id': 'evidence-derivation-1',
+          'relation': 'decides',
+          'source': 'derivation-rules-v1',
+          'locator': null,
+          'outcome': 'recorded',
+          'observation_ids': <String>[],
+        },
+      ],
+    };
+
+    /// A settled field with nothing else to say, for a derivation to name.
+    Json plain(String key) => <String, dynamic>{
+      'field_key': key,
+      'group': 'optional',
+      'state': 'supported',
+      'layer': 'settled',
+      'verbatim': <Json>[],
+      'parsed': null,
+      'precision': null,
+      'century_rule': null,
+      'normalized': null,
+      'authority_id': null,
+      'evidence': <Json>[],
+    };
+
+    /// The record, with [names] as the fields' display names.
+    Json named(SpecimenThread thread, Map<String, String> names) {
+      final Json record = recordJson(thread);
+      for (final Json f in (record['fields'] as List<dynamic>).cast<Json>()) {
+        if (names[f['field_key']] case final String name) {
+          f['display_name'] = name;
+        }
+      }
+      return record;
+    }
+
+    testWidgets('a verbatim and a settled value each name their layer', (
+      WidgetTester tester,
+    ) async {
+      final SpecimenThread thread = withLayers(<String, String?>{
+        'country': 'settled',
+        'collectors': 'verbatim',
+      });
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      expect(onFace('country', 'Settled'), findsOneWidget);
+      expect(onFace('collectors', 'As written'), findsOneWidget);
+      expect(
+        inRow('collectors', find.textContaining('not settled')),
+        findsNothing,
+        reason: 'a field no lookup checks clears as written',
+      );
+    });
+
+    testWidgets('a derived value names the fields it came from', (
+      WidgetTester tester,
+    ) async {
+      // G44: one date fills To. G37: a county from the coordinates, when
+      // the whole uncertainty circle lies in one unit.
+      final SpecimenThread thread = withLayers(
+        const <String, String?>{},
+        extra: <Json>[
+          derived('date_visited_to', <String>['date_visited_from']),
+          plain('latitude'),
+          plain('longitude'),
+          derived('county', <String>['latitude', 'longitude']),
+        ],
+      );
+      await pumpFields(
+        tester,
+        named(thread, <String, String>{
+          'date_visited_from': 'Date visited from',
+          'latitude': 'Latitude',
+          'longitude': 'Longitude',
+        }),
+        thread: thread,
+      );
+      expect(
+        onFace('date_visited_to', 'Derived from Date visited from'),
+        findsOneWidget,
+      );
+      expect(
+        onFace('county', 'Derived from Latitude and Longitude'),
+        findsOneWidget,
+      );
+      expect(
+        inRow('date_visited_to', find.textContaining('decides this value')),
+        findsOneWidget,
+        reason: 'its evidence is one step away, in the Values disclosure',
+      );
+    });
+
+    testWidgets('no recorded layer, no label; an unknown one keeps its word', (
+      WidgetTester tester,
+    ) async {
+      final SpecimenThread thread = withLayers(<String, String?>{
+        'country': null,
+        'collectors': 'imputed',
+      });
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      for (final String word in <String>['As written', 'Settled']) {
+        expect(onFace('country', word), findsNothing);
+      }
+      expect(onFace('collectors', 'Imputed'), findsOneWidget);
+    });
+
+    testWidgets('a field the record has changed shows no layer', (
+      WidgetTester tester,
+    ) async {
+      final SpecimenThread thread = withLayers(<String, String?>{
+        'country': 'settled',
+      });
+      final Json record = recordJson(thread);
+      (record['fields'] as List<dynamic>).cast<Json>().firstWhere(
+        (Json f) => f['field_key'] == 'country',
+      )['parsed_value'] = 'Honduras';
+      await pumpFields(tester, record, thread: thread);
+      expect(onFace('country', 'Settled'), findsNothing);
+    });
+
+    testWidgets('the layer is heard right after the name', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      final SpecimenThread thread = withLayers(<String, String?>{
+        'country': 'settled',
+      });
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      expect(
+        find.bySemanticsLabel(RegExp(r'^country, required\. Settled\. ')),
+        findsOneWidget,
+      );
+      handle.dispose();
     });
   });
 }
