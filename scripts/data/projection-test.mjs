@@ -444,8 +444,10 @@ const [read] = ok(await threadOf('worker', open, work.run.id, current)).runs;
 same(read.id, work.run.id);
 same(read.decisions.map(d => [d.id, d.decisionKind, d.literalText]), [[work.transcription.id, 'first_pass', work.left.literalText]]);
 // Every model decision of the run, newest first, whatever ids are given, each with its handoffs:
-// the no-pick and identical decisions written below the chain, then the chain's first pass.
-same(read.firstPasses.map(d => d.decisionKind), ['identical_readings', 'identical_readings', 'first_pass', 'first_pass']);
+// the no-pick and identical decisions written below the chain, the second first-pass decision
+// written with the closed vocabularies, then the chain's first pass.
+same(read.firstPasses.map(d => d.decisionKind), ['identical_readings', 'identical_readings', 'first_pass', 'first_pass', 'first_pass']);
+same([read.firstPasses.at(-2).id, read.firstPasses.at(-2).handoffs.map(h => h.role)], [fresh.id, ['decided_transcript', 'raw_reading']]);
 const chosen = read.firstPasses.at(-1);
 same([chosen.id, chosen.selectedObservationId, chosen.firstPassObservationId], [work.transcription.id, work.left.id, work.firstPassCall.id]);
 // The selected reading as the decided transcript, and the other reading with its note.
@@ -454,7 +456,8 @@ same(chosen.handoffs.map(h => [h.role, h.observationId, h.note]), [['decided_tra
 same(read.candidates.map(c => [c.id, c.links.map(l => [l.evidenceId, l.relation])]), [[work.candidate.id, [[work.evidence.id, 'supports'], [work.evidence.id, 'contradicts'], [coverage.id, 'supports']]]]);
 // A candidate's decision gives its region and, for G32, the reading it selected.
 same([read.candidates[0].sourceTranscription.region.domainRegionId, read.candidates[0].sourceTranscription.selectedObservationId], [work.region.domainRegionId, work.left.id]);
-same(read.records.map(r => [r.id, r.fields.map(f => f.fieldKey), r.findings.map(f => f.severity)]), [[work.record.id, ['city'], ['hard', 'warning', 'warning']]]);
+// The chain's hard finding, the one citing 64 evidence rows, then the two warnings.
+same(read.records.map(r => [r.id, r.fields.map(f => f.fieldKey), r.findings.map(f => f.severity)]), [[work.record.id, ['city'], ['hard', 'hard', 'warning', 'warning']]]);
 // The run's own four regions: its first, a second label, a superseding one and one with a crop.
 assert.equal(read.regions.length, 4);
 same(read.regions.slice(0, 2).map(r => [r.domainRegionId, r.ordinal]), [[work.region.domainRegionId, 0], [second.domainRegionId, 1]]);
@@ -468,7 +471,7 @@ same(read.evidence.filter(e => e.source === 'label-coverage-check').map(e => [e.
 // With no ids, no decision, candidate or record version is read: an empty list selects none.
 const none = ok(await threadOf('worker', open, work.run.id)).runs[0];
 same([none.decisions, none.candidates, none.records], [[], [], []]);
-assert.ok(none.regions.length > 0 && none.toolCalls.length > 0 && none.firstPasses.length === 4);
+assert.ok(none.regions.length > 0 && none.toolCalls.length > 0 && none.firstPasses.length === 5);
 // A viewer reads what the workspace shows it; a non-member is refused, and so are oversized id lists.
 assert.equal(ok(await threadOf('viewer', open, work.run.id, current)).runs.length, 1);
 denied(await threadOf('stranger', open, work.run.id, current));
