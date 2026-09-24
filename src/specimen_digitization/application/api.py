@@ -1690,7 +1690,7 @@ def create_app(
         if run is None:
             # Unknown and another specimen's get one answer, so no other run is revealed.
             raise Missing(wanted)
-        rows = repository.run_thread(p.scope, s.id, run.id, thread_keys(run))
+        rows = repository.run_thread(p.scope, s.id, run.id, thread_keys(s, run))
         view = s if run is s.run else s.model_copy(update={"run": run})
         return assemble(
             s,

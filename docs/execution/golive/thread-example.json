@@ -326,10 +326,8 @@
       },
       "outcome": "success",
       "result": {
-        "candidates": [
-          {
-            "place_id": "fixture-place"
-          }
+        "place_ids": [
+          "fixture-place"
         ]
       },
       "error": null,
@@ -356,7 +354,7 @@
       },
       "outcome": "no_match",
       "result": {
-        "candidates": []
+        "place_ids": []
       },
       "error": null,
       "retry_after": null,
@@ -442,10 +440,8 @@
       },
       "outcome": "success",
       "result": {
-        "candidates": [
-          {
-            "place_id": "fixture-place"
-          }
+        "place_ids": [
+          "fixture-place"
         ]
       },
       "error": null,
@@ -480,7 +476,8 @@
           "relation": "supports",
           "source": "google-maps-geocoding",
           "locator": "place/fixture-place",
-          "outcome": "success"
+          "outcome": "success",
+          "observation_ids": []
         }
       ]
     },
@@ -500,12 +497,6 @@
           "input_source": "raw_reading",
           "region_id": "00000000-0000-4000-8000-000000000011",
           "observation_id": "00000000-0000-4000-8000-000000000022"
-        },
-        {
-          "text": "Chicago",
-          "input_source": "raw_reading",
-          "region_id": "00000000-0000-4000-8000-000000000011",
-          "observation_id": "00000000-0000-4000-8000-000000000023"
         }
       ],
       "parsed": null,
@@ -523,14 +514,36 @@
           "relation": "supports",
           "source": "google-maps-geocoding",
           "locator": "place/fixture-place",
-          "outcome": "success"
+          "outcome": "success",
+          "observation_ids": []
         },
         {
           "evidence_id": "00000000-0000-4000-8000-000000000034",
           "relation": "supports",
           "source": "google-maps-geocoding",
           "locator": "place/fixture-place",
-          "outcome": "success"
+          "outcome": "success",
+          "observation_ids": []
+        },
+        {
+          "evidence_id": "00000000-0000-4000-8000-000000000035",
+          "relation": "supports",
+          "source": "field_harness",
+          "locator": "region:00000000-0000-4000-8000-000000000011",
+          "outcome": "recorded",
+          "observation_ids": [
+            "00000000-0000-4000-8000-000000000022"
+          ]
+        },
+        {
+          "evidence_id": "00000000-0000-4000-8000-000000000036",
+          "relation": "supports",
+          "source": "field_harness",
+          "locator": "region:00000000-0000-4000-8000-000000000011",
+          "outcome": "recorded",
+          "observation_ids": [
+            "00000000-0000-4000-8000-000000000023"
+          ]
         }
       ]
     },
@@ -606,14 +619,16 @@
           "relation": "decides",
           "source": "gbif",
           "locator": "gbif/species/1651891",
-          "outcome": "success"
+          "outcome": "success",
+          "observation_ids": []
         },
         {
           "evidence_id": "00000000-0000-4000-8000-000000000033",
           "relation": "contradicts",
           "source": "catalogue-of-life",
           "locator": "col/taxon/fixture-col-taxon",
-          "outcome": "success"
+          "outcome": "success",
+          "observation_ids": []
         }
       ]
     },
