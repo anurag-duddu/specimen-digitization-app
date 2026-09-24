@@ -127,3 +127,10 @@ def test_the_worker_creates_and_saves_the_program_ledger(worker):
         40_000, 10_000, specimen_id=str(uuid4()), run_id="run-a", step="parse", attempt=1
     )
     assert refused.issue == "program_allowance_exhausted"
+    # A completed call settles to its cost, giving back the rest (T2c).
+    position = ledger.settle(
+        5_000_000, 20_000, 1_234, specimen_id=str(uuid4()), run_id="run-a",
+        step="transcribe:region-1:handwriting-qwen", attempt=1,
+    )
+    assert position["reserved_total_micros"] == 35_000 - 20_000 + 1_234
+    assert ledger.read()["revision"] == 3
