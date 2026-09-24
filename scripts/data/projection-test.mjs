@@ -468,6 +468,16 @@ same([geocode.transcriptionVersion.region.domainRegionId, geocode.observation, g
 assert.equal(geocode.startedAt, '2026-09-23T12:00:00.000000Z');
 same(read.toolCalls.filter(t => t.inputSource === 'raw_reading').map(t => t.observation.region.domainRegionId), [work.region.domainRegionId]);
 same(read.evidence.filter(e => e.source === 'label-coverage-check').map(e => [e.outcome, e.locator]), [['recorded', 'coverage/region-count']]);
+// T2c's columns: the call on a reviewer's text names its review decision and no reading; a derived
+// candidate names its inputs and has no literal; a settled value keeps its authority's identity.
+same(read.toolCalls.filter(t => t.inputSource === 'review').map(t => [t.reviewDecisionId, t.observationId]), [[asked.id, null]]);
+const identified = {...candidate3, id: randomUUID(), authorityIdentity: {source: 'gbif', source_record_id: 'fixture-gbif-1', name: 'Apis', credit: 'fixture credit'}};
+ok(await op('AppendFieldCandidateV3', identified));
+const t2c = ok(await threadOf('worker', open, work.run.id, {candidateIds: [derived.id, identified.id]})).runs[0].candidates;
+same(t2c.map(c => [c.id, c.derivedFromFieldKeys, c.literalValue, c.authorityIdentity]), [
+  [derived.id, ['elevation_from_ft'], null, null],
+  [identified.id, null, work.candidate.literalValue, identified.authorityIdentity],
+]);
 // With no ids, no decision, candidate or record version is read: an empty list selects none.
 const none = ok(await threadOf('worker', open, work.run.id)).runs[0];
 same([none.decisions, none.candidates, none.records], [[], [], []]);

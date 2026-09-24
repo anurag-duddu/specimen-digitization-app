@@ -37,12 +37,12 @@ query GetRunThreadV1(
     }
     evidence: evidenceItems_on_run(orderBy: [{createdAt: ASC}, {id: ASC}], limit: 1000) { id source locator outcome capturedAt }
     toolCalls: toolCalls_on_run(orderBy: [{createdAt: ASC}, {id: ASC}], limit: 1000) {
-      callKey phase tool toolVersion source fieldKeys inputSource attempt arguments outcome result evidenceId startedAt completedAt observationId
+      callKey phase tool toolVersion source fieldKeys inputSource attempt arguments outcome result evidenceId startedAt completedAt observationId reviewDecisionId
       transcriptionVersion { region { domainRegionId } }
       observation { region { domainRegionId } }
     }
     candidates: fieldCandidates_on_run(where: {id: {in: $candidateIds}}, orderBy: [{createdAt: ASC}, {id: ASC}], limit: 500) {
-      id fieldKey state literalValue parsedValue normalizedValue authorityId inputSource sourceObservationId
+      id fieldKey state literalValue parsedValue normalizedValue authorityId authorityIdentity derivedFromFieldKeys inputSource sourceObservationId
       sourceTranscription { selectedObservationId region { domainRegionId } }
       sourceObservation { region { domainRegionId } }
       links: candidateEvidences_on_candidate(orderBy: [{createdAt: ASC}, {id: ASC}], limit: 64) { evidenceId relation }

@@ -320,6 +320,7 @@
       "input_source": "decided_transcript",
       "region_id": "00000000-0000-4000-8000-000000000010",
       "observation_id": null,
+      "review_decision_id": null,
       "attempt": 1,
       "arguments": {
         "query": "Chicago, Ill."
@@ -348,6 +349,7 @@
       "input_source": "decided_transcript",
       "region_id": "00000000-0000-4000-8000-000000000010",
       "observation_id": null,
+      "review_decision_id": null,
       "attempt": 1,
       "arguments": {
         "query": "Cook Co."
@@ -374,6 +376,7 @@
       "input_source": "raw_reading",
       "region_id": "00000000-0000-4000-8000-000000000011",
       "observation_id": "00000000-0000-4000-8000-000000000022",
+      "review_decision_id": null,
       "attempt": 1,
       "arguments": {
         "name": "Aedes aegypti L."
@@ -404,6 +407,7 @@
       "input_source": "raw_reading",
       "region_id": "00000000-0000-4000-8000-000000000011",
       "observation_id": "00000000-0000-4000-8000-000000000022",
+      "review_decision_id": null,
       "attempt": 1,
       "arguments": {
         "name": "Aedes aegypti L."
@@ -434,6 +438,7 @@
       "input_source": "raw_reading",
       "region_id": "00000000-0000-4000-8000-000000000011",
       "observation_id": "00000000-0000-4000-8000-000000000022",
+      "review_decision_id": null,
       "attempt": 1,
       "arguments": {
         "query": "Chicago"
@@ -471,6 +476,7 @@
       "century_rule": null,
       "normalized": null,
       "authority_id": null,
+      "authority_identity": null,
       "settled_observation_ids": [],
       "evidence": [
         {
@@ -481,7 +487,8 @@
           "outcome": "success",
           "observation_ids": []
         }
-      ]
+      ],
+      "findings": []
     },
     {
       "field_key": "city",
@@ -508,6 +515,10 @@
       "century_rule": null,
       "normalized": null,
       "authority_id": "fixture-place",
+      "authority_identity": {
+        "source": "google-maps-geocoding",
+        "source_record_id": "fixture-place"
+      },
       "settled_observation_ids": [
         "00000000-0000-4000-8000-000000000020",
         "00000000-0000-4000-8000-000000000022"
@@ -549,7 +560,8 @@
             "00000000-0000-4000-8000-000000000023"
           ]
         }
-      ]
+      ],
+      "findings": []
     },
     {
       "field_key": "county",
@@ -570,8 +582,20 @@
       "century_rule": null,
       "normalized": null,
       "authority_id": null,
+      "authority_identity": null,
       "settled_observation_ids": [],
-      "evidence": []
+      "evidence": [],
+      "findings": [
+        {
+          "rule_id": "mandatory_unresolved",
+          "rule_version": "insects-clearance-v1",
+          "severity": "hard",
+          "outcome": "fail",
+          "field_key": "county",
+          "reason_code": "mandatory_unresolved:county",
+          "evidence_ids": []
+        }
+      ]
     },
     {
       "field_key": "date_visited_from",
@@ -592,8 +616,10 @@
       "century_rule": "date-rules-v1:two_digit_year_century=1900",
       "normalized": null,
       "authority_id": null,
+      "authority_identity": null,
       "settled_observation_ids": [],
-      "evidence": []
+      "evidence": [],
+      "findings": []
     },
     {
       "field_key": "taxon",
@@ -620,6 +646,12 @@
       "century_rule": null,
       "normalized": "Aedes aegypti",
       "authority_id": "gbif:1651891",
+      "authority_identity": {
+        "name": "Aedes aegypti",
+        "source": "gbif",
+        "source_record_id": "1651891",
+        "credit": "fixture credit"
+      },
       "settled_observation_ids": [
         "00000000-0000-4000-8000-000000000022"
       ],
@@ -640,6 +672,19 @@
           "outcome": "success",
           "observation_ids": []
         }
+      ],
+      "findings": [
+        {
+          "rule_id": "taxonomy_source_disagreement",
+          "rule_version": "g23-v1",
+          "severity": "warning",
+          "outcome": "fail",
+          "field_key": "taxon",
+          "reason_code": "taxonomy_source_disagreement",
+          "evidence_ids": [
+            "00000000-0000-4000-8000-000000000033"
+          ]
+        }
       ]
     },
     {
@@ -654,8 +699,10 @@
       "century_rule": null,
       "normalized": null,
       "authority_id": null,
+      "authority_identity": null,
       "settled_observation_ids": [],
-      "evidence": []
+      "evidence": [],
+      "findings": []
     }
   ],
   "decision": {

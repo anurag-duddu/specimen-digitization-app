@@ -383,6 +383,7 @@ def test_google_keeps_a_place_id_and_a_no_match_appears_only_in_tool_calls():
         "input_source": "decided_transcript",
         "region_id": left.id,
         "observation_id": None,
+        "review_decision_id": None,
         "attempt": 1,
         "arguments": {"query": "Chicago, Ill."},
         "outcome": "success",

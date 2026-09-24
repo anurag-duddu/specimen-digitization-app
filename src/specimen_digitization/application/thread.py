@@ -24,7 +24,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from .integrity import EvidenceIntegrityError
-from .projection import LINKABLE, Blob, CredentialStored, settled_entries, writes
+from .projection import LINKABLE, Blob, RefusedContent, settled_entries, writes
 
 TRACE_URL_SETTING = "SPECIMEN_TRACE_URL_TEMPLATE"
 TRACE_PLACEHOLDER = "{trace_id}"
@@ -207,6 +207,8 @@ class ToolCall(Part):
     input_source: str
     region_id: str | None
     observation_id: str | None
+    # The review decision a call on a reviewer's text ran for (input source `review`, T2c).
+    review_decision_id: str | None
     attempt: int
     arguments: Any
     outcome: str
@@ -235,23 +237,6 @@ class FieldEvidence(Part):
     observation_ids: list[str]
 
 
-class FieldThread(Part):
-    field_key: str
-    group: str
-    state: str
-    # G38's layer and a derived value's input fields, from the snapshot (S4's FieldValue, #144).
-    layer: Literal["verbatim", "settled", "derived"] | None
-    derived_from: list[str]
-    verbatim: list[Verbatim]
-    parsed: str | None
-    precision: str | None
-    century_rule: str | None
-    normalized: str | None
-    authority_id: str | None
-    settled_observation_ids: list[str]
-    evidence: list[FieldEvidence]
-
-
 class FindingThread(Part):
     rule_id: str
     rule_version: str
@@ -260,6 +245,27 @@ class FindingThread(Part):
     field_key: str | None
     reason_code: str
     evidence_ids: list[str]
+
+
+class FieldThread(Part):
+    field_key: str
+    group: str
+    state: str
+    # G38's layer, from the snapshot, and a derived value's input fields (S4's FieldValue, #144).
+    layer: Literal["verbatim", "settled", "derived"] | None
+    derived_from: list[str]
+    verbatim: list[Verbatim]
+    parsed: str | None
+    precision: str | None
+    century_rule: str | None
+    normalized: str | None
+    authority_id: str | None
+    # The settled value's authority, {name, source, source_record_id, credit} (PLAN 4.8).
+    authority_identity: dict[str, Any] | None
+    settled_observation_ids: list[str]
+    evidence: list[FieldEvidence]
+    # The record's findings that name the field (G45), as in the decision.
+    findings: list[FindingThread]
 
 
 class DecisionThread(Part):
@@ -335,20 +341,21 @@ def current(specimen, run) -> Current:
     """What `projection.writes` writes for the run's state, run without storage.
 
     The writer's own output, so the thread never keys a row differently from how it was
-    written. A run the writer refuses for a stored credential (rule 1.6) has no thread: that is
-    a stored-evidence integrity failure, whose message names where, never the credential.
+    written. A run the writer refuses for content no store may keep (rule 1.6, G26: a credential,
+    or Google content beyond the place id) has no thread: that is a stored-evidence integrity
+    failure, whose message names where, never the content.
     """
     view = specimen if run is specimen.run else specimen.model_copy(update={"run": run})
     try:
         written = writes(view, _nowhere, _unsized, "thread", reviewer=True)
-    except CredentialStored as exc:
+    except RefusedContent as exc:
         raise EvidenceIntegrityError(str(exc)) from exc
     decisions, fields, record = {}, defaultdict(list), None
     for write in written:
         found = write.variables
         if write.operation == "AppendTranscriptionVersionV2":
             decisions[_id(found["regionId"])] = (_id(found["id"]), found["decisionKind"])
-        elif write.operation == "AppendFieldCandidateV2":
+        elif write.operation == "AppendFieldCandidateV3":
             fields[found["fieldKey"]].append(_id(found["id"]))
         elif write.operation == "AppendRecordVersionV2":
             record = _id(found["id"])
@@ -657,6 +664,7 @@ def _tool_call(call: dict) -> ToolCall:
         input_source=call["inputSource"],
         region_id=_region_of(call, "transcriptionVersion", "observation"),
         observation_id=_id(call.get("observationId")),
+        review_decision_id=_id(call.get("reviewDecisionId")),
         attempt=call["attempt"],
         arguments=call.get("arguments"),
         outcome=call["outcome"],
@@ -681,6 +689,10 @@ def _fields(run, row: dict, written: Current, evidence: list[dict], tool_calls: 
     rows = {_id(c["id"]): c for c in row.get("candidates") or []}
     records = [r for r in row.get("records") or [] if _id(r["id"]) == written.record]
     resolved = {f["fieldKey"]: f for f in records[0].get("fields") or []} if records else {}
+    # The record's findings, each on the field it names (G45), as the decision lists them.
+    findings = defaultdict(list)
+    for found in (records[0].get("findings") or []) if records else []:
+        findings[found.get("fieldKey")].append(_finding(found))
     items = {_id(e["id"]): e for e in evidence}
     # The readings stored evidence quotes (section 4.3); a lookup quotes none.
     quoted = {item.id: list(item.observation_ids) for item in run.evidence}
@@ -711,13 +723,17 @@ def _fields(run, row: dict, written: Current, evidence: list[dict], tool_calls: 
                     links.append((link, item))
         parsed = _first(present, "parsedValue")
         stated = parsed if isinstance(parsed, dict) else {"value": parsed}
+        # A derived value's candidate names its inputs and has no literal (T2c); the label leaves
+        # the field out, so it adds no verbatim.
+        derived = [found for found in present if found.get("derivedFromFieldKeys") is not None]
+        inputs = derived[0]["derivedFromFieldKeys"] if derived else getattr(value, "derived_from", None)
         result.append(
             FieldThread(
                 field_key=key,
                 group=(field or {}).get("fieldGroup") or _group(run, key),
                 state=field["state"] if field else present[0]["state"],
                 layer=getattr(value, "layer", None),
-                derived_from=list(getattr(value, "derived_from", None) or []),
+                derived_from=list(inputs or []),
                 verbatim=[
                     Verbatim(
                         text=found.get("literalValue"),
@@ -726,12 +742,14 @@ def _fields(run, row: dict, written: Current, evidence: list[dict], tool_calls: 
                         observation_id=_reading(found) if mapped else _id(found.get("sourceObservationId")),
                     )
                     for found in present
+                    if found.get("derivedFromFieldKeys") is None
                 ],
                 parsed=stated.get("value"),
                 precision=stated.get("precision"),
                 century_rule=stated.get("century_rule"),
                 normalized=_first(present, "normalizedValue"),
                 authority_id=_first(present, "authorityId"),
+                authority_identity=_first(present, "authorityIdentity"),
                 settled_observation_ids=settled_observation_ids(
                     present, tool_calls, mapped=mapped, settled=settled
                 ),
@@ -746,6 +764,7 @@ def _fields(run, row: dict, written: Current, evidence: list[dict], tool_calls: 
                     )
                     for link, item in links
                 ],
+                findings=findings.get(key, []),
             )
         )
     return result
@@ -831,16 +850,18 @@ def _decision(row: dict, written: Current) -> DecisionThread | None:
         policy_version=record["policyVersion"],
         reason_codes=list(record.get("reasonCodes") or []),
         summary=record["summary"],
-        findings=[
-            FindingThread(
-                rule_id=f["ruleId"],
-                rule_version=f["ruleVersion"],
-                severity=f["severity"],
-                outcome=f["outcome"],
-                field_key=f.get("fieldKey"),
-                reason_code=f["reasonCode"],
-                evidence_ids=[_id(e) for e in f.get("evidenceIds") or []],
-            )
-            for f in record.get("findings") or []
-        ],
+        findings=[_finding(f) for f in record.get("findings") or []],
+    )
+
+
+def _finding(found: dict) -> FindingThread:
+    """One `ValidationFinding` row, the same in the decision and on the field it names."""
+    return FindingThread(
+        rule_id=found["ruleId"],
+        rule_version=found["ruleVersion"],
+        severity=found["severity"],
+        outcome=found["outcome"],
+        field_key=found.get("fieldKey"),
+        reason_code=found["reasonCode"],
+        evidence_ids=[_id(e) for e in found.get("evidenceIds") or []],
     )
