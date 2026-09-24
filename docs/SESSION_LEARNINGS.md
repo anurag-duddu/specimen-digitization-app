@@ -11967,3 +11967,22 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (4) `serve-local.sh` puts PostgreSQL's socket in `$TMPDIR`. A long `TMPDIR`, such as a session scratchpad, overflows the Unix socket path limit and `pg_ctl` cannot start; keep the default.
 - Failed approaches: one migration that swapped the unique (the emulator dropped the old index before creating the new one); removing `specimen_unique_1` from `schema.gql` alone (a `COMPATIBLE` apply never drops it).
 - Remaining follow-ups: S2's named-exception sync in #99, so CI admits step 2; S2's T3d before any release runs the drop on a database where #88's step 1 is live; T2b (stages 6 to 8), stacked on this; T3, the thread API.
+
+### 2026-09-24 — Go-live projection writer, stages 6 to 8 (S5 T2b-1)
+
+- Task: S5 T2b, first part, the projection writer for the first pass, the harness, the fields and the record; pull request "[golive:data] The projection writer, stages 6 to 8", stacked on #146. The steward asked for T2b to be split at about 600 lines of code. The seam follows the commit history: this part holds the stage 6 to 8 mapping through #88's third review, and T2b-2 holds G32, the coverage evidence and #88's final review.
+- Branch/worktree: `golive/data-projection-stages` in `.claude/worktrees/epic-rhodes-d168f3`, on #146's `golive/data-projection` at `7647784`.
+- Commits: `2389104` and `923c4ec` (stages 6 to 8, red then green); `61959be` and `deae5db` (the #88 review shapes); `2a3babf` and `aff8bd9` (#88's second review); `8563633` and `d15e94a` (#88's third review); this entry.
+- Outcome:
+  - The first pass: the model call is a `ModelObservation`, the decision a `TranscriptionVersion` (`first_pass`, `identical_readings`, or a reviewer's `human` one, written only on a reviewer's save), and each handoff a `HarnessInput` as S4 writes it.
+  - The harness: an `EvidenceItem` per stored lookup or evidence, and a `ToolCall` per record, naming the decision or reading it ran on.
+  - The fields: a `FieldCandidate` per literal or per verbatim-map entry, and a `CandidateEvidence` per recorded or successful evidence id with its relation.
+  - The record: a `RecordVersion`, a `ResolvedField` per field, and a `ValidationFinding` per reason code and per run finding.
+  - A `ReviewDecision` per review event, on a reviewer's save.
+  - A worker's pass skips the reviewer-only rows but registers their ids.
+- Validation actually run at `d15e94a`: the projection and writer tests, the opt-in SQL tests, and the release pins: 88 passed, 2 skipped. The full `tests/` and `scripts/` suites ran on T3's head, which contains this branch: 1614 passed and 1552 passed.
+- Durable learnings:
+  - (1) A branch can be split along its red/green history rather than by module. A seam at a green commit keeps every pair whole, and the upper part keeps its head, so the branches stacked on it do not move.
+  - (2) Reviewer-only operations must never be attempted on a worker's pass, or the pass stops there for good. The writer skips them and keeps their ids, so a later reviewer's pass writes them in order.
+- Failed approaches: refusing every `raw_reading` handoff on a decision that selected a reading (first #88 review): S4 hands the unselected readers to the harness as raw readings.
+- Remaining follow-ups: T2b-2, stacked on this; S4's domain types in place of the test stand-ins once #131 merges.
