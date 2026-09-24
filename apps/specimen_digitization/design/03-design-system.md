@@ -928,7 +928,9 @@ Responsive: at expanded and larger the two model cards sit side by side; below 9
 the diff toggle moves into the section header so it is not duplicated.
 
 **`FieldRow`**
-Anatomy: field name in `labelMedium`; three stacked layers, Literal in `mono.literalDense`, Parsed
+Anatomy: field name in `labelMedium`, with the value's layer ("As written", "Settled" or "Derived
+from …", UI.md T2.3 part four) as the row's secondary line; three stacked layers, Literal in
+`mono.literalDense`, Parsed
 in `bodyMedium`, Normalized in `bodyMedium` or `mono.identifier`; an `EvidenceSource` per layer; a
 trailing `Symbols.edit` action. From the processing thread (UI.md T2.3): when no single reading was
 chosen, Literal lists each reader's text under its source in secondary `bodySmall`, each label's

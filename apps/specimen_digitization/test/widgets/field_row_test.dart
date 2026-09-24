@@ -309,6 +309,39 @@ void main() {
       handle.dispose();
     });
 
+    testWidgets('the layer label sits under the name and is heard after it', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pumpComponent(
+        tester,
+        const SizedBox(
+          width: 700,
+          child: FieldRow(
+            name: 'Country',
+            state: SpecimenStatus.supported,
+            required: true,
+            asWritten: 'GUATEMALA',
+            layerLabel: 'Settled',
+          ),
+        ),
+      );
+      expect(
+        tester.getTopLeft(find.text('Settled')).dy,
+        greaterThan(tester.getTopLeft(find.text('Country (required)')).dy),
+      );
+      expect(
+        tester.getTopLeft(find.text('Settled')).dy,
+        lessThan(tester.getTopLeft(find.text('Values')).dy),
+        reason: 'on the face, so it shows while the layers are closed',
+      );
+      expect(
+        find.bySemanticsLabel(RegExp(r'^Country, required\. Settled\. ')),
+        findsOneWidget,
+      );
+      handle.dispose();
+    });
+
     testWidgets('a note under attributed texts stands under all of them', (
       WidgetTester tester,
     ) async {
