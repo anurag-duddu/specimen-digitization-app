@@ -11921,3 +11921,27 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (5) A statement about real data, such as "import the ten as not sensitive", is a classification only the owner can verify (`CONTRACTS.md` 169-170). Ask for it before writing it as a plan step.
   - (6) Merging main can shift the line numbers the plan cites. #76 moved the PRD's open items by three lines, so G rows appeared to settle other owner-only items. After each merge, map the citations of every file it touched from the old version to the new.
 - Remaining follow-ups: the owner's field list (G8); S2's IAM list and the T3e membership run; the owner's rulings on S8's D1-D13 after the steward reviews #94; the G15 calibration sign-off; the lab's re-measurement of the harness model with G29's prompt.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 1: reading locality text
+
+- Task: the owner asked for the retrospective georeferencing tool to be fully implemented (G34, 2026-09-24). S8 moved from research to building, in the new modules the coordinator accepted (flat `georef_*.py` and `georeferencing_tool.py`), with spec deltas in `docs/execution/golive/GEO.md`.
+- Branch and worktree: `golive/geo-locality-text` in `.claude/worktrees/geo-build`, the one build worktree the coordinator allowed; #94 stays in S8's first worktree. PR #130.
+- Outcome: `georef_locality.py` reads one locality literal into its parts, and nothing imports it yet. It covers:
+  - label notations (G29), with CNHM and FMNH read as institutions, never places;
+  - slopes and offsets with their headings;
+  - elevations kept as written (G22);
+  - unplaced text;
+  - comparison keys, with G34's one-letter gate on full names only (the coordinator's reading, 2026-09-24);
+  - one variant per reader's literal (G19, G20).
+- Validation: 64 tests use the ten pilot labels as S8 and the S7 baseline readers wrote them, plus cases for notations, headings, offsets, elevations and comparisons. Also run: `uv run pytest tests/ -q` (1,558 passed, 31 skipped), `uv run pytest scripts/ -q` (1,547 passed, 50 skipped) and pre-commit.
+- Durable learnings:
+  - (1) A line break on a label is sometimes layout inside a name ("E. Slope Mt." / "McKinley") and sometimes a boundary between parts ("Mt. McKinley" / "Davao Prov."). The reliable signal, found in the real labels, is a line ending in a notation that needs the next word.
+  - (2) Where a unit word sits depends on the label's language: after the name in English ("Davao Prov."), before it in Spanish ("Mun. Yepocapa"). A unit word standing alone joins the name on the side its language points to.
+  - (3) Folded abbreviations sit one letter from unrelated codes: "P.I." folds to "pi", one substitution from the ISO code "PH". That is why G34's gate compares full names only, on both sides.
+  - (4) A session's worktree hook blocks writes into another worktree. Switch with `EnterWorktree` and a `path` rather than writing across.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - part 2, the gazetteers (needs #109);
+  - part 3, historical units;
+  - part 4, the tool itself (after #109 and #113);
+  - the owner's answers on D1 to D7 and D9 for the tiers they gate.

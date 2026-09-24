@@ -316,6 +316,7 @@ def test_letters_apart_counts_single_edits_up_to_two():
         ("Phil. Is.", False),
         ("Km 20", False),
         ("APO", False),
+        ("Mt.", False),
         ("", False),
     ],
 )

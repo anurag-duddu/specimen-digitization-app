@@ -3,12 +3,14 @@
 The retrospective georeferencing tool behind the harness's `geography_lookup`
 interface, which the owner asked for on 2026-09-24 (G34): "clear with place ID byt
 I want the harness for location retrospective georeferencing fully implemented".
-Its design is `docs/product-requirements/GEOREFERENCING.md` (#94), whose open
-decisions D1 to D7 and D9 are with the owner; nothing here depends on them. The
-coordinator ruled on 2026-09-24 that the tool replaces the Google module behind
-the same interface only once D1 is ruled and the acceptance lab shows it resolves
-the pilot slides at least as well; until then the Google module stays in
-production (G6). Each pull request adds its section here before its tests and
+Its plan is `docs/product-requirements/GEOREFERENCING.md` (#94), and the owner set
+its design the same day (G35 to G40): three tiers (historical gazetteers with
+curator-confirmed entries, Google given the modernized name, the in-house
+point-radius), fields derived with evidence when the label leaves them out, and
+a layer for every value. The coordinator ruled that the tool replaces the Google
+module behind the same interface once the acceptance lab shows it resolves the
+pilot slides at least as well; until then the Google module stays in production
+(G6). Each pull request adds its section here before its tests and
 implementation.
 
 ## 1. Reading locality text
@@ -49,10 +51,12 @@ first; failing that, the part before it, or else the part after it. "5 km NE of
 Yepocapa" is an offset. A heading keeps its written form and its bearing in
 degrees, and a distance stays as written; points and radii are tier 3's.
 
-**Elevations (G22).** Elevation phrases ("4800 ft.", "4800ft.", "6400'", "Elev.
+**Elevations (G22, G37).** Elevation phrases ("4800 ft.", "4800ft.", "6400'", "Elev.
 6400'", "1,463 m", "4000-4500 ft") leave the place text and are kept as written:
 the numbers as written, and the unit as feet, metres, or none when the label
-gives none ("Elev.6400" on 105526322). Nothing is converted.
+gives none ("Elev.6400" on 105526322). Nothing is converted: an elevation the
+label states stays as written, and a derived value belongs to a later layer
+(G37, G38).
 
 **Unplaced text.** A part left with a digit or without a letter, such as a date
 ("IV-26") or a camp number, and a heading phrase with no part to join, are kept
@@ -72,8 +76,13 @@ or abbreviations. A word is not part of a full name when it:
 - has a digit, or
 - is written in capitals of at most three letters ("PH", "PHL", "RP").
 
-A candidate one letter off may settle the place only when it is unique and fits
-the other place fields (G34). The tool tests that; this module does not.
+A name made of notations alone ("Mt.") is not a full name either.
+
+A candidate one letter off settles the place only when it is the only such
+candidate and every other place field of the same reading, at least one, matches
+it exactly; the field then carries a `near_spelling` warning that never routes
+the record (G34 as the coordinator reads it in #124). The tool tests that; this
+module does not.
 
 **Readers (G19, G20).** Each reader's literal is read on its own and keeps its
 observation id. Literals whose parts share their keys form one variant, so a
