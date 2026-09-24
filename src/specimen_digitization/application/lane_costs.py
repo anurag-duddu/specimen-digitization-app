@@ -1,8 +1,9 @@
 """The cost of every paid call (docs/execution/golive/LANE.md, T2c; G9, G30).
 
 One entry per paid call on the run, with its usage and its cost at the run's
-pinned price list. Once a step completes, the program ledger is settled to what
-its recorded calls cost.
+pinned price list. A call that reports usage, or a billed amount, settles the
+program ledger to what it cost; one that does not stays reserved in full
+(the coordinator's G30 ruling).
 """
 
 from __future__ import annotations
@@ -48,20 +49,28 @@ def tool_cost(prices, tool_id, requests):
     return None if price is None else requests * price
 
 
-def _record(run, step, kind, usage, cost, outcome, billed_micros, **name):
-    prices = run.profile.execution.price_list
+def _reservation(run, step):
     reservations = run.profile.execution.stage_cost_reservations
+    return reservations.for_step(step) if reservations else None
+
+
+def _record(run, step, kind, usage, cost, outcome, billed_micros, basis=None, **name):
+    prices = run.profile.execution.price_list
     if billed_micros is not None:
         cost, basis = billed_micros, "billed"
-    else:
-        basis = "computed" if cost is not None else "unpriced"
+    elif basis is None:
+        if cost is None:
+            # Profiles price every route and the segmentation; anything else is
+            # a configuration error, and the step fails with its reservation held.
+            raise ValueError(f"No price for {kind} {next(iter(name.values()))}")
+        basis = "computed"
     run.paid_calls.append(
         {
             "step": step,
             "attempt": run.attempts.get(step, 1),
             "kind": kind,
             **name,
-            "reserved_micros": reservations.for_step(step) if reservations else None,
+            "reserved_micros": _reservation(run, step),
             "usage": usage,
             "outcome": outcome,
             "cost_micros": cost,
@@ -132,6 +141,16 @@ def record_tool_usage(
     )
 
 
+def record_reserved(run, step, kind, *, outcome, **name):
+    """A call that reported no usage stays reserved at its step's full amount."""
+    if run.profile.execution.price_list is None:
+        return
+    _record(
+        run, step, kind, None, _reservation(run, step), outcome, None,
+        basis="reserved", **name,
+    )
+
+
 def step_outcome(run, step):
     if run.blocker == "external_outcome_unknown":
         return "unknown"
@@ -141,25 +160,21 @@ def step_outcome(run, step):
 
 
 def settle_step(repository, principal, specimen, step, reserved, clock=None):
-    """Settle the program ledger to what a completed step's recorded calls cost.
+    """Settle the program ledger to what the step's calls cost.
 
-    Anything else stays fully reserved: a failure, an unknown outcome, a step with
-    no recorded calls, or a call without a price. Which failures count as known is
-    for the coordinator's next plan PR.
+    Only when every call recorded for the attempt reported usage or a billed
+    amount. A reserved call, or a step whose calls nobody recorded, stays fully
+    reserved. A settled cost above the reservation counts in full.
     """
     from .lane_allowance import ProgramLedger
 
     run = specimen.run
     policy = run.profile.execution
-    if (
-        policy.program_allowance_micros is None
-        or not reserved
-        or step_outcome(run, step) != "completed"
-    ):
+    if policy.program_allowance_micros is None or not reserved:
         return
     attempt = run.attempts.get(step, 1)
     calls = [c for c in run.paid_calls if c["step"] == step and c["attempt"] == attempt]
-    if not calls or any(c["cost_micros"] is None for c in calls):
+    if not calls or any(c["cost_basis"] == "reserved" for c in calls):
         return
     ledger = ProgramLedger(
         repository,
@@ -185,27 +200,38 @@ def settle_step(repository, principal, specimen, step, reserved, clock=None):
 def record_step(repository, principal, specimen, step, observations, seconds, reserved, clock=None):
     """The workflow's hook after a paid step: record its calls, then settle.
 
-    Readings report their tokens on their observations. SAM 3's measured request
-    seconds come from its response, or from the step's own time when it failed.
+    A reading reports its tokens on its observation. A completed SAM 3 call
+    reports its measured request seconds, which include waiting for a cold
+    start. A call that reported nothing stays reserved.
     """
     run = specimen.run
     if run.profile.execution.price_list is None:
         return
     outcome = step_outcome(run, step)
     if step.startswith("transcribe:"):
-        for observation in observations:
-            if observation.route_id:
-                record_model_usage(
-                    run,
-                    step,
-                    observation.route_id,
-                    input_tokens=observation.input_tokens,
-                    output_tokens=observation.output_tokens,
-                    outcome=outcome,
-                )
+        readings = [o for o in observations if o.route_id]
+        for observation in readings:
+            record_model_usage(
+                run,
+                step,
+                observation.route_id,
+                input_tokens=observation.input_tokens,
+                output_tokens=observation.output_tokens,
+                outcome=outcome,
+            )
+        if not readings:
+            record_reserved(
+                run, step, "model", outcome=outcome, route_id=step.split(":")[-1]
+            )
     elif step == "segment":
-        measured = (run.segmentation or {}).get("elapsed_seconds")
-        if outcome != "completed" or measured is None:
-            measured = round(seconds, 3)
-        record_segmentation(run, step, seconds=measured, outcome=outcome)
+        if outcome == "completed":
+            measured = (run.segmentation or {}).get("elapsed_seconds")
+            record_segmentation(
+                run,
+                step,
+                seconds=round(seconds, 3) if measured is None else measured,
+                outcome=outcome,
+            )
+        else:
+            record_reserved(run, step, "service", outcome=outcome, service="sam3")
     settle_step(repository, principal, specimen, step, reserved, clock)
