@@ -14,9 +14,101 @@ assert.equal(env.GITHUB_WORKFLOW_REF, `${env.GITHUB_REPOSITORY}/.github/workflow
 // The envelope's owner-set commit or, never with it, the commit of the gate record Python admitted (G11).
 assert.ok((env.RELEASE_AUTHORIZED_SHA === undefined) !== (env.RELEASE_GATE_SHA === undefined));
 assert.equal(env.RELEASE_AUTHORIZED_SHA ?? env.RELEASE_GATE_SHA, env.GITHUB_SHA);
-const [mode, instance, output] = process.argv.slice(2);
-assert.ok(['inventory', 'indexes', 'catalog', 'summary'].includes(mode));
+const [mode, instance, output, input] = process.argv.slice(2);
+assert.ok(['inventory', 'indexes', 'catalog', 'summary', 'migrate', 'migrated'].includes(mode));
 assert.ok(['specimen-digitization-instance', 'specimen-digitization-restore-20260908-r1'].includes(instance));
+const ACTOR = 'specimen-data-release@specimen-digitization.iam';
+const OWNER = 'firebaseowner_specimen-digitization-database_public';
+// RELEASE.md 4.3 steps 3 and 5 serve only a gate record's commit, on the source instance.
+if (mode.startsWith('migrate')) assert.ok(env.RELEASE_GATE_SHA !== undefined && instance === 'specimen-digitization-instance');
+// Step 3 re-reads every statement of the plan Python wrote exactly as deploy_data.py does, before any connection,
+// against the plan's own relaxed table.column pairs, which Python derives from the schema gate.
+const TOKEN = /([ \t\n\r\f\v]+)|("(?:[^"]|"")+")|('(?:[^']|'')*')|([A-Za-z_][A-Za-z0-9_]*)|([0-9]+(?:\.[0-9]+)?)|([(),.;[\]])|([-+*/<>=~!@#%^&|`?:]+)|([\s\S])/g;
+function allowed(sql, relaxed) {
+  if (typeof sql !== 'string' || !sql.length || sql.length > 65536 || sql.includes('\\')) return false;
+  const kinds = ['space', 'ident', 'string', 'word', 'number', 'punct', 'operator', 'other'];
+  let t = [...sql.matchAll(TOKEN)].map(m => [kinds[m.slice(1).findIndex(g => g !== undefined)], m[0]]).filter(([k]) => k !== 'space');
+  if (t.some(([k, v]) => k === 'other' || k === 'operator' && /--|\/\*|\*\//.test(v))) return false;
+  const is = (at, v) => t[at]?.[0] === 'punct' && t[at][1] === v;
+  if (is(t.length - 1, ';')) t = t.slice(0, -1);
+  let depth = 0;
+  for (let at = 0; at < t.length && depth >= 0; at++) {
+    if (is(at, ';')) return false;
+    depth += is(at, '(') ? 1 : is(at, ')') ? -1 : 0;
+  }
+  if (depth) return false;
+  const word = (at, ...ws) => ws.every((w, i) => t[at + i]?.[0] === 'word' && t[at + i][1].toUpperCase() === w) ? at + ws.length : null;
+  const name = at => {
+    const [k, v] = t[at] ?? [];
+    if (k !== 'word' && k !== 'ident') throw new Error('name');
+    return [k === 'word' ? v.toLowerCase() : v.slice(1, -1).replaceAll('""', '"'), at + 1];
+  };
+  const table = at => {
+    let [value, next] = name(at);
+    if (is(next, '.')) {
+      if (value !== 'public') throw new Error('schema');
+      [value, next] = name(next + 1);
+    }
+    return [value, next];
+  };
+  const close = at => {
+    for (let i = at, d = 0; i < t.length; i++) if (!(d += is(i, '(') ? 1 : is(i, ')') ? -1 : 0)) return i;
+    return -1;
+  };
+  try {
+    let at = word(0, 'CREATE', 'TABLE');
+    if (at !== null) {
+      [, at] = table(word(at, 'IF', 'NOT', 'EXISTS') ?? at);
+      return is(at, '(') && close(at) === t.length - 1;
+    }
+    if ((at = word(0, 'CREATE', 'VIEW')) !== null) {
+      [, at] = table(at);
+      if (is(at, '(')) at = close(at) + 1;
+      return word(at, 'AS') !== null && ['SELECT', 'WITH', 'VALUES'].some(w => word(at + 1, w) !== null);
+    }
+    if ((at = word(0, 'CREATE', 'INDEX') ?? word(0, 'CREATE', 'UNIQUE', 'INDEX')) !== null) {
+      at = word(at, 'IF', 'NOT', 'EXISTS') ?? at;
+      if (word(at, 'CONCURRENTLY') !== null || (at = word(name(at)[1], 'ON')) === null) return false;
+      [, at] = table(at);
+      return is(at, '(') || word(at, 'USING') !== null;
+    }
+    if ((at = word(0, 'ALTER', 'TABLE')) === null) return false;
+    let relation;
+    [relation, at] = table(at);
+    const starts = [at];
+    for (let i = at, d = 0; i < t.length; i++) {
+      d += is(i, '(') ? 1 : is(i, ')') ? -1 : 0;
+      if (is(i, ',') && !d) starts.push(i + 1);
+    }
+    return starts.every((start, k) => {
+      const end = k + 1 < starts.length ? starts[k + 1] - 1 : t.length;
+      let a;
+      if ((a = word(start, 'ADD', 'COLUMN')) !== null) return name(word(a, 'IF', 'NOT', 'EXISTS') ?? a)[1] < end;
+      if ((a = word(start, 'ADD', 'CONSTRAINT')) !== null) {
+        a = name(a)[1];
+        return word(a, 'UNIQUE') !== null || word(a, 'FOREIGN', 'KEY') !== null;
+      }
+      if ((a = word(start, 'ALTER', 'COLUMN')) === null) return false;
+      const [column, next] = name(a);
+      return word(next, 'DROP', 'NOT', 'NULL') === end && relaxed.has(`${relation}.${column}`);
+    });
+  } catch {
+    return false;
+  }
+}
+let statements;
+if (mode === 'migrate') {
+  const plan = JSON.parse(readFileSync(input, 'utf8'));
+  assert.deepEqual(Object.keys(plan).sort(), ['relaxed', 'source_sha', 'statements', 'version']);
+  assert.ok(plan.version === 'data-migration/v1' && plan.source_sha === env.RELEASE_GATE_SHA);
+  // Sorted and duplicate-free, each one table.column pair of lower-case SQL names.
+  assert.ok(Array.isArray(plan.relaxed) && plan.relaxed.every((pair, at) => typeof pair === 'string'
+    && /^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$/.test(pair) && (at === 0 || plan.relaxed[at - 1] < pair)));
+  const relaxed = new Set(plan.relaxed);
+  statements = plan.statements;
+  assert.ok(Array.isArray(statements) && statements.length > 0 && statements.length <= 1000
+    && statements.every(sql => allowed(sql, relaxed)));
+}
 const require = createRequire(join(resolve(env.RELEASE_NODE_ROOT), 'node_modules/firebase-tools/package.json'));
 assert.equal(require('./package.json').version, '15.8.0');
 const {Connector, AuthTypes, IpAddressTypes} = require('@google-cloud/cloud-sql-connector');
@@ -25,7 +117,7 @@ const connector = new Connector();
 const connectionOptions = {...(await connector.getOptions({
   instanceConnectionName: `specimen-digitization:us-east4:${instance}`,
   ipType: IpAddressTypes.PUBLIC, authType: AuthTypes.IAM,
-})), user: 'specimen-data-release@specimen-digitization.iam',
+})), user: ACTOR,
   max: 1, connectionTimeoutMillis: 15000,
   statement_timeout: 120000, application_name: 'protected-data-release'};
 const initialDatabase = mode === 'catalog' ? 'postgres' : 'specimen-digitization-database';
@@ -64,11 +156,48 @@ try {
       assert.equal(observations.application_catalog_observed, true);
     }
     writeFileSync(output, JSON.stringify(observations), {mode: 0o600});
+  } else if (mode === 'migrate') {
+    // One transaction as the owner role (RELEASE.md 4.3 step 3). search_path is public alone, behind the implicit
+    // pg_catalog, so Data Connect's unqualified uuid_generate_v4() and names resolve to public. The extended protocol
+    // makes PostgreSQL itself refuse a second command in any statement.
+    await client.query('BEGIN');
+    try {
+      for (const setting of ["lock_timeout = '5s'", "statement_timeout = '30s'", "idle_in_transaction_session_timeout = '30s'",
+        'search_path = public', `ROLE "${OWNER}"`]) await client.query(`SET LOCAL ${setting}`);
+      assert.deepEqual((await client.query('SELECT current_database() AS database, session_user AS actor, current_user AS effective')).rows[0],
+        {database: 'specimen-digitization-database', actor: ACTOR, effective: OWNER});
+      for (const text of statements) await client.query({text, queryMode: 'extended'});
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    }
+    writeFileSync(output, JSON.stringify({version: 'data-migration/v1', statements: statements.length, committed: true}), {mode: 0o600});
+  } else if (mode === 'migrated') {
+    // Step 5, read only: the initializer's own postconditions (the owner owns every relation in public, the writer and
+    // reader hold exactly the default privileges, and the extensions are plpgsql and uuid-ossp), then the relations.
+    await client.query('BEGIN TRANSACTION READ ONLY');
+    await client.query("SET LOCAL statement_timeout = '30s'");
+    const results = await client.query(readFileSync('scripts/ci/initialize_postconditions.sql', 'utf8'));
+    const postconditions = results.filter(result => result.command === 'SELECT').at(-1).rows[0].postconditions;
+    const catalog = (await client.query(`WITH relations AS (SELECT n.nspname || '.' || c.relname AS qualified, c.relkind,
+        pg_get_userbyid(c.relowner)::text AS owner FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE left(n.nspname, 3) <> 'pg_' AND n.nspname <> 'information_schema')
+      SELECT current_database() = 'specimen-digitization-database' AS expected_database, session_user = '${ACTOR}' AS expected_actor,
+        ARRAY(SELECT qualified FROM relations WHERE relkind IN ('r', 'p', 'f') ORDER BY 1) AS tables,
+        ARRAY(SELECT qualified FROM relations WHERE relkind IN ('v', 'm') ORDER BY 1) AS views,
+        ARRAY(SELECT DISTINCT owner FROM relations ORDER BY 1) AS owners,
+        ARRAY(SELECT extname::text FROM pg_extension ORDER BY 1) AS extensions`)).rows[0];
+    await client.query('COMMIT');
+    writeFileSync(output, JSON.stringify({...catalog, postconditions}), {mode: 0o600});
   } else {
   // The pre-existing data-release database identity must already have the exact
-  // maintenance grants. No role creation, privilege escalation or owner switching.
+  // maintenance grants. No role creation or privilege escalation.
   if (mode === 'indexes') {
     assert.equal(instance, 'specimen-digitization-instance');
+    // As the owner role (RELEASE.md 4.3 step 4). CREATE INDEX CONCURRENTLY cannot run in a transaction, so this
+    // is the session's SET ROLE; the connection ends with this mode.
+    await client.query(`SET ROLE "${OWNER}"`);
     for (const file of ['dataconnect/sql/paging-indexes.sql', 'dataconnect/sql/search-indexes.sql']) {
       const source = readFileSync(file, 'utf8').replace(/^\s*--.*$/gm, '');
       for (const sql of source.split(';').map(value => value.trim()).filter(Boolean)) {

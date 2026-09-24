@@ -196,6 +196,24 @@ def parse_schema(files: dict[str, str]) -> dict[str, dict]:
     return types
 
 
+def declared_sql(files: dict[str, str], relaxations: dict[tuple[str, str], str]
+                 ) -> tuple[set[str], set[str], set[tuple[str, str]]]:
+    """What a schema declares in SQL (RELEASE.md 4.3): its tables, the persisted views it names, and the (table, column)
+    pairs whose NOT NULL the gate's relaxations, {(Type, field): reason}, may drop. Data Connect plans a @view with sql
+    inline in each query, so only a @view without sql names a view the catalog holds."""
+    types, tables, views = parse_schema(files), set(), set()
+    for name, value in types.items():
+        directive = value["directives"][value["kind"]][0]
+        ((_, arguments),) = _directives(_Stream(_tokens(directive)))
+        if value["kind"] == "table":
+            tables.add(_sql(name, directive))
+        elif "sql" not in dict(arguments):
+            views.add(_sql(name, directive))
+    relaxed = {(_sql(table, types[table]["directives"]["table"][0]), _sql(field, types[table]["fields"][field]["directives"].get("col")))
+               for table, field in relaxations if types.get(table, {}).get("kind") == "table" and field in types[table]["fields"]}
+    return tables, views, relaxed
+
+
 def parse_connector(files: dict[str, str]) -> dict[str, dict]:
     """Every operation as {kind, header, body}: its tokens joined by single spaces, without comments or commas."""
     operations: dict[str, dict] = {}

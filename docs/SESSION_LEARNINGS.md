@@ -12000,3 +12000,30 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: GitHub keeps one pending job per concurrency group and cancels the older one when a newer job queues. A cleanup job must therefore never wait on a shared lock it doesn't need: a cancelled disposal leaves a privileged principal behind.
 - Failed approaches: none.
 - Remaining follow-ups: T3c2 replaces `migrate` with the client-side migration, and must require the initializer principal to be absent.
+
+### 2026-09-24 — Go-live release workstream (S2), T3c2: Data Connect's SQL diff runs client-side as the owner role
+
+- Task: the S2 session, T3c's first initialization, steps 3 and 5, the SQL half (`docs/execution/golive/RELEASE.md` section 4.3).
+- Branch/worktree: `golive/release-data-migrate-sql`, stacked on #148's branch. An Opus subagent wrote the red and green commits in its own worktree; this session reviewed them, had the relaxed set moved into the plan, and added the spec commit.
+- Outcome:
+  - **The allowlist.** `deploy_data.migration_statement` reads a diff statement as SQL tokens, and allows only one statement of an allowed kind:
+    - create table or view;
+    - create [unique] index without `CONCURRENTLY`;
+    - an alter table whose every action adds a column, adds a unique or foreign key constraint, or drops NOT NULL on a relaxed column.
+
+    A backslash, a dollar sign, a comment, a second statement or another schema refuses it, by a fixed kind and reason.
+  - **The migration.** `release_sql.mjs migrate` re-reads the plan the same way, with the relaxed pairs the plan carries, before it connects. It then runs the statements in one transaction as `SET LOCAL ROLE` to `firebaseowner`, with lock, statement and idle timeouts, over the extended protocol.
+  - **The read-back.** `migrated` reads back the postconditions, relations, owners and extensions, read-only.
+  - **Supplemental indexes.** `indexes` sets the owner role for its session.
+  - **`schema_gate.declared_sql(files, relaxations)`** gives the merged schema's tables, persisted views and relaxable pairs.
+- Commits/PRs: the spec commit `89ee93d`; red `e6cc4cf`; green `442544c`; this closeout.
+- Validation actually run:
+  - the subagent: red 50 failed, 111 passed (PostgreSQL 2 failed, 20 passed); green 237 passed (PostgreSQL 22 passed); 20,036 fuzzed statements, with zero disagreements between Python and Node;
+  - this session, at this head: the first-initialization, released-deploy and workflow tests, 161 passed; `SPECIMEN_TEST_INITIALIZATION_PG=true` over `test_initialization_postgres.py`, 22 passed.
+- Durable learnings:
+  - A second parser is only independent while it reads the same policy data. A copied constant drifts silently the day the first side starts reading the contract.
+  - The `pg` module returns a `name[]` column as a raw string, so cast catalog names to `text` in any array the release compares.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - The migrate step (this PR's successor) and the job (T3c2b).
+  - When the stack takes #99's head, `deploy_data.relaxations()` switches to `schema_gate.read_relaxations()`.

@@ -409,6 +409,9 @@ nothing to restore, and backups with point-in-time recovery are on.
      foreign key, or drop NOT NULL on a column the gate of section 4.1
      permits (never a key, unique or provenance column). `CREATE EXTENSION`
      and every drop are refused.
+   - Python reads each statement, and then Node reads it again the same way
+     before it connects. The log names a refused statement by its kind and a
+     fixed reason, never its text.
    - The release identity runs them after `SET ROLE` to the owner role, in
      one transaction that sets `lock_timeout` and `statement_timeout` as the
      initializer does. A timeout rolls the transaction back and fails the
@@ -422,22 +425,29 @@ nothing to restore, and backups with point-in-time recovery are on.
    and it would run the DDL as the service agent.
 4. **Then:** the supplemental indexes (`CREATE INDEX CONCURRENTLY IF NOT
    EXISTS`, as the owner role), the connector and the Storage rules.
-5. **Catalog check.** The catalog must list exactly the tables and views the
-   merged schema declares, and one extension besides the built-in
-   `plpgsql`: `uuid-ossp`. The tables
-   and views must be owned by `firebaseowner`, with the writer and reader
-   privileges the postconditions define.
+5. **Catalog check.** The catalog must list exactly the tables the merged
+   schema declares and the views it persists, and one extension besides the
+   built-in `plpgsql`: `uuid-ossp`. The tables and views must be owned by
+   `firebaseowner`, with the writer and reader privileges the postconditions
+   define. A `@view` with `sql` persists nothing, because Data Connect plans
+   its SQL inline in each query, so today's schema persists no view. That is
+   the coordinator's ruling of 2026-09-24 on S2's reading of the migration
+   engine: the emulator that `firebase-tools` 15.8 pins generates no
+   `CREATE VIEW`. The first catalog read confirms it. Any view the schema does
+   not persist fails the check, and the receipt records the view count.
 
-**Jobs.** T3c lands in two pull requests. T3c1 adds steps 1 and 2; T3c2 adds
-steps 3 to 5 and replaces T3b2's fail-closed step. Each job re-admits through
-the gate before it authenticates.
+**Jobs.** T3c lands in stacked pull requests. T3c1 adds steps 1 and 2 (#147),
+and T3c1b their jobs (#148). T3c2 adds steps 3 to 5 in two pull requests, the
+SQL half and then the migrate step. T3c2b replaces the fail-closed `migrate`
+placeholder with the job. Each job re-admits through the gate before it
+authenticates.
 
 | Job | Environment and identity | Does |
 |---|---|---|
 | `release` | `data-production`, `specimen-data-release` | On `initialize`, runs step 1 and outputs `init_step`: `initialize` (a new, empty database), `migrate` (this run's own attested initializer receipt exists) or a stop. |
 | `initialize` | `data-initialization-production`, `specimen-data-initialize` (gate plane `data-initialization`) | Only when `init_step` is `initialize`. Creates its own Cloud SQL IAM user with `cloudsqlsuperuser`, runs `initialize_database.sql` and the postconditions in one transaction on the existing database, then uploads and attests the initializer receipt, which names this run. |
 | `dispose-initializer` | `data-production`, `specimen-data-release` | Always after `initialize`. Revokes and deletes the initializer's SQL user after proving this run created it, as before. |
-| `migrate` | `data-production`, `specimen-data-release` | After a successful `dispose-initializer`, or when `init_step` is `migrate`. Verifies the attested receipt, re-checks the postconditions exactly, then runs steps 3 to 5 and uploads and attests a `data-initialized/v1` receipt. |
+| `migrate` | `data-production`, `specimen-data-release` | After a successful `dispose-initializer`, or when `init_step` is `migrate`. Verifies the attested receipt, re-checks the postconditions exactly, read-only, and requires the initializer's SQL principal gone. Then it runs steps 3 to 5 under the shared mutation lock. It uploads a `data-initialized/v1` receipt on every exit and attests it on success. |
 
 A run that fails after `initialize` is re-run with "Re-run failed jobs".
 `migrate` then consumes the earlier attempt's receipt. The owner's window
