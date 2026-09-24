@@ -197,6 +197,7 @@ class WorkbenchReadings extends StatelessWidget {
               firstPass: threaded?.firstPass,
               readerName: _readerName,
               run: loaded.run,
+              reviewerDecision: threaded?.reviewerDecision,
             ),
     );
   }

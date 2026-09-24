@@ -12007,3 +12007,24 @@ because the hooks runner hands a native asset hook only `PATH`.
   - the per-label fallback settled entry;
   - words for `catalogue-of-life` and `field_harness`, once S5 says which Catalogue of Life id is real;
   - the fetch (T2f part two) after S5's T4.
+
+### 2026-09-24 — Go-live S6 T2.2 point five: a reviewer's decision beside the first pass
+
+- Task: go-live workstream S6, brief T2 ("the thread view"). A region's `reviewer_decision` from S5's thread API, #171 at `a73b323`.
+- Branch/worktree: `golive/ui-reviewer-decision`, stacked on `golive/ui-thread-model-171` (#173); `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome: UI.md T2.2 point 5.
+  - Each Readings section shows a reviewer's decision after "Handed to the harness", in the order the thread ran, as one announcement: "Decided by a reviewer", "Transcription not resolved" when left unresolved, the reviewer's transcript and reason.
+  - The model's first pass stays above it (G38). A region only a reviewer decided shows the reviewer's decision alone; "No decision recorded" is for a region with neither.
+  - No new words.
+  - `FirstPassSummary` draws both decisions with one private `_Decision` widget, since they share an anatomy. The model's block keeps the same widgets in the same order.
+- Commits/PRs: red `3654285`; green ``373d126``; the pull request opened from this branch depends on #173 and the chain below it.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; `test/screens/readings_regions_test.dart` 17 passed; the full app suite 1,734 passed, 8 skipped, 0 failed, run without updating goldens, and no golden or accessibility fixture changed.
+- Durable learnings: (1) When a later layer sits beside an earlier one (G38), an absent earlier layer changes what the empty state may say. "No decision recorded" was true when the first pass was the only decision; with a reviewer's decision beside it, the empty state is only for a region with neither. (2) Extracting the shared anatomy of the two decisions, rather than copying the column, kept the model's block pixel for pixel and semantics node for node, so no golden or accessibility fixture moved.
+- Failed approaches: none. The auto-mode safety check was rate-limited once; the red commit staged its paths explicitly, so writing the implementation while waiting could not leak into it.
+- Remaining follow-ups:
+  - the derived mark with `derived_from`;
+  - field findings and the authority identity with its credit;
+  - the per-label fallback settled entry;
+  - words for `field_harness`, `review_decision` and derivation sources (S5 confirmed the ids on 2026-09-24);
+  - re-copy the canonical example when S5 sends the corrected commit (`col`);
+  - the fetch (T2f part two) after S5's T4.
