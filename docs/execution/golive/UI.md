@@ -447,3 +447,22 @@ search API, so the picker never offers a value the server refuses.
   scheduled", "Issue: Reviewer approval needed". It no longer shows the
   wire value (`retry_scheduled`, `human_approval_required`). An
   identifier, a date or a number stays as typed.
+
+## T4 Region boxes on the lane's records
+
+Brief T4. The client draws label regions only over a verified oriented
+view (`SourceOrientationCaveat.unverified` in `source_pane.dart`). The
+backend strips that view for the evidence pilot (`api.py` 369-370,
+1686-1689 and 1705-1706).
+
+S3 confirmed on 2026-09-23 that a lane run never carries `evidence_pilot`,
+intake keeps the oriented view (`view_derivative`) with its checksums, and
+SAM 3 keeps the original's pixel edges. So a lane record's view verifies
+and its boxes are drawn with no change to the gate, while the pilot's
+frozen originals keep the caveat. T4 is therefore a client test, not a
+gate change:
+
+- A lane-shaped record's view verifies through the repository (its
+  checksums match), and the gate allows its label regions.
+- A pilot-shaped record, whose view the server strips, keeps "This
+  photograph has no verified orientation, so label regions are not drawn."
