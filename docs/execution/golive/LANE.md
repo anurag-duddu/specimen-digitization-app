@@ -433,6 +433,15 @@ owner set the model allowance (G30).
 `specimen-worker --mode production --drain` runs the lane's worker. The frozen
 pilot's worker is unchanged and still needs its launch files.
 
+- **Command.** `--max-seconds` is the job's task deadline: 3600 by default, more
+  than 600 and at most 3600. The command refuses `--once` and the pilot's inputs
+  (`--launch-policy`, `--source-manifest`, `--evidence-only`,
+  `--evidence-profile`, `--materialize-config`). `--check-config` checks the
+  settings and exits.
+- **Process.** The drain runs in the job's own process, not under the pilot's
+  supervisor. The supervisor hard-stops its worker group on `SIGTERM`, which
+  would leave the fence held until its lease expired. Each external call keeps
+  its own bounded effect and deadline.
 - **Settings.** No launch policy, manifest or timing files. Before it takes any
   work, the worker checks its settings and exits 2 if any of these is missing
   or wrong:
@@ -462,6 +471,8 @@ pilot's worker is unchanged and still needs its launch files.
     worker also writes, are marked not sensitive for the same reason. A
     circuit document left sensitive by an earlier worker can be neither read
     nor replaced by this one.
+  - The holder is the Cloud Run execution and task index. A retried attempt of
+    the same task takes over at once, because its predecessor has exited.
   - A worker that stalls past its lease and loses the fence leaves the
     collection to the new holder.
 - **Order.**
