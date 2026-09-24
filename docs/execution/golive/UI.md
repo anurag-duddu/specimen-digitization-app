@@ -261,8 +261,8 @@ status strip's blockers).
 
 - A failed coverage check is one entry in the blockers list, "Label
   coverage not confirmed". Its detail says what each failed check measured,
-  from the detail S5 pins for the thread (section 8, with S5's thread-API
-  PR; #88 takes no pushes during its review):
+  from the detail S5 pins for the thread (#88 section 8 at `4f9997a`,
+  re-confirmed by S6 on #88):
   - the region count: "Found 3 label regions; the profile allows 1 to 2",
     "Found no label regions", or "A label region lies outside the
     photograph";
