@@ -553,13 +553,21 @@ would cross the allowance is not called. The run blocks with
 `program_allowance_exhausted`, an operational block with no queue outcome
 (QUE-005).
 
-G30 caps what production's model calls spend (PLAN 4.3, #104). So each paid
-call reserves its step's reservation before it starts, and settles to its cost
-once its outcome is known; T2b and T2c build it. Which failures count as known,
-and how reservations are checked, are for the coordinator's next plan PR. A
-retry reserves again. The run's own budget keeps its rule: its reservations are
-never refunded (`domain.py` 222-227). With no allowance configured, the ledger
-is not consulted.
+G30 caps what production's model calls spend (PLAN 4.3, #104; the coordinator's
+ruling of 2026-09-23). T2b and T2c build it:
+
+- Every reservation is one atomic check-and-reserve on the shared ledger,
+  before the call. Once the allowance is spent, paid steps block with
+  `program_allowance_exhausted`.
+- A call settles to its cost when the provider reports usage or returns a
+  billed amount, which releases the rest of its reservation. A settled cost
+  above its reservation counts in full.
+- An unknown outcome (a timeout, a transport error, a 5xx, or a response
+  without usage) stays reserved at its full amount, recorded as
+  `cost_basis: reserved`. A retry reserves again.
+- The run's own budget keeps its rule: its reservations are never refunded
+  (`domain.py` 222-227). With no allowance configured, the ledger is not
+  consulted.
 
 Every reservation also records the program's position on the run: the
 allowance, the total reserved after this step, and what remains. The thread
