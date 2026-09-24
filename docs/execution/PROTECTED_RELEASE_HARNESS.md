@@ -157,11 +157,12 @@ deploy; the release paths never change IAM or database users/passwords.
    to the evidence-based acceptance harness and coordinator.
    > 2026-09-23: Superseded for the go-live program by
    > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-   > G1, G2 and G11. Each specimen is checked through the full pipeline as it is
-   > processed, in order, by the per-specimen loop of PLAN section 8, not as one
-   > verification pass for all ten; the authorization artifacts are retired. The
-   > rest of this step stands, including every case the human-review checker
-   > (`scripts/qa/live/human_review.py`) requires: the ten UI cases of
+   > G1, G2, G9 and G11. Each specimen is checked through the full pipeline as
+   > it is processed, in order, by the per-specimen loop of PLAN section 8, not
+   > as one verification pass for all ten, and a record the harness resolves is
+   > cleared without a human (G1); the authorization artifacts are retired. The
+   > rest of this step stands, including every UI and live case the human-review
+   > checker (`scripts/qa/live/human_review.py`) requires: the ten UI cases of
    > [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN, UI-INTAKE,
    > UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN,
    > UI-SEARCH-QUEUE, UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and
@@ -174,8 +175,13 @@ deploy; the release paths never change IAM or database users/passwords.
    > cross-collection, viewer-write and revoked-access denials, in which stale
    > responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent
    > save, and with the ten, in order and beside new uploads, in place of a
-   > frozen manifest (G2) and the gate record in place of a release packet
-   > (G11).
+   > frozen manifest (G2), G9's USD 25 ceiling in place of the cohort budget,
+   > and the release packet and the cohort ledger retired (G11). G30's per-call
+   > reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
+   > In S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed
+   > API and worker SHAs and image digests and the SQL and rules revisions with
+   > the release runs on main that deployed them, in place of the packet; the
+   > rest of DEPLOY-IDENTITY stands.
 
 If a later Hosting-only main merge changes the source SHA, `data-verify/v1` can
 publish a current-source compatibility receipt without replaying the rehearsal.
@@ -353,10 +359,11 @@ No wider cleanup authority is inferred from owned-clone disposal.
   application smoke, and independent all-ten human-review acceptance.
   > 2026-09-23: Superseded for the go-live program by
   > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G2 and G11. Each specimen is checked as it is processed, not in one
-  > independent all-ten human-review pass. The bullet's exact-source protected
-  > workflows, matching public Hosting marker and application smoke stand, and
-  > so does the rest of acceptance, including every case the human-review
+  > G1, G2, G9 and G11. Each specimen is checked as it is processed, not in one
+  > independent all-ten human-review pass, and a record the harness resolves is
+  > cleared without a human (G1). The bullet's exact-source protected workflows,
+  > matching public Hosting marker and application smoke stand, and so does the
+  > rest of acceptance, including every UI and live case the human-review
   > checker (`scripts/qa/live/human_review.py`) requires: the ten UI cases of
   > [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN, UI-INTAKE,
   > UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN,
@@ -370,6 +377,12 @@ No wider cleanup authority is inferred from owned-clone disposal.
   > cross-collection, viewer-write and revoked-access denials, in which stale
   > responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
   > and with the ten, in order and beside new uploads, in place of a frozen
-  > manifest (G2) and the gate record in place of a release packet (G11).
+  > manifest (G2), G9's USD 25 ceiling in place of the cohort budget, and the
+  > release packet and the cohort ledger retired (G11). G30's per-call
+  > reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
+  > S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
+  > and worker SHAs and image digests and the SQL and rules revisions with the
+  > release runs on main that deployed them, in place of the packet; the rest of
+  > DEPLOY-IDENTITY stands.
 
 Local tests and a successful build do not satisfy any missing live observation.

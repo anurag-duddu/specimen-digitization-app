@@ -11978,6 +11978,31 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (6) Merging main can shift the line numbers the plan cites. #76 moved the PRD's open items by three lines, so G rows appeared to settle other owner-only items. After each merge, map the citations of every file it touched from the old version to the new.
 - Remaining follow-ups: the owner's field list (G8); S2's IAM list and the T3e membership run; the owner's rulings on S8's D1-D13 after the steward reviews #94; the G15 calibration sign-off; the lab's re-measurement of the harness model with G29's prompt.
 
+### 2026-09-24 — Go-live release workstream (S2), T1c: #78's acceptance follow-ups
+
+- Task: the S2 session, the PR steward's should-fix list from #78's merge review (comment 5808938104).
+- Branch/worktree: `golive/release-docs-acceptance-followups`, from `main` at `0632994`, in this session's worktree.
+- Outcome:
+  - The five acceptance notes now keep "every UI and live case" the human-review checker requires. It also requires four manual subcriteria and `HUMAN-RECORDS`, which the notes leave under "the rest stands".
+  - The notes no longer name the gate record, which main doesn't define, as the packet's replacement. The release packet and the cohort ledger retire (G11), and G9's USD 25 replaces the cohort budget. G30's sentence follows that retirement in every note.
+  - In S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API and worker SHAs and image digests and the SQL and rules revisions with the release runs on main that deployed them, and the rest of DEPLOY-IDENTITY stands.
+  - All five notes state G1 (a record the harness resolves is cleared without a human), and their headers name G1, G2, G9 and G11.
+  - `golive/RELEASE.md` section 2.1 tracks the `human_review.py` lines that still enforce what G1, G2, G9 and G11 retire:
+    - `HUMAN-NO-AUTOMATIC-CLEARANCE`'s automatic-clearance and institutional-approval clause (52, 124);
+    - the policy gates and the review block (194-200), keeping the rule that an operational block cannot qualify;
+    - the frozen manifest (103, 168-169, 175, 290), keeping the evidence fields and re-anchoring the original-bytes and scope checks to the ten;
+    - the manifest digest on SAM receipts, the report and case rows (224; `acceptance.py` 431, 443);
+    - COHORT-BUDGET (298-304; `acceptance.py` 512-517).
+
+    The coordinator assigned these to S2, after T3d, on 2026-09-24, and will add `scripts/qa/live/` to PLAN section 6.
+- Commits/PRs: `8772220`, `3926f0d` (the owner) and the review round's commit.
+- Validation actually run: pre-commit; `tests/test_deployment_policy.py`; `git diff --check`; the relative-link check; the acceptance sweep (5 of 5 notes carry the updated sentence).
+- Durable learnings:
+  - A replacement named in a note must exist where the reader is, on main. Name what retires, and say what the check compares against now.
+  - A note that newly retires a ledger or a budget takes G30's sentence, even when it only restates a substitution.
+  - Tracking rows are a later PR's work order, so each must name exactly what a decision retires and what stays.
+- Failed approaches: none.
+- Remaining follow-ups: S2 changes those `human_review.py` lines after T3d.
 ### 2026-09-24 — Go-live program: plan after #104, owner decisions G32 to G45
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
