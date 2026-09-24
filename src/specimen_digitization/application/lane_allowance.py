@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from uuid import NAMESPACE_URL, uuid5
 
 from .domain import Scope
+from .lane_worker import stored_integer
 from .storage import Conflict, Missing
 
 LEDGER_KIND = "worker_cursor"  # The worker's own state documents, one actor only.
@@ -39,9 +40,14 @@ class ProgramLedger:
 
     def read(self) -> dict:
         try:
-            return self.repository.document(self.scope, LEDGER_KIND, self.ident)
+            current = self.repository.document(self.scope, LEDGER_KIND, self.ident)
         except Missing:
             return {"revision": 0, "reserved_total_micros": 0}
+        return dict(
+            current,
+            revision=stored_integer(current["revision"]),
+            reserved_total_micros=stored_integer(current["reserved_total_micros"]),
+        )
 
     def reserve(self, allowance_micros, micros, *, specimen_id, run_id, step, attempt):
         for _ in range(ATTEMPTS):

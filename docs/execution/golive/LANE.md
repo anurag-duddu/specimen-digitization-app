@@ -589,6 +589,14 @@ How T2b builds it:
 - **On the run.** `Run.program_allowance` holds the allowance, the reserved
   total after the step, what remains, the ledger's revision and the time. A
   refused reservation records the same, with the amount it asked for.
+- **Blocks and refusals.** Both blocks are operational (QUE-005), and the
+  operator's `retry` or `resume` action requests the run again.
+
+  | Code | What it means | What to check |
+  | --- | --- | --- |
+  | `program_allowance_exhausted` | The next paid step would take the program past its model allowance, so it was not called. | The allowance and the remaining amount on the run. Only the owner raises the allowance, by a profile edit. Then retry. |
+  | `program_allowance_ledger_unavailable` | The worker could not read or update the program's ledger. | The worker's membership in the ledger's collection, and that the ledger document is its own. Then retry. |
+  | `program_allowance_unavailable` | A request was refused: the ledger's tree key is not bound to exactly one collection. | `SPECIMEN_COLLECTION_BINDINGS_JSON`. Then request processing again. |
 
 ### Cost of every paid call
 

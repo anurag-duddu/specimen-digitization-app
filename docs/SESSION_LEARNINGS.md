@@ -11969,7 +11969,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - `lane_allowance.reserve_step` adds each paid step's stage reservation to a non-sensitive `worker_cursor` ledger. It runs after the run's budget check and the circuit's admission, and before the intent is saved.
   - A reservation that would cross the allowance blocks the run with `program_allowance_exhausted` and the call is not made. A ledger that stays busy or cannot be read blocks it with `program_allowance_ledger_unavailable`.
   - `Run.program_allowance` records the program's position after every reservation. Reservations are never refunded.
-- Validation actually run: `tests/test_lane_allowance.py` (12 passed), including an emulator-mode drain whose ledger total equals the run's own reserved cost; the full gates as listed in the pull request.
+- Validation actually run: `tests/test_lane_allowance.py` (13 passed), including an emulator-mode drain whose ledger total equals the run's own reserved cost. `tests/test_lane_documents_sqlconnect.py` ran against `scripts/data/serve-local.sh`: an operator without sensitive access creates and saves the ledger, and a reservation past the allowance is refused (4 passed). Also the full gates as listed in the pull request.
 - Durable learnings: the reservation must come after the provider circuit's admission. During an outage the circuit refuses call after call, and reserving first would spend the allowance on calls that never happen.
 - Failed approaches: none.
 - Remaining follow-ups: T2c records each paid call's usage and computed cost (`Run.paid_calls`) from a pinned price list, with `record_tool_usage` for geocoding. The pilot's `parse` reservation rises to 30,000 there, with S4's harness.

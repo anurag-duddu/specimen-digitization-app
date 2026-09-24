@@ -295,3 +295,23 @@ def test_a_ledger_that_stays_busy_blocks_the_run(tmp_path):
         5_000_000, 15_000, specimen_id="s", run_id="r", step="segment", attempt=1
     )
     assert reservation.issue == "program_allowance_ledger_unavailable"
+
+
+def test_the_ledger_reads_numbers_sql_connect_returns_as_doubles(tmp_path):
+    repository = NonSensitiveMember(tmp_path / "state.sqlite3")
+    seed(repository, 15_000)
+    document = repository.document
+
+    def transported(scope, kind, ident):
+        # SQL Connect's Struct transport may return every JSON number as a double.
+        stored = document(scope, kind, ident)
+        return {k: float(v) if type(v) is int else v for k, v in stored.items()}
+
+    repository.document = transported
+    ledger = ProgramLedger(repository, SCOPE, clock=lambda: MOMENT)
+    reservation = ledger.reserve(
+        5_000_000, 20_000, specimen_id="s", run_id="r", step="parse", attempt=1
+    )
+    assert reservation.issue is None
+    assert reservation.position["reserved_total_micros"] == 35_000
+    assert type(ledger.read()["reserved_total_micros"]) is int
