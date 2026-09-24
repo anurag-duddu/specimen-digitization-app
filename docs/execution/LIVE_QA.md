@@ -1,5 +1,13 @@
 # Independent live rollout QA
 
+> 2026-09-23: The owner's decisions in [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> supersede parts of this document for the go-live program. Each superseded
+> clause keeps its original text and carries a dated note naming the
+> decision. [`golive/RELEASE.md`](golive/RELEASE.md) lists the code that
+> still enforces a superseded clause until a later go-live pull request
+> changes it.
+
 Status: **Blocked for final live acceptance; local harness implemented.**
 Owner: task `01a08219-3527-7523-8365-7c3a85c3ca67`.
 Coordinator: `01a07f48-a57c-71b0-9642-c9430886049c`.
@@ -25,6 +33,14 @@ older generic sample language: only the first ten existing cloud specimens;
 no expansion until the user reviews and approves end-to-end results. Locally
 authored rasters are harness fixtures, never pilot records or quality evidence.
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2. Specimens are processed one at a time, on demand, including new
+> uploads, instead of waiting on the user's end-to-end review before any
+> expansion; the ten pilot specimens remain the acceptance cohort, processed
+> in order, and only they count toward it.
+
 Initial admin supplied privately to the coordinator; no email/UID committed.
 Budget remains unavailable. Read-only metadata is allowed but the data owner
 reports expired cloud reauthentication and no ADC; exact source ordering,
@@ -32,6 +48,15 @@ inventory and ready manifest are **Not confirmed**. Do not download or infer
 on any cloud specimen until the data owner freezes the approved object set and
 the coordinator supplies concrete execution authorization. No paid calls,
 cloud mutation, hand deploy, main edits or interference with ports 3000/8000.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2. No manifest is frozen and there is no approved object set to freeze,
+> since each of the ten is authorized on its own instead (PLAN section 4.1
+> stage 2); the ten remain the acceptance cohort, processed in order. The
+> rest of the paragraph stands, including that this harness makes no paid
+> call, cloud mutation or hand deploy.
 
 ## Evidence states and verdict
 
@@ -52,6 +77,19 @@ mapping even where policy or representative quality approval is unavailable.
 Ten pilot results do not establish an institutionally approved representative
 gold set, `Verbatim D/T/S` semantics, Parties authority or automatic clearance.
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G1 and G11. Automated clearance is in scope for this program: a record the
+> harness resolves is cleared without a human. The offline checker's evidence
+> packet and the independent review it was readied for retire with the
+> release envelope; the PR steward's review of the pull request replaces the
+> independent review. The rest of the paragraph stands, including that ten
+> pilot results establish no institutionally approved representative gold
+> set, `Verbatim D/T/S` semantics or Parties authority, and that all 20 PRD
+> criteria remain in the mapping even where policy or representative quality
+> approval is unavailable.
+
 ## Contracts and ownership
 
 Data owner supplies private `specimen-pilot/v1` with `status=ready`, exact ten
@@ -62,6 +100,17 @@ Metadata-only manifests are rejected. Multiple original objects per specimen
 are retained; no failed specimen leaves the denominator. Exact file SHA-256 is
 supplied separately by coordinator. QA independently validates this shared
 schema; it does not derive authorization from a self-declared manifest field.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2 and G11. There is no `specimen-pilot/v1` manifest and no authorization
+> reference to supply: each of the ten is authorized on its own instead (PLAN
+> section 4.1 stage 2), and authorization artifacts retire (G11). The ten
+> remain the acceptance cohort, in established source order, and no failed
+> specimen leaves the denominator. The rest of the paragraph stands,
+> including that multiple original objects per specimen are retained and that
+> exact file SHA-256 is independently supplied.
 
 Integration supplies full immutable combined commit, owner PRs, image digests,
 connector/rules revisions, clean-tree status, supported start/stop commands,
@@ -103,6 +152,23 @@ digests, IDs privately, and before/after retained-state counts when applicable.
 | DEPLOY-IDENTITY | All five exact-head PR checks, green main workflow/deploy job, public Hosting marker and application smoke; API/worker SHA+image digest, SQL/rules revisions match release packet. Wrong/stale marker fails. | Delivery / later authorized merge |
 | BROWSER-E2E | Real sign-in/App Check, assigned collection, authorized intake/processing, evidence view, correction/history, refresh and recovery across the full frozen ten. Keyboard/accessibility and error states; no hidden repair. | Client + QA / integrated target |
 
+> 2026-09-23: The DATA-TEN, COST-BOUNDS, DEPLOY-IDENTITY and BROWSER-E2E rows
+> are superseded in part for the go-live program by
+> [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2, G9, G11 and G30. DATA-TEN's frozen inventory reconciles the ten, in
+> order, as the acceptance cohort; an eleventh or a changed-generation source
+> still cannot enter it, but a new upload may now enter on-demand processing
+> outside it (G2). COST-BOUNDS' concrete approved budget is the USD 25
+> cumulative ceiling, infrastructure and models together (G9), and G30's
+> per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+> mechanism). In S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares
+> the deployed API and worker SHAs and image digests and the SQL and rules
+> revisions with the release runs on main that deployed them, in place of the
+> packet; the rest of DEPLOY-IDENTITY stands. BROWSER-E2E's full frozen ten is
+> the ten pilot specimens processed one at a time, in order, beside new
+> uploads (G2). The rest of each row stands.
+
 ## All 20 PRD section 19 criteria retained
 
 All rows are **Not run on the combined live candidate**. Local evidence below
@@ -131,6 +197,17 @@ not proof of the current rollout or institutional acceptance.
 | PRD-18 | Unauthorized/revoked/cross-scope access to original/crop/record/audit/credential evidence denied through API and direct data endpoints. | All AUTH cases |
 | PRD-19 | Keyboard/focus/screen-reader/error recovery/security/quality criteria pass with explicit approved thresholds. Web launch target; Android/iOS build evidence separate from device/signing. | BROWSER-E2E; quality/semantics approval not supplied |
 | PRD-20 | Production-like full ten completes via UI/API with real runtime/data/providers; retain outcomes including review/blocked cases, no DB edits or hidden repair. | All live cases; launch pending |
+
+> 2026-09-23: The PRD-03 row is superseded in part for the go-live program by
+> [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G14. There is no classification stage to rank: the profile comes from the
+> collection a specimen was uploaded or imported into, resolved down the
+> collection tree. The rest of the row stands, including that a reviewer can
+> correct the collection/profile through the existing classification
+> endpoint, that a new pinned run supersedes dependent outputs while old
+> history remains, and that an unauthorized target or a stale revision is
+> rejected.
 
 ## Executed evidence and commands
 
@@ -162,6 +239,19 @@ does not allow unknown origin. No real Firebase token or App Check exercised.
 | Combined candidate, deploy target and restart controls | Not supplied: delivery freezes candidate after scoped PRs; no self-merge |
 | Institutional clearance, field semantics, representative quality approval | Not supplied: retain explicit blockers; never infer institutional sign-off |
 
+> 2026-09-23: The "Ready exact-ten manifest..." and "Cloud spending..." rows
+> are superseded in part for the go-live program by
+> [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2, G9 and G11. No manifest is frozen; the ten are the verified acceptance
+> cohort, processed in order, each authorized on its own (PLAN section 4.1
+> stage 2, G2), so the first row's blocker no longer applies. Cloud spending
+> is bounded by the USD 25 cumulative ceiling, infrastructure and models
+> together (G9), and the release envelope and its execution packet retire
+> (G11), so the second row's blocker is answered rather than pending; model
+> data policy and provider routing stand. G30's per-call reservations stand
+> (PLAN 4.3; the coordinator's ruling on the mechanism).
+
 Next QA action: finish canonical local gate, submit scoped PR and watch all five
 checks. Then independently reproduce the frozen combined candidate and browser
 flow when coordinator supplies prerequisites. Re-run evidence on the final
@@ -175,6 +265,16 @@ model, prompt and configuration; real SAM 3 plus two blind readings; draft and
 risk-blocked profile stays draft; terminal `processing_blocked` with
 `pilot_evidence_review_required` and disposition null. No parsing, authority
 lookup, finalization or clearance. Normal production policy remains unchanged.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G1 and G2. The pipeline of PLAN section 1 is now the scope: authority
+> lookup, finalization and clearance run, and a record the harness resolves
+> is cleared without a human, in place of this narrowly scoped, terminal
+> `processing_blocked` milestone. Each of the ten is authorized on its own
+> instead of an exact ten manifest (G2). Real SAM 3 plus two blind readings
+> still run.
 
 QA will independently attempt outside-ten and changed-binding entry, absent
 approval/budget, budget reset through run/profile/config changes, repeated
@@ -244,6 +344,14 @@ unpinned runtime evidence. This change does not grant approval or establish real
 SAM serving; complete live case evidence and independent review are still
 required. Subsequent exact owner-review closures and CI results are retained in
 the PR body so historical candidate observations are not silently relabeled.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. The PR steward's fresh-swarm review of the pull request replaces the
+> independent review named here. The rest of the paragraph stands, including
+> that complete live case evidence is still required and that this change
+> alone grants no approval and establishes no real SAM serving.
 
 ## Recovery and rollback
 

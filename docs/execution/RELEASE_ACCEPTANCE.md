@@ -1,5 +1,13 @@
 # Production product acceptance
 
+> 2026-09-23: The owner's decisions in [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> supersede parts of this document for the go-live program. Each superseded
+> clause keeps its original text and carries a dated note naming the
+> decision. [`golive/RELEASE.md`](golive/RELEASE.md) lists the code that
+> still enforces a superseded clause until a later go-live pull request
+> changes it.
+
 Current approved budget/duration: see the [September 14 amendment](APPROVED_RELEASE_BUDGET.md).
 Historical USD5/30-minute statements below remain applicable to legacy artifacts;
 new release inputs must explicitly select the approved additive contracts.
@@ -39,15 +47,42 @@ Required before live execution:
   amendment and bounded Google setup under the shared USD 5 ceiling. Implementation
   and actual release receipts, combined immutable SHA, public API/App Check
   configuration and exact resource/cost qualification remain required.
+  > 2026-09-23: Superseded for the go-live program by
+  > [`docs/execution/golive/PLAN.md` section
+  > 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
+  > models together, replacing the shared USD 5 ceiling. The protected
+  > runtime/data amendment this bullet describes is retired: envelopes, cost
+  > ledgers, independent-review reports and authorization artifacts retire,
+  > and a merge deploys automatically after the required checks and the PR
+  > steward's approval. G30's per-call reservations stand (PLAN 4.3; the
+  > coordinator's ruling on the mechanism). The rest of the bullet stands,
+  > including the public API/App Check configuration and the combined
+  > immutable SHA this release still verifies.
 - Data owner provides the approved private ready first-ten manifest and its
   independently supplied SHA-256, authorized identity/scope, original generations,
   and approved local intake inputs. Keep all identity/object/receipt details private.
+  > 2026-09-23: Superseded for the go-live program by
+  > [`docs/execution/golive/PLAN.md` section
+  > 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G2. No manifest is frozen; each of the ten is authorized on its own
+  > instead (PLAN section 4.1 stage 2). The ten pilot specimens remain the
+  > acceptance cohort, processed in order, and new uploads may enter
+  > processing too, never the acceptance cohort. The rest of the bullet
+  > stands, including the authorized identity/scope, original generations and
+  > approved local intake inputs this release still needs, kept private.
 - Real sign-in, App Check, SQL/Storage readiness, deployed runtime/worker/SAM pins
   and restore/restart execution must be demonstrated. Google reauthentication is
   coordinator-owned; missing access is not proof that a cloud resource is absent.
 - The user supplied **USD 5 total incremental spend**, shared across every session,
   provider, retry and day, with the same daily maximum. Budget approval is present;
   measured costs, hard execution reservations and complete reconciliation are not.
+  > 2026-09-23: Superseded for the go-live program by
+  > [`docs/execution/golive/PLAN.md` section
+  > 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G9. The spending ceiling is USD 25, cumulative, infrastructure and models
+  > together, replacing this USD 5 total. G30's per-call reservations stand
+  > (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 The prior local PostgreSQL/SQL Connect restore result is owner evidence supplied
 by the coordinator: scoped paging/search/CAS/admin concurrency, restore and two
@@ -65,6 +100,13 @@ invalid. A blocked/not-run/non-live case is pending. Every passing case requires
 retained bytes with their exact SHA-256, observer, time, command, expected/actual
 behavior and successful exit status. The seven data journeys require all ten
 manifest specimens; a failed specimen stays in the denominator.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2. There is no manifest binding the seven data journeys: the ten pilot
+> specimens remain the acceptance cohort, processed one at a time, on demand,
+> in order, and a failed specimen still stays in the denominator.
 
 The rows below specify execution through the public UI and supported API. Record
 sanitized assertions in Git only; preserve screenshots, exact strings, source
@@ -98,6 +140,18 @@ This is reviewable evidence, not institutional quality qualification. The broade
 20 PRD criteria remain pending when those requirements have not been observed.
 
 ## Shared cost evidence contract
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2, G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure
+> and models together, in place of this section's `cohort-budget/v1` ledger
+> and its USD 5 (`5000000` micro-USD) total (G9); no frozen manifest SHA
+> binds a run, since each of the ten is authorized on its own, in order (PLAN
+> section 4.1 stage 2, G2); and this cohort cost ledger, its eleven reconciled
+> categories, its private authorization reference and the independent
+> reviewer's role retire for this program (G11). G30's per-call reservations
+> stand (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 The ledger's `budget` uses `cohort-budget/v1`, USD, the same frozen manifest SHA,
 private authorization reference and scope
@@ -227,6 +281,13 @@ USD 5 budget, and qualify native SAM timing. No real model, image, cloud or paid
 call was made during this independent follow-up. Runtime owner canonical checks
 and exact integrated release checks remain separate from this focused review.
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G9. The spending ceiling is USD 25, cumulative, infrastructure and models
+> together, replacing this shared USD 5 budget. G30's per-call reservations
+> stand (PLAN 4.3; the coordinator's ruling on the mechanism).
+
 ## Approved human-review release projection
 
 The user explicitly selected complete human review of all ten specimens, with
@@ -237,6 +298,39 @@ approved the concrete mapping below. Authority is the private
 This decision changes acceptance scope; it does not qualify any unexecuted PRD
 criterion, expand infrastructure authority, raise the USD 5 cap, grant sensitive
 access or change the ten-source denominator.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G1, G2, G9, G11 and G14. Automated clearance is no longer deferred: a
+> record the harness resolves is cleared without a human, and the
+> administrator reviews only what the queue sends to human review (G1).
+> Under G14 there is no classification stage; the profile comes from the
+> intake collection. The `human-review-release-scope-v1.json` authority
+> retires with the release envelope and the other authorization artifacts
+> (G11), and the cap is USD 25, cumulative, infrastructure and models
+> together, not USD 5 (G9). The rest of acceptance stands, including every UI
+> and live case the human-review checker (`scripts/qa/live/human_review.py`)
+> requires: the ten UI cases of
+> [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN, UI-INTAKE,
+> UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN,
+> UI-SEARCH-QUEUE, UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and
+> UI-NO-SYNTHETIC-FALLBACK) and the fifteen live cases of
+> [`LIVE_QA.md`](LIVE_QA.md) (AUTH-IDENTITY, AUTH-APPCHECK, AUTH-MEMBERSHIP,
+> AUTH-REVOKE, AUTH-CROSS-SCOPE, DATA-TEN, DATA-GENERATION, DATA-RESTORE,
+> PROVIDER-ACTUAL, COST-BOUNDS, RETRY-UNKNOWN, WORKER-RESTART, API-RESTART,
+> DEPLOY-IDENTITY and BROWSER-E2E), with UI-SIGN-IN's unverified and no-role
+> denial, UI-DENIAL-RECOVERY's unauthenticated, cross-organization or
+> cross-collection, viewer-write and revoked-access denials, in which stale
+> responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
+> and with the ten, in order and beside new uploads, in place of a frozen
+> manifest (G2), G9's USD 25 ceiling in place of the cohort budget, and the
+> release packet and the cohort ledger retired (G11). G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
+> S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
+> and worker SHAs and image digests and the SQL and rules revisions with the
+> release runs on main that deployed them, in place of the packet; the rest of
+> DEPLOY-IDENTITY stands.
 
 `scripts/qa/live/human_review.py` is a separate projection over the unchanged
 45-case full gate. It requires **every existing ten UI and fifteen live case**,
@@ -252,6 +346,15 @@ row is silently treated as passed or deferred.
 | HUMAN-NO-AUTOMATIC-CLEARANCE | PRD-10/11/14/15: correction/save does not enable automatic clearance, approve institutional semantics/risk, or mislabel an operational failure as Deferred. Exercise denial controls with unresolved mandatory values and verify review state/history survive. |
 | HUMAN-ACCESSIBLE-REVIEW | Manual portion of PRD-19: execute keyboard/focus/error recovery, image/region navigation, text-based uncertainty and save/reopen in the actual public review UI. This does not claim institutional quality thresholds are approved. |
 
+> 2026-09-23: The HUMAN-NO-AUTOMATIC-CLEARANCE row is superseded in part for
+> the go-live program by [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G1. Its clause that correction and save never enable automatic clearance or
+> approve institutional semantics/risk is retired: a record the harness
+> resolves is cleared without a human. The rest of the row stands, including
+> no clearance with mandatory values unresolved, that an operational failure
+> is never labelled Deferred, and review state and history surviving.
+
 The existing UI/live cases cover intake/immutability, authentic sign-in and scope,
 actual processing, literal comparisons/uncertainty, correction/save/readback,
 search/queue, provenance/history, denial, recovery/restart/restore and budget.
@@ -260,6 +363,17 @@ at their actual full-PRD status. In particular, PRD-04/07/08/10/11/14/15/16/17/1
 are not wholesale waived. `full_prd_qualified` and `release_accepted` remain false
 in every human-checker output. Only the coordinator's independent actual release
 review may make a release decision for the approved human scope.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section
+> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. The coordinator's independent actual release review is retired: the
+> PR steward's fresh-swarm review of the pull request replaces the
+> independent review, and a merge deploys automatically after the required
+> checks and the PR steward's approval. The rest of the paragraph stands,
+> including that `full_prd_qualified` and `release_accepted` remain false in
+> every human-checker output and that PRD-04/07/08/10/11/14/15/16/17/19/20 are
+> not wholesale waived.
 
 ### Retained record evidence
 
