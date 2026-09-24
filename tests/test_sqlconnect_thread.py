@@ -77,7 +77,8 @@ def test_a_saved_run_reads_back_as_its_thread(tmp_path, caplog):
         assert real["trace"] == {"trace_id": TRACE, "url": f"https://logfire.example.test/trace/{TRACE}"}
         assert real["tool_calls"][0]["started_at"] == "2026-09-23T12:04:00.000000Z"
         fields = {f["field_key"]: f for f in real["fields"]}
-        assert fields["taxon"]["confirmed_observation_id"] == s.run.observations[2].id
+        assert fields["taxon"]["settled_observation_ids"] == [s.run.observations[2].id]
+        assert fields["city"]["settled_observation_ids"] == [s.run.observations[0].id]
         assert [e["relation"] for e in fields["taxon"]["evidence"]] == ["decides", "contradicts"]
         assert real["decision"]["findings"][1]["evidence_ids"] == [s.run.lookups[3].id]
         assert real["coverage_check"]["evidence_id"] == s.run.evidence[0].id

@@ -760,6 +760,12 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   yet reads with empty lists, a null `decision` and the snapshot's trace id.
 - **Status.** `run.status` applies the summary's rule to the run read, so a
   previous run shows the status its last state gives.
+- **Field values.** A field's `normalized`, `authority_id` and `parsed` are the
+  first set on its candidates in verbatim order, and its `evidence` is every
+  candidate's linked evidence, each item once. Only a candidate carrying the
+  settled value carries these (section 11), so one label shows that
+  candidate's, and two labels that settled alike (G32) show both labels'
+  evidence.
 - **Bounds.** Every list has a fixed limit: 100 regions, 400 model outputs, 100
   comparisons, 400 handoffs, 1,000 evidence items, 1,000 tool calls, 64 evidence
   links per candidate, 500 resolved fields and 200 findings; the ids passed are

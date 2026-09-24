@@ -113,6 +113,16 @@ def rows(written, specimen_id: str, run_id: str, keys: dict) -> dict:
         parent = parents.get(parent_id)
         return None if parent is None else {"region": region(parent["regionId"])}
 
+    def decided(decision_id):
+        """A candidate's decision: its selected reading (G32) and its region."""
+        parent = decisions.get(decision_id)
+        if parent is None:
+            return None
+        return {
+            "selectedObservationId": hexid(parent["selectedObservationId"]),
+            "region": region(parent["regionId"]),
+        }
+
     def candidate(row):
         return {
             "id": hexid(row["id"]),
@@ -124,7 +134,7 @@ def rows(written, specimen_id: str, run_id: str, keys: dict) -> dict:
             "authorityId": row["authorityId"],
             "inputSource": row["inputSource"],
             "sourceObservationId": hexid(row["sourceObservationId"]),
-            "sourceTranscription": through(decisions, row["sourceTranscriptionId"]),
+            "sourceTranscription": decided(row["sourceTranscriptionId"]),
             "sourceObservation": through(observations, row["sourceObservationId"]),
             "links": [
                 {"evidenceId": hexid(link["evidenceId"]), "relation": link["relation"]}

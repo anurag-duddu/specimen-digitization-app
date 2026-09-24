@@ -445,7 +445,8 @@ same(read.id, work.run.id);
 same(read.decisions.map(d => [d.id, d.decisionKind, d.selectedObservationId]), [[work.transcription.id, 'first_pass', work.left.id]]);
 same(read.handoffs.map(h => [h.role, h.observationId, h.handedText]), [['decided_transcript', work.left.id, work.left.literalText]]);
 same(read.candidates.map(c => [c.id, c.links.map(l => l.relation)]), [[work.candidate.id, ['supports', 'contradicts']]]);
-same(read.candidates[0].sourceTranscription.region.domainRegionId, work.region.domainRegionId);
+// A candidate's decision gives its region and, for G32, the reading it selected.
+same([read.candidates[0].sourceTranscription.region.domainRegionId, read.candidates[0].sourceTranscription.selectedObservationId], [work.region.domainRegionId, work.left.id]);
 same(read.records.map(r => [r.id, r.fields.map(f => f.fieldKey), r.findings.map(f => f.severity)]), [[work.record.id, ['city'], ['hard', 'warning', 'warning']]]);
 // The run's own four regions: its first, a second label, a superseding one and one with a crop.
 assert.equal(read.regions.length, 4);
