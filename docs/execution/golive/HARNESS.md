@@ -543,3 +543,42 @@ run. T1's probe used 3 requests and 1,285 output tokens.
   - an answer still invalid after its retries (`harness_malformed_output`).
 - A provider error stays an operational block, as for every model call.
 - An operational tool outcome blocks the run (section 9).
+
+## 12. The harness's instructions: the managed prompt and the knowledge (stage 7, part 7)
+
+G29, G36, G37 and G40; PLAN's G29 row makes each subcollection's harness
+knowledge part of its profile. The harness agent's instructions (section 11)
+are the pinned managed prompt `field-harness` followed by the harness knowledge
+the profile names by id and version (`harness_knowledge.instructions_for`). A
+knowledge id or version the code does not have is refused.
+
+**The prompt** is a managed prompt like the other three: a Logfire template
+variable with its default in code, pinned on the run. It states:
+- G40: everything transcribed on the specimen is context for every field;
+  keep looking things up and weighing the evidence until a field settles or is
+  shown not to;
+- G29: work through every reading a notation allows;
+- G37: a field the label leaves out is filled only by derivation from settled
+  fields, with authority and evidence;
+- G36: no conclusion without evidence;
+- the copy rule: never invent, complete, correct, expand or translate a literal.
+
+**The Insects knowledge** (`harness_knowledge/insects.py`, id `insects`, version
+`insects-harness-knowledge-v1`) is the pilot's. S3's profile names it. It lists
+the label notations and every reading each allows, each with the fields it can
+belong to:
+- "P.I.", "Guat.", "Prov.", "Dept.", "Mt.", "Is.", "nr." and the directions
+  that qualify a place;
+- "leg." and "coll." marking collectors, and "det." marking who identified the
+  specimen;
+- a Roman or named month, both orders of a numeric date, and a two-digit year
+  under the profile's century rule;
+- "?" marking an uncertain value.
+
+Reading a notation assigns what is written to the field it names. "m", "ft.",
+"'", "alt." and "el." give the unit of the elevation written, and "ca." marks a
+value as approximate. The knowledge never fills or converts a value; derived
+values are section 13's.
+
+Its place aliases, written as the geography tool folds them, are the only extra
+names that tool accepts ("P.I." as the Philippines).
