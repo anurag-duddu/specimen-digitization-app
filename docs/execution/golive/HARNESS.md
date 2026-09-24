@@ -476,8 +476,7 @@ An operational outcome passes through unchanged, for section 9 to block on.
 
 ## 11. The harness agent (stage 7, part 6)
 
-G6, G7, G19, G20, G26, G29, G30, G32, G33, G36, G37 and G40; HAR-007 and
-HAR-019. The owner's rule: "agentic harness takes the finally decided raw
+G6, G7, G19, G20, G26, G30, G32, G33 and G40; HAR-007 and HAR-019. The owner's rule: "agentic harness takes the finally decided raw
 transcript runs lookups (can rely on raw for a final check if LLM decided
 transcript output fails, if both fail send to relevant queue)". G40 names the
 job: "the harness is looking at everything transcribed for context, the system
@@ -493,22 +492,8 @@ readings with the first pass's note on each (section 4), named by label and
 reading (`1A`, `1B`, `2A`), never by model or route. It also reads the
 profile's mandatory and optional fields, each with the tool it may use.
 
-**Instructions** are the pinned managed prompt `field-harness` followed by the
-harness knowledge the profile names by id and version. The prompt states:
-- G40: everything transcribed is context; keep looking up and weighing the
-  evidence until a field settles or is shown not to;
-- G29: every reading a notation allows;
-- G37: a field the label leaves out is filled only by derivation from settled
-  fields, with authority and evidence;
-- G36: no conclusion without evidence;
-- the copy rule: never invent, complete, correct, expand or translate a literal.
-
-The Insects knowledge (`harness_knowledge/insects.py`, id `insects`, version
-`insects-harness-knowledge-v1`) lists the pilot's label notations and every
-reading each allows: "P.I.", Roman and named months, both orders of a numeric
-date, two-digit years under the century rule, and more. Its place aliases are
-the only extra names the geography tool accepts. A knowledge id or version the
-code does not have is refused.
+**Instructions** are given to the agent: the pinned managed prompt followed by
+the harness knowledge the profile names (section 12).
 
 **What it returns.** For every field, the literal exactly as each reading has
 it, and for a date the year literal the same label states elsewhere. Code

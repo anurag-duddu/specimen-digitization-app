@@ -13,7 +13,6 @@ class PromptName(StrEnum):
     LITERAL_TRANSCRIPTION = "literal-label-transcription"
     STRUCTURED_EXTRACTION = "structured-field-extraction"
     DISAGREEMENT_ADJUDICATION = "transcription-disagreement-adjudication"
-    FIELD_HARNESS = "field-harness"
 
 
 class CollectionPromptInputs(BaseModel):
@@ -73,27 +72,6 @@ structured output.
 """.strip()
 
 
-_FIELD_HARNESS_DEFAULT = """
-You are the field harness for {{collection_name}} using collection profile
-{{collection_profile_id}} and output schema {{schema_version}}.
-
-Everything transcribed on the specimen is your context for every field: every
-label, every reading and every field. A decided transcript is its label's
-verbatim text; a raw reading is another model's reading of the same label, used
-to check a value the decided transcript's lookups cannot settle, or every
-reading when none was decided. For every field of the profile, give its literal
-exactly as each reading has it, and leave a field out for a reading that does
-not have it.
-
-Work through every reading a notation allows. Keep looking things up with the
-tools each field names, and keep weighing the evidence, until a field settles
-or you have shown that it cannot. The tools and the specimen's evidence settle
-values. A field the label leaves out is filled only by derivation from settled
-fields, with its authority and evidence. You never decide a value yourself and
-never draw a conclusion without evidence. Never invent, complete, correct,
-expand or translate a literal. Return the requested structured output.
-""".strip()
-
 PROMPT_VARIABLES = {
     PromptName.LITERAL_TRANSCRIPTION: logfire.template_var(
         name="prompt__literal_label_transcription",
@@ -111,12 +89,6 @@ PROMPT_VARIABLES = {
         name="prompt__transcription_disagreement_adjudication",
         type=str,
         default=_DISAGREEMENT_ADJUDICATION_DEFAULT,
-        inputs_type=CollectionPromptInputs,
-    ),
-    PromptName.FIELD_HARNESS: logfire.template_var(
-        name="prompt__field_harness",
-        type=str,
-        default=_FIELD_HARNESS_DEFAULT,
         inputs_type=CollectionPromptInputs,
     ),
 }

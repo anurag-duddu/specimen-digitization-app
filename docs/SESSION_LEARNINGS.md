@@ -11892,9 +11892,9 @@ because the hooks runner hands a native asset hook only `PATH`.
 
 ### 2026-09-24 — Go-live S4: the harness agent (T3b, part 2b)
 
-- Task: go-live S4, topic T3b part 2b: the Pydantic AI harness agent on the harness route, with its managed prompt and the Insects harness knowledge, under owner decisions G29, G30, G33, G36, G37 and G40.
+- Task: go-live S4, topic T3b part 2b: the Pydantic AI harness agent on the harness route, under owner decisions G30, G33 and G40. Its managed prompt and the Insects harness knowledge moved to their own pull request at the steward's request.
 - Branch/worktree: `golive/harness-agent`, stacked on `golive/harness-ledger` (#134), in `.claude/worktrees/cool-haslett-aa79b5`.
-- Outcome: `application/field_harness.py` (`run_harness`, `resolve`, `FieldPlan`), `application/harness_knowledge/` (`insects`, `instructions_for`) and the managed prompt `field-harness`. Spec: `docs/execution/golive/HARNESS.md` section 11.
-- Validation actually run: the agent and knowledge tests fail without the modules and pass with them; the prompt-resolution test covers the new prompt; the full Python suites and pre-commit pass.
+- Outcome: `application/field_harness.py` (`run_harness`, `resolve`, `FieldPlan`). Spec: `docs/execution/golive/HARNESS.md` section 11.
+- Validation actually run: the agent tests fail without the module and pass with it; the full Python suites and pre-commit pass.
 - Durable learnings: (1) A post-response token check does not bound what a run spends: pydantic-ai checks `input_tokens_limit` after each response, so the request that crosses the limit is itself bounded by construction instead, through a prompt byte cap, a tool-call cap and the output cap on its history. That makes S3's reservation provable. (2) One geocoding budget covers the agent's checks and the final lookups, and geography arguments are sorted by field. Without that, a check and the final call on the same literals were two paid requests. (3) The agent names readings 1A, 1B, 2A, never by model; the first pass's reader letters taught the same lesson.
 - Remaining follow-ups: T3d part a (G37 and G38 layers and the derivations that need no outside data), the first pass's G30 output cap, T3c (the `parse` step), T4 (the queue decision), T3d part b (S8's derivations and `derive_rest`), and the geography name-key alignment with S8.
