@@ -542,9 +542,13 @@ would cross the allowance is not called. The run blocks with
 `program_allowance_exhausted`, an operational block with no queue outcome
 (QUE-005).
 
-Reservations are never refunded. A retry reserves again, as the run budget
-already does (`domain.py` 222-227). With no allowance configured, the ledger is
-not consulted.
+G30 caps what production's model calls spend (PLAN 4.3, #104). So each paid
+call reserves its step's reservation before it starts, and settles to its cost
+once its outcome is known; T2b and T2c build it. Which failures count as known,
+and how reservations are checked, are for the coordinator's next plan PR. A
+retry reserves again. The run's own budget keeps its rule: its reservations are
+never refunded (`domain.py` 222-227). With no allowance configured, the ledger
+is not consulted.
 
 Every reservation also records the program's position on the run: the
 allowance, the total reserved after this step, and what remains. The thread
