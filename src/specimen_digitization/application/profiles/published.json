@@ -231,6 +231,35 @@
         "program_allowance": {
           "allowance_micros": 5000000,
           "ledger_collection": "insects"
+        },
+        "price_list": {
+          "version": "pilot-prices-2026-09-23",
+          "as_of": "2026-09-23",
+          "sources": [
+            "https://router.huggingface.co/v1/models",
+            "https://cloud.google.com/run/pricing",
+            "https://developers.google.com/maps/billing-and-pricing/pricing"
+          ],
+          "models": {
+            "handwriting-qwen": {
+              "input_micros_per_million": 200000,
+              "output_micros_per_million": 700000
+            },
+            "handwriting-muse": {
+              "input_micros_per_million": 300000,
+              "output_micros_per_million": 1200000
+            }
+          },
+          "segmentation": {
+            "vcpus": 4,
+            "memory_gib": 16,
+            "vcpu_micros_per_million_seconds": 24000000,
+            "gib_micros_per_million_seconds": 2500000,
+            "request_micros_per_million": 400000
+          },
+          "tools": {
+            "geography_lookup": 5000
+          }
         }
       },
       "date_rules": {

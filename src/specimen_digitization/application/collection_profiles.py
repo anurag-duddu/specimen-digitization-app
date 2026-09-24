@@ -124,6 +124,34 @@ class DateRules(FrozenRecord):
     roman_numeral_months: bool = False
 
 
+class ModelPrice(FrozenRecord):
+    """A route's price in micro-dollars per million tokens (LANE.md T2c)."""
+
+    input_micros_per_million: int = Field(ge=0, le=10**12)
+    output_micros_per_million: int = Field(ge=0, le=10**12)
+
+
+class ServicePrice(FrozenRecord):
+    """A Cloud Run service's size and rates, in micro-dollars per million units."""
+
+    vcpus: float = Field(gt=0, le=64)
+    memory_gib: float = Field(gt=0, le=512)
+    vcpu_micros_per_million_seconds: int = Field(ge=0, le=10**12)
+    gib_micros_per_million_seconds: int = Field(ge=0, le=10**12)
+    request_micros_per_million: int = Field(default=0, ge=0, le=10**12)
+
+
+class PriceList(FrozenRecord):
+    """Pinned prices for every paid call; changed only by a reviewed edit (T2c)."""
+
+    version: str = Field(min_length=1, max_length=64)
+    as_of: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    sources: tuple[str, ...] = Field(min_length=1)
+    models: dict[str, ModelPrice] = Field(default_factory=dict)
+    segmentation: ServicePrice | None = None
+    tools: dict[str, int] = Field(default_factory=dict)
+
+
 class ProgramAllowance(FrozenRecord):
     """The program's model allowance across all runs (LANE.md T2b; G9, G30)."""
 
@@ -155,6 +183,9 @@ class ProcessingPolicy(FrozenRecord):
         default=None, gt=0, le=900, exclude_if=lambda value: value is None
     )
     program_allowance: ProgramAllowance | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    price_list: PriceList | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
 
@@ -246,6 +277,10 @@ class CollectionProfile(FrozenRecord):
             tool not in self.tools for tools in self.field_tools.values() for tool in tools
         ):
             raise ValueError("field tools must name profile fields and profile tools")
+        prices = self.processing.price_list if self.processing else None
+        routes = {*self.model_routes, self.first_pass_route, self.harness_route} - {None}
+        if prices and (not routes <= set(prices.models) or prices.segmentation is None):
+            raise ValueError("the price list must price every route and the segmentation")
         return self
 
 

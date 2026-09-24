@@ -11974,3 +11974,23 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: the reservation must come after the provider circuit's admission. During an outage the circuit refuses call after call, and reserving first would spend the allowance on calls that never happen.
 - Failed approaches: none.
 - Remaining follow-ups: T2c records each paid call's usage and computed cost (`Run.paid_calls`) from a pinned price list, with `record_tool_usage` for geocoding. The pilot's `parse` reservation rises to 30,000 there, with S4's harness.
+
+### 2026-09-23 — Go-live lane T2c: the cost of every paid call, and settlement (G9, G30)
+
+- Task: Claude Code session "Build the on-demand processing lane" (go-live workstream S3), the per-call cost part of topic T2 of `docs/execution/golive/LANE.md`.
+- Branch/worktree: `golive/lane-call-costs` from `golive/lane-program-allowance`, in `.claude/worktrees/elated-bun-0d9b24`.
+- Outcome:
+  - The published pilot profile pins a price list read on 2026-09-23:
+    - the reader routes at the Hugging Face router's prices for their pinned providers;
+    - SAM 3 at Cloud Run's request-based rates with S2's 4 vCPU and 16 GiB, which is 136 micro-dollars a second;
+    - Geocoding at USD 5 per 1,000.
+  - Every route and the segmentation must be priced, and a run copies the list when requested.
+  - `lane_costs` records one entry per paid call on `Run.paid_calls` and adds the cost to `usage.actual_cost_micros`. An entry holds the usage, the outcome, the cost rounded up, and its basis (`computed`, `billed` or `unpriced`) with the list's version and date. The workflow records readings and SAM 3; the harness will record its own calls through `record_model_usage` and `record_tool_usage`.
+  - The coordinator ruled that G30 caps spend. So after a paid step completes, the program ledger settles its reservation to what the recorded calls cost. Failures, unknown outcomes, unrecorded calls and unpriced calls stay fully reserved until the coordinator's next plan PR rules which failures count as known.
+  - Source import starts the worker only when it queued a record, so a Sensitive import starts none (#104). A new test found this.
+- Validation actually run: `tests/test_lane_costs.py` (15 passed) and the lane, application and profile tests (263 passed, 5 skipped). Also the full gates as listed in the pull request.
+- Durable learnings:
+  1. Price the worst case into every reservation, because the allowance is enforced on reservations. SAM 3's 240 s deadline at 136 micro-dollars a second needs 33,000, not the 15,000 the pilot started with.
+  2. Pinning prices in integer micro-dollars per million units keeps every rate exact: USD 0.0000025 per GiB-second becomes 2,500,000 per million GiB-seconds. Decimal seconds keep the rounding honest.
+- Failed approaches: none.
+- Remaining follow-ups: S4's harness records its model requests and geocodes in `parse` (T3c), and `parse` rises to 30,000 with it. The first pass is priced and reserved when its route joins the pilot. Failed calls settle once the coordinator rules which failures count as known.

@@ -666,16 +666,17 @@ How T2c builds it:
   the outcome of the call is unknown. The harness records its own model
   requests and tool calls in `parse` (S4, T3c). A run without a price list
   records nothing.
-- **Settlement (G30).** After a paid step, the ledger gives back the step's
-  reservation less the cost of the calls recorded for that attempt. A step
-  settles only when all three hold:
-  - its outcome is known;
-  - it recorded calls;
-  - every call has a cost.
+- **Settlement (G30).** After a paid step completes, the ledger gives back the
+  step's reservation less the cost of the calls recorded for that attempt. It
+  does so only when the step recorded calls and every call has a cost.
+  Everything else stays fully reserved:
+  - a failure or an unknown outcome;
+  - a step whose calls nobody recorded;
+  - a call without a price.
 
-  Otherwise it stays fully reserved: an unknown outcome, a reading that failed
-  before reporting usage, or calls that nobody recorded. A step's next attempt
-  reserves again, and no call starts if its reservation would cross the
+  Which failures count as known costs is for the coordinator's next plan PR.
+  Until then they stay reserved, which errs on the safe side. A step's next
+  attempt reserves again, and no call starts if its reservation would cross the
   allowance, however little has been spent.
 - **Pilot prices, read on 2026-09-23.**
   - Readers, from the Hugging Face router's `/v1/models` pricing for their

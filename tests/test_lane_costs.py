@@ -32,6 +32,7 @@ from specimen_digitization.application.lane_costs import (
     record_model_usage,
     record_segmentation,
     record_tool_usage,
+    segmentation_cost,
     settle_step,
 )
 from specimen_digitization.application.profile_runtime import published_risk_registry
@@ -262,8 +263,10 @@ def test_a_failed_call_is_recorded_with_its_attempt(tmp_path):
         (1, "failed"),
         (2, "completed"),
     ]
-    # Both attempts settled: the ledger holds what the calls cost.
-    assert ledger_total(app) == run.usage.actual_cost_micros
+    # The failed attempt stays reserved until failures are ruled on; the
+    # completed calls settle to what they cost.
+    completed = sum(c["cost_micros"] for c in run.paid_calls if c["outcome"] == "completed")
+    assert ledger_total(app) == 33_000 + completed
 
 
 def ledger_total(app):
@@ -329,3 +332,22 @@ def test_a_step_without_recorded_calls_stays_reserved(tmp_path):
     # Nobody recorded the step's calls, so nothing is given back.
     settle_step(repository, principal, specimen, "parse", 20_000)
     assert ProgramLedger(repository, SCOPE).read()["reserved_total_micros"] == 20_000
+
+
+def test_the_pilot_pins_the_prices_read_on_2026_09_23():
+    prices = published_registry().resolve("insects").profile.processing.price_list
+    assert (prices.version, prices.as_of) == ("pilot-prices-2026-09-23", "2026-09-23")
+    assert prices.models["handwriting-qwen"].model_dump() == {
+        "input_micros_per_million": 200_000,
+        "output_micros_per_million": 700_000,
+    }
+    assert prices.models["handwriting-muse"].model_dump() == {
+        "input_micros_per_million": 300_000,
+        "output_micros_per_million": 1_200_000,
+    }
+    assert prices.tools == {"geography_lookup": 5_000}
+    # SAM 3 on 4 vCPU and 16 GiB: 136 micro-dollars a second. Its 240 s hard
+    # deadline stays inside the pilot's 33,000 segment reservation.
+    worst = segmentation_cost(prices.model_dump(mode="json"), 240)
+    assert worst == 32_641
+    assert worst <= published_registry().resolve("insects").profile.processing.stage_cost_micros.for_step("segment")

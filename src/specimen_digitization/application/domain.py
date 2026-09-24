@@ -297,6 +297,8 @@ class ExecutionPolicy(Record):
     program_ledger_collection: str | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # The pinned prices the run's paid calls are costed at (LANE.md T2c).
+    price_list: dict | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def timeout_fits_lease(self):
@@ -404,6 +406,8 @@ class Run(Record):
     program_allowance: dict | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # One entry per paid call, with its usage and cost (LANE.md T2c).
+    paid_calls: list[dict] = Field(default_factory=list, exclude_if=lambda value: not value)
 
 
 class AuditEvent(Record):
