@@ -166,6 +166,22 @@ def test_the_release_deploys_through_the_approved_entrypoint_and_exposes_its_pha
     assert "gcloud" not in TEXT and re.sub(r"firebase-(tools@15\.8\.0|release)", "", TEXT).count("firebase") == 0
 
 
+def test_the_release_job_outlasts_the_gate_records_window_so_that_deadline_ends_every_wait():
+    """RELEASE.md 4.4: the backup, the migration, and the first apply's clone restore and deletion all wait within the
+    gate record's hour, which the re-admission step starts; the job keeps ten minutes for its setup and its receipt."""
+    assert JOBS["release"]["timeout-minutes"] == "75"
+    assert release_gate.WINDOW_SECONDS + 600 <= int(JOBS["release"]["timeout-minutes"]) * 60
+
+
+def test_the_deployment_contract_describes_the_apply_and_the_checks_the_release_job_runs():
+    section = (ROOT / "docs/DEPLOYMENT.md").read_text().split("## Data release on merge (go-live program)")[1].split("\n## ")[0]
+    release = section.split("2. **Release**")[1].split("\n3. ")[0]
+    assert "fails closed until T3d" not in release
+    for fact in ("catalog", "supplemental index inventory", "`apply`", "`source-sha`", "point-in-time recovery", "7 days",
+                 "`firebaseowner`", "`COMPATIBLE`", "first apply"):
+        assert fact in release, fact
+
+
 def test_the_receipt_is_attested_on_success_and_retained_on_every_exit():
     deploy = index("release", lambda step: step.get("id") == "deploy")
     attest = index("release", uses("actions/attest"))
