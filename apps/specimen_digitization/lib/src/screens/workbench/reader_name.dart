@@ -25,6 +25,31 @@ String readerName(
   return reading?.model ?? reading?.routeId ?? unnamedReader;
 }
 
+/// The label region the reading [observationId] was read from, from the
+/// workspace or else from the thread; null when neither says.
+String? regionOfReading(
+  Specimen specimen,
+  SpecimenThread? thread,
+  String? observationId,
+) {
+  if (observationId == null) return null;
+  for (final Json o in specimen.observations) {
+    if (textOf(o['id'], textOf(o['observation_id'], '')) == observationId) {
+      final String region = textOf(o['region_id'], '');
+      if (region.isNotEmpty) return region;
+      break;
+    }
+  }
+  return thread?.regions
+      .where(
+        (ThreadRegion r) => r.readings.any(
+          (ThreadReading reading) => reading.observationId == observationId,
+        ),
+      )
+      .firstOrNull
+      ?.regionId;
+}
+
 /// The name the label region [regionId] goes by, "Label K", by its place
 /// among the record's regions as the Readings sections number them, or else
 /// among the thread's; null for a region neither lists.

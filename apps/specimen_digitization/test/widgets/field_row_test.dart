@@ -309,6 +309,45 @@ void main() {
       handle.dispose();
     });
 
+    testWidgets('a note under attributed texts stands under all of them', (
+      WidgetTester tester,
+    ) async {
+      const String note =
+          'Label 2 · Reader one · raw reading · settled the value';
+      final SemanticsHandle handle = tester.ensureSemantics();
+      await pumpComponent(
+        tester,
+        const SizedBox(
+          width: 700,
+          child: FieldRow(
+            name: 'Country',
+            state: SpecimenStatus.supported,
+            writtenBy: <AttributedText>[
+              (
+                source: 'Label 1 · Reader one · decided transcript',
+                text: 'GUATEMALA',
+              ),
+              (
+                source: 'Label 2 · Reader two · decided transcript',
+                text: 'Guatemala',
+              ),
+            ],
+            asWrittenNote: note,
+          ),
+        ),
+      );
+      expect(
+        tester.getTopLeft(find.text(note)).dy,
+        greaterThan(tester.getTopLeft(find.text('Guatemala')).dy),
+      );
+      expect(
+        tester.getSemantics(find.text(note)),
+        matchesSemantics(label: note),
+        reason: 'it is about every text, so it joins none of them',
+      );
+      handle.dispose();
+    });
+
     testWidgets('meets the guidelines in both themes', (
       WidgetTester tester,
     ) async {
