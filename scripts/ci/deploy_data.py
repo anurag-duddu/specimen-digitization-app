@@ -36,6 +36,10 @@ EXTENSION = re.compile(r"[a-z][a-z0-9_-]{0,62}")
 COUNTS = ("relations", "views", "routines", "types")
 APPLICATION_ROLES = {role: f"firebase{role}_{DATABASE}_public" for role in ("owner", "writer", "reader")}
 OWNER = APPLICATION_ROLES["owner"]
+# RELEASE.md 4.4: the schema label that records the commit the plane last applied, each apply's backup's lifetime, and
+# how far Cloud SQL's readback of that expiry may differ from the request.
+LABEL, BACKUP_SECONDS, EXPIRY_SLACK_SECONDS = "source-sha", 7 * 86400, 60
+ACTOR = f"specimen-data-release@{PROJECT}.iam.gserviceaccount.com"
 # RELEASE.md 4.3 step 3 reads a diff statement as tokens: ASCII space, a quoted identifier, a string, a word, a number,
 # punctuation, an operator run or any other character. A backslash or an "other" token refuses it, so no escape string
 # or dollar quote can move a statement boundary. release_sql.mjs reads each statement the same way before it runs.
@@ -755,13 +759,14 @@ def first_step(record, directory):
 
 
 def deploy_released_data(path, output):
-    """Release the data plane from a gate record (G11, RELEASE.md 4.2): read live state, never change it.
+    """Release the data plane from a gate record (G11, RELEASE.md 4.2 and 4.4): read live state, then choose the phase.
 
     initialize: the placeholder schema and no connector; the initialization jobs (T3c) continue. verify: the
     live schema, connector and Storage rules equal the merged files, the schema is persistent and both are
-    reconciled. apply: anything else the additive-only gate admits; the apply itself fails closed until T3d.
-    Every other combination asks to reconcile. Once a data gate record is admitted, every exit writes the
-    receipt, which holds the phase and public resource facts only.
+    reconciled, and the catalog and the supplemental index inventory check out read-only. apply: anything else the
+    additive-only gate admits, a missing or changed supplemental index too (apply_released). Every other combination
+    asks to reconcile. Once a data gate record is admitted, every exit writes the receipt, which holds the phase and
+    public facts only, each as last observed.
     """
     targets = os.environ.get("GITHUB_OUTPUT")
     require(targets and output is not None, "GitHub step output and receipt path required")
@@ -771,7 +776,8 @@ def deploy_released_data(path, output):
     if os.environ.get("DATA_BOOTSTRAP_ARTIFACT_B64"):
         # T3e reads the artifact; until then this release never decodes, prints or writes its value.
         print("A bootstrap artifact is present; the bootstrap arrives with T3e, so this release leaves it unread.")
-    facts = dict.fromkeys(("phase", "schema_etag", "schema_update_time", "connector_etag", "storage_ruleset"))
+    facts = dict.fromkeys(("phase", "schema_etag", "schema_update_time", "connector_etag", "storage_ruleset",
+                           "source_sha_label", "backup_id", "tables", "views"))
 
     def choose(phase):
         facts["phase"] = phase
@@ -785,7 +791,7 @@ def deploy_released_data(path, output):
         schema = google.request("data", "GET", SCHEMA_NAME)
         etag, updated = revision(schema), schema.get("updateTime")
         stamp(updated)
-        facts.update(schema_etag=etag, schema_update_time=updated)
+        facts.update(schema_etag=etag, schema_update_time=updated, source_sha_label=schema_label(schema))
         connector = google.request("data", "GET", CONNECTOR_NAME, missing=True)
         if connector is not None:
             facts["connector_etag"] = revision(connector)
@@ -804,23 +810,25 @@ def deploy_released_data(path, output):
             return
         if not live_schema or connector is None:
             raise blocked("the live schema and connector disagree; reconcile them, then re-run this release")
-        merged_schema, merged_connector = (files_by(committed_source(folder), "path")
-                                           for folder in ("dataconnect/schema", "dataconnect/connector"))
-        if (live_schema, live_connector, rules) == (merged_schema, merged_connector, files_by(committed_rules(), "name")):
+        merged = (*(files_by(committed_source(folder), "path") for folder in ("dataconnect/schema", "dataconnect/connector")),
+                  files_by(committed_rules(), "name"))
+        if (live_schema, live_connector, rules) == merged:
             choose("verify")
             verify_persistent_schema(schema)
             if connector.get("reconciling", False) is not False:
                 raise blocked("the live connector is still reconciling; reconcile it, then re-run this release")
-            publish()
-            return
+            if verified(record, path.parent, merged[0], facts):
+                publish()
+                return
+            print("A supplemental index is missing or changed.")
         choose("apply")
         publish()
-        refusals = schema_gate.check_additive(live_schema, merged_schema, live_connector, merged_connector)
+        refusals = schema_gate.check_additive(live_schema, merged[0], live_connector, merged[1])
         if refusals:
             # Each line names a table, field or operation and the rule, never a value (RELEASE.md 4.1).
             print("\n".join(f"Refused: {line}" for line in refusals))
             raise blocked(f"the additive-only gate refused {len(refusals)} change(s)")
-        raise blocked("the additive apply arrives with T3d; this phase fails closed until then")
+        apply_released(google, path.parent, schema, connector, facts["storage_ruleset"], merged, facts)
     finally:
         output.write_text(json.dumps({"version": "data-released/v1", "source_sha": record["source_sha"],
                                       "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"],
@@ -1002,12 +1010,32 @@ def initializer_receipt(record):
     return receipt
 
 
-def gate_sql(mode, directory, source_sha, *inputs):
-    """One release_sql.mjs mode as specimen-data-release for the admitted gate record's commit; None when it fails."""
+def gate_sql(mode, directory, source_sha, *inputs, deadline=None):
+    """One release_sql.mjs mode as specimen-data-release for the admitted gate record's commit; None when it fails or
+    outlasts five minutes or the deadline, the gate record's (RELEASE.md 4.4)."""
     target = directory / f"{SOURCE}-{mode}.json"
-    result = subprocess.run(["node", "scripts/ci/release_sql.mjs", mode, SOURCE, str(target), *map(str, inputs)], cwd=ROOT,
-                            env=dict(os.environ, RELEASE_GATE_SHA=source_sha), capture_output=True, timeout=300)
+    seconds = 300 if deadline is None else min(300, deadline - time.time())
+    if seconds < 1:
+        return None
+    try:
+        result = subprocess.run(["node", "scripts/ci/release_sql.mjs", mode, SOURCE, str(target), *map(str, inputs)],
+                                cwd=ROOT, env=dict(os.environ, RELEASE_GATE_SHA=source_sha), capture_output=True,
+                                timeout=seconds)
+    except subprocess.TimeoutExpired:
+        return None
     return strict_json(private_bytes(target)) if result.returncode == 0 else None
+
+
+def run_migration(directory, source_sha, statements, relaxed, deadline=None):
+    """RELEASE.md 4.3 step 3's transaction: Node re-checks every statement against the same relaxed pairs, as sorted
+    table.column names, then runs them in one transaction as the owner role; anything but its commit stops the release."""
+    plan = directory / "migration.json"
+    with os.fdopen(os.open(plan, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600), "w") as handle:
+        json.dump({"version": "data-migration/v1", "source_sha": source_sha, "statements": statements,
+                   "relaxed": sorted(f"{table}.{column}" for table, column in relaxed)}, handle)
+    if gate_sql("migrate", directory, source_sha, plan, deadline=deadline) != {
+            "version": "data-migration/v1", "statements": len(statements), "committed": True}:
+        raise blocked("the migration transaction failed and rolled back; re-run once the database is idle")
 
 
 def migrate_initialized(google, directory, output):
@@ -1042,14 +1070,7 @@ def migrate_initialized(google, directory, output):
                                             "connector_etag": connector and revision(connector)})
         statements = migration_plan(google, body, relaxed)
         if statements:
-            # Node re-checks every statement against the same relaxed pairs, as sorted table.column names.
-            plan = directory / "migration.json"
-            with os.fdopen(os.open(plan, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600), "w") as handle:
-                json.dump({"version": "data-migration/v1", "source_sha": record["source_sha"], "statements": statements,
-                           "relaxed": sorted(f"{table}.{column}" for table, column in relaxed)}, handle)
-            if gate_sql("migrate", directory, record["source_sha"], plan) != {
-                    "version": "data-migration/v1", "statements": len(statements), "committed": True}:
-                raise blocked("the migration transaction failed and rolled back; re-run once the database is idle")
+            run_migration(directory, record["source_sha"], statements, relaxed)
         google.wait("data", google.request("data", "PATCH", SCHEMA_NAME, body=body, params={"allowMissing": "true"}))
         inventory = gate_sql("indexes", directory, record["source_sha"])
         if inventory is None:
@@ -1084,6 +1105,157 @@ def migrate_initialized(google, directory, output):
         output.write_text(json.dumps({"version": "data-initialized/v1", "phase": "initialize", "source_sha": record["source_sha"],
                                       "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"],
                                       **facts}, sort_keys=True) + "\n")
+
+
+def schema_label(schema):
+    """The live schema's source-sha label, the commit the plane last applied (RELEASE.md 4.4 item 2), or None: only a full
+    commit id ever reaches a receipt."""
+    value = release_gate.field(schema, "labels", LABEL)
+    return value if release_gate.is_sha(value) else None
+
+
+def rollback_guard(schema, merged):
+    """#100's runtime rollback guard for the data plane: the merged commit must be the labelled one or a descendant of it,
+    as GitHub's compare API reports. Returns the label; None, no label, is the first apply after T3c."""
+    labels = schema.get("labels", {})
+    if not (isinstance(labels, dict) and all(isinstance(key, str) and isinstance(value, str) for key, value in labels.items())
+            and (LABEL not in labels or schema_label(schema))):
+        raise blocked("the live schema's labels are malformed")
+    applied = schema_label(schema)
+    if applied not in (None, merged):
+        compared = gh_json(f"repos/{REPOSITORY}/compare/{applied}...{merged}")
+        if not (isinstance(compared, dict) and compared.get("status") in {"ahead", "identical"}):
+            raise blocked("the live schema came from a newer commit; this release would roll it back")
+    return applied
+
+
+def take_backup(google, directory, source):
+    """RELEASE.md 4.4 item 1: this attempt's one on-demand backup of the source instance, the apply's first effect. It
+    expires 7 days after it is sent and must reach SUCCESSFUL holding at most the source disk's bytes. A write-once
+    intent precedes its one POST, and no backup is ever adopted: a re-run takes its own. Returns its backup run id."""
+    from release_backup import backup_name, save, timestamp, utc
+    record, disk = google.packet, release_gate.field(source, "settings", "dataDiskSizeGb")
+    if not (isinstance(disk, str) and re.fullmatch(r"[1-9][0-9]{0,5}", disk)):
+        raise blocked("the SQL instance's disk size is unreadable")
+    submitted = int(time.time())
+    body = {"instance": SOURCE, "location": "us-east4", "expiryTime": utc(submitted + BACKUP_SECONDS), "description":
+            f"specimen-data-release-{record['source_sha']}-{record['release_run_id']}-{record['release_run_attempt']}"}
+    intent = directory / "release-backup.json"
+    try:
+        save(intent, {"outcome": "unknown", "submitted_at_unix": submitted, "request": body}, create=True)
+    except FileExistsError:
+        raise blocked("this attempt already sent its backup; re-run the job") from None
+    google._gate_effect = "backup"
+    try:
+        operation = google.request("sql", "POST", f"projects/{PROJECT}/backups", body=body)
+    finally:
+        google._gate_effect = None
+    if not (isinstance(operation, dict) and all(operation.get(key) == value for key, value in {
+            "kind": "sql#operation", "operationType": "BACKUP_VOLUME", "targetId": SOURCE, "targetProject": PROJECT,
+            "user": ACTOR}.items())):
+        raise blocked("the backup operation is not this release's")
+    context = wait_sql(google, operation, maximum_seconds=900).get("backupContext", {})
+    backup_id = context.get("backupId")
+    require(isinstance(backup_id, str) and re.fullmatch(r"[1-9][0-9]{0,19}", backup_id), "the backup names no backup run")
+    run = f"projects/{PROJECT}/instances/{SOURCE}/backupRuns/{backup_id}"
+    backup, native = google.request("sql", "GET", backup_name(context.get("name"))), google.request("sql", "GET", run)
+    shared = {"type": "ON_DEMAND", "instance": SOURCE, "description": body["description"], "location": "us-east4"}
+    if not (backup.get("state") == native.get("status") == "SUCCESSFUL" and backup.get("backupRun") == run
+            and native.get("id") == backup_id and all(backup.get(key) == native.get(key) == value
+                                                      for key, value in shared.items())):
+        raise blocked("this attempt's backup did not reach SUCCESSFUL")
+    if abs(timestamp(backup.get("expiryTime")) - (submitted + BACKUP_SECONDS)) > EXPIRY_SLACK_SECONDS:
+        raise blocked("the backup does not expire 7 days after it was taken")
+    size = backup.get("maxChargeableBytes")
+    if not (isinstance(size, str) and re.fullmatch(r"0|[1-9][0-9]{0,19}", size) and native.get("maxChargeableBytes") == size
+            and int(size) <= int(disk) * 1024**3):
+        raise blocked("the backup's bytes exceed the source disk's")
+    save(intent, {"outcome": "successful", "submitted_at_unix": submitted, "request": body, "backup_id": backup_id})
+    return backup_id
+
+
+def check_catalog(catalog, tables, views):
+    """RELEASE.md 4.4 item 5 and Verify, read-only through release_sql.mjs migrated: the initializer's postconditions hold
+    with the public schema owned by the owner role, exactly the declared tables and persisted views, one owner of every
+    relation, and the extensions plpgsql and uuid-ossp."""
+    if not (isinstance(catalog, dict) and catalog.get("expected_database") is True and catalog.get("expected_actor") is True
+            and isinstance(catalog.get("postconditions"), dict)
+            and all(isinstance(catalog.get(key), list) for key in ("tables", "views", "owners", "extensions"))):
+        raise blocked("the catalog could not be read")
+    if catalog["postconditions"].get("schema_owner") != OWNER:
+        raise blocked("the catalog's public schema is not owned by the owner role")
+    if sorted(catalog["tables"]) != sorted(f"public.{name}" for name in tables):
+        raise blocked("the catalog's tables differ from the merged schema's")
+    if sorted(catalog["views"]) != sorted(f"public.{name}" for name in views):
+        raise blocked("the catalog's views differ from the merged schema's")
+    if catalog["owners"] != [OWNER]:
+        raise blocked("the catalog's relations are not all owned by the owner role")
+    if catalog["extensions"] != ["plpgsql", "uuid-ossp"]:
+        raise blocked("the catalog's extensions are not exactly plpgsql and uuid-ossp")
+
+
+def indexes_match(inventory):
+    """Whether an index inventory holds every reviewed supplemental index, valid and exactly as defined."""
+    try:
+        verify_indexes(inventory)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return False
+    return True
+
+
+def verified(record, directory, merged_schema, facts):
+    """RELEASE.md 4.4, Verify, as specimen-data-release and read-only: the catalog as the apply checks it, then the
+    supplemental index inventory. False when an index is missing or changed, which makes the phase apply."""
+    tables, views, _ = schema_gate.declared_sql(merged_schema, relaxations())
+    check_catalog(gate_sql("migrated", directory, record["source_sha"], deadline=record["expires_at_unix"]), tables, views)
+    facts.update(tables=len(tables), views=len(views))
+    inventory = gate_sql("indexed", directory, record["source_sha"], deadline=record["expires_at_unix"])
+    if inventory is None:
+        raise blocked("the supplemental index inventory could not be read")
+    return indexes_match(inventory)
+
+
+def apply_released(google, directory, schema, connector, ruleset, merged, facts):
+    """RELEASE.md 4.4 while the runtime runs, after the additive-only gate. The rollback guard and point-in-time recovery
+    stop with a fixed reason before any effect; so does the first apply, whose restore check (D1) arrives with T3d's
+    second pull request. Then this attempt's backup, Data Connect's diff run client-side as the owner role, the schema
+    COMPATIBLE on the live etag carrying the merged commit as its source-sha label, the supplemental indexes, the
+    connector and the Storage rules. The released files must equal the merged ones and the catalog the merged schema.
+    merged: the merged schema, connector and Storage rules files; facts: the receipt's, updated as they are observed."""
+    record = google.packet
+    sha, deadline = record["source_sha"], record["expires_at_unix"]
+    if rollback_guard(schema, sha) is None:
+        raise blocked("the first apply's clone arrives with the next pull request")
+    source = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}")
+    if release_gate.field(source, "settings", "backupConfiguration", "pointInTimeRecoveryEnabled") is not True:
+        raise blocked("point-in-time recovery is off on the SQL instance")
+    facts["backup_id"] = take_backup(google, directory, source)
+    tables, views, relaxed = schema_gate.declared_sql(merged[0], relaxations())
+    body, connector_body = data_bodies({"schema_mode": "validate_existing", "schema_etag": revision(schema),
+                                        "connector_etag": revision(connector)})
+    body["labels"] = {**schema.get("labels", {}), LABEL: sha}
+    statements = migration_plan(google, body, relaxed)
+    if statements:
+        run_migration(directory, sha, statements, relaxed, deadline)
+    google.wait("data", google.request("data", "PATCH", SCHEMA_NAME, body=body, params={"allowMissing": "true"}))
+    inventory = gate_sql("indexes", directory, sha, deadline=deadline)
+    if inventory is None or not indexes_match(inventory):
+        # CREATE INDEX CONCURRENTLY IF NOT EXISTS never repairs an invalid or changed index of the same name.
+        raise blocked("the supplemental indexes could not be created as the owner role or differ from their definitions")
+    google.request("data", "PATCH", CONNECTOR_NAME, body=connector_body, params={"allowMissing": "true", "validateOnly": "true"})
+    google.wait("data", google.request("data", "PATCH", CONNECTOR_NAME, body=connector_body, params={"allowMissing": "true"}))
+    facts["storage_ruleset"] = publish_rules(google, ruleset)
+    schema, connector = (google.request("data", "GET", name) for name in (SCHEMA_NAME, CONNECTOR_NAME))
+    if schema.get("reconciling", False) is not False or connector.get("reconciling", False) is not False:
+        raise blocked("the schema or connector is still reconciling; re-run this release")
+    verify_persistent_schema(schema)
+    if (*schema_gate.live_sources(schema, connector), live_rules(google)[1]) != tuple(merged) or schema_label(schema) != sha:
+        raise blocked("the released schema, connector or Storage rules differ from the merged files")
+    stamp(schema.get("updateTime"))
+    facts.update(schema_etag=revision(schema), schema_update_time=schema["updateTime"], connector_etag=revision(connector),
+                 source_sha_label=sha)
+    check_catalog(gate_sql("migrated", directory, sha, deadline=deadline), tables, views)
+    facts.update(tables=len(tables), views=len(views))
 
 
 @stage("data.receipt")

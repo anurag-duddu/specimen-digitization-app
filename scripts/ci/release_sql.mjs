@@ -15,12 +15,22 @@ assert.equal(env.GITHUB_WORKFLOW_REF, `${env.GITHUB_REPOSITORY}/.github/workflow
 assert.ok((env.RELEASE_AUTHORIZED_SHA === undefined) !== (env.RELEASE_GATE_SHA === undefined));
 assert.equal(env.RELEASE_AUTHORIZED_SHA ?? env.RELEASE_GATE_SHA, env.GITHUB_SHA);
 const [mode, instance, output, input] = process.argv.slice(2);
-assert.ok(['inventory', 'indexes', 'catalog', 'summary', 'migrate', 'migrated'].includes(mode));
+assert.ok(['inventory', 'indexes', 'indexed', 'catalog', 'summary', 'migrate', 'migrated'].includes(mode));
 assert.ok(['specimen-digitization-instance', 'specimen-digitization-restore-20260908-r1'].includes(instance));
 const ACTOR = 'specimen-data-release@specimen-digitization.iam';
 const OWNER = 'firebaseowner_specimen-digitization-database_public';
-// RELEASE.md 4.3 steps 3 and 5 serve only a gate record's commit, on the source instance.
-if (mode.startsWith('migrate')) assert.ok(env.RELEASE_GATE_SHA !== undefined && instance === 'specimen-digitization-instance');
+// RELEASE.md 4.3 steps 3 and 5, and 4.4's verify, serve only a gate record's commit, on the source instance.
+if (mode.startsWith('migrate') || mode === 'indexed') {
+  assert.ok(env.RELEASE_GATE_SHA !== undefined && instance === 'specimen-digitization-instance');
+}
+// Every index in public with what deploy_data.verify_indexes checks: its table, method, validity, keys and definition.
+const INDEXES = `SELECT c.relname AS name, t.relname AS table_name, a.amname AS method,
+    i.indisvalid AS valid, i.indisunique AS unique, pg_get_expr(i.indpred,i.indrelid) AS predicate,
+    ARRAY(SELECT pg_get_indexdef(c.oid,k,false) FROM generate_series(1,i.indnkeyatts) k ORDER BY k) AS keys,
+    ARRAY(SELECT pg_get_indexdef(c.oid,k,false) FROM generate_series(i.indnkeyatts+1,i.indnatts) k ORDER BY k) AS includes,
+    pg_get_indexdef(c.oid) AS definition FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid
+    JOIN pg_class t ON t.oid=i.indrelid JOIN pg_am a ON a.oid=c.relam
+    JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' ORDER BY c.relname`;
 // Step 3 re-reads every statement of the plan Python wrote exactly as deploy_data.py does, before any connection,
 // against the plan's own relaxed table.column pairs, which Python derives from the schema gate.
 const TOKEN = /([ \t\n\r\f\v]+)|("(?:[^"]|"")+")|('(?:[^']|'')*')|([A-Za-z_][A-Za-z0-9_]*)|([0-9]+(?:\.[0-9]+)?)|([(),.;[\]])|([-+*/<>=~!@#%^&|`?:]+)|([\s\S])/g;
@@ -190,6 +200,13 @@ try {
         ARRAY(SELECT extname::text FROM pg_extension ORDER BY 1) AS extensions`)).rows[0];
     await client.query('COMMIT');
     writeFileSync(output, JSON.stringify({...catalog, postconditions}), {mode: 0o600});
+  } else if (mode === 'indexed') {
+    // RELEASE.md 4.4, Verify: the supplemental index inventory, read only; no row is read.
+    await client.query('BEGIN TRANSACTION READ ONLY');
+    await client.query("SET LOCAL statement_timeout = '30s'");
+    const indexes = (await client.query(INDEXES)).rows;
+    await client.query('COMMIT');
+    writeFileSync(output, JSON.stringify({version: 'native-sql-indexes/v1', instance, indexes}), {mode: 0o600});
   } else {
   // The pre-existing data-release database identity must already have the exact
   // maintenance grants. No role creation or privilege escalation.
@@ -218,13 +235,7 @@ try {
     rows.push({table: tablename, count: data.rowCount,
       sha256: createHash('sha256').update(JSON.stringify(data.rows)).digest('hex')});
   }
-  const indexes = (await client.query(`SELECT c.relname AS name, t.relname AS table_name, a.amname AS method,
-    i.indisvalid AS valid, i.indisunique AS unique, pg_get_expr(i.indpred,i.indrelid) AS predicate,
-    ARRAY(SELECT pg_get_indexdef(c.oid,k,false) FROM generate_series(1,i.indnkeyatts) k ORDER BY k) AS keys,
-    ARRAY(SELECT pg_get_indexdef(c.oid,k,false) FROM generate_series(i.indnkeyatts+1,i.indnatts) k ORDER BY k) AS includes,
-    pg_get_indexdef(c.oid) AS definition FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid
-    JOIN pg_class t ON t.oid=i.indrelid JOIN pg_am a ON a.oid=c.relam
-    JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' ORDER BY c.relname`)).rows;
+  const indexes = (await client.query(INDEXES)).rows;
   const columns = (await client.query(`SELECT table_name,column_name,ordinal_position,column_default,is_nullable,data_type,
     udt_name FROM information_schema.columns WHERE table_schema='public' ORDER BY table_name,ordinal_position`)).rows;
   const constraints = (await client.query(`SELECT c.relname AS table_name, x.conname AS name,
