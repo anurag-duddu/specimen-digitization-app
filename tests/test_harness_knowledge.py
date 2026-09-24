@@ -57,7 +57,7 @@ def test_a_single_elevation_or_date_is_given_once_as_from():
 
 def test_the_shape_rules_cover_the_fields_no_lookup_checks():
     # G45 (the owner, 2026-09-24): a value that doesn't look like its field's
-    # kind goes to review; verbatim_dts's meaning is unconfirmed (PRD 522).
+    # kind goes to review; verbatim_dts's meaning is unconfirmed (PRD 529).
     assert set(insects.SHAPES) == {
         "collectors",
         "collection_code",

@@ -275,7 +275,7 @@ def _misshapen(field: FieldValue | None, rules, patterns) -> bool:
 
 
 def _shape_findings(run: Run) -> list[RunFinding]:
-    """G45's finding for a field whose meaning is unconfirmed (PRD 522): a
+    """G45's finding for a field whose meaning is unconfirmed (PRD 529): a
     warning that never routes the record."""
     shapes, patterns, finding_only, version = _shapes(run)
     return [

@@ -263,7 +263,7 @@ records it as a warning finding, which never routes the record. The label's
 spelling stays the verbatim (G27). Denali still clears nothing: no component
 there is one edit from "Davao" or "P.I.".
 
-**`precise_location` is verbatim locality text** (PRD 515). Its literal helps
+**`precise_location` is verbatim locality text** (PRD 519). Its literal helps
 form the address, but the tool reports no outcome and no place for it, so
 nothing it returns can settle or replace it; where such a phrase actually is
 waits for the owner's ruling on S8's D3 (coordinator, 2026-09-23). A result for
@@ -412,7 +412,7 @@ when their `authority_id` and `parsed` are equal.
 every reading, as transcribed (`supported`). Differing literals without a
 decided transcript are `ambiguous` with `readings_conflict`. `precise_location`
 is one of them: it stays verbatim locality text, never replaced or settled by a
-geocoder result (PRD 515). Where such a phrase actually is waits for the
+geocoder result (PRD 519). Where such a phrase actually is waits for the
 owner's ruling on S8's D3.
 
 **A numeric date's order** (G29, G33) comes only from the dates in every
@@ -549,7 +549,7 @@ call on the same literals are one request.
 the ledger's records, and any tool call the agent did not make on its final
 literals is made then, once.
 - A field with no tool is transcribed as written, and so is
-  `precise_location`, which no geocoder settles (PRD 515).
+  `precise_location`, which no geocoder settles (PRD 519).
 - Every date literal of every reading is parsed first, so the order the dates
   fix can settle an ambiguous numeric date (G33). The date then cites one
   `date_order` evidence item naming the dates that fixed it.
@@ -637,7 +637,7 @@ are minimal, and each comes from a real run:
   specimen mark such as "♀", "♂" or "Sp.#1", which belongs to the specimen;
 - `collectors`: also no digit, since names carry none;
 - `verbatim_dts`: no slide-preparation code. This one is a finding only,
-  because PRD 522 leaves the field's meaning unconfirmed (PRD open question 3).
+  because PRD 529 leaves the field's meaning unconfirmed (PRD open question 3).
 
 A slide-preparation code is a month (Arabic or Roman), day and two-digit year
 with a serial, such as IV-29-68-a. The serial is what sets it apart from a

@@ -48,7 +48,7 @@ MAX_TOOL_CALLS = 12  # The agent's tool calls per run.
 MAX_GEOCODING_REQUESTS = 4  # Per run, the agent's and the final ones together.
 GEOGRAPHY = "geography_lookup"
 # Verbatim locality text: its literal helps form the address, but no geocoder
-# result settles it (PRD 515).
+# result settles it (PRD 519).
 TRANSCRIBED_ONLY = frozenset({"precise_location"})
 
 
