@@ -112,15 +112,19 @@ class Workflow:
         }
 
     def step(self, principal: Principal, specimen_id: str) -> Specimen:
-        with logfire.span(
-            "Process specimen checkpoint",
-            specimen_id=specimen_id,
-            collection_id=principal.scope.collection_id,
-        ):
-            return self._step(principal, specimen_id)
+        from .lane_tracing import step_span, steppable
 
-    def _step(self, principal: Principal, specimen_id: str) -> Specimen:
         specimen = self.repository.get(principal.scope, specimen_id)
+        if not steppable(specimen.run, self.clock()):
+            return self._step(principal, specimen_id, specimen)
+        # One trace per run: this step's span hangs from the run's root (LANE.md T5a).
+        with step_span(specimen, self.next_step(specimen.run), self.profile_registry):
+            return self._step(principal, specimen_id, specimen)
+
+    def _step(
+        self, principal: Principal, specimen_id: str, specimen: Specimen | None = None
+    ) -> Specimen:
+        specimen = specimen or self.repository.get(principal.scope, specimen_id)
         run = specimen.run
         if "evidence_pilot" in run.dependencies and not getattr(
             self, "evidence_pilot", False
@@ -559,6 +563,9 @@ class Workflow:
                 phase_result = refresh_review_evidence(specimen, self.blobs)
                 finalize(run)
                 apply_phase_gate(run, phase_result)
+                from .lane_tracing import log_decision
+
+                log_decision(run)  # The decision as it stands, gate included.
             if step.startswith("authority:"):
                 execute_phase(specimen, "lookup", self.blobs)
             if step in {"parse", "plan", "lookup", "resolve", "normalize", "validate"}:

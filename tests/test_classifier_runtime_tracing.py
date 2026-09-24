@@ -162,7 +162,7 @@ def test_classifier_child_exports_metadata_linked_to_actual_parent(
     assert attrs["specimen.run.id"] == before["run"]["id"]
     assert attrs["specimen.route.id"] == "synthetic-classifier"
     parents = [span for span in capfire.exporter.exported_spans
-               if span.name == "Process specimen checkpoint"]
+               if span.name == "Run specimen processing stage"]
     assert any(parent.context.trace_id == int.from_bytes(effect.trace_id, "big")
                and parent.context.span_id == int.from_bytes(effect.parent_span_id, "big")
                for parent in parents)

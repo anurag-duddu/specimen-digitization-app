@@ -94,7 +94,7 @@ def test_fresh_model_children_export_linked_private_spans_before_return(
     assert work["blocker"] is None, work["blocker"]
     parent_spans = capfire.exporter.exported_spans_as_dict()
     checkpoints = [
-        s for s in parent_spans if s["name"] == "Process specimen checkpoint"
+        s for s in parent_spans if s["name"] == "Run specimen processing stage"
     ]
     records = [json.loads(p.read_text()) for p in tmp_path.glob("*.trace.json")]
     assert len(records) == 3  # Both independent readers and resolved extraction.

@@ -11994,3 +11994,21 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. Pinning prices in integer micro-dollars per million units keeps every rate exact: USD 0.0000025 per GiB-second becomes 2,500,000 per million GiB-seconds. Decimal seconds keep the rounding honest.
 - Failed approaches: none.
 - Remaining follow-ups: S4's harness records its model requests and geocodes in `parse` (T3c), and `parse` rises to 30,000 with it. The first pass is priced and reserved when its route joins the pilot.
+
+### 2026-09-24 — Go-live lane T5a: each run is one Logfire trace
+
+- Task: Claude Code session "Build the on-demand processing lane" (go-live workstream S3), the first part of T5 in `docs/execution/golive/LANE.md` (PLAN 4.5, G3, DoD-5).
+- Branch/worktree: `golive/lane-tracing` from `golive/lane-call-costs`, in `.claude/worktrees/elated-bun-0d9b24`.
+- Outcome:
+  - A run's first step opens the root span "Process specimen run" with the specimen, run, collection and profile ids. The run keeps the root's W3C `traceparent` (`Run.trace_context`) and its trace id (`Run.trace_id`), set once.
+  - Every later step, in any execution, attaches that context and opens "Run specimen processing stage", with the stage and the step key. So the whole run is one trace, and a reprocessed run gets a new one.
+  - The finalize step logs "Specimen queue decision" with the disposition and the reason codes. It logs after the phase gate, which can still add a reason.
+  - The drain configures `approved-content` mode.
+  - S5's projection writer records the trace id through `RecordRunTraceV1`, so the lane never calls it.
+- Validation actually run: `tests/test_lane_tracing.py` (5 passed) and the lane, tracing, observability, application and worker tests (349 passed, 6 skipped). Also the model and classifier runtime tracing tests (11 passed), and the full gates as listed in the pull request.
+- Durable learnings:
+  1. `logfire.get_context()` inside a span yields a W3C `traceparent`. Storing it on the run and attaching it with `logfire.attach_context` later puts spans from any process under the same root, with no span-id tricks.
+  2. Logfire JSON-encodes enum and sequence attributes. Pass `.value` for an enum. A tuple of codes arrives as a JSON list, which the UI shows as a list.
+  3. The pilot's bounded encoder keeps only allowlisted span names and renames the rest. The new span names appear there as "Specimen processing span". That is harmless for the frozen pilot.
+- Failed approaches: logging the decision right after `finalize`. The phase gate that follows can still add a reason.
+- Remaining follow-ups: T5b (content on for the readers and the old extraction agent's override in `harness.py`, and SAM 3's span on both sides) and T5c (the Geocoding key backstop in Logfire's scrubber and the logging filter, and the settings for S2).

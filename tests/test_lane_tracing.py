@@ -1,5 +1,7 @@
 """The run's trace (docs/execution/golive/LANE.md, T5a)."""
 
+import json
+
 from fastapi.testclient import TestClient
 from logfire.testing import CaptureLogfire
 
@@ -98,7 +100,8 @@ def test_the_queue_decision_is_logged_with_its_reasons(tmp_path, capfire: Captur
     assert run.stage == "finalized", run.blocker
     [decision] = named(capfire, DECISION)
     assert decision["attributes"]["disposition"] == run.disposition
-    assert list(decision["attributes"]["reason_codes"]) == run.reasons
+    # Logfire sends a sequence as JSON, which its UI shows as a list.
+    assert json.loads(decision["attributes"]["reason_codes"]) == run.reasons
     assert decision["context"]["trace_id"] == named(capfire, ROOT)[0]["context"]["trace_id"]
 
 

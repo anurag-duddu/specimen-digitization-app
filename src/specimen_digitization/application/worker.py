@@ -684,7 +684,8 @@ def _run_drain(args):
         return
     from ..observability import configure_observability, CaptureMode
 
-    configure_observability(send_to_logfire=None, capture_mode=CaptureMode.METADATA)
+    # G3: prompts, messages and tool calls are visible (LANE.md T5a, PLAN 4.5).
+    configure_observability(send_to_logfire=None, capture_mode=CaptureMode.APPROVED_CONTENT)
     stop = threading.Event()
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda signum, frame: stop.set())

@@ -408,6 +408,13 @@ class Run(Record):
     )
     # One entry per paid call, with its usage and cost (LANE.md T2c).
     paid_calls: list[dict] = Field(default_factory=list, exclude_if=lambda value: not value)
+    # The run's trace: its root's W3C context and trace id, set once (LANE.md T5a).
+    trace_context: dict[str, str] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    trace_id: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{32}$", exclude_if=lambda value: value is None
+    )
 
 
 class AuditEvent(Record):
