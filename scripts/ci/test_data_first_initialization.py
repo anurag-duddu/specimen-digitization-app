@@ -485,7 +485,9 @@ def inventory():
 
 @pytest.fixture
 def migration(tmp_path, monkeypatch, capsys):
-    """The migrate step, faking only this run's artifacts, their attestation, the post check and Node."""
+    """The migrate step, faking only this run's artifacts, their attestation and Node. The initializer's own post
+    check never runs: its session guard refuses any other client session, which a re-run meets once Data Connect
+    serves the schema."""
     events, published, statements, plans = [], {}, [], []
     receipt = {"version": "data-initializer/v1", "source_sha": SHA, "run_id": 456, "run_attempt": 1, "instance": I.SOURCE,
                "database": I.DATABASE, "postconditions_sha256": I.sha(POST)}
@@ -498,23 +500,25 @@ def migration(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(deploy_runtime, "verified_receipt_bytes", lambda path, sha256, source, workflow: Path(path).read_bytes()
                         if (hashlib.sha256(Path(path).read_bytes()).hexdigest(), source, workflow) == (sha256, SHA, "data-release.yml")
                         else pytest.fail("only this commit's signed receipt is consumed"))
-    post = [POST]
-    monkeypatch.setattr(I, "native", lambda directory, instance, mode, *, files, deadline, gate_sha=None: events.append(mode) or {
-        "instance": instance, "mode": mode, "files": files, "postconditions": post[0]} if (instance, mode, files, gate_sha) == (
-        I.SOURCE, "post", I.fingerprints(), SHA) else pytest.fail("only the gate path's post check"))
-    outputs = {"indexes": inventory(), "migrated": copy.deepcopy(CATALOG)}
+    monkeypatch.setattr(I, "native", lambda *args, **kwargs: pytest.fail("the migrate step never runs the initializer's post"))
+    # Before the diff, the catalog read-back sees the initialized database: no relation yet, the initializer's postconditions.
+    outputs = {"indexes": inventory(), "migrated": copy.deepcopy(CATALOG),
+               "initialized": {**copy.deepcopy(CATALOG), "tables": [], "views": [], "owners": []}}
 
     def run(command, **kwargs):
         assert command[:2] == ["node", "scripts/ci/release_sql.mjs"] and command[3] == D.SOURCE
         assert kwargs["env"]["RELEASE_GATE_SHA"] == SHA and kwargs["cwd"] == D.ROOT
         events.append(command[2])
+        key = "initialized" if command[2] == "migrated" and "diff" not in events else command[2]
         if command[2] == "migrate":
             written = json.loads(D.private_bytes(Path(command[5])))
             assert set(written) == {"version", "source_sha", "statements", "relaxed"} and written["source_sha"] == SHA
             plans.append(written)
             statements.extend(written["statements"])
             outputs["migrate"] = {"version": "data-migration/v1", "statements": len(written["statements"]), "committed": True}
-        Path(command[4]).write_text(json.dumps(outputs[command[2]]))
+        if outputs.get(key) is None:
+            return subprocess.CompletedProcess(command, 1, b"", b"")
+        Path(command[4]).write_text(json.dumps(outputs[key]))
         Path(command[4]).chmod(0o600)
         return subprocess.CompletedProcess(command, 0, b"", b"")
     monkeypatch.setattr(D.subprocess, "run", run)
@@ -530,12 +534,12 @@ def migration(tmp_path, monkeypatch, capsys):
         assert "canary" not in plane.log
         return json.loads(output.read_text())
     return SimpleNamespace(migrate=migrate, events=events, published=published, statements=statements, outputs=outputs,
-                           post=post, receipt=receipt, plans=plans)
+                           receipt=receipt, plans=plans)
 
 
 DIFF = [ALLOWED["create-table"], ALLOWED["create-unique-index"]]
-ORDER = ["post", "diff", "migrate", "schema", "indexes", "connector-check", "connector", "ruleset", "release", "migrated"]
-EFFECTS = set(ORDER) - {"post", "diff"}
+ORDER = ["migrated", "diff", "migrate", "schema", "indexes", "connector-check", "connector", "ruleset", "release", "migrated"]
+EFFECTS = set(ORDER) - {"migrated", "diff"}
 
 
 def initialized(attempt=1, **facts):
@@ -560,6 +564,14 @@ def test_the_owner_migrates_then_the_schema_indexes_connector_rules_and_catalog_
     assert [role for role, _, body in plane.patches if role == "connector" and "etag" not in body] == ["connector"] * 2
     assert value == initialized(schema_etag="schema-etag-2", schema_update_time=UPDATED, connector_etag="connector-etag-2",
                                 storage_ruleset=RULESET, tables=len(TABLES), views=0)
+
+
+def test_the_postconditions_are_read_read_only_before_the_diff_never_through_the_initializers_session_guard(migration):
+    """release_initialize.mjs post also refuses any other client session. A re-run after the schema apply meets Data
+    Connect's own sessions, so the step reads the same postconditions through release_sql.mjs, as the final check does."""
+    plane = Plane(migration.events, error([{"sql": DIFF[0]}]))
+    migration.migrate(plane)
+    assert plane.error is None and migration.events[:2] == ["migrated", "diff"] and migration.events.count("migrated") == 2
 
 
 def test_a_re_run_after_the_migration_committed_has_nothing_to_migrate_and_completes_the_release(migration):
@@ -598,6 +610,7 @@ def test_the_plan_carries_the_merged_schemas_relaxed_pairs_and_every_caller_read
     ("no-receipt", "this run's attested initializer receipt is missing or ambiguous"),
     ("two-receipts", "this run's attested initializer receipt is missing or ambiguous"),
     ("another-attempt", "this run's initializer receipt does not match its artifact"),
+    ("unreadable-catalog", "the initialized catalog could not be read"),
     ("changed-postconditions", "the database's postconditions changed since this run's initializer"),
     ("lingering-principal", "the initializer's SQL principal still exists; dispose of it, then re-run"),
     ("changed-schema", "the live schema or connector is neither the placeholder nor the merged files; reconcile them"),
@@ -611,8 +624,10 @@ def test_the_migration_needs_this_runs_receipt_the_exact_postconditions_no_princ
         migration.published[f"data-initializer-{SHA}-2"] = migration.published[f"data-initializer-{SHA}-1"]
     elif fault == "another-attempt":
         migration.published[f"data-initializer-{SHA}-1"] = json.dumps({**migration.receipt, "run_attempt": 2}).encode()
+    elif fault == "unreadable-catalog":
+        migration.outputs["initialized"] = None
     elif fault == "changed-postconditions":
-        migration.post[0] = {**POST, "schema_owner": "cloudsqlsuperuser"}
+        migration.outputs["initialized"]["postconditions"] = {**POST, "schema_owner": "cloudsqlsuperuser"}
     elif fault == "lingering-principal":
         plane.principal = {"name": I.INITIALIZER_SQL, "type": "CLOUD_IAM_SERVICE_ACCOUNT"}
     else:
@@ -628,7 +643,7 @@ def test_a_refused_statement_stops_everything_after_the_diff_and_the_log_names_k
     plane = Plane(migration.events, error(diffs))
     value = migration.migrate(plane)
     assert plane.error == f"the migration refused {len(diffs) - 1} of {len(diffs)} statement(s)"
-    assert migration.events == ["post", "diff"] and migration.statements == [] and value == initialized()
+    assert migration.events == ["migrated", "diff"] and migration.statements == [] and value == initialized()
     assert [line for line in plane.log.splitlines() if line.startswith("Refused: ")] == [
         f"Refused: diff statement {at} of {len(diffs)} ({kind}): {reason}." for at, (_, kind, reason) in enumerate(REFUSED.values(), 1)
     ] + [f"Refused: diff statement {len(diffs) - 1} of {len(diffs)} (CREATE UNIQUE INDEX): marked destructive."]
@@ -646,7 +661,7 @@ def test_a_refused_statement_stops_everything_after_the_diff_and_the_log_names_k
 def test_only_an_incompatible_schema_diff_of_the_documented_shape_is_read(migration, answer, message):
     plane = Plane(migration.events, answer)
     assert migration.migrate(plane) == initialized() and plane.error == message
-    assert migration.events == ["post", "diff"]
+    assert migration.events == ["migrated", "diff"]
 
 
 @pytest.mark.parametrize("change,message", [
