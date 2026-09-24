@@ -100,8 +100,9 @@ jobs:
         env:
           RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
         run: uv run python scripts/ci/deploy_data.py --deploy --packet "$RUNNER_TEMP/data-release/packet.json" --output "$RUNNER_TEMP/data-receipt.json"
+      # Every exit: a later attempt reads a failed first apply's restore check (RELEASE.md 4.4).
       - name: Attest the data receipt
-        if: success() && steps.deploy.outcome == 'success'
+        if: always() && steps.deploy.outcome != 'skipped'
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
           subject-path: ${{ runner.temp }}/data-receipt.json

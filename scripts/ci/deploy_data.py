@@ -1366,6 +1366,37 @@ def restore_check(google, directory, body, backup_id, live_schema, facts):
     facts["first_restore"] = "checked"
 
 
+def earlier_first_restore(record):
+    """The coordinator's ruling of 2026-09-24 on a re-run after a spent claim (RELEASE.md 4.4 item 1). The claim stays
+    unreadable to the data identity (CLONE_ALLOWANCE.md), so the evidence is this run's earlier attempts' attested
+    data-released/v1 receipts for this commit: "checked" when one of them checked the clone, which is D1's one restore
+    proof; "claimed" when one spent the claim without that check; None otherwise. An unattested or mismatched receipt
+    proves nothing."""
+    from deploy_runtime import checked, verified_receipt_bytes
+    found = None
+    for attempt in sorted(run_artifacts(record, "data-receipt")):
+        if attempt >= record["release_run_attempt"]:
+            continue
+        with tempfile.TemporaryDirectory() as folder:
+            try:
+                checked(["gh", "run", "download", str(record["release_run_id"]), "--repo", REPOSITORY,
+                         "--name", f"data-receipt-{record['source_sha']}-{attempt}", "--dir", folder])
+                path = Path(folder) / "data-receipt.json"
+                receipt = strict_json(verified_receipt_bytes(path, hashlib.sha256(path.read_bytes()).hexdigest(),
+                                                             record["source_sha"], "data-release.yml"))
+            except (ValueError, OSError, subprocess.TimeoutExpired):
+                continue
+        if not (isinstance(receipt, dict) and receipt.get("version") == "data-released/v1"
+                and receipt.get("source_sha") == record["source_sha"] and receipt.get("run_id") == record["release_run_id"]
+                and receipt.get("run_attempt") == attempt):
+            continue
+        if receipt.get("first_restore") == "checked":
+            return "checked"
+        if receipt.get("first_restore") == "claimed":
+            found = "claimed"
+    return found
+
+
 def apply_released(google, directory, schema, connector, ruleset, merged, facts):
     """RELEASE.md 4.4 while the runtime runs, after the additive-only gate. The rollback guard, point-in-time recovery
     and, for the first apply, the clone's recipe and absence stop with a fixed reason before any effect. Then this
@@ -1379,10 +1410,18 @@ def apply_released(google, directory, schema, connector, ruleset, merged, facts)
     source = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}")
     if release_gate.field(source, "settings", "backupConfiguration", "pointInTimeRecoveryEnabled") is not True:
         raise blocked("point-in-time recovery is off on the SQL instance")
-    clone = clone_recipe(google, source) if first else None
+    earlier = earlier_first_restore(record) if first else None
+    if earlier == "claimed":
+        raise blocked("an earlier attempt spent the first production restore's claim without checking the clone; "
+                      "the coordinator decides")
+    clone = clone_recipe(google, source) if first and earlier is None else None
     facts["backup_id"] = take_backup(google, directory, source)
     if clone is not None:
         restore_check(google, directory, clone, facts["backup_id"], schema_gate.live_sources(schema, connector)[0], facts)
+    elif earlier == "checked":
+        facts["first_restore"] = "proven"
+        print("An earlier attempt of this run claimed and checked the first restore; this attempt applies without a "
+              "second clone.")
     tables, views, relaxed = schema_gate.declared_sql(merged[0], relaxations())
     body, connector_body = data_bodies({"schema_mode": "validate_existing", "schema_etag": revision(schema),
                                         "connector_etag": revision(connector)})

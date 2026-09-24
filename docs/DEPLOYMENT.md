@@ -947,9 +947,9 @@ every push to `main` without an envelope. The specification is
    `initialize`, the empty placeholder schema without a connector, first
    reads the application database's catalog and outputs `init_step`
    ([`RELEASE.md`](execution/golive/RELEASE.md) section 4.3). Any other
-   combination fails and asks to reconcile. The job uploads the
-   `data-released/v1` receipt on every exit after admission and attests it
-   when the deploy step succeeds.
+   combination fails and asks to reconcile. The job uploads and attests the
+   `data-released/v1` receipt on every exit after admission, so a re-run can
+   read a failed first apply's restore check.
 3. **Initialize**, in `data-initialization-production`, only when
    `init_step` is `initialize`. It re-admits through the gate's
    `data-initialization` plane and authenticates as
