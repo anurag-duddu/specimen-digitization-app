@@ -18,7 +18,12 @@ from pydantic_ai import Agent, ModelRetry
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import RunUsage, UsageLimits
 
-from .derivations import Found, apply_derivations, elevation_derivations
+from .derivations import (
+    Found,
+    apply_derivations,
+    date_derivations,
+    elevation_derivations,
+)
 from .domain import Evidence, FieldValue, LookupStatus, Record
 from .field_resolution import (
     Called,
@@ -262,11 +267,12 @@ def resolve(
             )
             fields[key] = resolver.settle(key, per_reading, call)
     # G37: what the label leaves out, filled from settled fields with evidence:
-    # the elevation rules of G41 and the geography results' derivations.
+    # the elevation rules of G41, one date for both ends (G44) and the
+    # geography results' derivations.
     unique = {(f.derivation.model_dump_json(), f.call_evidence): f for f in derivations}
     derived, filled_evidence = apply_derivations(
         fields,
-        [*elevation_derivations(fields), *unique.values()],
+        [*elevation_derivations(fields), *date_derivations(fields), *unique.values()],
         asset_id=asset_id,
         blobs=blobs,
     )

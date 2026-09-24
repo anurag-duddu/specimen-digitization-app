@@ -131,22 +131,26 @@ class Check(Frozen):
 class Derivation(Frozen):
     """A value for a field the label leaves out (G37), in the derived layer
     (G38). S8's geographic tool emits containment, elevation-model and
-    gazetteer derivations; the harness emits the two that need no outside data.
+    gazetteer derivations; the harness emits those that need no outside data.
     `inputs` maps each settled field it comes from to that field's value."""
 
     field_key: str
     value: str
     unit: str | None = None
+    # A derived date's precision, as its source date was written (G24, G44).
+    precision: Literal["day", "month", "year"] | None = None
     method: Literal[
         "containment",
         "elevation_model",
         "gazetteer_name",
         "unit_conversion",
         "stated_elevation",
+        "stated_date",
     ]
     authority: SourceRef
     inputs: dict[str, str] = Field(default_factory=dict)
     evidence: list[Check] = Field(default_factory=list)
+
 
 class ToolResult(Frozen):
     """What one tool call returns to the harness and its trace."""

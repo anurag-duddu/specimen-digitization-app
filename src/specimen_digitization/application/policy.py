@@ -24,8 +24,10 @@ from .domain import (
     Lookup,
     LookupStatus,
     Run,
+    RunFinding,
     ValueState,
 )
+from .harness_knowledge import KNOWLEDGE
 
 PLACEHOLDERS = {
     "unknown",
@@ -85,6 +87,7 @@ def evaluate(run: Run) -> list[str]:
             failures.append(f"evidence_lineage_invalid:{e.id}")
     if run.harness_failure:  # The harness decided no field (G6).
         failures.append(f"harness_failure:{run.harness_failure}")
+    shapes, patterns, finding_only, _ = _shapes(run)
     for key in run.profile.mandatory_fields:
         field = run.fields.get(key)
         value = _value(field, evidence)
@@ -114,6 +117,14 @@ def evaluate(run: Run) -> list[str]:
                 and not _supported(field, layer, value, evidence)
             ):
                 failures.append(f"unsupported_{layer}:{key}")
+        # G45: a value that doesn't look like its field's kind, in a field no
+        # lookup checks, goes to review.
+        if (
+            key in shapes
+            and key not in finding_only
+            and _misshapen(field, shapes[key], patterns)
+        ):
+            failures.append(f"value_shape_mismatch:{key}")
     for unit in ("m", "ft"):
         lower = _elevation(run.fields.get(f"elevation_from_{unit}"), evidence)
         upper = _elevation(run.fields.get(f"elevation_to_{unit}"), evidence)
@@ -135,7 +146,9 @@ def evaluate(run: Run) -> list[str]:
             )
         ):
             failures.append(f"elevation_units_conflict:{end}")
-    start, end, identified = (_days(run.fields.get(key)) for key in DATE_FIELDS)
+    start, end, identified = (
+        _days(run.fields.get(key), evidence) for key in DATE_FIELDS
+    )
     if start is not None and end is not None and identified is not None:
         # At the precision written (G24): a year or a month is a span of days.
         if (
@@ -183,6 +196,9 @@ def finalize(run: Run) -> None:
         run.reasons = [run.blocker or "lookup_operational_failure"]
         return
     run.reasons = evaluate(run)
+    # A shape the queue can't route on stays a finding, written once (G45).
+    run.findings = [f for f in run.findings if f.rule_id != "value_shape"]
+    run.findings += _shape_findings(run)
     if (
         run.capability_reason
         and run.retry_eligibility
@@ -234,6 +250,48 @@ def taxon_lookup(run: Run) -> Lookup | None:
         ),
         None,
     )
+
+
+def _shapes(run: Run) -> tuple[dict, dict, frozenset, str | None]:
+    """The shape rules of the harness knowledge the run's profile names (G45),
+    for a run the harness decided; none otherwise."""
+    named = (run.profile_snapshot or {}).get("harness_knowledge") or {}
+    module = KNOWLEDGE.get(named.get("id"))
+    if not _lane(run) or module is None:
+        return {}, {}, frozenset(), None
+    return (
+        module.SHAPES,
+        module.SHAPE_PATTERNS,
+        module.FINDING_ONLY,
+        named.get("version"),
+    )
+
+
+def _misshapen(field: FieldValue | None, rules, patterns) -> bool:
+    """Whether a value, as written, looks like what its field's rules name."""
+    return any(
+        re.search(patterns[rule], text) for text in _texts(field) for rule in rules
+    )
+
+
+def _shape_findings(run: Run) -> list[RunFinding]:
+    """G45's finding for a field whose meaning is unconfirmed (PRD 522): a
+    warning that never routes the record."""
+    shapes, patterns, finding_only, version = _shapes(run)
+    return [
+        RunFinding(
+            rule_id="value_shape",
+            rule_version=version or "unversioned",
+            severity="warning",
+            field_key=key,
+            reason_code=f"value_shape_mismatch:{key}",
+            evidence_ids=list(field.evidence_ids),
+        )
+        for key in sorted(finding_only & set(shapes))
+        if (field := run.fields.get(key)) is not None
+        and field.state == ValueState.SUPPORTED
+        and _misshapen(field, shapes[key], patterns)
+    ]
 
 
 def _lane(run: Run) -> bool:
@@ -370,17 +428,20 @@ def _elevation(field: FieldValue | None, evidence) -> Decimal | None:
     return Decimal(numbers[0].replace(",", "")) if len(numbers) == 1 else None
 
 
-def _days(field: FieldValue | None) -> tuple[date, date] | None:
+def _days(field: FieldValue | None, evidence) -> tuple[date, date] | None:
     """The first and last day a date covers at the precision written (G24): a
-    year, a month or a day. None when it has no date, or is written as
-    uncertain ("?"), which keeps the date gate (G24)."""
+    year, a month or a day. None when it has no date, is written as uncertain
+    ("?"), which keeps the date gate (G24), or is derived without its record
+    (G44; #124)."""
     if field is None:
         return None
     if field.layer is None:  # The extraction path: an ISO day, as before.
         text, precision = field.literal, "day"
     else:
-        if field.state != ValueState.SUPPORTED or any(
-            "?" in text for text in _texts(field)
+        if (
+            field.state != ValueState.SUPPORTED
+            or any("?" in text for text in _texts(field))
+            or (field.layer == "derived" and not _record(field, evidence))
         ):
             return None
         text, precision = field.parsed, field.precision or "day"

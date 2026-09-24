@@ -36,6 +36,7 @@ RULES = {
     "stated_elevation": "one stated elevation is both the minimum and the maximum",
     "feet_to_metres": "1 ft = 0.3048 m, exact",
     "metres_to_feet": "1 m = 1/0.3048 ft, exact",
+    "one_date_both_ends": "one written collecting date is both ends (G44)",
 }
 NUMBER = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?")
 
@@ -111,6 +112,38 @@ def elevation_derivations(fields: Mapping[str, FieldValue]) -> list[Derivation]:
     ]
 
 
+def date_derivations(fields: Mapping[str, FieldValue]) -> list[Derivation]:
+    """G44, the owner's "Fill To, derived": one written collecting date fills
+    Date Visited To with the same date, at the precision written, derived from
+    Date Visited From. A written range keeps both ends as written."""
+    start = fields.get("date_visited_from")
+    if (
+        "date_visited_to" not in fields
+        or _stated(fields, "date_visited_to")
+        or not _stated(fields, "date_visited_from")
+        or not _settled(fields, "date_visited_from")
+        or not start.parsed
+    ):
+        return []
+    return [
+        Derivation(
+            field_key="date_visited_to",
+            value=start.parsed,
+            precision=start.precision,
+            method="stated_date",
+            authority=SourceRef(name="apply_derivations", version=RULES_VERSION),
+            inputs={"date_visited_from": start.parsed},
+            evidence=[
+                Check(
+                    name="one_date_both_ends",
+                    result="supports",
+                    detail=RULES["one_date_both_ends"],
+                )
+            ],
+        )
+    ]
+
+
 def apply_derivations(
     fields: Mapping[str, FieldValue],
     derivations: Sequence[Derivation | Found],
@@ -165,6 +198,7 @@ def apply_derivations(
         filled[key] = FieldValue(
             state=ValueState.SUPPORTED,
             parsed=derivation.value,
+            precision=derivation.precision,
             authority_id=derivation.authority.record_id,
             evidence_ids=list(relations),
             evidence_relations=relations,
@@ -173,7 +207,6 @@ def apply_derivations(
             reason=f"derived:{derivation.method}",
         )
     return filled, evidence
-
 
 
 def derive_rest(
@@ -204,6 +237,8 @@ def derive_rest(
         known[key] = FieldValue(
             state=ValueState.SUPPORTED,
             literal=value,
+            parsed=value,
+            precision=_iso_precision(value),
             evidence_ids=[review.id],
             evidence_relations={review.id: "supports"},
         )
@@ -213,7 +248,10 @@ def derive_rest(
         if key not in filled and value.state != ValueState.SUPPORTED
     }
     derived, records = apply_derivations(
-        known, elevation_derivations(known), asset_id=asset_id, blobs=blobs
+        known,
+        [*elevation_derivations(known), *date_derivations(known)],
+        asset_id=asset_id,
+        blobs=blobs,
     )
     fields = {key: value for key, value in derived.items() if key in rest}
     cited = {e for value in fields.values() for e in value.evidence_ids}
@@ -221,6 +259,13 @@ def derive_rest(
         fields=fields,
         evidence=[item for item in [*evidence, *records] if item.id in cited],
     )
+
+
+def _iso_precision(value: str) -> str | None:
+    """The precision an ISO date shows: a year, a month or a day."""
+    shapes = {4: "year", 7: "month", 10: "day"}
+    looks_iso = re.fullmatch(r"\d{4}(?:-\d{2}(?:-\d{2})?)?", value)
+    return shapes.get(len(value)) if looks_iso else None
 
 
 def _text(value: Decimal, *, converted: bool) -> str:
