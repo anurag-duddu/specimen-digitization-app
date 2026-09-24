@@ -515,4 +515,31 @@ void main() {
       }
     });
   });
+
+  group("the program's model allowance (G30)", () {
+    test('is read in micro-dollars from the run', () {
+      final ThreadRun run = ThreadRun.fromJson(<String, dynamic>{
+        'run_id': 'r',
+        'blocker': 'program_allowance_exhausted',
+        'allowance': <String, dynamic>{
+          'allowance_micros': 5000000,
+          'reserved_total_micros': 250000,
+          'remaining_micros': 0,
+          'at': '2026-09-23T14:40:00Z',
+        },
+      });
+      expect(run.allowanceMicros, 5000000);
+    });
+
+    test('is absent when the run does not carry it, never zero', () {
+      expect(ThreadRun.fromJson(<String, dynamic>{}).allowanceMicros, isNull);
+      expect(
+        ThreadRun.fromJson(<String, dynamic>{
+          'allowance': <String, dynamic>{'allowance_micros': '5000000'},
+        }).allowanceMicros,
+        isNull,
+        reason: 'a malformed value is absent, never coerced',
+      );
+    });
+  });
 }
