@@ -370,16 +370,104 @@ afterwards (D2).
 Nothing prints a value from the artifact, and evidence stays encrypted as
 today. The envelope phases stay until T3's last step removes them.
 
-## 5. Next pull requests
+## 5. T4: the owner's standing grants
+
+`scripts/ci/owner_grants.py plan` is read-only, in the style of
+`scripts/ci/data_setup_window.py plan`. It reads the live IAM policies of the
+project, the bucket, the image registry, the three runtime service accounts,
+the six runtime secrets and, once they exist, the Cloud Run services and job.
+It compares them with the committed table below and prints, for the owner:
+- each missing grant as one exact command with its one-line reason;
+- each custom role to create;
+- each grant these identities hold beyond the table, so it can be reviewed;
+- each grant to remove: Owner or Editor, and any untimed binding of a
+  time-bounded role, with its exact removal command;
+- the steps that must wait: the invoker grants until the first runtime
+  release creates the services and the job, and the SAM 3 checkpoint's
+  listing grant until `runtime_settings.py` pins its digest.
+
+Every grant names its resource. No identity receives Owner or Editor, and no
+grant carries a time condition except the time-bounded roles, which only
+`scripts/ci/data_setup_window.py` opens. The script never writes IAM and never
+prints a secret or a private id.
+
+| Identity | Grant | Resource | Reason |
+|---|---|---|---|
+| `specimen-runtime-build` | `roles/artifactregistry.writer` | repository `specimen-runtime` | push the three images |
+| `specimen-runtime-build` | `specimenDataInventoryProjectRead` (`resourcemanager.projects.get`) | project | the release client confirms its project |
+| `specimen-runtime-release` | new custom `specimenRuntimeRelease`: `run.services.{create,get,update,getIamPolicy}`, `run.jobs.{create,get,update}`, `run.operations.get`, `run.revisions.get` | project | define the services and the job, read their invoker policies; no delete, no `jobs.run`, no `setIamPolicy` |
+| `specimen-runtime-release` | `roles/iam.serviceAccountUser` | each of the three runtime service accounts | deploy revisions that run as them |
+| `specimen-runtime-release` | `roles/artifactregistry.reader` | repository `specimen-runtime` | verify each image's attestation |
+| `specimen-runtime-release` | `specimenDataInventoryProjectRead` | project | the release client confirms its project |
+| API and worker runtime | new custom `specimenRuntimeConnector`: `firebasedataconnect.connectors.{impersonateQuery,impersonateMutation}` | project | call the connector's named operations only, never arbitrary GraphQL |
+| API, worker and SAM 3 runtime | `roles/storage.objectViewer` and `roles/storage.objectCreator`, conditioned on objects under `application/sha256/` | bucket | read and write the application's content-addressed objects; no delete |
+| API runtime | `roles/storage.objectViewer`, conditioned on objects and listings under `microscopic-slides/` | bucket | source import (S3) |
+| SAM 3 runtime | `roles/storage.objectViewer`, conditioned on listings under `application/sha256/<checkpoint digest>/sam3-cache` | bucket | mount the checkpoint read-only; waits for the digest |
+| API runtime | new custom `specimenApiUserLookup`: `firebaseauth.users.get` | project | look up the Firebase user behind a verified ID token; `roles/firebaseauth.viewer` would also read the auth configuration and list apps and projects |
+| API runtime | `roles/run.invoker` | job `specimen-worker` | start executions (G2); after the first runtime release |
+| worker runtime | `roles/run.invoker` (`run.jobs.run`, never `run.jobs.runWithOverrides`) | job `specimen-worker` | the drain worker hands over to its next execution; bounded by the collection fence and a no-progress stop; after the first runtime release |
+| worker runtime | `roles/run.invoker` | service `specimen-sam` | call SAM 3; after the first runtime release |
+| `allUsers` | `roles/run.invoker` | service `specimen-api` | the web client reaches the API, which authenticates every request itself; after the first runtime release |
+| runtime identities | `roles/secretmanager.secretAccessor`, conditioned on the exact version it reads | each secret its role reads (`runtime_settings.py`) | per identity and per secret: the API reads the Logfire token, the source registry and the collection bindings; the worker reads the Hugging Face token, the Logfire token, the Maps key, its actor uid and the collection bindings; SAM 3 reads the Logfire token |
+| `specimen-data-release` | `specimenDataSchemaPublish`, `specimenDataStorageRules`, `specimenDataSourceBackup`, `specimenDataInventorySqlConnect`, `specimenDataInventoryProjectRead` | project, with the existing resource conditions and no time condition | apply the schema, the connector and the rules; back up before an apply (D1); read the catalog |
+
+Each `secretAccessor` grant keeps the owner-approved condition naming the
+exact version its identity reads (coordinator ruling on #76's review): version
+1 of the Logfire, Maps, source-registry, collection-bindings and worker-uid
+secrets, and version 2 of the Hugging Face token. IAM enforces the version on
+every read, and `runtime_settings.py` pins the same version in code. A version
+bump is an owner action that updates the condition, beside the settings pull
+request that pins the new version.
+
+The data release's reads on merge (section 4.2) need
+`firebasedataconnect.schemas.get` and `connectors.get`,
+`firebaserules.releases.get` and `rulesets.get`, and `cloudsql.instances.get`
+and `databases.get`. The script names the standing data-release role that
+grants each. When none does, it prints the `gcloud iam roles update
+--add-permissions` command for the narrowest one: `specimenDataSchemaPublish`
+for Data Connect, `specimenDataStorageRules` for the rules, and
+`specimenDataInventorySqlConnect` for Cloud SQL, whose binding keeps its
+instance condition. `specimenDataInventoryProjectRead` never grows, because
+the runtime identities hold it too.
+
+Only the roles automatic applies need are standing. The inventory roles
+`specimenDataInventorySqlConnect` and `specimenDataInventoryProjectRead` are
+already standing and keep their conditions unchanged. The rest stay
+time-bounded through the setup window:
+- the clone roles (`specimenDataCloneCreate`, `specimenDataCloneControl`) and
+  `specimenDataRestoreAllowanceClaim`, opened only for the first apply's single
+  restore check (D1);
+- `specimenDataRuntimeAbsence`, which automatic applies no longer use;
+- the one-time roles: the initializer role, `specimenDataOwnerBootstrap` and
+  `specimenDataInitializerDisposal`.
+
+The script reports each timed live binding of these as time-bounded, never
+as missing. An untimed binding of any of them is a standing grant the
+invariants forbid, so the script lists it for removal.
+
+A second pull request, T4c, narrows `scripts/ci/data_setup_window.py` before
+the owner next opens a window. Its renewals drop the three
+roles that become standing (`specimenDataSchemaPublish`,
+`specimenDataSourceBackup`, `specimenDataStorageRules`). The window keeps
+refusing any untimed binding of the roles it manages, and prints their
+revocation commands.
+
+The script also prints the other owner steps:
+- public access prevention on the bucket;
+- the Budget API and a USD 25 budget alert (the owner fills in the billing
+  account);
+- uploading the readiness marker, until `runtime_settings.py` pins its
+  generation.
+
+The SAM 3 checkpoint is already in the bucket: it was uploaded on
+2026-09-09, and each object's checksum matches the files behind the pinned
+digest.
+
+## 6. Next pull requests
 
 Each adds its own section here, with failing tests first, as PLAN section 7.2
 requires.
 
-- T4, the owner's list: a read-only script that prints the exact standing IAM
-  grants and secrets T2 and T3 need, each bound to a named resource with its
-  reason. It also prints the time-bounded windows for the one-time roles (the
-  initializer role, `specimenDataOwnerBootstrap`,
-  `specimenDataInitializerDisposal`) and for the clone and claim roles.
 - T5, first releases: the first data and runtime releases; the repository
   variables as an owner action whose private values the owner fills in;
   Hosting rebuilt and connected (DoD-1 to DoD-3).

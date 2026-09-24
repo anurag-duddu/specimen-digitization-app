@@ -11905,3 +11905,36 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (1) `PRD.md` 12.4's open items (558-564) mark what only the owner can settle. Plan wording must not settle any of them by implication, as "keeping partial precision" and "store matched names" did.
   - (2) The worker's connector identity is also its audit identity. Defaulting it to the administrator's UID would record every automated step as that person. `LIVE_PROCESSING.md` 62-63 already required a separate operator account.
 - Remaining follow-ups: the owner's Hugging Face credits, field list, source-registry secret and worker account; S2's IAM list; the G15 calibration.
+
+### 2026-09-23 — Go-live release workstream (S2), T4a: the owner's standing-grants report
+
+- Task: the S2 session, brief item T4 (`docs/execution/golive/RELEASE.md` section 5): a read-only script that prints the owner's exact standing IAM grants.
+- Branch/worktree: `golive/release-owner-grants`, stacked on #99's branch. An Opus subagent implemented it test-first in two rounds, in an isolated worktree. This session reviewed it, squashed it into one red/green pair, and fixed the inventory condition.
+- Outcome:
+  - `scripts/ci/owner_grants.py plan` sends only `get-iam-policy` and `describe` reads, through `owner_gcloud`. It compares them with the committed table and prints the owner's list:
+    - custom roles to create;
+    - the data release's read permissions;
+    - missing grants, each as one exact command after its reason;
+    - grants to replace and grants to remove;
+    - grants that wait for the first runtime release or the checkpoint digest;
+    - time-bounded window bindings;
+    - grants for review;
+    - other owner steps.
+  - Rulings applied:
+    - every `secretAccessor` grant is conditioned on the exact version its identity reads (the coordinator, on #76's review);
+    - the API gets a one-permission `specimenApiUserLookup` in place of `roles/firebaseauth.viewer`;
+    - the worker may run its own job (S3's hand-over);
+    - an untimed binding of a time-bounded role is listed for removal.
+  - It never prints a member outside the watched identities, or any live condition text.
+- Commits/PRs: spec `2ac7951`, `4f71810`, `8be715a`, `e068379`; red `3ef75c5`, green `4795607`; the condition fix `test` + `release` pair; this closeout.
+- Validation actually run:
+  - Report tests: 17 passed, 1 skipped (the `runtime_settings.py` cross-check, which needs #100). The subagent ran the skipped test with #100's file on the path, and it passed.
+  - `scripts/` passed on the subagent's head: 1,737 passed, 51 skipped. pre-commit passed.
+  - This session ran `plan` read-only against the project, with #100's settings and the verified checkpoint digest (199 lines, then 193 after the fix).
+- Durable learnings:
+  - A report that reuses a live IAM condition must carry its exact text. The live inventory condition uses single quotes, and an equivalent double-quoted copy read as "another condition" and proposed a replacement. YAML single-quoted scalars escape `'` as `''`.
+  - `gcloud run jobs add-iam-policy-binding` takes no `--condition` (gcloud 582). Every other binding command here does, and gets `--condition=None` so that gcloud never prompts.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - T4c narrows `data_setup_window.py` before the owner's next window.
+  - The settings pull request pins `SAM_CHECKPOINT_SHA256`, after which the SAM 3 listing grant stops waiting.
