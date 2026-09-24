@@ -281,34 +281,56 @@ run, not in SQL.
     `ToolCall` that ran on it (`input_source` `raw_reading`, its observation),
     that call's evidence, and `normalized`, which is then that reading's exact
     literal.
-  - If the first pass picked none, `input_source` is `raw_reading`, and
-    `source_observation_id` names the reader a lookup confirmed, or is None when
-    none was confirmed.
-- `verbatim_by_observation: dict[str, str]` (G27, G28). It maps an observation
-  id to that reader's literal exactly as captured, and is set only when the
-  first pass selected no reading; `literal` is None there. The writer emits
-  one `FieldCandidate` per entry, with `inputSource` `raw_reading` and that
-  `sourceObservationId`. Only the confirmed reader's candidate carries
-  `normalizedValue`, `authorityId` and the evidence links; each other reader's
-  candidate carries its literal and the field's state. `ResolvedField.candidateId`
-  points at the confirmed reader's candidate, and is null when no reader was
-  confirmed. The pointer selects the settled value only, never a verbatim:
-  every reader's verbatim stays on its own candidate. When several readers wrote
-  the same literal, the confirmed reader is the one S4 names in
-  `source_observation_id`. Place and taxon fields are treated alike.
+  - If the first pass picked none, the field uses the verbatim map below.
+- `verbatim_by_observation: dict[str, str]`, `input_source_by_observation:
+  dict[str, Literal["decided_transcript", "raw_reading"]]` and
+  `settled_observation_ids: list[str]` (G27, G28, G32; agreed with S4). The
+  three are set together, in two cases:
+  - A field found on more than one label (G32: the harness settles each label
+    separately, and the field clears when every label settles to the same
+    value; PLAN in #124, 18958e0). There is one entry per label's source reading,
+    even when the texts are identical, so every label keeps its own candidate: a
+    label with a decided transcript contributes its selected reading
+    (`decided_transcript`), and a no-pick label its readers (`raw_reading`).
+  - A single-label field whose first pass selected no reading (G19): one entry
+    per reader, each `raw_reading`.
+  - Whenever the map is set, `literal`, `input_source`, `source_region_id` and
+    `source_observation_id` are None. Single-label fields with a decided
+    transcript stay as above, the G20 fallback included.
+  - `settled_observation_ids` names the entries whose own verbatim settled to
+    the field's value: one per label when the field cleared across labels (its
+    decided reading, or the reader a lookup confirmed in a no-pick label), the
+    confirmed reader in the single-label no-pick case, and none when the field
+    is in review (labels or readings conflict).
+  - The writer emits one `FieldCandidate` per entry with that entry's
+    `inputSource`: a decided-transcript entry names its region's decision in
+    `sourceTranscriptionId`, and a raw-reading entry its reading in
+    `sourceObservationId`. Only the settled entries' candidates carry
+    `normalizedValue`, `authorityId`, `parsedValue` and evidence links, each
+    linking the evidence whose tool call ran on its own source (its reading, or
+    its region's decided transcript); evidence from no tool call links to every
+    settled candidate. The other candidates carry their literal and the field's
+    state. `ResolvedField.candidateId` points at the first settled candidate in
+    verbatim order, and is null when none settled.
+  - The pointer selects the settled value only, never a verbatim: every
+    label's and reader's verbatim stays on its own candidate. A field that
+    clears across labels with differing spellings also gets the warning
+    `spelling_disagreement`. Place and taxon fields are treated alike.
 - The settled value stays on the field: `authority_id` (Google's place id, or
   GBIF's usage key) and `normalized` (rule 1.6 for Google; GBIF's accepted name
-  for GBIF). Both are set only from a call whose outcome is `success`.
+  for GBIF). Both are set only from a call whose outcome is `success`. A field
+  without a lookup that clears across labels on identical texts has that common
+  text in `normalized`, since `literal` is None there (G32).
   - GBIF's `success` (S4's T3a, under the coordinator's GBIF.md ruling and G25)
     is an `EXACT` match of an `ACCEPTED` usage with a key, in class Insecta, at
     the rank the label's name gives (a genus alone `GENUS`, a binomial
     `SPECIES`, a trinomial `SUBSPECIES`), with no live homonym.
   - `FUZZY`, `VARIANT`, `HIGHERRANK` and an exact synonym are `ambiguous`
     (GBIF.md 127-128). The label name stays the verbatim with no settled value;
-    the reason codes the queue then records are S4's policy. For a synonym, S4 appends GBIF's `acceptedUsage` to
-    that lookup's `candidates`, where the reviewer's `taxonomy_resolution`
-    decision can select it: the accepted usage is proposed separately and
-    never replaces the verbatim.
+    the reason codes the queue then records are S4's policy. For a synonym,
+    S4 appends GBIF's `acceptedUsage` to that lookup's `candidates`, where
+    the reviewer's `taxonomy_resolution` decision can select it: the
+    accepted usage is proposed separately and never replaces the verbatim.
 - `evidence_relations: dict[str, Literal["decides", "supports", "contradicts"]]`
   (G23). It has exactly one entry per id in `evidence_ids`, with no default,
   and maps each to that source's relation to the value: GBIF `decides`; Global
@@ -518,9 +540,13 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   "image": {"asset_id": "…", "sha256": "…", "width": 4000, "height": 3000,
     "pixel_basis": "original_pixel_edges"},
   "segmentation": {"model_revision": "…", "settings": {"concept_prompt": "label"}},
-  "coverage_check": {"status": "passed", "checks": [{"name": "region_count", "passed": true,
-    "detail": {}}, {"name": "full_image", "passed": true, "detail": {}}], "evidence_id": "…",
-    "checked_at": "…"},
+  "coverage_check": {"status": "passed", "checks": [
+    {"name": "region_count", "passed": true,
+     "detail": {"found": 1, "min": 1, "max": 2, "reason_codes": []}},
+    {"name": "full_image", "passed": true,
+     "detail": {"counted": 1, "outside": 0, "threshold": 0.5, "min_inside_fraction": 0.8,
+                "reason_codes": []}}],
+    "evidence_id": "…", "checked_at": "…"},
   "regions": [{
     "region_id": "…", "ordinal": 0, "rotation_quarter_turns": 0,
     "geometry": {"x": 10, "y": 20, "width": 390, "height": 160},
@@ -547,7 +573,7 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     "verbatim": [{"text": "…", "input_source": "decided_transcript", "region_id": "…",
       "observation_id": null}],
     "parsed": null, "precision": null, "century_rule": null,
-    "normalized": null, "authority_id": "…", "confirmed_observation_id": null,
+    "normalized": null, "authority_id": "…", "settled_observation_ids": [],
     "evidence": [{"evidence_id": "…", "relation": "supports", "source": "google-maps-geocoding",
       "locator": "place/…", "outcome": "success"}]}],
   "decision": {"disposition": "needs_human_review", "policy_version": "…",
@@ -586,20 +612,33 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
 - `coverage_check.status` is `passed`, `failed` or `not_run` (G15). A failed
   check's reason code, `label_coverage_unconfirmed` today (`policy.py` 35-36),
   is also in `decision.reason_codes`.
+  - `region_count`'s detail is `{found, min, max, reason_codes}`: the merged
+    region count, and the profile's allowed range, null when the check did not
+    record it. Its codes come from `zero_regions`, `region_out_of_bounds` and
+    `label_region_count_out_of_range`.
+  - `full_image`'s detail is `{counted, outside, threshold,
+    min_inside_fraction, reason_codes}`: the label-like detections at or above
+    the threshold, and how many of them lie outside the label regions. Its code
+    is `cross_check_detection_outside_labels`, or none.
+  - A check's `passed` is true exactly when its `reason_codes` is empty. The
+    values come from S3's `Run.coverage_check` (#111), agreed with S6.
 - `first_pass` is null for a region with no recorded decision; the run's
   `stage` and `blocker` say why. Its `unresolved` follows the rule in section
   4.2.
-- Each field's `verbatim` has one entry, the decided transcript's literal, or one
-  entry per reader when the first pass selected no reading (G27, G28). The
+- Each field's `verbatim` has one entry, the decided transcript's literal; one
+  entry per reader when the first pass selected no reading (G27, G28); or one
+  entry per label's source reading when the field was found on more than one
+  label (G32), each with its own `input_source`. The
   settled value is `normalized` and `authority_id` (rule 1.6), and `evidence`
   gives each linked source's G23 relation: `success` or `recorded` evidence
   only, while every other outcome is in `tool_calls`.
-- `confirmed_observation_id` names the reading whose exact literal a lookup
-  confirmed when the settled value came from a raw reading (G20). With no
-  pick, that reader's candidate carries the settled value and the evidence.
-  With a pick and a fallback, it is the raw reading the confirming call ran on.
-  It is null when the settled value came from the decided transcript, or when
-  there is none.
+- `settled_observation_ids` lists, in verbatim order, the readings whose own
+  literal settled the field's value (G20, G32):
+  - with a verbatim map (several labels, or a no-pick label), the settled
+    entries' readings, one per label when the field cleared across labels;
+  - with a single decided transcript, the raw reading a fallback lookup
+    confirmed;
+  - otherwise it is empty.
   `parsed` stays a string; `precision` and `century_rule` sit beside it and are
   null for non-dates (G24).
 - `decision.findings` lists the hard, warning and info findings, each with its
