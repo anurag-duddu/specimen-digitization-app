@@ -616,6 +616,11 @@ void main() {
       expect(taxon.authorityIdentity?.credit, 'fixture credit');
       expect(taxon.findings.single.severity, 'warning');
       expect(taxon.findings.single.reasonCode, 'taxonomy_source_disagreement');
+      expect(
+        taxon.evidence.map((ThreadEvidence e) => e.source),
+        <String>['gbif', 'col'],
+        reason: "S4's source ids (S5, #171 at c149115)",
+      );
 
       final ThreadField city = fieldOf(thread, 'city');
       expect(
