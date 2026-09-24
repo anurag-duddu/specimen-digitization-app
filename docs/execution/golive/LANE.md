@@ -717,8 +717,8 @@ How T2c builds it:
 ## T5. Tracing
 
 Implements PLAN 4.5 with G3, G26 and DoD-5: each run is one Logfire trace,
-linked from the record. Three pull requests: the run's trace (T5a), content and
-SAM 3 (T5b), and the Geocoding key (T5c).
+linked from the record. Four pull requests: the run's trace (T5a), content
+(T5b), SAM 3 (T5c) and the Geocoding key (T5d).
 
 ### The run's trace (T5a)
 
@@ -745,18 +745,32 @@ SAM 3 (T5b), and the Geocoding key (T5c).
   `Run.trace_id` through `RecordRunTraceV1` once the run's profile is pinned,
   and the thread API links the record's trace from it. The lane never calls it.
 
-### Content and SAM 3 (T5b)
+### Content (T5b)
 
-- Readers, the first pass and the harness follow the configured capture mode,
-  so system prompts, messages and tool calls are visible. The per-agent
-  settings that force content off give way to it: the lane changes the readers
-  and the model-runtime child spans, and S4 changes its agents.
+- **Agents.** The readers and the old extraction agent take their
+  instrumentation from `provider_privacy.agent_instrumentation()`, which follows
+  the process's configured capture mode:
+  - in `approved-content`, system prompts, messages and tool calls are
+    included;
+  - in `metadata`, or when nothing is configured, they are not;
+  - binary content never is.
+
+  Provider errors stay sanitized by `PrivateProviderModel` either way. S4's
+  first pass and new harness have no override of their own, so they already
+  follow the global setting.
+- **Model children.** A model call runs in an isolated child process, which
+  configures its own telemetry. The parent's trace carrier now names the
+  parent's capture mode, and the child configures the same mode. A carrier
+  without one, or with an unknown one, means `metadata`.
+
+### SAM 3 (T5c)
+
 - SAM 3's call opens "Segment specimen with SAM 3" with its parameters: the
   concepts, thresholds, recording floor, limit, revision and checkpoint digest.
   The request carries the W3C `traceparent`, and the service continues the
   trace in its own span, with distributed tracing on.
 
-### The Geocoding key (T5c)
+### The Geocoding key (T5d)
 
 - Logfire's scrubber gets a pattern for a `key` query parameter. Its callback
   replaces only the parameter's value, so a URL keeps its shape. A logging

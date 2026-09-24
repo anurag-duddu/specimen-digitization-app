@@ -151,7 +151,8 @@ def test_classifier_child_exports_metadata_linked_to_actual_parent(
     assert snapshot["unknown"] == 0
     assert (tmp_path / "classifier-model-calls").read_text() == "called\n"
     carrier = json.loads((tmp_path / "classifier-carrier.json").read_text())
-    assert set(carrier) == {"traceparent", "specimen_id", "run_id"}
+    assert set(carrier) == {"traceparent", "specimen_id", "run_id", "capture_mode"}
+    assert carrier["capture_mode"] == "metadata"  # The parent's mode (T5b).
     assert "CANARY" not in json.dumps(carrier)
     spans = exported_spans(tmp_path)
     effect = next(span for span in spans if span.name == "Run isolated specimen model")
