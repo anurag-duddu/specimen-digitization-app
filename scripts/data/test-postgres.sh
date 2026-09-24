@@ -51,8 +51,9 @@ start_connector() {
 apply_supplemental_indexes() {
   "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d "$database" -v ON_ERROR_STOP=1 -f dataconnect/sql/paging-indexes.sql
   "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d "$database" -v ON_ERROR_STOP=1 -f dataconnect/sql/search-indexes.sql
-  # Step 2 of the SourceAsset swap (DATA_CONTRACT.md 3.3), only once the per-specimen unique is in place.
-  [[ "$("$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d "$database" -Atc "SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'source_asset' AND indexname = 'source_asset_specimen_object'")" == 1 ]]
+  # Step 2 of the SourceAsset swap (DATA_CONTRACT.md 3.3), only once the per-specimen unique reads back
+  # in place, over its six columns and valid.
+  [[ "$(bash scripts/data/source-asset-read-back.sh "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d "$database")" == 1 ]]
   "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d "$database" -v ON_ERROR_STOP=1 -f dataconnect/sql/drop-specimen-unique-1.sql
 }
 start_connector

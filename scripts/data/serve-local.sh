@@ -30,8 +30,9 @@ node scripts/data/wait-local.mjs
 node scripts/data/seed-integration.mjs
 "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d specimen-digitization-database -v ON_ERROR_STOP=1 -f dataconnect/sql/paging-indexes.sql
 "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d specimen-digitization-database -v ON_ERROR_STOP=1 -f dataconnect/sql/search-indexes.sql
-# Step 2 of the SourceAsset swap (DATA_CONTRACT.md 3.3), only once the per-specimen unique is in place.
-[[ "$("$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d specimen-digitization-database -Atc "SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'source_asset' AND indexname = 'source_asset_specimen_object'")" == 1 ]]
+# Step 2 of the SourceAsset swap (DATA_CONTRACT.md 3.3), only once the per-specimen unique reads back
+# in place, over its six columns and valid.
+[[ "$(bash scripts/data/source-asset-read-back.sh "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d specimen-digitization-database)" == 1 ]]
 "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d specimen-digitization-database -v ON_ERROR_STOP=1 -f dataconnect/sql/drop-specimen-unique-1.sql
 printf 'Synthetic SQL Connect ready at %s; Ctrl-C stops only this cluster.\n' "$FIREBASE_DATACONNECT_EMULATOR_HOST"
 wait "$dc_pid"
