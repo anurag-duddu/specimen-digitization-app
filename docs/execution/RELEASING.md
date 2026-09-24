@@ -329,10 +329,13 @@ the guarded planes reject one.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G9 and G11. The USD 12 budget amendment, the bounded release authority, the
-> envelope transport format and the minting and admission scripts below
-> retire for this program; `DEPLOYMENT.md` remains authoritative, amended by
-> the same decisions.
+> G9 and G11. The USD 12 budget amendment, the release envelopes with their
+> transport format and minting scripts, and the authorization artifacts retire
+> for this program. `DEPLOYMENT.md`'s approved contract stays authoritative,
+> amended by the same decisions, and `RELEASE_AUTHORIZATION.md`'s list of what
+> remains forbidden stands: no manual dispatch, no key files and no
+> workstation deploys. The protected-ref and five-check admission moves into
+> each plane's gate (`golive/RELEASE.md` section 1).
 
 - [DEPLOYMENT.md](../DEPLOYMENT.md) — the authoritative release contract
 - [APPROVED_RELEASE_BUDGET.md](APPROVED_RELEASE_BUDGET.md) — the USD 12 amendment

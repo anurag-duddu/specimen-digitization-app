@@ -134,7 +134,10 @@ unresolved readings, no disposition, no invented calibrated risk and no clearanc
 > G1, G2 and G11. The full pipeline, including the harness's lookups, is in
 > scope, and a harness-resolved record is cleared without a human; specimens
 > are processed one at a time instead of through this frozen-manifest ledger;
-> and cost reservations are retired for this program.
+> and this ledger's release and cohort cost reservations are retired for this
+> program. G30's per-call reservations stand: each paid model call reserves
+> its worst-case cost before it starts, is settled once its outcome is known,
+> and stays reserved while its outcome is unknown (PLAN section 4.3).
 
 Actual issued Auth/App Check tokens, production ADC, SQL operations, object
 writes/reads, ten-source model results and deployed restart recovery remain
@@ -146,9 +149,12 @@ those gates.
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
-> models together; cost ledgers and reservations, including the
+> models together. The release and cohort cost ledgers, including the
 > stage-reservation ledger this section works toward, are retired in favor of
-> automatic deploy on merge.
+> automatic deploy on merge. G30's per-call reservations stand: each paid
+> model call reserves its worst-case cost before it starts, is settled once
+> its outcome is known, and stays reserved while its outcome is unknown (PLAN
+> section 4.3).
 
 Public primary sources checked 2026-09-08: [Novita pricing](https://novita.ai/pricing)
 lists Qwen input/output USD 0.20/0.70 per million tokens; [DeepInfra Muse API](https://deepinfra.com/meta-models/Muse-Glimmer-30B/api)
@@ -259,9 +265,10 @@ model/provider change, Temporal selection, push, merge or pruning occurred here.
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G2, G9 and G11. Specimens are processed one at a time, on demand, instead of
 > one worker execution over an exact ten-specimen cohort; the spending ceiling
-> is USD 25, cumulative; and the cost-reservation ledger this section
+> is USD 25, cumulative; and the release cost-reservation ledger this section
 > implements, along with the authorization artifacts, is retired in favor of
-> automatic deploy on merge.
+> automatic deploy on merge. G30's per-call reservations stand (PLAN section
+> 4.3).
 
 Coordinator subsequently confirmed the user's protected runtime/data release
 and bounded Google setup approvals, recorded in `RELEASE_AUTHORIZATION.md` in

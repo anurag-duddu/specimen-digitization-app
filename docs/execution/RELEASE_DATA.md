@@ -329,8 +329,11 @@ acceptance. Budget and prior PR merge are resolved decisions, not missing inputs
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G11. Data releases deploy automatically once the required checks pass and the
-> PR steward approves; release contracts, cost packets and independent-review
-> gating are retired for this program.
+> PR steward approves; release envelopes, cost packets, authorization artifacts
+> and independent-review gating are retired for this program. `DEPLOYMENT.md`'s
+> approved contract and `RELEASE_AUTHORIZATION.md`'s list of what remains
+> forbidden stand, and the protected-ref and five-check admission moves into
+> the data plane's gate (`golive/RELEASE.md` section 1).
 
 ## Subsequent actual connector integration and metadata checkpoint
 
@@ -356,9 +359,10 @@ remain excluded from ordinary offset/keyset document lists. The new
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11. The stage-cost and launch-ledger mechanism this connector work supports
-> is retired; data releases deploy automatically once the required checks pass
-> and the PR steward approves.
+> G11. The release's stage-cost and launch-ledger mechanism this connector
+> work supports is retired; data releases deploy automatically once the
+> required checks pass and the PR steward approves. G30's per-call
+> reservations stand (PLAN section 4.3).
 
 Actual connector red: `/tmp/specimen-release-pilot-ledger-red-20260908.log` and
 `/tmp/specimen-release-stage-map-connector-isolated-red-20260908.log` (one snapshot
@@ -420,7 +424,9 @@ not relax any sensitivity check or classify actual images.
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G1. Automated clearance is in scope for this program: a record the harness
 > resolves is cleared without a human; human review and deferral stay as the
-> specification defines them.
+> specification defines them. The sensitivity defaults above stand:
+> default-sensitive legacy evidence, creator-only control documents and no
+> downgrade.
 
 ## Explicit classification connector follow-up
 

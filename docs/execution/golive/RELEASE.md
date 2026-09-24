@@ -41,11 +41,14 @@ traded for a passing release:
     provenance and idempotency keys: `ModelObservation.runId`, `regionId`,
     `provider`, `modelVersion` and `stepKey`, and TRN-005's `rawAssetId`,
     `promptVersion` and `inputSha256`. The gate refuses these even when the
-    list names them;
-  - one closed exception: `SourceAsset`'s `specimen_unique_1` gives way to
-    `source_asset_specimen_object` in two applies, create before drop. The
-    drop comes only after a read-back of the live database shows the new
-    constraint in place;
+    contract's list names them;
+  - one closed exception: `SourceAsset`'s `specimen_unique_1` on (bucket,
+    objectName, generation) gives way to `source_asset_specimen_object` on
+    (organizationId, collectionId, specimenId, bucket, objectName,
+    generation). Every added column is an existing NOT NULL column. It takes
+    two applies, create before drop, and the drop comes only after a
+    read-back of the live database shows the new constraint in place. The
+    gate admits exactly these two steps from its checked-in list;
   - new indexes, unique constraints and foreign keys over new columns only;
   - new connector operations, each `@auth(level: NO_ACCESS)` with the
     membership `@check`s (`DATA.md` 73).

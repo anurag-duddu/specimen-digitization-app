@@ -211,17 +211,21 @@ Owner and coordinator, before any envelope is minted.
 | Cost review, and the shared ledger upgraded to `release-cost-ledger/v3` with `reserved` rows in all eleven categories for the exact run and attempt | Coordinator, from the surviving v2 ledger; reserving cost is a spending decision the mint refuses to make |
 | Independent review report | A reviewer session that is not the coordinator's |
 
-> 2026-09-23: The "Recipient keys for the catalog and evidence envelopes,"
-> "Authorization artifact for this source commit," "Cost review... ledger,"
-> and "Independent review report" rows: Superseded for the go-live program
-> by [`docs/execution/golive/PLAN.md` section
+> 2026-09-23: The "Authorization artifact for this source commit," "Cost
+> review... ledger," and "Independent review report" rows: Superseded for the
+> go-live program by [`docs/execution/golive/PLAN.md` section
 > 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G9 and G11. Release envelopes, cost ledgers and reservations,
+> G9 and G11. Release envelopes, the release and cohort cost ledgers,
 > independent-review reports and authorization artifacts are retired for
 > this program; the PR steward's fresh-swarm review of the pull request
-> replaces the independent-review report. Where cost still matters, the
-> spending ceiling is USD 25, cumulative, infrastructure and models
-> together.
+> replaces the independent-review report. The spending ceiling is USD 25,
+> cumulative, infrastructure and models together. G30's per-call
+> reservations stand: each paid model call reserves its worst-case cost
+> before it starts, is settled once its outcome is known, and stays reserved
+> while its outcome is unknown (PLAN section 4.3).
+> The "Recipient keys for the catalog and evidence envelopes" row stands:
+> those are encryption envelopes for what the public workflow publishes
+> (`catalog_recipient`, `evidence_recipient`), not release envelopes.
 
 ## Phase 4. Data initialization and apply
 

@@ -236,7 +236,11 @@ autoscaling limit alone is an exact billing hard stop.
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G2. The worker drains due work one specimen at a time instead of holding a
 > cohort-stable single-execution token, and SAM 3 scales to zero instead of
-> running to an absolute one-hour deadline.
+> running to an absolute one-hour deadline. The other fences here stand:
+> expected etags and previous revisions, immutable registry tags, the one
+> clone name with its held Storage claim, SAM 3's immutable checkpoint files
+> from a read-only cache with no provider credential, and the API and SAM 3
+> service and revision caps.
 
 Both recovery entrypoints use `scripts/ci/release_clone.py`. The original intent
 must be attested, published as this run's immutable artifact, downloaded and
