@@ -258,6 +258,23 @@ def test_the_provider_circuit_state_is_written_as_not_sensitive(lane):
     assert stored["sensitive"] is False
 
 
+def test_the_fence_reads_numbers_sql_connect_returns_as_doubles(lane):
+    fence(lane, "exec-a").acquire()
+    document = lane.repository.document
+
+    def transported(scope, kind, ident):
+        # SQL Connect's Struct transport returns every JSON number as a double.
+        stored = document(scope, kind, ident)
+        return {k: float(v) if type(v) is int else v for k, v in stored.items()}
+
+    lane.repository.document = transported
+    current = fence(lane).read()
+    assert (current["revision"], type(current["revision"])) == (1, int)
+    lane.clock.sleep(301)
+    assert fence(lane).acquire()["revision"] == 1
+    assert fence(lane).read()["revision"] == 2
+
+
 def test_a_collection_another_execution_is_draining_is_left_to_it(lane):
     queued(lane.repository, "a-oldest", minutes=30)
     assert fence(lane, "exec-other").acquire() is not None
@@ -598,3 +615,26 @@ def test_drain_settings_carry_the_actor_job_and_bindings():
     assert settings.actor_uid == "worker"
     assert settings.worker_job == job
     assert settings.bindings == {COLLECTION: "insects"}
+
+
+@pytest.mark.parametrize(
+    "blocker", ["lane_run_not_progressing", "lane_handover_without_progress"]
+)
+def test_the_drains_blocks_are_retried_by_the_operator_action(tmp_path, blocker):
+    import test_lane_trigger as trigger
+
+    dispatcher = trigger.RecordingDispatcher()
+    client = trigger.lane_client(tmp_path, dispatcher=dispatcher)
+    specimen_id = trigger.intake(client)["specimen_id"]
+    reviewer = Principal(user_id=trigger.USER, scope=trigger.SCOPE, role="reviewer")
+    repository = SQLiteRepository(tmp_path / "state.sqlite3")
+    DrainWorker(
+        repository, None, trigger.USER, lambda user: [], execution_id="exec-a"
+    )._block(reviewer, specimen_id, blocker)
+    run = trigger.stored(tmp_path, specimen_id).run
+    assert (run.stage, run.blocker) == ("processing_blocked", blocker)
+    response = trigger.action(client, specimen_id, "retry", "retry-" + blocker)
+    assert response.status_code == 200, response.text
+    run = trigger.stored(tmp_path, specimen_id).run
+    assert (run.stage, run.blocker) == ("pending", None)
+    assert dispatcher.calls == 2

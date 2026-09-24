@@ -8,6 +8,7 @@ the next execution.
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -77,6 +78,16 @@ def moment(value):
     return datetime.fromisoformat(value)
 
 
+def stored_integer(value):
+    """Keep a document's numbers exact integers, as the circuit store does: SQL
+    Connect's Struct transport may return them as doubles."""
+    if type(value) is float and math.isfinite(value) and value.is_integer():
+        value = int(value)
+    if type(value) is not int or not 0 <= value < 2**53:
+        raise Conflict("A stored document number is not an exact integer")
+    return value
+
+
 class FenceLost(RuntimeError):
     """Another execution took the collection over; this one must stop."""
 
@@ -104,9 +115,16 @@ class CollectionFence:
 
     def read(self) -> dict:
         try:
-            return self.repository.document(self.scope, FENCE_KIND, self.ident)
+            current = self.repository.document(self.scope, FENCE_KIND, self.ident)
         except Missing:
             return {"revision": 0, "holder": None}
+        return dict(
+            current,
+            revision=stored_integer(current["revision"]),
+            handovers_without_progress=stored_integer(
+                current.get("handovers_without_progress", 0)
+            ),
+        )
 
     def _write(
         self, revision, holder, specimen_id=None, run_id=None, retry_at=None, idle=0

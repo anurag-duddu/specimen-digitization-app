@@ -517,6 +517,15 @@ pilot's worker is unchanged and still needs its launch files.
   `stopped`), the specimens processed, the collections skipped, the
   collections whose hand-over stopped, the retries pending, and the hand-over's
   outcome (`requested`, `failed`, `unconfigured` or none).
+- **Blocks the drain records.** Both are operational blocks, never queue
+  outcomes (QUE-005). The operator's `retry` or `resume` action requests the
+  run again, as for every operational block.
+
+  | Code | What it means | What to check |
+  | --- | --- | --- |
+  | `lane_run_not_progressing` | The worker stepped this due run and the step changed nothing. | The run's last step in the thread, and the worker's log for that step. Then retry. |
+  | `lane_handover_without_progress` | Three worker executions in a row handed this collection on without making progress. | The worker job's task timeout (more than 600 s) and its logs. Then retry. |
+
 - **Readiness before the first drain.** On 2026-09-23 S2 confirmed, read-only,
   that the production Data Connect schema is the empty placeholder, and the
   first initialization applies the schema to an empty database. Before the
