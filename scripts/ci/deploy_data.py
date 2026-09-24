@@ -13,7 +13,7 @@ import subprocess
 import tempfile
 import time
 
-from release_admission import (admit, digest, exact_keys, integer, materialize_inputs,
+from release_admission import (admit, digest, exact_keys, gh_json, integer, materialize_inputs,
                                private_bytes, read_bound_plan, require, strict_json)
 from release_context import PROJECT, REPOSITORY
 from release_google import Google, cleanup_packet, cleanup_permit
@@ -31,6 +31,10 @@ SCHEMA_NAME, CONNECTOR_NAME = f"{PREFIX}/schemas/main", f"{PREFIX}/connectors/sp
 RULESET = re.compile(rf"projects/{re.escape(PROJECT)}/rulesets/[A-Za-z0-9_-]{{1,100}}")
 # An etag is an opaque public revision: printable, without whitespace, bounded.
 REVISION = re.compile(r"[\x21-\x7e]{1,500}")
+# An extension name the first initialization may print: a bare identifier, never a workflow command or a value.
+EXTENSION = re.compile(r"[a-z][a-z0-9_-]{0,62}")
+COUNTS = ("relations", "views", "routines", "types")
+APPLICATION_ROLES = {role: f"firebase{role}_{DATABASE}_public" for role in ("owner", "writer", "reader")}
 # Empty-scope creation modes. Each requires the reviewed evidence recipient and
 # publishes its own signed receipt; the legacy first-admin mode does neither.
 FIRST_SCOPE_MODES = {"first-scope-owner-bootstrap/v1", "first-scope-hierarchy-bootstrap/v1"}
@@ -681,6 +685,55 @@ def require_database(google):
         raise blocked("the application database is missing")
 
 
+def first_catalog(directory, source_sha):
+    """The application database's summary, read through the Node connector as the release identity (4.3 step 1)."""
+    target = directory / "first-catalog.json"
+    result = subprocess.run(["node", "scripts/ci/release_sql.mjs", "summary", SOURCE, str(target)], cwd=ROOT,
+                            env=dict(os.environ, RELEASE_GATE_SHA=source_sha), capture_output=True, timeout=60)
+    if result.returncode != 0:
+        raise blocked("the application database's catalog could not be read")
+    return strict_json(private_bytes(target))
+
+
+def run_artifacts(record, prefix):
+    """This run's unexpired <prefix>-<commit>-<attempt> artifacts from every attempt so far, by attempt (actions: read)."""
+    listing = gh_json(f"repos/{REPOSITORY}/actions/runs/{record['release_run_id']}/artifacts?per_page=100")
+    items = listing.get("artifacts") if isinstance(listing, dict) else None
+    require(isinstance(items, list) and listing.get("total_count") == len(items), "incomplete run artifact listing")
+    found = {}
+    for item in items:
+        match = re.fullmatch(rf"{prefix}-{record['source_sha']}-([1-9][0-9]{{0,5}})", str(release_gate.field(item, "name")))
+        if match and release_gate.field(item, "expired") is False and release_gate.field(item, "workflow_run", "id") == record["release_run_id"]:
+            attempt = int(match.group(1))
+            require(attempt not in found and attempt <= record["release_run_attempt"], "ambiguous run artifact")
+            found[attempt] = item
+    return found
+
+
+def first_step(record, directory):
+    """RELEASE.md 4.3 step 1: initialize a new, empty database; migrate after this run's own earlier initializer; else stop."""
+    summary = first_catalog(directory, record["source_sha"])
+    names = summary.get("extensions") if isinstance(summary, dict) else None
+    roles = summary.get("roles") if isinstance(summary, dict) else None
+    if not (isinstance(summary, dict) and set(summary) == {*COUNTS, "expected_database", "expected_actor", "extensions", "roles"}
+            and summary["expected_database"] is True and summary["expected_actor"] is True
+            and all(type(summary[key]) is int and 0 <= summary[key] <= 10**9 for key in COUNTS)
+            and isinstance(names, list) and len(names) <= 100
+            and all(isinstance(name, str) and EXTENSION.fullmatch(name) and name != "plpgsql" for name in names)
+            and len(set(names)) == len(names) and isinstance(roles, list)
+            and all(name in APPLICATION_ROLES.values() for name in roles) and len(set(roles)) == len(roles)):
+        raise blocked("the application database's catalog summary is malformed")
+    present = {role: name in roles for role, name in APPLICATION_ROLES.items()}
+    print("Application database: " + ", ".join(f"{summary[key]} {key}" for key in COUNTS)
+          + f", {len(names)} extension(s) besides plpgsql ({', '.join(names) or 'none'}); Data Connect roles: "
+          + ", ".join(f"{role} {'present' if value else 'absent'}" for role, value in present.items()) + ".")
+    if not any(present.values()) and not names and not any(summary[key] for key in COUNTS):
+        return "initialize"
+    if all(present.values()) and any(attempt < record["release_run_attempt"] for attempt in run_artifacts(record, "data-initializer")):
+        return "migrate"
+    raise blocked("the application database is neither empty nor initialized by this run; adopting it needs a ruling")
+
+
 def deploy_released_data(path, output):
     """Release the data plane from a gate record (G11, RELEASE.md 4.2): read live state, never change it.
 
@@ -724,6 +777,10 @@ def deploy_released_data(path, output):
         if not live_schema and connector is None:
             choose("initialize")
             publish()
+            step = first_step(record, path.parent)
+            print(f"First initialization step: {step}.")
+            with open(targets, "a", encoding="utf-8") as handle:
+                handle.write(f"init_step={step}\n")
             return
         if not live_schema or connector is None:
             raise blocked("the live schema and connector disagree; reconcile them, then re-run this release")

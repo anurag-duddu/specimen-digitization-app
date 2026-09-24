@@ -11,9 +11,11 @@ assert.equal(env.GITHUB_EVENT_NAME, 'push');
 assert.equal(env.GITHUB_REF, 'refs/heads/main');
 assert.equal(env.DEPLOYMENT_ENVIRONMENT, 'data-production');
 assert.equal(env.GITHUB_WORKFLOW_REF, `${env.GITHUB_REPOSITORY}/.github/workflows/data-release.yml@refs/heads/main`);
-assert.equal(env.RELEASE_AUTHORIZED_SHA, env.GITHUB_SHA);
+// The envelope's owner-set commit or, never with it, the commit of the gate record Python admitted (G11).
+assert.ok((env.RELEASE_AUTHORIZED_SHA === undefined) !== (env.RELEASE_GATE_SHA === undefined));
+assert.equal(env.RELEASE_AUTHORIZED_SHA ?? env.RELEASE_GATE_SHA, env.GITHUB_SHA);
 const [mode, instance, output] = process.argv.slice(2);
-assert.ok(['inventory', 'indexes', 'catalog'].includes(mode));
+assert.ok(['inventory', 'indexes', 'catalog', 'summary'].includes(mode));
 assert.ok(['specimen-digitization-instance', 'specimen-digitization-restore-20260908-r1'].includes(instance));
 const require = createRequire(join(resolve(env.RELEASE_NODE_ROOT), 'node_modules/firebase-tools/package.json'));
 assert.equal(require('./package.json').version, '15.8.0');
@@ -32,7 +34,13 @@ let client;
 try {
   client = await pool.connect();
   assert.equal((await client.query('SELECT current_database() AS name')).rows[0].name, initialDatabase);
-  if (mode === 'catalog') {
+  if (mode === 'summary') {
+    assert.equal(instance, 'specimen-digitization-instance');
+    const results = await client.query(readFileSync('scripts/ci/release_sql_summary.sql', 'utf8'));
+    const values = results.filter(result => result.command === 'SELECT').at(-1).rows;
+    assert.equal(values.length, 1);
+    writeFileSync(output, JSON.stringify(values[0]), {mode: 0o600});
+  } else if (mode === 'catalog') {
     assert.equal(instance, 'specimen-digitization-instance');
     async function readCatalog() {
       const results = await client.query(readFileSync('scripts/ci/release_sql_catalog.sql', 'utf8'));

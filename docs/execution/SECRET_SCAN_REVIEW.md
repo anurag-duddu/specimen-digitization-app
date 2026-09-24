@@ -285,3 +285,15 @@ was appended to the existing rule-local AND exception for the release plan
 template fingerprints; it applies only inside `.secrets.baseline`, and it was
 independently confirmed to be SHA-1 of that SHA256 digest string. The template
 and the tree file stay fully scanned by both tools.
+
+## First initialization source fingerprints
+
+Reviewed 2026-09-23. The first initialization on the gate path (T3c1) changes
+`scripts/ci/release_initialize.mjs`, `initialize_database.sql` and
+`initialize_postconditions.sql`, so their three `initialization_files` digests
+in the two initialization plan templates were regenerated, and their
+`.secrets.baseline` entries now carry the new finding hashes at the same paths
+and lines. The three superseded identifiers left the rule-local AND exception
+for the release plan templates, and `5ff370eb…`, `7c4f19c2…` and `d2aeecb9…`
+joined it, each confirmed to be SHA-1 of one regenerated digest. Nothing else
+in either scanner's configuration changed.

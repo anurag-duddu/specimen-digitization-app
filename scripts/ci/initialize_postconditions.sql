@@ -189,6 +189,19 @@ BEGIN
       RAISE EXCEPTION 'complete relation or column privilege set differs';
     END IF;
   END LOOP;
+  IF EXISTS(
+    WITH actual AS (SELECT e.extname::text,n.nspname::text FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace),
+    expected(extname,nspname) AS (VALUES ('plpgsql','pg_catalog'),('uuid-ossp','public'))
+    (SELECT * FROM actual EXCEPT SELECT * FROM expected) UNION ALL
+    (SELECT * FROM expected EXCEPT SELECT * FROM actual)) THEN
+    RAISE EXCEPTION 'extensions differ from exactly plpgsql and uuid-ossp in public';
+  END IF;
+  IF EXISTS(SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'
+      AND NOT EXISTS(SELECT 1 FROM pg_depend d JOIN pg_extension e ON e.oid=d.refobjid
+        WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.refclassid='pg_extension'::regclass
+          AND d.deptype='e' AND e.extname='uuid-ossp')) THEN
+    RAISE EXCEPTION 'a routine in public is not a member of uuid-ossp';
+  END IF;
 END
 $postconditions$;
 SELECT jsonb_build_object('database',current_database(),
