@@ -88,7 +88,9 @@ QUERY = query(
     ("country", "P.I."),
 )
 ADDRESS = "Mt. Apo, DAVAO CITY., Davão del Sur, P.I."
-FIELDS = ("precise_location", "city", "county", "country")
+# The fields the tool reports on: precise_location only helps form the address
+# and is never settled by a geocoder result (PRD 515; S8's D3 pending).
+FIELDS = ("city", "county", "country")
 
 
 def reply(*results, status="OK", code=200, headers=None, **extra):
@@ -210,7 +212,6 @@ def test_one_result_confirms_only_the_fields_whose_component_names_match():
     assert (result.tool, result.tool_version) == ("geography_lookup", TOOL_VERSION)
     assert result.outcome == S.SUCCESS
     assert result.field_outcomes == {
-        "precise_location": S.AMBIGUOUS,  # The country contradicts the place.
         "city": S.SUCCESS,
         "county": S.SUCCESS,
         "country": S.NO_MATCH,  # "P.I." is not Google's "Philippines".
@@ -241,7 +242,7 @@ def test_one_result_confirms_only_the_fields_whose_component_names_match():
     assert_keeps_only_place_id(seen, DAVAO)
 
 
-def test_aliases_let_a_notation_match_and_then_the_precise_location_holds():
+def test_aliases_let_a_notation_match():
     seen = geocode(QUERY, reply(DAVAO), aliases={"pi": ["philippines"]})
 
     assert seen.result.field_outcomes == dict.fromkeys(FIELDS, S.SUCCESS)
@@ -250,54 +251,57 @@ def test_aliases_let_a_notation_match_and_then_the_precise_location_holds():
     assert_keeps_only_place_id(seen, DAVAO)
 
 
+ADMIN = (
+    ("city", "Davao City"),
+    ("county", "Davao del Sur"),
+    ("province_state", "Davao Prov."),
+    ("country", "P.I."),
+)
+
+
 @pytest.mark.parametrize(
     "options",
     [{}, {"aliases": {"pi": ["philippines"]}}],
     ids=["no-aliases", "aliases"],
 )
-def test_a_single_result_in_the_wrong_country_confirms_nothing(options):
+@pytest.mark.parametrize(
+    "admin", [ADMIN[2:], ADMIN], ids=["label-literals", "every-admin-level"]
+)
+def test_a_result_for_the_wrong_place_settles_no_admin_field(admin, options):
+    # Regression: Google puts "Mt. McKinley" at Denali, Alaska. Each admin field
+    # is checked against its own reader literal, so none of them settles.
     geography = query(
-        (None, LABEL),
-        ("precise_location", "E. slope Mt. McKinley"),
-        ("province_state", "Davao Prov."),
-        ("country", "P.I."),
+        (None, LABEL), ("precise_location", "E. slope Mt. McKinley"), *admin
     )
 
     seen = geocode(geography, reply(DENALI), **options)
 
     assert seen.requests[0].url.params["address"] == LABEL
     assert seen.result.outcome == S.SUCCESS
-    assert seen.result.field_outcomes == {
-        "precise_location": S.AMBIGUOUS,  # Its siblings contradict Denali.
-        "province_state": S.NO_MATCH,
-        "country": S.NO_MATCH,
-    }
+    assert seen.result.field_outcomes == {key: S.NO_MATCH for key, _ in admin}
     assert seen.result.places == []
     assert_keeps_only_place_id(seen, DENALI)
 
 
 @pytest.mark.parametrize(
-    "siblings,expected",
+    "answer",
     [
-        ([], S.AMBIGUOUS),  # Nothing corroborates the one result.
-        ([("city", "DAVAO CITY."), ("county", "Davão del Sur")], S.SUCCESS),
-        ([("city", "DAVAO CITY."), ("country", "P.I.")], S.AMBIGUOUS),
-        ([("city", "Manila")], S.AMBIGUOUS),
+        reply(DAVAO),
+        reply(DAVAO, DENALI),
+        reply(status="ZERO_RESULTS"),
+        reply(status="UNKNOWN_ERROR"),
     ],
-    ids=["alone", "siblings-agree", "one-sibling-contradicts", "wrong-city"],
+    ids=["one-place", "two-places", "zero-results", "provider-error"],
 )
-def test_the_precise_location_holds_only_when_siblings_corroborate_the_place(
-    siblings, expected
-):
-    geography = query(("precise_location", "Mt. Apo"), *siblings)
+@pytest.mark.parametrize(
+    "aliases", [{}, {"pi": ["philippines"]}], ids=["no-aliases", "aliases"]
+)
+def test_the_precise_location_forms_the_address_but_is_never_settled(answer, aliases):
+    seen = geocode(QUERY, answer, aliases=aliases)
 
-    _, fields, places = map_geocoding_response(
-        geography, 200, {"status": "OK", "results": [DAVAO]}
-    )
-
-    assert fields["precise_location"] == expected
-    held = [p for p in places if p.field_key == "precise_location"]
-    assert len(held) == (1 if expected == S.SUCCESS else 0)
+    assert seen.requests[0].url.params["address"].startswith("Mt. Apo, ")
+    assert "precise_location" not in seen.result.field_outcomes
+    assert [p for p in seen.result.places if p.field_key == "precise_location"] == []
 
 
 def test_unassigned_locality_text_forms_the_address_when_present():

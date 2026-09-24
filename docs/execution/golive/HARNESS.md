@@ -229,10 +229,15 @@ the field's levels, or a name the profile's aliases give for it ("P.I." as the
 Philippines); otherwise that field is `no_match`. The folding and the aliases
 are G29 applied to places: PLAN's G29 row makes it the harness's principle to
 work through every reading a notation allows, "for dates and for every other
-field", from the harness knowledge each subcollection's profile carries. `precise_location` is
-never replaced and is not compared: it holds only when at least one sibling
-field matched and none contradicted the result; otherwise it is `ambiguous`, so
-a result in the wrong place (Denali for a Mindanao label) never vouches for it.
+field", from the harness knowledge each subcollection's profile carries.
+
+**`precise_location` is verbatim locality text** (PRD 515). Its literal helps
+form the address, but the tool reports no outcome and no place for it, so
+nothing it returns can settle or replace it; where such a phrase actually is
+waits for the owner's ruling on S8's D3 (coordinator, 2026-09-23). A result for
+the wrong place settles no field either, because each admin-level field is
+checked against its own literal: Google puts "E. slope Mt. McKinley" at Denali,
+Alaska, where no component is named "Davao" or "P.I.".
 
 **What is kept** (G26, Google's terms): per request only the place ID, our
 outcome and the sha256 of the full response. Google's names, address components
