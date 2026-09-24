@@ -11928,3 +11928,30 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (1) `PRD.md` 12.4's open items (558-564) mark what only the owner can settle. Plan wording must not settle any of them by implication, as "keeping partial precision" and "store matched names" did.
   - (2) The worker's connector identity is also its audit identity. Defaulting it to the administrator's UID would record every automated step as that person. `LIVE_PROCESSING.md` 62-63 already required a separate operator account.
 - Remaining follow-ups: the owner's Hugging Face credits, field list, source-registry secret and worker account; S2's IAM list; the G15 calibration.
+
+### 2026-09-23 — Go-live release workstream (S2), T3b2: the data workflow on the gate path
+
+- Task: the S2 session, brief item T3, step two, workflow half (`docs/execution/golive/RELEASE.md` section 4.2).
+- Branch/worktree: `golive/release-data-workflow`, stacked on #112's branch. An Opus subagent implemented it test-first in an isolated worktree. This session reviewed and integrated it.
+- Outcome:
+  - `data-release.yml` now has two jobs:
+    - an `admission` job with no credentials, running `release_gate.py --plane data`;
+    - a `release` job in `data-production` that re-admits, authenticates with the gate's fixed provider as `specimen-data-release`, and runs `deploy_data.py --deploy`. It holds the shared `specimen-protected-mutation` lock.
+  - The receipt is uploaded on every exit and attested on success.
+  - The `initialize` phase fails the run until T3c, so D3 never passes over an empty database.
+  - The workflow reads no secret or variable. The envelope-era jobs left the workflow, and their Python stays for a later clean-up.
+  - `DEPLOYMENT.md` gains "Data release on merge".
+- Commits/PRs: red `4ccea9d`; green `7f47224`; this spec note and closeout.
+- Validation actually run:
+  - Red: 9 of 12 new workflow tests failed against the old file. Green: the six related files passed (150 for the subagent, 188 here with T3b1's tests).
+  - pre-commit, including actionlint, detect-secrets and gitleaks, passed.
+  - `scripts/` passed: 1,795 passed, 50 skipped, at load 11.1.
+  - The subagent mutated the workflow 25 ways, and the tests caught every one.
+- Durable learnings:
+  - Git merges T2c's data-run wait and the four-plane gate table without a conflict, and the result makes a data job wait for itself. Only T3b1's test catches it, so the merge that meets second must run that test.
+  - The two workflow-level concurrency groups must stay distinct: a shared one would deadlock the runtime's D3 wait. The job-level mutation lock is what serializes applies.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - T3c replaces the fail-closed step and adds its own job, which needs `data-initialization-production`, back to the policy test.
+  - T3d raises the release job's 20-minute timeout and adds the rollback guard now in section 4.4.
+  - The data wait rises to 5,400 seconds with T2c.

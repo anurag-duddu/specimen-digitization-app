@@ -907,3 +907,35 @@ in [DATABASE_INITIALIZATION.md](execution/DATABASE_INITIALIZATION.md).
 > [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md). The
 > initializer's temporary privilege stays one-time and time-bounded and is
 > removed after use; the workflow still creates no IAM policy or password.
+
+## Data release on merge (go-live program)
+
+Under the owner's decision G11, `.github/workflows/data-release.yml` runs on
+every push to `main` without an envelope. The specification is
+[`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) section 4.2.
+
+1. **Admission**, with no credentials: `scripts/ci/release_gate.py` checks the
+   protected `main` context and the merged pull request with the reviewed tree.
+   It checks that the five required checks passed in the latest CI/CD attempt,
+   and waits up to 55 minutes for the CI/CD run. It never waits for a data
+   release.
+2. **Release**, in `data-production`: re-admits, then authenticates with the
+   fixed provider as `specimen-data-release`. `scripts/ci/deploy_data.py`
+   reads the live Data Connect schema and connector, the Storage rules
+   release, the SQL instance and the application database without changing
+   them, then chooses the phase. `verify`: the live schema, connector and
+   Storage rules equal the merged files; the job checks that the schema is
+   persistent and both are reconciled, and succeeds. `apply` fails closed
+   until T3d, and names each change the additive-only gate refuses.
+   `initialize`, the empty placeholder schema without a connector, fails the
+   run until T3c, so the runtime gate, which waits for this run to succeed
+   (D3), never passes over an uninitialized database. Any other combination
+   fails and asks to reconcile. The job uploads the `data-released/v1` receipt
+   on every exit after admission and attests it when the deploy step succeeds.
+
+The release job shares the `specimen-protected-mutation` concurrency group
+with the runtime release job, so the two never run at the same time. The
+workflow reads no secret and no configuration variable. After a failure,
+re-run the failed jobs: the release job re-admits on its own. A runtime
+release of the same commit fails when this run fails, so re-run it after the
+data release succeeds.
