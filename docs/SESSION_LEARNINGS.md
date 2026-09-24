@@ -11938,3 +11938,27 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Remaining follow-ups:
   - T4c narrows `data_setup_window.py` before the owner's next window.
   - The settings pull request pins `SAM_CHECKPOINT_SHA256`, after which the SAM 3 listing grant stops waiting.
+
+### 2026-09-23 — Go-live release workstream (S2), T4c: the setup window renews only time-bounded roles
+
+- Task: the S2 session, T4's second pull request (`docs/execution/golive/RELEASE.md` section 5): narrow `scripts/ci/data_setup_window.py` before the owner next opens a window.
+- Branch/worktree: `golive/release-setup-window`, stacked on #119's branch. An Opus subagent implemented it test-first in two rounds in an isolated worktree. This session reviewed it, squashed it into one red/green pair, and checked the live predicates read-only.
+- Outcome:
+  - The renewals drop `specimenDataSchemaPublish`, `specimenDataSourceBackup` and `specimenDataStorageRules`, which become standing. Six roles remain, with their minutes unchanged: initializer 75, disposal 115, the other four 120.
+  - Standing bindings of the five standing roles never make `plan` refuse, and are never renewed or revoked.
+  - An untimed binding of a managed role is refused, with its exact revocation command when the member is a watched identity.
+  - A renewal requires each role's condition to be exactly the two time bounds plus that role's pinned live predicate.
+  - The packet keeps its fields and schema. Only the counts change: 6 bindings and 12 timestamps instead of 9 and 18.
+- Commits/PRs: spec `d46aa85`, red `9aa04c6`, green `6f81555`, and this closeout.
+- Validation actually run:
+  - Red: 72 failed, 14 passed. Green: the window's 86 tests with the trace-setup, grants-report and policy tests: 130 passed, 1 skipped.
+  - `scripts/` passed on the subagent's head: 1,787 passed, 50 skipped, at load 10.6.
+  - pre-commit passed.
+  - This session read the six managed bindings' live predicates read-only. They match the pinned table byte for byte.
+- Durable learnings:
+  - A "starts with ` && `" shape check on an IAM condition is not a time bound. CEL's precedence makes `A && B && C || true` always true. Pin the exact predicate. A lexical "no `||`" rule would break real bindings, because the initializer's predicate contains a parenthesized `||`.
+  - The window's whole-policy compare-and-swap is what makes old packets harmless. Once the owner's standing grants change the policy, an old nine-renewal packet is refused at the first read, before any write.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - The pins come from `release_clone.py`'s constants. A clone rename, or deleting that module in the envelope clean-up, makes the window refuse or fail its tests. Either way it fails closed.
+  - A timed-looking condition that is always true is refused with the shape message only. The owner fixes it by hand.
