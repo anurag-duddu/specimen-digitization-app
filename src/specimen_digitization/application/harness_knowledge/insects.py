@@ -14,7 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 KNOWLEDGE_ID = "insects"
-KNOWLEDGE_VERSION = "insects-harness-knowledge-v1"
+# v2: slide-preparation codes and single written values (coordinator, 2026-09-24).
+KNOWLEDGE_VERSION = "insects-harness-knowledge-v2"
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,17 @@ NOTATIONS = (
         ("date_visited_from", "date_visited_to", "date_identified"),
     ),
     Notation("?", ("the preceding value is uncertain as written",), ()),
+    # S8's pilot research: these look like dates but are not collection dates.
+    Notation(
+        "IX-17-66-2, IV-29-68-a, VI-24-68-7, 10-6-78-la at a label's top edge",
+        (
+            (
+                "the slide's preparation code, the date it was made and a serial:"
+                " never a collection date, and it belongs in no field"
+            ),
+        ),
+        (),
+    ),
 )
 
 # Folded label forms and the place names they may be read as, for the
@@ -103,7 +115,11 @@ literal that is not in the reading is refused. Never complete, correct or
 translate a literal: readings of a notation are for calling the tools, never
 for the literal itself. Work through every reading a notation allows before a
 field is left for review, and let the tools and the specimen's other evidence
-decide between them. A field the label does not have stays empty."""
+decide between them. A field the label does not have stays empty.
+A single elevation written once is given once, as the From field of its unit:
+the harness fills the other end and the other unit. A single date written once
+is given once, as Date Visited From: leave Date Visited To empty unless the
+label writes a second date."""
 
 
 def render() -> str:
