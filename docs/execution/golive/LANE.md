@@ -637,3 +637,60 @@ SAM 3 is priced by its measured request seconds times the service's configured
 vCPUs and memory at the pinned Cloud Run rates. A price changes only through a
 reviewed profile edit. The run's `usage.actual_cost_micros` is the sum of its
 calls' costs.
+
+How T2c builds it:
+
+- **Price list.** `processing.price_list` in a published profile holds its
+  `version`, the date it was read (`as_of`), its `sources`, and whole
+  micro-dollar prices:
+  - `models`: per route, per million input tokens and per million output tokens;
+  - `segmentation`: SAM 3's service, its vCPUs and memory in GiB, and the price
+    per million vCPU-seconds, GiB-seconds and requests;
+  - `tools`: per request, for the tools that are paid.
+
+  Every route the profile names, and its segmentation, must be priced. At
+  request time the run copies the list with the rest of the collection's
+  allowance.
+- **Records.** `lane_costs.record_model_usage`, `record_segmentation` and
+  `record_tool_usage` append one entry per paid call to `Run.paid_calls`:
+  - the step, the attempt, and the step's reservation;
+  - the usage and the outcome;
+  - the cost and its basis, with the price list's version and date.
+
+  They add the cost to `usage.actual_cost_micros`. Costs round up to whole
+  micro-dollars. A provider's billed amount, when given, is recorded instead as
+  `billed`. A call with no price is recorded `unpriced`, without a cost.
+- **Where.** After each reading and SAM 3 step, the workflow records the
+  reader's tokens from its observation, or SAM 3's measured seconds. It records
+  the step's outcome with them: `completed`, `failed`, or `unknown` when
+  the outcome of the call is unknown. The harness records its own model
+  requests and tool calls in `parse` (S4, T3c). A run without a price list
+  records nothing.
+- **Settlement (G30).** After a paid step, the ledger gives back the step's
+  reservation less the cost of the calls recorded for that attempt. A step
+  settles only when all three hold:
+  - its outcome is known;
+  - it recorded calls;
+  - every call has a cost.
+
+  Otherwise it stays fully reserved: an unknown outcome, a reading that failed
+  before reporting usage, or calls that nobody recorded. A step's next attempt
+  reserves again, and no call starts if its reservation would cross the
+  allowance, however little has been spent.
+- **Pilot prices, read on 2026-09-23.**
+  - Readers, from the Hugging Face router's `/v1/models` pricing for their
+    pinned providers: `handwriting-qwen` (novita) 200,000 input and 700,000
+    output per million tokens; `handwriting-muse` (deepinfra) 300,000 and
+    1,200,000.
+  - SAM 3, from cloud.google.com/run/pricing for a request-based service in
+    us-east4, with S2's shape of 4 vCPU and 16 GiB. The rates are
+    24,000,000 per million vCPU-seconds, 2,500,000 per million GiB-seconds and
+    400,000 per million requests: USD 0.000024, 0.0000025 and 0.40 per
+    million. That comes to 136 micro-dollars a second.
+  - `geography_lookup`, from developers.google.com/maps/billing-and-pricing:
+    the Geocoding API's Essentials price after the free 10,000 requests a
+    month, USD 5.00 per 1,000, so 5,000 per request. The free tier is ignored,
+    which errs on the safe side.
+- **Sensitive intake.** Processing starts on intake only for records declared
+  not sensitive (#104). A Sensitive upload or import creates no due run and
+  never holds a collection's queue. A test now covers the import path.
