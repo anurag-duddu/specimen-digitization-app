@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import math
@@ -229,6 +230,65 @@ def _service_version() -> str:
         return "development"
 
 
+# The Geocoding key rides in the request URL's query (LANE.md T5d).
+KEY_QUERY = r"[?&]key="
+_KEY_PARAMETER = re.compile(r"([?&]key=)[^&#\s\"'<>]*", re.IGNORECASE)
+
+
+def scrub_key(text: str) -> str:
+    """The text with every `key` query parameter's value replaced; URLs keep their shape."""
+    return _KEY_PARAMETER.sub(r"\1[Scrubbed]", text)
+
+
+def _scrub_key_match(match: logfire.ScrubMatch):
+    """Keep a value whose only sensitive part is a `key` parameter, with its value replaced.
+
+    Any other match, or a value with something else sensitive in it, is redacted whole
+    as Logfire does by default.
+    """
+    value = match.value
+    if not isinstance(value, str) or not re.fullmatch(
+        KEY_QUERY, match.pattern_match.group(0), re.IGNORECASE
+    ):
+        return None
+    if match.pattern_match.re.search(_KEY_PARAMETER.sub("", value)):
+        return None
+    return scrub_key(value)
+
+
+def scrubbing_options() -> logfire.ScrubbingOptions:
+    """Logfire's default scrubbing, plus the `key` query parameter (LANE.md T5d)."""
+    return logfire.ScrubbingOptions(extra_patterns=[KEY_QUERY], callback=_scrub_key_match)
+
+
+def _without_key(value):
+    text = value if isinstance(value, str) else str(value)
+    return scrub_key(text) if re.search(KEY_QUERY, text, re.IGNORECASE) else value
+
+
+def install_key_scrubbing() -> None:
+    """Every log record loses a `key` parameter's value as it is created (LANE.md T5d).
+
+    A record factory rather than a handler's filter, so it holds whichever handler
+    later writes the record; httpx logs each request's URL at INFO.
+    """
+    factory = logging.getLogRecordFactory()
+    if getattr(factory, "scrubs_key", False):
+        return
+
+    def scrubbing_factory(*args, **kwargs):
+        record = factory(*args, **kwargs)
+        record.msg = _without_key(record.msg)
+        if isinstance(record.args, tuple):
+            record.args = tuple(_without_key(arg) for arg in record.args)
+        elif isinstance(record.args, Mapping):
+            record.args = {name: _without_key(arg) for name, arg in record.args.items()}
+        return record
+
+    scrubbing_factory.scrubs_key = True
+    logging.setLogRecordFactory(scrubbing_factory)
+
+
 def configure_observability(
     *,
     send_to_logfire: bool | None = None,
@@ -261,11 +321,13 @@ def configure_observability(
         "resource_attributes": {
             "specimen.telemetry.capture_mode": settings.capture_mode.value,
         },
+        "scrubbing": scrubbing_options(),
     }
     if send_to_logfire is not None:
         configure_options["send_to_logfire"] = send_to_logfire
 
     logfire.configure(**configure_options)
+    install_key_scrubbing()
     logfire.instrument_pydantic_ai(
         include_content=settings.include_content,
         include_binary_content=settings.include_binary_content,
