@@ -8,6 +8,8 @@ and counts a primary-key conflict as already written.
 
 from __future__ import annotations
 
+import json
+import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -59,6 +61,11 @@ Size = Callable[[str], int]
 OPEN_VERDICTS = ("neither", "uncertain")
 # The one source string Google's evidence may carry (rule 1.6); the connector refuses any other.
 GOOGLE = "google-maps-geocoding"
+# Rule 1.6: what a Google call's result may keep, and what no stored call may hold: a request
+# URL carrying a key, or an API key itself.
+GOOGLE_RESULT = frozenset({"place_ids", "error", "retry_after"})
+PLACE_ID = re.compile(r"[A-Za-z0-9_-]+")
+KEYS = re.compile(r"(?i)https?://[^\s\"'<>]*[?&](?:key|api_?key)=|AIza[0-9A-Za-z_-]{35}")
 # Evidence that may back a candidate: a successful lookup, or recorded evidence (section 6).
 LINKABLE = ("success", "recorded")
 
@@ -80,8 +87,9 @@ def writes(
     Review decisions and reviewers' transcript decisions are included only for a
     reviewer's save: their operations admit no other role.
     """
-    result = [_original(specimen, locate)]
     run = specimen.run
+    _refuse_keys(run)
+    result = [_original(specimen, locate)]
     if not run.profile_snapshot:
         # Until the profile is pinned the run has only the default profile.
         return result
@@ -534,39 +542,97 @@ def _derivation(value, relations: dict) -> str:
     return "parsed" if value.parsed else "literal"
 
 
-def _evidence_sources(run: Run) -> dict:
-    """The source each evidence's tool call ran on: a reading, or a region's decided transcript."""
-    made = {}
+def _refuse_keys(run: Run) -> None:
+    """Rule 1.6: no stored call holds a key, and a Google call keeps only place ids.
+
+    The error names where, never the value, because the repository logs it.
+    """
+    for n, record in enumerate(getattr(run, "tool_calls", None) or []):
+        where = f"tool call {n} ({record.tool})"
+        if KEYS.search(json.dumps([record.arguments, record.result], default=str)):
+            raise ValueError(f"{where} holds a key (rule 1.6)")
+        if record.source == GOOGLE:
+            kept = record.result or {}
+            ids = kept.get("place_ids", [])
+            if (
+                set(kept) - GOOGLE_RESULT
+                or not isinstance(ids, list)
+                or not all(isinstance(i, str) and PLACE_ID.fullmatch(i) for i in ids)
+            ):
+                raise ValueError(f"{where} keeps more than place ids (rule 1.6)")
+    for n, found in enumerate(run.lookups):
+        stored = found.raw_ref and found.digest
+        if stored and KEYS.search(json.dumps(found.query, default=str)):
+            raise ValueError(f"lookup {n} ({found.provider}) holds a key in its query (rule 1.6)")
+
+
+def _evidence_names(run: Run) -> dict:
+    """The readings and the region each evidence names (section 4.3): for a tool call's, the
+    reading it ran on and its region; for stored evidence, the readings it quotes and its region."""
+    regions = {o.id: o.region_id for o in run.observations}
+    names = {item.id: (set(item.observation_ids), item.region_id) for item in run.evidence}
     for record in getattr(run, "tool_calls", None) or []:
         if record.evidence_id:
-            made[record.evidence_id] = (
-                ("raw", record.observation_id)
-                if record.input_source == "raw_reading"
-                else ("decided", record.region_id)
+            raw = record.input_source == "raw_reading" and record.observation_id
+            names[record.evidence_id] = (
+                {record.observation_id} if raw else set(),
+                record.region_id or regions.get(record.observation_id),
             )
-    return made
+    return names
+
+
+def _named_links(evidence: list, readings: list, settled: set, names: dict, regions: dict) -> dict:
+    """Each evidence to the entries it names, settled or not: its reading, else its region,
+    else every settled entry."""
+    links: dict = {reading: [] for reading in readings}
+    for item in evidence:
+        observed, region = names.get(item, (set(), None))
+        targets = (
+            [r for r in readings if r in observed]
+            or [r for r in readings if region is not None and regions.get(r) == region]
+            or [r for r in readings if r in settled]
+        )
+        for reading in targets:
+            links[reading].append(item)
+    return links
 
 
 def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[Write]:
-    """A candidate per verbatim value; the settled ones carry the value and evidence."""
+    """A candidate per verbatim value; the settled ones carry the value, and each candidate
+    links the evidence that names it."""
     result = []
     regions = {o.id: o.region_id for o in run.observations}
-    made_by = _evidence_sources(run)
+    names = _evidence_names(run)
     for key, value in run.fields.items():
         verbatim = getattr(value, "verbatim_by_observation", None) or {}
         source = getattr(value, "input_source", None)
-        settled: set = set()
+        relations = getattr(value, "evidence_relations", None) or {}
+        # Only a success or recorded evidence, and only with its relation: no default (G23).
+        evidence = [e for e in value.evidence_ids if e in linkable and relations.get(e)]
         if verbatim:
             # G27, G28, G32: each reader's, or each label's, verbatim is kept as written.
             sources = getattr(value, "input_source_by_observation", None) or {}
-            settled = set(getattr(value, "settled_observation_ids", None) or [])
+            named = set(getattr(value, "settled_observation_ids", None) or [])
             entries = [
                 (text, sources.get(reading, "raw_reading"), reading)
                 for reading, text in verbatim.items()
             ]
+            settled = {
+                reading
+                for _, entry_source, reading in entries
+                if reading in named
+                # G20 inside G32: a decided label settled through a raw reading of its region.
+                or (
+                    entry_source == "decided_transcript"
+                    and any(o != reading and regions.get(o) == regions.get(reading) for o in named)
+                )
+            }
+            links = _named_links(evidence, [r for _, _, r in entries], settled, names, regions)
         elif value.literal is not None:
             reading = getattr(value, "source_observation_id", None)
-            entries = [(value.literal, source, reading if source == "raw_reading" else None)]
+            reading = reading if source == "raw_reading" else None
+            entries = [(value.literal, source, reading)]
+            settled, links = {reading}, {reading: evidence}
         else:
             continue
         region = getattr(value, "source_region_id", None)
@@ -577,22 +643,19 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[
             if precision or century_rule
             else value.parsed
         )
-        relations = getattr(value, "evidence_relations", None) or {}
         content = digest(value.model_dump(mode="json"))
         candidates[key] = None
         for text, entry_source, reading in entries:
             candidate = derived_id("candidate", run.id, key, reading or "-", content)
             # With a verbatim map, only the entries that settled carry the value (G20, G32).
-            settles = not verbatim or reading in settled
+            settles = reading in settled
             if settles and candidates[key] is None:
                 candidates[key] = candidate
             decided = entry_source == "decided_transcript"
             if verbatim:
-                own = ("decided", regions.get(reading)) if decided else ("raw", reading)
                 transcription = decisions.get(regions.get(reading)) if decided else None
                 observation = None if decided else reading
             else:
-                own = None
                 transcription = decisions.get(region) if decided else None
                 observation = reading
             result.append(
@@ -614,24 +677,18 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[
                     },
                 )
             )
-            if not settles:
-                continue
-            for evidence in value.evidence_ids:
-                # Only a success or recorded evidence, and only with its relation: no default (G23).
-                # Of several settled entries, each links the evidence its own tool call made.
-                mine = own is None or made_by.get(evidence, own) == own
-                if evidence in linkable and relations.get(evidence) and mine:
-                    result.append(
-                        _write(
-                            "AppendCandidateEvidenceV2",
-                            {
-                                "id": derived_id("candidate-evidence", candidate, evidence),
-                                "candidateId": candidate,
-                                "evidenceId": evidence,
-                                "relation": relations[evidence],
-                            },
-                        )
+            for item in links[reading]:
+                result.append(
+                    _write(
+                        "AppendCandidateEvidenceV2",
+                        {
+                            "id": derived_id("candidate-evidence", candidate, item),
+                            "candidateId": candidate,
+                            "evidenceId": item,
+                            "relation": relations[item],
+                        },
                     )
+                )
     return result
 
 

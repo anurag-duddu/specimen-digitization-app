@@ -956,7 +956,9 @@ def test_readers_that_agree_without_a_pick_are_one_verbatim():
     """A field without a lookup whose readers all read the same text takes it and clears
     (coordinator ruling on #88's final review; #131's `_verbatim_source`)."""
     s = first_pass(base(), selected=False)
-    right, _ = s.run.observations
+    right, left = s.run.observations
+    # Every agreeing reader's literal is its own evidence, so the provenance names each (S4).
+    each = [literal(s, right, "Chicago", "5"), literal(s, left, "Chicago", "6")]
     field = TracedField(
         state=ValueState.SUPPORTED,
         reason="transcribed_as_seen",
@@ -964,6 +966,8 @@ def test_readers_that_agree_without_a_pick_are_one_verbatim():
         input_source="raw_reading",
         source_region_id=s.run.regions[0].id,
         source_observation_id=right.id,
+        evidence_ids=[e.id for e in each],
+        evidence_relations={e.id: "supports" for e in each},
     )
     s.run.fields = {"locality": field}
     s.run.disposition, s.run.reasons = Disposition.CLEARED, []
@@ -973,6 +977,7 @@ def test_readers_that_agree_without_a_pick_are_one_verbatim():
     assert (candidate["sourceObservationId"], candidate["sourceTranscriptionId"]) == (right.id, None)
     assert (candidate["derivation"], candidate["normalizedValue"]) == ("literal", None)
     assert candidate["id"] == derived_id("candidate", s.run.id, "locality", right.id, digest(field.model_dump(mode="json")))
+    assert [link["evidenceId"] for link in rows(result, "AppendCandidateEvidenceV2")] == [e.id for e in each]
     assert rows(result, "AppendResolvedFieldV2")[0]["candidateId"] == candidate["id"]
 
 

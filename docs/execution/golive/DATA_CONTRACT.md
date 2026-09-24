@@ -310,11 +310,13 @@ per-call cost record on the run, not in SQL.
   `settled_observation_ids: list[str]` (G27, G28, G32; agreed with S4, #131).
   The three are set together when a field has no single verbatim, in two cases:
   - A single-label field whose first pass selected no reading (G19), when the
-    readers' literals differ: one entry per reader, each `raw_reading`.
-    Readers that all read the same text have one verbatim, not a map: the
-    field keeps that text as `literal` from the first reading (`raw_reading`),
-    and a field without a lookup takes it as its value and clears (coordinator
-    ruling on #88's final review; #131's `_verbatim_source`).
+    readers' literals differ: one entry per reader, each `raw_reading`. Readers
+    that all read the same text have one verbatim, not a map: the field keeps
+    that text as `literal` from the first reading (`raw_reading`), and a field
+    without a lookup takes it as its value and clears (coordinator ruling on
+    #88's final review; #131's `_verbatim_source`). Each agreeing reader's
+    literal is its own `literal` evidence (agreed with S4), so the provenance
+    names every reader that agreed.
   - A field found on more than one label (G32: the harness settles each label
     separately, and the field clears when every label settles to the same
     value; PLAN in #124, 18958e0). Each label brings its own entries, even when
