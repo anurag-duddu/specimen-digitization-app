@@ -10,6 +10,9 @@ from uuid import NAMESPACE_URL, uuid5
 from ..hub_models import SAM3_MODEL
 
 SAM3_IMPLEMENTATION = "transformers/5.14.0;torch/2.8.0;cpu"
+# The call's spans on both sides of the request (LANE.md T5c).
+SEGMENT_SPAN = "Segment specimen with SAM 3"
+SERVE_SPAN = "Serve SAM 3 segmentation"
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
 GENERATION = re.compile(r"^[1-9][0-9]*$")
 
@@ -401,6 +404,27 @@ def sam3_run_request(payload):
     return _exchange(payload, bearer, validate_sam3_run_response)
 
 
+def span_attributes(request, checkpoint_sha256=None):
+    """The ids and the parameters as the service applies them; never content."""
+    from .collection_profiles import Sam3Parameters
+
+    applied = Sam3Parameters.model_validate(request["parameters"]).applied()
+    concepts = (request["prompt"], applied["cross_check_concept"])
+    attributes = {
+        "specimen.id": request["specimen_id"],
+        "specimen.run.id": request["run_id"],
+        "sam3.concepts": tuple(concept for concept in concepts if concept),
+        "sam3.label_threshold": applied["label_threshold"],
+        "sam3.mask_threshold": applied["mask_threshold"],
+        "sam3.record_floor": applied["record_floor"],
+        "sam3.max_detections": applied["max_detections"],
+        "sam3.model_revision": request["model_revision"],
+    }
+    if checkpoint_sha256:
+        attributes["sam3.checkpoint_sha256"] = checkpoint_sha256
+    return attributes
+
+
 def _exchange(payload, bearer, validate):
     import httpx
 
@@ -413,6 +437,12 @@ def _exchange(payload, bearer, validate):
             headers={
                 "Authorization": "Bearer " + bearer,
                 "Idempotency-Key": payload["request"]["run_id"] + ":segment",
+                # The run's trace, as the parent validated it (LANE.md T5c).
+                **{
+                    name: value
+                    for name, value in (payload.get("trace") or {}).items()
+                    if name == "traceparent"
+                },
             },
             json=payload["request"],
         ) as response:

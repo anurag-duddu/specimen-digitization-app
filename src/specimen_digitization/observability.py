@@ -301,6 +301,11 @@ def _model_trace_carrier(context: Mapping[str, str]) -> dict[str, str]:
     return {}
 
 
+def w3c_carrier() -> dict[str, str]:
+    """The current span's W3C traceparent alone, for a request header (LANE.md T5c)."""
+    return _model_trace_carrier(logfire.get_context())
+
+
 def model_trace_context(specimen_id: str, run_id: str) -> dict[str, str]:
     """Carry application-owned correlation IDs and the parent's capture mode."""
     return {

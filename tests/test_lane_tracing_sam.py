@@ -82,7 +82,7 @@ def test_the_request_carries_only_the_traceparent(monkeypatch):
 
     def answer(request):
         headers.append(request.headers)
-        return httpx.Response(503, json={"detail": "down"})
+        return httpx.Response(503, stream=httpx.ByteStream(b'{"detail": "down"}'))
 
     client = httpx.Client
     monkeypatch.setattr(
@@ -127,7 +127,8 @@ def test_the_service_continues_the_workers_trace(
     served, monkeypatch, capfire: CaptureLogfire
 ):
     # LOGFIRE_DISTRIBUTED_TRACING=true: Logfire extracts without its guard.
-    monkeypatch.setattr(propagate, "get_global_textmap", lambda: textmap(True))
+    extracting = textmap(True)
+    monkeypatch.setattr(propagate, "get_global_textmap", lambda: extracting)
     assert serve(served, {"traceparent": TRACEPARENT}).status_code == 200
     [span] = named(capfire, SERVE)
     assert format(span["context"]["trace_id"], "032x") == TRACE
@@ -140,7 +141,8 @@ def test_the_service_continues_the_workers_trace(
 def test_without_distributed_tracing_the_service_starts_its_own_trace(
     served, monkeypatch, capfire: CaptureLogfire
 ):
-    monkeypatch.setattr(propagate, "get_global_textmap", lambda: textmap(False))
+    ignoring = textmap(False)
+    monkeypatch.setattr(propagate, "get_global_textmap", lambda: ignoring)
     assert serve(served, {"traceparent": TRACEPARENT}).status_code == 200
     [span] = named(capfire, SERVE)
     assert span["parent"] is None
