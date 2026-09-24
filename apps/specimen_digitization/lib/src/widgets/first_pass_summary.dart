@@ -15,16 +15,23 @@ import '../vocabulary.dart';
 
 /// The decision for one region, or its absence.
 class FirstPassSummary extends StatelessWidget {
-  /// The summary of [firstPass], which is null when no decision is recorded.
+  /// The summary of [firstPass], which is null when no decision is recorded,
+  /// and of a reviewer's decision after it.
   const FirstPassSummary({
     super.key,
     required this.firstPass,
     required this.readerName,
     required this.run,
+    this.reviewerDecision,
   });
 
   /// The decision, as the thread carries it.
   final ThreadFirstPass? firstPass;
+
+  /// A reviewer's decision on the region, shown after what the readers
+  /// handed on, in the order the thread ran. The model's decision stays
+  /// above it (G38).
+  final ThreadReviewerDecision? reviewerDecision;
 
   /// The name a reader goes by on this screen, from its observation id.
   final String Function(String? observationId) readerName;
@@ -100,7 +107,19 @@ class FirstPassSummary extends StatelessWidget {
       color: ui.color.inkSecondary,
     );
     final ThreadFirstPass? pass = firstPass;
+    final ThreadReviewerDecision? review = reviewerDecision;
+    final Widget? reviewed = review == null
+        ? null
+        : _Decision(
+            title: reviewer,
+            unresolved: review.unresolved == true,
+            decided: review.decidedText,
+            rationale: review.rationale,
+          );
     if (pass == null) {
+      // A reviewer's decision is a recorded decision, so "No decision
+      // recorded" is only for a region with neither.
+      if (reviewed != null) return reviewed;
       return Semantics(
         container: true,
         child: Column(
@@ -113,43 +132,24 @@ class FirstPassSummary extends StatelessWidget {
         ),
       );
     }
-    final String? decided = pass.decidedText;
-    final String? rationale = pass.rationale;
     final ThreadModelCall? call = pass.modelCall;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Semantics(
-          container: true,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Text(_title(pass), style: ui.type.label),
-              if (pass.unresolved == true)
-                Text(notResolved, style: ui.type.bodySmall),
-              if (decided != null) ...<Widget>[
-                SizedBox(height: ui.space.s1),
-                Text(decidedLabel, style: secondary),
-                Text(decided, style: ui.type.mono.literalDense),
-              ],
-              if (rationale != null) ...<Widget>[
-                SizedBox(height: ui.space.s1),
-                Text(rationale, style: ui.type.bodySmall),
-              ],
-              if (call != null)
-                Text(
-                  <String>[
-                    ?call.model,
-                    ?call.provider,
-                    if (call.promptVersion case final String prompt)
-                      'Prompt $prompt',
-                  ].join(' · '),
-                  style: secondary,
-                ),
-            ],
-          ),
+        _Decision(
+          title: _title(pass),
+          unresolved: pass.unresolved == true,
+          decided: pass.decidedText,
+          rationale: pass.rationale,
+          provenance: call == null
+              ? null
+              : <String>[
+                  ?call.model,
+                  ?call.provider,
+                  if (call.promptVersion case final String prompt)
+                    'Prompt $prompt',
+                ].join(' · '),
         ),
         if (pass.handoffs.isNotEmpty) ...<Widget>[
           SizedBox(height: ui.space.s3),
@@ -176,7 +176,60 @@ class FirstPassSummary extends StatelessWidget {
               ),
             ),
         ],
+        if (reviewed != null) ...<Widget>[
+          SizedBox(height: ui.space.s3),
+          reviewed,
+        ],
       ],
+    );
+  }
+}
+
+/// One decision, as one announcement: who decided, whether it left the
+/// transcript unresolved, what was decided, why, and, for the first pass,
+/// its model and prompt.
+class _Decision extends StatelessWidget {
+  const _Decision({
+    required this.title,
+    required this.unresolved,
+    required this.decided,
+    required this.rationale,
+    this.provenance,
+  });
+
+  final String title;
+  final bool unresolved;
+  final String? decided;
+  final String? rationale;
+  final String? provenance;
+
+  @override
+  Widget build(BuildContext context) {
+    final UiThemeData ui = context.ui;
+    final TextStyle secondary = ui.type.bodySmall.copyWith(
+      color: ui.color.inkSecondary,
+    );
+    return Semantics(
+      container: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Text(title, style: ui.type.label),
+          if (unresolved)
+            Text(FirstPassSummary.notResolved, style: ui.type.bodySmall),
+          if (decided case final String text) ...<Widget>[
+            SizedBox(height: ui.space.s1),
+            Text(FirstPassSummary.decidedLabel, style: secondary),
+            Text(text, style: ui.type.mono.literalDense),
+          ],
+          if (rationale case final String reason) ...<Widget>[
+            SizedBox(height: ui.space.s1),
+            Text(reason, style: ui.type.bodySmall),
+          ],
+          if (provenance case final String line) Text(line, style: secondary),
+        ],
+      ),
     );
   }
 }
