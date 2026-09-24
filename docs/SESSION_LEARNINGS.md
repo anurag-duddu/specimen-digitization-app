@@ -11900,7 +11900,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - G27: a place field keeps its verbatim as written, and its final value is what the harness settled; both are stored.
   - G28: taxon names work the same way.
   - G29: a Roman-numeral month is the month. The harness works through every reading a notation allows and settles with evidence; each subcollection has its own harness, Insects first.
-  - G30: production model calls may spend USD 5 of the USD 25; the lab's USD 5 is separate.
+  - G30: production model calls may spend USD 5 of the USD 25; the lab's USD 5 is separate. The coordinator's mechanism: each call reserves its worst case and settles to its cost, since counting reservations alone would stop the pilot near 48 runs instead of about 238.
   - G31: the owner checked the ten pilot slides and classified them not sensitive.
 - Durable learnings:
   - (1) Quote the owner's chosen option from the question itself, not from a coordinator's relay of it. The relay wording ("a warning finding, not a change of outcome") reached a review as if it were G23's own words.
