@@ -94,15 +94,12 @@ functional one comes first (G6).
   text as its verbatim and its value and clears, on one label as on several
   (coordinator reading of G27 and G32, matching your #131). It still passes
   G45's kind check first.
-- The place tool's outside requests carry place text only, under PLAN section
-  4.8's filter. Your mid-run place-lookup tool (G40) and the deterministic
-  final call build requests the same way: from the reading's place fields,
-  its unassigned locality text and tier 1's names; refusing a query not drawn
-  from them; and cutting from what leaves every reading's non-place literals,
-  marker clauses, digit tokens and month tokens, with tests for exactly those
-  guarantees (coordinator ruling). Taxonomy requests carry the taxon name and
-  ranks (`GBIF.md` 107-114). Every credential follows the Maps key's rules.
-  `derive_rest` runs in the worker's derivation job, never in the API.
+- The place tool's outside requests follow PLAN section 4.8 exactly: its
+  sources, cuts, expansions, fixed request parts and tests, in your single
+  filter, which S8's request builder also calls. Taxonomy requests carry the
+  taxon name and ranks (`GBIF.md` 107-114). Every credential follows the Maps
+  key's rules. `derive_rest` runs in the worker's derivation job, never in the
+  API.
 - G33: the numeric dates of every reading, the decided transcript's and the raw
   readings', are the evidence for an all-numeric date's day and month order;
   any disagreement among them fixes no order, and the date goes to review with
@@ -237,7 +234,8 @@ elevation gate (99-106), which reads `field.literal` today (`policy.py`
 with its derivation record (G37 and G41, revising G22; PLAN section 4.8). The
 date gate reads a Date Visited To derived under G44 the same way, and the
 fields no lookup checks pass G45's kind check, a mismatch going to review as
-`value_shape_mismatch:{field}` (#167). `unresolved_transcription` (46-48) yields to G19 and G20: a
+`value_shape_mismatch:{field}` (#167), except `verbatim_dts`, a finding until
+the owner answers (PLAN section 2.3). `unresolved_transcription` (46-48) yields to G19 and G20: a
 region whose first pass picked no reading passes when every field drawn from it
 resolved, on its own evidence or through a lookup that settled the
 disagreement; a field still left with conflicting readings sends the record to
