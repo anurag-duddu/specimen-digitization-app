@@ -87,12 +87,13 @@ report; rerun until the run is flawless; then the next specimen.
 
 **T4a. The pilot reference file** (coordinator ruling on S2's offline-checker
 question, sent to you and to S2 at 01:15Z on 2026-09-25; how it's kept and
-checked, coordinator rulings of 04:17Z on 2026-09-25 on #200's final review
-and of 05:40Z on #203's). Once PLAN section 8 step 2 has imported the ten, and
-before S2's offline checker reads them, write a private file with schema
-`specimen-pilot-reference/v1`: the ordinal, the specimen UUIDs in the established source order, the one scope,
-and each original's bucket, object, generation, SHA-256 and size, plus the
-application-source binding. It has no authorization fields: no `status`,
+checked, coordinator rulings of 04:17Z on 2026-09-25 on #200's final review,
+of 05:40Z on #203's and of 06:37Z on #206's). Once PLAN section 8 step 2 has
+imported the ten, and before S2's offline checker reads them, write a private
+file with schema `specimen-pilot-reference/v1`: the ordinal, the specimen
+UUIDs in the established source order, the one scope, and each original's
+bucket, object, generation, SHA-256 and size, plus the application-source
+binding. It has no authorization fields: no `status`,
 `authorization_reference` or frozen inventory digest. Build it from the
 import's own records and a read-only object listing.
 
@@ -104,9 +105,10 @@ import's own records and a read-only object listing.
   account that runs the checker, mode 600, no symlink, at most 1 MiB. Its
   bytes are frozen once you send its SHA-256.
 - Tell the coordinator its path and SHA-256. The coordinator reads the file
-  itself against DoD-4's subject ids and hashes the bytes it read, so the bytes
-  it checked are the bytes S2's checker then pins by that digest on the
-  command line; the digest proves the bytes, not the contents.
+  itself against DoD-4's subject ids, hashes the bytes it read and compares
+  that hash with the SHA-256 you sent, so the bytes it checked are the bytes
+  S2's checker then pins by that digest on the command line; the digest proves
+  the bytes, not the contents.
 - Cloud reads need the owner's gcloud sign-in. If it has expired, write the
   sign-in into `~/specimen-golive/OWNER_ACTIONS.md` and message the
   coordinator (PLAN section 7.6); don't ask the owner directly.
