@@ -12254,3 +12254,44 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. A source check that accepts whatever a caller found in the text is no source check, and the cuts become the only defence. Name the fields a caller may draw from, and state in the limit what the cuts alone can't catch.
   3. A coordinator correction written after an owner's quote reads as following from the owner's words. Label it as a reading, with its date and source, even when it only corrects the coordinator's own earlier line.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live S6: #197's review follow-ups, and dated corrections to earlier entries
+
+- Task: the steward's review of #197 (merged as `587761f`; comment 5826222264, items 1, 2, 4 and 5).
+- Branch/worktree: `golive/ui-zone-followups-2`, based on `main`; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `wallDayStart` no longer lands on the day before where the clocks jump over midnight on a daylight-saving day: Havana on the second Sunday of March, Santiago on the first Sunday of September, the Azores on the last Sunday of March. When its second step does not read as the typed day, it returns the first step's instant, the jump, which is the day's first moment.
+    - A synthetic zone that moves from UTC-5 to UTC-4 at what would have been 00:00 pins this.
+    - The steward's sweep of all 598 zones for 2026-2030 passes under this rule.
+    - The pilot's zone (Central) is unaffected.
+  - The guard's doc, in the seam and in its test, lists what a line-based check cannot see:
+    - a `now` held in a variable;
+    - `copyWith` and `toString`/`toIso8601String` on a local instant;
+    - tear-offs;
+    - split expressions and reads through another package;
+    - zoneless parses;
+    - code outside the two roots.
+    It also names the correct UTC epoch call split across lines, which it wrongly rejects.
+  - The code cites ruling (b) with its time, 01:26Z, at `wallDayStart` and `typedDayStart`. The typed-day comment no longer says "exactly as they were converted before".
+- Corrections to earlier entries (item 4; the log is append-only, and these entries are on `main`):
+  - The entry "Go-live S6: #182's review follow-ups, the reviewer's own day, and log corrections" (#197) says in learning 2 that two fixed-point steps over `wallTime` "find midnight in any zone". That is false for a day that has no midnight; this entry's fix covers it.
+  - Where my entries give a zone name (CDT, Central) for what the app shows, read "the host zone, not Central". CDT is only the suite's pin.
+  - The coordinator's rulings for S6, by the time this session received them:
+    - 2026-09-24 22:59Z: layer labels, option (b): "As written", "Settled", "Derived from …". This is the layer entries' "(b)", a different ruling from the H2.1 "(b)" below.
+    - 2026-09-24 23:11Z: pin the time zone in the test harness (#181).
+    - 2026-09-24 23:30Z: server instants read on the reviewer's clock, from design/01 H1.9 (#182).
+    - 2026-09-25 01:26Z: H2.1 option (b), a typed day is the reviewer's own day (#197).
+    - 2026-09-25 01:35Z: no migration of saved filter sets (#197).
+  - Two corrections to #197's risk note (item 5):
+    - A filter set saved before #197 that is reopened and resubmitted through the sheet, west of UTC, moves its bound about a day earlier. In Chicago it goes from 00:00Z on the 8th to 05:00Z on the 7th, 19 hours, because the reopened sheet shows the 7th.
+    - `magic_link.dart` only reads `queryParameters`; it does not build them.
+- Commits/PRs: red `6856b87`; green `a655cdc`; the pull request is based on `main`.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the zone and day-filter tests 22 passed; the full app suite 1,597 passed, 7 skipped, 0 failed, on the host zone with no `TZ` set, no golden moved.
+- Durable learnings:
+  1. "Any zone" is a claim about every zone's worst day. A fixed-point search over a wall clock converges only where the target wall time exists. Where the clocks jump over it, the search must notice and return the jump. A synthetic zone makes that testable without a zone database.
+  2. Name a ruling by its time, not by its option letter: two different rulings were both "(b)".
+- Failed approaches: none.
+- Remaining follow-ups:
+  - At #140's turn, fold #197's date-key case into #140's `searchValueLabel` switch (item 3). Git merges the two declarations cleanly, and the result would not compile.
+  - At #73's turn, record the zone rulings in UI.md with the times above.
+  - When the stack merges `main`, regenerate its queue, queue-selection and workbench-history goldens, and re-verify those of #102, #114, #133 and #140.
