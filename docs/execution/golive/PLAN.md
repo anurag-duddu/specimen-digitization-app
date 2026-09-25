@@ -414,17 +414,17 @@ status. The client defects in section 3 are fixed first.
 ### 4.8 Outside data (G35, G38)
 
 The place tool follows these coordinator rulings, from the reviews of #124,
-#174, #180, #185 and #191 and the rulings on S4's #183:
-- Its requests carry place text only (coordinator rulings of 2026-09-24, from
-  the reviews of #124, #174, #180, #185 and #191, including the rulings on S8's
-  option (c) and on S4's #183). The agent keeps a place-lookup tool it can call
-  mid-run (G40), and the deterministic final call looks places up too. Both
-  build requests through S4's single filter, and S8's request builder calls
-  that same filter for every request its tiers send. The rule covers every
-  value a request takes from the record or from a tier-1 result, in any
-  parameter, except a tier-1 source's own identifiers, which follow the
-  Identifiers rule below. The filter's output is what leaves, and after it a
-  value is only escaped or encoded.
+#174, #180, #185, #191, #200 and #203 and the rulings on S4's #183:
+- Its requests carry place text only (coordinator rulings of 2026-09-24 and
+  2026-09-25, from the reviews of #124, #174, #180, #185, #191, #200 and #203,
+  including the rulings on S8's option (c) and on S4's #183). The agent keeps a
+  place-lookup tool it can call mid-run (G40), and the deterministic final call
+  looks places up too. Both build requests through S4's single filter, and S8's
+  request builder calls that same filter for every request its tiers send. The
+  rule covers every value a request takes from the record or from a tier-1
+  result, in any parameter, except a tier-1 source's own identifiers, which
+  follow the Identifiers rule below. The filter's output is what leaves, and
+  after it a value is only escaped or encoded.
   - Sources, checked first, before any cut or expansion: the reading's place
     fields (`country`, `province_state`, `county`, `city`, `precise_location`)
     and its unassigned locality text (the part of the lines holding those
@@ -449,30 +449,40 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     sliced. Every caller passes the record's readings, which the cuts read but
     which are no source (coordinator ruling of 2026-09-24, on #191's review, as
     S4's #183 states it). The filter cuts: every token of every literal any
-    reading assigns to a non-place field, and of every value a reviewer puts in
-    a non-place field; every token of every clause, between commas, semicolons
-    or line breaks, that holds a collector or determiner marker the profile's
-    notations name, wherever the marker sits in it, and the notations name
-    those markers as labels write them, in Latin ("leg.", "det."), English
-    ("coll.", "Collector") and Spanish ("Col.", "Colector") (coordinator
-    rulings of 2026-09-24, on #191's and #200's final reviews); every token
-    that carries a digit; every month name and abbreviation the profile's date
-    notations list, in any case, and they list each month in full and
-    abbreviated in English and Spanish, the pilot labels' languages, in the
-    usual forms and older ones, such as "Sept.", "September", "Mayo",
-    "setiembre" and "Agto." (coordinator rulings of 2026-09-24, on #191's
-    round-1 and final reviews and on S4's #183); and a token whose every word
-    is a Roman numeral I to XII, in any case, such as "VIII" or "VIII/IX", next
-    to a date number, before or after it, across separators. A date number is a
-    day or a year in the profile's forms (3, 14, 1946, '46 or -46), also
-    written with any apostrophe or dash ("‘46", "–46"), as an ordinal day
-    ("3rd"), or with punctuation before or after it ("1946.", "1946?",
-    "(1946)") (coordinator rulings on S4's #183 and on #200's final review,
-    2026-09-24). So "VIII" goes in "3 VIII 1946", "Mindanao, VIII, 1946",
-    "Mindanao, VIII -46", "Mindanao, VIII ‘46", "VIII 1946?" and "3rd VIII",
-    and "VIII/IX" in "VIII/IX 1946", while "Camp IV" and "P.I." stay. The
-    readings' non-place literals do not cut the reviewer's own place value,
-    since the reviewer's correction is the authority there.
+    reading assigns to a non-place field, of every value the harness gave a
+    non-place field, whether a reviewer kept it or replaced it (coordinator
+    ruling of 05:38Z on 2026-09-25, on #203's final review), and of every value
+    a reviewer puts in a non-place field; every token of every clause, between
+    commas, semicolons or line breaks, that holds a collector or determiner
+    marker the profile's notations name, wherever the marker sits in it, and
+    the notations name those markers as labels write them, such as "leg." and
+    "det." in Latin, "coll." and "Collector" in English, and "Col." and
+    "Colector" in Spanish (coordinator rulings of 2026-09-24, on #191's final
+    review, and of 04:17Z on 2026-09-25, on #200's); every token that carries a
+    digit; every month name and abbreviation the profile's date notations list,
+    in any case, and they list each month in full and abbreviated in English
+    and Spanish, the pilot labels' languages, in the usual forms and older
+    ones, such as "Sept.", "September", "Mayo", "setiembre" and "Agto."
+    (coordinator rulings of 2026-09-24, on #191's round-1 and final reviews and
+    on S4's #183); and a token whose every word is a Roman numeral I to XII, in
+    any case, such as "VIII" or "VIII/IX", next to a date number, before or
+    after it, across separators, where the search for that date number passes
+    over tokens with no letter or digit and over the date connectors the
+    profile's date notations list ("de", "del", "of"). A date number is a day
+    or a year in the profile's forms (3, 14, 1946, '46 or -46), also written
+    with any apostrophe or dash ("‘46", "–46"), as an ordinal day ("3rd", "2d",
+    "1er", "1º", "1ª"), with punctuation before or after it ("1946.", "1946?",
+    "(1946)"), or as a range of them joined by a dash or a slash ("3-4",
+    "1946/47"); and a listed connector is itself cut when the tokens on both
+    sides of it are cut date tokens (coordinator rulings on S4's #183,
+    2026-09-24, and of 04:17Z, 05:38Z and 05:39Z on 2026-09-25, on #200's and
+    #203's final reviews). So "VIII" goes in "3 VIII 1946", "Mindanao, VIII,
+    1946", "Mindanao, VIII -46", "Mindanao, VIII ‘46", "VIII 1946?", "3rd
+    VIII", "2d VIII", "3-4 VIII", "VIII 1946/47", "3 - VIII - 1946", "3 de VIII
+    de 1946" and "3rd of VIII 1946", and "VIII/IX" in "VIII/IX 1946", while
+    "Camp IV", "P.I." and the "de" of "San Juan de Dios" stay. The readings'
+    and the harness's non-place values do not cut the reviewer's own place
+    value, since the reviewer's correction is the authority there.
   - Expansion, after the cuts: a surviving notation token that the table
     assigns to place fields only, and that appears in an allowed source, may be
     replaced by each full form the table lists for it, so "Davao Prov." is sent
@@ -517,44 +527,49 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     '46" and "3 SEPT. 1946"; "Chimaltenango, 3 Mayo 1946", "3 Setiembre 1946"
     and "3 Agto. 1946"; "3 VIII 1946", "3 viii 1946", "Mindanao, VIII, 1946",
     "Mindanao, VIII -46", "Mindanao, VIII ‘46", "VIII –46", "VIII 1946?", "3rd
-    VIII" and "VIII/IX 1946"; "Mindanao, P.I. 3 Sept. '46"; "Camp IV"; "Davao
-    Prov., leg. Hoogstraal"; "Philippine Islands" written on the label and
-    "P.I." expanded to it; every full form the table lists; a reviewer's
-    corrected collector spelling that matches no reading literal; a reviewer's
-    place value that a reading's non-place literal would otherwise cut, and one
-    with a date in it; a literal the harness gives a non-place field refused as
-    a source; tier-1 identifiers passing, a catalogue number offered as a TGN
-    identifier refused, a label number the answer holds only as a date or a
-    coordinate refused (a TGN `estStart` of "1946", a GNS latitude of 7.3), and
-    other values refused; the fixed parts and the User-Agent carrying no label
-    text; and a place value with a quote in it reaching the query escaped. No
-    cut character leaves, each expansion carries only full forms the table
-    lists, and a value not drawn from those sources is refused. Tests also pin
-    each case the limit names, so a change in what can leave shows.
+    VIII", "Mindanao, 2d VIII", "1º VIII", "1er VIII", "3-4 VIII", "VIII
+    1946/47", "3 - VIII - 1946", "3 de VIII de 1946", "3rd of VIII 1946" and
+    "VIII/IX 1946"; "San Juan de Dios"; "Mindanao, P.I. 3 Sept. '46"; "Camp
+    IV"; "Davao Prov., leg. Hoogstraal"; "Philippine Islands" written on the
+    label and "P.I." expanded to it; every full form the table lists; a
+    reviewer's corrected collector spelling that matches no reading literal; a
+    reviewer's place value that a reading's non-place literal would otherwise
+    cut, and one with a date in it; in "fill the rest", "Mindanao F.G. Wermer"
+    sending "Mindanao" with the harness's "F.G. Wermer" kept, and with it
+    replaced by the reviewer's "F.G. Werner"; a literal the harness gives a
+    non-place field refused as a source; tier-1 identifiers passing, a
+    catalogue number offered as a TGN identifier refused, a label number the
+    answer holds only as a date or a coordinate refused (a TGN `estStart` of
+    "1946", a GNS latitude of 7.3), and other values refused; the fixed parts
+    and the User-Agent carrying no label text; and a place value with a quote
+    in it reaching the query escaped. No cut character leaves, each expansion
+    carries only full forms the table lists, and a value not drawn from those
+    sources is refused. Tests also pin each case the limit names, so a change
+    in what can leave shows.
   - Its stated limit: text the filter cannot recognize can still leave. That is
     text that no reading assigns to a non-place field and the harness has not
-    yet given one, when no marker the profile names sits in its clause
-    (coordinator ruling of 2026-09-24, on #191's final review). So, mid-run,
+    given one (mid-run, not yet; in "fill the rest", never), when no marker the
+    profile names sits in its clause (coordinator rulings of 2026-09-24, on
+    #191's final review, and of 05:38Z on 2026-09-25, on #203's). So, mid-run,
     before the harness has named the non-place fields, "Mindanao F.G. Wermer"
     leaves whole, "H. Hoogstraal" leaves when its "leg." sits in a neighbouring
     clause or line, and so do a habitat such as "Mossy forest", "FMNH INS" from
     a catalogue number and "ft." from "Mt. Apo, 6000 ft."; so does a name
-    beside a marker the profile doesn't list. In "fill the rest", a value the
-    harness gave a non-place field and the reviewer replaced can leave when no
-    reading assigns it (coordinator ruling of 2026-09-24, on #200's final
-    review). A month name in a language the profile doesn't list can leave, and
-    so can a form of a listed language that it doesn't list, a lone or ranged
-    month numeral with no day or year beside it, such as "VIII/IX", and a
-    numeral that shares its token with a word, such as "mid-VIII 1946". The
-    cuts can also take too much: a place's own numeral beside a date number
-    goes, so "Camp IV, 3 VIII 1946" sends only "Camp"; a place named with a
-    month word loses that word, so "Cape May" sends "Cape"; a colonia written
-    "Col." is cut as a collector's clause, so "Col. El Carmen, Chimaltenango"
-    sends only "Chimaltenango"; a clause holding a marker is cut wherever its
-    words appear, so "Mt. Apo leg. Hoogstraal" on one line takes "Mt. Apo" from
-    every other line, a reviewer's value included; and a tier-1 name whose
-    numeral stands beside a number, such as a region written with its code,
-    loses the numeral.
+    beside a marker the profile doesn't list. A month name in a language the
+    profile doesn't list can leave, and so can a form of a listed language that
+    it doesn't list, and a lone or ranged month numeral with no day or year
+    beside it, such as "VIII/IX". A token that joins a numeral to a word leaves
+    whole, so "mid-VIII 1946" sends "mid-VIII" (coordinator ruling of 04:17Z on
+    2026-09-25, on #200's final review). The cuts can also take too much: a
+    place's own numeral beside a date number goes, so "Camp IV, 3 VIII 1946"
+    sends only "Camp"; a place named with a month word loses that word, so
+    "Cape May" sends "Cape"; a colonia written "Col." is cut as a collector's
+    clause, so "Col. El Carmen, Chimaltenango" sends only "Chimaltenango"
+    (coordinator ruling of 04:17Z on 2026-09-25, on #200's final review); a
+    clause holding a marker is cut wherever its words appear, so "Mt. Apo leg.
+    Hoogstraal" on one line takes "Mt. Apo" from every other line, a reviewer's
+    value included; and a tier-1 name whose numeral stands beside a number,
+    such as a region written with its code, loses the numeral.
 - The Maps key, and any credential a later source needs, is kept in Secret
   Manager and follows section 4.5's rule: no span, log line, exception text,
   stored error, tool-call result, test fixture or lab folder records it or the
@@ -668,7 +683,7 @@ requests labelled `golive` with the title prefix `[golive:<ws>]`.
 |---|---|---|---|---|
 | S0 | App production launch plan | Plan, decisions, merge order, owner liaison, acceptance sign-off | `docs/execution/golive/PLAN.md`, `briefs/`, `~/specimen-golive/MERGE_ORDER.md`, and the notes in `docs/product-requirements/PRD.md` that record owner decisions | Opus 5.5, max |
 | S1 | Steward go-live PRs through review and merge | Review every PR with a fresh swarm, CI to green, merge, post-merge deploy checks, push back | no source; PR comments; reruns; merges (G17) | Opus 5.5, high |
-| S2 | Release data and runtime planes on merge | Contract amendments, auto-on-merge planes, IAM and secret lists, first releases, repository variables, deploy health | `AGENTS.md` deployment paragraph, `docs/DEPLOYMENT.md`, `docs/execution/golive/RELEASE.md`, the release and approval docs in `docs/execution/` (`LIVE_QA.md`, `RELEASE_ACCEPTANCE.md`, `PROTECTED_RELEASE_HARNESS.md`, `GO_LIVE_RUNBOOK.md`, `APPROVED_LOGFIRE_TRACING.md`, and the other `RELEASE_*` and `APPROVED_*` documents), `.github/workflows/`, `scripts/ci/` release and deploy code, `infra/`, `containers/`, `scripts/qa/live/` | Opus 5.5, xhigh |
+| S2 | Release data and runtime planes on merge | Contract amendments, auto-on-merge planes, IAM and secret lists, first releases, repository variables, deploy health | `AGENTS.md` deployment paragraph, `docs/DEPLOYMENT.md`, `docs/execution/golive/RELEASE.md`, the release and approval docs in `docs/execution/` (such as `LIVE_QA.md`, `RELEASE_ACCEPTANCE.md`, `PROTECTED_RELEASE_HARNESS.md`, `GO_LIVE_RUNBOOK.md`, `APPROVED_LOGFIRE_TRACING.md`, `RELEASING.md`, `HUMAN_REVIEW_RELEASE.md`, `COHORT_READING_ADMISSION.md` and the other `RELEASE_*` and `APPROVED_*` documents), `.github/workflows/`, `scripts/ci/` release and deploy code, `infra/`, `containers/`, `scripts/qa/live/` | Opus 5.5, xhigh |
 | S3 | Build the on-demand processing lane | On-demand trigger and source import in production, worker drain, SAM 3 per run, profile configuration and inheritance, optional fields at runtime, budget, tracing | `api.py` processing and source routes, `worker*.py`, `sam3_*.py`, `production.py` adapters (535-910), `workflow.py` step bodies before `adjudicate` (pin_dependencies, classify, quality_check, segment, transcribe), `cli.py`, `transcription.py`, `collection_*.py`, `profile_runtime.py`, `observability.py`, `bounded_telemetry.py`, `tracing.py`, `provider_privacy.py` | Opus 5.5, high |
 | S4 | Build the LLM first pass and agentic harness | LLM first pass, agentic harness and tools, fallback, graceful outcomes, queue rule G1 | new first-pass and harness modules, `harness.py`, `evidence_harness.py`, `lookup.py`, `parties.py`, `geography.py`, `policy.py`, `prompts.py`, `model_gateway.py` routes, `workflow.py` step bodies from `adjudicate` to finalize, including `parse` (685-719) and the stage 5 scores (the disagreement ratio in `adjudicate`, the risk score in `finalize`) | Opus 5.5, high |
 | S5 | Build the pipeline data model and thread API | Data contract, schema additions, normalized projection, thread API, contract snapshots | `dataconnect/`, `scripts/data/`, `storage.py`, `search.py`, `active_graph.py`, `production.py` `SqlConnectRepository` (80-534), a new thread-route module, `scripts/ci/release_sql_catalog.sql` and the table-count assertion in `scripts/ci/test_data_release.py`, `docs/execution/backend-*.json` | Opus 5.5, high |

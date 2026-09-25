@@ -12437,3 +12437,20 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. A heading inside a section inherits the section's claim. "Held and waiting" sat under "The owner's answers of 2026-09-24", so a reader took the coordinator's holds for the owner's words.
 - Failed approaches: none.
 - Remaining follow-ups: at #154's turn, label GEO.md:324's "The owner held D5, so no tolerance widens a place's dates" as the coordinator's interim rule (PLAN 2.3's D4/D5 row).
+### 2026-09-25 — Go-live program: plan corrections after #203
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-11`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #203's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/203#issuecomment-5827391717), items 1-6. It carries the coordinator's rulings of 05:38Z, 05:39Z and 05:40Z on 2026-09-25, each recorded in `status/coordinator.md` before it was sent.
+  - PLAN 4.8's filter:
+    - The cut list gains every value the harness gave a non-place field, whether a reviewer kept or replaced it. The readings' and the harness's non-place values spare the reviewer's own place value. The limit's fill-the-rest sentence goes, and its opening sentence now covers text the harness never gave a non-place field.
+    - A date number beside a Roman month also counts as an ordinal day ending in "d", "er", "º" or "ª", or as a range joined by a dash or slash ("3-4", "1946/47"). The search for it passes over lone punctuation and the profile's date connectors ("de", "del", "of"). A connector between two cut date tokens is cut too, so "San Juan de Dios" keeps its "de".
+    - "mid-VIII 1946" sends "mid-VIII": the whole token leaves. That case and the "Col." over-cut carry the 04:17Z ruling's label.
+    - The markers are examples again ("such as"), and the lead-in credits #200 and #203.
+  - PLAN section 6's S2 row lists its documents as examples ("such as"), adding RELEASING.md, HUMAN_REVIEW_RELEASE.md and COHORT_READING_ADMISSION.md.
+  - S7's T4a: the file is owned by the account that runs the checker, and its bytes freeze once S7 sends the SHA-256. The coordinator hashes the bytes it read, so the bytes checked are the bytes S2 pins. Its label carries 04:17Z on 2026-09-25.
+  - Correction (dated 2026-09-25) to the entry "2026-09-24 — Go-live program: plan corrections after #200" above: its heading and its line "Correction (dated 2026-09-24)" should carry 2026-09-25. Its work and its ruling came after 00:00Z on 2026-09-25 (the ruling at 04:17Z), and the coordinator's record dates them so. PLAN 4.8 and S7's T4a now label that ruling "04:17Z on 2026-09-25".
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: date a ruling where its record dates it. A ruling logged "04:17Z on 2026-09-25" and labelled "2026-09-24" in the plan reads as two rulings. Use the UTC date in both places.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
