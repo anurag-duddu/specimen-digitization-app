@@ -12085,3 +12085,64 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (4) GNS and GeoNames agree to five decimals on Yepocapa's town and municipio, since GeoNames draws on GNS. Under #94's score (3.4), copies of one source count once.
 - Failed approaches: a first draft listed a first-order unit as its own parent (Davao del Norte under PH-DAV). A first-order unit now has none.
 - Remaining follow-ups: tier 2 (task 5) once S4's #113 merges; the request builder, which calls S4's filter (#183); the derivations (task 6) once #144 merges.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 6a: tier 3's point-radius uncertainty
+
+- Task: brief task 6's pure part, the in-house point-radius uncertainty (D13), tested against the Georeferencing Calculator's own worked examples.
+- Branch and worktree: `golive/geo-radius` in `.claude/worktrees/geo-build`, stacked on #190. PR #192.
+- Outcome: `georef_radius.py` ports the Calculator's arithmetic in meters.
+  - The sources of uncertainty: radial, source, measurement, coordinate precision on the datum's ellipsoid, datum, and offset and heading precision.
+  - The six locality types' combinations. Orthogonal offsets count distance precision in two dimensions, and an offset at a heading widens into a cone.
+  - Offsets move a point by the ellipsoid's meters per degree, wrapping the antimeridian.
+  - The "E. slope" sector's smallest enclosing circle (#94, 3.8).
+- Validation: 30 tests, among them the Calculator's eight worked examples; `uv run pytest -q` (3,254 passed, 81 skipped: `tests/` and `scripts/` together); pre-commit.
+- Durable learnings:
+  - (1) The Calculator adds its uncertainties for most locality types. The exceptions are orthogonal offsets (distance precision times √2, since 2013) and an offset at a heading (a cone). Best Practices 3.4.7 only points to the Calculator, so its code is the specification.
+  - (2) The worked examples D13 asks for are in the Calculator's own repository (`test_data.js`). Four of them depend on its 2015 datum grid (79 m at Bakersfield), which the 2019 grid replaced (3,045 m there). A port reproduces them only if it takes the datum error as an input.
+  - (3) The Calculator's mile is 1,609.3445 m, not 1,609.344 m. Neither changes any example at the precision shown, and one example's point sits 1e-7 degree from its expected value with either factor.
+  - (4) Every tier-1 source gives WGS84 points, so for the pilot the datum adds nothing. The radius comes down to the feature's radial and the coordinates' precision: 1.5 m for GeoNames' five decimals at Yepocapa.
+- Failed approaches: none.
+- Remaining follow-ups: radials need boundaries (geoBoundaries for units; nothing yet for a town's or a mountain's extent); the derivations (task 6) once S4's #144 merges; tier 2 (task 5) once #113 merges.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 6b: a unit's extent, and a circle inside it
+
+- Task: brief task 6, the geometry behind containment (the coordinator's reading of G37) and county precision (the coordinator's reading of G38), on synthetic boundaries until the owner approves downloading geoBoundaries' files.
+- Branch and worktree: `golive/geo-geometry` in `.claude/worktrees/geo-build`, stacked on #192. PR #193.
+- Outcome: `georef_geometry.py` provides the geometry, in pure Python (numpy is not a project dependency).
+  - It reads GeoJSON boundaries and tests a point with the even-odd rule.
+  - It measures clearance to the nearest edge in meters.
+  - It admits a circle only with the file's simplification margin to spare.
+  - It finds a unit's smallest enclosing circle, moving the center onto the boundary when the circle's center falls outside the unit, as the Quick Reference Guide asks.
+- Validation: 11 tests on synthetic boundaries; `uv run pytest -q` (3,265 passed, 81 skipped: `tests/` and `scripts/` together); pre-commit.
+- Durable learnings:
+  - (1) geoBoundaries' open release is not one licence. Each boundary carries its source's: CC BY 3.0 IGO for the Philippine units (NAMRIA, PSA, OCHA) and Guatemala's municipios (CONRED, OCHA FISS), and ODbL for Guatemala's departments, which come from OpenStreetMap. The coordinator ruled the ODbL file out and credits per file (#191).
+  - (2) The Philippine files are 441 to 532 MB each at full resolution. The simplified files come from mapshaper's Douglas-Peucker at 100 m with a 0.00001-degree snap, a documented error, so containment on them keeps a 101.2 m margin. The metadata API states no tolerance; the builder script does.
+  - (3) A smallest enclosing circle's center can fall in a hole or a notch. The Guide then wants the center on the boundary, and the farthest-vertex distance is convex along each edge, so a ternary search per edge, pruned by a lower bound, finds it.
+- Failed approaches: a first test expected the framed square's center inside, but its smallest circle is centered in the hole. That case now tests the move onto the hole's edge.
+- Remaining follow-ups: the owner's approval to download and pin geoBoundaries' simplified Philippine files and Guatemala's municipios (and CONRED's departments if needed), with each file's margin and credit in the manifest; then containment and county precision as derivations, once S4's #144 merges.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 6c: elevations from GLO-30
+
+- Task: brief task 6, the derived elevation where a label states none: the lowest and highest ground within the uncertainty circle from the pinned Copernicus GLO-30 tiles (G37; D11; PLAN 4.8).
+- Branch and worktree: `golive/geo-elevation` in `.claude/worktrees/geo-build`, stacked on #193. PR #196.
+- Outcome: `georef_elevation.py` reads a pinned tile's GeoTIFF structure and returns the elevation range over a circle. It decodes only the internal tiles and rows the circle touches, in pure Python.
+- Validation: 13 tests on GeoTIFFs written in the tiles' layout; the three pinned tiles read locally at the pilot points; `uv run pytest -q` (3,278 passed, 81 skipped: `tests/` and `scripts/` together); pre-commit.
+- Durable learnings:
+  - (1) The GLO-30 tiles are point rasters (GTRasterTypeGeoKey 2). The first pixel's center is the tile's north-west corner, and neighbouring tiles don't overlap.
+  - (2) TIFF's floating-point predictor stores each row's bytes in planes, most significant first, whatever the file's byte order, and differences them as one byte sequence. Decoding sums the whole row, so every row a circle covers is decoded across its internal tile. Slice assignment then rebuilds the floats without per-sample Python.
+  - (3) On the pinned tiles, GLO-30 agrees with the research's SRTM figures within about 10 m at every pilot point: Yepocapa's town 1,395.8 m against 1,396 m. A 5 km circle around Mount Apo or Talomo crosses into the next tile, so the caller must pass every tile a circle touches.
+- Failed approaches: a first draft decoded every internal tile across a row. It now decodes only the column range the circle needs.
+- Remaining follow-ups: the derivation that names the tile's dataset id and SHA-256 with the settled location, once S4's #144 merges; reading the neighbouring tiles when a circle crosses an edge, which needs those tiles pinned.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 6d: administrative units from boundary files
+
+- Task: brief task 6, the boundaries that containment (G37) and a unit's extent (G38) read, pinned by the coordinator's rulings of 2026-09-24: geoBoundaries' simplified Philippine files with the 101.2 m margin, and CONRED's COD-AB file for Guatemala, each under CC BY 3.0 IGO. The owner approved the four downloads the same day.
+- Branch and worktree: `golive/geo-boundaries` in `.claude/worktrees/geo-build`, stacked on #196.
+- Outcome: the manifest pins the four files with their credits and margins. `georef_boundaries.py` reads them into units with codes and parents, finds the unit holding a whole circle at each level, and gives a unit's extent with the margin added to its radial.
+- Validation: 22 boundary test cases on unchanged excerpts of the pinned files and 4 new manifest tests; the four pinned files read locally at the pilot points; `uv run pytest -q`; pre-commit.
+- Durable learnings:
+  - (1) geoBoundaries' licenses are per boundary, not the release's CC BY 4.0: the Philippine files are CC BY 3.0 IGO from NAMRIA, the PSA and OCHA, and Guatemala's ADM1 is OpenStreetMap's ODbL, which the coordinator ruled out. HDX's COD-AB zip holds Guatemala's departments and municipios together, each municipio naming its department.
+  - (2) Mount Apo's summit lies only 123 m inside Davao City's simplified boundary, so the 101.2 m margin leaves room for a 22 m circle. The margin decides real cases, not only edge ones.
+  - (3) detect-secrets reads some geoBoundaries shape ids as hex secrets, by entropy: Makilala's scored 3.12 against the threshold of 3.0, Davao City's 2.87. Adding a finding means a baseline entry, a Gitleaks allowlist line and a review record (`docs/execution/SECRET_SCAN_REVIEW.md`), so the fixture keeps only the unit the tests read.
+- Failed approaches: a first fixture also carried Makilala, which no test read; its shape id tripped the scanner.
+- Remaining follow-ups: the derivations that name a unit's dataset id, SHA-256 and code, once S4's #144 merges; which level fills which Darwin Core field waits with D8.

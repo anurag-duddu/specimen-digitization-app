@@ -1,8 +1,9 @@
 # Georeferencing test fixtures
 
-Recorded answers and rows from public gazetteers, each cut down to what the
-tests read. They cover the pilot's places only. The only label text here is
-pilot place names (G31).
+Recorded answers and rows from public gazetteers, and units from public
+boundary files, each cut down to what the tests read. They cover the pilot's
+places and their neighbours only. The only label text here is pilot place names
+(G31).
 
 | File | Source | Retrieved | License and credit |
 |---|---|---|---|
@@ -13,3 +14,5 @@ pilot place names (G31).
 | `tgn_records.json`, `tgn_names.json` | Getty's SPARQL endpoint, `georef_tgn`'s two queries for the 24 records those names led to; the request carries TGN ids only | 2026-09-24 | as above |
 | `nga_search.json` | NGA GNS name searches (`georef_nga.search_params`) for twelve pilot names, one name a request | 2026-09-24 | NGA GEOnet Names Server; NGA's pages state no license and carry a disclaimer (#94, S33) |
 | `nga_features.json`, `nga_units.json` | NGA GNS reads of the 51 features those searches found and of their first-order units; the requests carry GNS ids and codes only | 2026-09-24 | as above |
+| `geoboundaries_PH_ADM3.geojson` | Davao City, copied unchanged from geoBoundaries' simplified Philippine municipalities pinned in `georef_datasets.py` (`geoboundaries/PH/ADM3/9469f09`) | 2026-09-24 | National Mapping and Resource Information Authority (NAMRIA), Philippines Statistics Authority (PSA), OCHA Philippines, via geoBoundaries (https://www.geoboundaries.org/), licensed under CC BY 3.0 IGO (https://creativecommons.org/licenses/by/3.0/igo/) |
+| `cod_ab_GT_admin1.geojson`, `cod_ab_GT_admin2.geojson` | The department of Chimaltenango and the municipios of Yepocapa and Acatenango, copied unchanged from the admin1 and admin2 layers of the COD-AB file pinned in `georef_datasets.py` (`cod-ab/GT/2026-09-24`); the tests zip them as that file does | 2026-09-24 | Coordinadora Nacional Para La Reducción De Desastres (CONRED), via OCHA's Common Operational Datasets on HDX (https://data.humdata.org/dataset/cod-ab-gtm), licensed under CC BY 3.0 IGO (https://creativecommons.org/licenses/by/3.0/igo/) |

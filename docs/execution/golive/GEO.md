@@ -192,8 +192,11 @@ Some sources are read as files, not asked as services:
   measurements and for derived elevations (G37);
 - the GeoNames country dumps, for tier-1 names (G35). Nothing is sent to GeoNames
   (PLAN 4.8 in #124).
-- geoBoundaries' open release, for containment (the coordinator's ruling). Its
-  entries come with the derivations.
+- administrative boundaries, for containment and a unit's extent (G37, G38).
+  By the coordinator's rulings of 2026-09-24, the Philippines' come from
+  geoBoundaries' simplified files and Guatemala's from CONRED's COD-AB file on
+  HDX, never from geoBoundaries' OpenStreetMap file for Guatemala (ODbL).
+  Section 12 reads them.
 
 `georef_datasets.py` is their manifest. Each entry gives:
 - an id and its purpose;
@@ -201,7 +204,8 @@ Some sources are read as files, not asked as services:
 - the byte size and the SHA-256 of the exact bytes;
 - the license and its URL;
 - the credit text, taken from the source's own terms;
-- the content type the upload sets.
+- the content type the upload sets;
+- for a simplified boundary file, the margin containment keeps (section 10).
 
 The credit goes into `georeferenceSources` and into the dataset metadata (G35's
 follow-up, D2).
@@ -211,13 +215,14 @@ the bucket the runtime configures, and the repository never names that bucket.
 The owner uploads with a command S2 writes from the merged manifest. It checks
 each size and digest, stops on any mismatch, and never overwrites (S2 and the
 coordinator, 2026-09-24).
-- The tiles are downloaded again from their source URLs, which serve the same
-  bytes.
-- GeoNames regenerates its dumps daily and keeps no archive. The pinned bytes
-  are therefore the only copy. S8 keeps them read-only outside the repository,
-  and the command uploads them from there, never downloading them again. Each
-  such entry says so. Refreshing a dump means a new download, a new manifest
-  pull request and a new upload.
+- The tiles and the geoBoundaries files are downloaded again from their source
+  URLs, which serve the same bytes. A geoBoundaries URL names its release
+  commit.
+- GeoNames regenerates its dumps daily and keeps no archive, and HDX serves only
+  the latest COD-AB file. Their pinned bytes are therefore the only copy. S8
+  keeps them read-only outside the repository, and the command uploads them from
+  there, never downloading them again. Each such entry says so. Refreshing one
+  means a new download, a new manifest pull request and a new upload.
 
 **Verify on read.** A reader recomputes the SHA-256 of what it reads and refuses
 a mismatch. The worker can also write under that prefix, so only the digest
@@ -234,6 +239,14 @@ proves the bytes are the reviewed ones.
   bucket on 2026-09-24. Each MD5 equalled the bucket's ETag, and each size its
   `Content-Length`.
 - The Philippines and Guatemala dumps of 2026-09-24.
+- geoBoundaries' simplified files for the Philippines' regions (ADM1), provinces
+  (ADM2), and municipalities and cities (ADM3), from release commits 41af8f1
+  (ADM1, ADM2) and 9469f09 (ADM3).
+- CONRED's COD-AB file for Guatemala, the zip HDX has served since 26 January
+  2026. It holds the departments and municipios valid from 7 February 2019.
+
+The owner approved downloading the four boundary files on 2026-09-24, and they
+were downloaded that day.
 
 **Credits.**
 - GLO-30: the Copernicus notice for adapted data, as the licensing section of
@@ -244,6 +257,12 @@ proves the bytes are the reviewed ones.
   adapt the data.
 - GeoNames: its dumps' own readme states CC BY 4.0 and supplies the data as it
   is. The credit names GeoNames and that license.
+- The Philippine boundaries: geoBoundaries' metadata for each file states CC BY
+  3.0 IGO and names the sources: NAMRIA, the PSA and OCHA Philippines. The
+  credit names them as the metadata writes them, and geoBoundaries.
+- The Guatemalan boundaries: HDX states the license as CC BY-IGO, whose only
+  version is CC BY 3.0 IGO, and names CONRED as the source. The credit names
+  CONRED and OCHA's datasets on HDX.
 
 **Tests.** `tests/test_georef_datasets.py` checks:
 - the manifest's shape: unique ids, 64-character digests, object names built
@@ -251,6 +270,9 @@ proves the bytes are the reviewed ones.
 - the three tiles and the tile each pilot place falls in;
 - that a point outside the manifest's tiles has no tile;
 - the two GeoNames pins, marked as the only copy;
+- the Philippines' three boundary files, each with the margin, and Guatemala's
+  file, marked as the only copy, with none;
+- that no entry comes from OpenStreetMap or GADM;
 - that bytes of the wrong size or digest are refused.
 
 ## 4. Tier 1: the GeoNames dumps
@@ -555,3 +577,274 @@ first-order units. The tests check:
   it as its ISO code.
 - A terminated feature is skipped.
 - Every row of the outcome table, and the checks on names, ids and codes.
+
+## 9. Tier 3: the point-radius uncertainty
+
+The owner's tier 3 "Calculates final Point-Radius Uncertainty" (G35), and the
+coordinator ruled that the tool computes it in-house (D13): the point-radius
+method of the Georeferencing Best Practices, porting the Georeferencing
+Calculator's arithmetic, tested against the Calculator's own worked examples.
+`georef_radius.py` computes. It sends nothing and reads no file.
+
+**The Calculator's method.** S8 read it from the Calculator's published code
+(VertNet/georefcalculator at commit 1cc9f4c, Apache-2.0: `support.js` and
+`gci_ui.js`) and took the worked examples from `test_data.js` in the same
+commit. The code was read, never run. Best Practices 3.4.7 defers to the
+Calculator for combining uncertainties, and the Calculator adds its sources for
+every locality type, with two exceptions listed below.
+
+**Sources of uncertainty, in meters.**
+- **Radial.** The feature's geographic radial: the distance from its corrected
+  center to the farthest point of its boundary.
+- **Source.** The coordinate source's own error: none for a gazetteer or a
+  locality description, and the Calculator's value for a map, such as 40 ft
+  for a USGS 1:24,000 map.
+- **Measurement.** The sum of every measurement's error.
+- **Precision.** The diagonal of one degree of latitude and one of longitude at
+  the point, on the datum's ellipsoid, times the coordinates' precision in
+  degrees: 1/3600 for the nearest second, 0.00001 for five decimals.
+- **Datum.** None for a recorded datum. Every tier-1 source gives WGS84
+  points, so a gazetteer point adds nothing. For an unrecorded datum, the caller
+  gives the value for the place; without one, the Calculator's worst case,
+  5,359 m, applies, so an unknown datum never shrinks a radius.
+- **Offset precision.** Half the unit a distance is written to: 0.5 mi for
+  "5 mi" written to the mile, 5 mi for "10 mi" written to ten miles.
+- **Heading precision.** Half the angle between neighbouring points of the
+  compass the heading is written with: ±45° for N, E, S and W; ±22.5° for NE,
+  SE, SW and NW; ±11.25° for the eight three-letter points; ±5.625° for the
+  sixteen "by" points; ±1° for a heading in degrees.
+
+**Combining them.**
+
+| Locality type | Uncertainty |
+|---|---|
+| coordinates only | datum + source + measurement + precision |
+| a feature only | the same, plus the radial |
+| a distance only ("5 mi from X") | a feature's, plus the offset and its precision |
+| a distance along a path | a feature's, plus the offset precision |
+| distances along two orthogonal directions | a feature's, plus the offset precision times √2 |
+| a distance at a heading | the error of a cone, plus precision |
+
+For a distance d at a heading of precision α, with e the sum of the datum,
+radial, measurement, offset precision and source, the cone's error is the
+distance from the point d + e along the heading to the point d along the
+cone's edge: √((d + e − d cos α)² + (d sin α)²).
+
+**Points.** An offset moves the point by the ellipsoid's meters per degree at
+the starting latitude (NIMA 8350.2, as the Calculator does), rounded to seven
+decimals. The ellipsoid is WGS84 unless the datum names another: Clarke 1866
+for NAD27, GRS80 for NAD83.
+
+**A heading alone.** "E. slope of X" is the part of X's circle within the
+heading's cone (#94, 3.8). For a cone of ±45° or wider, the smallest circle
+around that part has the chord between the arc's ends as diameter: its center
+lies R cos α from X's center along the heading, and its radius is R sin α. For
+a narrower cone, the circle passes through X's center and the arc's ends: its
+center and its radius are both R / (2 cos α). That circle is then the feature
+(the Quick Reference Guide, 2.2.2).
+
+**Units.** Everything is in meters, with exact factors: 1 mi = 1,609.344 m and
+1 ft = 0.3048 m. The Calculator's own mile is 1,609.3445 m. That half
+millimetre changes no worked example at the precision the Calculator shows.
+
+**Tests.** `tests/test_georef_radius.py` checks:
+- The Calculator's eight worked examples, each uncertainty to the decimals the
+  Calculator shows: two with coordinates only, one with a named place only,
+  one each with a distance only, along a path and along orthogonal
+  directions, and two at a heading. The four whose datum was not recorded used
+  the Calculator's 2015 grid of datum errors, 79 m at Bakersfield. The tests
+  pass that value, since the grid has changed: its 2019 version gives 3,045 m
+  there.
+- The three examples' new points, to seven decimals. One of them, the
+  orthogonal example, is 1e-7 degree (about 1 cm) off in longitude, and both
+  mile factors give the same point.
+- The datum rule, the offset precision, and the heading precision of every
+  compass point.
+- The sector's circle: it encloses X's center and the whole arc, for ±45° and
+  ±22.5°.
+
+## 10. Geometry: a unit's extent, and a circle inside it
+
+Two derivations read a unit's boundary. County and city are derived only when
+the whole uncertainty circle lies inside one unit (the coordinator's reading of
+G37), and a location found only as its county sits at the county's precision
+(the coordinator's reading of G38). `georef_geometry.py` answers both. It is
+pure: the caller passes a boundary it has read, and distances use the
+ellipsoid's meters per degree (section 9).
+
+**Boundaries.** A boundary is a GeoJSON Polygon or MultiPolygon in longitude and
+latitude, as geoBoundaries and COD-AB publish it: each polygon is an outer ring
+and its holes. A ring needs three distinct points. A boundary spanning more than
+180 degrees of longitude, which may cross the antimeridian, is refused.
+
+**Inside.** A point is inside when a ray from it crosses the boundary's rings an
+odd number of times, so a point in a hole is outside.
+
+**Clearance.** The distance from a point to the boundary's nearest edge, in
+meters, on the meters per degree at the point's latitude.
+
+**A circle inside a unit (G37).** The whole circle lies inside when its center is
+inside and the clearance is at least its radius plus a margin. The margin is the
+simplification error of the file the boundary came from. The coordinator ruled
+that the Philippine units come from geoBoundaries' simplified files, with
+containment widened by that error, and that a circle which doesn't clear its
+unit by it derives nothing (#191's 4.8 row). geoBoundaries' build simplifies
+with mapshaper's Douglas-Peucker at 100 m and snaps at 0.00001 degree, about
+1.1 m (wmgeolab/geoBoundaryBot, the builder's simplify step), so the margin
+for a simplified file is 101.2 m. The dataset manifest (section 3) carries each
+file's margin, and section 12 reads the files.
+
+**A unit's extent (G38).** The corrected center and the geographic radial (the
+Quick Reference Guide, 1.6.2 and 1.6.3):
+- The center of the smallest circle around the unit's outer rings, found on
+  their convex hull in the meters per degree at the unit's middle latitude. The
+  radial is that circle's radius.
+- When that center falls outside the unit, as in a hole or a notch, the Guide
+  puts the center on the unit's boundary instead. The center is then the
+  boundary point whose farthest hull vertex is nearest, and the radial is that
+  distance. Along each edge the farthest-vertex distance is convex, so each edge
+  is searched to its minimum. An edge is skipped when even its nearest possible
+  point is farther than the best found: the farthest hull vertex from the edge
+  itself bounds it.
+
+The flat projection is exact at the latitude it is taken at. East-west
+distances away from it are off by the ratio of the cosines, about 0.2% across a
+unit two degrees tall near the pilot's latitudes.
+
+**Tests.** `tests/test_georef_geometry.py` uses synthetic boundaries:
+- a square with a hole, and two islands, for inside, clearance and the margin;
+- a plain square, whose circle is centered inside;
+- the framed square, whose center moves onto the hole's edge;
+- a U, whose center moves onto the notch's floor. No vertex of the U reaches its
+  corners with a smaller radius.
+- boundaries that cannot be read.
+
+## 11. Elevations from GLO-30
+
+Where a label states no elevation, the elevation fields are derived from the
+settled location with Copernicus GLO-30 (G37; D11, the coordinator's ruling):
+the lowest and the highest ground within the uncertainty circle (PLAN 4.8).
+`georef_elevation.py` reads the tiles pinned in section 3. It sends nothing and
+decodes only the parts of a tile that a circle touches.
+
+**The tiles.** Each tile is a Cloud Optimized GeoTIFF on WGS 84. It holds 3,600
+by 3,600 float32 elevations in meters for one square degree, in internal tiles
+of 1,024 pixels, deflated with TIFF's floating-point predictor. A pixel's value
+is at its center (GeoTIFF's point raster type), and the first pixel lies on the
+tile's north-west corner.
+
+**Reading.** `read_tile` reads the first image's structure. It accepts one
+float32 sample per pixel in internal tiles, deflated or stored, with or without
+the floating-point predictor, on a point or an area raster. Anything else is
+refused.
+
+**The range.** `elevation_range(tiles, center, radius)` returns the lowest and
+highest value among the pixels whose centers lie inside the circle. Distances
+use the meters per degree at the center (section 9).
+- When no pixel center lies inside, as for a circle smaller than a pixel, it
+  returns the value of the pixel whose cell holds the center.
+- A value the file marks as missing is skipped.
+- A circle that reaches beyond the tiles passed in is refused, so the caller
+  passes every tile the circle touches.
+
+The derived value names its settled inputs and the tile's dataset id and
+SHA-256, as PLAN 4.8 asks. The derivation itself comes with S4's #144.
+
+**Checked on the pinned tiles.** This check ran locally, not in CI, because the
+tiles are 26 to 45 MB. At the pilot's points GLO-30 gives:
+- Yepocapa's town (GeoNames 3587636): 1,395.8 m;
+- Wikidata's Yepocapa point: 1,417.8 m;
+- the municipio's centroid: 1,128.2 m;
+- Mount Apo's summit: 2,946.2 m;
+- Mount Talomo's summit: 2,607.8 m.
+
+The research's figures at the same points were SRTM's 1,396, 1,427, 1,134 and
+2,620 m, and 2,954 m stated for Mount Apo (#94, 3.6). Each reading took a few
+milliseconds, and circles that crossed a tile's edge were refused.
+
+**Tests.** `tests/test_georef_elevation.py` writes small GeoTIFFs in the pinned
+tiles' layout, with the floating-point predictor as TIFF Technical Note 3
+defines it, and checks:
+- a pixel under a point, across internal tiles;
+- the range over a circle: the four neighbours at one step, the diagonals at
+  √2 steps;
+- a circle smaller than a pixel;
+- big-endian files, stored tiles and files without the predictor;
+- an area raster;
+- a missing value;
+- a circle across two tiles, and one that reaches beyond the tiles given;
+- files that are not tiled float GeoTIFFs.
+
+## 12. Administrative units from the pinned boundary files
+
+Containment (G37) and a unit's extent (G38) read their units from the boundary
+files pinned in section 3. `georef_boundaries.py` turns a file's verified bytes
+into units. It sends nothing. It maps no level to a Darwin Core field: which
+level fills `stateProvince`, `county` or `municipality` stays open with D8
+(#94, 4.2).
+
+**The files.**
+- The Philippines: geoBoundaries' simplified files for the 17 regions (ADM1),
+  the 87 provinces (ADM2), and the 1,647 municipalities and cities (ADM3).
+  geoBoundaries names no unit above another.
+- Guatemala: CONRED's COD-AB file, a zip whose `admin1` and `admin2` layers hold
+  the 22 departments and the 342 municipios at full resolution. Each municipio
+  names its department by P-code and name. The zip's other layers are not read.
+
+**Units.** A unit keeps what its file gives:
+- its country, the ISO 3166-1 code in its dataset id, as the GeoNames dumps are
+  keyed;
+- its level, 1 being the largest below the country;
+- its name as written, and its code: geoBoundaries' shape id or the COD-AB
+  P-code. Names repeat, with 1,424 names among the 1,647 Philippine
+  municipalities and cities, so the code identifies the unit;
+- the unit above it when the file names one, as a municipio names its
+  department. Every municipio in the pinned file does. One that named none would
+  have no parent, and no department would be derived from it (the coordinator's
+  ruling);
+- its boundary (section 10), and its file's dataset id and margin.
+
+A file is refused when it is not a GeoJSON FeatureCollection, when it declares
+coordinates other than longitude and latitude on WGS 84, or when a unit lacks
+its level, name or code. A file that declares nothing is read as longitude and
+latitude, which is all GeoJSON has allowed since RFC 7946.
+
+**A circle inside a unit (G37).** `holding_circle` returns, for each level, the
+unit that holds the whole uncertainty circle with its file's margin to spare
+(section 10). A level is left out when no unit holds the circle. It is also left
+out when more than one does, as an overlap in a file could cause, so nothing is
+derived at that level.
+
+**A unit's extent (G38).** `extent` gives the unit's corrected center and
+geographic radial (section 10). For a simplified file, the margin adds to the
+radial, as the Calculator adds each source of uncertainty (section 9). The
+circle then covers the unit's true boundary as well as the simplified one.
+
+The derivations come with S4's #144. Each names the unit's dataset id, SHA-256
+and code, as PLAN 4.8 asks.
+
+**Checked on the pinned files.** This check ran locally, not in CI, on the four
+files. Each file read in under 0.2 s, and a search of all of a country's units
+took 0.02 s. On them:
+- Mount Talomo lies in Davao City, Davao del Sur and the Davao Region, 2,184 m
+  inside each, so a circle of up to 2,082 m is held.
+- Mount Apo's summit lies 123 m inside Davao City's simplified boundary, so
+  only a circle of up to 22 m is held there. geoBoundaries files Davao City
+  under Davao del Sur, as GADM does. How an independent city is filed waits
+  with D8.
+- GeoNames' Mount Apo near Malita lies in Don Marcelino, Davao Occidental.
+- Yepocapa's town lies 2,063 m inside its municipio and 6,722 m inside
+  Chimaltenango.
+- Davao City's extent is 35,671 m with the margin, the municipio of Yepocapa's
+  13,357 m, and Chimaltenango's 37,142 m.
+
+**Tests.** `tests/test_georef_boundaries.py` reads excerpts of the pinned files:
+Davao City, and Chimaltenango, Yepocapa and Acatenango, zipped as the COD-AB
+file is. It checks:
+- the units, codes and parents each file gives;
+- a municipio whose file names no department;
+- circles that clear their unit at each level, and circles that don't;
+- a circle at Mount Apo that clears Davao City only without the margin;
+- a point in no unit, and a level held by two units;
+- extents with and without a margin;
+- files that cannot be read.
