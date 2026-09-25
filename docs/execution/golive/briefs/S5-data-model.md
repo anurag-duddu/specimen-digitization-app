@@ -123,7 +123,7 @@ exists. `FieldValue.layer` (verbatim, settled or derived) and `derived_from`,
 agreed with S4, whose SQL T2c adds; the
 contract's elevation and date rules follow G37, G41 and G44; a derived candidate stores
 its settled inputs; its dataset or authority with version, or, for a G41 or
-G44 fill, its rule with the rules version; and its tool-call id or its
+G44 fill, the stated field and its rule with the rules version; and its tool-call id or its
 `apply_derivations` step (PLAN section 4.8), with a test that a value without them is not
 a derived value; and the "fill the rest" route, a POST on the specimen with the field
 the reviewer filled and the expected revision, which refuses a record
