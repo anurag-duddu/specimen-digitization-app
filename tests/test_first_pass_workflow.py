@@ -241,40 +241,128 @@ def test_identical_readings_skip_the_first_pass_and_are_recorded_as_before(tmp_p
     assert transcript.first_pass_call is None and transcript.reason is None
 
 
-def forged_call(transcript, **update):
+def forge_call(specimen, blobs, **update):
+    """The same forged call on the transcript and on the run's decision, so only
+    the call's own check can refuse it."""
+    run = specimen.run
+    (transcript,) = run.transcripts
+    if "input_crop_ref" in update:
+        update["input_crop_ref"] = blobs.put(update["input_crop_ref"])
     call = transcript.first_pass_call.model_copy(update=update)
-    return transcript.model_copy(update={"first_pass_call": call})
+    run.transcripts = [transcript.model_copy(update={"first_pass_call": call})]
+    run.first_pass_decisions = [
+        d.model_copy(update={"call": call}) for d in run.first_pass_decisions
+    ]
+
+
+def forge_transcript(specimen, **update):
+    (transcript,) = specimen.run.transcripts
+    specimen.run.transcripts = [transcript.model_copy(update=update)]
+
+
+def other_reading(specimen):
+    (transcript,) = specimen.run.transcripts
+    readings = [
+        o for o in specimen.run.observations if o.region_id == transcript.region_id
+    ]
+    return next(o for o in readings if o.id != transcript.selected_observation_id)
+
+
+def switch_pick(specimen, *, with_verdicts, in_decision):
+    """Pick the other reading, verbatim; its verdicts and the run's decision
+    follow only when asked, so each check can be met alone."""
+    run = specimen.run
+    (transcript,) = run.transcripts
+    other = other_reading(specimen)
+    differences = [
+        d.model_copy(update={"verdict": other.id}) if with_verdicts else d
+        for d in transcript.differences
+    ]
+    pick = {"selected_observation_id": other.id}
+    run.transcripts = [
+        transcript.model_copy(
+            update={**pick, "text": other.literal_text, "differences": differences}
+        )
+    ]
+    if in_decision:
+        run.first_pass_decisions = [
+            d.model_copy(update={**pick, "differences": differences})
+            for d in run.first_pass_decisions
+        ]
+
+
+def foreign_pick(specimen):
+    """A pick naming another region's reading with the same text."""
+    run = specimen.run
+    (transcript,) = run.transcripts
+    region = run.regions[0].model_copy(update={"id": "region-2"})
+    reading = next(o for o in run.observations if o.region_id == transcript.region_id)
+    foreign = reading.model_copy(update={"id": "foreign", "region_id": "region-2"})
+    run.regions.append(region)
+    run.observations.append(foreign)
+    forge_transcript(specimen, selected_observation_id="foreign")
 
 
 @pytest.mark.parametrize(
-    "tamper",
+    "pick,tamper",
     [
-        lambda t: forged_call(t, raw_sha256="0" * 64),
-        lambda t: forged_call(t, input_sha256="0" * 64),
-        lambda t: forged_call(t, region_id="region-2"),
-        lambda t: t.model_copy(update={"text": "forged"}),
-        lambda t: t.model_copy(update={"selected_observation_id": "unknown"}),
+        (1, lambda s, b: forge_call(s, b, raw_sha256="0" * 64)),
+        (1, lambda s, b: forge_call(s, b, input_sha256="0" * 64)),
+        (1, lambda s, b: forge_call(s, b, region_id="region-2")),
+        (1, lambda s, b: forge_call(s, b, input_crop_ref=b"another crop")),
+        (1, lambda s, b: forge_transcript(s, text=other_reading(s).literal_text)),
+        (
+            None,
+            lambda s, b: forge_transcript(s, text=s.run.observations[1].literal_text),
+        ),
+        (1, lambda s, b: forge_transcript(s, decision_kind=None)),
+        (1, lambda s, b: forge_transcript(s, first_pass_call=None)),
+        (1, lambda s, b: switch_pick(s, with_verdicts=True, in_decision=False)),
+        (1, lambda s, b: switch_pick(s, with_verdicts=False, in_decision=True)),
+        (
+            "identical",
+            lambda s, b: forge_transcript(
+                s, decision_kind=None, selected_observation_id=None, text="forged"
+            ),
+        ),
+        ("identical", lambda s, b: foreign_pick(s)),
     ],
     ids=[
         "the call's responses",
-        "the call's input",
+        "the call's input digest",
         "the call's region",
-        "text other than the pick's literal",
-        "a pick that is no reading",
+        "the bytes at the call's crop reference",
+        "text of the reading not picked",
+        "a null pick with resolved text",
+        "a first-pass record relabelled",
+        "a first-pass record without its call",
+        "a pick other than the decision's",
+        "a pick its material verdicts do not support",
+        "text that is no reading's",
+        "a pick from another region",
     ],
 )
-def test_finalize_verifies_the_first_pass_call_and_its_pick(tmp_path, tamper):
-    # The steward's review of #98: finalize checks the call and the pick before
-    # the queue decision relies on them.
-    adapters = ChoosingAdapters(LocalBlobs(tmp_path / "blobs"), lambda r: r[1].id)
+def test_finalize_binds_each_machine_transcript_to_its_readings_and_decision(
+    tmp_path, pick, tamper
+):
+    # The steward's reviews of #98: finalize checks the first-pass call and a
+    # machine pick against the run's decision before the queue decision relies
+    # on them. Each case breaks one check and meets every other.
+    blobs = LocalBlobs(tmp_path / "blobs")
+    if pick == "identical":
+        adapters = SyntheticAdapters(blobs, SYNTHETIC_TEXT)
+    else:
+        adapters = ChoosingAdapters(
+            blobs, lambda r: None if pick is None else r[pick].id
+        )
     workflow, principal, specimen_id = start(tmp_path, adapters)
     specimen = workflow.drain(principal, specimen_id)
-    verify_evidence(specimen, adapters.blobs)
+    verify_evidence(specimen, blobs)
 
-    specimen.run.transcripts = [tamper(specimen.run.transcripts[0])]
+    tamper(specimen, blobs)
 
     with pytest.raises(EvidenceIntegrityError):
-        verify_evidence(specimen, adapters.blobs)
+        verify_evidence(specimen, blobs)
 
 
 def test_a_reviewer_changed_transcript_keeps_the_machine_pick_on_record(tmp_path):
@@ -292,9 +380,9 @@ def test_a_reviewer_changed_transcript_keeps_the_machine_pick_on_record(tmp_path
     verify_evidence(specimen, adapters.blobs)
 
 
-def test_the_extraction_call_gets_no_raw_readings(monkeypatch, tmp_path):
-    # Raw independent observations stay out of extraction context: a resolved
-    # transcript goes without its handoffs, differences or first-pass call.
+def test_the_extraction_call_gets_the_decided_text_alone(monkeypatch, tmp_path):
+    # A resolved transcript goes to extraction with its text as its only
+    # alternative, and without its handoffs, differences or first-pass call.
     adapters = ChoosingAdapters(LocalBlobs(tmp_path / "blobs"), lambda r: r[1].id)
     workflow, principal, specimen_id = start(tmp_path, adapters)
     specimen = workflow.drain(principal, specimen_id)
@@ -319,4 +407,5 @@ def test_the_extraction_call_gets_no_raw_readings(monkeypatch, tmp_path):
 
     (transcript,) = sent["transcripts"]
     assert transcript["text"] == specimen.run.transcripts[0].text
+    assert transcript["alternatives"] == [transcript["text"]]
     assert not {"handoffs", "differences", "first_pass_call"} & set(transcript)

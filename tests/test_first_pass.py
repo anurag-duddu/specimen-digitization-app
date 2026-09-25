@@ -262,7 +262,8 @@ def test_a_pick_stands_only_when_every_material_difference_supports_it(
     monkeypatch, tmp_path, selected, supported, expected
 ):
     # G19 as the coordinator read it (12:31Z on 2026-09-25): otherwise there is no
-    # reading, with no retry and no block; the model's pick stays on record.
+    # reading, with no retry and no block (the 12:32Z confirmation); the model's
+    # pick stays on record.
     answer = dict(
         VALID,
         selected_reader=selected,

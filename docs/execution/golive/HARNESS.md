@@ -58,10 +58,11 @@ routing); a route that is not registered is not pinned, so the call blocks. A
 call is budgeted like a reading: two requests (the answer and one output retry),
 16000 tokens, the stage cost reservation `first_pass`, one key for every region,
 and, like every billable step, 16,000 of the run's tokens. Each region's
-`first_pass` reservation is sized by PLAN 4.3 (from the crop, with 20,000
-micro-dollars as its floor) in S3's route wiring PR, which also names the
-pilot's first-pass route; until then no lane run has a first pass. Its circuit
-is the first-pass route's provider.
+`first_pass` reservation is sized by PLAN 4.3 in S3's route wiring PR: each
+request from the crop, with 20,000 micro-dollars as its floor, and the call
+reserves the sum of its two requests. The same PR names the pilot's first-pass
+route; until then no lane run has a first pass. Its circuit is the first-pass
+route's provider.
 
 **A cap hit.** A first pass stopped by its caps, its token total or an answer
 cut off at its output cap (see **Failures**), returns no answer, so it selects
@@ -149,10 +150,13 @@ of stage 5 are unchanged. The run keeps each region's decision in
 `first_pass_decisions`. Synthetic runs use a fixture that selects no reading;
 its call names the input the readers saw.
 
-**Checked at finalize** (the steward's review of #98). The evidence check
+**Checked at finalize** (the steward's reviews of #98). The evidence check
 (`integrity.py`) verifies each first-pass call's raw responses, region and input
-(the region's crop, and the bytes at `input_crop_ref`), and that a reading the
-machine selected, identical or picked, is one of the region's readings with
-`text` its literal, until a reviewer's decision changes the transcript. The
-legacy extraction call receives a resolved transcript's text, never its
-handoffs, differences or call, so raw readings stay out of extraction context.
+(the region's crop, and the bytes at `input_crop_ref`). A machine transcript,
+one no reviewer's decision has changed, must have text that is none or one of
+its region's readings, verbatim, and none when a machine kind selected nothing.
+A machine-selected reading must be one of the region's readings, with `text` its
+literal. A region the run holds a first-pass decision for is recorded as
+`first_pass`, with the pick and call that decision records, and a pick G19
+allows. The legacy extraction call receives a resolved transcript with its text
+as its only alternative, and without its handoffs, differences or call.
