@@ -402,7 +402,8 @@ def test_the_readings_non_place_literals_do_not_cut_the_reviewers_place_value():
 
 
 def test_a_date_in_the_reviewers_place_value_is_cut():
-    # PLAN 4.8 in #191: only the readings' non-place literals spare it.
+    # PLAN 4.8 in #191: only the readings' and the harness's non-place values
+    # spare it; every other cut applies (HARNESS.md section 13).
     value = "Mindanao, 3 Sept. 1946"
 
     assert (

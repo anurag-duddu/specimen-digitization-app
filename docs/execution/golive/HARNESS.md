@@ -951,10 +951,12 @@ S5 stores. The reviewer edits it and approves it through the decision route.
   source). Their requests take the reviewer's values in place fields as sources
   (section 7). Their non-place literals are the reviewer's own non-place
   values, every value the harness gave a non-place field, whether the reviewer
-  kept or replaced it, and the readings' non-place literals. The reviewer's own
-  place value is cut only by the reviewer's own non-place values, since the
-  reviewer's correction is the authority there (the coordinator's rulings of
-  2026-09-25, 05:38Z and 05:39Z).
+  kept or replaced it, and the readings' non-place literals. The readings' and
+  the harness's non-place values don't cut the reviewer's own place value,
+  since the reviewer's correction is the authority there (the coordinator's
+  rulings of 2026-09-25, 05:38Z and 05:39Z). Every other cut does: the
+  reviewer's own non-place values, the markers' clauses, digits, months and
+  Roman months (section 7), so a date in it never leaves.
 - The proposal (`domain.Proposal`) carries the proposed fields, the new
   evidence they cite, and the tool calls, lookups and findings. Those stay empty
   until a derivation makes a call.
