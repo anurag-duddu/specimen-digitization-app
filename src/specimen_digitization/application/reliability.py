@@ -91,12 +91,23 @@ def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
                 prompt,
                 usage_limits=usage_limits,
                 model_settings=bounded_settings,
+                # Counted in place, so a stopped run still reports its usage.
+                usage=usage,
             ),
             timeout=timeout_seconds,
         )
 
+    from pydantic_ai import capture_run_messages
+    from pydantic_ai.exceptions import IncompleteToolCall
+    from pydantic_ai.usage import RunUsage
+
+    # A run stopped by its limits raises Pydantic AI's UsageLimitExceeded with
+    # the messages it kept and the usage it counted, for the caller's record of
+    # what the stopped call used (HARNESS.md section 3).
+    usage = RunUsage()
     try:
-        return asyncio.run(call())
+        with capture_run_messages() as messages:
+            return asyncio.run(call())
     except TimeoutError as exc:
         raise AdapterFailure(
             "provider_deadline_outcome_unknown", outcome_unknown=True
@@ -112,7 +123,20 @@ def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
         raise AdapterFailure(
             "model_" + status.value, status, outcome_unknown=exc.status_code >= 500
         ) from exc
+    except UsageLimitExceeded as exc:
+        exc.run_messages, exc.run_usage = messages, usage
+        raise
     except UnexpectedModelBehavior as exc:
+        last = next((m for m in reversed(messages) if m.kind == "response"), None)
+        if isinstance(exc, IncompleteToolCall) or (
+            last is not None and last.finish_reason == "length"
+        ):
+            # Cut off at its output cap: a cap hit, which every caller routes as
+            # it routes the run's own limits, not a malformed answer (HARNESS.md
+            # section 3, agreed with S3).
+            stopped = UsageLimitExceeded("The answer was cut off at its output cap")
+            stopped.run_messages, stopped.run_usage = messages, usage
+            raise stopped from exc
         # The provider answered, but its output stayed invalid after the retry.
         raise AdapterFailure(
             "model_malformed_response", LookupStatus.MALFORMED, outcome_unknown=False
