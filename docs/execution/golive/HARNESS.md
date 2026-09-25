@@ -269,11 +269,12 @@ with the fixed code `geocoding_unexpected_error`.
 
 ## 8. The date and catalog-number validators (stage 7, part 3)
 
-HAR-006; owner decisions G24 and G29 and the date rules the coordinator
-approved on 2026-09-23. Both tools are deterministic (`application/
-field_validators.py`), call no provider and never change the literal; each
-answers only for a literal that occurs in the reading it was copied from
-(otherwise `policy_blocked`, `literal_not_in_source`).
+HAR-006; owner decisions G24 and G29, and the date rules the coordinator
+approved at 21:49Z on 2026-09-23, which G24 revised for two-digit years at
+22:07Z. Both tools are deterministic (`application/field_validators.py`), call
+no provider and never change the literal; each answers only for a literal that
+occurs in the reading it was copied from (otherwise `policy_blocked`,
+`literal_not_in_source`).
 
 **`date_parser`** returns every reading a date's notation allows, and the
 harness settles which one the evidence supports (G29):

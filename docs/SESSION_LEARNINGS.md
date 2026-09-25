@@ -11865,10 +11865,14 @@ because the hooks runner hands a native asset hook only `PATH`.
 
 ### 2026-09-23 — Go-live S4: the date and catalog-number validators (T3a, part 3)
 
-- Task: go-live S4, topic T3a part 3: the harness's deterministic `date_parser` and `catalog_number_validator` (HAR-006), under the owner's date decisions G24 and G29 and the rules the coordinator approved.
-- Branch/worktree: `golive/harness-tools-dates`, stacked on `golive/harness-tools-geo` (#113), in `.claude/worktrees/cool-haslett-aa79b5`; written by an implementation subagent in its own worktree over three review rounds, assembled here.
+- Task: go-live S4, topic T3a part 3: the harness's deterministic `date_parser` and `catalog_number_validator` (HAR-006), under the owner's date decisions G24 and G29 and the rules the coordinator approved (21:49Z on 2026-09-23, revised by G24 at 22:07Z).
+- Branch/worktree: `golive/harness-tools-dates`, stacked on `golive/harness-tools-geo` (#113), in `.claude/worktrees/cool-haslett-aa79b5`; written by an implementation subagent in its own worktree over three review rounds, assembled here. Pull request #121. Commits:
+  - 4506f6cb and ff195549: the failing tests, then the validators.
+  - 0480b51f: this entry.
+  - 0236102d and 767e85ad: merges of #113's branch while this one was stacked on it.
+  - Before its turn: section 8's and this entry's citation of the coordinator's date rules, with this list.
 - Outcome: `application/field_validators.py`. The date parser returns every reading a notation allows (both orders for `4-5-48`; `IV-25` as April 25 or, under the century rule, April 1925) and leaves settling to the harness; Roman months and two-digit years apply only under the profile's `date_rules` (S3's `roman_numeral_months`, `two_digit_year_century`). Spec: `docs/execution/golive/HARNESS.md` section 8.
-- Validation actually run: the 110 tests fail without the module and pass with it.
+- Validation actually run: the 110 tests fail without the module and pass with it; rerun on 2026-09-25 from each commit's own tree, 4506f6cb fails to import the module and ff195549 passes 110.
 - Durable learnings: (1) the first version accepted any four digits as a year, so `4800` from `4800ft.` parsed as year 4800; a plausible-year range (HAR-006) closed it. (2) `12 x 46` reads as 12 October 1946 when lowercase Roman months are allowed with spaces, but may be a measurement; lowercase Roman months now need `.` or `-`. (3) Owner decision G29 changed the tool mid-build from "refuse ambiguous numeric dates" to "return every reading": the harness, not the parser, settles with evidence.
 - Remaining follow-ups: T3b resolves dates with several readings from the specimen's other dates and sends the rest to review with the candidates listed.
 ### 2026-09-23 — Go-live release workstream (S2), T1b: the owner decisions in the release runbooks and histories
