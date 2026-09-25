@@ -12268,6 +12268,7 @@ because the hooks runner hands a native asset hook only `PATH`.
     - The limit names the marker clause's over-cut across lines, and the notations bullet defers to the limit.
     - The month listing carries its own label, and "not itself in a source" replaces "not written on the label".
   - Licences: "via HDX" applies to CONRED's file only. The Philippine files' licence is the one geoBoundaries' metadata states for each file (PLAN 4.8's table, S8's task 6).
+  - S7's brief gains T4a, the private pilot reference file (`specimen-pilot-reference/v1`), from the coordinator's ruling sent to S2 and S7 at 01:15Z on 2026-09-25. The steward's review of #199 found it in no brief and no S7 PR.
   - Corrections (dated 2026-09-24) to the entry "2026-09-24 — Go-live program: plan corrections after #185" above:
     - Its line '"Werner" beside "Wernersdorf" is cut' should read '"Werner" is cut where the record reads "Wernersdorf" and "leg. Werner"'.
     - Its line "a name that no reading gives a non-place field, and the harness hasn't yet" paraphrases PLAN 4.8. At #191's head, 4.8 read "a name no reading assigns to a non-place field, or one the harness has not yet given a non-place field, when no marker in its own clause accompanies it". This PR rewrites that sentence.
