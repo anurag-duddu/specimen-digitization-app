@@ -22,7 +22,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 
-from .domain import Evidence, FieldValue, ValueState
+from .domain import Evidence, FieldValue, Proposal, ValueState
 from .harness_tools import Check, Derivation, SourceRef
 
 RULES_VERSION = "derivation-rules-v1"
@@ -174,6 +174,54 @@ def apply_derivations(
             reason=f"derived:{derivation.method}",
         )
     return filled, evidence
+
+
+
+def derive_rest(
+    run, filled: Mapping[str, str], *, decision_id: str, asset_id: str, blobs
+) -> Proposal:
+    """G38's "fill the rest" (HARNESS.md section 13): what the reviewer's values
+    let the harness derive, as a proposal the reviewer edits and approves. It
+    fills only the fields the label and the reviewer leave empty and the harness
+    hasn't resolved (G37), each with its record, and doesn't change the run.
+    Until S8's tool lands, G41's elevation rules are the derivations, so it
+    makes no call."""
+    known = dict(run.fields)
+    evidence: list[Evidence] = []
+    for key, value in filled.items():
+        record = {"decision_id": decision_id, "field_key": key, "value": value}
+        raw = json.dumps(record, sort_keys=True).encode()
+        review = Evidence(
+            kind="review",
+            asset_id=asset_id,
+            source="review_decision",
+            locator=f"decision/{decision_id}",
+            excerpt=value,
+            raw_ref=blobs.put(raw),
+            digest=hashlib.sha256(raw).hexdigest(),
+        )
+        evidence.append(review)
+        # Inside the derivation only, the reviewer's value stands as stated.
+        known[key] = FieldValue(
+            state=ValueState.SUPPORTED,
+            literal=value,
+            evidence_ids=[review.id],
+            evidence_relations={review.id: "supports"},
+        )
+    rest = {
+        key
+        for key, value in run.fields.items()
+        if key not in filled and value.state != ValueState.SUPPORTED
+    }
+    derived, records = apply_derivations(
+        known, elevation_derivations(known), asset_id=asset_id, blobs=blobs
+    )
+    fields = {key: value for key, value in derived.items() if key in rest}
+    cited = {e for value in fields.values() for e in value.evidence_ids}
+    return Proposal(
+        fields=fields,
+        evidence=[item for item in [*evidence, *records] if item.id in cited],
+    )
 
 
 def _text(value: Decimal, *, converted: bool) -> str:

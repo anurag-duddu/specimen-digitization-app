@@ -660,6 +660,28 @@ the dataset), the settled input fields with their values, and its checks.
   one: the agent proposes only literals its readings contain, and a field the
   label leaves out is filled only by a derivation that applies.
 
+**Fill the rest** (G38; the coordinator's ruling in #124, PLAN 4.8). In review, a
+reviewer who fills a field can ask the harness to fill the rest. S5's route
+enqueues the job, S3's worker runs `derive_rest`, and the result is a proposal
+S5 stores. The reviewer edits it and approves it through the decision route.
+- `derive_rest(run, filled, *, decision_id, asset_id, blobs)` reads the run's
+  fields with the reviewer's values laid over them. Each reviewer value is one
+  `review` evidence item, which supports every value derived from it:
+  - its source is `review_decision` and its locator `decision/{decision_id}`;
+  - its stored record is the sorted JSON of the decision id, the field and the
+    value.
+- It fills only the fields that the label and the reviewer leave empty and the
+  harness hasn't resolved (G37). The run is not changed.
+- Each proposed value is `derived`, with its derivation record, like any
+  derived value. So the queue decision counts it after approval (section 16).
+- Today the derivations are G41's elevation rules: a reviewer's 6,400 ft fills
+  the other end and the metres. S8's geographic derivations join once S8's tool
+  lands and review calls can be recorded (S5's SQL side for a `review` input
+  source).
+- The proposal (`domain.Proposal`) carries the proposed fields, the new
+  evidence they cite, and the tool calls, lookups and findings. Those stay empty
+  until a derivation makes a call.
+
 ## 14. The harness in the `parse` step (stage 7, part 9)
 
 The owner's pipeline runs the harness after the first pass. G40 is the harness's

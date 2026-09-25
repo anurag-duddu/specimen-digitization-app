@@ -338,6 +338,18 @@ class Lookup(Record):
     retry_after_seconds: int | None = None
 
 
+class Proposal(Record):
+    """G38's "fill the rest": what a reviewer's values let the harness derive
+    (HARNESS.md section 13). S5 stores it, and the reviewer's approval merges
+    it into the run (the coordinator's ruling in #124, PLAN 4.8)."""
+
+    fields: dict[str, FieldValue] = Field(default_factory=dict)
+    evidence: list[Evidence] = Field(default_factory=list)
+    tool_calls: list[ToolCallRecord] = Field(default_factory=list)
+    lookups: list[Lookup] = Field(default_factory=list)
+    findings: list[RunFinding] = Field(default_factory=list)
+
+
 class StageCostReservations(Record):
     """Externally reviewed microdollars per model-stage attempt, including retries.
 
