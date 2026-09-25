@@ -84,10 +84,13 @@ def test_the_place_filters_tables_come_from_the_notations():
         for marker in notation.written.split(", ")
     }
     assert set(insects.PERSON_MARKERS) == people == {"leg.", "coll.", "Coll.", "det."}
-    (months,) = [n for n in insects.NOTATIONS if n.readings == ("the month",)]
-    abbreviations = [word for word in insects.MONTH_WORDS if word.endswith(".")]
-    assert abbreviations == months.written.split(", ")
-    assert len(insects.MONTH_WORDS) == 24 and "September" in insects.MONTH_WORDS
+    # PLAN 4.8 in #191: the date notations list each month in full and
+    # abbreviated, in English and in Spanish, the pilot labels' languages.
+    months = [n for n in insects.NOTATIONS if n.readings == ("the month",)]
+    listed = [word for notation in months for word in notation.written.split(", ")]
+    assert list(insects.MONTH_WORDS) == listed
+    assert len(listed) == 49
+    assert {"September", "Sept.", "mayo", "sept.", "dic."} <= set(listed)
     # The coordinator's ruling of 2026-09-24: Roman months are cut too.
     (roman,) = [n for n in insects.NOTATIONS if n.written == "I to XII in a date"]
     assert insects.ROMAN_MONTHS[0] == "I" and insects.ROMAN_MONTHS[-1] == "XII"

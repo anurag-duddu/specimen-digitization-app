@@ -799,7 +799,7 @@ def test_the_other_fields_literals_are_checked_before_any_place_request(others, 
     assert len(fakes.queries) == 1  # The final call's only.
 
 
-def test_no_cut_token_leaves_the_harness_in_a_place_request():
+def test_no_cut_character_leaves_the_harness_in_a_place_request():
     # End to end on the real Google tool: the agent's check, with the date
     # inside its country literal and unnamed, and the final call.
     sent = []
@@ -833,9 +833,10 @@ def test_no_cut_token_leaves_the_harness_in_a_place_request():
     assert outcome.blocker is None and outcome.failure is None
 
 
-def test_before_the_collector_is_named_his_line_is_context_only():
-    # The steward's review of #191: the agent checks the province before it
-    # names the collector, so the rest of the line is unassigned text.
+def test_before_the_collector_is_named_the_line_leaves_whole():
+    # PLAN 4.8 in #191, its stated limit: the agent checks the province before
+    # it names the collector, so the rest of the line is unassigned text, a
+    # source, and nothing marks the name in it.
     reading = Reading(
         "r1", "o-muse", "decided_transcript", "Davao Prov., Mindanao F.G. Wermer"
     )
@@ -856,7 +857,7 @@ def test_before_the_collector_is_named_his_line_is_context_only():
     _, fakes = harness(check, final, readings=[reading], plan=PLACE_PLAN)
 
     (mid_run,) = fakes.queries  # The final call reuses the check's request.
-    assert mid_run.sources == ["Davao Prov."]
+    assert mid_run.sources == ["Davao Prov.", "Mindanao F.G. Wermer"]
     assert (None, "Mindanao F.G. Wermer") in [
         (item.field_key, item.literal) for item in mid_run.literals
     ]
@@ -868,5 +869,5 @@ def test_before_the_collector_is_named_his_line_is_context_only():
             non_place_literals=mid_run.non_place_literals,
             knowledge=insects,
         )
-        is None
+        == "Mindanao F.G. Wermer"
     )

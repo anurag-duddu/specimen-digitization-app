@@ -452,36 +452,41 @@ def test_what_leaves_is_what_plan_4_8s_filter_lets_leave():
 
 
 @pytest.mark.parametrize(
-    ("reading", "piece", "name"),
+    ("reading", "piece", "leaves"),
     [
-        ("Davao Prov., Mindanao F.G. Wermer", "Mindanao F.G. Wermer", "F.G. Wermer"),
+        (
+            "Davao Prov., Mindanao F.G. Wermer",
+            "Mindanao F.G. Wermer",
+            "Mindanao F.G. Wermer",
+        ),
         ("Davao Prov., H. Hoogstraal, leg.", "H. Hoogstraal, leg.", "H. Hoogstraal"),
     ],
-    ids=["collector-unnamed", "marker-in-the-next-clause"],
+    ids=["collector-not-yet-named", "leg-in-the-next-clause"],
 )
-def test_the_unassigned_text_is_context_and_never_a_source(reading, piece, name):
-    # The steward's review of #191: mid-run, before the collector is named, the
-    # unassigned text can hold him; only the place-field literals are sources.
+def test_the_unassigned_text_is_a_source_google_never_gets(reading, piece, leaves):
+    # PLAN 4.8 in #191 (the coordinator's ruling on its review): the harness's
+    # sources are its place-field literals and its unassigned locality text.
+    # Mid-run, before the collector is named, that text can hold the name, and
+    # what a tier sends of it is the stated limit, pinned here.
     geography = query(("province_state", "Davao Prov."), (None, piece), reading=reading)
 
     seen = geocode(geography, reply(status="ZERO_RESULTS"))
 
-    assert geography.sources == ["Davao Prov."]
+    assert geography.sources == ["Davao Prov.", piece]
     assert seen.requests[0].url.params["address"] == "Davao Prov."
-    for value in (piece, name):  # What a tier might try to send from it.
-        assert (
-            place_request_text(
-                value,
-                sources=geography.sources,
-                readings=geography.reading_texts,
-                non_place_literals=geography.non_place_literals,
-                knowledge=insects,
-            )
-            is None
+    assert (
+        place_request_text(
+            piece,
+            sources=geography.sources,
+            readings=geography.reading_texts,
+            non_place_literals=geography.non_place_literals,
+            knowledge=insects,
         )
+        == leaves
+    )
 
 
-def test_a_non_place_fields_literal_refuses_the_query():
+def test_a_non_place_fields_literal_is_never_a_source_and_refuses_the_query():
     geography = query(("collectors", "F.G. Werner"), ("country", "P.I."))
 
     seen = geocode(geography, reply(DAVAO), allow=lambda n: True)
@@ -491,6 +496,18 @@ def test_a_non_place_fields_literal_refuses_the_query():
         [],
         S.POLICY,
         ["place_text_refused"],
+    )
+    # PLAN 4.8 in #191: a literal the harness gives a non-place field.
+    assert geography.sources == ["P.I."]
+    assert (
+        place_request_text(
+            "F.G. Werner",
+            sources=geography.sources,
+            readings=geography.reading_texts,
+            non_place_literals=geography.non_place_literals,
+            knowledge=insects,
+        )
+        is None
     )
 
 

@@ -1,6 +1,6 @@
 """PLAN 4.8's place-request filter (HARNESS.md section 7), case by case as the
-guarantees 4.8 states: no cut token leaves, an expansion carries only its full
-form, and a value not drawn from the sources is refused."""
+guarantees 4.8 states: no cut character leaves, an expansion carries only its
+full form, and a value not drawn from the sources is refused."""
 
 import pytest
 
@@ -126,7 +126,7 @@ def test_a_source_written_out_in_full_is_a_source():
     assert forms("Mount McKinley", PLACES) == ["Mount McKinley"]
 
 
-def test_a_full_form_never_brings_back_a_cut_token():
+def test_a_full_form_never_brings_back_a_cut_character():
     label = "Mt. Apo leg. Hoogstraal\nDavao Prov."
 
     assert request("Mount Apo", label) == ""
@@ -152,7 +152,7 @@ PLACEMENTS = {
     [(HOOGSTRAAL, ()), (DATE, ()), (CATALOGUE, (CATALOGUE,))],
     ids=["collector", "date", "catalogue-number"],
 )
-def test_no_cut_token_leaves_wherever_it_is_written(written, others, placement):
+def test_no_cut_character_leaves_wherever_it_is_written(written, others, placement):
     # The catalogue number's letters are cut as its field's literal, which the
     # harness passes with the reading's other non-place literals.
     label = PLACEMENTS[placement].format(written)
@@ -198,8 +198,16 @@ def test_a_token_carrying_a_digit_is_cut(token):
     assert request(f"Mindanao {token}, P.I.") == "Mindanao, P.I."
 
 
-@pytest.mark.parametrize("month", ["Sept.", "sept.", "SEPT", "September", "May"])
+@pytest.mark.parametrize(
+    "month",
+    [
+        *("Sept.", "sept.", "SEPT", "September", "May"),
+        *("Mayo", "MAYO", "septiembre", "Ago.", "dic.", "Enero"),
+    ],
+)
 def test_the_month_names_and_abbreviations_are_cut(month):
+    # PLAN 4.8 in #191: each month in full and abbreviated, in English and in
+    # Spanish, the pilot labels' languages, in any case.
     assert request(f"Mindanao {month}, P.I.") == "Mindanao, P.I."
 
 
@@ -230,10 +238,12 @@ def test_a_roman_numeral_outside_a_date_stays(text):
         ("Mindanao, VIII -46", "Mindanao"),  # "-46" is a year form of the profile.
         ("Mindanao, P.I. 3 Sept. '46", "Mindanao, P.I."),  # 105526321's line.
         ("3 SEPT. '46", ""),
+        ("3 SEPT. 1946", ""),
+        ("Chimaltenango, 3 Mayo 1946", "Chimaltenango"),  # A Guatemalan line.
     ],
 )
 def test_the_profiles_year_forms_and_the_pilot_date_line(text, leaves):
-    # The steward's review of #185.
+    # The steward's review of #185, and PLAN 4.8 in #191.
     assert request(text) == leaves
 
 
@@ -298,8 +308,8 @@ def test_a_full_form_written_on_the_label_is_a_source():
 
 
 def test_the_readings_non_place_literals_do_not_cut_the_reviewers_place_value():
-    # PLAN 4.8 in #180: the reviewer's correction is the authority there, so a
-    # reviewer's call passes only the reviewer's own non-place values.
+    # PLAN 4.8 (#180, #191): the reviewer's correction is the authority there,
+    # so a reviewer's call passes only the reviewer's own non-place values.
     reading = "Davao Prov.\nMindanao lowland forest"
     habitat = "Mindanao lowland forest"  # A reading's non-place literal.
 
@@ -321,6 +331,22 @@ def test_the_readings_non_place_literals_do_not_cut_the_reviewers_place_value():
     assert (as_read, as_reviewed) == ("", "Mindanao")
 
 
+def test_a_date_in_the_reviewers_place_value_is_cut():
+    # PLAN 4.8 in #191: only the readings' non-place literals spare it.
+    value = "Mindanao, 3 Sept. 1946"
+
+    assert (
+        place_request_text(
+            value,
+            sources=[value],
+            readings=["Davao Prov.\nMindanao, P.I."],
+            non_place_literals=[],
+            knowledge=insects,
+        )
+        == "Mindanao"
+    )
+
+
 # Each source's own answer, as S8's readers receive it.
 ANSWERS = {
     "wikidata": '{"search": [{"id": "Q928"}, {"id": "Q15095071"}]}',
@@ -330,7 +356,7 @@ ANSWERS = {
         ' {"attributes": {"ufi": 11769188, "adm1": "GT-04"}}]}'
     ),
 }
-LABEL_WITH_NUMBERS = "Davao Prov.\nMindanao, P.I.\n3 Sept. '46\nFMNH INS 0123456"
+LABEL_WITH_NUMBERS = "Davao Prov.\nMindanao, P.I.\n3 Sept. 1946\nFMNH INS 0123456"
 
 
 @pytest.mark.parametrize(
@@ -349,12 +375,7 @@ def test_a_tier_1_identifier_goes_back_unchanged_to_its_source(identifier, sourc
     # PLAN 4.8 in #191, with S8's readers' identifier patterns: the identifier
     # stands in the source's own answer.
     assert (
-        place_request_identifier(
-            identifier,
-            source=source,
-            response=ANSWERS[source],
-            readings=[LABEL_WITH_NUMBERS],
-        )
+        place_request_identifier(identifier, source=source, response=ANSWERS[source])
         == identifier
     )
 
@@ -366,28 +387,24 @@ def test_a_tier_1_identifier_goes_back_unchanged_to_its_source(identifier, sourc
         ("Q92", "wikidata", ANSWERS["wikidata"]),  # Only part of an answer's id.
         ("Q928", "tgn", ANSWERS["wikidata"]),  # Another source's pattern.
         ("Davao", "wikidata", '{"search": [{"id": "Davao"}]}'),  # Label text.
-        # The steward's review of #191: label numbers, even in an answer.
-        ("0123456", "tgn", '{"result": [{"id": "tgn/0123456"}]}'),  # Catalogue.
-        ("46", "tgn", '{"result": [{"id": "tgn/46"}]}'),  # A year.
         ("PH-DVC", "nga", '{"features": []}'),  # A code NGA didn't return.
         ("1000135", "geonames", ANSWERS["tgn"]),  # GeoNames is read from dumps.
     ],
 )
 def test_any_other_identifier_is_refused(identifier, source, response):
     assert (
-        place_request_identifier(
-            identifier, source=source, response=response, readings=[LABEL_WITH_NUMBERS]
-        )
-        is None
+        place_request_identifier(identifier, source=source, response=response) is None
     )
 
 
-def test_an_identifier_without_the_readings_is_refused():
+@pytest.mark.parametrize("number", ["0123456", "1946", "46"])
+def test_a_label_number_offered_as_a_tgn_identifier_is_refused(number):
+    # PLAN 4.8 in #191: TGN's digit pattern matches any label number, so where
+    # an identifier came from is the guard. Only TGN's own answer, as the tool
+    # received it, can hold one; the record and the agent's lists never do.
+    assert number in LABEL_WITH_NUMBERS
     assert (
-        place_request_identifier(
-            "1000135", source="tgn", response=ANSWERS["tgn"], readings=[]
-        )
-        is None
+        place_request_identifier(number, source="tgn", response=ANSWERS["tgn"]) is None
     )
 
 
@@ -414,6 +431,17 @@ def test_a_non_place_literal_is_cut_at_every_occurrence_in_every_text():
     assert given("Wernersdorf", reading, others=["F.G. Werner"]) == ["Wernersdorf"]
     # A literal "Werner" covers the first six characters of "Wernersdorf".
     assert given("Wernersdorf", reading, others=["Werner"]) == []
+
+
+def test_werner_where_the_record_reads_wernersdorf_and_leg_werner():
+    # PLAN 4.8 in #191: the marker's clause cuts "Werner" wherever the value
+    # occurs, and tokens compare whole, so "Wernersdorf" stays.
+    record = "Wernersdorf\nleg. Werner"
+
+    assert given("Werner", record) == []  # A tier-1 name, say.
+    assert request("Werner", record) == ""  # Drawn from "leg. Werner".
+    assert request("Werner", "Wernersdorf") is None  # No whole-token slice.
+    assert given("Wernersdorf", record) == ["Wernersdorf"]
 
 
 def test_a_full_form_that_would_bring_back_a_cut_character_is_not_sent():
@@ -454,9 +482,63 @@ def test_the_reviewers_value_is_a_source_only_in_a_place_field():
     )
 
 
-def test_the_stated_limit_a_name_nothing_marks_can_still_leave():
-    # No reading assigns "Hoogstraal" to a field and no marker accompanies it.
-    assert request("Mindanao Hoogstraal") == "Mindanao Hoogstraal"
+@pytest.mark.parametrize(
+    ("text", "record", "leaves"),
+    [
+        # A name no reading assigns and no marker in its own clause accompanies:
+        ("Mindanao Hoogstraal", "Mindanao Hoogstraal", "Mindanao Hoogstraal"),
+        # mid-run, before the harness has named the collector,
+        (
+            "Mindanao F.G. Wermer",
+            "Davao Prov., Mindanao F.G. Wermer",
+            "Mindanao F.G. Wermer",
+        ),
+        # and a name whose "leg." sits in a neighbouring clause or line.
+        (
+            "Mindanao H. Hoogstraal",
+            "Mindanao H. Hoogstraal, leg.",
+            "Mindanao H. Hoogstraal",
+        ),
+        (
+            "Mindanao H. Hoogstraal",
+            "Mindanao H. Hoogstraal\nleg.",
+            "Mindanao H. Hoogstraal",
+        ),
+        # A month in a language the knowledge doesn't list: Tagalog's June.
+        ("Mindanao, 3 Hunyo 1946", "Mindanao, 3 Hunyo 1946", "Mindanao, Hunyo"),
+        # A lone or ranged month numeral with no day or year beside it.
+        ("Mindanao VIII/IX", "Mindanao VIII/IX", "Mindanao VIII/IX"),
+        # The cuts can take too much: a place's numeral beside a date number,
+        ("Camp IV, 3 VIII 1946", "Camp IV, 3 VIII 1946", "Camp"),
+        # a place named with a month word,
+        ("Cape May", "Cape May", "Cape"),
+        # and a tier-1 name whose numeral stands beside a number.
+        ("Region XI (11)", PLACES, "Region"),
+    ],
+    ids=[
+        "unmarked-name",
+        "collector-not-yet-named",
+        "leg-in-the-next-clause",
+        "leg-on-the-next-line",
+        "unlisted-language",
+        "lone-month-numerals",
+        "camp-iv",
+        "cape-may",
+        "tier-1-name-with-code",
+    ],
+)
+def test_the_stated_limit_is_pinned_case_by_case(text, record, leaves):
+    # PLAN 4.8 in #191: tests pin each case its limit names, so a change in
+    # what can leave shows.
+    sent = place_request_text(
+        text,
+        sources=[text],
+        readings=[record],
+        non_place_literals=[],
+        knowledge=insects,
+    )
+
+    assert sent == leaves
 
 
 READING_321 = (
