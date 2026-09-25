@@ -263,7 +263,7 @@ records it as a warning finding, which never routes the record. The label's
 spelling stays the verbatim (G27). Denali still clears nothing: no component
 there is one edit from "Davao" or "P.I.".
 
-**`precise_location` is verbatim locality text** (PRD 515). Its literal helps
+**`precise_location` is verbatim locality text** (PRD 519). Its literal helps
 form the address, but the tool reports no outcome and no place for it, so
 nothing it returns can settle or replace it; where such a phrase actually is
 waits for the owner's ruling on S8's D3 (coordinator, 2026-09-23). A result for
@@ -412,7 +412,7 @@ when their `authority_id` and `parsed` are equal.
 every reading, as transcribed (`supported`). Differing literals without a
 decided transcript are `ambiguous` with `readings_conflict`. `precise_location`
 is one of them: it stays verbatim locality text, never replaced or settled by a
-geocoder result (PRD 515). Where such a phrase actually is waits for the
+geocoder result (PRD 519). Where such a phrase actually is waits for the
 owner's ruling on S8's D3.
 
 **A numeric date's order** (G29, G33) comes only from the dates in every
@@ -551,7 +551,7 @@ ledger's record and the caps count exactly.
 the ledger's records, and any tool call the agent did not make on its final
 literals is made then, once.
 - A field with no tool is transcribed as written, and so is
-  `precise_location`, which no geocoder settles (PRD 515).
+  `precise_location`, which no geocoder settles (PRD 519).
 - Every date literal of every reading is parsed first, so the order the dates
   fix can settle an ambiguous numeric date (G33). The date then cites one
   `date_order` evidence item naming the dates that fixed it.
@@ -602,7 +602,7 @@ variable with its default in code, pinned on the run. It states:
 - the copy rule: never invent, complete, correct, expand or translate a literal.
 
 **The Insects knowledge** (`harness_knowledge/insects.py`, id `insects`, version
-`insects-harness-knowledge-v1`) is the pilot's. S3's profile names it. It lists
+`insects-harness-knowledge-v2`) is the pilot's. S3's profile names it. It lists
 the label notations and every reading each allows, each with the fields it can
 belong to:
 - "P.I.", "Guat.", "Prov.", "Dept.", "Mt.", "Is.", "nr." and the directions
@@ -611,12 +611,39 @@ belong to:
   specimen;
 - a Roman or named month, both orders of a numeric date, and a two-digit year
   under the profile's century rule;
-- "?" marking an uncertain value.
+- "?" marking an uncertain value;
+- slide-preparation codes at a label's top edge, such as IX-17-66-2,
+  IV-29-68-a, VI-24-68-7 and 10-6-78-la. Each is the date the slide was made,
+  with a serial: never a collection date, and no field's value. The source is
+  S8's pilot research, under the coordinator's ruling of 2026-09-24; real runs
+  had put such codes into the catalogue number, the collectors and the
+  locality.
 
 Reading a notation assigns what is written to the field it names. "m", "ft.",
 "'", "alt." and "el." give the unit of the elevation written, and "ca." marks a
 value as approximate. The knowledge never fills or converts a value; derived
-values are section 13's.
+values are section 13's. Two rules follow from that:
+- A single written elevation is given once, as From in its unit, and G41's
+  rules derive the other end and the other unit, with their record (the
+  coordinator's ruling of 2026-09-24).
+- A single written date is given once, as Date Visited From, and G44 derives
+  Date Visited To (the owner's answer of 2026-09-24).
+
+**The shape rules** (G45, the owner's answer of 2026-09-24: "In fields no lookup
+checks, a value that doesn't look like its field's kind goes to review with a
+reason") also live in the knowledge, as `SHAPES` and `SHAPE_PATTERNS`. They
+name what a value in each field no lookup checks must not look like. The rules
+are minimal, and each comes from a real run:
+- `collectors`, `collection_code`, `habitat`, `collection_method` and
+  `precise_location`: no slide-preparation code, no numeric date, and no
+  specimen mark such as "♀", "♂" or "Sp.#1", which belongs to the specimen;
+- `collectors`: also no digit, since names carry none;
+- `verbatim_dts`: no slide-preparation code. This one is a finding only,
+  because PRD 529 leaves the field's meaning unconfirmed (PRD open question 3).
+
+A slide-preparation code is a month (Arabic or Roman), day and two-digit year
+with a serial, such as IV-29-68-a. The serial is what sets it apart from a
+collection date such as 14-5-48.
 
 Its place aliases, written as the geography tool folds them, are the only extra
 names that tool accepts ("P.I." as the Philippines).
@@ -661,6 +688,14 @@ the dataset), the settled input fields with their values, and its checks.
   - their authority is `apply_derivations` at the rules' version
     (`derivation-rules-v1`), so a G41 value names its stated field, its rule
     and `apply_derivations` (#124).
+- **G44** is the owner's answer of 2026-09-24, "Fill To, derived": "Date Visited
+  To gets the same date, marked as derived from Date Visited From, so the record
+  can clear on it."
+  - When the label states Date Visited From alone and it settled, the harness
+    derives Date Visited To with the same parsed date and precision (method
+    `stated_date`, rule `one_date_both_ends`).
+  - A written range keeps both ends as written.
+  - Review's "fill the rest" applies it to a reviewer's date as well.
 
 **Applying derivations** (`apply_derivations`), whoever emitted them:
 - A field the label states is never replaced; its verbatim stays as written.
@@ -888,6 +923,17 @@ request recovers an earlier failure (QUE-005).
 **A harness failure** sends the record to review with
 `harness_failure:{code}` (G6, section 11).
 
+**Value shapes** (G45, the owner's answer of 2026-09-24). On the harness's runs,
+a value in a field no lookup checks must not look like what the knowledge's
+shape rules name (section 12).
+- A value that fails goes to review with `value_shape_mismatch:{field}`. The
+  check reads the verbatim, or each reader's value when none was chosen.
+- In `verbatim_dts` a failure is a warning finding
+  (`value_shape_mismatch:verbatim_dts`) that never routes the record. The
+  finding is written again on each decision, never twice.
+- The real runs' cases are "VI-24-68-7" as a collector, "IV-29-68-a" as a
+  collection code, and "♀ legs Sp.#1" as a habitat.
+
 **Findings never route a record.** G23's source flag and the readers' spelling
 difference (G27) stay findings.
 
@@ -902,5 +948,5 @@ details:
 A blocked run has no disposition and no summary. The evidence phase gate has
 the last word on the disposition, so the summary is written again after it.
 
-**Reason codes.** `harness_failure` is new. S3's `REASON_CODES` catalog (#136)
+**Reason codes.** `harness_failure` and `value_shape_mismatch` are new. S3's `REASON_CODES` catalog (#136)
 lists the codes in the rules' order.

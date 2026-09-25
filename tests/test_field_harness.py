@@ -287,7 +287,7 @@ def test_every_field_is_decided_from_recorded_outcomes():
         "place-chimaltenango",
         "Chimaltenango",
     )
-    # Verbatim locality text: transcribed, never settled by a geocoder (PRD 515).
+    # Verbatim locality text: transcribed, never settled by a geocoder (PRD 519).
     assert (
         fields["precise_location"].literal,
         fields["precise_location"].authority_id,

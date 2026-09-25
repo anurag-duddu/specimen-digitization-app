@@ -14,7 +14,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 KNOWLEDGE_ID = "insects"
-KNOWLEDGE_VERSION = "insects-harness-knowledge-v1"
+# v2: slide-preparation codes and single written values (coordinator, 2026-09-24).
+KNOWLEDGE_VERSION = "insects-harness-knowledge-v2"
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,17 @@ NOTATIONS = (
         ("date_visited_from", "date_visited_to", "date_identified"),
     ),
     Notation("?", ("the preceding value is uncertain as written",), ()),
+    # S8's pilot research: these look like dates but are not collection dates.
+    Notation(
+        "IX-17-66-2, IV-29-68-a, VI-24-68-7, 10-6-78-la at a label's top edge",
+        (
+            (
+                "the slide's preparation code, the date it was made and a serial:"
+                " never a collection date, and it belongs in no field"
+            ),
+        ),
+        (),
+    ),
 )
 
 # Folded label forms and the place names they may be read as, for the
@@ -103,7 +115,39 @@ literal that is not in the reading is refused. Never complete, correct or
 translate a literal: readings of a notation are for calling the tools, never
 for the literal itself. Work through every reading a notation allows before a
 field is left for review, and let the tools and the specimen's other evidence
-decide between them. A field the label does not have stays empty."""
+decide between them. A field the label does not have stays empty.
+A single elevation written once is given once, as the From field of its unit:
+the harness fills the other end and the other unit. A single date written once
+is given once, as Date Visited From: the harness fills Date Visited To."""
+
+# G45 (the owner, 2026-09-24: "In fields no lookup checks, a value that doesn't
+# look like its field's kind goes to review with a reason"): what a value in
+# each such field must not look like. Minimal, and each rule is a real run's
+# case; the queue decision applies them to the harness's runs.
+SHAPE_PATTERNS = {
+    # Month, day, two-digit year and a serial: IV-29-68-a, 10-6-78-la.
+    "preparation_code": r"(?<![\w-])(?:[IVX]{1,4}|\d{1,2})-\d{1,2}-\d{2}-[0-9A-Za-z]{1,3}(?![\w-])",
+    # A written date: 14-5-48, 12.v.1946, IV-25, '46.
+    "numeric_date": (
+        r"(?<![\w-])(?:\d{1,2}|[IVXivx]{1,4})[-./](?:\d{1,2}|[IVXivx]{1,4})"
+        r"[-./](?:\d{4}|\d{2})(?![\w-])"
+        r"|(?<![\w-])[IVX]{1,4}-\d{1,2}(?![\w-])|['’]\d{2}(?!\w)"
+    ),
+    "digit": r"\d",  # Names carry none.
+    # The specimen's own marks: ♀, ♂, Sp.#1, sp. 30.
+    "specimen_mark": r"[♀♂]|(?<![A-Za-z])[Ss]p\.\s*#?\s*\d",
+}
+_NOT_THE_SPECIMEN = ("preparation_code", "numeric_date", "specimen_mark")
+SHAPES = {
+    "collectors": (*_NOT_THE_SPECIMEN, "digit"),  # "VI-24-68-7" (105526328).
+    "collection_code": _NOT_THE_SPECIMEN,  # "IV-29-68-a" (105526330).
+    "habitat": _NOT_THE_SPECIMEN,  # "♀ legs Sp.#1" (105526330).
+    "collection_method": _NOT_THE_SPECIMEN,
+    "precise_location": _NOT_THE_SPECIMEN,  # "VI-24-68-7" (105526328).
+    "verbatim_dts": ("preparation_code",),  # "10-6-78-la" (105526321).
+}
+# PRD 529 leaves verbatim_dts's meaning unconfirmed: a finding, never a reason.
+FINDING_ONLY = frozenset({"verbatim_dts"})
 
 
 def render() -> str:

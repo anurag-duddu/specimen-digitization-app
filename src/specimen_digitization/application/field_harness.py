@@ -19,7 +19,12 @@ from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.tool_manager import ToolManager
 from pydantic_ai.usage import RunUsage, UsageLimits
 
-from .derivations import Found, apply_derivations, elevation_derivations
+from .derivations import (
+    Found,
+    apply_derivations,
+    date_derivations,
+    elevation_derivations,
+)
 from .domain import Evidence, FieldValue, LookupStatus, Record
 from .field_resolution import (
     Called,
@@ -44,7 +49,7 @@ MAX_TOOL_CALLS = 12  # The agent's tool calls per run.
 MAX_GEOCODING_REQUESTS = 4  # Per run, the agent's and the final ones together.
 GEOGRAPHY = "geography_lookup"
 # Verbatim locality text: its literal helps form the address, but no geocoder
-# result settles it (PRD 515).
+# result settles it (PRD 519).
 TRANSCRIBED_ONLY = frozenset({"precise_location"})
 
 
@@ -267,11 +272,12 @@ def resolve(
             )
             fields[key] = resolver.settle(key, per_reading, call)
     # G37: what the label leaves out, filled from settled fields with evidence:
-    # the elevation rules of G41 and the geography results' derivations.
+    # the elevation rules of G41, one date for both ends (G44) and the
+    # geography results' derivations.
     unique = {(f.derivation.model_dump_json(), f.call_evidence): f for f in derivations}
     derived, filled_evidence = apply_derivations(
         fields,
-        [*elevation_derivations(fields), *unique.values()],
+        [*elevation_derivations(fields), *date_derivations(fields), *unique.values()],
         asset_id=asset_id,
         blobs=blobs,
     )

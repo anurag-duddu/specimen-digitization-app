@@ -5,6 +5,7 @@ import json
 from specimen_digitization.application.derivations import (
     Found,
     apply_derivations,
+    date_derivations,
     elevation_derivations,
     settled_value,
 )
@@ -283,3 +284,52 @@ def test_a_derivations_credit_travels_in_its_record():
     assert record["derivation"]["authority"]["credit"] == (
         "Copernicus notice, from S8's manifest"
     )
+
+
+def dated(parsed, precision, literal):
+    return FieldValue(
+        state=V.SUPPORTED,
+        literal=literal,
+        parsed=parsed,
+        precision=precision,
+        evidence_ids=["e-date"],
+        layer="settled",
+    )
+
+
+NO_DATES = {"date_visited_from": FieldValue(), "date_visited_to": FieldValue()}
+
+
+def test_one_written_date_fills_date_visited_to_derived():
+    # G44, the owner's "Fill To, derived": the same date, at the precision
+    # written, derived from Date Visited From with its record.
+    fields = NO_DATES | {"date_visited_from": dated("1946-09", "month", "IX.1946")}
+
+    filled, evidence, blobs = apply(fields, date_derivations(fields))
+
+    to = filled["date_visited_to"]
+    assert (to.parsed, to.precision, to.layer, to.derived_from) == (
+        "1946-09",
+        "month",
+        "derived",
+        ["date_visited_from"],
+    )
+    (rule,) = evidence
+    record = json.loads(blobs.puts[rule.raw_ref])["derivation"]
+    assert (record["method"], record["inputs"]) == (
+        "stated_date",
+        {"date_visited_from": "1946-09"},
+    )
+    assert [c["name"] for c in record["evidence"]] == ["one_date_both_ends"]
+    assert record["authority"]["version"] == "derivation-rules-v1"
+
+
+def test_a_written_range_keeps_both_ends_and_an_unsettled_date_fills_nothing():
+    both = {
+        "date_visited_from": dated("1948-05-14", "day", "14-5-48"),
+        "date_visited_to": dated("1948-05-19", "day", "19-5-48"),
+    }
+    unsettled = FieldValue(state=V.AMBIGUOUS, literal="4-5-48")
+
+    assert date_derivations(both) == []
+    assert date_derivations(NO_DATES | {"date_visited_from": unsettled}) == []
