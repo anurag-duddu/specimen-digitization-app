@@ -127,6 +127,34 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                         for ident in transcript.observation_ids
                     )
                 )
+                call = transcript.first_pass_call
+                if call is not None:
+                    # The first pass's own call: its responses, its region and
+                    # its input, the crop the readers saw (HARNESS.md section 4).
+                    require(call.region_id == transcript.region_id)
+                    read(call.raw_ref, call.raw_sha256)
+                    require(
+                        call.input_sha256
+                        == (
+                            asset.sha256
+                            if run.profile.synthetic
+                            else input_hashes[call.region_id]
+                        )
+                    )
+                    if call.input_asset_id is not None:
+                        require(call.input_asset_id == asset.id)
+                    if call.input_crop_ref is not None:
+                        read(call.input_crop_ref, call.input_sha256)
+                selected = transcript.selected_observation_id
+                if (
+                    selected is not None
+                    and transcript.actor is None
+                    and transcript.decision_kind in {"identical_readings", "first_pass"}
+                ):
+                    # A machine-selected reading is the region's, verbatim, until
+                    # a reviewer's decision changes the transcript.
+                    require(selected in transcript.observation_ids)
+                    require(transcript.text == observations[selected].literal_text)
             for evidence in run.evidence:
                 if evidence.asset_id is not None:
                     require(evidence.asset_id == asset.id)

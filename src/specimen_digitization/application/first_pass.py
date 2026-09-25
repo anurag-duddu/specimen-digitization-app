@@ -1,9 +1,10 @@
 """The LLM first pass (stage 6): which reader's raw transcript the harness runs on.
 
-The owner's rule (docs/execution/golive/PLAN.md 2.1): the first pass decides
-the raw transcript the harness runs against and records, per reader, what was
-handed to the harness. It never writes text: the decided transcript is the
-selected reading verbatim. Spec: docs/execution/golive/HARNESS.md section 3.
+In the owner's words (docs/execution/golive/PLAN.md section 1): "LLM does first
+pass at which final RAW transcript should run against (it should also give at a
+VLM level what was returned to the harness)". It never writes text: the decided
+transcript is the selected reading verbatim. Spec: docs/execution/golive/HARNESS.md
+section 3.
 """
 
 from __future__ import annotations
@@ -49,9 +50,10 @@ _TASK = (
     "null: that is how material ambiguity goes to human review. Add one short "
     "note per reader."
 )
-# G30: a first pass stopped by its cap is the raw fallback (HARNESS.md section 3).
+# A first pass stopped by its caps selects no reading, so G19 sends the raw
+# readings on (PLAN section 1; HARNESS.md section 3).
 CAP_RATIONALE = (
-    "The first pass reached its G30 cap before an answer; no reading was selected."
+    "The first pass reached its token cap before an answer; no reading was selected."
 )
 
 
@@ -194,14 +196,16 @@ def output_problems(output: FirstPassOutput, letters, count: int) -> list[str]:
 
 
 def is_material(spans) -> bool:
-    """More than capitalization: the spans differ once case-folded. The code
-    decides it, not the model (the coordinator's reading; HARNESS.md section 3)."""
-    return len({span.text.casefold() for span in spans}) > 1
+    """More than capitalization: the spans differ once lower-cased, so a spelling
+    variant stays material. The code decides it, not the model (the coordinator's
+    12:31Z reading and 14:05Z ruling; HARNESS.md section 3)."""
+    return len({span.text.lower() for span in spans}) > 1
 
 
 def g19_pick(selected: str | None, differences) -> str | None:
     """The picked reading, or None when a material difference does not support
-    it: material ambiguity returns no reading (G19, HARNESS.md section 3)."""
+    it: material ambiguity returns no reading (G19; the coordinator's 12:31Z
+    reading; HARNESS.md section 3)."""
     if any(
         d.verdict != selected and is_material(d.spans.values()) for d in differences
     ):
@@ -277,7 +281,7 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
         )
         history, usage = result.all_messages(), result.usage
     except UsageLimitExceeded as stop:
-        # G30: a cap hit is the raw fallback; the call keeps what it used.
+        # No answer within its caps: no reading (G19); the call keeps its usage.
         result, history, usage = None, stop.run_messages, stop.run_usage
     latency_seconds = time.monotonic() - started
     # Every provider response, retries included; the image-bearing request is not.
@@ -309,7 +313,8 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
     ]
     return FirstPassDecision(
         region_id=region.id,
-        # A pick a material difference does not support is no reading (G19).
+        # A pick a material difference does not support is no reading (G19;
+        # the coordinator's 12:31Z reading).
         selected_observation_id=g19_pick(picked, decided),
         rationale=rationale,
         notes=notes,
@@ -349,7 +354,6 @@ def synthetic_decision(blobs, region, readings) -> FirstPassDecision:
     summary = {"region_id": region.id, "selected_observation_id": None}
     detail = dict(summary, differences=len(differences), rationale=SYNTHETIC_RATIONALE)
     raw = b"SYNTHETIC FIXTURE\n" + json.dumps(detail).encode()
-    texts = "\0".join(reading.literal_text for reading in readings)
     return FirstPassDecision(
         **summary,
         rationale=SYNTHETIC_RATIONALE,
@@ -369,7 +373,8 @@ def synthetic_decision(blobs, region, readings) -> FirstPassDecision:
             model_id="synthetic-first-pass",
             provider="synthetic",
             prompt_version="fixture-v1",
-            input_sha256=hashlib.sha256(texts.encode()).hexdigest(),
+            # The input the readers saw, as for their observations.
+            input_sha256=first.input_sha256,
             literal_text="",
             raw_ref=blobs.put(raw),
             raw_sha256=hashlib.sha256(raw).hexdigest(),
