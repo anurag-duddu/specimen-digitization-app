@@ -38,7 +38,9 @@ DETERMINER_MARKERS = ("det.", "Det.")
 # Each month in full and abbreviated, in English and in Spanish, the pilot
 # labels' languages (PLAN 4.8 in #191), with the Spanish variant the RAE
 # accepts, "setiembre" and "set." (the coordinator's ruling of 2026-09-24),
-# and Spanish's older abbreviations (PLAN 4.8 as #200 states it).
+# Spanish's older abbreviations (PLAN 4.8 as #200 states it), and the RAE's
+# "febr.", "mzo." and "ag.", but not "en." or "my.", which are everyday words
+# (the coordinator's ruling of 2026-09-24).
 MONTHS_ENGLISH = (
     *("January", "February", "March", "April", "May", "June", "July"),
     *("August", "September", "October", "November", "December"),
@@ -51,6 +53,7 @@ MONTHS_SPANISH = (
     *("ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep."),
     *("sept.", "set.", "oct.", "nov.", "dic."),
     *("agto.", "sbre.", "obre.", "nbre.", "dbre."),
+    *("febr.", "mzo.", "ag."),
 )
 
 NOTATIONS = (
