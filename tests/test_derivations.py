@@ -205,6 +205,24 @@ def test_a_range_in_feet_fills_the_metre_fields_by_the_exact_factor():
     }
 
 
+def test_a_g41_value_names_its_stated_field_its_rule_and_apply_derivations():
+    # A derived value counts only with its record (#124, PLAN 4.8).
+    filled, evidence, blobs = derive(EMPTY | {"elevation_from_ft": stated("4000")})
+
+    rule = next(e for e in evidence if e.id in filled["elevation_from_m"].evidence_ids)
+    record = json.loads(blobs.puts[rule.raw_ref])["derivation"]
+    assert rule.source == "apply_derivations"
+    assert (record["inputs"], record["method"]) == (
+        {"elevation_from_ft": "4000"},
+        "unit_conversion",
+    )
+    assert (record["authority"]["name"], record["authority"]["version"]) == (
+        "apply_derivations",
+        "derivation-rules-v1",
+    )
+    assert [check["name"] for check in record["evidence"]] == ["feet_to_metres"]
+
+
 def test_a_single_metre_value_is_both_ends_and_fills_the_feet_fields():
     filled, _, _ = derive(EMPTY | {"elevation_from_m": stated("1200 m")})
 
