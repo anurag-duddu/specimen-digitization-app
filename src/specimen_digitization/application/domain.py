@@ -439,6 +439,7 @@ class Profile(Record):
     mandatory_fields: tuple[str, ...] = MANDATORY
     routes: tuple[str, str] = ("handwriting-qwen", "handwriting-muse")
     first_pass_route: str | None = None
+    harness_route: str | None = None  # The field harness (HARNESS.md 11).
     synthetic: bool = False
     institutional_policy_approved: bool = False
     semantics_confirmed: bool = False
@@ -487,6 +488,9 @@ class Run(Record):
     reasons: list[str] = Field(default_factory=list)
     findings: list[RunFinding] = Field(default_factory=list)
     tool_calls: list[ToolCallRecord] = Field(default_factory=list)
+    # A harness failure (G6): no field was decided, and the record goes to
+    # review (HARNESS.md 11).
+    harness_failure: str | None = None
     blocker: str | None = None
     attempts: dict[str, int] = Field(default_factory=dict)
     capability_reason: str | None = None

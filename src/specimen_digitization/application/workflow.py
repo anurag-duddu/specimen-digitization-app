@@ -164,7 +164,13 @@ class Workflow:
             step.startswith(("transcribe:", "first_pass:"))
             or step in {"segment", "lookup"}
             or step.startswith("authority:")
-            or (step == "parse" and hasattr(self.adapters, "extract"))
+            or (
+                step == "parse"
+                and (
+                    hasattr(self.adapters, "extract")
+                    or hasattr(self.adapters, "harness")
+                )
+            )
             or (
                 step == "classify"
                 and self.classifier is not None
@@ -294,6 +300,7 @@ class Workflow:
         # Set once the step's model or lookup call has returned: a later failure
         # is deterministic and its outcome known (issue #80, HARNESS.md 2).
         effect_settled = False
+        settled_block = None  # A harness tool's operational outcome (QUE-005).
         try:
             if step == "pin_dependencies":
                 run.dependencies = (
@@ -435,7 +442,10 @@ class Workflow:
                     )
             elif step == "parse":
                 self.parse(run, specimen.asset.id)
-                if hasattr(self.adapters, "extract"):
+                if hasattr(self.adapters, "harness") and run.profile.harness_route:
+                    # The field harness (HARNESS.md 14) decides every field.
+                    settled_block = self.adapters.harness(specimen)
+                elif hasattr(self.adapters, "extract"):
                     self.adapters.extract(specimen)
             elif step == "plan":
                 run.authority_plan = plan_authorities(specimen)
@@ -522,6 +532,10 @@ class Workflow:
                             result.status,
                             retry_after_seconds=result.retry_after_seconds,
                         )
+            elif step == "lookup" and any(
+                call.tool == "taxonomy_verifier" for call in run.tool_calls
+            ):
+                pass  # The field harness verified the taxon (HARNESS.md 14).
             elif step == "lookup":
                 name = run.fields["taxon"].literal
                 if name:
@@ -566,6 +580,10 @@ class Workflow:
                 finalize(run)
                 apply_phase_gate(run, phase_result)
             effect_settled = True
+            if settled_block:
+                # The model call settled; a tool's operational outcome blocks
+                # the run without charging the model route's circuit.
+                raise OperationalBlock(settled_block)
             try:
                 if step.startswith("authority:"):
                     execute_phase(specimen, "lookup", self.blobs)

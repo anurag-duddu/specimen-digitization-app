@@ -650,3 +650,58 @@ the dataset), the settled input fields with their values, and its checks.
 - A value counts as derived only with that record. The model can't assert
   one: the agent proposes only literals its readings contain, and a field the
   label leaves out is filled only by a derivation that applies.
+
+## 14. The harness in the `parse` step (stage 7, part 9)
+
+The owner's pipeline runs the harness after the first pass. G40 is the harness's
+job, G30 its budget, QUE-005 and G6 its failures, and PLAN 4.8 the outward text
+rule. `application/harness_runtime.py` wires the harness (sections 9 to 13) into
+the workflow's existing `parse` step.
+
+**When it runs.** In `parse`, after the deterministic `key: value` parser, when
+the adapter has a harness and the run's profile names a `harness_route`.
+- The route is a new `domain.Profile.harness_route`, pinned in
+  `run.dependencies` like `first_pass_route`. A route that is not registered
+  stays unpinned, and the step blocks.
+- Without a harness route, today's extraction runs, as before. S3's profile
+  wiring carries both stage routes from the published profile at classify:
+  `first-pass-glm` and `harness-deepseek`.
+- The step stays external and billable, with the stage reservation `parse`
+  (S3 sizes it from section 11's caps). Its circuit is the harness route's.
+
+**What the isolated model child receives** (`harness_payload`):
+- G40: every reading handed to the harness, from each region's handoffs
+  (section 4) with the first pass's notes. A region decided before the first
+  pass contributes its resolved transcript as its decided reading.
+- The field plan: the mandatory fields, the profile's optional fields, and
+  each field's tool from the profile's `field_tools`.
+- The profile's `date_rules` and its `harness_knowledge`, by id and version.
+
+Outward requests carry place text only: one reading's locality literals to
+geography, a scientific name to taxonomy (PLAN 4.8).
+
+**What the child does** (`harness_direct`):
+- It requires approved inference, the pinned harness route, the pinned prompt
+  `field-harness` and the named knowledge; otherwise it blocks with a fixed
+  code.
+- It runs the harness (section 11) with the production tools through the
+  ledger. The geography tool gets the knowledge's place aliases, and the date
+  tool the profile's date rules.
+- It returns the fields, evidence, findings, tool calls, GBIF lookups, any
+  block, any harness failure, and the reported token usage.
+
+**What the parent keeps** (`merge_harness`):
+- The fields replace `run.fields`, and must be exactly the plan's; anything
+  else is `external_outcome_unknown`.
+- The evidence, findings, tool calls and lookups are appended to the run, and
+  the tokens are counted.
+- A harness failure is kept as `run.harness_failure`; the queue decision sends
+  it to review (T4).
+- A harness tool's operational outcome, such as GBIF rate-limited after its
+  retries, is returned to the workflow. The workflow blocks the run with that
+  code only after the model call has settled, so the harness route's circuit is
+  not charged for a lookup source's failure. The tool calls already made stay on
+  the run for their costs.
+
+**The `lookup` step** makes no GBIF call of its own once the harness verified the
+taxon: its GBIF lookup is already on the run for the queue decision.

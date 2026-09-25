@@ -114,7 +114,7 @@ def circuit_for(workflow, principal, run, step):
             if step.startswith("transcribe:")
             else run.profile.first_pass_route
             if step.startswith("first_pass:")
-            else run.profile.routes[0]
+            else run.profile.harness_route or run.profile.routes[0]
         )
         selected = run.dependencies.get("routes", {}).get(route, {})
         provider = selected.get(

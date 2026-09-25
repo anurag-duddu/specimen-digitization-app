@@ -87,6 +87,10 @@ def _model_child(payload):
                 [Observation.model_validate(o) for o in payload["readings"]],
             )
             value = {"decision": decision.model_dump(mode="json")}
+        elif payload["operation"] == "harness":
+            from .harness_runtime import harness_direct
+
+            value = harness_direct(adapter, specimen, payload)
         elif payload["operation"] == "extract":
             run.transcripts = [
                 Transcript.model_validate(t) for t in payload["transcripts"]
@@ -151,6 +155,12 @@ def invoke_model(
             readings=[o.model_dump(mode="json") for o in readings],
         )
         step = "first_pass:" + region.id
+    elif operation == "harness":
+        from .harness_runtime import harness_payload
+
+        # Everything transcribed on the specimen is the harness's context (G40).
+        payload.update(harness_payload(run))
+        step = "parse"
     else:
         # Resolved source is authorized extraction context. Raw independent
         # observations, prior runs, audit logs and authority outputs are excluded.
@@ -199,6 +209,10 @@ def invoke_model(
         if decision.region_id != region.id:
             raise OperationalBlock("external_outcome_unknown")
         return decision
+    if operation == "harness":
+        from .harness_runtime import merge_harness
+
+        return merge_harness(run, value)
     fields = {k: FieldValue.model_validate(v) for k, v in value["fields"].items()}
     evidence = [Evidence.model_validate(e) for e in value["evidence"]]
     tokens = value["tokens"]
