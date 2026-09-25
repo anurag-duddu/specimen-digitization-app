@@ -30,6 +30,18 @@ class AdapterFailure(RuntimeError):
         self.outcome_unknown = outcome_unknown
 
 
+class ReadingStopped(RuntimeError):
+    """A reading stopped by its limits (G6, G30; HARNESS.md section 15).
+
+    Its token limits or its reservation stopped it after the provider answered.
+    It is a failed reading: the step completes with no observation.
+    """
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
 def retry_after(value: str | None, current: datetime | None = None) -> int | None:
     if not value:
         return None

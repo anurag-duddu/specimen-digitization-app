@@ -17,7 +17,7 @@ from .domain import (
     Region,
     Transcript,
 )
-from .reliability import AdapterFailure
+from .reliability import AdapterFailure, ReadingStopped
 from .storage import LocalBlobs
 
 
@@ -109,6 +109,8 @@ def _model_child(payload):
         else:
             raise ValueError("Unknown trusted model operation")
         return json.dumps({"status": "completed", "value": value}).encode()
+    except ReadingStopped as exc:
+        return stopped_result(exc)
     except AdapterFailure as exc:
         return json.dumps(
             {
@@ -123,6 +125,11 @@ def _model_child(payload):
         # Only application-owned fixed codes cross this boundary. Provider error
         # strings and tracebacks are suppressed by the worker process runner.
         return json.dumps({"status": "blocked", "code": str(exc)}).encode()
+
+
+def stopped_result(exc: ReadingStopped) -> bytes:
+    """A reading stopped by its limits crosses the boundary as a known status."""
+    return json.dumps({"status": "stopped", "code": exc.code}).encode()
 
 
 def invoke_model(
@@ -192,6 +199,8 @@ def invoke_model(
         )
     if body["status"] == "blocked":
         raise OperationalBlock(body["code"])
+    if body["status"] == "stopped":
+        raise ReadingStopped(body["code"])
     if body["status"] != "completed":
         raise OperationalBlock("external_outcome_unknown")
     value = body["value"]
