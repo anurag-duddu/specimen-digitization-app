@@ -28,6 +28,7 @@ For each submitted photograph, the platform will:
 5. Ask multiple vision models to independently transcribe every detected label.
 6. Preserve each model's raw output, measure disagreement, and produce an adjudicated transcription without concealing uncertainty.
 7. Run a modular agentic harness to extract fields, perform authoritative lookups, reason over historical and contextual information, normalize values, and validate the candidate record.
+   > 2026-09-23: Resolved for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G7. The owner decided, for the go-live program, that the LLM first pass in item 6 and the agentic harness in item 7 run on a Hugging Face model through the existing gateway and token.
 8. Route the specimen to exactly one final queue: **Cleared**, **Needs human review**, or **Deferred**. Operationally failed or interrupted work remains in a recoverable processing state and is not misclassified as a completed outcome.
 
 The system must never treat a confidence score as proof of correctness. A record is cleared only when its profile-specific evidence, coverage, validation, provenance, and disagreement-resolution gates have all passed.
@@ -184,6 +185,7 @@ At minimum, permissions cover:
 
 1. The platform evaluates image quality and predicts collection/subcollection candidates.
 2. It selects a profile or pauses for classification review when policy requires.
+   > 2026-09-23: The collection prediction in step 1 and the profile selection in step 2 are superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G14: the profile comes from the collection a specimen was uploaded or imported into, resolved down the collection tree; a reviewer can correct the collection, and there is no classification stage. The image-quality evaluation in step 1 is unaffected.
 3. It segments relevant regions and transcribes all label regions independently with the configured models.
 4. It calculates disagreements and performs adjudication.
 5. The harness extracts fields, performs lookups, proposes normalized values, and executes deterministic validations.
@@ -274,6 +276,8 @@ Priority uses `P0` for the initial usable vertical slice, `P1` for the productio
 | CLS-005 | P0 | Map a selected classification to one active, versioned collection profile. Missing or ambiguous mappings must fail closed to review. |
 | CLS-006 | P1 | Support profile-specific classification thresholds, top-k behavior, and mandatory human confirmation. |
 | CLS-007 | P1 | Capture confirmed user corrections as evaluation data; do not automatically use them for model training without an approved policy. |
+
+> 2026-09-23: CLS-002 is superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G14: the profile comes from the collection a specimen was uploaded or imported into, resolved down the collection tree; a reviewer can correct the collection; there is no classification stage.
 
 ### 11.3 Segmentation
 
@@ -392,6 +396,8 @@ Priority uses `P0` for the initial usable vertical slice, `P1` for the productio
 | QUE-007 | P1 | Deferred records include retry eligibility predicates, such as a newer model family, capability tag, profile version, or manual campaign. |
 | QUE-008 | P1 | A reprocessed record retains prior dispositions and shows why the latest disposition changed. |
 
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1. For the lane, QUE-002's clearance gate no longer requires human approval when the agentic harness resolves the record; human review and deferral stay as QUE-003 and QUE-004 define them.
+
 ### 11.11 Search, reporting, and export
 
 | ID | Priority | Requirement |
@@ -486,6 +492,7 @@ For every such case, the record must retain the literal text, candidates conside
 - The first pilot subcollection is **Insects**.
 - The following fields are mandatory members of the entomological record schema.
 - **Cleared requires a supported, non-empty value for every mandatory field.** A placeholder or processing state such as `unknown`, `unreadable`, `not present`, or `not applicable` does not satisfy this requirement.
+  > 2026-09-23: For the slide pilot, `identified_by_irn` is no longer one of these mandatory fields, superseded by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G16: it is recorded as not resolved and does not block clearance until EMu Parties is connected. Every other mandatory field still needs a supported, non-empty value.
 - No agent, model, validator, or reviewer workflow may invent or pressure-generate a value merely to make a record complete. Insufficient evidence produces an explicit abstention and blocks Cleared.
 - Taxonomy work begins with Global Names Verifier, Catalogue of Life, GBIF, and BugGuide for North American material.
 - Geography work begins with Mapcarta and Google Maps.
@@ -523,6 +530,8 @@ Field Museum's currently published active Darwin Core mapping, together with its
 | Taxon | `taxon` | Verbatim scientific name plus separately resolved name, authorship, status, rank, and source identifier. |
 | Identified by IRN | `identified_by_irn` | Internal Record Number of the resolved `eparties` record. Qualify it with source system, tenant/environment, and module; the current production column, expected serialization, and approved lookup path require confirmation. |
 | Date Identified | `date_identified` | Literal text plus a separately parsed date or partial date. |
+
+> 2026-09-23: The "Identified by IRN" row's mandatory status is superseded for the slide pilot by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G16: `identified_by_irn` is recorded as not resolved and does not block clearance until EMu Parties is connected.
 
 The proposed internal keys are implementation candidates, not approved Field Museum mappings. They must be reconciled with the target collection-management schema before development.
 
@@ -885,6 +894,7 @@ These questions do not prevent the initial PRD draft, but the starred items must
 
 1. What downstream collection management system and exact target schema will eventually receive cleared Insects records? This is intentionally deferred and does not block the initial build.
 2. **What does “cleared” mean institutionally?** ★ Must every pilot record receive human approval, or can a calibrated subset clear automatically after hard gates?
+   > 2026-09-23: Answered for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1: a pilot record the agentic harness is able to resolve is cleared without human approval, and a record it cannot resolve goes to human review or deferral as this PRD defines them.
 3. **What does `Verbatim D/T/S` mean in the target system, including its format and validation rules?** ★
 4. **Can Field Museum confirm the current production column, serialization, authority-access method, and permitted fields for the `eparties` record referenced by `Identified by IRN`?** ★
 5. **Can the collection manager confirm that Parties resolution is required for every person-name field, including species authors, Collectors, and identifiers?** ★
