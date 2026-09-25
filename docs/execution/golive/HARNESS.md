@@ -284,8 +284,8 @@ is `timeout`, any other `httpx` transport error is `provider_error`
 errors outside its `HTTPError` family such as `InvalidURL`, is `provider_error`
 with the fixed code `geocoding_unexpected_error`.
 
-**What a request may carry** (PLAN 4.8 as #203 states it at 7723340, on main
-after #200, with the coordinator's rulings of 2026-09-24).
+**What a request may carry** (PLAN 4.8 on main after #203, eea5943, with the
+coordinator's rulings of 2026-09-24 and of 2026-09-25 at 05:38Z and 05:39Z).
 `application/place_text.py` is the one filter. This tool applies it to every
 request, and S8's tiers import it for every value they send. The filter's
 output is what leaves; after it a value is only escaped or encoded, as an
@@ -354,13 +354,23 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
     numeral I to XII, in any case, next to a date number before or after it,
     across separators. A date number is a day or a year in the profile's forms,
     3, 14, 1946, '46 or -46, also written with any apostrophe or dash ("‘46",
-    "–46"), as an ordinal day ("3rd"), or with punctuation before or after it
-    ("1946.", "1946?", "(1946)"). This is the coordinator's ruling of
+    "–46"), as an ordinal day ending in st, nd, rd, th, d, er, º or ª ("3rd",
+    "2d", "1er", "1º"), as a range whose parts, split at a dash or slash, are
+    each one ("3-4", "1946/47"), or with punctuation before or after it
+    ("1946.", "1946?", "(1946)"). The search for the neighbour skips a token
+    with no letter or digit, and the date connectors the knowledge's date
+    notations list, "de", "del" and "of". A connector is itself cut when the
+    tokens on both sides of it, skipping lone punctuation, are cut date tokens:
+    a token with a digit, a month word or a Roman month in the month position.
+    A clause left with no word drops. This is the coordinator's ruling of
     2026-09-24, which replaced an earlier cut of every I to XII (4.8 in #185),
-    as #203 widens it. So "3 VIII 1946", "VIII 1946", "Mindanao, VIII, 1946",
-    "Mindanao, VIII -46", "Mindanao, VIII ‘46", "VIII –46", "VIII 1946?",
-    "Mindanao, VIII 1946.", "3rd VIII" and "VIII/IX 1946" leave no numeral,
-    while "Camp IV", a lone "VIII/IX" and the "I" of "P.I." stay.
+    as #203 and the rulings of 2026-09-25 (05:38Z, 05:39Z) widen it. So "3 VIII
+    1946", "VIII 1946", "Mindanao, VIII, 1946", "Mindanao, VIII -46",
+    "Mindanao, VIII ‘46", "VIII –46", "VIII 1946?", "Mindanao, VIII 1946.",
+    "3rd VIII", "VIII/IX 1946", "Mindanao, 2d VIII", "1º VIII", "1er VIII", "3-4
+    VIII", "VIII 1946/47", "3 - VIII - 1946", "3 de VIII de 1946" and "3rd of
+    VIII 1946" leave no numeral and no connector, while "Camp IV", a lone
+    "VIII/IX", the "I" of "P.I." and the "de" of "San Juan de Dios" stay.
 - **Full forms**, after the cuts (the coordinator's ruling, option c).
   - A notation token that survived may be written out in each full form the
     knowledge's table lists for it. The table carries sendable place words, not
@@ -405,23 +415,20 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
   of its full forms (G29): "Davao Prov." leaves as "Davao Prov." or "Davao
   Province", and "Camiguin Is." as "Camiguin Is.", "Camiguin Island" or
   "Camiguin Islands". `place_request_text` returns the first form.
-- **Stated limit** (4.8 in #203). Text the filter cannot recognize can still
-  leave: text that no reading assigns to a non-place field and the harness
-  hasn't yet given one, when no marker the knowledge names sits in its clause.
-  So, mid-run, before the harness has named the non-place fields, "Mindanao
-  F.G. Wermer" leaves whole, "H. Hoogstraal" leaves when its "leg." sits in a
-  neighbouring clause or line, and so do a habitat such as "Mossy forest",
-  "FMNH INS" from a catalogue number and "ft." from "Mt. Apo, 6000 ft."; so
-  does a name beside a marker the knowledge doesn't list, such as German's
-  "Sammler". In "fill the rest", a value the harness gave a non-place field and
-  the reviewer replaced can leave when no reading assigns it: with the
-  reviewer's "F.G. Werner" for the harness's "F.G. Wermer", "Mindanao F.G.
-  Wermer" sends "Mindanao Wermer". A month name in a language the knowledge
-  doesn't list can leave, such as Tagalog's "Hunyo", and so can a form of a
-  listed language that it doesn't list, such as the RAE's "en.", a lone or
-  ranged month numeral with no day or year beside it ("VIII/IX"), and a
-  numeral that shares its token with a word ("mid-VIII 1946"). The cuts can
-  also take too much: "Camp IV, 3 VIII 1946" sends only "Camp"; "Cape May"
+- **Stated limit** (4.8 on main after #203). Text the filter cannot recognize
+  can still leave: text that no reading assigns to a non-place field and the
+  harness hasn't yet given one, when no marker the knowledge names sits in its
+  clause. So, mid-run, before the harness has named the non-place fields,
+  "Mindanao F.G. Wermer" leaves whole, "H. Hoogstraal" leaves when its "leg."
+  sits in a neighbouring clause or line, and so do a habitat such as "Mossy
+  forest", "FMNH INS" from a catalogue number and "ft." from "Mt. Apo, 6000
+  ft."; so does a name beside a marker the knowledge doesn't list, such as
+  German's "Sammler". A month name in a language the knowledge doesn't list
+  can leave, such as Tagalog's "Hunyo", and so can a form of a listed language
+  that it doesn't list, such as the RAE's "en.", a lone or ranged month
+  numeral with no day or year beside it ("VIII/IX"), and a numeral that shares
+  its token with a word, whose whole token leaves ("mid-VIII 1946"). The cuts
+  can also take too much: "Camp IV, 3 VIII 1946" sends only "Camp"; "Cape May"
   sends "Cape", and "Ag. Exp. Sta." sends "Exp. Sta."; a colonia written "Col."
   is cut as a collector's clause, so "Col. El Carmen, Chimaltenango" sends only
   "Chimaltenango"; a clause holding a marker is cut wherever its words appear,
@@ -939,7 +946,12 @@ S5 stores. The reviewer edits it and approves it through the decision route.
   the other end and the metres. S8's geographic derivations join once S8's tool
   lands and review calls can be recorded (S5's SQL side for a `review` input
   source). Their requests take the reviewer's values in place fields as sources
-  and every other value as a non-place literal (section 7).
+  (section 7). Their non-place literals are the reviewer's own non-place
+  values, every value the harness gave a non-place field, whether the reviewer
+  kept or replaced it, and the readings' non-place literals. The reviewer's own
+  place value is cut only by the reviewer's own non-place values, since the
+  reviewer's correction is the authority there (the coordinator's rulings of
+  2026-09-25, 05:38Z and 05:39Z).
 - The proposal (`domain.Proposal`) carries the proposed fields, the new
   evidence they cite, and the tool calls, lookups and findings. Those stay empty
   until a derivation makes a call.

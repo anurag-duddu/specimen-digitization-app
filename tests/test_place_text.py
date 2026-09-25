@@ -260,6 +260,32 @@ def test_a_roman_month_in_the_month_position_is_cut_and_never_written_out(date):
     ]
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        *("Mindanao, 2d VIII", "Mindanao, 3d VIII", "Mindanao, 1º VIII"),
+        *("Mindanao, 1ª VIII", "Mindanao, 1er VIII", "Mindanao, 3-4 VIII"),
+        *("Mindanao, VIII 1946/47", "Mindanao, VIII 1946-47"),
+        *("Mindanao, 3 - VIII - 1946", "Mindanao, 3 de VIII de 1946"),
+        *("Mindanao, 3rd of VIII 1946", "Mindanao, 15 de VIII del 1946"),
+    ],
+)
+def test_ordinals_ranges_lone_punctuation_and_connectors_leave_no_numeral(text):
+    # The coordinator's rulings of 2026-09-25 (05:38Z, 05:39Z): ordinals in d,
+    # er, º and ª, ranges, a neighbour found past lone punctuation and the date
+    # connectors, and a connector cut inside a date.
+    assert request(text) == "Mindanao"
+
+
+def test_a_date_connector_goes_only_inside_a_date():
+    # A connector is cut when the tokens on both sides of it are cut date
+    # tokens: a digit, a month word or a Roman month.
+    assert request("Chimaltenango, 15 de agosto de 1946") == "Chimaltenango"
+    assert request("San Juan de Dios, 3 de VIII de 1946") == "San Juan de Dios"
+    for place in ("San Juan de Dios", "Valle del Cauca", "Gulf of Davao"):
+        assert request(place) == place
+
+
 def test_the_month_position_reaches_across_separators():
     assert forms("Mindanao, VIII, 1946") == ["Mindanao"]
 
@@ -352,7 +378,8 @@ def test_a_full_form_written_on_the_label_is_a_source():
 
 def test_the_readings_non_place_literals_do_not_cut_the_reviewers_place_value():
     # PLAN 4.8 (#180, #191): the reviewer's correction is the authority there,
-    # so a reviewer's call passes only the reviewer's own non-place values.
+    # so a reviewer's call passes only the reviewer's own non-place values; the
+    # harness's values spare it too (the coordinator's rulings of 2026-09-25).
     reading = "Davao Prov.\nMindanao lowland forest"
     habitat = "Mindanao lowland forest"  # A reading's non-place literal.
 
@@ -594,21 +621,27 @@ def test_the_reviewers_value_is_a_source_only_in_a_place_field():
     )
 
 
-def test_the_stated_limit_in_fill_the_rest():
-    # PLAN 4.8 as #203 states it: a value the harness gave a non-place field and
-    # the reviewer replaced can leave when no reading assigns it. The reviewer's
-    # call passes only the reviewer's own non-place values.
-    record = "Davao Prov.\nMindanao F.G. Wermer"  # The harness gave "F.G. Wermer".
+@pytest.mark.parametrize(
+    "reviewer", [(), ("F.G. Werner",)], ids=["harness-value-kept", "replaced"]
+)
+def test_fill_the_rest_cuts_every_value_the_harness_gave_a_non_place_field(
+    reviewer,
+):
+    # The coordinator's rulings of 2026-09-25 (05:38Z, 05:39Z), HARNESS.md
+    # section 13: derive_rest's place call passes every value the harness gave
+    # a non-place field, kept or replaced, with the reviewer's own non-place
+    # values. No reading assigns "F.G. Wermer" here.
+    record = "Davao Prov.\nMindanao F.G. Wermer"
 
     sent = place_request_text(
         "Mindanao F.G. Wermer",  # The unassigned text, a source.
         sources=["Mindanao F.G. Wermer"],
         readings=[record],
-        non_place_literals=["F.G. Werner"],  # The reviewer's replacement.
+        non_place_literals=["F.G. Wermer", *reviewer],
         knowledge=insects,
     )
 
-    assert sent == "Mindanao Wermer"
+    assert sent == "Mindanao"
 
 
 @pytest.mark.parametrize(

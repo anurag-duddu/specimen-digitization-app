@@ -105,6 +105,17 @@ def test_the_place_filters_tables_come_from_the_notations():
     # and the RAE's, but never the everyday words "en" and "my" (coordinator).
     assert {"febr.", "mzo.", "ag."} <= set(listed)
     assert {"en", "my"}.isdisjoint(fold(word) for word in listed)
+    # The coordinator's rulings of 2026-09-25 (05:38Z, 05:39Z): the date
+    # notations list the connectors a date's parts may be joined by.
+    assert insects.DATE_CONNECTORS == ("de", "del", "of")
+    (joined,) = [
+        n for n in insects.NOTATIONS if n.written == ", ".join(insects.DATE_CONNECTORS)
+    ]
+    assert set(joined.fields) == {
+        "date_visited_from",
+        "date_visited_to",
+        "date_identified",
+    }
     # The coordinator's ruling of 2026-09-24: Roman months are cut too.
     (roman,) = [n for n in insects.NOTATIONS if n.written == "I to XII in a date"]
     assert insects.ROMAN_MONTHS[0] == "I" and insects.ROMAN_MONTHS[-1] == "XII"
