@@ -194,8 +194,9 @@ def test_two_readings_of_one_route_on_one_region_fail_stage_3():
 
 
 def test_a_gbif_occurrence_request_in_any_record_of_any_run_fails_while_d4_is_off():
-    # D4 is held: its occurrence check is off and sends nothing (PLAN 2, coordinator rulings). Only real
-    # request shapes count; every GBIF record but species match (G23) and GADM fails.
+    # D4 is held: its occurrence check is off and sends nothing (PLAN 2, coordinator rulings). PLAN 4.8's
+    # table lists GBIF for species match (G23) and the held occurrence search; only real occurrence-request
+    # shapes fail here. GADM and any other GBIF call have their own test below.
     def stage_7(key, value, requests=0, previous=False, blobs=()):
         snap = snapshot()
         (snap.setdefault("previous_runs", []).append(snapshot()["run"] | {"id": "run-1", key: value})
@@ -213,6 +214,9 @@ def test_a_gbif_occurrence_request_in_any_record_of_any_run_fails_while_d4_is_of
         ("evidence", [{"kind": "authority", "source": "gbif", "locator": "/v1/occurrence/search",
                        "excerpt": "", "raw_ref": "r", "digest": "d"}]),
         ("evidence", [{"source": "gbif", "locator": "/v1/./occurrence/search"}]),
+        # a client removes every dot segment, however many (#83 round 1)
+        ("evidence", [{"source": "gbif", "locator": "/v1/././occurrence/search"}]),
+        ("evidence", [{"source": "gbif", "locator": "/v1/x/../occurrence/search"}]),
         ("authority_results", {"k": {"context_json": '{"museum_published": true}'}}),
         ("authority_results", {"k": {"signals": {"occurrence": "supports"}}}),
         ("tool_calls", [{"tool": "occurrence_search", "source": "gbif", "arguments": {"q": "x"}}]),
@@ -244,9 +248,9 @@ def test_a_gbif_occurrence_request_in_any_record_of_any_run_fails_while_d4_is_of
 
 
 def test_a_gadm_call_fails_against_plan_4_8_and_other_gbif_calls_are_reported():
-    # Coordinator ruling (2026-09-25): PLAN 4.8 does not use GADM, not even as a measurement. It is not an
-    # occurrence request (D4); PLAN 4.8's only GBIF rows are species match (G23) and the held occurrence
-    # search, so another GBIF call is reported for the coordinator, not failed.
+    # Coordinator ruling (2026-09-25): PLAN 4.8 does not use GADM, not even as a measurement, so a GADM call
+    # fails on that ground; it is not an occurrence request (D4). Reporting any other GBIF call is the lab's
+    # own choice: PLAN 4.8's only GBIF rows are species match (G23) and the held occurrence search.
     def stage_7(key, value):
         snap = snapshot()
         snap["run"][key] = value
@@ -260,6 +264,24 @@ def test_a_gadm_call_fails_against_plan_4_8_and_other_gbif_calls_are_reported():
         assert stage["status"] == "failed" and "GADM is not used (PLAN 4.8)" in stage["detail"], key
     other = stage_7("tool_calls", [{"tool": "dataset_lookup", "source": "gbif", "arguments": {"q": "x"}}])
     assert other["status"] != "failed" and "outside PLAN 4.8" in other["detail"]
+    # with no tool-call record, the reported call is the stage's whole finding (#83 round 1)
+    alone = stage_7("lookups", [{"provider": "gbif", "adapter_version": "dataset-v1", "status": "success"}])
+    assert alone["status"] == "not checked" and "outside PLAN 4.8" in alone["detail"], alone
+    assert "0 tool calls" not in alone["detail"], alone
+
+
+def test_134s_species_match_evidence_is_not_reported_outside_plan_4_8():
+    # #134 (harness_ledger.py) records a GBIF species match's evidence as source "gbif" with the locator
+    # "usage/<key>", or with no locator when the lookup failed; its tool call names the evidence it wrote.
+    snap = snapshot()
+    snap["run"]["tool_calls"] = [{"call_key": "k1", "tool": "taxonomy_verifier", "source": "gbif",
+                                  "outcome": "failed", "evidence_id": "ev-2"}]
+    snap["run"]["evidence"] = [
+        {"id": "ev-1", "kind": "lookup", "source": "gbif", "locator": "usage/5143893", "excerpt": "gbif success"},
+        {"id": "ev-2", "kind": "lookup", "source": "gbif", "locator": None, "excerpt": "gbif failed"},
+    ]
+    stage = next(s for s in lab_checks.check_stages(evidence(snap), SOURCE, SUBJECT) if s["stage"] == "7")
+    assert stage["status"] == "not checked" and "outside PLAN 4.8" not in stage["detail"], stage
 
 def test_stage_4_is_not_built_only_without_run_rows_and_never_passes_an_empty_set():
     other_run = {"pipeline_run": [{"id": "another-run", "specimen_id": "specimen-1"}]}

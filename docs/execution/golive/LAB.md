@@ -30,11 +30,12 @@ uv run python scripts/lab/run_specimen.py subject_105526321
 | `--lab-allowance-usd` | 5.00 | the lab's share of G9: refuse to start when recorded lab spend plus `--max-run-usd` exceeds it |
 | `--timeout-seconds` | 1800 | stop driving the record after this |
 | `--dry-run` | off | preflight and image fetch only: no app, no paid call |
+| `--report-only` | off | rebuild `reports/<subject>.md` from the run folders and stop, for example after a person writes a run's `verdict.md`: no preflight beyond the values file, no fetch, no app |
 
 ### Phases
 
-1. **Preflight.** The subject id is `subject_` and digits. Load and allowance
-   are checked. The inference switch and token are present; only presence is
+1. **Preflight.** The subject id is `subject_` and digits. The values file is
+   located and read first (see Secrets). Load and allowance are checked. The inference switch and token are present; only presence is
    read, never a value.
 2. **Fetch.** `gs://specimen-digitization.firebasestorage.app/microscopic-slides/<subject>.jpeg`
    with application default credentials. Size, generation, MD5 and SHA-256 are
@@ -49,8 +50,9 @@ uv run python scripts/lab/run_specimen.py subject_105526321
    view, crops, each reading's raw response, every SQL row, timings, costs and
    trace ids.
 6. **Check.** Each PLAN 4.1 stage is scored from what the app recorded.
-7. **Report.** The files below. The subject report is rebuilt from every run
-   of that subject.
+7. **Report.** The files below, written even when a phase or the lane's
+   teardown fails. The subject report is rebuilt from every run of that
+   subject, at the end of each run or with `--report-only`.
 
 ### Stage checks
 
@@ -62,7 +64,7 @@ uv run python scripts/lab/run_specimen.py subject_105526321
 | 4 Raw transcripts to SQL | the run's `pipeline_run` row names this specimen, and there is one `model_observation` row with `independent` true per reading, with the snapshot's ids (DATA_CONTRACT.md 2) | not built while SQL holds no `pipeline_run` rows; blocked or failed when the run has no readings to project; failed on any mismatch |
 | 5 Disagreement score | every region's transcript carries a ratio and `bounded-levenshtein-fraction-v1` | failed, or not built |
 | 6 LLM first pass | the run records the first pass's decision and what each reader handed to the harness | not built |
-| 7 Agentic harness | the run records tool calls with typed outcomes | failed on a GBIF occurrence request while D4 is held. PLAN 4.8's table lists GBIF only for species match (G23) and the held occurrence search. A request is: a GBIF record (by `source`, `provider`, `source_id`, `tool` or `tool_id`) whose identity or percent-decoded path names the occurrence search, with or without a host, or which carries occurrence query keys; any record naming `api.gbif.org/v1/occurrence`; a plain or escaped `"museum_published": true`, or an occurrence signal that supports or conflicts; receipt blobs showing any of these; or a request the runner counts, before sending, at `bounded_http` in the parent or on an injected `httpx` client, to `api.gbif.org` with the `/v1/occurrence` path or occurrence query keys. Failed on any GADM call (a `gbif_gadm` source or `gbif-gadm` adapter): PLAN 4.8 does not use GADM, not even as a measurement (coordinator ruling, 2026-09-25). GADM is not an occurrence request, so it stays outside D4. A call held by policy sent nothing and is skipped. Any other GBIF call is outside PLAN 4.8's table and is reported for the coordinator. Not checked while the runner's count is unavailable, or while tool calls are recorded (S4's checks to come); not built when the run records neither |
+| 7 Agentic harness | the run records tool calls with typed outcomes | failed on a GBIF occurrence request while D4 is held. PLAN 4.8's table lists GBIF only for species match (G23) and the held occurrence search. A request is: a GBIF record (by `source`, `provider`, `source_id`, `tool` or `tool_id`) whose identity or path names the occurrence search, with or without a host, or which carries occurrence query keys; any record naming `api.gbif.org/v1/occurrence`; a plain or escaped `"museum_published": true`, or an occurrence signal that supports or conflicts; a receipt blob showing any of these, as text or as a record; or a request the runner counts, before sending, at `bounded_http` in the parent or on an injected `httpx` client, to `api.gbif.org` with the `/v1/occurrence` path or occurrence query keys, in its parameters or its URL. Paths are percent-decoded, with every `.` and `..` segment removed as a client sends them. Failed on any GADM call (a `gbif_gadm` source or `gbif-gadm` adapter): PLAN 4.8 does not use GADM, not even as a measurement (coordinator ruling, 2026-09-25). GADM is not an occurrence request, so it stays outside D4. A call held by policy sent nothing and is skipped. Species match is known by its tool (`taxonomy_verifier`), adapter (`species-match`) or path (`/v2/species/match`), and in #134's evidence by a `usage/<key>` locator or the evidence id its tool call names. Reporting any other GBIF call for the coordinator is the lab's own choice, since PLAN 4.8's table has no row for it. Not checked while the runner's count is unavailable, while tool calls are recorded (#134; S4's checks to come), or while other GBIF calls are reported; not built when the run records none of these |
 | 8 Queue decision | for the ten, needs human review with its reasons, their expected outcome (PLAN 8, 879-883); a person compares the reasons against the expected outcomes below and records any wrong one as a failure in the run's `verdict.md`, so the stage reads not checked; for other subjects, exactly one disposition with its reasons | failed when one of the ten gets any other disposition, goes to review with no reason, or has no disposition; blocked while `processing_blocked` or `retry_scheduled`, naming the blocker (or the reasons, when there is none) and the app's next step |
 | 9 Linkage | every region, reading and transcript points to this specimen, asset and run. In SQL, stage 4 covers the readings; the check that SQL holds every artifact the final snapshot has (DoD-4; PLAN 8, 864-869) arrives with the lab's T3a | failed |
 | Tracing | DoD-5 (PLAN 1): "Each run is one Logfire trace, linked from the record in the app, that shows SAM 3's parameters, every model call's system prompt and text input and output, the LLM first pass, the harness's tool calls and the queue decision" | not built while the run stores no trace id (`Run.trace_id`); not checked while it does, until the lab holds a Logfire read token (owner action) to read the trace; the lab's own root trace id is always recorded |
@@ -179,7 +181,8 @@ and the expected outcome per slide is in
   responses/<observation id>.json
   rows/<table>.json
   verdict.md  a person's verdict: written by a person, never by the runner;
-              the subject report carries it
+              the subject report carries it after the next run, or at
+              once with --report-only
   state/  the app's blobs and local database for this run, unredacted: never
           shared or attached anywhere
 ~/specimen-golive/reports/<subject>.md
@@ -193,11 +196,20 @@ prices in `docs/execution/LIVE_PILOT_COST.md` 42-47. It prices any other tokens
 the run used, such as the extraction call, at the highest known price and labels
 that figure an upper bound. Until production's reserve-then-settle ledger
 lands, every paid attempt without settled usage is held at the full per-call
-bound, 16,000 tokens at the highest known price: an unknown outcome
-(coordinator ruling, 2026-09-23) and, as the lab's own extension after #86, a
-call that returned and then failed. SAM 3 on
+bound: an unknown outcome (coordinator ruling, 2026-09-23, which names the
+bound but no figure) and, as the lab's own extension after #86, a call that
+returned and then failed. The figure is the lab's: 16,000 tokens, the readers'
+and extraction's usage limit per call (`production.py`), at the highest known
+price, USD 0.0192. That is a worst case for the call's cost. It is below PLAN
+4.3's floor of 20,000 micro-dollars per request, which governs production's
+reservations, not this tally.
+
+The runner prices a run before it scores the stages. A run that cannot be
+priced once its lane has started is held whole at `--max-run-usd`, since
+completing the upload starts processing and paid calls may have run. SAM 3 on
 this workstation costs nothing. Every run's cost and the lab's running total
-against its USD 5.00 share go into `run.json` and its report (G9, G30).
+against its USD 5.00 share go into `run.json` and its report (G9, G30), even
+when a phase or the lane's teardown fails.
 
 ### Secrets
 
@@ -213,19 +225,27 @@ JWT. It also removes what PLAN 7.7 keeps out of shared logs and issues:
   run's dependencies, and any `*.run.app` host or address;
 - the administrator's identity: any email address (an ADC error names the
   caller); the fields that name a person, redacted by field wherever they
-  appear: `asset.uploader`, `audit[].actor`, `Transcript.actor`, and the SQL
-  columns `actor_uid`, `created_by`, `uid`, `user_id`, `uploader_uid`
+  appear: `asset.uploader`, `audit[].actor`, `Transcript.actor`,
+  `classification_selection.actor_id`, and the SQL columns `actor_uid`, `created_by`, `uid`, `user_id`, `uploader_uid`
   (`SourceAsset.uploaderUid`) and `approved_by` (`ProfileVersion.approvedBy`); and the private values the file
   `LAB_REDACT_VALUES_FILE` lists, such as a signed-in UID and the GCP project
   number. That file must be under `~/specimen-release-private/` (PLAN 840), never
-  in a repository. The runner refuses any other path, and writes nothing when
-  the variable is unset or the file is unreadable or empty;
+  in a repository. The runner checks where the file is before reading it,
+  then reads it once from the resolved path, `~` included; the redactor uses
+  those values and never reads the file itself. The runner refuses any other
+  path, and writes nothing when the variable is unset, or the file is
+  unreadable, empty, or has no line of at least 3 characters;
 - billing and organization ids: `HF_BILL_TO`'s organization and the Logfire
   project URL's organization slug;
 - more secrets: the SAM lab token, the Logfire read token, the Geocoding key
-  (`SPECIMEN_GOOGLE_MAPS_API_KEY`), and the `AIza...` and `pylf_...` shapes.
+  (`SPECIMEN_GOOGLE_MAPS_API_KEY`), and the `AIza...` and `pylf_...` shapes;
+- the account name: paths under the home directory are written relative to
+  `~`, since the account name can equal the Logfire organization slug.
 
-Values under 8 characters are matched as whole words. The runner never reads
+Matching ignores case, and an email is also found percent-encoded (`%40`).
+Values under 8 characters are matched as whole words. Every artifact that
+decodes as UTF-8 text is redacted, whatever its suffix; images and other
+binary files are written as they came. The runner never reads
 `.env` or `.logfire/`.
 
 ### Tests
