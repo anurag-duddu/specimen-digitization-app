@@ -162,6 +162,35 @@ class Observation(Record):
     output_tokens: int = 0
 
 
+class ReadingSpan(Record):
+    """The text between two character offsets of one reading."""
+
+    start: int = Field(ge=0)
+    end: int = Field(ge=0)
+    text: str
+
+
+class FirstPassDifference(Record):
+    """One numbered difference between the readings, with the first pass's verdict:
+    the supported reading's observation ID, `neither` or `uncertain`."""
+
+    number: int = Field(ge=1)
+    spans: dict[str, ReadingSpan]
+    verdict: str
+    material: bool
+
+
+class FirstPassDecision(Record):
+    """The first pass for one region: a reading chosen verbatim, or none."""
+
+    region_id: str
+    selected_observation_id: str | None
+    rationale: str
+    notes: dict[str, str]
+    differences: list[FirstPassDifference]
+    call: Observation
+
+
 class Transcript(Record):
     value_state: ValueState | None = None
     region_id: str
@@ -251,7 +280,7 @@ class StageCostReservations(Record):
         import re
 
         if any(
-            stage not in {"segment", "classify", "parse"}
+            stage not in {"segment", "classify", "parse", "first_pass"}
             and not re.fullmatch(r"transcribe:[a-z0-9][a-z0-9-]{0,99}", stage)
             for stage in self.cost_micros
         ):
@@ -264,6 +293,8 @@ class StageCostReservations(Record):
             if len(parts) != 3:
                 return None
             step = "transcribe:" + parts[2]
+        elif step.startswith("first_pass:"):
+            step = "first_pass"  # One reservation for every region's first pass.
         return self.cost_micros.get(step)
 
 
@@ -330,6 +361,7 @@ class Profile(Record):
     policy_version: str = "insects-clearance-v1"
     mandatory_fields: tuple[str, ...] = MANDATORY
     routes: tuple[str, str] = ("handwriting-qwen", "handwriting-muse")
+    first_pass_route: str | None = None
     synthetic: bool = False
     institutional_policy_approved: bool = False
     semantics_confirmed: bool = False
