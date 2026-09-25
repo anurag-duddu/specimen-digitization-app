@@ -659,7 +659,7 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     "authority_identity": {"source": "google-maps-geocoding", "source_record_id": "…"},
     "settled_observation_ids": [],
     "evidence": [{"evidence_id": "…", "relation": "supports", "source": "google-maps-geocoding",
-      "locator": "place/…", "outcome": "success", "observation_ids": []}],
+      "locator": "place/…", "outcome": "success", "region_id": "…", "observation_ids": []}],
     "findings": []}],
   "decision": {"disposition": "needs_human_review", "policy_version": "…",
     "reason_codes": ["…"], "summary": "…",
@@ -726,11 +726,18 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   entry of a per-label map carries its label's selected reading. The settled
   value is `normalized` and `authority_id` (rule 1.6), and `evidence` gives each
   linked source's G23 relation: `success` or `recorded` evidence only, while
-  every other outcome is in `tool_calls`. An `evidence` entry's
-  `observation_ids` are the readings its stored evidence quotes, from the
-  domain `Evidence.observation_ids`, and empty for a lookup; so readers that
-  agree without a pick keep one verbatim and show each agreeing reader's own
-  literal evidence (agreed with S4).
+  every other outcome is in `tool_calls`. An `evidence` entry's `region_id`
+  and `observation_ids` say where it comes from (S6's #189):
+  - a lookup's are those of the call that made it, the `ToolCallRecord` whose
+    `evidence_id` it is: the region the call ran for (a decided-transcript
+    call's is its decision's) and, for a call on a raw reading, that reading,
+    else none. So G32's lookups of one field on two labels show their two
+    regions;
+  - stored evidence keeps its own, from the domain `Evidence`, so readers that
+    agree without a pick keep one verbatim and show each agreeing reader's own
+    literal evidence (agreed with S4);
+  - evidence with neither a producing call nor a region has a null
+    `region_id` and no readings.
 - `settled_observation_ids` lists, in `verbatim` order (the domain map's), the
   readings through which the field's value settled (G20, G32):
   - with a verbatim map (several labels, or a no-pick label), the settled
@@ -830,6 +837,9 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   (section 4.3), and its `evidence` is every candidate's linked evidence, each
   item once. A `derived` candidate, the one with `derivedFromFieldKeys`, has no
   literal, so it adds no `verbatim` entry.
+- **Evidence places.** `thread.evidence_places` gives each evidence entry its
+  `region_id` and `observation_ids` from the snapshot: the `ToolCallRecord`
+  that made it, else the stored `Evidence`. SQL's evidence rows hold neither.
 - **Findings.** A field's `findings` are the `decision.findings` entries whose
   `fieldKey` is the field, from the same `ValidationFinding` rows.
 - **Settled readings.** A field is a verbatim map when the snapshot's field has

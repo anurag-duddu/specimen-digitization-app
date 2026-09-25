@@ -914,3 +914,20 @@ def _finding(found: dict) -> FindingThread:
         reason_code=found["reasonCode"],
         evidence_ids=[_id(e) for e in found.get("evidenceIds") or []],
     )
+
+
+def evidence_places(run) -> dict[str, tuple[str | None, list[str]]]:
+    """Each evidence item's region and readings, from the snapshot (section 8; S6's #189).
+
+    A lookup's are those of the call that made it, the `ToolCallRecord` whose `evidence_id` it
+    is: the region the call ran for and, for a call on a raw reading, that reading. Stored
+    evidence keeps its own. So G32's lookups of one field on two labels show their two regions.
+    """
+    regions = {o.id: o.region_id for o in run.observations}
+    places = {item.id: (item.region_id, list(item.observation_ids)) for item in run.evidence}
+    for record in getattr(run, "tool_calls", None) or []:
+        if record.evidence_id:
+            raw = record.input_source == "raw_reading" and record.observation_id
+            region = record.region_id or regions.get(record.observation_id)
+            places[record.evidence_id] = (region, [record.observation_id] if raw else [])
+    return places
