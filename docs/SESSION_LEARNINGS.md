@@ -12101,3 +12101,26 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: a filter specification is a pipeline. State its steps in order: source check, cuts, expansion, then the cuts again on what the expansion added. Several review findings came from steps whose order was only implied.
 - Remaining follow-ups: unchanged from the entry above.
+
+### 2026-09-25 — Go-live S6: #181's review follow-ups, and corrections to its entry
+
+- Task: the steward's review of #181 (merged as `e11ea68`; comment 5824438013, items 1-4 and 7), done in #182, which touches the same seam.
+- Branch/worktree: `golive/ui-reviewer-clock` (#182), retargeted to `main` after #181 merged, with `main` merged in; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `debugWallTimeOverride` counts only under `kDebugMode`, so a release build always reads the host zone. The host reader is private, and the guard flags either name anywhere else in `lib`.
+  - On the web a browser names the zone in full ("Central Daylight Time"). `zoneAbbreviation` shortens a name of several words to its initials, as 02 section 4.14 writes it ("CDT"), keeping UTC as UTC and an abbreviation or an offset as it is.
+  - The guard now also checks the `DateTime.new` constructor, an epoch without `isUtc`, and wall-clock fields of `DateTime.now()`. A scanned root that goes missing fails it, and its doc claims only what it checks.
+  - A History assertion runs in CI, where goldens don't compare: `citedInstant('2026-09-07T10:00:00Z')` is "7 Sep 2026, 05:00 CDT".
+- Corrections to the entry "Go-live S6: goldens no longer depend on the host's time zone" (item 7; the log is append-only):
+  - its pull request is #181, merged as `e11ea68`;
+  - its claim that "a guard test fails on any other host-zone read" was wider than the regex. The regex checked `toLocal()`, `timeZoneName`, `timeZoneOffset` and `DateTime(`, not the other reads listed above;
+  - a release build honoured the override;
+  - on the web the zone read as a full name, not the "CDT" design/02 asks for.
+- Commits/PRs: red `09f6fc7`; green `02df2f6`; in #182.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the zone, queue row and source screen tests 49 passed; the full app suite 1,586 passed, 7 skipped, 0 failed, on the host zone (America/New_York, no `TZ` set: the pin is in).
+- Durable learnings:
+  1. A guard's doc must claim exactly what its check checks. "Fails on any other host-zone read" read as complete, and the reviewer found five reads it missed. Name the patterns, and name what isn't checked.
+  2. A `debug…Override` must be gated by `kDebugMode` where it is read, as Flutter's own overrides are. A global that release code honours is a production switch anyone can flip.
+  3. `DateTime.timeZoneName` differs by platform: the VM gives "CDT", dart2js gives the browser's "Central Daylight Time". Code that prints a zone for a web app must normalize it, and a VM-only test suite will never show the difference.
+- Failed approaches: none.
+- Remaining follow-ups: at #73's turn, record the coordinator's zone ruling in UI.md (PLAN 7.2). At the turns of #102, #114, #133 and #140, re-verify their goldens on macOS after merging `main`, and regenerate any that differ.
