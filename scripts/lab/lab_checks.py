@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 from itertools import permutations
+import json
+import re
 
 METRIC = "bounded-levenshtein-fraction-v1"
 SAM3_MODEL = "facebook/sam3"
 SUBSTITUTE = "reviewed_region"
 DISPOSITIONS = {"cleared", "needs_human_review", "deferred"}
 BLOCKED = {"processing_blocked", "retry_scheduled"}
+# D4 is held, so its occurrence check is off and sends nothing (PLAN 2, coordinator rulings). A request
+# shows as the occurrence API, an occurrence query, or S8's markers (GEOREFERENCING.md 376-394).
+D4_MARKERS = re.compile(r"/v1/occurrence|\bcatalogNumber\b|\brecordedBy\b|occurrence|museum_published", re.I)
+D4_RECORDS = ("tool_calls", "lookups", "authority_results", "authority_receipts", "evidence")
 PROVENANCE = ("model_id", "provider", "prompt_version", "input_sha256", "raw_ref", "raw_sha256")
 # Labels of the ten pilot slides as fractions of the frame's width, full height (S8's
 # table and the images, 2026-09-23). The left box includes the barcode's printed catalog
@@ -36,10 +42,10 @@ def check_stages(evidence, source, subject):
         ("4", "Raw transcripts to SQL", normalized(rows, snap)),
         ("5", "Disagreement score", disagreement(run)),
         ("6", "LLM first pass", ("not built", "no first-pass record on this commit")),
-        ("7", "Agentic harness", harness(run, lookups)),
+        ("7", "Agentic harness", harness(runs, lookups)),
         ("8", "Queue decision", queue(run, subject)),
         ("9", "Linkage", linkage(snap, runs)),
-        ("trace", "Tracing", ("not built", "the run stores no trace id on this commit")),
+        ("trace", "Tracing", tracing(run)),
     ]
     return [{"stage": k, "name": n, "status": s, "detail": d} for k, n, (s, d) in stages]
 
@@ -54,7 +60,7 @@ def verdict(phases, stages):
 
 def blocked_or_failed(run, detail):
     if run.get("stage") in BLOCKED:
-        return "blocked", f"{run.get('blocker')} at {stalled(run)}; {detail}"
+        return "blocked", f"{run.get('blocker') or run.get('reasons')} at {stalled(run)}; {detail}"
     return "failed", detail
 
 
@@ -65,7 +71,7 @@ def stalled(run):
         from specimen_digitization.application.workflow import Workflow
 
         return [Workflow.next_step(Run.model_validate(run))]
-    except Exception:  # a snapshot of another commit's model: fall back to what the app attempted
+    except (ImportError, ValueError, KeyError, TypeError):  # another commit's model: what the app attempted
         done = set(run.get("completed_steps") or [])
         return [step for step in run.get("attempts") or {} if step not in done]
 
@@ -73,7 +79,8 @@ def stalled(run):
 def images(asset, source, subject):
     same = asset.get("sha256") == source.get("sha256")
     named = asset.get("filename") == subject + ".jpeg"
-    detail = f"asset {asset.get('sha256', '')[:12]} from {source.get('object_name')}"
+    detail = (f"the asset's SHA-256 {'matches' if same else 'differs from'} the fetched object's; "
+              f"file name {asset.get('filename')}, from {source.get('object_name')}")
     return ("passed" if same and named else "failed"), detail
 
 
@@ -86,17 +93,21 @@ def segmentation(run, runs, asset, subject, substituted):
     if not regions or seg.get("model_id") != SAM3_MODEL:
         return blocked_or_failed(run, "no SAM 3 regions on the run")
     detail = f"{len(regions)} regions, revision {seg.get('model_revision')}, settings {seg.get('settings')}"
-    if subject not in LAYOUT:
-        return "passed", detail + "; label coverage not checked: no known layout for this subject"
-    missing = uncovered(LAYOUT[subject], regions, asset["width"], asset["height"])
-    if not missing:
-        return "passed", detail + f"; a distinct region covers every label box {LAYOUT[subject]}"
-    # The lab's boxes are ground truth for G15: a miss is wrong only if the lane's own check let it through.
-    if run.get("coverage_check") is None:
-        return "not built", detail + f"; label box {missing} uncovered, and the run carries no coverage check (G15)"
-    if run.get("coverage_confirmed") is False:
-        return "passed", detail + f"; label box {missing} uncovered, and the lane's coverage check caught it"
-    return "failed", detail + f"; label box {missing} uncovered, and the lane's coverage check let it through"
+    status = (run.get("coverage_check") or {}).get("status")
+    if subject in LAYOUT:
+        missing = uncovered(LAYOUT[subject], regions, asset["width"], asset["height"])
+        measure = (f"the lab's measure finds label box {missing} uncovered" if missing
+                   else f"the lab's measure finds a distinct region on every label box {LAYOUT[subject]}")
+    else:
+        missing, measure = [], "label coverage not checked by the lab: no known layout for this subject"
+    # A pass needs the lane's own check (G15, DATA_CONTRACT.md 612); the lab's boxes are ground truth.
+    if status is None:
+        return "not built", detail + f"; the run carries no coverage check (G15); {measure}"
+    if status == "passed":
+        return ("failed" if missing else "passed"), detail + f"; the lane's check passed; {measure}"
+    if status == "failed":
+        return "passed", detail + f"; the lane's check failed and sent the record to review; {measure}"
+    return "not checked", detail + f"; the lane's check did not run ({status}); {measure}"
 
 
 def covers(box, region, width, height):
@@ -173,12 +184,12 @@ def disagreement(run):
     return "passed", f"{METRIC}: {', '.join(scores)}"
 
 
-def harness(run, lookups):
-    calls = run.get("tool_calls") or []
-    occurrence = [c.get("call_key") for c in calls
-                  if "occurrence" in f"{c.get('tool', '')} {c.get('source', '')}".lower()]
-    if occurrence:
-        return "failed", f"D4 is held, so its occurrence check is off, yet the run sent {occurrence[:4]}"
+def harness(runs, lookups):
+    hits = [f"{run.get('id', '?')[:8]}/{key}" for run in runs for key in D4_RECORDS
+            if D4_MARKERS.search(json.dumps(run.get(key) or [], default=str))]
+    if hits:
+        return "failed", f"D4 is held, so its occurrence check is off, yet GBIF occurrence requests appear in {hits[:6]}"
+    calls = runs[-1].get("tool_calls") or []
     if calls:
         return "not checked", f"{len(calls)} tool calls recorded; stage 7's checks follow S4's contract"
     return "not built", f"no tool-call record on this commit; deterministic lookups: {[x['status'] for x in lookups]}"
@@ -186,8 +197,12 @@ def harness(run, lookups):
 
 def queue(run, subject):
     disposition, reasons = run.get("disposition"), run.get("reasons") or []
-    if disposition == "cleared" and subject in LAYOUT:
-        return "failed", f"one of the ten cleared, but all ten go to needs human review (PLAN 8, G42); {reasons}"
+    if subject in LAYOUT and disposition in DISPOSITIONS:
+        # All ten go to needs human review (PLAN 8, 879-883); their reasons are compared by hand.
+        if disposition != "needs_human_review":
+            return "failed", f"one of the ten got {disposition}, but all ten go to needs human review; {reasons}"
+        return "not checked", (f"needs human review, as expected; reasons compared by hand against "
+                               f"expected-outcomes.md: {reasons}")
     if disposition in DISPOSITIONS and (reasons or disposition == "cleared"):
         return "passed", f"{disposition}: {reasons}"
     return blocked_or_failed(run, f"stage {run.get('stage')}, disposition {disposition}, reasons {reasons}")
@@ -207,3 +222,11 @@ def linkage(snap, runs):
     if problems:
         return "failed", "; ".join(problems[:6])
     return "passed", f"{len(runs)} run(s) link to specimen {snap['id'][:8]} and asset {asset_id[:8]}"
+
+
+def tracing(run):
+    trace_id = run.get("trace_id")
+    if not trace_id:
+        return "not built", "the run stores no trace id (Run.trace_id)"
+    return "not checked", (f"trace {trace_id} stored; what it shows (DoD-5) is read once the lab holds a "
+                           "Logfire read token")
