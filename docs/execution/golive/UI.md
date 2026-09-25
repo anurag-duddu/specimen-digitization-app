@@ -327,6 +327,27 @@ option (b): every value names its own layer.
    two applies: a field the record has changed since the run shows none.
 4. A screen reader hears the label right after the field's name.
 
+Part five puts the rest of a field's evidence in words, under the
+coordinator's wording rulings for S6 of 2026-09-24. Each ruling was
+checked against design/02. S5 confirmed the source ids the same day.
+
+1. Literal evidence from the harness (`field_harness`) names the reading
+   it quotes, by its reader's display name and never a route id: "<reader>'s
+   reading supports this value", or "<A>'s and <B>'s readings support this
+   value". The owner asked to see which model gave what.
+2. A reviewer's filled value (`review_decision`, T6) is a line of its own:
+   "Set by a reviewer".
+3. The settled value's authority (`authority_identity`) is one secondary
+   line in the Values disclosure, never on the row's face: "<Source> record
+   <id>", then the credit its licence asks for when there is one, since a
+   licence such as CC BY expects the credit where the data is shown. A
+   Google identity shows the place ID and no name, "Google Maps place ID
+   <id>" (G26). A derived value's authority is its rules, which the thread
+   will carry as `fields[].derivation` (S5, #171). Until then a derived
+   value shows no identity line. When it lands, each rule reads in plain
+   words, "Converted from feet (1 ft = 0.3048 m)", with the rules version
+   only as detail.
+
 ### T2.4 The coverage check and the decision's findings
 
 The thread explains what the record states; it never adds a blocker the
@@ -357,6 +378,17 @@ status strip's blockers).
   They follow the Fields segment's rule: shown while the field stands as
   the run left it. Hard findings keep coming from the workspace, in the
   blockers list and on their fields, so none is stated twice.
+- A field's own `findings` (#171: the record's findings that name it, from
+  the same rows as the decision's) take the place of filtering the
+  decision's list, which remains the source for a thread shaped before
+  #171.
+- G45's reason, `value_shape_mismatch:{field}`, reads "Doesn't look like a
+  <field>", with the field's name and the right article: "Doesn't look like
+  a collector", "Doesn't look like a habitat" (coordinator ruling, from the
+  owner's "doesn't look like its field's kind"). Collectors, the one plural
+  name among the fields S4 checks, reads as "a collector". The code is
+  stored with its field, so the reason picker leaves it out until S5's T5
+  search matches suffixed codes (ruling (b)).
 
 ### T2.5 Processing: the run and its trace
 

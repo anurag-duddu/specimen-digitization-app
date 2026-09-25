@@ -68,6 +68,28 @@ void main() {
     expect(reasonLabel('new_rule_fired'), 'New rule fired');
   });
 
+  test("G45's reason says what the value doesn't look like", () {
+    for (final (String code, String words) in <(String, String)>[
+      ('value_shape_mismatch:collectors', "Doesn't look like a collector"),
+      ('value_shape_mismatch:habitat', "Doesn't look like a habitat"),
+      (
+        'value_shape_mismatch:collection_code',
+        "Doesn't look like a collection code",
+      ),
+      (
+        'value_shape_mismatch:elevation_note',
+        "Doesn't look like an elevation note",
+      ),
+    ]) {
+      expect(reasonLabel(code), words, reason: code);
+    }
+    expect(
+      suffixedReasonCodes,
+      contains('value_shape_mismatch'),
+      reason: 'stored with its field, so the picker leaves it out until T5',
+    );
+  });
+
   test("the queue's rows read the words", () {
     expect(
       queueReason(

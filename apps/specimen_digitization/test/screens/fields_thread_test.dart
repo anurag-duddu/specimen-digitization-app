@@ -324,6 +324,27 @@ void main() {
       'reason_code': 'authority_sources_disagree',
     };
 
+    testWidgets("a field's own findings are read first (#171)", (
+      WidgetTester tester,
+    ) async {
+      final Json json = fixtureJson();
+      fieldIn(json, 'country')['findings'] = <Json>[
+        <String, dynamic>{
+          'rule_id': 'value-shape',
+          'severity': 'warning',
+          'field_key': 'country',
+          'reason_code': 'value_shape_mismatch:country',
+        },
+      ];
+      final SpecimenThread thread = SpecimenThread.fromJson(json);
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      expect(
+        inRow('country', find.text("Doesn't look like a country")),
+        findsOneWidget,
+        reason: "the field's list, though the decision's does not name it",
+      );
+    });
+
     testWidgets('a warning attaches to its field as worth checking', (
       WidgetTester tester,
     ) async {
@@ -717,6 +738,154 @@ void main() {
         findsOneWidget,
       );
       handle.dispose();
+    });
+  });
+
+  group('evidence in words (UI.md T2.3 part five)', () {
+    const String qwen = 'Qwen/Qwen2.5-VL-72B-Instruct';
+    const String muse = 'muse-handwriting-fixture';
+
+    /// Inside the row's Values disclosure, never on its face.
+    Finder inValues(String key, String text) => inRow(
+      key,
+      find.descendant(of: find.byType(UiDisclosure), matching: find.text(text)),
+    );
+
+    /// One evidence entry from [source], quoting [readings].
+    Json evidence(
+      String source, {
+      String relation = 'supports',
+      List<String> readings = const <String>[],
+    }) => <String, dynamic>{
+      'evidence_id': 'evidence-$source',
+      'relation': relation,
+      'source': source,
+      'locator': null,
+      'outcome': 'recorded',
+      'observation_ids': readings,
+    };
+
+    testWidgets("the harness's evidence names the reading it quotes", (
+      WidgetTester tester,
+    ) async {
+      final Json json = fixtureJson();
+      fieldIn(json, 'country')['evidence'] = <Json>[
+        evidence('field_harness', readings: <String>['obs-right-qwen']),
+      ];
+      fieldIn(json, 'province_state')['evidence'] = <Json>[
+        evidence(
+          'field_harness',
+          readings: <String>['obs-right-qwen', 'obs-right-muse'],
+        ),
+      ];
+      final SpecimenThread thread = SpecimenThread.fromJson(json);
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      expect(
+        inValues('country', "$qwen's reading supports this value"),
+        findsOneWidget,
+      );
+      expect(
+        inValues(
+          'province_state',
+          "$qwen's and $muse's readings support this value",
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('field_harness'), findsNothing);
+    });
+
+    testWidgets("a reviewer's filled value says so", (
+      WidgetTester tester,
+    ) async {
+      final Json json = fixtureJson();
+      fieldIn(json, 'country')['evidence'] = <Json>[
+        evidence('review_decision', relation: 'decides'),
+      ];
+      final SpecimenThread thread = SpecimenThread.fromJson(json);
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      expect(inValues('country', 'Set by a reviewer'), findsOneWidget);
+      expect(
+        inRow('country', find.textContaining('decides this value')),
+        findsNothing,
+      );
+    });
+
+    testWidgets("the authority's record and credit sit in the disclosure", (
+      WidgetTester tester,
+    ) async {
+      final Json json = fixtureJson();
+      fieldIn(json, 'country')['authority_identity'] = <String, dynamic>{
+        'source': 'google-maps-geocoding',
+        'source_record_id': 'fixture-place-id-zacapa',
+      };
+      (json['fields'] as List<dynamic>).add(<String, dynamic>{
+        'field_key': 'taxon',
+        'group': 'mandatory',
+        'state': 'supported',
+        'layer': 'settled',
+        'verbatim': <Json>[
+          <String, dynamic>{
+            'text': 'Tachinidae',
+            'input_source': 'decided_transcript',
+            'region_id': 'region-left',
+            'observation_id': null,
+          },
+        ],
+        'parsed': 'Tachinidae',
+        'normalized': 'Tachinidae',
+        'authority_id': '1111111',
+        'authority_identity': <String, dynamic>{
+          'name': 'Tachinidae',
+          'source': 'gbif',
+          'source_record_id': '1111111',
+          'credit': 'GBIF.org (2026) GBIF Backbone Taxonomy',
+        },
+        'evidence': <Json>[],
+      });
+      final SpecimenThread thread = SpecimenThread.fromJson(json);
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      expect(
+        inValues('country', 'Google Maps place ID fixture-place-id-zacapa'),
+        findsOneWidget,
+        reason: 'a Google identity has no name (G26)',
+      );
+      expect(inValues('taxon', 'GBIF record 1111111'), findsOneWidget);
+      expect(
+        inValues('taxon', 'GBIF.org (2026) GBIF Backbone Taxonomy'),
+        findsOneWidget,
+      );
+      expect(
+        inRow(
+          'taxon',
+          find.descendant(
+            of: find.byType(UiListRow),
+            matching: find.textContaining('GBIF'),
+          ),
+        ),
+        findsNothing,
+        reason: 'never on the row face',
+      );
+    });
+
+    testWidgets('a derived value shows no identity line until its rules', (
+      WidgetTester tester,
+    ) async {
+      final Json json = fixtureJson();
+      fieldIn(json, 'habitat')
+        ..['state'] = 'supported'
+        ..['layer'] = 'derived'
+        ..['derived_from'] = <String>['country']
+        ..['authority_identity'] = <String, dynamic>{
+          'source': 'apply_derivations',
+          'source_record_id': 'derivation-rules-v1',
+        };
+      final SpecimenThread thread = SpecimenThread.fromJson(json);
+      await pumpFields(tester, recordJson(thread), thread: thread);
+      expect(inRow('habitat', find.textContaining(' record ')), findsNothing);
+      expect(
+        inRow('habitat', find.textContaining('apply_derivations')),
+        findsNothing,
+      );
     });
   });
 }
