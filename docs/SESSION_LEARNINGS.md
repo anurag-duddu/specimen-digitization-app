@@ -12411,6 +12411,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - At #140's turn, fold #197's `searchValueLabel` date case into #140's switch.
   - At #73's turn, record the zone rulings in UI.md with their times.
   - When the stack merges `main`, regenerate its queue, queue-selection and workbench-history goldens, and re-verify those of #102, #114, #133 and #140.
+
 ### 2026-09-25 — S8: #201's review follow-ups, and a correction to its entry
 
 - Task: the steward's review of #201 (merged as `400a444`; comment 5826776118, Decision items 1 and 2), done in a second small docs pull request on `main`. Item 3 waits for #154's turn.
