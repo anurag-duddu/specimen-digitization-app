@@ -12,7 +12,9 @@ field and of every value a reviewer puts in one; every token of every clause,
 between commas, semicolons or line breaks, that holds a collector or determiner
 marker the profile's notations name, wherever the marker sits in it; every
 token that carries a digit; the month names and abbreviations the profile
-lists; and a Roman month beside a day or a year. A notation token that survives
+lists; and a Roman month beside a day or a year. Each cut follows the source's
+own tokens, so a value that starts or ends inside a token loses it. A notation
+token that survives
 may then be written out in each of its full forms from the profile's table, and
 a notation is cut whenever one of its full forms is. Text the filter cannot
 recognize, such as a name no reading assigns to any field and no marker
@@ -34,8 +36,8 @@ PLACE_FIELDS = ("country", "province_state", "county", "city", "precise_location
 SEPARATOR = re.compile(r"(\r?\n|[,;])")
 TOKEN = re.compile(r"([^\s,;]+)")
 # A day or a year as written, which puts a Roman numeral beside it in the month
-# position: 3, 14, 1946 or '46.
-DATE_NUMBER = re.compile(r"\d{1,2}|\d{4}|['’]\d{2}")
+# position: 3, 14, 1946, or the profile's year forms '46 and -46.
+DATE_NUMBER = re.compile(r"\d{1,2}|\d{4}|['’-]\d{2}")
 
 
 class PlaceKnowledge(Protocol):
@@ -77,11 +79,12 @@ def place_request_forms(
     in one: a corrected collector's spelling matches no reading's literal."""
     table = _full_forms(knowledge)
     readable = [form for source in sources for form in _forms(source, table)]
-    if not text.strip() or not any(text in source for source in readable):
+    places = [(source, at) for source in readable for at in _found(source, text)]
+    if not text.strip() or not places:
         return None
     cut = _cut_words(readable, non_place_literals, knowledge, table)
     roman = frozenset(fold(month) for month in knowledge.ROMAN_MONTHS)
-    written = _surviving(text, cut, roman)
+    written = _surviving(text, _dropped(text, places, cut, roman))
     return _forms(written, table) if written else []
 
 
@@ -153,10 +156,36 @@ def _forms(text: str, table: Mapping[str, tuple[str, ...]]) -> list[str]:
     return list(dict.fromkeys([text, *map("".join, itertools.product(*choices))]))
 
 
-def _surviving(text: str, cut: frozenset[str], roman: frozenset[str]) -> str:
+def _dropped(
+    text: str,
+    places: Sequence[tuple[str, int]],
+    cut: frozenset[str],
+    roman: frozenset[str],
+) -> set[int]:
+    """Where each token of `text` the cuts take starts. A token is cut when the
+    cuts name it, or when the source token it lies in is cut at any place the
+    value occurs, so a value that starts or ends inside a token loses it too:
+    the "Hoogstraa" of "H. Hoogstraal leg." (the steward's review of #185)."""
+    tokens = [(token.start(), token.end()) for token in TOKEN.finditer(text)]
+    dropped = {start for start, end in tokens if _cut(text[start:end], cut)}
+    spans: dict[str, list[tuple[int, int]]] = {}
+    for source, at in places:
+        if source not in spans:
+            months = _roman_months(source, roman)
+            spans[source] = [
+                (token.start(), token.end())
+                for token in TOKEN.finditer(source)
+                if token.start() in months or _cut(token.group(), cut)
+            ]
+        for start, end in tokens:
+            if any(low < at + end and at + start < high for low, high in spans[source]):
+                dropped.add(start)
+    return dropped
+
+
+def _surviving(text: str, dropped: set[int]) -> str:
     """The clauses of `text` that keep a word after the cuts, single-spaced and
     joined by their own separators."""
-    months = _roman_months(text, roman)
     parts = SEPARATOR.split(text)
     left: list[str] = []
     between: list[str] = []
@@ -165,7 +194,7 @@ def _surviving(text: str, cut: frozenset[str], roman: frozenset[str]) -> str:
         tokens = [
             token.group()
             for token in re.finditer(r"\S+", clause)
-            if start + token.start() not in months and not _cut(token.group(), cut)
+            if start + token.start() not in dropped
         ]
         if fold(" ".join(tokens)):
             left.append((_joint(between) if left else "") + " ".join(tokens))
