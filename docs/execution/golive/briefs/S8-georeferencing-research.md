@@ -37,7 +37,7 @@ and `docs/execution/golive/GEO.md`.
 Each task starts with its spec delta in `docs/execution/golive/GEO.md` and
 failing tests, on its own branch, merged by the steward. PLAN section 4.8
 governs every outside request: every value your tool takes from the
-record, in any parameter of any request, goes through 4.8's place-request
+record or a tier-1 result, in any parameter of any request, goes through 4.8's place-request
 filter, which is S4's single filter and which your request builder calls
 (coordinator ruling). A request template's own constants, such as P625 or
 LIMIT 10, are reviewed fixed parts, not record values. The profile's notation
@@ -65,7 +65,7 @@ your own requests (coordinator ruling).
    through a pull request citing the owner-recorded confirmation, with a test
    that an unconfirmed entry never settles a field.
 5. Tier 2 (G35): Google given the modernized name, or the literal, with the
-   same reading's place fields, keeping only the place ID, the outcome and the
+   same reading's place fields, through S4's filter, keeping only the place ID, the outcome and the
    fingerprint (G26).
 6. Tier 3 and the geographic derivations (D13, D11, G37, G38, G41): the
    in-house point-radius engine; containment for county and city against
