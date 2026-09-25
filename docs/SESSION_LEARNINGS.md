@@ -12243,6 +12243,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - A ruling that arrives after a note is written can contradict the note. The manifest's separately supplied digest was retired in one note and kept by the next ruling. Re-read notes against each new ruling.
 - Failed approaches: round 1's SAM row dropped the candidate, and round 1's PilotLaunch wording kept a map that G2 retires. #184's merge review caught both.
 - Remaining follow-ups: the checker pull request implements items 1 and 2, the new rows, and the G15 reading.
+
 ### 2026-09-25 — Go-live S6: #182's review follow-ups, the reviewer's own day, and log corrections
 
 - Task: the steward's review of #182 (merged as `0fec108`; comment 5825106429, items 1-4 and 7), and the coordinator's ruling of 2026-09-25 applying design/01 H2.1 to the queue's date filter.
