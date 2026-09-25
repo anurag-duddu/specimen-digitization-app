@@ -11,8 +11,10 @@ import 'package:specimen_digitization/src/widgets/thumbnail.dart';
 
 import 'harness.dart';
 
-final DateTime _updated = DateTime(2026, 9, 13, 14, 32);
-final DateTime _now = DateTime(2026, 9, 14, 9);
+// Instants in the host zone, built from UTC so they are the same instants on
+// every machine: 14:32 and 09:00 CDT on the suite's pinned clock.
+final DateTime _updated = DateTime.utc(2026, 9, 13, 19, 32).toLocal();
+final DateTime _now = DateTime.utc(2026, 9, 14, 14).toLocal();
 
 Widget _row({
   bool selected = false,
@@ -66,10 +68,7 @@ void main() {
   });
 
   test('the absolute form is the citable one', () {
-    expect(
-      absoluteTime(DateTime(2026, 9, 13, 14, 32)),
-      startsWith('13 Sep 2026, 14:32 '),
-    );
+    expect(absoluteTime(_updated), '13 Sep 2026, 14:32 CDT');
   });
 
   testWidgets('renders the title, reason, chip, meter and relative age', (

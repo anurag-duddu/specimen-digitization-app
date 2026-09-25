@@ -12058,6 +12058,23 @@ because the hooks runner hands a native asset hook only `PATH`.
   - The first production run waits for #163's live initialization and #170's V3 apply.
   - The owner's pending actions: the readiness marker, #119's IAM list after its review, the curator sheets, and the dataset upload.
 
+### 2026-09-24 — Go-live S6: goldens no longer depend on the host's time zone
+
+- Task: coordinator ruling for S6, 2026-09-24: pin the time zone in the test harness, keep the goldens' visible CDT, and add a test that fails if the host zone leaks in.
+- Branch/worktree: `golive/ui-golden-zone`, based on `main`; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `lib/src/wall_time.dart` is the one place the app reads a zone. In the app `wallTime` reads the host zone; `test/flutter_test_config.dart` pins it to US Central time through `debugWallTimeOverride`.
+  - `absoluteTime` keeps its output exactly: UTC in, UTC out, and any other instant on the wall clock. History uses `absoluteWallTime` in place of its own `toLocal()`.
+  - A guard test fails on any other host-zone read in `lib`: `toLocal()`, `timeZoneName`, `timeZoneOffset`, or the local-time `DateTime(...)` constructor.
+  - `queue_row_test` now builds its instants from UTC.
+- Commits/PRs: red `2ba8eb7`; green ``afb176f``; the pull request is based on `main`.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the full app suite in four zones, each 1,582 passed, 7 skipped, 0 failed, with no golden updated: the host (America/New_York, EDT), UTC, Asia/Kolkata (IST) and America/Chicago (CDT).
+- Durable learnings:
+  1. A test that builds an instant with `DateTime(y, m, d, h, mm)` names a different moment on every machine. It passed only because the code under test read the same host zone back. Pinning the formatter exposed it at once, so run the suite in a zone that is not the goldens' before calling a zone fix done. This machine being in New York made that free.
+  2. Pin behavior, not format. The server's instants arrive in UTC, and parts of the app print them as UTC. Routing everything through the pinned clock would have changed visible text the coordinator ruled must not change. The seam replaces the host zone only where the app actually read it.
+  3. Dart has no in-process way to change the zone, and `Zone` does not intercept `toLocal()`. An override variable in the `debug…Override` idiom is the smallest seam that works on every platform.
+- Failed approaches: the red tests first expected `absoluteTime` of a UTC instant to print CDT. That would have changed the UTC texts on screen, so those tests now target `absoluteWallTime`, and a new test pins the UTC rule.
+- Remaining follow-ups: none for the zone. Once this merges, sessions can drop `TZ=America/Chicago`.
 ### 2026-09-24 — Go-live program: plan corrections after #174
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
@@ -12077,3 +12094,26 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: a filter specification is a pipeline. State its steps in order: source check, cuts, expansion, then the cuts again on what the expansion added. Several review findings came from steps whose order was only implied.
 - Remaining follow-ups: unchanged from the entry above.
+
+### 2026-09-24 — Go-live program: plan corrections after #180
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-7`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #180's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/180#issuecomment-5824214679) in PLAN 4.8's filter:
+    - its scope covers values from the record or a tier-1 result, and its output is what leaves;
+    - Roman-numeral months are cut only in the month position and in any case, so the "I" of "P.I." stays;
+    - an expansion uses each full form the table lists, as sendable words, and only for a notation present in an allowed source (the coordinator ruling on S4's #183);
+    - the fixed parts carry no label text, headers included, with named tests for that, the User-Agent, an escaped quote and a reviewer's place value;
+    - the limit now names tier-1 names the month cut can trim.
+  - Other items:
+    - G35's reading says "the same reading's place fields" in requests 4.8 governs;
+    - `verbatim_dts` is labelled a coordinator hold, not a G45 exception;
+    - S4's T3d takes the G41/G44 record alternative;
+    - S8's brief says "record or tier-1 result", and "through S4's filter" for tier 2.
+  - Corrections (dated 2026-09-24):
+    - The entry "2026-09-24 — Go-live program: plan corrections after #174" above paired rounds wrongly again. In #124's reviews, round 3 found G40's narrowing, the name before its marker ("H. Hoogstraal leg.") and month names ("Sept."); round 4 found S8's own requests; round 5 found the reviewer's non-place values.
+    - That entry's "carries G45's `verbatim_dts` exception" should read "carries the coordinator hold for `verbatim_dts` (section 2.3)": G45 itself has no exception.
+- Validation actually run: the edit script's exact-single-match checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: when a correction is itself history, check it against the primary record (the review comments) before writing it. The earlier round pairing was corrected from memory and was wrong twice.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above.
