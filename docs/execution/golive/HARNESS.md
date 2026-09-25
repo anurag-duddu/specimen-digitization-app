@@ -713,7 +713,17 @@ the dataset), the settled input fields with their values, and its checks.
 - Two derivations of one field that disagree fill it with neither, and it waits
   for review.
 - A filled value is `supported`, with layer `derived`, `parsed` the value,
-  `authority_id` the authority's record id, and `derived_from` its inputs.
+  `authority_id` the authority's record id, and `derived_from` its inputs. It
+  also names its authority and its rules on the value itself, for the thread
+  and the data contract (the steward's review of #180, agreed with S5,
+  2026-09-24):
+  - `authority_identity` is `{source, source_record_id, credit, version}` from
+    its authority. It has no `name` key, because G26's rule tests for the key.
+    A G41 or G44 fill names `apply_derivations` and the rules version, as PLAN's
+    G44 reading and 4.8 require.
+  - `derivation_rules` are its checks' names in the order applied:
+    `stated_elevation`, `feet_to_metres` or `metres_to_feet` for G41, and
+    `one_date_both_ends` for G44. Every other value has none.
 - Its evidence is one `derivation` item, which `decides`: its source is the
   authority's name, its locator `derivation:{method}`, and its stored record the
   derivation itself with the evidence ids of the tool call that returned it. The
