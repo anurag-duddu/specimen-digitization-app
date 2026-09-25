@@ -223,7 +223,7 @@ def harness(runs, lookups, requests, blob_hits):
 
 
 def decoded(text):
-    """Percent-decoded until stable (at most four times), JSON's escaped slashes undone, in lower case."""
+    """Percent-decoded up to four times, until stable, with JSON's escaped slashes undone, in lower case."""
     text = str(text)
     for _ in range(4):
         plain = unquote(text)
@@ -233,31 +233,54 @@ def decoded(text):
     return text.replace("\\/", "/").lower()
 
 
-def normalized_path(path):
-    """A decoded path as a server resolves it: query and fragment dropped, slashes merged, "." and ".."
-    resolved, a ".." above the root included. Only the path is normalized, never a host."""
-    path = re.sub(r"/{2,}", "/", re.split(r"[?#]", path, maxsplit=1)[0])
+def resolve(path):
+    """A decoded path without its query, as a server resolves it: ";" parameters dropped, slashes merged, "."
+    and ".." resolved, a ".." above the root included. Backslashes stay as they are."""
+    path = re.sub(r"/{2,}", "/", re.sub(r";[^/]*", "", path))
     return posixpath.normpath(path) if path.startswith("/") else path
 
 
 def occurrence_path(path):
-    return normalized_path(path).startswith("/v1/occurrence")
+    """A decoded path without its query names the occurrence API."""
+    return resolve(path).startswith("/v1/occurrence")
 
 
 def gbif_host(host):
     return decoded(host).rstrip(".") == "api.gbif.org"  # a trailing dot names the same host
 
 
-def paths_in(plain):
-    """Every path in decoded text; a URL's "//host" is set aside first."""
-    for token in PATH_TOKEN.findall(plain):
-        yield "/" + token[2:].partition("/")[2] if token.startswith("//") else token
+def texts(text):
+    """Text read twice (LAB.md, stage 7): as written, where a path is split from its query before it is
+    decoded, as a server reads it; and decoded as a whole, for a URL encoded inside another."""
+    raw = str(text).replace("\\/", "/")
+    return ((raw.lower(), True), (decoded(raw), False))
+
+
+def reading(path, raw):
+    path = re.split(r"[?#]", path, maxsplit=1)[0]
+    return resolve(decoded(path) if raw else path)
+
+
+def gbif_url_paths(text):
+    """The path of every api.gbif.org URL in the text, in both readings."""
+    for source, raw in texts(text):
+        for match in GBIF_URL.finditer(source):
+            yield reading(match.group(1), raw)
+
+
+def paths_in(text):
+    """Every path in the text, in both readings; one that starts with "//" is also read as a host and path."""
+    for source, raw in texts(text):
+        for token in PATH_TOKEN.findall(source):
+            yield reading(token, raw)
+            if token.startswith("//"):
+                yield reading("/" + token[2:].partition("/")[2], raw)
 
 
 def occurrence_request(text):
     """GBIF's occurrence API named with its host, or S8's occurrence check having run, in any stored text."""
     text = str(text)
-    return (any(occurrence_path(m.group(1)) for m in GBIF_URL.finditer(decoded(text)))
+    return (any(path.startswith("/v1/occurrence") for path in gbif_url_paths(text))
             or bool(MUSEUM_PUBLISHED.search(text)) or bool(OCCURRENCE_SIGNAL.search(text)))
 
 
@@ -294,8 +317,7 @@ def species_match(record):
     """PLAN 4.8's species match (G23), by tool, adapter or path; #134's evidence has a usage/<key> locator."""
     version = str(record.get("adapter_version") or record.get("tool_version") or "").lower()
     return ("taxonomy_verifier" in identity(record) or version.startswith("species-match")
-            or any(normalized_path(p).startswith("/v2/species/match")
-                   for p in paths_in(decoded(json.dumps(record, default=str))))
+            or any(path.startswith("/v2/species/match") for path in paths_in(json.dumps(record, default=str)))
             or str(record.get("locator") or "").lower().startswith("usage/"))
 
 
@@ -305,7 +327,7 @@ def occurrence_record(record):
         return False
     keys = {str(k).lower() for part in ("arguments", "query") for k in (record.get(part) or {})}
     return ("occurrence" in identity(record)
-            or any(occurrence_path(p) for p in paths_in(decoded(json.dumps(record, default=str))))
+            or any(path.startswith("/v1/occurrence") for path in paths_in(json.dumps(record, default=str)))
             or bool(keys & OCCURRENCE_KEYS))
 
 

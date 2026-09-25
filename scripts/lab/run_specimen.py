@@ -71,6 +71,14 @@ def subject_id(value):
     return value
 
 
+def positive_number(value):
+    """A finite number above zero: NaN would pass every comparison preflight makes (G9)."""
+    number = float(value)
+    if not math.isfinite(number) or number <= 0:
+        raise argparse.ArgumentTypeError(f"expected a finite number above zero, not {value}")
+    return number
+
+
 def parse_args(argv=None):
     home = Path.home() / "specimen-golive"
     parser = argparse.ArgumentParser(description=__doc__)
@@ -80,9 +88,9 @@ def parse_args(argv=None):
     parser.add_argument("--segmentation", choices=("sam3", "reviewed-region"), default="sam3")
     parser.add_argument("--persistence", choices=("sql-emulator", "sqlite"), default="sql-emulator")
     parser.add_argument("--logfire", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--max-load", type=float, default=12.0)
-    parser.add_argument("--max-run-usd", type=float, default=0.75)
-    parser.add_argument("--lab-allowance-usd", type=float, default=5.00)
+    parser.add_argument("--max-load", type=positive_number, default=12.0)
+    parser.add_argument("--max-run-usd", type=positive_number, default=0.75)
+    parser.add_argument("--lab-allowance-usd", type=positive_number, default=5.00)
     parser.add_argument("--timeout-seconds", type=float, default=1800)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--report-only", action="store_true",
@@ -127,7 +135,8 @@ def redact_people(value):
 
 def tally(runs_root, exclude=None):
     """The lab's tally (LAB.md, Costs): every run.json under the runs root, diagnostics and dated adjustment
-    entries included, and each reason it cannot be trusted. An adjustment may only raise the tally."""
+    entries included, and each reason it cannot be trusted. By the lab's own rule, an adjustment may only raise
+    the tally."""
     total, problems = 0.0, []
     for path in sorted(runs_root.glob("*/*/run.json")):
         if exclude is not None and path.parent == exclude:
@@ -480,8 +489,9 @@ def execute(options, *, fetch, lane_factory, env, clock, loadavg, commit):
                             record["rows"] = {t: len(r) for t, r in evidence["rows"].items()}
             except Exception as exc:  # the lane's teardown: the run is still priced, scored and written
                 run.failed("teardown", exc)
-                if run.interrupted:  # a Ctrl-C that the teardown's error replaced still stops the run
-                    raise run.interrupted from exc
+                interrupt = run.interrupted or interrupt_in(exc.__context__)
+                if interrupt:  # a Ctrl-C that the teardown's error replaced, in a phase or not, stops the run
+                    raise interrupt from exc
         if evidence:
             with run.phase("check"):
                 record["costs"] = price(evidence["snapshot"])  # before scoring, so a failed check keeps it
@@ -504,6 +514,17 @@ def execute(options, *, fetch, lane_factory, env, clock, loadavg, commit):
             record["costs"] = {"total_usd": options.max_run_usd, "held_at_run_bound": True}
         code = finish(options, run, clock)
     return code
+
+
+def interrupt_in(exc):
+    """A Ctrl-C (any BaseException that is not an Exception) along an error's __context__ chain."""
+    seen = set()
+    while exc is not None and id(exc) not in seen:
+        if not isinstance(exc, Exception):
+            return exc
+        seen.add(id(exc))
+        exc = exc.__context__
+    return None
 
 
 def finish(options, run, clock):

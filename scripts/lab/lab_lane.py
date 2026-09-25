@@ -25,6 +25,7 @@ from specimen_digitization.application.api import SYNTHETIC_COLLECTION, SYNTHETI
 from specimen_digitization.application.domain import Scope
 from specimen_digitization.application.production import SqlConnectRepository, actor_uid
 from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository
+from specimen_digitization.application.workflow import SyntheticAdapters
 
 import lab_checks
 
@@ -63,6 +64,9 @@ class AppLane:
     def __enter__(self):
         self.root.mkdir(parents=True, exist_ok=True)
         self.blobs = LocalBlobs(self.root / "blobs")
+        adapters = self.adapters_factory(self.blobs)
+        if not isinstance(adapters, SyntheticAdapters):  # G31, where the adapters are built (learning 21)
+            refuse_sensitive(self.subject)
         try:
             if self.persistence == "sqlite":
                 self.repository = SQLiteRepository(self.root / "state.sqlite3")
@@ -72,7 +76,7 @@ class AppLane:
                     project="demo-specimen-data", emulator_host=self.emulator.host
                 )
             app = create_app(mode="synthetic", repository=self.repository, blobs=self.blobs,
-                             adapters=self.adapters_factory(self.blobs), token=self.token)
+                             adapters=adapters, token=self.token)
             self.client = TestClient(app, raise_server_exceptions=False).__enter__()
         except BaseException:
             if self.emulator:  # __exit__ never runs when __enter__ raises
@@ -215,10 +219,13 @@ class Emulator:
         self.pumping = threading.Thread(target=self.pump, daemon=True)
         self.pumping.start()
         deadline = time.monotonic() + timeout
-        while not self.ready.wait(1):
-            if self.process.poll() is not None or time.monotonic() > deadline:
-                self.stop()
-                raise LabError(f"the SQL Connect emulator did not start; see {self.root}")
+        try:
+            while not self.ready.wait(1):
+                if self.process.poll() is not None or time.monotonic() > deadline:
+                    raise LabError(f"the SQL Connect emulator did not start; see {self.root}")
+        except BaseException:  # a Ctrl-C too: the emulator runs in its own session, which SIGINT never reaches
+            self.stop()
+            raise
         return self
 
     def pump(self):

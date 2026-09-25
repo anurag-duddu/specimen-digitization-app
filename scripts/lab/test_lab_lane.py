@@ -139,14 +139,14 @@ def test_a_failed_start_stops_the_emulator(tmp_path, monkeypatch):
         def stop(self):
             stopped.append(True)
 
-    def broken_adapters(blobs):
-        raise RuntimeError("adapters could not be built")
+    def broken_repository(**kwargs):  # built after the emulator starts; the adapters are built before it
+        raise RuntimeError("the repository could not be built")
 
     monkeypatch.setattr(lab_lane, "Emulator", FakeEmulator)
-    monkeypatch.setattr(lab_lane, "SqlConnectRepository", lambda **kwargs: object())
-    lane = lab_lane.AppLane(tmp_path / "state", adapters_factory=broken_adapters, persistence="sql-emulator",
-                            segmentation="sam3", subject="subject_105526321")
-    with pytest.raises(RuntimeError, match="adapters could not be built"):
+    monkeypatch.setattr(lab_lane, "SqlConnectRepository", broken_repository)
+    lane = lab_lane.AppLane(tmp_path / "state", adapters_factory=lambda blobs: object(),
+                            persistence="sql-emulator", segmentation="sam3", subject="subject_105526321")
+    with pytest.raises(RuntimeError, match="the repository could not be built"):
         lane.__enter__()
     assert stopped == [True]
 
