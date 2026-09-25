@@ -55,9 +55,15 @@ String _two(int value) => value.toString().padLeft(2, '0');
 /// in their head (design/01 H1.9; coordinator ruling for S6, 2026-09-24).
 String absoluteTime(DateTime instant) {
   final WallTime wall = wallTime(instant);
-  return '${wall.day} ${_months[wall.month - 1]} ${wall.year}, '
-      '${_two(wall.hour)}:${_two(wall.minute)} ${wall.zone}';
+  return '${_date(wall)}, ${_two(wall.hour)}:${_two(wall.minute)} ${wall.zone}';
 }
+
+/// The day of [instant] on the reviewer's wall clock, the way the citable
+/// form spells it: `13 Sep 2026`.
+String absoluteDate(DateTime instant) => _date(wallTime(instant));
+
+String _date(WallTime wall) =>
+    '${wall.day} ${_months[wall.month - 1]} ${wall.year}';
 
 /// A queue row: thumbnail, identifier, reason, status, risk and age.
 ///
