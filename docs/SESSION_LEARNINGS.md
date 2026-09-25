@@ -12560,7 +12560,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 ### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 3: the reference-dataset manifest
 
 - Task: pin the files the tool reads from the project's storage, the Copernicus GLO-30 tiles (D11) and the GeoNames dumps (PLAN 4.8), so that S2 can write the owner's upload command from a reviewed manifest.
-- Branch and worktree: `golive/geo-datasets` in `.claude/worktrees/geo-build`, stacked on #139. PR #151.
+- Branch and worktree: `golive/geo-datasets` in `.claude/worktrees/geo-build`, stacked on #139, as PR #151. Re-cut on 2026-09-25 by the coordinator's option (b) as `golive/geo-datasets-2`, stacked on #130: PR #211, replacing #151, with the same red and green commits cherry-picked with `-x`.
 - Outcome:
   - `georef_datasets.py` pins five files by the SHA-256 of their exact bytes, with the source URL, retrieval date, license and credit text for each.
   - The pinned files are three 1-degree GLO-30 tiles and the Philippines and Guatemala GeoNames dumps of 2026-09-24.
