@@ -12374,6 +12374,48 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learning: an identifier check is only as strict as the field it reads. "Returned by the source" has to name the id field, because an answer's dates and coordinates are numbers too, and a digit pattern matches them.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
 
+### 2026-09-25 — Go-live S6: #202's review follow-ups, and dated corrections
+
+- Task: the steward's review of #202 (merged as `3b23663`; comment 5826966972, items 1-4).
+- Branch/worktree: `golive/ui-zone-followups-3`, based on `main`; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - The seam cites the zone pin at 23:10:57Z.
+  - Its day-start comment says the second step lands on the day before only west of UTC, and on the jump east of it.
+  - Its doc says where the clocks repeat midnight, it returns the first midnight west of UTC and the second east of it. The #202 review's sweep of 2024-2030 found 21 repeated midnights, all west of UTC (Havana each November, the Azores each October), and none east.
+  - The guard's docs add a chained read, `DateTime.now().add(d).day`, and the wrongful rejection of a one-line UTC epoch call whose argument has parentheses.
+  - On a day whose midnight the clocks skip, `typedDayOf` reads the typed day and the chip shows it ("8 Sep 2026"), through a synthetic zone the two tests now share.
+  - The zone test's header no longer names the machine's zone.
+- Corrections to earlier entries (item 1; the log is append-only, and these entries are on `main`):
+  - These lines named the machine's zone, and should read "the host zone, not Central":
+    - in "Go-live S6: goldens no longer depend on the host's time zone" (#181): the validation line and learning 1;
+    - in "Go-live S6: server instants read on the reviewer's clock" (#182): the validation line;
+    - in "Go-live S6: #181's review follow-ups, and corrections to its entry" (#182): the validation line;
+    - in "Go-live S6: #182's review follow-ups, the reviewer's own day, and log corrections" (#197): the validation line.
+  - The rulings list in "Go-live S6: #197's review follow-ups, and dated corrections to earlier entries" missed rulings. Every lettered ruling to S6, and the unlettered ones this log cites, by send time. The times are from the coordinator's status file, coordinator.md: 2026-09-25 01:26:02Z and 01:35:36Z at lines 202-212, the 2026-09-24 rulings from 01:13:52Z to 23:30:28Z at 226-248, 2026-09-25 00:01:16Z and 00:20:33Z at 264-283, and 2026-09-24 00:37:36Z at 302, in the timed index from line 285. This session's receipt times agree to within seconds:
+    - 2026-09-24 00:37:36Z: reasons, option (a), and run states, option (c).
+    - 2026-09-24 01:13:52Z: the reason filter, option (b). Until S5's T5, the filter offers only codes stored without a suffix (PLAN.md 407-408).
+    - 2026-09-24 22:59:13Z: layer labels, option (b).
+    - 2026-09-24 23:10:57Z: pin the time zone in the test harness (#181).
+    - 2026-09-24 23:30:28Z: server instants on the reviewer's clock, from design/01 line 149 (in H1.9) and H2.1 (#182).
+    - 2026-09-25 00:01:16Z: the wording rulings: `field_harness` (a), `review_decision` (b), the derivation words, G45 (a), `authority_identity` (a) (#187).
+    - 2026-09-25 00:20:33Z: per-label lookups, option (c) (waiting on S5's #171).
+    - 2026-09-25 01:26:02Z: H2.1 option (b), the reviewer's own day (#197).
+    - 2026-09-25 01:35:36Z: no migration of saved filter sets (#197).
+    So four different rulings were each "(b)", and that entry's learning 2 holds with four.
+  - That entry's pull request is #202, merged as `3b23663`.
+- Commits/PRs: #205, based on `main`: `e1d15c9` (docs and pinning tests), `50e0129` (the 2026-09-24 times to the second), `abdc641` (a blank line the union merge lost), and a fix for the #205 review. There is no red commit, since the tests pin what #202 already fixed.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the zone and day-filter tests 23 passed; the full app suite on the host zone, not Central, with no `TZ` set: 1,598 passed, 7 skipped, 0 failed, no golden moved. At the #205 review's fix: `flutter analyze --fatal-infos` no issues; the zone, day-filter and declaration tests 24 passed.
+- Durable learnings:
+  1. A correction list is a claim of completeness too. Build it from the records (the transcript's timestamps, PLAN.md), not from memory, or narrow its heading to what it covers.
+  2. Say where an algorithm's reasoning holds. "Sends the second step back to the day before" was true west of UTC only, and the code was right in both halves while the comment covered one.
+  3. Quote a sweep's result; don't paraphrase it. "21 repeated midnights, all west of UTC, where it returns the first" became "none, and it returns the second" in this entry's first push. The #205 review caught it before merge.
+- Failed approaches: this entry's first push said no zone repeats midnight in 2024-2030 and that the second midnight is returned. The #205 review (comment 5827740760) found it false before merge (learning 3).
+- Remaining follow-ups:
+  - At #133's turn, cite the reason-filter ruling as 01:13:52Z (item 5).
+  - At #140's turn, fold #197's `searchValueLabel` date case into #140's switch.
+  - At #73's turn, record the zone rulings in UI.md with their times.
+  - When the stack merges `main`, regenerate its queue, queue-selection and workbench-history goldens, and re-verify those of #102, #114, #133 and #140.
+
 ### 2026-09-25 — S8: #201's review follow-ups, and a correction to its entry
 
 - Task: the steward's review of #201 (merged as `400a444`; comment 5826776118, Decision items 1 and 2), done in a second small docs pull request on `main`. Item 3 waits for #154's turn.

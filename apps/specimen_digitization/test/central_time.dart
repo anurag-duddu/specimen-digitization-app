@@ -1,6 +1,6 @@
 /// US Central time, the zone the goldens were rendered in, for the suite's
 /// pin of `wallTime` (`flutter_test_config.dart`; coordinator ruling for S6,
-/// 2026-09-24).
+/// 2026-09-24, 23:10:57Z).
 ///
 /// The daylight-saving rule in force since 2007: CDT from the second Sunday
 /// of March at 02:00 CST to the first Sunday of November at 02:00 CDT, and
@@ -42,3 +42,22 @@ DateTime _sunday(int year, int month, int nth) {
   final int toSunday = (DateTime.sunday - first.weekday) % 7;
   return DateTime.utc(year, month, 1 + toSunday + 7 * (nth - 1));
 }
+
+/// A synthetic zone whose clocks jump over midnight, as Havana's, Santiago's
+/// and the Azores' do on their daylight-saving day: UTC-5 until [jump], then
+/// UTC-4. A [jump] at 05:00Z, which is 00:00 at UTC-5, leaves its day without
+/// a 00:00 (#197 and #202 reviews).
+WallTime Function(DateTime instant) skipsMidnightAt(DateTime jump) =>
+    (DateTime instant) {
+      final DateTime utc = instant.toUtc();
+      final bool after = !utc.isBefore(jump);
+      final DateTime wall = utc.add(Duration(hours: after ? -4 : -5));
+      return (
+        year: wall.year,
+        month: wall.month,
+        day: wall.day,
+        hour: wall.hour,
+        minute: wall.minute,
+        zone: after ? 'SDT' : 'SST',
+      );
+    };

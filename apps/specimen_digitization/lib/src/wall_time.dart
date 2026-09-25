@@ -4,20 +4,22 @@
 /// host's zone, so a reviewer sees their own clock. The test suite pins it
 /// with [debugWallTimeOverride], the way `debugDefaultTargetPlatformOverride`
 /// pins the platform, so no golden depends on the zone of the machine that
-/// renders it (coordinator ruling for S6, 2026-09-24). A release build
-/// ignores the override.
+/// renders it (coordinator ruling for S6, 2026-09-24, 23:10:57Z). A release
+/// build ignores the override.
 ///
 /// `test/wall_time_test.dart` fails when other code in `lib` converts to the
 /// host zone, asks its name or offset, builds an instant from the host's
 /// wall-clock fields or from an epoch without `isUtc`, reads a wall-clock
 /// field of `DateTime.now()`, or touches the override. It reads one line at
 /// a time and knows no types, so it cannot see a `now` held in a variable
-/// and read later, `copyWith` or `toString`/`toIso8601String` on a local
-/// instant, a tear-off such as `.map(DateTime.new)`, an expression split
-/// across lines, a read through another package, a parse of text without a
-/// zone (the server's instants carry one), or code outside `lib` and
-/// `packages/specimen_ui/lib`; and it rejects a correct UTC epoch call whose
-/// `isUtc: true` sits on a later line.
+/// and read later, a chained read such as `DateTime.now().add(d).day`,
+/// `copyWith` or `toString`/`toIso8601String` on a local instant, a tear-off
+/// such as `.map(DateTime.new)`, an expression split across lines, a read
+/// through another package, a parse of text without a zone (the server's
+/// instants carry one), or code outside `lib` and
+/// `packages/specimen_ui/lib`. It also rejects two correct UTC epoch calls:
+/// one whose `isUtc: true` sits on a later line, and one whose argument has
+/// parentheses, since its look-ahead stops at the first `)`.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -83,10 +85,13 @@ const Map<String, String> _shortZones = <String, String>{
 
 /// The instant a day begins on the reviewer's wall clock, in UTC, for a
 /// filter the reviewer typed as a day (design/01 H2.1; coordinator ruling
-/// for S6, 2026-09-25, 01:26Z): its midnight, or, where the clocks jump over
-/// midnight on a daylight-saving day (Havana, Santiago, the Azores), the
-/// jump, the day's first moment. Found through [wallTime], so the suite's
-/// pinned clock answers it as well as the host's.
+/// for S6, 2026-09-25, 01:26:02Z): its midnight, or, where the clocks jump
+/// over midnight on a daylight-saving day (Havana, Santiago, the Azores), the
+/// jump, the day's first moment. Where the clocks repeat midnight, it is the
+/// first midnight west of UTC, which is every such day in 2024-2030 (Havana
+/// each November, the Azores each October: 21 in the #202 review's sweep),
+/// and the second east of UTC, which no zone does in 2024-2030. Found through
+/// [wallTime], so the suite's pinned clock answers it as well as the host's.
 DateTime wallDayStart(int year, int month, int day) {
   final DateTime midnight = DateTime.utc(year, month, day);
   // Moves [instant] by how far its wall clock reads from the midnight.
@@ -107,8 +112,9 @@ DateTime wallDayStart(int year, int month, int day) {
   final DateTime first = towardMidnight(midnight);
   final DateTime second = towardMidnight(first);
   final WallTime reached = wallTime(second);
-  // A day with no midnight sends the second step back to the day before,
-  // and the first step's instant is then the jump itself.
+  // West of UTC, a day with no midnight sends the second step back to the
+  // day before, and the first step's instant is then the jump itself; east
+  // of UTC, the second step lands on the jump.
   return (reached.year, reached.month, reached.day) == (year, month, day)
       ? second
       : first;
