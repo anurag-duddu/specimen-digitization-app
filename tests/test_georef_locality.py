@@ -601,10 +601,32 @@ def test_a_range_reads_at_its_parts_start_or_after_its_prefix():
         ("Mt. Apo, 1500-2000 m", "1500-2000 m"),
         ("Mt. Apo Elev. 1500-2000 m", "Elev. 1500-2000 m"),
         ("1500 y 2000 m", "1500 y 2000 m"),
-        # A four-digit number with no date beside it reads as written.
-        ("Mindanao, 1946 - 2500 m", "1946 - 2500 m"),
     ):
         assert [e.text for e in read_locality(text).elevations] == [elevation]
+
+
+# The coordinator's reading of G36 and G40 at 15:32Z on 2026-09-25: a range whose
+# lower number could be a year is set aside unless its prefix comes first.
+@pytest.mark.parametrize(
+    ("text", "places"),
+    [
+        ("Mindanao, 1946 - 2500 m", ["Mindanao"]),
+        ("Guatemala, 26 - 850 m", ["Guatemala"]),
+        ("1800-2200 m", []),
+        ("Mt. Apo, 1800-2200 m", ["Mt. Apo"]),
+        ("10-50 m", []),
+    ],
+)
+def test_a_range_whose_low_could_be_a_year_is_set_aside(text, places):
+    reading = read_locality(text)
+    assert (reading.elevations, [part.name for part in reading.parts]) == ((), places)
+
+
+@pytest.mark.parametrize(
+    "text", ["Elev. 1800-2200 m", "Alt. 1800-2200 m", "1500-2000 m", "4000-4500 ft", "1946 m"]
+)
+def test_a_prefix_or_a_low_no_year_could_be_still_reads(text):
+    assert [e.text for e in read_locality(text).elevations] == [text]
 
 
 def test_brackets_open_a_part_and_a_colon_glues():

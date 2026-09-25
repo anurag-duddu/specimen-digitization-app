@@ -113,6 +113,11 @@ lists. These numbers are unsure:
   ("4.1948-950 m");
 - a range that runs downward ("1946 - 850 m"), or whose upper number has a
   decimal, one not in thousands groups ("4-1948,95 m");
+- a range whose lower number could be a year, two digits or four from 1700 to
+  2099, unless its prefix comes first: "Mindanao, 1946 - 2500 m", "1800-2200 m"
+  and "10-50 m" are set aside, while "Elev. 1800-2200 m", "1500-2000 m" and
+  "4000-4500 ft" read. This is the coordinator's reading of G36 and G40 at
+  15:32Z on 2026-09-25;
 - a number after another number with only words or marks between them, which
   may join a range no rule lists ("4000 hasta 4500 ft", "4000 ~ 4500 m",
   "1500 up to 2000 m", "4000 - 4500 - 5000 m"). "Camp 3 at 1500 m" is set
@@ -123,8 +128,11 @@ lists. These numbers are unsure:
   "'4 800 ft."). A two-digit year after an apostrophe is no such group:
   "3 Sept. '46 850 m" keeps "850 m".
 
-A four-digit number with no date beside it reads as written, so
-"Mindanao, 1946 - 2500 m" gives a range.
+A single elevation reads as written ("1946 m"). Set-aside text stays verbatim
+for the harness to read in context (G40). In the same coordinator reading, this
+reader's output is georeferencing evidence, and the elevation fields settle from
+the harness's own reading of the label. A set-aside range never counts as "no
+elevation stated", so G37's derivation does not fill it.
 
 **Unplaced text.** These are kept aside and never searched, since gazetteer place
 names carry no digits:
