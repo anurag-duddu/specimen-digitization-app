@@ -475,7 +475,7 @@ def test_a_value_that_does_not_look_like_its_field_goes_to_review(field, written
 
 
 def test_a_preparation_code_in_verbatim_dts_is_a_finding_that_never_routes():
-    # PRD 522 leaves verbatim_dts's meaning unconfirmed (G45, the coordinator).
+    # PRD 529 leaves verbatim_dts's meaning unconfirmed (G45, the coordinator).
     label = LABEL + "\n10-6-78-la"
     run = lane_run(
         {"1A": STATED | {"verbatim_dts": "10-6-78-la"}},

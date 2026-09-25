@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pydantic import Field
 from pydantic_ai import Agent, ModelRetry
 from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.tool_manager import ToolManager
 from pydantic_ai.usage import RunUsage, UsageLimits
 
 from .derivations import (
@@ -48,7 +49,7 @@ MAX_TOOL_CALLS = 12  # The agent's tool calls per run.
 MAX_GEOCODING_REQUESTS = 4  # Per run, the agent's and the final ones together.
 GEOGRAPHY = "geography_lookup"
 # Verbatim locality text: its literal helps form the address, but no geocoder
-# result settles it (PRD 515).
+# result settles it (PRD 519).
 TRANSCRIBED_ONLY = frozenset({"precise_location"})
 
 
@@ -201,15 +202,19 @@ def run_harness(
         if size > MAX_PROMPT_BYTES:
             failure = "harness_input_too_large"  # Before any call (G30).
         else:
-            result = run_agent_bounded(
-                agent,
-                request,
-                timeout_seconds=timeout_seconds,
-                usage_limits=UsageLimits(
-                    request_limit=REQUEST_LIMIT, input_tokens_limit=INPUT_TOKEN_LIMIT
-                ),
-                usage=usage,
-            )
+            # One tool call at a time: the ledger's record of a call answers
+            # its repeat, and the caps count exactly.
+            with ToolManager.parallel_execution_mode("sequential"):
+                result = run_agent_bounded(
+                    agent,
+                    request,
+                    timeout_seconds=timeout_seconds,
+                    usage_limits=UsageLimits(
+                        request_limit=REQUEST_LIMIT,
+                        input_tokens_limit=INPUT_TOKEN_LIMIT,
+                    ),
+                    usage=usage,
+                )
             output = result.output
     except UsageLimitExceeded:
         failure = "harness_usage_limit"  # A G30 cap: a harness failure (G6).

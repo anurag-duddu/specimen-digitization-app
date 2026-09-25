@@ -146,7 +146,7 @@ SHAPES = {
     "precise_location": _NOT_THE_SPECIMEN,  # "VI-24-68-7" (105526328).
     "verbatim_dts": ("preparation_code",),  # "10-6-78-la" (105526321).
 }
-# PRD 522 leaves verbatim_dts's meaning unconfirmed: a finding, never a reason.
+# PRD 529 leaves verbatim_dts's meaning unconfirmed: a finding, never a reason.
 FINDING_ONLY = frozenset({"verbatim_dts"})
 
 
