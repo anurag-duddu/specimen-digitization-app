@@ -12120,3 +12120,16 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (3) A smallest enclosing circle's center can fall in a hole or a notch. The Guide then wants the center on the boundary, and the farthest-vertex distance is convex along each edge, so a ternary search per edge, pruned by a lower bound, finds it.
 - Failed approaches: a first test expected the framed square's center inside, but its smallest circle is centered in the hole. That case now tests the move onto the hole's edge.
 - Remaining follow-ups: the owner's approval to download and pin geoBoundaries' simplified Philippine files and Guatemala's municipios (and CONRED's departments if needed), with each file's margin and credit in the manifest; then containment and county precision as derivations, once S4's #144 merges.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 6c: elevations from GLO-30
+
+- Task: brief task 6, the derived elevation where a label states none: the lowest and highest ground within the uncertainty circle from the pinned Copernicus GLO-30 tiles (G37; D11; PLAN 4.8).
+- Branch and worktree: `golive/geo-elevation` in `.claude/worktrees/geo-build`, stacked on #193. PR #196.
+- Outcome: `georef_elevation.py` reads a pinned tile's GeoTIFF structure and returns the elevation range over a circle. It decodes only the internal tiles and rows the circle touches, in pure Python.
+- Validation: 13 tests on GeoTIFFs written in the tiles' layout; the three pinned tiles read locally at the pilot points; `uv run pytest -q` (3,278 passed, 81 skipped: `tests/` and `scripts/` together); pre-commit.
+- Durable learnings:
+  - (1) The GLO-30 tiles are point rasters (GTRasterTypeGeoKey 2). The first pixel's center is the tile's north-west corner, and neighbouring tiles don't overlap.
+  - (2) TIFF's floating-point predictor stores each row's bytes in planes, most significant first, whatever the file's byte order, and differences them as one byte sequence. Decoding sums the whole row, so every row a circle covers is decoded across its internal tile. Slice assignment then rebuilds the floats without per-sample Python.
+  - (3) On the pinned tiles, GLO-30 agrees with the research's SRTM figures within about 10 m at every pilot point: Yepocapa's town 1,395.8 m against 1,396 m. A 5 km circle around Mount Apo or Talomo crosses into the next tile, so the caller must pass every tile a circle touches.
+- Failed approaches: a first draft decoded every internal tile across a row. It now decodes only the column range the circle needs.
+- Remaining follow-ups: the derivation that names the tile's dataset id and SHA-256 with the settled location, once S4's #144 merges; reading the neighbouring tiles when a circle crosses an edge, which needs those tiles pinned.
