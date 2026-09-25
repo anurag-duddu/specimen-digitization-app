@@ -11999,7 +11999,8 @@ because the hooks runner hands a native asset hook only `PATH`.
   - unplaced text;
   - comparison keys, with G34's one-letter gate on full names only (the coordinator's reading, 2026-09-24);
   - one variant per reader's literal (G19, G20).
-- Validation: 64 tests use the ten pilot labels as S8 and the S7 baseline readers wrote them, plus cases for notations, headings, offsets, elevations and comparisons. Also run: `uv run pytest tests/ -q` (1,558 passed, 31 skipped), `uv run pytest scripts/ -q` (1,547 passed, 50 skipped) and pre-commit.
+- Validation: 64 tests use the ten pilot labels as S8 and the S7 baseline readers wrote them, plus cases for notations, headings, offsets, elevations and comparisons. Also run: `uv run pytest tests/ -q` (1,558 passed, 31 skipped), `uv run pytest scripts/ -q` (1,547 passed, 50 skipped) and pre-commit. At #130's turn on 2026-09-25, after `main` at `3e93ecb` was merged in, the full suite ran again on the merged branch.
+- Commits/PRs: #130. Red `505fb2b` and green `32dfb9d`. Two docs commits routed by the coordinator: `49118b6` (both gates for replacing the Google module) and `75247aa` (locality readings are compared locally, and requests go through PLAN 4.8's filter). The merges of `main` at its turn follow.
 - Durable learnings:
   - (1) A line break on a label is sometimes layout inside a name ("E. Slope Mt." / "McKinley") and sometimes a boundary between parts ("Mt. McKinley" / "Davao Prov."). The reliable signal, found in the real labels, is a line ending in a notation that needs the next word.
   - (2) Where a unit word sits depends on the label's language: after the name in English ("Davao Prov."), before it in Spanish ("Mun. Yepocapa"). A unit word standing alone joins the name on the side its language points to.
@@ -12011,6 +12012,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - part 3, historical units;
   - part 4, the tool itself (after #109 and #113);
   - the owner's answers on D1 to D7 and D9 for the tiers they gate.
+
 ### 2026-09-24 — Go-live release workstream (S2), T1c: #78's acceptance follow-ups
 
 - Task: the S2 session, the PR steward's should-fix list from #78's merge review (comment 5808938104).
@@ -12556,3 +12558,19 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: a line inserted near the top of a cited document moves every citation below it, including those in append-only logs. Keep header edits line-neutral, or re-map the log's citations with an appended correction in the same PR.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — S8: #207's review nits, folded into #130 at its turn
+
+- Task: the optional nits of the steward's review of #207 (merged as `0581b08`; comment 5828202433), folded into #130 at its turn, as the steward allowed.
+- Branch/worktree: `golive/geo-locality-text` (#130) in `.claude/worktrees/geo-build`, with `main` at `3e93ecb` merged in.
+- Outcome, in `docs/product-requirements/GEOREFERENCING.md`:
+  - the decisions paragraph says the options stand as the owner was asked only for D1 to D7, D9, D14 and D15; D8 and D10 to D13 were not put to the owner;
+  - the note on the illustrative code says each QID is a whole-string match (`fullmatch`) of S4's filter's pattern for PLAN 4.8's Q-number, as its Identifiers rule requires, and goes as a `wd:` prefixed name, as its Fixed parts require.
+- Corrections to the entry "S8: #204's review follow-ups, and corrections to two entries" (the log is append-only):
+  - where it says "so a reader took the coordinator's holds for the owner's words", read "could take": no reader did;
+  - its Outcome also labelled D4 and D5's hold in the plan's status line, and marked the moved held-and-waiting text "(coordinator, PLAN 2.3)".
+- Commits/PRs: #130, which lists its commits.
+- Validation actually run: pre-commit; the plan's illustrative Python block parses; the full suite on #130's merged branch.
+- Durable learnings: none new.
+- Failed approaches: none.
+- Remaining follow-ups: at #154's turn, label GEO.md's "The owner held D5" as the coordinator's interim rule (PLAN 2.3's D4/D5 row); at #183's turn, re-check the plan's QID pattern against #183's final pattern.
