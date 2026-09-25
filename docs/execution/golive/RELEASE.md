@@ -589,12 +589,14 @@ collection that the committed key `insects` resolves to against the approved
 artifact, with role `operator` and `canViewSensitive: false`. Nothing writes
 it from a shell.
 - **Worker account check** (the coordinator's ruling, from #96's security
-  review). Just before the write, the job looks the worker's UID up read-only
-  (Identity Toolkit `accounts:lookup` by `localId`). The UID is the
+  review). Before every membership step, a verify's too, the job looks the
+  worker's UID up read-only (Identity Toolkit `accounts:lookup` by
+  `localId`). The S2 brief puts that lookup first, and the account may have
+  been enabled, or gained a sign-in provider, since the write. The UID is the
   `data-production` environment secret `DATA_WORKER_ACTOR_UID`, which the
-  owner sets for that run and deletes afterwards. The job refuses unless the
-  account exists, is disabled, and has no email, password, phone or sign-in
-  provider. Tests pin each case.
+  owner sets for that run and deletes afterwards. The job refuses unless
+  exactly one account has that UID and it is disabled, with no email,
+  password, phone, sign-in provider or tenant. Tests pin each case.
 - **Read-back.** An exact match skips; a difference fails.
 - **Never the admin document.** The job never writes the admin membership
   document of `scripts/data/bootstrap_admin.py`, which hard-codes role
@@ -610,9 +612,10 @@ it from a shell.
   machine, and the coordinator decrypts evidence locally when it needs
   review.
 - **Output and secrets.** The job prints only pass or a refusal reason,
-  never an identity. The release step reads the three secrets only as
-  environment variables, and only when they are set, and no value reaches a
-  log or artifact.
+  never an identity. The release step reads the three secrets once, as
+  environment variables, before any child process starts, and takes them out
+  of its environment, so neither `gh` nor the Node SQL connector inherits
+  them. No value reaches a log or artifact.
 
 **Merge.** T3e merges only on the coordinator's explicit go-ahead, like #163.
 The next push to `main` after it merges runs the bootstrap live, whenever

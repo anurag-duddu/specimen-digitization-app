@@ -103,6 +103,7 @@ jobs:
           # unset, each arrives empty and the bootstrap is skipped. Only this step reads them; nothing prints them.
           DATA_BOOTSTRAP_ARTIFACT_B64: ${{ secrets.DATA_BOOTSTRAP_ARTIFACT_B64 }}
           DATA_BOOTSTRAP_APPROVED_SHA256: ${{ secrets.DATA_BOOTSTRAP_APPROVED_SHA256 }}
+          DATA_WORKER_ACTOR_UID: ${{ secrets.DATA_WORKER_ACTOR_UID }}
         run: uv run python scripts/ci/deploy_data.py --deploy --packet "$RUNNER_TEMP/data-release/packet.json" --output "$RUNNER_TEMP/data-receipt.json"
       # Every exit: a later attempt reads a failed first apply's restore check (RELEASE.md 4.4).
       - name: Attest the data receipt

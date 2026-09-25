@@ -952,23 +952,42 @@ every push to `main` without an envelope. The specification is
    read a failed first apply's restore check.
 
    **Bootstrap.** After a successful `verify` or `apply`, the job bootstraps
-   the first organization once the owner has set the `data-production`
-   secrets `DATA_BOOTSTRAP_ARTIFACT_B64` and `DATA_BOOTSTRAP_APPROVED_SHA256`
-   for that run and opened the time-bounded `specimenDataOwnerBootstrap`
-   window ([`RELEASE.md`](execution/golive/RELEASE.md) section 4.5). Unset,
-   the job skips it; on `initialize` it leaves the artifact unread. The
-   SHA-256 of the artifact's exact bytes must equal the owner's approved
-   digest, compared in constant time and never computed from the artifact.
-   The artifact must be the hierarchy mode, its `tree_sha256` must be this
-   commit's collection tree, and it must regenerate from its own values. The
-   organization's rows are then read first: an exact match skips the write,
-   and any other rows fail. An absent organization is written once, in one
-   transaction, after an on-demand backup (unless this run's apply took one)
-   and a fresh read of the administrator's account, then read back. The
-   private records stay encrypted to the committed
-   `infra/release/evidence-recipient.pub`, whose digest the code pins; the
-   job attests and uploads only those encrypted copies. The log and the
-   receipt carry only the bootstrap's state and fixed reasons.
+   the first organization and the worker's membership once the owner has set
+   the `data-production` secrets `DATA_BOOTSTRAP_ARTIFACT_B64`,
+   `DATA_BOOTSTRAP_APPROVED_SHA256` and `DATA_WORKER_ACTOR_UID` for that run
+   and opened the time-bounded `specimenDataOwnerBootstrap` window
+   ([`RELEASE.md`](execution/golive/RELEASE.md) section 4.5). Unset, the job
+   skips it; on `initialize` it leaves the artifact unread. The owner
+   approves the private artifact offline with
+   `uv run python scripts/data/hierarchy_approval.py summarize <private artifact>`,
+   which prints a summary without its values and, only after the owner
+   types `APPROVE`, writes `hierarchy-approval.sha256` beside it, the value
+   of the approved-digest secret. The SHA-256 of the artifact's exact bytes
+   must equal that digest, compared in constant time and never computed
+   from the artifact. The artifact must be the hierarchy mode, its
+   `tree_sha256` must be this commit's collection tree, and it must
+   regenerate from its own values. The organization's rows and the worker's
+   are then read first: exact matches skip the writes, and any other rows
+   fail. An absent organization is written once, in one transaction, after
+   an on-demand backup (unless this run's apply took one) and a fresh read
+   of the administrator's account, then read back. The worker's membership
+   follows [`WORKER_MEMBERSHIP.md`](execution/golive/WORKER_MEMBERSHIP.md):
+   one active organization membership and one `operator` membership with
+   `canViewSensitive: false` in the collection that the committed key
+   `insects` resolves to. Before every membership step, a verify's too, the
+   job looks the UID up read-only and refuses unless exactly one account
+   exists, disabled, with no email, password, phone or sign-in provider,
+   since the account may have changed after the write. It then writes an
+   absent membership and reads the rows back, or leaves an exact one as it
+   is. The job never writes the admin membership document of
+   `scripts/data/bootstrap_admin.py`. The private records stay encrypted to
+   the committed `infra/release/evidence-recipient.pub`, whose digest the
+   code pins; the job attests and uploads only those encrypted copies. The
+   log and the receipt carry only each part's state and fixed reasons.
+   `DATA_BOOTSTRAP_ARTIFACT_B64` holds the base64 of the artifact file's
+   exact bytes, never a re-serialized copy. The owner deletes the three
+   secrets after the bootstrap run: while they are set, every release
+   repeats the reads, and fails once the window has closed.
 3. **Initialize**, in `data-initialization-production`, only when
    `init_step` is `initialize`. It re-admits through the gate's
    `data-initialization` plane and authenticates as

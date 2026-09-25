@@ -257,7 +257,7 @@ def receipt(phase="apply", **facts):
     return {"version": "data-released/v1", "source_sha": SHA, "run_id": 456, "run_attempt": 2, "phase": phase,
             "schema_etag": "schema-etag", "schema_update_time": UPDATED, "connector_etag": "connector-etag",
             "storage_ruleset": RULESET, "source_sha_label": OLD, "backup_id": None, "first_restore": None, "tables": None,
-            "views": None, "bootstrap": None, **facts}
+            "views": None, "bootstrap": None, "worker_membership": None, **facts}
 
 
 def test_an_additive_apply_backs_up_then_migrates_and_releases_the_merged_files_labelled_with_the_merged_commit(released):

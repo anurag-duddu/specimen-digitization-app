@@ -790,7 +790,8 @@ def deploy_released_data(path, output, secrets=None):
     record = google.packet
     require(release_gate.is_gate_record(record) and record.get("plane") == "data", "a data gate record is required")
     facts = dict.fromkeys(("phase", "schema_etag", "schema_update_time", "connector_etag", "storage_ruleset",
-                           "source_sha_label", "backup_id", "first_restore", "tables", "views", "bootstrap"))
+                           "source_sha_label", "backup_id", "first_restore", "tables", "views", "bootstrap",
+                           "worker_membership"))
 
     def choose(phase):
         facts["phase"] = phase
@@ -1474,8 +1475,8 @@ def apply_released(google, directory, schema, connector, ruleset, merged, facts)
 
 def bootstrap_released(google, directory, facts, secrets):
     """RELEASE.md 4.5 (T3e), after a successful verify or apply: release_bootstrap checks the owner's approved hierarchy
-    artifact and reads its rows first; its refusals print here, as fixed text. Its one backup before the first write is
-    4.4 item 1's, with point-in-time recovery on, unless this run's apply already took one."""
+    artifact and reads the organization's and the worker's rows first; its refusals print here, as fixed text. Its one
+    backup before the first write is 4.4 item 1's, with point-in-time recovery on, unless this run's apply took one."""
     import release_bootstrap
 
     def backup():

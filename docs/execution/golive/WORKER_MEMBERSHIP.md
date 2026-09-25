@@ -33,6 +33,11 @@ person's enabled account the membership. The check runs exactly when the members
 lookup the bootstrap identity already makes, and catches any later change to
 the account. The owner-side evidence is recorded in `OWNER_INPUTS.md` 288.
 
+> 2026-09-24: T3e ([`RELEASE.md`](RELEASE.md#45-bootstrap-t3e) section 4.5)
+> runs this check before every membership step, a verify's too, not only when
+> the membership is written: the account may have been enabled, or gained a
+> sign-in provider, since the write. The rest of the paragraph stands.
+
 ## Rows
 
 One transaction, written with the existing member tables and no schema change:

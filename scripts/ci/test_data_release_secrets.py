@@ -18,7 +18,7 @@ import pytest
 import deploy_data as D
 from release_diagnostics import HTTPFailure
 from test_data_apply import CLONED, SECRETS, earlier, released, visible  # noqa: F401 (a fixture)
-from test_data_bootstrap import Plane, exact, prepare, seed
+from test_data_bootstrap import WORKER_UID, Plane, exact, prepare, seed
 from test_data_released_deploy import (EMPTY, MERGED, RULES, command_line, record, release,  # noqa: F401 (fixtures)
                                        state)
 
@@ -26,7 +26,7 @@ from test_data_released_deploy import (EMPTY, MERGED, RULES, command_line, recor
 def secrets(monkeypatch, raw=b"not base64: canary-bootstrap-row\n"):
     """The owner's three secrets, set as the workflow sets them on the release step."""
     values = {SECRETS[0]: base64.b64encode(raw).decode("ascii"), SECRETS[1]: hashlib.sha256(raw).hexdigest(),
-              SECRETS[2]: "canary-worker-uid-9c41"}
+              SECRETS[2]: WORKER_UID}
     for name, value in values.items():
         monkeypatch.setenv(name, value)
     return values
@@ -44,13 +44,15 @@ def test_the_secrets_are_read_once_and_removed_together(monkeypatch):
 
 def test_after_the_release_starts_no_request_or_child_process_sees_a_secret_and_the_bootstrap_still_runs(
         released, tmp_path, monkeypatch):
-    """Verify, then the bootstrap over rows that already match: the values reached it from memory alone."""
+    """Verify, then the bootstrap over an organization already in place: the values reached it from memory alone, and
+    the worker's membership is written with the UID from memory."""
     payload = prepare()
     plane = Plane(tmp_path / "release", payload, MERGED, rules=RULES)
     seed(plane, payload)
     secrets(monkeypatch, exact(payload))
     value, outputs = released(plane)
     assert plane.error is None and value["bootstrap"] == "verified" and outputs.startswith("phase=verify\n")
+    assert value["worker_membership"] == "applied" and plane.lookups[-1] == {"localId": [WORKER_UID]}
     # Google was built after the secrets left, and the Node connector ran for verify's reads; none saw one.
     assert plane.environments and not any(plane.environments)
     assert [kind for kind, _ in plane.children] and not any(names for _, names in plane.children)
