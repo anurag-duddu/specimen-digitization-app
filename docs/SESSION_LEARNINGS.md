@@ -12610,6 +12610,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: PLAN, the briefs and GEOREFERENCING.md cite `docs/GBIF.md` by line number, so a note added inside an existing line keeps every reference valid where a new line would shift them.
 - Failed approaches: a first draft added the notes as new blockquote lines, which would have shifted those references; it was rewritten before any commit.
 - Remaining follow-ups: None.
+
 ### 2026-09-25 — Go-live S4: removing the GBIF GADM geography adapter (PLAN 4.8 licence fix)
 
 - Task: the coordinator's licence ruling (13:31Z). PLAN 4.8 (PLAN.md:669) does not use GADM, not even as a measurement, because its terms bar redistribution and commercial use, yet main still wired GBIF's GADM search as the production "geography" authority tool. One small pull request from main, ahead of the S4 chain: #216.
