@@ -99,6 +99,10 @@ jobs:
         id: deploy
         env:
           RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
+          # RELEASE.md 4.5: the owner sets these data-production secrets for the bootstrap run and deletes them after;
+          # unset, each arrives empty and the bootstrap is skipped. Only this step reads them; nothing prints them.
+          DATA_BOOTSTRAP_ARTIFACT_B64: ${{ secrets.DATA_BOOTSTRAP_ARTIFACT_B64 }}
+          DATA_BOOTSTRAP_APPROVED_SHA256: ${{ secrets.DATA_BOOTSTRAP_APPROVED_SHA256 }}
         run: uv run python scripts/ci/deploy_data.py --deploy --packet "$RUNNER_TEMP/data-release/packet.json" --output "$RUNNER_TEMP/data-receipt.json"
       # Every exit: a later attempt reads a failed first apply's restore check (RELEASE.md 4.4).
       - name: Attest the data receipt
@@ -113,6 +117,21 @@ jobs:
           name: data-receipt-${{ github.sha }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/data-receipt.json
           if-no-files-found: warn
+          retention-days: 30
+      # RELEASE.md 4.5: the bootstrap's records stay encrypted to the committed evidence recipient. Only the encrypted
+      # copies leave the runner, a failed write's included; the raw records beside them match no upload path.
+      - name: Attest the encrypted bootstrap evidence
+        if: always() && steps.deploy.outputs.evidence == 'present'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: ${{ runner.temp }}/data-release/*.encrypted.json
+      - name: Retain the encrypted bootstrap evidence, never a private record in the clear
+        if: always() && steps.deploy.outputs.evidence == 'present'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: encrypted-bootstrap-evidence-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/data-release/*.encrypted.json
+          if-no-files-found: error
           retention-days: 30
 
   initialize:

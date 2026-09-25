@@ -1,4 +1,5 @@
 """Shape of the automatic data release workflow (RELEASE.md sections 4.2 and 4.3); no network."""
+import json
 from pathlib import Path
 import re
 
@@ -27,6 +28,11 @@ INITIALIZER = "specimen-data-initialize@specimen-digitization.iam.gserviceaccoun
 INTENT = "${{ runner.temp }}/data-release/initializer-create-specimen-digitization-instance.json"
 CREDENTIALED = ("release", "initialize", "dispose-initializer", "migrate")
 INITIALIZED = "${{ runner.temp }}/data-initialized.json"
+NODE_ENV = {"RELEASE_NODE_ROOT": "${{ runner.temp }}/firebase-release"}
+# RELEASE.md 4.5: the owner's data-production secrets for the bootstrap run, and only those.
+BOOTSTRAP = ("DATA_BOOTSTRAP_ARTIFACT_B64", "DATA_BOOTSTRAP_APPROVED_SHA256")
+DEPLOY_ENV = {**NODE_ENV, **{name: "${{ secrets.%s }}" % name for name in BOOTSTRAP}}
+EVIDENCE = "${{ runner.temp }}/data-release/*.encrypted.json"
 
 
 def steps(job):
@@ -92,9 +98,9 @@ def test_every_action_is_pinned_to_a_full_commit_sha():
     assert actions and all(re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", action) for action in actions)
 
 
-def test_the_workflow_reads_no_secret_no_variable_and_no_envelope():
+def test_the_workflow_reads_no_variable_and_no_envelope():
     # The gate record's commit reaches the Node connector only from the admitted record, never from the workflow.
-    for retired in ("secrets.", "vars.", "RELEASE_INPUTS_B64", "RELEASE_INPUTS_SHA256", "RELEASE_AUTHORIZED_SHA",
+    for retired in ("vars.", "RELEASE_INPUTS_B64", "RELEASE_INPUTS_SHA256", "RELEASE_AUTHORIZED_SHA",
                     "RELEASE_GATE_SHA", "RELEASE_PACKET_SHA256", "RELEASE_BUDGET_LEDGER_SHA256", "RELEASE_CLEANUP_PERMIT",
                     "INITIALIZATION_RECEIPT_SHA256", "--prepare-inputs", "--prepare-cleanup", "--prepare-initialization",
                     "--prepare-clone-intent", "--cleanup", "--complete-initialization", "--receipt"):
@@ -107,7 +113,7 @@ def test_each_job_runs_exactly_its_reviewed_steps_in_order():
     assert shape("admission") == [*setup, ADMIT]
     # The pinned connector is installed before the gate, so no credential exists while npm runs.
     assert shape("release") == [*setup, *NODE, READMIT, "google-github-actions/auth", DEPLOY,
-                                "actions/attest", "actions/upload-artifact"]
+                                "actions/attest", "actions/upload-artifact", "actions/attest", "actions/upload-artifact"]
     # The creation intent is signed and published before the step that can create the principal.
     assert shape("initialize") == [*setup, *NODE, f"{GATE}-initialization --output {PACKET}", "google-github-actions/auth",
                                    data % "prepare-initializer-intents", "actions/attest", "actions/upload-artifact",
@@ -132,7 +138,7 @@ def test_the_intent_and_the_receipt_carry_this_attempt_and_the_receipt_is_signed
     assert not any("if" in step for step in steps("initialize"))
     for job in CREDENTIALED:
         native = [step for step in steps(job) if "deploy_data.py" in step.get("run", "") and "--prepare-" not in step["run"]]
-        assert len(native) == 1 and native[0]["env"] == {"RELEASE_NODE_ROOT": "${{ runner.temp }}/firebase-release"}
+        assert len(native) == 1 and native[0]["env"] == (DEPLOY_ENV if job == "release" else NODE_ENV)
 
 
 def test_the_admission_waits_for_the_five_checks_within_its_timeout_and_never_for_a_data_release():
@@ -159,7 +165,7 @@ def test_the_release_re_admits_then_authenticates_with_the_gate_provider_and_its
 def test_the_release_deploys_through_the_approved_entrypoint_and_exposes_its_phase_and_first_step():
     deploy = steps("release")[index("release", lambda step: "deploy_data.py" in step.get("run", ""))]
     assert deploy["id"] == "deploy" and deploy["run"] == DEPLOY and "if" not in deploy
-    assert deploy["env"] == {"RELEASE_NODE_ROOT": "${{ runner.temp }}/firebase-release"}
+    assert deploy["env"] == DEPLOY_ENV
     assert JOBS["release"]["outputs"] == {"phase": "${{ steps.deploy.outputs.phase }}",
                                           "init_step": "${{ steps.deploy.outputs.init_step }}"}
     # The pinned connector library is the only Firebase code the workflow installs; nothing deploys with a CLI.
@@ -185,8 +191,8 @@ def test_the_deployment_contract_describes_the_apply_and_the_checks_the_release_
 
 def test_the_receipt_is_attested_and_retained_on_every_exit():
     deploy = index("release", lambda step: step.get("id") == "deploy")
-    attest = index("release", uses("actions/attest"))
-    upload = index("release", uses("actions/upload-artifact"))
+    attest = index("release", lambda step: uses("actions/attest")(step) and step["with"]["subject-path"] == RECEIPT)
+    upload = index("release", lambda step: uses("actions/upload-artifact")(step) and step["with"]["path"] == RECEIPT)
     assert deploy < attest < upload
     # Every exit: a later attempt reads a failed first apply's restore check (RELEASE.md 4.4, the coordinator's ruling).
     assert steps("release")[attest]["if"] == "always() && steps.deploy.outcome != 'skipped'"
@@ -235,3 +241,47 @@ def test_every_job_that_changes_data_holds_the_mutation_lock_the_runtime_release
     assert runtime["jobs"]["release"]["concurrency"] == LOCK
     # The runtime admission waits for this run (D3); one workflow-level group for both would deadlock.
     assert runtime["concurrency"]["group"] != WORKFLOW["concurrency"]["group"]
+
+
+def test_the_bootstrap_secrets_reach_only_the_release_step_as_environment_variables_and_nothing_echoes_them():
+    """RELEASE.md 4.5: the owner sets them for the bootstrap run; unset, each arrives empty and the bootstrap is skipped."""
+    deploy = steps("release")[index("release", lambda step: step.get("id") == "deploy")]
+    assert deploy["env"] == DEPLOY_ENV and deploy["run"] == DEPLOY
+    # Each is named exactly once in the whole workflow: in that step's env, which no job-level env repeats.
+    assert re.findall(r"secrets\.(\w+)", TEXT) == list(BOOTSTRAP)
+    assert all(not any(name in json.dumps(job.get("env", {})) for name in BOOTSTRAP) for job in JOBS.values())
+    # No step's command, input or condition names or prints one.
+    for job in JOBS.values():
+        for step in job["steps"]:
+            visible = json.dumps({key: value for key, value in step.items() if key != "env"})
+            assert not any(name in visible for name in BOOTSTRAP) and "secrets." not in visible
+            assert not re.search(r"\b(echo|printf|printenv|env|set -x)\b", step.get("run", ""))
+
+
+def test_the_encrypted_bootstrap_evidence_is_attested_and_retained_whenever_the_release_wrote_it():
+    """RELEASE.md 4.5: the private records stay encrypted to the committed recipient; only their encrypted copies are
+    attested and uploaded, a failed write's included, and only when deploy_data.py reports that it wrote them."""
+    receipt = index("release", lambda step: uses("actions/upload-artifact")(step) and step["with"]["path"] == RECEIPT)
+    attest = index("release", lambda step: uses("actions/attest")(step) and step["with"]["subject-path"] == EVIDENCE)
+    upload = index("release", lambda step: uses("actions/upload-artifact")(step) and step["with"]["path"] == EVIDENCE)
+    assert receipt < attest < upload
+    for position in (attest, upload):
+        assert steps("release")[position]["if"] == "always() && steps.deploy.outputs.evidence == 'present'"
+    assert steps("release")[upload]["with"] == {
+        "name": "encrypted-bootstrap-evidence-${{ github.sha }}-${{ github.run_attempt }}", "path": EVIDENCE,
+        "if-no-files-found": "error", "retention-days": "30"}
+    # The raw records beside them never match an upload path: from the packet's directory, only encrypted copies and the
+    # initializer's signed intent leave the runner.
+    uploaded = [step["with"]["path"] for name in JOBS for step in steps(name) if uses("actions/upload-artifact")(step)]
+    assert sorted(path for path in uploaded if "data-release/" in path) == sorted([INTENT, EVIDENCE])
+
+
+def test_the_deployment_contract_describes_the_bootstrap_the_release_job_runs():
+    section = (ROOT / "docs/DEPLOYMENT.md").read_text().split("## Data release on merge (go-live program)")[1].split("\n## ")[0]
+    release = " ".join(section.split("2. **Release**")[1].split("\n3. ")[0].split())
+    for fact in ("`DATA_BOOTSTRAP_ARTIFACT_B64`", "`DATA_BOOTSTRAP_APPROVED_SHA256`", "`verify`", "`apply`",
+                 "`initialize`", "unread", "`tree_sha256`", "backup", "read first", "skips", "fails",
+                 "`infra/release/evidence-recipient.pub`", "encrypted", "`specimenDataOwnerBootstrap`"):
+        assert fact in release, fact
+    assert "reads no secret" not in " ".join(section.split())
+    assert "only the bootstrap's `data-production` secrets" in " ".join(section.split())

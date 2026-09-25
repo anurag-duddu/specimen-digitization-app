@@ -558,8 +558,68 @@ afterwards (D2).
   skips.
 - If it is present and the rows differ, the job fails.
 
-Nothing prints a value from the artifact, and evidence stays encrypted as
-today. The envelope phases stay until T3's last step removes them.
+The bootstrap runs in the release job, after a successful `verify` or
+`apply`, with the time-bounded `specimenDataOwnerBootstrap` role that the
+owner opens for that run (D2). On the `initialize` phase it leaves the
+artifact unread and says the bootstrap waits for the initialized plane.
+
+Before anything else, the artifact must pass these checks:
+- **Approved digest.** Its SHA-256 must equal
+  `DATA_BOOTSTRAP_APPROVED_SHA256`, a second environment secret the owner
+  sets from the owner's private approval record. It is never computed from
+  the artifact it approves; otherwise a self-consistent artifact with the
+  Insects and Mammals ids swapped would pass. A test pins that swap's
+  refusal.
+- **The approval record** (the coordinator's ruling of 2026-09-23). The owner
+  runs a reviewed `summarize` command locally on the private artifact. It
+  prints a value-free summary, and only after the owner types `APPROVE` does
+  it write two files, both mode 600:
+  - `hierarchy-approval.sha256`, holding only the 64-hex digest;
+  - a sidecar, `hierarchy-approval.json`, holding the time.
+
+  It refuses to overwrite either file, and nothing recomputes the digest at
+  run time.
+- **Collection tree.** The job runs only from a commit whose collection tree
+  matches the artifact's `tree_sha256`.
+
+The same run then writes the worker's membership once, as
+[`WORKER_MEMBERSHIP.md`](WORKER_MEMBERSHIP.md) defines it (#96): an active
+organization membership, and one collection membership in the pilot
+collection that the committed key `insects` resolves to against the approved
+artifact, with role `operator` and `canViewSensitive: false`. Nothing writes
+it from a shell.
+- **Worker account check** (the coordinator's ruling, from #96's security
+  review). Just before the write, the job looks the worker's UID up read-only
+  (Identity Toolkit `accounts:lookup` by `localId`). The UID is the
+  `data-production` environment secret `DATA_WORKER_ACTOR_UID`, which the
+  owner sets for that run and deletes afterwards. The job refuses unless the
+  account exists, is disabled, and has no email, password, phone or sign-in
+  provider. Tests pin each case.
+- **Read-back.** An exact match skips; a difference fails.
+- **Never the admin document.** The job never writes the admin membership
+  document of `scripts/data/bootstrap_admin.py`, which hard-codes role
+  `admin`.
+- **Backup first.** Before its first write, the job takes an on-demand
+  backup as section 4.4 item 1 does, unless this run's apply already took
+  one. The first apply's restore check (D1) is the verified restore path.
+- **Evidence.** It stays encrypted to the reviewed evidence recipient, as
+  today (the coordinator's ruling of 2026-09-24). Its public key is committed
+  as `infra/release/evidence-recipient.pub`, with the SHA-256 of its PEM bytes
+  pinned in code and checked by `release_catalog_envelope.validate_public_key`.
+  Only the public key is committed: the private key stays on the owner's
+  machine, and the coordinator decrypts evidence locally when it needs
+  review.
+- **Output and secrets.** The job prints only pass or a refusal reason,
+  never an identity. The release step reads the three secrets only as
+  environment variables, and only when they are set, and no value reaches a
+  log or artifact.
+
+**Merge.** T3e merges only on the coordinator's explicit go-ahead, like #163.
+The next push to `main` after it merges runs the bootstrap live, whenever
+the owner has set the artifact's secrets and opened the window.
+
+Nothing prints a value from the artifact. The envelope phases stay until T3's
+last step removes them.
 
 ## 5. Next pull requests
 

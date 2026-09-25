@@ -6,6 +6,7 @@ or cloud.
 import copy
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import subprocess
 import time
@@ -52,6 +53,13 @@ NOT_OURS = "the restore clone is not provably this run's; the coordinator delete
 SPENT = ("an earlier attempt spent the first production restore's claim without checking the clone; "
          "the coordinator decides")
 IAM = {"name": "cloudsql.iam_authentication", "value": "on"}
+# RELEASE.md 4.5: the owner's bootstrap secrets, which no Google request's process and no child process may still hold.
+SECRETS = ("DATA_BOOTSTRAP_ARTIFACT_B64", "DATA_BOOTSTRAP_APPROVED_SHA256", "DATA_WORKER_ACTOR_UID")
+
+
+def visible(environment):
+    """The bootstrap secrets an environment still holds."""
+    return sorted(name for name in SECRETS if name in environment)
 
 
 def unlabelled(cloud):
@@ -79,6 +87,9 @@ class Cloud:
         self.catalog, self.indexes, self.restored = copy.deepcopy(MERGED_CATALOG), inventory(), copy.deepcopy(MERGED_CATALOG)
         self.claims, self.response, self.clone, self.pending, self.swap = [], {}, lambda clone: None, set(), False
         self.earlier = {}  # this run's earlier attempts' data receipts: attempt -> (receipt, attested)
+        # The bootstrap secrets the release's own environment held at each Google request, and those each child
+        # process could see: (kind, secrets).
+        self.environments, self.children = [], []
 
     def effect(self, name):
         self.events.append(name)
@@ -102,6 +113,7 @@ class Cloud:
                 "md5Hash": release_clone.checksum(payload), **self.response}
 
     def request(self, api, method, resource, *, body=None, params=None, missing=False, diff=False):
+        self.environments.append(visible(os.environ))
         if method == "GET":
             if (api, resource) not in self.live:
                 return None if missing else pytest.fail("unexpected read")
@@ -167,6 +179,7 @@ def node_sql(cloud):
         assert command[3] == (D.CLONE if command[2] == "restored" else D.SOURCE)
         assert command[4].endswith(f"{command[3]}-{command[2]}.json")
         assert kwargs["env"]["RELEASE_GATE_SHA"] == SHA and 0 < kwargs["timeout"] <= 300
+        cloud.children.append(("node", visible(kwargs["env"])))
         cloud.events.append(command[2])
         if command[2] == cloud.fail:
             return subprocess.CompletedProcess(command, 1, b"", b"")
@@ -192,8 +205,9 @@ def released(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(time, "sleep", lambda seconds: pytest.fail("every operation here completes at once"))
 
     def run(cloud, directory="release"):
-        monkeypatch.setattr(D, "Google", lambda path, plane: cloud)
+        monkeypatch.setattr(D, "Google", lambda path, plane: cloud.environments.append(visible(os.environ)) or cloud)
         def gh_json(path):
+            cloud.children.append(("gh api", visible(os.environ)))  # gh inherits the release's environment
             if path.startswith(f"repos/{D.REPOSITORY}/actions/runs/456/artifacts"):
                 items = [{"name": f"data-receipt-{SHA}-{attempt}", "expired": False, "workflow_run": {"id": 456}}
                          for attempt in cloud.earlier]
@@ -202,6 +216,8 @@ def released(tmp_path, monkeypatch, capsys):
             return {"status": cloud.status}
 
         def download(command, **kwargs):
+            # deploy_runtime.checked: an explicit env, or else the release's own, which the child inherits.
+            cloud.children.append(("gh run download", visible(os.environ if kwargs.get("env") is None else kwargs["env"])))
             assert command[:8] == ["gh", "run", "download", "456", "--repo", D.REPOSITORY, "--name", command[7]]
             attempt = int(command[7].rsplit("-", 1)[1])
             Path(command[9], "data-receipt.json").write_text(json.dumps(cloud.earlier[attempt][0]))
@@ -224,6 +240,10 @@ def released(tmp_path, monkeypatch, capsys):
         except ValueError as failure:
             cloud.error = str(failure)
         cloud.log = capsys.readouterr().out
+        # RELEASE.md 4.5: from its start on, the release holds no bootstrap secret in its environment, and no child
+        # process sees one.
+        assert not any(cloud.environments) and not any(names for _, names in cloud.children), "a secret stayed visible"
+        assert not visible(os.environ)
         value = json.loads(output.read_text())
         assert set(value) == KEYS and not any(canary in text for canary in CANARIES
                                               for text in (output.read_text(), steps.read_text(), cloud.log))
@@ -237,7 +257,7 @@ def receipt(phase="apply", **facts):
     return {"version": "data-released/v1", "source_sha": SHA, "run_id": 456, "run_attempt": 2, "phase": phase,
             "schema_etag": "schema-etag", "schema_update_time": UPDATED, "connector_etag": "connector-etag",
             "storage_ruleset": RULESET, "source_sha_label": OLD, "backup_id": None, "first_restore": None, "tables": None,
-            "views": None, **facts}
+            "views": None, "bootstrap": None, **facts}
 
 
 def test_an_additive_apply_backs_up_then_migrates_and_releases_the_merged_files_labelled_with_the_merged_commit(released):
