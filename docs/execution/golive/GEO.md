@@ -81,8 +81,9 @@ radii are tier 3's.
 text and are kept as written, as G27 keeps a verbatim and G38 keeps each layer:
 the numbers whole as written, dots and commas included, and the unit as feet,
 metres, or none when the label gives none ("Elev.6400" on 105526322). A range
-joins its numbers by a dash of any kind or a slash, or by "to" or "a" between
-spaces ("4000—4500 ft", "1,200/1,500 m", "1500 a 2000 m"), and is kept whole.
+joins its numbers by a dash of any kind or a slash, or by "to", "a", "and" or
+"y" between spaces ("4000—4500 ft", "1,200/1,500 m", "1500 a 2000 m",
+"entre 1500 y 2000 m"), and is kept whole.
 An elevation in brackets takes its brackets with it: "Mt. Apo (1463 m)" leaves
 "Mt. Apo". This module converts and fills nothing. G41's "Convert and fill"
 (the label's own number fills From and To, and the other unit is converted
@@ -102,6 +103,9 @@ number. These numbers are unsure:
   "Mt. Apo, 12,300 ft" reads;
 - a range's upper number with a decimal, one not in thousands groups
   ("4-1948,95 m");
+- a number after another number and a single word, which may join a range no
+  join above lists ("4000 hasta 4500 ft"). "Camp 3 at 1500 m" is set aside too,
+  while right after another elevation a number is its pair ("4800 ft 1463 m");
 - a malformed grouping ("1,5,3 m", "12,34,567 m");
 - a number beside another digit group across a space ("4 800 ft.", "1 463 m",
   "'4 800 ft."). A two-digit year after an apostrophe is no such group:

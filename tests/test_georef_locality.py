@@ -497,9 +497,18 @@ def test_a_year_never_joins_an_elevation(date, mark, tail, unit):
 
 
 # Every way a range joins its numbers: a dash of any kind or a slash, with or
-# without spaces, "to", and the Spanish "a" between spaces.
+# without spaces, "to", and "a", "and" and "y" between spaces.
 DASHES = "-\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d"
-RANGE_JOINS = (*DASHES, "/", *(f" {join} " for join in (*DASHES, "/")), "to", " to ", " a ")
+RANGE_JOINS = (
+    *DASHES,
+    "/",
+    *(f" {join} " for join in (*DASHES, "/")),
+    "to",
+    " to ",
+    " a ",
+    " and ",
+    " y ",
+)
 
 
 @pytest.mark.parametrize(
@@ -519,11 +528,29 @@ def test_a_range_is_read_whole(join, low, high, unit):
 
 
 @pytest.mark.parametrize(
-    "text", ["4'800 m", "4\u2019800 m", "6-Sept-1946-640'", "4000-4500-5000 m", "4000a4500 ft"]
+    "text",
+    [
+        "4'800 m",
+        "4\u2019800 m",
+        "6-Sept-1946-640'",
+        "4000-4500-5000 m",
+        "4000a4500 ft",
+        "4000 hasta 4500 ft",
+        "4000 bis 4500 m",
+    ],
 )
 def test_a_range_never_reads_its_top_alone(text):
     reading = read_locality(text)
     assert (reading.elevations, reading.parts, reading.unplaced) == ((), (), (text,))
+
+
+def test_a_number_after_another_number_and_one_word_is_set_aside():
+    # The word may join a range no table lists, so "Camp 3 at 1500 m" costs its
+    # elevation too. Right after another elevation a number is its pair.
+    reading = read_locality("Camp 3 at 1500 m")
+    assert (reading.elevations, reading.unplaced) == ((), ("Camp 3 at 1500 m",))
+    for text in ("4800 ft 1463 m", "4800 ft/1463 m", "1500 m and 2000 m"):
+        assert len(read_locality(text).elevations) == 2
 
 
 def test_two_or_four_leading_digits_after_other_text_may_be_a_year():
