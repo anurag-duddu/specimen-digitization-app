@@ -1,6 +1,16 @@
 from __future__ import annotations
 
+import json
+
+import httpx
 import pytest
+from huggingface_hub.hf_api import InferenceProviderMapping
+from huggingface_hub.inference._providers._common import (
+    HARDCODED_MODEL_INFERENCE_MAPPING,
+)
+from huggingface_hub.utils import _http as hf_http
+from pydantic_ai import Agent
+from pydantic_ai.models.huggingface import HuggingFaceModel
 
 from specimen_digitization import model_gateway
 from specimen_digitization.model_gateway import (
@@ -60,7 +70,7 @@ def test_gateway_builds_model_with_pinned_provider_and_org_billing(
 
     monkeypatch.setattr(model_gateway, "AsyncInferenceClient", FakeClient)
     monkeypatch.setattr(model_gateway, "HuggingFaceProvider", FakeProvider)
-    monkeypatch.setattr(model_gateway, "HuggingFaceModel", FakeModel)
+    monkeypatch.setattr(model_gateway, "ArgumentPreservingHuggingFaceModel", FakeModel)
 
     gateway = HuggingFaceModelGateway(token="hf_do_not_log", bill_to="field-museum")
     gateway.model_for("handwriting-muse")
@@ -99,3 +109,95 @@ def test_explicit_gateway_credential_does_not_require_environment(monkeypatch):
     import os
 
     assert "HF_TOKEN" not in os.environ
+
+
+def _completion(message: dict[str, object]) -> dict[str, object]:
+    return {
+        "id": "completion",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "meta-models/Muse-Glimmer-30B",
+        "system_fingerprint": "fake",
+        "choices": [
+            {"index": 0, "finish_reason": "stop", "message": message, "logprobs": None}
+        ],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+    }
+
+
+def test_replayed_tool_calls_keep_their_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second model turn resends the earlier tool call with its arguments."""
+    route = INITIAL_HUGGINGFACE_ROUTES["handwriting-muse"]
+    monkeypatch.setitem(
+        HARDCODED_MODEL_INFERENCE_MAPPING,
+        route.provider,
+        {
+            route.model_id: InferenceProviderMapping(
+                provider=route.provider,
+                hf_model_id=route.model_id,
+                providerId=route.model_id,
+                status="live",
+                task="conversational",
+            )
+        },
+    )
+    replies = iter(
+        [
+            _completion(
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "lookup",
+                                "arguments": '{"name": "alpha"}',
+                            },
+                        }
+                    ],
+                }
+            ),
+            _completion({"role": "assistant", "content": "code 7"}),
+        ]
+    )
+    sent: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/chat/completions")
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json=next(replies))
+
+    # huggingface_hub reads this factory on every request; monkeypatch restores it.
+    monkeypatch.setattr(
+        hf_http,
+        "_GLOBAL_ASYNC_CLIENT_FACTORY",
+        lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    agent = Agent(HuggingFaceModelGateway(token="hf_test").model_for(route.route_id))
+
+    @agent.tool_plain
+    def lookup(name: str) -> str:
+        return f"code {7 if name == 'alpha' else 0}"
+
+    assert agent.run_sync("Look up alpha.").output == "code 7"
+    replayed = [
+        call
+        for message in sent[1]["messages"]
+        for call in message.get("tool_calls") or []
+    ]
+    assert replayed == [
+        {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "lookup", "arguments": '{"name": "alpha"}'},
+        }
+    ]
+
+
+def test_pydantic_ai_still_maps_tool_calls_through_the_overridden_hook() -> None:
+    """If pydantic-ai renames the hook, the argument fix silently stops applying."""
+    assert isinstance(vars(HuggingFaceModel)["_map_tool_call"], staticmethod)
