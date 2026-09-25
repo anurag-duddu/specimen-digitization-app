@@ -15,6 +15,8 @@ new release inputs must explicitly select the approved additive contracts.
 > trace content follows G3
 > ([amendment](execution/APPROVED_LOGFIRE_TRACING.md#go-live-amendment-2026-09-23-g3)),
 > and data and runtime releases deploy on merge without release inputs (G11).
+> G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+> mechanism).
 > [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) lists the code
 > that still enforces a superseded clause until a later go-live pull request
 > changes it.
@@ -315,8 +317,9 @@ USD 5 reservation ledger. It is never run inside ordinary pull-request CI.
 > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G2, G9 and G11. Specimens are processed one at a time, on demand, including
 > new uploads; the ceiling is USD 25, held by the pipeline and a billing alert
-> rather than a reservation ledger. The pilot still never runs in pull-request
-> CI.
+> rather than a release reservation ledger. G30's per-call reservations stand
+> (PLAN 4.3; the coordinator's ruling on the mechanism). The pilot still never
+> runs in pull-request CI.
 
 ### Flutter client
 
@@ -765,11 +768,15 @@ expansion requires user review and approval of end-to-end results.
   > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
   > G11. The uniqueness this item protects is never absent during an additive
   > apply. Every unique constraint is declared in the schema (for example
-  > `specimen_scope_checksum`), the gate refuses any change to an existing one,
-  > and the supplemental SQL indexes are non-unique. So writers keep running.
+  > `specimen_scope_checksum`), the gate refuses any change to an existing one
+  > except PLAN section 4.4's closed `SourceAsset` exception, which adds the new
+  > constraint in one apply and drops the old one in a later apply only after
+  > a live read-back, and the supplemental SQL indexes are non-unique. So
+  > writers keep running.
   > The supplemental indexes are still restored and checked by definition
   > after every apply, and a backup with a verified restore path still precedes
-  > it. The isolated restore proof is now done once, on the first apply (D1).
+  > it. The isolated restore proof is now done once, on the first apply (the
+  > coordinator's ruling D1).
   > All of this is specified in
   > [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) section 1.
   Do not create or upgrade a source SQL instance as a side effect of deployment.
@@ -799,7 +806,9 @@ expansion requires user review and approval of end-to-end results.
   > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
   > G2, G9 and G11. SAM 3 scales to zero instead of expiring, the worker runs
   > on demand, and the USD 25 ceiling is held by the pipeline and a billing
-  > alert rather than by release admission. The ordering in this item stays.
+  > alert rather than by release admission. G30's per-call reservations stand
+  > (PLAN 4.3; the coordinator's ruling on the mechanism). The ordering in
+  > this item stays.
 - Serialize production transitions without cancellation. Quiesce on failure;
   retain previous known revisions and evidence. Runtime rollback uses a reviewed
   main PR and compatible data; never delete original data to simulate recovery.
@@ -809,8 +818,33 @@ expansion requires user review and approval of end-to-end results.
   > 2026-09-23: The full-cohort product evidence is superseded for the go-live
   > program by
   > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G1 and G2. Product acceptance is the per-specimen loop of PLAN section 8,
-  > through the full pipeline; the workflow, marker and revision evidence stay.
+  > G1, G2, G9 and G11. Each specimen is checked through the full pipeline as it
+  > is processed (PLAN section 8), a record the harness resolves is cleared
+  > without a human (G1), and the workflow, marker and revision evidence stay.
+  > The rest of product acceptance stands, including every UI and live case the
+  > human-review checker (`scripts/qa/live/human_review.py`) requires: the ten
+  > UI cases of [`RELEASE_ACCEPTANCE.md`](execution/RELEASE_ACCEPTANCE.md)
+  > (UI-SIGN-IN, UI-INTAKE, UI-PROCESSING, UI-IMAGE-REGIONS,
+  > UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN, UI-SEARCH-QUEUE,
+  > UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and UI-NO-SYNTHETIC-FALLBACK) and
+  > the fifteen live cases of [`LIVE_QA.md`](execution/LIVE_QA.md)
+  > (AUTH-IDENTITY, AUTH-APPCHECK, AUTH-MEMBERSHIP, AUTH-REVOKE,
+  > AUTH-CROSS-SCOPE, DATA-TEN, DATA-GENERATION, DATA-RESTORE, PROVIDER-ACTUAL,
+  > COST-BOUNDS, RETRY-UNKNOWN, WORKER-RESTART, API-RESTART, DEPLOY-IDENTITY and
+  > BROWSER-E2E), with UI-SIGN-IN's unverified and no-role denial,
+  > UI-DENIAL-RECOVERY's unauthenticated, cross-organization or
+  > cross-collection, viewer-write and revoked-access denials, in which stale
+  > responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
+  > and with the ten, in order and beside new uploads, in place of a frozen
+  > manifest (G2), G9's USD 25 ceiling in place of the cohort budget, and the
+  > release packet and the cohort ledger retired (G11). G30's per-call
+  > reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
+  > S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
+  > and worker SHAs and image digests with the candidate's own runtime release
+  > run, and the SQL and rules revisions with the data release run that deployed
+  > them, which is the candidate's own or a main run at or before the candidate
+  > with those inputs unchanged between the two, in place of the packet; the
+  > rest of DEPLOY-IDENTITY stands.
 
 The coordinator may perform only the approved, independently reviewed setup
 actions after live inventory and recording the exact bounded action packet.
@@ -824,12 +858,15 @@ after verification evidence is retained. Existing data and source SQL remain.
 > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G9 and G11. The owner runs the standing grants and secret steps from the
 > release workstream's reviewed, read-only-generated list, with no action
-> packet or cost reservation, and the ceiling is USD 25.
+> packet or release cost reservation, and the ceiling is USD 25. G30's
+> per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+> mechanism).
 > [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) section 1 names
 > the five standing data-release roles. The one-time roles (the initializer
 > role, `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal`)
-> and the clone and claim roles stay in the bounded setup window with its
-> action packet. A restore clone is still removed by its two-hour expiry.
+> and the clone, claim and runtime-absence roles stay in the bounded setup
+> window with its action packet. A restore clone is still removed by its
+> two-hour expiry.
 > Existing data and source SQL still remain.
 
 Recovery admission additionally requires the original typed

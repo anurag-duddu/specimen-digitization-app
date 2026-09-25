@@ -14,12 +14,12 @@ functional one comes first (G6).
 
 ## Read first
 
-1. `docs/execution/golive/PLAN.md`: sections 1, 2, 4.1 rows 5 to 8, and 6 (your
-   row).
+1. `docs/execution/golive/PLAN.md`: sections 1, 2, 4.1 rows 5 to 8, 4.3, 4.8,
+   and 6 (your row).
 2. `~/specimen-golive/research/06-product-spec-and-approvals.md` sections 1 and
    4, and `01-backend-pipeline-stages.md` stages 5 to 8.
-3. `docs/product-requirements/PRD.md` HAR-001 to HAR-019 (323-341), QUE-001 to
-   QUE-005 (387-391), section 12.4 (487-567) and the failure table (676-688);
+3. `docs/product-requirements/PRD.md` HAR-001 to HAR-019 (326-344), QUE-001 to
+   QUE-005 (390-394), section 12.4 (490-573) and the failure table (682-694);
    `docs/execution/CONTRACTS.md` 210-270; `docs/GBIF.md`;
    `docs/product-requirements/HUGGINGFACE_MODEL_ROUTING.md` and
    `HARNESS_OPTIONS.md`.
@@ -72,16 +72,64 @@ functional one comes first (G6).
   settled value with a success outcome. S5's contract has the shape. For a
   place, the final value's name (`FieldValue.normalized`) is only a reader's
   literal the lookup matched exactly; otherwise the final value is the place ID
-  and the outcome with no name (G26), and the field clears under G1 until the
-  owner decides S8's D15 (#94). For a taxon it is GBIF's settled name.
+  and the outcome with no name (G26). Where no reader's literal matches even
+  after folding or through an alias, the field clears only as G34 decides D15
+  for the Google tool (below), and otherwise goes to review. For a taxon it is
+  GBIF's settled name.
 - G29: a Roman numeral I to XII in the month position is that month. The
   harness works through every reading a notation allows, for dates (month
   names, Roman numerals, both day and month orders, two-digit years under G24)
   and for every other field, and settles the one the evidence supports; what
-  it cannot settle goes to needs human review with the candidates. The
-  notations go in the Insects harness's system prompt; each subcollection gets
-  its own.
-- G22: the four elevation fields stay mandatory and nothing is derived.
+  it cannot settle goes to needs human review with the candidates. You write
+  the notations, and every reading each allows, as the Insects harness
+  knowledge in a module you own, with an id and a version, and render it into
+  the Insects harness's system prompt; S3's profile names it, so each
+  subcollection gets its own, and carries G24's and G29's date rules for your
+  date tool (PLAN section 4.2).
+- G32: a field on two labels is settled per label on its own evidence and
+  clears when every label settles to the same value: the same place ID or GBIF
+  usage, or, for a field without a lookup, the same text. Otherwise it goes to
+  review with each label's reading kept.
+- A field without a lookup whose readers all read the same text takes that
+  text as its verbatim and its value and clears, on one label as on several
+  (coordinator reading of G27 and G32, matching your #131). It still passes
+  G45's kind check first, which for `verbatim_dts` is a finding under the
+  coordinator hold of PLAN section 2.3.
+- The place tool's outside requests follow PLAN section 4.8 exactly
+  (coordinator rulings, PLAN 4.8, including the ruling on S8's option (c) for
+  expansions, 2026-09-24): its sources, cuts, expansions, fixed request parts
+  and tests, in your single filter, which S8's request builder also calls.
+  Taxonomy requests carry the taxon name and ranks (`GBIF.md` 107-114). Every
+  credential follows the Maps key's rules. `derive_rest` runs in the worker's
+  derivation job, never in the API.
+- G33: the numeric dates of every reading, the decided transcript's and the raw
+  readings', are the evidence for an all-numeric date's day and month order;
+  any disagreement among them fixes no order, and the date goes to review with
+  its readings.
+- G34 (D15 for the Google tool): a place field whose literal matches no
+  component by fold or alias clears with the place ID and no name only when
+  the long name of Google's component at the field's levels, never a short
+  name or code, is within one edit of the folded literal, is the only such
+  component, and every other admin field of
+  the reading, all of them and at least one, matches by fold or alias; it carries a
+  `near_spelling` warning finding that never routes the record. Otherwise it
+  goes to review with the candidate. S8 builds the retrospective
+  georeferencing tool behind your T3a interface (G34).
+- G22, revised by G37 and G41: the four elevation fields stay mandatory. A
+  single stated value fills From and To, and the other unit is converted
+  exactly (G41; both ways, coordinator reading), each marked as derived with
+  evidence; an elevation the label doesn't state is derived by S8's tool from
+  the settled location (G37).
+- G35 to G40 (PLAN section 2.1): the place tool's three tiers and open-source
+  coordinates (G35, S8's build behind your interface); no conclusion without
+  evidence, and curator-confirmed places (G36); fill in what the label leaves
+  out, with authority and evidence, harness-wide (G37); every value records
+  its layer, and `derive_rest` serves review's "fill the rest" (G38); the
+  georeference stays in the tool result (G39); the agent reads everything
+  transcribed and keeps looking things up (G40), its place lookups through
+  PLAN 4.8's filter, stated in its system prompt.
+  S8 builds the geographic derivations; you build those that need no outside
+  data (coordinator ruling).
 - G5: when the specification is silent or contradictory, ask the coordinator.
 
 ## Pull requests, in order
@@ -89,7 +137,8 @@ functional one comes first (G6).
 Each starts with its spec delta in `docs/execution/golive/HARNESS.md` and
 failing tests (fakes for Hugging Face and HTTP; recorded real responses as
 fixtures, a Google geocoding response first reduced to the place ID, the
-outcome and the fingerprint, G26), then the implementation.
+outcome and the fingerprint, and no recorded request keeping its URL, which
+carries the key, G26), then the implementation.
 
 **T1. Hugging Face routes (G7).** The first pass sees the label crop, so it
 needs a vision model; the harness needs reliable tool calling or structured
@@ -103,7 +152,10 @@ before building on them. Approved 2026-09-23: `first-pass-glm`
 the lab re-measures it with the real harness and G29's prompt,
 `harness-deepseek` (deepseek-ai/DeepSeek-V4.1-Flash on deepinfra, text only).
 
-**T2. The first pass (stage 6).** Persist the decision and the per-reader
+**T2. The first pass (stage 6).** Its reservation follows PLAN 4.3: each of
+its up to two requests is bounded by the route's context length at the pinned
+input price plus the output cap, or by the documented image-token rule plus the
+prompt and the output cap where the route has one, with 20,000 as the floor. Persist the decision and the per-reader
 records into S5's contract.
 
 **T3. The harness (stage 7).** A Pydantic AI agent over typed tools from the
@@ -116,10 +168,11 @@ accepted at the expected rank, which for a genus-only label is the genus (G25);
 synonym, fuzzy, variant and higher-rank matches are `ambiguous`, which changes
 today's adapter: `lookup.py` 105-118 returns `success` for an exact synonym and
 `malformed_response` for VARIANT); Google Maps geocoding
-for geography (G10; the key comes from Secret Manager as
+for geography, which the agent calls mid-run and the final call uses, both
+through PLAN 4.8's filter (G10, G40; the key comes from Secret Manager as
 `specimen-google-maps-key`, and a missing or rejected key is
 `authentication_error`, an operational block: `CONTRACTS.md` 244-246,
-`PRD.md` 682; keep only the place ID, the outcome and the response digest,
+`PRD.md` 688; keep only the place ID, the outcome and the response digest,
 everywhere including traces, fixtures and lab folders, and drop Google's names,
 address parts and coordinates (G26); the tool hands the agent only those, and no
 span, log line, exception text, stored error or tool-call result records the
@@ -136,8 +189,11 @@ section 3). No Parties tool: `identified_by_irn` is optional for the
 slide pilot (G16), and the other fields outside taxonomy and geography are
 transcribed as seen. Every outcome is one of HAR-008's, as `LookupStatus`
 encodes them (`domain.py` 43-54); add none. Phases as the specification lists
-them; the raw-reading fallback; retries with backoff; a budget check per paid
-call; every tool call recorded for S5 and traced with Pydantic AI
+them; the raw-reading fallback; retries with backoff; a worst-case reservation
+before every model request (G30, PLAN section 4.3), which needs a cap on output
+tokens per request and on the agent's model requests per run, set from the
+lab's measured runs, a run reaching the cap being a harness failure under G6;
+every tool call recorded for S5 and traced with Pydantic AI
 instrumentation, content on and binary content off (G3; `include_binary_content`
 defaults to on, and the first pass sends the crop; coordinate with S3's tracing
 topic).
@@ -151,8 +207,21 @@ the harness. Share the tool interface with S8 when it exists. The pilot's
 localities are in the Philippines (1946) and Guatemala (1948); assume no
 country.
 
-**T4. The queue decision (stage 8).** The policy applies G1. For the lane,
-remove the gates that contradict it: `policy.py` 31-34 (institutional approval
+**T3d. Layers and derivations (G37, G38, G41, G44; #144, #167).**
+`apply_derivations` fills only fields the label leaves out, from settled
+inputs; G41's conversion (both ways, 1 ft = 0.3048 m) and single-value
+endpoint fill; G44's single-date fill of Date Visited To, keeping From's
+precision; S8's geographic
+derivations through `ToolResult.derivations`; and `derive_rest` for the
+worker's "fill the rest" job (PLAN section 4.8). A derived value counts only
+with its record: its settled inputs; its dataset or authority with version,
+or, for a G41 or G44 fill, the stated field and its rule with the rules
+version; and its tool call or its `apply_derivations` step (PLAN section 4.8), with a test that a value the
+model asserts without one does not count.
+
+**T4. The queue decision (stage 8).** The policy applies G1. For runs whose
+profile names `harness_route` (coordinator reading of G1, #158), remove the
+gates that contradict it: `policy.py` 31-34 (institutional approval
 and semantics) and 138-139 (`human_approval_required`). Keep
 `label_coverage_unconfirmed` (35-36): the lane's automatic coverage check (S3,
 G15) satisfies it, and a failed check sends the record to needs human review.
@@ -163,8 +232,13 @@ under QUE-004. Validate the separately parsed date, not the verbatim text
 (`policy.py` 119-126 parses the literal today): a date clears at the precision
 written, a two-digit year reads as 19xx for Insects (G24), and a Roman numeral
 in the month position is that month (G29). Keep the
-elevation gate (99-106): the four elevation fields stay mandatory and nothing is
-derived (G22). `unresolved_transcription` (46-48) yields to G19 and G20: a
+elevation gate (99-106), which reads `field.literal` today (`policy.py`
+101-110) and must instead read a derived elevation's value, counting it only
+with its derivation record (G37 and G41, revising G22; PLAN section 4.8). The
+date gate reads a Date Visited To derived under G44 the same way, and the
+fields no lookup checks pass G45's kind check, a mismatch going to review as
+`value_shape_mismatch:{field}` (#167), except `verbatim_dts`, a finding under
+the coordinator hold of PLAN section 2.3. `unresolved_transcription` (46-48) yields to G19 and G20: a
 region whose first pass picked no reading passes when every field drawn from it
 resolved, on its own evidence or through a lookup that settled the
 disagreement; a field still left with conflicting readings sends the record to
