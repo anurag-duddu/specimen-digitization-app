@@ -1,5 +1,24 @@
 # All-ten reading admission: local candidate evidence
 
+> 2026-09-23: The owner's decisions in [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> supersede parts of this document for the go-live program. Each superseded
+> clause keeps its original text and carries a dated note naming the
+> decision. [`golive/RELEASE.md`](golive/RELEASE.md) lists the code that
+> still enforces a superseded clause until a later go-live pull request
+> changes it.
+
+> 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`
+> section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2 and G11. This whole document validates the all-ten reading admission
+> barrier and its reservation ledger for a single bounded worker execution
+> over the whole cohort. Specimens are now processed one at a time, on
+> demand, instead of that barrier; the ten pilot specimens remain the
+> acceptance cohort, processed in order. Release envelopes, the release and
+> cohort cost ledgers and their reservations, including the `reading_cohort`
+> ledger this document exercises, are retired. G30's per-call reservations
+> stand (PLAN 4.3; the coordinator's ruling on the mechanism).
+
 Date: 2026-09-09 UTC. Task: `01a082b4-a9bd-7392-a73b-57ca45532fb7`.
 Coordinator: `01a082b2-c2c3-70d2-be90-7bfb622c9102`.
 Worktree: `/Users/anuragduddu/.codex/worktrees/7471/specimen-digitization-app`.

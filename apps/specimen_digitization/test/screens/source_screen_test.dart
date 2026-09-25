@@ -60,8 +60,10 @@ void main() {
     // Absolute, not relative: relative time is allowed only in the queue
     // list, and when a snapshot was taken decides whether an import will
     // still bind, so it is a citable value rather than a sense of recency.
+    // On the reviewer's clock, never UTC to convert in their head (design/01
+    // H1.9; coordinator ruling for S6, 2026-09-24).
     expect(
-      find.text('10 photographs · listed 14 Sep 2026, 10:22 UTC'),
+      find.text('10 photographs · listed 14 Sep 2026, 05:22 CDT'),
       findsOneWidget,
     );
     // No relative age anywhere in the header.

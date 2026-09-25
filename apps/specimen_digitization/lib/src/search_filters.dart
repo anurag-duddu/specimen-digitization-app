@@ -20,6 +20,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'models.dart';
 import 'saved_filters.dart';
 import 'vocabulary.dart';
+import 'wall_time.dart';
 import 'widgets/widgets.dart';
 
 /// The wire keys this sheet can set, with the words a reviewer reads.
@@ -179,8 +180,8 @@ class SearchFiltersState extends State<SearchFilters> {
       <String, TextEditingController>{};
   final Map<String, String> _errors = <String, String>{};
 
-  late String _from = _dayOf(_values['created_from']);
-  late String _before = _dayOf(_values['created_before']);
+  late String _from = typedDayOf(_values['created_from']);
+  late String _before = typedDayOf(_values['created_before']);
   late int _riskMin = _intOf(_values['risk_min'], _riskFloor);
   late int _riskMax = _intOf(_values['risk_max'], _riskCeiling);
   late bool _includeUnmeasured =
@@ -229,8 +230,8 @@ class SearchFiltersState extends State<SearchFilters> {
   /// 02 section 4.10 asks for, and the message states the rule positively.
   Map<String, String>? submit() {
     final Map<String, String> errors = <String, String>{};
-    final DateTime? from = _parseDay(_from);
-    final DateTime? before = _parseDay(_before);
+    final DateTime? from = typedDayStart(_from);
+    final DateTime? before = typedDayStart(_before);
     if (_from.isNotEmpty && from == null) {
       errors['created_from'] = _dateRule;
     }
@@ -299,38 +300,8 @@ class SearchFiltersState extends State<SearchFilters> {
   void _applySaved(SavedFilterSet set) =>
       Navigator.of(context).pop(Map<String, String>.from(set.filters));
 
-  /// The day part of a stored instant, as the reviewer types it.
-  static String _dayOf(String? raw) {
-    if (raw == null || raw.isEmpty) return '';
-    final DateTime? parsed = DateTime.tryParse(raw);
-    if (parsed == null) return '';
-    final DateTime day = parsed.toUtc();
-    return '${day.year.toString().padLeft(4, '0')}-'
-        '${day.month.toString().padLeft(2, '0')}-'
-        '${day.day.toString().padLeft(2, '0')}';
-  }
-
   static int _intOf(String? raw, int fallback) =>
       int.tryParse(raw ?? '')?.clamp(_riskFloor, _riskCeiling) ?? fallback;
-
-  /// A typed day, or null when it is not one.
-  static DateTime? _parseDay(String raw) {
-    if (raw.isEmpty) return null;
-    final RegExpMatch? match = _dayPattern.firstMatch(raw.trim());
-    if (match == null) return null;
-    final DateTime day = DateTime.utc(
-      int.parse(match.group(1)!),
-      int.parse(match.group(2)!),
-      int.parse(match.group(3)!),
-    );
-    // A month or a day the calendar does not have rolls over rather than
-    // failing, so the round trip is what says whether it was a real date.
-    if (day.month != int.parse(match.group(2)!)) return null;
-    if (day.day != int.parse(match.group(3)!)) return null;
-    return day;
-  }
-
-  static final RegExp _dayPattern = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');
 
   List<String> _choices(String key) {
     final String? source = _configuredChoiceKeys[key];
@@ -373,7 +344,8 @@ class SearchFiltersState extends State<SearchFilters> {
     });
   }
 
-  /// Turns the typed days into the UTC instants the API filters on.
+  /// Turns the typed days into the instants the API filters on: the
+  /// moment each day begins on the reviewer's clock, in UTC (design/01 H2.1).
   ///
   /// `created_before` is exclusive on the wire and the field says so, so the
   /// day the reviewer types is the first day the filter leaves out.
@@ -589,7 +561,9 @@ class SearchFiltersState extends State<SearchFilters> {
   ///
   /// The design system has no date control yet and `showDateRangePicker` is a
   /// Material component this file may not reach for, so the two instants are
-  /// typed as days and converted here, exactly as they were converted before.
+  /// typed as days and converted here: each to the moment it begins on the
+  /// reviewer's clock, in UTC (design/01 H2.1; coordinator ruling for S6,
+  /// 2026-09-25, 01:26Z).
   //
   // TODO(specimen_ui): a UiDateField, so a reviewer picks a day rather than
   // spelling one. Not a slot's to build until it has an entry in 10 section 4,
@@ -856,6 +830,43 @@ class _Group extends StatelessWidget {
   }
 }
 
-/// A day, spelled the way the queue spells a date.
-String absoluteDay(DateTime moment) =>
-    absoluteTime(moment).split(',').first.trim();
+/// A typed day, as the instant it begins on the reviewer's clock, in UTC;
+/// null when the text is not a day the calendar has. The reviewer types
+/// their own day, and the API filters on instants (design/01 H2.1;
+/// coordinator ruling for S6, 2026-09-25, 01:26Z).
+DateTime? typedDayStart(String raw) {
+  final RegExpMatch? match = _dayPattern.firstMatch(raw.trim());
+  if (match == null) return null;
+  final int year = int.parse(match.group(1)!);
+  final int month = int.parse(match.group(2)!);
+  final int day = int.parse(match.group(3)!);
+  // A month or a day the calendar does not have rolls over rather than
+  // failing, so the round trip is what says whether it was a real date.
+  final DateTime date = DateTime.utc(year, month, day);
+  if (date.month != month || date.day != day) return null;
+  return wallDayStart(year, month, day);
+}
+
+/// The day a stored bound begins on the reviewer's clock, as they type it.
+String typedDayOf(String? stored) {
+  final DateTime? parsed = DateTime.tryParse(stored ?? '');
+  if (parsed == null) return '';
+  final WallTime wall = wallTime(parsed);
+  return '${wall.year.toString().padLeft(4, '0')}-'
+      '${wall.month.toString().padLeft(2, '0')}-'
+      '${wall.day.toString().padLeft(2, '0')}';
+}
+
+final RegExp _dayPattern = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$');
+
+/// The keys whose values are the instants typed days begin at.
+const Set<String> _dayKeys = <String>{'created_from', 'created_before'};
+
+/// An applied filter's value in words, for its chip: a date bound as the
+/// day the reviewer typed ("8 Sep 2026"), never the instant sent to the API;
+/// any other value as it is.
+String searchValueLabel(String key, String value) {
+  if (!_dayKeys.contains(key)) return value;
+  final DateTime? parsed = DateTime.tryParse(value);
+  return parsed == null ? value : absoluteDate(parsed);
+}
