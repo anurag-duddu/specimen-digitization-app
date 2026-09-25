@@ -25,16 +25,20 @@ name or reading is sent as it stands, and a part can hold text that is no place,
 such as a collector's name.
 
 **Lines and parts.** Commas and semicolons separate parts, except a comma inside a
-number: after a digit and before exactly three digits ("1,463 m"), or before a
-one- or two-digit decimal ("0,5 km", "1463,5 m"). Any other comma between digits
-separates, as in a reader's "6-Sept-1946,6400'". A line break separates parts
-too, except after a word that needs the next one:
+number. That is a thousands group led by one to three digits ("1,463 m",
+"1,463,200"), or a one- or two-digit decimal ("0,5 km", "1463,5 m"). Any other
+comma between digits separates: after a four-digit year even before three digits
+("6-Sept-1946,640'"), and before four digits ("6-Sept-1946,6400'"). A number with
+a comma or dot glued to a date's hyphen ("12-IV-1948,95 m", "12-IV-1948.95 m") and
+a malformed grouping ("1,5,3 m", "12,34,567 m") are set aside. A line break
+separates parts too, except after a word that needs the next one:
 - a feature notation ("E. Slope Mt." / "McKinley" on 105526322);
 - a unit written before its name ("Yepocapa, Mun." / "Yepocapa," on 105526328);
 - a linking word, "de", "del" or "of" ("Departamento de" / "Chimaltenango").
 
-A line that starts with a linking word joins the line before ("E. slope" / "of
-Mt. Apo").
+A line that starts with a lowercase linking word joins the line before ("E.
+slope" / "of Mt. Apo"). A capitalized one begins a name ("Del Carmen", "De la
+Paz").
 
 **Notations (G29).** The Insects harness reads these whole words in any case,
 with or without the period; they come from the pilot's labels and from the unit
@@ -68,9 +72,10 @@ else the part after it. "5 km NE of Yepocapa" is an offset. A heading followed b
 "slope", "side" or "flank" never heads an offset, so in "1500 m N slope Mt. Apo"
 the "1500 m" is an elevation. An offset's place follows the rules for any part:
 its elevation phrases leave it, and a place with a digit or without a letter is
-kept aside with its offset ("10 m S of Camp 3", "5 km N of 1946"). A heading keeps
-its written form and its bearing in degrees, and a distance stays as written;
-points and radii are tier 3's.
+kept aside with its offset ("10 m S of Camp 3", "5 km N of 1946"), as is an offset
+with a malformed distance ("1,5,3 km N of Davao"). A heading keeps its written
+form and its bearing in degrees, and a distance stays as written; points and
+radii are tier 3's.
 
 **Elevations (G27, G38, G41).** Elevation phrases ("4800 ft.", "4800ft.", "6400'",
 "Elev. 6400'", "1,463 m", "1.463 m", "6.400 ft.", "4000-4500 ft") leave the place
@@ -78,31 +83,33 @@ text and are kept as written, as G27 keeps a verbatim and G38 keeps each layer:
 the numbers whole as written, dots and commas included, and the unit as feet,
 metres, or none when the label gives none ("Elev.6400" on 105526322). A number
 beside another digit group across a space ("4 800 ft.", "1 463 m") is set aside
-rather than cut short, since its grouping is unsure. This module converts and
-fills nothing. G41's "Convert and fill" (the label's own number
+rather than cut short, since its grouping is unsure. A two-digit year after an
+apostrophe is no such group ("3 Sept. '46 850 m" keeps "850 m"). This module
+converts and fills nothing. G41's "Convert and fill" (the label's own number
 fills From and To, and the other unit is converted exactly, each marked derived)
 happens in S4's later derivation layer.
 
 **Unplaced text.** These are kept aside and never searched, since gazetteer place
 names carry no digits:
-- a part left with a number (a digit, or another numeral such as "½") or without
-  a letter, such as a date ("IV-26") or a camp number;
-- a name that is only a linking word ("de", "of");
+- a part left with a number (a digit, or another numeral such as "½", "Ⅳ" or
+  "㏠") or without a letter, such as a date ("IV-26") or a camp number;
+- a name that is only a linking word ("de", "of") or keys to nothing ("Prov.
+  Dept.");
 - a heading phrase with no part to join.
 
-A part is kept aside whole, so "Mindanao, P.I. 3 Sept. '46" keeps only "Mindanao" as a part and
-sets "P.I. 3 Sept. '46" aside, "P.I." with it.
+A part is kept aside whole, so "Mindanao, P.I. 3 Sept. '46" keeps only
+"Mindanao" as a part and sets "P.I. 3 Sept. '46" aside, "P.I." with it.
 
 **Comparing names (G34, as the coordinator read it on 2026-09-24).** Names
 compare by a key: case folded, diacritics, other marks and format characters
-(such as a variation selector or a zero-width space) removed, punctuation turned into spaces, feature notations read
-("Mt." compares as "mount"), and unit words dropped with a "de", "del" or "of"
-after a leading one. So "Chimaltenago" and "Departamento de Chimaltenango" have
-keys one letter apart. `letters_apart` counts the single-character insertions,
-deletions and substitutions between two keys, up to a cap of 2; it looks only
-within that band, so its work grows with the keys' length, not its square. The
-one-letter gate compares full names only, never codes or abbreviations. A word is
-not part of a full name when it:
+(such as a variation selector or a zero-width space) removed, punctuation turned
+into spaces, feature notations read ("Mt." compares as "mount"), and unit words
+dropped with a "de", "del" or "of" after a leading one. So "Chimaltenago" and
+"Departamento de Chimaltenango" have keys one letter apart. `letters_apart`
+counts the single-character insertions, deletions and substitutions between two
+keys, up to a cap of 2; it looks only within that band, so its work grows with
+the keys' length, not its square. The one-letter gate compares full names only,
+never codes or abbreviations. A word is not part of a full name when it:
 - has a period inside it ("P.I."),
 - ends in a period after at most four letters ("Phil.") and is not a notation in
   the table,
