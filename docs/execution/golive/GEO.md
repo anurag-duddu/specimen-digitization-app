@@ -555,3 +555,88 @@ first-order units. The tests check:
   it as its ISO code.
 - A terminated feature is skipped.
 - Every row of the outcome table, and the checks on names, ids and codes.
+
+## 9. Tier 3: the point-radius uncertainty
+
+The owner's tier 3 "Calculates final Point-Radius Uncertainty" (G35), and the
+coordinator ruled that the tool computes it in-house (D13): the point-radius
+method of the Georeferencing Best Practices, porting the Georeferencing
+Calculator's arithmetic, tested against the Calculator's own worked examples.
+`georef_radius.py` computes. It sends nothing and reads no file.
+
+**The Calculator's method.** S8 read it from the Calculator's published code
+(VertNet/georefcalculator at commit 1cc9f4c, Apache-2.0: `support.js` and
+`gci_ui.js`) and took the worked examples from `test_data.js` in the same
+commit. The code was read, never run. Best Practices 3.4.7 defers to the
+Calculator for combining uncertainties, and the Calculator adds its sources for
+every locality type, with two exceptions listed below.
+
+**Sources of uncertainty, in meters.**
+- **Radial.** The feature's geographic radial: the distance from its corrected
+  center to the farthest point of its boundary.
+- **Source.** The coordinate source's own error: none for a gazetteer or a
+  locality description, and the Calculator's value for a map, such as 40 ft
+  for a USGS 1:24,000 map.
+- **Measurement.** The sum of every measurement's error.
+- **Precision.** The diagonal of one degree of latitude and one of longitude at
+  the point, on the datum's ellipsoid, times the coordinates' precision in
+  degrees: 1/3600 for the nearest second, 0.00001 for five decimals.
+- **Datum.** None for a recorded datum. Every tier-1 source gives WGS84
+  points, so a gazetteer point adds nothing. For an unrecorded datum, the caller
+  gives the value for the place; without one, the Calculator's worst case,
+  5,359 m, applies, so an unknown datum never shrinks a radius.
+- **Offset precision.** Half the unit a distance is written to: 0.5 mi for
+  "5 mi" written to the mile, 5 mi for "10 mi" written to ten miles.
+- **Heading precision.** Half the angle between neighbouring points of the
+  compass the heading is written with: ±45° for N, E, S and W; ±22.5° for NE,
+  SE, SW and NW; ±11.25° for the eight three-letter points; ±5.625° for the
+  sixteen "by" points; ±1° for a heading in degrees.
+
+**Combining them.**
+
+| Locality type | Uncertainty |
+|---|---|
+| coordinates only | datum + source + measurement + precision |
+| a feature only | the same, plus the radial |
+| a distance only ("5 mi from X") | a feature's, plus the offset and its precision |
+| a distance along a path | a feature's, plus the offset precision |
+| distances along two orthogonal directions | a feature's, plus the offset precision times √2 |
+| a distance at a heading | the error of a cone, plus precision |
+
+For a distance d at a heading of precision α, with e the sum of the datum,
+radial, measurement, offset precision and source, the cone's error is the
+distance from the point d + e along the heading to the point d along the
+cone's edge: √((d + e − d cos α)² + (d sin α)²).
+
+**Points.** An offset moves the point by the ellipsoid's meters per degree at
+the starting latitude (NIMA 8350.2, as the Calculator does), rounded to seven
+decimals. The ellipsoid is WGS84 unless the datum names another: Clarke 1866
+for NAD27, GRS80 for NAD83.
+
+**A heading alone.** "E. slope of X" is the part of X's circle within the
+heading's cone (#94, 3.8). For a cone of ±45° or wider, the smallest circle
+around that part has the chord between the arc's ends as diameter: its center
+lies R cos α from X's center along the heading, and its radius is R sin α. For
+a narrower cone, the circle passes through X's center and the arc's ends: its
+center and its radius are both R / (2 cos α). That circle is then the feature
+(the Quick Reference Guide, 2.2.2).
+
+**Units.** Everything is in meters, with exact factors: 1 mi = 1,609.344 m and
+1 ft = 0.3048 m. The Calculator's own mile is 1,609.3445 m. That half
+millimetre changes no worked example at the precision the Calculator shows.
+
+**Tests.** `tests/test_georef_radius.py` checks:
+- The Calculator's eight worked examples, each uncertainty to the decimals the
+  Calculator shows: two with coordinates only, one with a named place only,
+  one each with a distance only, along a path and along orthogonal
+  directions, and two at a heading. The four whose datum was not recorded used
+  the Calculator's 2015 grid of datum errors, 79 m at Bakersfield. The tests
+  pass that value, since the grid has changed: its 2019 version gives 3,045 m
+  there.
+- The three examples' new points, to seven decimals. One of them, the
+  orthogonal example, is 1e-7 degree (about 1 cm) off in longitude, and both
+  mile factors give the same point.
+- The datum rule, the offset precision, and the heading precision of every
+  compass point.
+- The sector's circle: it encloses X's center and the whole arc, for ±45° and
+  ±22.5°.
