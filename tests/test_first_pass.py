@@ -471,21 +471,22 @@ def test_each_block_stops_the_first_pass_before_any_request(
     assert calls == []
 
 
-@pytest.mark.parametrize("registered", [True, False])
+@pytest.mark.parametrize(
+    "route,registered", [("first-pass-glm", True), ("fp-unregistered", False)]
+)
 def test_pin_dependencies_pins_only_a_registered_first_pass_route(
-    monkeypatch, tmp_path, registered
+    tmp_path, route, registered
 ):
-    if registered:
-        routes = {**production.INITIAL_HUGGINGFACE_ROUTES, ROUTE.route_id: ROUTE}
-        monkeypatch.setattr(production, "INITIAL_HUGGINGFACE_ROUTES", routes)
-    run = Run(profile=Profile(first_pass_route=ROUTE.route_id))
+    # The first-pass route comes from the stage route set (HARNESS.md section 5).
+    run = Run(profile=Profile(first_pass_route=route))
 
     pins = production.ProductionAdapters(LocalBlobs(tmp_path)).pin_dependencies(run)
 
     routes = pins["routes"]
-    assert set(routes) == {*run.profile.routes, *([ROUTE.route_id] * registered)}
+    assert set(routes) == {*run.profile.routes, *([route] * registered)}
     if registered:
-        assert routes[ROUTE.route_id] == PINNED
+        stage = production.STAGE_HUGGINGFACE_ROUTES[route]
+        assert routes[route] == {"model_id": stage.model_id, "provider": stage.provider}
 
 
 ASSET = Asset(
