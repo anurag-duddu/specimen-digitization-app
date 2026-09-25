@@ -81,13 +81,25 @@ def statuses(evidence, source=SOURCE):
     return {s["stage"]: s["status"] for s in lab_checks.check_stages(evidence, source, SUBJECT)}
 
 
-def evidence(snap, rows=None, actions=()):
-    return {"snapshot": snap, "rows": rows or {}, "actions": list(actions)}
+def evidence(snap, rows=None, actions=(), requests=0):
+    return {"snapshot": snap, "rows": rows or {}, "actions": list(actions),
+            "gbif_occurrence_requests": requests}
+
+
+def coverage(outcome, *reasons):
+    """#111's run record (label_coverage.py), not the thread API's view."""
+    codes = ["label_coverage_unconfirmed", *reasons] if outcome == "unconfirmed" else []
+    return {"coverage_confirmed": outcome == "confirmed", "coverage_check": {
+        "version": "label-coverage-v1", "outcome": outcome, "region_count": 2,
+        "min_label_regions": 1, "max_label_regions": 3,
+        "cross_check": {"concept": "text", "threshold": 0.5, "min_inside_fraction": 0.5,
+                        "counted": 1, "uncovered_boxes": []},
+        "reason_codes": codes}}
 
 
 def test_full_sam_run_scores_every_stage_it_can_see():
     snap = snapshot()
-    snap["run"]["coverage_check"] = {"status": "passed"}
+    snap["run"].update(coverage("confirmed"))
     result = statuses(evidence(snap))
     assert result["1"] == result["2"] == result["3"] == "passed"
     assert result["5"] == result["9"] == "passed"
@@ -121,8 +133,8 @@ def test_reviewed_region_is_reported_as_a_substitute_not_a_pass():
 
 
 def test_segmentation_is_judged_against_the_lanes_coverage_check():
-    # A pass needs the lane's own check (G15, DATA_CONTRACT.md 612); the lab's boxes are ground truth,
-    # and its "at least half, by a distinct region" is the lab's own measure.
+    # A pass needs the lane's own check (G15; #111 writes coverage_check.outcome). The lab's boxes are
+    # ground truth, and its "at least half, by a distinct region" is the lab's own measure.
     two_labels = "subject_105526324"  # locality on the right label, notes on the left
     left = Region(
         id="r1", asset_id="asset-1", x=0, y=0, width=570, height=590, order=0,
@@ -131,35 +143,36 @@ def test_segmentation_is_judged_against_the_lanes_coverage_check():
     right = left.model_copy(update={"id": "r2", "x": 1110, "width": 670, "order": 1})
     whole = left.model_copy(update={"id": "r3", "width": 1780})
 
-    def stage_2(regions, subject, status=None):
+    def stage_2(regions, subject, outcome=None):
         snap = snapshot(regions=regions)
-        if status:
-            snap["run"]["coverage_check"] = {"status": status}
+        if outcome:
+            snap["run"].update(coverage(outcome, "cross_check_detection_outside_labels"))
         result = lab_checks.check_stages(evidence(snap), SOURCE, subject)
         return next(s for s in result if s["stage"] == "2")
 
-    assert stage_2([left, right], two_labels, "passed")["status"] == "passed"
+    assert stage_2([left, right], two_labels, "confirmed")["status"] == "passed"  # a covered pass
+    assert stage_2([left], two_labels, "confirmed")["status"] == "failed"  # a let-through miss
+    assert stage_2([left], two_labels, "unconfirmed")["status"] == "passed"  # a caught miss
+    false_alarm = stage_2([left, right], two_labels, "unconfirmed")  # G15 sends it to review anyway
+    assert false_alarm["status"] == "not checked" and "false alarm" in false_alarm["detail"]
     assert stage_2([left, right], two_labels)["status"] == "not built"  # no pass without the check
-    assert stage_2([left], two_labels, "failed")["status"] == "passed"  # the lane caught the miss
-    assert stage_2([left], two_labels, "passed")["status"] == "failed"  # the lane let it through
-    assert stage_2([left], two_labels, "not_run")["status"] == "not checked"
-    assert stage_2([whole], two_labels, "passed")["status"] == "failed"  # one region, two labels
-    assert "not checked" in stage_2([left], "subject_999", "passed")["detail"]
+    assert stage_2([whole], two_labels, "confirmed")["status"] == "failed"  # one region, two labels
+    for outcome in ("confirmed", "unconfirmed"):  # no ground truth outside the ten
+        assert stage_2([left], "subject_999", outcome)["status"] == "not checked"
     assert lab_checks.label_boxes(two_labels) == [(0.0, 0.34), (0.62, 1.0)]
     assert lab_checks.label_boxes(SUBJECT) == [(0.0, 0.37)]
 
-
 def test_stage_8_expects_review_for_the_ten_and_leaves_their_reasons_to_a_person():
-    # All ten go to needs human review (PLAN 8, 879-883): any other disposition is a wrong run.
+    # All ten go to needs human review with reasons (PLAN 8, 879-883); a person compares the reasons.
     for wrong in (Disposition.CLEARED, Disposition.DEFERRED):
         assert statuses(evidence(snapshot(disposition=wrong, reasons=["x"])))["8"] == "failed"
+    assert statuses(evidence(snapshot(reasons=[])))["8"] == "failed"  # a review must give reasons
     review = lab_checks.check_stages(evidence(snapshot()), SOURCE, SUBJECT)
     stage = next(s for s in review if s["stage"] == "8")
     assert stage["status"] == "not checked" and "by hand" in stage["detail"]
     cleared = snapshot(disposition=Disposition.CLEARED, reasons=[])
     other = lab_checks.check_stages(evidence(cleared), SOURCE, "subject_999")
     assert next(s for s in other if s["stage"] == "8")["status"] == "passed"
-
 
 def test_a_blocked_run_names_its_next_step_and_a_scheduled_retry_is_blocked():
     budget = snapshot(
@@ -180,28 +193,42 @@ def test_two_readings_of_one_route_on_one_region_fail_stage_3():
 
 
 def test_a_gbif_occurrence_request_in_any_record_of_any_run_fails_while_d4_is_off():
-    # D4 is held: its occurrence check is off and sends nothing (PLAN 2, coordinator rulings).
-    forms = [
-        ("tool_calls", [{"call_key": "k1", "tool": "gbif_occurrence_search"}]),
-        ("tool_calls", [{"call_key": "k2", "tool": "taxonomy", "source": "gbif",
-                         "arguments": {"recordedBy": "Hoogstraal"}}]),
-        ("lookups", [{"provider": "gbif", "status": "no_match", "query": {"catalogNumber": "4486784"}}]),
-        ("evidence", [{"locator": "https://api.gbif.org/v1/occurrence/search?q=x"}]),
-        ("authority_receipts", {"k3": {"marker": "museum_published"}}),
-    ]
-    for key, value in forms:
+    # D4 is held: its occurrence check is off and sends nothing (PLAN 2, coordinator rulings). Only real
+    # request shapes count; every GBIF record but species match (G23) and GADM fails.
+    def stage_7(key, value, requests=0, previous=False, blobs=()):
         snap = snapshot()
-        snap["run"][key] = value
-        assert statuses(evidence(snap))["7"] == "failed", key
-    earlier = snapshot()["run"] | {"id": "run-1", "tool_calls": [{"tool": "gbif_occurrence_search"}]}
-    snap = snapshot()
-    snap["previous_runs"] = [earlier]
-    assert statuses(evidence(snap))["7"] == "failed"
-    match = snapshot()
-    match["run"]["lookups"] = [{"provider": "gbif", "status": "match",
-                                "metadata": {"endpoint": "https://api.gbif.org/v2/species/match"}}]
-    assert statuses(evidence(match))["7"] == "not built"  # species match is allowed (G23)
+        (snap.setdefault("previous_runs", []).append(snapshot()["run"] | {"id": "run-1", key: value})
+         if previous else snap["run"].__setitem__(key, value))
+        ev = evidence(snap, requests=requests) | {"d4_blob_hits": list(blobs)}
+        return next(s for s in lab_checks.check_stages(ev, SOURCE, SUBJECT) if s["stage"] == "7")
 
+    real = [
+        ("evidence", [{"locator": "https://API.GBIF.ORG/v1/%6Fccurrence/search?q=x"}]),
+        ("tool_calls", [{"tool": "occurrence_search", "source": "gbif", "arguments": {"q": "x"}}]),
+        ("tool_calls", [{"tool": "taxonomy_verifier", "source": "gbif", "arguments": {"recordedBy": "x"}}]),
+        ("lookups", [{"provider": "gbif", "adapter_version": "occurrence-v1", "query": {"catalogNumber": "1"}}]),
+        ("authority_results", {"k": {"museum_published": True}}),
+    ]
+    for key, value in real:
+        assert stage_7(key, value)["status"] == "failed", (key, value)
+    assert stage_7(*real[1], previous=True)["status"] == "failed"
+    assert stage_7("lookups", [], requests=1)["status"] == "failed"  # the runner's request count
+    assert stage_7("lookups", [], blobs=["receipts/c1.json"])["status"] == "failed"  # a receipt's blob
+    sent_nothing = [
+        ("evidence", [{"locator": "https://bionomia.net/occurrence/123"}]),
+        ("tool_calls", [{"tool": "taxonomy_verifier", "source": "gbif", "arguments": {"name": "Epipsocus"},
+                         "result": {"candidates": [{"numOccurrences": 12}]}}]),
+        ("lookups", [{"provider": "gbif", "adapter_version": "species-match-v2.1", "query": {"name": "x"}}]),
+        ("lookups", [{"provider": "gbif_gadm", "adapter_version": "gbif-gadm-1", "query": {"q": "Davao"}}]),
+        ("authority_results", {"k": {"museum_published": False, "signals": {"occurrence": None}}}),
+        ("tool_calls", [{"tool": "occurrence_search", "source": "gbif", "outcome": "policy_blocked"}]),
+        ("transcripts", [{"region_id": "r1", "observation_ids": [], "alternatives": [], "resolved": True,
+                          "text": "Rare occurrence at light"}]),
+    ]
+    for key, value in sent_nothing:
+        assert stage_7(key, value)["status"] != "failed", (key, value)
+    absent = stage_7("lookups", [], requests=None)
+    assert absent["status"] == "not checked" and "hook" in absent["detail"]
 
 def test_stage_4_is_not_built_only_without_run_rows_and_never_passes_an_empty_set():
     other_run = {"pipeline_run": [{"id": "another-run", "specimen_id": "specimen-1"}]}
@@ -273,8 +300,9 @@ def test_tracing_reads_the_runs_trace_id():
 
 
 def test_a_block_without_a_blocker_shows_its_reasons_and_stage_1_prints_no_hash():
-    snap = snapshot(stage="processing_blocked", blocker=None, disposition=None,
+    snap = snapshot(stage="processing_blocked", blocker=None, disposition=None, observations=[],
                     reasons=["label_coverage_unconfirmed"])
     stage = {s["stage"]: s for s in lab_checks.check_stages(evidence(snap), SOURCE, SUBJECT)}
-    assert "label_coverage_unconfirmed" in stage["8"]["detail"]
+    assert stage["3"]["status"] == "blocked"
+    assert stage["3"]["detail"].startswith("['label_coverage_unconfirmed'] at")  # reasons stand in
     assert SHA[:12] not in stage["1"]["detail"]

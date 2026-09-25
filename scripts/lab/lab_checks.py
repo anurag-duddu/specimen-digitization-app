@@ -5,16 +5,20 @@ from __future__ import annotations
 from itertools import permutations
 import json
 import re
+from urllib.parse import unquote
 
 METRIC = "bounded-levenshtein-fraction-v1"
 SAM3_MODEL = "facebook/sam3"
 SUBSTITUTE = "reviewed_region"
 DISPOSITIONS = {"cleared", "needs_human_review", "deferred"}
 BLOCKED = {"processing_blocked", "retry_scheduled"}
-# D4 is held, so its occurrence check is off and sends nothing (PLAN 2, coordinator rulings). A request
-# shows as the occurrence API, an occurrence query, or S8's markers (GEOREFERENCING.md 376-394).
-D4_MARKERS = re.compile(r"/v1/occurrence|\bcatalogNumber\b|\brecordedBy\b|occurrence|museum_published", re.I)
-D4_RECORDS = ("tool_calls", "lookups", "authority_results", "authority_receipts", "evidence")
+# D4 is held, so its occurrence check is off and sends nothing (PLAN 2, coordinator rulings). Only real
+# request shapes count: GBIF's occurrence API, occurrence query keys on a GBIF record, S8's
+# museum-published check that ran (GEOREFERENCING.md 376-394), and any GBIF record but species match
+# (G23) and GADM. #134 records a GBIF sub-call as its tool, source "gbif" and arguments, with no URL.
+OCCURRENCE_KEYS = {"catalognumber", "recordedby", "occurrenceid", "institutioncode", "collectioncode",
+                   "recordnumber", "eventdate", "locality"}
+MUSEUM_PUBLISHED = re.compile(r'"museum_published"\s*:\s*true')
 PROVENANCE = ("model_id", "provider", "prompt_version", "input_sha256", "raw_ref", "raw_sha256")
 # Labels of the ten pilot slides as fractions of the frame's width, full height (S8's
 # table and the images, 2026-09-23). The left box includes the barcode's printed catalog
@@ -42,7 +46,8 @@ def check_stages(evidence, source, subject):
         ("4", "Raw transcripts to SQL", normalized(rows, snap)),
         ("5", "Disagreement score", disagreement(run)),
         ("6", "LLM first pass", ("not built", "no first-pass record on this commit")),
-        ("7", "Agentic harness", harness(runs, lookups)),
+        ("7", "Agentic harness", harness(runs, lookups, evidence.get("gbif_occurrence_requests"),
+                                         evidence.get("d4_blob_hits"))),
         ("8", "Queue decision", queue(run, subject)),
         ("9", "Linkage", linkage(snap, runs)),
         ("trace", "Tracing", tracing(run)),
@@ -93,21 +98,24 @@ def segmentation(run, runs, asset, subject, substituted):
     if not regions or seg.get("model_id") != SAM3_MODEL:
         return blocked_or_failed(run, "no SAM 3 regions on the run")
     detail = f"{len(regions)} regions, revision {seg.get('model_revision')}, settings {seg.get('settings')}"
-    status = (run.get("coverage_check") or {}).get("status")
-    if subject in LAYOUT:
-        missing = uncovered(LAYOUT[subject], regions, asset["width"], asset["height"])
-        measure = (f"the lab's measure finds label box {missing} uncovered" if missing
-                   else f"the lab's measure finds a distinct region on every label box {LAYOUT[subject]}")
-    else:
-        missing, measure = [], "label coverage not checked by the lab: no known layout for this subject"
-    # A pass needs the lane's own check (G15, DATA_CONTRACT.md 612); the lab's boxes are ground truth.
-    if status is None:
-        return "not built", detail + f"; the run carries no coverage check (G15); {measure}"
-    if status == "passed":
-        return ("failed" if missing else "passed"), detail + f"; the lane's check passed; {measure}"
-    if status == "failed":
-        return "passed", detail + f"; the lane's check failed and sent the record to review; {measure}"
-    return "not checked", detail + f"; the lane's check did not run ({status}); {measure}"
+    check = run.get("coverage_check") or {}
+    outcome, codes = check.get("outcome"), check.get("reason_codes") or []
+    # A pass needs the lane's own check (G15), as #111 writes it on the run: outcome confirmed or unconfirmed.
+    if not check:
+        return "not built", detail + "; the run carries no coverage check (G15)"
+    if subject not in LAYOUT:
+        return "not checked", detail + f"; the lane's check reads {outcome}; outside the ten the lab has no layout"
+    missing = uncovered(LAYOUT[subject], regions, asset["width"], asset["height"])
+    measure = (f"the lab's measure finds label box {missing} uncovered" if missing
+               else f"the lab's measure finds a distinct region on every label box {LAYOUT[subject]}")
+    if outcome == "confirmed":
+        return ("failed" if missing else "passed"), detail + f"; the lane's check confirmed coverage; {measure}"
+    if outcome == "unconfirmed" and missing:
+        return "passed", detail + f"; the lane's check caught it {codes}; {measure}"
+    if outcome == "unconfirmed":
+        return "not checked", (detail + f"; a false alarm: the lane's check reads unconfirmed {codes} while "
+                               f"{measure}; G15 sends it to review, and the lab records it for calibration")
+    return "not checked", detail + f"; the lane's check reads {outcome!r}; {measure}"
 
 
 def covers(box, region, width, height):
@@ -184,15 +192,52 @@ def disagreement(run):
     return "passed", f"{METRIC}: {', '.join(scores)}"
 
 
-def harness(runs, lookups):
-    hits = [f"{run.get('id', '?')[:8]}/{key}" for run in runs for key in D4_RECORDS
-            if D4_MARKERS.search(json.dumps(run.get(key) or [], default=str))]
+def harness(runs, lookups, requests, blob_hits):
+    hits = d4_hits(runs) + list(blob_hits or [])
+    if requests:
+        hits.append(f"{requests} requests counted at bounded_http")
     if hits:
-        return "failed", f"D4 is held, so its occurrence check is off, yet GBIF occurrence requests appear in {hits[:6]}"
+        return "failed", f"D4 is held, so its occurrence check is off, yet GBIF occurrence requests appear: {hits[:6]}"
+    if requests is None:
+        return "not checked", "the runner's D4 request count is unavailable: its hook is absent"
     calls = runs[-1].get("tool_calls") or []
     if calls:
         return "not checked", f"{len(calls)} tool calls recorded; stage 7's checks follow S4's contract"
-    return "not built", f"no tool-call record on this commit; deterministic lookups: {[x['status'] for x in lookups]}"
+    return "not built", f"no tool-call record on this commit; deterministic lookups: {[x.get('status') for x in lookups]}"
+
+
+def occurrence_request(text):
+    return "api.gbif.org/v1/occurrence" in unquote(text).lower() or bool(MUSEUM_PUBLISHED.search(text))
+
+
+def gbif_occurrence_record(record):
+    source = str(record.get("source") or record.get("provider") or "").lower()
+    if "gbif" not in source:
+        return False
+    if {str(k).lower() for part in ("arguments", "query") for k in (record.get(part) or {})} & OCCURRENCE_KEYS:
+        return True
+    adapter = str(record.get("adapter_version") or record.get("tool_version") or "").lower()
+    species = source == "gbif" and (record.get("tool") == "taxonomy_verifier" or adapter.startswith("species-match"))
+    return not (species or source == "gbif_gadm" or adapter.startswith("gbif-gadm"))
+
+
+def d4_hits(runs):
+    hits = []
+    for run in runs:
+        where = str(run.get("id", "?"))[:8]
+        for key in ("tool_calls", "lookups"):
+            for i, record in enumerate(run.get(key) or []):
+                if not isinstance(record, dict) or "policy" in str(record.get("outcome") or record.get("status")):
+                    continue  # a call held by policy sent nothing
+                if occurrence_request(json.dumps(record, default=str)) or gbif_occurrence_record(record):
+                    hits.append(f"{where}/{key}[{i}]")
+        for key in ("authority_results", "authority_receipts"):
+            if occurrence_request(json.dumps(run.get(key) or {}, default=str)):
+                hits.append(f"{where}/{key}")
+        for i, item in enumerate(run.get("evidence") or []):
+            if isinstance(item, dict) and occurrence_request(str(item.get("locator") or "")):
+                hits.append(f"{where}/evidence[{i}]")
+    return hits
 
 
 def queue(run, subject):
@@ -201,8 +246,10 @@ def queue(run, subject):
         # All ten go to needs human review (PLAN 8, 879-883); their reasons are compared by hand.
         if disposition != "needs_human_review":
             return "failed", f"one of the ten got {disposition}, but all ten go to needs human review; {reasons}"
+        if not reasons:
+            return "failed", "one of the ten went to review with no reason"
         return "not checked", (f"needs human review, as expected; reasons compared by hand against "
-                               f"expected-outcomes.md: {reasons}")
+                               f"expected-outcomes.md, a wrong one recorded as a failure: {reasons}")
     if disposition in DISPOSITIONS and (reasons or disposition == "cleared"):
         return "passed", f"{disposition}: {reasons}"
     return blocked_or_failed(run, f"stage {run.get('stage')}, disposition {disposition}, reasons {reasons}")
