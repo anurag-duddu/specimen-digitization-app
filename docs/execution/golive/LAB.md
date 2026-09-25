@@ -57,19 +57,19 @@ uv run python scripts/lab/run_specimen.py subject_105526321
 | Stage | Passed when | Otherwise |
 |---|---|---|
 | 1 Images in storage | the asset's SHA-256 equals the fetched object's, and its file name is the subject's | failed |
-| 2 Label segmentation | the run has regions made by SAM 3, with its parameters on the run, and for each of the ten some region covers at least half of every label box below | failed when a label is uncovered; blocked, with the app's blocker; substituted when the lab drew the regions |
+| 2 Label segmentation | the run has regions made by SAM 3 with its parameters on the run and, for each of the ten, a distinct region covering at least half of every label box below; an uncovered label is still correct when the lane's own coverage check (G15) caught it and sent the record to review | failed when the lane let an uncovered label through; not built when the run carries no coverage check (S3 T3b); blocked, with the app's blocker; substituted when the lab drew the regions |
 | 3 VLMs | every region has one reading per profile route, each with model, provider, prompt version, input hash and a stored raw response | failed, or blocked with the blocker |
-| 4 Raw transcripts to SQL | normalized observation rows exist, one per reading, keyed to specimen and run | not built when SQL holds only the snapshot |
+| 4 Raw transcripts to SQL | the run's `pipeline_run` row names this specimen, and there is one `model_observation` row with `independent` true per reading, with the snapshot's ids (DATA_CONTRACT.md 2) | not built while SQL holds no `pipeline_run` rows; blocked or failed when the run has no readings to project; failed on any mismatch |
 | 5 Disagreement score | every region's transcript carries a ratio and `bounded-levenshtein-fraction-v1` | failed, or not built |
 | 6 LLM first pass | the run records the first pass's decision and what each reader handed to the harness | not built |
-| 7 Agentic harness | the run records tool calls with typed outcomes | not built; the detail lists any deterministic lookups |
-| 8 Queue decision | exactly one disposition with reasons, or an operational block with its blocker | failed |
+| 7 Agentic harness | the run records tool calls with typed outcomes | failed on any GBIF occurrence request while D4 is held; otherwise not built (the detail lists any deterministic lookups) until S4's checks land |
+| 8 Queue decision | exactly one disposition with its reasons; for the ten, needs human review with the right reasons (below) | failed when one of the ten clears or the record has no disposition; blocked while `processing_blocked` or `retry_scheduled`, naming the blocker and the app's next step |
 | 9 Linkage | every region, reading, transcript and row points to this specimen, asset and run | failed |
-| Tracing | the run stores its trace id (DoD-5) | not built; the lab's own root trace id is always recorded |
+| Tracing | the run's trace shows what DoD-5 names (PLAN 1): SAM 3's parameters, every model call's system prompt with its text input and output, the first pass, the harness's tool calls and the queue decision, and the run stores its id | not built while the run stores no trace id; not checked until the lab holds a Logfire read token (owner action) to read the trace; the lab's own root trace id is always recorded |
 
 Statuses are passed, failed, blocked, substituted, not built (the stage is not on
-this commit) and not checked. A blocked stage names the blocker and the steps
-the app attempted but never completed. Checks for stages 4, 6 and 7 follow the
+this commit) and not checked. A blocked stage names the blocker and the step
+the app would run next (`Workflow.next_step`). Checks for stages 4, 6 and 7 follow the
 contracts as S5 and S4 merge them. Until then the runner reports not built rather
 than guess at field names.
 
@@ -87,29 +87,35 @@ boxes include it.
 
 The reviewed-region substitute draws these boxes. Under G15 they are also the
 ground truth for the lane's own coverage check: the lab reports its hits and
-misses per subject. Slides 324 to 328 are from Mindanao with right-hand labels;
-328 to 330 are from Yepocapa, Guatemala, 1948 (R.D. Mitchell). The codes on the
+misses per subject, and stage 2 fails only a miss the lane let through. Slides
+324 to 327 are from Mindanao; 328 also has a right-hand label, and 328 to 330 are
+from Yepocapa, Guatemala, 1948 (R.D. Mitchell). The codes on the
 top edge are slide-preparation codes, not collection dates.
 
-### Expected outcome for the ten (G22, G35 to G37, G41)
+### Expected outcome for the ten (G42, and the owner's decisions G35 to G45)
 
-All ten go to needs human review, with the right reasons. No label carries a
-determination date and none can be derived, so no slide can clear. A run that
-clears one of the ten, or sends it to review for a wrong or missing reason,
-fails stage 8 once the lane reaches the queue decision. What counts as a right
-reason changed on 2026-09-24:
+All ten go to needs human review, with the right reasons: G42 keeps `PRD.md`
+12.4's twenty mandatory fields, no label carries a determination date, and none
+can be derived, so no slide can clear. A run that clears one of the ten, or
+sends it to review for a wrong or missing reason, fails stage 8 once the lane
+reaches the queue decision. The owner's words and the coordinator's readings
+(PLAN 2.1) are kept apart below.
 
-- **Derived fields count (G37, revising G22).** A field the label does not
-  state, such as the county, the city or an elevation, may be derived from
-  fields that have final values, with its authority and evidence recorded, and
-  it then counts, mandatory fields included. A derived value without recorded
-  evidence, or derived from unsettled inputs, is a failure.
-- **A stated elevation is converted and filled (G41, revising G22).** Where a
-  label states one elevation, that number fills both endpoints in its own unit,
-  and the other unit is converted exactly (1 ft = 0.3048 m); each filled value is
-  marked derived, with evidence. A stated range keeps its own endpoints. Nine
-  slides state one elevation in feet, so their four elevation fields are
-  expected to resolve as follows:
+- **Derived fields (G37).** The owner: "these can be derived if other location
+  related fields have returned a final value. If even those are unclear then it
+  will wait for human review." The coordinator's reading adds that a derived
+  value fills the field, mandatory fields included, with its authority and
+  evidence recorded. A derived value without recorded evidence, or derived from
+  unsettled inputs, is a failure.
+- **A stated elevation (G41).** The owner chose "Convert and fill": "The label's
+  own number fills both From and To, and the metre fields are converted from it
+  exactly (1 ft = 0.3048 m), each marked as derived with evidence." The
+  coordinator's reading adds that a stated range keeps its own endpoints and
+  that map data fills an elevation only where the label states none. A unit is
+  never guessed (`GEOREFERENCING.md` 172, 229), so the conversion is expected
+  only where a reading carries the unit. On 322 both readers dropped the foot
+  mark, so its elevation may wait for review. Where the unit is read, the
+  expected values are:
 
   | Slides | Feet, from and to | Metres, from and to |
   |---|---|---|
@@ -117,23 +123,39 @@ reason changed on 2026-09-24:
   | 324-326 | 3300 | 1005.84 |
   | 328-330 (Guatemala) | 4800 | 1463.04 |
 
-  A run fails if it leaves these unresolved, converts by any other factor, or
-  fills them from map data. 327 states no elevation; map data may fill it only
-  at a settled place (G37).
-- **Unconfirmed places never settle (G36).** Slides 321 to 326 name a
-  "Mt. McKinley" in Davao Province, Mindanao, that no gazetteer holds; it is
-  not Denali. Their place stays unsettled until a curator confirms an entry,
-  and a run that settles it from Denali or any unconfirmed entry fails.
-- **No Google coordinates stored (G35, keeping G26).** Only Google's place ID,
-  its outcome and a fingerprint are kept. Stored coordinates come only from
-  credited open sources. Google's coordinates in any row, trace, log or lab
-  folder are a failure.
-- **Findings only for D4 and D5.** Checks against the museum's published GBIF
-  points (D4) and check limits (D5) record findings and never change a
-  verdict, until the owner decides them.
-- **`identified_by_irn`** is never on a label and does not block (G16). Only
-  328 names a taxon, which may settle at genus (G25). Dates settle as written
-  (G24).
+  A run fails if it converts by any other factor, fills a stated elevation from
+  map data, or leaves unresolved an elevation whose unit it read. 327 states no
+  elevation; map data may fill it only at a settled place (G37).
+- **Places only the museum's records know (G36).** The owner: "McKinley I think
+  is denali. That's what google search returned. I wonder how they arrived and
+  the conclusions. We cant make wrong conclusions", then chose "Curator
+  confirms": confirmed entries settle a field, unconfirmed ones never do. The
+  coordinator's reading: the Davao "Mt. McKinley" (the labels read "Davao Prov.,
+  Mindanao, P.I.") is not Denali, and S8's Mount Talomo is unconfirmed. Slides
+  321 to 326 therefore go to review for their place until a curator confirms an
+  entry, and a run that settles their place from any unconfirmed entry,
+  Denali included, fails. Mt. Apo on 327 is a mapped peak: its place may settle
+  from gazetteer evidence or stay unresolved (coordinator, 2026-09-24).
+- **No Google content stored (G35, keeping G26).** From Google only the place
+  ID, its outcome and a fingerprint are kept; Google's names, address parts and
+  coordinates are never stored. Stored coordinates come only from credited open
+  sources. Any of Google's content in a row, trace, log or lab folder is a
+  failure.
+- **D4 is off, D5 records findings.** While the owner holds D4 (the museum's
+  published GBIF points), its occurrence check is off and sends nothing, so any
+  GBIF occurrence request fails the run. D5's checks (their limits) record
+  findings and never change a verdict (PLAN 2, coordinator rulings).
+- **A single collecting date (G44).** The owner chose "Fill To, derived": "Date
+  Visited To gets the same date, marked as derived from Date Visited From, so
+  the record can clear on it." It is therefore not a reason on any of the ten.
+- **The kind of a value (G45).** The owner chose "Yes, check the kind": "In
+  fields no lookup checks, a value that doesn't look like its field's kind goes
+  to review with a reason." A slide-preparation code (for example "VI-24-68-7")
+  in such a field must bring that reason, and a run whose decision lacks it
+  fails. In `verbatim_dts`, whose meaning is unconfirmed, it is a finding only.
+- **`identified_by_irn`** is never on a label and does not block (G16, G43).
+  Only 328 names a taxon, which may settle at genus (G25). Dates settle as
+  written (G24).
 
 What each label carries is tabled in `~/specimen-golive/reports/field-coverage.md`,
 and the expected outcome per slide is in
@@ -159,16 +181,22 @@ The app records tokens, not money (`BudgetUsage` in `domain.py`; stage costs
 are reservations only). The runner prices each reading's tokens with the route
 prices in `docs/execution/LIVE_PILOT_COST.md` 42-47. It prices any other tokens
 the run used, such as the extraction call, at the highest known price and labels
-that figure an upper bound. SAM 3 on this workstation costs nothing. Every run's
-cost goes into `run.json` and its report, and the lab's spend is the sum over
-all runs.
+that figure an upper bound. Until production's reserve-then-settle ledger
+lands, every paid attempt without settled usage (an unknown outcome, or a call
+that returned and then failed) is held at the full per-call bound: 16,000
+tokens at the highest known price (coordinator, 2026-09-23; after #86). SAM 3 on
+this workstation costs nothing. Every run's cost and the lab's running total
+against its USD 5.00 share go into `run.json` and its report (G9, G30).
 
 ### Secrets
 
 The runner never writes a token value. Every text artifact passes through a
 redactor that removes the values of the known token variables and anything
 shaped like a Hugging Face token, a bearer header, a Google access token or a
-JWT. The runner never reads `.env` or `.logfire/`.
+JWT. It also removes instance addresses, which PLAN 7.7 keeps out of shared
+logs and issues: the SAM 3 endpoint's value and any `*.run.app` address, which
+the app pins into a run's dependencies, and the SAM lab token. The runner never
+reads `.env` or `.logfire/`.
 
 ### Tests
 

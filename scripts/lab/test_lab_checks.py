@@ -65,7 +65,7 @@ def snapshot(previous=(), **changes):
     ).model_copy(update=changes)
     asset = Asset(
         id="asset-1", sha256=SHA, blob_ref=SHA, media_type="image/jpeg",
-        size_bytes=260321, width=1780, height=590, filename=SUBJECT + ".jpeg",
+        size_bytes=123456, width=1780, height=590, filename=SUBJECT + ".jpeg",
         uploader="synthetic-reviewer",
     )
     return Specimen(
@@ -114,24 +114,74 @@ def test_reviewed_region_is_reported_as_a_substitute_not_a_pass():
     assert stage["8"]["detail"].startswith("external_outcome_unknown at ['parse']")
 
 
-def test_segmentation_must_cover_every_label_the_slide_carries():
+def test_segmentation_is_judged_against_the_lanes_coverage_check():
+    # The lab's boxes are ground truth for G15; a miss fails only when the lane's check let it through.
     two_labels = "subject_105526324"  # locality on the right label, notes on the left
     left = Region(
         id="r1", asset_id="asset-1", x=0, y=0, width=570, height=590, order=0,
         method="sam3", version="sam3-http-v1",
     )
     right = left.model_copy(update={"id": "r2", "x": 1110, "width": 670, "order": 1})
+    whole = left.model_copy(update={"id": "r3", "width": 1780})
+    caught = {"coverage_check": {"outcome": "failed"}, "coverage_confirmed": False}
+    let_through = {"coverage_check": {"outcome": "confirmed"}, "coverage_confirmed": True}
 
-    def stage_2(regions, subject):
+    def stage_2(regions, subject, lane=None):
         snap = snapshot(regions=regions)
+        snap["run"].update(lane or {})
         result = lab_checks.check_stages(evidence(snap), SOURCE, subject)
         return next(s for s in result if s["stage"] == "2")
 
-    assert stage_2([left], two_labels)["status"] == "failed"
     assert stage_2([left, right], two_labels)["status"] == "passed"
+    assert stage_2([left], two_labels, caught)["status"] == "passed"
+    assert stage_2([left], two_labels, let_through)["status"] == "failed"
+    assert stage_2([left], two_labels)["status"] == "not built"  # no coverage check on this commit
+    assert stage_2([whole], two_labels, let_through)["status"] == "failed"  # one region, two labels
     assert "not checked" in stage_2([left], "subject_999")["detail"]
     assert lab_checks.label_boxes(two_labels) == [(0.0, 0.34), (0.62, 1.0)]
     assert lab_checks.label_boxes(SUBJECT) == [(0.0, 0.37)]
+
+
+def test_stage_8_fails_a_pilot_slide_that_clears():
+    # All ten go to needs human review (PLAN 8, G42): a clear is a wrong run for them, not for others.
+    cleared = snapshot(disposition=Disposition.CLEARED, reasons=[])
+    assert statuses(evidence(cleared))["8"] == "failed"
+    other = lab_checks.check_stages(evidence(cleared), SOURCE, "subject_999")
+    assert next(s for s in other if s["stage"] == "8")["status"] == "passed"
+
+
+def test_a_blocked_run_names_its_next_step_and_a_scheduled_retry_is_blocked():
+    budget = snapshot(
+        stage="processing_blocked", blocker="approved_cost_budget_unavailable", disposition=None,
+        reasons=[], observations=[], transcripts=[], attempts={},
+        completed_steps=["pin_dependencies", "classify", "quality_check", "segment"],
+    )
+    stage = {s["stage"]: s for s in lab_checks.check_stages(evidence(budget), SOURCE, SUBJECT)}
+    assert stage["8"]["status"] == "blocked"
+    assert "transcribe:r1:handwriting-qwen" in stage["8"]["detail"]  # the app's own next step
+    waiting = snapshot(stage="retry_scheduled", blocker="provider_rate_limited", disposition=None, reasons=[])
+    assert statuses(evidence(waiting))["8"] == "blocked"
+
+
+def test_two_readings_of_one_route_on_one_region_fail_stage_3():
+    doubled = snapshot(observations=[reading(r) for r in ROUTES] + [reading("handwriting-qwen", id="o-2")])
+    assert statuses(evidence(doubled))["3"] == "failed"
+
+
+def test_a_gbif_occurrence_request_fails_the_run_while_d4_is_off():
+    # D4 is held: its occurrence check is off and sends nothing (PLAN 2, coordinator rulings).
+    snap = snapshot()
+    snap["run"]["tool_calls"] = [{"call_key": "k1", "tool": "gbif_occurrence_search", "source": "gbif"}]
+    assert statuses(evidence(snap))["7"] == "failed"
+
+
+def test_stage_4_is_not_built_only_without_run_rows_and_never_passes_an_empty_set():
+    other_run = {"pipeline_run": [{"id": "another-run", "specimen_id": "specimen-1"}]}
+    assert statuses(evidence(snapshot(), {"specimen_snapshot": [{"id": "x"}]}))["4"] == "not built"
+    assert statuses(evidence(snapshot(), other_run))["4"] == "failed"  # readings, but no run row
+    unread = snapshot(observations=[], transcripts=[], stage="processing_blocked", blocker="x",
+                      disposition=None, reasons=[])
+    assert statuses(evidence(unread, other_run))["4"] == "blocked"
 
 
 def test_a_missing_route_fails_stage_3_and_a_block_is_reported_as_blocked():
@@ -181,6 +231,7 @@ def test_normalized_rows_keyed_to_specimen_and_run_pass_stage_4():
 def test_verdict_separates_errors_failures_and_incomplete_runs():
     passed = [{"status": "passed"}]
     assert lab_checks.verdict(passed, passed) == "pass"
+    assert lab_checks.verdict(passed, []) == "incomplete"  # no stages scored is not a pass
     assert lab_checks.verdict(passed, [{"status": "not built"}]) == "incomplete"
     assert lab_checks.verdict(passed, [{"status": "failed"}]) == "fail"
     assert lab_checks.verdict([{"status": "failed"}], passed) == "error"
