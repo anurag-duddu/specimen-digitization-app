@@ -11870,7 +11870,8 @@ because the hooks runner hands a native asset hook only `PATH`.
   - It drives `create_app(adapters=...)` through the upload routes (`scripts/lab/lab_lane.py`: SQLite or a fresh SQL Connect emulator per run).
   - It scores each PLAN 4.1 stage from what the app recorded (`scripts/lab/lab_checks.py`).
   - Cost: it prices tokens and keeps the lab's own tally against its USD 5.00 share (G9, G30). Every paid attempt without settled usage is held at the full per-call bound until production's ledger lands.
-  - It redacts token values, token shapes and instance addresses from every text it writes.
+  - It redacts PLAN 7.7's categories from every text it writes: token values and shapes, instance addresses, identities, and billing and organization ids. Fields that name a person are redacted by name. It refuses to run without its private values file in `~/specimen-release-private/`.
+  - It fails a run that sends a GBIF occurrence request while D4 is held. It counts such requests at `bounded_http` in the parent process, and scans every run's records and receipt blobs.
   - Only the ten pilot slides are declared not sensitive (G31).
 - Runs of `subject_105526321`:
   - `20260923T211535Z`: stages 1, 3, 5 and 9 passed; 2 substituted; 4, 6, 7 and the app trace not built; 8 blocked at `parse` with `external_outcome_unknown`. Filed #79 (lane: synthetic-mode uploads get the synthetic profile) and #80 (harness: a deterministic error recorded as an unknown outcome).
@@ -11895,6 +11896,8 @@ because the hooks runner hands a native asset hook only `PATH`.
   9. **Unsettled usage after #86.** A paid call that returns and then fails has no settled usage, so holding only unknown outcomes undercounts.
   10. **Units.** A unit is never guessed: both readers dropped 322's foot mark.
   11. **Owner's words.** An owner decision is cited in the owner's words, with the coordinator's reading labelled as such.
+  12. **Where GBIF calls happen.** GBIF reads run in a child process (`bounded_http`, then `run_isolated`, then `Popen`), so an in-process `httpx` hook sees none of them; count at `bounded_http` in the parent.
+  13. **Which coverage field to read.** The lab scores the run snapshot, where #111 writes `coverage_check.outcome` (confirmed or unconfirmed). The thread API's `status` is a derived view.
 - Failed approaches: pointing the emulator's `TMPDIR` at the run directory (the socket path was too long); calling `Workflow.parse` as an instance method (it is static).
 - Remaining follow-ups:
   - rerun specimen 1 in emulator mode once S3's #85, #89 and #93 merge (that fixes #79), with the local T3a commits and the DoD-4 SQL parity check;
