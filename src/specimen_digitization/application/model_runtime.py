@@ -11,6 +11,7 @@ from .domain import (
     BudgetUsage,
     Evidence,
     FieldValue,
+    FirstPassDecision,
     Observation,
     Profile,
     Region,
@@ -76,6 +77,16 @@ def _model_child(payload):
                 specimen, Region.model_validate(payload["region"]), payload["route"]
             )
             value = {"observation": observation.model_dump(mode="json")}
+        elif payload["operation"] == "first_pass":
+            from .first_pass import first_pass_direct
+
+            decision = first_pass_direct(
+                adapter,
+                specimen,
+                Region.model_validate(payload["region"]),
+                [Observation.model_validate(o) for o in payload["readings"]],
+            )
+            value = {"decision": decision.model_dump(mode="json")}
         elif payload["operation"] == "extract":
             run.transcripts = [
                 Transcript.model_validate(t) for t in payload["transcripts"]
@@ -110,7 +121,9 @@ def _model_child(payload):
         return json.dumps({"status": "blocked", "code": str(exc)}).encode()
 
 
-def invoke_model(adapter, specimen, operation, *, region=None, route=None):
+def invoke_model(
+    adapter, specimen, operation, *, region=None, route=None, readings=None
+):
     from .domain import LookupStatus
     from .workflow import OperationalBlock
 
@@ -127,8 +140,17 @@ def invoke_model(adapter, specimen, operation, *, region=None, route=None):
             if k in run.dependencies
         },
     }
+    step = operation
     if operation == "transcribe":
         payload.update(region=region.model_dump(mode="json"), route=route)
+        step = "transcribe:region:route"
+    elif operation == "first_pass":
+        # The first pass compares the region's raw readings (HARNESS.md 3).
+        payload.update(
+            region=region.model_dump(mode="json"),
+            readings=[o.model_dump(mode="json") for o in readings],
+        )
+        step = "first_pass:" + region.id
     else:
         # Resolved source is authorized extraction context. Raw independent
         # observations, prior runs, audit logs and authority outputs are excluded.
@@ -143,9 +165,7 @@ def invoke_model(adapter, specimen, operation, *, region=None, route=None):
     result = run_isolated(
         adapter.model_effect or model_child,
         payload,
-        run.profile.execution.effect_timeout_for_step(
-            "transcribe:region:route" if operation == "transcribe" else operation
-        ),
+        run.profile.execution.effect_timeout_for_step(step),
         4 * 1024 * 1024,
         max_input_bytes=4 * 1024 * 1024,
         trace_required=True,
@@ -174,6 +194,11 @@ def invoke_model(adapter, specimen, operation, *, region=None, route=None):
         ):
             raise OperationalBlock("external_outcome_unknown")
         return observation
+    if operation == "first_pass":
+        decision = FirstPassDecision.model_validate(value["decision"])
+        if decision.region_id != region.id:
+            raise OperationalBlock("external_outcome_unknown")
+        return decision
     fields = {k: FieldValue.model_validate(v) for k, v in value["fields"].items()}
     evidence = [Evidence.model_validate(e) for e in value["evidence"]]
     tokens = value["tokens"]

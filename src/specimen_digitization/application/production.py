@@ -642,12 +642,15 @@ class ProductionAdapters:
             name.value: resolve_prompt(name, inputs).model_dump(mode="json")
             for name in PromptName
         }
+        # An unregistered first-pass route stays unpinned, so its step blocks.
+        first_pass = run.profile.first_pass_route
         routes = {
             route: {
                 "model_id": INITIAL_HUGGINGFACE_ROUTES[route].model_id,
                 "provider": INITIAL_HUGGINGFACE_ROUTES[route].provider,
             }
             for route in run.profile.routes
+            + ((first_pass,) if first_pass in INITIAL_HUGGINGFACE_ROUTES else ())
         }
         return {
             "prompts": prompts,
@@ -689,6 +692,13 @@ class ProductionAdapters:
         from .model_runtime import invoke_model
 
         return invoke_model(self, specimen, "transcribe", region=region, route=route)
+
+    def first_pass(self, specimen, region, readings):
+        from .model_runtime import invoke_model
+
+        return invoke_model(
+            self, specimen, "first_pass", region=region, readings=readings
+        )
 
     def _transcribe_direct(self, specimen, region, route):
         if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
