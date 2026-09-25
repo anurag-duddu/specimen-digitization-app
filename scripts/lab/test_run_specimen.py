@@ -211,3 +211,40 @@ def test_the_redactor_removes_instance_addresses_and_the_sam_lab_token():
                               "token": lab_token}))
     assert "run.app" not in text and lab_token not in text
     assert json.loads(text)["segmentation"]["endpoint"] == "[redacted]"  # JSON stays valid
+
+
+def test_the_redactor_covers_plan_7_7_identities_ids_and_key_shapes(tmp_path):
+    # PLAN 7.7: the administrator's identity, billing and organization ids, and more secrets (#82 review 2).
+    private = tmp_path / "private-values"
+    private.write_text("adminuidfixture\n")
+    redact = run_specimen.Redactor({
+        "HF_BILL_TO": "fmnh", "LOGFIRE_READ_TOKEN": "pylf_v1_us_" + "r" * 30,
+        "SPECIMEN_GOOGLE_MAPS_API_KEY": "AIza" + "k" * 35, "LAB_REDACT_VALUES_FILE": str(private),
+    })
+    text = redact(
+        "caller admin@example.org lacks permission; uploader adminuidfixture; billed to fmnh; "
+        "fmnhx stays; https://logfire-us.pydantic.dev/owner-org/specimen-digitization; "
+        "host specimen-sam-x1.a.run.app; key AIza" + "q" * 35 + "; token pylf_v1_us_" + "z" * 30
+    )
+    for leak in ("admin@example.org", "adminuidfixture", "owner-org", "run.app", "AIza", "pylf_", " fmnh;"):
+        assert leak not in text, leak
+    assert "fmnhx stays" in text  # a short value is matched as a whole word only
+
+
+class OccurrenceLane(FakeLane):
+    def process(self, specimen_id, deadline):
+        import httpx
+
+        client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={})))
+        client.get("https://api.gbif.org/v1/occurrence/search", params={"recordedBy": "Hoogstraal"})
+        client.get("https://api.gbif.org/v2/species/match", params={"scientificName": "Epipsocus"})
+        return super().process(specimen_id, deadline)
+
+
+def test_the_runner_counts_in_process_gbif_occurrence_requests(tmp_path):
+    # D4 is held, so its occurrence check sends nothing; a species match (G23) is allowed.
+    code, _ = run(tmp_path, lane=OccurrenceLane())
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    assert summary["gbif_occurrence_requests"] == 1 and code == 1
+    d4 = next(s for s in summary["stages"] if s["stage"] == "d4")
+    assert d4["status"] == "failed"
