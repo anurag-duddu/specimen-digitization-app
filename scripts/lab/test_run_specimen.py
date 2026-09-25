@@ -199,3 +199,15 @@ def test_the_redactor_removes_token_values_and_token_shapes():
     )
     assert "hf_" not in text and "abc.def" not in text and "ya29." not in text
     assert "eyJ" not in text and text.endswith(" true")
+
+
+def test_the_redactor_removes_instance_addresses_and_the_sam_lab_token():
+    # PLAN 7.7 keeps instance addresses out of shared logs and issues; the app pins the SAM 3
+    # endpoint into a run's dependencies, so it reaches snapshot.json (#82 review, finding 11).
+    endpoint = "https://specimen-sam-q7w2e9r4-uk.a.run.app"
+    lab_token = "L" * 40
+    redact = run_specimen.Redactor({"SPECIMEN_SAM3_ENDPOINT": endpoint, "SPECIMEN_SAM3_LAB_TOKEN": lab_token})
+    text = redact(json.dumps({"segmentation": {"endpoint": endpoint, "other": "https://api-x1.a.run.app/v1/segment"},
+                              "token": lab_token}))
+    assert "run.app" not in text and lab_token not in text
+    assert json.loads(text)["segmentation"]["endpoint"] == "[redacted]"  # JSON stays valid
