@@ -31,6 +31,9 @@ final RegExp _hostZone = RegExp(
 /// than passing it by scanning nothing.
 const List<String> _roots = <String>['lib', 'packages/specimen_ui/lib'];
 
+/// The one file allowed to read the host zone, by its exact path.
+const String _seam = 'lib/src/wall_time.dart';
+
 void main() {
   group('the suite pins Central time', () {
     test('an instant prints in CDT on any machine', () {
@@ -66,22 +69,55 @@ void main() {
 
   group("a browser's zone name reads as design/02 writes it", () {
     // A browser names the zone in full, "Central Daylight Time" (#181
-    // review); 02 section 4.14 writes "CDT".
-    test('a name of several words is shortened to its initials', () {
+    // review); 02 section 4.14 writes "CDT". Initials mislead outside
+    // en-US (#182 review), so only names in a table are shortened.
+    test('a US zone, UTC, GMT or BST is shortened as design/02 writes it', () {
       for (final (String name, String short) in <(String, String)>[
         ('Central Daylight Time', 'CDT'),
         ('Eastern Standard Time', 'EST'),
-        ('Central European Summer Time', 'CEST'),
+        ('Alaska Daylight Time', 'AKDT'),
+        ('Hawaii-Aleutian Standard Time', 'HST'),
         ('Coordinated Universal Time', 'UTC'),
+        ('Greenwich Mean Time', 'GMT'),
+        ('British Summer Time', 'BST'),
       ]) {
         expect(zoneAbbreviation(name), short, reason: name);
       }
     });
 
-    test('an abbreviation or an offset is kept as it is', () {
-      for (final String name in <String>['CDT', 'UTC', 'GMT+05:30']) {
-        expect(zoneAbbreviation(name), name);
+    test('any other name is kept as given, never guessed from initials', () {
+      for (final String name in <String>[
+        // Initials would say CEST, Pakistan's would say PST.
+        'Central European Standard Time',
+        'Pakistan Standard Time',
+        // A browser in Spanish.
+        'hora de verano central',
+        'CDT',
+        'GMT+05:30',
+      ]) {
+        expect(zoneAbbreviation(name), name, reason: name);
       }
+    });
+  });
+
+  group("a reviewer's day starts at their midnight (design/01 H2.1)", () {
+    test('a day starts at midnight on the pinned clock', () {
+      expect(wallDayStart(2026, 9, 8), DateTime.utc(2026, 9, 8, 5));
+      expect(wallDayStart(2026, 1, 8), DateTime.utc(2026, 1, 8, 6));
+    });
+
+    test('the days daylight saving starts and ends begin at midnight', () {
+      // The clocks change at 02:00, so both midnights keep the old offset.
+      expect(wallDayStart(2026, 3, 8), DateTime.utc(2026, 3, 8, 6));
+      expect(wallDayStart(2026, 11, 1), DateTime.utc(2026, 11, 1, 5));
+    });
+
+    test('the day start reads back as that day at midnight', () {
+      final WallTime wall = wallTime(wallDayStart(2026, 9, 8));
+      expect(
+        (wall.year, wall.month, wall.day, wall.hour, wall.minute),
+        (2026, 9, 8, 0, 0),
+      );
     });
   });
 
@@ -149,7 +185,7 @@ void main() {
         day: local.day,
         hour: local.hour,
         minute: local.minute,
-        zone: local.timeZoneName,
+        zone: zoneAbbreviation(local.timeZoneName),
       ));
     });
 
@@ -164,7 +200,7 @@ void main() {
           ).listSync(recursive: true))
             if (entity is File &&
                 entity.path.endsWith('.dart') &&
-                !entity.path.endsWith('lib/src/wall_time.dart'))
+                entity.path != _seam)
               for (final (int index, String line)
                   in entity.readAsLinesSync().indexed)
                 if (_hostZone.hasMatch(line))

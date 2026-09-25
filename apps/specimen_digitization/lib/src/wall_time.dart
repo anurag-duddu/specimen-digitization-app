@@ -10,8 +10,11 @@
 /// `test/wall_time_test.dart` fails when other code in `lib` converts to the
 /// host zone, asks its name or offset, builds an instant from the host's
 /// wall-clock fields or from an epoch without `isUtc`, reads a wall-clock
-/// field of `DateTime.now()`, or touches the override. A parse of text
-/// without a zone is not checked: the server's instants carry one.
+/// field of `DateTime.now()`, or touches the override. It reads line by
+/// line, so it cannot see an expression split across lines, a read through
+/// a helper of another package, a parse of text without a zone (the
+/// server's instants carry one), or code outside `lib` and
+/// `packages/specimen_ui/lib`.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -49,15 +52,51 @@ WallTime _hostWallTime(DateTime instant) {
 }
 
 /// A zone's name as 02 section 4.14 writes it: "CDT". A browser names the
-/// zone in full ("Central Daylight Time"), so a name of several words is
-/// shortened to its initials, and the one full name whose letters are not
-/// its initials keeps its own: UTC. An abbreviation or an offset is kept.
+/// zone in full ("Central Daylight Time"). Only the names in this table are
+/// shortened, because initials mislead elsewhere: "Central European Standard
+/// Time" is not CEST, Pakistan's is not PST, and a browser in Spanish names
+/// the zone in Spanish (#182 review). Any other name is kept as given.
 @visibleForTesting
-String zoneAbbreviation(String name) {
-  if (!name.contains(' ')) return name;
-  if (name == 'Coordinated Universal Time') return 'UTC';
-  return <String>[
-    for (final String word in name.split(' '))
-      if (word.isNotEmpty) word[0].toUpperCase(),
-  ].join();
+String zoneAbbreviation(String name) => _shortZones[name] ?? name;
+
+/// The US zones, UTC, GMT and BST, by the full names browsers give them.
+const Map<String, String> _shortZones = <String, String>{
+  'Eastern Standard Time': 'EST',
+  'Eastern Daylight Time': 'EDT',
+  'Central Standard Time': 'CST',
+  'Central Daylight Time': 'CDT',
+  'Mountain Standard Time': 'MST',
+  'Mountain Daylight Time': 'MDT',
+  'Pacific Standard Time': 'PST',
+  'Pacific Daylight Time': 'PDT',
+  'Alaska Standard Time': 'AKST',
+  'Alaska Daylight Time': 'AKDT',
+  'Hawaii-Aleutian Standard Time': 'HST',
+  'Hawaii-Aleutian Daylight Time': 'HDT',
+  'Coordinated Universal Time': 'UTC',
+  'Greenwich Mean Time': 'GMT',
+  'British Summer Time': 'BST',
+};
+
+/// The instant a day begins on the reviewer's wall clock: its midnight, in
+/// UTC, for a filter the reviewer typed as a day (design/01 H2.1;
+/// coordinator ruling for S6, 2026-09-25). Found through [wallTime], so the
+/// suite's pinned clock answers it as well as the host's.
+DateTime wallDayStart(int year, int month, int day) {
+  final DateTime midnight = DateTime.utc(year, month, day);
+  DateTime instant = midnight;
+  // The first step finds the offset at a first guess; the second corrects
+  // for an offset that changed between the guess and the midnight.
+  for (int step = 0; step < 2; step++) {
+    final WallTime wall = wallTime(instant);
+    final DateTime seen = DateTime.utc(
+      wall.year,
+      wall.month,
+      wall.day,
+      wall.hour,
+      wall.minute,
+    );
+    instant = instant.subtract(seen.difference(midnight));
+  }
+  return instant;
 }

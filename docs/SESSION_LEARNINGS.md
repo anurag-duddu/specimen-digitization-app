@@ -12208,6 +12208,27 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learning: when a correction is itself history, check it against the primary record (the review comments) before writing it. The earlier round pairing was corrected from memory and was wrong twice.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above.
 
+### 2026-09-25 — Go-live S6: #182's review follow-ups, the reviewer's own day, and log corrections
+
+- Task: the steward's review of #182 (merged as `0fec108`; comment 5825106429, items 1-4 and 7), and the coordinator's ruling of 2026-09-25 applying design/01 H2.1 to the queue's date filter.
+- Branch/worktree: `golive/ui-zone-followups`, based on `main`; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `zoneAbbreviation` shortens only the US zones, UTC, GMT and BST, from a table. Any other name is kept as given: initials made "Central European Standard Time" CEST and Pakistan's PST.
+  - A typed filter day is the reviewer's own day. `typedDayStart` returns the instant it begins on the reviewer's clock, through `wallDayStart`, which is built on `wallTime` so the suite's pin answers it too, and sends it to the API in UTC. A record at 23:30 on the 7th is now outside "on or after the 8th". The queue's chip shows a date bound as the day, "8 Sep 2026", where it showed "2026-09-08T00:00:00.000Z".
+  - A human declaration's recorded time reads in words, absolute only (02 section 4.14), where it showed the raw instant.
+  - The dead `absoluteDay` is gone, the seam's doc lists what the line-based guard cannot see, and the guard exempts the seam by its exact path.
+- Raw UTC on screen, which the review found (item 2): the declaration's "Recorded by … · <created_at>" and the queue's date chip. Both are fixed here, the chip under the coordinator's ruling.
+- Corrections to earlier entries (item 7; the log is append-only):
+  - "Go-live S6: goldens no longer depend on the host's time zone" is #181. Its green commit is `afb176f` (the entry doubled the backticks). Its learning 2, "pin behavior, not format … parts of the app print them as UTC", was overtaken by #182: the coordinator ruled from design/01 H1.9 that server instants read on the reviewer's clock. The lasting learning is narrower: a pin fixes the zone, and the text is for the design rules to decide.
+  - "Go-live S6: server instants read on the reviewer's clock" is #182, merged as `0fec108`. Its green commit is `ae9d194` (the entry doubled the backticks). Where it says the source screen reads "05:22 CDT" and the queue row speaks "00:01 CDT", that is the suite. In the app they read in the host zone, not Central: CDT is only the suite's pin.
+- Commits/PRs: red `5c734f1`; green `4facbf8`; the pull request is based on `main`.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; `check_ui_strings.py` 0 violations; the zone, day-filter, declaration, queue row and saved-filter tests 45 passed; the full app suite 1,596 passed, 7 skipped, 0 failed, on the host zone (America/New_York, no `TZ` set), no golden moved.
+- Durable learnings:
+  1. An abbreviation built from initials is a guess that happens to work in en-US. For names shown to people, prefer a table of the names you know, and show every other name as given.
+  2. A reverse seam, from wall-clock day to instant, is best built on the forward seam. Two fixed-point steps over `wallTime` find midnight in any zone, the pinned one included, with no second override to keep in step.
+  3. A test for a zone rule should name the boundary case the rule exists for. Here that is a record at 23:30 on the 7th against "on or after the 8th", not just a round trip.
+- Failed approaches: none.
+- Remaining follow-ups (items 5 and 6): at #73's turn, record both zone rulings (2026-09-24 and 2026-09-25, with their times) in UI.md. When S6's #73-#189 stack merges `main`, regenerate its queue, queue-selection and workbench-history goldens, which now render CDT text, together with #181's note on #102, #114, #133 and #140.
 ### 2026-09-24 — Go-live program: plan corrections after #185
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
@@ -12252,3 +12273,24 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. A licence cell holds two facts: the licence and the channel. The Philippine files' metadata cites HDX as its licence source, but the files come from geoBoundaries, so copying "via HDX" named the wrong channel.
 - Failed approaches: none.
 - Remaining follow-ups: none from the review. The steward checks #183's identifier field rule at #183's turn. The 259 ids S8's readers send back already come from the fields it reads.
+### 2026-09-24 — Go-live program: plan corrections after #191
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-9`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #191's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/191#issuecomment-5825808641). In PLAN 4.8's filter:
+    - An identifier counts only in the field that carries its source's ids, never as another token of the answer, so a TGN `estStart` of "1946" or a GNS latitude of 7.3 can't pass as one.
+    - The limit's class sentence says "text", not "a name", and "no marker the profile names". A habitat ("Mossy forest"), a catalogue prefix ("FMNH INS") and a unit ("ft.") leave mid-run too, and so does a name beside a marker the profile doesn't list.
+    - The profile names collector and determiner markers in English and Spanish ("Col.", "Colector", "Collector"), and month forms old and new ("Agto."). The limit names a form of a listed language that the profile doesn't list.
+    - A Roman month is a token whose every word is a numeral I to XII, so "VIII/IX 1946" is cut.
+    - The limit names the marker clause's over-cut across lines, and the notations bullet defers to the limit.
+    - The month listing carries its own label, and "not itself in a source" replaces "not written on the label".
+  - Licences: "via HDX" applies to CONRED's file only. The Philippine files' licence is the one geoBoundaries' metadata states for each file (PLAN 4.8's table, S8's task 6).
+  - S7's brief gains T4a, the private pilot reference file (`specimen-pilot-reference/v1`), from the coordinator's ruling sent to S2 and S7 at 01:15Z on 2026-09-25. The steward's review of #199 found it in no brief and no S7 PR.
+  - Corrections (dated 2026-09-24) to the entry "2026-09-24 — Go-live program: plan corrections after #185" above:
+    - Its line '"Werner" beside "Wernersdorf" is cut' should read '"Werner" is cut where the record reads "Wernersdorf" and "leg. Werner"'.
+    - Its line "a name that no reading gives a non-place field, and the harness hasn't yet" paraphrases PLAN 4.8. At #191's head, 4.8 read "a name no reading assigns to a non-place field, or one the harness has not yet given a non-place field, when no marker in its own clause accompanies it". This PR rewrites that sentence.
+    - Its line "geoBoundaries' Philippine files and CONRED's COD-AB file for Guatemala, CC BY 3.0 IGO via HDX" puts "via HDX" on both files. It applies to CONRED's file only; the Philippine licence comes from geoBoundaries' metadata. The line also omits the simplified-file margin: for the simplified Philippine files, the circle is widened by the stated simplification error.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: an identifier check is only as strict as the field it reads. "Returned by the source" has to name the id field, because an answer's dates and coordinates are numbers too, and a digit pattern matches them.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).

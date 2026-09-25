@@ -27,6 +27,13 @@ String relativeInstant(Object? value) {
   return delta.isNegative ? '$span ago' : 'in $span';
 }
 
+/// One wire instant in its citable absolute form alone, for a decision
+/// record, where relative time is never allowed (02 section 4.14).
+String absoluteInstant(Object? value) {
+  final DateTime? parsed = DateTime.tryParse(textOf(value, ''));
+  return parsed == null ? 'Not recorded' : absoluteTime(parsed);
+}
+
 /// The same instant with its absolute form attached, for a timeline entry
 /// where the relative phrase alone is not citable.
 String citedInstant(Object? value) {
