@@ -140,6 +140,9 @@ YEAR_TAIL = re.compile(r"[.,]\d{4}(?!\d)")
 # 2099, sets the range aside unless its prefix comes first: the coordinator's
 # reading of G36 and G40 at 15:32Z on 2026-09-25.
 YEAR = re.compile(r"\d\d|1[7-9]\d\d|20\d\d")
+# Metres in a foot, exactly (G41): beside an elevation it converts to, such a range
+# reads, since a year would not convert (the same reading, extended at 17:40Z).
+FOOT = 0.3048
 # A number after another number with only words or marks between them may be a
 # range's upper number, joined by one no range join lists: "4000 hasta 4500 ft",
 # "4000 ~ 4500 m".
@@ -436,7 +439,9 @@ def _numeral(text: str) -> bool:
     return any(unicodedata.category(c) in NUMERALS for form in forms for c in form)
 
 
-def _unsure(segment: str, match: re.Match[str], paired: bool, after: bool, since: int) -> bool:
+def _unsure(
+    segment: str, match: re.Match[str], paired: bool, after: bool, since: int, converts: bool
+) -> bool:
     """Whether an elevation's number is unsure, so the phrase is set aside rather
     than read (GEO.md 1, "Unsure numbers"):
     - a malformed grouping ("1,5,3 m"), or four digits after a mark ("4.1948");
@@ -447,7 +452,9 @@ def _unsure(segment: str, match: re.Match[str], paired: bool, after: bool, since
       elevation comes first ("Sept. 1946 - 850 m", "July 4, 1946.9500 ft");
     - a range that runs downward, or whose upper number has a decimal
       ("1946 - 850 m", "4-1948,95 m"), or whose lower number could be a year,
-      unless its prefix comes first ("1800-2200 m", but "Elev. 1800-2200 m");
+      unless its prefix comes first or it converts with the elevation beside it
+      (`converts`: "1800-2200 m" is set aside, "Elev. 1800-2200 m" and
+      "6000-7000 ft 1829-2134 m" read);
     - after another number with only words or marks between them, since the
       last elevation read (`since`) ("4000 ~ 4500 m", "Camp 3 at 1500 m");
     - beside another digit group across a space ("4 800 ft.", "Elev. 4 800 ft.")."""
@@ -464,7 +471,7 @@ def _unsure(segment: str, match: re.Match[str], paired: bool, after: bool, since
         return True
     if high and (_decimal(high) or _size(low) > _size(high)):
         return True
-    if high and not paired and not match["prefix"] and YEAR.fullmatch(low):
+    if high and not converts and not match["prefix"] and YEAR.fullmatch(low):
         return True
     if not paired and TOP_ALONE.search(segment, max(since, start - 40), start):
         return True
@@ -491,6 +498,42 @@ def _decimal(number: str) -> bool:
     return ("," in number or "." in number) and not GROUPED.fullmatch(number)
 
 
+def _unit(match: re.Match[str]) -> str | None:
+    """An elevation phrase's unit, "m" or "ft", or None when it gives none."""
+    unit = match["unit"]
+    return ("m" if unit.casefold().startswith("m") else "ft") if unit else None
+
+
+def _converts(a: re.Match[str], b: re.Match[str]) -> bool:
+    """Whether two elevation phrases, one in feet and one in metres, give the same
+    heights: each end by the exact factor, within the larger of 10 m and 2% of the
+    metric value. Nothing converted is kept."""
+    if {_unit(a), _unit(b)} != {"ft", "m"} or (a["high"] is None) != (b["high"] is None):
+        return False
+    feet, metres = (a, b) if _unit(a) == "ft" else (b, a)
+    for end in ("low", "high"):
+        if feet[end] is None:
+            continue
+        foot, metre = _value(feet[end]), _value(metres[end])
+        if foot is None or metre is None or abs(foot * FOOT - metre) > max(10, 0.02 * metre):
+            return False
+    return True
+
+
+def _value(number: str) -> float | None:
+    """A valid number's value, or None past an elevation's length: a decimal reads
+    its mark as the point, thousands marks are dropped, and in a grouped number
+    with a decimal the second kind of mark is the point ("1.463,5")."""
+    if len(number) > 12 or not VALID_NUMBER.fullmatch(number):
+        return None
+    if _decimal(number):
+        return float(number.replace(",", "."))
+    if "," in number and "." in number:
+        grouping, point = (",", ".") if number.index(",") < number.index(".") else (".", ",")
+        return float(number.replace(grouping, "").replace(point, "."))
+    return float(number.replace(",", "").replace(".", ""))
+
+
 def _elevations(segment: str, after_number: bool = False) -> tuple[str, list[Elevation]]:
     """Elevation phrases out of the segment, each as written (G27, G38).
     `after_number` says the part before this one holds a number."""
@@ -499,16 +542,21 @@ def _elevations(segment: str, after_number: bool = False) -> tuple[str, list[Ele
     last = 0
     # Opening brackets at the part's start are no text before a number.
     lead = len(segment) - len(segment.lstrip(" " + OPENINGS))
-    for match in ELEVATION.finditer(segment):
+    phrases = [match for match in ELEVATION.finditer(segment) if match["prefix"] or match["unit"]]
+    # Neighbours, one in feet and one in metres, that convert to each other.
+    converting = {
+        index
+        for first, (a, b) in enumerate(zip(phrases, phrases[1:]))
+        if b.start() - a.end() <= 1 and _converts(a, b)
+        for index in (first, first + 1)
+    }
+    for index, match in enumerate(phrases):
         # A mark right after another elevation pairs the two: "4800 ft/1463 m".
         paired = bool(found) and match.start() - last <= 1
         after = after_number or match.start() > lead
-        if not (match["prefix"] or match["unit"]) or _unsure(segment, match, paired, after, last):
+        if _unsure(segment, match, paired, after, last, index in converting):
             continue
-        unit = match["unit"]
-        if unit:
-            unit = "m" if unit.casefold().startswith("m") else "ft"
-        found.append(Elevation(match.group(0).strip(), match["low"], match["high"], unit))
+        found.append(Elevation(match.group(0).strip(), match["low"], match["high"], _unit(match)))
         rest.append(segment[last : match.start()])
         last = match.end()
     rest.append(segment[last:])
