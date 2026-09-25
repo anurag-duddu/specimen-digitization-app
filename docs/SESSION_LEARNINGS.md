@@ -12208,6 +12208,43 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learning: when a correction is itself history, check it against the primary record (the review comments) before writing it. The earlier round pairing was corrected from memory and was wrong twice.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above.
 
+### 2026-09-24 — Go-live release workstream (S2), T1e: #184's merge follow-ups, SAM 3's candidate binding and the ten's private record
+
+- Task: the S2 session, the PR steward's follow-ups from #184's merge review (comment 5825626144, Decision items 1-7). Items 1 and 2 are release guarantees that the checker pull request must also implement.
+- Branch/worktree: `golive/release-docs-checker-guarantees`, from `main` at `ee90e3b` (#184's merge), in this session's worktree.
+- Outcome:
+  - **SAM 3 stays bound to the candidate** (`golive/RELEASE.md` 2.1's `acceptance.py` 497 row; `LIVE_QA.md`'s third-runtime note). Its commit is the candidate or, once T2 reuses an unchanged SAM 3 image, a commit on main at or before the candidate with SAM 3's inputs unchanged between the two. Either way, the candidate's own release run deployed the image built from that commit. A digest the candidate's own run did not deploy fails. The row names the rest of DEPLOYMENT-PROVENANCE in full.
+  - **The ten's private record** (the 333-334 pin row; `LIVE_QA.md`'s contracts note):
+    - the checker reads the ten from `specimen-pilot-reference/v1`, per the coordinator's ruling in its message to S2 of 2026-09-24, 01:15Z on 09-25;
+    - S7 writes it after PLAN section 8 step 2, and the coordinator verifies it against DoD-4's subject ids;
+    - its SHA-256, supplied separately, still pins it on the command line;
+    - the read keeps `private_manifest`'s checks (`acceptance.py` 116-133).
+  - **New rows** for the human-review scope checks (295-296, 310, 324-325, 330-332) and for `ready_for_independent_review` (311, 314; `acceptance.py` 525).
+  - **Smaller fixes:**
+    - `PilotLaunch`'s copy of the map retires with it (G2);
+    - PRD-10's approval and semantics gates are gone for `harness_route` runs (the coordinator's reading of G1, #158);
+    - the G15 reading cites the coordinator's message to S2 of 2026-09-24, 01:00Z on 09-25, answering #184's round-1 question;
+    - **DEPLOY-IDENTITY bound to the candidate**, as #199's round 1 recommended. The API and worker SHAs and image digests compare with the candidate's own runtime release run. The SQL and rules revisions compare with the data release run that deployed them: the candidate's own, or a main run at or before it with those inputs unchanged. All eleven notes that carry the settled sentence change, and a new 2.1 row (`acceptance.py` 482-493, 502-507) records the checker's side;
+    - the nits: G11's protections stay; the scope never granted sensitive access or infrastructure authority; the no-reset sum moves to COST-BOUNDS; "a new upload no longer waits"; "its independent reconciliation"; `evidence_pilot.py` sets the review block; row 176's missing lines; the manifest's selection and ready-status clauses and DATA-TEN's gate; three manual subcriteria, not four.
+- Corrections to [the T1d entry](#2026-09-24--go-live-release-workstream-s2-t1d-165s-merge-follow-ups-and-the-acceptance-documents-notes), 2026-09-24. That entry stays as merged:
+  - Its checker-rows bullet: a specimen the harness clears drops only the review checks 201-207 and 209-217. The coverage check (208) covers every record in the coordinator's reading of G15 (`6625690`).
+  - Its G15 mention: the reading's source is the coordinator's message to S2 of 2026-09-24, 01:00Z on 09-25, answering #184's round-1 question.
+  - Its correction of #165's follow-up sentence: the sentence is #165's "and will add `scripts/qa/live/` to PLAN section 6", not #165's "Remaining follow-ups" line.
+  - Its Commits list also includes `6625690` (the G15 reading) and the merges `c9c42a4`, `a132268` and `e582a9f`. #184 merged as `ee90e3b`.
+  - Its G30 sweep: 66 of 66 at the merged head, not 65 of 65.
+- Commits/PRs: PR #199: the fixes `a3ca34c`, this closeout `5e1410d`, the merge `770f99a`, the blank line `6e8e0b7`, and review round 1's commit.
+- Validation actually run:
+  - the G30 sweep over every dated note: 66 of 66;
+  - the acceptance sweep: all 4 notes on the acceptance decision carry the full sentence;
+  - every "USD 25" note in the two documents names G30's USD 5;
+  - every line the new rows cite, checked against `human_review.py` and `acceptance.py`;
+  - pre-commit, `tests/test_deployment_policy.py`, `git diff --check` and the relative-link check (60 links, none broken).
+- Durable learnings:
+  - A binding that retires must name what replaces it. "Compare with the release run that deployed it" alone accepts any earlier run's image. Keep the candidate in every provenance rule.
+  - A ruling that arrives after a note is written can contradict the note. The manifest's separately supplied digest was retired in one note and kept by the next ruling. Re-read notes against each new ruling.
+- Failed approaches: round 1's SAM row dropped the candidate, and round 1's PilotLaunch wording kept a map that G2 retires. #184's merge review caught both. #199's round 1 caught the `harness_route` scope tagged "(G1)". G1's own words name no route; the scope is the coordinator's reading of G1 (#158).
+- Remaining follow-ups: the checker pull request implements items 1 and 2, the new rows, and the G15 reading.
+
 ### 2026-09-25 — Go-live S6: #182's review follow-ups, the reviewer's own day, and log corrections
 
 - Task: the steward's review of #182 (merged as `0fec108`; comment 5825106429, items 1-4 and 7), and the coordinator's ruling of 2026-09-25 applying design/01 H2.1 to the queue's date filter.
@@ -12255,6 +12292,64 @@ because the hooks runner hands a native asset hook only `PATH`.
   3. A coordinator correction written after an owner's quote reads as following from the owner's words. Label it as a reading, with its date and source, even when it only corrects the coordinator's own earlier line.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
 
+### 2026-09-25 — Go-live S6: #197's review follow-ups, and dated corrections to earlier entries
+
+- Task: the steward's review of #197 (merged as `587761f`; comment 5826222264, items 1, 2, 4 and 5).
+- Branch/worktree: `golive/ui-zone-followups-2`, based on `main`; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `wallDayStart` no longer lands on the day before where the clocks jump over midnight on a daylight-saving day: Havana on the second Sunday of March, Santiago on the first Sunday of September, the Azores on the last Sunday of March. When its second step does not read as the typed day, it returns the first step's instant, the jump, which is the day's first moment.
+    - A synthetic zone that moves from UTC-5 to UTC-4 at what would have been 00:00 pins this.
+    - The steward's sweep of all 598 zones for 2026-2030 passes under this rule.
+    - The pilot's zone (Central) is unaffected.
+  - The guard's doc, in the seam and in its test, lists what a line-based check cannot see:
+    - a `now` held in a variable;
+    - `copyWith` and `toString`/`toIso8601String` on a local instant;
+    - tear-offs;
+    - split expressions and reads through another package;
+    - zoneless parses;
+    - code outside the two roots.
+    It also names the correct UTC epoch call split across lines, which it wrongly rejects.
+  - The code cites ruling (b) with its time, 01:26Z, at `wallDayStart` and `typedDayStart`. The typed-day comment no longer says "exactly as they were converted before".
+- Corrections to earlier entries (item 4; the log is append-only, and these entries are on `main`):
+  - The entry "Go-live S6: #182's review follow-ups, the reviewer's own day, and log corrections" (#197) says in learning 2 that two fixed-point steps over `wallTime` "find midnight in any zone". That is false for a day that has no midnight; this entry's fix covers it.
+  - Where my entries give a zone name (CDT, Central) for what the app shows, read "the host zone, not Central". CDT is only the suite's pin.
+  - The coordinator's rulings for S6, by the time this session received them:
+    - 2026-09-24 22:59Z: layer labels, option (b): "As written", "Settled", "Derived from …". This is the layer entries' "(b)", a different ruling from the H2.1 "(b)" below.
+    - 2026-09-24 23:11Z: pin the time zone in the test harness (#181).
+    - 2026-09-24 23:30Z: server instants read on the reviewer's clock, from design/01 H1.9 (#182).
+    - 2026-09-25 01:26Z: H2.1 option (b), a typed day is the reviewer's own day (#197).
+    - 2026-09-25 01:35Z: no migration of saved filter sets (#197).
+  - Two corrections to #197's risk note (item 5):
+    - A filter set saved before #197 that is reopened and resubmitted through the sheet, west of UTC, moves its bound about a day earlier. In Chicago it goes from 00:00Z on the 8th to 05:00Z on the 7th, 19 hours, because the reopened sheet shows the 7th.
+    - `magic_link.dart` only reads `queryParameters`; it does not build them.
+- Commits/PRs: red `6856b87`; green `a655cdc`; the pull request is based on `main`.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the zone and day-filter tests 22 passed; the full app suite 1,597 passed, 7 skipped, 0 failed, on the host zone with no `TZ` set, no golden moved.
+- Durable learnings:
+  1. "Any zone" is a claim about every zone's worst day. A fixed-point search over a wall clock converges only where the target wall time exists. Where the clocks jump over it, the search must notice and return the jump. A synthetic zone makes that testable without a zone database.
+  2. Name a ruling by its time, not by its option letter: two different rulings were both "(b)".
+- Failed approaches: none.
+- Remaining follow-ups:
+  - At #140's turn, fold #197's date-key case into #140's `searchValueLabel` switch (item 3). Git merges the two declarations cleanly, and the result would not compile.
+  - At #73's turn, record the zone rulings in UI.md with the times above.
+  - When the stack merges `main`, regenerate its queue, queue-selection and workbench-history goldens, and re-verify those of #102, #114, #133 and #140.
+### 2026-09-25 — S8: #94's review follow-ups, and a correction to its entry
+
+- Task: the steward's round-3 review of #94 (merged as `e6bcfa7`; comment 5826083660, Decision items 1-5), done in a small docs pull request on `main`.
+- Branch/worktree: `golive/geo-plan-followups` from `main` at `e6bcfa7`; `.claude/worktrees/busy-thompson-19cc3b`.
+- Outcome, in `docs/product-requirements/GEOREFERENCING.md`:
+  - the unassigned literal is PLAN 4.8's unassigned locality text, the part of the lines holding the place fields that no reading assigns to any field;
+  - the illustrative `valid_on` returns "not valid" for a unit that had ended by the collection date, with the gap as a `label_lag` finding, as 3.2 and #154's `use_on` do, so a 1980 "Davao Prov." label no longer matches Q15095071;
+  - the Philippine boundary files come via geoBoundaries; HDX is CONRED's channel only;
+  - G30's reservation mechanism, D15 for this tool and D5's hold are labelled as the coordinator's, and the Apo reading carries its date and its hedge;
+  - smaller wording and date fixes.
+- Correction to the entry "S8 retrospective georeferencing research: the plan, the pilot localities, a read-only probe" (the log is append-only): its remaining follow-ups cite "(G30)" for each Google call reserving its cost. The reservation mechanism is the coordinator's ruling (PLAN 2.1's G30 row and section 4.3), so read it as "(G30; the coordinator's ruling on the mechanism, PLAN 4.3)".
+- Commits/PRs: one docs commit; no red and green commits, since no product behaviour changes.
+- Validation actually run: pre-commit on the changed files; every `file:line` citation re-checked by script at `e6bcfa7`, identical to `ad84482`.
+- Durable learnings:
+  1. An illustrative function's state names become its contract. `valid_on` returned "label_lag" as a fourth validity state, and `decide` dropped only "not valid", so a name of any age passed the anachronism filter. A finding goes beside the state, never in place of it.
+  2. A licence cell holds two facts: the licence and the channel. The Philippine files' metadata cites HDX as its licence source, but the files come from geoBoundaries, so copying "via HDX" named the wrong channel.
+- Failed approaches: none.
+- Remaining follow-ups: none from the review. The steward checks #183's identifier field rule at #183's turn. The 259 ids S8's readers send back already come from the fields it reads.
 ### 2026-09-24 — Go-live program: plan corrections after #191
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.

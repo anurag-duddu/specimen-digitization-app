@@ -10,11 +10,14 @@
 /// `test/wall_time_test.dart` fails when other code in `lib` converts to the
 /// host zone, asks its name or offset, builds an instant from the host's
 /// wall-clock fields or from an epoch without `isUtc`, reads a wall-clock
-/// field of `DateTime.now()`, or touches the override. It reads line by
-/// line, so it cannot see an expression split across lines, a read through
-/// a helper of another package, a parse of text without a zone (the
-/// server's instants carry one), or code outside `lib` and
-/// `packages/specimen_ui/lib`.
+/// field of `DateTime.now()`, or touches the override. It reads one line at
+/// a time and knows no types, so it cannot see a `now` held in a variable
+/// and read later, `copyWith` or `toString`/`toIso8601String` on a local
+/// instant, a tear-off such as `.map(DateTime.new)`, an expression split
+/// across lines, a read through another package, a parse of text without a
+/// zone (the server's instants carry one), or code outside `lib` and
+/// `packages/specimen_ui/lib`; and it rejects a correct UTC epoch call whose
+/// `isUtc: true` sits on a later line.
 library;
 
 import 'package:flutter/foundation.dart';
@@ -78,16 +81,16 @@ const Map<String, String> _shortZones = <String, String>{
   'British Summer Time': 'BST',
 };
 
-/// The instant a day begins on the reviewer's wall clock: its midnight, in
-/// UTC, for a filter the reviewer typed as a day (design/01 H2.1;
-/// coordinator ruling for S6, 2026-09-25). Found through [wallTime], so the
-/// suite's pinned clock answers it as well as the host's.
+/// The instant a day begins on the reviewer's wall clock, in UTC, for a
+/// filter the reviewer typed as a day (design/01 H2.1; coordinator ruling
+/// for S6, 2026-09-25, 01:26Z): its midnight, or, where the clocks jump over
+/// midnight on a daylight-saving day (Havana, Santiago, the Azores), the
+/// jump, the day's first moment. Found through [wallTime], so the suite's
+/// pinned clock answers it as well as the host's.
 DateTime wallDayStart(int year, int month, int day) {
   final DateTime midnight = DateTime.utc(year, month, day);
-  DateTime instant = midnight;
-  // The first step finds the offset at a first guess; the second corrects
-  // for an offset that changed between the guess and the midnight.
-  for (int step = 0; step < 2; step++) {
+  // Moves [instant] by how far its wall clock reads from the midnight.
+  DateTime towardMidnight(DateTime instant) {
     final WallTime wall = wallTime(instant);
     final DateTime seen = DateTime.utc(
       wall.year,
@@ -96,7 +99,17 @@ DateTime wallDayStart(int year, int month, int day) {
       wall.hour,
       wall.minute,
     );
-    instant = instant.subtract(seen.difference(midnight));
+    return instant.subtract(seen.difference(midnight));
   }
-  return instant;
+
+  // The first step finds the offset at a first guess; the second corrects
+  // for an offset that changed between the guess and the midnight.
+  final DateTime first = towardMidnight(midnight);
+  final DateTime second = towardMidnight(first);
+  final WallTime reached = wallTime(second);
+  // A day with no midnight sends the second step back to the day before,
+  // and the first step's instant is then the jump itself.
+  return (reached.year, reached.month, reached.day) == (year, month, day)
+      ? second
+      : first;
 }

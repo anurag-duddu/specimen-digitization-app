@@ -67,11 +67,13 @@ Required before live execution:
   > runtime/data amendment this bullet describes is retired: envelopes, cost
   > ledgers, independent-review reports and authorization artifacts retire, and
   > a merge deploys automatically after the required checks and the PR steward's
-  > approval (G11). G30's per-call reservations stand (PLAN 4.3; the
-  > coordinator's ruling on the mechanism). The exact resource and cost
-  > qualification the envelope's packet carried retires with it. The rest of the
-  > bullet stands, including the implementation and actual release receipts, the
-  > combined immutable SHA and the public API and App Check configuration.
+  > approval (G11). Branch protection, the required checks, keyless identities
+  > and main-only environments stay (G11). G30's per-call reservations stand
+  > (PLAN 4.3; the coordinator's ruling on the mechanism). The exact resource
+  > and cost qualification the envelope's packet carried retires with it. The
+  > rest of the bullet stands, including the implementation and actual release
+  > receipts, the combined immutable SHA and the public API and App Check
+  > configuration.
 - Data owner provides the approved private ready first-ten manifest and its
   independently supplied SHA-256, authorized identity/scope, original generations,
   and approved local intake inputs. Keep all identity/object/receipt details private.
@@ -80,9 +82,14 @@ Required before live execution:
   > G2. No manifest is frozen: each run is authorized on its own instead of per
   > frozen manifest (PLAN section 4.1 stage 2). The ten pilot specimens remain
   > the acceptance cohort, processed in order, and new uploads may enter
-  > processing too, never the acceptance cohort. The rest of the bullet stands,
-  > including the authorized identity and scope, original generations and
-  > approved local intake inputs this release still needs, kept private.
+  > processing too, never the acceptance cohort. The ten's private record takes
+  > the manifest's place: `specimen-pilot-reference/v1`, written by S7, not the
+  > data owner, after PLAN section 8 step 2 imports the ten, verified by the
+  > coordinator against DoD-4's subject ids, and pinned by its SHA-256, still
+  > supplied separately (the coordinator's ruling in its message to S2 of
+  > 2026-09-24, 01:15Z on 09-25). The rest of the bullet stands, including the
+  > authorized identity and scope, original generations and approved local
+  > intake inputs this release still needs, kept private.
 - Real sign-in, App Check, SQL/Storage readiness, deployed runtime/worker/SAM pins
   and restore/restart execution must be demonstrated. Google reauthentication is
   coordinator-owned; missing access is not proof that a cloud resource is absent.
@@ -181,8 +188,8 @@ This is reviewable evidence, not institutional quality qualification. The broade
 > and COST-BOUNDS tests (PLAN 4.3). No frozen manifest SHA binds a run: each run
 > is authorized on its own instead of per frozen manifest (PLAN section 4.1
 > stage 2), and the ten are processed in order (G2). This cohort cost ledger,
-> its eleven reconciled categories, its private authorization reference and the
-> independent reviewer's role retire for this program (G11). G30's per-call
+> its eleven reconciled categories, its private authorization reference and its
+> independent reconciliation retire for this program (G11). G30's per-call
 > reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 The ledger's `budget` uses `cohort-budget/v1`, USD, the same frozen manifest SHA,
@@ -315,15 +322,17 @@ and exact integrated release checks remain separate from this focused review.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G9, G11 and G30. In place of the shared full USD 5 budget, the pipeline
+> G2, G9, G11 and G30. In place of the shared full USD 5 budget, the pipeline
 > enforces G30's USD 5 production model allowance across every paid step, within
 > G9's USD 25 ceiling, cumulative, infrastructure and models together, and
 > COST-BOUNDS tests it (PLAN 4.3). The cohort ledger this section names retires
 > with the other cost ledgers (G11), and the per-stage reservation map stays.
 > G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
-> mechanism). The rest of the paragraph stands, including the approved map in
-> each retained run policy and the launch, `SPECIMEN_SAM3_CHECKPOINT_SHA256` and
-> the offline cache, and native SAM timing.
+> mechanism). The launch this paragraph names is `PilotLaunch`
+> (`authorized-ten-v1`), which G2 retires, and its copy of the map retires with
+> it. The rest of the paragraph stands, including the approved map in each
+> retained run policy, `SPECIMEN_SAM3_CHECKPOINT_SHA256` and the offline cache,
+> and native SAM timing.
 
 ## Approved human-review release projection
 
@@ -343,31 +352,35 @@ access or change the ten-source denominator.
 > reading of G1, the administrator reviews only what the queue sends to human
 > review. Under G14 there is no classification stage; the profile comes from the
 > intake collection. The `human-review-release-scope-v1.json` authority retires
-> with the release envelope and the other authorization artifacts (G11). The
-> USD 5 cap gives way to two bounds: G9's USD 25 ceiling, cumulative,
-> infrastructure and models together, and within it G30's USD 5 production model
-> allowance, which the pipeline enforces across every paid step and COST-BOUNDS
-> tests (PLAN 4.3). The rest of acceptance stands, including every UI and live
-> case the human-review checker (`scripts/qa/live/human_review.py`) requires:
-> the ten UI cases of [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md)
-> (UI-SIGN-IN, UI-INTAKE, UI-PROCESSING, UI-IMAGE-REGIONS,
-> UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN, UI-SEARCH-QUEUE,
-> UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and UI-NO-SYNTHETIC-FALLBACK) and
-> the fifteen live cases of [`LIVE_QA.md`](LIVE_QA.md) (AUTH-IDENTITY,
-> AUTH-APPCHECK, AUTH-MEMBERSHIP, AUTH-REVOKE, AUTH-CROSS-SCOPE, DATA-TEN,
-> DATA-GENERATION, DATA-RESTORE, PROVIDER-ACTUAL, COST-BOUNDS, RETRY-UNKNOWN,
-> WORKER-RESTART, API-RESTART, DEPLOY-IDENTITY and BROWSER-E2E), with
-> UI-SIGN-IN's unverified and no-role denial, UI-DENIAL-RECOVERY's
-> unauthenticated, cross-organization or cross-collection, viewer-write and
-> revoked-access denials, in which stale responses cannot restore access, and
-> UI-SAVE-REOPEN's stale concurrent save, and with the ten, in order and beside
-> new uploads, in place of a frozen manifest (G2), G9's USD 25 ceiling in place
-> of the cohort budget, and the release packet and the cohort ledger retired
-> (G11). G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling
-> on the mechanism). In S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY
-> compares the deployed API and worker SHAs and image digests and the SQL and
-> rules revisions with the release runs on main that deployed them, in place of
-> the packet; the rest of DEPLOY-IDENTITY stands.
+> with the release envelope and the other authorization artifacts (G11). Its
+> retirement keeps what the decision never granted: it expands no infrastructure
+> authority and grants no sensitive access. The USD 5 cap gives way to two
+> bounds: G9's USD 25 ceiling, cumulative, infrastructure and models together,
+> and within it G30's USD 5 production model allowance, which the pipeline
+> enforces across every paid step and COST-BOUNDS tests (PLAN 4.3). The rest of
+> acceptance stands, including every UI and live case the human-review checker
+> (`scripts/qa/live/human_review.py`) requires: the ten UI cases of
+> [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN, UI-INTAKE,
+> UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN,
+> UI-SEARCH-QUEUE, UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and
+> UI-NO-SYNTHETIC-FALLBACK) and the fifteen live cases of
+> [`LIVE_QA.md`](LIVE_QA.md) (AUTH-IDENTITY, AUTH-APPCHECK, AUTH-MEMBERSHIP,
+> AUTH-REVOKE, AUTH-CROSS-SCOPE, DATA-TEN, DATA-GENERATION, DATA-RESTORE,
+> PROVIDER-ACTUAL, COST-BOUNDS, RETRY-UNKNOWN, WORKER-RESTART, API-RESTART,
+> DEPLOY-IDENTITY and BROWSER-E2E), with UI-SIGN-IN's unverified and no-role
+> denial, UI-DENIAL-RECOVERY's unauthenticated, cross-organization or
+> cross-collection, viewer-write and revoked-access denials, in which stale
+> responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
+> and with the ten, in order and beside new uploads, in place of a frozen
+> manifest (G2), G9's USD 25 ceiling in place of the cohort budget, and the
+> release packet and the cohort ledger retired (G11). G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
+> S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
+> and worker SHAs and image digests with the candidate's own runtime release
+> run, and the SQL and rules revisions with the data release run that deployed
+> them, which is the candidate's own or a main run at or before the candidate
+> with those inputs unchanged between the two, in place of the packet; the rest
+> of DEPLOY-IDENTITY stands.
 
 `scripts/qa/live/human_review.py` is a separate projection over the unchanged
 45-case full gate. It requires **every existing ten UI and fifteen live case**,
@@ -386,20 +399,22 @@ row is silently treated as passed or deferred.
 > 2026-09-23: The HUMAN-LABEL-COVERAGE and HUMAN-NO-AUTOMATIC-CLEARANCE rows are superseded in part for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G1, G15 and G30. HUMAN-LABEL-COVERAGE is retired as a manual subcriterion, in
-> the coordinator's reading of G15 (2026-09-24): its coverage criterion becomes
-> that the lane's automatic coverage check passed or the record went to the
-> human queue, where the reviewer can correct regions as part of review
-> (SEG-004). The lane's check is the coverage confirmation for every record, and
-> no separate human confirmation step remains; reviewers still see the whole
-> original and all regions in the thread. Its rule that no region or specimen
-> may be removed to fit budget stands. G30's per-call reservations stand (PLAN
-> 4.3; the coordinator's ruling on the mechanism).
-> HUMAN-NO-AUTOMATIC-CLEARANCE's clause that correction and save never enable
-> automatic clearance is retired: a record the harness resolves is cleared
-> without a human (G1). The rest of that row stands, including that correction
-> and save never approve institutional semantics or risk, no clearance with
-> mandatory values unresolved, that an operational failure is never labelled
-> Deferred, and review state and history surviving.
+> the coordinator's reading of G15 (its message to S2 of 2026-09-24, 01:00Z on
+> 09-25, answering #184's round-1 question): its coverage criterion becomes that
+> the lane's automatic coverage check passed or the record went to the human
+> queue, where the reviewer can correct regions as part of review (SEG-004). The
+> lane's check is the coverage confirmation for every record, and no separate
+> human confirmation step remains; reviewers still see the whole original and
+> all regions in the thread. Its rule that no region or specimen may be removed
+> to fit budget stands. G30's per-call reservations stand (PLAN 4.3; the
+> coordinator's ruling on the mechanism). Three manual subcriteria remain, so
+> the projection above requires three, not four. HUMAN-NO-AUTOMATIC-CLEARANCE's
+> clause that correction and save never enable automatic clearance is retired: a
+> record the harness resolves is cleared without a human (G1). The rest of that
+> row stands, including that correction and save never approve institutional
+> semantics or risk, no clearance with mandatory values unresolved, that an
+> operational failure is never labelled Deferred, and review state and history
+> surviving.
 
 The existing UI/live cases cover intake/immutability, authentic sign-in and scope,
 actual processing, literal comparisons/uncertainty, correction/save/readback,
@@ -448,9 +463,11 @@ review may make a release decision for the approved human scope.
 > release packet and the cohort ledger retired (G11). G30's per-call
 > reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
 > S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
-> and worker SHAs and image digests and the SQL and rules revisions with the
-> release runs on main that deployed them, in place of the packet; the rest of
-> DEPLOY-IDENTITY stands.
+> and worker SHAs and image digests with the candidate's own runtime release
+> run, and the SQL and rules revisions with the data release run that deployed
+> them, which is the candidate's own or a main run at or before the candidate
+> with those inputs unchanged between the two, in place of the packet; the rest
+> of DEPLOY-IDENTITY stands.
 
 ### Retained record evidence
 
@@ -487,15 +504,20 @@ whose SHA-256 was checked, so a file replacement between reads is rejected.
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G1, G2, G11 and G15. The ten, in order, stand in place of the frozen ten, and
-> no frozen manifest is pinned (G2): the cohort and the denominator stay ten,
-> with a record for each. Each of the ten the harness did not clear needs its
-> complete human record. A specimen the harness clears keeps its original, SAM
-> receipt, masks, raw readings and crops, with their checks, and the lane's
-> coverage confirmation, which covers every record in the coordinator's reading
-> of G15 (2026-09-24); only the other review checks drop out for it: unchanged
-> raw readings and regions across edits, a new reasoned review event, an
-> advanced revision and version, and equal saved and reopened state (G1). The
-> report's cumulative `budget` retires with the cohort ledger, and
+> no frozen manifest is pinned (G2): the ten's private record,
+> `specimen-pilot-reference/v1`, is pinned by its separately supplied SHA-256 in
+> its place (the coordinator's ruling in its message to S2 of 2026-09-24, 01:15Z
+> on 09-25), and the cohort and the denominator stay ten, with a record for
+> each. Each of the ten the harness did not clear needs its complete human
+> record. A specimen the harness clears keeps its original, SAM receipt, masks,
+> raw readings and crops, with their checks, and the lane's coverage
+> confirmation, which covers every record in the coordinator's reading of G15
+> (its message to S2 of 2026-09-24, 01:00Z on 09-25, answering #184's round-1
+> question); only the other review checks drop out for it: unchanged raw
+> readings and regions across edits, a new reasoned review event, an advanced
+> revision and version, and equal saved and reopened state (G1). The report's
+> `human_results` hold three manual subcriteria, not four, in that reading of
+> G15. The report's cumulative `budget` retires with the cohort ledger, and
 > `scope_sha256` with the scope artifacts (G11). G30's per-call reservations
 > stand (PLAN 4.3; the coordinator's ruling on the mechanism). The rest stands,
 > including no duplicate or outside-cohort record, a partially supplied list
@@ -575,9 +597,11 @@ verdicts remain visible. A merged candidate needs fresh candidate-bound evidence
 > of the cohort budget, and the release packet and the cohort ledger retired
 > (G11). G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling
 > on the mechanism). In S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY
-> compares the deployed API and worker SHAs and image digests and the SQL and
-> rules revisions with the release runs on main that deployed them, in place of
-> the packet; the rest of DEPLOY-IDENTITY stands.
+> compares the deployed API and worker SHAs and image digests with the
+> candidate's own runtime release run, and the SQL and rules revisions with the
+> data release run that deployed them, which is the candidate's own or a main
+> run at or before the candidate with those inputs unchanged between the two, in
+> place of the packet; the rest of DEPLOY-IDENTITY stands.
 
 TDD: initial **35 failures / 6 passes** reproduced the full-gate-only gap;
 follow-ups each reproduced two failures for scope/crop completeness, optional
