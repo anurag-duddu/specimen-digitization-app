@@ -166,12 +166,13 @@ def reported_literals(query: GeographyQuery) -> dict[str, list[str]]:
 def geocoding_address(query: GeographyQuery) -> tuple[str, str | None]:
     """The address PLAN 4.8 lets leave, or the fixed code refusing the query.
     Every literal, the unassigned locality text's too, must be character for
-    character in a reading. The query's place-field literals are the filter's
-    sources and the readings its context (4.8 in #191); the unassigned text is
-    context only, never sent, and a non-place field's literal refuses the query.
-    Google's row of 4.8 sends a literal with its reading's place fields, so the
-    address is the place-field literals from the most to the least precise
-    field, each as written after the cuts."""
+    character in a reading. The query's sources, its place-field literals and
+    its unassigned text, go to the filter with the readings as its context (4.8
+    in #191); a non-place field's literal is never a source and refuses the
+    query. Google's row of 4.8 sends a literal with its reading's place fields,
+    so the address is the place-field literals from the most to the least
+    precise field, each as written after the cuts, and never the unassigned
+    text."""
     knowledge = KNOWLEDGE.get(query.knowledge_id or "")
     if knowledge is None:
         return "", "place_knowledge_unavailable"
@@ -180,7 +181,7 @@ def geocoding_address(query: GeographyQuery) -> tuple[str, str | None]:
         if not any(item.literal in reading for reading in query.reading_texts):
             return "", "place_text_refused"
         if item.field_key is None:
-            continue  # Unassigned text: context for the cuts, never sent.
+            continue  # Unassigned text: a source for S8's tiers, never sent.
         if item.field_key not in PLACE_FIELDS:
             return "", "place_text_refused"
         text = place_request_text(

@@ -88,10 +88,12 @@ class GeographyQuery(Frozen):
     @property
     def sources(self) -> list[str]:
         """The query's own sources for PLAN 4.8's filter: its place-field
-        literals only. The unassigned locality text is context, never a source
-        (the steward's review of #191)."""
+        literals and its unassigned locality text, never a literal it gives a
+        non-place field (the coordinator's ruling on #191's review)."""
         return [
-            item.literal for item in self.literals if item.field_key in PLACE_FIELDS
+            item.literal
+            for item in self.literals
+            if item.field_key is None or item.field_key in PLACE_FIELDS
         ]
 
 

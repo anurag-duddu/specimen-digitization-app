@@ -27,6 +27,21 @@ class Notation:
     fields: tuple[str, ...]  # The fields it can belong to.
 
 
+# Each month in full and abbreviated, in English and in Spanish, the pilot
+# labels' languages (PLAN 4.8 in #191).
+MONTHS_ENGLISH = (
+    *("January", "February", "March", "April", "May", "June", "July"),
+    *("August", "September", "October", "November", "December"),
+    *("Jan.", "Feb.", "Mar.", "Apr.", "Jun.", "Jul.", "Aug.", "Sep.", "Sept."),
+    *("Oct.", "Nov.", "Dec."),
+)
+MONTHS_SPANISH = (
+    *("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio"),
+    *("agosto", "septiembre", "octubre", "noviembre", "diciembre"),
+    *("ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep."),
+    *("sept.", "oct.", "nov.", "dic."),
+)
+
 NOTATIONS = (
     Notation("P.I.", ("Philippine Islands, the Philippines",), ("country",)),
     Notation("Guat.", ("Guatemala",), ("country",)),
@@ -74,7 +89,12 @@ NOTATIONS = (
         ("date_visited_from", "date_visited_to", "date_identified"),
     ),
     Notation(
-        "Jan., Feb., Mar., Apr., Jun., Jul., Aug., Sep., Sept., Oct., Nov., Dec.",
+        ", ".join(MONTHS_ENGLISH),
+        ("the month",),
+        ("date_visited_from", "date_visited_to", "date_identified"),
+    ),
+    Notation(
+        ", ".join(MONTHS_SPANISH),
         ("the month",),
         ("date_visited_from", "date_visited_to", "date_identified"),
     ),
@@ -154,13 +174,8 @@ FINDING_ONLY = frozenset({"verbatim_dts"})
 # What PLAN 4.8's place-request filter reads (HARNESS.md section 7): the
 # collector and determiner markers the notations name,
 PERSON_MARKERS = ("leg.", "coll.", "Coll.", "det.")
-# the month names, with the abbreviations the date notation lists,
-MONTH_WORDS = (
-    *("January", "February", "March", "April", "May", "June", "July"),
-    *("August", "September", "October", "November", "December"),
-    *("Jan.", "Feb.", "Mar.", "Apr.", "Jun.", "Jul.", "Aug.", "Sep.", "Sept."),
-    *("Oct.", "Nov.", "Dec."),
-)
+# the month names and abbreviations the date notations list,
+MONTH_WORDS = (*MONTHS_ENGLISH, *MONTHS_SPANISH)
 # the Roman months, cut too (the coordinator's ruling of 2026-09-24),
 ROMAN_MONTHS = (
     *("I", "II", "III", "IV", "V", "VI"),

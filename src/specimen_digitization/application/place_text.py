@@ -4,26 +4,26 @@ it to every request it sends and S8's tiers to every value theirs send, so it
 imports nothing of the harness.
 
 A value a request takes from the record or from a tier-1 name must be a
-whole-token slice of its sources: the reading's place-field literals, the names
-tier 1 returns, and in "fill the rest" the reviewer's value in a place field.
-The record's readings, which every call names, are read for the cuts but are no
-source, nor is the unassigned locality text; a value drawn from anything else
-is refused. From those
-values, and only there, the filter cuts by character span every token of every
-literal any reading assigns to a non-place field and of every value a reviewer
-puts in one; every token of every clause, between commas, semicolons or line
-breaks, that holds a collector or determiner marker the profile's notations
-name, wherever the marker sits in it; every token that carries a digit; the
-month names and abbreviations the profile lists, in any case; and a Roman month
+whole-token slice of its sources: the reading's place-field literals and
+unassigned locality text, the names tier 1 returns, and in "fill the rest" the
+reviewer's value in a place field. The record's readings, which every call
+names, are read for the cuts but are no source, and a value drawn from anything
+else is refused. From those values, and only there, the filter cuts by
+character span every token of every literal any reading assigns to a non-place
+field and of every value a reviewer puts in one; every token of every clause,
+between commas, semicolons or line breaks, that holds a collector or determiner
+marker the profile's notations name, wherever the marker sits in it; every
+token that carries a digit; the month names and abbreviations the profile's
+date notations list, in English and in Spanish, in any case; and a Roman month
 beside a day or a year. So a value cut short inside a token loses it. A
 notation token that survives may then be written out in each of its full forms
-from the profile's table, and a notation is cut whenever one of its full forms
-is, and each form a full form makes is cut again by character. A tier-1
-identifier goes back unchanged to the source whose own answer holds it when it
-matches that source's documented pattern and appears in no reading (PLAN 4.8 in
-#191). Text the filter
-cannot recognize, such as a name no reading assigns to any field and no marker
-accompanies, can still leave: that is its stated limit.
+from the profile's table; a notation is cut whenever one of its full forms is,
+and each form a full form makes is cut again by character, so no expansion
+brings back a cut character. A tier-1 identifier goes back unchanged to the
+source whose own answer holds it when it matches that source's documented
+pattern (PLAN 4.8 in #191). Text the filter cannot recognize, such as a name no
+reading assigns to any field and no marker accompanies, can still leave: that
+is its stated limit.
 """
 
 from __future__ import annotations
@@ -87,10 +87,10 @@ def place_request_forms(
     with every notation token in each of its full forms (G29); [] when nothing
     survives, and then nothing is sent.
 
-    `sources` are the reading's place-field literals, the names tier 1 returned
-    and the reviewer's values in place fields; the unassigned locality text is
-    no source. `readings` are the record's reading texts, read for the cuts but
-    no source, and required: a call without them is refused.
+    `sources` are the reading's place-field literals and unassigned locality
+    text, the names tier 1 returned and the reviewer's values in place fields.
+    `readings` are the record's reading texts, read for the cuts but no source,
+    and required: a call without them is refused.
     `non_place_literals` are every literal any reading assigns to a non-place
     field and every value a reviewer puts in one: a corrected collector's
     spelling matches no reading's literal."""
@@ -147,22 +147,19 @@ def place_request_text(
 
 
 def place_request_identifier(
-    identifier: str, *, source: str, response: str, readings: Sequence[str]
+    identifier: str, *, source: str, response: str
 ) -> str | None:
     """An identifier sent back unchanged to the tier-1 source whose own answer
-    holds it (PLAN 4.8 in #191). `response` is that answer's text, in which the
-    identifier must stand as a whole token, and it must match one of the
-    source's documented patterns. An identifier that appears anywhere in a
-    reading is refused, so a catalogue number or a year offered as an id never
-    leaves (the steward's review of #191). It carries no label text, so no cut
-    applies; None refuses it."""
+    holds it (PLAN 4.8 in #191). `response` is that answer's text as the tool
+    received it, never the record or a list the agent supplies. The identifier
+    must stand in it as a whole token and match one of the source's documented
+    patterns. TGN's and GNS's digit patterns match any label number, so where
+    it came from is the guard: a catalogue number the source didn't return is
+    refused. It carries no label text, so no cut applies; None refuses it."""
     patterns = IDENTIFIERS.get(source, ())
     whole = rf"(?<![0-9A-Za-z-]){re.escape(identifier)}(?![0-9A-Za-z])"
-    if (
-        readings
-        and any(pattern.fullmatch(identifier) for pattern in patterns)
-        and re.search(whole, response)
-        and not any(identifier in reading for reading in readings)
+    if any(pattern.fullmatch(identifier) for pattern in patterns) and re.search(
+        whole, response
     ):
         return identifier
     return None
@@ -326,10 +323,10 @@ def _cut_words(
     knowledge: PlaceKnowledge,
     table: Mapping[str, tuple[str, ...]],
 ) -> frozenset[str]:
-    """The folded words no request carries: every word of every non-place
-    literal in any of its forms; every word of every source clause that holds a
-    marker; the month words; and a notation's own when a full form of it is
-    cut, so that no form carries a cut word."""
+    """The folded words the cuts name, and every character of a token that
+    holds one is cut: every word of every non-place literal in any of its
+    forms; every word of every source clause that holds a marker; the month
+    words; and a notation's own when a full form of it is cut."""
     markers = {w for marker in knowledge.PERSON_MARKERS for w in fold(marker).split()}
     words = {w for month in knowledge.MONTH_WORDS for w in fold(month).split()}
     for literal in non_place_literals:

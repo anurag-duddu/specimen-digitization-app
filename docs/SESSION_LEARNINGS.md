@@ -12016,7 +12016,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 
 ### 2026-09-24 — Go-live S4: PLAN 4.8's place-request filter
 
-- Task: go-live S4: build the one filter that decides what label text a place request carries, under PLAN 4.8 as #174 left it on main (275b399), with the coordinator's rulings (option c full forms, Roman months cut, nothing-to-send outcome, forms order, profile switch after this PR) and the steward's clarifications of 2026-09-24.
+- Task: go-live S4: build the one filter that decides what label text a place request carries, under PLAN 4.8 as #174 left it on main (275b399) and then as #191 states it (d6474f6), with the coordinator's rulings (option c full forms, Roman months cut, nothing-to-send outcome, forms order, profile switch after this PR) and the steward's clarifications of 2026-09-24.
 - Branch/worktree: `golive/harness-place-requests`, stacked on `golive/harness-range-copies` (#172), in `.claude/worktrees/cool-haslett-aa79b5`.
 - Outcome: `application/place_text.py`.
   - `place_request_forms` refuses a value not drawn from its sources. It applies the four cuts at token level, plus Roman months, and returns the value as written, then each full-form permutation. `place_request_text` gives the first form. `unassigned_text` gives a reading's unassigned locality text.
@@ -12024,7 +12024,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - The agent's `geocode` takes `others`, the reading's literals for its other fields. Every query carries the reading texts, the non-place literals, the knowledge's id and the unassigned text.
   - Insects knowledge v3 holds the markers, months and full forms. S8's tiers import the same module.
   - Spec: `docs/execution/golive/HARNESS.md` sections 7, 10, 11, 12, 13 and 14.
-- Validation actually run: the red tests failed on the missing module, symbol and fields. With the filter, the filter, knowledge, geography, ledger, harness, runtime and queue-decision suites pass, including an end-to-end run on the real Google tool against a fake endpoint where no cut token leaves. Then the full Python suites and pre-commit.
+- Validation actually run: the red tests failed on the missing module, symbol and fields. With the filter, the filter, knowledge, geography, ledger, harness, runtime and queue-decision suites pass, including an end-to-end run on the real Google tool against a fake endpoint where no cut character leaves. Then the full Python suites and pre-commit.
 - Durable learnings:
   - (1) Word-level matching is right for names and wrong for Roman numerals: "P.I." folds to the words "p i", so an "I" cut by word would have cut the Philippines. A Roman month is cut only when every word of a token is one and, by the coordinator's later ruling, only beside a day or a year (the month position), so "Camp IV" stays too.
   - (2) A marker clause has to be cut from the reading, not only from the text being sent. Otherwise a collector the agent gives to a place field leaves on its own.
@@ -12033,11 +12033,13 @@ because the hooks runner hands a native asset hook only `PATH`.
     - sources became whole-token slices of the place-field literals and unassigned text, with the readings read only as context;
     - every cut, a non-place literal's included, works by character span on every text the value occurs in.
     The harness passes its own literals as the sources. So an agent's literal cut short is cut in its reading, not refused, and a copy cut short never blocks a run.
-  - (5) "Every harness literal is found in the reading" is not the same as "every harness literal is place text". The steward's review of #191 found two gaps.
-    - Mid-run, before the agent names the collector, the unassigned text can hold him. So the harness's sources became its place-field literals only, with the unassigned text kept as context.
-    - A caller could skip the readings, or pass a label number as a tier-1 id. So `readings` became required, and an identifier must stand in the source's own answer and appear in no reading.
-    - Full forms are also re-cut by character, not only by word.
+  - (5) A reviewer's finding and a coordinator's ruling can point different ways, and the ruling decides. The steward's review of #191 found two gaps.
+    - Mid-run, before the agent names the collector, the unassigned text can hold the name. I first made that text context only. The coordinator's ruling on #191's round 1 (d6474f6) kept it a source, named the leak in 4.8's stated limit, and asked for tests pinning each case the limit names.
+    - A label number could pass as a tier-1 id. I first also refused any id found in a reading. The ruling checks an id against the source's own answer alone: the answer is the guard, never the record.
+    - What stayed: `readings` is required, and full forms are re-cut by character, so an expansion never brings back a cut character.
+  - (6) A month cut needs every language the labels use: "Chimaltenango, 3 Mayo 1946" sent "Mayo". The date notations now list each month in full and abbreviated in English and Spanish, and the filter cuts what they list.
+- Failed approaches: resetting the branch to its pushed head, to redo a round from there, was refused as irreversible. The round went on as new commits on top.
 - Remaining follow-ups:
-  - S8 imports `place_request_forms` and `place_request_identifier` for its tiers, with `query.sources` as its record sources.
+  - S8 imports `place_request_forms` and `place_request_text` (readings required), `place_request_identifier(identifier, *, source, response)`, and `query.sources`, which holds the unassigned text again.
   - S3's profile switch names v3 and lands after this PR (coordinator ruling).
   - At this PR's turn, 4.8 on main should read as #191 states it.
