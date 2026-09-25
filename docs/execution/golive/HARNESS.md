@@ -310,11 +310,20 @@ request, and S8's tiers import it for every value they send.
     leaves;
   - the month names and abbreviations the knowledge lists;
   - a Roman month in the month position: a token whose every word is a Roman
-    numeral I to XII, in any case, next to a date number (a day or a year)
-    before or after it, across separators. This is the coordinator's ruling of
-    2026-09-24, which replaced an earlier cut of every I to XII (4.8 in #185).
-    So "3 VIII 1946", "VIII 1946" and "Mindanao, VIII, 1946" leave no numeral,
-    while "Camp IV", a lone "VIII/IX" and the "I" of "P.I." stay.
+    numeral I to XII, in any case, next to a date number before or after it,
+    across separators. A date number is a day or a year in the profile's forms:
+    3, 14, 1946, '46 or -46. This is the coordinator's ruling of 2026-09-24,
+    which replaced an earlier cut of every I to XII (4.8 in #185). So "3 VIII
+    1946", "VIII 1946", "Mindanao, VIII, 1946" and "Mindanao, VIII -46" leave
+    no numeral, while "Camp IV", a lone "VIII/IX" and the "I" of "P.I." stay.
+
+  Each cut is decided on the source's own tokens, wherever the value occurs in
+  a source. A token of the value is cut when the source token it lies in is
+  cut, so a value that starts or ends inside a token loses that token too: the
+  "Hoogstraa" of "H. Hoogstraal leg." leaves nothing. This follows the
+  steward's review of #185, cutting by character span rather than refusing a
+  value that ends inside a token, which would block the run over a copy cut
+  short.
 - A notation token that survived may then be written out in full from the
   knowledge's table (the coordinator's ruling, option c). The table expands
   only notations assigned to place fields alone, never a month, a year or a

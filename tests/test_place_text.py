@@ -209,6 +209,41 @@ def test_a_roman_numeral_outside_a_date_stays(text):
     assert request(text) == text
 
 
+@pytest.mark.parametrize(
+    ("text", "leaves"),
+    [
+        ("Mindanao, VIII -46", "Mindanao"),  # "-46" is a year form of the profile.
+        ("Mindanao, P.I. 3 Sept. '46", "Mindanao, P.I."),  # 105526321's line.
+        ("3 SEPT. '46", ""),
+    ],
+)
+def test_the_profiles_year_forms_and_the_pilot_date_line(text, leaves):
+    # The steward's review of #185.
+    assert request(text) == leaves
+
+
+LABEL_WITH_COLLECTOR = "Davao Prov.\nH. Hoogstraal leg.\nMindanao, P.I."
+
+
+@pytest.mark.parametrize(
+    "text", ["Hoogstraa", "oogstraal", "oogstraal leg", "H. Hoogstr"]
+)
+def test_a_value_cut_short_inside_a_cut_token_leaves_nothing_of_it(text):
+    # The steward's review of #185: the cut follows the source's own token.
+    assert forms(text, LABEL_WITH_COLLECTOR) == []
+
+
+def test_a_value_cut_short_keeps_what_the_source_keeps():
+    assert forms("Davao Prov.\nH. Hoogstr", LABEL_WITH_COLLECTOR) == [
+        "Davao Prov.",
+        "Davao Province",
+    ]
+    # A non-place literal, and a month, cut short too.
+    werner = "Mindanao F.G. Werner, P.I."
+    assert request("Mindanao F.G. Wern", werner, others=["F.G. Werner"]) == "Mindanao"
+    assert request("Mindanao 3 Se", "Mindanao 3 Sept. '46") == "Mindanao"
+
+
 def test_a_dropped_clause_keeps_the_line_break_it_held():
     assert request("Davao Prov., leg. Hoogstraal\nMindanao") == "Davao Prov.\nMindanao"
 
