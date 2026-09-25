@@ -203,6 +203,7 @@ def test_a_token_carrying_a_digit_is_cut(token):
     [
         *("Sept.", "sept.", "SEPT", "September", "May"),
         *("Mayo", "MAYO", "septiembre", "Ago.", "dic.", "Enero"),
+        *("Setiembre", "set."),  # The variant the RAE accepts (coordinator).
     ],
 )
 def test_the_month_names_and_abbreviations_are_cut(month):

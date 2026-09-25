@@ -89,8 +89,10 @@ def test_the_place_filters_tables_come_from_the_notations():
     months = [n for n in insects.NOTATIONS if n.readings == ("the month",)]
     listed = [word for notation in months for word in notation.written.split(", ")]
     assert list(insects.MONTH_WORDS) == listed
-    assert len(listed) == 49
+    assert len(listed) == 51
     assert {"September", "Sept.", "mayo", "sept.", "dic."} <= set(listed)
+    # The coordinator's ruling of 2026-09-24: Spanish's variant too.
+    assert {"setiembre", "set."} <= set(listed)
     # The coordinator's ruling of 2026-09-24: Roman months are cut too.
     (roman,) = [n for n in insects.NOTATIONS if n.written == "I to XII in a date"]
     assert insects.ROMAN_MONTHS[0] == "I" and insects.ROMAN_MONTHS[-1] == "XII"

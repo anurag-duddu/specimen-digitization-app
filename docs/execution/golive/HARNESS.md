@@ -336,8 +336,9 @@ literal in S8's SPARQL.
     leaves;
   - every month name and abbreviation the knowledge's date notations list, in
     any case. They list each month in full and abbreviated, in English and in
-    Spanish, the pilot labels' languages: "3 SEPT. 1946" leaves nothing, and
-    "Chimaltenango, 3 Mayo 1946" leaves "Chimaltenango";
+    Spanish, the pilot labels' languages, with the Spanish variant "setiembre"
+    and "set." too (the coordinator's ruling of 2026-09-24): "3 SEPT. 1946"
+    leaves nothing, and "Chimaltenango, 3 Mayo 1946" leaves "Chimaltenango";
   - a Roman month in the month position: a token whose every word is a Roman
     numeral I to XII, in any case, next to a date number before or after it,
     across separators. A date number is a day or a year in the profile's forms:
