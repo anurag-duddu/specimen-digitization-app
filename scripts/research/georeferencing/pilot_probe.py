@@ -29,6 +29,8 @@ from typing import Any
 
 import httpx
 
+# Research only: this names the project's public repository. The tool's own User-Agent names no
+# person (PLAN 4.8).
 USER_AGENT = (
     "specimen-digitization-georef-research/0.1 "
     "(+https://github.com/anurag-duddu/specimen-digitization-app)"
@@ -332,12 +334,15 @@ async def probe(out: Path, held_steps: bool = False) -> dict[str, Any]:
     for key, samples in transects.items():
         report[key]["transect"] = [{"km": d, "point": pt, "dem_m": dem.get(pt)} for d, pt in samples]
     report["_calls"] = client.calls
+    report["_held_steps"] = held_steps
     await client.http.aclose()
     return report
 
 
 def summary(report: dict[str, Any]) -> str:
     lines = []
+    ran = report.get("_held_steps", False)
+    gadm_text = (lambda found: found.get("gadm")) if ran else (lambda found: "not used (PLAN 4.8)")
     for key, entry in report.items():
         if key.startswith("_"):
             continue
@@ -349,16 +354,17 @@ def summary(report: dict[str, Any]) -> str:
         for name, found in entry["names"].items():
             wd = "; ".join(f"{h['id']} {h.get('name')} [{h['valid_in_year']}] {h.get('point')}"
                            + (f" replaced by {h['replacedBy']}" if h.get("replacedBy") else "")
-                           + (f" gadm={h.get('gadm')} dem={h.get('dem_m')} {h.get('elevation')}" if found["feature"] else "")
+                           + (f" gadm={gadm_text(h)} dem={h.get('dem_m')} {h.get('elevation')}" if found["feature"] else "")
                            for h in found["wikidata"]) or "none in country"
             gn = "; ".join(f"{g['geonameid']} {g['name']} {g['code']} ({g['match']}) {g['point']}"
-                           + (f" gadm={g.get('gadm')} dem={g.get('dem_m')} {g.get('elevation')}" if found["feature"] else "")
+                           + (f" gadm={gadm_text(g)} dem={g.get('dem_m')} {g.get('elevation')}" if found["feature"] else "")
                            for g in found["geonames"]) or "none"
             lines.append(f"- {name}: Wikidata {wd} [{found['wikidata_elsewhere']} search hits in all] | GeoNames {gn}")
         for c in entry["gbif_prior"]:
             lines.append(f"- FMNH published {c['point']} x{c['records']} by {c['georeferencedBy']} ({c['protocol']}), "
                          f"uncertainty {c['uncertainty_m']}, gadm={c.get('gadm')}, {c.get('elevation')}: {c['localities']}")
-        lines.append(f"- published points spread: {entry['gbif_prior_max_km']} km")
+        spread = f"{entry['gbif_prior_max_km']} km" if ran else "held (D4)"
+        lines.append(f"- published points spread: {spread}")
         if entry.get("transect"):
             profile = ", ".join(f"{s['km']:g} km {s['dem_m']:.0f} m" for s in entry["transect"] if s["dem_m"] is not None)
             lines.append(f"- DEM transect {p['direction']} from {entry['crosswalk'] or p['feature']}: {profile}")
