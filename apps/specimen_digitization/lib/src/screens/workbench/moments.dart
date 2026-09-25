@@ -18,7 +18,7 @@ String relativeInstant(Object? value) {
   if (parsed == null) return 'Not recorded';
   final Duration delta = parsed.difference(DateTime.now());
   final Duration size = delta.abs();
-  if (size.inHours >= relativeWindowHours) return absoluteWallTime(parsed);
+  if (size.inHours >= relativeWindowHours) return absoluteTime(parsed);
   final String span = size.inMinutes < 1
       ? 'less than a minute'
       : size.inHours < 1
@@ -33,6 +33,6 @@ String citedInstant(Object? value) {
   final DateTime? parsed = DateTime.tryParse(textOf(value, ''));
   if (parsed == null) return 'Not recorded';
   final Duration size = parsed.difference(DateTime.now()).abs();
-  if (size.inHours >= relativeWindowHours) return absoluteWallTime(parsed);
-  return '${relativeInstant(value)} (${absoluteWallTime(parsed)})';
+  if (size.inHours >= relativeWindowHours) return absoluteTime(parsed);
+  return '${relativeInstant(value)} (${absoluteTime(parsed)})';
 }
