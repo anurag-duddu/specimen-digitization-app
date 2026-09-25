@@ -454,8 +454,9 @@ The place tool follows these coordinator rulings, from #124's reviews:
     source, and not written on the label, is refused (coordinator ruling on
     S4's #183).
   - Identifiers: an identifier a tier-1 source returned, matching that
-    source's documented identifier pattern (a Wikidata item's Q-number, a TGN
-    or GNS numeric identifier), may be sent back to that same source
+    source's documented identifier pattern (such as a Wikidata item's
+    Q-number, a TGN or GNS numeric identifier, or a GNS first-order unit code
+    such as "PH-DVC"), may be sent back to that same source
     unchanged. It carries no label text, so the digit cut does not apply to
     it, and a value that fails the pattern is refused.
   - Fixed parts: query properties such as P625, P582 and P1365, paging, limits
