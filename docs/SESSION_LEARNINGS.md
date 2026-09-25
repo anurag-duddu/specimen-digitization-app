@@ -12061,7 +12061,7 @@ because the hooks runner hands a native asset hook only `PATH`.
     - `HUMAN-NO-AUTOMATIC-CLEARANCE` retires only automatic clearance. A correction or save still never approves institutional semantics or risk (`human_review.py` 194-195). The 194-200 row retires only `human_approved`, the disposition and the stage.
     - The frozen manifest is only the cohort's anchor (103, 168). The cohort and the denominator stay ten, and each of the ten the harness did not clear needs its complete human record. A specimen the harness clears keeps its evidence checks and drops only the review checks (201-217).
     - COHORT-BUDGET and `cohort_budget` (`acceptance.py` 348-420) retire whole. The bound is G30's USD 5 production model allowance within G9's USD 25, and COST-BOUNDS tests it. The unknown-effects rule moves to COST-BOUNDS.
-    - New rows: `human_review.py` 315; the command-line manifest pin, where the candidate-SHA pin stays; the coverage checks drawn from the manifest; `manifest_ids`; and DEPLOYMENT-PROVENANCE's `sam_commit_sha`, since T2 rebuilds SAM 3 only when its inputs change.
+    - New rows: `human_review.py` 315; the command-line manifest pin, where the candidate-SHA pin stays; the coverage checks drawn from the manifest; `manifest_ids`; DEPLOYMENT-PROVENANCE's `sam_commit_sha`, since T2 rebuilds SAM 3 only when its inputs change; and HUMAN-LABEL-COVERAGE and `coverage_confirmed` (51, 124 and 208), which follow the coordinator's reading of G15 (2026-09-24): the lane's automatic check is the coverage confirmation for every record, and the human confirmation step retires.
   - **The two documents.** `RELEASE_ACCEPTANCE.md` and `LIVE_QA.md` gain their banners and dated notes beside the clauses the owner decisions contradict. They cover:
     - the projection section, the cost evidence contract and the retained record list;
     - the evidence-only pilot and the budget pointer;
@@ -12097,9 +12097,7 @@ because the hooks runner hands a native asset hook only `PATH`.
     - a closed list in the milestone note that retired G30's reservation;
     - two G1 clauses without a note;
     - an in-place edit of #165's entry.
-- Remaining follow-ups:
-  - the checker pull request (`scripts/qa/live/`, after T3d), which follows the corrected rows;
-  - the coordinator's answer on whether G15 retires HUMAN-LABEL-COVERAGE's human coverage confirmation.
+- Remaining follow-ups: the checker pull request (`scripts/qa/live/`, after T3d), which follows the corrected rows.
 
 ### 2026-09-24 — Go-live S6: goldens no longer depend on the host's time zone
 

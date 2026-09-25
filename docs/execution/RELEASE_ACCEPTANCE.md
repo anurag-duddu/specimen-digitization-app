@@ -383,14 +383,23 @@ row is silently treated as passed or deferred.
 | HUMAN-NO-AUTOMATIC-CLEARANCE | PRD-10/11/14/15: correction/save does not enable automatic clearance, approve institutional semantics/risk, or mislabel an operational failure as Deferred. Exercise denial controls with unresolved mandatory values and verify review state/history survive. |
 | HUMAN-ACCESSIBLE-REVIEW | Manual portion of PRD-19: execute keyboard/focus/error recovery, image/region navigation, text-based uncertainty and save/reopen in the actual public review UI. This does not claim institutional quality thresholds are approved. |
 
-> 2026-09-23: The HUMAN-NO-AUTOMATIC-CLEARANCE row is superseded in part for the go-live program by
+> 2026-09-23: The HUMAN-LABEL-COVERAGE and HUMAN-NO-AUTOMATIC-CLEARANCE rows are superseded in part for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G1. Its clause that correction and save never enable automatic clearance is
-> retired: a record the harness resolves is cleared without a human. The rest of
-> the row stands, including that correction and save never approve institutional
-> semantics or risk, no clearance with mandatory values unresolved, that an
-> operational failure is never labelled Deferred, and review state and history
-> surviving.
+> G1, G15 and G30. HUMAN-LABEL-COVERAGE is retired as a manual subcriterion, in
+> the coordinator's reading of G15 (2026-09-24): its coverage criterion becomes
+> that the lane's automatic coverage check passed or the record went to the
+> human queue, where the reviewer can correct regions as part of review
+> (SEG-004). The lane's check is the coverage confirmation for every record, and
+> no separate human confirmation step remains; reviewers still see the whole
+> original and all regions in the thread. Its rule that no region or specimen
+> may be removed to fit budget stands. G30's per-call reservations stand (PLAN
+> 4.3; the coordinator's ruling on the mechanism).
+> HUMAN-NO-AUTOMATIC-CLEARANCE's clause that correction and save never enable
+> automatic clearance is retired: a record the harness resolves is cleared
+> without a human (G1). The rest of that row stands, including that correction
+> and save never approve institutional semantics or risk, no clearance with
+> mandatory values unresolved, that an operational failure is never labelled
+> Deferred, and review state and history surviving.
 
 The existing UI/live cases cover intake/immutability, authentic sign-in and scope,
 actual processing, literal comparisons/uncertainty, correction/save/readback,
@@ -477,19 +486,20 @@ whose SHA-256 was checked, so a file replacement between reads is rejected.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G1, G2 and G11. The ten, in order, stand in place of the frozen ten, and no
-> frozen manifest is pinned (G2): the cohort and the denominator stay ten, with
-> a record for each. Each of the ten the harness did not clear needs its
+> G1, G2, G11 and G15. The ten, in order, stand in place of the frozen ten, and
+> no frozen manifest is pinned (G2): the cohort and the denominator stay ten,
+> with a record for each. Each of the ten the harness did not clear needs its
 > complete human record. A specimen the harness clears keeps its original, SAM
-> receipt, masks, raw readings and crops, with their checks; only the review
-> checks drop out for it: unchanged raw readings and regions across edits, a new
-> reasoned review event, coverage confirmation, an advanced revision and
-> version, and equal saved and reopened state (G1). The report's cumulative
-> `budget` retires with the cohort ledger, and `scope_sha256` with the scope
-> artifacts (G11). G30's per-call reservations stand (PLAN 4.3; the
-> coordinator's ruling on the mechanism). The rest stands, including no
-> duplicate or outside-cohort record, a partially supplied list never becoming
-> complete, and every other check in the paragraph above.
+> receipt, masks, raw readings and crops, with their checks, and the lane's
+> coverage confirmation, which covers every record in the coordinator's reading
+> of G15 (2026-09-24); only the other review checks drop out for it: unchanged
+> raw readings and regions across edits, a new reasoned review event, an
+> advanced revision and version, and equal saved and reopened state (G1). The
+> report's cumulative `budget` retires with the cohort ledger, and
+> `scope_sha256` with the scope artifacts (G11). G30's per-call reservations
+> stand (PLAN 4.3; the coordinator's ruling on the mechanism). The rest stands,
+> including no duplicate or outside-cohort record, a partially supplied list
+> never becoming complete, and every other check in the paragraph above.
 
 The current pilot intentionally retains `processing_blocked` with
 `pilot_evidence_review_required`, false institutional/human approval flags and
