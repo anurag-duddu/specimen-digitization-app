@@ -12124,3 +12124,25 @@ because the hooks runner hands a native asset hook only `PATH`.
   3. `DateTime.timeZoneName` differs by platform: the VM gives "CDT", dart2js gives the browser's "Central Daylight Time". Code that prints a zone for a web app must normalize it, and a VM-only test suite will never show the difference.
 - Failed approaches: none.
 - Remaining follow-ups: at #73's turn, record the coordinator's zone ruling in UI.md (PLAN 7.2). At the turns of #102, #114, #133 and #140, re-verify their goldens on macOS after merging `main`, and regenerate any that differ.
+### 2026-09-24 — Go-live program: plan corrections after #180
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-7`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #180's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/180#issuecomment-5824214679) in PLAN 4.8's filter:
+    - its scope covers values from the record or a tier-1 result, and its output is what leaves;
+    - Roman-numeral months are cut only in the month position and in any case, so the "I" of "P.I." stays;
+    - an expansion uses each full form the table lists, as sendable words, and only for a notation present in an allowed source (the coordinator ruling on S4's #183);
+    - the fixed parts carry no label text, headers included, with named tests for that, the User-Agent, an escaped quote and a reviewer's place value;
+    - the limit now names tier-1 names the month cut can trim.
+  - Other items:
+    - G35's reading says "the same reading's place fields" in requests 4.8 governs;
+    - `verbatim_dts` is labelled a coordinator hold, not a G45 exception;
+    - S4's T3d takes the G41/G44 record alternative;
+    - S8's brief says "record or tier-1 result", and "through S4's filter" for tier 2.
+  - Corrections (dated 2026-09-24):
+    - The entry "2026-09-24 — Go-live program: plan corrections after #174" above paired rounds wrongly again. In #124's reviews, round 3 found G40's narrowing, the name before its marker ("H. Hoogstraal leg.") and month names ("Sept."); round 4 found S8's own requests; round 5 found the reviewer's non-place values.
+    - That entry's "carries G45's `verbatim_dts` exception" should read "carries the coordinator hold for `verbatim_dts` (section 2.3)": G45 itself has no exception.
+- Validation actually run: the edit script's exact-single-match checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: when a correction is itself history, check it against the primary record (the review comments) before writing it. The earlier round pairing was corrected from memory and was wrong twice.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above.

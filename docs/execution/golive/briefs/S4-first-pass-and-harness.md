@@ -93,8 +93,8 @@ functional one comes first (G6).
 - A field without a lookup whose readers all read the same text takes that
   text as its verbatim and its value and clears, on one label as on several
   (coordinator reading of G27 and G32, matching your #131). It still passes
-  G45's kind check first, which for `verbatim_dts` is a finding until the
-  owner answers.
+  G45's kind check first, which for `verbatim_dts` is a finding under the
+  coordinator hold of PLAN section 2.3.
 - The place tool's outside requests follow PLAN section 4.8 exactly
   (coordinator rulings, PLAN 4.8, including the ruling on S8's option (c) for
   expansions, 2026-09-24): its sources, cuts, expansions, fixed request parts
@@ -214,8 +214,9 @@ endpoint fill; G44's single-date fill of Date Visited To, keeping From's
 precision; S8's geographic
 derivations through `ToolResult.derivations`; and `derive_rest` for the
 worker's "fill the rest" job (PLAN section 4.8). A derived value counts only
-with its record: its settled inputs, its dataset or authority with version,
-and its tool call or `apply_derivations` rule, with a test that a value the
+with its record: its settled inputs; its dataset or authority with version,
+or, for a G41 or G44 fill, the stated field and its rule with the rules
+version; and its tool call or its `apply_derivations` step (PLAN section 4.8), with a test that a value the
 model asserts without one does not count.
 
 **T4. The queue decision (stage 8).** The policy applies G1. For runs whose
@@ -236,8 +237,8 @@ elevation gate (99-106), which reads `field.literal` today (`policy.py`
 with its derivation record (G37 and G41, revising G22; PLAN section 4.8). The
 date gate reads a Date Visited To derived under G44 the same way, and the
 fields no lookup checks pass G45's kind check, a mismatch going to review as
-`value_shape_mismatch:{field}` (#167), except `verbatim_dts`, a finding until
-the owner answers (PLAN section 2.3). `unresolved_transcription` (46-48) yields to G19 and G20: a
+`value_shape_mismatch:{field}` (#167), except `verbatim_dts`, a finding under
+the coordinator hold of PLAN section 2.3. `unresolved_transcription` (46-48) yields to G19 and G20: a
 region whose first pass picked no reading passes when every field drawn from it
 resolved, on its own evidence or through a lookup that settled the
 disagreement; a field still left with conflicting readings sends the record to
