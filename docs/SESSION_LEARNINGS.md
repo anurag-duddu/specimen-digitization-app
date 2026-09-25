@@ -12093,3 +12093,21 @@ because the hooks runner hands a native asset hook only `PATH`.
   - the fetch (T2f part two) after S5's T4;
   - "Fill the rest" after S5's T6;
   - empty `suffixedReasonCodes` when S5's T5 lands.
+
+### 2026-09-24 — Go-live S6 T2: the screens draw S5's canonical thread whole
+
+- Task: go-live workstream S6, brief T2 ("the thread view"). While every dependency waits in the merge queue, a test that the screens, not just the model, read S5's canonical example.
+- Branch/worktree: `golive/ui-canonical-render`, stacked on `golive/ui-field-words` (#187); `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome: `test/screens/thread_canonical_render_test.dart` pumps `thread-example.json` (#171 at `c149115`) through the Readings sections, the Fields segment (every Values disclosure opened) and the Processing detail, at 390, 768 and 1180 dp. It uses a workspace record shaped from the same file, with fields named as the repository names them. It asserts no exception or overflow, and the reviewer-facing words:
+  - both labels and their decisions, including the unresolved one;
+  - layer labels;
+  - the harness's readings with their labels;
+  - the lookups;
+  - the authority record and credit;
+  - G32's settled marks;
+  - the run, profile, policy and trace.
+- Commits/PRs: test `e58302b`; no red commit, by design: the tests assert that code already written draws real-shaped data.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the new file 9 passed; the full app suite 1,757 passed, 8 skipped, 0 failed, with `TZ=America/Chicago`.
+- Durable learnings: (1) A unit test per component does not prove the components compose on real-shaped data. The canonical example exercises paths the synthetic fixtures don't: a two-label map with both entries settled, a no-pick label, an unresolved first pass, `recorded` literal evidence with `region:` locators, and model ids with slashes. (2) The one failure was my assertion, not the screen: the profile renders through the vocabulary ("zoology insects slides 1.0.0"). Read the existing test for a surface before asserting its words.
+- Failed approaches: none.
+- Remaining follow-ups: two identical Google lines appear for a two-label field (one lookup per label, and the thread doesn't say which label each came from). Raised with the coordinator, not changed.
