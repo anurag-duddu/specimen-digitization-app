@@ -83,33 +83,48 @@ the numbers whole as written, dots and commas included, and the unit as feet,
 metres, or none when the label gives none ("Elev.6400" on 105526322). A range
 joins its numbers by a dash of any kind or a slash, or by "to", "a", "and" or
 "y" between spaces ("4000—4500 ft", "1,200/1,500 m", "1500 a 2000 m",
-"entre 1500 y 2000 m"), and is kept whole.
+"1500 y 2000 m"), runs upward, and is kept whole.
 An elevation in brackets takes its brackets with it: "Mt. Apo (1463 m)" leaves
 "Mt. Apo". This module converts and fills nothing. G41's "Convert and fill"
 (the label's own number fills From and To, and the other unit is converted
 exactly, each marked derived) happens in S4's later derivation layer.
 
-**Unsure numbers.** A phrase whose number is unsure is set aside rather than read,
-so a date's year never joins an elevation and a range never loses its lower
-number. These numbers are unsure:
+**Unsure numbers.** A phrase whose number is unsure is set aside rather than read.
+These rules keep a date's year out of every elevation in the forms the tests
+generate: every date form, then any range join, a glued comma or dot, or a
+space. They also keep a range from losing its lower number to a join no rule
+lists. These numbers are unsure:
 - a number glued to the text before it: an elevation needs a space, the part's
-  start, an opening bracket or another elevation right before it. So
-  "12.IV.1948,95 m", "12/4/48,95 m", "Sept. '46,95 m", "6-Sept-1946-640'",
-  "4'800 m" and "4000a4500 ft" are set aside, and "4800 ft/1463 m" reads both;
-- after other text in its part, a number whose first digits could be a year:
-  two or four digits before its first comma or dot ("12 IV 1948,95 m",
-  "Sept. 1946,95 m", "IV 26,950 m"). A bare "1946,63 m" stays the decimal it
-  is and "Mt. Apo 1,463 m" is read. "Mt. Apo 12,300 ft" is set aside too, while
-  "Mt. Apo, 12,300 ft" reads;
-- a range's upper number with a decimal, one not in thousands groups
-  ("4-1948,95 m");
-- a number after another number and a single word, which may join a range no
-  join above lists ("4000 hasta 4500 ft"). "Camp 3 at 1500 m" is set aside too,
-  while right after another elevation a number is its pair ("4800 ft 1463 m");
+  start, an opening bracket (full-width ones too) or another elevation right
+  before it. So "12.IV.1948,95 m", "12/4/48,95 m", "Sept. '46,95 m",
+  "6-Sept-1946-640'", "4'800 m", "4000a4500 ft", "Yepocapa:1500 m" and
+  "Altitud:1500 m" are set aside, and "4800 ft/1463 m" reads both;
+- a range, or a number whose first digits could be a year (two or four digits
+  before its first comma or dot), after other text in its part or in a part
+  right after one that holds a number. Its prefix or another elevation right
+  before it clears it, and an opening bracket at the part's start is no text
+  ("(12,300 ft)" reads). So "Sept. 1946 - 850 m", "Camp 3 and 1500 m",
+  "Km 42 a 1500 m", "Sept. 6, 1946 a 950 m", "12 IV 1948,95 m" and
+  "IV-26" / "1948.950 m" are set aside. The cost: "Mt. Apo 1500-2000 m",
+  "between 1500 and 2000 m" and "Mt. Apo 12,300 ft" are set aside too, while
+  "Mt. Apo, 1500-2000 m" and "Mt. Apo Elev. 1500-2000 m" read, and a bare
+  "1946,63 m" stays the decimal it is;
+- a number with four digits after a mark, which could be a date's year
+  ("4.1948-950 m");
+- a range that runs downward ("1946 - 850 m"), or whose upper number has a
+  decimal, one not in thousands groups ("4-1948,95 m");
+- a number after another number with only words or marks between them, which
+  may join a range no rule lists ("4000 hasta 4500 ft", "4000 ~ 4500 m",
+  "1500 up to 2000 m", "4000 - 4500 - 5000 m"). "Camp 3 at 1500 m" is set
+  aside too, while right after another elevation a number is its pair
+  ("4800 ft 1463 m");
 - a malformed grouping ("1,5,3 m", "12,34,567 m");
 - a number beside another digit group across a space ("4 800 ft.", "1 463 m",
   "'4 800 ft."). A two-digit year after an apostrophe is no such group:
   "3 Sept. '46 850 m" keeps "850 m".
+
+A four-digit number with no date beside it reads as written, so
+"Mindanao, 1946 - 2500 m" gives a range.
 
 **Unplaced text.** These are kept aside and never searched, since gazetteer place
 names carry no digits:
@@ -162,6 +177,6 @@ readers' versions include their slips ("ESlope", "Elev.6400", "Yepocapa,4800
 ft.") and handwriting-qwen's silent correction of the label's own "Chimaltenago"
 to "Chimaltenango". Further tests cover every notation in any case and with or
 without its period, headings between features or beside none, offsets and their
-places, numbers read whole or set aside, with a table of date forms and one of
-range joins, line joins, variants, the
+places, numbers read whole or set aside, with a table of date forms, one of
+range joins and one generated from both, line joins, variants, the
 elevation forms, and the comparison rules.

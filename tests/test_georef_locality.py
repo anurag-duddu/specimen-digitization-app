@@ -432,8 +432,9 @@ def test_names_that_key_to_nothing_or_hold_a_numeral_form_are_set_aside():
     assert ([part.name for part in reading.parts], reading.unplaced) == (["Davao"], ("\u3164",))
 
 
-# Every date form the module reads, by separator and month form, with the pilot's
-# two-digit and apostrophe years ("IV-26", "3 Sept. '46").
+# Every date form the module reads, by separator and month form, with two-digit
+# and apostrophe years. "IV-26" reads like a two-digit year, though on 105526330
+# it is 26 April, with 1948 on the next line.
 DATE_FORMS = (
     # Day, month and year.
     "12-IV-1948",
@@ -537,11 +538,84 @@ def test_a_range_is_read_whole(join, low, high, unit):
         "4000a4500 ft",
         "4000 hasta 4500 ft",
         "4000 bis 4500 m",
+        "4000 ~ 4500 m",
+        "4000 -- 4500 ft",
+        "4000 & 4500 ft",
+        "4000 \u301c 4500 m",
+        "1500 up to 2000 m",
+        "4000 ha\u0301sta 4500 ft",
+        "4000 bis-zu 4500 m",
+        "4000 has\u00adta 4500 m",
+        "4000 ha\u200bsta 4500 m",
+        "4000 - 4500 - 5000 m",
     ],
 )
 def test_a_range_never_reads_its_top_alone(text):
     reading = read_locality(text)
     assert (reading.elevations, reading.parts, reading.unplaced) == ((), (), (text,))
+
+
+# Years that start their own part, after a comma or at a line start.
+PART_START_DATES = ("Sept. 6, 1946", "July 4, 1946", "IV-26\n1948", "26 IV\n1948")
+
+
+@pytest.mark.parametrize(
+    ("date", "join"),
+    list(itertools.product((*DATE_FORMS, *PART_START_DATES), (*RANGE_JOINS, ",", ".", " "))),
+)
+def test_no_join_brings_a_year_into_an_elevation(date, join):
+    # Every date form, then every range join, a glued comma or dot, or a space,
+    # each row with every tail and unit: an elevation may read only the tail, and
+    # no date or month is a part.
+    for tail, unit in itertools.product(("9", "95", "950", "9500"), (" m", " ft", "'")):
+        text = f"{date}{join}{tail}{unit}"
+        reading = read_locality(text)
+        assert all((e.low, e.high) == (tail, None) for e in reading.elevations), text
+        assert reading.parts == (), text
+
+
+@pytest.mark.parametrize(
+    ("text", "places"),
+    [
+        ("Mindanao, Sept. 1946 - 850 m", ["Mindanao"]),
+        ("Davao Prov., IV 1948 \u2014 1500 m", ["Davao"]),
+        ("IV 26 y 850 m", []),
+        ("Sept. 1946 and 850 m", []),
+        ("Camp 3 and 1500 m", []),
+        ("Km 42 a 1500 m", []),
+        ("July 4, 1946.9500 ft", []),
+        ("Guatemala,IV-26\n1948.950 m", ["Guatemala"]),
+        ("Mindanao, 1946 - 850 m", ["Mindanao"]),
+        # The cost: a range after a place in the same part takes the part with it.
+        ("Mt. Apo 1500-2000 m", []),
+        ("between 1500 and 2000 m", []),
+    ],
+)
+def test_a_range_after_other_text_or_a_number_is_set_aside(text, places):
+    reading = read_locality(text)
+    assert (reading.elevations, [part.name for part in reading.parts]) == ((), places)
+
+
+def test_a_range_reads_at_its_parts_start_or_after_its_prefix():
+    for text, elevation in (
+        ("Mt. Apo, 1500-2000 m", "1500-2000 m"),
+        ("Mt. Apo Elev. 1500-2000 m", "Elev. 1500-2000 m"),
+        ("1500 y 2000 m", "1500 y 2000 m"),
+        # A four-digit number with no date beside it reads as written.
+        ("Mindanao, 1946 - 2500 m", "1946 - 2500 m"),
+    ):
+        assert [e.text for e in read_locality(text).elevations] == [elevation]
+
+
+def test_brackets_open_a_part_and_a_colon_glues():
+    for text, elevation in (("(12,300 ft)", "12,300 ft"), ("(1946,63 m)", "1946,63 m")):
+        assert [e.text for e in read_locality(text).elevations] == [elevation]
+    reading = read_locality("Mt. Apo\uff081463 m\uff09")
+    assert [part.name for part in reading.parts] == ["Mt. Apo"]
+    assert [e.text for e in reading.elevations] == ["1463 m"]
+    for text in ("Yepocapa:1500 m", "Altitud:1500 m"):
+        reading = read_locality(text)
+        assert (reading.elevations, reading.unplaced) == ((), (text,))
 
 
 def test_a_number_after_another_number_and_one_word_is_set_aside():
@@ -676,6 +750,7 @@ def test_fold_and_comparison_keys():
     assert fold("Dava\u20ddo") == "davao"  # U+20DD, an enclosing mark
     assert fold("Davao\u3164") == "davao"  # U+3164, an invisible Hangul filler
     assert fold("\u115fDa\u1160vao\uffa0") == "davao"
+    assert fold("Dava\u0345o") == "davao"  # U+0345 casefolds to an iota; marks go first
     assert comparison_key("Mt. Apo") == comparison_key("Mount Apo") == "mount apo"
     assert comparison_key("Departamento de Chimaltenango") == "chimaltenango"
     assert comparison_key("Chimaltenango Department") == "chimaltenango"
