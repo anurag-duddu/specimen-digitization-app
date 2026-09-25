@@ -11878,8 +11878,8 @@ because the hooks runner hands a native asset hook only `PATH`.
   - It fetches the original with application default credentials.
   - It drives `create_app(adapters=...)` through the upload routes (`scripts/lab/lab_lane.py`: SQLite or a fresh SQL Connect emulator per run).
   - It scores each PLAN 4.1 stage from what the app recorded (`scripts/lab/lab_checks.py`).
-  - Cost: it prices tokens and keeps the lab's own tally against its USD 5.00 share (G9, G30). Every paid attempt without settled usage is held at the full per-call bound until production's ledger lands.
-  - It redacts PLAN 7.7's categories from every text it writes: token values and shapes, instance addresses, identities, and billing and organization ids. Fields that name a person are redacted by name, including `SourceAsset.uploaderUid` and `ProfileVersion.approvedBy`. It refuses to run unless its private values file is under `~/specimen-release-private/` (PLAN 840). It checks the file's location before reading it, reads it once, and refuses a file with no usable value.
+  - Cost: it prices tokens and keeps the lab's own tally against its USD 5.00 share (G9, G30). Every paid attempt without settled usage is held at the full per-call bound until production's ledger lands. PLAN 4.3 runs the lab under production's mechanism, so the lab reads that bound as the largest of the step's reservation in the profile, PLAN 4.3's floor for a call's two requests (USD 0.04) and the 16,000-token limit at the top price.
+  - It redacts PLAN 7.7's categories from every text it writes: token values and shapes, instance addresses, identities, and billing and organization ids. Fields that name a person are redacted by name, including `SourceAsset.uploaderUid` and `ProfileVersion.approvedBy`. It refuses to run unless its private values file is under `~/specimen-release-private/` (PLAN 840). It checks the file's location before reading it, reads it once, and refuses a file with no usable value or a line that is not one bare value.
   - It fails a run that sends a GBIF occurrence request while D4 is held. It counts such requests at `bounded_http` in the parent process, and scans every run's records and receipt blobs.
   - It fails any GADM call on its own ground: PLAN 4.8 does not use GADM (coordinator ruling, 2026-09-25). Other GBIF calls outside PLAN 4.8's table are reported for the coordinator.
   - The subject report carries each run's `verdict.md`, a person's verdict that the runner only reads, on every rebuild; `--report-only` rebuilds it without another run.
@@ -11888,12 +11888,12 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Runs of `subject_105526321`:
   - `20260923T211535Z`: stages 1, 3, 5 and 9 passed; 2 substituted; 4, 6, 7 and the app trace not built; 8 blocked at `parse` with `external_outcome_unknown`. Filed #79 (lane: synthetic-mode uploads get the synthetic profile) and #80 (harness: a deterministic error recorded as an unknown outcome).
   - `20260925T094409Z`, on main with #86: #80's fix verified (`evidence_integrity_failure`, lease released, retry and reprocess offered).
-  - Lab spend USD 0.027.
+  - Lab spend USD 0.027 as recorded. Under the later per-attempt floor the two real runs would come to USD 0.085, not 0.024, which puts the lab's spend at about USD 0.087. Their run records were left as written.
 - Expectations: `LAB.md` records the expected outcome for the ten (G42 and the owner's G35 to G45): review for all ten, with the right reasons. The owner's words and the coordinator's readings are kept apart. Per-slide tables are outside the repository (`field-coverage.md`, `expected-outcomes.md`).
 - Validation actually run:
-  - `uv run pytest scripts/lab -q`: 39 passed, 1 skipped on #84 after the fourth review's follow-ups (34 passed on #83); after #83's round-1 review, 48 passed on #83 (`09ca644`) and 53 passed, 1 skipped on #84;
+  - `uv run pytest scripts/lab -q`: 39 passed, 1 skipped on #84 after the fourth review's follow-ups (34 passed on #83); after #83's round-1 review, 48 passed on #83 (`09ca644`) and 53 passed, 1 skipped on #84; after its round-2 follow-ups, 62 passed, 1 skipped on #84;
   - the emulator-gated test passed with `SPECIMEN_TEST_SQL_EMULATOR=true`;
-  - `uv run pytest scripts/ -q`: 1560 passed, 50 skipped on #82's head; after the fourth review's follow-ups, 1581 passed, 50 skipped on #83's head `e169c2a` and 1586 passed, 51 skipped on #84's; after #83's round-1 review, 1595 passed, 50 skipped on #83 (`09ca644`) and 1600 passed, 51 skipped on #84;
+  - `uv run pytest scripts/ -q`: 1560 passed, 50 skipped on #82's head; after the fourth review's follow-ups, 1581 passed, 50 skipped on #83's head `e169c2a` and 1586 passed, 51 skipped on #84's; after #83's round-1 review, 1595 passed, 50 skipped on #83 (`09ca644`) and 1600 passed, 51 skipped on #84; after the round-2 follow-ups, 1609 passed, 51 skipped on #84, and the emulator-gated lane test passed;
   - `pre-commit run --all-files` passed; for the fourth review's follow-ups, pre-commit on the changed files passed;
   - two real runs and one dry run of `subject_105526321`.
 - Durable learnings:
@@ -11915,6 +11915,8 @@ because the hooks runner hands a native asset hook only `PATH`.
   16. **Read a private file once, from the path you checked.** Preflight expanded `~` and the redactor did not, and the redactor swallowed the error, so it loaded nothing while preflight passed. Check the location, read once, hand the values over, and refuse when nothing usable loads.
   17. **Record in a `finally`.** Once paid calls may have started, a run's spend and report must survive any failure. Price before scoring, and hold what cannot be priced at the run's bound.
   18. **A red commit must fail for its named reasons.** A shared test helper that sets a symbol the red commit does not add fails every test for the same wrong reason and hides the new assertions.
+  19. **Count what the client sends.** `httpx` resolves a `..` above the root and merges `QueryParams` into the URL. Read a request both as written and as the client builds it; while D4 is held, counting more is the safe side.
+  20. **Refuse a file that parses but cannot match.** `NAME=value`, a quoted value, a trailing comment or a byte-order mark each leave a values file that passes and redacts nothing. Hold it to one bare value per line and read it with `utf-8-sig`.
 - Failed approaches: pointing the emulator's `TMPDIR` at the run directory (the socket path was too long); calling `Workflow.parse` as an instance method (it is static).
 - Remaining follow-ups:
   - rerun specimen 1 in emulator mode once S3's #85, #89 and #93 merge (that fixes #79), with the local T3a commits and the DoD-4 SQL parity check;
