@@ -190,9 +190,9 @@ Sessions implement these as specified; none is a new decision.
 | Standing IAM grants for the release and runtime identities (G11), the one-time, time-bounded grants for initialization and bootstrap that `DEPLOYMENT.md` 924-930 and the setup-window path require, and read access to the secrets `specimen-source-registry`, `specimen-collection-bindings` and `specimen-worker-actor-uid`, which the owner created on 2026-09-23 (version 1 each) | first data and runtime releases | owner runs the exact reviewed list the release workstream prepares (#119); once its part 1 is applied, the next setup window waits for #123 and a fresh window packet |
 | S8's D4, the museum's published GBIF points, and D5, the checks' limits (#94) | the checks that compare a place with the label; until decided, D4's occurrence check is off and sends nothing, and D5's checks record findings only and never change an outcome (coordinator rulings) | put to the owner on 2026-09-24 and dismissed, so on hold until the owner takes them up; when D4 is taken up, its `catalogNumber` and `recordedBy` queries go to the owner as an explicit exception to section 4.8; D1, D2, D3, D6, D7 and D9 are decided (G35 to G39), D11 (Copernicus GLO-30 elevation tiles read from the project's storage, credited) and D13 (the in-house point-radius uncertainty engine per the Georeferencing Best Practices and Calculator) are coordinator rulings, and D8, D10 and D12 wait for their phase, except Getty TGN (G35) |
 | What `verbatim_dts` holds (`PRD.md`'s open question 3), which G45's kind check needs for that field | G45 for `verbatim_dts` | saved for the owner, with D4 and D5, on 2026-09-24; until the answer, a mismatch there is recorded as a finding (coordinator hold) |
-| A curator's confirmation of S8's curated place and itinerary entries (G36): the Insects collection manager, or a curator they name | the six McKinley slides and the Apo slide settling | S8's review sheets, one per entry with its sources, are ready (`~/specimen-golive/research/S8-curator-review-sheets.md`, 2026-09-24). The owner chose not to send them for now: "That’s fine. Human review is ok" (2026-09-24), so the six McKinley slides' places go to human review; Mt. Apo is a mapped peak, so only the itinerary's refinement of slide 327 waits |
+| A curator's confirmation of S8's curated place and itinerary entries (G36): the Insects collection manager, or a curator they name | the six McKinley slides settling, and the Apo slide's refinement | S8's review sheets, one per entry with its sources, are ready (`~/specimen-golive/research/S8-curator-review-sheets.md`, 2026-09-24). The owner chose not to send them for now: "That’s fine. Human review is ok" (2026-09-24). No entry is confirmed, and an unconfirmed entry never settles a field (G36), so the six McKinley slides' places go to human review. Coordinator reading of G36 (the correction sent to S7 and to the owner at 00:43Z on 2026-09-25): Mt. Apo is a mapped peak, not a curated entry, so the Apo slide's place may settle from gazetteer evidence with its record, or stay unresolved, and which Mount Apo is meant is itself unsettled (GeoNames 6569865 is a 640 m "Mount Apo" near Malita; S8's sheet 3). Only the itinerary's refinement of slide 327 is a curated entry, and it waits. The entries stay unconfirmed |
 | Access to Getty TGN (G35) | tier 1 of the place tool | not needed: S8 found on 2026-09-24 that Getty's reconciliation service and SPARQL endpoint answer anonymously under ODC-By 1.0 (#94, source S32); the gateway that needs a token is not used |
-| The reference datasets for the place tool: the GeoNames dumps pinned in `~/specimen-golive/datasets/geonames/2026-09-24/`, the Copernicus GLO-30 tiles and the geoBoundaries files | S8's tool in production | the owner runs S2's checksum-verifying, no-clobber command once S8's manifest PR merges (section 4.8) |
+| The reference datasets for the place tool: the GeoNames dumps pinned in `~/specimen-golive/datasets/geonames/2026-09-24/`, the Copernicus GLO-30 tiles, and the boundary files: geoBoundaries' Philippine files and CONRED's COD-AB file for Guatemala | S8's tool in production | the owner runs S2's checksum-verifying, no-clobber command once S8's manifest PR merges (section 4.8) |
 | A Firebase account for the worker, with an operator membership that cannot see sensitive data (section 2.2) | automated steps recorded under their own identity | account done 2026-09-23: disabled, with no email, password, phone or sign-in provider; its UID is `specimen-worker-actor-uid` version 1. Still to run: its membership, applied once, with read-back, by the protected data release, never from an agent shell (S5's document in #96, in S2's T3e, with the UID from a temporary environment secret, after a read-only check that the account exists, is disabled, and has no email, password, phone or sign-in provider; disabled is required because production's email-link sign-in allows sign-up and would reach any enabled account that ever held an address, while the worker never signs in and acts through its service account; coordinator ruling, from #96's security review): an active organization membership and one collection membership on the pilot collection only, resolved from the committed key `insects` against the approved hierarchy artifact, whose approval hash the owner holds and supplies apart from the artifact, never computed from it (#96's `WORKER_MEMBERSHIP.md` rule, which the hierarchy bootstrap follows too), role `operator`, which cannot approve (`api.py` 323-342), with `canViewSensitive: false`. Never the admin membership document of `scripts/data/bootstrap_admin.py`, which hard-codes role `admin` (51, 71) |
 
 ## 3. Verified starting state, 2026-09-23
@@ -413,94 +413,126 @@ status. The client defects in section 3 are fixed first.
 
 ### 4.8 Outside data (G35, G38)
 
-The place tool follows these coordinator rulings, from #124's reviews:
+The place tool follows these coordinator rulings, from the reviews of #124,
+#174, #180, #185 and #191 and the rulings on S4's #183:
 - Its requests carry place text only (coordinator rulings of 2026-09-24, from
-  the reviews of #124, #174, #180 and #185, including the rulings on S8's
-  option (c) and on S4's #183). The agent keeps a place-lookup tool it can
-  call mid-run (G40), and the deterministic final call looks places up too.
-  Both build requests through S4's single filter, and S8's request builder
-  calls that same filter for every request its tiers send. The rule covers
-  every value a request takes from the record or from a tier-1 name, in any
-  parameter. The filter's output is what leaves, and after it a value is only
-  escaped or encoded.
-  - Sources, checked first, before any cut or expansion: exact substrings of
-    the reading, taken from its place fields
-    (`country`, `province_state`, `county`, `city`, `precise_location`) and from
-    its unassigned locality text (the part of the lines holding those fields
-    that no reading assigns to any field); the names tier 1 returns; and, in
-    "fill the rest", the reviewer's value in a place field. A value drawn from
-    anything else is refused. Each caller names its sources, and a value taken
-    from a source must be a whole-token slice of it, or it is refused; the
-    harness names its own field literals, each found character for character
-    in the reading, as its sources. A full form written on the label, such as
-    "Philippine Islands", is a source like any other place text.
-  - Cuts, applied only to those values and by character span over the
-    reading, so no character a cut covers can leave however a value is sliced
-    (so a harness literal that is itself part of a reading's token is cut
-    this way, not refused): every token
-    of every literal any reading assigns to a non-place field, and of every
-    value a reviewer puts in a non-place field; every token of every clause,
-    between commas, semicolons or line breaks, that holds a collector or
-    determiner marker the profile's notations name, wherever the marker sits
-    in it; every token that carries a digit; the month names and
-    abbreviations the profile's date notations list, in any case; and a Roman
-    numeral I to XII, in any case, that is a whole token next to a day or a
-    year, before or after it, across separators (coordinator ruling on S4's
-    #183, 2026-09-24). So "VIII" goes in "3 VIII 1946" and in "Mindanao, VIII,
-    1946", while "Camp IV" and "P.I." stay. The readings' non-place literals do
-    not cut the reviewer's own place value, since the reviewer's correction is
-    the authority there.
+  the reviews of #124, #174, #180, #185 and #191, including the rulings on S8's
+  option (c) and on S4's #183). The agent keeps a place-lookup tool it can call
+  mid-run (G40), and the deterministic final call looks places up too. Both
+  build requests through S4's single filter, and S8's request builder calls
+  that same filter for every request its tiers send. The rule covers every
+  value a request takes from the record or from a tier-1 result, in any
+  parameter, except a tier-1 source's own identifiers, which follow the
+  Identifiers rule below. The filter's output is what leaves, and after it a
+  value is only escaped or encoded.
+  - Sources, checked first, before any cut or expansion: the reading's place
+    fields (`country`, `province_state`, `county`, `city`, `precise_location`)
+    and its unassigned locality text (the part of the lines holding those
+    fields that no reading assigns to any field); the names tier 1 returns;
+    and, in "fill the rest", the reviewer's value in a place field. Each caller
+    names its sources from these, and a value must be a whole-token slice of
+    one of them, bounded by token edges, or it is refused; a value drawn from
+    anything else is refused too. As its sources, the harness names only the
+    place-field literals it gives, each found character for character in a
+    reading, and the unassigned locality text, drawn from the readings in whole
+    tokens; a literal it gives a non-place field is never a source (coordinator
+    ruling of 2026-09-24, on #191's review). A full form written on the label,
+    such as "Philippine Islands", is a source like any other place text.
+  - Cuts, applied only to those values. They are decided on the value's own
+    tokens and on every text the value occurs in, the readings included: a
+    token of the value is cut when a cut below reaches it in the value itself,
+    tokens comparing by their folded words (case, diacritics and punctuation
+    set aside), or when, at any occurrence of the value, a token it lies in is
+    cut. So a value in no reading, such as a tier-1 name, a reviewer's value or
+    a full form, is cut too; a value repeated in the record is cut wherever any
+    occurrence is; and no character a cut covers can leave, however a value is
+    sliced. Every caller passes the record's readings, which the cuts read but
+    which are no source (coordinator ruling of 2026-09-24, on #191's review, as
+    S4's #183 states it). The filter cuts: every token of every literal any
+    reading assigns to a non-place field, and of every value a reviewer puts in
+    a non-place field; every token of every clause, between commas, semicolons
+    or line breaks, that holds a collector or determiner marker the profile's
+    notations name, wherever the marker sits in it; every token that carries a
+    digit; every month name and abbreviation the profile's date notations list,
+    in any case, and they list each month in full and abbreviated in English
+    and Spanish, the pilot labels' languages ("Sept.", "September", "Mayo");
+    and a Roman numeral I to XII, in any case, that is a whole token next to a
+    date number, a day or a year in the profile's forms (3, 14, 1946, '46 or
+    -46), before or after it, across separators (coordinator ruling on S4's
+    #183, 2026-09-24). So "VIII" goes in "3 VIII 1946", "Mindanao, VIII, 1946"
+    and "Mindanao, VIII -46", while "Camp IV" and "P.I." stay. The readings'
+    non-place literals do not cut the reviewer's own place value, since the
+    reviewer's correction is the authority there.
   - Expansion, after the cuts: a surviving notation token that the table
-    assigns to place fields only, and that appears in an allowed source, may
-    be replaced by each full form the table lists for it, so "Davao Prov." is
-    sent as "Davao Province". The table carries sendable place words, not
-    glosses. Each full form then goes through the same cuts, and an expansion
-    never brings back a cut character. A full form with no such notation in a
-    source, and not written on the label, is refused (coordinator ruling on
-    S4's #183).
-  - Identifiers: an identifier a tier-1 source returned, matching that
-    source's documented identifier pattern (such as a Wikidata item's
-    Q-number, a TGN or GNS numeric identifier, or a GNS first-order unit code
-    such as "PH-DVC"), may be sent back to that same source
-    unchanged. It carries no label text, so the digit cut does not apply to
-    it, and a value that fails the pattern is refused.
+    assigns to place fields only, and that appears in an allowed source, may be
+    replaced by each full form the table lists for it, so "Davao Prov." is sent
+    as "Davao Province". The table carries sendable place words, not glosses.
+    Each full form then goes through the same cuts, and an expansion never
+    brings back a cut character. A full form with no such notation in a source,
+    and not written on the label, is refused (coordinator ruling on S4's #183).
+  - Identifiers (coordinator rulings of 2026-09-24: on #185's review item 1, on
+    S4's question about NGA's unit codes, and on #191's review for where an
+    identifier comes from): an identifier a tier-1 source returned in its own
+    answer, matching that source's documented identifier pattern (a Wikidata
+    item's Q-number, a TGN or GNS numeric identifier, or a GNS first-order unit
+    code such as "PH-DVC"), may be sent back to that same source unchanged. It
+    is checked against that source's answer as the tool received it, never
+    taken from the record or from a list the agent supplies. TGN's and GNS's
+    digit patterns match any label number, such as "1946", so where it came
+    from is the guard: an identifier the source did not return is refused, and
+    so is one that fails the pattern. Identifiers skip the source check above,
+    and they carry no label text, so no cut applies to them.
   - Fixed parts: query properties such as P625, P582 and P1365, paging, limits
     and headers (a project User-Agent naming no person or email) are reviewed
     constants, not record values, with a test that they carry no label text.
-    Every value the filter passes enters a request only escaped or encoded:
-    as an escaped literal in SPARQL, or as an encoded parameter in an API
-    such as Wikidata's Action API. The key is the Secret Manager credential,
-    which the filter leaves untouched; the fixed-parts test uses a fake key,
-    and no test or fixture records a key or the URL carrying it.
+    Every value the filter passes enters a request only escaped or encoded: as
+    an escaped literal in SPARQL, or as an encoded parameter in an API such as
+    Wikidata's Action API. A checked identifier enters SPARQL as its source's
+    prefixed name, such as `tgn:1000123`, built from the checked identifier
+    alone, and an API as an encoded parameter. The key is the Secret Manager
+    credential, which the filter leaves untouched; the fixed-parts test uses a
+    fake key, and no test or fixture records a key or the URL carrying it.
   - Notations may be read locally in any form, since the rule limits only what
     leaves, and dates and elevations are compared locally and never sent. The
     filter applies to every request the place tool makes, tier 1, tier 2 and
     "fill the rest" alike.
   - Tests show exactly what it guarantees: "H. Hoogstraal leg." and a slice of
-    it such as "Hoogstraa"; "3 Sept. '46" and "3 SEPT. '46"; "3 VIII 1946", "3
-    viii 1946" and "Mindanao, VIII, 1946"; "Mindanao, P.I. 3 Sept. '46"; "Camp
+    it such as "Hoogstraa"; "Werner" where the record reads "Wernersdorf" and
+    "leg. Werner"; "3 Sept. '46", "3 SEPT. '46" and "3 SEPT. 1946";
+    "Chimaltenango, 3 Mayo 1946"; "3 VIII 1946", "3 viii 1946", "Mindanao,
+    VIII, 1946" and "Mindanao, VIII -46"; "Mindanao, P.I. 3 Sept. '46"; "Camp
     IV"; "Davao Prov., leg. Hoogstraal"; "Philippine Islands" written on the
     label and "P.I." expanded to it; every full form the table lists; a
-    reviewer's corrected collector spelling that matches no reading literal;
-    a reviewer's place value that a reading's non-place literal would
-    otherwise cut; tier-1 identifiers passing and other values refused; the
-    fixed parts and the User-Agent carrying no label text; and a place value
-    with a quote in it reaching the query escaped. No cut character leaves,
-    each expansion carries only full forms the table lists, and a value not
-    drawn from those sources is refused.
-  - Its stated limit: text the filter cannot recognize, such as a name no
-    reading assigns to any field and no marker accompanies, can still leave; a
-    lone or ranged month numeral in a record value with no day or year beside
-    it, such as "VIII/IX", can leave; and the month-position cut can trim a
-    tier-1 name whose numeral stands beside a number, such as a region
-    written with its code.
+    reviewer's corrected collector spelling that matches no reading literal; a
+    reviewer's place value that a reading's non-place literal would otherwise
+    cut, and one with a date in it; a literal the harness gives a non-place
+    field refused as a source; tier-1 identifiers passing, a catalogue number
+    offered as a TGN identifier refused, and other values refused; the fixed
+    parts and the User-Agent carrying no label text; and a place value with a
+    quote in it reaching the query escaped. No cut character leaves, each
+    expansion carries only full forms the table lists, and a value not drawn
+    from those sources is refused. Tests also pin each case the limit names, so
+    a change in what can leave shows.
+  - Its stated limit: text the filter cannot recognize can still leave. That is
+    a name no reading assigns to a non-place field, or one the harness has not
+    yet given a non-place field, when no marker in its own clause accompanies
+    it. So, mid-run, before the harness has named the collector, "Mindanao F.G.
+    Wermer" leaves whole, and "H. Hoogstraal" leaves when its "leg." sits in a
+    neighbouring clause or line. A month name in a language the profile doesn't
+    list can leave, and so can a lone or ranged month numeral with no day or
+    year beside it, such as "VIII/IX". The cuts can also take too much: a
+    place's own numeral beside a date number goes, so "Camp IV, 3 VIII 1946"
+    sends only "Camp"; a place named with a month word loses that word, so
+    "Cape May" sends "Cape"; and a tier-1 name whose numeral stands beside a
+    number, such as a region written with its code, loses the numeral.
 - The Maps key, and any credential a later source needs, is kept in Secret
   Manager and follows section 4.5's rule: no span, log line, exception text,
   stored error, tool-call result, test fixture or lab folder records it or the
   URL that carries it. GeoNames is read from its dumps (D12 defers its web
   service), and Getty TGN answers anonymously, so neither needs one today.
-- The GeoNames dumps, the GLO-30 tiles and the geoBoundaries files are pinned
-  by version and checksum in S8's committed manifest and stored
+- The GeoNames dumps, the GLO-30 tiles and the boundary files, geoBoundaries'
+  Philippine files and CONRED's COD-AB file for Guatemala, are pinned by
+  version and checksum in S8's committed manifest and stored
   content-addressed under `application/sha256/`, which the worker's standing
   read grant covers (#119). The reader verifies each checksum. The owner
   uploads them with a checksum-verifying, no-clobber command that S2 writes
@@ -515,9 +547,9 @@ The taxonomy tools send the taxon name, never place text (`GBIF.md` 107-114).
 |---|---|---|---|
 | Google Geocoding (place tool, tier 2) | the modernized name, or the literal, with the same reading's place text (this section's sources) | the place ID, the outcome and the response fingerprint only (G26); names and coordinates are read in memory to compute the outcome and never feed a stored or derived value | nothing of Google's is stored |
 | GeoNames (place tool, tier 1) | nothing: its dumps are read from the project's storage | GeoNames ids, names, codes and coordinates | CC BY 4.0, credited |
-| Wikidata (place tool, tier 1) | the name, with the same reading's place fields | item ids, labels and coordinates | CC0, credited as a courtesy |
-| Getty TGN (place tool, tier 1) | the name, with the same reading's place fields | TGN ids, names, dates and coordinates | ODC-By 1.0, credited |
-| NGA GNS (place tool, tier 1) | the name, with the same reading's place fields, or nothing when read from its files | feature ids, names and coordinates | credited as "NGA GEOnet Names Server"; NGA's current pages carry only a disclaimer (#94, source S33) |
+| Wikidata (place tool, tier 1) | the name, with the same reading's place text (this section's sources), and the item ids Wikidata returned (this section's Identifiers) | item ids, labels and coordinates | CC0, credited as a courtesy |
+| Getty TGN (place tool, tier 1) | the name, with the same reading's place text (this section's sources), and the TGN ids TGN returned (this section's Identifiers) | TGN ids, names, dates and coordinates | ODC-By 1.0, credited |
+| NGA GNS (place tool, tier 1) | the name, with the same reading's place text (this section's sources), and the feature ids and unit codes NGA returned (this section's Identifiers), or nothing when read from its files | feature ids, names and coordinates | credited as "NGA GEOnet Names Server"; NGA's current pages carry only a disclaimer (#94, source S33) |
 | Copernicus GLO-30 (place tool, D11) | nothing: tiles are read from the project's storage | where the label states no elevation, the minimum and maximum over the uncertainty circle, with the tile's version | credited to DLR and Airbus, as its licence requires |
 | geoBoundaries' open release for the Philippines, and CONRED's COD-AB file via HDX for Guatemala (place tool, containment, G37) | nothing: files are read from the project's storage | the county or city whose unit holds the whole uncertainty circle, widened by the file's stated simplification error for geoBoundaries' simplified Philippine files | per file, as each source's licence states: the Philippine units under CC BY 3.0 IGO (NAMRIA, PSA and OCHA Philippines, via HDX), and Guatemala's departments and municipios from CONRED's own file under the licence its metadata states (CC BY 3.0 IGO, via HDX), never geoBoundaries' ODbL OpenStreetMap file (coordinator rulings, from S8's licence checks of 2026-09-24) |
 | GBIF species match v2 (taxonomy, decides, G23) | the scientific name with authorship when present, its rank and higher ranks, and the checklist key (`GBIF.md` 107-114) | the usage key, accepted name, rank, status and match type, with the exact query, retrieval time, identifiers, licence metadata and response digest (`GBIF.md` 31) | COL XR's licence (CC BY 4.0), cited per GBIF's citation guidelines (`GBIF.md` 47) |
@@ -529,7 +561,8 @@ dataset metadata, as D2 proposed; S8 writes each source's exact text, taken
 from its terms, into the manifest.
 
 GADM is not used, not even as a measurement: its terms bar redistribution and
-commercial use (coordinator ruling, with geoBoundaries for containment).
+commercial use (coordinator ruling, with geoBoundaries' Philippine files and
+CONRED's file for Guatemala for containment).
 
 Coordinates (coordinator ruling): tier 3, every derivation (G37, G38, G41) and
 the georeference (G39) use open-source coordinates only, never Google's point.

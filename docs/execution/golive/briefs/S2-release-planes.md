@@ -159,7 +159,8 @@ message the coordinator. Never run IAM writes yourself.
 manifest PR merges. Write the owner's command from the merged manifest: the
 GeoNames files from `~/specimen-golive/datasets/geonames/<dump date>/`,
 checked for size and SHA-256 and never downloaded again; the Copernicus tiles
-and geoBoundaries files downloaded anonymously and checked; each uploaded with
+and the boundary files (geoBoundaries' Philippine files and CONRED's COD-AB
+file for Guatemala) downloaded anonymously and checked; each uploaded with
 `--no-clobber` to `application/sha256/<sha256>`, then listed. Never from an
 agent shell. Send it to the coordinator to relay.
 
