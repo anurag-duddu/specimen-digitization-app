@@ -44,7 +44,7 @@ def apply_with_ephemeral_readback(tmp_path, monkeypatch, ephemeral=True):
     raw=json.dumps(native).encode()
     def cleanup(*args):
         path=tmp_path/'native-recovery.json';path.write_bytes(raw);path.chmod(0o600)
-    monkeypatch.setattr(D,'sql_inventory',lambda *a,**k:{'rows':[{}]*27})
+    monkeypatch.setattr(D,'sql_inventory',lambda *a,**k:{'rows':[{}]*len(D.approved_tables())})
     monkeypatch.setattr(D,'verify_indexes',lambda *a:None)
     monkeypatch.setattr(I,'native',lambda *a,**k:None)
     monkeypatch.setattr(D,'cleanup_rehearsal',cleanup)

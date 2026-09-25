@@ -8,6 +8,13 @@ Nothing on this page deploys anything. The command described here only prepares
 a sealed envelope of evidence. The release itself still runs on GitHub, under
 the rules in [DEPLOYMENT.md](../DEPLOYMENT.md), which this page does not change.
 
+> 2026-09-23: The owner's decisions in
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> supersede parts of this document for the go-live program. Each superseded
+> clause keeps its original text and carries a dated note naming the decision.
+> [`golive/RELEASE.md`](golive/RELEASE.md) lists the code that still enforces a
+> superseded clause until a later go-live pull request changes it.
+
 ## What a release is
 
 A **release** is the moment a change you approved becomes the thing the museum
@@ -23,6 +30,14 @@ There is a deliberate reason for this. A release spends real money, touches real
 museum records, and is hard to undo. So the project is built so that no single
 person — and no agent — can deploy by deciding to. The evidence has to line up
 first, and the automated gate checks it independently.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. Data and runtime releases now deploy automatically on merge, like
+> Hosting, once the required checks pass and the PR steward approves; no
+> envelope of evidence has to line up first. The principle stands: no single
+> person or agent deploys by deciding to, because a merge deploys only after
+> the required checks pass and the PR steward approves.
 
 ## The three planes
 
@@ -47,7 +62,20 @@ Runtime is further split in two — `runtime-build` (make the server images) and
 deploy. Data is likewise split into `data` and `data-initialization`. Each of
 those four gets its own envelope.
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. Data and Runtime now deploy automatically on merge, like Hosting, once
+> the required checks pass and the PR steward approves; they no longer wait
+> for an envelope to be installed, and this page's envelope-producing command
+> is retired for this program.
+
 ## Why this used to be stuck
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. `RELEASE_INPUTS_B64`, the packet/plan/evidence envelope and
+> `scripts/ci/mint_release_packet.py` are retired for this program; a merge
+> to main deploys once the required checks pass and the PR steward approves.
 
 The guarded planes read one GitHub **secret** called `RELEASE_INPUTS_B64`. A
 secret is a value stored in GitHub that the automated job can use but nobody can
@@ -68,6 +96,17 @@ to make another one, and both guarded planes stopped dead.
 the gate easier to pass. It makes it possible to pass at all.
 
 ## What the command does for you, and what it asks
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2 and G11. The deployment plan, authorization artifact, independent review
+> report, human review scope, release budget ledger and cost review inputs
+> below are retired for this program, and specimens are processed one at a
+> time, on demand, rather than as a fixed ten-specimen manifest. G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
+> The recipient keys that encrypt the catalog and the evidence
+> (`catalog_recipient`, `evidence_recipient`) stand; they are not release
+> envelopes.
 
 The command works out for itself everything that can be observed. You are never
 asked for any of this:
@@ -108,6 +147,11 @@ envelope. That removes any chance of typing a fingerprint wrongly.
 
 ### What it will never do
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. These safeguards describe the retired minting tool; releases now
+> deploy on merge once the required checks pass and the PR steward approves.
+
 - It will never invent, default or guess an approval, a reviewer, or a cost
   figure. A missing answer stops the run with a message saying what is missing.
 - It will never mint against a commit that is not the current tip of `main`. A
@@ -118,6 +162,12 @@ envelope. That removes any chance of typing a fingerprint wrongly.
   validators the release job will run.
 
 ## Running it
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. `scripts/ci/mint_release_packet.py` and the envelope it produces are
+> retired for this program; nothing needs to be run by hand before a merge
+> deploys.
 
 You need `gh` (the GitHub command-line tool) signed in, and your copy of the
 code up to date:
@@ -147,6 +197,12 @@ missing, the command stops and names it rather than filling in a placeholder.
 
 ### About the deadline
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2 and G11. There is no envelope deadline to set: the worker drains due
+> work one specimen at a time instead of one 3,500-second dispatch, and SAM 3
+> scales to zero instead of expiring after an hour.
+
 Every envelope carries a deadline, and the release job refuses to start after it
 passes. You do not normally set it: the command picks the right one for the
 plane. Runtime gets two hours, the most the gate allows, because the approved
@@ -157,6 +213,13 @@ refuses and explains why, rather than minting an envelope that could never be
 activated.
 
 ### About the spending limit
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
+> models together; the release cost ledger and its version gate are retired
+> for this program. G30's per-call reservations stand (PLAN 4.3; the
+> coordinator's ruling on the mechanism).
 
 Your approved ceiling is USD 12. That ceiling only applies if the cost ledger
 you supply is version `release-cost-ledger/v3`. With any older ledger the packet
@@ -172,6 +235,12 @@ coordinator has not yet reserved cost for this run, the command stops. Reserving
 cost is a spending decision, and this tool does not make spending decisions.
 
 ## Installing the values
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. `RELEASE_INPUTS_B64` and the `RELEASE_*` environment variables are
+> retired for this program; nothing needs to be installed into an
+> environment before a merge deploys.
 
 When it succeeds, the command prints exactly what to install and where. There
 are six values for the Runtime plane and five for the others, and they belong to
@@ -244,6 +313,13 @@ below it names the exact gate. The common ones:
 | neither approved human-review scope | The file supplied is not one of the approved scopes | Supply the exact approved artifact, unchanged |
 | too short to release the runtime plane | The chosen deadline cannot fit the approved processing run | Drop `--window-seconds` and take the default |
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2, G9 and G11. There is no envelope to mint or release ledger version to
+> check; "the release worked" below, checked after an automatic deploy, is
+> still the authority. G30's per-call reservations stand (PLAN 4.3; the
+> coordinator's ruling on the mechanism).
+
 **The release worked** is a separate and later question, and a successful mint
 is not evidence of it. A release is only complete when all of the following are
 true, and `docs/DEPLOYMENT.md` is the authority on them:
@@ -258,6 +334,22 @@ gate. Do not deploy by hand — a hand deployment is never a substitute here, an
 the guarded planes reject one.
 
 ## Where this fits
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G9 and G11. The USD 12 budget amendment, the release envelopes with their
+> transport format and minting scripts, and the authorization artifacts retire
+> for this program; G9's ceiling of USD 25, cumulative, infrastructure and
+> models together, replaces the USD 12 one, and G30's per-call reservations
+> stand (PLAN 4.3; the coordinator's ruling on the mechanism). `DEPLOYMENT.md`'s
+> approved contract stays authoritative,
+> amended by the same decisions, and `RELEASE_AUTHORIZATION.md`'s list of what
+> remains forbidden stands: workstation deployments, manual dispatch, weaker
+> branch protection, broader Hosting permissions, service-account JSON keys
+> and AWS resources. The protected-ref and five-check admission moves into
+> each plane's gate (`golive/RELEASE.md` section 1). The bounded setup window
+> stands for the time-bounded roles
+> ([`RELEASE_AUTHORIZATION.md`](RELEASE_AUTHORIZATION.md)).
 
 - [DEPLOYMENT.md](../DEPLOYMENT.md) — the authoritative release contract
 - [APPROVED_RELEASE_BUDGET.md](APPROVED_RELEASE_BUDGET.md) — the USD 12 amendment
