@@ -235,7 +235,9 @@ class FieldEvidence(Part):
     source: str
     locator: str | None
     outcome: str
-    # The readings stored evidence quotes (domain `Evidence.observation_ids`); none for a lookup.
+    # Where it comes from (S6's #189): a lookup's call's region and raw reading, stored
+    # evidence's own; `evidence_places`.
+    region_id: str | None
     observation_ids: list[str]
 
 
@@ -710,8 +712,8 @@ def _fields(run, row: dict, written: Current, evidence: list[dict], tool_calls: 
     for found in (records[0].get("findings") or []) if records else []:
         findings[found.get("fieldKey")].append(_finding(found))
     items = {_id(e["id"]): e for e in evidence}
-    # The readings stored evidence quotes (section 4.3); a lookup quotes none.
-    quoted = {item.id: list(item.observation_ids) for item in run.evidence}
+    # Each evidence item's region and readings: a lookup's call's, stored evidence's own.
+    places = evidence_places(run)
     # Each reading's region, for the writer's settle rule.
     regions = {o.id: o.region_id for o in run.observations}
     result = []
@@ -778,7 +780,8 @@ def _fields(run, row: dict, written: Current, evidence: list[dict], tool_calls: 
                         source=item["source"],
                         locator=item.get("locator"),
                         outcome=item["outcome"],
-                        observation_ids=quoted.get(_id(link["evidenceId"]), []),
+                        region_id=places.get(_id(link["evidenceId"]), (None, []))[0],
+                        observation_ids=places.get(_id(link["evidenceId"]), (None, []))[1],
                     )
                     for link, item in links
                 ],

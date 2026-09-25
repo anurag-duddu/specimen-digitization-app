@@ -406,7 +406,8 @@ def test_google_keeps_a_place_id_and_a_no_match_appears_only_in_tool_calls():
             "source": "google-maps-geocoding",
             "locator": "place/fixture-place",
             "outcome": "success",
-            # A lookup quotes no reading.
+            # A lookup on the decided transcript: its decision's region, and no reading.
+            "region_id": left.id,
             "observation_ids": [],
         }
     ]
@@ -438,13 +439,16 @@ def test_a_field_on_two_labels_that_settled_alike_clears_with_every_labels_readi
     assert (city["state"], city["group"], city["authority_id"], city["normalized"]) == ("supported", "mandatory", "fixture-place", None)
     # Each label settled on its own evidence, named in verbatim order.
     assert city["settled_observation_ids"] == [left_qwen.id, right_qwen.id]
-    # Each agreeing reader's literal is its own evidence (agreed with S4).
-    assert [(e["evidence_id"], e["relation"], e["observation_ids"]) for e in city["evidence"]] == [
-        (place.id, "supports", []),
-        (place_right.id, "supports", []),
-        (by_qwen.id, "supports", [right_qwen.id]),
-        (by_muse.id, "supports", [right_muse.id]),
+    # G32 looks the city up once per label: each lookup shows the region its call ran for and, on
+    # a raw reading, that reading (S6's #189). Each agreeing reader's literal is its own evidence
+    # (agreed with S4).
+    assert [(e["evidence_id"], e["relation"], e["region_id"], e["observation_ids"]) for e in city["evidence"]] == [
+        (place.id, "supports", left.id, []),
+        (place_right.id, "supports", right.id, [right_qwen.id]),
+        (by_qwen.id, "supports", right.id, [right_qwen.id]),
+        (by_muse.id, "supports", right.id, [right_muse.id]),
     ]
+    assert city["evidence"][0]["region_id"] != city["evidence"][1]["region_id"]
     assert (by_muse.source, city["evidence"][3]["outcome"], city["evidence"][3]["locator"]) == (
         "field_harness",
         "recorded",
@@ -563,11 +567,14 @@ def test_every_other_outcome_stays_in_tool_calls_with_its_error_and_retry():
 
 def test_gbif_decides_and_catalogue_of_life_contradicts():
     s = synthetic_run()
+    _, right = s.run.regions
+    right_qwen = s.run.observations[2]
     gbif, col = s.run.lookups[2:4]
     taxon = by_key(thread(s)["fields"], "field_key")["taxon"]
+    # Both calls ran on the right label's qwen reading.
     assert taxon["evidence"] == [
-        {"evidence_id": gbif.id, "relation": "decides", "source": "gbif", "locator": "gbif/species/1651891", "outcome": "success", "observation_ids": []},
-        {"evidence_id": col.id, "relation": "contradicts", "source": "col", "locator": "col/taxon/fixture-col-taxon", "outcome": "success", "observation_ids": []},
+        {"evidence_id": gbif.id, "relation": "decides", "source": "gbif", "locator": "gbif/species/1651891", "outcome": "success", "region_id": right.id, "observation_ids": [right_qwen.id]},
+        {"evidence_id": col.id, "relation": "contradicts", "source": "col", "locator": "col/taxon/fixture-col-taxon", "outcome": "success", "region_id": right.id, "observation_ids": [right_qwen.id]},
     ]
     assert (taxon["group"], taxon["state"]) == ("mandatory", "supported")
 

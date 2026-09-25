@@ -486,6 +486,7 @@
           "source": "google-maps-geocoding",
           "locator": "place/fixture-place",
           "outcome": "success",
+          "region_id": "00000000-0000-4000-8000-000000000010",
           "observation_ids": []
         }
       ],
@@ -532,6 +533,7 @@
           "source": "google-maps-geocoding",
           "locator": "place/fixture-place",
           "outcome": "success",
+          "region_id": "00000000-0000-4000-8000-000000000010",
           "observation_ids": []
         },
         {
@@ -540,7 +542,10 @@
           "source": "google-maps-geocoding",
           "locator": "place/fixture-place",
           "outcome": "success",
-          "observation_ids": []
+          "region_id": "00000000-0000-4000-8000-000000000011",
+          "observation_ids": [
+            "00000000-0000-4000-8000-000000000022"
+          ]
         },
         {
           "evidence_id": "00000000-0000-4000-8000-000000000035",
@@ -548,6 +553,7 @@
           "source": "field_harness",
           "locator": "region:00000000-0000-4000-8000-000000000011",
           "outcome": "recorded",
+          "region_id": "00000000-0000-4000-8000-000000000011",
           "observation_ids": [
             "00000000-0000-4000-8000-000000000022"
           ]
@@ -558,6 +564,7 @@
           "source": "field_harness",
           "locator": "region:00000000-0000-4000-8000-000000000011",
           "outcome": "recorded",
+          "region_id": "00000000-0000-4000-8000-000000000011",
           "observation_ids": [
             "00000000-0000-4000-8000-000000000023"
           ]
@@ -629,6 +636,7 @@
           "source": "field_harness",
           "locator": "region:00000000-0000-4000-8000-000000000010",
           "outcome": "recorded",
+          "region_id": "00000000-0000-4000-8000-000000000010",
           "observation_ids": [
             "00000000-0000-4000-8000-000000000020"
           ]
@@ -674,6 +682,7 @@
           "source": "apply_derivations",
           "locator": "derivation:stated_date",
           "outcome": "recorded",
+          "region_id": null,
           "observation_ids": []
         },
         {
@@ -682,6 +691,7 @@
           "source": "field_harness",
           "locator": "region:00000000-0000-4000-8000-000000000010",
           "outcome": "recorded",
+          "region_id": "00000000-0000-4000-8000-000000000010",
           "observation_ids": [
             "00000000-0000-4000-8000-000000000020"
           ]
@@ -731,7 +741,10 @@
           "source": "gbif",
           "locator": "gbif/species/1651891",
           "outcome": "success",
-          "observation_ids": []
+          "region_id": "00000000-0000-4000-8000-000000000011",
+          "observation_ids": [
+            "00000000-0000-4000-8000-000000000022"
+          ]
         },
         {
           "evidence_id": "00000000-0000-4000-8000-000000000033",
@@ -739,7 +752,10 @@
           "source": "col",
           "locator": "col/taxon/fixture-col-taxon",
           "outcome": "success",
-          "observation_ids": []
+          "region_id": "00000000-0000-4000-8000-000000000011",
+          "observation_ids": [
+            "00000000-0000-4000-8000-000000000022"
+          ]
         }
       ],
       "findings": [
