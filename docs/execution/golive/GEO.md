@@ -174,7 +174,7 @@ was chosen over reading every part after another as one after a number, which
 would also set aside "Mt. Apo, 12,300 ft" and "Mt. Apo, 1500-2000 m". Its cost: a
 part that is only a month word, such as "Mayo", is no place, and a month in a
 form the list does not hold is read as a name, so the part after it reads as it
-would after any name.
+would after any name: "Sepbr., 1946.950 m" reads "1946.950 m".
 
 The year rule is for ranges: a single elevation whose number could be a year
 reads as written ("1946 m") unless another rule above sets it aside. Set-aside
@@ -242,7 +242,8 @@ month before it), then a glued comma or dot, a space, a line break, or each rang
 join unspaced, spaced, touching either number or beside a line break, then each
 tail and unit. It runs again in full-width, Devanagari and Arabic-Indic digits
 with the tails "95" and "9500" in metres, and every other line break
-`str.splitlines` knows reads in it as a newline does. The second joins two
+`str.splitlines` knows reads as a newline does where each form's year is moved
+and after ten of its marks. The second joins two
 numbers by each of 28 joins, the listed ones and others such as "hasta", "~" and
 "up to": unspaced, spaced, touching either number or broken across lines, with no
 prefix or with "Elev.", "Alt." or "el.", in the four digit scripts. Further tests

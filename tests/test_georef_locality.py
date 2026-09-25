@@ -792,6 +792,8 @@ def test_a_year_like_range_beside_another_elevation_reads_only_if_they_convert(t
         "IV\n1948.950 m",
         "Sept., 1946,95 m",
         "de julio, 1946.950 m",
+        "of July, 1946.950 m",
+        "julio del, 1946.950 m",
         "VIII/IX\n1948,95 m",
     ],
 )
@@ -826,12 +828,19 @@ def test_every_month_the_profile_lists_reads_in_any_case(month):
 
 
 def test_the_cost_of_reading_months():
-    # A part that is only a month word is no place. Reading every part after another
-    # as one after a number would have set these two elevations aside too.
+    # A part that is only a month word is no place, and a month the list does not
+    # hold is read as a name, so the part after it reads as after any name. Reading
+    # every part after another as one after a number would have set the last two
+    # elevations aside too.
     reading = read_locality("Mindanao, Mayo, Davao")
     assert ([part.name for part in reading.parts], reading.unplaced) == (
         ["Mindanao", "Davao"],
         ("Mayo",),
+    )
+    reading = read_locality("Sepbr., 1946.950 m")
+    assert ([part.name for part in reading.parts], [e.text for e in reading.elevations]) == (
+        ["Sepbr"],
+        ["1946.950 m"],
     )
     for text, elevation in (
         ("Mt. Apo, 12,300 ft", "12,300 ft"),
@@ -902,7 +911,13 @@ def test_the_prefixes_include_the_profiles_el():
     # "el." is the Insects profile's, with its period (the coordinator's reading at
     # 15:32Z: prefixes "as the profile's notations list them"). A word between a
     # prefix and its number leaves the prefix unread.
-    for text in ("el. 1800-2200 m", "EL.1500 m", "Elev: 1800-2200 m"):
+    for text in (
+        "el. 1800-2200 m",
+        "EL.1500 m",
+        "Elev: 1800-2200 m",
+        "Elevation 1800-2200 m",
+        "ALTITUDE: 1800-2200 m",
+    ):
         assert [e.text for e in read_locality(text).elevations] == [text], text
     for text in ("Elev. ca. 1800-2200 m", "el 1800-2200 m"):
         assert read_locality(text).elevations == (), text
