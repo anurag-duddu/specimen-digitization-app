@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from itertools import permutations
+
 METRIC = "bounded-levenshtein-fraction-v1"
 SAM3_MODEL = "facebook/sam3"
 SUBSTITUTE = "reviewed_region"
 DISPOSITIONS = {"cleared", "needs_human_review", "deferred"}
+BLOCKED = {"processing_blocked", "retry_scheduled"}
 PROVENANCE = ("model_id", "provider", "prompt_version", "input_sha256", "raw_ref", "raw_sha256")
 # Labels of the ten pilot slides as fractions of the frame's width, full height (S8's
 # table and the images, 2026-09-23). The left box includes the barcode's printed catalog
@@ -33,9 +36,8 @@ def check_stages(evidence, source, subject):
         ("4", "Raw transcripts to SQL", normalized(rows, snap)),
         ("5", "Disagreement score", disagreement(run)),
         ("6", "LLM first pass", ("not built", "no first-pass record on this commit")),
-        ("7", "Agentic harness", ("not built", "no tool-call record on this commit; "
-                                  f"deterministic lookups: {[x['status'] for x in lookups]}")),
-        ("8", "Queue decision", queue(run)),
+        ("7", "Agentic harness", harness(run, lookups)),
+        ("8", "Queue decision", queue(run, subject)),
         ("9", "Linkage", linkage(snap, runs)),
         ("trace", "Tracing", ("not built", "the run stores no trace id on this commit")),
     ]
@@ -47,19 +49,25 @@ def verdict(phases, stages):
         return "error"
     if any(s["status"] == "failed" for s in stages):
         return "fail"
-    return "pass" if all(s["status"] == "passed" for s in stages) else "incomplete"
+    return "pass" if stages and all(s["status"] == "passed" for s in stages) else "incomplete"
 
 
 def blocked_or_failed(run, detail):
-    if run.get("stage") == "processing_blocked":
+    if run.get("stage") in BLOCKED:
         return "blocked", f"{run.get('blocker')} at {stalled(run)}; {detail}"
     return "failed", detail
 
 
 def stalled(run):
-    """Steps the app attempted but never completed: where a blocked run stopped."""
-    done = set(run.get("completed_steps") or [])
-    return [step for step in run.get("attempts") or {} if step not in done]
+    """The step the app would run next, by its own rule; attempts count only external steps."""
+    try:
+        from specimen_digitization.application.domain import Run
+        from specimen_digitization.application.workflow import Workflow
+
+        return [Workflow.next_step(Run.model_validate(run))]
+    except Exception:  # a snapshot of another commit's model: fall back to what the app attempted
+        done = set(run.get("completed_steps") or [])
+        return [step for step in run.get("attempts") or {} if step not in done]
 
 
 def images(asset, source, subject):
@@ -80,20 +88,31 @@ def segmentation(run, runs, asset, subject, substituted):
     detail = f"{len(regions)} regions, revision {seg.get('model_revision')}, settings {seg.get('settings')}"
     if subject not in LAYOUT:
         return "passed", detail + "; label coverage not checked: no known layout for this subject"
-    missing = [b for b in LAYOUT[subject] if not covered(b, regions, asset["width"], asset["height"])]
-    if missing:
-        return "failed", detail + f"; no region covers label box {missing}"
-    return "passed", detail + f"; covers every label box {LAYOUT[subject]}"
+    missing = uncovered(LAYOUT[subject], regions, asset["width"], asset["height"])
+    if not missing:
+        return "passed", detail + f"; a distinct region covers every label box {LAYOUT[subject]}"
+    # The lab's boxes are ground truth for G15: a miss is wrong only if the lane's own check let it through.
+    if run.get("coverage_check") is None:
+        return "not built", detail + f"; label box {missing} uncovered, and the run carries no coverage check (G15)"
+    if run.get("coverage_confirmed") is False:
+        return "passed", detail + f"; label box {missing} uncovered, and the lane's coverage check caught it"
+    return "failed", detail + f"; label box {missing} uncovered, and the lane's coverage check let it through"
 
 
-def covered(box, regions, width, height):
+def covers(box, region, width, height):
     lo, hi = box[0] * width, box[1] * width
-    for r in regions:
-        across = min(hi, r["x"] + r["width"]) - max(lo, r["x"])
-        down = min(height, r["y"] + r["height"]) - max(0, r["y"])
-        if across > 0 and down > 0 and across * down >= 0.5 * (hi - lo) * height:
-            return True
-    return False
+    across = min(hi, region["x"] + region["width"]) - max(lo, region["x"])
+    down = min(height, region["y"] + region["height"]) - max(0, region["y"])
+    return across > 0 and down > 0 and across * down >= 0.5 * (hi - lo) * height
+
+
+def uncovered(boxes, regions, width, height):
+    """Label boxes left uncovered when each box needs a region of its own."""
+    fits = [[covers(box, region, width, height) for region in regions] for box in boxes]
+    for chosen in permutations(range(len(regions)), len(boxes)):
+        if all(fits[i][j] for i, j in enumerate(chosen)):
+            return []
+    return [box for i, box in enumerate(boxes) if not any(fits[i])] or list(boxes)
 
 
 def readers(run):
@@ -101,32 +120,37 @@ def readers(run):
     regions, observations = run.get("regions") or [], run.get("observations") or []
     if not regions:
         return blocked_or_failed(run, "no regions to read")
-    missing, partial = [], []
+    missing, partial, doubled = [], [], []
     for region in regions:
         for route in routes:
             found = [o for o in observations if o["region_id"] == region["id"] and o["route_id"] == route]
+            where = f"{region['id'][:8]}/{route}"
             if not found:
-                missing.append(f"{region['id'][:8]}/{route}")
-            elif not all(o.get(k) for o in found for k in PROVENANCE):
-                partial.append(f"{region['id'][:8]}/{route}")
-    if missing and not partial and run.get("stage") == "processing_blocked":
+                missing.append(where)
+            elif len(found) > 1:
+                doubled.append(where)
+            elif not all(found[0].get(k) for k in PROVENANCE):
+                partial.append(where)
+    if missing and not partial and not doubled and run.get("stage") in BLOCKED:
         return blocked_or_failed(run, f"missing {missing}")
-    if missing or partial:
-        return "failed", f"missing {missing}; incomplete provenance {partial}"
+    if missing or partial or doubled:
+        return "failed", f"missing {missing}; incomplete provenance {partial}; more than one reading {doubled}"
     return "passed", f"{len(observations)} readings over {len(regions)} region(s), routes {routes}"
 
 
 def normalized(rows, snap):
     """S5's data contract: readings are model_observation rows with independent = true, sharing the
     snapshot's observation ids; a row reaches its specimen only through pipeline_run.specimen_id."""
-    observations = rows.get("model_observation") or []
-    if not observations:
-        return "not built", f"no observation rows; tables with rows: {sorted(t for t in rows if rows[t])}"
+    if not rows.get("pipeline_run"):
+        return "not built", f"no pipeline_run rows; tables with rows: {sorted(t for t in rows if rows[t])}"
     run = snap["run"]
     linked = any(r.get("id") == run["id"] and r.get("specimen_id") == snap["id"]
                  for r in rows.get("pipeline_run") or [])
-    readings = {r["id"] for r in observations if r.get("run_id") == run["id"] and r.get("independent") is True}
     expected = {o["id"] for o in run.get("observations") or []}
+    if not expected:
+        return blocked_or_failed(run, f"no readings to project; run row linked: {linked}")
+    readings = {r["id"] for r in rows.get("model_observation") or []
+                if r.get("run_id") == run["id"] and r.get("independent") is True}
     detail = (f"run row linked to specimen: {linked}; {len(readings & expected)} of {len(expected)} readings "
               f"as rows; {len(readings - expected)} rows without a reading")
     return ("passed" if linked and readings == expected else "failed"), detail
@@ -149,8 +173,21 @@ def disagreement(run):
     return "passed", f"{METRIC}: {', '.join(scores)}"
 
 
-def queue(run):
+def harness(run, lookups):
+    calls = run.get("tool_calls") or []
+    occurrence = [c.get("call_key") for c in calls
+                  if "occurrence" in f"{c.get('tool', '')} {c.get('source', '')}".lower()]
+    if occurrence:
+        return "failed", f"D4 is held, so its occurrence check is off, yet the run sent {occurrence[:4]}"
+    if calls:
+        return "not checked", f"{len(calls)} tool calls recorded; stage 7's checks follow S4's contract"
+    return "not built", f"no tool-call record on this commit; deterministic lookups: {[x['status'] for x in lookups]}"
+
+
+def queue(run, subject):
     disposition, reasons = run.get("disposition"), run.get("reasons") or []
+    if disposition == "cleared" and subject in LAYOUT:
+        return "failed", f"one of the ten cleared, but all ten go to needs human review (PLAN 8, G42); {reasons}"
     if disposition in DISPOSITIONS and (reasons or disposition == "cleared"):
         return "passed", f"{disposition}: {reasons}"
     return blocked_or_failed(run, f"stage {run.get('stage')}, disposition {disposition}, reasons {reasons}")
