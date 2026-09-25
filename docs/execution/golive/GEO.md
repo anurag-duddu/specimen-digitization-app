@@ -85,9 +85,10 @@ joins its numbers by a dash of any kind or a slash, or by "to", "a", "and" or
 "y" between spaces ("4000—4500 ft", "1,200/1,500 m", "1500 a 2000 m",
 "1500 y 2000 m"), runs upward, and is kept whole.
 An elevation in brackets takes its brackets with it: "Mt. Apo (1463 m)" leaves
-"Mt. Apo". This module converts and fills nothing. G41's "Convert and fill"
-(the label's own number fills From and To, and the other unit is converted
-exactly, each marked derived) happens in S4's later derivation layer.
+"Mt. Apo". This module fills nothing and stores no converted value; it compares
+a phrase in feet with one in metres only to pair them (below). G41's "Convert
+and fill" (the label's own number fills From and To, and the other unit is
+converted exactly, each marked derived) happens in S4's later derivation layer.
 
 **Unsure numbers.** A phrase whose number is unsure is set aside rather than read.
 These rules keep a date's year out of every elevation in the forms the tests
@@ -117,7 +118,12 @@ lists. These numbers are unsure:
   2099, unless its prefix comes first: "Mindanao, 1946 - 2500 m", "1800-2200 m"
   and "10-50 m" are set aside, while "Elev. 1800-2200 m", "1500-2000 m" and
   "4000-4500 ft" read. This is the coordinator's reading of G36 and G40 at
-  15:32Z on 2026-09-25;
+  15:32Z on 2026-09-25. Beside another elevation, such a range reads only when
+  the two convert to each other, in either order: each end, by the exact factor
+  (1 ft = 0.3048 m, as G41), within the larger of 10 m and 2% of the metric
+  value. So "6000-7000 ft 1829-2134 m" and "1829-2134 m 6000-7000 ft" read both,
+  while "4800 ft 1946-2500 m" sets the metric range aside and reads "4800 ft".
+  That extends the same reading, at 17:40Z;
 - a number after another number with only words or marks between them, which
   may join a range no rule lists ("4000 hasta 4500 ft", "4000 ~ 4500 m",
   "1500 up to 2000 m", "4000 - 4500 - 5000 m"). "Camp 3 at 1500 m" is set

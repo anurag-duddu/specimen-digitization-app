@@ -629,6 +629,23 @@ def test_a_prefix_or_a_low_no_year_could_be_still_reads(text):
     assert [e.text for e in read_locality(text).elevations] == [text]
 
 
+# The coordinator's reading at 17:40Z on 2026-09-25, extending 15:32Z: next to another
+# elevation, such a range reads only when the two convert (1 ft = 0.3048 m, each end
+# within the larger of 10 m and 2% of the metric value), in either order.
+@pytest.mark.parametrize(
+    ("text", "read"),
+    [
+        ("6000-7000 ft 1829-2134 m", ["6000-7000 ft", "1829-2134 m"]),
+        ("6000-7000 ft 1830-2130 m", ["6000-7000 ft", "1830-2130 m"]),
+        ("1829-2134 m 6000-7000 ft", ["1829-2134 m", "6000-7000 ft"]),
+        ("4800 ft 1946-2500 m", ["4800 ft"]),
+        ("6000-7000 ft 1900-2134 m", ["6000-7000 ft"]),
+    ],
+)
+def test_a_year_like_range_beside_another_elevation_reads_only_if_they_convert(text, read):
+    assert [e.text for e in read_locality(text).elevations] == read
+
+
 def test_brackets_open_a_part_and_a_colon_glues():
     for text, elevation in (("(12,300 ft)", "12,300 ft"), ("(1946,63 m)", "1946,63 m")):
         assert [e.text for e in read_locality(text).elevations] == [elevation]
