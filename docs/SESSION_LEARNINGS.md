@@ -12116,6 +12116,23 @@ because the hooks runner hands a native asset hook only `PATH`.
   3. Dart has no in-process way to change the zone, and `Zone` does not intercept `toLocal()`. An override variable in the `debug…Override` idiom is the smallest seam that works on every platform.
 - Failed approaches: the red tests first expected `absoluteTime` of a UTC instant to print CDT. That would have changed the UTC texts on screen, so those tests now target `absoluteWallTime`, and a new test pins the UTC rule.
 - Remaining follow-ups: none for the zone. Once this merges, sessions can drop `TZ=America/Chicago`.
+
+### 2026-09-24 — Go-live S6: server instants read on the reviewer's clock
+
+- Task: coordinator ruling for S6, 2026-09-24, from design/01 (H1.9 at line 149, and H2.1): the source screen's "listed … UTC" and the queue row's spoken time read on the reviewer's clock through `wall_time`, and the spoken time says the zone.
+- Branch/worktree: `golive/ui-reviewer-clock`, stacked on `golive/ui-golden-zone` (#181); `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `absoluteTime` is the single citable form, always on the reviewer's wall clock with its zone (02 section 4.14). #181's UTC branch and `absoluteWallTime` fold back into it.
+  - The source screen's header reads "listed 14 Sep 2026, 05:22 CDT" in the suite.
+  - The queue row speaks a server instant as "updated 8 Sep 2026, 00:01 CDT".
+  - The 24 source-screen goldens were regenerated, in Central time, and nothing else moved.
+- Commits/PRs: red `f1e0f46`; green ``ae9d194``; the pull request depends on #181.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the three changed test files 46 passed; the full app suite 1,583 passed, 7 skipped, 0 failed, on the host zone (America/New_York).
+- Durable learnings:
+  1. Run the suite without updating first, and let its failures list what moved. Here the list was exactly the 24 images of the one surface the ruling named. That proves the change's reach before any golden is touched, and makes a stray moved image a question rather than a regeneration.
+  2. Regenerate with the narrowest name filter that covers the moved scenes, then check that the count of changed images equals the count of failures.
+- Failed approaches: none.
+- Remaining follow-ups: none for time display.
 ### 2026-09-24 — Go-live program: plan corrections after #174
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
@@ -12136,6 +12153,28 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learning: a filter specification is a pipeline. State its steps in order: source check, cuts, expansion, then the cuts again on what the expansion added. Several review findings came from steps whose order was only implied.
 - Remaining follow-ups: unchanged from the entry above.
 
+### 2026-09-25 — Go-live S6: #181's review follow-ups, and corrections to its entry
+
+- Task: the steward's review of #181 (merged as `e11ea68`; comment 5824438013, items 1-4 and 7), done in #182, which touches the same seam.
+- Branch/worktree: `golive/ui-reviewer-clock` (#182), retargeted to `main` after #181 merged, with `main` merged in; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `debugWallTimeOverride` counts only under `kDebugMode`, so a release build always reads the host zone. The host reader is private, and the guard flags either name anywhere else in `lib`.
+  - On the web a browser names the zone in full ("Central Daylight Time"). `zoneAbbreviation` shortens a name of several words to its initials, as 02 section 4.14 writes it ("CDT"), keeping UTC as UTC and an abbreviation or an offset as it is.
+  - The guard now also checks the `DateTime.new` constructor, an epoch without `isUtc`, and wall-clock fields of `DateTime.now()`. A scanned root that goes missing fails it, and its doc claims only what it checks.
+  - A History assertion runs in CI, where goldens don't compare: `citedInstant('2026-09-07T10:00:00Z')` is "7 Sep 2026, 05:00 CDT".
+- Corrections to the entry "Go-live S6: goldens no longer depend on the host's time zone" (item 7; the log is append-only):
+  - its pull request is #181, merged as `e11ea68`;
+  - its claim that "a guard test fails on any other host-zone read" was wider than the regex. The regex checked `toLocal()`, `timeZoneName`, `timeZoneOffset` and `DateTime(`, not the other reads listed above;
+  - a release build honoured the override;
+  - on the web the zone read as a full name, not the "CDT" design/02 asks for.
+- Commits/PRs: red `09f6fc7`; green `02df2f6`; in #182.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the zone, queue row and source screen tests 49 passed; the full app suite 1,586 passed, 7 skipped, 0 failed, on the host zone (America/New_York, no `TZ` set: the pin is in).
+- Durable learnings:
+  1. A guard's doc must claim exactly what its check checks. "Fails on any other host-zone read" read as complete, and the reviewer found five reads it missed. Name the patterns, and name what isn't checked.
+  2. A `debug…Override` must be gated by `kDebugMode` where it is read, as Flutter's own overrides are. A global that release code honours is a production switch anyone can flip.
+  3. `DateTime.timeZoneName` differs by platform: the VM gives "CDT", dart2js gives the browser's "Central Daylight Time". Code that prints a zone for a web app must normalize it, and a VM-only test suite will never show the difference.
+- Failed approaches: none.
+- Remaining follow-ups: at #73's turn, record the coordinator's zone ruling in UI.md (PLAN 7.2). At the turns of #102, #114, #133 and #140, re-verify their goldens on macOS after merging `main`, and regenerate any that differ.
 ### 2026-09-24 — Go-live program: plan corrections after #180
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
