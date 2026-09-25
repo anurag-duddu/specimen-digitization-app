@@ -307,3 +307,59 @@ unit two degrees tall near the pilot's latitudes.
 - a U, whose center moves onto the notch's floor. No vertex of the U reaches its
   corners with a smaller radius.
 - boundaries that cannot be read.
+
+## 11. Elevations from GLO-30
+
+Where a label states no elevation, the elevation fields are derived from the
+settled location with Copernicus GLO-30 (G37; D11, the coordinator's ruling):
+the lowest and the highest ground within the uncertainty circle (PLAN 4.8).
+`georef_elevation.py` reads the tiles pinned in section 3. It sends nothing and
+decodes only the parts of a tile that a circle touches.
+
+**The tiles.** Each tile is a Cloud Optimized GeoTIFF on WGS 84. It holds 3,600
+by 3,600 float32 elevations in meters for one square degree, in internal tiles
+of 1,024 pixels, deflated with TIFF's floating-point predictor. A pixel's value
+is at its center (GeoTIFF's point raster type), and the first pixel lies on the
+tile's north-west corner.
+
+**Reading.** `read_tile` reads the first image's structure. It accepts one
+float32 sample per pixel in internal tiles, deflated or stored, with or without
+the floating-point predictor, on a point or an area raster. Anything else is
+refused.
+
+**The range.** `elevation_range(tiles, center, radius)` returns the lowest and
+highest value among the pixels whose centers lie inside the circle. Distances
+use the meters per degree at the center (section 9).
+- When no pixel center lies inside, as for a circle smaller than a pixel, it
+  returns the value of the pixel whose cell holds the center.
+- A value the file marks as missing is skipped.
+- A circle that reaches beyond the tiles passed in is refused, so the caller
+  passes every tile the circle touches.
+
+The derived value names its settled inputs and the tile's dataset id and
+SHA-256, as PLAN 4.8 asks. The derivation itself comes with S4's #144.
+
+**Checked on the pinned tiles.** This check ran locally, not in CI, because the
+tiles are 26 to 45 MB. At the pilot's points GLO-30 gives:
+- Yepocapa's town (GeoNames 3587636): 1,395.8 m;
+- Wikidata's Yepocapa point: 1,417.8 m;
+- the municipio's centroid: 1,128.2 m;
+- Mount Apo's summit: 2,946.2 m;
+- Mount Talomo's summit: 2,607.8 m.
+
+The research's figures at the same points were SRTM's 1,396, 1,427, 1,134 and
+2,620 m, and 2,954 m stated for Mount Apo (#94, 3.6). Each reading took a few
+milliseconds, and circles that crossed a tile's edge were refused.
+
+**Tests.** `tests/test_georef_elevation.py` writes small GeoTIFFs in the pinned
+tiles' layout, with the floating-point predictor as TIFF Technical Note 3
+defines it, and checks:
+- a pixel under a point, across internal tiles;
+- the range over a circle: the four neighbours at one step, the diagonals at
+  √2 steps;
+- a circle smaller than a pixel;
+- big-endian files, stored tiles and files without the predictor;
+- an area raster;
+- a missing value;
+- a circle across two tiles, and one that reaches beyond the tiles given;
+- files that are not tiled float GeoTIFFs.
