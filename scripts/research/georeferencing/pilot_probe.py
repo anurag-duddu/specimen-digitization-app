@@ -4,9 +4,9 @@ Research prototype for docs/product-requirements/GEOREFERENCING.md (session S8,
 2026-09-23). It reads anonymous public endpoints only (Wikidata, the GeoNames
 country dumps and OpenTopoData), needs no key, makes no paid call and writes
 only under --out. It is not production code and nothing imports it. A default
-run sends no date and no occurrence query: GBIF's occurrence search and its
-GADM reverse geocoder run only with --held-steps, which D4's hold and PLAN 4.8
-leave off (GADM is not used at all).
+run sends no date and no occurrence query: GBIF's occurrence search runs only
+with --held-steps, which D4's hold leaves off. GADM is not used, not even as a
+measurement (PLAN 4.8), so the probe has no containment step.
 
     uv run python scripts/research/georeferencing/pilot_probe.py --out <dir>
 """
@@ -250,13 +250,6 @@ async def gbif_prior(client: Client, country: str, year: int, core: str) -> list
     return [{**c, "localities": sorted(c["localities"])} for c in clusters.values()]
 
 
-async def containment(client: Client, point: tuple[float, float]) -> str:
-    outcome, data = await client.get("https://api.gbif.org/v1/geocode/reverse", lat=point[0], lng=point[1])
-    rows = (data or []) if outcome == "success" else []
-    layers = {row["type"]: row["title"] for row in rows if row.get("distance") == 0}
-    return " / ".join(layers[k] for k in ("GADM0", "GADM1", "GADM2") if k in layers) or outcome
-
-
 async def elevations(client: Client, points: list[tuple[float, float]]) -> dict[tuple[float, float], float | None]:
     found: dict[tuple[float, float], float | None] = {}
     for start in range(0, len(points), 90):
@@ -321,15 +314,9 @@ async def probe(out: Path, held_steps: bool = False) -> dict[str, Any]:
             transects[entry["locality"]["key"]] = [(d / 2, destination(start, bearing, d / 2)) for d in range(0, 31)]
     points = sorted({tuple(x["point"]) for _, x in candidates} | {pt for t in transects.values() for _, pt in t})
     dem = await elevations(client, points)
-    # Held: GBIF's reverse geocoder reads GADM, which the tool never uses (PLAN 4.8).
-    context = (
-        {pt: await containment(client, pt) for pt in sorted({tuple(x["point"]) for _, x in candidates})}
-        if held_steps
-        else {}
-    )
     for entry, candidate in candidates:
         point = tuple(candidate["point"])
-        candidate.update(gadm=context.get(point), dem_m=dem.get(point),
+        candidate.update(dem_m=dem.get(point),
                          elevation=elevation_check(entry["locality"]["elevation_ft"], dem.get(point)))
     for key, samples in transects.items():
         report[key]["transect"] = [{"km": d, "point": pt, "dem_m": dem.get(pt)} for d, pt in samples]
@@ -342,7 +329,6 @@ async def probe(out: Path, held_steps: bool = False) -> dict[str, Any]:
 def summary(report: dict[str, Any]) -> str:
     lines = []
     ran = report.get("_held_steps", False)
-    gadm_text = (lambda found: found.get("gadm")) if ran else (lambda found: "not used (PLAN 4.8)")
     for key, entry in report.items():
         if key.startswith("_"):
             continue
@@ -354,15 +340,15 @@ def summary(report: dict[str, Any]) -> str:
         for name, found in entry["names"].items():
             wd = "; ".join(f"{h['id']} {h.get('name')} [{h['valid_in_year']}] {h.get('point')}"
                            + (f" replaced by {h['replacedBy']}" if h.get("replacedBy") else "")
-                           + (f" gadm={gadm_text(h)} dem={h.get('dem_m')} {h.get('elevation')}" if found["feature"] else "")
+                           + (f" dem={h.get('dem_m')} {h.get('elevation')}" if found["feature"] else "")
                            for h in found["wikidata"]) or "none in country"
             gn = "; ".join(f"{g['geonameid']} {g['name']} {g['code']} ({g['match']}) {g['point']}"
-                           + (f" gadm={gadm_text(g)} dem={g.get('dem_m')} {g.get('elevation')}" if found["feature"] else "")
+                           + (f" dem={g.get('dem_m')} {g.get('elevation')}" if found["feature"] else "")
                            for g in found["geonames"]) or "none"
             lines.append(f"- {name}: Wikidata {wd} [{found['wikidata_elsewhere']} search hits in all] | GeoNames {gn}")
         for c in entry["gbif_prior"]:
             lines.append(f"- FMNH published {c['point']} x{c['records']} by {c['georeferencedBy']} ({c['protocol']}), "
-                         f"uncertainty {c['uncertainty_m']}, gadm={c.get('gadm')}, {c.get('elevation')}: {c['localities']}")
+                         f"uncertainty {c['uncertainty_m']}, {c.get('elevation')}: {c['localities']}")
         spread = f"{entry['gbif_prior_max_km']} km" if ran else "held (D4)"
         lines.append(f"- published points spread: {spread}")
         if entry.get("transect"):
@@ -380,8 +366,7 @@ def main() -> None:
     parser.add_argument(
         "--held-steps",
         action="store_true",
-        help="also run GBIF's occurrence search and its GADM reverse geocoder; off by default, "
-        "because D4 is held and PLAN 4.8 does not use them",
+        help="also run GBIF's occurrence search; off by default, because D4 is held",
     )
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
