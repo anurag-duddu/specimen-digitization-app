@@ -524,8 +524,9 @@ literals is made then, once.
   `date_order` evidence item naming the dates that fixed it.
 - Each literal's evidence stores its record through the run's blob store.
 
-**Budget (G30).** Each request reserves its worst case, and S3 sizes the `parse`
-reservation from these caps together, so they change together:
+**Budget (G30).** The `parse` step reserves the harness's worst case before it
+starts, and S3 sizes that reservation from these caps together, so they change
+together:
 - 8 requests per run, each at most 2,048 output tokens;
 - 60,000 input tokens per run, checked after each response;
 - a prompt of at most 12,000 bytes, instructions, readings and tool definitions
@@ -536,7 +537,12 @@ reservation from these caps together, so they change together:
 
 A tool call past its cap returns a refusal and makes no lookup. A final
 geocoding request past the cap is refused as `policy_blocked`, which blocks the
-run. T1's probe used 3 requests and 1,285 output tokens.
+run. T1's probe used 3 requests and 1,285 output tokens. The input limit is
+checked after each response, so a reservation sized to 60,000 input tokens does
+not cover the request that crosses it; S3's profile pull request, which merges
+after #183, adds #153's pre-send budget check to the harness call, so a request
+the reservation can no longer cover is refused as `harness_usage_limit` (agreed
+with S3 on 2026-09-25).
 
 **Failures** (G6, QUE-005):
 - A harness failure decides no field and sends the record to review:
