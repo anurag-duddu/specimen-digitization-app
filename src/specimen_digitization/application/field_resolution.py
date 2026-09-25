@@ -71,6 +71,8 @@ class Called:
     authority_id: str | None = None
     parsed: str | None = None
     normalized: str | None = None
+    # An open source's name, record and credit (PLAN 4.8); never Google's (G26).
+    authority_identity: Mapping[str, str | None] | None = None
     precision: str | None = None
     century_rule: str | None = None
     evidence: Mapping[str, Relation] = field(default_factory=dict)
@@ -404,6 +406,9 @@ class Resolver:
                 "authority_id": called.authority_id,
                 "parsed": called.parsed,
                 "normalized": called.normalized,
+                "authority_identity": dict(called.authority_identity)
+                if called.authority_identity
+                else None,
                 "precision": called.precision,
                 "century_rule": called.century_rule,
             }

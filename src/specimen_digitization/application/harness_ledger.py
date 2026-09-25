@@ -236,7 +236,7 @@ def called(
         )
     if result.tool == "geography_lookup":
         place = next(p for p in result.places if p.field_key == field_key)
-        google = evidence[GOOGLE]
+        source = evidence[place.source]  # The place's own source's call.
         near = f"near_spelling:{field_key}"
         if near in result.warnings:
             # G34: the place ID alone, no name; a warning finding shows it.
@@ -244,8 +244,23 @@ def called(
                 outcome,
                 result.tool,
                 authority_id=place.source_record_id,
-                evidence={google: "supports"},
-                warnings={near: (google,)},
+                evidence={source: "supports"},
+                warnings={near: (source,)},
+            )
+        if place.source != GOOGLE and place.name:
+            # An openly licensed name, kept with its credit (PLAN 4.8).
+            return Called(
+                outcome,
+                result.tool,
+                authority_id=place.source_record_id,
+                normalized=place.name,
+                authority_identity={
+                    "name": place.name,
+                    "source": place.source,
+                    "source_record_id": place.source_record_id,
+                    "credit": place.credit,
+                },
+                evidence={source: "supports"},
             )
         # The literal the lookup matched by name, never a Google name (G26).
         return Called(
@@ -253,7 +268,7 @@ def called(
             result.tool,
             authority_id=place.source_record_id,
             normalized=literal,
-            evidence={google: "supports"},
+            evidence={source: "supports"},
         )
     if result.tool == "date_parser":
         (reading,) = result.parsed["readings"]
@@ -282,8 +297,12 @@ def _locator(
         return f"region:{reading.region_id}"
     if outcome != LookupStatus.SUCCESS:
         return None
-    if source == GOOGLE:
-        place_id = next((p.source_record_id for p in result.places), None)
+    if result.tool == "geography_lookup":
+        # The record the source's place names: Google's place ID, or an open
+        # source's record id (PLAN 4.8).
+        place_id = next(
+            (p.source_record_id for p in result.places if p.source == source), None
+        )
         return f"place/{place_id}" if place_id else None
     if source == "gbif":
         taxon = next((t for t in result.taxa if t.source == "gbif"), None)

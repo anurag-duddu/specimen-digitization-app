@@ -493,6 +493,20 @@ Only a success names a value:
 An operational outcome passes through unchanged, for section 9 to block on.
 `Evidence.locator` becomes optional for the failed lookups.
 
+**Names and their credits** (PLAN 4.8 at #124). S8's tiers are GeoNames,
+Wikidata, Getty TGN and NGA GNS. When one of them gives a place a name, that
+openly licensed name settles the field's value (`normalized`). The field keeps
+`authority_identity` = {`name`, `source`, `source_record_id`, `credit`}, where
+the credit is that source's exact text from S8's manifest (agreed with S8 and
+S5, 2026-09-24).
+- Google's place keeps no name (G26). Its identity stays empty, and its field
+  settles the reader's literal.
+- `PlaceCandidate.credit` and `SourceRef.credit` carry the credit. A
+  derivation's stored record keeps its authority's credit, such as
+  Copernicus's notice for an elevation read from GLO-30.
+- Each place's evidence is its own source's, located by the place's record id
+  (`place/{id}`).
+
 ## 11. The harness agent (stage 7, part 6)
 
 G6, G7, G19, G20, G26, G30, G32, G33 and G40; HAR-007 and HAR-019. The owner's rule: "agentic harness takes the finally decided raw

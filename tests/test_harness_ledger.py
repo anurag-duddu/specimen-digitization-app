@@ -293,6 +293,7 @@ def test_one_geography_call_serves_every_locality_field_of_its_reading():
     assert city.evidence == {
         evidence.id: "supports"
     }  # Google never decides (rule 1.6).
+    assert city.authority_identity is None  # Nothing of Google's is kept (G26).
     assert (country.outcome, country.authority_id) == (S.NO_MATCH, None)
     query = fakes.calls[0][1][0]
     assert [
@@ -405,3 +406,52 @@ def test_a_near_spelling_settles_the_place_id_alone_with_a_finding():
     assert (province.authority_id, province.normalized) == ("ChIJ-chimaltenango", None)
     assert province.warnings == {"near_spelling:province_state": (evidence.id,)}
     assert (country.normalized, country.warnings) == ("GUAT.", {})
+
+
+GEONAMES_CREDIT = "GeoNames credit text, from S8's manifest"
+
+
+def test_an_open_source_settles_its_licensed_name_with_the_credit():
+    # PLAN 4.8 (#124): an openly licensed source's name may be kept, and its
+    # credit travels with it; Google's name never is (G26).
+    place = PlaceCandidate(
+        field_key="city",
+        source="geonames",
+        source_record_id="geonames:3598572",
+        name="Chimaltenango",
+        credit=GEONAMES_CREDIT,
+    )
+    call = SourceCall(
+        source="geonames",
+        query={"name": "Chimaltenago"},
+        retrieved_at="t",
+        outcome=S.SUCCESS,
+        raw_ref="blob-2",
+        response_sha256="e" * 64,
+    )
+    result = ToolResult(
+        tool="geography_lookup",
+        tool_version="georef-v1",
+        outcome=S.SUCCESS,
+        field_outcomes={"city": S.SUCCESS},
+        places=[place],
+        sub_calls=[call],
+    )
+    book = ledger(Fakes(place=result))
+
+    city = book.field_call(
+        "city",
+        "geography_lookup",
+        lambda literal, reading: {"literals": [["city", literal]]},
+    )("Chimaltenago", DECIDED)
+
+    (evidence,) = book.evidence
+    assert (city.normalized, city.authority_id) == ("Chimaltenango", "geonames:3598572")
+    assert city.authority_identity == {
+        "name": "Chimaltenango",
+        "source": "geonames",
+        "source_record_id": "geonames:3598572",
+        "credit": GEONAMES_CREDIT,
+    }
+    assert (evidence.source, evidence.locator) == ("geonames", "place/geonames:3598572")
+    assert city.evidence == {evidence.id: "supports"}

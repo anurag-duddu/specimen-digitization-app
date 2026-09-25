@@ -257,3 +257,29 @@ def test_nothing_is_derived_from_an_unsettled_or_unreadable_elevation():
     assert derive(EMPTY | {"elevation_from_m": conflict})[0] == {}
     assert derive(EMPTY | {"elevation_from_m": stated("1200-1500 m")})[0] == {}
     assert derive(EMPTY)[0] == {}
+
+
+def test_a_derivations_credit_travels_in_its_record():
+    # PLAN 4.8 (#124): a derived value keeps its source's credit, such as
+    # Copernicus's notice for an elevation read from GLO-30.
+    elevation = Derivation(
+        field_key="elevation_from_m",
+        value="1396",
+        method="elevation_model",
+        authority=SourceRef(
+            name="copernicus-glo-30",
+            record_id="N14W091",
+            version="2021_1",
+            credit="Copernicus notice, from S8's manifest",
+        ),
+        inputs={"city": "place-1"},
+        evidence=[Check(name="elevation_over_circle", result="supports")],
+    )
+
+    _, evidence, blobs = apply(FIELDS, [elevation])
+
+    (item,) = evidence
+    record = json.loads(blobs.puts[item.raw_ref])
+    assert record["derivation"]["authority"]["credit"] == (
+        "Copernicus notice, from S8's manifest"
+    )
