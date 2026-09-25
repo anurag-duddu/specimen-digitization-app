@@ -12120,7 +12120,7 @@ because the hooks runner hands a native asset hook only `PATH`.
     - a full form written on the label counts as a source;
     - a value is only escaped or encoded after the filter, in SPARQL or in an API such as Wikidata's;
     - the extended named tests and limit, with credits to #124, #174, #180 and #185 and the #183 ruling's source.
-  - Records the owner's curator decision in 2.3: "That's fine. Human review is ok" (2026-09-24).
+  - Records the owner's curator decision in 2.3: "That’s fine. Human review is ok" (2026-09-24).
   - "Place text (4.8's sources)" replaces "place fields" in G35's reading, the Google row and S8's brief. The G27/G32 reading label now sits right after "on one label as on several". S5's T6 names the stated field.
   - Correction (dated 2026-09-24) to the entry "2026-09-24 — Go-live program: plan corrections after #124" above: its line "G45's `verbatim_dts` exception appears at stage 8 and in T4" should read "the coordinator hold for `verbatim_dts` (section 2.3) appears at stage 8 and in T4". G45 itself has no exception.
 - Validation actually run: the edit script's exact-single-match checks. CI on the pull request: Not confirmed at the time of writing.
