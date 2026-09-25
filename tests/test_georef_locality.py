@@ -484,10 +484,15 @@ DATE_FORMS = (
     list(itertools.product(DATE_FORMS, ",.", ("9", "95", "950", "9500"), (" m", " ft", "'"))),
 )
 def test_a_year_never_joins_an_elevation(date, mark, tail, unit):
-    # The tail's elevation is read whole or set aside with the date. No elevation
-    # holds the year's digits, and no date or month is a part.
-    reading = read_locality(f"{date}{mark}{tail}{unit}")
-    assert [e.text for e in reading.elevations] in ([], [f"{tail}{unit}".strip()])
+    # The comma rule splits a comma before four digits, or before three after a
+    # four-digit year: the tail then reads whole and the date is set aside. Every
+    # other row sets the whole text aside. No elevation holds the year's digits,
+    # and no date or month is a part.
+    text = f"{date}{mark}{tail}{unit}"
+    split = mark == "," and (len(tail) == 4 or (len(tail) == 3 and date[-4:].isdigit()))
+    expected = ([f"{tail}{unit}".strip()], (date,)) if split else ([], (text,))
+    reading = read_locality(text)
+    assert ([e.text for e in reading.elevations], reading.unplaced) == expected
     assert reading.parts == ()
 
 
