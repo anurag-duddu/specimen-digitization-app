@@ -136,6 +136,10 @@ OPENINGS = "([{\uff08\uff3b\uff5b"
 YEAR_LEAD = re.compile(r"(?:\d\d|\d{4})[.,]")
 # Four digits after a mark could be a date's year: "4.1948", "12.4.1948".
 YEAR_TAIL = re.compile(r"[.,]\d{4}(?!\d)")
+# A range's lower number that could be a year, two digits or four from 1700 to
+# 2099, sets the range aside unless its prefix comes first: the coordinator's
+# reading of G36 and G40 at 15:32Z on 2026-09-25.
+YEAR = re.compile(r"\d\d|1[7-9]\d\d|20\d\d")
 # A number after another number with only words or marks between them may be a
 # range's upper number, joined by one no range join lists: "4000 hasta 4500 ft",
 # "4000 ~ 4500 m".
@@ -193,6 +197,11 @@ class Part:
 
 @dataclass(frozen=True, slots=True)
 class LocalityText:
+    """One literal's reading: georeferencing evidence, never the elevation fields,
+    which settle from the harness's own reading of the label. A phrase set aside
+    as unsure stays in `unplaced`, so an empty `elevations` is not "no elevation
+    stated" (GEO.md 1)."""
+
     verbatim: str
     parts: tuple[Part, ...]
     elevations: tuple[Elevation, ...]
@@ -437,7 +446,8 @@ def _unsure(segment: str, match: re.Match[str], paired: bool, after: bool, since
       after a part that holds a number (`after`), unless its prefix or another
       elevation comes first ("Sept. 1946 - 850 m", "July 4, 1946.9500 ft");
     - a range that runs downward, or whose upper number has a decimal
-      ("1946 - 850 m", "4-1948,95 m");
+      ("1946 - 850 m", "4-1948,95 m"), or whose lower number could be a year,
+      unless its prefix comes first ("1800-2200 m", but "Elev. 1800-2200 m");
     - after another number with only words or marks between them, since the
       last elevation read (`since`) ("4000 ~ 4500 m", "Camp 3 at 1500 m");
     - beside another digit group across a space ("4 800 ft.", "Elev. 4 800 ft.")."""
@@ -453,6 +463,8 @@ def _unsure(segment: str, match: re.Match[str], paired: bool, after: bool, since
     if after and not paired and not match["prefix"] and (high or YEAR_LEAD.match(low)):
         return True
     if high and (_decimal(high) or _size(low) > _size(high)):
+        return True
+    if high and not paired and not match["prefix"] and YEAR.fullmatch(low):
         return True
     if not paired and TOP_ALONE.search(segment, max(since, start - 40), start):
         return True
