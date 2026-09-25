@@ -117,6 +117,9 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                     require(observation.input_asset_id == asset.id)
                 if observation.input_crop_ref is not None:
                     read(observation.input_crop_ref, observation.input_sha256)
+            from .first_pass import g19_pick
+
+            decisions = {d.region_id: d for d in run.first_pass_decisions}
             for transcript in run.transcripts:
                 require(transcript.region_id in regions)
                 require(bool(transcript.observation_ids))
@@ -145,16 +148,31 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                         require(call.input_asset_id == asset.id)
                     if call.input_crop_ref is not None:
                         read(call.input_crop_ref, call.input_sha256)
-                selected = transcript.selected_observation_id
-                if (
-                    selected is not None
-                    and transcript.actor is None
-                    and transcript.decision_kind in {"identical_readings", "first_pass"}
-                ):
-                    # A machine-selected reading is the region's, verbatim, until
-                    # a reviewer's decision changes the transcript.
-                    require(selected in transcript.observation_ids)
-                    require(transcript.text == observations[selected].literal_text)
+                if transcript.actor is None:
+                    # A machine record, one no reviewer's decision has changed,
+                    # holds its region's readings and decision (HARNESS.md 4).
+                    literals = {
+                        observations[ident].literal_text
+                        for ident in transcript.observation_ids
+                    }
+                    require(transcript.text is None or transcript.text in literals)
+                    selected = transcript.selected_observation_id
+                    decision = decisions.get(transcript.region_id)
+                    if decision is not None:
+                        require(transcript.decision_kind == "first_pass")
+                    if transcript.decision_kind == "first_pass":
+                        require(decision is not None)
+                        require(transcript.first_pass_call == decision.call)
+                        require(selected == decision.selected_observation_id)
+                        require(g19_pick(selected, transcript.differences) == selected)
+                    if transcript.decision_kind in {"identical_readings", "first_pass"}:
+                        if selected is None:
+                            require(transcript.text is None)
+                        else:
+                            require(selected in transcript.observation_ids)
+                            require(
+                                transcript.text == observations[selected].literal_text
+                            )
             for evidence in run.evidence:
                 if evidence.asset_id is not None:
                     require(evidence.asset_id == asset.id)

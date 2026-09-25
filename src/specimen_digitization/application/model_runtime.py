@@ -156,9 +156,10 @@ def invoke_model(
         # observations, prior runs, audit logs and authority outputs are excluded.
         payload.update(
             transcripts=[
-                # A resolved transcript without the raw readings its first-pass
-                # record carries (HARNESS.md section 4).
-                t.model_dump(
+                # A resolved transcript with its text as its only alternative, and
+                # without its first-pass handoffs, differences and call (HARNESS.md
+                # section 4).
+                t.model_copy(update={"alternatives": [t.text]}).model_dump(
                     mode="json", exclude={"handoffs", "differences", "first_pass_call"}
                 )
                 for t in run.transcripts
