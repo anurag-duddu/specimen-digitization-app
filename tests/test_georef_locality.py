@@ -1,6 +1,7 @@
 """Reading locality text for the retrospective georeferencing tool (GEO.md 1)."""
 
 import itertools
+import re
 import time
 
 import pytest
@@ -414,7 +415,11 @@ def test_a_capitalised_linking_word_at_a_line_start_begins_a_name():
     assert [p.name for p in read_locality("Mindanao\nDe la Paz").parts] == ["Mindanao", "De la Paz"]
 
 
-@pytest.mark.parametrize(("text", "count"), [("4 800 ft. " * 20000, 0), ("1 m " * 20000, 20000)])
+@pytest.mark.parametrize(
+    ("text", "count"),
+    [("4 800 ft. " * 20000, 0), ("1 m " * 20000, 20000)],
+    ids=["grouped", "single"],
+)
 def test_space_grouped_numbers_are_checked_in_linear_time(text, count):
     started = time.monotonic()
     reading = read_locality(text)
@@ -548,6 +553,14 @@ def test_a_range_is_read_whole(join, low, high, unit):
         "4000 has\u00adta 4500 m",
         "4000 ha\u200bsta 4500 m",
         "4000 - 4500 - 5000 m",
+        "4000~ 4500 ft",
+        "4000\u301c 4500 m",
+        "4000-- 4500 m",
+        "4000hasta 4500 ft",
+        "4000\u2026 4500 m",
+        "4000 " + "~ " * 20 + "4500 m",
+        "Elev. 1500 ~ 2000 m",
+        "Elev. 1500 hasta 2000 m",
     ],
 )
 def test_a_range_never_reads_its_top_alone(text):
@@ -559,19 +572,136 @@ def test_a_range_never_reads_its_top_alone(text):
 PART_START_DATES = ("Sept. 6, 1946", "July 4, 1946", "IV-26\n1948", "26 IV\n1948")
 
 
-@pytest.mark.parametrize(
-    ("date", "join"),
-    list(itertools.product((*DATE_FORMS, *PART_START_DATES), (*RANGE_JOINS, ",", ".", " "))),
+# Every axis the round-6 review named, generated and crossed. Each year form is read
+# with its year as written, or moved after ", ", "," or a line break, which puts a
+# part of only a month before it in the month-and-year forms; then comes a glued
+# comma or dot, a space, a line break, or each range join unspaced, spaced,
+# touching either number or beside a line break; then each tail and unit.
+MONTH_YEARS = tuple(
+    f"{month} 1946"
+    for month in (
+        *("July", "Julio", "agosto", "Agto.", "SEPT.", "sept"),
+        *("viii", "VIII/IX", "de julio"),
+    )
 )
-def test_no_join_brings_a_year_into_an_elevation(date, join):
-    # Every date form, then every range join, a glued comma or dot, or a space,
-    # each row with every tail and unit: an elevation may read only the tail, and
-    # no date or month is a part.
-    for tail, unit in itertools.product(("9", "95", "950", "9500"), (" m", " ft", "'")):
-        text = f"{date}{join}{tail}{unit}"
+YEAR_FORMS = (*DATE_FORMS, *MONTH_YEARS, *PART_START_DATES)
+RANGE_WORDS = (*DASHES, "/", "to", "a", "and", "y")
+TAILS = ("9", "95", "950", "9500")
+UNITS = (" m", " ft", "'")
+# What may come between a year and the number after it, and whether it joins a range.
+TAIL_MARKS = (
+    *((mark, False) for mark in (",", ".", " ", "\n")),
+    *(
+        (form, True)
+        for join in RANGE_WORDS
+        for form in (join, f" {join} ", f"{join} ", f" {join}", f"{join}\n", f"\n{join}")
+    ),
+)
+# Zero in each digit script the tables use: ASCII, full-width, Devanagari and
+# Arabic-Indic.
+ZEROS = ("0", "\uff10", "\u0966", "\u0660")
+
+
+def in_digits(text, zero):
+    """The text with its ASCII digits written in the script whose zero is `zero`."""
+    return "".join(chr(ord(zero) + int(c)) if "0" <= c <= "9" else c for c in text)
+
+
+def year_positions(date):
+    """The date as written, then its year moved after ", ", "," or a line break."""
+    head, year = re.fullmatch(r"(.*?)[\s,\-./\u2013]*('?\d+)", date).groups()
+    return (date, *(f"{head}{mark}{year}" for mark in (", ", ",", "\n")))
+
+
+def assert_no_year_reaches_an_elevation(text, tail, joins):
+    reading = read_locality(text)
+    # No elevation holds the date's number: only the tail may read, and after a
+    # range join not even the tail, which would be the range's top alone.
+    assert all((e.low, e.high) == (tail, None) for e in reading.elevations), text
+    assert not (joins and reading.elevations), text
+    # No month or date fragment becomes a part.
+    assert reading.parts == (), text
+
+
+@pytest.mark.parametrize("date", YEAR_FORMS)
+def test_no_year_reaches_an_elevation_on_any_axis(date):
+    for dated, (mark, joins), tail, unit in itertools.product(
+        year_positions(date), TAIL_MARKS, TAILS, UNITS
+    ):
+        assert_no_year_reaches_an_elevation(f"{dated}{mark}{tail}{unit}", tail, joins)
+
+
+@pytest.mark.parametrize(("date", "zero"), list(itertools.product(YEAR_FORMS, ZEROS[1:])))
+def test_no_year_reaches_an_elevation_in_other_digits(date, zero):
+    for dated, (mark, joins), tail in itertools.product(
+        year_positions(date), TAIL_MARKS, ("95", "9500")
+    ):
+        text = in_digits(f"{dated}{mark}{tail} m", zero)
+        assert_no_year_reaches_an_elevation(text, in_digits(tail, zero), joins)
+
+
+def summary_of(text):
+    reading = read_locality(text)
+    return [e.text for e in reading.elevations], [p.name for p in reading.parts], reading.unplaced
+
+
+# Every line break `str.splitlines` knows besides "\n", U+2028 and U+0085 among them.
+LINE_BREAKS = ("\r", "\r\n", "\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029")
+
+
+@pytest.mark.parametrize("line_break", LINE_BREAKS)
+def test_every_line_break_reads_as_a_newline(line_break):
+    # In a year's place and between a year and the number after it.
+    for date in YEAR_FORMS:
+        broken = year_positions(date)[-1]
+        for mark in (",", ".", " ", "\n", "-", " - ", "-\n", "\n-", " to\n", "\ny "):
+            for text in (f"{broken}{mark}950 m", f"{date}{mark}950 m"):
+                if "\n" in text:
+                    assert summary_of(text.replace("\n", line_break)) == summary_of(text), text
+
+
+# Joins no rule lists, which may still join a range's numbers.
+OTHER_JOINS = (
+    *("~", "\u301c", "--", "hasta", "bis", "&", "up to", "\u2026", "bis-zu"),
+    *("ha\u0301sta", "has\u00adta", "ha\u200bsta"),
+)
+
+
+def range_spacings(join):
+    """A join unspaced, spaced, touching either number, and broken across lines."""
+    yield from (join, f" {join} ", f"{join} ", f" {join}")
+    for line_break in ("\n", "\u2028", "\x85"):
+        yield from (
+            f" {join}{line_break}",
+            f"{line_break}{join} ",
+            f"{join}{line_break}",
+            f"{line_break}{join}",
+            f"{line_break}{join}{line_break}",
+        )
+
+
+@pytest.mark.parametrize(
+    ("join", "prefix"),
+    list(itertools.product((*RANGE_WORDS, *OTHER_JOINS), ("", "Elev. ", "Alt. ", "el. "))),
+)
+def test_a_range_reads_whole_or_not_at_all(join, prefix):
+    # However two numbers are joined, spaced or broken across lines, and in any
+    # digits, the range reads whole or not at all, never one of its numbers alone.
+    # A word alone on its own line between them stays a part, as any line of words
+    # does.
+    for (low, high), spacing, zero, unit in itertools.product(
+        (("4000", "4500"), ("1,200", "1,500"), ("1.200", "1.500")),
+        range_spacings(join),
+        ZEROS,
+        (" m", " ft.", "'"),
+    ):
+        text = in_digits(f"{prefix}{low}{spacing}{high}{unit}", zero)
         reading = read_locality(text)
-        assert all((e.low, e.high) == (tail, None) for e in reading.elevations), text
-        assert reading.parts == (), text
+        whole = (in_digits(low, zero), in_digits(high, zero))
+        assert [(e.low, e.high) for e in reading.elevations] in ([], [whole]), text
+        alone = spacing[0] == spacing[-1] in ("\n", "\u2028", "\x85")
+        worded = join in OTHER_JOINS and any(c.isalpha() for c in join)
+        assert [p.name for p in reading.parts] == ([join] if alone and worded else []), text
 
 
 @pytest.mark.parametrize(
@@ -623,7 +753,15 @@ def test_a_range_whose_low_could_be_a_year_is_set_aside(text, places):
 
 
 @pytest.mark.parametrize(
-    "text", ["Elev. 1800-2200 m", "Alt. 1800-2200 m", "1500-2000 m", "4000-4500 ft", "1946 m"]
+    "text",
+    [
+        "Elev. 1800-2200 m",
+        "Alt. 1800-2200 m",
+        "el. 1800-2200 m",
+        "1500-2000 m",
+        "4000-4500 ft",
+        "1946 m",
+    ],
 )
 def test_a_prefix_or_a_low_no_year_could_be_still_reads(text):
     assert [e.text for e in read_locality(text).elevations] == [text]
@@ -646,6 +784,148 @@ def test_a_year_like_range_beside_another_elevation_reads_only_if_they_convert(t
     assert [e.text for e in read_locality(text).elevations] == read
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "July, 1946.950 m",
+        "Sept.\n1946,95 m",
+        "IV\n1948.950 m",
+        "Sept., 1946,95 m",
+        "de julio, 1946.950 m",
+        "VIII/IX\n1948,95 m",
+    ],
+)
+def test_a_part_of_only_a_month_is_kept_aside_with_the_year_after_it(text):
+    reading = read_locality(text)
+    assert (reading.elevations, reading.parts) == ((), ())
+
+
+# The month words the Insects profile lists for PLAN 4.8's filter (S4's #183), and
+# the Roman months I to XII (G29).
+PROFILE_MONTHS = (
+    *("January", "February", "March", "April", "May", "June", "July", "August"),
+    *("September", "October", "November", "December", "Jan.", "Feb.", "Mar.", "Apr."),
+    *("Jun.", "Jul.", "Aug.", "Sep.", "Sept.", "Oct.", "Nov.", "Dec.", "enero", "febrero"),
+    *("marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "setiembre"),
+    *("octubre", "noviembre", "diciembre", "ene.", "feb.", "mar.", "abr.", "may.", "jun."),
+    *("jul.", "ago.", "sep.", "sept.", "set.", "oct.", "nov.", "dic.", "agto.", "sbre."),
+    *("obre.", "nbre.", "dbre.", "febr.", "mzo.", "ag."),
+    *("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"),
+)
+
+
+@pytest.mark.parametrize("month", PROFILE_MONTHS)
+def test_every_month_the_profile_lists_reads_in_any_case(month):
+    bare = month.rstrip(".")
+    for written in (month, month.lower(), month.upper(), bare, f"{bare}."):
+        reading = read_locality(f"Mindanao, {written}, 1946.950 m")
+        assert ([part.name for part in reading.parts], reading.elevations) == (
+            ["Mindanao"],
+            (),
+        ), written
+
+
+def test_the_cost_of_reading_months():
+    # A part that is only a month word is no place. Reading every part after another
+    # as one after a number would have set these two elevations aside too.
+    reading = read_locality("Mindanao, Mayo, Davao")
+    assert ([part.name for part in reading.parts], reading.unplaced) == (
+        ["Mindanao", "Davao"],
+        ("Mayo",),
+    )
+    for text, elevation in (
+        ("Mt. Apo, 12,300 ft", "12,300 ft"),
+        ("Mt. Apo, 1500-2000 m", "1500-2000 m"),
+    ):
+        assert [e.text for e in read_locality(text).elevations] == [elevation]
+
+
+@pytest.mark.parametrize(
+    ("text", "unplaced"),
+    [
+        ("4000 -\n4500 ft", ("4000 -", "4500 ft")),
+        ("1500-\n2000 m", ("1500-", "2000 m")),
+        ("entre 1500 y\n2000 m", ("entre 1500 y", "2000 m")),
+        ("Elev. 1500-\n2000 m", ("Elev. 1500-", "2000 m")),
+        ("4000 -\u20284500 ft", ("4000 -", "4500 ft")),
+        ("4000 -\x854500 ft", ("4000 -", "4500 ft")),
+        ("4000\n~ 4500 m", ("4000", "~ 4500 m")),
+        ("4000\nhasta 4500 m", ("4000", "hasta 4500 m")),
+        ("4000\nto\n4500 m", ("4000", "to", "4500 m")),
+    ],
+)
+def test_a_line_break_inside_a_range_sets_it_aside(text, unplaced):
+    reading = read_locality(text)
+    assert (reading.elevations, reading.parts, reading.unplaced) == ((), (), unplaced)
+
+
+def test_a_line_break_reads_as_a_space_between_two_numbers():
+    # The cost: after a line that ends in a number no elevation took, an elevation
+    # that words come before on the next lines is set aside, as on one line.
+    reading = read_locality("12-IV-1948\nChimaltenango\n1500 m")
+    assert ([part.name for part in reading.parts], reading.elevations) == (["Chimaltenango"], ())
+    reading = read_locality("12-IV-1948\nChimaltenango 1500 m")
+    assert (reading.parts, reading.unplaced) == ((), ("12-IV-1948", "Chimaltenango 1500 m"))
+    assert read_locality("Elev.6400\nSept. 3, 1946").elevations == ()
+    reading = read_locality("4000\nhasta\n4500 m")
+    assert ([part.name for part in reading.parts], reading.elevations) == (["hasta"], ())
+    # An elevation or its prefix starting the next line reads, and a comma or
+    # semicolon at a line's edge, or an elevation read before, stops the check.
+    for text, read in (
+        ("3 Sept. '46\nElev. 6400'", ["Elev. 6400'"]),
+        ("3 Sept. '46\n850 m", ["850 m"]),
+        ("Elev.6400\n3 Sept. '46", ["Elev.6400"]),
+        ("12-IV-1948,\nChimaltenango 1500 m", ["1500 m"]),
+        ("12-IV-1948\nChimaltenango;\n1500 m", ["1500 m"]),
+        ("Yepocapa 4800 ft.\nChimaltenango\n1500 m", ["4800 ft.", "1500 m"]),
+        ("Elev.6400\nAlt. 1950 m", ["Elev.6400", "Alt. 1950 m"]),
+    ):
+        assert [e.text for e in read_locality(text).elevations] == read, text
+
+
+@pytest.mark.parametrize("zero", ZEROS[1:])
+def test_a_year_in_other_digits_is_still_a_year(zero):
+    reading = read_locality(in_digits("Mindanao, 1946 - 2500 m", zero))
+    assert ([part.name for part in reading.parts], reading.elevations) == (["Mindanao"], ())
+    text = in_digits("Elev. 1800-2200 m", zero)
+    assert [e.text for e in read_locality(text).elevations] == [text]
+
+
+def test_a_range_runs_upward_by_its_whole_parts_in_any_digits():
+    for text in ("4500-\uff14\uff10\uff10\uff10 m", "2,000-1,463.5 ft"):
+        assert read_locality(text).elevations == (), text
+    for text in ("1,200-1,463.5 ft", "1.200-1.463,5 m", "\uff11\uff15\uff10\uff10-2000 m"):
+        assert [e.text for e in read_locality(text).elevations] == [text], text
+
+
+def test_the_prefixes_include_the_profiles_el():
+    # "el." is the Insects profile's, with its period (the coordinator's reading at
+    # 15:32Z: prefixes "as the profile's notations list them"). A word between a
+    # prefix and its number leaves the prefix unread.
+    for text in ("el. 1800-2200 m", "EL.1500 m", "Elev: 1800-2200 m"):
+        assert [e.text for e in read_locality(text).elevations] == [text], text
+    for text in ("Elev. ca. 1800-2200 m", "el 1800-2200 m"):
+        assert read_locality(text).elevations == (), text
+
+
+@pytest.mark.parametrize(
+    ("text", "count"),
+    [
+        ("4000 ~ " * 20000 + "4500 m", 0),
+        ("4000 -\n" * 20000 + "4500 m", 0),
+        ("Elev. 1 ~ " * 20000, 0),
+        ("a\n" * 20000 + "1 m", 1),
+        ("1 m ~ " * 20000, 20000),
+    ],
+    ids=["tildes", "broken dashes", "prefixed tildes", "word lines", "unit tildes"],
+)
+def test_the_check_between_two_numbers_is_linear(text, count):
+    started = time.monotonic()
+    reading = read_locality(text)
+    assert time.monotonic() - started < 5
+    assert len(reading.elevations) == count
+
+
 def test_brackets_open_a_part_and_a_colon_glues():
     for text, elevation in (("(12,300 ft)", "12,300 ft"), ("(1946,63 m)", "1946,63 m")):
         assert [e.text for e in read_locality(text).elevations] == [elevation]
@@ -664,6 +944,16 @@ def test_a_number_after_another_number_and_one_word_is_set_aside():
     assert (reading.elevations, reading.unplaced) == ((), ("Camp 3 at 1500 m",))
     for text in ("4800 ft 1463 m", "4800 ft/1463 m", "1500 m and 2000 m"):
         assert len(read_locality(text).elevations) == 2
+
+
+def test_a_touching_word_counts_and_a_number_with_no_unit_looks_ahead():
+    # A word or mark touching the number before counts as one between them, and a
+    # number with no unit is checked against the number after it, that number's
+    # own prefix aside.
+    for text in ("Camp 3a 1500 m", "5km 1500 m", "Elev.6400 Camp 3", "Elev.6400,12-IV-1948"):
+        reading = read_locality(text)
+        assert (reading.elevations, reading.unplaced) == ((), (text,)), text
+    assert len(read_locality("Elev. 1500 Elev. 2000 m").elevations) == 2
 
 
 def test_two_or_four_leading_digits_after_other_text_may_be_a_year():

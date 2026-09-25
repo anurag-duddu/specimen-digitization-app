@@ -84,6 +84,12 @@ metres, or none when the label gives none ("Elev.6400" on 105526322). A range
 joins its numbers by a dash of any kind or a slash, or by "to", "a", "and" or
 "y" between spaces ("4000—4500 ft", "1,200/1,500 m", "1500 a 2000 m",
 "1500 y 2000 m"), runs upward, and is kept whole.
+An elevation's prefix is "Elev.", "Elevation", "Alt." or "Altitude", in any case,
+with or without the period, or "el." with it, then an optional colon. The pilot's
+labels and the Insects profile's notations write them so, and they are the
+prefixes of the coordinator's reading at 15:32Z on 2026-09-25 (below), "as the
+profile's notations list them". A word between a prefix and its number leaves the
+prefix unread, so "Elev. ca. 1800-2200 m" is set aside.
 An elevation in brackets takes its brackets with it: "Mt. Apo (1463 m)" leaves
 "Mt. Apo". This module fills nothing and stores no converted value; it compares
 a phrase in feet with one in metres only to pair them (below). G41's "Convert
@@ -91,10 +97,9 @@ and fill" (the label's own number fills From and To, and the other unit is
 converted exactly, each marked derived) happens in S4's later derivation layer.
 
 **Unsure numbers.** A phrase whose number is unsure is set aside rather than read.
-These rules keep a date's year out of every elevation in the forms the tests
-generate: every date form, then any range join, a glued comma or dot, or a
-space. They also keep a range from losing its lower number to a join no rule
-lists. These numbers are unsure:
+These rules keep a date's year out of every elevation, and let a range read only
+whole, in every form the tests generate (**Tests**, below). These numbers are
+unsure:
 - a number glued to the text before it: an elevation needs a space, the part's
   start, an opening bracket (full-width ones too) or another elevation right
   before it. So "12.IV.1948,95 m", "12/4/48,95 m", "Sept. '46,95 m",
@@ -102,50 +107,90 @@ lists. These numbers are unsure:
   "Altitud:1500 m" are set aside, and "4800 ft/1463 m" reads both;
 - a range, or a number whose first digits could be a year (two or four digits
   before its first comma or dot), after other text in its part or in a part
-  right after one that holds a number. Its prefix or another elevation right
-  before it clears it, and an opening bracket at the part's start is no text
-  ("(12,300 ft)" reads). So "Sept. 1946 - 850 m", "Camp 3 and 1500 m",
-  "Km 42 a 1500 m", "Sept. 6, 1946 a 950 m", "12 IV 1948,95 m" and
-  "IV-26" / "1948.950 m" are set aside. The cost: "Mt. Apo 1500-2000 m",
-  "between 1500 and 2000 m" and "Mt. Apo 12,300 ft" are set aside too, while
-  "Mt. Apo, 1500-2000 m" and "Mt. Apo Elev. 1500-2000 m" read, and a bare
-  "1946,63 m" stays the decimal it is;
+  right after one that holds a number or only a month (**Months**, below). Its
+  prefix or another elevation right before it clears it, and an opening bracket
+  at the part's start is no text ("(12,300 ft)" reads). So "Sept. 1946 - 850 m",
+  "Camp 3 and 1500 m", "Km 42 a 1500 m", "Sept. 6, 1946 a 950 m",
+  "12 IV 1948,95 m", "IV-26" / "1948.950 m" and "July, 1946.950 m" are set
+  aside. The cost: "Mt. Apo 1500-2000 m", "between 1500 and 2000 m" and "Mt. Apo
+  12,300 ft" are set aside too, while "Mt. Apo, 1500-2000 m" and "Mt. Apo Elev.
+  1500-2000 m" read, and a bare "1946,63 m" stays the decimal it is;
 - a number with four digits after a mark, which could be a date's year
   ("4.1948-950 m");
-- a range that runs downward ("1946 - 850 m"), or whose upper number has a
-  decimal, one not in thousands groups ("4-1948,95 m");
+- a range that runs downward, its numbers compared by their whole parts in any
+  digits ("1946 - 850 m", "4500-４０００ m", "2,000-1,463.5 ft"), or whose upper
+  number has a decimal, one not in thousands groups ("4-1948,95 m");
 - a range whose lower number could be a year, two digits or four from 1700 to
-  2099, unless its prefix comes first: "Mindanao, 1946 - 2500 m", "1800-2200 m"
-  and "10-50 m" are set aside, while "Elev. 1800-2200 m", "1500-2000 m" and
-  "4000-4500 ft" read. This is the coordinator's reading of G36 and G40 at
-  15:32Z on 2026-09-25. Beside another elevation, such a range reads only when
-  the two convert to each other, in either order: each end, by the exact factor
-  (1 ft = 0.3048 m, as G41), within the larger of 10 m and 2% of the metric
-  value. So "6000-7000 ft 1829-2134 m" and "1829-2134 m 6000-7000 ft" read both,
-  while "4800 ft 1946-2500 m" sets the metric range aside and reads "4800 ft".
-  That extends the same reading, at 17:40Z;
-- a number after another number with only words or marks between them, which
-  may join a range no rule lists ("4000 hasta 4500 ft", "4000 ~ 4500 m",
-  "1500 up to 2000 m", "4000 - 4500 - 5000 m"). "Camp 3 at 1500 m" is set
-  aside too, while right after another elevation a number is its pair
-  ("4800 ft 1463 m");
+  2099, in any digits, unless its prefix comes first: "Mindanao, 1946 - 2500 m"
+  in ASCII, full-width, Devanagari or Arabic-Indic digits, "1800-2200 m" and
+  "10-50 m" are set aside, while "Elev. 1800-2200 m", "el. 1800-2200 m",
+  "1500-2000 m" and "4000-4500 ft" read. This is the coordinator's reading of G36
+  and G40 at 15:32Z on 2026-09-25. Beside another elevation, such a range reads
+  only when the two convert to each other, in either order: each end, by the
+  exact factor (1 ft = 0.3048 m, as G41), within the larger of 10 m and 2% of the
+  metric value. So "6000-7000 ft 1829-2134 m" and "1829-2134 m 6000-7000 ft" read
+  both, while "4800 ft 1946-2500 m" sets the metric range aside and reads
+  "4800 ft". That extends the same reading, at 17:40Z;
+- a number that another number comes before, since the last elevation read, with
+  words or marks between them, opening brackets aside, since they may join a
+  range no rule lists: "4000 hasta 4500 ft", "4000~ 4500 m", "4000-- 4500 m",
+  "4000 - 4500 - 5000 m", and "4000" with twenty "~ " before "4500 m". A number
+  with no unit is unsure the same way when another number comes after it, that
+  number's own prefix aside: "Elev. 1500 ~ 2000 m" is set aside whole, and so is
+  "Elev.6400,12-IV-1948". "Camp 3 at 1500 m", "Camp 3a 1500 m" and "Elev.6400
+  Camp 3" are set aside too, while right after another elevation a number is its
+  pair ("4800 ft 1463 m", "Elev. 1500 Elev. 2000 m");
 - a malformed grouping ("1,5,3 m", "12,34,567 m");
 - a number beside another digit group across a space ("4 800 ft.", "1 463 m",
   "'4 800 ft."). A two-digit year after an apostrophe is no such group:
   "3 Sept. '46 850 m" keeps "850 m".
 
-A single elevation reads as written ("1946 m"). Set-aside text stays verbatim
-for the harness to read in context (G40). In the same coordinator reading, this
-reader's output is georeferencing evidence, and the elevation fields settle from
-the harness's own reading of the label. A set-aside range never counts as "no
-elevation stated", so G37's derivation does not fill it.
+A line break can fall inside a range, so the check between two numbers reads
+across line breaks as across spaces, with every line break Python's
+`str.splitlines` knows (U+2028 and U+0085 among them): "4000 -" / "4500 ft",
+"1500-" / "2000 m", "entre 1500 y" / "2000 m", "4000" / "hasta 4500 m" and
+"Elev. 1500-" / "2000 m" are set aside. A line of one part with no number passes
+the check on ("4000" / "to" / "4500 m"), and a comma or semicolon at a line's
+edge stops it. The cost: after a line that ends in a number no elevation took,
+an elevation that words come before on the next lines is set aside, as on one
+line. So "12-IV-1948" / "Chimaltenango" / "1500 m" keeps "Chimaltenango" and sets
+"1500 m" aside, "12-IV-1948" / "Chimaltenango 1500 m" sets the second line aside,
+and "Elev.6400" / "Sept. 3, 1946" sets "Elev.6400" aside. An elevation or its
+prefix starting the next line still reads ("3 Sept. '46" / "Elev. 6400'"), as
+does "1500 m" in "12-IV-1948," / "Chimaltenango 1500 m". A word alone on its own
+line between two numbers is kept as a part, as any line of words is ("4000" /
+"hasta" / "4500 m" keeps "hasta"), while "to", "a", "and" or "y" alone is kept
+aside (**Unplaced text**, below).
+
+**Months.** A part of only a month is kept aside, never a place, and the part
+after it counts as one after a number, since the year may follow: "July,
+1946.950 m", "Sept." / "1946,95 m", "IV" / "1948.950 m" and "Sept., 1946,95 m"
+read no elevation and no part. A month is a word the Insects profile lists for
+PLAN 4.8's filter (S4's #183), in any case, with or without its period: each
+month in full and abbreviated, in English and in Spanish, in the usual forms and
+older ones ("Sept.", "setiembre", "Agto."). A Roman month I to XII (G29) is one
+too, and "de", "del" or "of" may come between ("de julio", "VIII/IX"). This route
+was chosen over reading every part after another as one after a number, which
+would also set aside "Mt. Apo, 12,300 ft" and "Mt. Apo, 1500-2000 m". Its cost: a
+part that is only a month word, such as "Mayo", is no place, and a month in a
+form the list does not hold is read as a name, so the part after it reads as it
+would after any name.
+
+The year rule is for ranges: a single elevation whose number could be a year
+reads as written ("1946 m") unless another rule above sets it aside. Set-aside
+text stays verbatim for the harness to read in context (G40). In the same
+coordinator reading, this reader's output is georeferencing evidence, the
+elevation fields settle from the harness's own reading of the label, and a
+set-aside range never counts as "no elevation stated", so G37's derivation does
+not fill it.
 
 **Unplaced text.** These are kept aside and never searched, since gazetteer place
 names carry no digits:
 - a part left with a number (a digit, or another numeral such as "½", "Ⅳ" or
   "㏠") or without a letter, such as a date ("IV-26") or a camp number;
-- a name that is only a linking word ("de", "of") or keys to nothing ("Prov.
-  Dept.");
+- a part of only a month ("Sept.", "IV"; **Months**, above);
+- a name that is only linking words ("de", "of") or a range's joining words
+  ("to", "a", "and", "y"), or that keys to nothing ("Prov. Dept.");
 - a heading phrase with no part to join.
 
 A part is kept aside whole, so "Mindanao, P.I. 3 Sept. '46" keeps only
@@ -189,8 +234,19 @@ variants.
 lines two ways, as S8 read them and as the S7 baseline readers wrote them. The
 readers' versions include their slips ("ESlope", "Elev.6400", "Yepocapa,4800
 ft.") and handwriting-qwen's silent correction of the label's own "Chimaltenago"
-to "Chimaltenango". Further tests cover every notation in any case and with or
-without its period, headings between features or beside none, offsets and their
-places, numbers read whole or set aside, with a table of date forms, one of
-range joins and one generated from both, line joins, variants, the
+to "Chimaltenango". Tables generated across every axis check that no elevation
+holds a date's number, no month or date fragment becomes a part, and no range is
+read by one of its numbers alone. The first takes 51 date forms, with the year as
+written or moved after ", ", "," or a line break (which puts a part of only a
+month before it), then a glued comma or dot, a space, a line break, or each range
+join unspaced, spaced, touching either number or beside a line break, then each
+tail and unit. It runs again in full-width, Devanagari and Arabic-Indic digits
+with the tails "95" and "9500" in metres, and every other line break
+`str.splitlines` knows reads in it as a newline does. The second joins two
+numbers by each of 28 joins, the listed ones and others such as "hasta", "~" and
+"up to": unspaced, spaced, touching either number or broken across lines, with no
+prefix or with "Elev.", "Alt." or "el.", in the four digit scripts. Further tests
+cover every notation in any case and with or without its period, headings between
+features or beside none, offsets and their places, numbers read whole or set
+aside, line joins, variants, months, the
 elevation forms, and the comparison rules.
