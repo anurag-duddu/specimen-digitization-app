@@ -48,6 +48,9 @@ LINKS = frozenset({"de", "del", "of"})
 FEATURES = {"mt": ("Mount", "mountain"), "mount": ("Mount", "mountain")}
 # A line ending in one of these words runs on into the next line.
 JOINERS = frozenset({*FEATURES, *UNITS_BEFORE, *LINKS})
+# Unicode categories fold drops, and those that make a character a number.
+MARKS = frozenset({"Mn", "Me", "Cf"})
+NUMERALS = frozenset({"Nd", "Nl", "No"})
 COUNTRIES = ((re.compile(r"P\.\s?I\.?", re.I), "Philippine Islands"),)
 # The museum's own names on its labels, never a place.
 INSTITUTIONS = re.compile(r"\b(?:CNHM|FMNH)\b\.?", re.I)
@@ -98,9 +101,15 @@ ELEVATION = re.compile(
     r"(?P<unit>ft\b\.?|feet\b|foot\b|['’′](?!\d)|m\b\.?|met(?:er|re)s?\b))?",
     re.I,
 )
-# Commas and semicolons separate parts; a comma with a digit on each side is
-# inside a number ("1,463", "0,5") and does not.
-SEPARATOR = re.compile(r";|(?<!\d),|,(?!\d)")
+# Commas and semicolons separate parts. A comma after a digit and before exactly
+# three digits ("1,463") or a one- or two-digit decimal ("0,5", "1463,5") is
+# inside a number; any other comma between digits separates, as in a reader's
+# "6-Sept-1946,6400'".
+SEPARATOR = re.compile(r";|(?<!\d),|,(?!\d{1,3}(?!\d))")
+# A number beside another digit group across a space ("4 800 ft.") has an unsure
+# grouping, so it is set aside rather than cut short.
+GROUP_BEFORE = re.compile(r"(?<!\d)\d{1,3}\s+$")
+GROUP_AFTER = re.compile(r"\s+\d{3}(?!\d)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,14 +187,15 @@ class _Piece:
 
 
 def fold(text: str) -> str:
-    """Casefold, strip diacritics and format characters (Unicode Cf, such as a
-    zero-width space), and turn anything else but letters and digits into single
-    spaces: "Chimaltenángo," folds to "chimaltenango"."""
+    """Casefold, strip diacritics, other marks and format characters (Unicode Mn,
+    Me and Cf, such as a variation selector or a zero-width space), and turn
+    anything else but letters and digits into single spaces: "Chimaltenángo,"
+    folds to "chimaltenango"."""
     decomposed = unicodedata.normalize("NFKD", text.casefold())
     kept = "".join(
         c if c.isalnum() else " "
         for c in decomposed
-        if not unicodedata.combining(c) and unicodedata.category(c) != "Cf"
+        if not unicodedata.combining(c) and unicodedata.category(c) not in MARKS
     )
     return " ".join(kept.split())
 
@@ -302,20 +312,26 @@ def variants(literals: Iterable[tuple[str, str]]) -> tuple[Variant, ...]:
 
 def _segments(text: str) -> Iterable[str]:
     """Lines joined where a word needs the next one (a feature notation, a unit
-    written before its name, or a linking word), then split into parts."""
-    lines: list[str] = []
+    written before its name, or a linking word) and where a line starts with a
+    linking word, then split into parts. Lines are kept as word lists, so the
+    joins stay linear in the text's length."""
+    lines: list[list[str]] = []
     carry: list[str] = []
     for line in text.splitlines():
-        carry += line.split()
-        if carry and fold(carry[-1]) in JOINERS:
+        words = line.split()
+        if not words:
             continue
-        if carry:
-            lines.append(" ".join(carry))
+        if not carry and lines and fold(words[0]) in LINKS:
+            carry = lines.pop()
+        carry += words
+        if fold(carry[-1]) in JOINERS:
+            continue
+        lines.append(carry)
         carry = []
     if carry:
-        lines.append(" ".join(carry))
-    for line in lines:
-        for segment in SEPARATOR.split(line):
+        lines.append(carry)
+    for words in lines:
+        for segment in SEPARATOR.split(" ".join(words)):
             if segment.strip():
                 yield " ".join(segment.split())
 
@@ -342,8 +358,23 @@ def _offset(segment: str) -> tuple[_Piece, list[Elevation]] | None:
 
 
 def _placeable(text: str) -> bool:
-    """A place's text has a letter and no digit: gazetteer names carry no digits."""
-    return any(c.isalpha() for c in text) and not any(c.isdigit() for c in text)
+    """A place's text has a letter and no numeral, of any script ("½" too):
+    gazetteer names carry no digits."""
+    return any(c.isalpha() for c in text) and not _numeral(text)
+
+
+def _numeral(text: str) -> bool:
+    return any(unicodedata.category(c) in NUMERALS for c in text)
+
+
+def _space_grouped(segment: str, match: re.Match[str]) -> bool:
+    """Whether an elevation's number sits beside another digit group across a
+    space, as in "4 800 ft." or "Elev. 4 800 ft."."""
+    last = match.end("high") if match["high"] else match.end("low")
+    before = GROUP_BEFORE.search(segment[: match.start("low")])
+    return bool(
+        (before and re.match(r"\d{3}(?!\d)", match["low"])) or GROUP_AFTER.match(segment[last:])
+    )
 
 
 def _elevations(segment: str) -> tuple[str, list[Elevation]]:
@@ -352,7 +383,7 @@ def _elevations(segment: str) -> tuple[str, list[Elevation]]:
     rest: list[str] = []
     last = 0
     for match in ELEVATION.finditer(segment):
-        if not (match["prefix"] or match["unit"]):
+        if not (match["prefix"] or match["unit"]) or _space_grouped(segment, match):
             continue
         unit = match["unit"]
         if unit:
@@ -387,7 +418,8 @@ def _piece(segment: str) -> _Piece:
 
 
 def _place(written: str, text: str) -> _Piece:
-    """A place piece: the unit word, before or after the name, leaves the name."""
+    """A place piece: the unit word, before or after the name, leaves the name. A
+    name left with no letter ("Depto. de ?") or only a linking word is set aside."""
     words = written.split()
     unit = None
     if len(words) > 1 and fold(words[0]) in UNIT_WORDS:
@@ -397,6 +429,8 @@ def _place(written: str, text: str) -> _Piece:
     elif len(words) > 1 and fold(words[-1]) in UNIT_WORDS:
         unit, words = UNIT_WORDS[fold(words[-1])], words[:-1]
     name = " ".join(words).strip(" ,;:")
+    if not any(c.isalpha() for c in name) or all(fold(word) in LINKS for word in name.split()):
+        return _Piece("unplaced", text)
     if name.endswith(".") and not _abbreviated(name.split()[-1]):
         name = name[:-1]
     return _Piece("place", text, name=name, unit=unit)
@@ -512,7 +546,7 @@ def _abbreviated(word: str) -> bool:
 
 def _full_word(word: str) -> bool:
     letters = sum(c.isalpha() for c in word)
-    if not letters or any(c.isdigit() for c in word) or re.search(r"\.\w", word):
+    if not letters or _numeral(word) or re.search(r"\.\w", word):
         return False
     if word.endswith(".") and letters <= 4:
         return False
