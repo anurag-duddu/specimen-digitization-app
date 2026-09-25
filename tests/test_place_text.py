@@ -398,6 +398,40 @@ def test_any_other_identifier_is_refused(identifier, source, response):
     )
 
 
+# How ids stand in the answers S8's readers receive (S8, 2026-09-24).
+TGN_RECONCILE = '{"result": [{"id": "tgn/1103742"}]}'
+TGN_SPARQL = '{"s": {"type": "uri", "value": "http://vocab.getty.edu/tgn/1103742"}}'
+TGN_PLACE = '{"p": {"value": "http://vocab.getty.edu/tgn/1103742-place"}}'
+NGA_SEARCH = '{"features": [{"attributes": {"ufi": -2408936}}]}'
+NGA_FEATURES = '{"features": [{"attributes": {"adm1": "GT-04"}}]}'
+WIKIDATA_CLAIM = '{"mainsnak": {"datavalue": {"value": {"id": "Q928"}}}}'
+
+
+@pytest.mark.parametrize(
+    ("identifier", "source", "response", "sent"),
+    [
+        ("1103742", "tgn", TGN_RECONCILE, "1103742"),  # A slash borders it,
+        ("1103742", "tgn", TGN_SPARQL, "1103742"),  # in a URI too,
+        ("1103742", "tgn", TGN_PLACE, "1103742"),  # and so does "-place".
+        ("110374", "tgn", TGN_RECONCILE, None),
+        ("103742", "tgn", TGN_RECONCILE, None),
+        ("-2408936", "nga", NGA_SEARCH, "-2408936"),  # The minus is the id's.
+        ("2408936", "nga", NGA_SEARCH, None),  # A positive UFI is another.
+        ("GT-04", "nga", NGA_FEATURES, "GT-04"),  # The hyphen joins the code.
+        ("04", "nga", NGA_FEATURES, None),
+        ("-04", "nga", NGA_FEATURES, None),
+        ("GT-0", "nga", NGA_FEATURES, None),
+        ("Q928", "wikidata", WIKIDATA_CLAIM, "Q928"),  # A statement's value.
+    ],
+)
+def test_an_identifier_stands_whole_in_the_answer_as_received(
+    identifier, source, response, sent
+):
+    assert place_request_identifier(identifier, source=source, response=response) == (
+        sent
+    )
+
+
 @pytest.mark.parametrize("number", ["0123456", "1946", "46"])
 def test_a_label_number_offered_as_a_tgn_identifier_is_refused(number):
     # PLAN 4.8 in #191: TGN's digit pattern matches any label number, so where

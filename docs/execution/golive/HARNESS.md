@@ -371,8 +371,13 @@ literal in S8's SPARQL.
 
   TGN's and GNS's digit patterns match any label number, so where the
   identifier came from is the guard: a catalogue number offered as a TGN id is
-  refused, since TGN's answer doesn't hold it. An identifier carries no label
-  text, so no cut applies, and anything else is refused.
+  refused, since TGN's answer doesn't hold it. A whole token has no letter,
+  digit or hyphen before it and no letter or digit after it, as S8's readers
+  receive the answers: a slash borders a TGN id ("tgn/1103742"), a leading minus
+  belongs to an NGA feature id, so "2408936" never passes on an answer that
+  holds only "-2408936", and a unit code's hyphen joins it ("GT-04"). An
+  identifier carries no label text, so no cut applies, and anything else is
+  refused.
 - **Shape.** What survives keeps its clauses, single-spaced and joined by their
   own separators, with a line break wherever the dropped text held one, as S8's
   parser reads them. `place_request_forms` returns the value as written after
