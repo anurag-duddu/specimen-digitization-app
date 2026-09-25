@@ -745,9 +745,8 @@ def test_each_field_shows_its_layer_and_a_derived_one_the_fields_it_came_from():
         "city": ("settled", []),
         "county": ("verbatim", []),
         "date_visited_from": ("settled", []),
+        "date_visited_to": ("derived", ["date_visited_from"]),
         "taxon": ("settled", []),
-        "elevation_to_ft": (None, []),
-        "elevation_to_m": ("derived", ["elevation_to_ft"]),
         "identified_by_irn": (None, []),
     }
     # G37: a label that leaves the county out has it filled from the settled city (S4's #144),
@@ -808,37 +807,41 @@ def test_each_field_shows_its_layer_and_a_derived_one_the_fields_it_came_from():
 
 def test_a_derived_field_names_its_derivation():
     s = synthetic_run()
-    conversion = s.run.evidence[-1]
-    metres = by_key(thread(s)["fields"], "field_key")["elevation_to_m"]
-    # G41: the method from its deciding evidence's locator, the rules in the order applied, and
+    left, _ = s.run.regions
+    written_date, both_ends = s.run.evidence[-2:]
+    to = by_key(thread(s)["fields"], "field_key")["date_visited_to"]
+    # G44: the method from its deciding evidence's locator, the rules in the order applied, and
     # its authority with its version, for the client to name the rule (S6's ask, agreed with S4).
-    assert metres["derivation"] == {
-        "method": "unit_conversion",
-        "rules": ["feet_to_metres"],
+    assert to["derivation"] == {
+        "method": "stated_date",
+        "rules": ["one_date_both_ends"],
         "authority": {"name": "apply_derivations", "version": "derivation-rules-v1"},
     }
-    assert (metres["layer"], metres["derived_from"], metres["parsed"], metres["verbatim"]) == (
+    # The From date the readings write, at the precision written, and no verbatim of its own.
+    assert (to["layer"], to["derived_from"], to["parsed"], to["precision"], to["verbatim"]) == (
         "derived",
-        ["elevation_to_ft"],
-        "1950.72",
+        ["date_visited_from"],
+        "1946-07",
+        "month",
         [],
     )
-    assert [(e["evidence_id"], e["relation"], e["locator"]) for e in metres["evidence"]] == [
-        (conversion.id, "decides", "derivation:unit_conversion")
+    assert [(e["evidence_id"], e["relation"], e["locator"]) for e in to["evidence"]] == [
+        (both_ends.id, "decides", "derivation:stated_date"),
+        (written_date.id, "supports", f"region:{left.id}"),
     ]
     # Before its candidate's row is written, the snapshot's derivation evidence names the method.
     unwritten = [
         w for w in written(s)
-        if not (w.operation == "AppendFieldCandidateV3" and w.variables["fieldKey"] == "elevation_to_m")
+        if not (w.operation == "AppendFieldCandidateV3" and w.variables["fieldKey"] == "date_visited_to")
     ]
-    early = by_key(thread(s, history=unwritten)["fields"], "field_key")["elevation_to_m"]
-    assert (early["evidence"], early["derivation"]) == ([], metres["derivation"])
+    early = by_key(thread(s, history=unwritten)["fields"], "field_key")["date_visited_to"]
+    assert (early["evidence"], early["derivation"]) == ([], to["derivation"])
 
 
 def test_a_field_that_is_not_derived_has_no_derivation():
     fields = thread(synthetic_run())["fields"]
-    assert [f["field_key"] for f in fields if f["derivation"] is not None] == ["elevation_to_m"]
-    assert by_key(fields, "field_key")["elevation_to_ft"]["derivation"] is None
+    assert [f["field_key"] for f in fields if f["derivation"] is not None] == ["date_visited_to"]
+    assert by_key(fields, "field_key")["date_visited_from"]["derivation"] is None
 
 
 def test_a_settled_value_shows_its_authoritys_identity():

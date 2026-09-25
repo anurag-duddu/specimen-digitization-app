@@ -636,20 +636,34 @@ def synthetic_run(
              {"place_ids": ["fixture-place"]}, place_right.id, region=right.id, reading=right_qwen.id),
     ]
     literals = [item.id for item in run.evidence]
-    # G41: the harness fills the metres from the feet the label states, by unit conversion; its
-    # stored derivation record decides the value (S4's #144 and #172).
-    conversion = Evidence(
+    # The From date as the left label's selected reading writes it, and G44's To date derived
+    # from it: one written collecting date is both ends, decided by the stored derivation record
+    # and supported by the From date's own evidence (S4's #144 and #172, derivations.py).
+    written_date = Evidence(
         id=ident(37),
+        kind="literal",
+        asset_id=asset.id,
+        region_id=left.id,
+        observation_ids=[left_qwen.id],
+        source="field_harness",
+        locator=f"region:{left.id}",
+        excerpt="VII-46",
+        raw_ref=put("2", b"literal VII-46"),
+        digest="2" * 64,
+        created_at=TIMES[5],
+    )
+    both_ends = Evidence(
+        id=ident(38),
         kind="derivation",
         asset_id=asset.id,
         source="apply_derivations",
-        locator="derivation:unit_conversion",
-        excerpt="feet_to_metres",
-        raw_ref=put("2", b"derivation record"),
+        locator="derivation:stated_date",
+        excerpt="one written collecting date is both ends (G44)",
+        raw_ref=put("3", b"derivation record"),
         digest="3" * 64,
         created_at=TIMES[5],
     )
-    run.evidence.append(conversion)
+    run.evidence += [written_date, both_ends]
     decided = {"input_source": "decided_transcript", "source_region_id": left.id}
     # G38's layers as S4's harness records them (HARNESS.md 13, #144): a lookup's success or the
     # one text on every label is settled, a lookup that did not settle keeps the verbatim, and a
@@ -694,8 +708,27 @@ def synthetic_run(
             parsed="1946-07",
             precision="month",
             century_rule="date-rules-v1:two_digit_year_century=1900",
+            evidence_ids=[written_date.id],
+            evidence_relations={written_date.id: "supports"},
             layer="settled",
             **decided,
+        ),
+        "date_visited_to": TracedField(
+            state=ValueState.SUPPORTED,
+            parsed="1946-07",
+            precision="month",
+            layer="derived",
+            derived_from=["date_visited_from"],
+            derivation_rules=["one_date_both_ends"],
+            authority_identity={
+                "source": "apply_derivations",
+                "source_record_id": None,
+                "credit": None,
+                "version": "derivation-rules-v1",
+            },
+            evidence_ids=[both_ends.id, written_date.id],
+            evidence_relations={both_ends.id: "decides", written_date.id: "supports"},
+            reason="derived:stated_date",
         ),
         # G19, G20: no pick, so each reader keeps its verbatim; GBIF confirmed the qwen reading.
         "taxon": TracedField(
@@ -721,28 +754,6 @@ def synthetic_run(
             evidence_ids=[gbif.id, col.id],
             evidence_relations={gbif.id: "decides", col.id: "contradicts"},
         ),
-        "elevation_to_ft": TracedField(
-            state=ValueState.SUPPORTED,
-            literal="6,400 ft",
-            parsed="6400",
-            **decided,
-        ),
-        "elevation_to_m": TracedField(
-            state=ValueState.SUPPORTED,
-            parsed="1950.72",
-            layer="derived",
-            derived_from=["elevation_to_ft"],
-            derivation_rules=["feet_to_metres"],
-            authority_identity={
-                "source": "apply_derivations",
-                "source_record_id": None,
-                "credit": None,
-                "version": "derivation-rules-v1",
-            },
-            evidence_ids=[conversion.id],
-            evidence_relations={conversion.id: "decides"},
-            reason="derived:unit_conversion",
-        ),
         "identified_by_irn": TracedField(),
     }
     run.field_groups = {
@@ -751,8 +762,6 @@ def synthetic_run(
         "county": "mandatory",
         "date_visited_from": "mandatory",
         "taxon": "mandatory",
-        "elevation_to_ft": "optional",
-        "elevation_to_m": "optional",
         "identified_by_irn": "optional",
     }
     run.findings = [
