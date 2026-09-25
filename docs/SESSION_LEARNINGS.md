@@ -12619,7 +12619,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 ### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 6c: elevations from GLO-30
 
 - Task: brief task 6, the derived elevation where a label states none: the lowest and highest ground within the uncertainty circle from the pinned Copernicus GLO-30 tiles (G37; D11; PLAN 4.8).
-- Branch and worktree: `golive/geo-elevation` in `.claude/worktrees/geo-build`, stacked on #193. PR #196.
+- Branch and worktree: `golive/geo-elevation` in `.claude/worktrees/geo-build`, stacked on #193, as PR #196. Re-cut on 2026-09-25 by the coordinator's option (b) as `golive/geo-elevation-2`, stacked on #213: PR #214, replacing #196, with the same red and green commits cherry-picked with `-x`.
 - Outcome: `georef_elevation.py` reads a pinned tile's GeoTIFF structure and returns the elevation range over a circle. It decodes only the internal tiles and rows the circle touches, in pure Python.
 - Validation: 13 tests on GeoTIFFs written in the tiles' layout; the three pinned tiles read locally at the pilot points; `uv run pytest -q` (3,278 passed, 81 skipped: `tests/` and `scripts/` together); pre-commit.
 - Durable learnings:
