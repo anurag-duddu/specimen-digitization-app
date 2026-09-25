@@ -31,6 +31,7 @@ from specimen_digitization.application.field_validators import (
     date_parser,
 )
 from specimen_digitization.application.geography_tool import geocode_locality
+from specimen_digitization.application.harness_knowledge import insects
 from specimen_digitization.application.harness_ledger import ToolLedger, Tools
 from specimen_digitization.application.harness_tools import (
     Check,
@@ -41,7 +42,6 @@ from specimen_digitization.application.harness_tools import (
     TaxonCandidate,
     ToolResult,
 )
-from specimen_digitization.application.harness_knowledge import insects
 from specimen_digitization.application.place_text import fold, place_request_text
 from specimen_digitization.application.reliability import AdapterFailure
 from specimen_digitization.application.taxonomy_tool import Verification

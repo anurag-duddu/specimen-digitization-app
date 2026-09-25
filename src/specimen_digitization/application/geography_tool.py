@@ -39,7 +39,7 @@ from .harness_tools import (
     ToolResult,
     with_retries,
 )
-from .place_text import fold, place_request_text
+from .place_text import PLACE_FIELDS, fold, place_request_text
 from .reliability import retry_after
 from .storage import BlobStore
 
@@ -166,28 +166,33 @@ def reported_literals(query: GeographyQuery) -> dict[str, list[str]]:
 def geocoding_address(query: GeographyQuery) -> tuple[str, str | None]:
     """The address PLAN 4.8 lets leave, or the fixed code refusing the query.
     Every literal, the unassigned locality text's too, must be character for
-    character in a reading. The query's literals are the filter's sources and
-    the readings its context (4.8 in #191). Google's row of 4.8 sends a literal
-    with its reading's place fields, so the address is the place-field literals
-    from the most to the least precise field, each as written after the cuts."""
+    character in a reading. The query's place-field literals are the filter's
+    sources and the readings its context (4.8 in #191); the unassigned text is
+    context only, never sent, and a non-place field's literal refuses the query.
+    Google's row of 4.8 sends a literal with its reading's place fields, so the
+    address is the place-field literals from the most to the least precise
+    field, each as written after the cuts."""
     knowledge = KNOWLEDGE.get(query.knowledge_id or "")
     if knowledge is None:
         return "", "place_knowledge_unavailable"
-    literals = [item.literal for item in query.literals]
     sent: dict[str, list[str]] = {}
     for item in query.literals:
         if not any(item.literal in reading for reading in query.reading_texts):
             return "", "place_text_refused"
+        if item.field_key is None:
+            continue  # Unassigned text: context for the cuts, never sent.
+        if item.field_key not in PLACE_FIELDS:
+            return "", "place_text_refused"
         text = place_request_text(
             item.literal,
-            sources=literals,
+            sources=query.sources,
             non_place_literals=query.non_place_literals,
             knowledge=knowledge,
             readings=query.reading_texts,
         )
         if text is None:
             return "", "place_text_refused"
-        if text and item.field_key is not None:
+        if text:
             sent.setdefault(item.field_key, []).append(text)
     return ", ".join(text for key in ADDRESS_ORDER for text in sent.get(key, [])), None
 

@@ -12033,7 +12033,11 @@ because the hooks runner hands a native asset hook only `PATH`.
     - sources became whole-token slices of the place-field literals and unassigned text, with the readings read only as context;
     - every cut, a non-place literal's included, works by character span on every text the value occurs in.
     The harness passes its own literals as the sources. So an agent's literal cut short is cut in its reading, not refused, and a copy cut short never blocks a run.
+  - (5) "Every harness literal is found in the reading" is not the same as "every harness literal is place text". The steward's review of #191 found two gaps.
+    - Mid-run, before the agent names the collector, the unassigned text can hold him. So the harness's sources became its place-field literals only, with the unassigned text kept as context.
+    - A caller could skip the readings, or pass a label number as a tier-1 id. So `readings` became required, and an identifier must stand in the source's own answer and appear in no reading.
+    - Full forms are also re-cut by character, not only by word.
 - Remaining follow-ups:
-  - S8 imports `place_request_forms` and `place_request_identifier` for its tiers.
+  - S8 imports `place_request_forms` and `place_request_identifier` for its tiers, with `query.sources` as its record sources.
   - S3's profile switch names v3 and lands after this PR (coordinator ruling).
   - At this PR's turn, 4.8 on main should read as #191 states it.
