@@ -12233,3 +12233,22 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. A source check that accepts whatever a caller found in the text is no source check, and the cuts become the only defence. Name the fields a caller may draw from, and state in the limit what the cuts alone can't catch.
   3. A coordinator correction written after an owner's quote reads as following from the owner's words. Label it as a reading, with its date and source, even when it only corrects the coordinator's own earlier line.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — S8: #94's review follow-ups, and a correction to its entry
+
+- Task: the steward's round-3 review of #94 (merged as `e6bcfa7`; comment 5826083660, Decision items 1-5), done in a small docs pull request on `main`.
+- Branch/worktree: `golive/geo-plan-followups` from `main` at `e6bcfa7`; `.claude/worktrees/busy-thompson-19cc3b`.
+- Outcome, in `docs/product-requirements/GEOREFERENCING.md`:
+  - the unassigned literal is PLAN 4.8's unassigned locality text, the part of the lines holding the place fields that no reading assigns to any field;
+  - the illustrative `valid_on` returns "not valid" for a unit that had ended by the collection date, with the gap as a `label_lag` finding, as 3.2 and #154's `use_on` do, so a 1980 "Davao Prov." label no longer matches Q15095071;
+  - the Philippine boundary files come via geoBoundaries; HDX is CONRED's channel only;
+  - G30's reservation mechanism, D15 for this tool and D5's hold are labelled as the coordinator's, and the Apo reading carries its date and its hedge;
+  - smaller wording and date fixes.
+- Correction to the entry "S8 retrospective georeferencing research: the plan, the pilot localities, a read-only probe" (the log is append-only): its remaining follow-ups cite "(G30)" for each Google call reserving its cost. The reservation mechanism is the coordinator's ruling (PLAN 2.1's G30 row and section 4.3), so read it as "(G30; the coordinator's ruling on the mechanism, PLAN 4.3)".
+- Commits/PRs: one docs commit; no red and green commits, since no product behaviour changes.
+- Validation actually run: pre-commit on the changed files; every `file:line` citation re-checked by script at `e6bcfa7`, identical to `ad84482`.
+- Durable learnings:
+  1. An illustrative function's state names become its contract. `valid_on` returned "label_lag" as a fourth validity state, and `decide` dropped only "not valid", so a name of any age passed the anachronism filter. A finding goes beside the state, never in place of it.
+  2. A licence cell holds two facts: the licence and the channel. The Philippine files' metadata cites HDX as its licence source, but the files come from geoBoundaries, so copying "via HDX" named the wrong channel.
+- Failed approaches: none.
+- Remaining follow-ups: none from the review. The steward checks #183's identifier field rule at #183's turn. The 259 ids S8's readers send back already come from the fields it reads.
