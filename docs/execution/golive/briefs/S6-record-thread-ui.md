@@ -35,17 +35,39 @@ The live web app shows each specimen's whole processing thread (PLAN section
 
 **T2. The thread view.** Build against the thread API contract from the data
 workstream (S5), with a fixture until the endpoint lands: regions with the
-readings grouped under each region; each reader's identity (route, model,
+readings grouped under each region (several per specimen: five pilot slides
+carry two labels); each reader's identity (route, model,
 provider, prompt version); the disagreement score labelled uncalibrated; the
 first pass's decision and what each reader handed to the harness; the harness's
-lookups as a timeline with their typed outcomes; fields grouped mandatory and
-optional with state and evidence; the queue decision with its reasons; and
+lookups as a timeline with their typed outcomes (a geography lookup shows the
+place ID and its outcome only, G26); fields grouped mandatory and
+optional with state and evidence, a place or taxon field showing its verbatim
+text and its settled final value, each labelled, with each reader's reading
+attributed when the first pass picked none (G27, G28), and a date the harness
+could not settle showing its candidate readings (G29); the queue decision with its reasons,
+including a failed automatic coverage check (G15); and
 "Open trace", a link built from the Logfire project configuration and the trace
 id. Use `specimen_ui` components; there is no timeline component yet, so add one
 to the package with its own tests.
 
-**T3. Queue and processing.** Needs human review (filterable by reason),
-deferred, cleared, processing and blocked; a Process action
+**G38 (owner decision, 2026-09-24; coordinator reading).** The thread marks
+each value's layer, verbatim,
+settled or derived, with a derived value's evidence one step away. In review,
+after a reviewer fills a field, "Fill the rest" derives the remaining fields
+through S5's route; the filled values show as derived and stay editable before
+approval, and the result is announced once. The action enqueues a job and
+shows its progress; the server refuses it for a Sensitive record (PLAN section
+4.8). Coordinator rulings, 2026-09-24: the new run states are picked in the
+filter sheet, with no new status chips; the trace link opens through
+`url_launcher`, flutter.dev's first-party plugin (#122).
+
+**T3. Queue and processing.** Needs human review (filterable by reason; until
+S5's T5, only the codes stored without a suffix, coordinator ruling),
+deferred, cleared, processing and blocked; a record declared Sensitive shows
+that it is not processed, because automated reading never runs on sensitive
+records, and the upload screen says so before submission, with the Sensitive
+default left preselected (`design/03` §1.7, `design/01` H2.6, in `design/02`
+§1.8's neutral wording; PLAN section 2.2); a Process action
 (`POST /specimens/{id}/process`); intake that starts processing and shows live
 status; upload rows linked to the specimen they created (`api.py` 1283 already
 returns `specimen_id`).
@@ -68,6 +90,8 @@ relax the gate.
   copy `firebase_options.ci.dart` to `lib/firebase_options.dart` for builds and
   remove it afterwards; never commit it.
 - Hot reload through the Dart MCP server when an app instance is running.
+- Where the specification or the design documents are silent or contradictory,
+  stop and ask the coordinator; do not decide (G5).
 
 ## Done
 
