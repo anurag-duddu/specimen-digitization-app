@@ -19,10 +19,14 @@ BUCKET = "specimen-digitization.firebasestorage.app"
 PREFIX = "microscopic-slides/"
 # USD per million tokens, input then output (docs/execution/LIVE_PILOT_COST.md 42-47).
 PRICES = {"handwriting-qwen": (0.20, 0.70), "handwriting-muse": (0.30, 1.20)}
-TOKEN_VARIABLES = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN", "LOGFIRE_TOKEN")
+# Token values, and instance addresses that PLAN 7.7 keeps out of shared logs and issues: the app pins
+# the SAM 3 endpoint into a run's dependencies, so it reaches snapshot.json.
+TOKEN_VARIABLES = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN", "LOGFIRE_TOKEN",
+                   "SPECIMEN_SAM3_ENDPOINT", "SPECIMEN_SAM3_LAB_TOKEN")
 SHAPES = re.compile(
     r"hf_[A-Za-z0-9]{16,}|(?<=Bearer )[A-Za-z0-9._~+/=-]+|ya29\.[A-Za-z0-9._-]+"
     r"|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
+    r"|https?://[A-Za-z0-9.-]+\.run\.app(?:/[A-Za-z0-9._~/%-]*)?"  # stops at quotes, so JSON stays valid
 )
 TEXT_SUFFIXES = {".json", ".md", ".txt", ".log"}
 # Until production's reserve-then-settle ledger lands, every paid attempt whose usage the run did not
