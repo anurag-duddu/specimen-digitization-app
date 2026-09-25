@@ -640,3 +640,59 @@ millimetre changes no worked example at the precision the Calculator shows.
   compass point.
 - The sector's circle: it encloses X's center and the whole arc, for ±45° and
   ±22.5°.
+
+## 10. Geometry: a unit's extent, and a circle inside it
+
+Two derivations read a unit's boundary. County and city are derived only when
+the whole uncertainty circle lies inside one unit (the coordinator's reading of
+G37), and a location found only as its county sits at the county's precision
+(the coordinator's reading of G38). `georef_geometry.py` answers both. It is
+pure: the caller passes a boundary it has read, and distances use the
+ellipsoid's meters per degree (section 9).
+
+**Boundaries.** A boundary is a GeoJSON Polygon or MultiPolygon in longitude and
+latitude, as geoBoundaries publishes it: each polygon is an outer ring and its
+holes. A ring needs three distinct points. A boundary spanning more than 180
+degrees of longitude, which may cross the antimeridian, is refused.
+
+**Inside.** A point is inside when a ray from it crosses the boundary's rings an
+odd number of times, so a point in a hole is outside.
+
+**Clearance.** The distance from a point to the boundary's nearest edge, in
+meters, on the meters per degree at the point's latitude.
+
+**A circle inside a unit (G37).** The whole circle lies inside when its center is
+inside and the clearance is at least its radius plus a margin. The margin is the
+simplification error of the file the boundary came from. The coordinator ruled
+that the Philippine units come from geoBoundaries' simplified files, with
+containment widened by that error, and that a circle which doesn't clear its
+unit by it derives nothing (#191's 4.8 row). geoBoundaries' build simplifies
+with mapshaper's Douglas-Peucker at 100 m and snaps at 0.00001 degree, about
+1.1 m (wmgeolab/geoBoundaryBot, the builder's simplify step), so the margin
+for a simplified file is 101.2 m. The dataset manifest (section 3) will carry
+each file's margin when the files are pinned.
+
+**A unit's extent (G38).** The corrected center and the geographic radial (the
+Quick Reference Guide, 1.6.2 and 1.6.3):
+- The center of the smallest circle around the unit's outer rings, found on
+  their convex hull in the meters per degree at the unit's middle latitude. The
+  radial is that circle's radius.
+- When that center falls outside the unit, as in a hole or a notch, the Guide
+  puts the center on the unit's boundary instead. The center is then the
+  boundary point whose farthest hull vertex is nearest, and the radial is that
+  distance. Along each edge the farthest-vertex distance is convex, so each edge
+  is searched to its minimum. An edge is skipped when even its nearest possible
+  point is farther than the best found: the farthest hull vertex from the edge
+  itself bounds it.
+
+The flat projection is exact at the latitude it is taken at. East-west
+distances away from it are off by the ratio of the cosines, about 0.2% across a
+unit two degrees tall near the pilot's latitudes.
+
+**Tests.** `tests/test_georef_geometry.py` uses synthetic boundaries:
+- a square with a hole, and two islands, for inside, clearance and the margin;
+- a plain square, whose circle is centered inside;
+- the framed square, whose center moves onto the hole's edge;
+- a U, whose center moves onto the notch's floor. No vertex of the U reaches its
+  corners with a smaller radius.
+- boundaries that cannot be read.
