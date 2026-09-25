@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta, timezone
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -57,8 +58,13 @@ def fetch(subject):
     return IMAGE, {"bucket": "b", "object_name": f"p/{subject}.jpeg", "generation": "1"}
 
 
-def run(tmp_path, *args, lane=None, env=ENV, load=1.0, clock=START):
+def run(tmp_path, *args, lane=None, env=ENV, load=1.0, clock=START, values="default"):
     lanes = []
+    if values == "default":
+        values = tmp_path / "private" / "redact-values"
+        values.parent.mkdir(parents=True, exist_ok=True)
+        values.write_text("adminuidfixture\n")
+    env = dict(env) if values is None else dict(env, LAB_REDACT_VALUES_FILE=str(values))
 
     def lane_factory(state, options, environment):
         lanes.append(lane or FakeLane())
@@ -232,19 +238,82 @@ def test_the_redactor_covers_plan_7_7_identities_ids_and_key_shapes(tmp_path):
 
 
 class OccurrenceLane(FakeLane):
+    """GBIF reads leave through bounded_http in the parent (lookup.py); injected clients through httpx."""
+
     def process(self, specimen_id, deadline):
         import httpx
+        from specimen_digitization.application import http_effect
 
+        http_effect.bounded_http("https://API.gbif.org/v1/%6Fccurrence/search", timeout_seconds=1,
+                                 max_bytes=1, params={"recordedBy": "Hoogstraal"})
+        http_effect.bounded_http("https://api.gbif.org/v2/species/match", timeout_seconds=1, max_bytes=1)
         client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={})))
-        client.get("https://api.gbif.org/v1/occurrence/search", params={"recordedBy": "Hoogstraal"})
-        client.get("https://api.gbif.org/v2/species/match", params={"scientificName": "Epipsocus"})
+        client.get("https://api.gbif.org/v1/occurrence/search", params={"catalogNumber": "1"})
         return super().process(specimen_id, deadline)
 
 
-def test_the_runner_counts_in_process_gbif_occurrence_requests(tmp_path):
-    # D4 is held, so its occurrence check sends nothing; a species match (G23) is allowed.
+def fake_bounded_http(url, **kwargs):  # sends nothing: no child process, no network
+    return {"status_code": 200, "body": b"{}", "retry_after": "", "truncated": False}
+
+
+def test_the_runner_counts_gbif_occurrence_requests_in_the_parent(tmp_path, monkeypatch):
+    # D4 is held; the count is taken at bounded_http before sending, and on any injected httpx client.
+    from specimen_digitization.application import http_effect
+
+    monkeypatch.setattr(http_effect, "bounded_http", fake_bounded_http)
     code, _ = run(tmp_path, lane=OccurrenceLane())
     summary = json.loads((only_run(tmp_path) / "run.json").read_text())
-    assert summary["gbif_occurrence_requests"] == 1 and code == 1
-    d4 = next(s for s in summary["stages"] if s["stage"] == "d4")
-    assert d4["status"] == "failed"
+    assert summary["gbif_occurrence_requests"] == 2 and code == 1
+    assert next(s for s in summary["stages"] if s["stage"] == "7")["status"] == "failed"
+    assert http_effect.bounded_http is fake_bounded_http  # restored after the run
+
+
+def test_a_missing_hook_reads_not_checked_and_receipt_blobs_are_scanned(tmp_path, monkeypatch):
+    from specimen_digitization.application import http_effect
+
+    monkeypatch.delattr(http_effect, "bounded_http")
+    run(tmp_path / "a")
+    summary = json.loads((only_run(tmp_path / "a") / "run.json").read_text())
+    assert summary["gbif_occurrence_requests"] is None
+    assert next(s for s in summary["stages"] if s["stage"] == "7")["status"] == "not checked"
+
+    class ReceiptLane(FakeLane):
+        def collect(self, specimen_id):
+            evidence = super().collect(specimen_id)
+            evidence["artifacts"]["receipts/c1.json"] = b'{"url": "https://api.gbif.org/v1/occurrence/search"}'
+            return evidence
+
+    monkeypatch.setattr(http_effect, "bounded_http", fake_bounded_http, raising=False)
+    run(tmp_path / "b", lane=ReceiptLane())
+    summary = json.loads((only_run(tmp_path / "b") / "run.json").read_text())
+    assert next(s for s in summary["stages"] if s["stage"] == "7")["status"] == "failed"
+
+
+def test_the_values_file_is_required_private_and_never_in_the_repository(tmp_path):
+    empty = tmp_path / "empty"
+    empty.write_text("")
+    inside = Path(run_specimen.__file__).resolve().parents[2] / "scripts" / "lab" / "never-created"
+    for values in (None, empty, tmp_path / "missing", inside):
+        code, lanes = run(tmp_path, values=values)
+        assert code == 3 and lanes == [], values
+    assert not (tmp_path / "runs" / SUBJECT).exists()  # nothing written
+    assert not inside.exists()
+
+
+def test_fields_that_name_a_person_are_redacted_by_field(tmp_path):
+    class PersonLane(FakeLane):
+        def collect(self, specimen_id):
+            evidence = super().collect(specimen_id)
+            snap = evidence["snapshot"]
+            snap["asset"]["uploader"] = "Firstname Lastname"
+            snap["audit"] = [{"id": "a1", "actor": "Firstname Lastname", "action": "upload", "reason": "",
+                              "before": {}, "after": {}, "created_at": "2026-09-25T00:00:00+00:00"}]
+            snap["run"]["transcripts"][0]["actor"] = "Firstname Lastname"
+            evidence["rows"] = {"audit_event": [{"id": "e1", "actor_uid": "Firstname Lastname"}]}
+            return evidence
+
+    run(tmp_path, lane=PersonLane())
+    path = only_run(tmp_path)
+    for name in ("snapshot.json", "rows/audit_event.json"):
+        assert "Firstname Lastname" not in (path / name).read_text(), name
+    assert json.loads((path / "snapshot.json").read_text())["asset"]["uploader"] == "[redacted]"
