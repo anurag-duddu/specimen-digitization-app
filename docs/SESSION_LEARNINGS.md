@@ -11888,7 +11888,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Runs of `subject_105526321`:
   - `20260923T211535Z`: stages 1, 3, 5 and 9 passed; 2 substituted; 4, 6, 7 and the app trace not built; 8 blocked at `parse` with `external_outcome_unknown`. Filed #79 (lane: synthetic-mode uploads get the synthetic profile) and #80 (harness: a deterministic error recorded as an unknown outcome).
   - `20260925T094409Z`, on main with #86: #80's fix verified (`evidence_integrity_failure`, lease released, retry and reprocess offered).
-  - Lab spend USD 0.027 as recorded. Under the later per-attempt floor the two real runs would come to USD 0.085, not 0.024, which puts the lab's spend at about USD 0.087. Their run records were left as written.
+  - Lab spend: USD 0.027 as the runs recorded it. The coordinator confirmed the later per-attempt bound on 2026-09-25, and a dated adjustment entry (`runs/_adjustments/20260925T155129Z/run.json`) re-holds the two real runs at USD 0.085 instead of 0.024. The tally now reads USD 0.087; the runs' own records are left as written.
 - Expectations: `LAB.md` records the expected outcome for the ten (G42 and the owner's G35 to G45): review for all ten, with the right reasons. The owner's words and the coordinator's readings are kept apart. Per-slide tables are outside the repository (`field-coverage.md`, `expected-outcomes.md`).
 - Validation actually run:
   - `uv run pytest scripts/lab -q`: 39 passed, 1 skipped on #84 after the fourth review's follow-ups (34 passed on #83); after #83's round-1 review, 48 passed on #83 (`09ca644`) and 53 passed, 1 skipped on #84; after its round-2 follow-ups, 62 passed, 1 skipped on #84;

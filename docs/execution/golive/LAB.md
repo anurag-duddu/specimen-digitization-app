@@ -186,6 +186,8 @@ and the expected outcome per slide is in
               once with --report-only
   state/  the app's blobs and local database for this run, unredacted: never
           shared or attached anywhere
+~/specimen-golive/runs/_adjustments/<UTC timestamp>/run.json
+  a dated adjustment to the lab's tally (see Costs)
 ~/specimen-golive/reports/<subject>.md
 ```
 
@@ -211,7 +213,16 @@ largest of:
   (`total_tokens_limit=16000`).
 
 Both limits are in `UsageLimits` at `production.py:738`, `harness.py:92` and
-`first_pass.py:239`. That reading is the lab's own.
+`first_pass.py:239`. That reading is the lab's, confirmed by the coordinator on
+2026-09-25 (coordinator.md) as at least as strict as the mechanism the lab's
+share runs under.
+
+The lab's tally is the sum of every `run.json` under `~/specimen-golive/runs/`.
+When the bound changes, earlier runs keep their records as written, and a dated
+adjustment entry re-holds their unsettled attempts (coordinator, 2026-09-25).
+The first, `runs/_adjustments/20260925T155129Z/run.json`, adds USD 0.0608: it
+re-holds the two real runs of `subject_105526321` at USD 0.085, so the tally
+reads USD 0.087.
 
 The runner prices a run before it scores the stages. By the lab's own rule,
 a run that cannot be priced once its lane has started is held whole at
