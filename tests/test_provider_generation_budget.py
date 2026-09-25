@@ -166,7 +166,7 @@ def bounded(*responses):
 )
 def test_an_answer_cut_off_at_its_output_cap_is_a_cap_hit(response, cause, requests):
     # HARNESS.md 3, agreed with S3 for #153: not a malformed answer but a cap hit,
-    # which every caller routes as it routes the run's own limits (G30).
+    # which every caller routes as it routes the run's own limits.
     with pytest.raises(UsageLimitExceeded) as stop:
         bounded(response, response)
 

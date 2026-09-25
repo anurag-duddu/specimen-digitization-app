@@ -11839,15 +11839,15 @@ because the hooks runner hands a native asset hook only `PATH`.
 ### 2026-09-25 — Go-live S4: #98's review fixes before it makes the first pass live
 
 - Task: the steward's review of #97 (12:29Z) named four fixes #98 must carry before its turn: G19 in the request, the crop's digest, the cap-hit split, and the call kept out of the readings. The steward then pulled in input binding and a null-pick test. The coordinator gave its reading of "material" and G19 at 12:31Z.
-- Branch/worktree: `golive/harness-first-pass-wiring`, in `.claude/worktrees/cool-haslett-aa79b5`.
+- Branch/worktree: `golive/harness-first-pass-wiring`, in `.claude/worktrees/cool-haslett-aa79b5`. Pull request #98. Commits: 3c6c2697 (spec and failing tests), 92994bd3 (implementation), c687d147 (this entry), and 6da5a55c (the merge of main d8291a0 at #98's first turn).
 - Outcome:
-  - The code decides materiality: spans equal once case-folded are capitalization alone. A pick stands only when every material difference supports it; otherwise the first pass returns no reading (G19). The request states the rule, and the answer no longer carries a `material` flag.
+  - The code decides materiality: spans equal once case-folded are capitalization alone. Round 2 made the comparison lower-cased (below). A pick stands only when every material difference supports it; otherwise the first pass returns no reading (G19). The request states the rule, and the answer no longer carries a `material` flag.
   - The call's `input_sha256` is the crop's digest. `Observation.request_sha256` holds the request's (agreed with S5).
   - `first_pass_direct` refuses readings that aren't the region's own, once each, in route order. The workflow refuses a decision whose verdicts, `material` flags or pick break its contract.
   - `run_agent_bounded` raises Pydantic AI's `UsageLimitExceeded` for an answer cut off at its output cap (agreed with S3). Every `UsageLimitExceeded` it raises carries `run_messages` and `run_usage`.
   - #159's first-pass cap rule now lands here: a first pass stopped by a cap selects no reading.
   - Spec: `docs/execution/golive/HARNESS.md` sections 3 and 4.
-- Validation actually run: 23 new or changed tests failed before the implementation, each for its intended reason; after it the three suites give 43 passed. Gates, one at a time: `pre-commit run --all-files` passed; `pytest tests` 1534 passed, 31 skipped; `pytest scripts` 1547 passed, 50 skipped; `check_ui_strings` 0 violations.
+- Validation actually run: 23 new or changed tests failed before the implementation, each for its intended reason; after it the three suites give 43 passed. Gates, one at a time, on 92994bd3: `pre-commit run --all-files` passed; `pytest tests` 1534 passed, 31 skipped; `pytest scripts` 1547 passed, 50 skipped; `check_ui_strings` 0 violations.
 - Durable learnings:
   1. Pydantic AI 2.40 gives each `capture_run_messages` context only the runs it is the innermost context for. A caller's capture around `run_agent_bounded` sees nothing once that function captures for itself, so the function hands its messages to the caller on the exception instead.
   2. Pydantic AI counts a response's usage, then checks the token total, then appends the response. A run stopped by its total keeps that response's usage when the usage is counted in place, but not the response.
@@ -11860,7 +11860,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 ### 2026-09-25 — Go-live S4: #98's round-2 review (G19's cap-hit citation and the finalize checks)
 
 - Task: the steward's round-1 review of #98 at 6da5a55 (comment 5833705040). It upheld one blocker: "G30 makes a cap hit the raw fallback" credited G30, which sets the allowance and says nothing about a fallback. It also named six should-fixes and some nits.
-- Branch/worktree: `golive/harness-first-pass-wiring`, in `.claude/worktrees/cool-haslett-aa79b5`.
+- Branch/worktree: `golive/harness-first-pass-wiring`, in `.claude/worktrees/cool-haslett-aa79b5`. Pull request #98. Commits: e05c56f5 (spec and failing tests), 9dce6350 (implementation), 058dea1d (this entry), and a later commit that checks this entry's sentences against the code.
 - Outcome:
   - A first pass stopped by its caps selects no reading. The citation is now G19 and the owner's words in PLAN section 1 ("can rely on raw ... if LLM decided transcript output fails").
   - Materiality compares spans lower-cased, not case-folded. The coordinator's ruling at 14:05Z reads 12:31Z's "case-folded" as lower-cased, so "Straße" against "Strasse" stays material.
@@ -11876,7 +11876,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - New tests pin the blocks, the registered first-pass route pin and the model-child round trip.
 - Validation actually run: 9 new or changed tests failed before the implementation, each for its intended reason. The blocks, the route pin, the child round trip and the reviewer-changed transcript pass before and after. The first finalize check blocked `test_http_transcription_abstention_preserves_readings_and_blocks_clear` until it skipped reviewer-changed transcripts. Gates on 9dce6350, one at a time: `pre-commit run --all-files` passed; `pytest tests` 1557 passed, 31 skipped; `pytest scripts` 1562 passed, 50 skipped; `check_ui_strings` 0 violations.
 - Durable learnings:
-  1. A reviewer's transcription decision (`api.py`) rewrites `text`, `resolved`, `value_state` and `actor`, but leaves `decision_kind` and `selected_observation_id`. A check on a machine pick must skip transcripts with an `actor`, or finalize blocks every reviewed record.
+  1. A reviewer's transcription decision (`api.py`) rewrites `text`, `resolved`, `value_state` and `actor`, but leaves `decision_kind` and `selected_observation_id`. A check on a machine pick must skip transcripts with an `actor`, or finalize blocks a reviewed record whose text differs from the machine's pick, as `test_http_transcription_abstention_preserves_readings_and_blocks_clear` showed.
   2. `INITIAL_HUGGINGFACE_ROUTES` is a read-only `mappingproxy`: a test patches the name in `production`, not an item.
   3. Credit each rule to the decision that states it. A rule that follows from G19 must cite G19, even when G30 sets the cap that triggers it.
 - Remaining follow-ups (the S4 follow-up PR after the chain, which the steward tracks with #86's items):
