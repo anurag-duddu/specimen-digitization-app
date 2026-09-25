@@ -286,6 +286,9 @@ class Workflow:
         previous_tokens = sum(
             o.input_tokens + o.output_tokens for o in run.observations
         )
+        # Set once the step's model or lookup call has returned: a later failure
+        # is deterministic and its outcome known (issue #80, HARNESS.md 2).
+        effect_settled = False
         try:
             if step == "pin_dependencies":
                 run.dependencies = (
@@ -534,10 +537,14 @@ class Workflow:
                 phase_result = refresh_review_evidence(specimen, self.blobs)
                 finalize(run)
                 apply_phase_gate(run, phase_result)
-            if step.startswith("authority:"):
-                execute_phase(specimen, "lookup", self.blobs)
-            if step in {"parse", "plan", "lookup", "resolve", "normalize", "validate"}:
-                execute_phase(specimen, step, self.blobs)
+            effect_settled = True
+            try:
+                if step.startswith("authority:"):
+                    execute_phase(specimen, "lookup", self.blobs)
+                if step in {"parse", "plan", "lookup", "resolve", "normalize", "validate"}:
+                    execute_phase(specimen, step, self.blobs)
+            except EvidenceIntegrityError as exc:
+                raise OperationalBlock(str(exc)) from exc
             if run.stage != "processing_blocked":
                 run.blocker = None
             run.lease_until = None
@@ -559,7 +566,9 @@ class Workflow:
             }:
                 self.schedule_retry(run, step, exc.retry_after_seconds)
         except OperationalBlock as exc:
-            circuit_failure = str(exc).removeprefix("taxonomy_")
+            circuit_failure = (
+                None if effect_settled else str(exc).removeprefix("taxonomy_")
+            )
             run.blocker = str(exc)
             run.stage = "processing_blocked"
             run.disposition = None
@@ -569,12 +578,19 @@ class Workflow:
                 "taxonomy_provider_error",
             }:
                 self.schedule_retry(run, step, run.lookups[-1].retry_after_seconds)
-        except Exception:
-            circuit_failure = "provider_error"
+        except Exception as exc:
+            outcome_unknown = external and not effect_settled
+            circuit_failure = "provider_error" if outcome_unknown else None
             # Do not expose raw exceptions containing provider headers or source text.
+            logfire.warn(
+                "Specimen step failed",
+                step=step,
+                exception_class=type(exc).__name__,
+                outcome_unknown=outcome_unknown,
+            )
             run.blocker = (
                 "external_outcome_unknown"
-                if external
+                if outcome_unknown
                 else "stage_failed_inspect_private_worker_logs"
             )
             run.stage = "processing_blocked"
