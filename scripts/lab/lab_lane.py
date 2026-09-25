@@ -8,6 +8,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import shutil
 import signal
@@ -158,11 +159,23 @@ class AppLane:
             for r in run.regions:
                 if r.crop_ref:
                     artifacts.setdefault(f"crops/{r.id}.png", self.blobs.get(r.crop_ref))
+            artifacts.update(receipt_blobs(run, self.blobs))
             if run.segmentation.get("blob_ref"):
                 artifacts[f"segmentation/{run.id}.json"] = self.blobs.get(run.segmentation["blob_ref"])
         return {"snapshot": specimen.model_dump(mode="json"), "workspace": self.workspace(specimen_id),
                 "artifacts": artifacts, "rows": self.emulator.dump() if self.emulator else {},
                 "actions": []}
+
+
+def receipt_blobs(run, blobs):
+    """The blobs the run's receipts point to (a receipt keeps only blob_ref, sha256, state and call_id),
+    so the runner can scan the requests themselves for D4."""
+    found = {}
+    for key, receipt in (run.authority_receipts or {}).items():
+        if isinstance(receipt, dict) and receipt.get("blob_ref"):
+            name = re.sub(r"[^A-Za-z0-9._-]", "_", str(receipt.get("call_id") or key))
+            found[f"receipts/{name}.json"] = blobs.get(receipt["blob_ref"])
+    return found
 
 
 def free_port():
