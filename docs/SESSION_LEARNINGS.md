@@ -12340,7 +12340,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Task: the steward's review of #202 (merged as `3b23663`; comment 5826966972, items 1-4).
 - Branch/worktree: `golive/ui-zone-followups-3`, based on `main`; `.claude/worktrees/serene-dhawan-00a1f3`.
 - Outcome:
-  - The seam cites the zone pin at 23:11Z.
+  - The seam cites the zone pin at 23:10:57Z.
   - Its day-start comment says the second step lands on the day before only west of UTC, and on the jump east of it.
   - Its doc says a repeated midnight gives the second one, and that no zone repeats midnight in 2024-2030 (the #202 review's sweeps of all 598 zones). It claims no more than that.
   - The guard's docs add a chained read, `DateTime.now().add(d).day`, and the wrongful rejection of a one-line UTC epoch call whose argument has parentheses.
@@ -12352,11 +12352,11 @@ because the hooks runner hands a native asset hook only `PATH`.
     - in "Go-live S6: server instants read on the reviewer's clock" (#182): the validation line;
     - in "Go-live S6: #181's review follow-ups, and corrections to its entry" (#182): the validation line;
     - in "Go-live S6: #182's review follow-ups, the reviewer's own day, and log corrections" (#197): the validation line.
-  - The rulings list in "Go-live S6: #197's review follow-ups, and dated corrections to earlier entries" missed the reason-filter ruling. The full list of the coordinator's lettered and timed rulings for S6:
-    - 2026-09-24 01:13:52Z: the reason filter, option (b). Until S5's T5, the filter offers only codes stored without a suffix (PLAN.md 407-408). The time is the steward's record; this session's own shows the ruling in use by 01:15Z.
-    - 2026-09-24 22:59Z: layer labels, option (b).
-    - 2026-09-24 23:11Z: pin the time zone in the test harness (#181).
-    - 2026-09-24 23:30Z: server instants on the reviewer's clock, from design/01 H1.9 (#182).
+  - The rulings list in "Go-live S6: #197's review follow-ups, and dated corrections to earlier entries" missed the reason-filter ruling. The full list of the coordinator's lettered and timed rulings for S6, with the 2026-09-24 send times to the second from the coordinator's status file (coordinator.md, lines 226-248), where that entry gave this session's receipt times to the minute:
+    - 2026-09-24 01:13:52Z: the reason filter, option (b). Until S5's T5, the filter offers only codes stored without a suffix (PLAN.md 407-408).
+    - 2026-09-24 22:59:13Z: layer labels, option (b).
+    - 2026-09-24 23:10:57Z: pin the time zone in the test harness (#181).
+    - 2026-09-24 23:30:28Z: server instants on the reviewer's clock, from design/01 line 149 (in H1.9) and H2.1 (#182).
     - 2026-09-25 01:26Z: H2.1 option (b), the reviewer's own day (#197).
     - 2026-09-25 01:35Z: no migration of saved filter sets (#197).
     So three different rulings were each "(b)", not two, and that entry's learning 2 holds with three.

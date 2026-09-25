@@ -4,7 +4,7 @@
 /// host's zone, so a reviewer sees their own clock. The test suite pins it
 /// with [debugWallTimeOverride], the way `debugDefaultTargetPlatformOverride`
 /// pins the platform, so no golden depends on the zone of the machine that
-/// renders it (coordinator ruling for S6, 2026-09-24, 23:11Z). A release
+/// renders it (coordinator ruling for S6, 2026-09-24, 23:10:57Z). A release
 /// build ignores the override.
 ///
 /// `test/wall_time_test.dart` fails when other code in `lib` converts to the

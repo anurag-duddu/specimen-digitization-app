@@ -1,8 +1,8 @@
 // Wall-clock time is read in one place, and the suite pins that place to US
 // Central time, the zone the goldens were rendered in. So no golden and no
 // test depends on the zone of the machine that runs it (coordinator ruling
-// for S6, 2026-09-24, 23:11Z, after the host zone moved away from Central
-// and six History goldens failed with no code change).
+// for S6, 2026-09-24, 23:10:57Z, after the host zone moved away from
+// Central and six History goldens failed with no code change).
 
 import 'dart:io';
 
