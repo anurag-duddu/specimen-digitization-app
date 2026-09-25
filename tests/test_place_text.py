@@ -227,8 +227,10 @@ def test_a_token_carrying_a_digit_is_cut(token):
         *("Sept.", "sept.", "SEPT", "September", "May"),
         *("Mayo", "MAYO", "septiembre", "Ago.", "dic.", "Enero"),
         *("Setiembre", "set."),  # The variant the RAE accepts (coordinator).
-        # PLAN 4.8 as #200 states it: Spanish's older abbreviations.
+        # PLAN 4.8 as #200 states it: Spanish's older abbreviations,
         *("Agto.", "agto.", "Sbre.", "OBRE.", "nbre.", "Dbre."),
+        # and the RAE's but "en." and "my." (the coordinator's ruling).
+        *("Febr.", "Mzo.", "ag."),
     ],
 )
 def test_the_month_names_and_abbreviations_are_cut(month):
@@ -269,6 +271,7 @@ def test_a_roman_numeral_outside_a_date_stays(text):
         ("3 SEPT. 1946", ""),
         ("3 Agto. 1946", ""),
         ("3 Setiembre 1946", ""),
+        ("3 Mzo. 1946", ""),
         ("Chimaltenango, 3 Mayo 1946", "Chimaltenango"),  # A Guatemalan line.
     ],
 )
@@ -608,14 +611,16 @@ def test_the_reviewers_value_is_a_source_only_in_a_place_field():
         ),
         # A month in a language the knowledge doesn't list: Tagalog's June,
         ("Mindanao, 3 Hunyo 1946", "Mindanao, 3 Hunyo 1946", "Mindanao, Hunyo"),
-        # and a form of a listed one it doesn't list: the RAE's March.
-        ("Mindanao, 3 Mzo. 1946", "Mindanao, 3 Mzo. 1946", "Mindanao, Mzo."),
+        # and a form of a listed one it doesn't list: the RAE's January, an
+        # everyday word it leaves unlisted (the coordinator's ruling).
+        ("3 en. 1946", "3 en. 1946", "en."),
         # A lone or ranged month numeral with no day or year beside it.
         ("Mindanao VIII/IX", "Mindanao VIII/IX", "Mindanao VIII/IX"),
         # The cuts can take too much: a place's numeral beside a date number,
         ("Camp IV, 3 VIII 1946", "Camp IV, 3 VIII 1946", "Camp"),
         # a place named with a month word,
         ("Cape May", "Cape May", "Cape"),
+        ("Ag. Exp. Sta.", "Ag. Exp. Sta.", "Exp. Sta."),
         # a marker's clause, wherever its words appear, a reviewer's value
         # included, and a clause where "Col." stands for a colonia,
         ("Mt. Apo", "Mt. Apo leg. Hoogstraal\nMt. Apo", ""),
@@ -642,6 +647,7 @@ def test_the_reviewers_value_is_a_source_only_in_a_place_field():
         "lone-month-numerals",
         "camp-iv",
         "cape-may",
+        "ag-exp-sta",
         "marker-clause-elsewhere",
         "marker-clause-reviewer",
         "colonia",

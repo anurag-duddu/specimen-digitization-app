@@ -341,11 +341,13 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
   - every month name and abbreviation the knowledge's date notations list, in
     any case. They list each month in full and abbreviated, in English and in
     Spanish, the pilot labels' languages, with the Spanish variant "setiembre"
-    and "set." (the coordinator's ruling of 2026-09-24), and with its older
+    and "set." (the coordinator's ruling of 2026-09-24), with its older
     abbreviations "agto.", "sbre.", "obre.", "nbre." and "dbre." (the
-    coordinator's ruling on #191's final review): "3 SEPT. 1946", "3 Setiembre
-    1946" and "3 Agto. 1946" leave nothing, and "Chimaltenango, 3 Mayo 1946"
-    leaves "Chimaltenango";
+    coordinator's ruling on #191's final review), and with the RAE's "febr.",
+    "mzo." and "ag." but not "en." or "my.", which are everyday words (the
+    coordinator's ruling of 2026-09-24): "3 SEPT. 1946", "3 Setiembre 1946", "3
+    Agto. 1946" and "3 Mzo. 1946" leave nothing, and "Chimaltenango, 3 Mayo
+    1946" leaves "Chimaltenango";
   - a Roman month in the month position: a token whose every word is a Roman
     numeral I to XII, in any case, next to a date number before or after it,
     across separators. A date number is a day or a year in the profile's forms:
@@ -408,14 +410,15 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
   does a name beside a marker the knowledge doesn't list, such as German's
   "Sammler". A month name in a language the knowledge doesn't list can leave,
   such as Tagalog's "Hunyo", and so can a form of a listed language that it
-  doesn't list, such as the RAE's "Mzo.", and a lone or ranged month numeral
+  doesn't list, such as the RAE's "en.", and a lone or ranged month numeral
   with no day or year beside it ("VIII/IX"). The cuts can also take too much:
-  "Camp IV, 3 VIII 1946" sends only "Camp"; "Cape May" sends "Cape"; a clause
-  holding a marker is cut wherever its words appear, so "Mt. Apo leg.
-  Hoogstraal" on one line takes "Mt. Apo" from every other line, a reviewer's
-  value included, and "Col. El Carmen", a colonia, is cut whole; and a tier-1
-  name whose numeral stands beside a number, such as "Region XI (11)", loses
-  the numeral. Tests pin each case, so a change in what can leave shows.
+  "Camp IV, 3 VIII 1946" sends only "Camp"; "Cape May" sends "Cape", and "Ag.
+  Exp. Sta." sends "Exp. Sta."; a clause holding a marker is cut wherever its
+  words appear, so "Mt. Apo leg. Hoogstraal" on one line takes "Mt. Apo" from
+  every other line, a reviewer's value included, and "Col. El Carmen", a
+  colonia, is cut whole; and a tier-1 name whose numeral stands beside a
+  number, such as "Region XI (11)", loses the numeral. Tests pin each case, so
+  a change in what can leave shows.
 
 This tool passes its query's sources, the place-field literals and the
 unassigned locality text, with the readings as context. It checks that every
