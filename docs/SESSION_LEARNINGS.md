@@ -12458,3 +12458,42 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: a verification step has to name what it verifies. "Check the digest against the subject ids" sounds like a check, but a digest only proves which bytes were read. The contents need a reader.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — S8: #204's review follow-ups, and corrections to two entries
+
+- Task: the steward's review of #204 (merged as `37ae404`; comment 5827566240, follow-ups 1 and 2), done in a third small docs pull request on `main`. Follow-up 3 waits for #154's turn.
+- Branch/worktree: `golive/geo-plan-followups-3` from `main` at `37ae404`; `.claude/worktrees/busy-thompson-19cc3b`.
+- Outcome, in `docs/product-requirements/GEOREFERENCING.md`:
+  - 3.4's temporal row says the ended unit is never scored "while D5 is held", since D5's option (a) would let a name count for ten years;
+  - "D8, D10 and D12 wait" carries "(coordinator, 2026-09-24)" in the status line, in the decisions paragraph and in the held-and-waiting text, and that text now has its own heading after the owner's answers instead of sitting among them;
+  - the blueprint's regex is S4's filter's pattern for PLAN 4.8's Q-number, matched whole, at the pattern and in the note on the illustrative code.
+- Corrections to the entry "S8: #201's review follow-ups, and a correction to its entry" (the log is append-only):
+  - its pull request is #204, merged as `37ae404`;
+  - #204 had two docs commits, `27a7a60` and `83d3a1e`, and the merge `c0dc0a7` of `main` at `eea5943`, and its citations were re-checked at `eea5943` as well as at `400a444`;
+  - where it says "the Identifiers pattern", read S4's filter's pattern for PLAN 4.8's Q-number: PLAN 4.8 names only the Q-number, and the regex is S4's.
+- Correction to the entry "S8: #94's review follow-ups, and a correction to its entry": where it says "as 3.2 and #154's `use_on` do", #154 names the case `Use("ended", gap_days=...)`, not "not valid" with a `label_lag` finding. The rule is the same, and the names differ.
+- Commits/PRs: #207, which lists its commits; no red and green commits, since no product behaviour changes.
+- Validation actually run: pre-commit on the changed files; the plan's illustrative Python block parses; every `file:line` citation re-checked by script at `37ae404`, and again at `702bcb2` after `main` was merged in at #207's turn. That merge joined #206's entry to this one with no blank line, and #207 adds it.
+- Durable learnings:
+  1. An entry a pull request adds is not on `main` until the merge, so it can still change. At each turn's push, update the entry's commits and checks with the rest; after the merge, only a dated correction can fix it. Three rounds of corrections here came from entries written before their turn's merge.
+  2. A heading inside a section inherits the section's claim. "Held and waiting" sat under "The owner's answers of 2026-09-24", so a reader took the coordinator's holds for the owner's words.
+- Failed approaches: none.
+- Remaining follow-ups: at #154's turn, label GEO.md:324's "The owner held D5, so no tolerance widens a place's dates" as the coordinator's interim rule (PLAN 2.3's D4/D5 row).
+
+### 2026-09-25 — Go-live program: plan corrections after #203
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-11`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #203's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/203#issuecomment-5827391717), items 1-6. It carries the coordinator's rulings of 05:38Z, 05:39Z and 05:40Z on 2026-09-25, each recorded in `status/coordinator.md` before it was sent.
+  - PLAN 4.8's filter:
+    - The cut list gains every value the harness gave a non-place field, whether a reviewer kept or replaced it. The readings' and the harness's non-place values spare the reviewer's own place value. The limit's fill-the-rest sentence goes, and its opening sentence now covers text the harness never gave a non-place field.
+    - A date number beside a Roman month also counts as an ordinal day ending in "d", "er", "º" or "ª", or as a range joined by a dash or slash ("3-4", "1946/47"). The search for it passes over lone punctuation and the profile's date connectors ("de", "del", "of"). A connector between two cut date tokens is cut too, so "San Juan de Dios" keeps its "de".
+    - "mid-VIII 1946" sends "mid-VIII": the whole token leaves. That case and the "Col." over-cut carry the 04:17Z ruling's label.
+    - The markers are examples again ("such as"), and the lead-in credits #200 and #203.
+  - PLAN section 6's S2 row lists its documents as examples ("such as"), adding RELEASING.md, HUMAN_REVIEW_RELEASE.md and COHORT_READING_ADMISSION.md.
+  - S7's T4a: the file is owned by the account that runs the checker, and its bytes freeze once S7 sends the SHA-256. The coordinator hashes the bytes it read, so the bytes checked are the bytes S2 pins. Its label carries 04:17Z on 2026-09-25.
+  - Correction (dated 2026-09-25) to the entry "2026-09-24 — Go-live program: plan corrections after #200" above: its heading and its line "Correction (dated 2026-09-24)" should carry 2026-09-25. Its work and its ruling came after 00:00Z on 2026-09-25 (the ruling at 04:17Z), and the coordinator's record dates them so. PLAN 4.8 and S7's T4a now label that ruling "04:17Z on 2026-09-25".
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: date a ruling where its record dates it. A ruling logged "04:17Z on 2026-09-25" and labelled "2026-09-24" in the plan reads as two rulings. Use the UTC date in both places.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
