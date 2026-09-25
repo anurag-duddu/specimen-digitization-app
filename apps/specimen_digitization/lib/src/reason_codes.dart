@@ -104,7 +104,23 @@ const Set<String> suffixedReasonCodes = <String>{
   'elevation_range',
   'elevation_invalid',
   'elevation_units_conflict',
+  'value_shape_mismatch',
 };
+
+/// G45's reason: a value that doesn't look like its field's kind. It names
+/// the field, "Doesn't look like a habitat" (coordinator ruling for S6,
+/// 2026-09-24, from the owner's words).
+const String _shapeMismatch = 'value_shape_mismatch';
+
+/// The one field S4 checks for G45 whose name is not a singular noun
+/// (`insects.py` SHAPES): "Doesn't look like a collector".
+const Map<String, String> _fieldKinds = <String, String>{
+  'collectors': 'collector',
+};
+
+/// "an" before a vowel, "a" otherwise.
+String _article(String noun) =>
+    noun.isNotEmpty && 'aeiou'.contains(noun[0].toLowerCase()) ? 'an' : 'a';
 
 /// One reason code in words, the one spelling every screen that shows a
 /// reason uses: the queue's rows, the blockers list, a field's findings and
@@ -124,6 +140,10 @@ String reasonLabel(String code) {
   // A run identifier is not a reason a reviewer can read, and this list is
   // meant to be picked from rather than looked up.
   if (_looksLikeIdentifier(tail)) return _sentence(head);
+  if (code.substring(0, colon) == _shapeMismatch) {
+    final String kind = _fieldKinds[code.substring(colon + 1)] ?? tail;
+    return "Doesn't look like ${_article(kind)} $kind";
+  }
   return '${_sentence(head)}: $tail';
 }
 
