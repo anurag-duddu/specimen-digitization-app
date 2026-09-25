@@ -18,7 +18,7 @@ from pydantic_ai.messages import ModelMessagesTypeAdapter
 
 from ..model_gateway import (
     HUGGINGFACE_ROUTES,
-    STAGE_HUGGINGFACE_ROUTES,
+    INITIAL_HUGGINGFACE_ROUTES,
     HuggingFaceModelGateway,
 )
 from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt, ResolvedPrompt
@@ -643,16 +643,23 @@ class ProductionAdapters:
             name.value: resolve_prompt(name, inputs).model_dump(mode="json")
             for name in PromptName
         }
-        # An unregistered first-pass route stays unpinned, so its step blocks.
-        first_pass = run.profile.first_pass_route
         routes = {
             route: {
-                "model_id": HUGGINGFACE_ROUTES[route].model_id,
-                "provider": HUGGINGFACE_ROUTES[route].provider,
+                "model_id": INITIAL_HUGGINGFACE_ROUTES[route].model_id,
+                "provider": INITIAL_HUGGINGFACE_ROUTES[route].provider,
             }
             for route in run.profile.routes
-            + ((first_pass,) if first_pass in STAGE_HUGGINGFACE_ROUTES else ())
         }
+        # A first-pass route is pinned only in its role, with image input; any
+        # other stays unpinned, so its step blocks (HARNESS.md section 5).
+        first_pass = HUGGINGFACE_ROUTES.get(run.profile.first_pass_route)
+        if first_pass is not None and first_pass.serves_with_images(
+            "transcription_first_pass"
+        ):
+            routes[first_pass.route_id] = {
+                "model_id": first_pass.model_id,
+                "provider": first_pass.provider,
+            }
         return {
             "prompts": prompts,
             "routes": routes,
@@ -711,6 +718,9 @@ class ProductionAdapters:
         )
         gateway = HuggingFaceModelGateway(timeout_seconds=reader_timeout / 2)
         selected = gateway.route(route)
+        if not selected.serves_with_images("handwriting_transcriber"):
+            # Only an image reader's route reads a crop (HARNESS.md section 5).
+            raise OperationalBlock("pinned_model_route_unavailable")
         pins = specimen.run.dependencies
         expected = pins.get("routes", {}).get(route)
         if not expected or expected != {
