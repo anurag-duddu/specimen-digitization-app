@@ -32,7 +32,7 @@ SHAPES = re.compile(
     r"hf_[A-Za-z0-9]{16,}|(?<=Bearer )[A-Za-z0-9._~+/=-]+|ya29\.[A-Za-z0-9._-]+"
     r"|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
     r"|(?:https?://)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.run\.app(?:/[A-Za-z0-9._~/%-]*)?"  # stops at quotes
-    r"|[A-Za-z0-9._%+-]+(?:@|%40)[A-Za-z0-9.-]+\.[A-Za-z]{2,}"  # an email, also percent-encoded
+    r"|[A-Za-z0-9._%+-]+(?:@|%(?:25)*40)[A-Za-z0-9.-]+\.[A-Za-z]{2,}"  # an email, also percent-encoded, once or more
     r"|AIza[0-9A-Za-z_-]{35}|pylf_[A-Za-z0-9_]{8,}",  # Google API keys and Logfire tokens
     re.I,
 )
@@ -40,6 +40,7 @@ LOGFIRE_ORG = re.compile(r"(logfire-(?:us|eu)\.pydantic\.dev/)[^/\s\"']+", re.I)
 # Always redacted, even with a stray invalid byte; any other artifact is redacted when it decodes as UTF-8.
 TEXT_SUFFIXES = {".json", ".jsonl", ".md", ".txt", ".log", ".csv", ".html", ".xml"}
 MIN_VALUE = 3  # a shorter private value is never matched
+NOT_BARE = re.compile(r"[=#'\"\s]")  # the values file holds one bare value per line
 REPOSITORY = Path(__file__).resolve().parents[2]
 PRIVATE_ROOT = Path.home() / "specimen-release-private"  # PLAN 840: private artifacts, never in a repository
 # Fields that name a person, redacted by field wherever they appear (PLAN 7.7): the snapshot's uploader,
@@ -50,12 +51,16 @@ PERSON_FIELDS = {"uploader", "actor", "actor_id", "actor_uid", "created_by", "ui
 # Until production's reserve-then-settle ledger lands, every paid attempt whose usage the run did not
 # settle stays reserved at the full per-call bound: an unknown outcome (coordinator, 2026-09-23) and,
 # since #86, a call that returned and then failed with a known blocker, whose usage the workflow does
-# not record. The coordinator's ruling names the bound, not a figure: the lab's figure is the readers' and
-# extraction's usage limit (production.py, total_tokens_limit=16000) at the highest known price, a worst case
-# for the call's cost that sits below PLAN 4.3's reservation floor of 20,000 micro-dollars per request. A run
-# that cannot be priced once its lane started is held whole at --max-run-usd. SAM 3 on this workstation is free.
+# not record. The coordinator's ruling names the bound, not a figure. PLAN 4.3 runs the lab under production's
+# mechanism, where a call reserves the sum of its requests' bounds, each at least 20,000 micro-dollars; the lab
+# reads an attempt's bound as the largest of the step's reservation in the run's profile, that floor for a
+# call's two requests, and the call's token limit at the highest known price (UsageLimits(request_limit=2,
+# total_tokens_limit=16000) at production.py:738, harness.py:92 and first_pass.py:239). By the lab's own rule, a
+# run that cannot be priced once its lane started is held whole at --max-run-usd. SAM 3 here is free.
 PAID_STEP = re.compile(r"transcribe:|parse$|first_pass|harness|extract")
 CALL_TOKEN_BOUND = 16_000
+CALL_REQUESTS = 2
+REQUEST_FLOOR_MICROS = 20_000
 
 
 def subject_id(value):
@@ -98,8 +103,9 @@ class Redactor:
             home = str(Path.home())
         except RuntimeError:
             home = ""
-        # The account name in a home path can equal the Logfire organization slug (PLAN 7.7).
-        self.home = re.compile(re.escape(home) + r"(?![\w.-])") if len(home) > 1 else None
+        # The account name in a home path can equal the Logfire organization slug (PLAN 7.7); macOS paths
+        # ignore case.
+        self.home = re.compile(re.escape(home) + r"(?![\w.-])", re.I) if len(home) > 1 else None
 
     def __call__(self, text):
         if self.home:
@@ -155,11 +161,16 @@ def values_file(name):
     if PRIVATE_ROOT.expanduser().resolve() not in path.parents:
         return set(), [f"LAB_REDACT_VALUES_FILE must be under {PRIVATE_ROOT}"]
     try:
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8-sig")  # a byte-order mark never hides the first value
     except (OSError, UnicodeDecodeError):
         return set(), ["LAB_REDACT_VALUES_FILE is unreadable"]
     if not text.strip():
         return set(), ["LAB_REDACT_VALUES_FILE is empty"]
+    # A line such as NAME=value, "value" or value # note would pass and match nothing; never echo its content.
+    malformed = [n for n, line in enumerate(text.splitlines(), 1) if NOT_BARE.search(line.strip())]
+    if malformed:
+        return set(), [f"LAB_REDACT_VALUES_FILE holds one bare value per line; lines {malformed} hold =, #, "
+                       "a quote or a space"]
     values = {line.strip() for line in text.splitlines() if len(line.strip()) >= MIN_VALUE}
     if not values:
         return set(), [f"LAB_REDACT_VALUES_FILE has no value of at least {MIN_VALUE} characters"]
@@ -196,14 +207,33 @@ def price(snapshot):
     top = max(max(p) for p in PRICES.values()) / 1e6
     other = max(0, total_tokens - reader_tokens)
     # Every attempt of a paid step beyond the one that completed has no settled usage on the run.
-    unsettled = [step for run in [*(snapshot.get("previous_runs") or []), snapshot["run"]]
-                 for step, count in (run.get("attempts") or {}).items() if PAID_STEP.match(step)
-                 for _ in range(count - (step in (run.get("completed_steps") or [])))]
-    unsettled_usd = len(unsettled) * CALL_TOKEN_BOUND * top
+    unsettled, unsettled_usd = [], 0.0
+    for run in [*(snapshot.get("previous_runs") or []), snapshot["run"]]:
+        for step, count in (run.get("attempts") or {}).items():
+            if PAID_STEP.match(step):
+                held = count - (step in (run.get("completed_steps") or []))
+                unsettled += [step] * held
+                unsettled_usd += held * attempt_bound_usd(run, step, top)
     return {"readings": readings, "readers_usd": readers_usd, "unpriced_routes": unpriced,
             "other_tokens": other, "other_usd_upper_bound": other * top,
             "unsettled_attempts": unsettled, "unsettled_usd_bound": unsettled_usd,
             "total_usd": readers_usd + other * top + unsettled_usd, "sam3_usd": 0.0}
+
+
+def attempt_bound_usd(run, step, top):
+    """The lab's reading of an attempt's full bound (LAB.md, Costs): the largest of the step's reservation in
+    the run's profile, PLAN 4.3's floor for a call's two requests, and the call's token limit at the top price."""
+    reservations = (((run.get("profile") or {}).get("execution") or {}).get("stage_cost_reservations") or {})
+    micros = (reservations.get("cost_micros") or {}).get(reservation_stage(step)) or 0
+    return max(micros / 1e6, CALL_REQUESTS * REQUEST_FLOOR_MICROS / 1e6, CALL_TOKEN_BOUND * top)
+
+
+def reservation_stage(step):
+    """The profile's key for a step, as StageCostReservations.for_step reads it (domain.py)."""
+    if step.startswith("transcribe:"):
+        parts = step.split(":")
+        return "transcribe:" + parts[2] if len(parts) == 3 else None
+    return "first_pass" if step.startswith("first_pass:") else step
 
 
 def timings(snapshot):
@@ -221,6 +251,7 @@ class Run:
 
     def __init__(self, options, path, redact, record):
         self.options, self.path, self.redact, self.record = options, path, redact, record
+        self.interrupted = False
         self.log = (path / "runner.log").open("a", buffering=1)  # line by line, for a live view
 
     def write(self, name, data):
@@ -260,18 +291,35 @@ class Run:
             entry["status"] = "failed"
             entry["error"] = self.redact(f"{type(exc).__name__}: {exc}")
             self.log.write(self.redact(traceback.format_exc()))
+        except BaseException as exc:  # Ctrl-C: recorded as a failure, then the run stops
+            entry["status"] = "failed"
+            entry["error"] = type(exc).__name__
+            self.interrupted = True
+            raise
         finally:
             entry["seconds"] = round(time.monotonic() - began, 3)
             self.log.write(f"{name}: {entry['status']} in {entry['seconds']} s\n")
 
 
 def occurrence_request(url, params=None):
-    """A request to GBIF's occurrence API as a client sends it: the host in any case, the path percent-decoded
-    without dot segments, and occurrence query keys in the parameters or in the URL."""
+    """A request to GBIF's occurrence API, read as written and as httpx builds it (dot segments resolved, a ".."
+    above the root dropped, parameters of any kind in the URL): the host in any case, the path percent-decoded,
+    and occurrence query keys. Reading both ways counts more, never less, while D4 is held."""
+    import httpx
+
     parts = urlsplit(str(url))
+    hosts, paths = {parts.hostname or ""}, {parts.path}
     keys = query_keys(params) | query_keys(parts.query)
-    return unquote(parts.hostname or "").lower() == "api.gbif.org" and (
-        lab_checks.decoded(parts.path).startswith("/v1/occurrence") or bool(keys & lab_checks.OCCURRENCE_KEYS))
+    try:
+        sent = httpx.Request("GET", str(url), params=params).url
+        hosts.add(sent.host)
+        paths.add(sent.path)
+        keys |= {str(key).lower() for key in sent.params.keys()}
+    except Exception:  # a URL httpx cannot build is read as written
+        pass
+    return any(unquote(host).lower() == "api.gbif.org" for host in hosts) and (
+        any(lab_checks.decoded(path).startswith("/v1/occurrence") for path in paths)
+        or bool(keys & lab_checks.OCCURRENCE_KEYS))
 
 
 def query_keys(params):
@@ -279,8 +327,8 @@ def query_keys(params):
         params = params.decode("utf-8", errors="replace")
     if isinstance(params, str):
         return {key.lower() for key, _ in parse_qsl(params, keep_blank_values=True)}
-    if isinstance(params, dict):
-        return {str(key).lower() for key in params}
+    if hasattr(params, "keys"):  # a dict or httpx.QueryParams
+        return {str(key).lower() for key in params.keys()}
     if isinstance(params, (list, tuple)):
         return {str(pair[0]).lower() for pair in params if isinstance(pair, (list, tuple)) and pair}
     return set()
@@ -355,6 +403,9 @@ def execute(options, *, fetch, lane_factory, env, clock, loadavg, commit):
     if problems:
         print("refused: " + "; ".join(problems), file=sys.stderr)
         return 3
+    if options.report_only and not (options.runs_root / options.subject).is_dir():
+        print(f"refused: no run of {options.subject} to report on", file=sys.stderr)
+        return 3
     redact = Redactor(env, values)
     if options.report_only:  # a person's verdict reaches the subject report without another run
         write_subject_report(options, redact)
@@ -418,6 +469,10 @@ def execute(options, *, fetch, lane_factory, env, clock, loadavg, commit):
                 if record["costs"]["total_usd"] > options.max_run_usd:
                     record["stages"].append({"stage": "cost", "name": "Run cost", "status": "failed",
                                              "detail": f"above --max-run-usd {options.max_run_usd}"})
+    except BaseException as exc:  # Ctrl-C, or a runner error outside any phase: recorded, then raised
+        if not run.interrupted:
+            run.failed("runner" if isinstance(exc, Exception) else "interrupted", exc)
+        raise
     finally:
         if lane_started and not priced:
             record["costs"] = {"total_usd": options.max_run_usd, "held_at_run_bound": True}
@@ -471,7 +526,8 @@ def render(record):
               f"at most {costs.get('other_usd_upper_bound', 0):.6f}, SAM 3 local 0. Unpriced routes: "
               f"{costs.get('unpriced_routes', [])}. Paid attempts without settled usage, held at the full "
               f"per-call bound: {costs.get('unsettled_attempts', [])}, USD {costs.get('unsettled_usd_bound', 0):.6f}.", "",
-              *(["The run could not be priced after its lane started, so it is held whole at --max-run-usd.", ""]
+              *(["The run could not be priced after its lane started, so it is held whole at --max-run-usd, "
+                 "by the lab's own rule.", ""]
                 if costs.get("held_at_run_bound") else []),
               f"Lab spend to date: USD {record['lab_spend_usd']:.6f} of {record['lab_allowance_usd']:.2f}, "
               "the lab's share of G9, kept apart from production's model allowance (G30)."]
