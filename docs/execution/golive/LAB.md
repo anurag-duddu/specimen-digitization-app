@@ -57,18 +57,20 @@ uv run python scripts/lab/run_specimen.py subject_105526321
 | Stage | Passed when | Otherwise |
 |---|---|---|
 | 1 Images in storage | the asset's SHA-256 equals the fetched object's, and its file name is the subject's | failed |
-| 2 Label segmentation | the run has regions made by SAM 3 with its parameters on the run and, for each of the ten, a distinct region covering at least half of every label box below; an uncovered label is still correct when the lane's own coverage check (G15) caught it and sent the record to review | failed when the lane let an uncovered label through; not built when the run carries no coverage check (S3 T3b); blocked, with the app's blocker; substituted when the lab drew the regions |
+| 2 Label segmentation | the run has regions made by SAM 3 with its parameters, and the lane's coverage check (G15) ran: `coverage_check.status` is `passed` and, for the ten, the lab's own measure (every label box below at least half covered by a distinct region) agrees; or it is `failed` and the lab's measure finds the miss it caught | failed when the lane's check passed a label the lab's measure finds uncovered; not built while the run carries no coverage check (S3); not checked when the check did not run (`not_run`); blocked, with the app's blocker; substituted when the lab drew the regions |
 | 3 VLMs | every region has one reading per profile route, each with model, provider, prompt version, input hash and a stored raw response | failed, or blocked with the blocker |
 | 4 Raw transcripts to SQL | the run's `pipeline_run` row names this specimen, and there is one `model_observation` row with `independent` true per reading, with the snapshot's ids (DATA_CONTRACT.md 2) | not built while SQL holds no `pipeline_run` rows; blocked or failed when the run has no readings to project; failed on any mismatch |
 | 5 Disagreement score | every region's transcript carries a ratio and `bounded-levenshtein-fraction-v1` | failed, or not built |
 | 6 LLM first pass | the run records the first pass's decision and what each reader handed to the harness | not built |
-| 7 Agentic harness | the run records tool calls with typed outcomes | failed on any GBIF occurrence request while D4 is held; otherwise not built (the detail lists any deterministic lookups) until S4's checks land |
-| 8 Queue decision | exactly one disposition with its reasons; for the ten, needs human review with the right reasons (below) | failed when one of the ten clears or the record has no disposition; blocked while `processing_blocked` or `retry_scheduled`, naming the blocker and the app's next step |
-| 9 Linkage | every region, reading, transcript and row points to this specimen, asset and run | failed |
-| Tracing | the run's trace shows what DoD-5 names (PLAN 1): SAM 3's parameters, every model call's system prompt with its text input and output, the first pass, the harness's tool calls and the queue decision, and the run stores its id | not built while the run stores no trace id; not checked until the lab holds a Logfire read token (owner action) to read the trace; the lab's own root trace id is always recorded |
+| 7 Agentic harness | the run records tool calls with typed outcomes | failed on any GBIF occurrence request while D4 is held: an `/v1/occurrence` request, a `catalogNumber` or `recordedBy` query, or an `occurrence` or `museum_published` marker, in any run's tool calls, lookups, authority results and receipts or evidence locators; the runner also counts in-process HTTP requests to `api.gbif.org/v1/occurrence`; otherwise not built (the detail lists any deterministic lookups) until S4's checks land |
+| 8 Queue decision | for the ten, needs human review, their expected outcome (PLAN 8, 879-883), whose reasons are compared by hand against the expected outcomes below, so the stage reads not checked; for other subjects, exactly one disposition with its reasons | failed when one of the ten gets any other disposition, or the record has none; blocked while `processing_blocked` or `retry_scheduled`, naming the blocker (or the reasons, when there is none) and the app's next step |
+| 9 Linkage | every region, reading and transcript points to this specimen, asset and run; SQL rows are stage 4's and the DoD-4 check's | failed |
+| Tracing | DoD-5 (PLAN 1): "Each run is one Logfire trace, linked from the record in the app, that shows SAM 3's parameters, every model call's system prompt and text input and output, the LLM first pass, the harness's tool calls and the queue decision" | not built while the run stores no trace id (`Run.trace_id`); not checked while it does, until the lab holds a Logfire read token (owner action) to read the trace; the lab's own root trace id is always recorded |
 
-Statuses are passed, failed, blocked, substituted, not built (the stage is not on
-this commit) and not checked. A blocked stage names the blocker and the step
+Statuses are passed, failed, blocked, substituted, not built (the stage, or the
+record it is judged on, is not on this commit) and not checked (the record
+exists, but the lab does not judge it automatically yet, or a person compares
+it by hand). A blocked stage names the blocker and the step
 the app would run next (`Workflow.next_step`). Checks for stages 4, 6 and 7 follow the
 contracts as S5 and S4 merge them. Until then the runner reports not built rather
 than guess at field names.
@@ -92,7 +94,7 @@ misses per subject, and stage 2 fails only a miss the lane let through. Slides
 from Yepocapa, Guatemala, 1948 (R.D. Mitchell). The codes on the
 top edge are slide-preparation codes, not collection dates.
 
-### Expected outcome for the ten (G42, and the owner's decisions G35 to G45)
+### Expected outcome for the ten (PLAN 8, 879-883)
 
 All ten go to needs human review, with the right reasons: G42 keeps `PRD.md`
 12.4's twenty mandatory fields, no label carries a determination date, and none
@@ -123,8 +125,9 @@ reaches the queue decision. The owner's words and the coordinator's readings
   | 324-326 | 3300 | 1005.84 |
   | 328-330 (Guatemala) | 4800 | 1463.04 |
 
-  A run fails if it converts by any other factor, fills a stated elevation from
-  map data, or leaves unresolved an elevation whose unit it read. 327 states no
+  A run fails if it converts by any other factor, converts an elevation that no
+  reading gives a unit for, fills a stated elevation from map data, or leaves
+  unresolved an elevation whose unit it read. 327 states no
   elevation; map data may fill it only at a settled place (G37).
 - **Places only the museum's records know (G36).** The owner: "McKinley I think
   is denali. That's what google search returned. I wonder how they arrived and
@@ -152,7 +155,9 @@ reaches the queue decision. The owner's words and the coordinator's readings
   fields no lookup checks, a value that doesn't look like its field's kind goes
   to review with a reason." A slide-preparation code (for example "VI-24-68-7")
   in such a field must bring that reason, and a run whose decision lacks it
-  fails. In `verbatim_dts`, whose meaning is unconfirmed, it is a finding only.
+  fails. In `verbatim_dts` it is a finding only: a coordinator hold (PLAN 2.3),
+  since what that field holds is an open question and the owner's answer is
+  pending.
 - **`identified_by_irn`** is never on a label and does not block (G16, G43).
   Only 328 names a taxon, which may settle at genus (G25). Dates settle as
   written (G24).
@@ -182,9 +187,10 @@ are reservations only). The runner prices each reading's tokens with the route
 prices in `docs/execution/LIVE_PILOT_COST.md` 42-47. It prices any other tokens
 the run used, such as the extraction call, at the highest known price and labels
 that figure an upper bound. Until production's reserve-then-settle ledger
-lands, every paid attempt without settled usage (an unknown outcome, or a call
-that returned and then failed) is held at the full per-call bound: 16,000
-tokens at the highest known price (coordinator, 2026-09-23; after #86). SAM 3 on
+lands, every paid attempt without settled usage is held at the full per-call
+bound, 16,000 tokens at the highest known price: an unknown outcome
+(coordinator ruling, 2026-09-23) and, as the lab's own extension after #86, a
+call that returned and then failed. SAM 3 on
 this workstation costs nothing. Every run's cost and the lab's running total
 against its USD 5.00 share go into `run.json` and its report (G9, G30).
 
@@ -193,10 +199,21 @@ against its USD 5.00 share go into `run.json` and its report (G9, G30).
 The runner never writes a token value. Every text artifact passes through a
 redactor that removes the values of the known token variables and anything
 shaped like a Hugging Face token, a bearer header, a Google access token or a
-JWT. It also removes instance addresses, which PLAN 7.7 keeps out of shared
-logs and issues: the SAM 3 endpoint's value and any `*.run.app` address, which
-the app pins into a run's dependencies, and the SAM lab token. The runner never
-reads `.env` or `.logfire/`.
+JWT. It also removes what PLAN 7.7 keeps out of shared logs and issues:
+
+- instance addresses: the SAM 3 endpoint's value, which the app pins into a
+  run's dependencies, and any `*.run.app` host or address;
+- the administrator's identity: any email address (an ADC error names the
+  caller), and the private values listed in the file `LAB_REDACT_VALUES_FILE`
+  names, such as a signed-in UID that reaches `asset.uploader` and the audit's
+  actor;
+- billing and organization ids: `HF_BILL_TO`'s organization and the Logfire
+  project URL's organization slug;
+- more secrets: the SAM lab token, the Logfire read token, the Geocoding key
+  (`SPECIMEN_GOOGLE_MAPS_API_KEY`), and the `AIza...` and `pylf_...` shapes.
+
+Values under 8 characters are matched as whole words. The runner never reads
+`.env` or `.logfire/`.
 
 ### Tests
 
