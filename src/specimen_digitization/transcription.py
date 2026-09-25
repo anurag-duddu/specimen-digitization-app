@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_ai import Agent, BinaryContent
 
 from .application.reading_declarations import DeclarationCandidates
-from .model_gateway import HuggingFaceModelGateway
+from .model_gateway import HuggingFaceModelGateway, ModelGatewayConfigurationError
 from .provider_privacy import PrivateProviderModel, private_instrumentation
 from .prompts import (
     CollectionPromptInputs,
@@ -88,6 +88,11 @@ def transcribe_label_image(
 ) -> LiteralTranscriptionRun:
     """Run one literal transcription without placing image bytes in trace data."""
     route = gateway.route(route_id)
+    if not route.serves_with_images("handwriting_transcriber"):
+        # Only an image reader's route reads a label (HARNESS.md section 5).
+        raise ModelGatewayConfigurationError(
+            f"Route {route_id!r} is not a handwriting reader with image input."
+        )
     prompt = resolve_prompt(
         PromptName.LITERAL_TRANSCRIPTION,
         prompt_inputs,

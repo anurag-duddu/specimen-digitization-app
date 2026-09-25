@@ -42,6 +42,13 @@ class HuggingFaceInferenceRoute:
                 "routing and policy suffixes are not allowed."
             )
 
+    def serves_with_images(self, logical_capability: str) -> bool:
+        """Whether this route plays the role and takes the text and image it is sent."""
+        return self.logical_capability == logical_capability and {
+            "text",
+            "image",
+        }.issubset(self.required_input_modalities)
+
 
 INITIAL_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
     {
@@ -58,6 +65,31 @@ INITIAL_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingPro
             provider="deepinfra",
         ),
     }
+)
+# The reader routes above stay the whole initial set: the pilot launch, its
+# stage list and the release check compare a profile's readers against it.
+# The coordinator approved the first-pass and harness routes on 2026-09-23 on
+# the figures of S4's T1 report; docs/execution/golive/HARNESS.md section 5
+# recomputes them from the same calls.
+STAGE_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
+    {
+        "first-pass-glm": HuggingFaceInferenceRoute(
+            route_id="first-pass-glm",
+            logical_capability="transcription_first_pass",
+            model_id="zai-org/GLM-5.3-Flash",
+            provider="deepinfra",
+        ),
+        "harness-deepseek": HuggingFaceInferenceRoute(
+            route_id="harness-deepseek",
+            logical_capability="field_harness",
+            model_id="deepseek-ai/DeepSeek-V4.1-Flash",
+            provider="deepinfra",
+            required_input_modalities=("text",),
+        ),
+    }
+)
+HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
+    {**INITIAL_HUGGINGFACE_ROUTES, **STAGE_HUGGINGFACE_ROUTES}
 )
 
 
@@ -103,7 +135,7 @@ class HuggingFaceModelGateway:
         self._timeout_seconds = timeout_seconds
         self._token = SecretStr(resolved_token)
         self._bill_to = bill_to if bill_to is not None else os.getenv("HF_BILL_TO")
-        selected_routes = INITIAL_HUGGINGFACE_ROUTES if routes is None else routes
+        selected_routes = HUGGINGFACE_ROUTES if routes is None else routes
         self._routes = MappingProxyType(dict(selected_routes))
 
     @property

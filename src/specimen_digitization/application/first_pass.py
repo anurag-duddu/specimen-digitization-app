@@ -241,6 +241,9 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
     if route_id is None or route_id not in gateway.routes:
         raise OperationalBlock("pinned_model_route_unavailable")
     selected = gateway.route(route_id)
+    if not selected.serves_with_images("transcription_first_pass"):
+        # The crop goes only to a first-pass route with image input (HARNESS.md 5).
+        raise OperationalBlock("pinned_model_route_unavailable")
     if run.dependencies.get("routes", {}).get(route_id) != {
         "model_id": selected.model_id,
         "provider": selected.provider,
