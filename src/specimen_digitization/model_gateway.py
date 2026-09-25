@@ -68,8 +68,9 @@ INITIAL_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingPro
 )
 # The reader routes above stay the whole initial set: the pilot launch, its
 # stage list and the release check compare a profile's readers against it.
-# The coordinator approved the first-pass and harness routes on 2026-09-23,
-# on S4's T1 measurements (docs/execution/golive/HARNESS.md section 5).
+# The coordinator approved the first-pass and harness routes on 2026-09-23 on
+# the figures of S4's T1 report; docs/execution/golive/HARNESS.md section 5
+# recomputes them from the same calls.
 STAGE_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
     {
         "first-pass-glm": HuggingFaceInferenceRoute(
