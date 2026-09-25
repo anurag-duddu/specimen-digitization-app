@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from bisect import bisect_left
 from collections.abc import Iterable
 from dataclasses import dataclass
 
@@ -56,6 +57,19 @@ FILLERS = frozenset("\u115f\u1160\u3164\uffa0")
 COUNTRIES = ((re.compile(r"P\.\s?I\.?", re.I), "Philippine Islands"),)
 # The museum's own names on its labels, never a place.
 INSTITUTIONS = re.compile(r"\b(?:CNHM|FMNH)\b\.?", re.I)
+# The month words the Insects profile lists for PLAN 4.8's filter (S4's #183),
+# folded: each month in full and abbreviated, in English and in Spanish, in the
+# usual forms and older ones ("Sept.", "setiembre", "Agto."), and the Roman months
+# I to XII (G29). A part of only these and the links between them is a month.
+MONTHS = frozenset(
+    (
+        "january february march april may june july august september october"
+        " november december jan feb mar apr jun jul aug sep sept oct nov dec"
+        " enero febrero marzo abril mayo junio julio agosto septiembre setiembre"
+        " octubre noviembre diciembre ene abr ago set dic agto sbre obre nbre dbre"
+        " febr mzo ag i ii iii iv v vi vii viii ix x xi xii"
+    ).split()
+)
 
 # The 16 compass points and the words for the eight main ones, in degrees.
 POINTS = {
@@ -104,7 +118,17 @@ RANGE = (
     rf"(?P<low>{NUMBER})"
     rf"(?:(?:\s*(?:[{DASHES}/]|to)\s*|\s+(?:a|and|y)\s+)(?P<high>{NUMBER}))?"
 )
-PREFIX = r"\b(?:elev(?:ation)?|alt(?:itude)?)\b\.?\s*:?\s*"
+# The words a range joins its numbers by: a name of only these is no place.
+JOINS = frozenset({"to", "a", "and", "y"})
+# An elevation's prefix as the pilot's labels and the Insects profile's notations
+# write it, in any case: "Elev.", "Elevation", "Alt.", "Altitude", with or without
+# the period, and "el." with it; then an optional colon. These are the prefixes of
+# the coordinator's reading at 15:32Z on 2026-09-25 ("as the profile's notations
+# list them").
+PREFIX = r"\b(?:(?:elev(?:ation)?|alt(?:itude)?)\b\.?|el\.)\s*:?\s*"
+# A prefix that ends the text before a number is that number's own, not text
+# between it and the number before.
+PREFIX_END = re.compile(rf"(?:{PREFIX})$", re.I)
 # An elevation has a prefix, a unit or both; a foot mark followed by a digit is
 # a year ("'46"), not an elevation.
 ELEVATION = re.compile(
@@ -137,16 +161,12 @@ YEAR_LEAD = re.compile(r"(?:\d\d|\d{4})[.,]")
 # Four digits after a mark could be a date's year: "4.1948", "12.4.1948".
 YEAR_TAIL = re.compile(r"[.,]\d{4}(?!\d)")
 # A range's lower number that could be a year, two digits or four from 1700 to
-# 2099, sets the range aside unless its prefix comes first: the coordinator's
-# reading of G36 and G40 at 15:32Z on 2026-09-25.
+# 2099 in any script, sets the range aside unless its prefix comes first: the
+# coordinator's reading of G36 and G40 at 15:32Z on 2026-09-25.
 YEAR = re.compile(r"\d\d|1[7-9]\d\d|20\d\d")
 # Metres in a foot, exactly (G41): beside an elevation it converts to, such a range
 # reads, since a year would not convert (the same reading, extended at 17:40Z).
 FOOT = 0.3048
-# A number after another number with only words or marks between them may be a
-# range's upper number, joined by one no range join lists: "4000 hasta 4500 ft",
-# "4000 ~ 4500 m".
-TOP_ALONE = re.compile(r"\d\s+(?:[^\d\s]+\s+)+$")
 # The brackets an elevation leaves empty: "Mt. Apo (1463 m)", full-width ones too.
 EMPTY_BRACKETS = re.compile(
     r"[(\uff08]\s*[)\uff09]|[\[\uff3b]\s*[\]\uff3d]|[{\uff5b]\s*[}\uff5d]"
@@ -240,13 +260,14 @@ class _Piece:
 def fold(text: str) -> str:
     """Casefold, strip diacritics, other marks and format characters (Unicode Mn,
     Me and Cf, such as a variation selector or a zero-width space) and the
-    invisible Hangul fillers, before and after case folding (U+0345 would fold to
-    an iota), and turn anything else but letters and digits into single spaces:
+    invisible Hangul fillers, before case folding and, when the folded text is not
+    ASCII, after it (U+0345 would fold to an iota), and turn anything else but
+    letters and digits into single spaces:
     "Chimaltenángo," folds to "chimaltenango"."""
-    kept = "".join(
-        c if c.isalnum() else " " for c in _unmarked(_unmarked(text).casefold())
-    )
-    return " ".join(kept.split())
+    folded = _unmarked(text).casefold()
+    if not folded.isascii():
+        folded = _unmarked(folded)
+    return " ".join("".join(c if c.isalnum() else " " for c in folded).split())
 
 
 def _unmarked(text: str) -> str:
@@ -331,24 +352,46 @@ def read_locality(text: str) -> LocalityText:
     pieces: list[_Piece] = []
     elevations: list[Elevation] = []
     institutions: list[str] = []
+    lines: list[tuple[list[str], bool, bool]] = []
+    for line, open_start, open_end in _lines(text):
+        institutions += [m.group(0) for part in line for m in INSTITUTIONS.finditer(part)]
+        cleaned = [" ".join(INSTITUTIONS.sub(" ", part).split()) for part in line]
+        lines.append((cleaned, open_start, open_end))
+    heads = _heads(lines)
     numbered = False
-    for segment in _segments(text):
-        institutions += [m.group(0) for m in INSTITUTIONS.finditer(segment)]
-        segment = " ".join(INSTITUTIONS.sub(" ", segment).split())
-        # A part right after one that holds a number may start with that number's
-        # year: "July 4, 1946.9500 ft", "IV-26" / "1948.950 m".
-        after_number, numbered = numbered, _numeral(segment)
-        offset = _offset(segment)
-        if offset is not None:
-            piece, found = offset
+    # Whether words or marks follow a number no elevation took at the end of the
+    # line before; None when there is no such number, or a comma or semicolon
+    # ends that line. A line break may fall inside a range ("4000 -" / "4500 ft").
+    carried: bool | None = None
+    for row, (line, open_start, open_end) in enumerate(lines):
+        for column, segment in enumerate(line):
+            line_end = column == len(line) - 1
+            before = carried if column == 0 and open_start else None
+            ahead = heads[row + 1] if line_end and open_end else None
+            # A part right after one that holds a number, or only a month, may start
+            # with the year: "July 4, 1946.9500 ft", "IV-26" / "1948.950 m",
+            # "July, 1946.950 m".
+            after_number, numbered = numbered, _numeral(segment) or _dated(segment)
+            offset = _offset(segment, ahead)
+            if offset is not None:
+                piece, found, tail = offset
+                pieces.append(piece)
+            else:
+                rest, found, tail = _elevations(segment, after_number, before, ahead)
+                rest = rest.strip(" ,;:")
+                if rest:
+                    pieces.append(_piece(rest))
             elevations += found
-            pieces.append(piece)
-            continue
-        segment, found = _elevations(segment, after_number)
-        elevations += found
-        segment = segment.strip(" ,;:")
-        if segment:
-            pieces.append(_piece(segment))
+            if line_end:
+                # A line of one part, with no number and no comma or semicolon, passes
+                # the number before it on.
+                through = len(line) == 1 and open_start and open_end
+                if not open_end:
+                    carried = None
+                elif through and not any(c.isdecimal() for c in segment):
+                    carried = carried if carried is None else carried or _worded(segment)
+                else:
+                    carried = tail
     _join(pieces)
     return LocalityText(
         verbatim=text,
@@ -376,12 +419,14 @@ def variants(literals: Iterable[tuple[str, str]]) -> tuple[Variant, ...]:
     )
 
 
-def _segments(text: str) -> Iterable[str]:
+def _lines(text: str) -> list[tuple[list[str], bool, bool]]:
     """Lines joined where a word needs the next one (a feature notation, a unit
     written before its name, or a linking word) and where a line starts with "of"
     in any case ("OF MT. APO"; "of" begins no name) or a lowercase "de" or "del"
-    (a capitalized one begins a name, "Del Carmen"), then split into parts. Lines
-    are kept as word lists, so the joins stay linear in the text's length."""
+    (a capitalized one begins a name, "Del Carmen"), each split into its parts,
+    with whether its first part starts it and its last part ends it (no comma or
+    semicolon between). Lines are kept as word lists, so the joins stay linear in
+    the text's length."""
     lines: list[list[str]] = []
     carry: list[str] = []
     for line in text.splitlines():
@@ -398,13 +443,36 @@ def _segments(text: str) -> Iterable[str]:
         carry = []
     if carry:
         lines.append(carry)
+    split: list[tuple[list[str], bool, bool]] = []
     for words in lines:
-        for segment in SEPARATOR.split(" ".join(words)):
-            if segment.strip():
-                yield " ".join(segment.split())
+        pieces = SEPARATOR.split(" ".join(words))
+        parts = [" ".join(piece.split()) for piece in pieces if piece.strip()]
+        if parts:
+            split.append((parts, bool(pieces[0].strip()), bool(pieces[-1].strip())))
+    return split
 
 
-def _offset(segment: str) -> tuple[_Piece, list[Elevation]] | None:
+def _heads(lines: list[tuple[list[str], bool, bool]]) -> list[bool | None]:
+    """For each line, and one past the last, whether words or marks come before
+    the first number of its first part; None when that part holds no number or a
+    comma or semicolon starts the line. A line of one part with no number and no
+    comma or semicolon passes the next line's on."""
+    heads: list[bool | None] = [None] * (len(lines) + 1)
+    for row in reversed(range(len(lines))):
+        parts, open_start, open_end = lines[row]
+        if not open_start:
+            continue
+        digit = next((index for index, c in enumerate(parts[0]) if c.isdecimal()), None)
+        if digit is not None:
+            heads[row] = _worded(PREFIX_END.sub("", parts[0][:digit]))
+        elif len(parts) == 1 and open_end and heads[row + 1] is not None:
+            heads[row] = heads[row + 1] or _worded(parts[0])
+    return heads
+
+
+def _offset(
+    segment: str, ahead: bool | None = None
+) -> tuple[_Piece, list[Elevation], bool | None] | None:
     """An offset ("5 km NE of Yepocapa") and the elevation phrases after it. Its
     place follows the rules for any part: a place with a digit or without a
     letter is kept aside with its offset. A malformed distance ("1,5,3 km") is no
@@ -413,17 +481,17 @@ def _offset(segment: str) -> tuple[_Piece, list[Elevation]] | None:
     bearing = _bearing(match["head"]) if match else None
     if match is None or bearing is None or not VALID_NUMBER.fullmatch(match["distance"]):
         return None
-    rest, found = _elevations(match["rest"])
+    rest, found, tail = _elevations(match["rest"], ahead=ahead)
     rest = rest.strip(" ,;:")
     if not _placeable(rest):
-        return _Piece("unplaced", segment), found
+        return _Piece("unplaced", segment), found, tail
     unit = match["unit"].casefold()
     piece = _place(rest, segment)
     piece.heading = Heading(match["head"], bearing)
     piece.relation = "offset"
     piece.distance = match["distance"]
     piece.distance_unit = "km" if unit[0] == "k" else "mi" if unit[:2] == "mi" else "m"
-    return piece, found
+    return piece, found, tail
 
 
 def _placeable(text: str) -> bool:
@@ -439,8 +507,17 @@ def _numeral(text: str) -> bool:
     return any(unicodedata.category(c) in NUMERALS for form in forms for c in form)
 
 
+def _dated(text: str) -> bool:
+    """A part of only a date's month: month words and Roman months, with the links
+    between them ("Sept.", "IV", "VIII/IX", "de julio")."""
+    words = fold(text).split()
+    return any(word in MONTHS for word in words) and all(
+        word in MONTHS or word in LINKS for word in words
+    )
+
+
 def _unsure(
-    segment: str, match: re.Match[str], paired: bool, after: bool, since: int, converts: bool
+    segment: str, match: re.Match[str], paired: bool, after: bool, converts: bool
 ) -> bool:
     """Whether an elevation's number is unsure, so the phrase is set aside rather
     than read (GEO.md 1, "Unsure numbers"):
@@ -448,16 +525,17 @@ def _unsure(
     - glued to the text before it, where no space, part start, opening bracket or
       other elevation (`paired`) comes first ("12.IV.1948,95 m", "4'800 m");
     - a range, or first digits that could be a year, after other text or right
-      after a part that holds a number (`after`), unless its prefix or another
-      elevation comes first ("Sept. 1946 - 850 m", "July 4, 1946.9500 ft");
-    - a range that runs downward, or whose upper number has a decimal
-      ("1946 - 850 m", "4-1948,95 m"), or whose lower number could be a year,
-      unless its prefix comes first or it converts with the elevation beside it
+      after a part that holds a number or only a month (`after`), unless its
+      prefix or another elevation comes first ("Sept. 1946 - 850 m",
+      "July 4, 1946.9500 ft", "July, 1946.950 m");
+    - a range that runs downward, by its whole parts in any digits, or whose
+      upper number has a decimal ("1946 - 850 m", "4-1948,95 m"), or whose lower
+      number could be a year in any digits, unless its prefix comes first or it
+      converts with the elevation beside it
       (`converts`: "1800-2200 m" is set aside, "Elev. 1800-2200 m" and
       "6000-7000 ft 1829-2134 m" read);
-    - after another number with only words or marks between them, since the
-      last elevation read (`since`) ("4000 ~ 4500 m", "Camp 3 at 1500 m");
-    - beside another digit group across a space ("4 800 ft.", "Elev. 4 800 ft.")."""
+    - beside another digit group across a space ("4 800 ft.", "Elev. 4 800 ft.").
+    The check between two numbers is `_joined`'s."""
     low, high = match["low"], match["high"]
     numbers = (low, high) if high else (low,)
     if not all(VALID_NUMBER.fullmatch(number) for number in numbers):
@@ -471,9 +549,7 @@ def _unsure(
         return True
     if high and (_decimal(high) or _size(low) > _size(high)):
         return True
-    if high and not converts and not match["prefix"] and YEAR.fullmatch(low):
-        return True
-    if not paired and TOP_ALONE.search(segment, max(since, start - 40), start):
+    if high and not converts and not match["prefix"] and YEAR.fullmatch(_ascii(low)):
         return True
     # Searched only in the few characters before the number, so a long segment
     # stays linear: segments hold single spaces, so a digit group and its space
@@ -484,11 +560,56 @@ def _unsure(
     return bool((before and re.match(r"\d{3}(?!\d)", low)) or GROUP_AFTER.match(segment, end))
 
 
+def _joined(
+    segment: str,
+    match: re.Match[str],
+    digits: list[int],
+    since: int,
+    before: bool | None,
+    ahead: bool | None,
+) -> bool:
+    """Whether the phrase's number may be one end of a range whose join no rule
+    lists ("4000 hasta 4500 ft", "4000~ 4500 m"): another number comes before it
+    since the last elevation read (`since`), or after it when it has no unit, with
+    words or marks between them, opening brackets and the later number's prefix
+    aside. Across a line break, `before` and `ahead` say whether words or marks
+    come between this part and the number at the end of the line before, or at the
+    start of the line after. `digits` are the segment's digit positions, so each
+    check reads only the text between two numbers."""
+    start, end = match.start(), match.end()
+    index = bisect_left(digits, start)
+    if index and digits[index - 1] >= since:
+        if _worded(segment[digits[index - 1] + 1 : start]):
+            return True
+    elif since == 0 and before is not None and (before or _worded(segment[:start])):
+        return True
+    if match["unit"]:
+        return False
+    index = bisect_left(digits, end)
+    if index < len(digits):
+        return _worded(PREFIX_END.sub("", segment[end : digits[index]]))
+    return ahead is not None and (ahead or _worded(segment[end:]))
+
+
+def _worded(text: str) -> bool:
+    """Whether the text holds a word or a mark: anything but spaces and opening
+    brackets."""
+    return any(not c.isspace() and c not in OPENINGS for c in text)
+
+
+def _ascii(number: str) -> str:
+    """The number with its digits, of any script, written in ASCII."""
+    return "".join(str(unicodedata.decimal(c)) if c.isdecimal() else c for c in number)
+
+
 def _size(number: str) -> tuple[int, str]:
-    """A number's size, for a range's order, compared as digits rather than
-    converted: thousands marks dropped, a decimal cut at its mark."""
-    whole = number.split(",")[0].split(".")[0] if _decimal(number) else re.sub("[.,]", "", number)
-    whole = whole.lstrip("0")
+    """A number's whole part, for a range's order, compared as ASCII digits rather
+    than converted: thousands marks dropped, a decimal cut at its point ("1463,5",
+    and "1,463.5", whose second kind of mark is the point)."""
+    digits = _ascii(number)
+    if _decimal(number) or ("," in digits and "." in digits):
+        digits = digits[: max(digits.rfind(","), digits.rfind("."))]
+    whole = re.sub("[.,]", "", digits).lstrip("0")
     return len(whole), whole
 
 
@@ -526,6 +647,7 @@ def _value(number: str) -> float | None:
     with a decimal the second kind of mark is the point ("1.463,5")."""
     if len(number) > 12 or not VALID_NUMBER.fullmatch(number):
         return None
+    number = _ascii(number)
     if _decimal(number):
         return float(number.replace(",", "."))
     if "," in number and "." in number:
@@ -534,14 +656,22 @@ def _value(number: str) -> float | None:
     return float(number.replace(",", "").replace(".", ""))
 
 
-def _elevations(segment: str, after_number: bool = False) -> tuple[str, list[Elevation]]:
-    """Elevation phrases out of the segment, each as written (G27, G38).
-    `after_number` says the part before this one holds a number."""
+def _elevations(
+    segment: str,
+    after_number: bool = False,
+    before: bool | None = None,
+    ahead: bool | None = None,
+) -> tuple[str, list[Elevation], bool | None]:
+    """Elevation phrases out of the segment, each as written (G27, G38), and
+    whether words or marks follow the last number no elevation took (None when
+    every number was taken). `after_number` says the part before this one holds a
+    number or only a month; `before` and `ahead` are `_joined`'s."""
     found: list[Elevation] = []
     rest: list[str] = []
     last = 0
     # Opening brackets at the part's start are no text before a number.
     lead = len(segment) - len(segment.lstrip(" " + OPENINGS))
+    digits = [index for index, c in enumerate(segment) if c.isdecimal()]
     phrases = [match for match in ELEVATION.finditer(segment) if match["prefix"] or match["unit"]]
     # Neighbours, one in feet and one in metres, that convert to each other.
     converting = {
@@ -554,17 +684,20 @@ def _elevations(segment: str, after_number: bool = False) -> tuple[str, list[Ele
         # A mark right after another elevation pairs the two: "4800 ft/1463 m".
         paired = bool(found) and match.start() - last <= 1
         after = after_number or match.start() > lead
-        if _unsure(segment, match, paired, after, last, index in converting):
+        if _unsure(segment, match, paired, after, index in converting) or _joined(
+            segment, match, digits, last, before, ahead
+        ):
             continue
         found.append(Elevation(match.group(0).strip(), match["low"], match["high"], _unit(match)))
         rest.append(segment[last : match.start()])
         last = match.end()
     rest.append(segment[last:])
-    return " ".join(EMPTY_BRACKETS.sub(" ", " ".join(rest)).split()), found
+    tail = _worded(segment[digits[-1] + 1 :]) if digits and digits[-1] >= last else None
+    return " ".join(EMPTY_BRACKETS.sub(" ", " ".join(rest)).split()), found, tail
 
 
 def _piece(segment: str) -> _Piece:
-    if not _placeable(segment):
+    if not _placeable(segment) or _dated(segment):
         return _Piece("unplaced", segment)
     word = fold(segment)
     if word in UNIT_WORDS:
@@ -598,7 +731,7 @@ def _place(written: str, text: str) -> _Piece:
     elif len(words) > 1 and fold(words[-1]) in UNIT_WORDS:
         unit, words = UNIT_WORDS[fold(words[-1])], words[:-1]
     name = " ".join(words).strip(" ,;:")
-    if not comparison_key(name) or all(fold(word) in LINKS for word in name.split()):
+    if not comparison_key(name) or {fold(word) for word in name.split()} <= LINKS | JOINS:
         return _Piece("unplaced", text)
     if name.endswith(".") and not _abbreviated(name.split()[-1]):
         name = name[:-1]
