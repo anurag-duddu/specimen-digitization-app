@@ -19,15 +19,20 @@ BUCKET = "specimen-digitization.firebasestorage.app"
 PREFIX = "microscopic-slides/"
 # USD per million tokens, input then output (docs/execution/LIVE_PILOT_COST.md 42-47).
 PRICES = {"handwriting-qwen": (0.20, 0.70), "handwriting-muse": (0.30, 1.20)}
-# Token values, and instance addresses that PLAN 7.7 keeps out of shared logs and issues: the app pins
-# the SAM 3 endpoint into a run's dependencies, so it reaches snapshot.json.
+# What PLAN 7.7 keeps out of shared logs and issues: token values, instance addresses (the app pins the
+# SAM 3 endpoint into a run's dependencies, so it reaches snapshot.json) and billing ids. Private values
+# such as the administrator's UID come from the file LAB_REDACT_VALUES_FILE names.
 TOKEN_VARIABLES = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN", "LOGFIRE_TOKEN",
-                   "SPECIMEN_SAM3_ENDPOINT", "SPECIMEN_SAM3_LAB_TOKEN")
+                   "LOGFIRE_READ_TOKEN", "SPECIMEN_SAM3_ENDPOINT", "SPECIMEN_SAM3_LAB_TOKEN",
+                   "SPECIMEN_GOOGLE_MAPS_API_KEY", "HF_BILL_TO")
 SHAPES = re.compile(
     r"hf_[A-Za-z0-9]{16,}|(?<=Bearer )[A-Za-z0-9._~+/=-]+|ya29\.[A-Za-z0-9._-]+"
     r"|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
-    r"|https?://[A-Za-z0-9.-]+\.run\.app(?:/[A-Za-z0-9._~/%-]*)?"  # stops at quotes, so JSON stays valid
+    r"|(?:https?://)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.run\.app(?:/[A-Za-z0-9._~/%-]*)?"  # stops at quotes
+    r"|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"  # an email, such as a caller named by an ADC error
+    r"|AIza[0-9A-Za-z_-]{35}|pylf_[A-Za-z0-9_]{8,}"  # Google API keys and Logfire tokens
 )
+LOGFIRE_ORG = re.compile(r"(logfire-(?:us|eu)\.pydantic\.dev/)[^/\s\"']+")
 TEXT_SUFFIXES = {".json", ".md", ".txt", ".log"}
 # Until production's reserve-then-settle ledger lands, every paid attempt whose usage the run did not
 # settle stays reserved at the full per-call bound: an unknown outcome (coordinator, 2026-09-23) and,
@@ -64,12 +69,22 @@ def parse_args(argv=None):
 class Redactor:
     def __init__(self, env):
         values = {env.get(name) or "" for name in TOKEN_VARIABLES}
+        if env.get("LAB_REDACT_VALUES_FILE"):
+            try:
+                values |= {line.strip() for line in Path(env["LAB_REDACT_VALUES_FILE"]).read_text().splitlines()}
+            except OSError:
+                pass
+        values = {v for v in values if len(v) >= 3}
         self.values = sorted((v for v in values if len(v) >= 8), key=len, reverse=True)
+        # A short value is matched as a whole word, so it cannot mangle ordinary text.
+        self.words = [re.compile(rf"(?<![\w-]){re.escape(v)}(?![\w-])") for v in values if len(v) < 8]
 
     def __call__(self, text):
         for value in self.values:
             text = text.replace(value, "[redacted]")
-        return SHAPES.sub("[redacted]", text)
+        for word in self.words:
+            text = word.sub("[redacted]", text)
+        return SHAPES.sub("[redacted]", LOGFIRE_ORG.sub(r"\1[redacted]", text))
 
 
 def recorded_spend(runs_root):
@@ -191,6 +206,33 @@ class Run:
 
 
 @contextmanager
+def count_gbif_occurrence(record):
+    """D4 is held, so its occurrence check sends nothing: count in-process requests to the occurrence API."""
+    import httpx
+
+    sync_send, async_send = httpx.Client.send, httpx.AsyncClient.send
+    record["gbif_occurrence_requests"] = 0
+
+    def d4(request):
+        if request.url.host == "api.gbif.org" and request.url.path.startswith("/v1/occurrence"):
+            record["gbif_occurrence_requests"] += 1
+
+    def counted_send(self, request, *args, **kwargs):
+        d4(request)
+        return sync_send(self, request, *args, **kwargs)
+
+    async def counted_async_send(self, request, *args, **kwargs):
+        d4(request)
+        return await async_send(self, request, *args, **kwargs)
+
+    httpx.Client.send, httpx.AsyncClient.send = counted_send, counted_async_send
+    try:
+        yield
+    finally:
+        httpx.Client.send, httpx.AsyncClient.send = sync_send, async_send
+
+
+@contextmanager
 def lab_trace(options, record, redact):
     if not options.logfire:
         yield
@@ -235,7 +277,7 @@ def execute(options, *, fetch, lane_factory, env, clock, loadavg, commit):
         run.write("inputs/source.json", source)
     record["source"] = source
     if source and not options.dry_run:
-        with ExitStack() as stack, lab_trace(options, record, redact):
+        with ExitStack() as stack, lab_trace(options, record, redact), count_gbif_occurrence(record):
             specimen_id = actions = None
             with run.phase("ingest"):
                 lane = stack.enter_context(lane_factory(path / "state", options, env))
@@ -260,6 +302,10 @@ def execute(options, *, fetch, lane_factory, env, clock, loadavg, commit):
             record["stages"] = lab_checks.check_stages(evidence, source, options.subject)
             record["costs"] = price(evidence["snapshot"])
             record["timings"] = timings(evidence["snapshot"])
+            if record.get("gbif_occurrence_requests"):
+                record["stages"].append({"stage": "d4", "name": "No GBIF occurrence request (D4 held)",
+                                         "status": "failed", "detail": f"{record['gbif_occurrence_requests']} "
+                                         "in-process requests to api.gbif.org/v1/occurrence"})
             if record["costs"]["total_usd"] > options.max_run_usd:
                 record["stages"].append({"stage": "cost", "name": "Run cost", "status": "failed",
                                          "detail": f"above --max-run-usd {options.max_run_usd}"})
@@ -293,7 +339,7 @@ def render(record):
         "## Stages", "", "| Stage | Status | Detail |", "|---|---|---|",
     ]
     for s in record["stages"]:
-        label = s["name"] if s["stage"] in ("trace", "cost") else f"{s['stage']} {s['name']}"
+        label = s["name"] if s["stage"] in ("trace", "cost", "d4") else f"{s['stage']} {s['name']}"
         lines.append(f"| {label} | {s['status']} | {cell(s['detail'])} |")
     lines += ["", "## Phases", "", "| Phase | Status | Seconds | Error |", "|---|---|---|---|"]
     lines += [f"| {p['name']} | {p['status']} | {p['seconds']} | {cell(p.get('error', ''))} |"
