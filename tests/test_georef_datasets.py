@@ -6,10 +6,14 @@ import re
 import pytest
 
 from specimen_digitization.application.georef_datasets import (
+    COD_AB_GTM_CREDIT,
+    GEOBOUNDARIES_PHL_CREDIT,
     GLO30_CREDIT,
     MANIFEST,
+    SIMPLIFIED_MARGIN_M,
     Dataset,
     DigestMismatch,
+    boundary_files,
     dataset,
     elevation_tile,
     geonames_dump,
@@ -91,6 +95,79 @@ def test_geonames_dumps_are_pinned_as_the_only_copy():
         assert "GeoNames" in dump.credit and dump.license == "CC BY 4.0"
         assert dump.content_type == "application/zip"
     assert geonames_dump("US") is None
+
+
+def test_the_philippines_boundaries_are_geoboundaries_simplified_files():
+    files = boundary_files("PH")
+    assert [(entry.id, entry.size, entry.sha256) for entry in files] == [
+        (
+            "geoboundaries/PH/ADM1/41af8f1",
+            2812222,
+            "8eeef6a9a525a81a647dcaac85e1337b990fc527c4a0e9c70556d5b0905be087",  # pragma: allowlist secret (public file digest)
+        ),
+        (
+            "geoboundaries/PH/ADM2/41af8f1",
+            3140454,
+            "fa77b9f17db2e419acaae714a935f7812be4409e2983675d34020e8426a3e189",  # pragma: allowlist secret (public file digest)
+        ),
+        (
+            "geoboundaries/PH/ADM3/9469f09",
+            7071267,
+            "2ece3d44a5c6a2afb385ffbf3a6b88d83e4d3a3e7eed9a52cb3be1bc59e289fc",  # pragma: allowlist secret (public file digest)
+        ),
+    ]
+    for entry in files:
+        level, commit = entry.id.split("/")[2:]
+        assert entry.source_url == (
+            f"https://github.com/wmgeolab/geoBoundaries/raw/{commit}/releaseData/gbOpen/PHL/"
+            f"{level}/geoBoundaries-PHL-{level}_simplified.geojson"
+        )
+        assert entry.margin_m == SIMPLIFIED_MARGIN_M == 101.2
+        assert entry.stable_source  # a release commit keeps its bytes
+        assert entry.content_type == "application/geo+json"
+        assert entry.credit == GEOBOUNDARIES_PHL_CREDIT
+        assert (entry.license, entry.license_url) == (
+            "CC BY 3.0 IGO",
+            "https://creativecommons.org/licenses/by/3.0/igo/",
+        )
+    assert GEOBOUNDARIES_PHL_CREDIT.startswith(
+        "National Mapping and Resource Information Authority (NAMRIA), Philippines Statistics "
+        "Authority (PSA), OCHA Philippines, via geoBoundaries"
+    )
+
+
+def test_the_guatemala_boundaries_are_conreds_cod_ab_file_pinned_as_the_only_copy():
+    (entry,) = boundary_files("GT")
+    assert (entry.id, entry.size, entry.sha256) == (
+        "cod-ab/GT/2026-09-24",
+        3366983,
+        "f178eda98c46329380bdbb43f0637b4c43535bc843de6a0b8b960193b8f4363f",  # pragma: allowlist secret (public file digest)
+    )
+    assert entry.source_url.startswith("https://data.humdata.org/dataset/")
+    assert entry.source_url.endswith("/gtm_admin_boundaries.geojson.zip")
+    assert entry.margin_m == 0  # full resolution
+    assert entry.stable_source is False  # HDX serves only its latest file
+    assert entry.content_type == "application/zip"
+    assert entry.credit == COD_AB_GTM_CREDIT and entry.license == "CC BY 3.0 IGO"
+    assert COD_AB_GTM_CREDIT.startswith(
+        "Coordinadora Nacional Para La Reducción De Desastres (CONRED)"
+    )
+    assert boundary_files("US") == ()
+
+
+def test_only_the_simplified_boundary_files_carry_a_margin():
+    assert {entry.id for entry in MANIFEST if entry.margin_m} == {
+        entry.id for entry in boundary_files("PH")
+    }
+
+
+def test_no_boundary_comes_from_openstreetmap_or_gadm():
+    # The coordinator's rulings: Guatemala's departments never from geoBoundaries'
+    # OpenStreetMap file (ODbL), and GADM not at all.
+    for entry in MANIFEST:
+        assert "ODbL" not in entry.license
+        assert "gadm" not in entry.source_url.lower()
+        assert "/GTM/" not in entry.source_url
 
 
 def test_only_the_reviewed_bytes_are_read():
