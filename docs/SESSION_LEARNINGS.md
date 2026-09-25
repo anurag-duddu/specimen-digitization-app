@@ -11829,7 +11829,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 
 ### 2026-09-23 — Go-live S4: scheduling the first pass and recording its decision (stage 6, part 2)
 
-- Task: go-live S4, topic T2 part 2: the workflow runs the first-pass call of part 1 and records, per region, the decision and what each reading handed to the harness (PLAN 2.1; G19).
+- Task: go-live S4, topic T2 part 2: the workflow runs the first-pass call of part 1 and records, per region, the decision and what each reading handed to the harness (PLAN section 1; G19).
 - Branch/worktree: `golive/harness-first-pass-wiring`, stacked on `golive/harness-first-pass-call`, in `.claude/worktrees/cool-haslett-aa79b5`.
 - Outcome: `first_pass:{region}` runs for every region whose readings differ, before `adjudicate` and never after it; identical readings keep today's rule, recorded as `identical_readings`; `adjudicate` records `decision_kind`, the selected reading verbatim (or none), the call, the verdicts, the rationale and one `ReaderHandoff` per reading, with every stage 5 alignment field unchanged. With no selection every reading is handed over as `raw_reading` (G19). Spec: `docs/execution/golive/HARNESS.md` section 4.
 - Validation actually run: the four workflow tests failed before the change (no step, no fields); after it, 14 workflow-adjacent suites give 216 passed, 3 skipped; the full-suite gates are in the pull request.
@@ -11838,7 +11838,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 
 ### 2026-09-25 — Go-live S4: #98's review fixes before it makes the first pass live
 
-- Task: the steward's review of #97 (12:29Z) named four fixes #98 must carry before its turn: G19 in the request, the crop's digest, the cap-hit split, and the call kept out of the readings. The steward then pulled in input binding and a null-pick test. The coordinator ruled on "material" and G19 at 12:31Z.
+- Task: the steward's review of #97 (12:29Z) named four fixes #98 must carry before its turn: G19 in the request, the crop's digest, the cap-hit split, and the call kept out of the readings. The steward then pulled in input binding and a null-pick test. The coordinator gave its reading of "material" and G19 at 12:31Z.
 - Branch/worktree: `golive/harness-first-pass-wiring`, in `.claude/worktrees/cool-haslett-aa79b5`.
 - Outcome:
   - The code decides materiality: spans equal once case-folded are capitalization alone. A pick stands only when every material difference supports it; otherwise the first pass returns no reading (G19). The request states the rule, and the answer no longer carries a `material` flag.
@@ -11856,6 +11856,37 @@ because the hooks runner hands a native asset hook only `PATH`.
   - Until S3's #153 merges, a reader's answer cut off at its output cap blocks as `external_outcome_unknown`, like its true cap hit on main.
   - The legacy extractor (`harness.py`) has no cap handler at any head.
   - When the chain reaches #159, its `usage` argument must replace this PR's own counter.
+
+### 2026-09-25 — Go-live S4: #98's round-2 review (G19's cap-hit citation and the finalize checks)
+
+- Task: the steward's round-1 review of #98 at 6da5a55 (comment 5833705040). It upheld one blocker: "G30 makes a cap hit the raw fallback" credited G30, which sets the allowance and says nothing about a fallback. It also named six should-fixes and some nits.
+- Branch/worktree: `golive/harness-first-pass-wiring`, in `.claude/worktrees/cool-haslett-aa79b5`.
+- Outcome:
+  - A first pass stopped by its caps selects no reading. The citation is now G19 and the owner's words in PLAN section 1 ("can rely on raw ... if LLM decided transcript output fails").
+  - Materiality compares spans lower-cased, not case-folded. The coordinator's ruling at 14:05Z reads 12:31Z's "case-folded" as lower-cased, so "Straße" against "Strasse" stays material.
+  - HARNESS.md section 3 now covers four more points:
+    - S3's route wiring PR sizes the `first_pass` reservation from the crop, with the 20,000 floor;
+    - the owner's words are cited to PLAN section 1;
+    - the legacy extraction call shares the cap-hit split and has no handler;
+    - the managed prompt reaches the span (G3).
+  - Finalize (`integrity.py`) verifies each first-pass call's responses, region and input. It also checks that a machine-selected reading is the region's, with its literal as the text, until a reviewer's decision changes the transcript.
+  - The parent refuses a first-pass call returned for another route or asset.
+  - The extraction payload leaves out a transcript's handoffs, differences and call.
+  - The synthetic call names its readers' input.
+  - New tests pin the blocks, the registered first-pass route pin and the model-child round trip.
+- Validation actually run: 9 new or changed tests failed before the implementation, each for its intended reason. The blocks, the route pin, the child round trip and the reviewer-changed transcript pass before and after. The first finalize check blocked `test_http_transcription_abstention_preserves_readings_and_blocks_clear` until it skipped reviewer-changed transcripts. Gates on 9dce6350, one at a time: `pre-commit run --all-files` passed; `pytest tests` 1557 passed, 31 skipped; `pytest scripts` 1562 passed, 50 skipped; `check_ui_strings` 0 violations.
+- Durable learnings:
+  1. A reviewer's transcription decision (`api.py`) rewrites `text`, `resolved`, `value_state` and `actor`, but leaves `decision_kind` and `selected_observation_id`. A check on a machine pick must skip transcripts with an `actor`, or finalize blocks every reviewed record.
+  2. `INITIAL_HUGGINGFACE_ROUTES` is a read-only `mappingproxy`: a test patches the name in `production`, not an item.
+  3. Credit each rule to the decision that states it. A rule that follows from G19 must cite G19, even when G30 sets the cap that triggers it.
+- Remaining follow-ups (the S4 follow-up PR after the chain, which the steward tracks with #86's items):
+  - keep the raw messages of a `model_malformed_response` call (PRD 691, TRN-005);
+  - a blank or unreadable pick;
+  - the contract-invalid path's circuit charge and dropped call;
+  - `max_length` on free text;
+  - whitespace-split numbers;
+  - route ids on spans.
+  - At #159's turn, its "coordinator's G30 reading" citation goes to G19 as well.
 
 ### 2026-09-23 — Go-live release workstream (S2), T1b: the owner decisions in the release runbooks and histories
 
