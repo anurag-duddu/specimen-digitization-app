@@ -34,7 +34,8 @@ What it does, per locality:
    search, facet then the facet values GBIF returned).
 5. With `--held-steps` only: checks each candidate point's containment through
    GBIF's reverse geocoder, which reads GADM (research only: the tool uses
-   geoBoundaries and never GADM, PLAN 4.8).
+   geoBoundaries' Philippine files and CONRED's COD-AB file for Guatemala, and
+   never GADM, PLAN 4.8).
 6. Compares each candidate point's SRTM elevation (OpenTopoData) with the label
    elevation, and samples an elevation transect along a slope direction
    ("E. slope").
