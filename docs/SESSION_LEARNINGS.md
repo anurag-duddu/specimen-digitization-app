@@ -12085,3 +12085,21 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (4) GNS and GeoNames agree to five decimals on Yepocapa's town and municipio, since GeoNames draws on GNS. Under #94's score (3.4), copies of one source count once.
 - Failed approaches: a first draft listed a first-order unit as its own parent (Davao del Norte under PH-DAV). A first-order unit now has none.
 - Remaining follow-ups: tier 2 (task 5) once S4's #113 merges; the request builder, which calls S4's filter (#183); the derivations (task 6) once #144 merges.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 6a: tier 3's point-radius uncertainty
+
+- Task: brief task 6's pure part, the in-house point-radius uncertainty (D13), tested against the Georeferencing Calculator's own worked examples.
+- Branch and worktree: `golive/geo-radius` in `.claude/worktrees/geo-build`, stacked on #190. PR #192.
+- Outcome: `georef_radius.py` ports the Calculator's arithmetic in meters.
+  - The sources of uncertainty: radial, source, measurement, coordinate precision on the datum's ellipsoid, datum, and offset and heading precision.
+  - The six locality types' combinations. Orthogonal offsets count distance precision in two dimensions, and an offset at a heading widens into a cone.
+  - Offsets move a point by the ellipsoid's meters per degree, wrapping the antimeridian.
+  - The "E. slope" sector's smallest enclosing circle (#94, 3.8).
+- Validation: 30 tests, among them the Calculator's eight worked examples; `uv run pytest -q` (3,254 passed, 81 skipped: `tests/` and `scripts/` together); pre-commit.
+- Durable learnings:
+  - (1) The Calculator adds its uncertainties for most locality types. The exceptions are orthogonal offsets (distance precision times √2, since 2013) and an offset at a heading (a cone). Best Practices 3.4.7 only points to the Calculator, so its code is the specification.
+  - (2) The worked examples D13 asks for are in the Calculator's own repository (`test_data.js`). Four of them depend on its 2015 datum grid (79 m at Bakersfield), which the 2019 grid replaced (3,045 m there). A port reproduces them only if it takes the datum error as an input.
+  - (3) The Calculator's mile is 1,609.3445 m, not 1,609.344 m. Neither changes any example at the precision shown, and one example's point sits 1e-7 degree from its expected value with either factor.
+  - (4) Every tier-1 source gives WGS84 points, so for the pilot the datum adds nothing. The radius comes down to the feature's radial and the coordinates' precision: 1.5 m for GeoNames' five decimals at Yepocapa.
+- Failed approaches: none.
+- Remaining follow-ups: radials need boundaries (geoBoundaries for units; nothing yet for a town's or a mountain's extent); the derivations (task 6) once S4's #144 merges; tier 2 (task 5) once #113 merges.
