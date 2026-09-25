@@ -36,8 +36,10 @@ SHAPES = re.compile(
 LOGFIRE_ORG = re.compile(r"(logfire-(?:us|eu)\.pydantic\.dev/)[^/\s\"']+")
 TEXT_SUFFIXES = {".json", ".md", ".txt", ".log"}
 REPOSITORY = Path(__file__).resolve().parents[2]
-# Fields that name a person, redacted by field wherever they appear (PLAN 7.7).
-PERSON_FIELDS = {"uploader", "actor", "actor_uid", "created_by", "uid", "user_id"}
+PRIVATE_ROOT = Path.home() / "specimen-release-private"  # PLAN 840: private artifacts, never in a repository
+# Fields that name a person, redacted by field wherever they appear (PLAN 7.7): the snapshot's uploader and
+# actors, and the SQL columns, including SourceAsset.uploaderUid and ProfileVersion.approvedBy.
+PERSON_FIELDS = {"uploader", "actor", "actor_uid", "created_by", "uid", "user_id", "uploader_uid", "approved_by"}
 # Until production's reserve-then-settle ledger lands, every paid attempt whose usage the run did not
 # settle stays reserved at the full per-call bound: an unknown outcome (coordinator, 2026-09-23) and,
 # since #86, a call that returned and then failed with a known blocker, whose usage the workflow does
@@ -133,8 +135,8 @@ def values_file_problems(name):
     if not name:
         return ["LAB_REDACT_VALUES_FILE is not set"]
     path = Path(name).expanduser().resolve()
-    if path == REPOSITORY or REPOSITORY in path.parents:
-        return ["LAB_REDACT_VALUES_FILE points inside the repository"]
+    if PRIVATE_ROOT.expanduser().resolve() not in path.parents:
+        return [f"LAB_REDACT_VALUES_FILE must be under {PRIVATE_ROOT}"]
     try:
         if not path.read_text().strip():
             return ["LAB_REDACT_VALUES_FILE is empty"]
@@ -420,10 +422,11 @@ def run_key(path):
 
 def write_subject_report(options, redact):
     root = options.runs_root / options.subject
-    lines = [f"# {options.subject}", "", f"Lab runs, newest first. Files: `{root}`.", "",
-             "| Run | Commit | Result | Stages passed | Cost USD | Segmentation |",
-             "|---|---|---|---|---|---|"]
-    latest = None
+    lines = [f"# {options.subject}", "", f"Lab runs, newest first. Files: `{root}`. A person's verdict lives in "
+             "the run's `verdict.md`, which the runner never writes.", "",
+             "| Run | Commit | Result | Stages passed | Cost USD | Segmentation | Person's verdict |",
+             "|---|---|---|---|---|---|---|"]
+    latest, verdicts = None, []
     for path in sorted(root.iterdir(), key=run_key, reverse=True):
         try:
             r = json.loads((path / "run.json").read_text())
@@ -431,9 +434,19 @@ def write_subject_report(options, redact):
             continue
         latest = latest or path
         passed = sum(s["status"] == "passed" for s in r["stages"])
+        try:
+            verdict = (path / "verdict.md").read_text().strip()
+        except OSError:
+            verdict = ""
+        if verdict:
+            verdicts += ["", f"### {r['run']}", ""] + [("###" + x if x.startswith("#") else x)
+                                                       for x in verdict.splitlines()]
         lines.append(f"| {r['run']} | {str(r['commit'].get('head'))[:12]} | {r['result']} | "
                      f"{passed}/{len(r['stages'])} | {r['costs']['total_usd']:.4f} | "
-                     f"{r['options']['segmentation']} |")
+                     f"{r['options']['segmentation']} | "
+                     f"{cell(verdict.splitlines()[0].lstrip('# ')) if verdict else '—'} |")
+    if verdicts:
+        lines += ["", "## Verdicts recorded by a person"] + verdicts
     if latest:
         body = (latest / "report.md").read_text().splitlines()
         lines += ["", "## Latest run", ""] + [("#" + x if x.startswith("#") else x) for x in body]
