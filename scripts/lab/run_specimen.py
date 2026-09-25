@@ -72,7 +72,8 @@ def subject_id(value):
 
 
 def positive_number(value):
-    """A finite number above zero: NaN would pass every comparison preflight makes (G9)."""
+    """A finite number above zero, by the lab's own check: NaN would pass every comparison the runner makes
+    against G9's allowance, PLAN 7.4's load limit or its own deadline."""
     number = float(value)
     if not math.isfinite(number) or number <= 0:
         raise argparse.ArgumentTypeError(f"expected a finite number above zero, not {value}")
@@ -91,7 +92,7 @@ def parse_args(argv=None):
     parser.add_argument("--max-load", type=positive_number, default=12.0)
     parser.add_argument("--max-run-usd", type=positive_number, default=0.75)
     parser.add_argument("--lab-allowance-usd", type=positive_number, default=5.00)
-    parser.add_argument("--timeout-seconds", type=float, default=1800)
+    parser.add_argument("--timeout-seconds", type=positive_number, default=1800)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--report-only", action="store_true",
                         help="rebuild the subject report from the run folders, for example after a verdict.md")
@@ -321,6 +322,10 @@ class Run:
             entry["status"] = "failed"
             entry["error"] = self.redact(f"{type(exc).__name__}: {exc}")
             self.log.write(self.redact(traceback.format_exc()))
+            interrupt = interrupt_in(exc.__context__)
+            if interrupt:  # a Ctrl-C that this error replaced, as when stop() then times out, still stops the run
+                self.interrupted = interrupt
+                raise interrupt from exc
         except BaseException as exc:  # Ctrl-C: recorded as a failure, then the run stops
             entry["status"] = "failed"
             entry["error"] = type(exc).__name__
@@ -332,24 +337,24 @@ class Run:
 
 
 def occurrence_request(url, params=None):
-    """A request to GBIF's occurrence API, read as written and as httpx builds it (dot segments resolved, a ".."
-    above the root dropped, parameters of any kind in the URL): the host in any case, the path percent-decoded,
-    and occurrence query keys. Reading both ways counts more, never less, while D4 is held."""
+    """A request to GBIF's occurrence API (LAB.md, stage 7): the URL read as written and as httpx builds it,
+    parameters merged; each path read as the client sends it and as a server may then read it
+    (lab_checks.client_paths); the host in any case; and occurrence query keys. Reading both ways counts more,
+    never less, while D4 is held."""
     import httpx
 
     parts = urlsplit(str(url))
-    hosts, paths = {parts.hostname or ""}, {parts.path}
+    hosts, paths = {parts.hostname or ""}, set(lab_checks.client_paths(str(url)))
     keys = query_keys(params) | query_keys(parts.query)
     try:
         sent = httpx.Request("GET", str(url), params=params).url
         hosts.add(sent.host)
-        paths.add(sent.path)
+        paths |= set(lab_checks.client_paths(str(sent)))
         keys |= {str(key).lower() for key in sent.params.keys()}
     except Exception:  # a URL httpx cannot build is read as written
         pass
     return any(lab_checks.gbif_host(host) for host in hosts) and (
-        any(lab_checks.occurrence_path(lab_checks.decoded(path)) for path in paths)
-        or bool(keys & lab_checks.OCCURRENCE_KEYS))
+        any(path.startswith("/v1/occurrence") for path in paths) or bool(keys & lab_checks.OCCURRENCE_KEYS))
 
 
 def query_keys(params):

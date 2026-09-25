@@ -766,11 +766,13 @@ def test_a_ctrl_c_during_the_apps_request_stops_the_run_and_is_recorded(tmp_path
     from test_lab_lane import InterruptingAdapters, jpeg
     from specimen_digitization.application.api import SYNTHETIC_TEXT
 
-    lane = lab_lane.AppLane(tmp_path / "lane", adapters_factory=lambda blobs: InterruptingAdapters(blobs, SYNTHETIC_TEXT),
+    lane = lab_lane.AppLane(tmp_path / "lane",
+                            adapters_factory=lambda blobs: InterruptingAdapters(blobs, SYNTHETIC_TEXT),
                             persistence="sqlite", segmentation="sam3", subject=SUBJECT)
     image = jpeg()
     with pytest.raises(KeyboardInterrupt):
-        run(tmp_path, lane=lane, fetcher=lambda subject: (image, {"bucket": "b", "object_name": "o", "generation": "1"}))
+        run(tmp_path, lane=lane,
+            fetcher=lambda subject: (image, {"bucket": "b", "object_name": "o", "generation": "1"}))
     summary = json.loads((only_run(tmp_path) / "run.json").read_text())
     ingest = next(p for p in summary["phases"] if p["name"] == "ingest")
     assert ingest["status"] == "failed" and "KeyboardInterrupt" in ingest["error"]

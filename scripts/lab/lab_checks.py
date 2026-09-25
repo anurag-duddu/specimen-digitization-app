@@ -8,6 +8,8 @@ import posixpath
 import re
 from urllib.parse import unquote
 
+import httpx
+
 METRIC = "bounded-levenshtein-fraction-v1"
 SAM3_MODEL = "facebook/sam3"
 SUBSTITUTE = "reviewed_region"
@@ -21,8 +23,9 @@ OCCURRENCE_KEYS = {"catalognumber", "recordedby", "occurrenceid", "institutionco
 MUSEUM_PUBLISHED = re.compile(r'\\*"museum_published\\*"\s*:\s*true')  # S8's check ran, escaped or not
 OCCURRENCE_SIGNAL = re.compile(r'\\*"occurrence\\*"\s*:\s*\\*"(?:supports|conflicts)')
 IDENTITY = ("source", "provider", "source_id", "tool", "tool_id")
-GBIF_URL = re.compile(r"(?<![\w-])api\.gbif\.org\.?(?::\d+)?(/[^\s\"'<>\\]*)")  # its path, in decoded text
-PATH_TOKEN = re.compile(r"/[^\s\"'<>\\]*")
+GBIF_HOST = re.compile(r"(?<![\w-])api\.gbif\.org\.?(?::\d+)?(?![\w.-])", re.I)  # a trailing dot or a port allowed
+URL_TAIL = re.compile(r"[^\s\"'<>\\]*")  # a URL's path, query and fragment as written
+SCHEME = re.compile(r"[a-z][a-z0-9+.-]*://", re.I)
 PROVENANCE = ("model_id", "provider", "prompt_version", "input_sha256", "raw_ref", "raw_sha256")
 # Labels of the ten pilot slides as fractions of the frame's width, full height (S8's
 # table and the images, 2026-09-23). The left box includes the barcode's printed catalog
@@ -223,86 +226,116 @@ def harness(runs, lookups, requests, blob_hits):
 
 
 def decoded(text):
-    """Percent-decoded up to four times, until stable, with JSON's escaped slashes undone, in lower case."""
+    """Percent-decoded up to four times, until stable, in lower case."""
     text = str(text)
     for _ in range(4):
         plain = unquote(text)
         if plain == text:
             break
         text = plain
-    return text.replace("\\/", "/").lower()
-
-
-def resolve(path):
-    """A decoded path without its query, as a server resolves it: ";" parameters dropped, slashes merged, "."
-    and ".." resolved, a ".." above the root included. Backslashes stay as they are."""
-    path = re.sub(r"/{2,}", "/", re.sub(r";[^/]*", "", path))
-    return posixpath.normpath(path) if path.startswith("/") else path
-
-
-def occurrence_path(path):
-    """A decoded path without its query names the occurrence API."""
-    return resolve(path).startswith("/v1/occurrence")
+    return text.lower()
 
 
 def gbif_host(host):
     return decoded(host).rstrip(".") == "api.gbif.org"  # a trailing dot names the same host
 
 
-def texts(text):
-    """Text read twice (LAB.md, stage 7): as written, where a path is split from its query before it is
-    decoded, as a server reads it; and decoded as a whole, for a URL encoded inside another."""
-    raw = str(text).replace("\\/", "/")
-    return ((raw.lower(), True), (decoded(raw), False))
+def client_paths(url):
+    """A URL's path as the client sends it (httpx.URL: "." and ".." removed on the path as written, a ".." above
+    the root included) and as a server may then read it (percent-decoded, ";" parameters dropped, slashes merged,
+    "." and ".." resolved again), in lower case. A literal backslash stays a character."""
+    try:
+        sent = httpx.URL(str(url)).path
+    except Exception:  # not a URL the client could send
+        return []
+    served = re.sub(r"/{2,}", "/", re.sub(r";[^/]*", "", sent))
+    served = posixpath.normpath(served) if served.startswith("/") else served
+    return [sent.lower(), served.lower()]
 
 
-def reading(path, raw):
-    path = re.split(r"[?#]", path, maxsplit=1)[0]
-    return resolve(decoded(path) if raw else path)
+def gbif_urls(text):
+    """Every api.gbif.org URL in stored text, looked for as written and again after each of up to four decoding
+    steps. A URL found at one level has its host and path blanked before the next, so its own escapes are never
+    re-read as structure; its query stays, and a URL encoded inside another surfaces a level down."""
+    text = str(text).replace("\\/", "/")  # JSON's escaped slashes
+    for _ in range(5):
+        spans = []
+        for match in GBIF_HOST.finditer(text):
+            tail = URL_TAIL.match(text, match.end()).group(0)
+            if tail[:1] in ("", "/", "?", "#"):  # a URL at this level; an encoded one waits for the next
+                yield "https://api.gbif.org" + tail
+                spans.append((match.start(), match.end() + len(re.split(r"[?#]", tail, maxsplit=1)[0])))
+        for begin, finish in reversed(spans):
+            text = text[:begin] + " " + text[finish:]
+        plain = unquote(text)
+        if plain == text:
+            break
+        text = plain
 
 
-def gbif_url_paths(text):
-    """The path of every api.gbif.org URL in the text, in both readings."""
-    for source, raw in texts(text):
-        for match in GBIF_URL.finditer(source):
-            yield reading(match.group(1), raw)
+def value_paths(value):
+    """A GBIF record's string value read as a path: an absolute URL on any host, a path from the root, a relative
+    path, which resolves from the root, or a "//" reference, read both as a host and path and as a path."""
+    value = str(value).strip()
+    if SCHEME.match(value):
+        urls = [value]
+    elif value.startswith("//"):
+        urls = ["https:" + value, "https://api.gbif.org" + value]
+    else:
+        urls = ["https://api.gbif.org" + ("" if value.startswith("/") else "/") + value]
+    return [path for url in urls for path in client_paths(url)]
 
 
-def paths_in(text):
-    """Every path in the text, in both readings; one that starts with "//" is also read as a host and path."""
-    for source, raw in texts(text):
-        for token in PATH_TOKEN.findall(source):
-            yield reading(token, raw)
-            if token.startswith("//"):
-                yield reading("/" + token[2:].partition("/")[2], raw)
+def strings_in(value, depth=0):
+    """Every string in a parsed value; a string that holds JSON is parsed and read too, four levels deep."""
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from strings_in(item, depth)
+    elif isinstance(value, list):
+        for item in value:
+            yield from strings_in(item, depth)
+    elif isinstance(value, str):
+        yield value
+        if depth < 4 and value.lstrip()[:1] in ("{", "["):
+            try:
+                yield from strings_in(json.loads(value), depth + 1)
+            except ValueError:
+                pass
 
 
 def occurrence_request(text):
     """GBIF's occurrence API named with its host, or S8's occurrence check having run, in any stored text."""
     text = str(text)
-    return (any(path.startswith("/v1/occurrence") for path in gbif_url_paths(text))
+    return (any(path.startswith("/v1/occurrence") for url in gbif_urls(text) for path in client_paths(url))
             or bool(MUSEUM_PUBLISHED.search(text)) or bool(OCCURRENCE_SIGNAL.search(text)))
 
 
 def occurrence_blob(text):
-    """A receipt's blob showing an occurrence request, as text or as a record inside it."""
+    """A receipt's blob showing an occurrence request: in its text, in any string inside it, or as a record."""
     if occurrence_request(text):
         return True
     try:
         data = json.loads(text)
     except ValueError:
         return False
-    return any(occurrence_record(r) for r in records_in(data) if not held_by_policy(r))
+    return (any(occurrence_request(value) for value in strings_in(data))
+            or any(occurrence_record(r) for r in records_in(data) if not held_by_policy(r)))
 
 
-def records_in(value):
+def records_in(value, depth=0):
+    """Every record in a parsed value, JSON held in a string included, four levels deep."""
     if isinstance(value, dict):
         yield value
         for item in value.values():
-            yield from records_in(item)
+            yield from records_in(item, depth)
     elif isinstance(value, list):
         for item in value:
-            yield from records_in(item)
+            yield from records_in(item, depth)
+    elif isinstance(value, str) and depth < 4 and value.lstrip()[:1] in ("{", "["):
+        try:
+            yield from records_in(json.loads(value), depth + 1)
+        except ValueError:
+            pass
 
 
 def held_by_policy(record):
@@ -317,7 +350,7 @@ def species_match(record):
     """PLAN 4.8's species match (G23), by tool, adapter or path; #134's evidence has a usage/<key> locator."""
     version = str(record.get("adapter_version") or record.get("tool_version") or "").lower()
     return ("taxonomy_verifier" in identity(record) or version.startswith("species-match")
-            or any(path.startswith("/v2/species/match") for path in paths_in(json.dumps(record, default=str)))
+            or any(path.startswith("/v2/species/match") for value in strings_in(record) for path in value_paths(value))
             or str(record.get("locator") or "").lower().startswith("usage/"))
 
 
@@ -327,7 +360,7 @@ def occurrence_record(record):
         return False
     keys = {str(k).lower() for part in ("arguments", "query") for k in (record.get(part) or {})}
     return ("occurrence" in identity(record)
-            or any(path.startswith("/v1/occurrence") for path in paths_in(json.dumps(record, default=str)))
+            or any(path.startswith("/v1/occurrence") for value in strings_in(record) for path in value_paths(value))
             or bool(keys & OCCURRENCE_KEYS))
 
 

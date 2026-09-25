@@ -197,7 +197,8 @@ def test_a_ctrl_c_during_the_apps_request_is_raised_when_the_request_returns(tmp
     # #84 round 3: the test client turns a BaseException in a request into a 500, so the lane holds a Ctrl-C
     # while a request runs and raises it once the request returns; the previous handler comes back after.
     before = signal.getsignal(signal.SIGINT)
-    lane = lab_lane.AppLane(tmp_path / "state", adapters_factory=lambda blobs: InterruptingAdapters(blobs, SYNTHETIC_TEXT),
+    lane = lab_lane.AppLane(tmp_path / "state",
+                            adapters_factory=lambda blobs: InterruptingAdapters(blobs, SYNTHETIC_TEXT),
                             persistence="sqlite", segmentation="sam3", subject="subject_105526321")
     with pytest.raises(KeyboardInterrupt):
         with lane:

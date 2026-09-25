@@ -62,8 +62,8 @@ uv run python scripts/lab/run_specimen.py subject_105526321
    written before it stops: in a phase, between the lane's phases or during
    its teardown, including when an error in a phase or in the teardown then
    replaces it. During one of the app's own requests, which the test client
-   would turn into an error response, the lane holds a first Ctrl-C until the
-   request returns and then raises it; a second one stops at once. The subject report is rebuilt from every run of that
+   would turn into an error response, the lane holds a Ctrl-C until the
+   request returns and then raises it. The subject report is rebuilt from every run of that
    subject, at the end of each run or with `--report-only`.
 
 ### Stage checks

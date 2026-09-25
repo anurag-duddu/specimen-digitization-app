@@ -65,13 +65,18 @@ class AppLane:
         self.root.mkdir(parents=True, exist_ok=True)
         self.blobs = LocalBlobs(self.root / "blobs")
         adapters = self.adapters_factory(self.blobs)
-        if not isinstance(adapters, SyntheticAdapters):  # G31, where the adapters are built (learning 21)
+        if type(adapters) is not SyntheticAdapters:  # G31, where the adapters are built (learning 21)
             refuse_sensitive(self.subject)
+        self.interrupted = self.in_request = False
+        self.previous_sigint = None
+        if threading.current_thread() is threading.main_thread():
+            self.previous_sigint = signal.signal(signal.SIGINT, self.on_sigint)
         try:
             if self.persistence == "sqlite":
                 self.repository = SQLiteRepository(self.root / "state.sqlite3")
             else:
-                self.emulator = Emulator(self.root / "emulator").start()
+                self.emulator = Emulator(self.root / "emulator")
+                self.emulator.start()
                 self.repository = SqlConnectRepository(
                     project="demo-specimen-data", emulator_host=self.emulator.host
                 )
@@ -79,8 +84,11 @@ class AppLane:
                              adapters=adapters, token=self.token)
             self.client = TestClient(app, raise_server_exceptions=False).__enter__()
         except BaseException:
-            if self.emulator:  # __exit__ never runs when __enter__ raises
-                self.emulator.stop()
+            try:
+                if self.emulator:  # __exit__ never runs when __enter__ raises
+                    self.emulator.stop()
+            finally:
+                self.restore_sigint()
             raise
         return self
 
@@ -88,14 +96,37 @@ class AppLane:
         try:
             self.client.__exit__(*exc)
         finally:
-            if self.emulator:
-                self.emulator.stop()
+            try:
+                if self.emulator:
+                    self.emulator.stop()
+            finally:
+                self.restore_sigint()
+
+    def on_sigint(self, signum, frame):
+        """The test client turns a BaseException raised during a request into a 500, so a first Ctrl-C during one
+        of the app's requests is held until the request returns, when call() raises it. Any other, a second one
+        included, is raised at once."""
+        if self.in_request and not self.interrupted:
+            self.interrupted = True
+            return
+        raise KeyboardInterrupt
+
+    def restore_sigint(self):
+        if self.previous_sigint is not None:
+            signal.signal(signal.SIGINT, self.previous_sigint)
+            self.previous_sigint = None
 
     def call(self, method, path, key=None, headers=None, **kwargs):
         headers = {"Authorization": "Bearer " + self.token, **(headers or {})}
         if key:
             headers["Idempotency-Key"] = f"lab:{self.nonce}:{key}"
-        response = self.client.request(method, PREFIX + path, headers=headers, **kwargs)
+        self.in_request = True
+        try:
+            response = self.client.request(method, PREFIX + path, headers=headers, **kwargs)
+        finally:
+            self.in_request = False
+        if self.interrupted:
+            raise KeyboardInterrupt  # the Ctrl-C held while the app's request ran
         if response.status_code >= 400:
             raise LabError(f"{method} {path} returned {response.status_code}: {response.text[:300]}")
         return response.json()
@@ -213,13 +244,13 @@ class Emulator:
         self.host = f"127.0.0.1:{dc_port}"
         # The script's cluster stays in the system TMPDIR: PostgreSQL's socket path is capped at 103 bytes.
         env = dict(os.environ, SPECIMEN_TEST_PG_PORT=str(self.pg_port), SPECIMEN_TEST_DC_PORT=str(dc_port))
-        self.process = subprocess.Popen(
-            ["bash", "scripts/data/serve-local.sh"], cwd=REPO, env=env, text=True,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
-        self.pumping = threading.Thread(target=self.pump, daemon=True)
-        self.pumping.start()
-        deadline = time.monotonic() + timeout
         try:
+            self.process = subprocess.Popen(
+                ["bash", "scripts/data/serve-local.sh"], cwd=REPO, env=env, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+            self.pumping = threading.Thread(target=self.pump, daemon=True)
+            self.pumping.start()
+            deadline = time.monotonic() + timeout
             while not self.ready.wait(1):
                 if self.process.poll() is not None or time.monotonic() > deadline:
                     raise LabError(f"the SQL Connect emulator did not start; see {self.root}")
@@ -251,10 +282,16 @@ class Emulator:
                 for t in tables.split()}
 
     def stop(self):
-        if self.process.poll() is None:
-            os.killpg(self.process.pid, signal.SIGTERM)
-            self.process.wait(timeout=60)
-        self.pumping.join(timeout=10)
+        """Stops the emulator and keeps its logs; safe to call again, or before it fully started."""
+        process = getattr(self, "process", None)
+        if process is None:
+            return
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=60)
+        pumping = getattr(self, "pumping", None)
+        if pumping is not None and pumping.is_alive():
+            pumping.join(timeout=10)
         if self.retained and self.retained.name.startswith("specimen-data-serve."):
             for log in self.retained.glob("*.log"):
                 shutil.copy(log, self.root / log.name)
