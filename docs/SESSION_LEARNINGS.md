@@ -12068,3 +12068,28 @@ because the hooks runner hands a native asset hook only `PATH`.
   - the fetch (T2f part two) after S5's T4;
   - "Fill the rest" when S5's T6 publishes its job and proposal shapes;
   - fold the two private sentence-case helpers into `sentenceCase`.
+
+### 2026-09-24 — Go-live S6 T2.3 part five: evidence in words
+
+- Task: go-live workstream S6. The coordinator's wording rulings of 2026-09-24 for the harness's evidence, a reviewer's filled value, the authority identity and G45's reason, plus #171's field findings.
+- Branch/worktree: `golive/ui-field-words`, stacked on `golive/ui-layer-labels` (#186); `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome: UI.md T2.3 part five and T2.4.
+  - The harness's evidence names the reading it quotes, by reader: "<reader>'s reading supports this value", plural for several.
+  - A reviewer's filled value reads "Set by a reviewer".
+  - The authority identity is a disclosure line, "<Source> record <id>" then its credit; Google's by place ID.
+  - A field's own findings are read first.
+  - G45 reads "Doesn't look like a collector".
+  - "recorded" outcomes are no longer appended, and `region:` locators read as labels.
+  - A derived value's rule lines wait for `fields[].derivation`, which S5 agreed today to add to #171.
+- Commits/PRs: red `627b7f7`; green `e2edbee`; the pull request depends on #186 and the chain below it.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; `check_ui_strings.py` 0 violations; the two test files 36 passed; the full app suite 1,748 passed, 8 skipped, 0 failed, with `TZ=America/Chicago`, no golden moved.
+- Durable learnings:
+  1. Check wording rulings against the data before building them. "Doesn't look like a <field name>" met the client's display names, which are the field keys through `vocabularyLabel`, and "collectors" is plural. The six fields S4 checks showed exactly one exception, so a one-entry noun table follows the ruling's own example instead of inventing a rule.
+  2. Read the canonical example's real values, not just its keys. The harness's evidence arrives as `recorded` with a `region:` locator. Rendered as-is, every such line would have ended in " · recorded · region:0000…", noise the ruling's words never showed.
+  3. When the words need data the thread lacks (the derivation's rules), ask the data owner for an additive field in the same round, and ship the rest.
+- Failed approaches: my first authority test gave GBIF an identity on the collectors field. It was valid data but implausible, and was moved to a taxon.
+- Remaining follow-ups:
+  - the rule lines when `fields[].derivation` lands, re-copying S5's example with its derived `elevation_to_m`;
+  - the fetch (T2f part two) after S5's T4;
+  - "Fill the rest" after S5's T6;
+  - empty `suffixedReasonCodes` when S5's T5 lands.
