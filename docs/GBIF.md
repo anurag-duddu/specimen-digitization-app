@@ -8,7 +8,7 @@
 
 ## Decision
 
-Use GBIF's direct APIs for the first implementation. GBIF should be the primary integration surface for taxonomic matching, optional occurrence corroboration, and selected institution, collection, dataset, vocabulary, and modern administrative-geography metadata.
+Use GBIF's direct APIs for the first implementation. GBIF should be the primary integration surface for taxonomic matching, optional occurrence corroboration, and selected institution, collection, dataset, vocabulary, and modern administrative-geography metadata (that last is superseded by PLAN 4.8, a coordinator ruling: GBIF's administrative geography is GADM's, and GADM is not used, not even as a measurement).
 
 Do not make the Google-hosted BigQuery table or Google Cloud Storage exports a P0 dependency. Reconsider them only for a measured batch workload that cannot be served efficiently by the GBIF occurrence Download API.
 
@@ -58,7 +58,7 @@ Only documented, non-experimental endpoints may contribute to a clearance decisi
 | Occurrence lookup/search | Corroborate a specimen that may already be published to GBIF | P0 or P1 | Add only if it improves reviewer decisions |
 | Registry and GRSciColl | Resolve institutions, collections, publishing datasets, and organizations | P0 configuration | Bootstrap and human-confirm; do not call for every specimen |
 | Occurrence Download | Produce large, asynchronous, citable occurrence extracts | P1 | Prefer before BigQuery for narrow cohorts |
-| GADM geography | Validate modern country and first-level administrative geography | Not used | Superseded by PLAN 4.8: not used, not even as a measurement |
+| GADM geography | Validate modern country and first-level administrative geography | Not used | Superseded by PLAN 4.8 (a coordinator ruling): not used, not even as a measurement |
 | Vocabularies and enumerations | Validate supported controlled values | P1 | Add only for fields required by the target schema |
 | Maps | Display aggregate occurrence context | Later | Visualization only, not identification evidence |
 | Occurrence images | Display cached low- or medium-resolution occurrence media | Later | Rights-sensitive; not source-image storage |
@@ -253,7 +253,7 @@ Registry calls should not run for every specimen. Resolve and approve the instit
 
 ## Administrative geography
 
-Superseded by PLAN 4.8 (`docs/execution/golive/PLAN.md`), a coordinator ruling: GADM is not used, not even as a measurement, because its terms bar redistribution and commercial use, and containment uses geoBoundaries' Philippine files and CONRED's file for Guatemala instead. The rest of this section is the record of what was considered. The Occurrence API includes GADM administrative-geography operations:
+Superseded by PLAN 4.8 (`docs/execution/golive/PLAN.md`), a coordinator ruling: GADM is not used, not even as a measurement, because its terms bar redistribution and commercial use, and containment uses geoBoundaries' Philippine files and CONRED's file for Guatemala instead. The GADM operations and guidance below are the record of what was considered; the storage rule at the section's end still holds. The Occurrence API includes GADM administrative-geography operations:
 
 ```http
 GET https://api.gbif.org/v1/geocode/gadm/search
@@ -319,7 +319,7 @@ GbifRegistryClient
   resolveDataset()
   getPublishingOrganization()
 
-GbifGeographyClient
+GbifGeographyClient  (superseded by PLAN 4.8, a coordinator ruling: GADM is not used, and #216 deleted this adapter)
   searchAdministrativeRegion()
   getAdministrativeRegion()
 ```
@@ -464,7 +464,7 @@ Resolve candidate GRSciColl institution and collection UUIDs and relevant GBIF o
 
 The five-record authenticated download and exact GBIF ID reconciliation are complete. A remaining product experiment should use known published and unpublished specimens to test confirmed composite identifiers and measure whether occurrence evidence changes reviewer decisions enough to justify P0 inclusion.
 
-### Phase 5: GADM administrative validation (superseded by PLAN 4.8: GADM is not used, so this phase does not run)
+### Phase 5: GADM administrative validation (superseded by PLAN 4.8, a coordinator ruling: GADM is not used, so this phase does not run)
 
 Test country and state/province normalization without replacing verbatim geography. Keep unresolved, historical, and precise locality work on its separately approved path.
 
