@@ -950,6 +950,25 @@ every push to `main` without an envelope. The specification is
    combination fails and asks to reconcile. The job uploads and attests the
    `data-released/v1` receipt on every exit after admission, so a re-run can
    read a failed first apply's restore check.
+
+   **Bootstrap.** After a successful `verify` or `apply`, the job bootstraps
+   the first organization once the owner has set the `data-production`
+   secrets `DATA_BOOTSTRAP_ARTIFACT_B64` and `DATA_BOOTSTRAP_APPROVED_SHA256`
+   for that run and opened the time-bounded `specimenDataOwnerBootstrap`
+   window ([`RELEASE.md`](execution/golive/RELEASE.md) section 4.5). Unset,
+   the job skips it; on `initialize` it leaves the artifact unread. The
+   SHA-256 of the artifact's exact bytes must equal the owner's approved
+   digest, compared in constant time and never computed from the artifact.
+   The artifact must be the hierarchy mode, its `tree_sha256` must be this
+   commit's collection tree, and it must regenerate from its own values. The
+   organization's rows are then read first: an exact match skips the write,
+   and any other rows fail. An absent organization is written once, in one
+   transaction, after an on-demand backup (unless this run's apply took one)
+   and a fresh read of the administrator's account, then read back. The
+   private records stay encrypted to the committed
+   `infra/release/evidence-recipient.pub`, whose digest the code pins; the
+   job attests and uploads only those encrypted copies. The log and the
+   receipt carry only the bootstrap's state and fixed reasons.
 3. **Initialize**, in `data-initialization-production`, only when
    `init_step` is `initialize`. It re-admits through the gate's
    `data-initialization` plane and authenticates as
@@ -982,8 +1001,11 @@ every push to `main` without an envelope. The specification is
 
 The release, initialize and migrate jobs share the `specimen-protected-mutation`
 concurrency group with the runtime release job, so none of them run at the same
-time. The
-workflow reads no secret and no configuration variable. After a failure,
+time. The workflow reads no configuration variable, and only the bootstrap's
+`data-production` secrets, as environment variables of the release step alone;
+nothing prints them. That step reads them once and takes them out of its
+environment before any child process starts, so neither `gh` nor the Node SQL
+connector inherits them. After a failure,
 re-run the failed jobs: the release job re-admits on its own. A runtime
 release of the same commit fails when this run fails, so re-run it after the
 data release succeeds.

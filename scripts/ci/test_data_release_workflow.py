@@ -278,10 +278,10 @@ def test_the_encrypted_bootstrap_evidence_is_attested_and_retained_whenever_the_
 
 def test_the_deployment_contract_describes_the_bootstrap_the_release_job_runs():
     section = (ROOT / "docs/DEPLOYMENT.md").read_text().split("## Data release on merge (go-live program)")[1].split("\n## ")[0]
-    release = section.split("2. **Release**")[1].split("\n3. ")[0]
+    release = " ".join(section.split("2. **Release**")[1].split("\n3. ")[0].split())
     for fact in ("`DATA_BOOTSTRAP_ARTIFACT_B64`", "`DATA_BOOTSTRAP_APPROVED_SHA256`", "`verify`", "`apply`",
                  "`initialize`", "unread", "`tree_sha256`", "backup", "read first", "skips", "fails",
                  "`infra/release/evidence-recipient.pub`", "encrypted", "`specimenDataOwnerBootstrap`"):
         assert fact in release, fact
-    assert "reads no secret" not in section
-    assert "only the bootstrap's `data-production` secrets" in section
+    assert "reads no secret" not in " ".join(section.split())
+    assert "only the bootstrap's `data-production` secrets" in " ".join(section.split())

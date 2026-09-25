@@ -66,6 +66,10 @@ INDEX_SPECS = {
     "snapshot_search_batch": ("specimen_snapshot", ["organization_id", "collection_id", "snapshot #>> '{batch_id}'::text[]", "specimen_id", "revision"], []),
     "specimen_scope_checksum": ("specimen", ["organization_id", "collection_id", "source_checksum"], []),
 }
+# RELEASE.md 4.5: the owner's data-production secrets for the bootstrap run, which the workflow sets on the release step
+# alone. That step reads them exactly once, before any child process starts, and removes all three from its environment
+# together, so neither gh nor the Node SQL connector inherits them; the values stay in memory.
+BOOTSTRAP_SECRETS = ("DATA_BOOTSTRAP_ARTIFACT_B64", "DATA_BOOTSTRAP_APPROVED_SHA256", "DATA_WORKER_ACTOR_UID")
 CATALOG_BOOLEANS = {"expected_database", "expected_actor", "application_database_exists", "application_catalog_observed",
     "owner_exists", "reader_exists", "writer_exists",
     "expected_roles_without_global_privileges", "owner_public_schema", "owner_only_approved_tables_in_database",
@@ -693,6 +697,12 @@ def live_rules(google):
     return name, files_by(ruleset.get("source") if isinstance(ruleset, dict) else None, "name")
 
 
+def take_bootstrap_secrets():
+    """The bootstrap secrets, read exactly once and gone from os.environ together, before any child process can inherit
+    them; an unset one, which GitHub renders as "", reads as ""."""
+    return {name: os.environ.pop(name, "") for name in BOOTSTRAP_SECRETS}
+
+
 def blocked(reason):
     """Print a fixed, value-free reason, since the command line's exit hides exception text, and return it."""
     print(f"Data release blocked: {reason}.")
@@ -760,26 +770,27 @@ def first_step(record, directory):
     raise blocked("the application database is neither empty nor initialized by this run; adopting it needs a ruling")
 
 
-def deploy_released_data(path, output):
+def deploy_released_data(path, output, secrets=None):
     """Release the data plane from a gate record (G11, RELEASE.md 4.2 and 4.4): read live state, then choose the phase.
 
     initialize: the placeholder schema and no connector; the initialization jobs (T3c) continue. verify: the
     live schema, connector and Storage rules equal the merged files, the schema is persistent and both are
     reconciled, and the catalog and the supplemental index inventory check out read-only. apply: anything else the
     additive-only gate admits, a missing or changed supplemental index too (apply_released). Every other combination
-    asks to reconcile. Once a data gate record is admitted, every exit writes the receipt, which holds the phase and
-    public facts only, each as last observed.
+    asks to reconcile. After a successful verify or apply comes the owner's bootstrap, when its artifact is set
+    (bootstrap_released). Once a data gate record is admitted, every exit writes the receipt, which holds the phase and
+    public facts only, each as last observed, and reports any encrypted bootstrap evidence for the workflow to attest.
+    secrets: the bootstrap secrets main() took before admission; none is left in the environment from here on either way.
     """
+    taken = take_bootstrap_secrets()
+    secrets = taken if secrets is None else secrets
     targets = os.environ.get("GITHUB_OUTPUT")
     require(targets and output is not None, "GitHub step output and receipt path required")
     google = Google(path, "data")
     record = google.packet
     require(release_gate.is_gate_record(record) and record.get("plane") == "data", "a data gate record is required")
-    if os.environ.get("DATA_BOOTSTRAP_ARTIFACT_B64"):
-        # T3e reads the artifact; until then this release never decodes, prints or writes its value.
-        print("A bootstrap artifact is present; the bootstrap arrives with T3e, so this release leaves it unread.")
     facts = dict.fromkeys(("phase", "schema_etag", "schema_update_time", "connector_etag", "storage_ruleset",
-                           "source_sha_label", "backup_id", "first_restore", "tables", "views"))
+                           "source_sha_label", "backup_id", "first_restore", "tables", "views", "bootstrap"))
 
     def choose(phase):
         facts["phase"] = phase
@@ -805,6 +816,11 @@ def deploy_released_data(path, output):
         if not live_schema and connector is None:
             choose("initialize")
             publish()
+            if secrets.get("DATA_BOOTSTRAP_ARTIFACT_B64"):
+                # RELEASE.md 4.5: the bootstrap needs the initialized plane; this release never decodes, prints or writes it.
+                facts["bootstrap"] = "deferred"
+                print("A bootstrap artifact is present; the bootstrap waits for the initialized plane, so this release "
+                      "leaves it unread.")
             step = first_step(record, path.parent)
             print(f"First initialization step: {step}.")
             with open(targets, "a", encoding="utf-8") as handle:
@@ -821,6 +837,7 @@ def deploy_released_data(path, output):
                 raise blocked("the live connector is still reconciling; reconcile it, then re-run this release")
             if verified(record, path.parent, merged[0], facts):
                 publish()
+                bootstrap_released(google, path.parent, facts, secrets)
                 return
             print("A supplemental index is missing or changed.")
         choose("apply")
@@ -831,7 +848,12 @@ def deploy_released_data(path, output):
             print("\n".join(f"Refused: {line}" for line in refusals))
             raise blocked(f"the additive-only gate refused {len(refusals)} change(s)")
         apply_released(google, path.parent, schema, connector, facts["storage_ruleset"], merged, facts)
+        bootstrap_released(google, path.parent, facts, secrets)
     finally:
+        if any(path.parent.glob("*.encrypted.json")):
+            # The bootstrap's encrypted records, a failed write's included; the raw ones beside them never leave the runner.
+            with open(targets, "a", encoding="utf-8") as handle:
+                handle.write("evidence=present\n")
         output.write_text(json.dumps({"version": "data-released/v1", "source_sha": record["source_sha"],
                                       "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"],
                                       **facts}, sort_keys=True) + "\n")
@@ -1450,6 +1472,25 @@ def apply_released(google, directory, schema, connector, ruleset, merged, facts)
     facts.update(tables=len(tables), views=len(views))
 
 
+def bootstrap_released(google, directory, facts, secrets):
+    """RELEASE.md 4.5 (T3e), after a successful verify or apply: release_bootstrap checks the owner's approved hierarchy
+    artifact and reads its rows first; its refusals print here, as fixed text. Its one backup before the first write is
+    4.4 item 1's, with point-in-time recovery on, unless this run's apply already took one."""
+    import release_bootstrap
+
+    def backup():
+        if facts["backup_id"] is not None:
+            return
+        source = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}")
+        if release_gate.field(source, "settings", "backupConfiguration", "pointInTimeRecoveryEnabled") is not True:
+            raise blocked("point-in-time recovery is off on the SQL instance")
+        facts["backup_id"] = take_backup(google, directory, source)
+    try:
+        release_bootstrap.run(google, facts, secrets, backup=backup)
+    except release_bootstrap.Refused as refusal:
+        raise blocked(str(refusal)) from None
+
+
 @stage("data.receipt")
 def emit_result_digest(path):
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as handle:
@@ -1457,6 +1498,8 @@ def emit_result_digest(path):
 
 
 def main():
+    # RELEASE.md 4.5: before admission, whose GitHub reads run gh, and before any other child process.
+    secrets = take_bootstrap_secrets()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--packet", type=Path, required=True)
     action = parser.add_mutually_exclusive_group(required=True)
@@ -1514,7 +1557,7 @@ def main():
         if gate:
             import release_initialize as initializer
             if args.deploy:
-                deploy_released_data(args.packet, args.output)
+                deploy_released_data(args.packet, args.output, secrets=secrets)
             elif args.initialize:
                 initializer.initialize_existing(Google(args.packet, plane), args.packet.parent, args.output)
             elif args.prepare_initializer_intents:

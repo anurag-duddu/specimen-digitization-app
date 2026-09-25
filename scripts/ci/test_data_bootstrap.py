@@ -263,7 +263,8 @@ def test_rows_that_already_match_exactly_are_verified_and_nothing_is_backed_up_o
     assert plane.error is None and plane.events == [*VERIFY, "scope"] and plane.lookups == []
     assert value == receipt("verify", tables=1, views=0, bootstrap="verified")
     assert outputs == "phase=verify\n" and PASSED in plane.log and MATCHED in plane.log
-    assert not list((bootstrap.tmp_path / "release").glob("*.json"))
+    directory = bootstrap.tmp_path / "release"
+    assert not list(directory.glob("first-scope-*")) and not (directory / "release-backup.json").exists()
 
 
 def test_a_re_run_after_a_written_bootstrap_verifies_and_writes_nothing(bootstrap):
