@@ -12416,3 +12416,24 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: a verification step has to name what it verifies. "Check the digest against the subject ids" sounds like a check, but a digest only proves which bytes were read. The contents need a reader.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — S8: #204's review follow-ups, and corrections to two entries
+
+- Task: the steward's review of #204 (merged as `37ae404`; comment 5827566240, follow-ups 1 and 2), done in a third small docs pull request on `main`. Follow-up 3 waits for #154's turn.
+- Branch/worktree: `golive/geo-plan-followups-3` from `main` at `37ae404`; `.claude/worktrees/busy-thompson-19cc3b`.
+- Outcome, in `docs/product-requirements/GEOREFERENCING.md`:
+  - 3.4's temporal row says the ended unit is never scored "while D5 is held", since D5's option (a) would let a name count for ten years;
+  - "D8, D10 and D12 wait" carries "(coordinator, 2026-09-24)" in the status line, in the decisions paragraph and in the held-and-waiting text, and that text now has its own heading after the owner's answers instead of sitting among them;
+  - the blueprint's regex is S4's filter's pattern for PLAN 4.8's Q-number, matched whole, at the pattern and in the note on the illustrative code.
+- Corrections to the entry "S8: #201's review follow-ups, and a correction to its entry" (the log is append-only):
+  - its pull request is #204, merged as `37ae404`;
+  - #204 had two docs commits, `27a7a60` and `83d3a1e`, and the merge `c0dc0a7` of `main` at `eea5943`, and its citations were re-checked at `eea5943` as well as at `400a444`;
+  - where it says "the Identifiers pattern", read S4's filter's pattern for PLAN 4.8's Q-number: PLAN 4.8 names only the Q-number, and the regex is S4's.
+- Correction to the entry "S8: #94's review follow-ups, and a correction to its entry": where it says "as 3.2 and #154's `use_on` do", #154 names the case `Use("ended", gap_days=...)`, not "not valid" with a `label_lag` finding. The rule is the same, and the names differ.
+- Commits/PRs: the pull request that adds this entry, which lists its commits; no red and green commits, since no product behaviour changes.
+- Validation actually run: pre-commit on the changed files; the plan's illustrative Python block parses; every `file:line` citation re-checked by script at `37ae404`.
+- Durable learnings:
+  1. An entry a pull request adds is not on `main` until the merge, so it can still change. At each turn's push, update the entry's commits and checks with the rest; after the merge, only a dated correction can fix it. Three rounds of corrections here came from entries written before their turn's merge.
+  2. A heading inside a section inherits the section's claim. "Held and waiting" sat under "The owner's answers of 2026-09-24", so a reader took the coordinator's holds for the owner's words.
+- Failed approaches: none.
+- Remaining follow-ups: at #154's turn, label GEO.md:324's "The owner held D5, so no tolerance widens a place's dates" as the coordinator's interim rule (PLAN 2.3's D4/D5 row).
