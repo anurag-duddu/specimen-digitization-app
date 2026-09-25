@@ -72,6 +72,10 @@ class WorkbenchFields extends StatefulWidget {
   static String derivedFrom(List<String> fields) =>
       'Derived from ${_listed(fields)}';
 
+  /// The evidence line of a value a reviewer filled (T6; coordinator ruling
+  /// for S6, 2026-09-24).
+  static const String setByReviewer = 'Set by a reviewer';
+
   @override
   State<WorkbenchFields> createState() => _WorkbenchFieldsState();
 }
@@ -243,13 +247,21 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     );
     final ThreadField? run = _asRunLeftIt(field, pending);
     // The decision's warnings and notes for this field, while it stands as
-    // the run left it. Hard findings come from the record, above, so none
-    // is stated twice (UI.md T2.4).
+    // the run left it: the field's own findings (#171), or, for a thread
+    // shaped before them, the decision's that name it. Hard findings come
+    // from the record, above, so none is stated twice (UI.md T2.4).
     final List<ThreadFinding> noted = <ThreadFinding>[
       if (run != null)
         for (final ThreadFinding f
-            in widget.thread?.decision?.findings ?? const <ThreadFinding>[])
-          if (f.fieldKey == key && _notedSeverities.contains(f.severity)) f,
+            in run.findings.isNotEmpty
+                ? run.findings
+                : <ThreadFinding>[
+                    for (final ThreadFinding d
+                        in widget.thread?.decision?.findings ??
+                            const <ThreadFinding>[])
+                      if (d.fieldKey == key) d,
+                  ])
+          if (_notedSeverities.contains(f.severity)) f,
     ];
 
     return Column(
@@ -294,6 +306,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
             for (final ThreadEvidence item
                 in run?.evidence ?? const <ThreadEvidence>[])
               _evidenceLine(item),
+            ..._identityLines(run),
           ],
           onEdit: blocked != null
               ? null
@@ -495,21 +508,44 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
   /// A Google locator, `place/{place id}` (DATA_CONTRACT.md rule 1.6).
   static const String _placePrefix = 'place/';
 
+  /// A label region's locator, `region:{region id}`, on literal evidence.
+  static const String _regionPrefix = 'region:';
+
+  /// The source ids S5 confirmed on 2026-09-24 that read in words of their
+  /// own: the harness's literal evidence, a reviewer's filled value (T6)
+  /// and Google's pinned id (rule 1.6).
+  static const String _harnessSource = 'field_harness';
+  static const String _reviewSource = 'review_decision';
+  static const String _googleSource = 'google-maps-geocoding';
+
   /// The findings that never change the disposition.
   static const Set<String> _notedSeverities = <String>{'warning', 'info'};
 
   /// How one source bears on the value (G23), with where in the source. A
-  /// Google record is named only by its place ID (G26). A source, relation
-  /// or outcome this client does not know keeps the server's word.
-  static String _evidenceLine(ThreadEvidence evidence) {
-    final String source = switch (evidence.source) {
-      final String id => vocabularyLabel(id),
-      null => 'A source',
-    };
-    final String claim = switch (evidence.relation) {
-      'decides' => '$source decides this value',
-      'supports' => '$source supports this value',
-      'contradicts' => '$source contradicts this value',
+  /// Google record is named only by its place ID (G26), and a label region
+  /// by its label. The harness's literal evidence names the reading it
+  /// quotes, by its reader, and a reviewer's filled value is a line of its
+  /// own (coordinator rulings for S6, 2026-09-24). A source, relation or
+  /// outcome this client does not know keeps the server's word.
+  String _evidenceLine(ThreadEvidence evidence) {
+    if (evidence.source == _reviewSource) return WorkbenchFields.setByReviewer;
+    final List<String> readers = <String>[
+      if (evidence.source == _harnessSource)
+        for (final String id in evidence.observationIds)
+          "${readerName(widget.specimen, widget.thread, id)}'s",
+    ];
+    final bool quoted = readers.isNotEmpty;
+    final String source = quoted
+        ? '${_listed(readers)} ${readers.length == 1 ? 'reading' : 'readings'}'
+        : switch (evidence.source) {
+            final String id => vocabularyLabel(id),
+            null => 'A source',
+          };
+    final String? relation = evidence.relation;
+    final String claim = switch (relation) {
+      'decides' || 'supports' || 'contradicts' =>
+        // Several readings take the plural verb: "readings support".
+        '$source ${readers.length > 1 ? relation!.substring(0, relation.length - 1) : relation} this value',
       final String other => '$source: ${vocabularyLabel(other)}',
       null => source,
     };
@@ -517,12 +553,51 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     final String? outcome = evidence.outcome;
     return <String>[
       claim,
-      if (locator != null)
-        locator.startsWith(_placePrefix)
-            ? 'place ID ${locator.substring(_placePrefix.length)}'
-            : locator,
-      if (outcome != null && outcome != 'success') vocabularyLabel(outcome),
+      if (locator != null) _locatorWords(locator),
+      // Section 8 lists only successful and recorded evidence, so neither
+      // outcome is news.
+      if (outcome != null && outcome != 'success' && outcome != 'recorded')
+        vocabularyLabel(outcome),
     ].join(' · ');
+  }
+
+  /// Where in the source, in words: a Google place by its ID (G26), a label
+  /// region by its label, anything else as sent.
+  String _locatorWords(String locator) {
+    if (locator.startsWith(_placePrefix)) {
+      return 'place ID ${locator.substring(_placePrefix.length)}';
+    }
+    if (locator.startsWith(_regionPrefix)) {
+      return labelName(
+            widget.specimen,
+            widget.thread,
+            locator.substring(_regionPrefix.length),
+          ) ??
+          locator;
+    }
+    return locator;
+  }
+
+  /// The settled value's authority record, then the credit its licence asks
+  /// for, one step away in the Values disclosure (coordinator ruling for S6,
+  /// 2026-09-24). A Google identity is its place ID alone (G26). A derived
+  /// value's authority is its rules, which arrive with `fields[].derivation`
+  /// (S5, #171), so it shows none until then.
+  List<String> _identityLines(ThreadField? run) {
+    final ThreadAuthorityIdentity? identity = run?.authorityIdentity;
+    if (identity == null || run!.layer == ThreadFieldLayer.derived) {
+      return const <String>[];
+    }
+    final String? source = identity.source;
+    final String record = identity.sourceRecordId;
+    return <String>[
+      switch (source) {
+        _googleSource => '${vocabularyLabel(source!)} place ID $record',
+        final String id => '${vocabularyLabel(id)} record $record',
+        null => 'Record $record',
+      },
+      ?identity.credit,
+    ];
   }
 
   /// The century a rule set for a two-digit year (G24), in the words the
