@@ -243,6 +243,7 @@ def test_place_names_are_not_headings():
         ("12 mi. N Chicago", "12", "mi", "N", 0.0, "Chicago"),
         ("1.5 km S of Davao", "1.5", "km", "S", 180.0, "Davao"),
         ("50 m N of Yepocapa", "50", "m", "N", 0.0, "Yepocapa"),
+        ("0,5 km N of Yepocapa", "0,5", "km", "N", 0.0, "Yepocapa"),
     ],
 )
 def test_offsets_keep_distance_and_heading(text, distance, unit, heading, bearing, name):
@@ -253,6 +254,25 @@ def test_offsets_keep_distance_and_heading(text, distance, unit, heading, bearin
     assert reading.elevations == ()
 
 
+def test_an_offsets_place_follows_the_rules_for_any_part():
+    reading = read_locality("5 km NE of Yepocapa 1500 m")
+    (part,) = reading.parts
+    assert (part.name, part.relation, part.distance) == ("Yepocapa", "offset", "5")
+    assert [(e.text, e.low, e.unit) for e in reading.elevations] == [("1500 m", "1500", "m")]
+    reading = read_locality("5 km N of Davao 3300'")
+    assert [(part.name, part.relation) for part in reading.parts] == [("Davao", "offset")]
+    assert [e.text for e in reading.elevations] == ["3300'"]
+    for text in ("10 m S of Camp 3", "5 km N of 1946", "5 km N Davao 3 Sept 1946"):
+        reading = read_locality(text)
+        assert (reading.parts, reading.unplaced) == ((), (text,))
+    slope = read_locality("1500 m N slope Mt. Apo")
+    (part,) = slope.parts
+    assert (part.name, part.relation, part.heading.degrees) == ("Mt. Apo", "slope", 0.0)
+    assert [e.text for e in slope.elevations] == ["1500 m"]
+    dash = read_locality("E. slope -")
+    assert (dash.parts, dash.unplaced) == ((), ("E. slope -",))
+
+
 @pytest.mark.parametrize(
     ("text", "written", "low", "high", "unit"),
     [
@@ -261,6 +281,12 @@ def test_offsets_keep_distance_and_heading(text, distance, unit, heading, bearin
         ("Yepocapa, Elev. 6400'", "Elev. 6400'", "6400", None, "ft"),
         ("Yepocapa, alt. 1500 m", "alt. 1500 m", "1500", None, "m"),
         ("Mt. McKinley 6400'", "6400'", "6400", None, "ft"),
+        ("Yepocapa, 4800ft.", "4800ft.", "4800", None, "ft"),
+        # Numbers are read whole, dots and commas included (G36): never cut short.
+        ("Yepocapa, 1.463 m", "1.463 m", "1.463", None, "m"),
+        ("Yepocapa, 6.400 ft.", "6.400 ft.", "6.400", None, "ft"),
+        ("Yepocapa, 1463,5 m", "1463,5 m", "1463,5", None, "m"),
+        ("Yepocapa, 1.200-1.500 m", "1.200-1.500 m", "1.200", "1.500", "m"),
     ],
 )
 def test_elevations_are_kept_as_written(text, written, low, high, unit):
@@ -276,12 +302,97 @@ def test_unplaced_text_is_never_a_part():
     assert reading.unplaced == ("Camp 3",)
     assert [part.name for part in reading.parts] == ["Mt. Apo"]
     assert read_locality("").parts == ()
+    # A part is kept aside whole: "P.I." goes with the date beside it.
+    dated = read_locality("Mindanao, P.I. 3 Sept. '46")
+    assert [part.name for part in dated.parts] == ["Mindanao"]
+    assert dated.unplaced == ("P.I. 3 Sept. '46",)
+
+
+def test_semicolons_separate_parts():
+    assert [part.name for part in read_locality("Yepocapa; Chimaltenango; Guatemala").parts] == [
+        "Yepocapa",
+        "Chimaltenango",
+        "Guatemala",
+    ]
+
+
+def test_a_line_ending_in_a_linking_word_joins_the_next():
+    (part,) = read_locality("Departamento de\nChimaltenango").parts
+    assert (part.name, part.unit) == ("Chimaltenango", "department")
+    (part,) = read_locality("5 km NE of\nYepocapa").parts
+    assert (part.name, part.relation, part.distance) == ("Yepocapa", "offset", "5")
+
+
+def test_a_lone_unit_word_falls_back_to_its_other_neighbour():
+    (part,) = read_locality("Prov., Davao").parts
+    assert (part.name, part.unit, part.readings) == ("Davao", "province", ("Davao Province", "Davao"))
+
+
+def test_a_heading_phrase_between_features_or_beside_none():
+    parts = read_locality("Mt. Apo, E. slope, Mt. Talomo").parts
+    assert [(p.name, p.relation) for p in parts] == [("Mt. Apo", "slope"), ("Mt. Talomo", None)]
+    parts = read_locality("Davao, E. slope, Mindanao").parts
+    assert [(p.name, p.relation) for p in parts] == [("Davao", "slope"), ("Mindanao", None)]
+
+
+def test_the_link_after_a_leading_unit_word():
+    (part,) = read_locality("County of Cook").parts
+    assert (part.name, part.unit) == ("Cook", "county")
+    assert comparison_key("County of Cook") == "cook"
+
+
+@pytest.mark.parametrize(
+    ("text", "name", "unit"),
+    [
+        ("DAVAO PROV", "DAVAO", "province"),
+        ("davao prov.", "davao", "province"),
+        ("Davao PROVINCE", "Davao", "province"),
+        ("Guatemala DEPT.", "Guatemala", "department"),
+        ("Guatemala department", "Guatemala", "department"),
+        ("Cook CO", "Cook", "county"),
+        ("Cook county", "Cook", "county"),
+        ("Chiapas STATE", "Chiapas", "state"),
+        ("Davao region", "Davao", "region"),
+        ("MUN Yepocapa", "Yepocapa", "municipality"),
+        ("municipio Yepocapa", "Yepocapa", "municipality"),
+        ("Municipality Yepocapa", "Yepocapa", "municipality"),
+        ("DEPTO. Chimaltenango", "Chimaltenango", "department"),
+        ("departamento Chimaltenango", "Chimaltenango", "department"),
+        ("PROVINCIA Davao", "Davao", "province"),
+        ("estado Chiapas", "Chiapas", "state"),
+    ],
+)
+def test_unit_words_read_in_any_case_with_or_without_the_period(text, name, unit):
+    (part,) = read_locality(text).parts
+    assert (part.name, part.unit) == (name, unit)
+
+
+@pytest.mark.parametrize(
+    ("text", "reading"),
+    [
+        ("mt apo", "Mount apo"),
+        ("MT. APO", "Mount APO"),
+        ("Mount Apo", "Mount Apo"),
+        ("p.i.", "Philippine Islands"),
+        ("P.I", "Philippine Islands"),
+    ],
+)
+def test_feature_and_country_notations_read_in_any_case(text, reading):
+    (part,) = read_locality(text).parts
+    assert part.readings[0] == reading
+
+
+def test_institutions_read_in_any_case():
+    assert read_locality("cnhm, Mt. Apo").institutions == ("cnhm",)
+    assert read_locality("FMNH. Mt. Apo").institutions == ("FMNH.",)
 
 
 def test_fold_and_comparison_keys():
     assert fold("Chimaltenángo,") == "chimaltenango"
     assert fold("P.I.") == "p i"
     assert fold("Davao-del-Norte") == "davao del norte"
+    # Format characters (Unicode Cf) are dropped, not turned into spaces.
+    assert fold("Dava​o") == fold("﻿Davao") == fold("Dav‏ao") == "davao"
     assert comparison_key("Mt. Apo") == comparison_key("Mount Apo") == "mount apo"
     assert comparison_key("Departamento de Chimaltenango") == "chimaltenango"
     assert comparison_key("Chimaltenango Department") == "chimaltenango"
@@ -296,6 +407,11 @@ def test_letters_apart_counts_single_edits_up_to_two():
     assert letters_apart("apo", "ago") == 1
     assert letters_apart("abc", "cba") == 2
     assert letters_apart("davao", "davao del sur") == 2
+    assert letters_apart("kitten", "sitting") == 2  # three edits, capped
+    # Long keys: the count stays exact within the cap's band.
+    assert letters_apart("a" * 3000, "a" * 2999 + "b") == 1
+    assert letters_apart("x" + "a" * 3000, "a" * 3000) == 1
+    assert letters_apart("ab" * 1500, "ba" * 1500) == 2
 
 
 @pytest.mark.parametrize(
@@ -317,6 +433,8 @@ def test_letters_apart_counts_single_edits_up_to_two():
         ("Km 20", False),
         ("APO", False),
         ("Mt.", False),
+        ("Mount", False),
+        ("-", False),
         ("", False),
     ],
 )
@@ -345,5 +463,30 @@ def test_variants_keep_each_readers_literal():
     assert [(v.keys, v.observations, v.literals) for v in same] == [
         (("davao",), ("a", "b", "c"), ("Davao Prov.", "Davao, Prov.", "Davao Province")),
     ]
-    assert same[0].locality.verbatim == "Davao Prov."
+    assert [reading.verbatim for reading in same[0].localities] == [
+        "Davao Prov.",
+        "Davao, Prov.",
+        "Davao Province",
+    ]
     assert variants([("", "empty")])[0].keys == ()
+
+
+def test_variants_keep_each_readers_own_reading():
+    (variant,) = variants(
+        [
+            ("5 km NE of Yepocapa", "obs-a"),
+            ("5 km SW of Yepocapa, 4800 ft.", "obs-b"),
+            ("Yepocapa, 1463 m", "obs-c"),
+        ]
+    )
+    assert (variant.keys, variant.observations) == (("yepocapa",), ("obs-a", "obs-b", "obs-c"))
+    headings = [
+        reading.parts[0].heading.text if reading.parts[0].heading else None
+        for reading in variant.localities
+    ]
+    assert headings == ["NE", "SW", None]
+    assert [tuple(e.text for e in reading.elevations) for reading in variant.localities] == [
+        (),
+        ("4800 ft.",),
+        ("1463 m",),
+    ]
