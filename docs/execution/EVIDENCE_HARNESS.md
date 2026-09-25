@@ -16,9 +16,10 @@ dependencies, infrastructure and other worktrees are unchanged.
   are rejected. An approved endpoint is server configuration, never model input.
 - `AuthorityQuery(organization_id, collection_id, data_classification, literal,
   evidence_ids, historical_context=None)` carries the retained literal lineage.
-- `PartiesAdapter(registry, blobs, connection=None, token=None, client=None)` and
-  `GeographyAdapter(registry, blobs, client=None)` expose `lookup(query)` returning
-  immutable `AuthorityResult`, using the existing `LookupStatus` taxonomy.
+- `PartiesAdapter(registry, blobs, connection=None, token=None, client=None)`
+  exposes `lookup(query)` returning immutable `AuthorityResult`, using the existing
+  `LookupStatus` taxonomy. The GBIF GADM geography adapter is removed: GADM is not
+  used (PLAN 4.8).
 - Results preserve literal text, input evidence IDs, exact non-secret query JSON
   and SHA-256, retrieval time, source/adapter versions, raw-body blob reference
   and SHA-256, candidate identities, support/unresolved relations, context and
