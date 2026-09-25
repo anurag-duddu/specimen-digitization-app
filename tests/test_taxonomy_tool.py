@@ -118,6 +118,9 @@ MELLIFERA = usage("Apis mellifera Linnaeus, 1758", "SPECIES")
         ("Epipsocus sp. 1 det. Mockford", "Epipsocus"),
         ("Bombus impatiens det. E. L. Mockford, 1990", "Bombus impatiens"),
         ("Bombus impatiens Davao", "Bombus impatiens"),
+        # A capitalized clause would otherwise read as author-year authorship.
+        ("Bombus impatiens Det. Mockford, 1990", "Bombus impatiens"),
+        ("Bombus impatiens Coll. Werner, 1946", "Bombus impatiens"),
         ("Sp. 30 ♀", None),
         ("sp 22", None),
         ("Sp 22", None),
@@ -613,6 +616,29 @@ def test_retries_back_off_and_stop_when_a_provider_asks_for_too_long():
 
     outcomes = iter([S.RATE_LIMITED])
     assert len(with_retries(lambda a: call(a, retry_after=60), sleep=slept.append)) == 1
+
+
+def test_retries_stop_at_the_deadline():
+    from specimen_digitization.application.harness_tools import SourceCall, with_retries
+
+    clock, slept = [0.0], []
+
+    def call(attempt):
+        clock[0] += 6  # each attempt takes 6 s
+        return SourceCall(
+            source="x", query={}, retrieved_at="t", outcome=S.RATE_LIMITED, attempt=attempt
+        )
+
+    made = with_retries(
+        call,
+        sleep=lambda s: (slept.append(s), clock.__setitem__(0, clock[0] + s)),
+        random_value=lambda: 0.0,
+        deadline=16,
+        clock=lambda: clock[0],
+    )
+
+    # At 6 s a 2 s wait fits; at 14 s the next 4 s wait would pass 16 s.
+    assert len(made) == 2 and slept == [2.0]
 
 
 def test_a_retry_never_comes_sooner_than_retry_after():
