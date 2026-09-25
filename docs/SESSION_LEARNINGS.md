@@ -12295,3 +12295,42 @@ because the hooks runner hands a native asset hook only `PATH`.
   - At #140's turn, fold #197's date-key case into #140's `searchValueLabel` switch (item 3). Git merges the two declarations cleanly, and the result would not compile.
   - At #73's turn, record the zone rulings in UI.md with the times above.
   - When the stack merges `main`, regenerate its queue, queue-selection and workbench-history goldens, and re-verify those of #102, #114, #133 and #140.
+### 2026-09-25 — S8: #94's review follow-ups, and a correction to its entry
+
+- Task: the steward's round-3 review of #94 (merged as `e6bcfa7`; comment 5826083660, Decision items 1-5), done in a small docs pull request on `main`.
+- Branch/worktree: `golive/geo-plan-followups` from `main` at `e6bcfa7`; `.claude/worktrees/busy-thompson-19cc3b`.
+- Outcome, in `docs/product-requirements/GEOREFERENCING.md`:
+  - the unassigned literal is PLAN 4.8's unassigned locality text, the part of the lines holding the place fields that no reading assigns to any field;
+  - the illustrative `valid_on` returns "not valid" for a unit that had ended by the collection date, with the gap as a `label_lag` finding, as 3.2 and #154's `use_on` do, so a 1980 "Davao Prov." label no longer matches Q15095071;
+  - the Philippine boundary files come via geoBoundaries; HDX is CONRED's channel only;
+  - G30's reservation mechanism, D15 for this tool and D5's hold are labelled as the coordinator's, and the Apo reading carries its date and its hedge;
+  - smaller wording and date fixes.
+- Correction to the entry "S8 retrospective georeferencing research: the plan, the pilot localities, a read-only probe" (the log is append-only): its remaining follow-ups cite "(G30)" for each Google call reserving its cost. The reservation mechanism is the coordinator's ruling (PLAN 2.1's G30 row and section 4.3), so read it as "(G30; the coordinator's ruling on the mechanism, PLAN 4.3)".
+- Commits/PRs: one docs commit; no red and green commits, since no product behaviour changes.
+- Validation actually run: pre-commit on the changed files; every `file:line` citation re-checked by script at `e6bcfa7`, identical to `ad84482`.
+- Durable learnings:
+  1. An illustrative function's state names become its contract. `valid_on` returned "label_lag" as a fourth validity state, and `decide` dropped only "not valid", so a name of any age passed the anachronism filter. A finding goes beside the state, never in place of it.
+  2. A licence cell holds two facts: the licence and the channel. The Philippine files' metadata cites HDX as its licence source, but the files come from geoBoundaries, so copying "via HDX" named the wrong channel.
+- Failed approaches: none.
+- Remaining follow-ups: none from the review. The steward checks #183's identifier field rule at #183's turn. The 259 ids S8's readers send back already come from the fields it reads.
+### 2026-09-24 — Go-live program: plan corrections after #191
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-9`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #191's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/191#issuecomment-5825808641). In PLAN 4.8's filter:
+    - An identifier counts only in the field that carries its source's ids, never as another token of the answer, so a TGN `estStart` of "1946" or a GNS latitude of 7.3 can't pass as one.
+    - The limit's class sentence says "text", not "a name", and "no marker the profile names". A habitat ("Mossy forest"), a catalogue prefix ("FMNH INS") and a unit ("ft.") leave mid-run too, and so does a name beside a marker the profile doesn't list.
+    - The profile names collector and determiner markers in English and Spanish ("Col.", "Colector", "Collector"), and month forms old and new ("Agto."). The limit names a form of a listed language that the profile doesn't list.
+    - A Roman month is a token whose every word is a numeral I to XII, so "VIII/IX 1946" is cut.
+    - The limit names the marker clause's over-cut across lines, and the notations bullet defers to the limit.
+    - The month listing carries its own label, and "not itself in a source" replaces "not written on the label".
+  - Licences: "via HDX" applies to CONRED's file only. The Philippine files' licence is the one geoBoundaries' metadata states for each file (PLAN 4.8's table, S8's task 6).
+  - S7's brief gains T4a, the private pilot reference file (`specimen-pilot-reference/v1`), from the coordinator's ruling sent to S2 and S7 at 01:15Z on 2026-09-25. The steward's review of #199 found it in no brief and no S7 PR.
+  - Corrections (dated 2026-09-24) to the entry "2026-09-24 — Go-live program: plan corrections after #185" above:
+    - Its line '"Werner" beside "Wernersdorf" is cut' should read '"Werner" is cut where the record reads "Wernersdorf" and "leg. Werner"'.
+    - Its line "a name that no reading gives a non-place field, and the harness hasn't yet" paraphrases PLAN 4.8. At #191's head, 4.8 read "a name no reading assigns to a non-place field, or one the harness has not yet given a non-place field, when no marker in its own clause accompanies it". This PR rewrites that sentence.
+    - Its line "geoBoundaries' Philippine files and CONRED's COD-AB file for Guatemala, CC BY 3.0 IGO via HDX" puts "via HDX" on both files. It applies to CONRED's file only; the Philippine licence comes from geoBoundaries' metadata. The line also omits the simplified-file margin: for the simplified Philippine files, the circle is widened by the stated simplification error.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: an identifier check is only as strict as the field it reads. "Returned by the source" has to name the id field, because an answer's dates and coordinates are numbers too, and a digit pattern matches them.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
