@@ -20,15 +20,16 @@ notation token that survives may then be written out in each of its full forms
 from the profile's table; a notation is cut whenever one of its full forms is,
 and each form a full form makes is cut again by character, so no expansion
 brings back a cut character. A tier-1 identifier goes back unchanged to the
-source whose own answer holds it when it matches that source's documented
-pattern (PLAN 4.8 in #191). Text the filter cannot recognize, such as a name no
-reading assigns to any field and no marker accompanies, can still leave: that
-is its stated limit.
+source that returned it in the field that carries that source's ids, when it
+matches that source's documented pattern (PLAN 4.8 as #200 states it). Text the
+filter cannot recognize, such as text no reading assigns to any field and no
+marker accompanies, can still leave: that is its stated limit.
 """
 
 from __future__ import annotations
 
 import itertools
+import json
 import re
 import unicodedata
 from bisect import bisect_right
@@ -43,13 +44,24 @@ TOKEN = re.compile(r"([^\s,;]+)")
 # A day or a year as written, which puts a Roman numeral beside it in the month
 # position: 3, 14, 1946, or the profile's year forms '46 and -46.
 DATE_NUMBER = re.compile(r"\d{1,2}|\d{4}|['’-]\d{2}")
-# Each tier-1 source's documented identifier patterns (PLAN 4.8 in #191; S8's
-# readers #139, #188 and #190). An identifier carries no label text.
-IDENTIFIERS = {
-    "wikidata": (re.compile(r"Q[1-9][0-9]*"),),  # An item's Q-number.
-    "tgn": (re.compile(r"[0-9]{1,10}"),),  # A TGN subject id.
-    # A GNS feature id, or a first-order unit code (coordinator ruling).
-    "nga": (re.compile(r"-?[0-9]{1,10}"), re.compile(r"[A-Z]{2}-[A-Z0-9]{1,3}")),
+# The fields of each tier-1 source's answer that carry its own ids, each with
+# its documented pattern and the id a matching value holds (PLAN 4.8 as #200
+# states it; S8's readers #139, #188 and #190). An identifier carries no label
+# text.
+IDENTIFIER_FIELDS = {
+    # An item's Q-number, in search hits and statement values.
+    "wikidata": {"id": re.compile(r"(Q[1-9][0-9]*)")},
+    # A subject id: a reconciliation result's id, or a SPARQL subject URI.
+    "tgn": {
+        "id": re.compile(r"tgn/([0-9]{1,10})"),
+        "value": re.compile(r"http://vocab\.getty\.edu/tgn/([0-9]{1,10})"),
+    },
+    # A GNS feature id, with its minus sign, or a first-order unit code
+    # (coordinator ruling).
+    "nga": {
+        "ufi": re.compile(r"(-?[0-9]{1,10})"),
+        "adm1": re.compile(r"([A-Z]{2}-[A-Z0-9]{1,3})"),
+    },
 }
 
 
@@ -149,20 +161,41 @@ def place_request_text(
 def place_request_identifier(
     identifier: str, *, source: str, response: str
 ) -> str | None:
-    """An identifier sent back unchanged to the tier-1 source whose own answer
-    holds it (PLAN 4.8 in #191). `response` is that answer's text as the tool
-    received it, never the record or a list the agent supplies. The identifier
-    must stand in it as a whole token and match one of the source's documented
-    patterns. TGN's and GNS's digit patterns match any label number, so where
-    it came from is the guard: a catalogue number the source didn't return is
-    refused. It carries no label text, so no cut applies; None refuses it."""
-    patterns = IDENTIFIERS.get(source, ())
-    whole = rf"(?<![0-9A-Za-z-]){re.escape(identifier)}(?![0-9A-Za-z])"
-    if any(pattern.fullmatch(identifier) for pattern in patterns) and re.search(
-        whole, response
-    ):
+    """An identifier sent back unchanged to the tier-1 source that returned it
+    in the field that carries that source's ids (PLAN 4.8 as #200 states it).
+    `response` is that answer's JSON as the tool received it. The identifier is
+    checked against that field alone, never another token of the answer, the
+    record or a list the agent supplies, so a date or a coordinate the answer
+    holds never leaves as one. It carries no label text, so no cut applies;
+    None refuses it, and any identifier when the answer isn't JSON."""
+    try:
+        answer = json.loads(response)
+    except ValueError:
+        return None
+    if identifier in _answered_ids(answer, IDENTIFIER_FIELDS.get(source, {})):
         return identifier
     return None
+
+
+def _answered_ids(node: object, fields: Mapping[str, re.Pattern[str]]) -> set[str]:
+    """The ids a JSON answer holds: each value of a field `fields` names, at any
+    depth, that the field's pattern matches whole, as the id it holds."""
+    found: set[str] = set()
+    if isinstance(node, dict):
+        for key, value in node.items():
+            pattern = fields.get(key)
+            if (
+                pattern
+                and isinstance(value, str | int)
+                and not isinstance(value, bool)
+                and (match := pattern.fullmatch(str(value)))
+            ):
+                found.add(match.group(1))
+            found |= _answered_ids(value, fields)
+    elif isinstance(node, list):
+        for item in node:
+            found |= _answered_ids(item, fields)
+    return found
 
 
 def unassigned_text(

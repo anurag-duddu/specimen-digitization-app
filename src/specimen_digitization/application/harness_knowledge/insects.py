@@ -27,9 +27,18 @@ class Notation:
     fields: tuple[str, ...]  # The fields it can belong to.
 
 
+# The collector and determiner markers, in English and in Spanish in their
+# usual forms (PLAN 4.8 as #200 states it). Each is one word, since a clause
+# holds a marker when one of its words is one.
+COLLECTOR_MARKERS = (
+    *("leg.", "coll.", "Coll.", "Collector", "Collectors", "Collected"),
+    *("Col.", "Colector", "Colectores", "Colectado"),
+)
+DETERMINER_MARKERS = ("det.", "Det.")
 # Each month in full and abbreviated, in English and in Spanish, the pilot
 # labels' languages (PLAN 4.8 in #191), with the Spanish variant the RAE
-# accepts, "setiembre" and "set." (the coordinator's ruling of 2026-09-24).
+# accepts, "setiembre" and "set." (the coordinator's ruling of 2026-09-24),
+# and Spanish's older abbreviations (PLAN 4.8 as #200 states it).
 MONTHS_ENGLISH = (
     *("January", "February", "March", "April", "May", "June", "July"),
     *("August", "September", "October", "November", "December"),
@@ -41,6 +50,7 @@ MONTHS_SPANISH = (
     *("agosto", "septiembre", "setiembre", "octubre", "noviembre", "diciembre"),
     *("ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep."),
     *("sept.", "set.", "oct.", "nov.", "dic."),
+    *("agto.", "sbre.", "obre.", "nbre.", "dbre."),
 )
 
 NOTATIONS = (
@@ -67,10 +77,12 @@ NOTATIONS = (
         ("precise_location",),
     ),
     Notation(
-        "leg., coll., Coll.", ("collected by, marking the collectors",), ("collectors",)
+        ", ".join(COLLECTOR_MARKERS),
+        ("collected by, marking the collectors",),
+        ("collectors",),
     ),
     Notation(
-        "det.",
+        ", ".join(DETERMINER_MARKERS),
         ("determined by, marking who identified the specimen",),
         ("identified_by_irn",),
     ),
@@ -174,7 +186,7 @@ FINDING_ONLY = frozenset({"verbatim_dts"})
 
 # What PLAN 4.8's place-request filter reads (HARNESS.md section 7): the
 # collector and determiner markers the notations name,
-PERSON_MARKERS = ("leg.", "coll.", "Coll.", "det.")
+PERSON_MARKERS = (*COLLECTOR_MARKERS, *DETERMINER_MARKERS)
 # the month names and abbreviations the date notations list,
 MONTH_WORDS = (*MONTHS_ENGLISH, *MONTHS_SPANISH)
 # the Roman months, cut too (the coordinator's ruling of 2026-09-24),
