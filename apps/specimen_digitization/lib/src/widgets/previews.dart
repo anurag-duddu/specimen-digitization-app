@@ -128,8 +128,8 @@ Widget queueRow() => _surface(
     riskComposite: 62,
     riskComponents: const <String>['Reading disagreement, weight 0.4'],
     riskCalibrated: false,
-    updatedAt: DateTime(2026, 9, 13, 14, 32),
-    now: DateTime(2026, 9, 14, 9),
+    updatedAt: DateTime.utc(2026, 9, 13, 19, 32),
+    now: DateTime.utc(2026, 9, 14, 14),
     onOpen: () {},
   ),
 );
