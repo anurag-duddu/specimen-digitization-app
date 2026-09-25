@@ -12013,6 +12013,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - Tracking rows are a later PR's work order, so each must name exactly what a decision retires and what stays.
 - Failed approaches: none.
 - Remaining follow-ups: S2 changes those `human_review.py` lines after T3d.
+
 ### 2026-09-24 — Go-live program: plan after #104, owner decisions G32 to G45
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
@@ -12058,6 +12059,56 @@ because the hooks runner hands a native asset hook only `PATH`.
   - The first production run waits for #163's live initialization and #170's V3 apply.
   - The owner's pending actions: the readiness marker, #119's IAM list after its review, the curator sheets, and the dataset upload.
 
+### 2026-09-24 — Go-live release workstream (S2), T1d: #165's merge follow-ups and the acceptance documents' notes
+
+- Task: the S2 session. It covers:
+  - the PR steward's follow-ups from #165's merge review (comment 5814254045);
+  - #165 round 1's deferred nit: dated notes in `RELEASE_ACCEPTANCE.md` and `LIVE_QA.md`, which `golive/RELEASE.md` section 2 requires;
+  - #184's review round 1 (comment 5824636022).
+- Branch/worktree: `golive/release-docs-checker-rows`, from `main` at `275b399`, in this session's worktree. A Sonnet documents subagent drafted the two documents' banners and notes in its own worktree. This session audited every note and rewrote the ones that needed it.
+- Outcome:
+  - **The checker rows.** `golive/RELEASE.md` section 2.1's rows name exactly what a decision retires and what stays, since the checker pull request follows them:
+    - `HUMAN-NO-AUTOMATIC-CLEARANCE` retires only automatic clearance. A correction or save still never approves institutional semantics or risk (`human_review.py` 194-195). The 194-200 row retires only `human_approved`, the disposition and the stage.
+    - The frozen manifest is only the cohort's anchor (103, 168). The cohort and the denominator stay ten, and each of the ten the harness did not clear needs its complete human record. A specimen the harness clears keeps its evidence checks and drops only the review checks (201-217).
+    - COHORT-BUDGET and `cohort_budget` (`acceptance.py` 348-420) retire whole. The bound is G30's USD 5 production model allowance within G9's USD 25, and COST-BOUNDS tests it. The unknown-effects rule moves to COST-BOUNDS.
+    - New rows: `human_review.py` 315; the command-line manifest pin, where the candidate-SHA pin stays; the coverage checks drawn from the manifest; `manifest_ids`; DEPLOYMENT-PROVENANCE's `sam_commit_sha`, since T2 rebuilds SAM 3 only when its inputs change; and HUMAN-LABEL-COVERAGE and `coverage_confirmed` (51, 124 and 208), which follow the coordinator's reading of G15 (2026-09-24): the lane's automatic check is the coverage confirmation for every record, and the human confirmation step retires.
+  - **The two documents.** `RELEASE_ACCEPTANCE.md` and `LIVE_QA.md` gain their banners and dated notes beside the clauses the owner decisions contradict. They cover:
+    - the projection section, the cost evidence contract and the retained record list;
+    - the evidence-only pilot and the budget pointer;
+    - the checker's scope file;
+    - LIVE_QA's threat-matrix rows, launch blockers and milestone.
+
+    Every note on the spending bound names G30's USD 5 within G9's USD 25. Every note on the acceptance decision carries the full acceptance sentence and G30's, and labels the decider as S2's reading, with its sources and the owner's DoD-6 confirmation.
+- Corrections to [#165's entry](#2026-09-24--go-live-release-workstream-s2-t1c-78s-acceptance-follow-ups), 2026-09-24. That entry stays as merged:
+  - Its manifest bullet is corrected: the frozen manifest is only the cohort's anchor (103, 168). 169, 175 and 290, the evidence fields, and the original-bytes and scope checks are re-anchored to the ten, not retired.
+  - Its follow-up sentence is out of date: PLAN section 6 already names `scripts/qa/live/` as S2's.
+  - In its Commits line, `3926f0d` is the commit that names the rows' owner, S2.
+- Commits/PRs: PR #184.
+  - The rows: `ecefacd`.
+  - The subagent's notes: `7f13272`.
+  - This session's audit: `af66a3f`.
+  - The closeout: `bf00f52`.
+  - Review round 1's commit.
+- Validation actually run:
+  - the G30 sweep over every dated note: 65 of 65 carry the sentence;
+  - the acceptance sweep: all 4 notes that describe the acceptance decision carry the full sentence, verbatim, as does the projection note;
+  - every "USD 25" note in the two documents names G30's USD 5;
+  - pre-commit, `tests/test_deployment_policy.py`, `git diff --check` and the relative-link check (60 links, none broken).
+- Durable learnings:
+  - The PR steward's review replaces pull-request review, not acceptance. In S2's reading, G11 retires the independent-review reports, and the evidence-based acceptance harness and the coordinator still decide acceptance. The owner confirms DoD-6.
+  - Carry one settled wording across every document ("each run is authorized on its own instead of per frozen manifest"). A paraphrase reads as a new claim.
+  - The budget has two layers: G9's USD 25 ceiling over everything, and G30's USD 5 production model allowance inside it, which the pipeline enforces and COST-BOUNDS tests. A note that says only "USD 25 replaces USD 5" hides the bound that is actually enforced.
+  - A keyword sweep sees only a note's own text. A clause can hold a reservation that a closed list in its note retires. Read each superseded clause against its note, end with "the rest stands", and audit the neighbouring paragraphs too.
+  - The session log is append-only, even for this session's own merged entry. Correct it from the new entry, with a link back.
+- Failed approaches:
+  - The subagent's first draft handed acceptance to the steward's pull-request review in three notes, and called the cohort "verified". The audit caught both.
+  - Round 1 found what the audit missed:
+    - G30's USD 5 misstated as USD 25 in the spending notes;
+    - a closed list in the milestone note that retired G30's reservation;
+    - two G1 clauses without a note;
+    - an in-place edit of #165's entry.
+- Remaining follow-ups: the checker pull request (`scripts/qa/live/`, after T3d), which follows the corrected rows.
+
 ### 2026-09-24 — Go-live S6: goldens no longer depend on the host's time zone
 
 - Task: coordinator ruling for S6, 2026-09-24: pin the time zone in the test harness, keep the goldens' visible CDT, and add a test that fails if the host zone leaks in.
@@ -12075,6 +12126,23 @@ because the hooks runner hands a native asset hook only `PATH`.
   3. Dart has no in-process way to change the zone, and `Zone` does not intercept `toLocal()`. An override variable in the `debug…Override` idiom is the smallest seam that works on every platform.
 - Failed approaches: the red tests first expected `absoluteTime` of a UTC instant to print CDT. That would have changed the UTC texts on screen, so those tests now target `absoluteWallTime`, and a new test pins the UTC rule.
 - Remaining follow-ups: none for the zone. Once this merges, sessions can drop `TZ=America/Chicago`.
+
+### 2026-09-24 — Go-live S6: server instants read on the reviewer's clock
+
+- Task: coordinator ruling for S6, 2026-09-24, from design/01 (H1.9 at line 149, and H2.1): the source screen's "listed … UTC" and the queue row's spoken time read on the reviewer's clock through `wall_time`, and the spoken time says the zone.
+- Branch/worktree: `golive/ui-reviewer-clock`, stacked on `golive/ui-golden-zone` (#181); `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `absoluteTime` is the single citable form, always on the reviewer's wall clock with its zone (02 section 4.14). #181's UTC branch and `absoluteWallTime` fold back into it.
+  - The source screen's header reads "listed 14 Sep 2026, 05:22 CDT" in the suite.
+  - The queue row speaks a server instant as "updated 8 Sep 2026, 00:01 CDT".
+  - The 24 source-screen goldens were regenerated, in Central time, and nothing else moved.
+- Commits/PRs: red `f1e0f46`; green ``ae9d194``; the pull request depends on #181.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the three changed test files 46 passed; the full app suite 1,583 passed, 7 skipped, 0 failed, on the host zone (America/New_York).
+- Durable learnings:
+  1. Run the suite without updating first, and let its failures list what moved. Here the list was exactly the 24 images of the one surface the ruling named. That proves the change's reach before any golden is touched, and makes a stray moved image a question rather than a regeneration.
+  2. Regenerate with the narrowest name filter that covers the moved scenes, then check that the count of changed images equals the count of failures.
+- Failed approaches: none.
+- Remaining follow-ups: none for time display.
 ### 2026-09-24 — Go-live program: plan corrections after #174
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
@@ -12095,6 +12163,28 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learning: a filter specification is a pipeline. State its steps in order: source check, cuts, expansion, then the cuts again on what the expansion added. Several review findings came from steps whose order was only implied.
 - Remaining follow-ups: unchanged from the entry above.
 
+### 2026-09-25 — Go-live S6: #181's review follow-ups, and corrections to its entry
+
+- Task: the steward's review of #181 (merged as `e11ea68`; comment 5824438013, items 1-4 and 7), done in #182, which touches the same seam.
+- Branch/worktree: `golive/ui-reviewer-clock` (#182), retargeted to `main` after #181 merged, with `main` merged in; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `debugWallTimeOverride` counts only under `kDebugMode`, so a release build always reads the host zone. The host reader is private, and the guard flags either name anywhere else in `lib`.
+  - On the web a browser names the zone in full ("Central Daylight Time"). `zoneAbbreviation` shortens a name of several words to its initials, as 02 section 4.14 writes it ("CDT"), keeping UTC as UTC and an abbreviation or an offset as it is.
+  - The guard now also checks the `DateTime.new` constructor, an epoch without `isUtc`, and wall-clock fields of `DateTime.now()`. A scanned root that goes missing fails it, and its doc claims only what it checks.
+  - A History assertion runs in CI, where goldens don't compare: `citedInstant('2026-09-07T10:00:00Z')` is "7 Sep 2026, 05:00 CDT".
+- Corrections to the entry "Go-live S6: goldens no longer depend on the host's time zone" (item 7; the log is append-only):
+  - its pull request is #181, merged as `e11ea68`;
+  - its claim that "a guard test fails on any other host-zone read" was wider than the regex. The regex checked `toLocal()`, `timeZoneName`, `timeZoneOffset` and `DateTime(`, not the other reads listed above;
+  - a release build honoured the override;
+  - on the web the zone read as a full name, not the "CDT" design/02 asks for.
+- Commits/PRs: red `09f6fc7`; green `02df2f6`; in #182.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the zone, queue row and source screen tests 49 passed; the full app suite 1,586 passed, 7 skipped, 0 failed, on the host zone (America/New_York, no `TZ` set: the pin is in).
+- Durable learnings:
+  1. A guard's doc must claim exactly what its check checks. "Fails on any other host-zone read" read as complete, and the reviewer found five reads it missed. Name the patterns, and name what isn't checked.
+  2. A `debug…Override` must be gated by `kDebugMode` where it is read, as Flutter's own overrides are. A global that release code honours is a production switch anyone can flip.
+  3. `DateTime.timeZoneName` differs by platform: the VM gives "CDT", dart2js gives the browser's "Central Daylight Time". Code that prints a zone for a web app must normalize it, and a VM-only test suite will never show the difference.
+- Failed approaches: none.
+- Remaining follow-ups: at #73's turn, record the coordinator's zone ruling in UI.md (PLAN 7.2). At the turns of #102, #114, #133 and #140, re-verify their goldens on macOS after merging `main`, and regenerate any that differ.
 ### 2026-09-24 — Go-live program: plan corrections after #180
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
@@ -12117,3 +12207,29 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: when a correction is itself history, check it against the primary record (the review comments) before writing it. The earlier round pairing was corrected from memory and was wrong twice.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above.
+
+### 2026-09-24 — Go-live program: plan corrections after #185
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-8` (#191), in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #185's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/185#issuecomment-5824745385) and round 1 of #191's (https://github.com/anurag-duddu/specimen-digitization-app/pull/191#issuecomment-5825311705). PLAN 4.8's filter, as it stands at this PR's head:
+    - Sources are whole-token slices of the sources each caller names. The harness names only the place-field literals it gives, each found character for character in a reading, and the unassigned locality text; a literal it gives a non-place field is never a source.
+    - Cuts are decided on the value's own tokens, compared by their folded words, and at every occurrence of the value in every text, the readings included, by character span. So a tier-1 name, a reviewer's value or a full form is cut too, "Werner" beside "Wernersdorf" is cut, and no slice such as "Hoogstraa" leaves. Every caller passes the readings.
+    - Every month name and abbreviation the profile lists is cut in any case, and the profile lists them in English and Spanish ("Mayo"). A Roman numeral is cut only as a whole token beside a date number (3, 14, 1946, '46 or -46).
+    - Tier-1 identifiers (#185's item 1; NGA's unit codes on S4's question) go back only to the source that returned them in its own answer, pattern-checked, and never come from the record or the agent, since TGN's and GNS's digit patterns match label numbers such as "1946". In SPARQL they are the source's prefixed names (`tgn:`).
+    - The scope covers the record and tier-1 results, identifiers aside, and the Wikidata, TGN and NGA rows list the ids they send.
+    - A full form written on the label is a source. After the filter, a value is only escaped or encoded.
+    - The stated limit names what can still leave: a name that no reading gives a non-place field, and the harness hasn't yet (mid-run, "Mindanao F.G. Wermer", and "H. Hoogstraal" with its "leg." in the next clause); month names in other languages; and a lone "VIII/IX". It also names what is over-cut: "Camp IV, 3 VIII 1946" sends "Camp", and "Cape May" sends "Cape".
+  - Boundary licences per file: geoBoundaries' Philippine files and CONRED's COD-AB file for Guatemala, CC BY 3.0 IGO via HDX, never geoBoundaries' ODbL OpenStreetMap file. Both are named wherever the datasets are pinned: PLAN 2.3 and 4.8, S2's T4d and S8's task 6.
+  - Section 2.3 records the owner's curator decision verbatim, "That’s fine. Human review is ok" (2026-09-24). The McKinley places go to review. The Apo slide's case is labelled as the coordinator's reading of G36: its place may settle from gazetteer evidence or stay unresolved, and only the itinerary's refinement waits.
+  - "Place text (4.8's sources)" replaces "place fields" in G35's reading, the Google row and S8's brief. The G27/G32 reading label sits right after "on one label as on several". S5's T6 names the stated field.
+  - Corrections (dated 2026-09-24):
+    - The entry "2026-09-24 — Go-live program: plan corrections after #124" above: its line "G45's `verbatim_dts` exception appears at stage 8 and in T4" should read "the coordinator hold for `verbatim_dts` (section 2.3) appears at stage 8 and in T4". G45 itself has no exception.
+    - The entry "2026-09-24 — Go-live program: plan corrections after #180" above: its line "Roman-numeral months are cut only in the month position and in any case" answered #180's review, but the month position it means was set by the coordinator's ruling on S4's #183 (2026-09-24), and the line omits that rule. The position is a whole token beside a date number, a day or a year in the profile's forms (3, 14, 1946, '46 or -46), before or after it, across separators.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learnings:
+  1. A filter's source check and its cuts need one unit, and each cut must be decided at every occurrence of a value, not the first. A first-occurrence span sends "Werner" from "Wernersdorf" beside "leg. Werner".
+  2. A source check that accepts whatever a caller found in the text is no source check, and the cuts become the only defence. Name the fields a caller may draw from, and state in the limit what the cuts alone can't catch.
+  3. A coordinator correction written after an owner's quote reads as following from the owner's words. Label it as a reading, with its date and source, even when it only corrects the coordinator's own earlier line.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
