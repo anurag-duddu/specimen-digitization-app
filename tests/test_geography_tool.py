@@ -449,6 +449,17 @@ def test_what_leaves_is_what_plan_4_8s_filter_lets_leave():
     assert seen.result.sub_calls[0].query == {"address": address}
 
 
+def test_a_place_value_with_a_quote_reaches_google_encoded():
+    # PLAN 4.8 in #191: after the filter a value is only escaped or encoded.
+    geography = query(("precise_location", "Mt. D'Arcy"), ("country", "P.I."))
+
+    seen = geocode(geography, reply(status="ZERO_RESULTS"))
+
+    (request,) = seen.requests
+    assert request.url.params["address"] == "Mt. D'Arcy, P.I."
+    assert "?address=Mt.+D%27Arcy%2C+P.I.&" in str(request.url)
+
+
 @pytest.mark.parametrize(
     ("change", "code"),
     [

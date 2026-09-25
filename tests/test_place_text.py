@@ -8,6 +8,7 @@ from specimen_digitization.application.harness_knowledge import insects
 from specimen_digitization.application.place_text import (
     fold,
     place_request_forms,
+    place_request_identifier,
     place_request_text,
     unassigned_text,
 )
@@ -39,6 +40,18 @@ def forms(text, *sources, others=()):
 
 def words(text):
     return set(fold(text).split())
+
+
+def given(text, reading, others=()):
+    """Every form of a place literal the agent gave, the query's own source,
+    with its reading read for the cuts (PLAN 4.8 in #191)."""
+    return place_request_forms(
+        text,
+        sources=[text],
+        readings=[reading],
+        non_place_literals=others,
+        knowledge=insects,
+    )
 
 
 @pytest.mark.parametrize(
@@ -228,20 +241,114 @@ LABEL_WITH_COLLECTOR = "Davao Prov.\nH. Hoogstraal leg.\nMindanao, P.I."
 @pytest.mark.parametrize(
     "text", ["Hoogstraa", "oogstraal", "oogstraal leg", "H. Hoogstr"]
 )
-def test_a_value_cut_short_inside_a_cut_token_leaves_nothing_of_it(text):
-    # The steward's review of #185: the cut follows the source's own token.
-    assert forms(text, LABEL_WITH_COLLECTOR) == []
+def test_a_slice_of_a_cut_token_leaves_nothing_of_it(text):
+    # The steward's review of #185 and PLAN 4.8 in #191: a slice of the reading
+    # is no source, and a literal that is one loses the token it lies in.
+    assert forms(text, LABEL_WITH_COLLECTOR) is None
+    assert given(text, LABEL_WITH_COLLECTOR) == []
 
 
-def test_a_value_cut_short_keeps_what_the_source_keeps():
-    assert forms("Davao Prov.\nH. Hoogstr", LABEL_WITH_COLLECTOR) == [
+def test_a_literal_cut_short_keeps_what_its_reading_keeps():
+    assert given("Davao Prov.\nH. Hoogstr", LABEL_WITH_COLLECTOR) == [
         "Davao Prov.",
         "Davao Province",
     ]
-    # A non-place literal, and a month, cut short too.
     werner = "Mindanao F.G. Werner, P.I."
-    assert request("Mindanao F.G. Wern", werner, others=["F.G. Werner"]) == "Mindanao"
-    assert request("Mindanao 3 Se", "Mindanao 3 Sept. '46") == "Mindanao"
+    assert given("Mindanao F.G. Wern", werner, others=["F.G. Werner"]) == ["Mindanao"]
+    assert given("Mindanao 3 Se", "Mindanao 3 Sept. '46") == ["Mindanao"]
+
+
+def test_a_value_is_a_whole_token_slice_of_its_source():
+    assert forms("Mt. McKinley", PLACES) == ["Mt. McKinley", "Mount McKinley"]
+    assert forms("t. McKinl", PLACES) is None
+    assert forms("Davao Pro", PLACES) is None
+
+
+def test_the_readings_are_context_for_the_cuts_not_a_source():
+    reading = "Davao Prov.\nMindanao Hoogstraal leg."
+
+    # "Mindanao" is only in the reading here, so it is no source ...
+    assert place_request_forms(
+        "Mindanao",
+        sources=["Davao Prov."],
+        readings=[reading],
+        non_place_literals=(),
+        knowledge=insects,
+    ) is None
+    # ... and the reading's marker clause cuts a place literal taken from it.
+    assert given("Mindanao Hoogstraal", reading) == []
+
+
+def test_a_non_place_literal_copied_short_still_cuts_the_whole_token():
+    # The collectors' literal "F.G. Wern" covers part of "Werner".
+    reading = "Mindanao F.G. Werner, P.I."
+
+    assert given("Mindanao F.G. Werner", reading, others=["F.G. Wern"]) == ["Mindanao"]
+
+
+def test_a_full_form_written_on_the_label_is_a_source():
+    assert request("Philippine Islands", "Mindanao, Philippine Islands") == (
+        "Philippine Islands"
+    )
+
+
+def test_the_readings_non_place_literals_do_not_cut_the_reviewers_place_value():
+    # PLAN 4.8 in #180: the reviewer's correction is the authority there, so a
+    # reviewer's call passes only the reviewer's own non-place values.
+    reading = "Davao Prov.\nMindanao lowland forest"
+    habitat = "Mindanao lowland forest"  # A reading's non-place literal.
+
+    as_read = place_request_text(
+        "Mindanao", sources=[reading], non_place_literals=[habitat], knowledge=insects
+    )
+    as_reviewed = place_request_text(
+        "Mindanao",
+        sources=["Mindanao"],
+        readings=[reading],
+        non_place_literals=[],
+        knowledge=insects,
+    )
+
+    assert (as_read, as_reviewed) == ("", "Mindanao")
+
+
+@pytest.mark.parametrize(
+    ("identifier", "source"),
+    [
+        ("Q928", "wikidata"),
+        ("Q15095071", "wikidata"),
+        ("1000135", "tgn"),
+        ("-2408935", "nga"),
+        ("11769188", "nga"),
+        ("PH-DVC", "nga"),  # NGA's first-order unit codes (coordinator ruling).
+        ("GT-04", "nga"),
+        ("PH-000", "nga"),
+    ],
+)
+def test_a_tier_1_identifier_goes_back_unchanged_to_its_source(identifier, source):
+    # PLAN 4.8 in #191, with S8's readers' identifier patterns.
+    returned = [identifier]
+
+    assert place_request_identifier(identifier, source=source, returned=returned) == (
+        identifier
+    )
+
+
+@pytest.mark.parametrize(
+    ("identifier", "source", "returned"),
+    [
+        ("Q928", "wikidata", []),  # Not one the source returned.
+        ("Q928", "tgn", ["Q928"]),  # Another source's pattern.
+        ("Q0928", "wikidata", ["Q0928"]),
+        ("Davao", "wikidata", ["Davao"]),  # Label text.
+        ("12345678901", "tgn", ["12345678901"]),  # Over ten digits.
+        ("1000135", "geonames", ["1000135"]),  # GeoNames is read from dumps.
+        ("PH-DVC", "nga", []),  # A code NGA didn't return, though it matches.
+        ("PH-DVC", "wikidata", ["PH-DVC"]),
+    ],
+)
+def test_any_other_identifier_is_refused(identifier, source, returned):
+    assert place_request_identifier(identifier, source=source, returned=returned) is None
 
 
 def test_a_dropped_clause_keeps_the_line_break_it_held():
@@ -289,6 +396,13 @@ def test_unassigned_locality_text_is_what_no_reading_assigns_on_the_place_lines(
     assert unassigned_text(READING_321, PLACE_LITERALS, OTHER_LITERALS) == ["Mindanao"]
     # A raw reading's literal counts too.
     assert unassigned_text(READING_321, PLACE_LITERALS, ["Mindanao"]) == []
+
+
+def test_unassigned_text_is_whole_tokens_beside_a_literal_copied_short():
+    # A literal that ends inside a token covers the whole token.
+    assert unassigned_text("Mindanao F.G. Werner, P.I.", ["P.I."], ["F.G. Wern"]) == [
+        "Mindanao"
+    ]
 
 
 def test_lines_holding_no_place_field_give_no_unassigned_text():

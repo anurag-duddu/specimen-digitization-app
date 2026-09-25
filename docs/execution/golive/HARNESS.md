@@ -284,31 +284,44 @@ is `timeout`, any other `httpx` transport error is `provider_error`
 errors outside its `HTTPError` family such as `InvalidURL`, is `provider_error`
 with the fixed code `geocoding_unexpected_error`.
 
-**What a request may carry** (PLAN 4.8 as #174 left it on main, 275b399, with
-the coordinator's rulings and the steward's clarifications of 2026-09-24).
-`application/place_text.py` is the one filter. This tool applies it to every
-request, and S8's tiers import it for every value they send.
-- A value a request takes from the reading, from tier 1 or from a reviewer
-  draws only on exact substrings of its sources: the record's readings, the
-  names tier 1 returns, and in "fill the rest" the reviewer's values in place
-  fields (`country`, `province_state`, `county`, `city`, `precise_location`).
-  The check runs on each value before the cuts and the full forms. A value
-  drawn from anything else refuses the whole query. Nothing is sent, and the
-  tool answers `policy_blocked` with the fixed code `place_text_refused`, which
-  blocks the run (QUE-005). A query naming no knowledge is refused the same way
+**What a request may carry** (PLAN 4.8 on main after #185, 23ec26b, as #191
+states it, with the coordinator's rulings and the steward's clarifications of
+2026-09-24). `application/place_text.py` is the one filter. This tool applies
+it to every request, and S8's tiers import it for every value they send. The
+filter's output is what leaves; after it a value is only escaped or encoded, as
+an encoded URL parameter here and an escaped literal in S8's SPARQL.
+- **Sources**, checked first, before any cut or full form. A value must be a
+  whole-token slice, bounded by token edges, of one of its sources:
+  - the reading's place-field literals (`country`, `province_state`, `county`,
+    `city`, `precise_location`) and its unassigned locality text;
+  - the names tier 1 returns;
+  - in "fill the rest", the reviewer's values in place fields.
+
+  A full form written on the label, such as "Philippine Islands", is a source
+  like other place text. The record's readings are read for the cuts
+  (`readings`) but are not themselves a source. A value drawn from anything else
+  refuses the whole query. Nothing is sent, and the tool answers
+  `policy_blocked` with the fixed code `place_text_refused`, which blocks the run
+  (QUE-005). The tool refuses the same way a literal that isn't character for
+  character in a reading, and a query that names no knowledge
   (`place_knowledge_unavailable`).
-- From those values, and only there, the filter cuts, comparing tokens by their
-  folded words:
+- **Cuts**, only on those values and by character span. Each is decided on the
+  tokens of every text the value occurs in, the readings included, and tokens
+  compare by their folded words. So no character a cut covers leaves, however
+  the value is sliced. The filter cuts:
   - every token of every literal any reading assigns to a non-place field, year
-    literals included, and of every value a reviewer puts in one: a corrected
-    collector's spelling matches no reading's literal;
+    literals included, and of every value a reviewer puts in one. A literal
+    cuts every token it covers where it occurs: a collector copied short, "F.G.
+    Wern", still cuts "Werner", and a corrected spelling matches no reading's
+    literal;
   - every token of every clause, between commas, semicolons or line breaks, that
     holds a collector or determiner marker the knowledge names ("leg.", "coll.",
-    "det."), wherever the marker sits in it and in whichever source. A name a
+    "det."), wherever the marker sits in it and in whichever text. A name a
     marker accompanies never leaves, whatever field it was given;
   - every token that carries a digit, so no date, elevation or catalogue number
     leaves;
-  - the month names and abbreviations the knowledge lists;
+  - the month names and abbreviations the knowledge lists, in any case ("3 SEPT.
+    '46");
   - a Roman month in the month position: a token whose every word is a Roman
     numeral I to XII, in any case, next to a date number before or after it,
     across separators. A date number is a day or a year in the profile's forms:
@@ -317,31 +330,41 @@ request, and S8's tiers import it for every value they send.
     1946", "VIII 1946", "Mindanao, VIII, 1946" and "Mindanao, VIII -46" leave
     no numeral, while "Camp IV", a lone "VIII/IX" and the "I" of "P.I." stay.
 
-  Each cut is decided on the source's own tokens, wherever the value occurs in
-  a source. A token of the value is cut when the source token it lies in is
-  cut, so a value that starts or ends inside a token loses that token too: the
-  "Hoogstraa" of "H. Hoogstraal leg." leaves nothing. This follows the
-  steward's review of #185, cutting by character span rather than refusing a
-  value that ends inside a token, which would block the run over a copy cut
-  short.
-- A notation token that survived may then be written out in full from the
-  knowledge's table (the coordinator's ruling, option c). The table expands
-  only notations assigned to place fields alone, never a month, a year or a
-  marker. A notation is cut whenever one of its full forms is, so every full
-  form that leaves has passed the same cuts. A full form adds only the table's
-  fixed words and never brings back a cut token. It counts only as the
-  expansion of a notation present in an allowed source, never as a source on
-  its own (coordinator ruling, 2026-09-24): a source written out in full is a
-  source too, a standalone full form is not.
-- What survives keeps its clauses, single-spaced and joined by their own
-  separators, with a line break wherever the dropped text held one, as S8's
+  A token of the value is cut when the token it lies in is cut, so a value that
+  starts or ends inside a token loses that token: the "Hoogstraa" of "H.
+  Hoogstraal leg." leaves nothing (the steward's review of #185).
+- **Full forms**, after the cuts (the coordinator's ruling, option c).
+  - A notation token that survived may be written out in each full form the
+    knowledge's table lists for it. The table carries sendable place words, not
+    glosses, and expands only notations assigned to place fields alone, never a
+    month, a year or a marker.
+  - A notation is cut whenever one of its full forms is, so every full form that
+    leaves has passed the same cuts. A full form never brings back a cut token.
+  - A full form counts only as the expansion of a notation present in an
+    allowed source (coordinator ruling, 2026-09-24). A source written out in full
+    is a source too; a standalone full form, not written on the label, is not.
+- **Identifiers** (#191). `place_request_identifier(identifier, *, source,
+  returned)` sends an identifier back to the tier-1 source that returned it,
+  unchanged, when it matches that source's documented pattern. Today that's a
+  Wikidata item's Q-number; TGN's and GNS's numeric identifiers join when S8's
+  readers land. An identifier carries no label text, so no cut applies, and
+  anything else is refused.
+- **Shape.** What survives keeps its clauses, single-spaced and joined by their
+  own separators, with a line break wherever the dropped text held one, as S8's
   parser reads them. `place_request_forms` returns the value as written after
   the cuts first, then one form for each way of writing every notation in each
   of its full forms (G29): "Davao Prov." leaves as "Davao Prov." or "Davao
   Province", and "Camiguin Is." as "Camiguin Is.", "Camiguin Island" or
   "Camiguin Islands". `place_request_text` returns the first form.
-- Text the filter cannot recognize, such as a name no reading assigns to any
-  field and no marker accompanies, can still leave. That is its stated limit.
+- **Stated limit.** Text the filter cannot recognize, such as a name no reading
+  assigns to any field and no marker accompanies, can still leave. So can a lone
+  or ranged month numeral with no day or year beside it ("VIII/IX"). And the
+  month-position cut can trim a tier-1 name whose numeral stands beside a
+  number.
+
+This tool passes its query's literals as the sources and the readings as
+context. Its unassigned locality text comes in whole tokens: a piece of a line
+never starts or ends inside a token a reading assigns.
 
 Google gets the first form, as written after the cuts, which keeps the address
 behind the live checks of G34; S8's name searches take the full forms (the
@@ -350,13 +373,16 @@ row of 4.8 sends a literal with its reading's place fields, so the address holds
 the place-field literals only. The reading's unassigned locality text, the part
 of its lines holding place fields that no reading assigns to any field
 ("Mindanao" on FMNH 105526321), comes in the query as literals with no field,
-for S8's tiers; it must be drawn from the readings like the rest, and Google
-gets none of it. When nothing survives, nothing is sent (coordinator ruling):
-every field is `no_match` with the fixed code `place_text_empty`, so field
-resolution tries the raw readings (G20) and the record goes to review. A
-request that never left records no Google call. The fixed parts of a request,
-the URL, the parameter names and the headers, are reviewed constants and carry
-no label text. The key is the Secret Manager credential: the filter never
+for S8's tiers. It must be drawn from the readings like the rest, and Google
+gets none of it.
+
+When nothing survives, nothing is sent (coordinator ruling): every field is
+`no_match` with the fixed code `place_text_empty`, so field resolution tries the
+raw readings (G20) and the record goes to review. A request that never left
+records no Google call. The fixed parts of a request, the URL, the parameter
+names and the headers, are reviewed constants and carry no label text. The
+address goes only as an encoded parameter, so a quote in a place value reaches
+Google encoded. The key is the Secret Manager credential: the filter never
 touches it, and nothing records it (above).
 
 ## 8. The date and catalog-number validators (stage 7, part 3)
