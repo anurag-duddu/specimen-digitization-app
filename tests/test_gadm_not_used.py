@@ -34,9 +34,12 @@ from specimen_digitization.application.storage import (
 from specimen_digitization.application.workflow import SyntheticAdapters, Workflow
 
 SOURCE = Path(__file__).resolve().parents[1] / "src" / "specimen_digitization"
-# Every form GBIF's GADM service or its geocoder can be named by (the review of #216).
+# The forms of GADM's and GBIF's geocoder names the reviews of #216 listed. A bare
+# "GADM" is left out on purpose: the comments that say it is not used name it.
 GADM = re.compile(
-    r"gbif[_-]gadm|gadm_search|geocode/(gadm|reverse)|api\.gbif\.org/v1/geocode", re.I
+    r"gbif[_-]gadm|gadm_search|geocode/(gadm|reverse)|api\.gbif\.org/v1/geocode"
+    r"|gadm\.org|ucdavis\.edu/(data/)?gadm|gadm\d",
+    re.I,
 )
 OLD_PIN = {
     "version": "gbif-gadm-1",
@@ -154,8 +157,9 @@ def test_a_run_pinned_with_the_removed_tool_still_resumes(tmp_path, authority_se
 def test_a_run_planned_with_the_removed_tool_blocks_without_a_request(
     tmp_path, authority_server
 ):
-    # A plan made before the removal still names a "geography" task. Its step
-    # finds no tool, so it blocks with a typed reason and sends nothing.
+    # A plan made before the removal still names a "geography" task, put first
+    # here. Its step finds no tool, so it blocks with a typed reason and sends no
+    # request; in main's order, the parties step before it still runs.
     state, repo, workflow, principal, specimen = at_the_first_authority_step(
         tmp_path, authority_server
     )

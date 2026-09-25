@@ -125,11 +125,17 @@ def test_parties_timeout_is_operational():
     assert result.status == "timeout" and result.operationally_blocked
 
 
-def test_an_oversize_response_is_bounded_and_not_a_match(authority_server):
+@pytest.mark.parametrize(
+    "body",
+    [b"x" * 10000, json.dumps(payload()).encode() + b" " * 10000],
+    ids=["not JSON", "valid JSON padded past the cap"],
+)
+def test_an_oversize_response_is_bounded_and_not_a_match(authority_server, body):
     # The registry's streamed size cap and its truncated-capture reason, moved
-    # here with the GADM adapter's removal (#216).
+    # here with the GADM adapter's removal (#216). The padded case keeps valid
+    # JSON within the cap, so only the truncation makes it malformed.
     state, client = authority_server
-    state["body"] = b"x" * 10000
+    state["body"] = body
     service, blobs = adapter(client, max_response_bytes=256)
 
     result = service.lookup(query())
