@@ -126,9 +126,11 @@ gold set, `Verbatim D/T/S` semantics, Parties authority or automatic clearance.
 > release packet and the cohort ledger retired (G11). G30's per-call
 > reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
 > S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
-> and worker SHAs and image digests and the SQL and rules revisions with the
-> release runs on main that deployed them, in place of the packet; the rest of
-> DEPLOY-IDENTITY stands.
+> and worker SHAs and image digests with the candidate's own runtime release
+> run, and the SQL and rules revisions with the data release run that deployed
+> them, which is the candidate's own or a main run at or before the candidate
+> with those inputs unchanged between the two, in place of the packet; the rest
+> of DEPLOY-IDENTITY stands.
 
 ## Contracts and ownership
 
@@ -211,20 +213,24 @@ digests, IDs privately, and before/after retained-state counts when applicable.
 > the acceptance cohort, with no frozen inventory; an eleventh or a
 > changed-generation source still cannot enter it, but a new upload may now
 > enter on-demand processing outside it (G2). DATA-TEN's live gate is the ten's
-> private record, `specimen-pilot-reference/v1`, not a ready manifest.
+> private record, `specimen-pilot-reference/v1`, not a ready manifest (the
+> coordinator's ruling in its message to S2 of 2026-09-24, 01:15Z on 09-25).
 > COST-BOUNDS' concrete approved budget is G30's USD 5 production model
 > allowance, which the pipeline enforces across every paid step, within G9's
 > USD 25 ceiling, cumulative, infrastructure and models together (PLAN 4.3); the
 > acceptance lab's USD 5 share is separate. G30's per-call reservations stand
 > (PLAN 4.3; the coordinator's ruling on the mechanism). COST-BOUNDS tests them:
 > each paid call reserves its worst-case cost before it starts, an unknown
-> outcome stays reserved in full, and once the allowance is spent paid steps
-> block as `program_allowance_exhausted` (QUE-005). In S2's reading of G11 and
-> PLAN 4.6, DEPLOY-IDENTITY compares the deployed API and worker SHAs and image
-> digests and the SQL and rules revisions with the release runs on main that
-> deployed them, in place of the packet; the rest of DEPLOY-IDENTITY stands.
-> BROWSER-E2E's full frozen ten is the ten pilot specimens processed one at a
-> time, in order, beside new uploads (G2). The rest of each row stands.
+> outcome stays reserved in full, the spend is cumulative and never reset, and
+> once the allowance is spent paid steps block as `program_allowance_exhausted`
+> (QUE-005). In S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the
+> deployed API and worker SHAs and image digests with the candidate's own
+> runtime release run, and the SQL and rules revisions with the data release run
+> that deployed them, which is the candidate's own or a main run at or before
+> the candidate with those inputs unchanged between the two, in place of the
+> packet; the rest of DEPLOY-IDENTITY stands. BROWSER-E2E's full frozen ten is
+> the ten pilot specimens processed one at a time, in order, beside new uploads
+> (G2). The rest of each row stands.
 
 ## All 20 PRD section 19 criteria retained
 
@@ -264,10 +270,11 @@ not proof of the current rollout or institutional acceptance.
 > existing classification endpoint, that a new pinned run supersedes dependent
 > outputs while old history remains, and that an unauthorized target or a stale
 > revision is rejected. PRD-10: PLAN section 4.1 stage 8 removes the approval
-> and semantics gates for runs whose profile names `harness_route` (G1), so
-> those runs have no such gate to bypass. The rest of that row stands, including
-> removing each remaining critical gate independently, and that no direct clear
-> or approve request bypasses coverage or evidence.
+> and semantics gates for runs whose profile names `harness_route` (the
+> coordinator's reading of G1, #158), so those runs have no such gate to bypass.
+> The rest of that row stands, including removing each remaining critical gate
+> independently, and that no direct clear or approve request bypasses coverage
+> or evidence.
 
 ## Executed evidence and commands
 
@@ -447,7 +454,7 @@ the PR body so historical candidate observations are not silently relabeled.
 > candidate: its source commit is the candidate itself or, once T2 reuses an
 > unchanged SAM 3 image, a commit on main at or before the candidate with SAM
 > 3's inputs unchanged between the two (T2's reuse rule), and in both cases the
-> candidate's own release run deployed that image digest;
+> candidate's own release run deployed the image built from that commit;
 > [`golive/RELEASE.md`](golive/RELEASE.md#21-code-that-still-enforces-a-superseded-clause)
 > section 2.1 lists the checker's line (`acceptance.py` 497). The rest of the
 > paragraph stands, including that this change alone grants no approval and
@@ -472,9 +479,11 @@ the PR body so historical candidate observations are not silently relabeled.
 > release packet and the cohort ledger retired (G11). G30's per-call
 > reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
 > S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
-> and worker SHAs and image digests and the SQL and rules revisions with the
-> release runs on main that deployed them, in place of the packet; the rest of
-> DEPLOY-IDENTITY stands.
+> and worker SHAs and image digests with the candidate's own runtime release
+> run, and the SQL and rules revisions with the data release run that deployed
+> them, which is the candidate's own or a main run at or before the candidate
+> with those inputs unchanged between the two, in place of the packet; the rest
+> of DEPLOY-IDENTITY stands.
 
 ## Recovery and rollback
 

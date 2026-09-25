@@ -12213,7 +12213,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Task: the S2 session, the PR steward's follow-ups from #184's merge review (comment 5825626144, Decision items 1-7). Items 1 and 2 are release guarantees that the checker pull request must also implement.
 - Branch/worktree: `golive/release-docs-checker-guarantees`, from `main` at `ee90e3b` (#184's merge), in this session's worktree.
 - Outcome:
-  - **SAM 3 stays bound to the candidate** (`golive/RELEASE.md` 2.1's `acceptance.py` 497 row; `LIVE_QA.md`'s third-runtime note). Its commit is the candidate or, once T2 reuses an unchanged SAM 3 image, a commit on main at or before the candidate with SAM 3's inputs unchanged between the two. Either way, the candidate's own release run deployed that image digest. A SAM 3 image from any other main run fails. The row names the rest of DEPLOYMENT-PROVENANCE in full.
+  - **SAM 3 stays bound to the candidate** (`golive/RELEASE.md` 2.1's `acceptance.py` 497 row; `LIVE_QA.md`'s third-runtime note). Its commit is the candidate or, once T2 reuses an unchanged SAM 3 image, a commit on main at or before the candidate with SAM 3's inputs unchanged between the two. Either way, the candidate's own release run deployed the image built from that commit. A digest the candidate's own run did not deploy fails. The row names the rest of DEPLOYMENT-PROVENANCE in full.
   - **The ten's private record** (the 333-334 pin row; `LIVE_QA.md`'s contracts note):
     - the checker reads the ten from `specimen-pilot-reference/v1`, per the coordinator's ruling in its message to S2 of 2026-09-24, 01:15Z on 09-25;
     - S7 writes it after PLAN section 8 step 2, and the coordinator verifies it against DoD-4's subject ids;
@@ -12222,16 +12222,17 @@ because the hooks runner hands a native asset hook only `PATH`.
   - **New rows** for the human-review scope checks (295-296, 310, 324-325, 330-332) and for `ready_for_independent_review` (311, 314; `acceptance.py` 525).
   - **Smaller fixes:**
     - `PilotLaunch`'s copy of the map retires with it (G2);
-    - PRD-10's approval and semantics gates are gone for `harness_route` runs (G1);
+    - PRD-10's approval and semantics gates are gone for `harness_route` runs (the coordinator's reading of G1, #158);
     - the G15 reading cites the coordinator's message to S2 of 2026-09-24, 01:00Z on 09-25, answering #184's round-1 question;
+    - **DEPLOY-IDENTITY bound to the candidate**, as #199's round 1 recommended. The API and worker SHAs and image digests compare with the candidate's own runtime release run. The SQL and rules revisions compare with the data release run that deployed them: the candidate's own, or a main run at or before it with those inputs unchanged. All eleven notes that carry the settled sentence change;
     - the nits: G11's protections stay; the scope never granted sensitive access or infrastructure authority; the no-reset sum moves to COST-BOUNDS; "a new upload no longer waits"; "its independent reconciliation"; `evidence_pilot.py` sets the review block; row 176's missing lines; the manifest's selection and ready-status clauses and DATA-TEN's gate; three manual subcriteria, not four.
 - Corrections to [the T1d entry](#2026-09-24--go-live-release-workstream-s2-t1d-165s-merge-follow-ups-and-the-acceptance-documents-notes), 2026-09-24. That entry stays as merged:
   - Its checker-rows bullet: a specimen the harness clears drops only the review checks 201-207 and 209-217. The coverage check (208) covers every record in the coordinator's reading of G15 (`6625690`).
   - Its G15 mention: the reading's source is the coordinator's message to S2 of 2026-09-24, 01:00Z on 09-25, answering #184's round-1 question.
-  - Its correction of #165's follow-up sentence: the sentence is #165's "and will add `scripts/qa/live/` to PLAN section 6", at line 11997, not #165's "Remaining follow-ups" line.
-  - Its Commits list also includes `6625690` (the G15 reading) and the merges `a132268` and `e582a9f`. #184 merged as `ee90e3b`.
+  - Its correction of #165's follow-up sentence: the sentence is #165's "and will add `scripts/qa/live/` to PLAN section 6", not #165's "Remaining follow-ups" line.
+  - Its Commits list also includes `6625690` (the G15 reading) and the merges `c9c42a4`, `a132268` and `e582a9f`. #184 merged as `ee90e3b`.
   - Its G30 sweep: 66 of 66 at the merged head, not 65 of 65.
-- Commits/PRs: this branch's fix commit and this closeout.
+- Commits/PRs: PR #199: the fixes `a3ca34c`, this closeout `5e1410d`, the merge `770f99a`, the blank line `6e8e0b7`, and review round 1's commit.
 - Validation actually run:
   - the G30 sweep over every dated note: 66 of 66;
   - the acceptance sweep: all 4 notes on the acceptance decision carry the full sentence;
@@ -12241,7 +12242,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings:
   - A binding that retires must name what replaces it. "Compare with the release run that deployed it" alone accepts any earlier run's image. Keep the candidate in every provenance rule.
   - A ruling that arrives after a note is written can contradict the note. The manifest's separately supplied digest was retired in one note and kept by the next ruling. Re-read notes against each new ruling.
-- Failed approaches: round 1's SAM row dropped the candidate, and round 1's PilotLaunch wording kept a map that G2 retires. #184's merge review caught both.
+- Failed approaches: round 1's SAM row dropped the candidate, and round 1's PilotLaunch wording kept a map that G2 retires. #184's merge review caught both. #199's round 1 caught the `harness_route` scope tagged "(G1)". G1's own words name no route; the scope is the coordinator's reading of G1 (#158).
 - Remaining follow-ups: the checker pull request implements items 1 and 2, the new rows, and the G15 reading.
 
 ### 2026-09-25 — Go-live S6: #182's review follow-ups, the reviewer's own day, and log corrections

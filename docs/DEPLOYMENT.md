@@ -840,9 +840,11 @@ expansion requires user review and approval of end-to-end results.
   > release packet and the cohort ledger retired (G11). G30's per-call
   > reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
   > S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
-  > and worker SHAs and image digests and the SQL and rules revisions with the
-  > release runs on main that deployed them, in place of the packet; the rest of
-  > DEPLOY-IDENTITY stands.
+  > and worker SHAs and image digests with the candidate's own runtime release
+  > run, and the SQL and rules revisions with the data release run that deployed
+  > them, which is the candidate's own or a main run at or before the candidate
+  > with those inputs unchanged between the two, in place of the packet; the
+  > rest of DEPLOY-IDENTITY stands.
 
 The coordinator may perform only the approved, independently reviewed setup
 actions after live inventory and recording the exact bounded action packet.

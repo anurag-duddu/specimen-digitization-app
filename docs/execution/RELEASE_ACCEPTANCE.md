@@ -82,9 +82,14 @@ Required before live execution:
   > G2. No manifest is frozen: each run is authorized on its own instead of per
   > frozen manifest (PLAN section 4.1 stage 2). The ten pilot specimens remain
   > the acceptance cohort, processed in order, and new uploads may enter
-  > processing too, never the acceptance cohort. The rest of the bullet stands,
-  > including the authorized identity and scope, original generations and
-  > approved local intake inputs this release still needs, kept private.
+  > processing too, never the acceptance cohort. The ten's private record takes
+  > the manifest's place: `specimen-pilot-reference/v1`, written by S7, not the
+  > data owner, after PLAN section 8 step 2 imports the ten, verified by the
+  > coordinator against DoD-4's subject ids, and pinned by its SHA-256, still
+  > supplied separately (the coordinator's ruling in its message to S2 of
+  > 2026-09-24, 01:15Z on 09-25). The rest of the bullet stands, including the
+  > authorized identity and scope, original generations and approved local
+  > intake inputs this release still needs, kept private.
 - Real sign-in, App Check, SQL/Storage readiness, deployed runtime/worker/SAM pins
   and restore/restart execution must be demonstrated. Google reauthentication is
   coordinator-owned; missing access is not proof that a cloud resource is absent.
@@ -348,32 +353,34 @@ access or change the ten-source denominator.
 > review. Under G14 there is no classification stage; the profile comes from the
 > intake collection. The `human-review-release-scope-v1.json` authority retires
 > with the release envelope and the other authorization artifacts (G11). Its
-> retirement keeps what the decision never granted: it expands no
-> infrastructure authority and grants no sensitive access. The
-> USD 5 cap gives way to two bounds: G9's USD 25 ceiling, cumulative,
-> infrastructure and models together, and within it G30's USD 5 production model
-> allowance, which the pipeline enforces across every paid step and COST-BOUNDS
-> tests (PLAN 4.3). The rest of acceptance stands, including every UI and live
-> case the human-review checker (`scripts/qa/live/human_review.py`) requires:
-> the ten UI cases of [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md)
-> (UI-SIGN-IN, UI-INTAKE, UI-PROCESSING, UI-IMAGE-REGIONS,
-> UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN, UI-SEARCH-QUEUE,
-> UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and UI-NO-SYNTHETIC-FALLBACK) and
-> the fifteen live cases of [`LIVE_QA.md`](LIVE_QA.md) (AUTH-IDENTITY,
-> AUTH-APPCHECK, AUTH-MEMBERSHIP, AUTH-REVOKE, AUTH-CROSS-SCOPE, DATA-TEN,
-> DATA-GENERATION, DATA-RESTORE, PROVIDER-ACTUAL, COST-BOUNDS, RETRY-UNKNOWN,
-> WORKER-RESTART, API-RESTART, DEPLOY-IDENTITY and BROWSER-E2E), with
-> UI-SIGN-IN's unverified and no-role denial, UI-DENIAL-RECOVERY's
-> unauthenticated, cross-organization or cross-collection, viewer-write and
-> revoked-access denials, in which stale responses cannot restore access, and
-> UI-SAVE-REOPEN's stale concurrent save, and with the ten, in order and beside
-> new uploads, in place of a frozen manifest (G2), G9's USD 25 ceiling in place
-> of the cohort budget, and the release packet and the cohort ledger retired
-> (G11). G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling
-> on the mechanism). In S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY
-> compares the deployed API and worker SHAs and image digests and the SQL and
-> rules revisions with the release runs on main that deployed them, in place of
-> the packet; the rest of DEPLOY-IDENTITY stands.
+> retirement keeps what the decision never granted: it expands no infrastructure
+> authority and grants no sensitive access. The USD 5 cap gives way to two
+> bounds: G9's USD 25 ceiling, cumulative, infrastructure and models together,
+> and within it G30's USD 5 production model allowance, which the pipeline
+> enforces across every paid step and COST-BOUNDS tests (PLAN 4.3). The rest of
+> acceptance stands, including every UI and live case the human-review checker
+> (`scripts/qa/live/human_review.py`) requires: the ten UI cases of
+> [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN, UI-INTAKE,
+> UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN,
+> UI-SEARCH-QUEUE, UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and
+> UI-NO-SYNTHETIC-FALLBACK) and the fifteen live cases of
+> [`LIVE_QA.md`](LIVE_QA.md) (AUTH-IDENTITY, AUTH-APPCHECK, AUTH-MEMBERSHIP,
+> AUTH-REVOKE, AUTH-CROSS-SCOPE, DATA-TEN, DATA-GENERATION, DATA-RESTORE,
+> PROVIDER-ACTUAL, COST-BOUNDS, RETRY-UNKNOWN, WORKER-RESTART, API-RESTART,
+> DEPLOY-IDENTITY and BROWSER-E2E), with UI-SIGN-IN's unverified and no-role
+> denial, UI-DENIAL-RECOVERY's unauthenticated, cross-organization or
+> cross-collection, viewer-write and revoked-access denials, in which stale
+> responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
+> and with the ten, in order and beside new uploads, in place of a frozen
+> manifest (G2), G9's USD 25 ceiling in place of the cohort budget, and the
+> release packet and the cohort ledger retired (G11). G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
+> S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
+> and worker SHAs and image digests with the candidate's own runtime release
+> run, and the SQL and rules revisions with the data release run that deployed
+> them, which is the candidate's own or a main run at or before the candidate
+> with those inputs unchanged between the two, in place of the packet; the rest
+> of DEPLOY-IDENTITY stands.
 
 `scripts/qa/live/human_review.py` is a separate projection over the unchanged
 45-case full gate. It requires **every existing ten UI and fifteen live case**,
@@ -456,9 +463,11 @@ review may make a release decision for the approved human scope.
 > release packet and the cohort ledger retired (G11). G30's per-call
 > reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
 > S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
-> and worker SHAs and image digests and the SQL and rules revisions with the
-> release runs on main that deployed them, in place of the packet; the rest of
-> DEPLOY-IDENTITY stands.
+> and worker SHAs and image digests with the candidate's own runtime release
+> run, and the SQL and rules revisions with the data release run that deployed
+> them, which is the candidate's own or a main run at or before the candidate
+> with those inputs unchanged between the two, in place of the packet; the rest
+> of DEPLOY-IDENTITY stands.
 
 ### Retained record evidence
 
@@ -495,21 +504,24 @@ whose SHA-256 was checked, so a file replacement between reads is rejected.
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G1, G2, G11 and G15. The ten, in order, stand in place of the frozen ten, and
-> no frozen manifest is pinned (G2): the cohort and the denominator stay ten,
-> with a record for each. Each of the ten the harness did not clear needs its
-> complete human record. A specimen the harness clears keeps its original, SAM
-> receipt, masks, raw readings and crops, with their checks, and the lane's
-> coverage confirmation, which covers every record in the coordinator's reading
-> of G15 (its message to S2 of 2026-09-24, 01:00Z on 09-25, answering #184's
-> round-1 question); only the other review checks drop out for it: unchanged raw
+> no frozen manifest is pinned (G2): the ten's private record,
+> `specimen-pilot-reference/v1`, is pinned by its separately supplied SHA-256 in
+> its place (the coordinator's ruling in its message to S2 of 2026-09-24, 01:15Z
+> on 09-25), and the cohort and the denominator stay ten, with a record for
+> each. Each of the ten the harness did not clear needs its complete human
+> record. A specimen the harness clears keeps its original, SAM receipt, masks,
+> raw readings and crops, with their checks, and the lane's coverage
+> confirmation, which covers every record in the coordinator's reading of G15
+> (its message to S2 of 2026-09-24, 01:00Z on 09-25, answering #184's round-1
+> question); only the other review checks drop out for it: unchanged raw
 > readings and regions across edits, a new reasoned review event, an advanced
 > revision and version, and equal saved and reopened state (G1). The report's
-> `human_results` hold three manual subcriteria, not four (G15). The report's
-> cumulative `budget` retires with the cohort ledger, and `scope_sha256` with
-> the scope artifacts (G11). G30's per-call reservations stand (PLAN 4.3; the
-> coordinator's ruling on the mechanism). The rest stands, including no
-> duplicate or outside-cohort record, a partially supplied list never becoming
-> complete, and every other check in the paragraph above.
+> `human_results` hold three manual subcriteria, not four, in that reading of
+> G15. The report's cumulative `budget` retires with the cohort ledger, and
+> `scope_sha256` with the scope artifacts (G11). G30's per-call reservations
+> stand (PLAN 4.3; the coordinator's ruling on the mechanism). The rest stands,
+> including no duplicate or outside-cohort record, a partially supplied list
+> never becoming complete, and every other check in the paragraph above.
 
 The current pilot intentionally retains `processing_blocked` with
 `pilot_evidence_review_required`, false institutional/human approval flags and
@@ -585,9 +597,11 @@ verdicts remain visible. A merged candidate needs fresh candidate-bound evidence
 > of the cohort budget, and the release packet and the cohort ledger retired
 > (G11). G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling
 > on the mechanism). In S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY
-> compares the deployed API and worker SHAs and image digests and the SQL and
-> rules revisions with the release runs on main that deployed them, in place of
-> the packet; the rest of DEPLOY-IDENTITY stands.
+> compares the deployed API and worker SHAs and image digests with the
+> candidate's own runtime release run, and the SQL and rules revisions with the
+> data release run that deployed them, which is the candidate's own or a main
+> run at or before the candidate with those inputs unchanged between the two, in
+> place of the packet; the rest of DEPLOY-IDENTITY stands.
 
 TDD: initial **35 failures / 6 passes** reproduced the full-gate-only gap;
 follow-ups each reproduced two failures for scope/crop completeness, optional
