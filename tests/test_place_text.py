@@ -25,16 +25,18 @@ def request(text, *sources, others=()):
         sources=sources or (text,),
         non_place_literals=others,
         knowledge=insects,
+        readings=sources or (text,),
     )
 
 
 def forms(text, *sources, others=()):
-    """Every form of the value that may leave."""
+    """Every form of the value that may leave, its sources read as readings."""
     return place_request_forms(
         text,
         sources=sources or (text,),
         non_place_literals=others,
         knowledge=insects,
+        readings=sources or (text,),
     )
 
 
@@ -302,7 +304,11 @@ def test_the_readings_non_place_literals_do_not_cut_the_reviewers_place_value():
     habitat = "Mindanao lowland forest"  # A reading's non-place literal.
 
     as_read = place_request_text(
-        "Mindanao", sources=[reading], non_place_literals=[habitat], knowledge=insects
+        "Mindanao",
+        sources=[reading],
+        readings=[reading],
+        non_place_literals=[habitat],
+        knowledge=insects,
     )
     as_reviewed = place_request_text(
         "Mindanao",
@@ -315,6 +321,18 @@ def test_the_readings_non_place_literals_do_not_cut_the_reviewers_place_value():
     assert (as_read, as_reviewed) == ("", "Mindanao")
 
 
+# Each source's own answer, as S8's readers receive it.
+ANSWERS = {
+    "wikidata": '{"search": [{"id": "Q928"}, {"id": "Q15095071"}]}',
+    "tgn": '{"result": [{"id": "tgn/1000135", "name": "Mindanao"}]}',
+    "nga": (
+        '{"features": [{"attributes": {"ufi": -2408935, "adm1": "PH-DVC"}},'
+        ' {"attributes": {"ufi": 11769188, "adm1": "GT-04"}}]}'
+    ),
+}
+LABEL_WITH_NUMBERS = "Davao Prov.\nMindanao, P.I.\n3 Sept. '46\nFMNH INS 0123456"
+
+
 @pytest.mark.parametrize(
     ("identifier", "source"),
     [
@@ -325,35 +343,83 @@ def test_the_readings_non_place_literals_do_not_cut_the_reviewers_place_value():
         ("11769188", "nga"),
         ("PH-DVC", "nga"),  # NGA's first-order unit codes (coordinator ruling).
         ("GT-04", "nga"),
-        ("PH-000", "nga"),
     ],
 )
 def test_a_tier_1_identifier_goes_back_unchanged_to_its_source(identifier, source):
-    # PLAN 4.8 in #191, with S8's readers' identifier patterns.
-    returned = [identifier]
-
-    assert place_request_identifier(identifier, source=source, returned=returned) == (
-        identifier
+    # PLAN 4.8 in #191, with S8's readers' identifier patterns: the identifier
+    # stands in the source's own answer.
+    assert (
+        place_request_identifier(
+            identifier,
+            source=source,
+            response=ANSWERS[source],
+            readings=[LABEL_WITH_NUMBERS],
+        )
+        == identifier
     )
 
 
 @pytest.mark.parametrize(
-    ("identifier", "source", "returned"),
+    ("identifier", "source", "response"),
     [
-        ("Q928", "wikidata", []),  # Not one the source returned.
-        ("Q928", "tgn", ["Q928"]),  # Another source's pattern.
-        ("Q0928", "wikidata", ["Q0928"]),
-        ("Davao", "wikidata", ["Davao"]),  # Label text.
-        ("12345678901", "tgn", ["12345678901"]),  # Over ten digits.
-        ("1000135", "geonames", ["1000135"]),  # GeoNames is read from dumps.
-        ("PH-DVC", "nga", []),  # A code NGA didn't return, though it matches.
-        ("PH-DVC", "wikidata", ["PH-DVC"]),
+        ("Q928", "wikidata", "{}"),  # Not in the source's own answer.
+        ("Q92", "wikidata", ANSWERS["wikidata"]),  # Only part of an answer's id.
+        ("Q928", "tgn", ANSWERS["wikidata"]),  # Another source's pattern.
+        ("Davao", "wikidata", '{"search": [{"id": "Davao"}]}'),  # Label text.
+        # The steward's review of #191: label numbers, even in an answer.
+        ("0123456", "tgn", '{"result": [{"id": "tgn/0123456"}]}'),  # Catalogue.
+        ("46", "tgn", '{"result": [{"id": "tgn/46"}]}'),  # A year.
+        ("PH-DVC", "nga", '{"features": []}'),  # A code NGA didn't return.
+        ("1000135", "geonames", ANSWERS["tgn"]),  # GeoNames is read from dumps.
     ],
 )
-def test_any_other_identifier_is_refused(identifier, source, returned):
+def test_any_other_identifier_is_refused(identifier, source, response):
     assert (
-        place_request_identifier(identifier, source=source, returned=returned) is None
+        place_request_identifier(
+            identifier, source=source, response=response, readings=[LABEL_WITH_NUMBERS]
+        )
+        is None
     )
+
+
+def test_an_identifier_without_the_readings_is_refused():
+    assert (
+        place_request_identifier(
+            "1000135", source="tgn", response=ANSWERS["tgn"], readings=[]
+        )
+        is None
+    )
+
+
+def test_a_call_without_the_readings_is_refused():
+    # The steward's review of #191: the cuts read the readings, so a call that
+    # names none is refused; without them "Hoogstraa" would leave.
+    assert (
+        place_request_forms(
+            "Hoogstraa",
+            sources=["Hoogstraa"],
+            readings=[],
+            non_place_literals=["H. Hoogstraal"],
+            knowledge=insects,
+        )
+        is None
+    )
+
+
+def test_a_non_place_literal_is_cut_at_every_occurrence_in_every_text():
+    # The steward's review of #191: "Werner" beside "Wernersdorf".
+    reading = "Wernersdorf\nF.G. Werner"
+
+    assert given("Werner", reading, others=["F.G. Werner"]) == []
+    assert given("Wernersdorf", reading, others=["F.G. Werner"]) == ["Wernersdorf"]
+    # A literal "Werner" covers the first six characters of "Wernersdorf".
+    assert given("Wernersdorf", reading, others=["Werner"]) == []
+
+
+def test_a_full_form_that_would_bring_back_a_cut_character_is_not_sent():
+    # The steward's review of #191: a non-place literal copied short, "Moun",
+    # would come back inside "Mount", so "Mt. Apo" leaves only as written.
+    assert given("Mt. Apo", "Mt. Apo\nMountain forest", others=["Moun"]) == ["Mt. Apo"]
 
 
 def test_a_dropped_clause_keeps_the_line_break_it_held():
@@ -368,7 +434,11 @@ def test_the_reviewers_value_is_a_source_only_in_a_place_field():
 
     def sent(text, sources, *others):
         return place_request_text(
-            text, sources=sources, non_place_literals=others, knowledge=insects
+            text,
+            sources=sources,
+            readings=sources,
+            non_place_literals=others,
+            knowledge=insects,
         )
 
     # A value the reviewer puts in a place field is a source ...

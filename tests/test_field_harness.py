@@ -41,7 +41,8 @@ from specimen_digitization.application.harness_tools import (
     TaxonCandidate,
     ToolResult,
 )
-from specimen_digitization.application.place_text import fold
+from specimen_digitization.application.harness_knowledge import insects
+from specimen_digitization.application.place_text import fold, place_request_text
 from specimen_digitization.application.reliability import AdapterFailure
 from specimen_digitization.application.taxonomy_tool import Verification
 
@@ -830,3 +831,42 @@ def test_no_cut_token_leaves_the_harness_in_a_place_request():
     for written in ("H. Hoogstraal leg.", "3 Sept. '46", "FMNH INS 0123456"):
         assert set(fold(written).split()).isdisjoint(fold(sent[0]).split())
     assert outcome.blocker is None and outcome.failure is None
+
+
+def test_before_the_collector_is_named_his_line_is_context_only():
+    # The steward's review of #191: the agent checks the province before it
+    # names the collector, so the rest of the line is unassigned text.
+    reading = Reading(
+        "r1", "o-muse", "decided_transcript", "Davao Prov., Mindanao F.G. Wermer"
+    )
+    check = [
+        (
+            "geocode",
+            {
+                "reading": "1A",
+                "fields": {"province_state": "Davao Prov."},
+                "others": {},
+            },
+        )
+    ]
+    final = answer(
+        **{"1A": {"province_state": "Davao Prov.", "collectors": "F.G. Wermer"}}
+    )
+
+    _, fakes = harness(check, final, readings=[reading], plan=PLACE_PLAN)
+
+    (mid_run,) = fakes.queries  # The final call reuses the check's request.
+    assert mid_run.sources == ["Davao Prov."]
+    assert (None, "Mindanao F.G. Wermer") in [
+        (item.field_key, item.literal) for item in mid_run.literals
+    ]
+    assert (
+        place_request_text(
+            "Mindanao F.G. Wermer",
+            sources=mid_run.sources,
+            readings=mid_run.reading_texts,
+            non_place_literals=mid_run.non_place_literals,
+            knowledge=insects,
+        )
+        is None
+    )

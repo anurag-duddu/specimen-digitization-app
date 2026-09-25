@@ -293,17 +293,24 @@ an encoded URL parameter here and an escaped literal in S8's SPARQL.
 - **Sources**, checked first, before any cut or full form. A value must be a
   whole-token slice, bounded by token edges, of one of its sources:
   - the reading's place-field literals (`country`, `province_state`, `county`,
-    `city`, `precise_location`) and its unassigned locality text;
+    `city`, `precise_location`);
   - the names tier 1 returns;
   - in "fill the rest", the reviewer's values in place fields.
 
-  A full form written on the label, such as "Philippine Islands", is a source
-  like other place text. The record's readings are read for the cuts
-  (`readings`) but are not themselves a source. A value drawn from anything else
-  refuses the whole query. Nothing is sent, and the tool answers
-  `policy_blocked` with the fixed code `place_text_refused`, which blocks the run
-  (QUE-005). The tool refuses the same way a literal that isn't character for
-  character in a reading, and a query that names no knowledge
+  The harness's sources are its place-field literals only, each found
+  character for character in the reading (`GeographyQuery.sources`). Its
+  unassigned locality text is context and never a source (the steward's review
+  of #191). Mid-run, that text can still hold a collector the agent hasn't
+  named, and this way it never leaves. A full form written on the label, such
+  as "Philippine Islands", is a source like other place text.
+
+  Every call names the record's readings (`readings`, required). They are read
+  for the cuts but are not themselves a source, and a call without them is
+  refused. A value drawn from anything else refuses the whole query. Nothing is
+  sent, and the tool answers `policy_blocked` with the fixed code
+  `place_text_refused`, which blocks the run (QUE-005). The tool refuses the
+  same way a literal that isn't character for character in a reading, a
+  non-place field's literal, and a query that names no knowledge
   (`place_knowledge_unavailable`).
 - **Cuts**, only on those values and by character span. Each is decided on the
   tokens of every text the value occurs in, the readings included, and tokens
@@ -338,17 +345,28 @@ an encoded URL parameter here and an escaped literal in S8's SPARQL.
     knowledge's table lists for it. The table carries sendable place words, not
     glosses, and expands only notations assigned to place fields alone, never a
     month, a year or a marker.
-  - A notation is cut whenever one of its full forms is, so every full form that
-    leaves has passed the same cuts. A full form never brings back a cut token.
+  - A notation is cut whenever one of its full forms is. Each form a full form
+    makes is then cut again by character span, in the form itself, and a form
+    any cut touches is not sent. So an expansion never brings back a cut
+    character: with a non-place literal "Moun", "Mt. Apo" leaves only as
+    written.
   - A full form counts only as the expansion of a notation present in an
     allowed source (coordinator ruling, 2026-09-24). A source written out in full
     is a source too; a standalone full form, not written on the label, is not.
 - **Identifiers** (#191). `place_request_identifier(identifier, *, source,
-  returned)` sends an identifier back to the tier-1 source that returned it,
-  unchanged, when it matches that source's documented pattern. Today that's a
-  Wikidata item's Q-number; TGN's and GNS's numeric identifiers join when S8's
-  readers land. An identifier carries no label text, so no cut applies, and
-  anything else is refused.
+  response, readings)` sends an identifier back unchanged to the tier-1 source
+  whose own answer holds it. `response` is that answer's text, and the
+  identifier must stand in it as a whole token and match one of the source's
+  documented patterns:
+  - `wikidata`: an item's Q-number;
+  - `tgn`: a subject id;
+  - `nga`: a feature id, or a first-order unit code such as "PH-DVC"
+    (coordinator ruling).
+
+  An identifier that appears anywhere in a reading is refused, so a catalogue
+  number or a year offered as an id never leaves (the steward's review of
+  #191). An identifier carries no label text, so no cut applies, and anything
+  else is refused.
 - **Shape.** What survives keeps its clauses, single-spaced and joined by their
   own separators, with a line break wherever the dropped text held one, as S8's
   parser reads them. `place_request_forms` returns the value as written after
@@ -362,9 +380,10 @@ an encoded URL parameter here and an escaped literal in S8's SPARQL.
   month-position cut can trim a tier-1 name whose numeral stands beside a
   number.
 
-This tool passes its query's literals as the sources and the readings as
-context. Its unassigned locality text comes in whole tokens: a piece of a line
-never starts or ends inside a token a reading assigns.
+This tool passes its query's place-field literals as the sources and the
+readings as context. It checks that its unassigned locality text is in a
+reading, but never filters it for sending or sends it. That text comes in whole
+tokens: a piece of a line never starts or ends inside a token a reading assigns.
 
 Google gets the first form, as written after the cuts, which keeps the address
 behind the live checks of G34; S8's name searches take the full forms (the

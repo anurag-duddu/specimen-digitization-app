@@ -21,11 +21,13 @@ from specimen_digitization.application.geography_tool import (
     map_geocoding_response,
     one_letter_apart,
 )
+from specimen_digitization.application.harness_knowledge import insects
 from specimen_digitization.application.harness_tools import (
     GeographyQuery,
     LocalityLiteral,
     PlaceCandidate,
 )
+from specimen_digitization.application.place_text import place_request_text
 
 KEY_VARIABLE = "SPECIMEN_GOOGLE_MAPS_API_KEY"
 MAPS_KEY = "fake-maps-credential-never-stored"
@@ -447,6 +449,49 @@ def test_what_leaves_is_what_plan_4_8s_filter_lets_leave():
     address = "Davao Prov., P.I."
     assert dict(seen.requests[0].url.params) == {"address": address, "key": MAPS_KEY}
     assert seen.result.sub_calls[0].query == {"address": address}
+
+
+@pytest.mark.parametrize(
+    ("reading", "piece", "name"),
+    [
+        ("Davao Prov., Mindanao F.G. Wermer", "Mindanao F.G. Wermer", "F.G. Wermer"),
+        ("Davao Prov., H. Hoogstraal, leg.", "H. Hoogstraal, leg.", "H. Hoogstraal"),
+    ],
+    ids=["collector-unnamed", "marker-in-the-next-clause"],
+)
+def test_the_unassigned_text_is_context_and_never_a_source(reading, piece, name):
+    # The steward's review of #191: mid-run, before the collector is named, the
+    # unassigned text can hold him; only the place-field literals are sources.
+    geography = query(("province_state", "Davao Prov."), (None, piece), reading=reading)
+
+    seen = geocode(geography, reply(status="ZERO_RESULTS"))
+
+    assert geography.sources == ["Davao Prov."]
+    assert seen.requests[0].url.params["address"] == "Davao Prov."
+    for value in (piece, name):  # What a tier might try to send from it.
+        assert (
+            place_request_text(
+                value,
+                sources=geography.sources,
+                readings=geography.reading_texts,
+                non_place_literals=geography.non_place_literals,
+                knowledge=insects,
+            )
+            is None
+        )
+
+
+def test_a_non_place_fields_literal_refuses_the_query():
+    geography = query(("collectors", "F.G. Werner"), ("country", "P.I."))
+
+    seen = geocode(geography, reply(DAVAO), allow=lambda n: True)
+
+    result = seen.result
+    assert (seen.requests, result.outcome, result.warnings) == (
+        [],
+        S.POLICY,
+        ["place_text_refused"],
+    )
 
 
 def test_a_place_value_with_a_quote_reaches_google_encoded():
