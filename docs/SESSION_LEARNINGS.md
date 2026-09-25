@@ -12602,7 +12602,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 ### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 6b: a unit's extent, and a circle inside it
 
 - Task: brief task 6, the geometry behind containment (the coordinator's reading of G37) and county precision (the coordinator's reading of G38), on synthetic boundaries until the owner approves downloading geoBoundaries' files.
-- Branch and worktree: `golive/geo-geometry` in `.claude/worktrees/geo-build`, stacked on #192. PR #193.
+- Branch and worktree: `golive/geo-geometry` in `.claude/worktrees/geo-build`, stacked on #192, as PR #193. Re-cut on 2026-09-25 by the coordinator's option (b) as `golive/geo-geometry-2`, stacked on #212: PR #213, replacing #193, with the same red and green commits cherry-picked with `-x`.
 - Outcome: `georef_geometry.py` provides the geometry, in pure Python (numpy is not a project dependency).
   - It reads GeoJSON boundaries and tests a point with the even-odd rule.
   - It measures clearance to the nearest edge in meters.
