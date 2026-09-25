@@ -217,6 +217,11 @@ def test_a_gbif_occurrence_request_in_any_record_of_any_run_fails_while_d4_is_of
         # a client removes every dot segment, however many (#83 round 1)
         ("evidence", [{"source": "gbif", "locator": "/v1/././occurrence/search"}]),
         ("evidence", [{"source": "gbif", "locator": "/v1/x/../occurrence/search"}]),
+        # #84 round 1: merged slashes, a ".." above the root that must not eat the host, a trailing host dot
+        ("evidence", [{"source": "gbif", "locator": "/v1//occurrence/12345"}]),
+        ("evidence", [{"kind": "authority", "source": "web", "locator": "https://api.gbif.org/../v1/occurrence/search"}]),
+        ("evidence", [{"kind": "authority", "source": "web", "locator": "https://api.gbif.org./v1/occurrence/search"}]),
+        ("evidence", [{"kind": "authority", "source": "web", "locator": "https://api.gbif.org/v2/%2e%2e/%2e%2e/v1/occurrence"}]),
         ("authority_results", {"k": {"context_json": '{"museum_published": true}'}}),
         ("authority_results", {"k": {"signals": {"occurrence": "supports"}}}),
         ("tool_calls", [{"tool": "occurrence_search", "source": "gbif", "arguments": {"q": "x"}}]),
@@ -359,3 +364,9 @@ def test_a_block_without_a_blocker_shows_its_reasons_and_stage_1_prints_no_hash(
     assert stage["3"]["status"] == "blocked"
     assert stage["3"]["detail"].startswith("['label_coverage_unconfirmed'] at")  # reasons stand in
     assert SHA[:12] not in stage["1"]["detail"]
+
+
+def test_a_receipt_blob_names_the_occurrence_api_after_a_root_dot_segment():
+    # #84 round 1: the dot-segment rule ate the host, so this blob read as "https://v1/occurrence/...".
+    assert lab_checks.occurrence_blob('{"url": "https://api.gbif.org/../v1/occurrence/search"}')
+    assert not lab_checks.occurrence_blob('{"url": "https://api.gbif.org/../v2/species/match"}')

@@ -110,3 +110,42 @@ def test_receipt_blobs_are_collected_for_the_d4_scan(tmp_path):
     receipt = {"blob_ref": blobs.put(body), "sha256": "0" * 64, "state": "completed", "call_id": "authority:0/x"}
     run = Run(authority_receipts={"authority:0:x": receipt, "other": {"state": "reserved"}})
     assert lab_lane.receipt_blobs(run, blobs) == {"receipts/authority_0_x.json": body}
+
+
+def test_a_production_run_refuses_a_slide_outside_the_ten(tmp_path):
+    # #84 round 1 (blocking): the lane processed a Sensitive slide. With the production adapters its image
+    # would reach the model providers, which PRD.md 67 and PLAN.md 182 rule out; refuse before any upload.
+    from types import SimpleNamespace
+
+    options = SimpleNamespace(persistence="sqlite", segmentation="sam3", subject="subject_105526331")
+    with pytest.raises(lab_lane.LabError, match="not one of the ten"):
+        lab_lane.production_lane(tmp_path / "state", options, {})
+    assert not (tmp_path / "state").exists()
+    ten = SimpleNamespace(persistence="sqlite", segmentation="sam3", subject="subject_105526321")
+    assert isinstance(lab_lane.production_lane(tmp_path / "state", ten, {}), lab_lane.AppLane)
+
+
+def test_a_failed_start_stops_the_emulator(tmp_path, monkeypatch):
+    # #84 round 1: __exit__ never runs when __enter__ raises after the emulator started.
+    stopped = []
+
+    class FakeEmulator:
+        def __init__(self, root):
+            self.host = "127.0.0.1:1"
+
+        def start(self):
+            return self
+
+        def stop(self):
+            stopped.append(True)
+
+    def broken_adapters(blobs):
+        raise RuntimeError("adapters could not be built")
+
+    monkeypatch.setattr(lab_lane, "Emulator", FakeEmulator)
+    monkeypatch.setattr(lab_lane, "SqlConnectRepository", lambda **kwargs: object())
+    lane = lab_lane.AppLane(tmp_path / "state", adapters_factory=broken_adapters, persistence="sql-emulator",
+                            segmentation="sam3", subject="subject_105526321")
+    with pytest.raises(RuntimeError, match="adapters could not be built"):
+        lane.__enter__()
+    assert stopped == [True]

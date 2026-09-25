@@ -192,6 +192,14 @@ def test_paid_attempts_without_settled_usage_count_at_their_full_bound():
     assert costs["total_usd"] == pytest.approx(costs["readers_usd"] + costs["other_usd_upper_bound"] + 3 * 0.04)
 
 
+def test_a_uniform_request_reservation_counts_when_the_profile_has_no_stage_reservations():
+    # #84 round 1: workflow.py reserves request_cost_reservation_micros per step when no stage reservations exist.
+    snap = snapshot(stage="processing_blocked", blocker="external_outcome_unknown", attempts={"parse": 1},
+                    completed_steps=["classify", "segment"])
+    snap["run"]["profile"]["execution"]["request_cost_reservation_micros"] = 70_000
+    assert run_specimen.price(snap)["unsettled_usd_bound"] == pytest.approx(0.07)
+
+
 def test_a_reservation_the_profile_records_raises_the_bound_for_its_step():
     snap = snapshot(stage="processing_blocked", blocker="external_outcome_unknown",
                     attempts={"transcribe:r1:handwriting-qwen": 2, "parse": 1},
@@ -267,9 +275,12 @@ def test_the_redactor_ignores_case_and_percent_encoding():
 
 
 def test_home_paths_are_found_in_any_case(monkeypatch):
-    # #83 round 2: macOS paths ignore case, so a home path can be written in another case.
+    # #83 round 2: macOS paths ignore case, so a home path can be written in another case; #84 round 1: a
+    # home path that ends a sentence is found too, but not a longer name that starts with it.
     monkeypatch.setenv("HOME", "/Users/labfixture")
-    assert run_specimen.Redactor({})("/users/labfixture/runs and /USERS/LABFIXTURE/x") == "~/runs and ~/x"
+    redact = run_specimen.Redactor({})
+    assert redact("/users/labfixture/runs and /USERS/LABFIXTURE/x") == "~/runs and ~/x"
+    assert redact("saved under /Users/labfixture. Then /Users/labfixture.old") == "saved under ~. Then /Users/labfixture.old"
 
 
 class OccurrenceLane(FakeLane):
@@ -472,6 +483,10 @@ class DotSegmentLane(FakeLane):
         for url in ("https://api.gbif.org/v1/./occurrence/search", "https://api.gbif.org/v1/x/../occurrence/search",
                     "https://api.gbif.org/v1/././occurrence", "https://api.gbif.org/v1/species/search?catalogNumber=1",
                     "https://api.gbif.org/../v1/occurrence/search",  # ".." above the root (#83 round 2)
+                    # #84 round 1: encoded dots, merged slashes and a trailing host dot
+                    "https://api.gbif.org/%2E%2E/v1/occurrence/search", "https://api.gbif.org/v1//occurrence/12345",
+                    "https://api.gbif.org./v1/occurrence/search", "https://api.gbif.org//v1/occurrence/search",
+                    "https://api.gbif.org/v2/%2e%2e/%2e%2e/v1/occurrence/search",
                     "https://api.gbif.org/v2/species/match?name=Epipsocus"):  # the last is species match
             http_effect.bounded_http(url, timeout_seconds=1, max_bytes=1)
         http_effect.bounded_http("https://api.gbif.org/v1/species/search", timeout_seconds=1, max_bytes=1,
@@ -489,7 +504,7 @@ def test_the_parent_count_removes_dot_segments_and_reads_query_keys_in_the_url(t
     monkeypatch.setattr(http_effect, "bounded_http", fake_bounded_http)
     run(tmp_path, lane=DotSegmentLane())
     summary = json.loads((only_run(tmp_path) / "run.json").read_text())
-    assert summary["gbif_occurrence_requests"] == 8
+    assert summary["gbif_occurrence_requests"] == 13
 
 
 def test_a_receipt_blob_recording_an_occurrence_query_fails_stage_7(tmp_path, monkeypatch):
@@ -557,7 +572,8 @@ def test_a_report_only_rebuild_carries_a_new_verdict_without_preflight_or_fetch(
 
 
 @pytest.mark.parametrize("line", ["ADMIN_UID=adminuidfixture", '"adminuidfixture"', "adminuidfixture # admin",
-                                  "admin uid fixture"])
+                                  "admin uid fixture", "'adminuidfixture'", "uid1fixture,uid2fixture",
+                                  "adminuidfixture\u200b", "adminuidfixture\nsecondvalue\ufeff"])
 def test_a_values_file_line_that_is_not_one_bare_value_is_refused(tmp_path, line, capsys):
     # #83 round 2: such a file passed, and its value never matched anything. The refusal names the line
     # number, never its private content.
@@ -567,7 +583,7 @@ def test_a_values_file_line_that_is_not_one_bare_value_is_refused(tmp_path, line
     code, lanes = run(tmp_path, values=values)
     assert code == 3 and lanes == []
     captured = capsys.readouterr()
-    assert "lines [1]" in captured.err and "adminuidfixture" not in captured.out + captured.err
+    assert "lines [" in captured.err and "adminuidfixture" not in captured.out + captured.err
 
 
 def test_a_byte_order_mark_does_not_hide_the_first_value(tmp_path):
@@ -597,3 +613,73 @@ def test_ctrl_c_is_recorded_as_a_failure_and_the_run_held_at_its_bound(tmp_path)
     process = next(p for p in summary["phases"] if p["name"] == "process")
     assert process["status"] == "failed" and "KeyboardInterrupt" in process["error"]
     assert summary["result"] == "error" and summary["costs"]["total_usd"] == pytest.approx(0.75)
+
+
+class InterruptedTeardownLane(InterruptedLane):
+    def __exit__(self, *exc):
+        super().__exit__(*exc)
+        raise RuntimeError("could not stop the emulator")
+
+
+def test_ctrl_c_still_stops_the_run_when_the_teardown_then_fails(tmp_path):
+    # #84 round 1: the teardown's error replaced the interrupt, so the check ran and execute returned 2.
+    with pytest.raises(KeyboardInterrupt):
+        run(tmp_path, lane=InterruptedTeardownLane())
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    names = {p["name"]: p for p in summary["phases"]}
+    assert "check" not in names and names["teardown"]["status"] == "failed"
+    assert summary["costs"]["total_usd"] == pytest.approx(0.75)
+
+
+def test_run_json_holds_the_run_bound_from_the_moment_the_lane_starts(tmp_path):
+    # #84 round 1: a run killed after the lane starts must still count in the tally (G9).
+    seen = {}
+
+    class WatchingLane(FakeLane):
+        def ingest(self, filename, data, media_type):
+            record = self.state.parent / "run.json"
+            seen["total"] = json.loads(record.read_text())["costs"]["total_usd"] if record.exists() else None
+            return super().ingest(filename, data, media_type)
+
+    lane = WatchingLane()
+    original = run_specimen.execute
+
+    def execute(options, *, lane_factory, **kwargs):
+        def factory(state, opts, env):
+            lane.state = state
+            return lane_factory(state, opts, env)
+        return original(options, lane_factory=factory, **kwargs)
+
+    run_specimen.execute, saved = execute, run_specimen.execute
+    try:
+        run(tmp_path, lane=lane)
+    finally:
+        run_specimen.execute = saved
+    assert seen["total"] == pytest.approx(0.75)
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    assert summary["costs"]["total_usd"] == pytest.approx(0.00083 + 0.0006)  # priced at the end
+    assert summary["lab_spend_usd"] == pytest.approx(0.00083 + 0.0006)  # the run counts once
+
+
+@pytest.mark.parametrize("total", ["NaN", "-0.5", '"0.1"', None])
+def test_a_tally_that_cannot_be_trusted_stops_the_next_run(tmp_path, total):
+    # #84 round 1: an unreadable or non-finite total was skipped or passed preflight's comparison, and an
+    # adjustment may only raise the tally.
+    earlier = tmp_path / "runs" / "_adjustments" / "20260925T000000Z"
+    earlier.mkdir(parents=True)
+    (earlier / "run.json").write_text("{not json" if total is None else '{"costs": {"total_usd": %s}}' % total)
+    code, lanes = run(tmp_path)
+    assert code == 3 and lanes == []
+
+
+def test_main_refuses_a_slide_outside_the_ten_before_any_fetch(tmp_path, monkeypatch):
+    # #84 round 1 (blocking): only the ten are not sensitive (G31); a run of any other slide would send a
+    # Sensitive image to the model providers. A dry run builds no lane and fetches only.
+    calls = []
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setattr(run_specimen, "execute", lambda options, **kwargs: calls.append(options.subject) or 0)
+    roots = ["--runs-root", str(tmp_path / "runs"), "--reports-root", str(tmp_path / "reports")]
+    assert run_specimen.main(["subject_105526331", *roots]) == 3 and calls == []
+    assert run_specimen.main(["subject_105526331", "--dry-run", *roots]) == 0
+    assert run_specimen.main(["subject_105526321", *roots]) == 0
+    assert calls == ["subject_105526331", "subject_105526321"]
