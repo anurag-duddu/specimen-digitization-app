@@ -12524,3 +12524,22 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: a filter's stated limit is how a list of cases stops growing. When each widening only surfaces the next spelling, close the list, name the rest, and pin them so any change shows.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live program: plan corrections after #208
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-13`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #208's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/208#issuecomment-5828661954), items 1-6. It carries the coordinator's rulings of 07:33Z and 07:34Z on 2026-09-25, each recorded in `status/coordinator.md` before it was sent.
+  - PLAN 4.8's filter:
+    - The sparing anchor (item 2): only the reviewer's own text is spared. That is the tokens whose folded words the harness's value for that field, in the run under review, does not hold. A case-only change spares nothing, and "Mindanao F.G. Wermer, P.I." spares only "P.I.". The limit names a name the reviewer adds.
+    - An ordinal day is a one- or two-digit day followed directly by one of the eight endings. The limit names an ordinal written any other way ("1.ª" included), a day in words, and a spaced dash or a comma between months. It also carries the 06:36Z "not widened further before the pilot", with its label.
+    - The one-sided connector carries the 05:39Z label, and the credits add #208.
+  - PLAN's header restates the date convention: a label with only a date carries its record's date, since the records mix UTC and New York dates. Nothing is re-dated. This supersedes the durable learning "Use the UTC date in both places" in the entry "2026-09-25 — Go-live program: plan corrections after #203" above.
+  - Correction (dated 2026-09-25): #208's header paragraph moved PLAN's lines down by five.
+    - The entry "2026-09-24 — Go-live program: plan corrections after #174" above cites "PLAN 190", now PLAN 195.
+    - The entry "2026-09-25 — Go-live S6: #202's review follow-ups, and dated corrections" above cites "PLAN.md 407-408" for the reason filter, now PLAN 412-413.
+    - The coordinator's note at #208's turn ("no citation moved") checked only other documents' citations, and missed these two. This PR keeps the header at four lines, so both new numbers stand.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: a line inserted near the top of a cited document moves every citation below it, including those in append-only logs. Keep header edits line-neutral, or re-map the log's citations with an appended correction in the same PR.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).

@@ -8,10 +8,10 @@ This page is the program's master plan. Workstream briefs are in
 [`briefs/`](briefs/). Live status, research reports and the owner-actions
 queue live outside the repository in `~/specimen-golive/` (section 7.6).
 
-Dates in labels: a label that gives a time is in UTC, such as "04:17Z on
-2026-09-25". A label that gives only a date uses New York time, as the
-coordinator's records do, so a ruling sent at 02:49Z on 2026-09-25 is
-labelled 2026-09-24.
+Dates in labels: a label with a time is UTC ("04:17Z on 2026-09-25"). A label
+with only a date carries its record's date: the decision's date in section 2.1,
+or the date of the coordinator's entry for a ruling. The records mix UTC and
+New York dates (coordinator ruling of 06:37Z on 2026-09-25, restated 07:34Z).
 
 ## 1. Goal and definition of done
 
@@ -419,17 +419,17 @@ status. The client defects in section 3 are fixed first.
 ### 4.8 Outside data (G35, G38)
 
 The place tool follows these coordinator rulings, from the reviews of #124,
-#174, #180, #185, #191, #200, #203 and #206 and the rulings on S4's #183:
+#174, #180, #185, #191, #200, #203, #206 and #208 and the rulings on S4's #183:
 - Its requests carry place text only (coordinator rulings of 2026-09-24 and
-  2026-09-25, from the reviews of #124, #174, #180, #185, #191, #200, #203 and
-  #206, including the rulings on S8's option (c) and on S4's #183). The agent
-  keeps a place-lookup tool it can call mid-run (G40), and the deterministic
-  final call looks places up too. Both build requests through S4's single
-  filter, and S8's request builder calls that same filter for every request its
-  tiers send. The rule covers every value a request takes from the record or
-  from a tier-1 result, in any parameter, except a tier-1 source's own
-  identifiers, which follow the Identifiers rule below. The filter's output is
-  what leaves, and after it a value is only escaped or encoded.
+  2026-09-25, from the reviews of #124, #174, #180, #185, #191, #200, #203,
+  #206 and #208, including the rulings on S8's option (c) and on S4's #183).
+  The agent keeps a place-lookup tool it can call mid-run (G40), and the
+  deterministic final call looks places up too. Both build requests through
+  S4's single filter, and S8's request builder calls that same filter for every
+  request its tiers send. The rule covers every value a request takes from the
+  record or from a tier-1 result, in any parameter, except a tier-1 source's
+  own identifiers, which follow the Identifiers rule below. The filter's output
+  is what leaves, and after it a value is only escaped or encoded.
   - Sources, checked first, before any cut or expansion: the reading's place
     fields (`country`, `province_state`, `county`, `city`, `precise_location`)
     and its unassigned locality text (the part of the lines holding those
@@ -475,24 +475,29 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     over tokens with no letter or digit and over the date connectors the
     profile's date notations list ("de", "del", "of"). A date number is a day
     or a year in the profile's forms (3, 14, 1946, '46 or -46), also written
-    with any apostrophe or dash ("‘46", "–46"), as an ordinal day ending in st,
-    nd, rd, th, d, er, º or ª ("3rd", "2d", "1er", "1º", "1ª"), with
-    punctuation before or after it ("1946.", "1946?", "(1946)"), or as a range
-    of them joined by a dash or a slash ("3-4", "1946/47"); and a listed
-    connector is itself cut when the tokens on both sides of it are cut date
-    tokens, that is, tokens with a digit, a month word or a Roman month
-    (coordinator rulings on S4's #183, 2026-09-24, and of 04:17Z, 05:38Z,
-    05:39Z and 06:36Z on 2026-09-25, on #200's, #203's and #206's final
-    reviews). So "VIII" goes in "3 VIII 1946", "Mindanao, VIII, 1946",
-    "Mindanao, VIII -46", "Mindanao, VIII ‘46", "VIII 1946?", "3rd VIII", "2d
-    VIII", "3-4 VIII", "VIII 1946/47", "3 - VIII - 1946", "3 de VIII de 1946"
-    and "3rd of VIII 1946", "VIII/IX" goes in "VIII/IX 1946", and "15 de agosto
-    de 1946" sends nothing, while "Camp IV", "P.I." and the "de" of "San Juan
-    de Dios" stay. The readings' and the harness's non-place values do not cut
-    a place value the reviewer entered or changed, since the reviewer's
-    correction is the authority there; a harness place value the reviewer left
-    unchanged is cut like any other source (coordinator ruling of 06:36Z on
-    2026-09-25, on #206's final review).
+    with any apostrophe or dash ("‘46", "–46"), as a one- or two-digit day
+    followed directly by st, nd, rd, th, d, er, º or ª ("3rd", "2d", "1er",
+    "1º", "1ª"), with punctuation before or after it ("1946.", "1946?",
+    "(1946)"), or as a range of them joined by a dash or a slash ("3-4",
+    "1946/47"); and a listed connector is itself cut when the tokens on both
+    sides of it are cut date tokens, that is, tokens with a digit, a month word
+    or a Roman month (coordinator rulings on S4's #183, 2026-09-24, and of
+    04:17Z, 05:38Z, 05:39Z and 06:36Z on 2026-09-25, on #200's, #203's and
+    #206's final reviews). So "VIII" goes in "3 VIII 1946", "Mindanao, VIII,
+    1946", "Mindanao, VIII -46", "Mindanao, VIII ‘46", "VIII 1946?", "3rd
+    VIII", "2d VIII", "3-4 VIII", "VIII 1946/47", "3 - VIII - 1946", "3 de VIII
+    de 1946" and "3rd of VIII 1946", "VIII/IX" goes in "VIII/IX 1946", and "15
+    de agosto de 1946" sends nothing, while "Camp IV", "P.I." and the "de" of
+    "San Juan de Dios" stay. The readings' and the harness's non-place values
+    do not cut the reviewer's own text in a place value: the tokens of a value
+    the reviewer entered or changed whose folded words the harness's value for
+    that field, in the run under review, does not hold, since the reviewer's
+    correction is the authority there. Tokens the reviewer kept, and a harness
+    place value the reviewer left unchanged, are cut like any other source, and
+    where the harness gave the field no value, every token is the reviewer's
+    own (coordinator rulings of 06:36Z and 07:33Z on 2026-09-25, on #206's and
+    #208's final reviews). So a case-only change spares nothing, and "Mindanao
+    F.G. Wermer, P.I." spares only "P.I.".
   - Expansion, after the cuts: a surviving notation token that the table
     assigns to place fields only, and that appears in an allowed source, may be
     replaced by each full form the table lists for it, so "Davao Prov." is sent
@@ -546,17 +551,19 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     reading literal; a reviewer's place value that a reading's non-place
     literal would otherwise cut, and one with a date in it; in "fill the rest",
     "Mindanao F.G. Wermer" sending "Mindanao" with the harness's "F.G. Wermer"
-    kept, and with it replaced by the reviewer's "F.G. Werner", and a harness
-    place value "Mindanao F.G. Wermer" the reviewer left unchanged sending
-    "Mindanao"; a literal the harness gives a non-place field refused as a
-    source; tier-1 identifiers passing, a catalogue number offered as a TGN
-    identifier refused, a label number the answer holds only as a date or a
-    coordinate refused (a TGN `estStart` of "1946", a GNS latitude of 7.3), and
-    other values refused; the fixed parts and the User-Agent carrying no label
-    text; and a place value with a quote in it reaching the query escaped. No
-    cut character leaves, each expansion carries only full forms the table
-    lists, and a value not drawn from those sources is refused. Tests also pin
-    each case the limit names, so a change in what can leave shows.
+    kept, and with it replaced by the reviewer's "F.G. Werner", a harness place
+    value "Mindanao F.G. Wermer" the reviewer left unchanged sending
+    "Mindanao", a case-only change "mindanao f.g. wermer" sending "mindanao",
+    and "Mindanao F.G. Wermer, P.I." sending "Mindanao, P.I."; a literal the
+    harness gives a non-place field refused as a source; tier-1 identifiers
+    passing, a catalogue number offered as a TGN identifier refused, a label
+    number the answer holds only as a date or a coordinate refused (a TGN
+    `estStart` of "1946", a GNS latitude of 7.3), and other values refused; the
+    fixed parts and the User-Agent carrying no label text; and a place value
+    with a quote in it reaching the query escaped. No cut character leaves,
+    each expansion carries only full forms the table lists, and a value not
+    drawn from those sources is refused. Tests also pin each case the limit
+    names, so a change in what can leave shows.
   - Its stated limit: text the filter cannot recognize can still leave. That is
     text that no reading assigns to a non-place field and the harness has not
     given one (mid-run, not yet; in "fill the rest", never), when no marker the
@@ -572,21 +579,29 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     beside it, such as "VIII/IX". A token that joins a numeral to a word can
     leave whole, so "mid-VIII 1946" sends "mid-VIII" (coordinator rulings of
     04:17Z and 05:38Z on 2026-09-25, on #200's and #203's final reviews). A
-    numeral also leaves beside an ordinal spelled with another ending ("1.º
-    VIII", "1o VIII", "1ro VIII", "2do VIII", "1.er VIII") and beside a word
-    that joins two months, so "VIII y IX 1946" sends "VIII y"; and a connector
-    with a cut date token on one side only stays, so "Chimaltenango de 1946"
-    sends "Chimaltenango de" (coordinator ruling of 06:36Z on 2026-09-25, on
-    #206's final review). The cuts can also take too much: a place's own
-    numeral beside a date number goes, so "Camp IV, 3 VIII 1946" sends only
-    "Camp"; a place named with a month word loses that word, so "Cape May"
-    sends "Cape"; a colonia written "Col." is cut as a collector's clause, so
-    "Col. El Carmen, Chimaltenango" sends only "Chimaltenango" (coordinator
-    ruling of 04:17Z on 2026-09-25, on #200's final review); a clause holding a
-    marker is cut wherever its words appear, so "Mt. Apo leg. Hoogstraal" on
-    one line takes "Mt. Apo" from every other line, a reviewer's value
-    included; and a tier-1 name whose numeral stands beside a number, such as a
-    region written with its code, loses the numeral.
+    numeral also leaves beside an ordinal written any other way ("1.º VIII",
+    "1.ª VIII", "1o VIII", "1ro VIII", "2do VIII", "1.er VIII"), beside a day
+    in words ("primero de VIII"), and beside a word, a spaced dash or a comma
+    that joins two months, so "VIII y IX 1946" sends "VIII y", "VIII – IX 1946"
+    sends "VIII –" and "VIII, IX 1946" sends "VIII". The Roman-month cut is not
+    widened further before the pilot (coordinator ruling of 06:36Z on
+    2026-09-25, on #206's final review, with the cases #208's final review
+    added). A connector with a cut date token on one side only stays, so
+    "Chimaltenango de 1946" sends "Chimaltenango de" (coordinator ruling of
+    05:39Z on 2026-09-25, on #203's final review). In "fill the rest", a name
+    the reviewer adds to a place value is spared the readings' and the
+    harness's non-place cuts, so it can leave unless the reviewer also puts it
+    in a non-place field (coordinator ruling of 07:33Z on 2026-09-25, on #208's
+    final review). The cuts can also take too much: a place's own numeral
+    beside a date number goes, so "Camp IV, 3 VIII 1946" sends only "Camp"; a
+    place named with a month word loses that word, so "Cape May" sends "Cape";
+    a colonia written "Col." is cut as a collector's clause, so "Col. El
+    Carmen, Chimaltenango" sends only "Chimaltenango" (coordinator ruling of
+    04:17Z on 2026-09-25, on #200's final review); a clause holding a marker is
+    cut wherever its words appear, so "Mt. Apo leg. Hoogstraal" on one line
+    takes "Mt. Apo" from every other line, a reviewer's value included; and a
+    tier-1 name whose numeral stands beside a number, such as a region written
+    with its code, loses the numeral.
 - The Maps key, and any credential a later source needs, is kept in Secret
   Manager and follows section 4.5's rule: no span, log line, exception text,
   stored error, tool-call result, test fixture or lab folder records it or the
