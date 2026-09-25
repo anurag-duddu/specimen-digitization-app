@@ -12599,3 +12599,19 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: a comparison widened to catch a leak also widens what it can over-cut ("Mt." against "M.T."). Name one over-cut case in the limit when the rule lands, so a test pins it.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live S4: removing the GBIF GADM geography adapter (PLAN 4.8 licence fix)
+
+- Task: the coordinator's licence ruling (13:31Z). PLAN 4.8 does not use GADM, not even as a measurement, because its terms bar redistribution and commercial use, yet main still wired GBIF's GADM search as the production "geography" authority tool. One small pull request from main, ahead of the S4 chain.
+- Branch/worktree: `golive/harness-no-gadm`, from `main` at d8291a0, in `.claude/worktrees/cool-haslett-aa79b5`.
+- Outcome:
+  - `ProductionAdapters` wires only the parties tool, and the geography cost reservation is gone.
+  - `application/geography.py` and `tests/test_geography.py` are deleted.
+  - `plan_authorities` no longer plans a geography lookup, and `authority_query` drops the GADM-only historical context. Place fields get no geography authority and go to review until the harness's geography tool lands.
+  - The generic harness-runner tests use the parties adapter, and the registry tests use a neutral example source.
+  - Spec: PLAN 4.8 and the coordinator's ruling. `docs/execution/EVIDENCE_HARNESS.md` no longer lists the adapter.
+- Validation actually run: three of the four new tests failed on main, each for its intended reason. The resume test passes before and after. Gates, one at a time: `pre-commit run --all-files` passed; `pytest tests` 1498 passed, 31 skipped; `pytest scripts` 1562 passed, 50 skipped; `check_ui_strings` 0 violations.
+- Durable learnings:
+  1. No collection profile ever named the "geography" tool (the one profile lists `taxonomy_verifier`), so no run planned a GADM lookup. The adapter was reachable only through the wiring and the planner branch.
+  2. Each authority step compares only its own tool's pin (`authority_pins`), so a run pinned before a tool is removed resumes unchanged.
+- Remaining follow-ups: S3's lane branches carry the same three `production.py` lines, and resolve them when they merge main. `scripts/lab/lab_checks.py` still counts a `gbif_gadm` lookup as a failure, which is S7's check and is left as is.
