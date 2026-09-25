@@ -12610,7 +12610,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - The green `89e08a2` removes the probe's GADM step and its report fields, and corrects the probe's docstring, help text and README. `b67be62` names #217 here.
   - `main` was merged in at #217's turns as `ded2172` (#83) and `193c791` (#216). `ce46a85` adds the blank line the union merge dropped before #216's entry.
   - Review round 1 (comment 5836111240) found GBIF.md's other two GADM passages (:11 and :322) and the `gadm` block in GBIF's occurrence records. It is answered by the red `11ad5e8` and the green commit after it: the two passages are marked in place, the guard applies #216's pattern, and stored responses drop the block.
-- Validation: the first guard test fails on `main` and passes after the green, and the probe parses and prints its help. `uv run pytest -q` gave 3,069 passed on `89e08a2`, 3,102 on `ded2172` and 3,097 on `ce46a85`, with 81 skipped each time. Round 1's storage test fails on `ce46a85` and passes on its green.
+- Validation: the first guard test fails on `main` and passes after the green, and the probe parses and prints its help. `uv run pytest -q` gave 3,069 passed on `89e08a2`, 3,102 on `ded2172`, 3,097 on `ce46a85` and 3,098 on `21da3fe` (round 1's green, the head's code), with 81 skipped each time. Round 1's storage test fails on `ce46a85` and passes on its green.
 - Durable learnings: PLAN, the briefs, DATA_CONTRACT.md:329 and GEOREFERENCING.md cite `docs/GBIF.md` by line number, so a note added inside an existing line keeps every reference valid where a new line would shift them.
 - Failed approaches:
   - A first draft added the notes as new blockquote lines, which would have shifted those references; it was rewritten before any commit.
