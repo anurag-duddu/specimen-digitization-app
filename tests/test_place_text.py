@@ -741,6 +741,12 @@ def test_the_stated_limit_a_place_word_like_a_collectors_initials_is_cut():
     assert request("Mt. Apo", others=["M.T. Smith"]) == "Apo"
 
 
+def test_the_stated_limit_a_single_place_initial_is_cut_by_a_collectors():
+    # #215's final review: "J.P. Doe" holds the word "p", and "E. Smith" "e".
+    assert request("Mindanao, P.I.", others=["J.P. Doe"]) == "Mindanao"
+    assert request("E. slope Mt. Apo", others=["E. Smith"]) == "slope Mt. Apo"
+
+
 @pytest.mark.parametrize(
     "reviewer", [(), ("F.G. Werner",)], ids=["harness-value-kept", "replaced"]
 )

@@ -467,13 +467,15 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
   1946" sends "Chimaltenango de". The cuts can also take too much: "Camp IV, 3
   VIII 1946" sends only "Camp"; "Cape May" sends "Cape", and "Ag. Exp. Sta."
   sends "Exp. Sta."; a place word that reads like a non-place value's initials
-  goes, so with a collector "M.T. Smith", "Mt. Apo" sends "Apo" (#215); a
-  colonia written "Col." is cut as a collector's clause, so "Col. El Carmen,
-  Chimaltenango" sends only "Chimaltenango"; a clause holding a marker is cut
-  wherever its words appear, so "Mt. Apo leg. Hoogstraal" on one line takes "Mt.
-  Apo" from every other line, a reviewer's value included; and a tier-1 name
-  whose numeral stands beside a number, such as "Region XI (11)", loses the
-  numeral. Tests pin each case, so a change in what can leave shows.
+  goes, so with a collector "M.T. Smith", "Mt. Apo" sends "Apo" (#215), and so
+  does a single place initial, so with a collector "J.P. Doe", "Mindanao, P.I."
+  sends "Mindanao" (#215's final review); a colonia written "Col." is cut as a
+  collector's clause, so "Col. El Carmen, Chimaltenango" sends only
+  "Chimaltenango"; a clause holding a marker is cut wherever its words appear,
+  so "Mt. Apo leg. Hoogstraal" on one line takes "Mt. Apo" from every other
+  line, a reviewer's value included; and a tier-1 name whose numeral stands
+  beside a number, such as "Region XI (11)", loses the numeral. Tests pin each
+  case, so a change in what can leave shows.
 
 This tool passes its query's sources, the place-field literals and the
 unassigned locality text, with the readings as context. It checks that every
