@@ -314,6 +314,11 @@ def test_identical_raw_readings_are_looked_up_once_and_keep_their_literal():
         {},
     )
     assert call.made == [("Chimaltenago", "o-muse")]
+    # Provenance names every reader that agreed, not only the first (#124).
+    assert grounded(resolver, value) == [
+        ("o-muse", "Chimaltenago"),
+        ("o-twin", "Chimaltenago"),
+    ]
 
 
 def test_a_field_no_reading_has_stays_unknown_and_calls_nothing():
@@ -612,3 +617,38 @@ def test_literal_evidence_stores_its_record_so_it_projects_like_any_evidence():
         "excerpt": "GUAT.",
     }
     assert item.digest == hashlib.sha256(record).hexdigest()
+
+
+def test_every_value_records_its_layer():
+    # G38: a lookup's success is settled, what was written stays verbatim.
+    settled = Resolver([MUSE, QWEN], "a").settle(
+        "city", PLACE, tool(Chimaltenago=google(matched="Chimaltenago"))
+    )
+    written = Resolver([MUSE], "a").transcribed("country_text", {"o-muse": "GUAT."})
+    unsettled = Resolver([MUSE, QWEN], "a").settle(
+        "taxon",
+        TAXON,
+        tool(
+            Epipsocus=failed(S.NO_MATCH, "taxonomy_verifier"),
+            Epipocous=failed(S.NO_MATCH, "taxonomy_verifier"),
+        ),
+    )
+    other = Reading("r2", "o-muse-2", "decided_transcript", "GUAT.")
+    labels = Resolver([MUSE, other], "a").transcribed(
+        "country_text", {"o-muse": "GUAT.", "o-muse-2": "GUAT."}
+    )
+
+    layers = [v.layer for v in (settled, written, unsettled, labels)]
+    assert layers == ["settled", "verbatim", "verbatim", "settled"]
+    assert FieldValue().layer is None and settled.derived_from == []
+
+
+def test_every_reader_that_agreed_on_a_text_is_its_own_evidence():
+    twin = Reading("r1", "o-twin", "raw_reading", RAW_MUSE.text)
+    resolver = Resolver([RAW_MUSE, twin], "asset-1")
+
+    value = resolver.transcribed("country_text", {"o-muse": "GUAT.", "o-twin": "GUAT."})
+
+    assert (value.literal, value.source_observation_id) == ("GUAT.", "o-muse")
+    assert grounded(resolver, value) == [("o-muse", "GUAT."), ("o-twin", "GUAT.")]
+    assert value.verbatim_by_observation == {} and value.settled_observation_ids == []

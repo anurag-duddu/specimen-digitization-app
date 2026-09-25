@@ -125,7 +125,7 @@ class Resolver:
         if not present or (source is not None and not literals[source]):
             return FieldValue()
         if source is not None:
-            grounded = {source: present[source]}
+            grounded = self._grounding(literals, source)
             return self._field(
                 key,
                 region,
@@ -153,7 +153,7 @@ class Resolver:
             return FieldValue()
         if source is None:
             return self._settle_readers(key, region, present, call)
-        literal, grounded = present[source], {source: present[source]}
+        literal, grounded = present[source], self._grounding(literals, source)
         first = call(literal, self.readings[source])
         if first.outcome == LookupStatus.SUCCESS:
             return self._field(
@@ -241,6 +241,15 @@ class Resolver:
             o: c for o, c in tries.items() if c.outcome == LookupStatus.SUCCESS
         }
 
+    @staticmethod
+    def _grounding(literals: Mapping[str, str | None], source: str) -> dict:
+        """The verbatim's own reading, or every reading when all of them read the
+        same text, so that the provenance names every reader that agreed (#124,
+        the single-label agreement ruling; agreed with S5)."""
+        if len(set(literals.values())) == 1:
+            return dict(literals)
+        return {source: literals[source]}
+
     def _by_region(self, literals: Mapping[str, str | None]) -> list[dict]:
         """A field's literals, one mapping per region (label), in order."""
         regions: dict[str, dict[str, str | None]] = {}
@@ -284,6 +293,7 @@ class Resolver:
             ids = [i for v in present for i in v.evidence_ids if i in self._literals]
             return FieldValue(
                 state=ValueState.AMBIGUOUS,
+                layer="verbatim",
                 evidence_ids=ids,
                 evidence_relations=dict.fromkeys(ids, "supports"),
                 verbatim_by_observation=verbatims,
@@ -304,6 +314,7 @@ class Resolver:
                 "verbatim_by_observation": verbatims,
                 "input_source_by_observation": roles,
                 "settled_observation_ids": settled_ids,
+                "layer": "settled",  # One value on every label (G32, G38).
                 "evidence_ids": list(relations),
                 "evidence_relations": relations,
                 # The settled text of a field no tool checks is the one text
@@ -396,9 +407,13 @@ class Resolver:
                 "precision": called.precision,
                 "century_rule": called.century_rule,
             }
+        # G38: a lookup's success is settled; anything else keeps the layer
+        # of what was written.
+        layer = "settled" if called is not None else "verbatim"
         if verbatim:  # No single verbatim: each reading keeps its own.
             return FieldValue(
                 state=state,
+                layer=layer,
                 evidence_ids=list(relations),
                 evidence_relations=relations,
                 verbatim_by_observation=dict(verbatim),
@@ -415,6 +430,7 @@ class Resolver:
             )
         return FieldValue(
             state=state,
+            layer=layer if grounded or called is not None else None,
             literal=grounded.get(source),
             evidence_ids=list(relations),
             evidence_relations=relations,

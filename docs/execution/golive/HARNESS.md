@@ -337,7 +337,9 @@ nothing is called for it.
   outcome) and the reason `lookup_{outcome}`, and goes to review.
 
 **Without one (G19),** literals identical in every reading are one lookup and
-keep that literal. Differing literals are looked up once each. When the
+keep that literal, and every reading's literal is grounded as its own evidence,
+so the provenance names each reader that agreed (#124, the single-label
+agreement ruling). Differing literals are looked up once each. When the
 successes agree on one value, the field clears with no single verbatim:
 `verbatim_by_observation` keeps each reader's literal as captured, and
 `settled_observation_ids` names the first confirmed reader (G27, G28).
@@ -584,3 +586,66 @@ values are section 13's.
 
 Its place aliases, written as the geography tool folds them, are the only extra
 names that tool accepts ("P.I." as the Philippines).
+
+## 13. Layers and derived values (stage 7, part 8)
+
+G37, G38 and G41 (the owner's answers of 2026-09-24; G41 revises G22 in full,
+relayed by the coordinator), with the coordinator's readings recorded in #124,
+the field names agreed with S5 and the derivation type agreed with S8.
+
+**Every field value records its layer** (G38). The owner's order is image,
+transcription, verbatim, the harness's settled answer, then derived, and a
+later layer never erases an earlier one:
+- `verbatim`: as written and not settled, whether transcribed as seen or a
+  lookup that did not settle;
+- `settled`: a lookup's success, or the one text every label has (G32);
+- `derived`: a field the label leaves out, filled from others, with
+  `derived_from` naming the fields it came from.
+
+A reviewer's value is the review decision (S5), not a harness layer.
+
+**A derivation** is a `Derivation` (`harness_tools.py`, section 6): the field, the
+value and its unit, the method, the authority (a `SourceRef` whose version pins
+the dataset), the settled input fields with their values, and its checks.
+- S8's geographic tool emits the derivations that need outside data in the
+  `geography_lookup` result (`ToolResult.derivations`): containment for county
+  and city, the elevation model where the label states no elevation, and
+  gazetteer names. The harness applies whatever a run's geography results
+  carry. The Google tool carries none, so until S8's tool lands those fields go
+  to review, which G37 allows.
+- The harness emits G41's elevation rules (`application/derivations.py`). The
+  owner chose "The label's own number fills both From and To, and the metre
+  fields are converted from it exactly (1 ft = 0.3048 m)". In the coordinator's
+  reading the conversion goes both ways, so:
+  - a single stated elevation fills both ends of its unit
+    (`stated_elevation`), while a stated range keeps its own ends;
+  - the label's unit fills the other unit's fields by the exact factor, when
+    the label states nothing in that unit (`unit_conversion`);
+  - converted values are kept to hundredths, and copied values stay as stated;
+  - an elevation literal must state exactly one number, and nothing is derived
+    while any elevation the label states is unsettled;
+  - their authority is `apply_derivations` at the rules' version
+    (`derivation-rules-v1`), so a G41 value names its stated field, its rule
+    and `apply_derivations` (#124).
+
+**Applying derivations** (`apply_derivations`), whoever emitted them:
+- A field the label states is never replaced; its verbatim stays as written.
+- A derivation applies only when each input field is settled to the value the
+  derivation names: a derived value's own value, otherwise the field's
+  authority id, else its parsed, normalized or literal value. So a derivation
+  from a lookup that did not settle never applies. A value derived earlier in
+  the same list counts as an input, so S8's feet follow its metres.
+- Two derivations of one field that disagree fill it with neither, and it waits
+  for review.
+- A filled value is `supported`, with layer `derived`, `parsed` the value,
+  `authority_id` the authority's record id, and `derived_from` its inputs.
+- Its evidence is one `derivation` item, which `decides`: its source is the
+  authority's name, its locator `derivation:{method}`, and its stored record the
+  derivation itself with the evidence ids of the tool call that returned it. The
+  input fields' evidence `supports` it, and so does that call's evidence, which
+  links its `ToolCallRecord`. A derived value thus names its settled inputs,
+  the authority with its version, and the tool call or, for G41's rules,
+  `apply_derivations` (#124, PLAN 4.8).
+- A value counts as derived only with that record. The model can't assert
+  one: the agent proposes only literals its readings contain, and a field the
+  label leaves out is filled only by a derivation that applies.

@@ -31,8 +31,11 @@ from specimen_digitization.application.field_validators import (
 )
 from specimen_digitization.application.harness_ledger import ToolLedger, Tools
 from specimen_digitization.application.harness_tools import (
+    Check,
+    Derivation,
     PlaceCandidate,
     SourceCall,
+    SourceRef,
     TaxonCandidate,
     ToolResult,
 )
@@ -215,13 +218,13 @@ class Blobs:
         return f"blob-{len(self.puts)}"
 
 
-def harness(*turns, seen=None, fakes=None, readings=READINGS):
+def harness(*turns, seen=None, fakes=None, readings=READINGS, plan=PLAN):
     fakes = fakes or Fakes()
     ledger = ToolLedger(fakes.tools(), asset_id="asset-1")
     outcome = run_harness(
         model(*turns, seen=seen),
         "You are the field harness.",
-        plan=PLAN,
+        plan=plan,
         readings=readings,
         notes={"o-qwen": "misread Werner"},
         ledger=ledger,
@@ -486,3 +489,115 @@ def test_a_tool_call_outside_the_profiles_fields_is_returned_for_a_retry():
     ]
     assert retry == ["collectors is not a locality field"]
     assert outcome.fields["city"].state == V.SUPPORTED
+
+
+ELEVATIONS = FieldPlan(
+    mandatory=(
+        "elevation_from_m",
+        "elevation_to_m",
+        "elevation_from_ft",
+        "elevation_to_ft",
+    )
+)
+
+
+def test_elevations_the_label_leaves_out_are_derived_with_evidence():
+    # G37: one stated elevation fills both ends and, by the exact factor, feet.
+    reading = Reading("r1", "o-muse", "decided_transcript", "Volcan Fuego, 1200 m")
+
+    outcome, _ = harness(
+        answer(**{"1A": {"elevation_from_m": "1200 m"}}),
+        readings=[reading],
+        plan=ELEVATIONS,
+    )
+
+    fields = outcome.fields
+    assert (fields["elevation_from_m"].literal, fields["elevation_from_m"].layer) == (
+        "1200 m",
+        "verbatim",
+    )
+    assert {
+        k: (v.parsed, v.layer) for k, v in fields.items() if k != "elevation_from_m"
+    } == {
+        "elevation_to_m": ("1200", "derived"),
+        "elevation_from_ft": ("3937.01", "derived"),
+        "elevation_to_ft": ("3937.01", "derived"),
+    }
+    rules = {e.locator for e in outcome.evidence if e.kind == "derivation"}
+    assert rules == {"derivation:stated_elevation", "derivation:unit_conversion"}
+
+
+def test_a_value_the_model_asserts_without_a_record_does_not_count():
+    # #124: a derived value counts only with its record. The agent can only
+    # propose what a reading says; the metres come from G41's rule alone.
+    reading = Reading("r1", "o-muse", "decided_transcript", "Volcan Fuego, 3937 ft")
+    asserted = answer(
+        **{"1A": {"elevation_from_ft": "3937 ft", "elevation_from_m": "1250 m"}}
+    )
+    seen = []
+
+    outcome, _ = harness(
+        asserted,
+        answer(**{"1A": {"elevation_from_ft": "3937 ft"}}),
+        seen=seen,
+        readings=[reading],
+        plan=ELEVATIONS,
+    )
+
+    retry = [
+        p.content
+        for m in seen[1][0]
+        for p in getattr(m, "parts", [])
+        if type(p).__name__ == "RetryPromptPart"
+    ]
+    assert retry == ["elevation_from_m: copy the literal exactly as reading 1A has it"]
+    metres = outcome.fields["elevation_from_m"]
+    assert (metres.layer, metres.parsed, metres.derived_from) == (
+        "derived",
+        "1200",
+        ["elevation_from_ft"],
+    )
+    (rule,) = [
+        e
+        for e in outcome.evidence
+        if e.id in metres.evidence_ids and e.kind == "derivation"
+    ]
+    assert (rule.source, rule.locator) == (
+        "apply_derivations",
+        "derivation:unit_conversion",
+    )
+
+
+def test_a_geography_results_derivation_fills_a_field_the_label_leaves_out():
+    # G37: S8's tool derives the county by containment from the settled city.
+    class Deriving(Fakes):
+        def geocode(self, query):
+            county = Derivation(
+                field_key="county",
+                value="Chimaltenango",
+                method="containment",
+                authority=SourceRef(name="gadm", record_id="GTM.4_1", version="4.1"),
+                inputs={"city": "place-chimaltenango"},
+                evidence=[Check(name="circle_inside_unit", result="supports")],
+            )
+            result = super().geocode(query)
+            return result.model_copy(update={"derivations": [county]})
+
+    plan = FieldPlan(
+        mandatory=(*PLAN.mandatory, "county"),
+        optional=PLAN.optional,
+        tools={**PLAN.tools, "county": "geography_lookup"},
+    )
+
+    outcome, _ = harness(FULL, fakes=Deriving(), plan=plan)
+
+    county = outcome.fields["county"]
+    assert (county.layer, county.parsed, county.authority_id) == (
+        "derived",
+        "Chimaltenango",
+        "GTM.4_1",
+    )
+    assert county.derived_from == ["city"]
+    # It names the geography call that returned it (#124, PLAN 4.8).
+    (call,) = [r for r in outcome.tool_calls if r.tool == "geography_lookup"]
+    assert county.evidence_relations[call.evidence_id] == "supports"

@@ -262,6 +262,10 @@ class FieldValue(Record):
     # The readings whose verbatim settled the value; set exactly when
     # verbatim_by_observation is (agreed with S5 for G32).
     settled_observation_ids: list[str] = Field(default_factory=list)
+    # G38's layer of this value: as written, settled by the harness, or
+    # derived from other fields (G37), naming the fields it came from.
+    layer: Literal["verbatim", "settled", "derived"] | None = None
+    derived_from: list[str] = Field(default_factory=list)
     evidence_relations: dict[str, Literal["decides", "supports", "contradicts"]] = (
         Field(default_factory=dict)
     )
