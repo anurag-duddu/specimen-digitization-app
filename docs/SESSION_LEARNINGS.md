@@ -12127,3 +12127,26 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: a single-use allowance must be spent only after every permission the next effects need is in place. `testIamPermissions` can't prove a name-conditioned create, so the owner's window opens the claim, clone-create and clone-control roles together.
 - Failed approaches: none.
 - Remaining follow-ups: the drop, after #146 and the steward's word.
+
+### 2026-09-24 — Go-live release workstream (S2), T3e: the release job bootstraps the owner-approved hierarchy
+
+- Task: the S2 session, T3e's first pull request (`docs/execution/golive/RELEASE.md` section 4.5): the bootstrap on the gate path.
+- Branch/worktree: `golive/release-data-bootstrap`, stacked on `golive/release-data-apply-clone` (#177). The subagent wrote the red and green commits. Three commits lie under them: #96's worker-membership files carried from `main` unchanged, the reviewed evidence recipient's public key, and the spec.
+- Outcome:
+  - **When it runs.** After a successful `verify` or `apply`, the release job bootstraps when `DATA_BOOTSTRAP_ARTIFACT_B64` is set. On `initialize` it leaves the artifact unread (`bootstrap: deferred`).
+  - **Secrets.** The deploy step reads its secrets once, before any subprocess, and removes them from the environment.
+  - **Checks before any read.** The SHA-256 of the artifact's exact bytes equals the owner-held `DATA_BOOTSTRAP_APPROVED_SHA256`, compared in constant time and never computed from the artifact. The artifact must be:
+    - the hierarchy mode;
+    - bound to this commit's committed tree;
+    - exactly regenerable from its own values.
+
+    The committed recipient must match its pinned digest.
+  - **Rows.** The organization's rows are read first. Exactly the approved rows skip, with no backup. No rows means one write: the backup first (the apply's when it took one), the administrator's account read again, then the reviewed hierarchy path. Its records are kept encrypted to the recipient. Anything else fails before any effect.
+  - **Receipt and workflow.** The receipt gains `bootstrap`. The workflow passes the secrets to the deploy step alone, and attests and uploads only the encrypted records, on every exit.
+- Commits/PRs: red `b121419`; green `6261e34`; this closeout. Under them: `2bbfe7e` (#96's files from `main`), `5b82620` (the recipient's public key) and `24fc114` (the spec).
+- Validation actually run:
+  - the subagent: red 223 failed and 36 passed in five files, each red confirmed against the pre-fix code; green 259 passed, 374 with the older bootstrap and deployment-policy tests;
+  - this session: at green, the five focused files, 259 passed, and the older bootstrap and deployment-policy tests, 115 passed; on part 2's head, the full `scripts/` suite, 2147 passed and 60 skipped.
+- Durable learnings: an approval hash must come from outside the artifact it approves. A self-consistent artifact with two collection ids swapped carries its own matching internal digest, so only the owner-held digest of the exact bytes catches it. Read secrets once, and drop them from the environment before any child process starts, so a CLI or connector never inherits them.
+- Failed approaches: the subagent's first green left the secrets in the step's environment, where `gh` and the Node SQL connector inherited them. This session's review had them taken out before any child process starts, folded into the rebuilt red and green.
+- Remaining follow-ups: the worker's membership (the stacked PR). The merge waits for #123 and the coordinator's explicit go-ahead.
