@@ -195,15 +195,25 @@ def apply_derivations(
         relations = {rule.id: "decides"} | dict.fromkeys(item.call_evidence, "supports")
         for source in derivation.inputs:
             relations |= dict.fromkeys(known[source].evidence_ids, "supports")
+        authority = derivation.authority
         filled[key] = FieldValue(
             state=ValueState.SUPPORTED,
             parsed=derivation.value,
             precision=derivation.precision,
-            authority_id=derivation.authority.record_id,
+            authority_id=authority.record_id,
+            # Its authority and version, with no name key: G26's rule tests
+            # for the key (agreed with S5, 2026-09-24).
+            authority_identity={
+                "source": authority.name,
+                "source_record_id": authority.record_id,
+                "credit": authority.credit,
+                "version": authority.version,
+            },
             evidence_ids=list(relations),
             evidence_relations=relations,
             layer="derived",
             derived_from=list(derivation.inputs),
+            derivation_rules=[check.name for check in derivation.evidence],
             reason=f"derived:{derivation.method}",
         )
     return filled, evidence

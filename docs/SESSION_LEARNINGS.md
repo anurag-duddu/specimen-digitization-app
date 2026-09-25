@@ -12012,4 +12012,8 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Outcome: `field_harness._drop_copied_ends`. When both ends of an elevation or date pair carry the same literal and the reading contains that text once, To's literal is dropped as a copy, and G41 or G44 derives To with its record. Two occurrences, or a range, keep both ends as stated. Spec: `docs/execution/golive/HARNESS.md` section 13.
 - Validation actually run: the copy tests (the real run on 105526321) fail without the guard and pass with it; two equal written dates and a range keep both ends; the harness, queue-decision, derivation and runtime suites pass; the full Python suites and pre-commit.
 - Durable learnings: an instruction in the knowledge reduced the copying but did not stop it. On a rerun, 105526330 gave its elevation once, while 105526321 still copied both its elevation and its date. When an owner rule can be checked from the reading itself ("written once"), a deterministic guard makes it hold whatever the model does. The value and the clearance stay the same; the provenance becomes true.
-- Remaining follow-ups: none for this change.
+- Added after the steward's review of #180 (2026-09-24), agreed with S5: a derived value now names its own authority and rules.
+  - `authority_identity` is `{source, source_record_id, credit, version}` from its authority, with no `name` key.
+  - `derivation_rules` are its checks' names in the order applied.
+  - So the value names its rule and the rules version, as PLAN's G44 reading and 4.8 ask, and the thread reads them without a blob read. Spec: HARNESS.md section 13.
+- Remaining follow-ups: S5's #170 records `version` in the contract at its turn. G41's authority reads `apply_derivations` once #144's add-on reaches this branch from main.
