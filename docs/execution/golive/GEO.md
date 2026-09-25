@@ -475,3 +475,83 @@ the 24 records they led to. The tests check:
 - Codes among the names ("RP", "PHL", "GT03") are not full names (section 1).
 - The Chimaltenango department and its capital lie in Guatemala.
 - Every row of the outcome table.
+
+## 8. Tier 1: NGA GNS
+
+The owner's follow-up to G35 names NGA among the openly licensed sources whose
+coordinates are stored, credited. `georef_nga.py` builds requests to the GEOnet
+Names Server's ArcGIS REST service and reads the answers into section 2's
+`Place` records. It sends nothing itself. The service answers anonymously.
+
+**Requests.**
+- A name search finds the features whose names match one reading's name
+  exactly, case and diacritics aside: it compares the name with each full name
+  and with its form without diacritics. The tool passes only text S4's
+  place-request filter returns (PLAN 4.8). The name enters a fixed where clause
+  as one quoted literal, its quotes doubled. A name that is empty, longer than
+  200 characters or holds a control character is refused.
+- A features request reads every name of up to 50 features by GNS feature id,
+  and a units request names up to 50 first-order units by code. Each value is
+  checked against its pattern before a request is built.
+- The fields, the order and the format are reviewed constants.
+
+**Reading.**
+- **Name.** A feature's name is its first name in this order of GNS name types:
+  approved, conventional, approved non-authoritative, approved transitional,
+  provisional, anglicized, variant. Names in non-Roman scripts come last. Every
+  other name follows, each with its form without diacritics.
+- **Kind.** The feature class and designation, such as `T.MT` or `P.PPLA2`, as
+  GeoNames writes them (section 4).
+- **Country.** The first two letters of the feature's first-order code, which
+  GNS writes in the GENC form "PH-DAV". For the pilot's countries these are the
+  ISO codes GeoNames uses. A country's own feature carries the code as its ISO
+  code.
+- **Parents.** The first-order unit, named by the units request. The
+  country-wide code ("PH-000") is not a unit.
+- **Point.** GNS's point, read only when its latitude and longitude are in
+  range.
+- **Terminated features.** GNS marks a feature that no longer exists with a
+  termination date, and the date can trail the event by years. Kalinga-Apayao,
+  divided into two provinces by Republic Act 7878 of 14 February 1995, is marked
+  terminated on 2012-03-15, while Maguindanao's date, 2022-09-17, is the day of
+  the plebiscite that ratified its division (Republic Act 11550 of 2021; both
+  statutes read on lawphil.net on 2026-09-24). Read as a place's end, such a
+  date would make a unit look in use for years after it ended. The reader
+  therefore skips terminated features: NGA answers with current features only,
+  and history leans on Wikidata (section 5). A feature carries no dates.
+
+**Outcomes.** GNS reports its own errors inside an HTTP 200 answer, each with a
+code.
+
+| Answer | Outcome |
+|---|---|
+| HTTP 200 with one or more current features or units | `success` |
+| HTTP 200 with none | `no_match` |
+| a name search cut short: more features share the name than one answer lists | `ambiguous` |
+| HTTP 200 with an empty body | `empty_response` |
+| a body that isn't the expected JSON object; error 400, a query the service cannot run; a features answer cut short | `malformed_response` |
+| HTTP 429 or error 429 | `rate_limited` |
+| HTTP 401, or error 401, 498 or 499 | `authentication_error` |
+| HTTP 403 or error 403 | `authorization_error` |
+| any other status or error | `provider_error` |
+
+A timeout is the caller's to record.
+
+**Credit.** NGA's pages state no license and ask for no citation (#94, S33), so
+a place carries no license id. The owner stores NGA's coordinates credited (G35),
+and the credit is "NGA GEOnet Names Server" (PLAN 4.8).
+
+**Tests.** `tests/test_georef_nga.py` reads answers recorded on 2026-09-24: name
+searches for twelve pilot names, the features they found, and those features'
+first-order units. The tests check:
+- "Mount Apo" names three mountains, in Cotabato, in Davao Occidental and in
+  Iloilo, the last through a variant name, and a street in Makati.
+- There is no "Mount McKinley" and no "Chimaltenago".
+- "Davao Province" names only modern Davao del Norte, through a variant name:
+  #94's trap again.
+- Yepocapa is a municipio and a town in Chimaltenango, at GeoNames' points.
+- Mount Talomo lies in PH-DVC, Davao City, which GNS keeps as a first-order unit.
+- The country code comes from the first-order code, and the Philippines carries
+  it as its ISO code.
+- A terminated feature is skipped.
+- Every row of the outcome table, and the checks on names, ids and codes.
