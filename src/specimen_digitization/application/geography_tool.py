@@ -1,5 +1,9 @@
 """The harness's `geography_lookup` tool on the Google Geocoding API (G10).
 
+What a request carries passes PLAN 4.8's place-request filter first
+(`place_text`, HARNESS.md section 7): nothing else leaves, and a query the
+filter refuses, or leaves nothing of, sends no request.
+
 Google's terms let us keep only its place ID (G26): each attempt stores the place
 ID, our outcome and a sha256 fingerprint of the full response. Google's names,
 address components and coordinates are read in memory to compute outcomes and are
@@ -18,7 +22,6 @@ import logging
 import os
 import re
 import time
-import unicodedata
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import nullcontext
 from functools import partial
@@ -27,6 +30,7 @@ from types import MappingProxyType
 import httpx
 
 from .domain import OPERATIONAL, LookupStatus, now
+from .harness_knowledge import KNOWLEDGE
 from .harness_tools import (
     RETRYABLE,
     GeographyQuery,
@@ -35,10 +39,11 @@ from .harness_tools import (
     ToolResult,
     with_retries,
 )
+from .place_text import PLACE_FIELDS, ReviewerValue, fold, place_request_text
 from .reliability import retry_after
 from .storage import BlobStore
 
-TOOL_VERSION = "google-geocoding-v2"  # v2: S8's comparison key (HARNESS.md 7).
+TOOL_VERSION = "google-geocoding-v3"  # v3: PLAN 4.8's filter (HARNESS.md 7).
 GEOCODING_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 GEOCODING_COST_MICROS = 5000  # Reserved per request, before it is sent.
 KEY_VARIABLE = "SPECIMEN_GOOGLE_MAPS_API_KEY"
@@ -114,16 +119,6 @@ def install_key_redaction() -> None:
 install_key_redaction()
 
 
-def fold(text: str) -> str:
-    """Casefold, strip diacritics and turn anything but letters and digits into
-    single spaces: "Chimaltenángo," folds to "chimaltenango", "P.I." to "p i"."""
-    decomposed = unicodedata.normalize("NFKD", text.casefold())
-    kept = "".join(
-        c if c.isalnum() else " " for c in decomposed if not unicodedata.combining(c)
-    )
-    return " ".join(kept.split())
-
-
 def comparison_key(name: str) -> str:
     """The key names compare by (G29): folded, feature notations read ("Mt." is
     "mount"), unit words dropped, with a link word after a leading one."""
@@ -168,13 +163,49 @@ def reported_literals(query: GeographyQuery) -> dict[str, list[str]]:
     return fields
 
 
-def geocoding_address(query: GeographyQuery) -> str:
-    """Unassigned locality text if any, else the assigned literals in order."""
-    unassigned = [item.literal for item in query.literals if item.field_key is None]
-    if unassigned:
-        return ", ".join(unassigned)
-    fields = assigned_literals(query)
-    return ", ".join(text for key in ADDRESS_ORDER for text in fields.get(key, []))
+def geocoding_address(query: GeographyQuery) -> tuple[str, str | None]:
+    """The address PLAN 4.8 lets leave, or the fixed code refusing the query.
+    Every literal, the unassigned locality text's too, must be character for
+    character in a reading, except a place value the reviewer entered or
+    changed in "fill the rest", a source though no reading holds it. The
+    query's sources go to the filter with the readings as its context (4.8 in
+    #191); a non-place field's literal is never a source and refuses the query.
+    Each value is cut with its own lists: a reviewer's with `reviewer`, so the
+    reviewer's own non-place values alone cut the reviewer's own text (#208's
+    security review). Google's row of 4.8 sends a literal with its reading's
+    place fields, so the address is the place-field literals from the most to
+    the least precise field, each as written after the cuts, and never the
+    unassigned text."""
+    knowledge = KNOWLEDGE.get(query.knowledge_id or "")
+    if knowledge is None:
+        return "", "place_knowledge_unavailable"
+    sent: dict[str, list[str]] = {}
+    for item in query.literals:
+        reviewer = None
+        if item.reviewer:
+            reviewer = ReviewerValue(
+                anchors=item.anchors,
+                non_place_literals=query.reviewer_non_place_literals,
+            )
+        elif not any(item.literal in reading for reading in query.reading_texts):
+            return "", "place_text_refused"
+        elif item.field_key is None:
+            continue  # Unassigned text: a source for S8's tiers, never sent.
+        if item.field_key not in PLACE_FIELDS:
+            return "", "place_text_refused"
+        text = place_request_text(
+            item.literal,
+            sources=query.sources,
+            non_place_literals=query.non_place_literals,
+            knowledge=knowledge,
+            readings=query.reading_texts,
+            reviewer=reviewer,
+        )
+        if text is None:
+            return "", "place_text_refused"
+        if text:
+            sent.setdefault(item.field_key, []).append(text)
+    return ", ".join(text for key in ADDRESS_ORDER for text in sent.get(key, [])), None
 
 
 def map_geocoding_response(
@@ -353,7 +384,19 @@ def geocode_locality(
     recording every attempt as place ID, outcome and fingerprint only (G26).
     `aliases` come from the harness's profile knowledge (G29); the tool holds
     no table of its own."""
-    address = geocoding_address(query)
+    address, refused = geocoding_address(query)
+    if refused or not address:
+        # Nothing leaves (PLAN 4.8), so no source call is recorded: a refused
+        # query blocks the run; with nothing to ask, no field is found
+        # (the coordinator's ruling of 2026-09-24).
+        outcome = LookupStatus.POLICY if refused else LookupStatus.NO_MATCH
+        return ToolResult(
+            tool="geography_lookup",
+            tool_version=TOOL_VERSION,
+            outcome=outcome,
+            field_outcomes=dict.fromkeys(reported_literals(query), outcome),
+            warnings=[refused or "place_text_empty"],
+        )
     key = os.environ.get(KEY_VARIABLE) if api_key is None else api_key
     mapped: dict[
         int, tuple[dict[str, LookupStatus], list[PlaceCandidate], list[str]]

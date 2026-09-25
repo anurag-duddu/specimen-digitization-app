@@ -9,6 +9,7 @@ from specimen_digitization.application.harness_knowledge import (
     insects,
     instructions_for,
 )
+from specimen_digitization.application.place_text import PLACE_FIELDS
 
 
 def test_the_insects_knowledge_renders_every_notation_and_the_copy_rule():
@@ -44,7 +45,6 @@ def test_slide_preparation_codes_belong_in_no_field():
     (codes,) = [n for n in insects.NOTATIONS if "IV-29-68-a" in n.written]
     assert codes.fields == ()
     assert "belongs in no field" in insects.render()
-    assert insects.KNOWLEDGE_VERSION == "insects-harness-knowledge-v2"
 
 
 def test_a_single_elevation_or_date_is_given_once_as_from():
@@ -71,3 +71,64 @@ def test_the_shape_rules_cover_the_fields_no_lookup_checks():
     for written in ("IV-29-68-a", "VI-24-68-7", "10-6-78-la", "IX-17-66-2"):
         assert code.search(written), written
     assert not code.search("14-5-48")  # A collection date has no serial.
+
+
+def test_the_place_filters_tables_come_from_the_notations():
+    # PLAN 4.8's filter (HARNESS.md section 7) reads v3's markers, months and
+    # full forms; each comes from a notation the agent reads too.
+    assert insects.KNOWLEDGE_VERSION == "insects-harness-knowledge-v3"
+    people = {
+        marker
+        for notation in insects.NOTATIONS
+        if set(notation.fields) & {"collectors", "identified_by_irn"}
+        for marker in notation.written.split(", ")
+    }
+    # PLAN 4.8 as #200 states it: the usual English and Spanish forms.
+    usual = {
+        *("leg.", "coll.", "Coll.", "Collector", "Collectors", "Collected"),
+        *("Col.", "Colector", "Colectores", "Colectado", "det.", "Det."),
+    }
+    assert set(insects.PERSON_MARKERS) == people == usual
+    # Each marker is one word: a clause holds it when a word of it is one.
+    assert all(len(fold(marker).split()) == 1 for marker in usual)
+    # PLAN 4.8 in #191: the date notations list each month in full and
+    # abbreviated, in English and in Spanish, the pilot labels' languages.
+    months = [n for n in insects.NOTATIONS if n.readings == ("the month",)]
+    listed = [word for notation in months for word in notation.written.split(", ")]
+    assert list(insects.MONTH_WORDS) == listed
+    assert len(listed) == 59
+    assert {"September", "Sept.", "mayo", "sept.", "dic."} <= set(listed)
+    # The coordinator's ruling of 2026-09-24: Spanish's variant too,
+    assert {"setiembre", "set."} <= set(listed)
+    # and its older abbreviations (PLAN 4.8 as #200 states it),
+    assert {"agto.", "sbre.", "obre.", "nbre.", "dbre."} <= set(listed)
+    # and the RAE's, but never the everyday words "en" and "my" (coordinator).
+    assert {"febr.", "mzo.", "ag."} <= set(listed)
+    assert {"en", "my"}.isdisjoint(fold(word) for word in listed)
+    # The coordinator's rulings of 2026-09-25 (05:38Z, 05:39Z): the date
+    # notations list the connectors a date's parts may be joined by.
+    assert insects.DATE_CONNECTORS == ("de", "del", "of")
+    (joined,) = [
+        n for n in insects.NOTATIONS if n.written == ", ".join(insects.DATE_CONNECTORS)
+    ]
+    assert set(joined.fields) == {
+        "date_visited_from",
+        "date_visited_to",
+        "date_identified",
+    }
+    # The coordinator's ruling of 2026-09-24: Roman months are cut too.
+    (roman,) = [n for n in insects.NOTATIONS if n.written == "I to XII in a date"]
+    assert insects.ROMAN_MONTHS[0] == "I" and insects.ROMAN_MONTHS[-1] == "XII"
+    assert len(insects.ROMAN_MONTHS) == 12 and roman.fields
+
+
+def test_only_place_notations_have_full_forms_and_each_is_a_reading():
+    # The steward's review of #174: a full form expands a notation the table
+    # assigns to place fields alone, never a month, a year or a marker.
+    by_written = {notation.written: notation for notation in insects.NOTATIONS}
+    for written, full in insects.FULL_FORMS.items():
+        notation = by_written[written]
+        assert notation.fields and set(notation.fields) <= set(PLACE_FIELDS)
+        assert all(form.casefold() in notation.readings[0].casefold() for form in full)
+    assert insects.FULL_FORMS["P.I."] == ("Philippine Islands",)
+    assert insects.FULL_FORMS["Is."] == ("Island", "Islands")

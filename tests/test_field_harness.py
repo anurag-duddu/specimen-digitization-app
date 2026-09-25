@@ -2,8 +2,10 @@
 
 import json
 import time
+from dataclasses import replace
 from functools import partial
 
+import httpx
 import pytest
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
@@ -29,6 +31,8 @@ from specimen_digitization.application.field_validators import (
     catalog_number_validator,
     date_parser,
 )
+from specimen_digitization.application.geography_tool import geocode_locality
+from specimen_digitization.application.harness_knowledge import insects
 from specimen_digitization.application.harness_ledger import ToolLedger, Tools
 from specimen_digitization.application.harness_tools import (
     Check,
@@ -39,6 +43,7 @@ from specimen_digitization.application.harness_tools import (
     TaxonCandidate,
     ToolResult,
 )
+from specimen_digitization.application.place_text import fold, place_request_text
 from specimen_digitization.application.reliability import AdapterFailure
 from specimen_digitization.application.taxonomy_tool import Verification
 
@@ -120,6 +125,7 @@ class Fakes:
 
     def __init__(self):
         self.calls = []
+        self.queries = []  # Every geography query, as the tool receives it.
 
     def verify_taxon(self, literal):
         self.calls.append(("taxon", literal))
@@ -156,12 +162,17 @@ class Fakes:
     def geocode(self, query):
         fields = {item.field_key: item.literal for item in query.literals}
         self.calls.append(("geocode", fields))
-        outcomes = {k: S.SUCCESS for k in fields if k in ("city", "country")}
+        self.queries.append(query)
+        reported = [k for k in fields if k not in (None, "precise_location")]
+        outcomes = {
+            k: S.SUCCESS if k in ("city", "country") else S.NO_MATCH for k in reported
+        }
         places = [
             PlaceCandidate(
                 field_key=k, source=GOOGLE, source_record_id="place-chimaltenango"
             )
-            for k in outcomes
+            for k, outcome in outcomes.items()
+            if outcome == S.SUCCESS
         ]
         call = SourceCall(
             source=GOOGLE,
@@ -218,9 +229,9 @@ class Blobs:
         return f"blob-{len(self.puts)}"
 
 
-def harness(*turns, seen=None, fakes=None, readings=READINGS, plan=PLAN):
+def harness(*turns, seen=None, fakes=None, readings=READINGS, plan=PLAN, tools=None):
     fakes = fakes or Fakes()
-    ledger = ToolLedger(fakes.tools(), asset_id="asset-1")
+    ledger = ToolLedger(tools or fakes.tools(), asset_id="asset-1")
     outcome = run_harness(
         model(*turns, seen=seen),
         "You are the field harness.",
@@ -231,6 +242,7 @@ def harness(*turns, seen=None, fakes=None, readings=READINGS, plan=PLAN):
         asset_id="asset-1",
         blobs=Blobs(),
         timeout_seconds=30,
+        knowledge_id="insects",
     )
     return outcome, fakes
 
@@ -337,6 +349,7 @@ def test_the_agent_checks_with_tools_and_sees_no_google_name():
                     "city": "Chimaltenango",
                     "precise_location": "E. slope Volcan Fuego",
                 },
+                "others": {"collectors": "F.G. Werner", "date_visited_from": "4-5-48"},
             },
         )
     ]
@@ -431,7 +444,16 @@ def test_geocoding_is_one_budget_for_the_agent_and_the_final_lookups():
     # G30: at most four geocoding requests a run, whoever makes them.
     fields = ["GUAT.", "Chimaltenango", "E. slope Volcan Fuego", "Volcan Fuego"]
     checks = [
-        [("geocode", {"reading": "1A", "fields": {"country": fields[0], "city": city}})]
+        [
+            (
+                "geocode",
+                {
+                    "reading": "1A",
+                    "fields": {"country": fields[0], "city": city},
+                    "others": {},
+                },
+            )
+        ]
         for city in (
             "Chimaltenango",
             "Volcan Fuego",
@@ -497,7 +519,12 @@ def test_a_prompt_past_its_byte_cap_is_a_harness_failure_before_any_call():
 
 
 def test_a_tool_call_outside_the_profiles_fields_is_returned_for_a_retry():
-    wrong = [("geocode", {"reading": "1A", "fields": {"collectors": "F.G. Werner"}})]
+    wrong = [
+        (
+            "geocode",
+            {"reading": "1A", "fields": {"collectors": "F.G. Werner"}, "others": {}},
+        )
+    ]
     seen = []
 
     outcome, _ = harness(wrong, FULL, seen=seen)
@@ -716,3 +743,189 @@ def test_two_written_ends_both_stay_as_stated(text, ends):
 
     assert [outcome.fields[k].literal for k in written] == list(ends)
     assert [outcome.fields[k].layer for k in written] == ["settled", "settled"]
+
+
+# PLAN 4.8 (HARNESS.md sections 7 and 11): 105526321's place lines, with a
+# collector's clause, a date and a catalogue number of the kind other pilot
+# labels carry.
+PLACE_LABEL = (
+    "E. slope Mt. McKinley\nDavao Prov.\nMindanao, P.I. 3 Sept. '46\n"
+    "H. Hoogstraal leg.\nFMNH INS 0123456"
+)
+PLACE_PLAN = FieldPlan(
+    mandatory=(
+        "precise_location",
+        "province_state",
+        "country",
+        "collectors",
+        "date_visited_from",
+        "fmnh_ins_number",
+    ),
+    tools={
+        "precise_location": "geography_lookup",
+        "province_state": "geography_lookup",
+        "country": "geography_lookup",
+        "date_visited_from": "date_parser",
+        "fmnh_ins_number": "catalog_number_validator",
+    },
+)
+PLACES_1A = {
+    "precise_location": "E. slope Mt. McKinley",
+    "province_state": "Davao Prov.",
+    "country": "P.I.",
+}
+OTHERS_1A = {"collectors": "H. Hoogstraal", "fmnh_ins_number": "FMNH INS 0123456"}
+
+
+def test_every_place_query_carries_what_the_filter_reads():
+    raw = PLACE_LABEL.replace("Hoogstraal", "Hoogstrael")
+    readings = [
+        Reading("r1", "o-muse", "decided_transcript", PLACE_LABEL),
+        Reading("r1", "o-qwen", "raw_reading", raw),
+    ]
+    written = answer(**{"1A": {**PLACES_1A, **OTHERS_1A}})
+    date = {"field_key": "date_visited_from", "reading": "1A", "literal": "3 Sept."}
+    written["literals"].append({**date, "year_literal": "'46"})
+
+    _, fakes = harness(written, readings=readings, plan=PLACE_PLAN)
+
+    (query,) = fakes.queries
+    assert query.reading_texts == [PLACE_LABEL, raw]
+    assert sorted(query.non_place_literals) == [
+        "'46",
+        "3 Sept.",
+        "FMNH INS 0123456",
+        "H. Hoogstraal",
+    ]
+    assert query.knowledge_id == "insects"
+    # The reading's unassigned locality text, for S8's tiers.
+    assert [(item.field_key, item.literal) for item in query.literals] == [
+        ("country", "P.I."),
+        ("precise_location", "E. slope Mt. McKinley"),
+        ("province_state", "Davao Prov."),
+        (None, "Mindanao"),
+    ]
+
+
+def test_the_agents_check_cuts_the_literals_it_names_for_the_other_fields():
+    fields = {
+        "country": "GUAT.",
+        "city": "Chimaltenango",
+        "precise_location": "E. slope Volcan Fuego",
+    }
+    others = {"collectors": "F.G. Werner", "date_visited_from": "4-5-48"}
+    check = [("geocode", {"reading": "1A", "fields": fields, "others": others})]
+
+    _, fakes = harness(check, FULL)
+
+    (query,) = fakes.queries  # The final call reuses the check's request.
+    assert sorted(query.non_place_literals) == ["4-5-48", "F.G. Werner"]
+    assert query.reading_texts == [reading.text for reading in READINGS]
+    assert query.knowledge_id == "insects"
+
+
+@pytest.mark.parametrize(
+    ("others", "retry"),
+    [
+        ({"country": "GUAT."}, "country is a locality field: give it in fields"),
+        ({"habitat": "forest"}, "habitat is not a field of this profile"),
+        (
+            {"collectors": "F.G. Wernerr"},
+            "copy the literal exactly as reading 1A has it",
+        ),
+    ],
+    ids=["a-locality-field", "not-a-field", "not-in-the-reading"],
+)
+def test_the_other_fields_literals_are_checked_before_any_place_request(others, retry):
+    check = [
+        (
+            "geocode",
+            {"reading": "1A", "fields": {"city": "Chimaltenango"}, "others": others},
+        )
+    ]
+    seen = []
+
+    _, fakes = harness(check, FULL, seen=seen)
+
+    retries = [
+        p.content
+        for m in seen[1][0]
+        for p in getattr(m, "parts", [])
+        if type(p).__name__ == "RetryPromptPart"
+    ]
+    assert retries == [retry]
+    assert len(fakes.queries) == 1  # The final call's only.
+
+
+def test_no_cut_character_leaves_the_harness_in_a_place_request():
+    # End to end on the real Google tool: the agent's check, with the date
+    # inside its country literal and unnamed, and the final call.
+    sent = []
+
+    def endpoint(request):
+        sent.append(request.url.params["address"])
+        return httpx.Response(200, json={"status": "ZERO_RESULTS", "results": []})
+
+    fields = {**PLACES_1A, "country": "P.I. 3 Sept. '46"}
+    check = [("geocode", {"reading": "1A", "fields": fields, "others": OTHERS_1A})]
+    final = answer(
+        **{"1A": {**fields, **OTHERS_1A, "date_visited_from": "3 Sept. '46"}}
+    )
+    reading = Reading("r1", "o-muse", "decided_transcript", PLACE_LABEL)
+
+    with httpx.Client(transport=httpx.MockTransport(endpoint)) as client:
+        google = partial(
+            geocode_locality, blobs=Blobs(), api_key="fake-key", client=client
+        )
+        outcome, _ = harness(
+            check,
+            final,
+            readings=[reading],
+            plan=PLACE_PLAN,
+            tools=replace(Fakes().tools(), geocode=google),
+        )
+
+    assert sent == ["E. slope Mt. McKinley, Davao Prov., P.I."]  # One request.
+    for written in ("H. Hoogstraal leg.", "3 Sept. '46", "FMNH INS 0123456"):
+        assert set(fold(written).split()).isdisjoint(fold(sent[0]).split())
+    assert outcome.blocker is None and outcome.failure is None
+
+
+def test_before_the_collector_is_named_the_line_leaves_whole():
+    # PLAN 4.8 in #191, its stated limit: the agent checks the province before
+    # it names the collector, so the rest of the line is unassigned text, a
+    # source, and nothing marks the name in it.
+    reading = Reading(
+        "r1", "o-muse", "decided_transcript", "Davao Prov., Mindanao F.G. Wermer"
+    )
+    check = [
+        (
+            "geocode",
+            {
+                "reading": "1A",
+                "fields": {"province_state": "Davao Prov."},
+                "others": {},
+            },
+        )
+    ]
+    final = answer(
+        **{"1A": {"province_state": "Davao Prov.", "collectors": "F.G. Wermer"}}
+    )
+
+    _, fakes = harness(check, final, readings=[reading], plan=PLACE_PLAN)
+
+    (mid_run,) = fakes.queries  # The final call reuses the check's request.
+    assert mid_run.sources == ["Davao Prov.", "Mindanao F.G. Wermer"]
+    assert (None, "Mindanao F.G. Wermer") in [
+        (item.field_key, item.literal) for item in mid_run.literals
+    ]
+    assert (
+        place_request_text(
+            "Mindanao F.G. Wermer",
+            sources=mid_run.sources,
+            readings=mid_run.reading_texts,
+            non_place_literals=mid_run.non_place_literals,
+            knowledge=insects,
+        )
+        == "Mindanao F.G. Wermer"
+    )

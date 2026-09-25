@@ -6,7 +6,8 @@ allows, for dates and for every other field, and to settle only what the
 evidence supports. Each subcollection's profile names its knowledge by id and
 version; this is the pilot's. It is rendered into the harness's system prompt,
 and its aliases are the only names the geography tool accepts beyond a place's
-own (HARNESS.md section 7).
+own (HARNESS.md section 7). Its markers, months and full forms are what PLAN
+4.8's place-request filter cuts and writes out.
 """
 
 from __future__ import annotations
@@ -14,8 +15,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 KNOWLEDGE_ID = "insects"
-# v2: slide-preparation codes and single written values (coordinator, 2026-09-24).
-KNOWLEDGE_VERSION = "insects-harness-knowledge-v2"
+# v2: slide-preparation codes and single written values (coordinator, 2026-09-24);
+# v3: the tables PLAN 4.8's place-request filter reads (HARNESS.md section 7).
+KNOWLEDGE_VERSION = "insects-harness-knowledge-v3"
 
 
 @dataclass(frozen=True)
@@ -24,6 +26,38 @@ class Notation:
     readings: tuple[str, ...]  # Every reading it allows.
     fields: tuple[str, ...]  # The fields it can belong to.
 
+
+# The collector and determiner markers, in English and in Spanish in their
+# usual forms (PLAN 4.8 as #200 states it). Each is one word, since a clause
+# holds a marker when one of its words is one.
+COLLECTOR_MARKERS = (
+    *("leg.", "coll.", "Coll.", "Collector", "Collectors", "Collected"),
+    *("Col.", "Colector", "Colectores", "Colectado"),
+)
+DETERMINER_MARKERS = ("det.", "Det.")
+# Each month in full and abbreviated, in English and in Spanish, the pilot
+# labels' languages (PLAN 4.8 in #191), with the Spanish variant the RAE
+# accepts, "setiembre" and "set." (the coordinator's ruling of 2026-09-24),
+# Spanish's older abbreviations (PLAN 4.8 as #200 states it), and the RAE's
+# "febr.", "mzo." and "ag.", but not "en." or "my.", which are everyday words
+# (the coordinator's ruling of 2026-09-24).
+MONTHS_ENGLISH = (
+    *("January", "February", "March", "April", "May", "June", "July"),
+    *("August", "September", "October", "November", "December"),
+    *("Jan.", "Feb.", "Mar.", "Apr.", "Jun.", "Jul.", "Aug.", "Sep.", "Sept."),
+    *("Oct.", "Nov.", "Dec."),
+)
+MONTHS_SPANISH = (
+    *("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio"),
+    *("agosto", "septiembre", "setiembre", "octubre", "noviembre", "diciembre"),
+    *("ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep."),
+    *("sept.", "set.", "oct.", "nov.", "dic."),
+    *("agto.", "sbre.", "obre.", "nbre.", "dbre."),
+    *("febr.", "mzo.", "ag."),
+)
+# The connectors a date's parts may be joined by: "3 de VIII de 1946", "3rd of
+# VIII 1946" (the coordinator's rulings of 2026-09-25, 05:38Z and 05:39Z).
+DATE_CONNECTORS = ("de", "del", "of")
 
 NOTATIONS = (
     Notation("P.I.", ("Philippine Islands, the Philippines",), ("country",)),
@@ -49,10 +83,12 @@ NOTATIONS = (
         ("precise_location",),
     ),
     Notation(
-        "leg., coll., Coll.", ("collected by, marking the collectors",), ("collectors",)
+        ", ".join(COLLECTOR_MARKERS),
+        ("collected by, marking the collectors",),
+        ("collectors",),
     ),
     Notation(
-        "det.",
+        ", ".join(DETERMINER_MARKERS),
         ("determined by, marking who identified the specimen",),
         ("identified_by_irn",),
     ),
@@ -72,8 +108,18 @@ NOTATIONS = (
         ("date_visited_from", "date_visited_to", "date_identified"),
     ),
     Notation(
-        "Jan., Feb., Mar., Apr., Jun., Jul., Aug., Sep., Sept., Oct., Nov., Dec.",
+        ", ".join(MONTHS_ENGLISH),
         ("the month",),
+        ("date_visited_from", "date_visited_to", "date_identified"),
+    ),
+    Notation(
+        ", ".join(MONTHS_SPANISH),
+        ("the month",),
+        ("date_visited_from", "date_visited_to", "date_identified"),
+    ),
+    Notation(
+        ", ".join(DATE_CONNECTORS),
+        ("joins a date's parts, as in 3 de VIII de 1946 or 3rd of VIII 1946",),
         ("date_visited_from", "date_visited_to", "date_identified"),
     ),
     Notation(
@@ -148,6 +194,28 @@ SHAPES = {
 }
 # PRD 529 leaves verbatim_dts's meaning unconfirmed: a finding, never a reason.
 FINDING_ONLY = frozenset({"verbatim_dts"})
+
+# What PLAN 4.8's place-request filter reads (HARNESS.md section 7): the
+# collector and determiner markers the notations name,
+PERSON_MARKERS = (*COLLECTOR_MARKERS, *DETERMINER_MARKERS)
+# the month names and abbreviations the date notations list,
+MONTH_WORDS = (*MONTHS_ENGLISH, *MONTHS_SPANISH)
+# the Roman months, cut too (the coordinator's ruling of 2026-09-24),
+ROMAN_MONTHS = (
+    *("I", "II", "III", "IV", "V", "VI"),
+    *("VII", "VIII", "IX", "X", "XI", "XII"),
+)
+# and the full forms of the notations assigned to place fields alone, each a
+# form a request may carry in its place. "nr." relates a place; it is not part
+# of the place's name.
+FULL_FORMS = {
+    "P.I.": ("Philippine Islands",),
+    "Guat.": ("Guatemala",),
+    "Prov.": ("Province",),
+    "Dept.": ("Department",),
+    "Mt.": ("Mount",),
+    "Is.": ("Island", "Islands"),
+}
 
 
 def render() -> str:

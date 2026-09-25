@@ -16,6 +16,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from .domain import LookupStatus
+from .place_text import PLACE_FIELDS
 from .reliability import retry_delay
 
 TOOL_IDS = (
@@ -71,11 +72,39 @@ class LocalityLiteral(Frozen):
     literal: str
     source_observation_id: str
     source_region_id: str
+    # In "fill the rest", a place value the reviewer entered or changed: a
+    # source though no reading holds it, with every text the run holds for its
+    # field as the anchor of the reviewer's own text (HARNESS.md sections 7 and
+    # 13; the coordinator's rulings of 06:36Z, 07:33Z and 08:01Z on 2026-09-25).
+    reviewer: bool = False
+    anchors: list[str] = Field(default_factory=list)
 
 
 class GeographyQuery(Frozen):
     literals: list[LocalityLiteral] = Field(min_length=1)
     context: dict = Field(default_factory=dict)
+    # What PLAN 4.8's filter reads beside the literals (HARNESS.md section 7,
+    # agreed with S8): the record's reading texts, every literal any reading
+    # assigns to a non-place field, and the knowledge the profile names, as
+    # `harness_knowledge.KNOWLEDGE[knowledge_id]`.
+    reading_texts: list[str] = Field(default_factory=list)
+    non_place_literals: list[str] = Field(default_factory=list)
+    knowledge_id: str | None = None
+    # In "fill the rest", the reviewer's own non-place values, which alone of
+    # the non-place values cut the reviewer's own text.
+    reviewer_non_place_literals: list[str] = Field(default_factory=list)
+
+    @property
+    def sources(self) -> list[str]:
+        """The query's own sources for PLAN 4.8's filter: its place-field
+        literals, the reviewer's in "fill the rest" among them, and its
+        unassigned locality text, never a literal it gives a non-place field
+        (the coordinator's ruling on #191's review)."""
+        return [
+            item.literal
+            for item in self.literals
+            if item.field_key is None or item.field_key in PLACE_FIELDS
+        ]
 
 
 class PlaceCandidate(Frozen):

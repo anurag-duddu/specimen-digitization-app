@@ -132,6 +132,7 @@ def harness_direct(adapter, specimen, payload: dict) -> dict:
         asset_id=specimen.asset.id,
         blobs=adapter.blobs,
         timeout_seconds=timeout,
+        knowledge_id=knowledge["id"],  # PLAN 4.8's filter reads its tables.
     )
     usage = outcome.usage
     google = sum(1 for c in outcome.tool_calls if c.source == "google-maps-geocoding")

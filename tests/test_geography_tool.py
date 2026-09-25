@@ -21,11 +21,13 @@ from specimen_digitization.application.geography_tool import (
     map_geocoding_response,
     one_letter_apart,
 )
+from specimen_digitization.application.harness_knowledge import insects
 from specimen_digitization.application.harness_tools import (
     GeographyQuery,
     LocalityLiteral,
     PlaceCandidate,
 )
+from specimen_digitization.application.place_text import place_request_text
 
 KEY_VARIABLE = "SPECIMEN_GOOGLE_MAPS_API_KEY"
 MAPS_KEY = "fake-maps-credential-never-stored"
@@ -68,7 +70,9 @@ DENALI = place(
 )
 
 
-def query(*pairs):
+def query(*pairs, reading=None):
+    """A query as the harness makes it: the reading, one literal a line by
+    default, and the knowledge PLAN 4.8's filter reads."""
     return GeographyQuery(
         literals=[
             LocalityLiteral(
@@ -78,7 +82,9 @@ def query(*pairs):
                 source_region_id="region-1",
             )
             for field_key, text in pairs
-        ]
+        ],
+        reading_texts=[reading or "\n".join(text for _, text in pairs)],
+        knowledge_id="insects",
     )
 
 
@@ -203,7 +209,7 @@ def test_one_get_with_the_address_the_environment_key_and_a_ten_second_timeout(
         ("connect", "read", "write", "pool"), 10
     )
     assert seen.reservations == [] and not seen.client_closed
-    assert TOOL_VERSION == "google-geocoding-v2" and GEOCODING_COST_MICROS == 5000
+    assert TOOL_VERSION == "google-geocoding-v3" and GEOCODING_COST_MICROS == 5000
 
 
 def test_one_result_confirms_only_the_fields_whose_component_names_match():
@@ -280,7 +286,8 @@ def test_a_result_for_the_wrong_place_settles_no_admin_field(admin, options):
 
     seen = geocode(geography, reply(DENALI), **options)
 
-    assert seen.requests[0].url.params["address"] == LABEL
+    address = seen.requests[0].url.params["address"]
+    assert address.startswith("E. slope Mt. McKinley, ") and "Mindanao" not in address
     assert seen.result.outcome == S.SUCCESS
     assert seen.result.field_outcomes == {key: S.NO_MATCH for key, _ in admin}
     assert seen.result.places == [] and seen.result.warnings == []
@@ -391,17 +398,21 @@ def test_the_precise_location_forms_the_address_but_is_never_settled(answer, ali
     assert [p for p in seen.result.places if p.field_key == "precise_location"] == []
 
 
-def test_unassigned_locality_text_forms_the_address_when_present():
+def test_unassigned_locality_text_is_never_sent_to_google():
+    # Google's row of PLAN 4.8 sends a literal with its reading's place fields;
+    # the unassigned text ("Mindanao") is for S8's tiers.
     geography = query(
-        (None, "E. slope Mt. McKinley"),
+        ("precise_location", "E. slope Mt. McKinley"),
         ("country", "P.I."),
-        (None, "Davao Prov., Mindanao, P.I."),
+        (None, "Mindanao"),
+        reading="E. slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.",
     )
 
     seen = geocode(geography, reply(status="ZERO_RESULTS"))
 
-    assert seen.requests[0].url.params["address"] == LABEL
-    assert seen.result.sub_calls[0].query == {"address": LABEL}
+    address = "E. slope Mt. McKinley, P.I."
+    assert seen.requests[0].url.params["address"] == address
+    assert seen.result.sub_calls[0].query == {"address": address}
     assert seen.result.field_outcomes == {"country": S.NO_MATCH}
 
 
@@ -419,6 +430,226 @@ def test_assigned_literals_form_the_address_from_most_to_least_precise():
     address = "E. slope Mt. McKinley, Davao, Davao del Sur, Davao Prov., P.I."
     assert seen.requests[0].url.params["address"] == address
     assert seen.result.sub_calls[0].query == {"address": address}
+
+
+def test_what_leaves_is_what_plan_4_8s_filter_lets_leave():
+    # A collector's clause and a date share the place lines; the literals
+    # stay the reading's own for the local comparison.
+    reading = "Davao Prov., leg. H. Hoogstraal\nMindanao, P.I. 3 Sept. '46"
+    geography = query(
+        ("province_state", "Davao Prov., leg. H. Hoogstraal"),
+        ("country", "P.I. 3 Sept. '46"),
+        reading=reading,
+    ).model_copy(update={"non_place_literals": ["3 Sept. '46", "H. Hoogstraal"]})
+
+    seen = geocode(geography, reply(DAVAO))
+
+    # Google gets the values as written after the cuts (the coordinator's
+    # ruling of 2026-09-24); the full forms are for S8's name searches.
+    address = "Davao Prov., P.I."
+    assert dict(seen.requests[0].url.params) == {"address": address, "key": MAPS_KEY}
+    assert seen.result.sub_calls[0].query == {"address": address}
+
+
+@pytest.mark.parametrize(
+    ("reading", "piece", "leaves"),
+    [
+        (
+            "Davao Prov., Mindanao F.G. Wermer",
+            "Mindanao F.G. Wermer",
+            "Mindanao F.G. Wermer",
+        ),
+        ("Davao Prov., H. Hoogstraal, leg.", "H. Hoogstraal, leg.", "H. Hoogstraal"),
+    ],
+    ids=["collector-not-yet-named", "leg-in-the-next-clause"],
+)
+def test_the_unassigned_text_is_a_source_google_never_gets(reading, piece, leaves):
+    # PLAN 4.8 in #191 (the coordinator's ruling on its review): the harness's
+    # sources are its place-field literals and its unassigned locality text.
+    # Mid-run, before the collector is named, that text can hold the name, and
+    # what a tier sends of it is the stated limit, pinned here.
+    geography = query(("province_state", "Davao Prov."), (None, piece), reading=reading)
+
+    seen = geocode(geography, reply(status="ZERO_RESULTS"))
+
+    assert geography.sources == ["Davao Prov.", piece]
+    assert seen.requests[0].url.params["address"] == "Davao Prov."
+    assert (
+        place_request_text(
+            piece,
+            sources=geography.sources,
+            readings=geography.reading_texts,
+            non_place_literals=geography.non_place_literals,
+            knowledge=insects,
+        )
+        == leaves
+    )
+
+
+def test_a_non_place_fields_literal_is_never_a_source_and_refuses_the_query():
+    geography = query(("collectors", "F.G. Werner"), ("country", "P.I."))
+
+    seen = geocode(geography, reply(DAVAO), allow=lambda n: True)
+
+    result = seen.result
+    assert (seen.requests, result.outcome, result.warnings) == (
+        [],
+        S.POLICY,
+        ["place_text_refused"],
+    )
+    # PLAN 4.8 in #191: a literal the harness gives a non-place field.
+    assert geography.sources == ["P.I."]
+    assert (
+        place_request_text(
+            "F.G. Werner",
+            sources=geography.sources,
+            readings=geography.reading_texts,
+            non_place_literals=geography.non_place_literals,
+            knowledge=insects,
+        )
+        is None
+    )
+
+
+FILL_RECORD = "Davao Prov.\nMindanao F.G. Wermer"
+
+
+def reviewers(field_key, literal, *anchors):
+    """A place value the reviewer entered or changed in "fill the rest", with
+    every text the run holds for its field as the anchor."""
+    return LocalityLiteral(
+        field_key=field_key,
+        literal=literal,
+        source_observation_id="review_decision",
+        source_region_id="decision/d-1",
+        reviewer=True,
+        anchors=list(anchors),
+    )
+
+
+def filled(*literals, own=()):
+    """A "fill the rest" query: the harness's collector "F.G. Wermer" among
+    the non-place values, with the reviewer's own."""
+    return GeographyQuery(
+        literals=list(literals),
+        reading_texts=[FILL_RECORD],
+        non_place_literals=["F.G. Wermer", *own],
+        reviewer_non_place_literals=list(own),
+        knowledge_id="insects",
+    )
+
+
+def test_fill_the_rest_cuts_each_value_with_its_own_lists():
+    # #208's security review: the reviewer's value is a source though no
+    # reading holds it, and its own text is spared the harness's collector,
+    # while the harness's value the reviewer kept is cut by it.
+    kept = query(("precise_location", "Mindanao F.G. Wermer")).literals[0]
+    geography = filled(kept, reviewers("province_state", "Davao del Sur"))
+
+    seen = geocode(geography, reply(status="ZERO_RESULTS"))
+
+    assert seen.requests[0].url.params["address"] == "Mindanao, Davao del Sur"
+
+
+def test_a_reviewers_changed_value_spares_only_its_own_text():
+    # The coordinator's ruling of 07:33Z: tokens sharing a folded word with the
+    # harness's value for that field are what the reviewer kept.
+    changed = reviewers(
+        "precise_location", "Mindanao F.G. Wermer, Mt. Apo", "Mindanao F.G. Wermer"
+    )
+
+    seen = geocode(filled(changed), reply(status="ZERO_RESULTS"))
+
+    assert seen.requests[0].url.params["address"] == "Mindanao, Mt. Apo"
+
+
+def test_a_reviewers_value_in_a_non_place_field_refuses_the_query():
+    geography = filled(
+        reviewers("collectors", "F.G. Werner"), reviewers("country", "P.I.")
+    )
+
+    seen = geocode(geography, reply(DAVAO), allow=lambda n: True)
+
+    assert (seen.requests, seen.result.outcome, seen.result.warnings) == (
+        [],
+        S.POLICY,
+        ["place_text_refused"],
+    )
+
+
+def test_a_place_value_with_a_quote_reaches_google_encoded():
+    # PLAN 4.8 in #191: after the filter a value is only escaped or encoded.
+    geography = query(("precise_location", "Mt. D'Arcy"), ("country", "P.I."))
+
+    seen = geocode(geography, reply(status="ZERO_RESULTS"))
+
+    (request,) = seen.requests
+    assert request.url.params["address"] == "Mt. D'Arcy, P.I."
+    assert "?address=Mt.+D%27Arcy%2C+P.I.&" in str(request.url)
+
+
+@pytest.mark.parametrize(
+    ("change", "code"),
+    [
+        ({"reading_texts": ["Mindanao, P.I."]}, "place_text_refused"),
+        ({"reading_texts": []}, "place_text_refused"),
+        ({"knowledge_id": None}, "place_knowledge_unavailable"),
+        ({"knowledge_id": "beetles"}, "place_knowledge_unavailable"),
+    ],
+    ids=["not-in-the-readings", "no-readings", "no-knowledge", "unknown-knowledge"],
+)
+def test_a_query_the_filter_refuses_is_policy_blocked_and_nothing_leaves(change, code):
+    seen = geocode(QUERY.model_copy(update=change), reply(DAVAO), allow=lambda n: True)
+
+    assert seen.requests == [] and seen.reservations == [] and seen.blobs.puts == []
+    result = seen.result
+    assert (result.outcome, result.warnings, result.sub_calls) == (
+        S.POLICY,
+        [code],
+        [],
+    )
+    assert result.field_outcomes == dict.fromkeys(FIELDS, S.POLICY)
+
+
+def test_when_nothing_survives_nothing_is_sent_and_no_field_is_found():
+    # The coordinator's ruling of 2026-09-24: every place literal sits in a
+    # marker clause, so nothing is asked; the raw readings, then review.
+    geography = query(
+        ("province_state", "Davao Prov."),
+        ("country", "P.I."),
+        reading="Davao Prov. leg. H. Hoogstraal\nP.I. det. Banks",
+    )
+
+    seen = geocode(geography, reply(DAVAO), allow=lambda n: True)
+
+    assert seen.requests == [] and seen.reservations == [] and seen.blobs.puts == []
+    result = seen.result
+    assert (result.outcome, result.warnings, result.sub_calls) == (
+        S.NO_MATCH,
+        ["place_text_empty"],
+        [],
+    )
+    assert result.field_outcomes == {
+        "province_state": S.NO_MATCH,
+        "country": S.NO_MATCH,
+    }
+
+
+def test_the_fixed_parts_of_a_request_carry_no_label_text():
+    # The steward's clarifications of PLAN 4.8: the filter takes record values;
+    # the URL, the parameter names and the headers are reviewed constants, and
+    # the key (a fake one here) is the credential the filter never touches.
+    seen = geocode(QUERY, reply(DAVAO))
+
+    (request,) = seen.requests
+    url = str(request.url).split("?")[0]
+    label = {word for text in QUERY.reading_texts for word in fold(text).split()}
+    fixed = [url, *request.url.params.keys(), MAPS_KEY, *request.headers.values()]
+    assert url == GEOCODING_URL and list(request.url.params.keys()) == [
+        "address",
+        "key",
+    ]
+    assert [part for part in fixed if not label.isdisjoint(fold(part).split())] == []
 
 
 def test_a_partial_match_is_ambiguous_for_every_field_even_when_names_match():

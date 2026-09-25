@@ -218,8 +218,8 @@ first version of the geography tool behind the interface of section 6; an
 accepted S8 plan replaces this module, not the interface.
 
 **One call per reading** carries every locality literal of that reading. The
-address is the reading's unassigned locality text when there is any, otherwise
-its assigned literals from the most to the least precise field. The key comes
+address is its place-field literals from the most to the least precise field,
+each as PLAN 4.8's filter lets it leave (below). The key comes
 from `SPECIMEN_GOOGLE_MAPS_API_KEY`; a missing or rejected key is
 `authentication_error`, an operational block (QUE-005). Retries follow section
 6; an HTTP 401 or 403 is final at once. Every call's source is exactly
@@ -283,6 +283,229 @@ is `timeout`, any other `httpx` transport error is `provider_error`
 (`geocoding_transport_error`), and every other failure, including the `httpx`
 errors outside its `HTTPError` family such as `InvalidURL`, is `provider_error`
 with the fixed code `geocoding_unexpected_error`.
+
+**What a request may carry** (PLAN 4.8 on main after #215, a867d56, with the
+coordinator's rulings of 2026-09-24 and 2026-09-25, the last at 08:24Z).
+`application/place_text.py` is the one filter. This tool applies it to every
+request, and S8's tiers import it for every value they send. The filter's
+output is what leaves; after it a value is only escaped or encoded, as an
+encoded URL parameter here and an escaped literal in S8's SPARQL.
+- **Sources**, checked first, before any cut or full form. A value must be a
+  whole-token slice, bounded by token edges, of one of its sources:
+  - the reading's place-field literals (`country`, `province_state`, `county`,
+    `city`, `precise_location`) and its unassigned locality text;
+  - the names tier 1 returns;
+  - in "fill the rest", the reviewer's values in place fields.
+
+  The harness's sources are the place-field literals it gives, each found
+  character for character in a reading, and its unassigned locality text,
+  drawn from the readings in whole tokens (`GeographyQuery.sources`). A literal
+  it gives a non-place field is never a source (the coordinator's ruling on
+  #191's review). A full form written on the label, such as "Philippine
+  Islands", is a source like other place text.
+
+  Every call names the record's readings (`readings`, required). They are read
+  for the cuts but are not themselves a source, and a call without them is
+  refused. A value drawn from anything else refuses the whole query. Nothing is
+  sent, and the tool answers `policy_blocked` with the fixed code
+  `place_text_refused`, which blocks the run (QUE-005). The tool refuses the
+  same way a literal that isn't character for character in a reading, a
+  non-place field's literal, and a query that names no knowledge
+  (`place_knowledge_unavailable`).
+- **Cuts**, only on those values. A token of the value is cut when a cut below
+  reaches it in the value itself, or when, at any occurrence of the value in any
+  text, the readings included, a token it lies in is cut. Tokens compare by
+  their folded words, and the non-place cuts also compare them by their letters
+  and digits run together, so "FG" for "F.G.", "Wer-mer" and "Wer.mer" meet the
+  cut that "F.G. Wermer" makes (the coordinator's ruling of 08:24Z on
+  2026-09-25). So a value in no reading, such as a tier-1 name, is cut too, and
+  a value that starts or ends inside a token loses that token: the "Hoogstraa"
+  of "H. Hoogstraal leg." leaves nothing (the steward's review of #185). No cut
+  character leaves, however the value is sliced. The filter cuts:
+  - every token of every literal any reading assigns to a non-place field, year
+    literals included, of every value the harness gave a non-place field,
+    whether a reviewer kept it or replaced it (the coordinator's ruling of
+    05:38Z on 2026-09-25), and of every value a reviewer puts in one. A literal
+    cuts every token it covers where it occurs: a collector copied short, "F.G.
+    Wern", still cuts "Werner", and a corrected spelling matches no reading's
+    literal. The readings' and the harness's non-place values don't cut the
+    reviewer's own text, since the reviewer's correction is the authority there:
+    the tokens of a place value the reviewer entered or changed that match
+    nothing the run holds for that field. That anchor is every such text: the
+    harness's settled literal, the first pass's decided literal where there is
+    one, and each reading's verbatim for the field. A token matches when any of
+    its folded words is a folded word of the anchor, or when its letters and
+    digits run together equal an anchor token's. Matching tokens are cut like
+    any other source, and where the run holds nothing for the field, every token
+    is the reviewer's own (the coordinator's rulings of 06:36Z, 07:33Z, 07:53Z
+    and 08:01Z on 2026-09-25). So a case-only change spares nothing, "Mindanao
+    F.G. Wermer, P.I." spares only "P.I.", "Wermer's", "F.G.Werner" and "FG" for
+    "F.G." are cut, and so is a reading's verbatim the reviewer picks. The other
+    cuts reach the reviewer's own text too, so a date in it never leaves. The
+    filter takes the anchor's texts and the reviewer's own non-place values as
+    `reviewer`;
+  - every token of every clause, between commas, semicolons or line breaks, that
+    holds a collector or determiner marker the knowledge names, wherever the
+    marker sits in it and in whichever text. It names them as labels write
+    them, in Latin ("leg.", "det.", "Det."), English ("coll.", "Coll.",
+    "Collector", "Collectors", "Collected") and Spanish ("Col.", "Colector",
+    "Colectores", "Colectado") (the coordinator's rulings on #191's and #200's
+    final reviews). A name a marker accompanies never leaves, whatever field it
+    was given, so "Col. J. Perez", "Colector J. Perez", "Collector: H.
+    Hoogstraal" and the "F.G. Werner" of "Davao Prov., det. F.G. Werner" leave
+    nothing. "Werner"
+    is cut where the record reads "Wernersdorf" and "leg. Werner", and
+    "Wernersdorf" stays, since tokens compare whole;
+  - every token that carries a digit, so no date, elevation or catalogue number
+    leaves;
+  - every month name and abbreviation the knowledge's date notations list, in
+    any case. They list each month in full and abbreviated, in English and in
+    Spanish, the pilot labels' languages, with the Spanish variant "setiembre"
+    and "set." (the coordinator's ruling of 2026-09-24), with its older
+    abbreviations "agto.", "sbre.", "obre.", "nbre." and "dbre." (the
+    coordinator's ruling on #191's final review), and with the RAE's "febr.",
+    "mzo." and "ag." but not "en." or "my.", which are everyday words (the
+    coordinator's ruling of 2026-09-24): "3 SEPT. 1946", "3 Setiembre 1946", "3
+    Agto. 1946" and "3 Mzo. 1946" leave nothing, and "Chimaltenango, 3 Mayo
+    1946" leaves "Chimaltenango";
+  - a Roman month in the month position: a token whose every word is a Roman
+    numeral I to XII, in any case, next to a date number before or after it,
+    across separators. A date number is a day or a year in the profile's forms,
+    3, 14, 1946, '46 or -46, also written with any apostrophe or dash ("‘46",
+    "ʼ46", "–46"), as an ordinal day ending in st, nd, rd, th, d, er, º or ª
+    ("3rd", "2d", "1er", "1º"), as a range whose parts, split at a dash or
+    slash, are each one ("3-4", "1946/47"), or with punctuation before or after
+    it ("1946.", "1946?", "(1946)"). The search for the neighbour skips a token
+    with no letter or digit, and the date connectors the knowledge's date
+    notations list, "de", "del" and "of". A connector is itself cut when the
+    tokens on both sides of it, skipping lone punctuation, are cut date tokens:
+    a token with a digit, a month word or a Roman month in the month position. A
+    clause left with no word drops. This is the coordinator's ruling of
+    2026-09-24, which replaced an earlier cut of every I to XII (4.8 in #185),
+    as #203 and the rulings of 2026-09-25 (05:38Z, 05:39Z) widen it. So "3 VIII
+    1946", "VIII 1946", "Mindanao, VIII, 1946", "Mindanao, VIII -46", "Mindanao,
+    VIII ‘46", "VIII –46", "VIII 1946?", "Mindanao, VIII 1946.", "3rd VIII",
+    "VIII/IX 1946", "Mindanao, 2d VIII", "1º VIII", "1er VIII", "3-4 VIII",
+    "VIII 1946/47", "3 - VIII - 1946", "3 de VIII de 1946" and "3rd of VIII
+    1946" leave no numeral and no connector, while "Camp IV", a lone "VIII/IX",
+    the "I" of "P.I." and the "de" of "San Juan de Dios" stay.
+- **Full forms**, after the cuts (the coordinator's ruling, option c).
+  - A notation token that survived may be written out in each full form the
+    knowledge's table lists for it. The table carries sendable place words, not
+    glosses, and expands only notations assigned to place fields alone, never a
+    month, a year or a marker.
+  - A notation is cut whenever one of its full forms is. Each form a full form
+    makes then goes through the same cuts, by character in the form itself, and
+    a form any cut touches is not sent. So an expansion never brings back a cut
+    character: with a non-place literal "Moun", "Mt. Apo" leaves only as
+    written.
+  - A full form counts only as the expansion of a notation present in an
+    allowed source (coordinator ruling, 2026-09-24). A source written out in full
+    is a source too; a full form not itself in a source is not (4.8 in #200).
+- **Identifiers** (4.8 in #200). `place_request_identifier(identifier, *,
+  source, response)` sends an identifier back unchanged to the tier-1 source
+  that returned it in the field that carries that source's ids. `response` is
+  that answer's JSON as the tool received it. The identifier is checked against
+  that field alone, never another token of the answer, the record or a list
+  the agent supplies. It must be the field's whole value, or the id the value
+  holds, and match the source's documented pattern, as S8's readers receive the
+  answers:
+  - `wikidata`: an item's Q-number in an `id` field, as search hits and
+    statement values hold it;
+  - `tgn`: a subject id, from a reconciliation result's `id` after `tgn/`, or
+    from a subject URI (`http://vocab.getty.edu/tgn/` and the id) as a SPARQL
+    binding's `value`;
+  - `nga`: a feature id in `ufi`, a JSON number that keeps its minus sign, or a
+    first-order unit code such as "PH-DVC" in `adm1` (coordinator ruling).
+
+  TGN's and GNS's digit patterns match any label number, and an answer also
+  holds numbers as dates and coordinates, so where the identifier came from is
+  the guard. A catalogue number offered as a TGN id is refused, and so is a
+  number the answer holds outside its id field, such as a TGN `estStart` of
+  "1946" or a GNS latitude of 7.3. A part of an id is refused too: "2408936"
+  where the answer holds "-2408936", or the "04" of "GT-04". So is an answer
+  that isn't JSON. An identifier carries no label text, so no cut applies, and
+  anything else is refused.
+- **Shape.** What survives keeps its clauses, single-spaced and joined by their
+  own separators, with a line break wherever the dropped text held one, as S8's
+  parser reads them. `place_request_forms` returns the value as written after
+  the cuts first, then one form for each way of writing every notation in each
+  of its full forms (G29): "Davao Prov." leaves as "Davao Prov." or "Davao
+  Province", and "Camiguin Is." as "Camiguin Is.", "Camiguin Island" or
+  "Camiguin Islands". `place_request_text` returns the first form.
+- **Stated limit** (4.8 on main after #215). Text the filter cannot recognize
+  can still leave: text that no reading assigns to a non-place field and the
+  harness hasn't given one (mid-run, not yet; in "fill the rest", never), when
+  no marker the knowledge names sits in its clause. So, mid-run, before the
+  harness has named the non-place fields, "Mindanao F.G. Wermer" leaves whole,
+  "H. Hoogstraal" leaves when its "leg." sits in a neighbouring clause or line,
+  and so do a habitat such as "Mossy forest", "FMNH INS" from a catalogue number
+  and "ft." from "Mt. Apo, 6000 ft."; so does a name beside a marker the
+  knowledge doesn't list, such as German's "Sammler". In "fill the rest", a name
+  the reviewer adds or respells in a place value is spared the readings' and the
+  harness's non-place cuts, so it leaves even when the collectors field holds
+  it, unless the reviewer entered or changed that non-place field (07:33Z and
+  08:01Z). A spelling that splits a name ("Wer mer"), merges it ("FGWermer") or
+  shortens it ("Werm.") matches nothing, so it counts as the reviewer's own, the
+  non-place cuts miss it, and it leaves (08:24Z). A month name in a language the
+  knowledge doesn't list can leave, such as Tagalog's "Hunyo", and so can a form
+  of a listed language that it doesn't list, such as the RAE's "en.", and a lone
+  or ranged month numeral with no day or year beside it ("VIII/IX"). A token
+  that joins a numeral to a word can leave whole, so "mid-VIII 1946" sends
+  "mid-VIII". The ordinal endings are closed (st, nd, rd, th, d, er, º, ª), and
+  the Roman-month cut is not widened further before the pilot, so a bare month
+  numeral leaves beside an ordinal written any other way: "Mindanao, 1.º VIII",
+  "1.ª VIII", "1o VIII", "1ro VIII", "2do VIII" and "1.er VIII" each send
+  "Mindanao, VIII", and "Mindanao, primero de VIII", a day in words, leaves
+  whole. Anything but a date number, bare punctuation or a listed connector
+  between two months leaves the first: "Mindanao, VIII y IX 1946" sends
+  "Mindanao, VIII y", "Mindanao, VIII – IX 1946" sends "Mindanao, VIII –",
+  "Mindanao, VIII, IX 1946" sends "Mindanao, VIII", "Mindanao, VIII & IX 1946"
+  sends "Mindanao, VIII &", and "Mindanao, VIII ca. 1946" sends "Mindanao, VIII
+  ca.". A connector with a date on one side only stays, so "Chimaltenango de
+  1946" sends "Chimaltenango de". The cuts can also take too much: "Camp IV, 3
+  VIII 1946" sends only "Camp"; "Cape May" sends "Cape", and "Ag. Exp. Sta."
+  sends "Exp. Sta."; a place word that reads like a non-place value's initials
+  goes, so with a collector "M.T. Smith", "Mt. Apo" sends "Apo" (#215), and so
+  does a single place initial, so with a collector "J.P. Doe", "Mindanao, P.I."
+  sends "Mindanao" (#215's final review); a colonia written "Col." is cut as a
+  collector's clause, so "Col. El Carmen, Chimaltenango" sends only
+  "Chimaltenango"; a clause holding a marker is cut wherever its words appear,
+  so "Mt. Apo leg. Hoogstraal" on one line takes "Mt. Apo" from every other
+  line, a reviewer's value included; and a tier-1 name whose numeral stands
+  beside a number, such as "Region XI (11)", loses the numeral. Tests pin each
+  case, so a change in what can leave shows.
+
+This tool passes its query's sources, the place-field literals and the
+unassigned locality text, with the readings as context. It checks that every
+literal is in a reading, but sends the place-field literals only. In "fill the
+rest", a place value the reviewer entered or changed comes marked as the
+reviewer's (`LocalityLiteral.reviewer`) with its anchors. It is a source though
+no reading holds it, as 4.8's sources allow, and the tool cuts each value with
+its own lists: a reviewer's value with `reviewer`, so the query's
+`reviewer_non_place_literals` alone cut the reviewer's own text, and every
+other value with all of `non_place_literals` (#208's security review). The
+unassigned text comes in whole tokens: a piece of a line never starts or ends
+inside a token a reading assigns.
+
+Google gets the first form, as written after the cuts, which keeps the address
+behind the live checks of G34; S8's name searches take the full forms (the
+coordinator's ruling of 2026-09-24; 4.8's "may replace" covers both). Google's
+row of 4.8 sends a literal with its reading's place fields, so the address holds
+the place-field literals only. The reading's unassigned locality text, the part
+of its lines holding place fields that no reading assigns to any field
+("Mindanao" on FMNH 105526321), comes in the query as literals with no field,
+for S8's tiers. It must be drawn from the readings like the rest, and Google
+gets none of it.
+
+When nothing survives, nothing is sent (coordinator ruling): every field is
+`no_match` with the fixed code `place_text_empty`, so field resolution tries the
+raw readings (G20) and the record goes to review. A request that never left
+records no Google call. The fixed parts of a request, the URL, the parameter
+names and the headers, are reviewed constants and carry no label text. The
+address goes only as an encoded parameter, so a quote in a place value reaches
+Google encoded. The key is the Secret Manager credential: the filter never
+touches it, and nothing records it (above).
 
 ## 8. The date and catalog-number validators (stage 7, part 3)
 
@@ -444,7 +667,8 @@ sees for section 9.
 tool id is refused before anything is called (HAR-007). The implementations are
 injected, so tests use fakes. A request is one tool, one reading and its
 arguments; the same request again returns the recorded result and records
-nothing new.
+nothing new. A geography request also carries what PLAN 4.8's filter reads
+(section 11), which is not part of its identity.
 
 **Records.** Each source-call attempt is one `ToolCallRecord` in
 `Run.tool_calls`. A validator's call is one attempt with no source.
@@ -537,8 +761,10 @@ reading.
 
 **Tools.** Only the profile's tools, each run through the ledger:
 - `verify_taxon`: GBIF's usage, name, rank and status (G28);
-- `geocode`: a reading's locality literals together, returning the outcome and
-  each field's outcome, never a Google name (G26);
+- `geocode`: a reading's locality literals together, with the reading's
+  literals for its other fields (`others`) so that none of them leaves (PLAN
+  4.8), returning the outcome and each field's outcome, never a Google name
+  (G26);
 - `parse_date`: every reading a date's notation allows;
 - `check_catalog_number`.
 
@@ -546,6 +772,18 @@ Geography arguments are in field order, so the agent's check and the final
 call on the same literals are one request. The agent's tool calls run one at a
 time, even several in one response, so a repeated call is answered from the
 ledger's record and the caps count exactly.
+
+**Place requests** (PLAN 4.8, section 7). The agent's check and the final call
+build requests the same way. Each query carries what the filter reads: every
+reading's text, the non-place literals, the knowledge's id, and the reading's
+unassigned locality text.
+- For the agent's check, the non-place literals are those it has named so far
+  in `others`. A field there that is a locality field or not the profile's, or a
+  literal that is not character for character in its reading, is returned for
+  a retry, and no request is made.
+- The final call takes every reading's final literals, year literals included.
+- The context is not part of a request's identity, so the agent's check and the
+  final call on the same literals stay one request.
 
 **Deciding.** After the agent answers, every field is resolved by section 9 from
 the ledger's records, and any tool call the agent did not make on its final
@@ -602,7 +840,7 @@ variable with its default in code, pinned on the run. It states:
 - the copy rule: never invent, complete, correct, expand or translate a literal.
 
 **The Insects knowledge** (`harness_knowledge/insects.py`, id `insects`, version
-`insects-harness-knowledge-v2`) is the pilot's. S3's profile names it. It lists
+`insects-harness-knowledge-v3`) is the pilot's. S3's profile names it. It lists
 the label notations and every reading each allows, each with the fields it can
 belong to:
 - "P.I.", "Guat.", "Prov.", "Dept.", "Mt.", "Is.", "nr." and the directions
@@ -647,6 +885,20 @@ collection date such as 14-5-48.
 
 Its place aliases, written as the geography tool folds them, are the only extra
 names that tool accepts ("P.I." as the Philippines).
+
+It also holds what PLAN 4.8's filter reads (section 7):
+- the collector and determiner markers its notations name ("leg.", "coll.",
+  "Coll.", "det.");
+- the month names with the abbreviations its date notation lists, and the Roman
+  months I to XII, cut in the month position;
+- the full forms of the place notations that have fixed ones: "P.I." is
+  "Philippine Islands", "Guat." "Guatemala", "Prov." "Province", "Dept."
+  "Department", "Mt." "Mount", and "Is." "Island" or "Islands". "nr." is left
+  out: it relates a place, it isn't part of its name.
+
+Version 3 adds them, so a run's version names the tables that cut its requests;
+the instructions the agent reads are unchanged. The profile switch names v3 and
+lands after the filter (coordinator ruling, 2026-09-24).
 
 ## 13. Layers and derived values (stage 7, part 8)
 
@@ -757,7 +1009,29 @@ S5 stores. The reviewer edits it and approves it through the decision route.
 - Today the derivations are G41's elevation rules: a reviewer's 6,400 ft fills
   the other end and the metres. S8's geographic derivations join once S8's tool
   lands and review calls can be recorded (S5's SQL side for a `review` input
-  source).
+  source). Their requests take the reviewer's values in place fields as sources
+  (section 7). Their non-place literals are the reviewer's own non-place
+  values, every value the harness gave a non-place field, whether the reviewer
+  kept or replaced it, and the readings' non-place literals. The readings' and
+  the harness's non-place values don't cut the reviewer's own text, since the
+  reviewer's correction is the authority there (the coordinator's rulings of
+  2026-09-25, 05:38Z and 05:39Z). The reviewer's own text is the tokens of a
+  place value the reviewer entered or changed that match nothing the run holds
+  for that field: its anchor, the harness's settled literal and each reading's
+  verbatim for the field, the first pass's decided literal among them. Where the
+  run holds nothing for the field, every token is the reviewer's own. What the
+  reviewer kept is cut like any other source (06:36Z, 07:33Z, 07:53Z and
+  08:01Z). Every other cut reaches the reviewer's own text too: the reviewer's
+  own non-place values, the markers' clauses, digits, months and Roman months
+  (section 7), so a date in it never leaves.
+- `rest_place_inputs(run, filled, *, decision_id)` gives that call what
+  derive_rest holds (#208's security review): each place value in `filled` as a
+  reviewer's literal with its anchor's texts from `run.fields`, so what the
+  reviewer kept is cut; every value the harness gave a non-place field, with the
+  reviewer's own, as `non_place_literals`; and as `reviewer_non_place_literals`
+  only the non-place values the reviewer entered or changed, since a value
+  equal, folded, to a text the run holds for that field is the harness's
+  (08:01Z). The call adds the readings' texts and non-place literals.
 - The proposal (`domain.Proposal`) carries the proposed fields, the new
   evidence they cite, and the tool calls, lookups and findings. Those stay empty
   until a derivation makes a call.
@@ -788,16 +1062,17 @@ the adapter has a harness and the run's profile names a `harness_route`.
   each field's tool from the profile's `field_tools`.
 - The profile's `date_rules` and its `harness_knowledge`, by id and version.
 
-Outward requests carry place text only: one reading's locality literals to
-geography, a scientific name to taxonomy (PLAN 4.8).
+Outward requests carry place text only (PLAN 4.8): to geography, one reading's
+locality literals as section 7's filter lets them leave; to taxonomy, a
+scientific name.
 
 **What the child does** (`harness_direct`):
 - It requires approved inference, the pinned harness route, the pinned prompt
   `field-harness` and the named knowledge; otherwise it blocks with a fixed
   code.
 - It runs the harness (section 11) with the production tools through the
-  ledger. The geography tool gets the knowledge's place aliases, and the date
-  tool the profile's date rules.
+  ledger. The geography tool gets the knowledge's place aliases and each of its
+  queries the knowledge's id; the date tool gets the profile's date rules.
 - It returns the fields, evidence, findings, tool calls, GBIF lookups, any
   block, any harness failure, and the reported token usage.
 
