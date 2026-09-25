@@ -1,5 +1,5 @@
 // A typed day is the reviewer's own day (coordinator ruling for S6,
-// 2026-09-25, applying design/01 H2.1: "display local dates, and convert to
+// 2026-09-25, 01:26:02Z, applying design/01 H2.1: "display local dates, and convert to
 // UTC in the request"). Its midnight on the reviewer's clock goes to the API
 // in UTC, and the queue's chip shows it back as a day. The suite's clock is
 // pinned to US Central time (`flutter_test_config.dart`).
@@ -8,7 +8,9 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/search_filters.dart';
+import 'package:specimen_digitization/src/wall_time.dart';
 
+import 'central_time.dart';
 import 'widgets/harness.dart';
 
 void main() {
@@ -45,6 +47,19 @@ void main() {
     expect(searchValueLabel('created_from', stored), '8 Sep 2026');
     expect(searchValueLabel('created_before', stored), '8 Sep 2026');
     expect(searchValueLabel('batch_id', 'batch-7'), 'batch-7');
+  });
+
+  test('a day whose midnight the clocks skip still reads as that day', () {
+    // Where the clocks jump over midnight (Havana, Santiago, the Azores),
+    // the stored bound is the jump, and it reads back and shows as the day
+    // that was typed, never the day before (#202 review).
+    final DateTime jump = DateTime.utc(2026, 9, 8, 5);
+    debugWallTimeOverride = skipsMidnightAt(jump);
+    addTearDown(() => debugWallTimeOverride = centralWallTime);
+    final String stored = typedDayStart('2026-09-08')!.toIso8601String();
+    expect(stored, jump.toIso8601String());
+    expect(typedDayOf(stored), '2026-09-08');
+    expect(searchValueLabel('created_from', stored), '8 Sep 2026');
   });
 
   testWidgets('the sheet sends the typed day as its midnight', (

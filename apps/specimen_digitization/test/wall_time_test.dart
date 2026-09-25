@@ -1,8 +1,8 @@
 // Wall-clock time is read in one place, and the suite pins that place to US
 // Central time, the zone the goldens were rendered in. So no golden and no
 // test depends on the zone of the machine that runs it (coordinator ruling
-// for S6, 2026-09-24, after this machine's zone moved to America/New_York
-// and six History goldens failed with no code change).
+// for S6, 2026-09-24, 23:10:57Z, after the host zone moved away from
+// Central and six History goldens failed with no code change).
 
 import 'dart:io';
 
@@ -21,7 +21,8 @@ import 'central_time.dart';
 ///
 /// What it cannot see, because it reads one line at a time and knows no
 /// types (#182 and #197 reviews):
-/// - a `now` held in a variable and read later (`now.hour`);
+/// - a `now` held in a variable and read later (`now.hour`), or a chained
+///   read such as `DateTime.now().add(d).day`;
 /// - `copyWith` on a local instant;
 /// - `toString` or `toIso8601String` of a local instant, which prints the
 ///   host's wall clock;
@@ -29,14 +30,15 @@ import 'central_time.dart';
 /// - an expression split across lines, or a read through another package;
 /// - a parse of text without a zone (the server's instants carry one);
 /// - code outside the two roots.
-/// It also rejects a correct UTC epoch call split across lines, whose
-/// `isUtc: true` sits on a later line.
+/// It also rejects two correct UTC epoch calls: one split across lines,
+/// whose `isUtc: true` sits on a later line, and one on one line whose
+/// argument has parentheses, since the look-ahead stops at the first `)`.
 final RegExp _hostZone = RegExp(
   r'\.toLocal\(\)|\.timeZoneName\b|\.timeZoneOffset\b|\bDateTime(\.new)?\('
   r'|from(Milli|Micro)secondsSinceEpoch\((?![^)]*isUtc:\s*true)'
   r'|DateTime\.now\(\)\.(year|month|day|hour|minute|second|millisecond'
   r'|microsecond|weekday)\b'
-  r'|\bdebugWallTimeOverride\b|\bhostWallTime\b',
+  r'|\bdebugWallTimeOverride\b|\b_?hostWallTime\b',
 );
 
 /// Where the guard looks. A root that goes missing fails the guard rather
@@ -62,7 +64,7 @@ void main() {
 
     test("an instant in UTC prints on the reviewer's clock too", () {
       // design/01 H1.9: a reviewer never converts zones in their head
-      // (coordinator ruling for S6, 2026-09-24).
+      // (coordinator ruling for S6, 2026-09-24, 23:30:28Z).
       expect(
         absoluteTime(DateTime.utc(2026, 9, 14, 10, 22)),
         '14 Sep 2026, 05:22 CDT',
@@ -130,19 +132,7 @@ void main() {
       // Here a synthetic zone at UTC-5 moves to UTC-4 at what would have
       // been 00:00 on 8 September.
       final DateTime jump = DateTime.utc(2026, 9, 8, 5);
-      debugWallTimeOverride = (DateTime instant) {
-        final DateTime utc = instant.toUtc();
-        final bool after = !utc.isBefore(jump);
-        final DateTime wall = utc.add(Duration(hours: after ? -4 : -5));
-        return (
-          year: wall.year,
-          month: wall.month,
-          day: wall.day,
-          hour: wall.hour,
-          minute: wall.minute,
-          zone: after ? 'SDT' : 'SST',
-        );
-      };
+      debugWallTimeOverride = skipsMidnightAt(jump);
       addTearDown(() => debugWallTimeOverride = centralWallTime);
       expect(wallDayStart(2026, 9, 8), jump);
       final WallTime wall = wallTime(wallDayStart(2026, 9, 8));
