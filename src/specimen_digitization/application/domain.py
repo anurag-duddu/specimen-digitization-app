@@ -229,7 +229,8 @@ class Evidence(Record):
     region_id: str | None = None
     observation_ids: list[str] = Field(default_factory=list)
     source: str
-    locator: str
+    # A lookup that found no single match has nothing to locate (#88, 4.4).
+    locator: str | None
     excerpt: str
     raw_ref: str | None = None
     digest: str | None = None
@@ -266,6 +267,29 @@ class FieldValue(Record):
     )
     precision: Literal["day", "month", "year"] | None = None
     century_rule: str | None = None
+
+
+class ToolCallRecord(Record):
+    """One attempt of one harness tool request, as the data contract reads it
+    (#88, section 4.3; HAR-010): the call key agreed with S5, what was asked,
+    of which reading, and the outcome."""
+
+    call_key: str
+    phase: Literal["lookup", "validate"]
+    tool: str
+    tool_version: str
+    source: str | None
+    field_keys: list[str]
+    input_source: Literal["decided_transcript", "raw_reading"]
+    region_id: str | None = None
+    observation_id: str | None = None
+    attempt: int = Field(ge=1)
+    arguments: dict
+    outcome: LookupStatus
+    result: dict | None = None
+    evidence_id: str | None = None
+    started_at: str
+    completed_at: str
 
 
 class RunFinding(Record):
@@ -458,6 +482,7 @@ class Run(Record):
     disposition: Disposition | None = None
     reasons: list[str] = Field(default_factory=list)
     findings: list[RunFinding] = Field(default_factory=list)
+    tool_calls: list[ToolCallRecord] = Field(default_factory=list)
     blocker: str | None = None
     attempts: dict[str, int] = Field(default_factory=dict)
     capability_reason: str | None = None

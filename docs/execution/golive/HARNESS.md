@@ -411,3 +411,65 @@ precision its literal writes and the century rule it used (G24).
 `precision` and `century_rule`; `Run` gains `findings: list[RunFinding]`, each
 with `rule_id`, `rule_version`, `severity`, `field_key`, `reason_code` and
 `evidence_ids`. All default to empty, so stored runs load unchanged.
+
+## 10. The tool ledger: every harness request, recorded once (stage 7, part 5)
+
+HAR-007, HAR-010; G23, G26; the data contract's sections 3.1, 4.3 and 4.4
+(#88), with the call key agreed with S5. `application/harness_ledger.py` is the
+only way the harness reaches a tool. It runs each distinct request once,
+records it as the contract reads it, and turns its result into what one field
+sees for section 9.
+
+**Only the profile's four tools run.** They are `taxonomy_verifier`,
+`geography_lookup`, `date_parser` and `catalog_number_validator`; any other
+tool id is refused before anything is called (HAR-007). The implementations are
+injected, so tests use fakes. A request is one tool, one reading and its
+arguments; the same request again returns the recorded result and records
+nothing new.
+
+**Records.** Each source-call attempt is one `ToolCallRecord` in
+`Run.tool_calls`. A validator's call is one attempt with no source.
+
+- Phase `lookup` for taxonomy and geography, `validate` for the validators
+  (HAR-003).
+- Call key `{phase}:{tool}:{source or "-"}:{input_source}:{region_id or
+  "-"}:{observation_id or "-"}:{first 16 hex of the SHA-256 of the arguments'
+  canonical JSON}:{attempt}`, so GBIF, Global Names Verifier and Catalogue of
+  Life calls of one request never collide.
+- A call on the decided transcript names no reading; its region identifies the
+  decision. A call on a raw reading names its observation.
+- `field_keys` are the fields the request serves: one geography request serves
+  every locality field of its reading.
+- `result` is bounded: the sanitized error and Retry-After for a source call;
+  GBIF's candidates (G28 allows its names); for Google, place IDs only (G26); a
+  validator's verdict and warnings.
+
+**Evidence.** Each source's final call is one `Evidence` item, linked from its
+record, and earlier attempts link none.
+
+- Kind `lookup` for a source call and `validation` for a validator.
+- A lookup's `locator` is set exactly when it succeeded: `place/{place id}`
+  for Google, `usage/{key}` for GBIF, `name/{name}` for the supporting sources.
+  Otherwise it is empty. A validator's evidence keeps its region.
+- No Google name, component or coordinate reaches evidence, a record or a
+  result: only the place ID, our outcome and the stored fingerprint (G26).
+- GBIF's lookup is also kept for the queue decision's taxonomy gate.
+
+**What a field sees** (`Called`, section 9). A field's outcome is its own
+outcome in the result when the tool reports one, otherwise the call's.
+Only a success names a value:
+
+- Taxonomy: GBIF's usage key and name, with GBIF's evidence `decides`. Global
+  Names Verifier's and Catalogue of Life's evidence `supports` unless that source
+  disagreed with GBIF (G23), and a disagreement or an unavailable source is a
+  warning finding with that source's evidence.
+- Geography: the place ID, and as `normalized` the literal the lookup matched by
+  name, with Google's evidence only `supporting` (rule 1.6). A near spelling
+  (G34) gives the place ID alone, and its `near_spelling:{field}` warning
+  becomes a finding with Google's evidence. The ledger refuses to settle a field
+  the geography tool reports nothing for, `precise_location`.
+- Dates: the single reading's date, precision and century rule (G24).
+- Catalog number: its digits.
+
+An operational outcome passes through unchanged, for section 9 to block on.
+`Evidence.locator` becomes optional for the failed lookups.
