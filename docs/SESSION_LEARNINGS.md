@@ -12385,6 +12385,7 @@ because the hooks runner hands a native asset hook only `PATH`.
     - The limit names a value the harness gave a non-place field and the reviewer replaced in "fill the rest", and the "Col." colonia over-cut ("Col. El Carmen, Chimaltenango" sends only "Chimaltenango").
     - Markers are named as labels write them, in Latin ("leg.", "det."), English and Spanish, with a "det." test.
     - The labels say "#191's round-1 and final reviews" where both rounds ruled.
+  - PLAN section 6's S2 row names the release and approval documents #199's integration reviewer listed (LIVE_QA, RELEASE_ACCEPTANCE, PROTECTED_RELEASE_HARNESS, GO_LIVE_RUNBOOK, APPROVED_LOGFIRE_TRACING) and `golive/RELEASE.md`, beside the catch-all. After #199 moved two lines of `DEPLOYMENT.md`, the citation 924-930 becomes 926-932 in PLAN and S2's brief (same text).
   - Correction (dated 2026-09-24): commit 3783749's message and #200's PR body said the coordinator checks the file's SHA-256 against DoD-4's subject ids. A digest can't be checked against subject ids: the coordinator reads the file itself, and the digest is only what S2's checker pins. #200's PR body is corrected; the commit message stays as pushed.
 - Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: a verification step has to name what it verifies. "Check the digest against the subject ids" sounds like a check, but a digest only proves which bytes were read. The contents need a reader.
