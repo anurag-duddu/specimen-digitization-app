@@ -491,6 +491,10 @@ class DotSegmentLane(FakeLane):
                     # #84 round 2: a segment that decodes to "?" or a space, and a ";" parameter
                     "https://api.gbif.org/%3F/../v1/occurrence/search",
                     "https://api.gbif.org/v1/%20/../occurrence/search", "https://api.gbif.org/v1;x/occurrence/search",
+                    # #84 round 3: pinned here too; the last resolves to species match and is not counted
+                    "https://api.gbif.org/v1/occurrence/;x/../search", "https://api.gbif.org/v1/occurrence//../search",
+                    "https://api.gbif.org/v1/%5C/../occurrence/search",
+                    "https://api.gbif.org/v1/occurrence%3F/../../v2/species/match",
                     "https://api.gbif.org/v2/species/match?name=Epipsocus"):  # the last is species match
             http_effect.bounded_http(url, timeout_seconds=1, max_bytes=1)
         http_effect.bounded_http("https://api.gbif.org/v1/species/search", timeout_seconds=1, max_bytes=1,
@@ -508,7 +512,7 @@ def test_the_parent_count_removes_dot_segments_and_reads_query_keys_in_the_url(t
     monkeypatch.setattr(http_effect, "bounded_http", fake_bounded_http)
     run(tmp_path, lane=DotSegmentLane())
     summary = json.loads((only_run(tmp_path) / "run.json").read_text())
-    assert summary["gbif_occurrence_requests"] == 16
+    assert summary["gbif_occurrence_requests"] == 19
 
 
 def test_a_receipt_blob_recording_an_occurrence_query_fails_stage_7(tmp_path, monkeypatch):
@@ -729,9 +733,45 @@ def test_a_value_is_trimmed_before_the_allowlist_and_still_redacts(tmp_path):
     assert "adminuidfixture" not in (only_run(tmp_path) / "workspace.json").read_text()
 
 
-@pytest.mark.parametrize("flag", ["--max-run-usd", "--lab-allowance-usd", "--max-load"])
+@pytest.mark.parametrize("flag", ["--max-run-usd", "--lab-allowance-usd", "--max-load", "--timeout-seconds"])
 @pytest.mark.parametrize("value", ["nan", "inf", "-1", "0"])
 def test_a_budget_or_load_flag_must_be_finite_and_positive(flag, value):
     # #84 round 2: NaN passed preflight's comparisons, and the killed-run hold trusts --max-run-usd.
     with pytest.raises(SystemExit):
         run_specimen.parse_args([SUBJECT, flag, value])
+
+
+class ReplacedInterruptLane(FakeLane):
+    """A Ctrl-C in a phase, then an error while cleaning up after it, as when stop() times out."""
+
+    def process(self, specimen_id, deadline):
+        try:
+            raise KeyboardInterrupt
+        finally:
+            raise RuntimeError("stop timed out")
+
+
+def test_an_interrupt_that_an_error_replaced_in_a_phase_still_stops_the_run(tmp_path):
+    # #84 round 3: Run.phase recorded the RuntimeError and carried on; the interrupt was in its __context__.
+    with pytest.raises(KeyboardInterrupt):
+        run(tmp_path, lane=ReplacedInterruptLane())
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    process = next(p for p in summary["phases"] if p["name"] == "process")
+    assert process["status"] == "failed" and "check" not in {p["name"] for p in summary["phases"]}
+
+
+def test_a_ctrl_c_during_the_apps_request_stops_the_run_and_is_recorded(tmp_path):
+    # #84 round 3: with the real lane, a Ctrl-C during /complete's drain is raised when the request returns.
+    import lab_lane
+    from test_lab_lane import InterruptingAdapters, jpeg
+    from specimen_digitization.application.api import SYNTHETIC_TEXT
+
+    lane = lab_lane.AppLane(tmp_path / "lane", adapters_factory=lambda blobs: InterruptingAdapters(blobs, SYNTHETIC_TEXT),
+                            persistence="sqlite", segmentation="sam3", subject=SUBJECT)
+    image = jpeg()
+    with pytest.raises(KeyboardInterrupt):
+        run(tmp_path, lane=lane, fetcher=lambda subject: (image, {"bucket": "b", "object_name": "o", "generation": "1"}))
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    ingest = next(p for p in summary["phases"] if p["name"] == "ingest")
+    assert ingest["status"] == "failed" and "KeyboardInterrupt" in ingest["error"]
+    assert summary["result"] == "error" and summary["costs"]["total_usd"] == pytest.approx(0.75)

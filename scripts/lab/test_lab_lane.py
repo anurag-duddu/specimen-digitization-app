@@ -2,6 +2,7 @@
 
 import io
 import os
+import signal
 import time
 
 from PIL import Image
@@ -182,3 +183,65 @@ def test_a_ctrl_c_while_the_emulator_starts_stops_it(tmp_path, monkeypatch):
     with pytest.raises(KeyboardInterrupt):
         emulator.start()
     assert killed == [999_999]
+
+
+class InterruptingAdapters(SyntheticAdapters):
+    """Sends this process a Ctrl-C while the app's /complete drain runs segment."""
+
+    def segment(self, specimen):
+        os.kill(os.getpid(), signal.SIGINT)
+        return super().segment(specimen)
+
+
+def test_a_ctrl_c_during_the_apps_request_is_raised_when_the_request_returns(tmp_path):
+    # #84 round 3: the test client turns a BaseException in a request into a 500, so the lane holds a Ctrl-C
+    # while a request runs and raises it once the request returns; the previous handler comes back after.
+    before = signal.getsignal(signal.SIGINT)
+    lane = lab_lane.AppLane(tmp_path / "state", adapters_factory=lambda blobs: InterruptingAdapters(blobs, SYNTHETIC_TEXT),
+                            persistence="sqlite", segmentation="sam3", subject="subject_105526321")
+    with pytest.raises(KeyboardInterrupt):
+        with lane:
+            lane.ingest("subject_105526321.jpeg", jpeg(), "image/jpeg")
+    assert signal.getsignal(signal.SIGINT) is before
+
+
+def test_a_subclass_of_the_synthetic_adapters_is_not_trusted_as_synthetic(tmp_path):
+    # #84 round 3: a subclass can carry production methods (tests/test_model_runtime.py builds one).
+    class Carrying(SyntheticAdapters):
+        pass
+
+    lane = lab_lane.AppLane(tmp_path / "state", adapters_factory=lambda blobs: Carrying(blobs, SYNTHETIC_TEXT),
+                            persistence="sqlite", segmentation="sam3", subject="subject_105526331")
+    with pytest.raises(lab_lane.LabError, match="not one of the ten"):
+        lane.__enter__()
+
+
+def test_a_ctrl_c_right_after_the_emulator_is_launched_stops_it(tmp_path, monkeypatch):
+    # #84 round 3: the window between Popen and the wait was outside the cleanup.
+    killed = []
+
+    class FakeProcess:
+        pid, stdout = 999_998, iter(())
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+    class InterruptedThread:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            raise KeyboardInterrupt
+
+        def is_alive(self):
+            return False
+
+    monkeypatch.setattr(lab_lane.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+    monkeypatch.setattr(lab_lane.os, "killpg", lambda pid, sig: killed.append(pid))
+    monkeypatch.setattr(lab_lane.threading, "Thread", InterruptedThread)
+    with pytest.raises(KeyboardInterrupt):
+        lab_lane.Emulator(tmp_path / "emulator").start()
+    assert killed == [999_998]

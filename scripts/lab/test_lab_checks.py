@@ -375,7 +375,10 @@ def test_a_receipt_blob_names_the_occurrence_api_after_a_root_dot_segment():
 
 FORMS = ("/%2E%2E/v1/occurrence/search", "/v1//occurrence/12345", "//v1/occurrence/search",
          "/v2/%2e%2e/%2e%2e/v1/occurrence/search", "/%3F/../v1/occurrence/search", "/v1/%20/../occurrence/search",
-         "/v1;x/occurrence/search")
+         "/v1;x/occurrence/search",
+         # #84 round 3: a client resolves ".." before a server drops ";" or merges slashes
+         "/v1/occurrence/;x/../search", "/v1/occurrence/;/../search", "/v1/occurrence//../search",
+         "/v1/%5C/../occurrence/search")
 
 
 def test_every_pinned_form_counts_in_the_record_and_blob_scans():
@@ -395,3 +398,38 @@ def test_every_pinned_form_counts_in_the_record_and_blob_scans():
         assert lab_checks.occurrence_blob(json.dumps({"source": "gbif", "locator": form})), form
     for species in ("https://api.gbif.org/v2/%3F/../species/match", "https://api.gbif.org/v2;x/species/match"):
         assert not lab_checks.occurrence_blob(json.dumps({"url": species})), species
+
+
+def stage_7_of(record):
+    snap = snapshot()
+    snap["run"]["evidence"] = [record]
+    return next(s for s in lab_checks.check_stages(evidence(snap), SOURCE, SUBJECT) if s["stage"] == "7")
+
+
+def test_a_path_the_client_resolves_to_species_match_is_not_an_occurrence_request():
+    # #84 round 3: "occurrence%3F" is one segment to a client, so the two ".." reach /v2/species/match.
+    url = "https://api.gbif.org/v1/occurrence%3F/../../v2/species/match"
+    assert not lab_checks.occurrence_blob(json.dumps({"url": url}))
+    assert stage_7_of({"kind": "authority", "source": "web", "locator": url})["status"] != "failed"
+    assert stage_7_of({"kind": "lookup", "source": "gbif", "locator": url})["status"] != "failed"
+
+
+def test_a_gbif_records_relative_and_network_paths_are_read():
+    # #84 round 3: a relative path resolves from the root; "//host/path" is also read as a host and path.
+    for locator in ("v1/occurrence/search", "//mirror.example.org/v1/occurrence/search"):
+        assert stage_7_of({"kind": "lookup", "source": "gbif", "locator": locator})["status"] == "failed", locator
+
+
+def test_a_url_encoded_inside_another_is_split_before_each_decoding():
+    # #84 round 3: an inner %253F or %2520 hid the ".." one level down when the text was decoded to the end first.
+    for text in ("next=https%3A%2F%2Fapi.gbif.org%2F%253F%2F..%2Fv1%2Foccurrence%2Fsearch",
+                 "next=https%3A%2F%2Fapi.gbif.org%2Fv1%2F%2520%2F..%2Foccurrence%2Fsearch"):
+        assert lab_checks.occurrence_request(text), text
+    assert not lab_checks.occurrence_request(
+        "next=https%3A%2F%2Fapi.gbif.org%2Fv1%2Foccurrence%253F%2F..%2F..%2Fv2%2Fspecies%2Fmatch")
+
+
+def test_a_blob_holding_escaped_json_is_read_at_each_level():
+    # #84 round 3: the blob's record branch applied only the record test, not the text test to its strings.
+    inner = '{"url": "https:\\/\\/api.gbif.org\\/v1\\/occurrence\\/search"}'
+    assert lab_checks.occurrence_blob(json.dumps({"context_json": inner}))
