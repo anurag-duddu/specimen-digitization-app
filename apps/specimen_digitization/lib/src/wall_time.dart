@@ -85,12 +85,13 @@ const Map<String, String> _shortZones = <String, String>{
 
 /// The instant a day begins on the reviewer's wall clock, in UTC, for a
 /// filter the reviewer typed as a day (design/01 H2.1; coordinator ruling
-/// for S6, 2026-09-25, 01:26Z): its midnight, or, where the clocks jump over
-/// midnight on a daylight-saving day (Havana, Santiago, the Azores), the
-/// jump, the day's first moment. Where the clocks repeat midnight, east of
-/// UTC, it is the second midnight; no zone does so in 2024-2030 (the #202
-/// review's sweeps of all 598 zones). Found through [wallTime], so the
-/// suite's pinned clock answers it as well as the host's.
+/// for S6, 2026-09-25, 01:26:02Z): its midnight, or, where the clocks jump
+/// over midnight on a daylight-saving day (Havana, Santiago, the Azores), the
+/// jump, the day's first moment. Where the clocks repeat midnight, it is the
+/// first midnight west of UTC, which is every such day in 2024-2030 (Havana
+/// each November, the Azores each October: 21 in the #202 review's sweep),
+/// and the second east of UTC, which no zone does in 2024-2030. Found through
+/// [wallTime], so the suite's pinned clock answers it as well as the host's.
 DateTime wallDayStart(int year, int month, int day) {
   final DateTime midnight = DateTime.utc(year, month, day);
   // Moves [instant] by how far its wall clock reads from the midnight.

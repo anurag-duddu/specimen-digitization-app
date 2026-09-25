@@ -38,7 +38,7 @@ final RegExp _hostZone = RegExp(
   r'|from(Milli|Micro)secondsSinceEpoch\((?![^)]*isUtc:\s*true)'
   r'|DateTime\.now\(\)\.(year|month|day|hour|minute|second|millisecond'
   r'|microsecond|weekday)\b'
-  r'|\bdebugWallTimeOverride\b|\bhostWallTime\b',
+  r'|\bdebugWallTimeOverride\b|\b_?hostWallTime\b',
 );
 
 /// Where the guard looks. A root that goes missing fails the guard rather
@@ -64,7 +64,7 @@ void main() {
 
     test("an instant in UTC prints on the reviewer's clock too", () {
       // design/01 H1.9: a reviewer never converts zones in their head
-      // (coordinator ruling for S6, 2026-09-24).
+      // (coordinator ruling for S6, 2026-09-24, 23:30:28Z).
       expect(
         absoluteTime(DateTime.utc(2026, 9, 14, 10, 22)),
         '14 Sep 2026, 05:22 CDT',

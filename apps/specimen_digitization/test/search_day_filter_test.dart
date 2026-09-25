@@ -1,5 +1,5 @@
 // A typed day is the reviewer's own day (coordinator ruling for S6,
-// 2026-09-25, applying design/01 H2.1: "display local dates, and convert to
+// 2026-09-25, 01:26:02Z, applying design/01 H2.1: "display local dates, and convert to
 // UTC in the request"). Its midnight on the reviewer's clock goes to the API
 // in UTC, and the queue's chip shows it back as a day. The suite's clock is
 // pinned to US Central time (`flutter_test_config.dart`).
