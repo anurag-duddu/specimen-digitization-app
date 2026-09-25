@@ -174,7 +174,9 @@ def test_paid_attempts_without_settled_usage_count_at_their_full_bound():
     # Until production's reserve-then-settle ledger lands, every paid attempt whose usage the run did
     # not settle is held at the full per-call bound: an unknown outcome (coordinator, 2026-09-23) and,
     # since #86, a call that returned and then failed with a known blocker, whose usage the workflow
-    # does not record. Local SAM 3 costs nothing.
+    # does not record. Local SAM 3 costs nothing. PLAN 4.3 runs the lab under production's mechanism, so
+    # the lab reads the bound as the largest of: the step's reservation in the run's profile, PLAN 4.3's
+    # floor for a call's two requests (USD 0.04), and the call's 16,000-token limit at the top price.
     earlier = snapshot()["run"] | {
         "id": "run-1", "stage": "processing_blocked", "blocker": "external_outcome_unknown",
         "attempts": {"segment": 1, "parse": 1}, "completed_steps": ["classify"], "observations": [],
@@ -186,10 +188,19 @@ def test_paid_attempts_without_settled_usage_count_at_their_full_bound():
     costs = run_specimen.price(snap)
     # run-1: parse with an unknown outcome; run-2: a retried reader attempt, and parse after a known failure
     assert sorted(costs["unsettled_attempts"]) == ["parse", "parse", "transcribe:r1:handwriting-qwen"]
-    assert costs["unsettled_usd_bound"] == pytest.approx(3 * 16_000 * 1.20e-6)
-    assert costs["total_usd"] == pytest.approx(
-        costs["readers_usd"] + costs["other_usd_upper_bound"] + 3 * 16_000 * 1.20e-6
-    )
+    assert costs["unsettled_usd_bound"] == pytest.approx(3 * 0.04)
+    assert costs["total_usd"] == pytest.approx(costs["readers_usd"] + costs["other_usd_upper_bound"] + 3 * 0.04)
+
+
+def test_a_reservation_the_profile_records_raises_the_bound_for_its_step():
+    snap = snapshot(stage="processing_blocked", blocker="external_outcome_unknown",
+                    attempts={"transcribe:r1:handwriting-qwen": 2, "parse": 1},
+                    completed_steps=["classify", "segment", "transcribe:r1:handwriting-qwen"])
+    snap["run"]["profile"]["execution"]["stage_cost_reservations"] = {
+        "version": "stage-cost-reservations-v1",
+        "cost_micros": {"transcribe:handwriting-qwen": 90_000, "parse": 30_000}}
+    costs = run_specimen.price(snap)
+    assert costs["unsettled_usd_bound"] == pytest.approx(0.09 + 0.04)  # parse's 0.03 is below the floor
 
 
 def test_costs_price_each_reading_and_bound_the_remaining_tokens():
@@ -248,9 +259,17 @@ def test_the_redactor_ignores_case_and_percent_encoding():
     # in another case all survived.
     redact = run_specimen.Redactor({"HF_BILL_TO": "Example-Billing-Org"})
     text = redact("host SPECIMEN-SAM-X1.A.RUN.APP; https://Logfire-US.pydantic.dev/Owner-Org/project; "
-                  "caller admin%40example.org; billed to example-billing-org and EXAMPLE-BILLING-ORG")
-    for leak in ("RUN.APP", "Owner-Org", "admin%40example.org", "example-billing-org", "EXAMPLE-BILLING-ORG"):
+                  "caller admin%40example.org, again admin%2540example.org; "
+                  "billed to example-billing-org and EXAMPLE-BILLING-ORG")
+    for leak in ("RUN.APP", "Owner-Org", "admin%40example.org", "admin%2540example.org", "example-billing-org",
+                 "EXAMPLE-BILLING-ORG"):
         assert leak not in text, leak
+
+
+def test_home_paths_are_found_in_any_case(monkeypatch):
+    # #83 round 2: macOS paths ignore case, so a home path can be written in another case.
+    monkeypatch.setenv("HOME", "/Users/labfixture")
+    assert run_specimen.Redactor({})("/users/labfixture/runs and /USERS/LABFIXTURE/x") == "~/runs and ~/x"
 
 
 class OccurrenceLane(FakeLane):
@@ -416,6 +435,7 @@ def test_a_run_that_cannot_be_priced_is_held_at_its_bound(tmp_path):
     assert summary["costs"]["total_usd"] == pytest.approx(0.75)
     assert summary["lab_spend_usd"] == pytest.approx(0.75)
     assert run_specimen.recorded_spend(tmp_path / "runs") == pytest.approx(0.75)
+    assert "the lab's own rule" in (only_run(tmp_path) / "report.md").read_text()
 
 
 def test_a_failed_check_keeps_the_priced_spend(tmp_path, monkeypatch):
@@ -451,8 +471,11 @@ class DotSegmentLane(FakeLane):
 
         for url in ("https://api.gbif.org/v1/./occurrence/search", "https://api.gbif.org/v1/x/../occurrence/search",
                     "https://api.gbif.org/v1/././occurrence", "https://api.gbif.org/v1/species/search?catalogNumber=1",
+                    "https://api.gbif.org/../v1/occurrence/search",  # ".." above the root (#83 round 2)
                     "https://api.gbif.org/v2/species/match?name=Epipsocus"):  # the last is species match
             http_effect.bounded_http(url, timeout_seconds=1, max_bytes=1)
+        http_effect.bounded_http("https://api.gbif.org/v1/species/search", timeout_seconds=1, max_bytes=1,
+                                 params=httpx.QueryParams({"recordedBy": "Hoogstraal"}))
         client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={})))
         client.get("https://api.gbif.org/v1/species/search", params={"recordedBy": "Hoogstraal"})
         client.get("https://api.gbif.org/v1/species/search?institutionCode=FMNH")
@@ -466,7 +489,7 @@ def test_the_parent_count_removes_dot_segments_and_reads_query_keys_in_the_url(t
     monkeypatch.setattr(http_effect, "bounded_http", fake_bounded_http)
     run(tmp_path, lane=DotSegmentLane())
     summary = json.loads((only_run(tmp_path) / "run.json").read_text())
-    assert summary["gbif_occurrence_requests"] == 6
+    assert summary["gbif_occurrence_requests"] == 8
 
 
 def test_a_receipt_blob_recording_an_occurrence_query_fails_stage_7(tmp_path, monkeypatch):
@@ -531,3 +554,43 @@ def test_a_report_only_rebuild_carries_a_new_verdict_without_preflight_or_fetch(
     assert "passed: every reason matches the expected outcome" in report
     code, _ = run(tmp_path, "--report-only", values=None, fetcher=no_fetch)
     assert code == 3  # the report is redacted, so the values file is still required
+
+
+@pytest.mark.parametrize("line", ["ADMIN_UID=adminuidfixture", '"adminuidfixture"', "adminuidfixture # admin",
+                                  "admin uid fixture"])
+def test_a_values_file_line_that_is_not_one_bare_value_is_refused(tmp_path, line):
+    # #83 round 2: such a file passed, and its value never matched anything.
+    values = tmp_path / "private" / "values"
+    values.parent.mkdir()
+    values.write_text(f"{line}\n")
+    code, lanes = run(tmp_path, values=values)
+    assert code == 3 and lanes == []
+
+
+def test_a_byte_order_mark_does_not_hide_the_first_value(tmp_path):
+    values = tmp_path / "private" / "values"
+    values.parent.mkdir()
+    values.write_bytes("\ufeffadminuidfixture\n".encode())
+    run(tmp_path, lane=PlantedLane(), values=values)
+    assert "adminuidfixture" not in (only_run(tmp_path) / "workspace.json").read_text()
+
+
+def test_a_report_only_rebuild_without_any_run_is_refused(tmp_path):
+    code, lanes = run(tmp_path, "--report-only")
+    assert code == 3 and lanes == []
+    assert not (tmp_path / "reports" / f"{SUBJECT}.md").exists()
+
+
+class InterruptedLane(FakeLane):
+    def process(self, specimen_id, deadline):
+        raise KeyboardInterrupt
+
+
+def test_ctrl_c_is_recorded_as_a_failure_and_the_run_held_at_its_bound(tmp_path):
+    # #83 round 2: an interrupted phase was recorded as passed.
+    with pytest.raises(KeyboardInterrupt):
+        run(tmp_path, lane=InterruptedLane())
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    process = next(p for p in summary["phases"] if p["name"] == "process")
+    assert process["status"] == "failed" and "KeyboardInterrupt" in process["error"]
+    assert summary["result"] == "error" and summary["costs"]["total_usd"] == pytest.approx(0.75)
