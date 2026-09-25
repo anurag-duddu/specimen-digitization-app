@@ -12133,3 +12133,16 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (3) On the pinned tiles, GLO-30 agrees with the research's SRTM figures within about 10 m at every pilot point: Yepocapa's town 1,395.8 m against 1,396 m. A 5 km circle around Mount Apo or Talomo crosses into the next tile, so the caller must pass every tile a circle touches.
 - Failed approaches: a first draft decoded every internal tile across a row. It now decodes only the column range the circle needs.
 - Remaining follow-ups: the derivation that names the tile's dataset id and SHA-256 with the settled location, once S4's #144 merges; reading the neighbouring tiles when a circle crosses an edge, which needs those tiles pinned.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 6d: administrative units from boundary files
+
+- Task: brief task 6, the boundaries that containment (G37) and a unit's extent (G38) read, pinned by the coordinator's rulings of 2026-09-24: geoBoundaries' simplified Philippine files with the 101.2 m margin, and CONRED's COD-AB file for Guatemala, each under CC BY 3.0 IGO. The owner approved the four downloads the same day.
+- Branch and worktree: `golive/geo-boundaries` in `.claude/worktrees/geo-build`, stacked on #196.
+- Outcome: the manifest pins the four files with their credits and margins. `georef_boundaries.py` reads them into units with codes and parents, finds the unit holding a whole circle at each level, and gives a unit's extent with the margin added to its radial.
+- Validation: 22 boundary test cases on unchanged excerpts of the pinned files and 4 new manifest tests; the four pinned files read locally at the pilot points; `uv run pytest -q`; pre-commit.
+- Durable learnings:
+  - (1) geoBoundaries' licenses are per boundary, not the release's CC BY 4.0: the Philippine files are CC BY 3.0 IGO from NAMRIA, the PSA and OCHA, and Guatemala's ADM1 is OpenStreetMap's ODbL, which the coordinator ruled out. HDX's COD-AB zip holds Guatemala's departments and municipios together, each municipio naming its department.
+  - (2) Mount Apo's summit lies only 123 m inside Davao City's simplified boundary, so the 101.2 m margin leaves room for a 22 m circle. The margin decides real cases, not only edge ones.
+  - (3) detect-secrets reads some geoBoundaries shape ids as hex secrets, by entropy: Makilala's scored 3.12 against the threshold of 3.0, Davao City's 2.87. Adding a finding means a baseline entry, a Gitleaks allowlist line and a review record (`docs/execution/SECRET_SCAN_REVIEW.md`), so the fixture keeps only the unit the tests read.
+- Failed approaches: a first fixture also carried Makilala, which no test read; its shape id tripped the scanner.
+- Remaining follow-ups: the derivations that name a unit's dataset id, SHA-256 and code, once S4's #144 merges; which level fills which Darwin Core field waits with D8.

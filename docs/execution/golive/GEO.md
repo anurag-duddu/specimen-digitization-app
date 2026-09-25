@@ -824,8 +824,8 @@ The derivations come with S4's #144. Each names the unit's dataset id, SHA-256
 and code, as PLAN 4.8 asks.
 
 **Checked on the pinned files.** This check ran locally, not in CI, on the four
-files. Each file read in 0.13 s or less, and a search of all of a country's
-units took 0.02 s. On them:
+files. Each file read in under 0.2 s, and a search of all of a country's units
+took 0.02 s. On them:
 - Mount Talomo lies in Davao City, Davao del Sur and the Davao Region, 2,184 m
   inside each, so a circle of up to 2,082 m is held.
 - Mount Apo's summit lies 123 m inside Davao City's simplified boundary, so
