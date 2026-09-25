@@ -187,7 +187,7 @@ Sessions implement these as specified; none is a new decision.
 | Hugging Face Inference Providers credits: the account's included monthly credits ran out on 2026-09-23 and routed calls return HTTP 402 | every model call: readers, first pass, harness, the acceptance lab | done 2026-09-23: the owner bought pre-paid credits, and routed calls succeed again |
 | The repository's "Allow auto-merge" switched off (G21) | G17 for every session | done 2026-09-23 (`allow_auto_merge` is false) |
 | A Logfire read token for the acceptance lab (optional) | reading each run's trace back for DoD-5 | owner copies the existing read token, under the owner's 2026-09-23 decision to reuse existing credentials; a separate, revocable lab token can replace it later; the acceptance lab's entry in `~/specimen-golive/OWNER_ACTIONS.md` |
-| Standing IAM grants for the release and runtime identities (G11), the one-time, time-bounded grants for initialization and bootstrap that `DEPLOYMENT.md` 924-930 and the setup-window path require, and read access to the secrets `specimen-source-registry`, `specimen-collection-bindings` and `specimen-worker-actor-uid`, which the owner created on 2026-09-23 (version 1 each) | first data and runtime releases | owner runs the exact reviewed list the release workstream prepares (#119); once its part 1 is applied, the next setup window waits for #123 and a fresh window packet |
+| Standing IAM grants for the release and runtime identities (G11), the one-time, time-bounded grants for initialization and bootstrap that `DEPLOYMENT.md` 926-932 and the setup-window path require, and read access to the secrets `specimen-source-registry`, `specimen-collection-bindings` and `specimen-worker-actor-uid`, which the owner created on 2026-09-23 (version 1 each) | first data and runtime releases | owner runs the exact reviewed list the release workstream prepares (#119); once its part 1 is applied, the next setup window waits for #123 and a fresh window packet |
 | S8's D4, the museum's published GBIF points, and D5, the checks' limits (#94) | the checks that compare a place with the label; until decided, D4's occurrence check is off and sends nothing, and D5's checks record findings only and never change an outcome (coordinator rulings) | put to the owner on 2026-09-24 and dismissed, so on hold until the owner takes them up; when D4 is taken up, its `catalogNumber` and `recordedBy` queries go to the owner as an explicit exception to section 4.8; D1, D2, D3, D6, D7 and D9 are decided (G35 to G39), D11 (Copernicus GLO-30 elevation tiles read from the project's storage, credited) and D13 (the in-house point-radius uncertainty engine per the Georeferencing Best Practices and Calculator) are coordinator rulings, and D8, D10 and D12 wait for their phase, except Getty TGN (G35) |
 | What `verbatim_dts` holds (`PRD.md`'s open question 3), which G45's kind check needs for that field | G45 for `verbatim_dts` | saved for the owner, with D4 and D5, on 2026-09-24; until the answer, a mismatch there is recorded as a finding (coordinator hold) |
 | A curator's confirmation of S8's curated place and itinerary entries (G36): the Insects collection manager, or a curator they name | the six McKinley slides settling, and the Apo slide's refinement | S8's review sheets, one per entry with its sources, are ready (`~/specimen-golive/research/S8-curator-review-sheets.md`, 2026-09-24). The owner chose not to send them for now: "That’s fine. Human review is ok" (2026-09-24). No entry is confirmed, and an unconfirmed entry never settles a field (G36), so the six McKinley slides' places go to human review. Coordinator reading of G36 (the correction sent to S7 and to the owner at 00:43Z on 2026-09-25): Mt. Apo is a mapped peak, not a curated entry, so the Apo slide's place may settle from gazetteer evidence with its record, or stay unresolved, and which Mount Apo is meant is itself unsettled (GeoNames 6569865 is a 640 m "Mount Apo" near Malita; S8's sheet 3). Only the itinerary's refinement of slide 327 is a curated entry, and it waits. The entries stay unconfirmed |
@@ -453,22 +453,26 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     a non-place field; every token of every clause, between commas, semicolons
     or line breaks, that holds a collector or determiner marker the profile's
     notations name, wherever the marker sits in it, and the notations name
-    those markers in English and Spanish in their usual forms, such as "leg.",
-    "coll.", "Collector", "Col.", "Colector" and "det." (coordinator ruling of
-    2026-09-24, on #191's final review); every token that carries a digit;
-    every month name and abbreviation the profile's date notations list, in any
-    case, and they list each month in full and abbreviated in English and
-    Spanish, the pilot labels' languages, in the usual forms and older ones,
-    such as "Sept.", "September", "Mayo", "setiembre" and "Agto." (coordinator
-    rulings of 2026-09-24, on #191's reviews and on S4's #183); and a token
-    whose every word is a Roman numeral I to XII, in any case, such as "VIII"
-    or "VIII/IX", next to a date number, a day or a year in the profile's forms
-    (3, 14, 1946, '46 or -46), before or after it, across separators
-    (coordinator ruling on S4's #183, 2026-09-24). So "VIII" goes in "3 VIII
-    1946", "Mindanao, VIII, 1946" and "Mindanao, VIII -46", and "VIII/IX" in
-    "VIII/IX 1946", while "Camp IV" and "P.I." stay. The readings' non-place
-    literals do not cut the reviewer's own place value, since the reviewer's
-    correction is the authority there.
+    those markers as labels write them, in Latin ("leg.", "det."), English
+    ("coll.", "Collector") and Spanish ("Col.", "Colector") (coordinator
+    rulings of 2026-09-24, on #191's and #200's final reviews); every token
+    that carries a digit; every month name and abbreviation the profile's date
+    notations list, in any case, and they list each month in full and
+    abbreviated in English and Spanish, the pilot labels' languages, in the
+    usual forms and older ones, such as "Sept.", "September", "Mayo",
+    "setiembre" and "Agto." (coordinator rulings of 2026-09-24, on #191's
+    round-1 and final reviews and on S4's #183); and a token whose every word
+    is a Roman numeral I to XII, in any case, such as "VIII" or "VIII/IX", next
+    to a date number, before or after it, across separators. A date number is a
+    day or a year in the profile's forms (3, 14, 1946, '46 or -46), also
+    written with any apostrophe or dash ("‘46", "–46"), as an ordinal day
+    ("3rd"), or with punctuation before or after it ("1946.", "1946?",
+    "(1946)") (coordinator rulings on S4's #183 and on #200's final review,
+    2026-09-24). So "VIII" goes in "3 VIII 1946", "Mindanao, VIII, 1946",
+    "Mindanao, VIII -46", "Mindanao, VIII ‘46", "VIII 1946?" and "3rd VIII",
+    and "VIII/IX" in "VIII/IX 1946", while "Camp IV" and "P.I." stay. The
+    readings' non-place literals do not cut the reviewer's own place value,
+    since the reviewer's correction is the authority there.
   - Expansion, after the cuts: a surviving notation token that the table
     assigns to place fields only, and that appears in an allowed source, may be
     replaced by each full form the table lists for it, so "Davao Prov." is sent
@@ -477,20 +481,21 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     brings back a cut character. A full form with no such notation in a source,
     and not itself in a source, is refused (coordinator ruling on S4's #183).
   - Identifiers (coordinator rulings of 2026-09-24: on #185's review item 1, on
-    S4's question about NGA's unit codes, and on #191's reviews for where an
-    identifier comes from): an identifier a tier-1 source returned in its own
-    answer, in the field that carries that source's identifiers, and matching
-    that source's documented identifier pattern (a Wikidata item's Q-number, a
-    TGN subject id, a GNS feature id, or a GNS first-order unit code such as
-    "PH-DVC"), may be sent back to that same source unchanged. It is checked
-    against that field of the source's answer as the tool received it, never
-    against another token of the answer, the record or a list the agent
-    supplies. TGN's and GNS's digit patterns match any label number, such as
-    "1946", and an answer also holds numbers as dates and coordinates, such as
-    a TGN `estStart` of "1946" or a GNS latitude of 7.3, so where it came from
-    is the guard: an identifier the source did not return in that field is
-    refused, and so is one that fails the pattern. Identifiers skip the source
-    check above, and they carry no label text, so no cut applies to them.
+    S4's question about NGA's unit codes, and on #191's round-1 and final
+    reviews for where an identifier comes from): an identifier a tier-1 source
+    returned in its own answer, in the field that carries that source's
+    identifiers, and matching that source's documented identifier pattern (a
+    Wikidata item's Q-number, a TGN subject id, a GNS feature id, or a GNS
+    first-order unit code such as "PH-DVC"), may be sent back to that same
+    source unchanged. It is checked against that field of the source's answer
+    as the tool received it, never against another token of the answer, the
+    record or a list the agent supplies. TGN's and GNS's digit patterns match
+    any label number, such as "1946", and an answer also holds numbers as dates
+    and coordinates, such as a TGN `estStart` of "1946" or a GNS latitude of
+    7.3, so where it came from is the guard: an identifier the source did not
+    return in that field is refused, and so is one that fails the pattern.
+    Identifiers skip the source check above, and they carry no label text, so
+    no cut applies to them.
   - Fixed parts: query properties such as P625, P582 and P1365, paging, limits
     and headers (a project User-Agent naming no person or email) are reviewed
     constants, not record values, with a test that they carry no label text.
@@ -507,24 +512,25 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     request the place tool makes, tier 1, tier 2 and "fill the rest" alike.
   - Tests show exactly what it guarantees: "H. Hoogstraal leg." and a slice of
     it such as "Hoogstraa"; "Werner" where the record reads "Wernersdorf" and
-    "leg. Werner"; "Col. J. Perez", "Colector J. Perez" and "Collector: H.
-    Hoogstraal"; "3 Sept. '46", "3 SEPT. '46" and "3 SEPT. 1946";
-    "Chimaltenango, 3 Mayo 1946", "3 Setiembre 1946" and "3 Agto. 1946"; "3
-    VIII 1946", "3 viii 1946", "Mindanao, VIII, 1946", "Mindanao, VIII -46" and
-    "VIII/IX 1946"; "Mindanao, P.I. 3 Sept. '46"; "Camp IV"; "Davao Prov., leg.
-    Hoogstraal"; "Philippine Islands" written on the label and "P.I." expanded
-    to it; every full form the table lists; a reviewer's corrected collector
-    spelling that matches no reading literal; a reviewer's place value that a
-    reading's non-place literal would otherwise cut, and one with a date in it;
-    a literal the harness gives a non-place field refused as a source; tier-1
-    identifiers passing, a catalogue number offered as a TGN identifier
-    refused, a label number the answer holds only as a date or a coordinate
-    refused (a TGN `estStart` of "1946", a GNS latitude of 7.3), and other
-    values refused; the fixed parts and the User-Agent carrying no label text;
-    and a place value with a quote in it reaching the query escaped. No cut
-    character leaves, each expansion carries only full forms the table lists,
-    and a value not drawn from those sources is refused. Tests also pin each
-    case the limit names, so a change in what can leave shows.
+    "leg. Werner"; "Col. J. Perez", "Colector J. Perez", "Collector: H.
+    Hoogstraal" and "Davao Prov., det. F.G. Werner"; "3 Sept. '46", "3 SEPT.
+    '46" and "3 SEPT. 1946"; "Chimaltenango, 3 Mayo 1946", "3 Setiembre 1946"
+    and "3 Agto. 1946"; "3 VIII 1946", "3 viii 1946", "Mindanao, VIII, 1946",
+    "Mindanao, VIII -46", "Mindanao, VIII ‘46", "VIII –46", "VIII 1946?", "3rd
+    VIII" and "VIII/IX 1946"; "Mindanao, P.I. 3 Sept. '46"; "Camp IV"; "Davao
+    Prov., leg. Hoogstraal"; "Philippine Islands" written on the label and
+    "P.I." expanded to it; every full form the table lists; a reviewer's
+    corrected collector spelling that matches no reading literal; a reviewer's
+    place value that a reading's non-place literal would otherwise cut, and one
+    with a date in it; a literal the harness gives a non-place field refused as
+    a source; tier-1 identifiers passing, a catalogue number offered as a TGN
+    identifier refused, a label number the answer holds only as a date or a
+    coordinate refused (a TGN `estStart` of "1946", a GNS latitude of 7.3), and
+    other values refused; the fixed parts and the User-Agent carrying no label
+    text; and a place value with a quote in it reaching the query escaped. No
+    cut character leaves, each expansion carries only full forms the table
+    lists, and a value not drawn from those sources is refused. Tests also pin
+    each case the limit names, so a change in what can leave shows.
   - Its stated limit: text the filter cannot recognize can still leave. That is
     text that no reading assigns to a non-place field and the harness has not
     yet given one, when no marker the profile names sits in its clause
@@ -533,16 +539,22 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     leaves whole, "H. Hoogstraal" leaves when its "leg." sits in a neighbouring
     clause or line, and so do a habitat such as "Mossy forest", "FMNH INS" from
     a catalogue number and "ft." from "Mt. Apo, 6000 ft."; so does a name
-    beside a marker the profile doesn't list. A month name in a language the
-    profile doesn't list can leave, and so can a form of a listed language that
-    it doesn't list, and a lone or ranged month numeral with no day or year
-    beside it, such as "VIII/IX". The cuts can also take too much: a place's
-    own numeral beside a date number goes, so "Camp IV, 3 VIII 1946" sends only
-    "Camp"; a place named with a month word loses that word, so "Cape May"
-    sends "Cape"; a clause holding a marker is cut wherever its words appear,
-    so "Mt. Apo leg. Hoogstraal" on one line takes "Mt. Apo" from every other
-    line, a reviewer's value included; and a tier-1 name whose numeral stands
-    beside a number, such as a region written with its code, loses the numeral.
+    beside a marker the profile doesn't list. In "fill the rest", a value the
+    harness gave a non-place field and the reviewer replaced can leave when no
+    reading assigns it (coordinator ruling of 2026-09-24, on #200's final
+    review). A month name in a language the profile doesn't list can leave, and
+    so can a form of a listed language that it doesn't list, a lone or ranged
+    month numeral with no day or year beside it, such as "VIII/IX", and a
+    numeral that shares its token with a word, such as "mid-VIII 1946". The
+    cuts can also take too much: a place's own numeral beside a date number
+    goes, so "Camp IV, 3 VIII 1946" sends only "Camp"; a place named with a
+    month word loses that word, so "Cape May" sends "Cape"; a colonia written
+    "Col." is cut as a collector's clause, so "Col. El Carmen, Chimaltenango"
+    sends only "Chimaltenango"; a clause holding a marker is cut wherever its
+    words appear, so "Mt. Apo leg. Hoogstraal" on one line takes "Mt. Apo" from
+    every other line, a reviewer's value included; and a tier-1 name whose
+    numeral stands beside a number, such as a region written with its code,
+    loses the numeral.
 - The Maps key, and any credential a later source needs, is kept in Secret
   Manager and follows section 4.5's rule: no span, log line, exception text,
   stored error, tool-call result, test fixture or lab folder records it or the
@@ -656,7 +668,7 @@ requests labelled `golive` with the title prefix `[golive:<ws>]`.
 |---|---|---|---|---|
 | S0 | App production launch plan | Plan, decisions, merge order, owner liaison, acceptance sign-off | `docs/execution/golive/PLAN.md`, `briefs/`, `~/specimen-golive/MERGE_ORDER.md`, and the notes in `docs/product-requirements/PRD.md` that record owner decisions | Opus 5.5, max |
 | S1 | Steward go-live PRs through review and merge | Review every PR with a fresh swarm, CI to green, merge, post-merge deploy checks, push back | no source; PR comments; reruns; merges (G17) | Opus 5.5, high |
-| S2 | Release data and runtime planes on merge | Contract amendments, auto-on-merge planes, IAM and secret lists, first releases, repository variables, deploy health | `AGENTS.md` deployment paragraph, `docs/DEPLOYMENT.md`, release and approval docs, `.github/workflows/`, `scripts/ci/` release and deploy code, `infra/`, `containers/`, `scripts/qa/live/` | Opus 5.5, xhigh |
+| S2 | Release data and runtime planes on merge | Contract amendments, auto-on-merge planes, IAM and secret lists, first releases, repository variables, deploy health | `AGENTS.md` deployment paragraph, `docs/DEPLOYMENT.md`, `docs/execution/golive/RELEASE.md`, the release and approval docs in `docs/execution/` (`LIVE_QA.md`, `RELEASE_ACCEPTANCE.md`, `PROTECTED_RELEASE_HARNESS.md`, `GO_LIVE_RUNBOOK.md`, `APPROVED_LOGFIRE_TRACING.md`, and the other `RELEASE_*` and `APPROVED_*` documents), `.github/workflows/`, `scripts/ci/` release and deploy code, `infra/`, `containers/`, `scripts/qa/live/` | Opus 5.5, xhigh |
 | S3 | Build the on-demand processing lane | On-demand trigger and source import in production, worker drain, SAM 3 per run, profile configuration and inheritance, optional fields at runtime, budget, tracing | `api.py` processing and source routes, `worker*.py`, `sam3_*.py`, `production.py` adapters (535-910), `workflow.py` step bodies before `adjudicate` (pin_dependencies, classify, quality_check, segment, transcribe), `cli.py`, `transcription.py`, `collection_*.py`, `profile_runtime.py`, `observability.py`, `bounded_telemetry.py`, `tracing.py`, `provider_privacy.py` | Opus 5.5, high |
 | S4 | Build the LLM first pass and agentic harness | LLM first pass, agentic harness and tools, fallback, graceful outcomes, queue rule G1 | new first-pass and harness modules, `harness.py`, `evidence_harness.py`, `lookup.py`, `parties.py`, `geography.py`, `policy.py`, `prompts.py`, `model_gateway.py` routes, `workflow.py` step bodies from `adjudicate` to finalize, including `parse` (685-719) and the stage 5 scores (the disagreement ratio in `adjudicate`, the risk score in `finalize`) | Opus 5.5, high |
 | S5 | Build the pipeline data model and thread API | Data contract, schema additions, normalized projection, thread API, contract snapshots | `dataconnect/`, `scripts/data/`, `storage.py`, `search.py`, `active_graph.py`, `production.py` `SqlConnectRepository` (80-534), a new thread-route module, `scripts/ci/release_sql_catalog.sql` and the table-count assertion in `scripts/ci/test_data_release.py`, `docs/execution/backend-*.json` | Opus 5.5, high |
