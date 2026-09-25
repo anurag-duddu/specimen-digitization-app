@@ -12273,6 +12273,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. A licence cell holds two facts: the licence and the channel. The Philippine files' metadata cites HDX as its licence source, but the files come from geoBoundaries, so copying "via HDX" named the wrong channel.
 - Failed approaches: none.
 - Remaining follow-ups: none from the review. The steward checks #183's identifier field rule at #183's turn. The 259 ids S8's readers send back already come from the fields it reads.
+
 ### 2026-09-24 — Go-live program: plan corrections after #191
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
@@ -12294,3 +12295,27 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: an identifier check is only as strict as the field it reads. "Returned by the source" has to name the id field, because an answer's dates and coordinates are numbers too, and a digit pattern matches them.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — S8: #201's review follow-ups, and a correction to its entry
+
+- Task: the steward's review of #201 (merged as `400a444`; comment 5826776118, Decision items 1 and 2), done in a second small docs pull request on `main`. Item 3 waits for #154's turn.
+- Branch/worktree: `golive/geo-plan-followups-2` from `main` at `400a444`; `.claude/worktrees/busy-thompson-19cc3b`.
+- Outcome, in `docs/product-requirements/GEOREFERENCING.md`:
+  - 3.4 no longer scores a label lag: a unit that had ended by the date is not valid and is never scored, and a label-lag value waits on D5's tolerance;
+  - `valid_on`'s docstring says #154's `use_on` reports the same case as "ended", with `gap_days`;
+  - the blueprint's Wikidata tier keeps only search-hit ids matching `Q[1-9][0-9]*`, the Identifiers pattern;
+  - nothing in the tool's context is put in a request (:80);
+  - Bionomia, queried by collector, needs the owner's explicit exception to PLAN 4.8, as D4's `recordedBy` queries do;
+  - step 1 names the owner's dismissal of D4 and D5 and dates the coordinator's "wait" for D8, D10 and D12;
+  - the dropped "and" at :325 is back, and "licenses" is spelled as elsewhere.
+- Corrections to the entry "S8: #94's review follow-ups, and a correction to its entry" (the log is append-only; a blank line now separates it from the next heading):
+  - its pull request is #201, merged as `400a444`;
+  - #201 had two docs commits, `ae67eb8` and `0a8c657`, and the merge `561132f` of `main` at `b500f6b`; the citations were re-checked at `b500f6b` as well as at `e6bcfa7`, and `0a8c657` aligned :80 with #200's stated limit;
+  - "The 259 ids S8's readers send back" has no source in the repository. It is the count from S8's local check of 2026-09-25: every id the Wikidata, TGN and NGA readers take from the recorded answers in `tests/fixtures/georeferencing/` (on #198's stack) for a follow-up request, checked against #183's field rule by a script outside the repository. S4 recorded the result in #183's pull request body. In the repository it is not confirmed.
+- Commits/PRs: one docs commit; no red and green commits, since no product behaviour changes.
+- Validation actually run: pre-commit on the changed files; the plan's illustrative Python block parses; every `file:line` citation re-checked by script at `400a444`.
+- Durable learnings:
+  1. A number in the log needs its source in the repository, or a plain "not confirmed". A count from a local script reads as established when nothing a reader can open backs it.
+  2. When merging `main` into a branch that appended to the log, check the seam: git joins two appended entries without the blank line between them.
+- Failed approaches: none.
+- Remaining follow-ups: at #154's turn, label GEO.md:324's "The owner held D5, so no tolerance widens a place's dates" as the coordinator's interim rule (PLAN 2.3's D4/D5 row).
