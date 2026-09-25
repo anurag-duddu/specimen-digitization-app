@@ -39,7 +39,11 @@ failing tests, on its own branch, merged by the steward. PLAN section 4.8
 governs every outside request: every value your tool takes from the
 record or a tier-1 result, in any parameter of any request, goes through 4.8's place-request
 filter, which is S4's single filter and which your request builder calls
-(coordinator ruling). A request template's own constants, such as P625 or
+(coordinator ruling). A tier-1 source's own identifiers follow 4.8's
+Identifiers rule instead: taken only from that source's own answer, checked
+with the patterns in S4's filter module rather than a copy of them, and sent
+back to that source unchanged, as a prefixed name such as `tgn:1000123` in
+SPARQL. A request template's own constants, such as P625 or
 LIMIT 10, are reviewed fixed parts, not record values. The profile's notation
 expansions may be sent as 4.8 allows, and your parser passes the literal to
 the filter, which expands it. Dates are
@@ -65,11 +69,14 @@ your own requests (coordinator ruling).
    through a pull request citing the owner-recorded confirmation, with a test
    that an unconfirmed entry never settles a field.
 5. Tier 2 (G35): Google given the modernized name, or the literal, with the
-   same reading's place fields, through S4's filter, keeping only the place ID, the outcome and the
+   same reading's place text (PLAN 4.8's sources), through S4's filter, keeping only the place ID, the outcome and the
    fingerprint (G26).
 6. Tier 3 and the geographic derivations (D13, D11, G37, G38, G41): the
    in-house point-radius engine; containment for county and city against
-   geoBoundaries' open release (CC BY 4.0, credited); elevation from Copernicus
+   the boundary files PLAN 4.8 names (geoBoundaries' Philippine files and
+   CONRED's COD-AB file for Guatemala, each under its own file's licence,
+   CC BY 3.0 IGO via HDX, and credited), with the circle widened by the
+   stated simplification error for the simplified Philippine files; elevation from Copernicus
    GLO-30 where the label states none; a location derived from a settled county
    at county precision (G38); all as derivation results behind S4's interface,
    from open-source coordinates only.

@@ -12197,3 +12197,29 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: when a correction is itself history, check it against the primary record (the review comments) before writing it. The earlier round pairing was corrected from memory and was wrong twice.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above.
+
+### 2026-09-24 — Go-live program: plan corrections after #185
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-8` (#191), in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #185's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/185#issuecomment-5824745385) and round 1 of #191's (https://github.com/anurag-duddu/specimen-digitization-app/pull/191#issuecomment-5825311705). PLAN 4.8's filter, as it stands at this PR's head:
+    - Sources are whole-token slices of the sources each caller names. The harness names only the place-field literals it gives, each found character for character in a reading, and the unassigned locality text; a literal it gives a non-place field is never a source.
+    - Cuts are decided on the value's own tokens, compared by their folded words, and at every occurrence of the value in every text, the readings included, by character span. So a tier-1 name, a reviewer's value or a full form is cut too, "Werner" beside "Wernersdorf" is cut, and no slice such as "Hoogstraa" leaves. Every caller passes the readings.
+    - Every month name and abbreviation the profile lists is cut in any case, and the profile lists them in English and Spanish ("Mayo"). A Roman numeral is cut only as a whole token beside a date number (3, 14, 1946, '46 or -46).
+    - Tier-1 identifiers (#185's item 1; NGA's unit codes on S4's question) go back only to the source that returned them in its own answer, pattern-checked, and never come from the record or the agent, since TGN's and GNS's digit patterns match label numbers such as "1946". In SPARQL they are the source's prefixed names (`tgn:`).
+    - The scope covers the record and tier-1 results, identifiers aside, and the Wikidata, TGN and NGA rows list the ids they send.
+    - A full form written on the label is a source. After the filter, a value is only escaped or encoded.
+    - The stated limit names what can still leave: a name that no reading gives a non-place field, and the harness hasn't yet (mid-run, "Mindanao F.G. Wermer", and "H. Hoogstraal" with its "leg." in the next clause); month names in other languages; and a lone "VIII/IX". It also names what is over-cut: "Camp IV, 3 VIII 1946" sends "Camp", and "Cape May" sends "Cape".
+  - Boundary licences per file: geoBoundaries' Philippine files and CONRED's COD-AB file for Guatemala, CC BY 3.0 IGO via HDX, never geoBoundaries' ODbL OpenStreetMap file. Both are named wherever the datasets are pinned: PLAN 2.3 and 4.8, S2's T4d and S8's task 6.
+  - Section 2.3 records the owner's curator decision verbatim, "That’s fine. Human review is ok" (2026-09-24). The McKinley places go to review. The Apo slide's case is labelled as the coordinator's reading of G36: its place may settle from gazetteer evidence or stay unresolved, and only the itinerary's refinement waits.
+  - "Place text (4.8's sources)" replaces "place fields" in G35's reading, the Google row and S8's brief. The G27/G32 reading label sits right after "on one label as on several". S5's T6 names the stated field.
+  - Corrections (dated 2026-09-24):
+    - The entry "2026-09-24 — Go-live program: plan corrections after #124" above: its line "G45's `verbatim_dts` exception appears at stage 8 and in T4" should read "the coordinator hold for `verbatim_dts` (section 2.3) appears at stage 8 and in T4". G45 itself has no exception.
+    - The entry "2026-09-24 — Go-live program: plan corrections after #180" above: its line "Roman-numeral months are cut only in the month position and in any case" answered #180's review, but the month position it means was set by the coordinator's ruling on S4's #183 (2026-09-24), and the line omits that rule. The position is a whole token beside a date number, a day or a year in the profile's forms (3, 14, 1946, '46 or -46), before or after it, across separators.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learnings:
+  1. A filter's source check and its cuts need one unit, and each cut must be decided at every occurrence of a value, not the first. A first-occurrence span sends "Werner" from "Wernersdorf" beside "leg. Werner".
+  2. A source check that accepts whatever a caller found in the text is no source check, and the cuts become the only defence. Name the fields a caller may draw from, and state in the limit what the cuts alone can't catch.
+  3. A coordinator correction written after an owner's quote reads as following from the owner's words. Label it as a reading, with its date and source, even when it only corrects the coordinator's own earlier line.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
