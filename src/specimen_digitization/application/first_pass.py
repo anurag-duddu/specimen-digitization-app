@@ -1,15 +1,17 @@
 """The LLM first pass (stage 6): which reader's raw transcript the harness runs on.
 
-The owner's rule (docs/execution/golive/PLAN.md 2.1): the first pass decides
-the raw transcript the harness runs against and records, per reader, what was
-handed to the harness. It never writes text: the decided transcript is the
-selected reading verbatim. Spec: docs/execution/golive/HARNESS.md section 3.
+In the owner's words (docs/execution/golive/PLAN.md section 1): "LLM does first
+pass at which final RAW transcript should run against (it should also give at a
+VLM level what was returned to the harness)". It never writes text: the decided
+transcript is the selected reading verbatim. Spec: docs/execution/golive/HARNESS.md
+section 3.
 """
 
 from __future__ import annotations
 
 import difflib
 import hashlib
+import json
 import os
 import re
 import string
@@ -17,6 +19,7 @@ import time
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, BinaryContent, ModelRetry
+from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.messages import ModelMessagesTypeAdapter
 from pydantic_ai.usage import UsageLimits
 
@@ -27,21 +30,30 @@ from .domain import (
     FirstPassDecision,
     FirstPassDifference,
     Observation,
+    ReaderHandoff,
     ReadingSpan,
 )
 
 _TOKEN = re.compile(r"\w+|[^\w\s]")
 UNRESOLVED_VERDICTS = frozenset({"neither", "uncertain"})
+SYNTHETIC_RATIONALE = "Synthetic fixture: no visual evidence."
 _PREAMBLE = (
     "Independent readers transcribed the attached label image. Their raw "
     "transcripts follow, unchanged."
 )
 _TASK = (
     "For each numbered difference, look at the image and say which reader's "
-    "text the visual evidence supports (the reader's letter, neither, or "
-    "uncertain) and whether the difference is material. Then choose the "
-    "reader whose raw transcript the lookups should run against, or null, "
-    "and add one short note per reader."
+    "text the visual evidence supports: the reader's letter, neither, or "
+    "uncertain. Then choose the reader whose raw transcript the lookups should "
+    "run against. Choose a reader only if the image supports that reader's text "
+    "at every difference that is more than capitalization. Otherwise answer "
+    "null: that is how material ambiguity goes to human review. Add one short "
+    "note per reader."
+)
+# A first pass stopped by its caps selects no reading, so G19 sends the raw
+# readings on (PLAN section 1; HARNESS.md section 3).
+CAP_RATIONALE = (
+    "The first pass reached its token cap before an answer; no reading was selected."
 )
 
 
@@ -153,15 +165,13 @@ class DifferenceVerdict(BaseModel):
         description="The letter of the reader whose text the image supports here, "
         "'neither' when the image shows something else, or 'uncertain'."
     )
-    material: bool = Field(
-        description="False only when the difference is capitalization alone."
-    )
 
 
 class FirstPassOutput(BaseModel):
     selected_reader: str | None = Field(
         description="The letter of the reader whose raw transcript the lookups "
-        "should run against, or null when the visual evidence supports none."
+        "should run against, or null unless the image supports that reader's "
+        "text at every difference that is more than capitalization."
     )
     verdicts: list[DifferenceVerdict]
     rationale: str = Field(min_length=1)
@@ -185,6 +195,24 @@ def output_problems(output: FirstPassOutput, letters, count: int) -> list[str]:
     return problems
 
 
+def is_material(spans) -> bool:
+    """More than capitalization: the spans differ once lower-cased, so a spelling
+    variant stays material. The code decides it, not the model (the coordinator's
+    12:31Z reading and 14:05Z ruling; HARNESS.md section 3)."""
+    return len({span.text.lower() for span in spans}) > 1
+
+
+def g19_pick(selected: str | None, differences) -> str | None:
+    """The picked reading, or None when a material difference does not support
+    it: material ambiguity returns no reading (G19; the coordinator's 12:31Z
+    reading; HARNESS.md section 3)."""
+    if any(
+        d.verdict != selected and is_material(d.spans.values()) for d in differences
+    ):
+        return None
+    return selected
+
+
 def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
     """Run the first pass for one region in the isolated model child."""
     from .reliability import run_agent_bounded
@@ -195,6 +223,18 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
     if len(readings) != 2:
         raise OperationalBlock("first_pass_reading_count_unsupported")
     run = specimen.run
+    routes = [reading.route_id for reading in readings]
+    if (
+        any(reading.region_id != region.id for reading in readings)
+        or any(
+            reading.input_asset_id not in (None, specimen.asset.id)
+            for reading in readings
+        )
+        or len({reading.id for reading in readings}) != len(readings)
+        or routes != [route for route in run.profile.routes if route in routes]
+    ):
+        # The region's own readings, once each, in route order (HARNESS.md 3).
+        raise OperationalBlock("first_pass_contract_invalid")
     route_id = run.profile.first_pass_route
     timeout = run.profile.execution.effect_timeout_for_step("first_pass:" + region.id)
     gateway = HuggingFaceModelGateway(timeout_seconds=timeout / 2)
@@ -232,38 +272,60 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
         return output
 
     started = time.monotonic()
-    result = run_agent_bounded(
-        agent,
-        [request, BinaryContent(data=image, media_type="image/png")],
-        timeout_seconds=timeout,
-        usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
-    )
+    try:
+        result = run_agent_bounded(
+            agent,
+            [request, BinaryContent(data=image, media_type="image/png")],
+            timeout_seconds=timeout,
+            usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
+        )
+        history, usage = result.all_messages(), result.usage
+    except UsageLimitExceeded as stop:
+        # No answer within its caps: no reading (G19); the call keeps its usage.
+        result, history, usage = None, stop.run_messages, stop.run_usage
     latency_seconds = time.monotonic() - started
     # Every provider response, retries included; the image-bearing request is not.
-    responses = [m for m in result.all_messages() if m.kind == "response"]
+    responses = [m for m in history if m.kind == "response"]
     raw = ModelMessagesTypeAdapter.dump_json(responses)
     last = responses[-1] if responses else None
-    output = result.output
     ids = {letter: reading.id for letter, reading in letters.items()}
+    spans = [dict(zip(ids.values(), pair)) for pair in differences]
+    if result is None:
+        # No answer: every difference stays open, and G19 decides (HARNESS.md 3).
+        picked, rationale, notes = None, CAP_RATIONALE, {}
+        verdicts = ["uncertain"] * len(spans)
+    else:
+        output = result.output
+        picked, rationale = ids.get(output.selected_reader), output.rationale
+        notes = {ids[letter]: note for letter, note in output.reader_notes.items()}
+        supported = {verdict.number: verdict.supported for verdict in output.verdicts}
+        verdicts = [
+            ids.get(supported[n], supported[n]) for n in range(1, len(spans) + 1)
+        ]
+    decided = [
+        FirstPassDifference(
+            number=number,
+            spans=pair,
+            verdict=verdict,
+            material=is_material(pair.values()),
+        )
+        for number, (pair, verdict) in enumerate(zip(spans, verdicts), 1)
+    ]
     return FirstPassDecision(
         region_id=region.id,
-        selected_observation_id=ids.get(output.selected_reader),
-        rationale=output.rationale,
-        notes={ids[letter]: note for letter, note in output.reader_notes.items()},
-        differences=[
-            FirstPassDifference(
-                number=verdict.number,
-                spans=dict(zip(ids.values(), differences[verdict.number - 1])),
-                verdict=ids.get(verdict.supported, verdict.supported),
-                material=verdict.material,
-            )
-            for verdict in sorted(output.verdicts, key=lambda v: v.number)
-        ],
+        # A pick a material difference does not support is no reading (G19;
+        # the coordinator's 12:31Z reading).
+        selected_observation_id=g19_pick(picked, decided),
+        rationale=rationale,
+        notes=notes,
+        differences=decided,
         call=Observation(
             latency_seconds=latency_seconds,
             latency_basis="validated_agent_call_wall_seconds",
             finish_state=getattr(last, "finish_reason", None),
-            completion_state="validated_output",
+            completion_state="validated_output"
+            if result is not None
+            else "usage_limit",
             parameters=agent.model_settings,
             provider_model_id=getattr(last, "model_name", None),
             input_asset_id=specimen.asset.id,
@@ -273,11 +335,79 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
             model_id=selected.model_id,
             provider=selected.provider,
             prompt_version=hashlib.sha256(prompt.text.encode()).hexdigest(),
-            input_sha256=hashlib.sha256(image + request.encode()).hexdigest(),
+            # The crop's digest, as for every observation; the request's apart.
+            input_sha256=hashlib.sha256(image).hexdigest(),
+            request_sha256=hashlib.sha256(request.encode()).hexdigest(),
             literal_text="",
             raw_ref=adapter.blobs.put(raw),
             raw_sha256=hashlib.sha256(raw).hexdigest(),
-            input_tokens=result.usage.input_tokens,
-            output_tokens=result.usage.output_tokens,
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
         ),
     )
+
+
+def synthetic_decision(blobs, region, readings) -> FirstPassDecision:
+    """Deterministic fixture: without visual evidence no reading is selected."""
+    first, second = readings
+    differences = reading_differences(first.literal_text, second.literal_text)
+    summary = {"region_id": region.id, "selected_observation_id": None}
+    detail = dict(summary, differences=len(differences), rationale=SYNTHETIC_RATIONALE)
+    raw = b"SYNTHETIC FIXTURE\n" + json.dumps(detail).encode()
+    return FirstPassDecision(
+        **summary,
+        rationale=SYNTHETIC_RATIONALE,
+        notes={reading.id: "Synthetic fixture reading." for reading in readings},
+        differences=[
+            FirstPassDifference(
+                number=number,
+                spans={first.id: a, second.id: b},
+                verdict="uncertain",
+                material=is_material((a, b)),
+            )
+            for number, (a, b) in enumerate(differences, 1)
+        ],
+        call=Observation(
+            region_id=region.id,
+            route_id="synthetic-first-pass",
+            model_id="synthetic-first-pass",
+            provider="synthetic",
+            prompt_version="fixture-v1",
+            # The input the readers saw, as for their observations.
+            input_sha256=first.input_sha256,
+            literal_text="",
+            raw_ref=blobs.put(raw),
+            raw_sha256=hashlib.sha256(raw).hexdigest(),
+        ),
+    )
+
+
+def adjudication_record(readings, texts, resolved, decision):
+    """The region's transcript text, whether it is resolved, and its first-pass
+    fields: identical readings keep the existing rule; differing readings take
+    the first pass's selected reading verbatim, or no text."""
+    if len(readings) > 1 and len(texts) == 1:
+        selected, notes = readings[0].id if resolved else None, {}
+        record = {"decision_kind": "identical_readings"}
+    elif len(texts) > 1 and decision is not None:
+        selected, notes = decision.selected_observation_id, decision.notes
+        record = {
+            "decision_kind": "first_pass",
+            "first_pass_call": decision.call,
+            "differences": decision.differences,
+            "reason": decision.rationale,
+        }
+    else:
+        return None, False, {}
+    record["selected_observation_id"] = selected
+    record["handoffs"] = [
+        ReaderHandoff(
+            observation_id=reading.id,
+            role="decided_transcript" if reading.id == selected else "raw_reading",
+            handed_text=reading.literal_text,
+            note=notes.get(reading.id),
+        )
+        for reading in readings
+    ]
+    text = next((r.literal_text for r in readings if r.id == selected), None)
+    return text, text is not None, record

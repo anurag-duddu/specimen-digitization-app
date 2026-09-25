@@ -11826,6 +11826,91 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the new tests failed before the implementation (no module); after it, 7 pass, and 14 related suites (model runtime and tracing, circuits, telemetry, reservations, reader timeouts, worker launch, application, step outcome) give 304 passed, 1 skipped.
 - Durable learnings: (1) `isolated_model_span` refuses an operation outside its allow-list, so a new model-child operation must also be named in `observability.py` and `bounded_telemetry.py`, or the child fails before the model is called. (2) An answer still invalid after Pydantic AI's one output retry raised `UnexpectedModelBehavior`, which `run_agent_bounded` did not map, so the child failed and the run was recorded as an unknown outcome that retry refuses.
 - Remaining follow-ups: the next pull request (scheduling and recording); the first-pass route from the T1 measurements; S3's profile value for `first_pass_route` and the `first_pass` reservation.
+
+### 2026-09-23 — Go-live S4: scheduling the first pass and recording its decision (stage 6, part 2)
+
+- Task: go-live S4, topic T2 part 2: the workflow runs the first-pass call of part 1 and records, per region, the decision and what each reading handed to the harness (PLAN section 1; G19).
+- Branch/worktree: `golive/harness-first-pass-wiring`, stacked on `golive/harness-first-pass-call`, in `.claude/worktrees/cool-haslett-aa79b5`.
+- Outcome: `first_pass:{region}` runs for every region whose readings differ, before `adjudicate` and never after it; identical readings keep today's rule, recorded as `identical_readings`; `adjudicate` records `decision_kind`, the selected reading verbatim (or none), the call, the verdicts, the rationale and one `ReaderHandoff` per reading, with every stage 5 alignment field unchanged. With no selection every reading is handed over as `raw_reading` (G19). Spec: `docs/execution/golive/HARNESS.md` section 4.
+- Validation actually run: the four workflow tests failed before the change (no step, no fields); after it, 14 workflow-adjacent suites give 216 passed, 3 skipped; the full-suite gates are in the pull request.
+- Durable learnings: `adjudicate` rebuilds every region's transcript each time it runs, so a per-region model step needs its own place on the run (`first_pass_decisions`) until `adjudicate` copies it; putting the call's record in `run.observations` would have counted it as a third independent reading in the policy's route check.
+- Remaining follow-ups: S3 carries `first_pass_route` through `classify_and_select` and adds the `first_pass` reservation (the pilot launch's stage set lacks it); S5's writer for the new fields; `decision_kind="human"` for a reviewer's transcription decision (S5); field-level G19, G20 and G27 in T3 and T4.
+
+### 2026-09-25 — Go-live S4: #98's review fixes before it makes the first pass live
+
+- Task: the steward's review of #97 (12:29Z) named four fixes #98 must carry before its turn: G19 in the request, the crop's digest, the cap-hit split, and the call kept out of the readings. The steward then pulled in input binding and a null-pick test. The coordinator gave its reading of "material" and G19 at 12:31Z.
+- Branch/worktree: `golive/harness-first-pass-wiring`, in `.claude/worktrees/cool-haslett-aa79b5`. Pull request #98. Commits: 3c6c2697 (spec and failing tests), 92994bd3 (implementation), c687d147 (this entry), and 6da5a55c (the merge of main d8291a0 at #98's first turn).
+- Outcome:
+  - The code decides materiality: spans equal once case-folded are capitalization alone. Round 2 made the comparison lower-cased (below). A pick stands only when every material difference supports it; otherwise the first pass returns no reading (G19). The request states the rule, and the answer no longer carries a `material` flag.
+  - The call's `input_sha256` is the crop's digest. `Observation.request_sha256` holds the request's (agreed with S5).
+  - `first_pass_direct` refuses readings that aren't the region's own, once each, in route order. The workflow refuses a decision whose verdicts, `material` flags or pick break its contract.
+  - `run_agent_bounded` raises Pydantic AI's `UsageLimitExceeded` for an answer cut off at its output cap (agreed with S3). Every `UsageLimitExceeded` it raises carries `run_messages` and `run_usage`.
+  - #159's first-pass cap rule now lands here: a first pass stopped by a cap selects no reading.
+  - Spec: `docs/execution/golive/HARNESS.md` sections 3 and 4.
+- Validation actually run: 23 new or changed tests failed before the implementation, each for its intended reason; after it the three suites give 43 passed. Gates, one at a time, on 92994bd3: `pre-commit run --all-files` passed; `pytest tests` 1534 passed, 31 skipped; `pytest scripts` 1547 passed, 50 skipped; `check_ui_strings` 0 violations.
+- Durable learnings:
+  1. Pydantic AI 2.40 gives each `capture_run_messages` context only the runs it is the innermost context for. A caller's capture around `run_agent_bounded` sees nothing once that function captures for itself, so the function hands its messages to the caller on the exception instead.
+  2. Pydantic AI counts a response's usage, then checks the token total, then appends the response. A run stopped by its total keeps that response's usage when the usage is counted in place, but not the response.
+  3. `IncompleteToolCall` is raised only once the output retry is cut off too. An empty answer at its cap is not retried.
+- Remaining follow-ups:
+  - Until S3's #153 merges, a reader's answer cut off at its output cap blocks as `external_outcome_unknown`, like its true cap hit on main.
+  - The legacy extractor (`harness.py`) has no cap handler at any head.
+  - When the chain reaches #159, its `usage` argument must replace this PR's own counter.
+
+### 2026-09-25 — Go-live S4: #98's round-2 review (G19's cap-hit citation and the finalize checks)
+
+- Task: the steward's round-1 review of #98 at 6da5a55 (comment 5833705040). It upheld one blocker: "G30 makes a cap hit the raw fallback" credited G30, which sets the allowance and says nothing about a fallback. It also named six should-fixes and some nits.
+- Branch/worktree: `golive/harness-first-pass-wiring`, in `.claude/worktrees/cool-haslett-aa79b5`. Pull request #98. Commits: e05c56f5 (spec and failing tests), 9dce6350 (implementation), 058dea1d (this entry), and a later commit that checks this entry's sentences against the code.
+- Outcome:
+  - A first pass stopped by its caps selects no reading. The citation is now G19 and the owner's words in PLAN section 1 ("can rely on raw ... if LLM decided transcript output fails").
+  - Materiality compares spans lower-cased, not case-folded. The coordinator's ruling at 14:05Z reads 12:31Z's "case-folded" as lower-cased, so "Straße" against "Strasse" stays material.
+  - HARNESS.md section 3 now covers four more points:
+    - S3's route wiring PR sizes each `first_pass` request's reservation from the crop, with a 20,000 floor per request, and the call reserves the sum;
+    - the owner's words are cited to PLAN section 1;
+    - the legacy extraction call shares the cap-hit split and has no handler;
+    - the managed prompt reaches the span (G3).
+  - Finalize (`integrity.py`) verifies each first-pass call's responses, region and input. It also checks that a machine-selected reading is the region's, with its literal as the text, until a reviewer's decision changes the transcript.
+  - The parent refuses a first-pass call returned for another route or asset.
+  - The extraction payload leaves out a transcript's handoffs, differences and call.
+  - The synthetic call names its readers' input.
+  - New tests pin the blocks, the registered first-pass route pin and the model-child round trip.
+- Validation actually run: 9 new or changed tests failed before the implementation, each for its intended reason. The blocks, the route pin, the child round trip and the reviewer-changed transcript pass before and after. The first finalize check blocked `test_http_transcription_abstention_preserves_readings_and_blocks_clear` until it skipped reviewer-changed transcripts. Gates on 9dce6350, one at a time: `pre-commit run --all-files` passed; `pytest tests` 1557 passed, 31 skipped; `pytest scripts` 1562 passed, 50 skipped; `check_ui_strings` 0 violations.
+- Durable learnings:
+  1. A reviewer's transcription decision (`api.py`) rewrites `text`, `resolved`, `value_state`, `actor` and `reason`, but leaves `decision_kind` and `selected_observation_id`. A check on a machine pick must skip transcripts with an `actor`, or finalize blocks a reviewed record whose text differs from the machine's pick, as `test_http_transcription_abstention_preserves_readings_and_blocks_clear` showed.
+  2. `INITIAL_HUGGINGFACE_ROUTES` is a read-only `mappingproxy`: a test patches the name in `production`, not an item.
+  3. Credit each rule to the decision that states it. A rule that follows from G19 must cite G19.
+- Remaining follow-ups (the S4 follow-up PR after the chain, which the steward tracks with #86's items):
+  - keep the raw messages of a `model_malformed_response` call (PRD 691, TRN-005);
+  - a blank or unreadable pick;
+  - the contract-invalid path's circuit charge and dropped call;
+  - `max_length` on free text;
+  - whitespace-split numbers;
+  - route ids on spans.
+  - At #159's turn, its "coordinator's G30 reading" citation goes to G19 as well.
+- Correction to #216's entry (SL:12642), appended here at the steward's ruling (comment 5835821246): "S3's lane branches take the three production.py lines cleanly; 15 of the 19 lane heads have other conflicts (SECRET_SCAN_REVIEW.md, and workflow.py for five) that also occur against main. The lane check was round 2's correctness review (comment 5834843588), not the integration review. At SL:12634 the planned-task test backs 'that step sends nothing'; that earlier steps such as parties still run was shown by the correctness review's old-order probe (comment 5835391741)."
+
+### 2026-09-25 — Go-live S4: #98's round-3 review (finalize binds machine transcripts to their decision)
+
+- Task: the steward's round-2 review of #98 at d17fd7af (comment 5836495516). All four reviewers approved, and the steward upheld one blocker: learning 3 above said G30 sets a cap. G30 is the allowance; the output caps are coordinator rulings (PLAN 4.3). Four should-fixes and some nits came with it.
+- Branch/worktree: `golive/harness-first-pass-wiring`, in `.claude/worktrees/cool-haslett-aa79b5`. Pull request #98. Commits: ceb589a4 (spec and failing tests), 1de7714f (implementation), this entry, and the merge of main at the turn.
+- Outcome:
+  - Learning 3 drops the clause that credited G30 with a cap.
+  - Finalize (`integrity.py`) binds each machine transcript (no reviewer `actor`) to its region:
+    - its text is none or one of its region's readings, and none when a machine kind selected nothing;
+    - a region the run holds a first-pass decision for is recorded as `first_pass`, with that decision's pick and call;
+    - the pick is one G19 allows (`g19_pick`).
+  - The extraction call gets a resolved transcript with its text as its only alternative.
+  - HARNESS.md section 3 says the 20,000 floor is per request, and that the call reserves the sum.
+  - Risk counts 4 + 6R weighted lane calls through parse, and says #93 is open and provisional.
+- Validation actually run:
+  - Seven of the new or changed tests failed before the implementation, each for its intended reason.
+  - A mutation probe disabled each of the twelve finalize checks in turn. Each time, exactly its own test case failed, including the crop reference and another region's pick, which round 2's review found no test covered.
+  - Gates, one at a time, on 1de7714f with this entry: `pre-commit run --all-files` passed; `pytest tests` 1559 passed, 31 skipped; `pytest scripts` 1595 passed, 50 skipped; `check_ui_strings` 0 violations.
+- Durable learnings:
+  1. A finalize check pins nothing unless its test breaks that check alone. A tamper that also trips another check leaves the first one free to be deleted. Forge the transcript and the run's decision together when only one check should see the forgery.
+  2. `verify_evidence` turns any exception into an integrity failure, so a probe that raises a KeyError proves nothing about the check it aimed at.
+- Remaining follow-ups: as in the round-2 entry. Before #159's turn, #159 must stop crediting G30 with the fallback where round 2's review found it: HARNESS.md section 3, first_pass.py, its test and the log.
+
 ### 2026-09-23 — Go-live release workstream (S2), T1b: the owner decisions in the release runbooks and histories
 
 - Task: the same S2 session as the T1a entry, second half of brief item T1.
