@@ -512,6 +512,13 @@ def refresh_review_evidence(specimen, blobs, *, metadata_only=False):
 
 
 def apply_phase_gate(run, result):
+    from .policy import summary
+
+    _gate_phase(run, result)
+    run.disposition_summary = summary(run)  # QUE-006, after the last word.
+
+
+def _gate_phase(run, result):
     if run.review_risk.get("policy_resolution_status") == "blocked":
         run.blocker = run.review_risk["policy_resolution_reason"]
         run.disposition = None

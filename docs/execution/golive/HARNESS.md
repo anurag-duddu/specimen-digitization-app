@@ -750,3 +750,91 @@ shared agent setup.
     `independent_observations_missing`.
   - An operational block would only park the record, since a retry of the
     same crop under the same limits would likely stop the same way.
+
+## 16. The queue decision (stage 8)
+
+G1 is the owner's rule: "When I say something that harness was able to resolve
+is cleared it is cleared." G6 sends what the harness could not resolve to
+needs human review with its reasons, QUE-004 defers a documented capability
+limit, and QUE-005 keeps an operational failure a block.
+`application/policy.py` decides each run once its steps are done. The lane's
+profile names these rules `insects-clearance-v2`.
+
+**The harness's runs (G1).** A run whose fields the harness decided, because
+its profile names `harness_route` (section 14), no longer needs institutional
+approval, confirmed semantics or a reviewer's approval to clear:
+`institutional_policy_unapproved`, `mandatory_semantics_unconfirmed` and
+`human_approval_required`. So G1 turns on with the harness, by the same profile
+setting. Every other run keeps those gates: synthetic-mode demos, and
+production runs before the switch. Everything else is as before. G15's
+automatic coverage check still gates through `label_coverage_unconfirmed`, and
+a failed check sends the record to review.
+
+**Mandatory and optional.** Every field in the profile's `mandatory_fields`
+must resolve. An optional field never blocks: the published Insects profile
+makes `identified_by_irn` optional, which is G16's reading of G42.
+
+**How a harness field is read.** A field whose `layer` is set came from the
+harness, and it is read as the harness wrote it. A field from the older
+extraction path is read as before.
+- **Its value.** The verbatim, when one was chosen. When the first pass picked
+  no reading, or the field is on several labels, none is chosen, and the value
+  is the settled one: the authority id, the parsed value or the settled text
+  (G27, G28, G32).
+- **A derived value** counts only with its derivation record: its `derivation`
+  evidence decides it, and the record is stored (G37, G41, #124). A value
+  without one, such as a value the model asserted, doesn't count, so the field
+  is unresolved.
+- **Grounding.** Each reading the value rests on must be in its own literal
+  evidence: the verbatim, or each reader's when none was chosen (G19, G27).
+- **A settled value** rests on a success among the field's evidence:
+  - an authority id on the lookup whose place ID or usage key it is;
+  - a parsed value on the date parser's success, or on the specimen's date
+    order (G33);
+  - a settled name on its lookup's success, or on the one text every label
+    read (G32).
+
+**A label the first pass left open** (G19, G20) no longer blocks by itself
+(`unresolved_transcription`). It passes when the harness drew fields from its
+readings and every mandatory one resolved, on its own evidence or through a
+lookup that settled the disagreement. A mandatory field still left with
+conflicting readings sends the record to review.
+
+**Elevations.** Each elevation's number is the one number its label's literal
+states, or a derived value with its record (G41). Both ends and both units are
+then checked as before.
+
+**Dates.** The gate reads each date as parsed, at the precision written (G24):
+a year or a month is the span of its days, and the order checks compare spans.
+A Roman month is that month (G29). A date written as uncertain, with a "?",
+keeps the date gate (`date_precision_requires_review`).
+
+**The taxonomy gate** reads the GBIF lookup the taxon rests on, not simply
+the run's last lookup.
+- After the harness, it is the latest lookup of the literal whose call decides
+  the field, or else of any of the taxon's readings. Never a lookup the agent
+  made on another literal.
+- Without the harness, it is the lookup step's, as before.
+
+The operational check reads the same lookup, so a later lookup of the same
+request recovers an earlier failure (QUE-005).
+
+**A harness failure** sends the record to review with
+`harness_failure:{code}` (G6, section 11).
+
+**Findings never route a record.** G23's source flag and the readers' spelling
+difference (G27) stay findings.
+
+**The summary** (QUE-006, S5's data contract): `Run.disposition_summary` is
+one sentence built from the rule version and the reason codes, without their
+details:
+- "Cleared under insects-clearance-v2.";
+- "Needs human review under insects-clearance-v2: mandatory_unresolved,
+  date_order.";
+- "Deferred under insects-clearance-v2: unsupported_script."
+
+A blocked run has no disposition and no summary. The evidence phase gate has
+the last word on the disposition, so the summary is written again after it.
+
+**Reason codes.** `harness_failure` is new. S3's `REASON_CODES` catalog (#136)
+lists the codes in the rules' order.
