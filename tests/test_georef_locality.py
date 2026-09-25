@@ -244,6 +244,7 @@ def test_place_names_are_not_headings():
         ("1.5 km S of Davao", "1.5", "km", "S", 180.0, "Davao"),
         ("50 m N of Yepocapa", "50", "m", "N", 0.0, "Yepocapa"),
         ("0,5 km N of Yepocapa", "0,5", "km", "N", 0.0, "Yepocapa"),
+        ("0,25 km S of Davao", "0,25", "km", "S", 180.0, "Davao"),
     ],
 )
 def test_offsets_keep_distance_and_heading(text, distance, unit, heading, bearing, name):
@@ -308,6 +309,61 @@ def test_unplaced_text_is_never_a_part():
     assert dated.unplaced == ("P.I. 3 Sept. '46",)
 
 
+@pytest.mark.parametrize(
+    ("text", "names", "elevations", "unplaced"),
+    [
+        ("Mindanao, P.I.\n6-Sept-1946,6400'", ["Mindanao", "P.I."], ["6400'"], ["6-Sept-1946"]),
+        ("15-IV-1948,1500 m", [], ["1500 m"], ["15-IV-1948"]),
+        ("Guatemala,IV-26,4800 ft.", ["Guatemala"], ["4800 ft."], ["IV-26"]),
+        ("Camp 3,4800 ft.", [], ["4800 ft."], ["Camp 3"]),
+    ],
+)
+def test_a_bare_comma_between_a_date_and_an_elevation_separates_them(
+    text, names, elevations, unplaced
+):
+    # A comma between digits belongs to the number only before exactly three digits
+    # ("1,463") or as a one- or two-digit decimal ("0,5", "1463,5").
+    reading = read_locality(text)
+    assert [part.name for part in reading.parts] == names
+    assert [e.text for e in reading.elevations] == elevations
+    assert list(reading.unplaced) == unplaced
+
+
+def test_space_grouped_digits_are_set_aside():
+    for text in ("4 800 ft.", "Elev. 4 800 ft."):
+        reading = read_locality(text)
+        assert (reading.parts, reading.elevations, reading.unplaced) == ((), (), (text,))
+    reading = read_locality("Yepocapa, 1 463 m")
+    assert [part.name for part in reading.parts] == ["Yepocapa"]
+    assert (reading.elevations, reading.unplaced) == ((), ("1 463 m",))
+    # A year and a four-digit elevation are two numbers, not one grouped number.
+    reading = read_locality("6-Sept-1946 1500 m")
+    assert [e.text for e in reading.elevations] == ["1500 m"]
+    assert reading.unplaced == ("6-Sept-1946",)
+
+
+def test_a_line_starting_with_a_linking_word_joins_the_line_before():
+    (part,) = read_locality("E. slope\nof Mt. Apo").parts
+    assert (part.name, part.relation) == ("Mt. Apo", "slope")
+    (part,) = read_locality("5 km NE\nof Yepocapa").parts
+    assert (part.name, part.relation, part.distance) == ("Yepocapa", "offset", "5")
+    (part,) = read_locality("Mt.\n\n\nApo").parts
+    assert part.name == "Mt. Apo"
+
+
+def test_a_letterless_or_dangling_name_is_set_aside():
+    for text in ("Depto. de ?", "E. slope Prov. -", "Depto. de", "of"):
+        reading = read_locality(text)
+        assert (reading.parts, reading.unplaced) == ((), (text,))
+    reading = read_locality("Davao, de")
+    assert ([part.name for part in reading.parts], reading.unplaced) == (["Davao"], ("de",))
+
+
+def test_any_unicode_number_keeps_a_part_aside():
+    reading = read_locality("\u00bd mi. N of Davao")
+    assert (reading.parts, reading.unplaced) == ((), ("\u00bd mi. N of Davao",))
+
+
 def test_semicolons_separate_parts():
     assert [part.name for part in read_locality("Yepocapa; Chimaltenango; Guatemala").parts] == [
         "Yepocapa",
@@ -325,7 +381,8 @@ def test_a_line_ending_in_a_linking_word_joins_the_next():
 
 def test_a_lone_unit_word_falls_back_to_its_other_neighbour():
     (part,) = read_locality("Prov., Davao").parts
-    assert (part.name, part.unit, part.readings) == ("Davao", "province", ("Davao Province", "Davao"))
+    assert (part.name, part.unit) == ("Davao", "province")
+    assert part.readings == ("Davao Province", "Davao")
 
 
 def test_a_heading_phrase_between_features_or_beside_none():
@@ -392,7 +449,9 @@ def test_fold_and_comparison_keys():
     assert fold("P.I.") == "p i"
     assert fold("Davao-del-Norte") == "davao del norte"
     # Format characters (Unicode Cf) are dropped, not turned into spaces.
-    assert fold("Dava​o") == fold("﻿Davao") == fold("Dav‏ao") == "davao"
+    assert fold("Dava\u200bo") == fold("\ufeffDavao") == fold("Dav\u200fao") == "davao"
+    # Other marks with no letter of their own go too (U+FE0F, a variation selector).
+    assert fold("Dava\ufe0fo") == "davao"
     assert comparison_key("Mt. Apo") == comparison_key("Mount Apo") == "mount apo"
     assert comparison_key("Departamento de Chimaltenango") == "chimaltenango"
     assert comparison_key("Chimaltenango Department") == "chimaltenango"

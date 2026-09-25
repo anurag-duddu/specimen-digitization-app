@@ -24,12 +24,17 @@ Nothing it produces leaves the tool except through PLAN 4.8's filter. No part,
 name or reading is sent as it stands, and a part can hold text that is no place,
 such as a collector's name.
 
-**Lines and parts.** Commas and semicolons separate parts, except a comma with a
-digit on each side, which is inside a number ("1,463 m", "0,5 km", "1463,5 m"). A
-line break separates parts too, except after a word that needs the next one:
+**Lines and parts.** Commas and semicolons separate parts, except a comma inside a
+number: after a digit and before exactly three digits ("1,463 m"), or before a
+one- or two-digit decimal ("0,5 km", "1463,5 m"). Any other comma between digits
+separates, as in a reader's "6-Sept-1946,6400'". A line break separates parts
+too, except after a word that needs the next one:
 - a feature notation ("E. Slope Mt." / "McKinley" on 105526322);
 - a unit written before its name ("Yepocapa, Mun." / "Yepocapa," on 105526328);
 - a linking word, "de", "del" or "of" ("Departamento de" / "Chimaltenango").
+
+A line that starts with a linking word joins the line before ("E. slope" / "of
+Mt. Apo").
 
 **Notations (G29).** The Insects harness reads these whole words in any case,
 with or without the period; they come from the pilot's labels and from the unit
@@ -71,20 +76,26 @@ points and radii are tier 3's.
 "Elev. 6400'", "1,463 m", "1.463 m", "6.400 ft.", "4000-4500 ft") leave the place
 text and are kept as written, as G27 keeps a verbatim and G38 keeps each layer:
 the numbers whole as written, dots and commas included, and the unit as feet,
-metres, or none when the label gives none ("Elev.6400" on 105526322). This module
-converts and fills nothing. G41's "Convert and fill" (the label's own number
+metres, or none when the label gives none ("Elev.6400" on 105526322). A number
+beside another digit group across a space ("4 800 ft.", "1 463 m") is set aside
+rather than cut short, since its grouping is unsure. This module converts and
+fills nothing. G41's "Convert and fill" (the label's own number
 fills From and To, and the other unit is converted exactly, each marked derived)
 happens in S4's later derivation layer.
 
-**Unplaced text.** A part left with a digit or without a letter, such as a date
-("IV-26") or a camp number, and a heading phrase with no part to join, are kept
-aside and never searched: gazetteer place names carry no digits. A part is kept
-aside whole, so "Mindanao, P.I. 3 Sept. '46" keeps only "Mindanao" as a part and
+**Unplaced text.** These are kept aside and never searched, since gazetteer place
+names carry no digits:
+- a part left with a number (a digit, or another numeral such as "½") or without
+  a letter, such as a date ("IV-26") or a camp number;
+- a name that is only a linking word ("de", "of");
+- a heading phrase with no part to join.
+
+A part is kept aside whole, so "Mindanao, P.I. 3 Sept. '46" keeps only "Mindanao" as a part and
 sets "P.I. 3 Sept. '46" aside, "P.I." with it.
 
 **Comparing names (G34, as the coordinator read it on 2026-09-24).** Names
-compare by a key: case folded, diacritics and format characters (such as a
-zero-width space) removed, punctuation turned into spaces, feature notations read
+compare by a key: case folded, diacritics, other marks and format characters
+(such as a variation selector or a zero-width space) removed, punctuation turned into spaces, feature notations read
 ("Mt." compares as "mount"), and unit words dropped with a "de", "del" or "of"
 after a leading one. So "Chimaltenago" and "Departamento de Chimaltenango" have
 keys one letter apart. `letters_apart` counts the single-character insertions,
@@ -95,7 +106,7 @@ not part of a full name when it:
 - has a period inside it ("P.I."),
 - ends in a period after at most four letters ("Phil.") and is not a notation in
   the table,
-- has a digit,
+- has a digit or another numeral,
 - has no letter at all ("-"), or
 - is written in capitals of at most three letters ("PH", "PHL", "RP").
 
@@ -119,12 +130,7 @@ variants.
 lines two ways, as S8 read them and as the S7 baseline readers wrote them. The
 readers' versions include their slips ("ESlope", "Elev.6400", "Yepocapa,4800
 ft.") and handwriting-qwen's silent correction of the label's own "Chimaltenago"
-to "Chimaltenango". Further tests cover:
-- the notations in any case, with or without their periods;
-- headings between two features or beside none;
-- offsets and their places;
-- numbers read whole;
-- the elevation forms;
-- line joins;
-- variants;
-- the comparison rules.
+to "Chimaltenango". Further tests cover every notation in any case and with or
+without its period, headings between features or beside none, offsets and their
+places, numbers read whole or set aside, line joins, variants, the
+elevation forms, and the comparison rules.
