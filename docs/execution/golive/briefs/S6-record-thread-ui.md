@@ -57,10 +57,9 @@ after a reviewer fills a field, "Fill the rest" derives the remaining fields
 through S5's route; the filled values show as derived and stay editable before
 approval, and the result is announced once. The action enqueues a job and
 shows its progress; the server refuses it for a Sensitive record (PLAN section
-4.8). Coordinator rulings: the new run states are picked in the filter sheet,
-with no new status chips (00:37Z on 2026-09-24); the trace link opens through
-`url_launcher`, flutter.dev's first-party plugin (#122; approved at 22:07Z on
-2026-09-23).
+4.8). Coordinator rulings, 2026-09-24: the new run states are picked in the
+filter sheet, with no new status chips; the trace link opens through
+`url_launcher`, flutter.dev's first-party plugin (#122).
 
 **T3. Queue and processing.** Needs human review (filterable by reason; until
 S5's T5, only the codes stored without a suffix, coordinator ruling),

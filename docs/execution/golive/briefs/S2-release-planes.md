@@ -158,12 +158,14 @@ message the coordinator. Never run IAM writes yourself.
 **T4d. The reference-data upload command** (PLAN section 4.8), once S8's
 manifest PR merges. Write the owner's command from the merged manifest: the
 GeoNames files from `~/specimen-golive/datasets/geonames/<dump date>/` and
-CONRED's COD-AB file for Guatemala from its pinned folder, checked for size and
-SHA-256 and never downloaded again, since neither source keeps the bytes S8
-pinned; the Copernicus tiles and geoBoundaries' Philippine files downloaded
-anonymously and checked; each uploaded with
+CONRED's COD-AB file for Guatemala from
+`~/specimen-golive/datasets/cod-ab-gtm/<retrieval date>/`, checked for size
+and SHA-256 and never downloaded again, since neither source keeps the bytes
+S8 pinned (coordinator ruling of 08:05Z on 2026-09-25); the Copernicus tiles
+and geoBoundaries' Philippine files downloaded anonymously and checked; each uploaded with
 `--no-clobber` to `application/sha256/<sha256>`, then listed. Never from an
-agent shell. Send it to the coordinator to relay.
+agent shell. Send it to the coordinator to relay. The boundary files arrive with
+S8's #198, after S4's #183, and get a second run of the same command then.
 
 **T5. First releases.** After T2 to T4 are merged and the owner has run T4's
 list: watch the data release (initialization, schema, connector, rules,
