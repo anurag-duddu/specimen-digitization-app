@@ -38,7 +38,7 @@ from .harness_tools import (
 from .reliability import retry_after
 from .storage import BlobStore
 
-TOOL_VERSION = "google-geocoding-v1"
+TOOL_VERSION = "google-geocoding-v2"  # v2: S8's comparison key (HARNESS.md 7).
 GEOCODING_URL = "https://maps.googleapis.com/maps/api/geocode/json"
 GEOCODING_COST_MICROS = 5000  # Reserved per request, before it is sent.
 KEY_VARIABLE = "SPECIMEN_GOOGLE_MAPS_API_KEY"
@@ -57,13 +57,18 @@ LEVELS = {
     ),
 }
 # Label notations dropped as whole words before comparing (G29).
-NOTATIONS = frozenset(
+# Names compare as S8's place tool compares them (agreed with S8, 2026-09-23):
+# unit words written after the name ("Davao Prov.") or before it ("Mun.
+# Yepocapa"), a link word after a leading one, and feature notations (G29).
+UNIT_WORDS = frozenset(
     {
-        *("prov", "province", "provincia", "estado", "state", "region"),
-        *("dept", "department", "depto", "co", "county"),
-        *("mun", "municipio", "municipality"),
+        *("prov", "province", "dept", "department", "co", "county", "state"),
+        *("region", "mun", "municipio", "municipality", "depto", "departamento"),
+        *("provincia", "estado"),
     }
 )
+LINKS = frozenset({"de", "del", "of"})
+FEATURES = {"mt": "mount"}
 NO_ALIASES: Mapping[str, Sequence[str]] = MappingProxyType({})
 # Google's statuses besides OK; INVALID_REQUEST and any other are malformed.
 STATUSES = {
@@ -110,15 +115,39 @@ install_key_redaction()
 
 
 def fold(text: str) -> str:
-    """Casefold, strip diacritics, keep only letters, digits and single spaces,
-    and drop notation words (G29): "Davao Prov." compares as "davao"."""
+    """Casefold, strip diacritics and turn anything but letters and digits into
+    single spaces: "Chimaltenángo," folds to "chimaltenango", "P.I." to "p i"."""
     decomposed = unicodedata.normalize("NFKD", text.casefold())
     kept = "".join(
-        c
-        for c in decomposed
-        if not unicodedata.combining(c) and (c.isalnum() or c.isspace())
+        c if c.isalnum() else " " for c in decomposed if not unicodedata.combining(c)
     )
-    return " ".join(word for word in kept.split() if word not in NOTATIONS)
+    return " ".join(kept.split())
+
+
+def comparison_key(name: str) -> str:
+    """The key names compare by (G29): folded, feature notations read ("Mt." is
+    "mount"), unit words dropped, with a link word after a leading one."""
+    kept: list[str] = []
+    after_unit = False
+    for word in fold(name).split():
+        word = FEATURES.get(word, word)
+        if word in UNIT_WORDS:
+            after_unit = not kept
+        elif after_unit and word in LINKS:
+            after_unit = False
+        else:
+            after_unit = False
+            kept.append(word)
+    return " ".join(kept)
+
+
+def one_letter_apart(literal: str, name: str) -> bool:
+    """G34's gate on two names: both full names, keys exactly one letter apart."""
+    return (
+        _full_name(literal)
+        and _full_name(name)
+        and _letters_apart(comparison_key(literal), comparison_key(name)) == 1
+    )
 
 
 def assigned_literals(query: GeographyQuery) -> dict[str, list[str]]:
@@ -209,10 +238,10 @@ def _confirmed(
     """SUCCESS when every literal of the field, folded or through an alias,
     equals the folded long or short name of a component at one of the field's
     levels; an empty fold never matches."""
-    names = set().union(*_names_at(key, result))
+    names = {comparison_key(name) for names in _names_at(key, result) for name in names}
 
     def accepted(text: str) -> set[str]:
-        folded = fold(text)
+        folded = comparison_key(text)
         return {folded, *aliases.get(folded, ())} if folded else set()
 
     matched = all(not names.isdisjoint(accepted(text)) for text in texts)
@@ -222,50 +251,85 @@ def _confirmed(
 def _names_at(
     key: str, result: dict, kinds: Sequence[str] = ("long_name", "short_name")
 ) -> list[set[str]]:
-    """The folded names of each component at the field's levels."""
+    """The names of each component at the field's levels, as Google gives them."""
     levels, components = LEVELS.get(key, frozenset()), []
     parts = result.get("address_components")
     for part in parts if isinstance(parts, list) else []:
         types = part.get("types") if isinstance(part, dict) else None
         if isinstance(types, list) and levels.intersection(map(str, types)):
             labels = [part.get(kind) for kind in kinds]
-            components.append({fold(x) for x in labels if isinstance(x, str)} - {""})
+            components.append({x for x in labels if isinstance(x, str) and fold(x)})
     return components
 
 
 def _near_spelling(key: str, texts: list[str], result: dict) -> bool:
-    """Exactly one component at the field's levels has a long name within one
-    edit of every literal of the field, folded (G34). Never a short name: a
-    code such as "PH" is not a name, so "P.I." is not one letter off it."""
-    folded = [fold(text) for text in texts]
+    """Exactly one component at the field's levels has a long name one letter
+    from every literal of the field, both full names (G34). Never a short name:
+    a code such as "PH" is not a name, and "P.I." is not a full one."""
     near = [
         names
         for names in _names_at(key, result, ("long_name",))
-        if all(text and any(_one_edit(text, name) for name in names) for text in folded)
+        if all(any(one_letter_apart(text, name) for name in names) for text in texts)
     ]
     return len(near) == 1
 
 
-def _one_edit(a: str, b: str) -> bool:
-    """Whether a and b differ by at most one insertion, deletion or substitution."""
-    if len(a) > len(b):
-        a, b = b, a
-    if len(b) - len(a) > 1:
+def _letters_apart(a: str, b: str, cap: int = 2) -> int:
+    """Single-character insertions, deletions and substitutions between two
+    keys, counted up to `cap`."""
+    if a == b:
+        return 0
+    if abs(len(a) - len(b)) >= cap:
+        return cap
+    previous = list(range(len(b) + 1))
+    for i, left in enumerate(a, 1):
+        current = [i]
+        for j, right in enumerate(b, 1):
+            current.append(
+                min(
+                    previous[j] + 1,
+                    current[j - 1] + 1,
+                    previous[j - 1] + (left != right),
+                )
+            )
+        if min(current) >= cap:
+            return cap
+        previous = current
+    return min(previous[-1], cap)
+
+
+def _full_name(name: str) -> bool:
+    """Every word a notation or a full word, and some word not a notation: no
+    period inside a word, no period after four letters or fewer, no digit, and
+    not three capitals or fewer ("PH", "PHL", "RP")."""
+    words = [word.strip(",;:") for word in name.split()]
+    names = [word for word in words if not _notation(word)]
+    return bool(names) and all(_full_word(word) for word in names)
+
+
+def _notation(word: str) -> bool:
+    folded = fold(word)
+    return folded in FEATURES or folded in UNIT_WORDS or folded == "mount"
+
+
+def _full_word(word: str) -> bool:
+    letters = sum(c.isalpha() for c in word)
+    if any(c.isdigit() for c in word) or re.search(r"\.\w", word):
         return False
-    i = 0
-    while i < len(a) and a[i] == b[i]:
-        i += 1
-    tail = a[i + 1 :] if len(a) == len(b) else a[i:]
-    return tail == b[i + 1 :]
+    if word.endswith(".") and letters <= 4:
+        return False
+    return not (word.isupper() and letters <= 3)
 
 
 def _alias_table(aliases: Mapping[str, Sequence[str]]) -> dict[str, set[str]]:
-    """The aliases folded like the literals and names they meet; a bare string
-    is one name, not a sequence of letters, and an empty fold names nothing."""
+    """The aliases keyed like the literals and names they meet; a bare string
+    is one name, not a sequence of letters, and an empty key names nothing."""
     table: dict[str, set[str]] = {}
     for literal, names in aliases.items():
         extra = [names] if isinstance(names, str) else names
-        table.setdefault(fold(literal), set()).update(filter(None, map(fold, extra)))
+        table.setdefault(comparison_key(literal), set()).update(
+            filter(None, map(comparison_key, extra))
+        )
     return table
 
 

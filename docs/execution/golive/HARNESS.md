@@ -230,10 +230,18 @@ rule 1.6).
 `map_geocoding_response`, so that a pending owner decision changes only it. One
 result without `partial_match` is `success`; a partial match or several results
 is `ambiguous`; `ZERO_RESULTS` is `no_match`. Per field, a success needs every
-literal of the field to equal, after folding (case, accents, punctuation and
-label notations such as "Prov."), the name of an address component at one of
-the field's levels, or a name the profile's aliases give for it ("P.I." as the
-Philippines); otherwise that field is `no_match`. The folding and the aliases
+literal of the field to have the comparison key of an address component's
+name at one of the field's levels, or of a name the profile's aliases give for
+it ("P.I." as the Philippines). Otherwise that field is `no_match`.
+- The comparison key is S8's, so the two place tools compare names alike (agreed
+  with S8, 2026-09-23). Folding casefolds, strips accents and turns every other
+  character than a letter or digit into one space, so "P.I." folds to "p i".
+- The key then reads a feature notation ("Mt." is "mount"). It drops unit
+  words, written after the name ("Davao Prov.") or before it ("Depto. de
+  Chimaltenango", "Mun. Yepocapa"), and a "de", "del" or "of" right after a
+  leading one.
+
+The folding and the aliases
 are G29 applied to places: PLAN's G29 row makes it the harness's principle to
 work through every reading a notation allows, "for dates and for every other
 field", from the harness knowledge each subcollection's profile carries.
@@ -241,9 +249,11 @@ field", from the harness knowledge each subcollection's profile carries.
 **A near spelling** (G34, the owner's answer to S8's D15, 2026-09-24) can clear
 a field no name matches, with the place ID and no name. It needs a single result
 without `partial_match`, as any success does, and all three of G34's conditions:
-(1) a component at the field's levels has a long name within one edit of the
-folded literal, never a short name or code: "P.I." is not one letter off "PH",
-and only the profile's alias confirms it; (2) it is the only such component; (3)
+(1) a component at the field's levels has a long name exactly one letter from
+the literal, key to key, and both are full names: no period inside a word, no
+period after four letters or fewer, no digit, and not three capitals or fewer.
+So "P.I." is never measured against "PH" or "RP", and only the profile's alias
+confirms it. (2) It is the only such component. (3)
 every other admin field of the reading, and at least one, matched by name or
 alias. FMNH 105526330's "Chimaltenago" clears its department this way, because
 Google's department is "Chimaltenango" and "GUAT." names its country. A live

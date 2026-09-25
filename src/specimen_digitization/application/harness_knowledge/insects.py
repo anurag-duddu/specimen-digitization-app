@@ -89,9 +89,10 @@ NOTATIONS = (
 )
 
 # Folded label forms and the place names they may be read as, for the
-# geography tool (`fold` of `geography_tool`: lower case, no punctuation).
+# geography tool (`fold` of `geography_tool`: lower case, punctuation as spaces,
+# so "P.I." is "p i", as S8's tool folds it).
 PLACE_ALIASES = {
-    "pi": ("philippines",),
+    "p i": ("philippines",),
     "philippine islands": ("philippines",),
     "guat": ("guatemala",),
 }
