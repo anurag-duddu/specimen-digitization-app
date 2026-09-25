@@ -25,9 +25,9 @@ uv run python scripts/lab/run_specimen.py subject_105526321
 | `--segmentation` | `sam3` | `sam3` calls the endpoint in `SPECIMEN_SAM3_ENDPOINT`. `reviewed-region` leaves it unset, so segmentation blocks with the app's own `sam3_serving_contract_not_configured_use_reviewed_regions`; the runner then draws the slide's label boxes (below) through the reviewer route `POST .../specimens/{id}/regions`, and the report marks segmentation as substituted |
 | `--persistence` | `sql-emulator` | a fresh PostgreSQL-backed SQL Connect emulator per run (`scripts/data/serve-local.sh` on private ports), dumped after the run. `sqlite` keeps only the snapshot |
 | `--logfire` | on | lab traces with `APP_ENV=lab` through `configure_observability`; the SDK reads its own local credentials. `--no-logfire` sends nothing |
-| `--max-load` | 12 | refuse to start while the one-minute load average is at or above this (PLAN 7.4) |
-| `--max-run-usd` | 0.75 | the most one run may cost under the app's own call and token limits |
-| `--lab-allowance-usd` | 5.00 | the lab's share of G9: refuse to start when recorded lab spend plus `--max-run-usd` exceeds it |
+| `--max-load` | 12 | refuse to start while the one-minute load average is at or above this (PLAN 7.4); a finite positive number |
+| `--max-run-usd` | 0.75 | the most one run may cost under the app's own call and token limits; a finite positive number |
+| `--lab-allowance-usd` | 5.00 | the lab's share of G9: refuse to start when recorded lab spend plus `--max-run-usd` exceeds it; a finite positive number |
 | `--timeout-seconds` | 1800 | stop driving the record after this |
 | `--dry-run` | off | preflight and image fetch only: no app, no paid call |
 | `--report-only` | off | rebuild `reports/<subject>.md` from the run folders and stop, for example after a person writes a run's `verdict.md`: no preflight beyond the values file, no fetch, no app. Refused while the subject has no run folder |
@@ -44,10 +44,11 @@ uv run python scripts/lab/run_specimen.py subject_105526321
    client uses them. The app starts processing on completion. Only the ten
    pilot slides are declared not sensitive (G31, on PRD.md 724's criteria). A
    run with the production adapters refuses any other subject, `main()`
-   before the fetch and `production_lane` before any upload, so a Sensitive
-   image never reaches a model provider (PRD.md 67, PLAN.md 182). A dry run
-   builds no lane, and tests may drive another subject with the synthetic
-   adapters.
+   before the fetch and `production_lane` before any upload, and the lane
+   itself refuses one whenever its adapters are not the synthetic ones. So a
+   Sensitive image never reaches a model provider (PRD.md 67, PLAN.md 182). A
+   dry run builds no lane, though it still downloads the image, which no
+   provider sees; tests may drive another subject with the synthetic adapters.
 4. **Process.** The runner drives the record until it is finalized, blocked
    with no lab action left, or out of time. Its only action is the
    reviewed-region substitute. It waits out a lease; it never retries a paid
@@ -57,8 +58,9 @@ uv run python scripts/lab/run_specimen.py subject_105526321
    trace ids.
 6. **Check.** Each PLAN 4.1 stage is scored from what the app recorded.
 7. **Report.** The files below, written even when a phase or the lane's
-   teardown fails. An interrupted run (Ctrl-C) is recorded as a failed phase
-   and written before it stops, even when the lane's teardown then fails. The subject report is rebuilt from every run of that
+   teardown fails. A Ctrl-C in a phase, between the lane's phases or during
+   its teardown is recorded as a failed phase, and the run is written before
+   it stops, even when the teardown then fails. The subject report is rebuilt from every run of that
    subject, at the end of each run or with `--report-only`.
 
 ### Stage checks
@@ -71,7 +73,7 @@ uv run python scripts/lab/run_specimen.py subject_105526321
 | 4 Raw transcripts to SQL | the run's `pipeline_run` row names this specimen, and there is one `model_observation` row with `independent` true per reading, with the snapshot's ids (DATA_CONTRACT.md 2) | not built while SQL holds no `pipeline_run` rows; blocked or failed when the run has no readings to project; failed on any mismatch |
 | 5 Disagreement score | every region's transcript carries a ratio and `bounded-levenshtein-fraction-v1` | failed, or not built |
 | 6 LLM first pass | the run records the first pass's decision and what each reader handed to the harness | not built |
-| 7 Agentic harness | the run records tool calls with typed outcomes | failed on a GBIF occurrence request while D4 is held. PLAN 4.8's table lists GBIF only for species match (G23) and the held occurrence search. A request is: a GBIF record (by `source`, `provider`, `source_id`, `tool` or `tool_id`) whose identity or path names the occurrence search, with or without a host, or which carries occurrence query keys; any record naming `api.gbif.org/v1/occurrence`; a plain or escaped `"museum_published": true`, or an occurrence signal that supports or conflicts; a receipt blob showing any of these, as text or as a record; or a request the runner counts, before sending, at `bounded_http` in the parent or on an injected `httpx` client, to `api.gbif.org` with the `/v1/occurrence` path or occurrence query keys, in its parameters or its URL. Paths are percent-decoded, their repeated slashes merged and their `.` and `..` segments resolved, a `..` above the root included, and a host's trailing dot is ignored. The runner reads each request both as written and as `httpx` builds it, so `httpx.QueryParams` count too. Failed on any GADM call (a `gbif_gadm` source or `gbif-gadm` adapter): PLAN 4.8 does not use GADM, not even as a measurement (coordinator ruling, 2026-09-25). GADM is not an occurrence request, so it stays outside D4. A call held by policy sent nothing and is skipped. Species match is known by its tool (`taxonomy_verifier`), adapter (`species-match`) or path (`/v2/species/match`), and in #134's evidence by a `usage/<key>` locator or the evidence id its tool call names. Reporting any other GBIF call for the coordinator is the lab's own choice, since PLAN 4.8's table has no row for it. Not checked while the runner's count is unavailable, while tool calls are recorded (#134; S4's checks to come), or while other GBIF calls are reported; not built when the run records none of these |
+| 7 Agentic harness | the run records tool calls with typed outcomes | failed on a GBIF occurrence request while D4 is held. PLAN 4.8's table lists GBIF only for species match (G23) and the held occurrence search. A request is: a GBIF record (by `source`, `provider`, `source_id`, `tool` or `tool_id`) whose identity or path names the occurrence search, with or without a host, or which carries occurrence query keys; any record naming `api.gbif.org/v1/occurrence`; a plain or escaped `"museum_published": true`, or an occurrence signal that supports or conflicts; a receipt blob showing any of these, as text or as a record; or a request the runner counts, before sending, at `bounded_http` in the parent or on an injected `httpx` client, to `api.gbif.org` with the `/v1/occurrence` path or occurrence query keys, in its parameters or its URL. Each path is read twice: split from its query and fragment and then percent-decoded, as a server reads it, and percent-decoded as a whole, for a URL encoded inside another, decoding up to four times. Either way its `;` parameters are dropped, its slashes merged and its `.` and `..` segments resolved, a `..` above the root included. A host's trailing dot is ignored. A path that starts with `//` is read both as a path and as a host followed by a path. Backslashes are not read as slashes. The runner reads each request both as written and as `httpx` builds it, so `httpx.QueryParams` count too. Failed on any GADM call (a `gbif_gadm` source or `gbif-gadm` adapter): PLAN 4.8 does not use GADM, not even as a measurement (coordinator ruling, 2026-09-25). GADM is not an occurrence request, so it stays outside D4. A call held by policy sent nothing and is skipped. Species match is known by its tool (`taxonomy_verifier`), adapter (`species-match`) or path (`/v2/species/match`), and in #134's evidence by a `usage/<key>` locator or the evidence id its tool call names. Reporting any other GBIF call for the coordinator is the lab's own choice, since PLAN 4.8's table has no row for it. Not checked while the runner's count is unavailable, while tool calls are recorded (#134; S4's checks to come), or while other GBIF calls are reported; not built when the run records none of these |
 | 8 Queue decision | for the ten, needs human review with its reasons, their expected outcome (PLAN 8, 879-883); a person compares the reasons against the expected outcomes below and records any wrong one as a failure in the run's `verdict.md`, so the stage reads not checked; for other subjects, exactly one disposition with its reasons | failed when one of the ten gets any other disposition, goes to review with no reason, or has no disposition; blocked while `processing_blocked` or `retry_scheduled`, naming the blocker (or the reasons, when there is none) and the app's next step |
 | 9 Linkage | every region, reading and transcript points to this specimen, asset and run. In SQL, stage 4 covers the readings; the check that SQL holds every artifact the final snapshot has (DoD-4; PLAN 8, 864-869) arrives with the lab's T3a | failed |
 | Tracing | DoD-5 (PLAN 1): "Each run is one Logfire trace, linked from the record in the app, that shows SAM 3's parameters, every model call's system prompt and text input and output, the LLM first pass, the harness's tool calls and the queue decision" | not built while the run stores no trace id (`Run.trace_id`); not checked while it does, until the lab holds a Logfire read token (owner action) to read the trace; the lab's own root trace id is always recorded |
@@ -233,15 +235,16 @@ The lab's tally is the sum of every `run.json` under `~/specimen-golive/runs/`.
 A run's `run.json` is first written when its lane starts, held at
 `--max-run-usd`, and priced when the run finishes, so a run killed outright
 still counts. Preflight refuses to start while any `run.json` is unreadable or
-holds a total that is not a finite number of at least zero: an adjustment may
-only raise the tally.
+holds a total that is not a finite number of at least zero, so by the lab's own
+rule an adjustment may only raise the tally.
 
 By the lab's own convention, when its bound changes, earlier runs keep their
 records as written and a dated adjustment entry re-holds their unsettled
 attempts. The first such entry, `runs/_adjustments/20260925T155129Z/run.json`,
-is the coordinator's ruling of 2026-09-25 at 15:50Z (coordinator.md:448). It
-adds USD 0.0608, re-holding the two real runs of `subject_105526321` at USD
-0.085, so the tally reads USD 0.087.
+applies the coordinator's ruling of 2026-09-25 at 15:50Z (coordinator.md:448);
+its path and its figure are the lab's (coordinator.md:450). It adds USD 0.0608,
+re-holding the two real runs of `subject_105526321` at USD 0.085, so the tally
+reads USD 0.087.
 
 The runner prices a run before it scores the stages. By the lab's own rule,
 a run that cannot be priced once its lane has started is held whole at
@@ -272,9 +275,9 @@ JWT. It also removes what PLAN 7.7 keeps out of shared logs and issues:
   number. That file must be under `~/specimen-release-private/` (PLAN 840), never
   in a repository. It holds one value per line, in UTF-8 (a leading
   byte-order mark is allowed), made only of ASCII letters, digits and
-  `. _ @ : + -`. A line holding any other character (a space, `=`, `#`, a
-  quote, a comma, a zero-width space, or a byte-order mark after the first
-  line) is refused. A `NAME:value` line still passes, since `:` belongs to
+  `. _ @ : + -`. A line that, once trimmed, holds any other character (a
+  space, `=`, `#`, a quote, a comma, a zero-width space, or a byte-order mark
+  after the first line) is refused; whitespace around a value is trimmed. A `NAME:value` line still passes, since `:` belongs to
   Cloud SQL connection names. The runner checks where the file is before reading it,
   then reads it once from the resolved path, `~` included; the redactor uses
   those values and never reads the file itself. The runner refuses any other

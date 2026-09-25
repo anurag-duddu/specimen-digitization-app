@@ -11,6 +11,8 @@ from specimen_digitization.application.domain import (
     Transcript,
 )
 
+import json
+
 import lab_checks
 
 SHA = "a" * 64
@@ -369,3 +371,27 @@ def test_a_receipt_blob_names_the_occurrence_api_after_a_root_dot_segment():
     # #84 round 1: the dot-segment rule ate the host, so this blob read as "https://v1/occurrence/...".
     assert lab_checks.occurrence_blob('{"url": "https://api.gbif.org/../v1/occurrence/search"}')
     assert not lab_checks.occurrence_blob('{"url": "https://api.gbif.org/../v2/species/match"}')
+
+
+FORMS = ("/%2E%2E/v1/occurrence/search", "/v1//occurrence/12345", "//v1/occurrence/search",
+         "/v2/%2e%2e/%2e%2e/v1/occurrence/search", "/%3F/../v1/occurrence/search", "/v1/%20/../occurrence/search",
+         "/v1;x/occurrence/search")
+
+
+def test_every_pinned_form_counts_in_the_record_and_blob_scans():
+    # #84 round 2: each form, with its host (also with a trailing dot) and as a GBIF record's own path, in the
+    # record scan and the blob scan. A segment that decodes to "?" or a space must not hide the ".." after it.
+    def stage_7(record):
+        snap = snapshot()
+        snap["run"]["evidence"] = [record]
+        return next(s for s in lab_checks.check_stages(evidence(snap), SOURCE, SUBJECT) if s["stage"] == "7")
+
+    for form in FORMS:
+        for host in ("https://api.gbif.org", "https://api.gbif.org."):
+            url = host + form
+            assert stage_7({"kind": "authority", "source": "web", "locator": url})["status"] == "failed", url
+            assert lab_checks.occurrence_blob(json.dumps({"url": url})), url
+        assert stage_7({"kind": "lookup", "source": "gbif", "locator": form})["status"] == "failed", form
+        assert lab_checks.occurrence_blob(json.dumps({"source": "gbif", "locator": form})), form
+    for species in ("https://api.gbif.org/v2/%3F/../species/match", "https://api.gbif.org/v2;x/species/match"):
+        assert not lab_checks.occurrence_blob(json.dumps({"url": species})), species

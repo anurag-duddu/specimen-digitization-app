@@ -149,3 +149,36 @@ def test_a_failed_start_stops_the_emulator(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="adapters could not be built"):
         lane.__enter__()
     assert stopped == [True]
+
+
+def test_the_lane_itself_refuses_a_slide_outside_the_ten_with_adapters_that_are_not_synthetic(tmp_path):
+    # #84 round 2: the guard sits where the adapters are built (learning 21), not only in production_lane.
+    lane = lab_lane.AppLane(tmp_path / "state", adapters_factory=lambda blobs: object(), persistence="sqlite",
+                            segmentation="sam3", subject="subject_105526331")
+    with pytest.raises(lab_lane.LabError, match="not one of the ten"):
+        lane.__enter__()
+
+
+def test_a_ctrl_c_while_the_emulator_starts_stops_it(tmp_path, monkeypatch):
+    # #84 round 2: the emulator runs in its own session, so a Ctrl-C during start never reaches it.
+    killed = []
+
+    class FakeProcess:
+        pid, stdout = 999_999, iter(())
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+    def interrupt(timeout=None):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(lab_lane.subprocess, "Popen", lambda *args, **kwargs: FakeProcess())
+    monkeypatch.setattr(lab_lane.os, "killpg", lambda pid, sig: killed.append(pid))
+    emulator = lab_lane.Emulator(tmp_path / "emulator")
+    monkeypatch.setattr(emulator.ready, "wait", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        emulator.start()
+    assert killed == [999_999]

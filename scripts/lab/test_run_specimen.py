@@ -488,6 +488,9 @@ class DotSegmentLane(FakeLane):
                     "https://api.gbif.org/%2E%2E/v1/occurrence/search", "https://api.gbif.org/v1//occurrence/12345",
                     "https://api.gbif.org./v1/occurrence/search", "https://api.gbif.org//v1/occurrence/search",
                     "https://api.gbif.org/v2/%2e%2e/%2e%2e/v1/occurrence/search",
+                    # #84 round 2: a segment that decodes to "?" or a space, and a ";" parameter
+                    "https://api.gbif.org/%3F/../v1/occurrence/search",
+                    "https://api.gbif.org/v1/%20/../occurrence/search", "https://api.gbif.org/v1;x/occurrence/search",
                     "https://api.gbif.org/v2/species/match?name=Epipsocus"):  # the last is species match
             http_effect.bounded_http(url, timeout_seconds=1, max_bytes=1)
         http_effect.bounded_http("https://api.gbif.org/v1/species/search", timeout_seconds=1, max_bytes=1,
@@ -505,7 +508,7 @@ def test_the_parent_count_removes_dot_segments_and_reads_query_keys_in_the_url(t
     monkeypatch.setattr(http_effect, "bounded_http", fake_bounded_http)
     run(tmp_path, lane=DotSegmentLane())
     summary = json.loads((only_run(tmp_path) / "run.json").read_text())
-    assert summary["gbif_occurrence_requests"] == 13
+    assert summary["gbif_occurrence_requests"] == 16
 
 
 def test_a_receipt_blob_recording_an_occurrence_query_fails_stage_7(tmp_path, monkeypatch):
@@ -684,3 +687,51 @@ def test_main_refuses_a_slide_outside_the_ten_before_any_fetch(tmp_path, monkeyp
     assert run_specimen.main(["subject_105526331", "--dry-run", *roots]) == 0
     assert run_specimen.main(["subject_105526321", *roots]) == 0
     assert calls == ["subject_105526331", "subject_105526321"]
+
+
+class TeardownInterruptedLane(FakeLane):
+    """A Ctrl-C during the teardown itself, then an error while cleaning up after it."""
+
+    def __exit__(self, *exc):
+        try:
+            raise KeyboardInterrupt
+        finally:
+            raise RuntimeError("could not stop the emulator")
+
+
+class Truthless:
+    def __bool__(self):
+        raise KeyboardInterrupt  # arrives between the process and collect phases
+
+
+class BetweenPhasesLane(TeardownFailsLane):
+    def process(self, specimen_id, deadline):
+        return Truthless()
+
+
+@pytest.mark.parametrize("lane", [TeardownInterruptedLane, BetweenPhasesLane])
+def test_a_ctrl_c_outside_a_phase_still_stops_the_run_when_the_teardown_fails(tmp_path, lane):
+    # #84 round 2: only a phase recorded the interrupt, so one during the teardown or between phases was lost.
+    with pytest.raises(KeyboardInterrupt):
+        run(tmp_path, lane=lane())
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    names = {p["name"]: p for p in summary["phases"]}
+    assert "check" not in names and names["teardown"]["status"] == "failed"
+    assert names["interrupted"]["status"] == "failed" and summary["result"] == "error"
+
+
+def test_a_value_is_trimmed_before_the_allowlist_and_still_redacts(tmp_path):
+    # #84 round 2: the claim is "a line that, once trimmed, holds any other character".
+    values = tmp_path / "private" / "values"
+    values.parent.mkdir()
+    values.write_text("  adminuidfixture\u00a0\n")
+    run(tmp_path, lane=PlantedLane(), values=values)
+    assert "adminuidfixture" not in (only_run(tmp_path) / "workspace.json").read_text()
+
+
+@pytest.mark.parametrize("flag", ["--max-run-usd", "--lab-allowance-usd", "--max-load"])
+@pytest.mark.parametrize("value", ["nan", "inf", "-1", "0"])
+def test_a_budget_or_load_flag_must_be_finite_and_positive(flag, value):
+    # #84 round 2: NaN passed preflight's comparisons, and the killed-run hold trusts --max-run-usd.
+    with pytest.raises(SystemExit):
+        run_specimen.parse_args([SUBJECT, flag, value])
