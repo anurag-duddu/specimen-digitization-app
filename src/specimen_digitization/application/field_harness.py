@@ -240,6 +240,7 @@ def resolve(
             years[(item.field_key, reading.observation_id)] = item.year_literal
     everyone = {r.observation_id: None for r in names.values()}
     by_id = {r.observation_id: r for r in names.values()}
+    _drop_copied_ends(literals, years, by_id)
     dates = _date_calls(plan, literals, years, by_id, ledger)
     localities = {k for k, tool in plan.tools.items() if tool == GEOGRAPHY}
     budget = budget or Budget()
@@ -307,6 +308,33 @@ class _Dates:
     parsed: dict[tuple[str, str, str | None], object] = field(default_factory=dict)
     orders: set[str] = field(default_factory=set)
     evidence: list[Evidence] = field(default_factory=list)
+
+
+# Pairs whose To the harness derives from From when the label writes one value
+# (G41, G44).
+RANGES = (
+    ("elevation_from_m", "elevation_to_m"),
+    ("elevation_from_ft", "elevation_to_ft"),
+    ("date_visited_from", "date_visited_to"),
+)
+
+
+def _drop_copied_ends(literals, years, by_id) -> None:
+    """A literal the agent gave to both ends of a pair, which the reading
+    writes once, is From's: To's copy is dropped, so G41 or G44 derives To with
+    its record (the coordinator's ruling of 2026-09-24). The value and the
+    clearance are unchanged; two occurrences keep both ends as written."""
+    for low, high in RANGES:
+        ends = literals.get(high, {})
+        for observation, text in list(ends.items()):
+            if (
+                literals.get(low, {}).get(observation) == text
+                and by_id[observation].text.count(text) == 1
+            ):
+                del ends[observation]
+                years.pop((high, observation), None)
+        if high in literals and not ends:
+            del literals[high]
 
 
 def _date_calls(plan, literals, years, by_id, ledger) -> _Dates:

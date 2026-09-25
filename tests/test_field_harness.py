@@ -655,3 +655,64 @@ def test_a_settled_places_identity_and_credit_reach_the_field():
         "GeoNames credit",
     )
     assert outcome.fields["country"].authority_identity is None  # Google's (G26).
+
+
+DATE_PAIR = FieldPlan(
+    mandatory=("date_visited_from", "date_visited_to"),
+    tools={"date_visited_from": "date_parser", "date_visited_to": "date_parser"},
+)
+
+
+def test_an_elevation_copied_to_both_ends_is_derived_at_to():
+    # The real run on 105526321: "6400'" written once, given to both ends.
+    reading = Reading("r1", "o-muse", "decided_transcript", "Mossy forest 6400'")
+    copied = {"elevation_from_ft": "6400'", "elevation_to_ft": "6400'"}
+
+    outcome, _ = harness(answer(**{"1A": copied}), readings=[reading], plan=ELEVATIONS)
+
+    fields = outcome.fields
+    assert (fields["elevation_from_ft"].literal, fields["elevation_from_ft"].layer) == (
+        "6400'",
+        "verbatim",
+    )
+    to = fields["elevation_to_ft"]
+    assert (to.literal, to.layer, to.parsed, to.derived_from) == (
+        None,
+        "derived",
+        "6400",
+        ["elevation_from_ft"],
+    )
+
+
+def test_a_date_copied_to_both_ends_is_derived_at_to():
+    # The real run on 105526321: "3 sept. '46" written once, given to both ends.
+    reading = Reading("r1", "o-muse", "decided_transcript", "Mt. McKinley 3 sept. '46")
+    copied = {"date_visited_from": "3 sept. '46", "date_visited_to": "3 sept. '46"}
+
+    outcome, _ = harness(answer(**{"1A": copied}), readings=[reading], plan=DATE_PAIR)
+
+    to = outcome.fields["date_visited_to"]
+    assert (to.literal, to.layer, to.parsed, to.derived_from) == (
+        None,
+        "derived",
+        "1946-09-03",
+        ["date_visited_from"],
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "ends"),
+    [
+        ("3 sept. '46 - 3 sept. '46", ("3 sept. '46", "3 sept. '46")),  # Twice.
+        ("14-5-48 to 19-5-48", ("14-5-48", "19-5-48")),  # A range.
+    ],
+    ids=["two-equal-dates", "range"],
+)
+def test_two_written_ends_both_stay_as_stated(text, ends):
+    reading = Reading("r1", "o-muse", "decided_transcript", text)
+    written = dict(zip(("date_visited_from", "date_visited_to"), ends))
+
+    outcome, _ = harness(answer(**{"1A": written}), readings=[reading], plan=DATE_PAIR)
+
+    assert [outcome.fields[k].literal for k in written] == list(ends)
+    assert [outcome.fields[k].layer for k in written] == ["settled", "settled"]

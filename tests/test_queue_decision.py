@@ -489,3 +489,38 @@ def test_a_preparation_code_in_verbatim_dts_is_a_finding_that_never_routes():
     assert [(f.field_key, f.reason_code) for f in run.findings] == [
         ("verbatim_dts", "value_shape_mismatch:verbatim_dts")
     ]
+
+
+def test_a_derived_date_visited_to_clears_only_with_its_record():
+    # #124 round five: the date gate reads a To derived under G44 with its
+    # record ("so the record can clear on it"); a model-asserted To doesn't.
+    single = {k: v for k, v in STATED.items() if k != "date_visited_to"}
+    run = lane_run({"1A": single})
+    assert decided(run).disposition == Disposition.CLEARED
+
+    run.fields["date_visited_to"] = FieldValue(
+        state=V.SUPPORTED, layer="derived", parsed="1948-05-14", precision="day"
+    )
+
+    reasons = decided(run).reasons
+    assert "mandatory_unresolved:date_visited_to" in reasons
+    assert "date_precision_requires_review" in reasons
+
+
+def test_readers_who_agree_on_a_misshapen_value_still_go_to_review():
+    # #124 round five: a no-lookup field whose readers all agree still passes
+    # G45's kind check before it clears.
+    label = LABEL + "\nVI-24-68-7"
+    both = STATED | {"collectors": "VI-24-68-7"}
+
+    run = decided(
+        lane_run(
+            {"1A": both, "1B": both},
+            texts={"o-muse": label, "o-qwen": label},
+            decided=False,
+        )
+    )
+
+    collectors = run.fields["collectors"]
+    assert collectors.state == V.SUPPORTED  # Every reader read the same text.
+    assert run.reasons == ["value_shape_mismatch:collectors"]
