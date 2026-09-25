@@ -30,10 +30,11 @@ provider headers or label text.
 
 ## 3. The LLM first-pass call (stage 6)
 
-The owner's rule (PLAN 2.1): "LLM does first pass at which final RAW transcript
-should run against (it should also give at a VLM level what was returned to the
-harness)". G7 runs it on a Hugging Face model; G19 and G20 decide what follows.
-This section is the call; section 4 schedules it and records its decision.
+The owner's words (PLAN section 1): "LLM does first pass at which final RAW
+transcript should run against (it should also give at a VLM level what was
+returned to the harness)". G7 runs it on a Hugging Face model; G19 and G20
+decide what follows. This section is the call; section 4 schedules it and
+records its decision.
 
 **Input.** The crop the readers saw, each reading's raw transcript verbatim, and
 the numbered differences between the readings from a deterministic token
@@ -54,17 +55,22 @@ request.
 **Model and budget.** The profile's `first_pass_route`, pinned in
 `run.dependencies` like the reader routes, provider pinned (no automatic
 routing); a route that is not registered is not pinned, so the call blocks. A
-call is budgeted like a reading: two requests (the answer and one output
-retry), 16000 tokens, and the stage cost reservation `first_pass`, one key for
-every region. Its circuit is the first-pass route's provider.
+call is budgeted like a reading: two requests (the answer and one output retry),
+16000 tokens, the stage cost reservation `first_pass`, one key for every region,
+and, like every billable step, 16,000 of the run's tokens. Each region's
+`first_pass` reservation is sized by PLAN 4.3 (from the crop, with 20,000
+micro-dollars as its floor) in S3's route wiring PR, which also names the
+pilot's first-pass route; until then no lane run has a first pass. Its circuit
+is the first-pass route's provider.
 
-**A cap hit.** A first pass stopped by a G30 cap selects no reading: its token
-total, or an answer cut off at its output cap (see **Failures**). G30 makes a
-cap hit the raw fallback, and G19 then decides from the readings. The decision
-records every difference as uncertain. Its call keeps the provider's usage up
-to the stop and the responses kept before it (`completion_state`
-`usage_limit`); Pydantic AI counts a response past the token total but does not
-keep it.
+**A cap hit.** A first pass stopped by its caps, its token total or an answer
+cut off at its output cap (see **Failures**), returns no answer, so it selects
+no reading. The owner's pipeline "can rely on raw for a final check if LLM
+decided transcript output fails" (PLAN section 1), and G19 sends each reader's
+raw reading to the harness. The decision records every difference as uncertain.
+Its call keeps the provider's usage up to the stop and the responses kept before
+it (`completion_state` `usage_limit`); Pydantic AI counts a response past the
+token total but does not keep it.
 
 **Output**, validated before it is used: the selected reader or none; for every
 numbered difference exactly one verdict (a reader, `neither`, or `uncertain`); a
@@ -77,14 +83,16 @@ tokens, latency, finish state) whose `literal_text` is empty.
 
 **G19 in code** (the coordinator's reading of the prompt and G19, 12:31Z on
 2026-09-25). A difference is material unless it is capitalization alone, and the
-code decides it: a difference whose spans are equal once case-folded is not
-material. The model is not asked. A pick stands only when every material
+code decides it: a difference whose spans are equal once lower-cased is not
+material, so a spelling variant such as "Straße" against "Strasse" stays
+material (the coordinator's ruling at 14:05Z, which reads 12:31Z's "case-folded"
+as lower-cased). The model is not asked. A pick stands only when every material
 difference's verdict supports the picked reader, which is the prompt's "Resolve
 a value only when the visual evidence supports it" with no merging. A material
 difference left `neither` or `uncertain`, or supported by another reader, means
 no reading, and every reading becomes a `raw_reading` handoff (G19). That is
-neither a retry nor a block: the model's pick stays in the call's raw response
-and its rationale.
+neither a retry nor a block (the coordinator's confirmation at 12:32Z): the
+model's pick stays in the call's raw response and its rationale.
 
 **Failures** (G6, QUE-005, PRD section 15). A rate limit or another provider
 error, HTTP 402 included, is retried with backoff through the workflow's
@@ -93,19 +101,25 @@ error blocks at once. A timeout or a server error may follow an accepted,
 billable call, so, as for the readers, it is `external_outcome_unknown` and
 waits for the operator. A response that still fails validation after Pydantic
 AI's one output retry is `model_malformed_response`, a known operational block
-that accepts retry; this applies to the readers' calls too. A missing pinned
-route or prompt blocks as `pinned_model_route_unavailable` or
-`pinned_prompt_unavailable`. None of these blocks produces a queue disposition.
+that accepts retry; this applies to the readers' calls and to the legacy
+extraction call in `parse` (`harness.py`) too. A missing pinned route or prompt
+blocks as `pinned_model_route_unavailable` or `pinned_prompt_unavailable`. None
+of these blocks produces a queue disposition.
 
 An answer cut off at its output cap is not malformed but a cap hit (above): an
 incomplete tool call, or a last response whose finish reason is `length`, raises
 Pydantic AI's own `UsageLimitExceeded`, as the run's token and request limits do
-(agreed with S3, 2026-09-25). The readers' calls share this split: PLAN 4.3
-makes a reader stopped by its token cap a failed reading, which S3's #153
-builds.
+(agreed with S3, 2026-09-25). The readers' calls and the legacy extraction call
+share this split. PLAN 4.3 makes a reader stopped by its token cap a failed
+reading, which S3's #153 builds; the legacy extraction call has no cap handler,
+so a cap hit there, a length stop included, blocks as
+`external_outcome_unknown`.
 
 **Tracing.** The agent carries no instrumentation override; it inherits the
 lane's global setting (content on, binary off in approved-content mode, S3 T5).
+The pinned managed prompt reaches the call's span through Pydantic AI's
+`include_model_request_parameters`: it is static text, and G3 asks for every LLM
+level's system prompt to be visible in Logfire.
 
 ## 4. The first pass in the workflow, and what each region records
 
@@ -118,7 +132,9 @@ after its transcribe steps and before `adjudicate`; a run that already passed
 `adjudicate` is never given one. A decision for another region, one naming a
 reading the region does not have in its pick or a verdict, one whose `material`
 flags differ from its spans, or one whose pick a material difference does not
-support (G19) blocks as `first_pass_contract_invalid`.
+support (G19; the coordinator's 12:31Z reading) blocks as
+`first_pass_contract_invalid`. A call that comes back naming another route or
+another asset is refused as `external_outcome_unknown`, as a reading's is.
 
 **Recorded** on the region's `Transcript` (DATA_CONTRACT 4.2): `decision_kind`
 `first_pass`, `selected_observation_id`, `text` (the selected reading verbatim,
@@ -130,4 +146,13 @@ reading: the selected reading as `decided_transcript`, the others as
 difference left `neither` or `uncertain` stays on the record for the harness and
 the queue decision (G19, G20). The disagreement score and the alignment fields
 of stage 5 are unchanged. The run keeps each region's decision in
-`first_pass_decisions`. Synthetic runs use a fixture that selects no reading.
+`first_pass_decisions`. Synthetic runs use a fixture that selects no reading;
+its call names the input the readers saw.
+
+**Checked at finalize** (the steward's review of #98). The evidence check
+(`integrity.py`) verifies each first-pass call's raw responses, region and input
+(the region's crop, and the bytes at `input_crop_ref`), and that a reading the
+machine selected, identical or picked, is one of the region's readings with
+`text` its literal, until a reviewer's decision changes the transcript. The
+legacy extraction call receives a resolved transcript's text, never its
+handoffs, differences or call, so raw readings stay out of extraction context.

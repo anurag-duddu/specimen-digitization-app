@@ -1,5 +1,8 @@
 """The LLM first pass in the workflow (stage 6): docs/execution/golive/HARNESS.md section 4."""
 
+import json
+from types import SimpleNamespace
+
 import pytest
 from test_application import client, intake
 
@@ -14,7 +17,12 @@ from specimen_digitization.application.domain import (
     Scope,
     StageCostReservations,
 )
+from specimen_digitization.application import model_runtime
 from specimen_digitization.application.first_pass import synthetic_decision
+from specimen_digitization.application.integrity import (
+    EvidenceIntegrityError,
+    verify_evidence,
+)
 from specimen_digitization.application.storage import (
     LocalBlobs,
     SQLiteRepository,
@@ -231,3 +239,84 @@ def test_identical_readings_skip_the_first_pass_and_are_recorded_as_before(tmp_p
         (second.id, "raw_reading"),
     ]
     assert transcript.first_pass_call is None and transcript.reason is None
+
+
+def forged_call(transcript, **update):
+    call = transcript.first_pass_call.model_copy(update=update)
+    return transcript.model_copy(update={"first_pass_call": call})
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        lambda t: forged_call(t, raw_sha256="0" * 64),
+        lambda t: forged_call(t, input_sha256="0" * 64),
+        lambda t: forged_call(t, region_id="region-2"),
+        lambda t: t.model_copy(update={"text": "forged"}),
+        lambda t: t.model_copy(update={"selected_observation_id": "unknown"}),
+    ],
+    ids=[
+        "the call's responses",
+        "the call's input",
+        "the call's region",
+        "text other than the pick's literal",
+        "a pick that is no reading",
+    ],
+)
+def test_finalize_verifies_the_first_pass_call_and_its_pick(tmp_path, tamper):
+    # The steward's review of #98: finalize checks the call and the pick before
+    # the queue decision relies on them.
+    adapters = ChoosingAdapters(LocalBlobs(tmp_path / "blobs"), lambda r: r[1].id)
+    workflow, principal, specimen_id = start(tmp_path, adapters)
+    specimen = workflow.drain(principal, specimen_id)
+    verify_evidence(specimen, adapters.blobs)
+
+    specimen.run.transcripts = [tamper(specimen.run.transcripts[0])]
+
+    with pytest.raises(EvidenceIntegrityError):
+        verify_evidence(specimen, adapters.blobs)
+
+
+def test_a_reviewer_changed_transcript_keeps_the_machine_pick_on_record(tmp_path):
+    # A reviewer's transcription decision sets its own text and actor; the pick
+    # the first pass made stays on the record as history.
+    adapters = ChoosingAdapters(LocalBlobs(tmp_path / "blobs"), lambda r: r[1].id)
+    workflow, principal, specimen_id = start(tmp_path, adapters)
+    specimen = workflow.drain(principal, specimen_id)
+    changed = specimen.run.transcripts[0].model_copy(
+        update={"text": None, "resolved": False, "actor": "synthetic-reviewer"}
+    )
+
+    specimen.run.transcripts = [changed]
+
+    verify_evidence(specimen, adapters.blobs)
+
+
+def test_the_extraction_call_gets_no_raw_readings(monkeypatch, tmp_path):
+    # Raw independent observations stay out of extraction context: a resolved
+    # transcript goes without its handoffs, differences or first-pass call.
+    adapters = ChoosingAdapters(LocalBlobs(tmp_path / "blobs"), lambda r: r[1].id)
+    workflow, principal, specimen_id = start(tmp_path, adapters)
+    specimen = workflow.drain(principal, specimen_id)
+    fields = {k: v.model_dump(mode="json") for k, v in specimen.run.fields.items()}
+    body = {"fields": fields, "evidence": [], "tokens": 0}
+    result = SimpleNamespace(
+        status="completed",
+        cleanup_complete=True,
+        value=json.dumps({"status": "completed", "value": body}).encode(),
+    )
+    sent = {}
+
+    def isolated(function, payload, *args, **kwargs):
+        sent.update(payload)
+        return result
+
+    monkeypatch.setattr(model_runtime, "run_isolated", isolated)
+
+    model_runtime.invoke_model(
+        SimpleNamespace(blobs=adapters.blobs, model_effect=None), specimen, "extract"
+    )
+
+    (transcript,) = sent["transcripts"]
+    assert transcript["text"] == specimen.run.transcripts[0].text
+    assert not {"handoffs", "differences", "first_pass_call"} & set(transcript)

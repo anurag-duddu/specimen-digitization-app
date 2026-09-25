@@ -11,10 +11,14 @@ from pydantic_ai.usage import RequestUsage
 
 from specimen_digitization.application import first_pass as first_pass_module
 from specimen_digitization.application import workflow as workflow_module
+from specimen_digitization.application import model_runtime
+from specimen_digitization.application import production
 from specimen_digitization.application.domain import (
+    Asset,
     LookupStatus,
     Observation,
     Profile,
+    ReadingSpan,
     Region,
     Run,
     StageCostReservations,
@@ -139,9 +143,21 @@ VALID = {
     "reader_notes": {"A": "misread", "B": "matches"},
 }
 INCOMPLETE = dict(VALID, verdicts=VALID["verdicts"][:1])
+PINNED = {"model_id": ROUTE.model_id, "provider": ROUTE.provider}
+PROMPTS = {PROMPT.name.value: PROMPT.model_dump(mode="json")}
+DEPENDENCIES = {"routes": {ROUTE.route_id: PINNED}, "prompts": PROMPTS}
 
 
-def direct_first_pass(monkeypatch, tmp_path, calls, *answers, readings=None):
+def direct_first_pass(
+    monkeypatch,
+    tmp_path,
+    calls,
+    *answers,
+    readings=None,
+    profile=None,
+    dependencies=None,
+    approved=True,
+):
     """first_pass_direct against a fake provider that gives these answers in turn:
     an answer sent as its tool call, or a function of the output tool's name that
     returns the provider's whole response."""
@@ -166,16 +182,15 @@ def direct_first_pass(monkeypatch, tmp_path, calls, *answers, readings=None):
         def model_for(self, route_id):
             return FunctionModel(respond, model_name="fake-vision")
 
-    monkeypatch.setenv("SPECIMEN_APPROVED_INFERENCE", "true")
+    if approved:
+        monkeypatch.setenv("SPECIMEN_APPROVED_INFERENCE", "true")
+    else:
+        monkeypatch.delenv("SPECIMEN_APPROVED_INFERENCE", raising=False)
     monkeypatch.setattr(first_pass_module, "HuggingFaceModelGateway", Gateway)
     monkeypatch.setattr(workflow_module, "crop_bytes", lambda *args: b"PNG")
-    pinned = {"model_id": ROUTE.model_id, "provider": ROUTE.provider}
     run = Run(
-        profile=Profile(first_pass_route=ROUTE.route_id),
-        dependencies={
-            "routes": {ROUTE.route_id: pinned},
-            "prompts": {PROMPT.name.value: PROMPT.model_dump(mode="json")},
-        },
+        profile=profile or Profile(first_pass_route=ROUTE.route_id),
+        dependencies=DEPENDENCIES if dependencies is None else dependencies,
     )
     if readings is None:
         readings = [
@@ -354,7 +369,8 @@ def test_an_answer_that_stays_invalid_is_a_known_malformed_response(
 def test_a_first_pass_stopped_by_its_cap_selects_no_reading(
     monkeypatch, tmp_path, stop, requests, kept, tokens
 ):
-    # G30: a cap hit is the raw fallback, and G19 decides from the readings.
+    # No answer within its caps is no reading, so G19 sends the raw readings on
+    # (PLAN section 1: "can rely on raw ... if LLM decided transcript output fails").
     calls = []
 
     decision, (first, second) = direct_first_pass(monkeypatch, tmp_path, calls, stop)
@@ -374,3 +390,186 @@ def test_a_first_pass_stopped_by_its_cap_selects_no_reading(
     assert (call.input_tokens, call.output_tokens) == tokens
     raw = json.loads(LocalBlobs(tmp_path).get(call.raw_ref))
     assert [response["finish_reason"] for response in raw] == kept
+
+
+@pytest.mark.parametrize(
+    "a,b,material",
+    [
+        ("sp", "Sp", False),
+        ("Straße", "Strasse", True),
+        ("Epipocous", "Epipsocus", True),
+        (".", "", True),
+    ],
+)
+def test_only_capitalization_is_not_material(a, b, material):
+    # The coordinator's ruling at 14:05Z: spans equal once lower-cased, not
+    # case-folded, so a spelling variant stays material.
+    spans = [
+        ReadingSpan(start=0, end=len(a), text=a),
+        ReadingSpan(start=0, end=len(b), text=b),
+    ]
+
+    assert first_pass_module.is_material(spans) is material
+
+
+@pytest.mark.parametrize(
+    "change,code",
+    [
+        ({"approved": False}, "provider_data_policy_and_spending_approval_required"),
+        ({"count": 1}, "first_pass_reading_count_unsupported"),
+        ({"count": 3}, "first_pass_reading_count_unsupported"),
+        ({"profile": Profile()}, "pinned_model_route_unavailable"),
+        (
+            {"profile": Profile(first_pass_route="fp-unregistered")},
+            "pinned_model_route_unavailable",
+        ),
+        (
+            {
+                "dependencies": {
+                    "routes": {ROUTE.route_id: dict(PINNED, provider="other")},
+                    "prompts": PROMPTS,
+                }
+            },
+            "pinned_model_route_unavailable",
+        ),
+        (
+            {"dependencies": {"routes": {ROUTE.route_id: PINNED}}},
+            "pinned_prompt_unavailable",
+        ),
+    ],
+    ids=[
+        "no spending approval",
+        "one reading",
+        "three readings",
+        "no first-pass route",
+        "an unregistered route",
+        "a route pinned to another provider",
+        "no pinned prompt",
+    ],
+)
+def test_each_block_stops_the_first_pass_before_any_request(
+    monkeypatch, tmp_path, change, code
+):
+    change = dict(change)
+    count = change.pop("count", 2)
+    readings = [
+        reading(route, text)
+        for route, text in (
+            ("handwriting-qwen", QWEN),
+            ("handwriting-muse", MUSE),
+            ("handwriting-third", QWEN),
+        )
+    ][:count]
+    calls = []
+
+    with pytest.raises(OperationalBlock, match=f"^{code}$"):
+        direct_first_pass(
+            monkeypatch, tmp_path, calls, VALID, readings=readings, **change
+        )
+
+    assert calls == []
+
+
+@pytest.mark.parametrize("registered", [True, False])
+def test_pin_dependencies_pins_only_a_registered_first_pass_route(
+    monkeypatch, tmp_path, registered
+):
+    if registered:
+        routes = {**production.INITIAL_HUGGINGFACE_ROUTES, ROUTE.route_id: ROUTE}
+        monkeypatch.setattr(production, "INITIAL_HUGGINGFACE_ROUTES", routes)
+    run = Run(profile=Profile(first_pass_route=ROUTE.route_id))
+
+    pins = production.ProductionAdapters(LocalBlobs(tmp_path)).pin_dependencies(run)
+
+    routes = pins["routes"]
+    assert set(routes) == {*run.profile.routes, *([ROUTE.route_id] * registered)}
+    if registered:
+        assert routes[ROUTE.route_id] == PINNED
+
+
+ASSET = Asset(
+    id="asset-1",
+    sha256="0" * 64,
+    blob_ref="label",
+    media_type="image/png",
+    size_bytes=1,
+    width=9,
+    height=9,
+    filename="label.png",
+    uploader="synthetic",
+)
+
+
+def first_pass_child(payload):
+    """The isolated model child, spawned by name, with a fake first-pass provider."""
+    from specimen_digitization.application import first_pass, workflow
+    from specimen_digitization.application.model_runtime import model_child
+
+    class Gateway:
+        def __init__(self, timeout_seconds=None):
+            self.routes = {ROUTE.route_id: ROUTE}
+
+        def route(self, route_id):
+            return self.routes[route_id]
+
+        def model_for(self, route_id):
+            def respond(messages, info):
+                return ModelResponse(
+                    parts=[ToolCallPart(info.output_tools[0].name, json.dumps(VALID))],
+                    finish_reason="stop",
+                )
+
+            return FunctionModel(respond, model_name="fake-vision")
+
+    first_pass.HuggingFaceModelGateway = Gateway
+    workflow.crop_bytes = lambda *args: b"PNG"
+    return model_child(payload)
+
+
+def invoke_first_pass(tmp_path, readings, effect):
+    run = Run(
+        profile=Profile(first_pass_route=ROUTE.route_id), dependencies=DEPENDENCIES
+    )
+    return model_runtime.invoke_model(
+        SimpleNamespace(blobs=LocalBlobs(tmp_path / "blobs"), model_effect=effect),
+        SimpleNamespace(id="specimen-1", asset=ASSET, run=run),
+        "first_pass",
+        region=REGION,
+        readings=readings,
+    )
+
+
+def test_the_first_pass_crosses_the_model_child_and_back(monkeypatch, tmp_path):
+    # #97's closeout: the child refuses an operation its span allow-list lacks.
+    monkeypatch.setenv("SPECIMEN_APPROVED_INFERENCE", "true")
+    readings = [reading("handwriting-qwen", QWEN), reading("handwriting-muse", MUSE)]
+
+    decision = invoke_first_pass(tmp_path, readings, first_pass_child)
+
+    assert decision.selected_observation_id == readings[1].id
+    call = decision.call
+    assert (call.route_id, call.input_asset_id) == (ROUTE.route_id, ASSET.id)
+    assert call.completion_state == "validated_output"
+    assert LocalBlobs(tmp_path / "blobs").get(call.input_crop_ref) == b"PNG"
+
+
+@pytest.mark.parametrize(
+    "field,value", [("route_id", "another-route"), ("input_asset_id", "asset-2")]
+)
+def test_a_call_returned_for_another_route_or_asset_is_refused(
+    monkeypatch, tmp_path, field, value
+):
+    decision, readings = direct_first_pass(monkeypatch, tmp_path, [], VALID)
+    call = decision.call.model_copy(update={field: value})
+    forged = decision.model_copy(update={"call": call})
+    body = {
+        "status": "completed",
+        "value": {"decision": forged.model_dump(mode="json")},
+    }
+    result = SimpleNamespace(
+        status="completed", cleanup_complete=True, value=json.dumps(body).encode()
+    )
+    monkeypatch.setattr(model_runtime, "run_isolated", lambda *args, **kw: result)
+
+    with pytest.raises(OperationalBlock, match="^external_outcome_unknown$"):
+        invoke_first_pass(tmp_path, readings, None)
