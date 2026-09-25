@@ -511,6 +511,71 @@ def test_a_non_place_fields_literal_is_never_a_source_and_refuses_the_query():
     )
 
 
+FILL_RECORD = "Davao Prov.\nMindanao F.G. Wermer"
+
+
+def reviewers(field_key, literal, anchor=None):
+    """A place value the reviewer entered or changed in "fill the rest"."""
+    return LocalityLiteral(
+        field_key=field_key,
+        literal=literal,
+        source_observation_id="review_decision",
+        source_region_id="decision/d-1",
+        reviewer=True,
+        anchor=anchor,
+    )
+
+
+def filled(*literals, own=()):
+    """A "fill the rest" query: the harness's collector "F.G. Wermer" among
+    the non-place values, with the reviewer's own."""
+    return GeographyQuery(
+        literals=list(literals),
+        reading_texts=[FILL_RECORD],
+        non_place_literals=["F.G. Wermer", *own],
+        reviewer_non_place_literals=list(own),
+        knowledge_id="insects",
+    )
+
+
+def test_fill_the_rest_cuts_each_value_with_its_own_lists():
+    # #208's security review: the reviewer's value is a source though no
+    # reading holds it, and its own text is spared the harness's collector,
+    # while the harness's value the reviewer kept is cut by it.
+    kept = query(("precise_location", "Mindanao F.G. Wermer")).literals[0]
+    geography = filled(kept, reviewers("province_state", "Davao del Sur"))
+
+    seen = geocode(geography, reply(status="ZERO_RESULTS"))
+
+    assert seen.requests[0].url.params["address"] == "Mindanao, Davao del Sur"
+
+
+def test_a_reviewers_changed_value_spares_only_its_own_text():
+    # The coordinator's ruling of 07:33Z: tokens sharing a folded word with the
+    # harness's value for that field are what the reviewer kept.
+    changed = reviewers(
+        "precise_location", "Mindanao F.G. Wermer, Mt. Apo", "Mindanao F.G. Wermer"
+    )
+
+    seen = geocode(filled(changed), reply(status="ZERO_RESULTS"))
+
+    assert seen.requests[0].url.params["address"] == "Mindanao, Mt. Apo"
+
+
+def test_a_reviewers_value_in_a_non_place_field_refuses_the_query():
+    geography = filled(
+        reviewers("collectors", "F.G. Werner"), reviewers("country", "P.I.")
+    )
+
+    seen = geocode(geography, reply(DAVAO), allow=lambda n: True)
+
+    assert (seen.requests, seen.result.outcome, seen.result.warnings) == (
+        [],
+        S.POLICY,
+        ["place_text_refused"],
+    )
+
+
 def test_a_place_value_with_a_quote_reaches_google_encoded():
     # PLAN 4.8 in #191: after the filter a value is only escaped or encoded.
     geography = query(("precise_location", "Mt. D'Arcy"), ("country", "P.I."))

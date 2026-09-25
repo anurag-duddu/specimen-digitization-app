@@ -284,8 +284,9 @@ is `timeout`, any other `httpx` transport error is `provider_error`
 errors outside its `HTTPError` family such as `InvalidURL`, is `provider_error`
 with the fixed code `geocoding_unexpected_error`.
 
-**What a request may carry** (PLAN 4.8 on main after #206, 702bcb2, with the
-coordinator's rulings of 2026-09-24 and 2026-09-25, the last at 06:36Z).
+**What a request may carry** (PLAN 4.8 as #209 states it at b4856e8, on main
+after #208, with the coordinator's rulings of 2026-09-24 and 2026-09-25, the
+last at 07:33Z).
 `application/place_text.py` is the one filter. This tool applies it to every
 request, and S8's tiers import it for every value they send. The filter's
 output is what leaves; after it a value is only escaped or encoded, as an
@@ -325,11 +326,18 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
     05:38Z on 2026-09-25), and of every value a reviewer puts in one. A literal
     cuts every token it covers where it occurs: a collector copied short, "F.G.
     Wern", still cuts "Werner", and a corrected spelling matches no reading's
-    literal. The readings' and the harness's non-place values don't cut a
-    place value the reviewer entered or changed, since the reviewer's
-    correction is the authority there, but the other cuts do, so a date in it
-    never leaves. A harness place value the reviewer left unchanged is cut like
-    any other source (the coordinator's ruling of 06:36Z on 2026-09-25);
+    literal. The readings' and the harness's non-place values don't cut the
+    reviewer's own text, since the reviewer's correction is the authority
+    there: the tokens of a place value the reviewer entered or changed that
+    share no folded word with its anchor, the harness's value for that field in
+    the run under review. Where the harness gave the field no value, every
+    token is the reviewer's own. What the reviewer kept, a token sharing a
+    folded word with the anchor, is cut like any other source, so a case-only
+    change spares nothing and "Mindanao F.G. Wermer, P.I." spares only "P.I."
+    (the coordinator's rulings of 06:36Z and 07:33Z on 2026-09-25). The other
+    cuts reach the reviewer's own text too, so a date in it never leaves. The
+    filter takes the anchor and the reviewer's own non-place values as
+    `reviewer`;
   - every token of every clause, between commas, semicolons or line breaks, that
     holds a collector or determiner marker the knowledge names, wherever the
     marker sits in it and in whichever text. It names them as labels write
@@ -419,39 +427,49 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
   of its full forms (G29): "Davao Prov." leaves as "Davao Prov." or "Davao
   Province", and "Camiguin Is." as "Camiguin Is.", "Camiguin Island" or
   "Camiguin Islands". `place_request_text` returns the first form.
-- **Stated limit** (4.8 on main after #206, and the coordinator's ruling of
-  06:36Z on 2026-09-25). Text the filter cannot recognize
-  can still leave: text that no reading assigns to a non-place field and the
-  harness hasn't given one (mid-run, not yet; in "fill the rest", never), when
-  no marker the knowledge names sits in its clause. So, mid-run, before the
-  harness has named the non-place fields, "Mindanao F.G. Wermer" leaves whole,
-  "H. Hoogstraal" leaves when its "leg." sits in a neighbouring clause or line,
-  and so do a habitat such as "Mossy forest", "FMNH INS" from a catalogue
-  number and "ft." from "Mt. Apo, 6000 ft."; so does a name beside a marker the
-  knowledge doesn't list, such as German's "Sammler". A month name in a
+- **Stated limit** (4.8 as #209 states it). Text the filter cannot recognize can
+  still leave: text that no reading assigns to a non-place field and the harness
+  hasn't given one (mid-run, not yet; in "fill the rest", never), when no marker
+  the knowledge names sits in its clause. So, mid-run, before the harness has
+  named the non-place fields, "Mindanao F.G. Wermer" leaves whole, "H.
+  Hoogstraal" leaves when its "leg." sits in a neighbouring clause or line, and
+  so do a habitat such as "Mossy forest", "FMNH INS" from a catalogue number and
+  "ft." from "Mt. Apo, 6000 ft."; so does a name beside a marker the knowledge
+  doesn't list, such as German's "Sammler". In "fill the rest", a name the
+  reviewer adds to a place value can leave, unless the reviewer also puts it in
+  a non-place field, whose value still cuts it (07:33Z). A month name in a
   language the knowledge doesn't list can leave, such as Tagalog's "Hunyo", and
   so can a form of a listed language that it doesn't list, such as the RAE's
   "en.", and a lone or ranged month numeral with no day or year beside it
-  ("VIII/IX"). A token that joins a numeral to a word leaves whole, so
+  ("VIII/IX"). A token that joins a numeral to a word can leave whole, so
   "mid-VIII 1946" sends "mid-VIII". The ordinal endings are closed (st, nd, rd,
-  th, d, er, º, ª), so a bare month numeral leaves beside another form of
-  ordinal: "Mindanao, 1.º VIII", "1o VIII", "1ro VIII", "2do VIII" and "1.er
-  VIII" each send "Mindanao, VIII". A word that joins two months is no
-  connector, so "Mindanao, VIII y IX 1946" sends "Mindanao, VIII y", and a
-  connector with a date on one side only stays, so "Chimaltenango de 1946"
-  sends "Chimaltenango de". The cuts can also take too much: "Camp IV,
-  3 VIII 1946" sends only "Camp"; "Cape May" sends "Cape", and "Ag. Exp. Sta."
-  sends "Exp. Sta."; a colonia written "Col." is cut as a collector's clause,
-  so "Col. El Carmen, Chimaltenango" sends only "Chimaltenango"; a clause
-  holding a marker is cut wherever its words appear, so "Mt. Apo leg.
-  Hoogstraal" on one line takes "Mt. Apo" from every other line, a reviewer's
-  value included; and a tier-1 name whose numeral stands beside a number, such
-  as "Region XI (11)", loses the numeral. Tests pin each case, so a change in
-  what can leave shows.
+  th, d, er, º, ª), and the Roman-month cut is not widened further before the
+  pilot, so a bare month numeral leaves beside an ordinal written any other way:
+  "Mindanao, 1.º VIII", "1.ª VIII", "1o VIII", "1ro VIII", "2do VIII" and "1.er
+  VIII" each send "Mindanao, VIII", and "Mindanao, primero de VIII", a day in
+  words, leaves whole. A word, a spaced dash or a comma that joins two months
+  leaves the first: "Mindanao, VIII y IX 1946" sends "Mindanao, VIII y",
+  "Mindanao, VIII – IX 1946" sends "Mindanao, VIII –" and "Mindanao, VIII, IX
+  1946" sends "Mindanao, VIII". A connector with a date on one side only stays,
+  so "Chimaltenango de 1946" sends "Chimaltenango de". The cuts can also take
+  too much: "Camp IV, 3 VIII 1946" sends only "Camp"; "Cape May" sends "Cape",
+  and "Ag. Exp. Sta." sends "Exp. Sta."; a colonia written "Col." is cut as a
+  collector's clause, so "Col. El Carmen, Chimaltenango" sends only
+  "Chimaltenango"; a clause holding a marker is cut wherever its words appear,
+  so "Mt. Apo leg. Hoogstraal" on one line takes "Mt. Apo" from every other
+  line, a reviewer's value included; and a tier-1 name whose numeral stands
+  beside a number, such as "Region XI (11)", loses the numeral. Tests pin each
+  case, so a change in what can leave shows.
 
 This tool passes its query's sources, the place-field literals and the
 unassigned locality text, with the readings as context. It checks that every
-literal is in a reading, but sends the place-field literals only. The
+literal is in a reading, but sends the place-field literals only. In "fill the
+rest", a place value the reviewer entered or changed comes marked as the
+reviewer's (`LocalityLiteral.reviewer`) with its anchor. It is a source though
+no reading holds it, as 4.8's sources allow, and the tool cuts each value with
+its own lists: a reviewer's value with `reviewer`, so the query's
+`reviewer_non_place_literals` alone cut the reviewer's own text, and every
+other value with all of `non_place_literals` (#208's security review). The
 unassigned text comes in whole tokens: a piece of a line never starts or ends
 inside a token a reading assigns.
 
@@ -961,14 +979,22 @@ S5 stores. The reviewer edits it and approves it through the decision route.
   (section 7). Their non-place literals are the reviewer's own non-place
   values, every value the harness gave a non-place field, whether the reviewer
   kept or replaced it, and the readings' non-place literals. The readings' and
-  the harness's non-place values don't cut the reviewer's own place values,
-  since the reviewer's correction is the authority there (the coordinator's
-  rulings of 2026-09-25, 05:38Z and 05:39Z). The reviewer's own are only the
-  place values the reviewer entered or changed; a harness place value the
-  reviewer left unchanged is cut like any other source (06:36Z). Every other
-  cut reaches the reviewer's own too: the reviewer's own non-place values, the
+  the harness's non-place values don't cut the reviewer's own text, since the
+  reviewer's correction is the authority there (the coordinator's rulings of
+  2026-09-25, 05:38Z and 05:39Z). The reviewer's own text is the tokens of a
+  place value the reviewer entered or changed that share no folded word with
+  its anchor, the harness's value for that field in the run under review, and
+  every token where the harness gave the field no value. What the reviewer
+  kept is cut like any other source (06:36Z and 07:33Z). Every other cut
+  reaches the reviewer's own text too: the reviewer's own non-place values, the
   markers' clauses, digits, months and Roman months (section 7), so a date in
   it never leaves.
+- `rest_place_inputs(run, filled, *, decision_id)` gives that call what
+  derive_rest holds (#208's security review): each place value in `filled` as
+  a reviewer's literal with its anchor from `run.fields`, so what the reviewer
+  kept is cut; every value the harness gave a non-place field with the
+  reviewer's own as `non_place_literals`; and the reviewer's own non-place
+  values. The call adds the readings' texts and non-place literals.
 - The proposal (`domain.Proposal`) carries the proposed fields, the new
   evidence they cite, and the tool calls, lookups and findings. Those stay empty
   until a derivation makes a call.

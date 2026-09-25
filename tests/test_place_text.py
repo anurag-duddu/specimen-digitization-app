@@ -6,6 +6,7 @@ import pytest
 
 from specimen_digitization.application.harness_knowledge import insects
 from specimen_digitization.application.place_text import (
+    ReviewerValue,
     fold,
     place_request_forms,
     place_request_identifier,
@@ -378,9 +379,9 @@ def test_a_full_form_written_on_the_label_is_a_source():
 
 
 def test_the_readings_non_place_literals_do_not_cut_the_reviewers_place_value():
-    # PLAN 4.8 (#180, #191): the reviewer's correction is the authority there,
-    # so a reviewer's call passes only the reviewer's own non-place values; the
-    # harness's values spare it too (the coordinator's rulings of 2026-09-25).
+    # PLAN 4.8 (#180, #191, #209): the reviewer's correction is the authority
+    # there, so the readings' and the harness's non-place values spare the
+    # reviewer's own text, here a value typed into an empty field.
     reading = "Davao Prov.\nMindanao lowland forest"
     habitat = "Mindanao lowland forest"  # A reading's non-place literal.
 
@@ -395,8 +396,9 @@ def test_the_readings_non_place_literals_do_not_cut_the_reviewers_place_value():
         "Mindanao",
         sources=["Mindanao"],
         readings=[reading],
-        non_place_literals=[],
+        non_place_literals=[habitat],
         knowledge=insects,
+        reviewer=ReviewerValue(anchor=None, non_place_literals=[]),
     )
 
     assert (as_read, as_reviewed) == ("", "Mindanao")
@@ -414,6 +416,7 @@ def test_a_date_in_the_reviewers_place_value_is_cut():
             readings=["Davao Prov.\nMindanao, P.I."],
             non_place_literals=[],
             knowledge=insects,
+            reviewer=ReviewerValue(anchor=None, non_place_literals=[]),
         )
         == "Mindanao"
     )
@@ -623,22 +626,61 @@ def test_the_reviewers_value_is_a_source_only_in_a_place_field():
     )
 
 
-def test_fill_the_rest_cuts_a_harness_place_value_the_reviewer_left_unchanged():
-    # The coordinator's ruling of 06:36Z on 2026-09-25, HARNESS.md section 13:
-    # only the place values the reviewer entered or changed are spared. The
-    # harness's precise_location, kept, is a source cut like any other, here by
-    # the harness's collector.
-    record = "Davao Prov.\nMindanao F.G. Wermer"
+HARNESS_PLACE = "Mindanao F.G. Wermer"  # The harness's precise_location.
+RECORD = "Davao Prov.\nMindanao F.G. Wermer"
 
-    sent = place_request_text(
-        "Mindanao F.G. Wermer",  # The harness's precise_location, kept.
-        sources=["Mindanao F.G. Wermer"],
-        readings=[record],
-        non_place_literals=["F.G. Wermer"],  # The harness's collector.
+
+def reviewed(value, *, anchor=HARNESS_PLACE, own=()):
+    """A place value the reviewer entered or changed, in "fill the rest", with
+    the harness's value for its field as the anchor and the harness's
+    collector "F.G. Wermer" among the non-place values; `own` are the
+    reviewer's own non-place values (PLAN 4.8 as #209 states it)."""
+    return place_request_text(
+        value,
+        sources=[value],
+        readings=[RECORD],
+        non_place_literals=["F.G. Wermer", *own],
         knowledge=insects,
+        reviewer=ReviewerValue(anchor=anchor, non_place_literals=own),
     )
 
-    assert sent == "Mindanao"
+
+def test_fill_the_rest_cuts_a_harness_place_value_the_reviewer_left_unchanged():
+    # The coordinator's ruling of 06:36Z on 2026-09-25, HARNESS.md section 13:
+    # the harness's precise_location, kept, is a source cut like any other,
+    # here by the harness's collector.
+    assert reviewed(HARNESS_PLACE) == "Mindanao"
+
+
+def test_a_case_only_change_spares_nothing():
+    # The coordinator's ruling of 07:33Z: a token sharing a folded word with
+    # the anchor, the harness's value for that field, is what the reviewer kept.
+    assert reviewed("mindanao f.g. wermer") == "mindanao"
+
+
+def test_an_added_suffix_spares_only_itself():
+    assert reviewed("Mindanao F.G. Wermer, P.I.") == "Mindanao, P.I."
+
+
+def test_a_token_sharing_any_folded_word_with_the_anchor_is_kept():
+    # "Wermer-Werner" is one token, and the anchor holds "wermer".
+    assert reviewed("Mindanao Wermer-Werner") == "Mindanao"
+
+
+def test_a_value_typed_into_an_empty_field_is_the_reviewers_own_text():
+    # Spared whole from the readings' and the harness's non-place values (07:33Z),
+    assert reviewed(HARNESS_PLACE, anchor=None) == HARNESS_PLACE
+    # while the reviewer's own non-place values, and every other cut, still
+    # reach it.
+    assert reviewed(HARNESS_PLACE, anchor=None, own=["F.G. Wermer"]) == "Mindanao"
+    assert reviewed("Mindanao, 3 Sept. 1946", anchor=None) == "Mindanao"
+
+
+def test_the_stated_limit_a_name_the_reviewer_adds_can_leave():
+    # PLAN 4.8 as #209 states it: unless the reviewer also puts it in a
+    # non-place field.
+    assert reviewed("Mindanao, H. Hoogstraal") == "Mindanao, H. Hoogstraal"
+    assert reviewed("Mindanao, H. Hoogstraal", own=["H. Hoogstraal"]) == "Mindanao"
 
 
 @pytest.mark.parametrize(
@@ -707,12 +749,21 @@ def test_fill_the_rest_cuts_every_value_the_harness_gave_a_non_place_field(
         # A bare month numeral beside an ordinal the closed list doesn't hold
         # (the coordinator's ruling of 06:36Z on 2026-09-25),
         ("Mindanao, 1.º VIII", "Mindanao, 1.º VIII", "Mindanao, VIII"),
+        ("Mindanao, 1.ª VIII", "Mindanao, 1.ª VIII", "Mindanao, VIII"),  # #209
         ("Mindanao, 1o VIII", "Mindanao, 1o VIII", "Mindanao, VIII"),
         ("Mindanao, 1ro VIII", "Mindanao, 1ro VIII", "Mindanao, VIII"),
         ("Mindanao, 2do VIII", "Mindanao, 2do VIII", "Mindanao, VIII"),
         ("Mindanao, 1.er VIII", "Mindanao, 1.er VIII", "Mindanao, VIII"),
-        # a word that joins two months, which is no connector,
+        # a day in words (#209),
+        (
+            "Mindanao, primero de VIII",
+            "Mindanao, primero de VIII",
+            "Mindanao, primero de VIII",
+        ),
+        # a word, a spaced dash or a comma that joins two months (#209),
         ("Mindanao, VIII y IX 1946", "Mindanao, VIII y IX 1946", "Mindanao, VIII y"),
+        ("Mindanao, VIII – IX 1946", "Mindanao, VIII – IX 1946", "Mindanao, VIII –"),
+        ("Mindanao, VIII, IX 1946", "Mindanao, VIII, IX 1946", "Mindanao, VIII"),
         # and a connector with a date on one side only.
         ("Chimaltenango de 1946", "Chimaltenango de 1946", "Chimaltenango de"),
         # A numeral that shares its token with a word (#203).
@@ -747,11 +798,15 @@ def test_fill_the_rest_cuts_every_value_the_harness_gave_a_non_place_field(
         "unlisted-form",
         "lone-month-numerals",
         "ordinal-1-point-o",
+        "ordinal-1-point-a",
         "ordinal-1o",
         "ordinal-1ro",
         "ordinal-2do",
         "ordinal-1-point-er",
+        "day-in-words",
         "months-joined-by-y",
+        "months-joined-by-a-spaced-dash",
+        "months-joined-by-a-comma",
         "one-sided-connector",
         "numeral-in-a-word",
         "camp-iv",

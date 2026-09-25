@@ -5,7 +5,10 @@ import json
 
 from test_derivations import Blobs
 
-from specimen_digitization.application.derivations import derive_rest
+from specimen_digitization.application.derivations import (
+    derive_rest,
+    rest_place_inputs,
+)
 from specimen_digitization.application.domain import FieldValue, Run
 from specimen_digitization.application.domain import ValueState as V
 
@@ -117,3 +120,45 @@ def test_a_reviewers_date_fills_date_visited_to():
 
     to = proposal.fields["date_visited_to"]
     assert (to.parsed, to.precision, to.layer) == ("1946-09-03", "day", "derived")
+
+
+def test_the_place_calls_inputs_anchor_each_reviewer_value_on_the_run():
+    # #208's security review, the coordinator's rulings of 06:36Z and 07:33Z
+    # (HARNESS.md section 13): each place value in `filled` is the reviewer's,
+    # anchored on the harness's value for that field in the run under review,
+    # so what the reviewer kept is cut; a field the harness left empty has none.
+    run = Run(
+        fields={
+            "precise_location": stated("Mindanao F.G. Wermer"),
+            "province_state": FieldValue(),
+            "collectors": stated("F.G. Wermer"),
+            "habitat": stated("Mossy forest"),
+        }
+    )
+    filled = {
+        "precise_location": "Mindanao F.G. Wermer, P.I.",
+        "province_state": "Davao del Sur",
+        "collectors": "F.G. Werner",
+    }
+
+    inputs = rest_place_inputs(run, filled, decision_id="d-1")
+
+    assert [
+        (item.field_key, item.literal, item.reviewer, item.anchor)
+        for item in inputs.literals
+    ] == [
+        (
+            "precise_location",
+            "Mindanao F.G. Wermer, P.I.",
+            True,
+            "Mindanao F.G. Wermer",
+        ),
+        ("province_state", "Davao del Sur", True, None),
+    ]
+    assert {
+        (item.source_observation_id, item.source_region_id) for item in inputs.literals
+    } == {("review_decision", "decision/d-1")}
+    # Every value the harness gave a non-place field, kept or replaced, and the
+    # reviewer's own; the reviewer's own alone cut the reviewer's own text.
+    assert inputs.non_place_literals == ["F.G. Wermer", "Mossy forest", "F.G. Werner"]
+    assert inputs.reviewer_non_place_literals == ["F.G. Werner"]
