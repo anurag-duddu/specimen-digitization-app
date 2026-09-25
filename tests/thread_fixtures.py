@@ -50,10 +50,12 @@ class ThreadRun(HarnessRun):
 
 
 class TracedField(DecisionsField):
-    """G38's layer and the fields a derived value came from (S4's `FieldValue`, #144)."""
+    """G38's layer, the fields a derived value came from and the rules it applied, in order
+    (S4's `FieldValue`, #144 and #172)."""
 
     layer: Literal["verbatim", "settled", "derived"] | None = None
     derived_from: list[str] = []
+    derivation_rules: list[str] = []
 
 
 class ReviewCall(ToolCallRecord):
@@ -634,6 +636,20 @@ def synthetic_run(
              {"place_ids": ["fixture-place"]}, place_right.id, region=right.id, reading=right_qwen.id),
     ]
     literals = [item.id for item in run.evidence]
+    # G41: the harness fills the metres from the feet the label states, by unit conversion; its
+    # stored derivation record decides the value (S4's #144 and #172).
+    conversion = Evidence(
+        id=ident(37),
+        kind="derivation",
+        asset_id=asset.id,
+        source="apply_derivations",
+        locator="derivation:unit_conversion",
+        excerpt="feet_to_metres",
+        raw_ref=put("2", b"derivation record"),
+        digest="3" * 64,
+        created_at=TIMES[5],
+    )
+    run.evidence.append(conversion)
     decided = {"input_source": "decided_transcript", "source_region_id": left.id}
     # G38's layers as S4's harness records them (HARNESS.md 13, #144): a lookup's success or the
     # one text on every label is settled, a lookup that did not settle keeps the verbatim, and a
@@ -705,6 +721,28 @@ def synthetic_run(
             evidence_ids=[gbif.id, col.id],
             evidence_relations={gbif.id: "decides", col.id: "contradicts"},
         ),
+        "elevation_to_ft": TracedField(
+            state=ValueState.SUPPORTED,
+            literal="6,400 ft",
+            parsed="6400",
+            **decided,
+        ),
+        "elevation_to_m": TracedField(
+            state=ValueState.SUPPORTED,
+            parsed="1950.72",
+            layer="derived",
+            derived_from=["elevation_to_ft"],
+            derivation_rules=["feet_to_metres"],
+            authority_identity={
+                "source": "apply_derivations",
+                "source_record_id": None,
+                "credit": None,
+                "version": "derivation-rules-v1",
+            },
+            evidence_ids=[conversion.id],
+            evidence_relations={conversion.id: "decides"},
+            reason="derived:unit_conversion",
+        ),
         "identified_by_irn": TracedField(),
     }
     run.field_groups = {
@@ -713,6 +751,8 @@ def synthetic_run(
         "county": "mandatory",
         "date_visited_from": "mandatory",
         "taxon": "mandatory",
+        "elevation_to_ft": "optional",
+        "elevation_to_m": "optional",
         "identified_by_irn": "optional",
     }
     run.findings = [

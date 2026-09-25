@@ -426,7 +426,7 @@ def test_a_field_on_two_labels_that_settled_alike_clears_with_every_labels_readi
     left, right = s.run.regions
     left_qwen, _, right_qwen, right_muse = s.run.observations
     place, place_right = s.run.lookups[0], s.run.lookups[4]
-    by_qwen, by_muse = s.run.evidence
+    by_qwen, by_muse = s.run.evidence[:2]
     city = by_key(thread(s)["fields"], "field_key")["city"]
     # G32: each label's own entry with its own input source; the decided label's entry names the
     # reading its first pass selected, and the right label's readers agree, so it brings one.
@@ -454,7 +454,7 @@ def test_a_field_on_two_labels_that_settled_alike_clears_with_every_labels_readi
 def test_a_field_on_two_labels_in_conflict_settles_nothing_though_its_evidence_links():
     s = synthetic_run()
     left_qwen, _, right_qwen, right_muse = s.run.observations
-    by_qwen, by_muse = s.run.evidence
+    by_qwen, by_muse = s.run.evidence[:2]
     s.run.fields["city"] = s.run.fields["city"].model_copy(
         update={
             "state": ValueState.AMBIGUOUS,
@@ -496,7 +496,7 @@ def test_readers_that_agree_without_a_pick_keep_one_verbatim_and_each_readers_ev
     s = synthetic_run()
     _, right = s.run.regions
     right_qwen, right_muse = s.run.observations[2:]
-    by_qwen, by_muse = s.run.evidence
+    by_qwen, by_muse = s.run.evidence[:2]
     # One label, no pick, and both readers read the text alike: one literal, from the first
     # reading, with each reader's own literal evidence (section 4.3; agreed with S4).
     s.run.fields["verbatim_dts"] = TracedField(
@@ -739,13 +739,15 @@ def test_labels_that_settle_a_date_alike_are_each_named():
 def test_each_field_shows_its_layer_and_a_derived_one_the_fields_it_came_from():
     s = synthetic_run()
     fields = by_key(thread(s)["fields"], "field_key")
-    # G38's layers as the snapshot records them; a field with neither literal nor lookup has none.
+    # G38's layers as the snapshot records them; a field it records none for has none.
     assert {key: (f["layer"], f["derived_from"]) for key, f in fields.items()} == {
         "province_state": ("settled", []),
         "city": ("settled", []),
         "county": ("verbatim", []),
         "date_visited_from": ("settled", []),
         "taxon": ("settled", []),
+        "elevation_to_ft": (None, []),
+        "elevation_to_m": ("derived", ["elevation_to_ft"]),
         "identified_by_irn": (None, []),
     }
     # G37: a label that leaves the county out has it filled from the settled city (S4's #144),
@@ -802,6 +804,41 @@ def test_each_field_shows_its_layer_and_a_derived_one_the_fields_it_came_from():
     s.run.fields["county"] = derived.model_copy(update={"evidence_ids": [], "evidence_relations": {}})
     uncounted = by_key(thread(s)["fields"], "field_key")["county"]
     assert (uncounted["derived_from"], uncounted["parsed"], uncounted["evidence"]) == (["city"], None, [])
+
+
+def test_a_derived_field_names_its_derivation():
+    s = synthetic_run()
+    conversion = s.run.evidence[-1]
+    metres = by_key(thread(s)["fields"], "field_key")["elevation_to_m"]
+    # G41: the method from its deciding evidence's locator, the rules in the order applied, and
+    # its authority with its version, for the client to name the rule (S6's ask, agreed with S4).
+    assert metres["derivation"] == {
+        "method": "unit_conversion",
+        "rules": ["feet_to_metres"],
+        "authority": {"name": "apply_derivations", "version": "derivation-rules-v1"},
+    }
+    assert (metres["layer"], metres["derived_from"], metres["parsed"], metres["verbatim"]) == (
+        "derived",
+        ["elevation_to_ft"],
+        "1950.72",
+        [],
+    )
+    assert [(e["evidence_id"], e["relation"], e["locator"]) for e in metres["evidence"]] == [
+        (conversion.id, "decides", "derivation:unit_conversion")
+    ]
+    # Before its candidate's row is written, the snapshot's derivation evidence names the method.
+    unwritten = [
+        w for w in written(s)
+        if not (w.operation == "AppendFieldCandidateV3" and w.variables["fieldKey"] == "elevation_to_m")
+    ]
+    early = by_key(thread(s, history=unwritten)["fields"], "field_key")["elevation_to_m"]
+    assert (early["evidence"], early["derivation"]) == ([], metres["derivation"])
+
+
+def test_a_field_that_is_not_derived_has_no_derivation():
+    fields = thread(synthetic_run())["fields"]
+    assert [f["field_key"] for f in fields if f["derivation"] is not None] == ["elevation_to_m"]
+    assert by_key(fields, "field_key")["elevation_to_ft"]["derivation"] is None
 
 
 def test_a_settled_value_shows_its_authoritys_identity():
