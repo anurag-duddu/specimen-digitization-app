@@ -11966,3 +11966,51 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Remaining follow-ups:
   - part 2b, the GeoNames dumps;
   - part 2c, NGA GNS and Getty TGN. TGN works anonymously today through its reconciliation service and its SPARQL endpoint (checked 2026-09-24), while its new gateway needs a token that Getty publishes no process for.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 3: the reference-dataset manifest
+
+- Task: pin the files the tool reads from the project's storage, the Copernicus GLO-30 tiles (D11) and the GeoNames dumps (PLAN 4.8), so that S2 can write the owner's upload command from a reviewed manifest.
+- Branch and worktree: `golive/geo-datasets` in `.claude/worktrees/geo-build`, stacked on #139. PR #151.
+- Outcome:
+  - `georef_datasets.py` pins five files by the SHA-256 of their exact bytes, with the source URL, retrieval date, license and credit text for each.
+  - The pinned files are three 1-degree GLO-30 tiles and the Philippines and Guatemala GeoNames dumps of 2026-09-24.
+  - `verified` refuses bytes of the wrong size or digest.
+  - `elevation_tile` finds a point's tile, and `geonames_dump` a country's latest pin.
+  - The manifest names no bucket.
+- Validation: 9 tests; `verified` run against all five held files; `uv run pytest tests/ -q` (1,589 passed, 31 skipped); `uv run pytest scripts/ -q` (1,547 passed, 50 skipped); pre-commit.
+- Durable learnings:
+  - (1) GeoNames regenerates its dumps daily and keeps no archive, so a "download again and check the digest" upload can never match a pin. The coordinator ruled that the pinned bytes are the only copy: kept read-only in `~/specimen-golive/datasets/geonames/<date>/` and uploaded from there. Refreshing a dump means a new manifest PR.
+  - (2) Take a credit from the source's current terms, not from memory. On 2026-09-24:
+    - NGA's GNS pages stated no license and requested no citation (#94, S33), although the plan had said "citation requested".
+    - Copernicus's own site was unreachable, while the Copernicus Data Space page for the DEM gave the exact notice for adapted data.
+  - (3) detect-secrets reads a SHA-256 as a secret. The repository's convention is a trailing `# pragma: allowlist secret (reason)` on each public digest.
+  - (4) A tile's MD5 equalling the S3 ETag of a single-part upload proves a download intact before its SHA-256 is pinned.
+- Failed approaches: a subagent sent to check Getty's access hit the session's usage limit; S8 ran the three anonymous checks itself.
+- Remaining follow-ups:
+  - geoBoundaries' entries, with the derivations;
+  - S2's upload command from the merged manifest;
+  - part 2b, the GeoNames reader, which reads these pinned dumps.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 2b: tier 1 GeoNames from pinned dumps
+
+- Task: read the GeoNames country dumps pinned in #151 for tier 1 (G35). Nothing is sent to GeoNames (PLAN 4.8).
+- Branch and worktree: `golive/geo-geonames` in `.claude/worktrees/geo-build`, stacked on #151. PR #152.
+- Outcome: `georef_geonames.py` does three things.
+  - `read_dump` indexes every name a row carries by section 1's comparison key.
+  - `find` returns the places a reading names exactly, or, for a full-name reading with no exact match, the places one letter off through a full name only (G34).
+  - Places carry their administrative parents from the same dump, their class and code, and the dump's country.
+- Validation:
+  - 12 tests on 23 rows copied from the pinned dumps (CC BY 4.0, credited in the fixtures' README).
+  - Full pinned dumps, run in the scratchpad:
+    - PH: 96,646 rows indexed in 1.95 s at a 151 MB peak.
+    - GT: 36,721 rows indexed in 0.97 s at a 56 MB peak.
+    - A one-letter search took about 0.1 s.
+    - The pilot results held at full scale: "Davao Province" (ADM2) named only 1715347, "Mt. Apo" named exactly three features, no Philippine "Mount McKinley" existed, and "Chimaltenago" was one letter from 3598570 and 3598571.
+  - `uv run pytest tests/ -q` (1,601 passed, 31 skipped), `uv run pytest scripts/ -q` (1,547 passed, 50 skipped), and pre-commit.
+- Durable learnings:
+  - (1) Section 1's key drops unit words, so "Davao Province" keys as "davao" and also names the region and the city. The unit's level has to filter (`kinds={"A.ADM2"}`). Which level a unit word means in each country is the tool's mapping.
+  - (2) GeoNames files Davao City (ADM3) under Davao del Sur (ADM2 25), as GADM does. Davao City's charter-city status (#94, 4.2) therefore needs another source.
+  - (3) GeoNames carries no validity dates. Its historical feature codes (ADM1H and the like) mark former units, but the pilot's dumps name the 1914-1967 Davao Province only as an alternate name of its successor. So history (task 3) relies on Wikidata.
+  - (4) Load a dump once per worker process. It costs about 2 s and 150 MB for the Philippines, and a search is then cheap.
+- Failed approaches: none.
+- Remaining follow-ups: NGA GNS and Getty TGN (2c), history (task 3), and the tool (task 4) with PLAN 4.8's request filter and its tests.

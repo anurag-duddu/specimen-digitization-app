@@ -100,9 +100,9 @@ elevation forms, and the comparison rules.
 The owner's tier 1 (G35) asks gazetteers for "the historical name and when it
 was in use", returning modern equivalents. `georef_places.py` holds the record
 that every gazetteer returns. `georef_wikidata.py` builds Wikidata's requests
-and reads the answers into those records. It sends nothing itself: the tool
-(section 4) sends each request with retries, and records its provenance as a
-sub-call (G23).
+and reads the answers into those records. It sends nothing itself: the tool,
+specified in a later section, sends each request with retries, and records its
+provenance as a sub-call (G23).
 
 **The record.** A `Place` holds:
 - the source and its record id;
@@ -184,4 +184,121 @@ The tests check:
 - Mount Apo Natural Park starts in 2004.
 - The Philippines' aliases include the code "RP", which section 1's full-name
   test excludes.
+- Every row of the outcome table.
+
+## 3. Reference datasets in the project's storage
+
+Some sources are read as files, not asked as services:
+- Copernicus GLO-30 elevation tiles (D11, the coordinator's ruling), for
+  measurements and for derived elevations (G37);
+- the GeoNames country dumps, for tier-1 names (G35). Nothing is sent to GeoNames
+  (PLAN 4.8 in #124).
+- geoBoundaries' open release, for containment (the coordinator's ruling). Its
+  entries come with the derivations.
+
+`georef_datasets.py` is their manifest. Each entry gives:
+- an id and its purpose;
+- the source URL and the date the bytes were retrieved;
+- the byte size and the SHA-256 of the exact bytes;
+- the license and its URL;
+- the credit text, taken from the source's own terms;
+- the content type the upload sets.
+
+The credit goes into `georeferenceSources` and into the dataset metadata (G35's
+follow-up, D2).
+
+**Storage and upload.** S2 stores each file as `application/sha256/<digest>` in
+the bucket the runtime configures, and the repository never names that bucket.
+The owner uploads with a command S2 writes from the merged manifest. It checks
+each size and digest, stops on any mismatch, and never overwrites (S2 and the
+coordinator, 2026-09-24).
+- The tiles are downloaded again from their source URLs, which serve the same
+  bytes.
+- GeoNames regenerates its dumps daily and keeps no archive. The pinned bytes
+  are therefore the only copy. S8 keeps them read-only outside the repository,
+  and the command uploads them from there, never downloading them again. Each
+  such entry says so. Refreshing a dump means a new download, a new manifest
+  pull request and a new upload.
+
+**Verify on read.** A reader recomputes the SHA-256 of what it reads and refuses
+a mismatch. The worker can also write under that prefix, so only the digest
+proves the bytes are the reviewed ones.
+
+**The pilot's files.**
+- Three GLO-30 tiles, one per 1-degree cell:
+  - N07 E125, for the McKinley camps and Mount Talomo;
+  - N06 E125, for Mount Apo;
+  - N14 W091, for Yepocapa.
+
+  A point's tile is the cell its latitude and longitude fall in, named for the
+  cell's south-west corner. The tiles were read from the anonymous open-data
+  bucket on 2026-09-24. Each MD5 equalled the bucket's ETag, and each size its
+  `Content-Length`.
+- The Philippines and Guatemala dumps of 2026-09-24.
+
+**Credits.**
+- GLO-30: the Copernicus notice for adapted data, as the licensing section of
+  the Copernicus Data Space page for the DEM gives it (checked 2026-09-24):
+  "produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus
+  Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European
+  Union and ESA; all rights reserved". It applies because derived elevations
+  adapt the data.
+- GeoNames: its dumps' own readme states CC BY 4.0 and supplies the data as it
+  is. The credit names GeoNames and that license.
+
+**Tests.** `tests/test_georef_datasets.py` checks:
+- the manifest's shape: unique ids, 64-character digests, object names built
+  from digests, a credit on every entry, and no bucket names;
+- the three tiles and the tile each pilot place falls in;
+- that a point outside the manifest's tiles has no tile;
+- the two GeoNames pins, marked as the only copy;
+- that bytes of the wrong size or digest are refused.
+
+## 4. Tier 1: the GeoNames dumps
+
+`georef_geonames.py` reads the GeoNames country dumps pinned in section 3. The
+caller passes a pinned dump's bytes after `verified` has checked them, so nothing
+is sent to GeoNames (PLAN 4.8). The rows stay as the dump gives them, and a
+search returns its matches as the shared `Place` records of section 2.
+
+**Reading a dump.** `read_dump(country, bytes)` opens the zip's `<country>.txt`,
+which is 19 tab-separated columns per row, as the dump's readme lists them. It
+indexes every name a row carries by section 1's comparison key: the name, the
+ASCII name and each alternate name.
+
+| Dump | Outcome |
+|---|---|
+| empty | `empty_response` |
+| not a zip, missing the country's file, or a row without 19 columns | `malformed_response` |
+
+**A place.**
+- Its **parents** are the administrative units its codes name (the ADM3, the
+  ADM2, then the ADM1), taken from the same dump's rows, nearest first.
+- Its **country** is the dump's ISO code, with the name of the dump's country row.
+- A **country row** carries the ISO code itself.
+- Its **kind** is the feature class and code, such as `A.ADM2` or `T.MT`.
+- It carries **no dates**. GeoNames gives none, so history (a later section)
+  leans on Wikidata.
+
+**Finding a reading.** `find(dump, reading, kinds)` returns:
+- the places whose names have the reading's key, limited to feature classes
+  ("A") or to a class and code ("A.ADM2");
+- the places one letter off (G34), but only when there are no such places and
+  the reading is a full name. Such a place qualifies only through a name that is
+  itself a full name, never a code or an abbreviation.
+
+Uniqueness and the fit with the other place fields are the tool's to test.
+
+**Tests.** `tests/test_georef_geonames.py` reads 23 rows copied from the pinned
+Philippines and Guatemala dumps of 2026-09-24. The fixtures' README credits
+them under CC BY 4.0. The tests check:
+- "Davao Province" names modern Davao del Norte, the 1967 successor, which is
+  #94's trap. Without its level, the key also names the region and the city.
+- "Chimaltenago" is one letter from both the department and the municipio of
+  Chimaltenango.
+- Three features are called Mount Apo, each in a different province.
+- There is no Philippine Mount McKinley.
+- "Mindanao" is an island in one dump and a village in the other.
+- Yepocapa's town lies inside its municipio and department.
+- Codes never reach the one-letter gate.
 - Every row of the outcome table.
