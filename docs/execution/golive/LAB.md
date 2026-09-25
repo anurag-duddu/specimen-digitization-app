@@ -57,23 +57,24 @@ uv run python scripts/lab/run_specimen.py subject_105526321
 | Stage | Passed when | Otherwise |
 |---|---|---|
 | 1 Images in storage | the asset's SHA-256 equals the fetched object's, and its file name is the subject's | failed |
-| 2 Label segmentation | the run has regions made by SAM 3 with its parameters, and the lane's coverage check (G15) ran, as `coverage_check.outcome` on the run (#111; DATA_CONTRACT.md 4.1): for the ten, `confirmed` with the lab's own measure (every label box below at least half covered by a distinct region) agreeing, or `unconfirmed` with the lab's measure finding the miss it caught | failed when `confirmed` passes a label the lab's measure finds uncovered; not checked for a false alarm (`unconfirmed` while the lab's measure finds every box covered: G15 sends the record to review, and the lab records it for calibration) and outside the ten, where the lab has no layout; not built while the run carries no coverage check; blocked, with the app's blocker; substituted when the lab drew the regions |
+| 2 Label segmentation | the run has regions made by SAM 3 with its parameters, and the lane's coverage check (G15) ran, as `coverage_check.outcome` on the run (#111; DATA_CONTRACT.md 4.1): for the ten, `confirmed` with the lab's own measure (every label box below at least half covered by a distinct region) agreeing, or `unconfirmed` while the lab's measure finds a miss, since the lane then sent the record to review, whatever its reason code | failed when `confirmed` passes a label the lab's measure finds uncovered; not checked for a false alarm (`unconfirmed` while the lab's measure finds every box covered: G15 sends the record to review, and the lab records it for calibration), for any other outcome, and outside the ten, where the lab has no layout; not built while the run carries no coverage check; blocked, with the app's blocker; substituted when the lab drew the regions |
 | 3 VLMs | every region has one reading per profile route, each with model, provider, prompt version, input hash and a stored raw response | failed, or blocked with the blocker |
 | 4 Raw transcripts to SQL | the run's `pipeline_run` row names this specimen, and there is one `model_observation` row with `independent` true per reading, with the snapshot's ids (DATA_CONTRACT.md 2) | not built while SQL holds no `pipeline_run` rows; blocked or failed when the run has no readings to project; failed on any mismatch |
 | 5 Disagreement score | every region's transcript carries a ratio and `bounded-levenshtein-fraction-v1` | failed, or not built |
 | 6 LLM first pass | the run records the first pass's decision and what each reader handed to the harness | not built |
-| 7 Agentic harness | the run records tool calls with typed outcomes | failed on any GBIF occurrence request while D4 is held: a request to `api.gbif.org/v1/occurrence` (any case, percent-decoded) in any run's tool calls, lookups, authority results or evidence locators, or in the blobs its receipts point to; a `"museum_published": true` record; any GBIF record other than species match (G23) and GADM, or one carrying occurrence query keys; or any request the runner counts in the parent at `bounded_http` before it is sent. A call held by policy sent nothing and is skipped. Not checked while the runner's count is unavailable or while tool calls are recorded (S4's checks to come); not built when the run records no tool calls |
-| 8 Queue decision | for the ten, needs human review with its reasons, their expected outcome (PLAN 8, 879-883); a person compares the reasons against the expected outcomes below and records any wrong one as a failure, so the stage reads not checked; for other subjects, exactly one disposition with its reasons | failed when one of the ten gets any other disposition, goes to review with no reason, or has no disposition; blocked while `processing_blocked` or `retry_scheduled`, naming the blocker (or the reasons, when there is none) and the app's next step |
-| 9 Linkage | every region, reading and transcript points to this specimen, asset and run. In SQL, stage 4 covers the readings; the check that SQL holds every artifact the final snapshot has (DoD-4; PLAN 8, 864-869) arrives with T3a | failed |
+| 7 Agentic harness | the run records tool calls with typed outcomes | failed on a GBIF occurrence request while D4 is held. PLAN 4.8's table lists GBIF only for species match (G23) and the held occurrence search. A request is: a GBIF record (by `source`, `provider`, `source_id`, `tool` or `tool_id`) whose identity or percent-decoded path names the occurrence search, with or without a host, or which carries occurrence query keys; any record naming `api.gbif.org/v1/occurrence`; a plain or escaped `"museum_published": true`, or an occurrence signal that supports or conflicts; receipt blobs showing any of these; or a request the runner counts, before sending, at `bounded_http` in the parent or on an injected `httpx` client, to `api.gbif.org` with the `/v1/occurrence` path or occurrence query keys. Failed on any GADM call (a `gbif_gadm` source or `gbif-gadm` adapter): PLAN 4.8 does not use GADM, not even as a measurement (coordinator ruling, 2026-09-25). GADM is not an occurrence request, so it stays outside D4. A call held by policy sent nothing and is skipped. Any other GBIF call is outside PLAN 4.8's table and is reported for the coordinator. Not checked while the runner's count is unavailable, or while tool calls are recorded (S4's checks to come); not built when the run records neither |
+| 8 Queue decision | for the ten, needs human review with its reasons, their expected outcome (PLAN 8, 879-883); a person compares the reasons against the expected outcomes below and records any wrong one as a failure in the run's `verdict.md`, so the stage reads not checked; for other subjects, exactly one disposition with its reasons | failed when one of the ten gets any other disposition, goes to review with no reason, or has no disposition; blocked while `processing_blocked` or `retry_scheduled`, naming the blocker (or the reasons, when there is none) and the app's next step |
+| 9 Linkage | every region, reading and transcript points to this specimen, asset and run. In SQL, stage 4 covers the readings; the check that SQL holds every artifact the final snapshot has (DoD-4; PLAN 8, 864-869) arrives with the lab's T3a | failed |
 | Tracing | DoD-5 (PLAN 1): "Each run is one Logfire trace, linked from the record in the app, that shows SAM 3's parameters, every model call's system prompt and text input and output, the LLM first pass, the harness's tool calls and the queue decision" | not built while the run stores no trace id (`Run.trace_id`); not checked while it does, until the lab holds a Logfire read token (owner action) to read the trace; the lab's own root trace id is always recorded |
 
 Statuses are passed, failed, blocked, substituted, not built (the stage, or the
 record it is judged on, is not on this commit) and not checked (the record
 exists, but the lab does not judge it automatically yet, or a person compares
-it by hand). A blocked stage names the blocker and the step
-the app would run next (`Workflow.next_step`). Checks for stages 4, 6 and 7 follow the
-contracts as S5 and S4 merge them. Until then the runner reports not built rather
-than guess at field names.
+it by hand, or the runner could not observe it, as when its request count is
+unavailable). A blocked stage names the blocker and the step the app would run
+next (`Workflow.next_step`). Checks for stages 4 and 6 follow the contracts as
+S5 and S4 merge them; until then they read not built rather than guess at field
+names. Stage 7 reads not checked once tool calls are recorded.
 
 ### Label layout of the ten pilot slides
 
@@ -100,7 +101,8 @@ All ten go to needs human review, with the right reasons: G42 keeps `PRD.md`
 12.4's twenty mandatory fields, no label carries a determination date, and none
 can be derived, so no slide can clear. A run that clears or defers one of the
 ten, or sends it to review with no reason, fails stage 8 once the lane reaches
-the queue decision; a person who finds a wrong reason records that failure. The owner's words and the coordinator's readings
+the queue decision; a person who finds a wrong reason records that failure in
+the run's `verdict.md`, which the subject report carries (PLAN 8 step 3). The owner's words and the coordinator's readings
 (PLAN 2.1) are kept apart below.
 
 - **Derived fields (G37).** The owner: "these can be derived if other location
@@ -155,7 +157,7 @@ the queue decision; a person who finds a wrong reason records that failure. The 
   fields no lookup checks, a value that doesn't look like its field's kind goes
   to review with a reason." A slide-preparation code (for example "VI-24-68-7")
   in such a field must bring that reason; a person who finds the decision
-  without it records the failure. In `verbatim_dts` it is a finding only: a coordinator hold (PLAN 2.3),
+  without it records the failure in the run's `verdict.md`. In `verbatim_dts` it is a finding only: a coordinator hold (PLAN 2.3),
   since what that field holds is an open question and the owner's answer is
   pending.
 - **`identified_by_irn`** is never on a label and does not block (G16, G43).
@@ -176,7 +178,10 @@ and the expected outcome per slide is in
   crops/<region id>.png
   responses/<observation id>.json
   rows/<table>.json
-  state/  the app's blobs and local database for this run
+  verdict.md  a person's verdict: written by a person, never by the runner;
+              the subject report carries it
+  state/  the app's blobs and local database for this run, unredacted: never
+          shared or attached anywhere
 ~/specimen-golive/reports/<subject>.md
 ```
 
@@ -208,12 +213,13 @@ JWT. It also removes what PLAN 7.7 keeps out of shared logs and issues:
   run's dependencies, and any `*.run.app` host or address;
 - the administrator's identity: any email address (an ADC error names the
   caller); the fields that name a person, redacted by field wherever they
-  appear (`asset.uploader`, `audit[].actor`, `Transcript.actor`, and the actor
-  and creator columns of SQL rows); and the private values the file
+  appear: `asset.uploader`, `audit[].actor`, `Transcript.actor`, and the SQL
+  columns `actor_uid`, `created_by`, `uid`, `user_id`, `uploader_uid`
+  (`SourceAsset.uploaderUid`) and `approved_by` (`ProfileVersion.approvedBy`); and the private values the file
   `LAB_REDACT_VALUES_FILE` lists, such as a signed-in UID and the GCP project
-  number. That file lives in `~/specimen-release-private/` (PLAN 840), never
-  in a repository. The runner refuses a path inside its worktree, and writes
-  nothing when the variable is unset or the file is unreadable or empty;
+  number. That file must be under `~/specimen-release-private/` (PLAN 840), never
+  in a repository. The runner refuses any other path, and writes nothing when
+  the variable is unset or the file is unreadable or empty;
 - billing and organization ids: `HF_BILL_TO`'s organization and the Logfire
   project URL's organization slug;
 - more secrets: the SAM lab token, the Logfire read token, the Geocoding key
