@@ -280,7 +280,8 @@ def test_home_paths_are_found_in_any_case(monkeypatch):
     monkeypatch.setenv("HOME", "/Users/labfixture")
     redact = run_specimen.Redactor({})
     assert redact("/users/labfixture/runs and /USERS/LABFIXTURE/x") == "~/runs and ~/x"
-    assert redact("saved under /Users/labfixture. Then /Users/labfixture.old") == "saved under ~. Then /Users/labfixture.old"
+    text = "saved under /Users/labfixture. Then /Users/labfixture.old"
+    assert redact(text) == "saved under ~. Then /Users/labfixture.old"
 
 
 class OccurrenceLane(FakeLane):

@@ -33,14 +33,22 @@ PG_BIN = Path(os.getenv("POSTGRES_BIN", "/opt/homebrew/opt/postgresql@18/bin"))
 PREFIX = f"/v1/organizations/{SYNTHETIC_ORG}"
 CHUNK = 4 * 1024 * 1024
 USE_REVIEWED_REGIONS = "sam3_serving_contract_not_configured_use_reviewed_regions"
-# G31: the owner classified these ten pilot slides not sensitive against PRD.md 718 (2026-09-23), as
-# CONTRACTS.md 169-170 requires. Every other slide stays Sensitive, and the lane never processes those.
+# G31: the owner classified these ten pilot slides not sensitive against PRD.md 724's criteria (2026-09-23), as
+# CONTRACTS.md 169-170 requires. Every other slide stays Sensitive: a run with the production adapters refuses
+# it before any upload (production_lane), so its image never reaches a model provider (PRD.md 67, PLAN.md 182).
+# The synthetic adapters may still drive one in tests.
 NOT_SENSITIVE = frozenset(f"subject_1055263{n}" for n in range(21, 31))
 READER = "synthetic-reviewer"
 
 
 class LabError(RuntimeError):
     pass
+
+
+def refuse_sensitive(subject):
+    if subject not in NOT_SENSITIVE:
+        raise LabError(f"{subject} is not one of the ten pilot slides declared not sensitive (G31); a run with the "
+                       "production adapters never processes a Sensitive slide (PRD.md 67, PLAN.md 182)")
 
 
 class AppLane:
@@ -55,16 +63,21 @@ class AppLane:
     def __enter__(self):
         self.root.mkdir(parents=True, exist_ok=True)
         self.blobs = LocalBlobs(self.root / "blobs")
-        if self.persistence == "sqlite":
-            self.repository = SQLiteRepository(self.root / "state.sqlite3")
-        else:
-            self.emulator = Emulator(self.root / "emulator").start()
-            self.repository = SqlConnectRepository(
-                project="demo-specimen-data", emulator_host=self.emulator.host
-            )
-        app = create_app(mode="synthetic", repository=self.repository, blobs=self.blobs,
-                         adapters=self.adapters_factory(self.blobs), token=self.token)
-        self.client = TestClient(app, raise_server_exceptions=False).__enter__()
+        try:
+            if self.persistence == "sqlite":
+                self.repository = SQLiteRepository(self.root / "state.sqlite3")
+            else:
+                self.emulator = Emulator(self.root / "emulator").start()
+                self.repository = SqlConnectRepository(
+                    project="demo-specimen-data", emulator_host=self.emulator.host
+                )
+            app = create_app(mode="synthetic", repository=self.repository, blobs=self.blobs,
+                             adapters=self.adapters_factory(self.blobs), token=self.token)
+            self.client = TestClient(app, raise_server_exceptions=False).__enter__()
+        except BaseException:
+            if self.emulator:  # __exit__ never runs when __enter__ raises
+                self.emulator.stop()
+            raise
         return self
 
     def __exit__(self, *exc):
@@ -242,6 +255,7 @@ class Emulator:
 
 
 def production_lane(state, options, environment):
+    refuse_sensitive(options.subject)  # before any adapter is built or any image uploaded
     from specimen_digitization.application.production import ProductionAdapters
 
     return AppLane(state, adapters_factory=ProductionAdapters, persistence=options.persistence,

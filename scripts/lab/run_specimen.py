@@ -7,6 +7,7 @@ from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -14,7 +15,7 @@ import subprocess
 import sys
 import time
 import traceback
-from urllib.parse import parse_qsl, unquote, urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 import lab_checks
 
@@ -40,7 +41,7 @@ LOGFIRE_ORG = re.compile(r"(logfire-(?:us|eu)\.pydantic\.dev/)[^/\s\"']+", re.I)
 # Always redacted, even with a stray invalid byte; any other artifact is redacted when it decodes as UTF-8.
 TEXT_SUFFIXES = {".json", ".jsonl", ".md", ".txt", ".log", ".csv", ".html", ".xml"}
 MIN_VALUE = 3  # a shorter private value is never matched
-NOT_BARE = re.compile(r"[=#'\"\s]")  # the values file holds one bare value per line
+VALUE = re.compile(r"[A-Za-z0-9._@:+-]+")  # one value per line; ":" is kept for Cloud SQL connection names
 REPOSITORY = Path(__file__).resolve().parents[2]
 PRIVATE_ROOT = Path.home() / "specimen-release-private"  # PLAN 840: private artifacts, never in a repository
 # Fields that name a person, redacted by field wherever they appear (PLAN 7.7): the snapshot's uploader,
@@ -106,7 +107,7 @@ class Redactor:
             home = ""
         # The account name in a home path can equal the Logfire organization slug (PLAN 7.7); macOS paths
         # ignore case.
-        self.home = re.compile(re.escape(home) + r"(?![\w.-])", re.I) if len(home) > 1 else None
+        self.home = re.compile(re.escape(home) + r"(?![\w-]|\.\w)", re.I) if len(home) > 1 else None
 
     def __call__(self, text):
         if self.home:
@@ -124,16 +125,28 @@ def redact_people(value):
     return value
 
 
-def recorded_spend(runs_root):
-    """The lab's tally: every run.json under the runs root, diagnostics and dated adjustment entries
-    (runs/_adjustments/, LAB.md Costs) included."""
-    total = 0.0
-    for path in runs_root.glob("*/*/run.json"):
-        try:
-            total += float(json.loads(path.read_text())["costs"]["total_usd"])
-        except (OSError, ValueError, KeyError, TypeError):
+def tally(runs_root, exclude=None):
+    """The lab's tally (LAB.md, Costs): every run.json under the runs root, diagnostics and dated adjustment
+    entries included, and each reason it cannot be trusted. An adjustment may only raise the tally."""
+    total, problems = 0.0, []
+    for path in sorted(runs_root.glob("*/*/run.json")):
+        if exclude is not None and path.parent == exclude:
             continue
-    return total
+        name = str(path.relative_to(runs_root))
+        try:
+            value = json.loads(path.read_text())["costs"]["total_usd"]
+        except (OSError, ValueError, KeyError, TypeError):
+            problems.append(f"{name} is unreadable")
+            continue
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+            problems.append(f"{name} holds a total that is not a finite number of at least zero")
+            continue
+        total += value
+    return total, problems
+
+
+def recorded_spend(runs_root, exclude=None):
+    return tally(runs_root, exclude)[0]
 
 
 def preflight(options, env, loadavg):
@@ -141,7 +154,8 @@ def preflight(options, env, loadavg):
     load = loadavg()[0]
     if load >= options.max_load:
         problems.append(f"one-minute load {load:.1f} is at or above {options.max_load:g}")
-    spent = recorded_spend(options.runs_root)
+    spent, untrusted = tally(options.runs_root)  # fails closed: G9's ceiling needs every run counted
+    problems += [f"the lab's tally cannot be trusted: {reason}" for reason in untrusted]
     if spent + options.max_run_usd > options.lab_allowance_usd:
         problems.append(
             f"lab spend {spent:.4f} plus this run's bound {options.max_run_usd:.2f} "
@@ -169,11 +183,11 @@ def values_file(name):
         return set(), ["LAB_REDACT_VALUES_FILE is unreadable"]
     if not text.strip():
         return set(), ["LAB_REDACT_VALUES_FILE is empty"]
-    # A line such as NAME=value, "value" or value # note would pass and match nothing; never echo its content.
-    malformed = [n for n, line in enumerate(text.splitlines(), 1) if NOT_BARE.search(line.strip())]
+    # A line such as NAME=value, "value", a,b or value # note would pass and match nothing; never echo it.
+    malformed = [n for n, line in enumerate(text.splitlines(), 1) if line.strip() and not VALUE.fullmatch(line.strip())]
     if malformed:
-        return set(), [f"LAB_REDACT_VALUES_FILE holds one bare value per line; lines {malformed} hold =, #, "
-                       "a quote or a space"]
+        return set(), [f"LAB_REDACT_VALUES_FILE holds one value per line, made only of ASCII letters, digits "
+                       f"and . _ @ : + -; lines {malformed} hold another character"]
     values = {line.strip() for line in text.splitlines() if len(line.strip()) >= MIN_VALUE}
     if not values:
         return set(), [f"LAB_REDACT_VALUES_FILE has no value of at least {MIN_VALUE} characters"]
@@ -226,8 +240,12 @@ def price(snapshot):
 def attempt_bound_usd(run, step, top):
     """The lab's reading of an attempt's full bound (LAB.md, Costs): the largest of the step's reservation in
     the run's profile, PLAN 4.3's floor for a call's two requests, and the call's token limit at the top price."""
-    reservations = (((run.get("profile") or {}).get("execution") or {}).get("stage_cost_reservations") or {})
-    micros = (reservations.get("cost_micros") or {}).get(reservation_stage(step)) or 0
+    execution = (run.get("profile") or {}).get("execution") or {}
+    reservations = execution.get("stage_cost_reservations")
+    if reservations:  # as workflow.py reserves: the stage's entry, or else the uniform per-step reservation
+        micros = (reservations.get("cost_micros") or {}).get(reservation_stage(step)) or 0
+    else:
+        micros = execution.get("request_cost_reservation_micros") or 0
     return max(micros / 1e6, CALL_REQUESTS * REQUEST_FLOOR_MICROS / 1e6, CALL_TOKEN_BOUND * top)
 
 
@@ -254,7 +272,7 @@ class Run:
 
     def __init__(self, options, path, redact, record):
         self.options, self.path, self.redact, self.record = options, path, redact, record
-        self.interrupted = False
+        self.interrupted = None  # the Ctrl-C a phase recorded, re-raised whatever follows
         self.log = (path / "runner.log").open("a", buffering=1)  # line by line, for a live view
 
     def write(self, name, data):
@@ -272,7 +290,7 @@ class Run:
             text = data.decode("utf-8", errors="replace") if target.suffix.lower() in TEXT_SUFFIXES else None
         if text is not None:
             clean = self.redact(text)
-            if clean != text:
+            if clean != text and name not in self.record["redacted_files"]:
                 self.record["redacted_files"].append(name)
             data = clean.encode()
         target.write_bytes(data)
@@ -297,7 +315,7 @@ class Run:
         except BaseException as exc:  # Ctrl-C: recorded as a failure, then the run stops
             entry["status"] = "failed"
             entry["error"] = type(exc).__name__
-            self.interrupted = True
+            self.interrupted = exc
             raise
         finally:
             entry["seconds"] = round(time.monotonic() - began, 3)
@@ -320,8 +338,8 @@ def occurrence_request(url, params=None):
         keys |= {str(key).lower() for key in sent.params.keys()}
     except Exception:  # a URL httpx cannot build is read as written
         pass
-    return any(unquote(host).lower() == "api.gbif.org" for host in hosts) and (
-        any(lab_checks.decoded(path).startswith("/v1/occurrence") for path in paths)
+    return any(lab_checks.gbif_host(host) for host in hosts) and (
+        any(lab_checks.occurrence_path(lab_checks.decoded(path)) for path in paths)
         or bool(keys & lab_checks.OCCURRENCE_KEYS))
 
 
@@ -441,6 +459,9 @@ def execute(options, *, fetch, lane_factory, env, clock, loadavg, commit):
                     with run.phase("ingest"):
                         lane = stack.enter_context(lane_factory(path / "state", options, env))
                         lane_started = True  # completing the upload starts processing, so paid calls may run
+                        # Held at the run's bound until priced, so a run killed outright still counts (G9).
+                        run.write("run.json", dict(record, result="running", costs={
+                            "total_usd": options.max_run_usd, "held_at_run_bound": True}))
                         specimen_id = lane.ingest(options.subject + ".jpeg", data, "image/jpeg")
                         record["specimen_id"] = specimen_id
                     if specimen_id:
@@ -459,6 +480,8 @@ def execute(options, *, fetch, lane_factory, env, clock, loadavg, commit):
                             record["rows"] = {t: len(r) for t, r in evidence["rows"].items()}
             except Exception as exc:  # the lane's teardown: the run is still priced, scored and written
                 run.failed("teardown", exc)
+                if run.interrupted:  # a Ctrl-C that the teardown's error replaced still stops the run
+                    raise run.interrupted from exc
         if evidence:
             with run.phase("check"):
                 record["costs"] = price(evidence["snapshot"])  # before scoring, so a failed check keeps it
@@ -487,7 +510,7 @@ def finish(options, run, clock):
     """run.json, the run's report and the subject report, written whatever happened before."""
     record = run.record
     # The lab's running tally against its share of G9; production's ledger never sees lab calls (G30).
-    record["lab_spend_usd"] = recorded_spend(options.runs_root) + record["costs"]["total_usd"]
+    record["lab_spend_usd"] = recorded_spend(options.runs_root, exclude=run.path) + record["costs"]["total_usd"]
     record["lab_allowance_usd"] = options.lab_allowance_usd
     record["phases"].append({"name": "report", "status": "passed", "seconds": 0.0})
     record["result"] = "dry-run" if options.dry_run and record.get("source") else lab_checks.verdict(
@@ -615,12 +638,18 @@ def git_commit():
 
 def main(argv=None):
     options = parse_args(argv)
+    import lab_lane
+
+    if not (options.dry_run or options.report_only):
+        try:
+            lab_lane.refuse_sensitive(options.subject)  # G31, before the fetch
+        except lab_lane.LabError as exc:
+            print(f"refused: {exc}", file=sys.stderr)
+            return 3
     os.environ["APP_ENV"] = "lab"
     if options.segmentation == "reviewed-region":
         for name in ("SPECIMEN_SAM3_ENDPOINT", "SPECIMEN_SAM3_REVISION"):
             os.environ.pop(name, None)
-    import lab_lane
-
     return execute(options, fetch=fetch_gcs, lane_factory=lab_lane.production_lane, env=os.environ,
                    clock=lambda: datetime.now(timezone.utc), loadavg=os.getloadavg, commit=git_commit)
 

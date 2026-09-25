@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from itertools import permutations
 import json
+import posixpath
 import re
 from urllib.parse import unquote
 
@@ -20,7 +21,8 @@ OCCURRENCE_KEYS = {"catalognumber", "recordedby", "occurrenceid", "institutionco
 MUSEUM_PUBLISHED = re.compile(r'\\*"museum_published\\*"\s*:\s*true')  # S8's check ran, escaped or not
 OCCURRENCE_SIGNAL = re.compile(r'\\*"occurrence\\*"\s*:\s*\\*"(?:supports|conflicts)')
 IDENTITY = ("source", "provider", "source_id", "tool", "tool_id")
-DOT_SEGMENT = re.compile(r"/(?!\.\.?/)[^/\s\"'?#]+/\.\./")  # "/x/../", which a client resolves to "/"
+GBIF_URL = re.compile(r"(?<![\w-])api\.gbif\.org\.?(?::\d+)?(/[^\s\"'<>\\]*)")  # its path, in decoded text
+PATH_TOKEN = re.compile(r"/[^\s\"'<>\\]*")
 PROVENANCE = ("model_id", "provider", "prompt_version", "input_sha256", "raw_ref", "raw_sha256")
 # Labels of the ten pilot slides as fractions of the frame's width, full height (S8's
 # table and the images, 2026-09-23). The left box includes the barcode's printed catalog
@@ -221,19 +223,42 @@ def harness(runs, lookups, requests, blob_hits):
 
 
 def decoded(text):
-    """Percent-decoded, lower-case text whose paths lose every "." and ".." segment, as a client sends them."""
-    text, previous = unquote(str(text)).lower(), None
-    while text != previous:
-        previous = text
-        text = DOT_SEGMENT.sub("/", text.replace("/./", "/"))
-    return text
+    """Percent-decoded until stable (at most four times), JSON's escaped slashes undone, in lower case."""
+    text = str(text)
+    for _ in range(4):
+        plain = unquote(text)
+        if plain == text:
+            break
+        text = plain
+    return text.replace("\\/", "/").lower()
+
+
+def normalized_path(path):
+    """A decoded path as a server resolves it: query and fragment dropped, slashes merged, "." and ".."
+    resolved, a ".." above the root included. Only the path is normalized, never a host."""
+    path = re.sub(r"/{2,}", "/", re.split(r"[?#]", path, maxsplit=1)[0])
+    return posixpath.normpath(path) if path.startswith("/") else path
+
+
+def occurrence_path(path):
+    return normalized_path(path).startswith("/v1/occurrence")
+
+
+def gbif_host(host):
+    return decoded(host).rstrip(".") == "api.gbif.org"  # a trailing dot names the same host
+
+
+def paths_in(plain):
+    """Every path in decoded text; a URL's "//host" is set aside first."""
+    for token in PATH_TOKEN.findall(plain):
+        yield "/" + token[2:].partition("/")[2] if token.startswith("//") else token
 
 
 def occurrence_request(text):
-    """GBIF's occurrence API named in full, or S8's occurrence check having run, in any stored text."""
+    """GBIF's occurrence API named with its host, or S8's occurrence check having run, in any stored text."""
     text = str(text)
-    return ("api.gbif.org/v1/occurrence" in decoded(text) or bool(MUSEUM_PUBLISHED.search(text))
-            or bool(OCCURRENCE_SIGNAL.search(text)))
+    return (any(occurrence_path(m.group(1)) for m in GBIF_URL.finditer(decoded(text)))
+            or bool(MUSEUM_PUBLISHED.search(text)) or bool(OCCURRENCE_SIGNAL.search(text)))
 
 
 def occurrence_blob(text):
@@ -269,16 +294,18 @@ def species_match(record):
     """PLAN 4.8's species match (G23), by tool, adapter or path; #134's evidence has a usage/<key> locator."""
     version = str(record.get("adapter_version") or record.get("tool_version") or "").lower()
     return ("taxonomy_verifier" in identity(record) or version.startswith("species-match")
-            or "/v2/species/match" in decoded(json.dumps(record, default=str))
+            or any(normalized_path(p).startswith("/v2/species/match")
+                   for p in paths_in(decoded(json.dumps(record, default=str))))
             or str(record.get("locator") or "").lower().startswith("usage/"))
 
 
 def occurrence_record(record):
-    """A GBIF record for the occurrence search: by name, by the decoded path without a host, or by query keys."""
+    """A GBIF record for the occurrence search: by name, by a path with or without a host, or by query keys."""
     if "gbif" not in identity(record):
         return False
     keys = {str(k).lower() for part in ("arguments", "query") for k in (record.get(part) or {})}
-    return ("occurrence" in identity(record) or "/v1/occurrence" in decoded(json.dumps(record, default=str))
+    return ("occurrence" in identity(record)
+            or any(occurrence_path(p) for p in paths_in(decoded(json.dumps(record, default=str))))
             or bool(keys & OCCURRENCE_KEYS))
 
 

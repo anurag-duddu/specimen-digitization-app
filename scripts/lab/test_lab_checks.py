@@ -219,9 +219,8 @@ def test_a_gbif_occurrence_request_in_any_record_of_any_run_fails_while_d4_is_of
         ("evidence", [{"source": "gbif", "locator": "/v1/x/../occurrence/search"}]),
         # #84 round 1: merged slashes, a ".." above the root that must not eat the host, a trailing host dot
         ("evidence", [{"source": "gbif", "locator": "/v1//occurrence/12345"}]),
-        ("evidence", [{"kind": "authority", "source": "web", "locator": "https://api.gbif.org/../v1/occurrence/search"}]),
-        ("evidence", [{"kind": "authority", "source": "web", "locator": "https://api.gbif.org./v1/occurrence/search"}]),
-        ("evidence", [{"kind": "authority", "source": "web", "locator": "https://api.gbif.org/v2/%2e%2e/%2e%2e/v1/occurrence"}]),
+        *(("evidence", [{"kind": "authority", "source": "web", "locator": "https://api.gbif.org" + path}])
+          for path in ("/../v1/occurrence/search", "./v1/occurrence/search", "/v2/%2e%2e/%2e%2e/v1/occurrence")),
         ("authority_results", {"k": {"context_json": '{"museum_published": true}'}}),
         ("authority_results", {"k": {"signals": {"occurrence": "supports"}}}),
         ("tool_calls", [{"tool": "occurrence_search", "source": "gbif", "arguments": {"q": "x"}}]),
