@@ -558,13 +558,16 @@ def test_a_report_only_rebuild_carries_a_new_verdict_without_preflight_or_fetch(
 
 @pytest.mark.parametrize("line", ["ADMIN_UID=adminuidfixture", '"adminuidfixture"', "adminuidfixture # admin",
                                   "admin uid fixture"])
-def test_a_values_file_line_that_is_not_one_bare_value_is_refused(tmp_path, line):
-    # #83 round 2: such a file passed, and its value never matched anything.
+def test_a_values_file_line_that_is_not_one_bare_value_is_refused(tmp_path, line, capsys):
+    # #83 round 2: such a file passed, and its value never matched anything. The refusal names the line
+    # number, never its private content.
     values = tmp_path / "private" / "values"
     values.parent.mkdir()
     values.write_text(f"{line}\n")
     code, lanes = run(tmp_path, values=values)
     assert code == 3 and lanes == []
+    captured = capsys.readouterr()
+    assert "lines [1]" in captured.err and "adminuidfixture" not in captured.out + captured.err
 
 
 def test_a_byte_order_mark_does_not_hide_the_first_value(tmp_path):

@@ -212,8 +212,8 @@ largest of:
 - the call's token limit at the highest known price, USD 0.0192
   (`total_tokens_limit=16000`).
 
-Both limits are in `UsageLimits` at `production.py:738`, `harness.py:92` and
-`first_pass.py:239`. That reading is the lab's, confirmed by the coordinator on
+Both limits are in `UsageLimits` at `production.py:735`, `harness.py:92` and
+`first_pass.py:280` (on main `dfd1ad8`). That reading is the lab's, confirmed by the coordinator on
 2026-09-25 (coordinator.md) as at least as strict as the mechanism the lab's
 share runs under.
 

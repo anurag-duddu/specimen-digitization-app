@@ -55,9 +55,9 @@ PERSON_FIELDS = {"uploader", "actor", "actor_id", "actor_uid", "created_by", "ui
 # mechanism, where a call reserves the sum of its requests' bounds, each at least 20,000 micro-dollars. The lab
 # reads an attempt's bound as the largest of the step's reservation in the run's profile, that floor for a
 # call's two requests, and the call's token limit at the highest known price (UsageLimits(request_limit=2,
-# total_tokens_limit=16000) at production.py:738, harness.py:92 and first_pass.py:239); the coordinator
-# confirmed that reading on 2026-09-25. By the lab's own rule, a run that cannot be priced once its lane
-# started is held whole at --max-run-usd. SAM 3 here is free.
+# total_tokens_limit=16000) at production.py:735, harness.py:92 and first_pass.py:280 on main dfd1ad8); the
+# coordinator confirmed that reading on 2026-09-25. By the lab's own rule, a run that cannot be priced once
+# its lane started is held whole at --max-run-usd. SAM 3 here is free.
 PAID_STEP = re.compile(r"transcribe:|parse$|first_pass|harness|extract")
 CALL_TOKEN_BOUND = 16_000
 CALL_REQUESTS = 2
