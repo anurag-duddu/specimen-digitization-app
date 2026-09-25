@@ -11,7 +11,7 @@ queue live outside the repository in `~/specimen-golive/` (section 7.6).
 Dates in labels: a label with a time is UTC ("04:17Z on 2026-09-25"). A label
 with only a date carries its record's date: the decision's date in section 2.1,
 or the date of the coordinator's entry for a ruling. The records mix UTC and
-New York dates (coordinator ruling of 06:37Z on 2026-09-25, restated 07:34Z).
+New York dates (coordinator ruling of 06:37Z on 2026-09-25, revised 07:34Z).
 
 ## 1. Goal and definition of done
 
@@ -87,9 +87,9 @@ first pull request records that in each affected document with a dated entry.
 | G29 | Chosen option "Yes, read it as the month", with the owner's addition: "yes, read as month + this should be part of system prompt too, all permutations combinatinos. thats the whole point of the harness, we figure out all possible cases and try to get to final records that need to be ingested. this should be the prinnciple of th harness essentially. theres a broad range possible per collection/subcollection each subcollection will have its own harness, right now were on insects". So a Roman numeral I to XII in the month position is that month; the harness works through every reading a notation allows, for dates and for every other field, and settles the one the evidence supports; what it cannot settle goes to needs human review with the candidates (G1, G6); each subcollection's profile carries its own harness knowledge, and the pilot's is Insects | settles the Roman-numeral months of `PRD.md` 570; states `PRD.md` 44 and HAR-013 as the harness's principle |
 | G30 | Chosen option "USD 5" (the coordinator's recommendation): production model calls may spend USD 5 of G9's USD 25, across every paid step (readers, SAM 3, first pass, harness): each call reserves its worst-case cost before it starts, so no call can cross the allowance, and is settled to its cost once the provider reports its usage or returns a billed amount (SAM 3, priced by its measured seconds, settles as `computed`), while any other outcome stays reserved in full (coordinator ruling on the mechanism, section 4.3); the acceptance lab's USD 5 share is separate, and infrastructure takes the rest; when the allowance is spent, paid steps block as `program_allowance_exhausted`, an operational block (QUE-005), until the owner raises it | sets section 4.3's "configured model allowance" |
 | G31 | Chosen option "Not sensitive": the owner checked the ten pilot slides against `PRD.md` 724's criteria and classified them not sensitive on 2026-09-23, recorded in `~/specimen-golive/OWNER_ACTIONS.md`; their import declares them not sensitive on that verified classification | meets `CONTRACTS.md` 169-170 ("actual source classification must be verified") and closes `RELEASE_RUNTIME.md` 558-560's open item for these ten |
-| G32 | Chosen option "Same settled value" (asked by S4): "The harness settles each label separately and clears the field when both settle to the same value, for example two spellings of one place. Otherwise it goes to review." So a field found on two labels of one slide is settled per label on its own evidence and clears when every label settles to the same value: the same place ID or GBIF usage, or, for a field without a lookup, the same text; otherwise it goes to needs human review with each label's reading kept, and every verbatim stays as written (G27) | the specification is silent on a field found on two labels (G5) |
-| G33 | Chosen option "Every reading" (asked by S4): "Dates in every model's reading count, not only the chosen transcript. If they disagree on the order, the date goes to review. A misread can block a choice but never make one." So the numeric dates of every reading, the decided transcript's and the raw readings', are the evidence that fixes an all-numeric date's day and month order (a component over 12), and any disagreement among them fixes no order | settles what "the one the evidence supports" (G29) means for an all-numeric date |
-| G34 | Answer to S8's D15 for the Google tool, asked with S4's regression case: "clear with place ID byt I want the harness for location retrospective georeferencing fully implemented". The option it takes: "The field clears with Google's place ID and no name; the label's spelling stays as the verbatim. Only when Google's name is one letter off and fits the other place fields, since a real test sends a Philippine label to Denali, Alaska." Engineering reading (coordinator): a place field whose literal matches no component by fold or alias clears with the place ID and no name only when the long name of Google's component at the field's levels, never a short name or code, is within one edit of the folded literal, it is the only such component, and every other admin field of the same reading, all of them and at least one, matches Google's result by fold or alias; the field carries a `near_spelling` warning finding that never routes the record; otherwise it goes to needs human review with the candidate. The retrospective georeferencing tool of S8's plan (#94) is to be fully implemented: S8 builds it behind S4's geography interface; the owner decided D1, D2, D3, D6, D7 and D9 (G35 to G39), and D4, D5, D8 and D10 to D13 stand as section 2.3 records | decides D15 for the Google tool; makes #94's retrospective tool a build |
+| G32 | Chosen option "Same settled value" (asked by S4; answered 2026-09-24): "The harness settles each label separately and clears the field when both settle to the same value, for example two spellings of one place. Otherwise it goes to review." So a field found on two labels of one slide is settled per label on its own evidence and clears when every label settles to the same value: the same place ID or GBIF usage, or, for a field without a lookup, the same text; otherwise it goes to needs human review with each label's reading kept, and every verbatim stays as written (G27) | the specification is silent on a field found on two labels (G5) |
+| G33 | Chosen option "Every reading" (asked by S4; answered 2026-09-24): "Dates in every model's reading count, not only the chosen transcript. If they disagree on the order, the date goes to review. A misread can block a choice but never make one." So the numeric dates of every reading, the decided transcript's and the raw readings', are the evidence that fixes an all-numeric date's day and month order (a component over 12), and any disagreement among them fixes no order | settles what "the one the evidence supports" (G29) means for an all-numeric date |
+| G34 | Answer (2026-09-24) to S8's D15 for the Google tool, asked with S4's regression case: "clear with place ID byt I want the harness for location retrospective georeferencing fully implemented". The option it takes: "The field clears with Google's place ID and no name; the label's spelling stays as the verbatim. Only when Google's name is one letter off and fits the other place fields, since a real test sends a Philippine label to Denali, Alaska." Engineering reading (coordinator): a place field whose literal matches no component by fold or alias clears with the place ID and no name only when the long name of Google's component at the field's levels, never a short name or code, is within one edit of the folded literal, it is the only such component, and every other admin field of the same reading, all of them and at least one, matches Google's result by fold or alias; the field carries a `near_spelling` warning finding that never routes the record; otherwise it goes to needs human review with the candidate. The retrospective georeferencing tool of S8's plan (#94) is to be fully implemented: S8 builds it behind S4's geography interface; the owner decided D1, D2, D3, D6, D7 and D9 (G35 to G39), and D4, D5, D8 and D10 to D13 stand as section 2.3 records | decides D15 for the Google tool; makes #94's retrospective tool a build |
 | G35 | Answer to S8's D1, asked by the coordinator: the owner's diagram below (tier 1, historical gazetteers, GeoNames, Wikidata and Getty TGN: "Evaluates historical name + date active", "Returns: Modern name equivalents & historical bounding polygons"; tier 2, modern geocoders: "Pipeline sends the *modernized* name + surrounding context"; tier 3, "Spatial Filtering": "Calculates final Point-Radius Uncertainty"), then "Google  should have current day location with coordinate. This will be helpful for future dataviz exercises". Asked next about Google's terms (6.3.1: coordinates cached 30 days at most, place IDs kept), chosen option "Open sources + Google ID": "Store coordinates from openly licensed sources (Wikidata, GeoNames, NGA), credited. Keep Google's place ID, so a dataviz on a Google map can fetch Google's current coordinates live, which the terms allow." Reading (coordinator): the place tool follows the three tiers; Google receives the modernized name with the same reading's place text (section 4.8's sources), in requests section 4.8 governs (coordinator reading), or the literal when tier 1 has nothing to modernize, where G34 applies; stored coordinates come from open sources, credited; from Google only the place ID, the outcome and the fingerprint are kept (G26 stands), and Google's coordinates never feed tier 3 (section 4.8, coordinator ruling); Getty TGN is wanted now; Mapbox is not used | decides D1 and D2 (#94); keeps G26 |
 | G36 | Answer to S8's D3: "McKinley I think is denali. That's what google search returned. I wonder how they arrived and the conclusions. We cant make wrong conclusions". Asked next, chosen option "Curator confirms": "The Insects collection manager, or a curator they name, confirms each place and itinerary entry S8 drafts with its sources. Confirmed entries settle a field; unconfirmed ones never do." Reading (coordinator): no conclusion without evidence; the Davao "Mt. McKinley" is not Denali, since the labels read "Davao Prov., Mindanao, P.I.", and S8's Mount Talomo is unconfirmed, so the six McKinley slides go to needs human review until a curator confirms an entry; a confirmed itinerary match on collector, place and date settles too (the Apo slide); the repository records the confirming role and date, never a personal identity | decides D3 (#94) |
 | G37 | Answer to S8's D7: "these can be derived if other location related fields have returned a final value. If even those are unclear then it will wait for human review. I dont think every single field will always be on the label. thats not the intent, the harness should be able to check available information and fill in the rest with authority and evidence. Pass this along to overall harness goals and sessions and agents". Asked next about G22, chosen option "Derive elevation": "Elevation may be derived from the settled location with an elevation dataset, with that evidence recorded, like other fields." Reading (coordinator), for the whole harness: a field the label does not state may be derived from fields with final values, with its authority and evidence recorded, and it fills the field, mandatory ones included; with unsettled inputs it waits for review. County and city are derived when the whole uncertainty circle lies inside one unit. For elevation, a missing elevation may be derived from the settled location with an elevation dataset (D11), and the verbatim stays as written; converting a stated value and filling its endpoints came later, as G41 | decides D7 (#94); revises G22 for a missing elevation |
@@ -419,11 +419,11 @@ status. The client defects in section 3 are fixed first.
 ### 4.8 Outside data (G35, G38)
 
 The place tool follows these coordinator rulings, from the reviews of #124,
-#174, #180, #185, #191, #200, #203, #206 and #208 and the rulings on S4's #183:
+#174, #180, #185, #191, #200, #203, #206, #208 and #209 and the rulings on S4's #183:
 - Its requests carry place text only (coordinator rulings of 2026-09-24 and
   2026-09-25, from the reviews of #124, #174, #180, #185, #191, #200, #203,
-  #206 and #208, including the rulings on S8's option (c) and on S4's #183).
-  The agent keeps a place-lookup tool it can call mid-run (G40), and the
+  #206, #208 and #209, including the rulings on S8's option (c) and on S4's
+  #183). The agent keeps a place-lookup tool it can call mid-run (G40), and the
   deterministic final call looks places up too. Both build requests through
   S4's single filter, and S8's request builder calls that same filter for every
   request its tiers send. The rule covers every value a request takes from the
@@ -446,42 +446,45 @@ The place tool follows these coordinator rulings, from the reviews of #124,
   - Cuts, applied only to those values. They are decided on the value's own
     tokens and on every text the value occurs in, the readings included: a
     token of the value is cut when a cut below reaches it in the value itself,
-    tokens comparing by their folded words (case, diacritics and punctuation
-    set aside), or when, at any occurrence of the value, a token it lies in is
-    cut. So a value in no reading, such as a tier-1 name, a reviewer's value or
-    a full form, is cut too; a value repeated in the record is cut wherever any
-    occurrence is; and no character a cut covers can leave, however a value is
-    sliced. Every caller passes the record's readings, which the cuts read but
-    which are no source (coordinator ruling of 2026-09-24, on #191's review, as
-    S4's #183 states it). The filter cuts: every token of every literal any
-    reading assigns to a non-place field, of every value the harness gave a
-    non-place field, whether a reviewer kept it or replaced it (coordinator
-    ruling of 05:38Z on 2026-09-25, on #203's final review), and of every value
-    a reviewer puts in a non-place field; every token of every clause, between
-    commas, semicolons or line breaks, that holds a collector or determiner
-    marker the profile's notations name, wherever the marker sits in it, and
-    the notations name those markers as labels write them, such as "leg." and
-    "det." in Latin, "coll." and "Collector" in English, and "Col." and
-    "Colector" in Spanish (coordinator rulings of 2026-09-24, on #191's final
-    review, and of 04:17Z on 2026-09-25, on #200's); every token that carries a
-    digit; every month name and abbreviation the profile's date notations list,
-    in any case, and they list each month in full and abbreviated in English
-    and Spanish, the pilot labels' languages, in the usual forms and older
-    ones, such as "Sept.", "September", "Mayo", "setiembre" and "Agto."
-    (coordinator rulings of 2026-09-24, on #191's round-1 and final reviews and
-    on S4's #183); and a token whose every word is a Roman numeral I to XII, in
-    any case, such as "VIII" or "VIII/IX", next to a date number, before or
-    after it, across separators, where the search for that date number passes
-    over tokens with no letter or digit and over the date connectors the
-    profile's date notations list ("de", "del", "of"). A date number is a day
-    or a year in the profile's forms (3, 14, 1946, '46 or -46), also written
-    with any apostrophe or dash ("‘46", "–46"), as a one- or two-digit day
-    followed directly by st, nd, rd, th, d, er, º or ª ("3rd", "2d", "1er",
-    "1º", "1ª"), with punctuation before or after it ("1946.", "1946?",
-    "(1946)"), or as a range of them joined by a dash or a slash ("3-4",
-    "1946/47"); and a listed connector is itself cut when the tokens on both
-    sides of it are cut date tokens, that is, tokens with a digit, a month word
-    or a Roman month (coordinator rulings on S4's #183, 2026-09-24, and of
+    or when, at any occurrence of the value, a token it lies in is cut. Tokens
+    compare by their folded words (case, diacritics and punctuation set aside),
+    and the non-place cuts also compare them by their letters and digits run
+    together, so "FG" for "F.G.", "Wer-mer" and "Wer.mer" meet the cut that
+    "F.G. Wermer" makes (coordinator ruling of 08:24Z on 2026-09-25, on #210's
+    review). So a value in no reading, such as a tier-1 name, a reviewer's
+    value or a full form, is cut too; a value repeated in the record is cut
+    wherever any occurrence is; and no character a cut covers can leave,
+    however a value is sliced. Every caller passes the record's readings, which
+    the cuts read but which are no source (coordinator ruling of 2026-09-24, on
+    #191's review, as S4's #183 states it). The filter cuts: every token of
+    every literal any reading assigns to a non-place field, of every value the
+    harness gave a non-place field, whether a reviewer kept it or replaced it
+    (coordinator ruling of 05:38Z on 2026-09-25, on #203's final review), and
+    of every value a reviewer puts in a non-place field; every token of every
+    clause, between commas, semicolons or line breaks, that holds a collector
+    or determiner marker the profile's notations name, wherever the marker sits
+    in it, and the notations name those markers as labels write them, such as
+    "leg." and "det." in Latin, "coll." and "Collector" in English, and "Col."
+    and "Colector" in Spanish (coordinator rulings of 2026-09-24, on #191's
+    final review, and of 04:17Z on 2026-09-25, on #200's); every token that
+    carries a digit; every month name and abbreviation the profile's date
+    notations list, in any case, and they list each month in full and
+    abbreviated in English and Spanish, the pilot labels' languages, in the
+    usual forms and older ones, such as "Sept.", "September", "Mayo",
+    "setiembre" and "Agto." (coordinator rulings of 2026-09-24, on #191's
+    round-1 and final reviews and on S4's #183); and a token whose every word
+    is a Roman numeral I to XII, in any case, such as "VIII" or "VIII/IX", next
+    to a date number, before or after it, across separators, where the search
+    for that date number passes over tokens with no letter or digit and over
+    the date connectors the profile's date notations list ("de", "del", "of").
+    A date number is a day or a year in the profile's forms (3, 14, 1946, '46
+    or -46), also written with any apostrophe or dash ("‘46", "–46"), as a one-
+    or two-digit day followed directly by st, nd, rd, th, d, er, º or ª ("3rd",
+    "2d", "1er", "1º", "1ª"), with punctuation before or after it ("1946.",
+    "1946?", "(1946)"), or as a range of them joined by a dash or a slash
+    ("3-4", "1946/47"); and a listed connector is itself cut when the tokens on
+    both sides of it are cut date tokens, that is, tokens with a digit, a month
+    word or a Roman month (coordinator rulings on S4's #183, 2026-09-24, and of
     04:17Z, 05:38Z, 05:39Z and 06:36Z on 2026-09-25, on #200's, #203's and
     #206's final reviews). So "VIII" goes in "3 VIII 1946", "Mindanao, VIII,
     1946", "Mindanao, VIII -46", "Mindanao, VIII ‘46", "VIII 1946?", "3rd
@@ -489,15 +492,21 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     de 1946" and "3rd of VIII 1946", "VIII/IX" goes in "VIII/IX 1946", and "15
     de agosto de 1946" sends nothing, while "Camp IV", "P.I." and the "de" of
     "San Juan de Dios" stay. The readings' and the harness's non-place values
-    do not cut the reviewer's own text in a place value: the tokens of a value
-    the reviewer entered or changed whose folded words the harness's value for
-    that field, in the run under review, does not hold, since the reviewer's
-    correction is the authority there. Tokens the reviewer kept, and a harness
-    place value the reviewer left unchanged, are cut like any other source, and
-    where the harness gave the field no value, every token is the reviewer's
-    own (coordinator rulings of 06:36Z and 07:33Z on 2026-09-25, on #206's and
-    #208's final reviews). So a case-only change spares nothing, and "Mindanao
-    F.G. Wermer, P.I." spares only "P.I.".
+    do not cut the reviewer's own text in a place value, since the reviewer's
+    correction is the authority there. The reviewer's own text is the tokens of
+    a value the reviewer entered or changed that match nothing the run holds
+    for that field. That anchor is every such text: the harness's settled
+    literal, the first pass's decided literal where there is one, and each
+    reading's verbatim for the field. A token matches when any of its folded
+    words is a folded word of the anchor, or when its letters and digits run
+    together equal an anchor token's letters and digits run together. Matching
+    tokens, and a harness place value the reviewer left unchanged, are cut like
+    any other source, and where the run holds nothing for the field, every
+    token is the reviewer's own (coordinator rulings of 06:36Z, 07:33Z, 07:53Z
+    and 08:01Z on 2026-09-25, on #206's, #208's and #209's final reviews and
+    S4's #183). So a case-only change spares nothing, "Mindanao F.G. Wermer,
+    P.I." spares only "P.I.", and "Wermer's", "F.G.Werner" and "FG" for "F.G."
+    are cut.
   - Expansion, after the cuts: a surviving notation token that the table
     assigns to place fields only, and that appears in an allowed source, may be
     replaced by each full form the table lists for it, so "Davao Prov." is sent
@@ -554,16 +563,20 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     kept, and with it replaced by the reviewer's "F.G. Werner", a harness place
     value "Mindanao F.G. Wermer" the reviewer left unchanged sending
     "Mindanao", a case-only change "mindanao f.g. wermer" sending "mindanao",
-    and "Mindanao F.G. Wermer, P.I." sending "Mindanao, P.I."; a literal the
-    harness gives a non-place field refused as a source; tier-1 identifiers
-    passing, a catalogue number offered as a TGN identifier refused, a label
-    number the answer holds only as a date or a coordinate refused (a TGN
-    `estStart` of "1946", a GNS latitude of 7.3), and other values refused; the
-    fixed parts and the User-Agent carrying no label text; and a place value
-    with a quote in it reaching the query escaped. No cut character leaves,
-    each expansion carries only full forms the table lists, and a value not
-    drawn from those sources is refused. Tests also pin each case the limit
-    names, so a change in what can leave shows.
+    "Mindanao F.G. Wermer, P.I." sending "Mindanao, P.I.", "Wermer's",
+    "F.G.Werner" and "FG" for "F.G." cut as matching tokens, "Mindanao FG
+    Wermer" sending "Mindanao", "Wer-mer" and "Wer.mer" cut, "FG Werner"
+    sending nothing when the reviewer changed the collectors to "F.G. Werner",
+    and a reading's verbatim "Mindanao F.G. Wermer" the reviewer picks cut the
+    same way; a literal the harness gives a non-place field refused as a
+    source; tier-1 identifiers passing, a catalogue number offered as a TGN
+    identifier refused, a label number the answer holds only as a date or a
+    coordinate refused (a TGN `estStart` of "1946", a GNS latitude of 7.3), and
+    other values refused; the fixed parts and the User-Agent carrying no label
+    text; and a place value with a quote in it reaching the query escaped. No
+    cut character leaves, each expansion carries only full forms the table
+    lists, and a value not drawn from those sources is refused. Tests also pin
+    each case the limit names, so a change in what can leave shows.
   - Its stated limit: text the filter cannot recognize can still leave. That is
     text that no reading assigns to a non-place field and the harness has not
     given one (mid-run, not yet; in "fill the rest", never), when no marker the
@@ -579,29 +592,37 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     beside it, such as "VIII/IX". A token that joins a numeral to a word can
     leave whole, so "mid-VIII 1946" sends "mid-VIII" (coordinator rulings of
     04:17Z and 05:38Z on 2026-09-25, on #200's and #203's final reviews). A
-    numeral also leaves beside an ordinal written any other way ("1.º VIII",
-    "1.ª VIII", "1o VIII", "1ro VIII", "2do VIII", "1.er VIII"), beside a day
-    in words ("primero de VIII"), and beside a word, a spaced dash or a comma
-    that joins two months, so "VIII y IX 1946" sends "VIII y", "VIII – IX 1946"
-    sends "VIII –" and "VIII, IX 1946" sends "VIII". The Roman-month cut is not
-    widened further before the pilot (coordinator ruling of 06:36Z on
-    2026-09-25, on #206's final review, with the cases #208's final review
-    added). A connector with a cut date token on one side only stays, so
-    "Chimaltenango de 1946" sends "Chimaltenango de" (coordinator ruling of
-    05:39Z on 2026-09-25, on #203's final review). In "fill the rest", a name
-    the reviewer adds to a place value is spared the readings' and the
-    harness's non-place cuts, so it can leave unless the reviewer also puts it
-    in a non-place field (coordinator ruling of 07:33Z on 2026-09-25, on #208's
-    final review). The cuts can also take too much: a place's own numeral
-    beside a date number goes, so "Camp IV, 3 VIII 1946" sends only "Camp"; a
-    place named with a month word loses that word, so "Cape May" sends "Cape";
-    a colonia written "Col." is cut as a collector's clause, so "Col. El
-    Carmen, Chimaltenango" sends only "Chimaltenango" (coordinator ruling of
-    04:17Z on 2026-09-25, on #200's final review); a clause holding a marker is
-    cut wherever its words appear, so "Mt. Apo leg. Hoogstraal" on one line
-    takes "Mt. Apo" from every other line, a reviewer's value included; and a
-    tier-1 name whose numeral stands beside a number, such as a region written
-    with its code, loses the numeral.
+    numeral also leaves when the nearest token on each side of it, passing over
+    bare punctuation and the listed connectors, is anything but a date number:
+    an ordinal written any other way ("1.º VIII", "1.ª VIII", "1o VIII", "1ro
+    VIII", "2do VIII", "1.er VIII"), a day in words ("primero de VIII"),
+    another month or a word. So "VIII y IX 1946" sends "VIII y", "VIII – IX
+    1946" sends "VIII –", "VIII, IX 1946" sends "VIII", "VIII & IX 1946" sends
+    "VIII &" and "VIII ca. 1946" sends "VIII ca." (the last two from #209's
+    final review). The Roman-month cut is not widened further before the pilot
+    (coordinator ruling of 06:36Z on 2026-09-25, on #206's final review, with
+    the cases #208's and #209's final reviews added). A connector with a cut
+    date token on one side only stays, so "Chimaltenango de 1946" sends
+    "Chimaltenango de" (coordinator ruling of 05:39Z on 2026-09-25, on #203's
+    final review). In "fill the rest", a name the reviewer adds or respells in
+    a place value is spared the readings' and the harness's non-place cuts, so
+    it leaves even when the collectors field holds it, unless the reviewer
+    entered or changed that non-place field; the sparing rule is not refined
+    further before the pilot (coordinator rulings of 07:33Z and 08:01Z on
+    2026-09-25, on #208's and #209's final reviews). A spelling that splits a
+    name ("Wer mer"), merges it ("FGWermer") or shortens it ("Werm.") matches
+    nothing, so it counts as the reviewer's own, the non-place cuts miss it,
+    and it leaves (coordinator ruling of 08:24Z on 2026-09-25, on #210's
+    review). The cuts can also take too much: a place's own numeral beside a
+    date number goes, so "Camp IV, 3 VIII 1946" sends only "Camp"; a place
+    named with a month word loses that word, so "Cape May" sends "Cape"; a
+    colonia written "Col." is cut as a collector's clause, so "Col. El Carmen,
+    Chimaltenango" sends only "Chimaltenango" (coordinator ruling of 04:17Z on
+    2026-09-25, on #200's final review); a clause holding a marker is cut
+    wherever its words appear, so "Mt. Apo leg. Hoogstraal" on one line takes
+    "Mt. Apo" from every other line, a reviewer's value included; and a tier-1
+    name whose numeral stands beside a number, such as a region written with
+    its code, loses the numeral.
 - The Maps key, and any credential a later source needs, is kept in Secret
   Manager and follows section 4.5's rule: no span, log line, exception text,
   stored error, tool-call result, test fixture or lab folder records it or the
@@ -614,9 +635,11 @@ The place tool follows these coordinator rulings, from the reviews of #124,
   read grant covers (#119). The reader verifies each checksum. The owner
   uploads them with a checksum-verifying, no-clobber command that S2 writes
   from the merged manifest; no agent writes storage. GeoNames keeps no archive
-  of its daily dumps, so for them the command uploads S8's pinned files from a
-  folder outside the repository after checking size and digest, and never
-  downloads them again.
+  of its daily dumps, and HDX serves only the latest COD-AB file, so for those
+  the command uploads S8's files, pinned by dump or retrieval date in folders
+  outside the repository, after checking size and digest, and never downloads
+  them again (coordinator ruling of 08:05Z on 2026-09-25, revising 04:49Z on
+  2026-09-24 for the COD-AB file; S8's manifest, #198).
 
 The taxonomy tools send the taxon name, never place text (`GBIF.md` 107-114).
 
