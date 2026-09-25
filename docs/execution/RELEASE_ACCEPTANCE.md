@@ -67,11 +67,13 @@ Required before live execution:
   > runtime/data amendment this bullet describes is retired: envelopes, cost
   > ledgers, independent-review reports and authorization artifacts retire, and
   > a merge deploys automatically after the required checks and the PR steward's
-  > approval (G11). G30's per-call reservations stand (PLAN 4.3; the
-  > coordinator's ruling on the mechanism). The exact resource and cost
-  > qualification the envelope's packet carried retires with it. The rest of the
-  > bullet stands, including the implementation and actual release receipts, the
-  > combined immutable SHA and the public API and App Check configuration.
+  > approval (G11). Branch protection, the required checks, keyless identities
+  > and main-only environments stay (G11). G30's per-call reservations stand
+  > (PLAN 4.3; the coordinator's ruling on the mechanism). The exact resource
+  > and cost qualification the envelope's packet carried retires with it. The
+  > rest of the bullet stands, including the implementation and actual release
+  > receipts, the combined immutable SHA and the public API and App Check
+  > configuration.
 - Data owner provides the approved private ready first-ten manifest and its
   independently supplied SHA-256, authorized identity/scope, original generations,
   and approved local intake inputs. Keep all identity/object/receipt details private.
@@ -181,8 +183,8 @@ This is reviewable evidence, not institutional quality qualification. The broade
 > and COST-BOUNDS tests (PLAN 4.3). No frozen manifest SHA binds a run: each run
 > is authorized on its own instead of per frozen manifest (PLAN section 4.1
 > stage 2), and the ten are processed in order (G2). This cohort cost ledger,
-> its eleven reconciled categories, its private authorization reference and the
-> independent reviewer's role retire for this program (G11). G30's per-call
+> its eleven reconciled categories, its private authorization reference and its
+> independent reconciliation retire for this program (G11). G30's per-call
 > reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 The ledger's `budget` uses `cohort-budget/v1`, USD, the same frozen manifest SHA,
@@ -315,15 +317,17 @@ and exact integrated release checks remain separate from this focused review.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G9, G11 and G30. In place of the shared full USD 5 budget, the pipeline
+> G2, G9, G11 and G30. In place of the shared full USD 5 budget, the pipeline
 > enforces G30's USD 5 production model allowance across every paid step, within
 > G9's USD 25 ceiling, cumulative, infrastructure and models together, and
 > COST-BOUNDS tests it (PLAN 4.3). The cohort ledger this section names retires
 > with the other cost ledgers (G11), and the per-stage reservation map stays.
 > G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
-> mechanism). The rest of the paragraph stands, including the approved map in
-> each retained run policy and the launch, `SPECIMEN_SAM3_CHECKPOINT_SHA256` and
-> the offline cache, and native SAM timing.
+> mechanism). The launch this paragraph names is `PilotLaunch`
+> (`authorized-ten-v1`), which G2 retires, and its copy of the map retires with
+> it. The rest of the paragraph stands, including the approved map in each
+> retained run policy, `SPECIMEN_SAM3_CHECKPOINT_SHA256` and the offline cache,
+> and native SAM timing.
 
 ## Approved human-review release projection
 
@@ -343,7 +347,9 @@ access or change the ten-source denominator.
 > reading of G1, the administrator reviews only what the queue sends to human
 > review. Under G14 there is no classification stage; the profile comes from the
 > intake collection. The `human-review-release-scope-v1.json` authority retires
-> with the release envelope and the other authorization artifacts (G11). The
+> with the release envelope and the other authorization artifacts (G11). Its
+> retirement keeps what the decision never granted: it expands no
+> infrastructure authority and grants no sensitive access. The
 > USD 5 cap gives way to two bounds: G9's USD 25 ceiling, cumulative,
 > infrastructure and models together, and within it G30's USD 5 production model
 > allowance, which the pipeline enforces across every paid step and COST-BOUNDS
@@ -386,20 +392,22 @@ row is silently treated as passed or deferred.
 > 2026-09-23: The HUMAN-LABEL-COVERAGE and HUMAN-NO-AUTOMATIC-CLEARANCE rows are superseded in part for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G1, G15 and G30. HUMAN-LABEL-COVERAGE is retired as a manual subcriterion, in
-> the coordinator's reading of G15 (2026-09-24): its coverage criterion becomes
-> that the lane's automatic coverage check passed or the record went to the
-> human queue, where the reviewer can correct regions as part of review
-> (SEG-004). The lane's check is the coverage confirmation for every record, and
-> no separate human confirmation step remains; reviewers still see the whole
-> original and all regions in the thread. Its rule that no region or specimen
-> may be removed to fit budget stands. G30's per-call reservations stand (PLAN
-> 4.3; the coordinator's ruling on the mechanism).
-> HUMAN-NO-AUTOMATIC-CLEARANCE's clause that correction and save never enable
-> automatic clearance is retired: a record the harness resolves is cleared
-> without a human (G1). The rest of that row stands, including that correction
-> and save never approve institutional semantics or risk, no clearance with
-> mandatory values unresolved, that an operational failure is never labelled
-> Deferred, and review state and history surviving.
+> the coordinator's reading of G15 (its message to S2 of 2026-09-24, 01:00Z on
+> 09-25, answering #184's round-1 question): its coverage criterion becomes that
+> the lane's automatic coverage check passed or the record went to the human
+> queue, where the reviewer can correct regions as part of review (SEG-004). The
+> lane's check is the coverage confirmation for every record, and no separate
+> human confirmation step remains; reviewers still see the whole original and
+> all regions in the thread. Its rule that no region or specimen may be removed
+> to fit budget stands. G30's per-call reservations stand (PLAN 4.3; the
+> coordinator's ruling on the mechanism). Three manual subcriteria remain, so
+> the projection above requires three, not four. HUMAN-NO-AUTOMATIC-CLEARANCE's
+> clause that correction and save never enable automatic clearance is retired: a
+> record the harness resolves is cleared without a human (G1). The rest of that
+> row stands, including that correction and save never approve institutional
+> semantics or risk, no clearance with mandatory values unresolved, that an
+> operational failure is never labelled Deferred, and review state and history
+> surviving.
 
 The existing UI/live cases cover intake/immutability, authentic sign-in and scope,
 actual processing, literal comparisons/uncertainty, correction/save/readback,
@@ -492,14 +500,16 @@ whose SHA-256 was checked, so a file replacement between reads is rejected.
 > complete human record. A specimen the harness clears keeps its original, SAM
 > receipt, masks, raw readings and crops, with their checks, and the lane's
 > coverage confirmation, which covers every record in the coordinator's reading
-> of G15 (2026-09-24); only the other review checks drop out for it: unchanged
-> raw readings and regions across edits, a new reasoned review event, an
-> advanced revision and version, and equal saved and reopened state (G1). The
-> report's cumulative `budget` retires with the cohort ledger, and
-> `scope_sha256` with the scope artifacts (G11). G30's per-call reservations
-> stand (PLAN 4.3; the coordinator's ruling on the mechanism). The rest stands,
-> including no duplicate or outside-cohort record, a partially supplied list
-> never becoming complete, and every other check in the paragraph above.
+> of G15 (its message to S2 of 2026-09-24, 01:00Z on 09-25, answering #184's
+> round-1 question); only the other review checks drop out for it: unchanged raw
+> readings and regions across edits, a new reasoned review event, an advanced
+> revision and version, and equal saved and reopened state (G1). The report's
+> `human_results` hold three manual subcriteria, not four (G15). The report's
+> cumulative `budget` retires with the cohort ledger, and `scope_sha256` with
+> the scope artifacts (G11). G30's per-call reservations stand (PLAN 4.3; the
+> coordinator's ruling on the mechanism). The rest stands, including no
+> duplicate or outside-cohort record, a partially supplied list never becoming
+> complete, and every other check in the paragraph above.
 
 The current pilot intentionally retains `processing_blocked` with
 `pilot_evidence_review_required`, false institutional/human approval flags and

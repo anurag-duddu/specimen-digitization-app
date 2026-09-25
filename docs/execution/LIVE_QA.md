@@ -36,11 +36,11 @@ authored rasters are harness fixtures, never pilot records or quality evidence.
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G2. Specimens are processed one at a time, on demand, including new uploads,
-> "instead of doing batch 10" (G2's words); in S2's reading, processing no
-> longer waits on the user's end-to-end review of the ten before any expansion.
-> The ten pilot specimens remain the acceptance cohort, processed in order, and
-> only they count toward it. The rest of the paragraph stands, including that
-> locally authored rasters are harness fixtures, never pilot records or quality
+> "instead of doing batch 10" (G2's words); in S2's reading, a new upload no
+> longer waits on the user's end-to-end review of the ten. The ten pilot
+> specimens remain the acceptance cohort, processed in order, and only they
+> count toward it. The rest of the paragraph stands, including that locally
+> authored rasters are harness fixtures, never pilot records or quality
 > evidence.
 
 Initial admin supplied privately to the coordinator; no email/UID committed.
@@ -146,11 +146,18 @@ schema; it does not derive authorization from a self-declared manifest field.
 > G2 and G11. No `specimen-pilot/v1` manifest is frozen, and no authorization
 > reference or ready status authorizes use: each run is authorized on its own
 > instead of per frozen manifest (PLAN section 4.1 stage 2), and authorization
-> artifacts retire (G11). The manifest file's own SHA-256, supplied separately,
-> retires with it. What the manifest recorded of the ten stays: their identities
-> in established source order, one authorized scope, and each original's bucket,
-> object, generation, SHA-256 and size and its application-source binding. The
-> checker's checks are re-anchored to the ten
+> artifacts retire (G11). The selection's inventory digest and the rejection of
+> metadata-only manifests retire with it. The checker reads the ten from their
+> private record instead, `specimen-pilot-reference/v1` (the coordinator's
+> ruling in its message to S2 of 2026-09-24, 01:15Z on 09-25): the ordinal, the
+> specimen UUIDs in established source order, the one scope, and each original's
+> bucket, object, generation, SHA-256 and size and its application-source
+> binding. S7 writes it after PLAN section 8 step 2 imports the ten, and the
+> coordinator verifies it against DoD-4's subject ids. Its SHA-256, supplied
+> separately, still pins it on the checker's command line, and the checker reads
+> it as it read the manifest: outside Git, no symlink, a regular file its reader
+> owns with mode 600, at most 1 MiB, and exactly the pinned bytes. The checker's
+> checks are re-anchored to it
 > ([`golive/RELEASE.md`](golive/RELEASE.md#21-code-that-still-enforces-a-superseded-clause)
 > section 2.1, whose `manifest_ids` row lists what retires). The rest of the
 > paragraph stands, including that multiple original objects per specimen are
@@ -203,20 +210,21 @@ digests, IDs privately, and before/after retained-state counts when applicable.
 > not a frozen manifest's digest (G2). DATA-TEN reconciles the ten, in order, as
 > the acceptance cohort, with no frozen inventory; an eleventh or a
 > changed-generation source still cannot enter it, but a new upload may now
-> enter on-demand processing outside it (G2). COST-BOUNDS' concrete approved
-> budget is G30's USD 5 production model allowance, which the pipeline enforces
-> across every paid step, within G9's USD 25 ceiling, cumulative, infrastructure
-> and models together (PLAN 4.3); the acceptance lab's USD 5 share is separate.
-> G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
-> mechanism). COST-BOUNDS tests them: each paid call reserves its worst-case
-> cost before it starts, an unknown outcome stays reserved in full, and once the
-> allowance is spent paid steps block as `program_allowance_exhausted`
-> (QUE-005). In S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the
-> deployed API and worker SHAs and image digests and the SQL and rules revisions
-> with the release runs on main that deployed them, in place of the packet; the
-> rest of DEPLOY-IDENTITY stands. BROWSER-E2E's full frozen ten is the ten pilot
-> specimens processed one at a time, in order, beside new uploads (G2). The rest
-> of each row stands.
+> enter on-demand processing outside it (G2). DATA-TEN's live gate is the ten's
+> private record, `specimen-pilot-reference/v1`, not a ready manifest.
+> COST-BOUNDS' concrete approved budget is G30's USD 5 production model
+> allowance, which the pipeline enforces across every paid step, within G9's
+> USD 25 ceiling, cumulative, infrastructure and models together (PLAN 4.3); the
+> acceptance lab's USD 5 share is separate. G30's per-call reservations stand
+> (PLAN 4.3; the coordinator's ruling on the mechanism). COST-BOUNDS tests them:
+> each paid call reserves its worst-case cost before it starts, an unknown
+> outcome stays reserved in full, and once the allowance is spent paid steps
+> block as `program_allowance_exhausted` (QUE-005). In S2's reading of G11 and
+> PLAN 4.6, DEPLOY-IDENTITY compares the deployed API and worker SHAs and image
+> digests and the SQL and rules revisions with the release runs on main that
+> deployed them, in place of the packet; the rest of DEPLOY-IDENTITY stands.
+> BROWSER-E2E's full frozen ten is the ten pilot specimens processed one at a
+> time, in order, beside new uploads (G2). The rest of each row stands.
 
 ## All 20 PRD section 19 criteria retained
 
@@ -247,16 +255,19 @@ not proof of the current rollout or institutional acceptance.
 | PRD-19 | Keyboard/focus/screen-reader/error recovery/security/quality criteria pass with explicit approved thresholds. Web launch target; Android/iOS build evidence separate from device/signing. | BROWSER-E2E; quality/semantics approval not supplied |
 | PRD-20 | Production-like full ten completes via UI/API with real runtime/data/providers; retain outcomes including review/blocked cases, no DB edits or hidden repair. | All live cases; launch pending |
 
-> 2026-09-23: The PRD-03 row is superseded in part for the go-live program by
-> [`docs/execution/golive/PLAN.md` section
-> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G14. There is no classification stage to rank: the profile comes from the
-> collection a specimen was uploaded or imported into, resolved down the
-> collection tree. The rest of the row stands, including that a reviewer can
-> correct the collection/profile through the existing classification
-> endpoint, that a new pinned run supersedes dependent outputs while old
-> history remains, and that an unauthorized target or a stale revision is
-> rejected.
+> 2026-09-23: The PRD-03 and PRD-10 rows are superseded in part for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G1 and G14. PRD-03: there is no classification stage to rank, since the
+> profile comes from the collection a specimen was uploaded or imported into,
+> resolved down the collection tree (G14). The rest of that row stands,
+> including that a reviewer can correct the collection/profile through the
+> existing classification endpoint, that a new pinned run supersedes dependent
+> outputs while old history remains, and that an unauthorized target or a stale
+> revision is rejected. PRD-10: PLAN section 4.1 stage 8 removes the approval
+> and semantics gates for runs whose profile names `harness_route` (G1), so
+> those runs have no such gate to bypass. The rest of that row stands, including
+> removing each remaining critical gate independently, and that no direct clear
+> or approve request bypasses coverage or evidence.
 
 ## Executed evidence and commands
 
@@ -432,10 +443,11 @@ the PR body so historical candidate observations are not silently relabeled.
 > evidence and through PLAN section 8's per-specimen loop, and DoD-6, the
 > owner's own new record run end to end with no intervention, needs the owner's
 > own confirmation ([PLAN section
-> 1](golive/PLAN.md#1-goal-and-definition-of-done)). In S2's reading of G11 and
-> PLAN 4.6, the SAM runtime's matching source commit is the merged commit its
-> release run built SAM 3 from, since T2 rebuilds SAM 3 only when its inputs
-> change;
+> 1](golive/PLAN.md#1-goal-and-definition-of-done)). SAM 3 stays bound to the
+> candidate: its source commit is the candidate itself or, once T2 reuses an
+> unchanged SAM 3 image, a commit on main at or before the candidate with SAM
+> 3's inputs unchanged between the two (T2's reuse rule), and in both cases the
+> candidate's own release run deployed that image digest;
 > [`golive/RELEASE.md`](golive/RELEASE.md#21-code-that-still-enforces-a-superseded-clause)
 > section 2.1 lists the checker's line (`acceptance.py` 497). The rest of the
 > paragraph stands, including that this change alone grants no approval and
