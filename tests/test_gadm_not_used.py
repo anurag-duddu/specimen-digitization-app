@@ -34,8 +34,8 @@ from specimen_digitization.application.storage import (
 from specimen_digitization.application.workflow import SyntheticAdapters, Workflow
 
 SOURCE = Path(__file__).resolve().parents[1] / "src" / "specimen_digitization"
-# The forms of GADM's and GBIF's geocoder names the reviews of #216 listed. A bare
-# "GADM" is left out on purpose: the comments that say it is not used name it.
+# The patterns the reviews of #216 proposed for GADM's and GBIF's geocoder names. A
+# bare "GADM" is left out on purpose: the comments that say it is not used name it.
 GADM = re.compile(
     r"gbif[_-]gadm|gadm_search|geocode/(gadm|reverse)|api\.gbif\.org/v1/geocode"
     r"|gadm\.org|ucdavis\.edu/(data/)?gadm|gadm\d",
@@ -158,8 +158,10 @@ def test_a_run_planned_with_the_removed_tool_blocks_without_a_request(
     tmp_path, authority_server
 ):
     # A plan made before the removal still names a "geography" task, put first
-    # here. Its step finds no tool, so it blocks with a typed reason and sends no
-    # request; in main's order, the parties step before it still runs.
+    # here. The synthetic label has a province_state value, so the step builds a
+    # query, finds no tool and blocks with a typed reason, sending no request
+    # (without a value it is recorded unresolved). In the old planner's order,
+    # the parties step before it still runs.
     state, repo, workflow, principal, specimen = at_the_first_authority_step(
         tmp_path, authority_server
     )
