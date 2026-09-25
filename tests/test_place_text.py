@@ -198,9 +198,10 @@ def test_a_name_a_marker_accompanies_never_leaves_whatever_field_it_was_given(li
         ("Col. J. Perez", "Perez"),
         ("Colector J. Perez", "Perez"),
         ("Collector: H. Hoogstraal", "Hoogstraal"),
+        ("det. F.G. Werner", "Werner"),  # Davao Prov., det. F.G. Werner (#203).
     ],
 )
-def test_the_spanish_and_english_markers_cut_their_clause(line, name):
+def test_the_latin_english_and_spanish_markers_cut_their_clause(line, name):
     # PLAN 4.8 as #200 states it (the coordinator's ruling on #191's final
     # review): mid-run, before the collector is named, these had left whole.
     label = f"Davao Prov.\n{line}"
@@ -240,7 +241,14 @@ def test_the_month_names_and_abbreviations_are_cut(month):
 
 
 @pytest.mark.parametrize(
-    "date", ["3 VIII 1946", "3 viii 1946", "VIII 1946", "3 VIII", "VIII/IX 1946"]
+    "date",
+    [
+        *("3 VIII 1946", "3 viii 1946", "VIII 1946", "3 VIII", "VIII/IX 1946"),
+        # PLAN 4.8 as #203 states it: any apostrophe or dash, an ordinal day,
+        # and punctuation before or after the number.
+        *("VIII ‘46", "VIII –46", "VIII —46", "VIII 1946?", "3rd VIII"),
+        *("21st VIII", "VIII (1946)", "VIII 1946."),
+    ],
 )
 def test_a_roman_month_in_the_month_position_is_cut_and_never_written_out(date):
     # The coordinator's ruling of 2026-09-24 (4.8 in #185): a numeral I to XII,
@@ -266,6 +274,8 @@ def test_a_roman_numeral_outside_a_date_stays(text):
     ("text", "leaves"),
     [
         ("Mindanao, VIII -46", "Mindanao"),  # "-46" is a year form of the profile.
+        ("Mindanao, VIII ‘46", "Mindanao"),  # With any apostrophe (#203),
+        ("Mindanao, VIII 1946.", "Mindanao"),  # and a clause-final period.
         ("Mindanao, P.I. 3 Sept. '46", "Mindanao, P.I."),  # 105526321's line.
         ("3 SEPT. '46", ""),
         ("3 SEPT. 1946", ""),
@@ -440,6 +450,11 @@ TGN_PLACE = (
 )
 NGA_SEARCH = '{"features": [{"attributes": {"ufi": -2408936, "lat": 7.3}}]}'
 NGA_FEATURES = '{"features": [{"attributes": {"adm1": "GT-04"}}]}'
+TGN_SPARQL_DATED = (
+    '{"head": {"vars": ["place", "estStart"]}, "results": {"bindings": [{'
+    '"place": {"type": "uri", "value": "http://vocab.getty.edu/tgn/1103742"},'
+    ' "estStart": {"type": "literal", "value": "1946"}}]}}'
+)
 WIKIDATA_CLAIM = (
     '{"id": "Q928$5B8C", "mainsnak": {"datavalue": {"value": {"id": "Q928"}}},'
     ' "qualifiers": {"P585": [{"datavalue": {"value": {"time": "+1946-00-00"}}}]}}'
@@ -480,6 +495,9 @@ def test_an_identifier_is_the_whole_value_of_its_sources_id_field(
         ("7", "nga", NGA_SEARCH),  # A coordinate: "lat": 7.3.
         ("3", "nga", NGA_SEARCH),
         ("1946", "nga", NGA_SEARCH.replace("7.3", "1946")),
+        # PLAN 4.8 as #203 states it: a SPARQL date under the same `value` key
+        # as the subject URI beside it.
+        ("1946", "tgn", TGN_SPARQL_DATED),
     ],
 )
 def test_a_label_number_the_answer_holds_only_as_a_date_or_coordinate_is_refused(
@@ -576,6 +594,23 @@ def test_the_reviewers_value_is_a_source_only_in_a_place_field():
     )
 
 
+def test_the_stated_limit_in_fill_the_rest():
+    # PLAN 4.8 as #203 states it: a value the harness gave a non-place field and
+    # the reviewer replaced can leave when no reading assigns it. The reviewer's
+    # call passes only the reviewer's own non-place values.
+    record = "Davao Prov.\nMindanao F.G. Wermer"  # The harness gave "F.G. Wermer".
+
+    sent = place_request_text(
+        "Mindanao F.G. Wermer",  # The unassigned text, a source.
+        sources=["Mindanao F.G. Wermer"],
+        readings=[record],
+        non_place_literals=["F.G. Werner"],  # The reviewer's replacement.
+        knowledge=insects,
+    )
+
+    assert sent == "Mindanao Wermer"
+
+
 @pytest.mark.parametrize(
     ("text", "record", "leaves"),
     [
@@ -616,6 +651,8 @@ def test_the_reviewers_value_is_a_source_only_in_a_place_field():
         ("3 en. 1946", "3 en. 1946", "en."),
         # A lone or ranged month numeral with no day or year beside it.
         ("Mindanao VIII/IX", "Mindanao VIII/IX", "Mindanao VIII/IX"),
+        # A numeral that shares its token with a word (#203).
+        ("Mindanao, mid-VIII 1946", "Mindanao, mid-VIII 1946", "Mindanao, mid-VIII"),
         # The cuts can take too much: a place's numeral beside a date number,
         ("Camp IV, 3 VIII 1946", "Camp IV, 3 VIII 1946", "Camp"),
         # a place named with a month word,
@@ -645,6 +682,7 @@ def test_the_reviewers_value_is_a_source_only_in_a_place_field():
         "unlisted-language",
         "unlisted-form",
         "lone-month-numerals",
+        "numeral-in-a-word",
         "camp-iv",
         "cape-may",
         "ag-exp-sta",
@@ -655,8 +693,8 @@ def test_the_reviewers_value_is_a_source_only_in_a_place_field():
     ],
 )
 def test_the_stated_limit_is_pinned_case_by_case(text, record, leaves):
-    # PLAN 4.8 in #191: tests pin each case its limit names, so a change in
-    # what can leave shows.
+    # PLAN 4.8 as #203 states it: tests pin each case its limit names, so a
+    # change in what can leave shows.
     sent = place_request_text(
         text,
         sources=[text],
