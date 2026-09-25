@@ -30,7 +30,7 @@ CREDENTIALED = ("release", "initialize", "dispose-initializer", "migrate")
 INITIALIZED = "${{ runner.temp }}/data-initialized.json"
 NODE_ENV = {"RELEASE_NODE_ROOT": "${{ runner.temp }}/firebase-release"}
 # RELEASE.md 4.5: the owner's data-production secrets for the bootstrap run, and only those.
-BOOTSTRAP = ("DATA_BOOTSTRAP_ARTIFACT_B64", "DATA_BOOTSTRAP_APPROVED_SHA256")
+BOOTSTRAP = ("DATA_BOOTSTRAP_ARTIFACT_B64", "DATA_BOOTSTRAP_APPROVED_SHA256", "DATA_WORKER_ACTOR_UID")
 DEPLOY_ENV = {**NODE_ENV, **{name: "${{ secrets.%s }}" % name for name in BOOTSTRAP}}
 EVIDENCE = "${{ runner.temp }}/data-release/*.encrypted.json"
 
@@ -283,5 +283,31 @@ def test_the_deployment_contract_describes_the_bootstrap_the_release_job_runs():
                  "`initialize`", "unread", "`tree_sha256`", "backup", "read first", "skips", "fails",
                  "`infra/release/evidence-recipient.pub`", "encrypted", "`specimenDataOwnerBootstrap`"):
         assert fact in release, fact
+    for fact in ("`DATA_WORKER_ACTOR_UID`", "`WORKER_MEMBERSHIP.md`", "`insects`", "`operator`",
+                 "`canViewSensitive: false`", "read-only", "disabled", "no email, password, phone or sign-in provider",
+                 "never writes the admin membership document",
+                 "`uv run python scripts/data/hierarchy_approval.py summarize <private artifact>`", "`APPROVE`",
+                 "`hierarchy-approval.sha256`", "Before every membership step, a verify's too,"):
+        assert fact in release, fact
     assert "reads no secret" not in " ".join(section.split())
     assert "only the bootstrap's `data-production` secrets" in " ".join(section.split())
+
+
+def test_the_owner_inputs_say_what_the_owner_supplies_for_the_bootstrap_run():
+    """infra/release/OWNER_INPUTS.md: the three data-production secrets of RELEASE.md 4.5, beside the envelope's inputs,
+    whose text stays with a dated note where the gate path supersedes it."""
+    raw = (ROOT / "infra/release/OWNER_INPUTS.md").read_text()
+    text = " ".join(raw.split())
+    for fact in ("`DATA_BOOTSTRAP_ARTIFACT_B64`", "the base64 of the private artifact file's exact bytes",
+                 "`DATA_BOOTSTRAP_APPROVED_SHA256`",
+                 "`uv run python scripts/data/hierarchy_approval.py summarize <private artifact>`",
+                 "the SHA-256 of those exact bytes", "not the artifact's internal `artifact_sha256`",
+                 "`DATA_WORKER_ACTOR_UID`: the worker's UID", "`data-production` environment secrets",
+                 "set for that run and deleted afterwards", "2026-09-24"):
+        assert fact in text, fact
+    # The envelope's rows are kept as they were; the gate path's note follows them.
+    assert ("| `bootstrap_artifact_sha256` | The preparer's digest of the whole artifact. It also fills "
+            "`bootstrap.sha256` and the candidate's `approvals.bootstrap_sha256`.") in text
+    worker = next(line for line in raw.splitlines() if line.startswith("| `worker_actor_uid` |"))
+    assert "T3e's bootstrap run repeats the lookup read-only when it writes the membership" in worker
+    assert "before every membership step, a verify's too" in worker

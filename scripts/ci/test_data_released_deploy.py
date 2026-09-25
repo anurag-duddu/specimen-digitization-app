@@ -25,7 +25,7 @@ RULESET = f"projects/{D.PROJECT}/rulesets/0f6e2a57-1c3b-4d8e-9a70-5b2c4d6e8f10"
 UPDATED = "2026-09-23T08:00:00.123456789Z"
 KEYS = {"version", "source_sha", "run_id", "run_attempt", "phase", "schema_etag", "schema_update_time",
         "connector_etag", "storage_ruleset", "source_sha_label", "backup_id", "first_restore", "tables", "views",
-        "bootstrap"}
+        "bootstrap", "worker_membership"}
 PITR = "point-in-time recovery is off on the SQL instance"
 # Private-looking values a live resource may carry; none may reach a receipt, a step output or the log.
 CANARIES = ("canary-uid-7f3a", "canary-account@example.invalid", "canary-fingerprint", "canary-address")
@@ -145,7 +145,8 @@ def receipt(phase, connector="connector-etag", ruleset=RULESET, **facts):
     return {"version": "data-released/v1", "source_sha": SHA, "run_id": 456, "run_attempt": 2, "phase": phase,
             "schema_etag": "schema-etag", "schema_update_time": UPDATED, "connector_etag": connector,
             "storage_ruleset": ruleset,
-            **dict.fromkeys(("source_sha_label", "backup_id", "first_restore", "tables", "views", "bootstrap")),
+            **dict.fromkeys(("source_sha_label", "backup_id", "first_restore", "tables", "views", "bootstrap",
+                             "worker_membership")),
             **facts}
 
 
