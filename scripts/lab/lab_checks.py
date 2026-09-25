@@ -20,6 +20,7 @@ OCCURRENCE_KEYS = {"catalognumber", "recordedby", "occurrenceid", "institutionco
 MUSEUM_PUBLISHED = re.compile(r'\\*"museum_published\\*"\s*:\s*true')  # S8's check ran, escaped or not
 OCCURRENCE_SIGNAL = re.compile(r'\\*"occurrence\\*"\s*:\s*\\*"(?:supports|conflicts)')
 IDENTITY = ("source", "provider", "source_id", "tool", "tool_id")
+DOT_SEGMENT = re.compile(r"/(?!\.\.?/)[^/\s\"'?#]+/\.\./")  # "/x/../", which a client resolves to "/"
 PROVENANCE = ("model_id", "provider", "prompt_version", "input_sha256", "raw_ref", "raw_sha256")
 # Labels of the ten pilot slides as fractions of the frame's width, full height (S8's
 # table and the images, 2026-09-23). The left box includes the barcode's printed catalog
@@ -203,19 +204,29 @@ def harness(runs, lookups, requests, blob_hits):
         failures.append(f"D4 is held, so its occurrence check is off, yet GBIF occurrence requests appear: {d4[:6]}")
     if gadm:
         failures.append(f"GADM is not used (PLAN 4.8), yet GADM calls appear: {gadm[:6]}")
-    finding = f"; GBIF calls outside PLAN 4.8's table, reported for the coordinator: {other[:6]}" if other else ""
+    # Reporting other GBIF calls is the lab's own choice: PLAN 4.8's table has no row for them (G5).
+    reported = ([f"GBIF calls outside PLAN 4.8's table, which the lab reports for the coordinator: {other[:6]}"]
+                if other else [])
     if failures:
-        return "failed", "; ".join(failures) + finding
+        return "failed", "; ".join(failures + reported)
     if requests is None:
-        return "not checked", "the runner's D4 request count is unavailable: its hook is absent" + finding
-    calls = runs[-1].get("tool_calls") or []
-    if calls or other:
-        return "not checked", f"{len(calls)} tool calls recorded; stage 7's checks follow S4's contract" + finding
+        return "not checked", "; ".join(["the runner's D4 request count is unavailable: its hook is absent", *reported])
+    calls = runs[-1].get("tool_calls") or []  # #134's ToolCallRecords (harness_ledger.py)
+    if calls:
+        return "not checked", "; ".join([f"{len(calls)} tool calls recorded; stage 7's checks follow S4's contract",
+                                         *reported])
+    if reported:
+        return "not checked", reported[0]
     return "not built", f"no tool-call record on this commit; deterministic lookups: {[x.get('status') for x in lookups]}"
 
 
 def decoded(text):
-    return unquote(str(text)).lower().replace("/./", "/")
+    """Percent-decoded, lower-case text whose paths lose every "." and ".." segment, as a client sends them."""
+    text, previous = unquote(str(text)).lower(), None
+    while text != previous:
+        previous = text
+        text = DOT_SEGMENT.sub("/", text.replace("/./", "/"))
+    return text
 
 
 def occurrence_request(text):
@@ -225,8 +236,41 @@ def occurrence_request(text):
             or bool(OCCURRENCE_SIGNAL.search(text)))
 
 
+def occurrence_blob(text):
+    """A receipt's blob showing an occurrence request, as text or as a record inside it."""
+    if occurrence_request(text):
+        return True
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return False
+    return any(occurrence_record(r) for r in records_in(data) if not held_by_policy(r))
+
+
+def records_in(value):
+    if isinstance(value, dict):
+        yield value
+        for item in value.values():
+            yield from records_in(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from records_in(item)
+
+
+def held_by_policy(record):
+    return "policy" in str(record.get("outcome") or record.get("status"))  # a held call sent nothing
+
+
 def identity(record):
     return " ".join(str(record.get(key) or "") for key in IDENTITY).lower()
+
+
+def species_match(record):
+    """PLAN 4.8's species match (G23), by tool, adapter or path; #134's evidence has a usage/<key> locator."""
+    version = str(record.get("adapter_version") or record.get("tool_version") or "").lower()
+    return ("taxonomy_verifier" in identity(record) or version.startswith("species-match")
+            or "/v2/species/match" in decoded(json.dumps(record, default=str))
+            or str(record.get("locator") or "").lower().startswith("usage/"))
 
 
 def occurrence_record(record):
@@ -243,20 +287,23 @@ def gbif_calls(runs):
     d4, gadm, other = [], [], []
     for run in runs:
         where = str(run.get("id", "?"))[:8]
+        # #134: a tool call names the evidence it wrote, so a failed species match's evidence, which has no
+        # locator, is known by its id.
+        species_evidence = {str(c["evidence_id"]) for c in run.get("tool_calls") or []
+                            if isinstance(c, dict) and c.get("evidence_id") and species_match(c)}
         records = [(f"{key}[{i}]", r) for key in ("tool_calls", "lookups") for i, r in enumerate(run.get(key) or [])]
         records += [(f"authority_results.{k}", r) for k, r in (run.get("authority_results") or {}).items()]
         records += [(f"evidence[{i}]", r) for i, r in enumerate(run.get("evidence") or [])]
         for name, record in records:
-            if not isinstance(record, dict) or "policy" in str(record.get("outcome") or record.get("status")):
+            if not isinstance(record, dict) or held_by_policy(record):
                 continue
             version = str(record.get("adapter_version") or record.get("tool_version") or "").lower()
             if occurrence_request(json.dumps(record, default=str)) or occurrence_record(record):
                 d4.append(f"{where}/{name}")
             elif "gbif_gadm" in identity(record) or version.startswith("gbif-gadm"):
                 gadm.append(f"{where}/{name}")
-            elif "gbif" in identity(record) and not (
-                    "taxonomy_verifier" in identity(record) or version.startswith("species-match")
-                    or "/v2/species/match" in decoded(json.dumps(record, default=str))):
+            elif ("gbif" in identity(record) and not species_match(record)
+                  and str(record.get("id")) not in species_evidence):
                 other.append(f"{where}/{name}")
         if occurrence_request(json.dumps(run.get("authority_receipts") or {}, default=str)):
             d4.append(f"{where}/authority_receipts")

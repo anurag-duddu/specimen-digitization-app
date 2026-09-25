@@ -13,6 +13,7 @@ from test_lab_checks import SUBJECT, snapshot
 TOKEN = "hf_" + "Q7" * 15
 ENV = {"HF_TOKEN": TOKEN, "SPECIMEN_APPROVED_INFERENCE": "true"}
 IMAGE = b"\xff\xd8\xff\xe0 lab fixture bytes"
+MAPS_FIXTURE = "AIza" + "k" * 35  # the Geocoding key's shape, synthetic
 START = datetime(2026, 9, 23, 20, 15, tzinfo=timezone.utc)
 
 
@@ -58,7 +59,7 @@ def fetch(subject):
     return IMAGE, {"bucket": "b", "object_name": f"p/{subject}.jpeg", "generation": "1"}
 
 
-def run(tmp_path, *args, lane=None, env=ENV, load=1.0, clock=START, values="default"):
+def run(tmp_path, *args, lane=None, env=ENV, load=1.0, clock=START, values="default", fetcher=fetch):
     lanes = []
     private = tmp_path / "private"  # stands in for ~/specimen-release-private/ (PLAN 840)
     if values == "default":
@@ -78,7 +79,7 @@ def run(tmp_path, *args, lane=None, env=ENV, load=1.0, clock=START, values="defa
     )
     try:
         code = run_specimen.execute(
-            options, fetch=fetch, lane_factory=lane_factory, env=env,
+            options, fetch=fetcher, lane_factory=lane_factory, env=env,
             clock=lambda: clock, loadavg=lambda: (load, load, load),
             commit=lambda: {"head": "f" * 40, "dirty": False},
         )
@@ -224,22 +225,32 @@ def test_the_redactor_removes_instance_addresses_and_the_sam_lab_token():
     assert json.loads(text)["segmentation"]["endpoint"] == "[redacted]"  # JSON stays valid
 
 
-def test_the_redactor_covers_plan_7_7_identities_ids_and_key_shapes(tmp_path):
+def test_the_redactor_covers_plan_7_7_identities_ids_and_key_shapes():
     # PLAN 7.7: the administrator's identity, billing and organization ids, and more secrets (#82 review 2).
-    private = tmp_path / "private-values"
-    private.write_text("adminuidfixture\n")
+    # Every value is synthetic. The private values come from the caller, which read the file once (#83 round 1).
     redact = run_specimen.Redactor({
-        "HF_BILL_TO": "fmnh", "LOGFIRE_READ_TOKEN": "pylf_v1_us_" + "r" * 30,
-        "SPECIMEN_GOOGLE_MAPS_API_KEY": "AIza" + "k" * 35, "LAB_REDACT_VALUES_FILE": str(private),
-    })
+        "HF_BILL_TO": "example-billing-org", "LOGFIRE_READ_TOKEN": "pylf_v1_us_" + "r" * 30,
+        "SPECIMEN_GOOGLE_MAPS_API_KEY": MAPS_FIXTURE,
+    }, values={"adminuidfixture", "zq7"})
     text = redact(
-        "caller admin@example.org lacks permission; uploader adminuidfixture; billed to fmnh; "
-        "fmnhx stays; https://logfire-us.pydantic.dev/owner-org/specimen-digitization; "
+        "caller admin@example.org lacks permission; uploader adminuidfixture; billed to example-billing-org; "
+        "short zq7; zq7x stays; https://logfire-us.pydantic.dev/owner-org/specimen-digitization; "
         "host specimen-sam-x1.a.run.app; key AIza" + "q" * 35 + "; token pylf_v1_us_" + "z" * 30
     )
-    for leak in ("admin@example.org", "adminuidfixture", "owner-org", "run.app", "AIza", "pylf_", " fmnh;"):
+    for leak in ("admin@example.org", "adminuidfixture", "example-billing-org", "owner-org", "run.app", "AIza",
+                 "pylf_", "short zq7;"):
         assert leak not in text, leak
-    assert "fmnhx stays" in text  # a short value is matched as a whole word only
+    assert "zq7x stays" in text  # a short value is matched as a whole word only
+
+
+def test_the_redactor_ignores_case_and_percent_encoding():
+    # #83 round 1: an upper-case host, a mixed-case Logfire address, a %40-encoded email and a listed value
+    # in another case all survived.
+    redact = run_specimen.Redactor({"HF_BILL_TO": "Example-Billing-Org"})
+    text = redact("host SPECIMEN-SAM-X1.A.RUN.APP; https://Logfire-US.pydantic.dev/Owner-Org/project; "
+                  "caller admin%40example.org; billed to example-billing-org and EXAMPLE-BILLING-ORG")
+    for leak in ("RUN.APP", "Owner-Org", "admin%40example.org", "example-billing-org", "EXAMPLE-BILLING-ORG"):
+        assert leak not in text, leak
 
 
 class OccurrenceLane(FakeLane):
@@ -316,6 +327,8 @@ def test_fields_that_name_a_person_are_redacted_by_field(tmp_path):
             snap["audit"] = [{"id": "a1", "actor": "Firstname Lastname", "action": "upload", "reason": "",
                               "before": {}, "after": {}, "created_at": "2026-09-25T00:00:00+00:00"}]
             snap["run"]["transcripts"][0]["actor"] = "Firstname Lastname"
+            snap["run"]["classification_selection"] = {"collection_id": "c", "actor_id": "Firstname Lastname",
+                                                       "reason": "Explicit synthetic fixture intake selection"}
             evidence["rows"] = {"audit_event": [{"id": "e1", "actor_uid": "Firstname Lastname"}],
                                 "source_asset": [{"id": "a1", "uploader_uid": "Firstname Lastname"}],
                                 "profile_version": [{"id": "p1", "approved_by": "Firstname Lastname"}]}
@@ -338,3 +351,183 @@ def test_a_persons_verdict_survives_every_rebuild_of_the_subject_report(tmp_path
     report = (tmp_path / "reports" / f"{SUBJECT}.md").read_text()
     assert "failed: the review names habitat, which the label states" in report
     assert verdict.read_text() == "failed: the review names habitat, which the label states\n"
+
+
+class PlantedLane(FakeLane):
+    """A private value where no person field names it: only the values file can redact it."""
+
+    def collect(self, specimen_id):
+        evidence = super().collect(specimen_id)
+        evidence["workspace"]["note"] = "signed in as adminuidfixture"
+        return evidence
+
+
+def test_the_tilde_form_of_the_values_file_redacts_its_values(tmp_path, monkeypatch):
+    # #83 round 1 (blocking): preflight expanded "~" while the redactor read the raw path and loaded nothing.
+    monkeypatch.setenv("HOME", str(tmp_path))
+    values = tmp_path / "private" / "redact-values"
+    values.parent.mkdir()
+    values.write_text("adminuidfixture\n")
+    run(tmp_path, lane=PlantedLane(), values="~/private/redact-values")
+    assert "adminuidfixture" not in (only_run(tmp_path) / "workspace.json").read_text()
+
+
+def test_the_values_file_is_located_before_any_read_and_read_once(tmp_path, monkeypatch):
+    # #83 round 1: the redactor read the file before the location check, and apart from preflight's read.
+    reads = []
+    original = Path.read_text
+    monkeypatch.setattr(Path, "read_text", lambda self, *a, **k: reads.append(Path(self)) or original(self, *a, **k))
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.write_text("adminuidfixture\n")
+    code, lanes = run(tmp_path / "a", values=elsewhere)
+    assert code == 3 and lanes == [] and elsewhere not in reads
+    run(tmp_path / "b")
+    values = (tmp_path / "b" / "private" / "redact-values").resolve()
+    assert [p for p in reads if p.resolve() == values] == [values]
+
+
+def test_a_values_file_without_a_usable_value_is_refused(tmp_path):
+    # Values shorter than 3 characters are never matched, so such a file redacts nothing (#83 round 1).
+    short = tmp_path / "private" / "short-values"
+    short.parent.mkdir()
+    short.write_text("a\nbb\n \n")
+    code, lanes = run(tmp_path, values=short)
+    assert code == 3 and lanes == []
+    assert not (tmp_path / "runs" / SUBJECT).exists()
+
+
+class CollectFailsLane(FakeLane):
+    def collect(self, specimen_id):
+        raise RuntimeError("the emulator dump failed")
+
+
+class TeardownFailsLane(FakeLane):
+    def __exit__(self, *exc):
+        super().__exit__(*exc)
+        raise RuntimeError("could not stop the emulator")
+
+
+def test_a_run_that_cannot_be_priced_is_held_at_its_bound(tmp_path):
+    # #83 round 1: after the lane starts, paid calls may have run, so an unpriced run counts at
+    # --max-run-usd, the most one run may cost, and the next preflight sees it.
+    code, _ = run(tmp_path, lane=CollectFailsLane())
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    assert code == 2 and summary["result"] == "error"
+    assert summary["costs"]["total_usd"] == pytest.approx(0.75)
+    assert summary["lab_spend_usd"] == pytest.approx(0.75)
+    assert run_specimen.recorded_spend(tmp_path / "runs") == pytest.approx(0.75)
+
+
+def test_a_failed_check_keeps_the_priced_spend(tmp_path, monkeypatch):
+    def broken(*args):
+        raise KeyError("stage")
+
+    monkeypatch.setattr(run_specimen.lab_checks, "check_stages", broken)
+    code, _ = run(tmp_path)
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    assert code == 2 and summary["costs"]["total_usd"] == pytest.approx(0.00083 + 0.0006)
+
+
+def test_a_lane_teardown_error_still_writes_the_run_its_reports_and_spend(tmp_path):
+    try:
+        code, _ = run(tmp_path, lane=TeardownFailsLane())
+    except RuntimeError:
+        code = None  # the error escaped, and with it the record
+    path = only_run(tmp_path)
+    assert (path / "run.json").is_file() and (path / "report.md").is_file()
+    assert (tmp_path / "reports" / f"{SUBJECT}.md").is_file()
+    summary = json.loads((path / "run.json").read_text())
+    assert code == 2 and summary["result"] == "error"
+    assert summary["costs"]["total_usd"] == pytest.approx(0.00083 + 0.0006)
+    assert any(p["status"] == "failed" and "could not stop the emulator" in p["error"] for p in summary["phases"])
+
+
+class DotSegmentLane(FakeLane):
+    """Requests a client sends to the occurrence API, or with occurrence query keys (#83 round 1)."""
+
+    def process(self, specimen_id, deadline):
+        import httpx
+        from specimen_digitization.application import http_effect
+
+        for url in ("https://api.gbif.org/v1/./occurrence/search", "https://api.gbif.org/v1/x/../occurrence/search",
+                    "https://api.gbif.org/v1/././occurrence", "https://api.gbif.org/v1/species/search?catalogNumber=1",
+                    "https://api.gbif.org/v2/species/match?name=Epipsocus"):  # the last is species match
+            http_effect.bounded_http(url, timeout_seconds=1, max_bytes=1)
+        client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={})))
+        client.get("https://api.gbif.org/v1/species/search", params={"recordedBy": "Hoogstraal"})
+        client.get("https://api.gbif.org/v1/species/search?institutionCode=FMNH")
+        client.get("https://api.gbif.org/v2/species/match", params={"name": "Epipsocus"})  # not counted
+        return super().process(specimen_id, deadline)
+
+
+def test_the_parent_count_removes_dot_segments_and_reads_query_keys_in_the_url(tmp_path, monkeypatch):
+    from specimen_digitization.application import http_effect
+
+    monkeypatch.setattr(http_effect, "bounded_http", fake_bounded_http)
+    run(tmp_path, lane=DotSegmentLane())
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    assert summary["gbif_occurrence_requests"] == 6
+
+
+def test_a_receipt_blob_recording_an_occurrence_query_fails_stage_7(tmp_path, monkeypatch):
+    # #83 round 1: the blob scan applied only the text test, not the record test.
+    from specimen_digitization.application import http_effect
+
+    class RecordReceiptLane(FakeLane):
+        def collect(self, specimen_id):
+            evidence = super().collect(specimen_id)
+            evidence["artifacts"]["receipts/c2.json"] = json.dumps(
+                {"source": "gbif", "arguments": {"recordedBy": "Hoogstraal"}}).encode()
+            return evidence
+
+    monkeypatch.setattr(http_effect, "bounded_http", fake_bounded_http)
+    run(tmp_path, lane=RecordReceiptLane())
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    assert next(s for s in summary["stages"] if s["stage"] == "7")["status"] == "failed"
+
+
+def test_every_text_artifact_is_redacted_whatever_its_suffix(tmp_path):
+    class SuffixLane(FakeLane):
+        def collect(self, specimen_id):
+            evidence = super().collect(specimen_id)
+            for name in ("responses/o-r1-handwriting-muse.JSON", "rows-extra/t.jsonl", "receipts/raw"):
+                evidence["artifacts"][name] = ("Bearer " + TOKEN).encode()
+            return evidence
+
+    run(tmp_path, lane=SuffixLane())
+    path = only_run(tmp_path)
+    for name in ("responses/o-r1-handwriting-muse.JSON", "rows-extra/t.jsonl", "receipts/raw"):
+        assert TOKEN.encode() not in (path / name).read_bytes(), name
+    assert (path / "crops/r1.png").read_bytes() == b"\x89PNG crop"  # binary is written as it came
+
+
+def test_paths_under_the_home_directory_are_written_relative_to_it(tmp_path, monkeypatch):
+    # #83 round 1: the account name in a home path equals the Logfire organization slug (PLAN 7.7).
+    monkeypatch.setenv("HOME", str(tmp_path))
+    run(tmp_path)
+    for text in ((only_run(tmp_path) / "run.json").read_text(), (tmp_path / "reports" / f"{SUBJECT}.md").read_text()):
+        assert str(tmp_path) not in text and "~/runs" in text
+
+
+def test_a_verdict_that_is_not_utf8_is_named_and_never_breaks_the_report(tmp_path):
+    run(tmp_path)
+    (only_run(tmp_path) / "verdict.md").write_bytes(b"\xff\xfe failed: habitat\n")
+    run(tmp_path, clock=START + timedelta(hours=1))
+    assert "verdict.md is not UTF-8 text" in (tmp_path / "reports" / f"{SUBJECT}.md").read_text()
+
+
+def test_a_report_only_rebuild_carries_a_new_verdict_without_preflight_or_fetch(tmp_path):
+    # PLAN 8 step 3: a person's final verdict reaches reports/<subject>.md without another run (#83 round 1).
+    run(tmp_path)
+    (only_run(tmp_path) / "verdict.md").write_text("passed: every reason matches the expected outcome\n")
+
+    def no_fetch(subject):
+        raise AssertionError("a report-only rebuild fetches nothing")
+
+    code, lanes = run(tmp_path, "--report-only", load=99.0, env={}, fetcher=no_fetch)
+    assert code == 0 and lanes == []
+    assert len(list((tmp_path / "runs" / SUBJECT).iterdir())) == 1
+    report = (tmp_path / "reports" / f"{SUBJECT}.md").read_text()
+    assert "passed: every reason matches the expected outcome" in report
+    code, _ = run(tmp_path, "--report-only", values=None, fetcher=no_fetch)
+    assert code == 3  # the report is redacted, so the values file is still required
