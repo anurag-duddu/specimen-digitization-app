@@ -362,12 +362,21 @@ class Workflow:
                 region = next(r for r in run.regions if r.id == step.split(":", 1)[1])
                 readings = [o for o in run.observations if o.region_id == region.id]
                 decision = self.adapters.first_pass(specimen, region, readings)
+                from .first_pass import UNRESOLVED_VERDICTS, g19_pick, is_material
+
                 ids = {o.id for o in readings}
+                selected = decision.selected_observation_id
                 if (
                     decision.region_id != region.id
                     or decision.call.region_id != region.id
-                    or decision.selected_observation_id not in ids | {None}
-                    or any(set(d.spans) != ids for d in decision.differences)
+                    or selected not in ids | {None}
+                    or any(
+                        set(d.spans) != ids
+                        or d.verdict not in ids | UNRESOLVED_VERDICTS
+                        or d.material != is_material(d.spans.values())
+                        for d in decision.differences
+                    )
+                    or g19_pick(selected, decision.differences) != selected
                 ):
                     raise OperationalBlock("first_pass_contract_invalid")
                 run.first_pass_decisions = [

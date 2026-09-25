@@ -156,7 +156,12 @@ def invoke_model(
         # observations, prior runs, audit logs and authority outputs are excluded.
         payload.update(
             transcripts=[
-                t.model_dump(mode="json")
+                # A resolved transcript with its text as its only alternative, and
+                # without its first-pass handoffs, differences and call (HARNESS.md
+                # section 4).
+                t.model_copy(update={"alternatives": [t.text]}).model_dump(
+                    mode="json", exclude={"handoffs", "differences", "first_pass_call"}
+                )
                 for t in run.transcripts
                 if t.resolved and t.text
             ],
@@ -196,7 +201,11 @@ def invoke_model(
         return observation
     if operation == "first_pass":
         decision = FirstPassDecision.model_validate(value["decision"])
-        if decision.region_id != region.id:
+        if (
+            decision.region_id != region.id
+            or decision.call.route_id != run.profile.first_pass_route
+            or decision.call.input_asset_id != specimen.asset.id
+        ):
             raise OperationalBlock("external_outcome_unknown")
         return decision
     fields = {k: FieldValue.model_validate(v) for k, v in value["fields"].items()}

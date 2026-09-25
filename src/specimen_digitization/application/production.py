@@ -627,14 +627,11 @@ class ProductionAdapters:
         self.classifier = configured_classifier(blobs)
         from .authority_registry import AuthorityRegistry
         from .parties import PartiesAdapter
-        from .geography import GeographyAdapter
 
         registry = AuthorityRegistry(version="unconfigured")
-        self.authority_tools = {
-            "parties": PartiesAdapter(registry, blobs),
-            "geography": GeographyAdapter(registry, blobs),
-        }
-        self.authority_cost_reservations = {"geography": 0}
+        # No GADM geography source: GADM is not used (PLAN 4.8).
+        self.authority_tools = {"parties": PartiesAdapter(registry, blobs)}
+        self.authority_cost_reservations = {}
 
     def pin_dependencies(self, run):
         inputs = CollectionPromptInputs(
