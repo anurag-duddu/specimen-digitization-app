@@ -12291,3 +12291,83 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. A source check that accepts whatever a caller found in the text is no source check, and the cuts become the only defence. Name the fields a caller may draw from, and state in the limit what the cuts alone can't catch.
   3. A coordinator correction written after an owner's quote reads as following from the owner's words. Label it as a reading, with its date and source, even when it only corrects the coordinator's own earlier line.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live S6: #197's review follow-ups, and dated corrections to earlier entries
+
+- Task: the steward's review of #197 (merged as `587761f`; comment 5826222264, items 1, 2, 4 and 5).
+- Branch/worktree: `golive/ui-zone-followups-2`, based on `main`; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `wallDayStart` no longer lands on the day before where the clocks jump over midnight on a daylight-saving day: Havana on the second Sunday of March, Santiago on the first Sunday of September, the Azores on the last Sunday of March. When its second step does not read as the typed day, it returns the first step's instant, the jump, which is the day's first moment.
+    - A synthetic zone that moves from UTC-5 to UTC-4 at what would have been 00:00 pins this.
+    - The steward's sweep of all 598 zones for 2026-2030 passes under this rule.
+    - The pilot's zone (Central) is unaffected.
+  - The guard's doc, in the seam and in its test, lists what a line-based check cannot see:
+    - a `now` held in a variable;
+    - `copyWith` and `toString`/`toIso8601String` on a local instant;
+    - tear-offs;
+    - split expressions and reads through another package;
+    - zoneless parses;
+    - code outside the two roots.
+    It also names the correct UTC epoch call split across lines, which it wrongly rejects.
+  - The code cites ruling (b) with its time, 01:26Z, at `wallDayStart` and `typedDayStart`. The typed-day comment no longer says "exactly as they were converted before".
+- Corrections to earlier entries (item 4; the log is append-only, and these entries are on `main`):
+  - The entry "Go-live S6: #182's review follow-ups, the reviewer's own day, and log corrections" (#197) says in learning 2 that two fixed-point steps over `wallTime` "find midnight in any zone". That is false for a day that has no midnight; this entry's fix covers it.
+  - Where my entries give a zone name (CDT, Central) for what the app shows, read "the host zone, not Central". CDT is only the suite's pin.
+  - The coordinator's rulings for S6, by the time this session received them:
+    - 2026-09-24 22:59Z: layer labels, option (b): "As written", "Settled", "Derived from …". This is the layer entries' "(b)", a different ruling from the H2.1 "(b)" below.
+    - 2026-09-24 23:11Z: pin the time zone in the test harness (#181).
+    - 2026-09-24 23:30Z: server instants read on the reviewer's clock, from design/01 H1.9 (#182).
+    - 2026-09-25 01:26Z: H2.1 option (b), a typed day is the reviewer's own day (#197).
+    - 2026-09-25 01:35Z: no migration of saved filter sets (#197).
+  - Two corrections to #197's risk note (item 5):
+    - A filter set saved before #197 that is reopened and resubmitted through the sheet, west of UTC, moves its bound about a day earlier. In Chicago it goes from 00:00Z on the 8th to 05:00Z on the 7th, 19 hours, because the reopened sheet shows the 7th.
+    - `magic_link.dart` only reads `queryParameters`; it does not build them.
+- Commits/PRs: red `6856b87`; green `a655cdc`; the pull request is based on `main`.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the zone and day-filter tests 22 passed; the full app suite 1,597 passed, 7 skipped, 0 failed, on the host zone with no `TZ` set, no golden moved.
+- Durable learnings:
+  1. "Any zone" is a claim about every zone's worst day. A fixed-point search over a wall clock converges only where the target wall time exists. Where the clocks jump over it, the search must notice and return the jump. A synthetic zone makes that testable without a zone database.
+  2. Name a ruling by its time, not by its option letter: two different rulings were both "(b)".
+- Failed approaches: none.
+- Remaining follow-ups:
+  - At #140's turn, fold #197's date-key case into #140's `searchValueLabel` switch (item 3). Git merges the two declarations cleanly, and the result would not compile.
+  - At #73's turn, record the zone rulings in UI.md with the times above.
+  - When the stack merges `main`, regenerate its queue, queue-selection and workbench-history goldens, and re-verify those of #102, #114, #133 and #140.
+### 2026-09-25 — S8: #94's review follow-ups, and a correction to its entry
+
+- Task: the steward's round-3 review of #94 (merged as `e6bcfa7`; comment 5826083660, Decision items 1-5), done in a small docs pull request on `main`.
+- Branch/worktree: `golive/geo-plan-followups` from `main` at `e6bcfa7`; `.claude/worktrees/busy-thompson-19cc3b`.
+- Outcome, in `docs/product-requirements/GEOREFERENCING.md`:
+  - the unassigned literal is PLAN 4.8's unassigned locality text, the part of the lines holding the place fields that no reading assigns to any field;
+  - the illustrative `valid_on` returns "not valid" for a unit that had ended by the collection date, with the gap as a `label_lag` finding, as 3.2 and #154's `use_on` do, so a 1980 "Davao Prov." label no longer matches Q15095071;
+  - the Philippine boundary files come via geoBoundaries; HDX is CONRED's channel only;
+  - G30's reservation mechanism, D15 for this tool and D5's hold are labelled as the coordinator's, and the Apo reading carries its date and its hedge;
+  - smaller wording and date fixes.
+- Correction to the entry "S8 retrospective georeferencing research: the plan, the pilot localities, a read-only probe" (the log is append-only): its remaining follow-ups cite "(G30)" for each Google call reserving its cost. The reservation mechanism is the coordinator's ruling (PLAN 2.1's G30 row and section 4.3), so read it as "(G30; the coordinator's ruling on the mechanism, PLAN 4.3)".
+- Commits/PRs: one docs commit; no red and green commits, since no product behaviour changes.
+- Validation actually run: pre-commit on the changed files; every `file:line` citation re-checked by script at `e6bcfa7`, identical to `ad84482`.
+- Durable learnings:
+  1. An illustrative function's state names become its contract. `valid_on` returned "label_lag" as a fourth validity state, and `decide` dropped only "not valid", so a name of any age passed the anachronism filter. A finding goes beside the state, never in place of it.
+  2. A licence cell holds two facts: the licence and the channel. The Philippine files' metadata cites HDX as its licence source, but the files come from geoBoundaries, so copying "via HDX" named the wrong channel.
+- Failed approaches: none.
+- Remaining follow-ups: none from the review. The steward checks #183's identifier field rule at #183's turn. The 259 ids S8's readers send back already come from the fields it reads.
+### 2026-09-24 — Go-live program: plan corrections after #191
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-9`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #191's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/191#issuecomment-5825808641). In PLAN 4.8's filter:
+    - An identifier counts only in the field that carries its source's ids, never as another token of the answer, so a TGN `estStart` of "1946" or a GNS latitude of 7.3 can't pass as one.
+    - The limit's class sentence says "text", not "a name", and "no marker the profile names". A habitat ("Mossy forest"), a catalogue prefix ("FMNH INS") and a unit ("ft.") leave mid-run too, and so does a name beside a marker the profile doesn't list.
+    - The profile names collector and determiner markers in English and Spanish ("Col.", "Colector", "Collector"), and month forms old and new ("Agto."). The limit names a form of a listed language that the profile doesn't list.
+    - A Roman month is a token whose every word is a numeral I to XII, so "VIII/IX 1946" is cut.
+    - The limit names the marker clause's over-cut across lines, and the notations bullet defers to the limit.
+    - The month listing carries its own label, and "not itself in a source" replaces "not written on the label".
+  - Licences: "via HDX" applies to CONRED's file only. The Philippine files' licence is the one geoBoundaries' metadata states for each file (PLAN 4.8's table, S8's task 6).
+  - S7's brief gains T4a, the private pilot reference file (`specimen-pilot-reference/v1`), from the coordinator's ruling sent to S2 and S7 at 01:15Z on 2026-09-25. The steward's review of #199 found it in no brief and no S7 PR.
+  - Corrections (dated 2026-09-24) to the entry "2026-09-24 — Go-live program: plan corrections after #185" above:
+    - Its line '"Werner" beside "Wernersdorf" is cut' should read '"Werner" is cut where the record reads "Wernersdorf" and "leg. Werner"'.
+    - Its line "a name that no reading gives a non-place field, and the harness hasn't yet" paraphrases PLAN 4.8. At #191's head, 4.8 read "a name no reading assigns to a non-place field, or one the harness has not yet given a non-place field, when no marker in its own clause accompanies it". This PR rewrites that sentence.
+    - Its line "geoBoundaries' Philippine files and CONRED's COD-AB file for Guatemala, CC BY 3.0 IGO via HDX" puts "via HDX" on both files. It applies to CONRED's file only; the Philippine licence comes from geoBoundaries' metadata. The line also omits the simplified-file margin: for the simplified Philippine files, the circle is widened by the stated simplification error.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: an identifier check is only as strict as the field it reads. "Returned by the source" has to name the id field, because an answer's dates and coordinates are numbers too, and a digit pattern matches them.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).

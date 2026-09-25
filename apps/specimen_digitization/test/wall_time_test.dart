@@ -17,8 +17,20 @@ import 'central_time.dart';
 /// its name or offset, building an instant from the host's wall-clock
 /// fields (`DateTime(`, `DateTime.new(`) or from an epoch without `isUtc`,
 /// reading a wall-clock field of `DateTime.now()`, and touching the seam's
-/// own override or host reader. A parse of text without a zone is not
-/// checked: the server's instants carry one (DATA_CONTRACT.md).
+/// own override or host reader.
+///
+/// What it cannot see, because it reads one line at a time and knows no
+/// types (#182 and #197 reviews):
+/// - a `now` held in a variable and read later (`now.hour`);
+/// - `copyWith` on a local instant;
+/// - `toString` or `toIso8601String` of a local instant, which prints the
+///   host's wall clock;
+/// - a tear-off, such as `.map(DateTime.new)` or `toLocal` passed uncalled;
+/// - an expression split across lines, or a read through another package;
+/// - a parse of text without a zone (the server's instants carry one);
+/// - code outside the two roots.
+/// It also rejects a correct UTC epoch call split across lines, whose
+/// `isUtc: true` sits on a later line.
 final RegExp _hostZone = RegExp(
   r'\.toLocal\(\)|\.timeZoneName\b|\.timeZoneOffset\b|\bDateTime(\.new)?\('
   r'|from(Milli|Micro)secondsSinceEpoch\((?![^)]*isUtc:\s*true)'
@@ -110,6 +122,35 @@ void main() {
       // The clocks change at 02:00, so both midnights keep the old offset.
       expect(wallDayStart(2026, 3, 8), DateTime.utc(2026, 3, 8, 6));
       expect(wallDayStart(2026, 11, 1), DateTime.utc(2026, 11, 1, 5));
+    });
+
+    test('a day whose midnight the clocks skip starts at the jump', () {
+      // Havana, Santiago and the Azores go from 23:59 to 01:00 on their
+      // daylight-saving day, so that day has no midnight (#197 review).
+      // Here a synthetic zone at UTC-5 moves to UTC-4 at what would have
+      // been 00:00 on 8 September.
+      final DateTime jump = DateTime.utc(2026, 9, 8, 5);
+      debugWallTimeOverride = (DateTime instant) {
+        final DateTime utc = instant.toUtc();
+        final bool after = !utc.isBefore(jump);
+        final DateTime wall = utc.add(Duration(hours: after ? -4 : -5));
+        return (
+          year: wall.year,
+          month: wall.month,
+          day: wall.day,
+          hour: wall.hour,
+          minute: wall.minute,
+          zone: after ? 'SDT' : 'SST',
+        );
+      };
+      addTearDown(() => debugWallTimeOverride = centralWallTime);
+      expect(wallDayStart(2026, 9, 8), jump);
+      final WallTime wall = wallTime(wallDayStart(2026, 9, 8));
+      expect(
+        (wall.day, wall.hour),
+        (8, 1),
+        reason: "the day's first moment, never 23:00 on the 7th",
+      );
     });
 
     test('the day start reads back as that day at midnight', () {
