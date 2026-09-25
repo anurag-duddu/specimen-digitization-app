@@ -11995,23 +11995,24 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Outcome: `georef_locality.py` reads one locality literal into its parts, and nothing imports it yet. It covers:
   - label notations (G29), with CNHM and FMNH read as institutions, never places;
   - slopes and offsets with their headings;
-  - elevations kept as written (G22);
+  - elevations kept as written, numbers whole with their dots and commas (G27, G38; G41's conversion and fill happen in S4's later layer);
   - unplaced text;
-  - comparison keys, with G34's one-letter gate on full names only (the coordinator's reading, 2026-09-24);
-  - one variant per reader's literal (G19, G20).
+  - comparison keys, with the one-letter gate on full names only (the coordinator's reading of G34, 2026-09-24);
+  - variants that group readers' literals whose parts share their keys, each literal keeping its own reading, headings, offsets and elevations included (G19, G20).
 - Validation: 64 tests use the ten pilot labels as S8 and the S7 baseline readers wrote them, plus cases for notations, headings, offsets, elevations and comparisons. Also run: `uv run pytest tests/ -q` (1,558 passed, 31 skipped), `uv run pytest scripts/ -q` (1,547 passed, 50 skipped) and pre-commit. At #130's turn on 2026-09-25, after `main` at `3e93ecb` was merged in, the full suite ran again on the merged branch.
-- Commits/PRs: #130. Red `505fb2b` and green `32dfb9d`. Two docs commits routed by the coordinator: `49118b6` (both gates for replacing the Google module) and `75247aa` (locality readings are compared locally, and requests go through PLAN 4.8's filter). The merges of `main` at its turn follow.
+- Commits/PRs: #130. Red `505fb2b` and green `32dfb9d`. Two docs commits routed by the coordinator: `49118b6` (both gates for replacing the Google module) and `75247aa` (locality readings are compared locally, and requests go through PLAN 4.8's filter). The merges of `main` at its turn follow, with `6ef48a4` (#207's nits). Review round 1 (comment 5829514661, three blocking findings) is answered by the red `e7ca011` and the green commit after it.
 - Durable learnings:
   - (1) A line break on a label is sometimes layout inside a name ("E. Slope Mt." / "McKinley") and sometimes a boundary between parts ("Mt. McKinley" / "Davao Prov."). The reliable signal, found in the real labels, is a line ending in a notation that needs the next word.
   - (2) Where a unit word sits depends on the label's language: after the name in English ("Davao Prov."), before it in Spanish ("Mun. Yepocapa"). A unit word standing alone joins the name on the side its language points to.
-  - (3) Folded abbreviations sit one letter from unrelated codes: "P.I." folds to "pi", one substitution from the ISO code "PH". That is why G34's gate compares full names only, on both sides.
+  - (3) Folded abbreviations sit close to unrelated codes: "P.I." folds to "p i" here, and a fold that dropped the space would give "pi", one substitution from the ISO code "PH". That is why the coordinator's reading of G34 compares full names only, on both sides.
   - (4) A session's worktree hook blocks writes into another worktree. Switch with `EnterWorktree` and a `path` rather than writing across.
+  - (5) A comma or a dot between digits belongs to the number. Split parts only at a comma without a digit on each side, and read a number with its dots and commas, or a Spanish "0,5 km" becomes "5" and "1.463 m" becomes "463 m" (review round 1).
+  - (6) An elevation keeps its words as the label wrote them, but its citation has to follow the owner's latest decision. G41 revised G22, so text that reads elevations cites G27 and G38 for keeping them as written and leaves G41's conversion to the layer that does it.
 - Failed approaches: none.
-- Remaining follow-ups:
-  - part 2, the gazetteers (needs #109);
-  - part 3, historical units;
-  - part 4, the tool itself (after #109 and #113);
-  - the owner's answers on D1 to D7 and D9 for the tiers they gate.
+- Remaining follow-ups, as of review round 1 (2026-09-25):
+  - the tiers and the derivations follow in #211-#214 and in #139-#198, the second chain after S4's #183;
+  - the tool itself follows after S4's #113 and #144;
+  - D1 to D3, D6, D7 and D9 are decided (G35 to G39), and D4 and D5 are held (the coordinator's rulings).
 
 ### 2026-09-24 — Go-live release workstream (S2), T1c: #78's acceptance follow-ups
 

@@ -2,12 +2,13 @@
 
 One locality literal, exactly as a reading has it, becomes the parts the later
 tiers compare locally: names with their label notations read (G29), the headings
-of slopes and offsets, elevation phrases kept as written (G22) and text that is
-no place. Nothing here makes a request or decides an outcome, and the literal is
-kept verbatim (G27). The readings built here serve local comparison only: what a
-tier sends is the literal passed through PLAN 4.8's filter, which expands
-notations itself after its cuts. G34's one-letter gate compares full names only,
-never codes or abbreviations (the coordinator's reading, 2026-09-24).
+of slopes and offsets, elevation phrases kept as written (G27, G38; G41's
+conversion and fill happen in S4's later layer) and text that is no place.
+Nothing here makes a request or decides an outcome, and the literal is kept
+verbatim (G27). Nothing it produces leaves the tool except through PLAN 4.8's
+filter, which expands notations itself after its cuts. The one-letter gate
+compares full names only, never codes or abbreviations (the coordinator's reading
+of G34, 2026-09-24).
 """
 
 from __future__ import annotations
@@ -45,6 +46,8 @@ UNIT_NAMES = {
 LINKS = frozenset({"de", "del", "of"})
 # Feature notations: the word they read as and the feature they name.
 FEATURES = {"mt": ("Mount", "mountain"), "mount": ("Mount", "mountain")}
+# A line ending in one of these words runs on into the next line.
+JOINERS = frozenset({*FEATURES, *UNITS_BEFORE, *LINKS})
 COUNTRIES = ((re.compile(r"P\.\s?I\.?", re.I), "Philippine Islands"),)
 # The museum's own names on its labels, never a place.
 INSTITUTIONS = re.compile(r"\b(?:CNHM|FMNH)\b\.?", re.I)
@@ -74,13 +77,18 @@ LEADING_HEADING = re.compile(
 TRAILING_HEADING = re.compile(
     rf"^(?P<rest>.+?)[\s,]+(?P<head>[A-Za-z.\-]+?)(?P<gap>\s*){RELATION}\.?$", re.I
 )
+# A heading followed by "slope", "side" or "flank" never heads an offset: in
+# "1500 m N slope Mt. Apo" the "1500 m" is an elevation.
 OFFSET = re.compile(
-    r"^(?P<distance>\d+(?:[.,]\d+)?)\s*"
+    r"^(?P<distance>\d+(?:[.,]\d+)*)\s*"
     r"(?P<unit>kms?|kilomet(?:er|re)s?|mi|miles?|m|met(?:er|re)s?)\b\.?\s+"
-    r"(?P<head>[A-Za-z][A-Za-z.\-]*)\s+(?:(?:of|from)\s+)?(?P<rest>\S.*)$",
+    r"(?P<head>[A-Za-z][A-Za-z.\-]*)\s+(?!(?:slope|side|flank)s?\b)"
+    r"(?:(?:of|from)\s+)?(?P<rest>\S.*)$",
     re.I,
 )
-NUMBER = r"\d{1,3}(?:,\d{3})+|\d+"
+# A number is read whole, its dots and commas included: "1,463", "1.463",
+# "6.400", "0,5", "1463,5" (G36).
+NUMBER = r"\d+(?:[.,]\d+)*"
 RANGE = rf"(?P<low>{NUMBER})(?:\s*(?:-|–|to)\s*(?P<high>{NUMBER}))?"
 PREFIX = r"\b(?:elev(?:ation)?|alt(?:itude)?)\b\.?\s*:?\s*"
 # An elevation has a prefix, a unit or both; a foot mark followed by a digit is
@@ -90,8 +98,9 @@ ELEVATION = re.compile(
     r"(?P<unit>ft\b\.?|feet\b|foot\b|['’′](?!\d)|m\b\.?|met(?:er|re)s?\b))?",
     re.I,
 )
-# Commas and semicolons separate parts; a comma inside "1,463" does not.
-SEPARATOR = re.compile(r";|(?<!\d),|,(?!\d{3}(?!\d))")
+# Commas and semicolons separate parts; a comma with a digit on each side is
+# inside a number ("1,463", "0,5") and does not.
+SEPARATOR = re.compile(r";|(?<!\d),|,(?!\d)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,8 +113,9 @@ class Heading:
 
 @dataclass(frozen=True, slots=True)
 class Elevation:
-    """An elevation phrase as written (G22): the numbers as written, the unit as
-    "ft" or "m", or None when the label gives none. Nothing is converted."""
+    """An elevation phrase as written (G27, G38): the numbers whole as written,
+    the unit as "ft" or "m", or None when the label gives none. Nothing is
+    converted here: G41's conversion and fill happen in S4's later layer."""
 
     text: str
     low: str
@@ -116,8 +126,9 @@ class Elevation:
 @dataclass(frozen=True, slots=True)
 class Part:
     """One place in a locality literal: `name` as written without its unit word,
-    `readings` the full names to search, most specific first, and `key` the
-    comparison key of the first reading."""
+    `readings` the full names it is compared by locally, most specific first, and
+    `key` the comparison key of the first reading. None of these is sent as it
+    stands; requests come only through PLAN 4.8's filter."""
 
     text: str
     name: str
@@ -143,11 +154,12 @@ class LocalityText:
 
 @dataclass(frozen=True, slots=True)
 class Variant:
-    """Readers' literals whose parts share their keys, each kept as written with
-    its observation id (G19, G20); `locality` is the first literal's reading."""
+    """Readers' literals whose parts share their keys (G19, G20). Each literal is
+    kept as written, with its observation id and its own reading, headings,
+    offsets and elevations included, in the order the literals came."""
 
     keys: tuple[str, ...]
-    locality: LocalityText
+    localities: tuple[LocalityText, ...]
     observations: tuple[str, ...]
     literals: tuple[str, ...]
 
@@ -166,11 +178,14 @@ class _Piece:
 
 
 def fold(text: str) -> str:
-    """Casefold, strip diacritics and turn anything but letters and digits into
-    single spaces: "Chimaltenángo," folds to "chimaltenango"."""
+    """Casefold, strip diacritics and format characters (Unicode Cf, such as a
+    zero-width space), and turn anything else but letters and digits into single
+    spaces: "Chimaltenángo," folds to "chimaltenango"."""
     decomposed = unicodedata.normalize("NFKD", text.casefold())
     kept = "".join(
-        c if c.isalnum() else " " for c in decomposed if not unicodedata.combining(c)
+        c if c.isalnum() else " "
+        for c in decomposed
+        if not unicodedata.combining(c) and unicodedata.category(c) != "Cf"
     )
     return " ".join(kept.split())
 
@@ -194,22 +209,30 @@ def comparison_key(name: str) -> str:
 
 def letters_apart(a: str, b: str, cap: int = 2) -> int:
     """Single-character insertions, deletions and substitutions between two
-    keys, counted up to `cap`."""
+    keys, counted up to `cap`. A cell farther than `cap` from the diagonal holds
+    at least `cap`, so only the band within it is computed, and the work grows
+    with the keys' length rather than its square."""
     if a == b:
         return 0
     if abs(len(a) - len(b)) >= cap:
         return cap
-    previous = list(range(len(b) + 1))
+    previous = {j: j for j in range(min(len(b), cap) + 1)}
     for i, left in enumerate(a, 1):
-        current = [i]
-        for j, right in enumerate(b, 1):
-            current.append(
-                min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (left != right))
+        current: dict[int, int] = {}
+        for j in range(max(0, i - cap), min(len(b), i + cap) + 1):
+            if j == 0:
+                current[0] = min(i, cap)
+                continue
+            current[j] = min(
+                previous.get(j, cap) + 1,
+                current.get(j - 1, cap) + 1,
+                previous.get(j - 1, cap) + (left != b[j - 1]),
+                cap,
             )
-        if min(current) >= cap:
+        if min(current.values()) >= cap:
             return cap
         previous = current
-    return min(previous[-1], cap)
+    return previous.get(len(b), cap)
 
 
 def is_full_name(name: str) -> bool:
@@ -222,7 +245,8 @@ def is_full_name(name: str) -> bool:
 
 
 def one_letter_apart(a: str, b: str) -> bool:
-    """G34's gate on two names: both full names, keys exactly one letter apart."""
+    """The one-letter gate on two names, as the coordinator reads G34 (2026-09-24):
+    both full names, their keys exactly one letter apart."""
     return (
         is_full_name(a)
         and is_full_name(b)
@@ -240,7 +264,9 @@ def read_locality(text: str) -> LocalityText:
         segment = " ".join(INSTITUTIONS.sub(" ", segment).split())
         offset = _offset(segment)
         if offset is not None:
-            pieces.append(offset)
+            piece, found = offset
+            elevations += found
+            pieces.append(piece)
             continue
         segment, found = _elevations(segment)
         elevations += found
@@ -258,56 +284,70 @@ def read_locality(text: str) -> LocalityText:
 
 
 def variants(literals: Iterable[tuple[str, str]]) -> tuple[Variant, ...]:
-    """Group (literal, observation id) pairs by their parts' keys, in order."""
-    groups: dict[tuple[str, ...], tuple[LocalityText, list[str], list[str]]] = {}
+    """Group (literal, observation id) pairs by their parts' keys, in order; each
+    literal keeps its own reading."""
+    groups: dict[tuple[str, ...], tuple[list[LocalityText], list[str], list[str]]] = {}
     for literal, observation_id in literals:
         reading = read_locality(literal)
         keys = tuple(part.key for part in reading.parts)
-        _, observations, written = groups.setdefault(keys, (reading, [], []))
+        readings, observations, written = groups.setdefault(keys, ([], [], []))
+        readings.append(reading)
         observations.append(observation_id)
         written.append(literal)
     return tuple(
-        Variant(keys, reading, tuple(observations), tuple(written))
-        for keys, (reading, observations, written) in groups.items()
+        Variant(keys, tuple(readings), tuple(observations), tuple(written))
+        for keys, (readings, observations, written) in groups.items()
     )
 
 
 def _segments(text: str) -> Iterable[str]:
-    """Lines joined where a notation needs the next word, then split into parts."""
+    """Lines joined where a word needs the next one (a feature notation, a unit
+    written before its name, or a linking word), then split into parts."""
     lines: list[str] = []
-    carry = ""
+    carry: list[str] = []
     for line in text.splitlines():
-        line = " ".join(f"{carry} {line}".split())
-        words = line.split()
-        if words and fold(words[-1]) in {*FEATURES, *UNITS_BEFORE}:
-            carry = line
+        carry += line.split()
+        if carry and fold(carry[-1]) in JOINERS:
             continue
-        carry = ""
-        lines.append(line)
+        if carry:
+            lines.append(" ".join(carry))
+        carry = []
     if carry:
-        lines.append(carry)
+        lines.append(" ".join(carry))
     for line in lines:
         for segment in SEPARATOR.split(line):
             if segment.strip():
                 yield " ".join(segment.split())
 
 
-def _offset(segment: str) -> _Piece | None:
+def _offset(segment: str) -> tuple[_Piece, list[Elevation]] | None:
+    """An offset ("5 km NE of Yepocapa") and the elevation phrases after it. Its
+    place follows the rules for any part: a place with a digit or without a
+    letter is kept aside with its offset."""
     match = OFFSET.match(segment)
     bearing = _bearing(match["head"]) if match else None
     if match is None or bearing is None:
         return None
+    rest, found = _elevations(match["rest"])
+    rest = rest.strip(" ,;:")
+    if not _placeable(rest):
+        return _Piece("unplaced", segment), found
     unit = match["unit"].casefold()
-    piece = _place(match["rest"], segment)
+    piece = _place(rest, segment)
     piece.heading = Heading(match["head"], bearing)
     piece.relation = "offset"
     piece.distance = match["distance"]
     piece.distance_unit = "km" if unit[0] == "k" else "mi" if unit[:2] == "mi" else "m"
-    return piece
+    return piece, found
+
+
+def _placeable(text: str) -> bool:
+    """A place's text has a letter and no digit: gazetteer names carry no digits."""
+    return any(c.isalpha() for c in text) and not any(c.isdigit() for c in text)
 
 
 def _elevations(segment: str) -> tuple[str, list[Elevation]]:
-    """Elevation phrases out of the segment, each as written (G22)."""
+    """Elevation phrases out of the segment, each as written (G27, G38)."""
     found: list[Elevation] = []
     rest: list[str] = []
     last = 0
@@ -325,7 +365,7 @@ def _elevations(segment: str) -> tuple[str, list[Elevation]]:
 
 
 def _piece(segment: str) -> _Piece:
-    if not any(c.isalpha() for c in segment) or any(c.isdigit() for c in segment):
+    if not _placeable(segment):
         return _Piece("unplaced", segment)
     word = fold(segment)
     if word in UNIT_WORDS:
@@ -338,7 +378,7 @@ def _piece(segment: str) -> _Piece:
         if heading is None:
             continue
         rest = match["rest"].strip(" ,;:")
-        if not rest:
+        if not any(c.isalpha() for c in rest):  # nothing, or no letter: "E. slope -"
             return _Piece("heading", segment, heading=heading, relation=_relation(match))
         piece = _place(rest, segment)
         piece.heading, piece.relation = heading, _relation(match)
@@ -472,7 +512,7 @@ def _abbreviated(word: str) -> bool:
 
 def _full_word(word: str) -> bool:
     letters = sum(c.isalpha() for c in word)
-    if any(c.isdigit() for c in word) or re.search(r"\.\w", word):
+    if not letters or any(c.isdigit() for c in word) or re.search(r"\.\w", word):
         return False
     if word.endswith(".") and letters <= 4:
         return False
