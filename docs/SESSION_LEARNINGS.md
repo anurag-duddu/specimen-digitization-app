@@ -11892,7 +11892,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run:
   - `uv run pytest scripts/lab -q`: 39 passed, 1 skipped on #84 after the fourth review's follow-ups (34 passed on #83);
   - the emulator-gated test passed with `SPECIMEN_TEST_SQL_EMULATOR=true`;
-  - `uv run pytest scripts/ -q`: 1560 passed, 50 skipped on #82's head. Not rerun for the fourth review's follow-ups: the load average was 43 to 58, above the lab's limit of 12;
+  - `uv run pytest scripts/ -q`: 1560 passed, 50 skipped on #82's head; after the fourth review's follow-ups, 1581 passed, 50 skipped on #83's head `e169c2a` and 1586 passed, 51 skipped on #84's;
   - `pre-commit run --all-files` passed; for the fourth review's follow-ups, pre-commit on the changed files passed;
   - two real runs and one dry run of `subject_105526321`.
 - Durable learnings:
