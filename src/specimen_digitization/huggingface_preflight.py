@@ -13,6 +13,7 @@ import logfire
 from huggingface_hub import HfApi, hf_hub_download
 from pydantic import BaseModel
 from pydantic_ai import Agent, BinaryContent
+from pydantic_ai.usage import UsageLimits
 
 from .hub_models import SAM3_MODEL
 from .model_gateway import (
@@ -26,6 +27,8 @@ ROUTER_MODELS_URL = "https://router.huggingface.co/v1/models"
 REQUIRED_RUNTIME_PERMISSIONS = frozenset(
     {"inference.serverless.write", "repo.content.read"}
 )
+# The public sentence a text-only route's smoke test reads.
+SMOKE_TEXT = "The quick brown fox jumps over the lazy dog."
 
 
 class SyntheticImageObservation(BaseModel):
@@ -128,25 +131,43 @@ def verify_sam3_access(token: str) -> dict[str, Any]:
 
 
 def run_live_image_smoke(
-    token: str, *, route_id: str, image_path: Path, bill_to: str | None = None
+    token: str, *, route_id: str, image_path: Path | None, bill_to: str | None = None
 ) -> dict[str, Any]:
     gateway = HuggingFaceModelGateway(token=token, bill_to=bill_to)
     route = gateway.route(route_id)
-    media_type = {
-        ".jpeg": "image/jpeg",
-        ".jpg": "image/jpeg",
-        ".png": "image/png",
-    }.get(image_path.suffix.lower())
-    if media_type is None:
-        raise ValueError("The live smoke image must be a PNG or JPEG file.")
+    if "image" not in route.required_input_modalities:
+        # A text-only route is never sent an image (HARNESS.md section 5).
+        if image_path is not None:
+            raise ValueError("A text-only route takes no --image.")
+        subject = "text"
+        prompt: list[Any] = [
+            "Describe this test text without inferring any private information: "
+            + SMOKE_TEXT
+        ]
+    else:
+        if image_path is None:
+            raise ValueError("--image is required with a route that takes images.")
+        media_type = {
+            ".jpeg": "image/jpeg",
+            ".jpg": "image/jpeg",
+            ".png": "image/png",
+        }.get(image_path.suffix.lower())
+        if media_type is None:
+            raise ValueError("The live smoke image must be a PNG or JPEG file.")
+        subject = "image"
+        prompt = [
+            "Describe this test image without inferring any private information.",
+            BinaryContent(data=image_path.read_bytes(), media_type=media_type),
+        ]
 
     agent = Agent(
         gateway.model_for(route_id),
         name=f"huggingface_route_smoke_{route.route_id.replace('-', '_')}",
         output_type=SyntheticImageObservation,
         instructions=(
-            "Inspect this synthetic/public test image. Return only the requested "
-            "short factual description and whether it contains readable text."
+            f"Inspect this synthetic/public test {subject}. Return only the "
+            "requested short factual description and whether it contains "
+            "readable text."
         ),
     )
     with logfire.span(
@@ -159,10 +180,11 @@ def run_live_image_smoke(
         },
     ):
         result = agent.run_sync(
-            [
-                "Describe this test image without inferring any private information.",
-                BinaryContent(data=image_path.read_bytes(), media_type=media_type),
-            ]
+            prompt,
+            # A reading's caps: the output cap run_agent_bounded sets, and the
+            # limits of production.py's reader call.
+            model_settings={"max_tokens": 4096},
+            usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
         )
     return {
         "route_id": route.route_id,
@@ -192,8 +214,6 @@ def run_preflight(
         "sam3": verify_sam3_access(token),
     }
     if live_route:
-        if image_path is None:
-            raise ValueError("--image is required with --live-route.")
         report["live_smoke"] = run_live_image_smoke(
             token,
             route_id=live_route,
@@ -227,12 +247,18 @@ def main() -> None:
     parser.add_argument(
         "--live-route",
         choices=sorted(HUGGINGFACE_ROUTES),
-        help="Optionally run one paid synthetic image request through this route.",
+        help=(
+            "Optionally run one paid synthetic prompt through this route, under "
+            "a reading's token and request caps."
+        ),
     )
     parser.add_argument(
         "--image",
         type=Path,
-        help="PNG or JPEG approved fixture used by --live-route.",
+        help=(
+            "PNG or JPEG approved fixture for --live-route on a route that takes "
+            "images; a text-only route takes none."
+        ),
     )
     parser.add_argument(
         "--approved-content",
