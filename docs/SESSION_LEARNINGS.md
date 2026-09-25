@@ -12107,3 +12107,22 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: when a correction is itself history, check it against the primary record (the review comments) before writing it. The earlier round pairing was corrected from memory and was wrong twice.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above.
+
+### 2026-09-24 — Go-live program: plan corrections after #185
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-8`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #185's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/185#issuecomment-5824745385). Item 1 first: a tier-1 source's identifiers, matching its documented pattern, may be sent back to that source unchanged. Without this, S8's #139, #188 and #190 would fail closed.
+  - Also in PLAN 4.8's filter:
+    - whole-token sources and cuts by character span, so a slice such as "Hoogstraa" cannot leave;
+    - month names and Roman-numeral months cut in any case, the numeral only as a whole token beside a day or a year;
+    - a full form written on the label counts as a source;
+    - a value is only escaped or encoded after the filter, in SPARQL or in an API such as Wikidata's;
+    - the extended named tests and limit, with credits to #124, #174, #180 and #185 and the #183 ruling's source.
+  - Records the owner's curator decision in 2.3: "That's fine. Human review is ok" (2026-09-24).
+  - "Place text (4.8's sources)" replaces "place fields" in G35's reading, the Google row and S8's brief. The G27/G32 reading label now sits right after "on one label as on several". S5's T6 names the stated field.
+  - Correction (dated 2026-09-24) to the entry "2026-09-24 — Go-live program: plan corrections after #124" above: its line "G45's `verbatim_dts` exception appears at stage 8 and in T4" should read "the coordinator hold for `verbatim_dts` (section 2.3) appears at stage 8 and in T4". G45 itself has no exception.
+- Validation actually run: the edit script's exact-single-match checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: a filter that checks sources by substring and cuts by token has a gap between the two units. Make both work on the same unit, whole tokens or character spans, so a slice of a cut token can't pass.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
