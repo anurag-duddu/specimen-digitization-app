@@ -85,6 +85,19 @@ owner's Chrome with permission). Check the SQL rows (read-only), the Logfire
 trace (every stage, prompts visible) and the thread in the app; write the
 report; rerun until the run is flawless; then the next specimen.
 
+**T4a. The pilot reference file** (coordinator ruling on S2's offline-checker
+question, sent to you and to S2 at 01:15Z on 2026-09-25). Once PLAN section 8
+step 2 has imported the ten, and before S2's offline checker reads them, write
+a private file with schema `specimen-pilot-reference/v1`: the ordinal, the
+specimen UUIDs, the one scope, and each original's bucket, object, generation,
+SHA-256 and size, plus the application-source binding. It has no authorization
+fields: no `status`, `authorization_reference` or frozen inventory digest.
+Build it from the import's own records and a read-only object listing. It
+carries scope ids, so it never enters the repository, a PR or a log. Send its
+SHA-256 to the coordinator, who checks it against DoD-4's subject ids before
+S2's checker pins it by that digest on the command line. Cloud reads need the
+owner's gcloud sign-in; if it has expired, ask the owner to sign in first.
+
 Record every run's cost in its report and keep the program within G9; the
 lab's share is USD 5, reserved and settled under PLAN section 4.3's mechanism
 with the lab's own ledger; until that ledger exists, your tally counts each
