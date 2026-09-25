@@ -158,22 +158,25 @@ def test_the_subject_report_lists_every_run_newest_first(tmp_path):
     assert report.index("20260923T211500Z |") < report.index("20260923T201500Z")
 
 
-def test_a_paid_step_with_an_unknown_outcome_counts_at_its_full_bound():
-    # Until production's reserve-then-settle ledger lands, the lab's tally keeps an unknown outcome
-    # reserved at the full per-call bound (coordinator, 2026-09-23). Local SAM 3 costs nothing.
+def test_paid_attempts_without_settled_usage_count_at_their_full_bound():
+    # Until production's reserve-then-settle ledger lands, every paid attempt whose usage the run did
+    # not settle is held at the full per-call bound: an unknown outcome (coordinator, 2026-09-23) and,
+    # since #86, a call that returned and then failed with a known blocker, whose usage the workflow
+    # does not record. Local SAM 3 costs nothing.
     earlier = snapshot()["run"] | {
         "id": "run-1", "stage": "processing_blocked", "blocker": "external_outcome_unknown",
-        "attempts": {"segment": 1}, "completed_steps": ["classify"], "observations": [],
+        "attempts": {"segment": 1, "parse": 1}, "completed_steps": ["classify"], "observations": [],
     }
-    snap = snapshot(stage="processing_blocked", blocker="external_outcome_unknown",
-                    attempts={"transcribe:r1:handwriting-qwen": 1, "parse": 1},
+    snap = snapshot(stage="processing_blocked", blocker="evidence_integrity_failure",
+                    attempts={"transcribe:r1:handwriting-qwen": 2, "parse": 1},
                     completed_steps=["classify", "segment", "transcribe:r1:handwriting-qwen"])
     snap["previous_runs"] = [earlier]
     costs = run_specimen.price(snap)
-    assert costs["unknown_steps"] == ["parse"]
-    assert costs["unknown_usd_bound"] == pytest.approx(16_000 * 1.20e-6)
+    # run-1: parse with an unknown outcome; run-2: a retried reader attempt, and parse after a known failure
+    assert sorted(costs["unsettled_attempts"]) == ["parse", "parse", "transcribe:r1:handwriting-qwen"]
+    assert costs["unsettled_usd_bound"] == pytest.approx(3 * 16_000 * 1.20e-6)
     assert costs["total_usd"] == pytest.approx(
-        costs["readers_usd"] + costs["other_usd_upper_bound"] + 16_000 * 1.20e-6
+        costs["readers_usd"] + costs["other_usd_upper_bound"] + 3 * 16_000 * 1.20e-6
     )
 
 
