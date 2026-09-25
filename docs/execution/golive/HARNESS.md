@@ -216,20 +216,24 @@ its assigned literals from the most to the least precise field. The key comes
 from `SPECIMEN_GOOGLE_MAPS_API_KEY`; a missing or rejected key is
 `authentication_error`, an operational block (QUE-005). Retries follow section
 6; an HTTP 401 or 403 is final at once. Every call's source is exactly
-`google-maps-geocoding`, the string the data contract pins for Google (#88,
-rule 1.6).
+`google-maps-geocoding`, the string the data contract pins for Google (#88, rule
+1.6). This address predates PLAN 4.8's single place filter, which #183 applies
+to every request this tool builds; no profile names the harness route before
+#183 merges (MERGE_ORDER 5e, confirmed by the coordinator on 2026-09-25).
 
 **The mapping from Google's response to our outcomes is one function**,
-`map_geocoding_response`, so that a pending owner decision changes only it. One
-result without `partial_match` is `success`; a partial match or several results
-is `ambiguous`; `ZERO_RESULTS` is `no_match`. Per field, a success needs every
-literal of the field to equal, after folding (case, accents, punctuation and
-label notations such as "Prov."), the name of an address component at one of
-the field's levels, or a name the profile's aliases give for it ("P.I." as the
-Philippines); otherwise that field is `no_match`. The folding and the aliases
-are G29 applied to places: PLAN's G29 row makes it the harness's principle to
-work through every reading a notation allows, "for dates and for every other
-field", from the harness knowledge each subcollection's profile carries.
+`map_geocoding_response`, so that an owner decision changes only it. S8's D1 and
+D14, pending when this was written, are decided since (G35 and G27;
+GEOREFERENCING.md 555). One result without `partial_match` is `success`; a
+partial match or several results is `ambiguous`; `ZERO_RESULTS` is `no_match`.
+Per field, a success needs every literal of the field to equal, after folding
+(case, accents, punctuation and label notations such as "Prov."), the name of an
+address component at one of the field's levels, or a name the profile's aliases
+give for it ("P.I." as the Philippines); otherwise that field is `no_match`. The
+folding and the aliases are G29 applied to places: PLAN's G29 row makes it the
+harness's principle to work through every reading a notation allows, "for dates
+and for every other field", from the harness knowledge each subcollection's
+profile carries.
 
 **A near spelling** (G34, the owner's answer to S8's D15, 2026-09-24) can clear
 a field no name matches, with the place ID and no name. It needs a single result
@@ -248,11 +252,13 @@ there is one edit from "Davao" or "P.I.".
 
 **`precise_location` is verbatim locality text** (PRD 515). Its literal helps
 form the address, but the tool reports no outcome and no place for it, so
-nothing it returns can settle or replace it; where such a phrase actually is
-waits for the owner's ruling on S8's D3 (coordinator, 2026-09-23). A result for
-the wrong place settles no field either, because each admin-level field is
-checked against its own literal: Google puts "E. slope Mt. McKinley" at Denali,
-Alaska, where no component is named "Davao" or "P.I.".
+nothing it returns can settle or replace it; where such a phrase actually is was
+left to the owner's ruling on S8's D3 (the coordinator, 00:07Z on 2026-09-24).
+G36 has since decided it: a curator confirms each place, and an unconfirmed one
+never settles a field, so the tool's silence on `precise_location` stands. A
+result for the wrong place settles no field either, because each admin-level
+field is checked against its own literal: Google puts "E. slope Mt. McKinley" at
+Denali, Alaska, where no component is named "Davao" or "P.I.".
 
 **What is kept** (G26, Google's terms): per request only the place ID, our
 outcome and the sha256 of the full response. Google's names, address components
