@@ -12431,12 +12431,13 @@ because the hooks runner hands a native asset hook only `PATH`.
   - where it says "the Identifiers pattern", read S4's filter's pattern for PLAN 4.8's Q-number: PLAN 4.8 names only the Q-number, and the regex is S4's.
 - Correction to the entry "S8: #94's review follow-ups, and a correction to its entry": where it says "as 3.2 and #154's `use_on` do", #154 names the case `Use("ended", gap_days=...)`, not "not valid" with a `label_lag` finding. The rule is the same, and the names differ.
 - Commits/PRs: #207, which lists its commits; no red and green commits, since no product behaviour changes.
-- Validation actually run: pre-commit on the changed files; the plan's illustrative Python block parses; every `file:line` citation re-checked by script at `37ae404`.
+- Validation actually run: pre-commit on the changed files; the plan's illustrative Python block parses; every `file:line` citation re-checked by script at `37ae404`, and again at `702bcb2` after `main` was merged in at #207's turn. That merge joined #206's entry to this one with no blank line, and #207 adds it.
 - Durable learnings:
   1. An entry a pull request adds is not on `main` until the merge, so it can still change. At each turn's push, update the entry's commits and checks with the rest; after the merge, only a dated correction can fix it. Three rounds of corrections here came from entries written before their turn's merge.
   2. A heading inside a section inherits the section's claim. "Held and waiting" sat under "The owner's answers of 2026-09-24", so a reader took the coordinator's holds for the owner's words.
 - Failed approaches: none.
 - Remaining follow-ups: at #154's turn, label GEO.md:324's "The owner held D5, so no tolerance widens a place's dates" as the coordinator's interim rule (PLAN 2.3's D4/D5 row).
+
 ### 2026-09-25 — Go-live program: plan corrections after #203
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
