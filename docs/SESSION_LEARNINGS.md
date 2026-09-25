@@ -12561,3 +12561,41 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: a line inserted near the top of a cited document moves every citation below it, including those in append-only logs. Keep header edits line-neutral, or re-map the log's citations with an appended correction in the same PR.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live program: plan corrections after #209
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-14`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #209's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/209#issuecomment-5828996693), items 1-3. It carries the coordinator's rulings of 08:01Z and, after #210's review, 08:24Z on 2026-09-25, recorded in `status/coordinator.md` before they were sent.
+  - PLAN 4.8's filter:
+    - The sparing anchor is every text the run holds for the field: the harness's settled literal, the first pass's decided literal where there is one, and each reading's verbatim for the field. A token matches it by any folded word, or by its letters and digits run together.
+    - The non-place cuts also compare tokens by their letters and digits run together (the 08:24Z ruling on #210's review, option (a)). Without that, a kept "FG" met cuts that compare folded words only and left. Now "Wermer's", "F.G.Werner", "FG" for "F.G.", "Wer-mer", "Wer.mer" and a reading's verbatim the reviewer picks are cut. A split, merged or shortened spelling ("Wer mer", "FGWermer", "Werm.") still leaves, and the limit says so.
+    - The limit says a name the reviewer adds or respells in a place value leaves even when the collectors field holds it, and that the sparing rule is not refined further before the pilot.
+    - A numeral leaves when the nearest token on each side, passing over bare punctuation and the listed connectors, is anything but a date number. That replaces the list of joins, and the examples include "VIII & IX 1946" and "VIII ca. 1946".
+  - G32-G34 carry "2026-09-24" inside their rows, since the owner answered them after section 2.1's heading date. No line is added above PLAN 412, so the corrected citations stand.
+  - The header says "revised 07:34Z". S6's brief dates the run-states ruling (00:37Z on 2026-09-24) and the url_launcher approval (22:07Z on 2026-09-23) apart.
+  - CONRED's COD-AB file joins GeoNames as a pinned local copy in `~/specimen-golive/datasets/cod-ab-gtm/<retrieval date>/`, never downloaded again, since HDX serves only the latest file. This is the coordinator's ruling of 08:05Z on 2026-09-25, revising the 04:49Z ruling of 2026-09-24 for that file. It is in PLAN 4.8's datasets bullet, S2's T4d and S8's task 0, matching S8's manifest (#198) and S2's upload generator. S2's T4d gets a second run when the boundary files arrive with #198.
+  - Correction (dated 2026-09-25) to the entry "2026-09-25 — Go-live program: plan corrections after #206" above: its line "a date alone is New York time, as the coordinator's records are" was revised by #209. A date alone carries its record's date, since the records mix UTC and New York dates.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing. Round 1 re-ran the script from main's files; that checkout also reset the index, so afc2ffd committed main's S6 brief and dropped f1efa72's S6 change, and 5a09430 restored it.
+- Durable learnings:
+  1. An anchor for "what the reviewer changed" has to be every text the reviewer could have copied from, not the one value the harness settled. Otherwise picking a reading's text counts as the reviewer's own.
+  2. A match rule has to hold at every step it passes through. "FG" counted as kept, but the cuts it then met compared folded words only, so it still left.
+  3. `git checkout <ref> -- <files>` sets the index as well as the working tree. After re-running a script on those files, stage every file it writes, or the commit carries the ref's version.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live program: plan corrections after #210
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-15`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #210's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/210#issuecomment-5829879623), items 1-4. All the edits are line-neutral above PLAN 412, so the citations corrected earlier stand.
+  - PLAN 4.8's filter:
+    - The limit names the run-together over-cut: a collector "M.T. Smith" turns "Mt. Apo" into "Apo", and "L.A. Cruz" turns "La Libertad" into "Libertad". Less text leaves, so it fails safely.
+    - The sparing limit reads "unless the reviewer's own value there holds it". The 08:24Z label says the ruling changes the cuts, not the sparing rule. The credits add #210.
+  - PLAN 2.3's datasets row names T4d's two runs: GeoNames and GLO-30 when #211 merges, and the boundary files with #198 after #183. 4.8's datasets bullet pins each file by the retrieval date or release commit the manifest records, not "by version".
+  - S2's T4d limits the 08:05Z label to the COD-AB file.
+  - G35-G40, G44 and G45 carry their date (2026-09-24) inside their rows, as G32-G34 do. G41 and G43 already cite the dated decisions file.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: a comparison widened to catch a leak also widens what it can over-cut ("Mt." against "M.T."). Name one over-cut case in the limit when the rule lands, so a test pins it.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
