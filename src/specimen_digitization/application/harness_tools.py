@@ -72,6 +72,13 @@ class LocalityLiteral(Frozen):
     literal: str
     source_observation_id: str
     source_region_id: str
+    # In "fill the rest", a place value the reviewer entered or changed: a
+    # source though no reading holds it, with the harness's value for its
+    # field in the run under review as the anchor of the reviewer's own text
+    # (HARNESS.md sections 7 and 13; the coordinator's rulings of 06:36Z and
+    # 07:33Z on 2026-09-25).
+    reviewer: bool = False
+    anchor: str | None = None
 
 
 class GeographyQuery(Frozen):
@@ -84,12 +91,16 @@ class GeographyQuery(Frozen):
     reading_texts: list[str] = Field(default_factory=list)
     non_place_literals: list[str] = Field(default_factory=list)
     knowledge_id: str | None = None
+    # In "fill the rest", the reviewer's own non-place values, which alone of
+    # the non-place values cut the reviewer's own text.
+    reviewer_non_place_literals: list[str] = Field(default_factory=list)
 
     @property
     def sources(self) -> list[str]:
         """The query's own sources for PLAN 4.8's filter: its place-field
-        literals and its unassigned locality text, never a literal it gives a
-        non-place field (the coordinator's ruling on #191's review)."""
+        literals, the reviewer's in "fill the rest" among them, and its
+        unassigned locality text, never a literal it gives a non-place field
+        (the coordinator's ruling on #191's review)."""
         return [
             item.literal
             for item in self.literals

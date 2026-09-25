@@ -35,6 +35,7 @@ import re
 import unicodedata
 from bisect import bisect_right
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import NamedTuple, Protocol
 
 # PLAN 4.8's place fields; every other field is a non-place field.
@@ -83,6 +84,20 @@ class PlaceKnowledge(Protocol):
     FULL_FORMS: Mapping[str, Sequence[str]]
 
 
+@dataclass(frozen=True)
+class ReviewerValue:
+    """A place value the reviewer entered or changed in "fill the rest"
+    (HARNESS.md section 13; the coordinator's rulings of 06:36Z and 07:33Z on
+    2026-09-25). `anchor` is the harness's value for that field in the run
+    under review, None when the harness gave it none; `non_place_literals` are
+    the reviewer's own non-place values. The reviewer's own text, the tokens
+    sharing no folded word with the anchor, is cut by those and the other cuts
+    alone; what the reviewer kept is cut like any other source."""
+
+    anchor: str | None
+    non_place_literals: Sequence[str]
+
+
 class _Dates(NamedTuple):
     """The folded words the date cuts read: the Roman months I to XII, the
     month words, and the connectors a date's parts may be joined by."""
@@ -109,6 +124,7 @@ def place_request_forms(
     non_place_literals: Sequence[str],
     knowledge: PlaceKnowledge,
     readings: Sequence[str],
+    reviewer: ReviewerValue | None = None,
 ) -> list[str] | None:
     """Every form of `text` a place request may carry. None refuses the
     request: `text` is not a whole-token slice of a source, or of a source
@@ -123,7 +139,9 @@ def place_request_forms(
     and required: a call without them is refused.
     `non_place_literals` are every literal any reading assigns to a non-place
     field and every value a reviewer puts in one: a corrected collector's
-    spelling matches no reading's literal."""
+    spelling matches no reading's literal. `reviewer` marks a place value the
+    reviewer entered or changed, whose own text the readings' and the
+    harness's non-place values spare (PLAN 4.8 as #209 states it)."""
     table = _full_forms(knowledge)
     allowed = [form for source in sources for form in _forms(source, table)]
     if (
@@ -147,17 +165,42 @@ def place_request_forms(
         connectors=frozenset(fold(c) for c in knowledge.DATE_CONNECTORS),
     )
     literals = {f for literal in non_place_literals for f in _forms(literal, table)}
-    written = _surviving(text, _dropped(text, places, cut, dates, literals))
+    spared = None
+    if reviewer is not None:
+        spared = (
+            _cut_words(context, reviewer.non_place_literals, knowledge, table),
+            {
+                f
+                for literal in reviewer.non_place_literals
+                for f in _forms(literal, table)
+            },
+            frozenset(fold(reviewer.anchor or "").split()),
+        )
+
+    def dropped(value: str, where: Sequence[tuple[str, int]]) -> set[int]:
+        """The cut tokens of `value`; with `reviewer`, those of the reviewer's
+        own text as its own cuts take them, the rest as every cut does."""
+        taken = _dropped(value, where, cut, dates, literals)
+        if spared is None:
+            return taken
+        own_cut, own_literals, anchor = spared
+        own = {
+            token.start()
+            for token in TOKEN.finditer(value)
+            if anchor.isdisjoint(fold(token.group()).split())
+        }
+        return (taken - own) | (
+            _dropped(value, where, own_cut, dates, own_literals) & own
+        )
+
+    written = _surviving(text, dropped(text, places))
     if not written:
         return []
     # Each form a full form makes is cut again, by character span in the form
     # itself, and a form any cut touches is not sent: an expansion never brings
     # back a cut character (the steward's review of #191).
     written_out = _forms(written, table)[1:]
-    return [
-        written,
-        *(f for f in written_out if not _dropped(f, [(f, 0)], cut, dates, literals)),
-    ]
+    return [written, *(f for f in written_out if not dropped(f, [(f, 0)]))]
 
 
 def place_request_text(
@@ -167,6 +210,7 @@ def place_request_text(
     non_place_literals: Sequence[str],
     knowledge: PlaceKnowledge,
     readings: Sequence[str],
+    reviewer: ReviewerValue | None = None,
 ) -> str | None:
     """The first of `place_request_forms`, the value as written after the cuts;
     "" when nothing survives, None when it is refused."""
@@ -176,6 +220,7 @@ def place_request_text(
         non_place_literals=non_place_literals,
         knowledge=knowledge,
         readings=readings,
+        reviewer=reviewer,
     )
     return None if forms is None else next(iter(forms), "")
 

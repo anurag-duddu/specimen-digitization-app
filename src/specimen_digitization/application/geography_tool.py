@@ -39,7 +39,7 @@ from .harness_tools import (
     ToolResult,
     with_retries,
 )
-from .place_text import PLACE_FIELDS, fold, place_request_text
+from .place_text import PLACE_FIELDS, ReviewerValue, fold, place_request_text
 from .reliability import retry_after
 from .storage import BlobStore
 
@@ -166,21 +166,30 @@ def reported_literals(query: GeographyQuery) -> dict[str, list[str]]:
 def geocoding_address(query: GeographyQuery) -> tuple[str, str | None]:
     """The address PLAN 4.8 lets leave, or the fixed code refusing the query.
     Every literal, the unassigned locality text's too, must be character for
-    character in a reading. The query's sources, its place-field literals and
-    its unassigned text, go to the filter with the readings as its context (4.8
-    in #191); a non-place field's literal is never a source and refuses the
-    query. Google's row of 4.8 sends a literal with its reading's place fields,
-    so the address is the place-field literals from the most to the least
-    precise field, each as written after the cuts, and never the unassigned
-    text."""
+    character in a reading, except a place value the reviewer entered or
+    changed in "fill the rest", a source though no reading holds it. The
+    query's sources go to the filter with the readings as its context (4.8 in
+    #191); a non-place field's literal is never a source and refuses the query.
+    Each value is cut with its own lists: a reviewer's with `reviewer`, so the
+    reviewer's own non-place values alone cut the reviewer's own text (#208's
+    security review). Google's row of 4.8 sends a literal with its reading's
+    place fields, so the address is the place-field literals from the most to
+    the least precise field, each as written after the cuts, and never the
+    unassigned text."""
     knowledge = KNOWLEDGE.get(query.knowledge_id or "")
     if knowledge is None:
         return "", "place_knowledge_unavailable"
     sent: dict[str, list[str]] = {}
     for item in query.literals:
-        if not any(item.literal in reading for reading in query.reading_texts):
+        reviewer = None
+        if item.reviewer:
+            reviewer = ReviewerValue(
+                anchor=item.anchor,
+                non_place_literals=query.reviewer_non_place_literals,
+            )
+        elif not any(item.literal in reading for reading in query.reading_texts):
             return "", "place_text_refused"
-        if item.field_key is None:
+        elif item.field_key is None:
             continue  # Unassigned text: a source for S8's tiers, never sent.
         if item.field_key not in PLACE_FIELDS:
             return "", "place_text_refused"
@@ -190,6 +199,7 @@ def geocoding_address(query: GeographyQuery) -> tuple[str, str | None]:
             non_place_literals=query.non_place_literals,
             knowledge=knowledge,
             readings=query.reading_texts,
+            reviewer=reviewer,
         )
         if text is None:
             return "", "place_text_refused"

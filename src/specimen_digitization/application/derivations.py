@@ -23,7 +23,8 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
 
 from .domain import Evidence, FieldValue, Proposal, ValueState
-from .harness_tools import Check, Derivation, SourceRef
+from .harness_tools import Check, Derivation, LocalityLiteral, SourceRef
+from .place_text import PLACE_FIELDS
 
 RULES_VERSION = "derivation-rules-v1"
 METRES_PER_FOOT = Decimal("0.3048")  # Exact, by the 1959 definition.
@@ -258,6 +259,51 @@ def derive_rest(
     return Proposal(
         fields=fields,
         evidence=[item for item in [*evidence, *records] if item.id in cited],
+    )
+
+
+@dataclass(frozen=True)
+class RestPlaceInputs:
+    """What derive_rest holds for its place call (HARNESS.md section 13)."""
+
+    literals: list[LocalityLiteral]  # The reviewer's place values, anchored.
+    non_place_literals: list[str]  # The harness's and the reviewer's own.
+    reviewer_non_place_literals: list[str]  # The reviewer's own alone.
+
+
+def rest_place_inputs(
+    run, filled: Mapping[str, str], *, decision_id: str
+) -> RestPlaceInputs:
+    """PLAN 4.8's filter inputs derive_rest's place call takes from the run and
+    the reviewer's values (#208's security review; the coordinator's rulings
+    of 06:36Z and 07:33Z on 2026-09-25). Each place value in `filled` is the
+    reviewer's, anchored on the harness's value for that field in the run under
+    review, so what the reviewer kept is cut; every value the harness gave a
+    non-place field, kept or replaced, joins the reviewer's own non-place
+    values, which alone cut the reviewer's own text. The call adds the
+    readings' texts and non-place literals."""
+    literals = [
+        LocalityLiteral(
+            field_key=key,
+            literal=value,
+            source_observation_id="review_decision",
+            source_region_id=f"decision/{decision_id}",
+            reviewer=True,
+            anchor=(run.fields[key].literal or None) if key in run.fields else None,
+        )
+        for key, value in filled.items()
+        if key in PLACE_FIELDS
+    ]
+    own = [value for key, value in filled.items() if key not in PLACE_FIELDS]
+    harness = [
+        value.literal
+        for key, value in run.fields.items()
+        if key not in PLACE_FIELDS and value.literal
+    ]
+    return RestPlaceInputs(
+        literals=literals,
+        non_place_literals=list(dict.fromkeys([*harness, *own])),
+        reviewer_non_place_literals=own,
     )
 
 
