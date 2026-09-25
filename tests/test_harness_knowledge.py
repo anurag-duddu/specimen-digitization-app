@@ -83,16 +83,25 @@ def test_the_place_filters_tables_come_from_the_notations():
         if set(notation.fields) & {"collectors", "identified_by_irn"}
         for marker in notation.written.split(", ")
     }
-    assert set(insects.PERSON_MARKERS) == people == {"leg.", "coll.", "Coll.", "det."}
+    # PLAN 4.8 as #200 states it: the usual English and Spanish forms.
+    usual = {
+        *("leg.", "coll.", "Coll.", "Collector", "Collectors", "Collected"),
+        *("Col.", "Colector", "Colectores", "Colectado", "det.", "Det."),
+    }
+    assert set(insects.PERSON_MARKERS) == people == usual
+    # Each marker is one word: a clause holds it when a word of it is one.
+    assert all(len(fold(marker).split()) == 1 for marker in usual)
     # PLAN 4.8 in #191: the date notations list each month in full and
     # abbreviated, in English and in Spanish, the pilot labels' languages.
     months = [n for n in insects.NOTATIONS if n.readings == ("the month",)]
     listed = [word for notation in months for word in notation.written.split(", ")]
     assert list(insects.MONTH_WORDS) == listed
-    assert len(listed) == 51
+    assert len(listed) == 56
     assert {"September", "Sept.", "mayo", "sept.", "dic."} <= set(listed)
-    # The coordinator's ruling of 2026-09-24: Spanish's variant too.
+    # The coordinator's ruling of 2026-09-24: Spanish's variant too,
     assert {"setiembre", "set."} <= set(listed)
+    # and its older abbreviations (PLAN 4.8 as #200 states it).
+    assert {"agto.", "sbre.", "obre.", "nbre.", "dbre."} <= set(listed)
     # The coordinator's ruling of 2026-09-24: Roman months are cut too.
     (roman,) = [n for n in insects.NOTATIONS if n.written == "I to XII in a date"]
     assert insects.ROMAN_MONTHS[0] == "I" and insects.ROMAN_MONTHS[-1] == "XII"

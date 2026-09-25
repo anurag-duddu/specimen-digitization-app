@@ -177,6 +177,12 @@ def test_a_marker_cuts_its_whole_clause_even_the_place_in_it():
         "H. Hoogstraal leg.",
         "H. Hoogstraal Coll.",
         "det. H. Hoogstraal",
+        # PLAN 4.8 as #200 states it: the usual English and Spanish forms.
+        "Collectors H. Hoogstraal",
+        "Collected by H. Hoogstraal",
+        "Colectores: H. Hoogstraal",
+        "Colectado por H. Hoogstraal",
+        "Det. H. Hoogstraal",
     ],
 )
 def test_a_name_a_marker_accompanies_never_leaves_whatever_field_it_was_given(line):
@@ -184,6 +190,23 @@ def test_a_name_a_marker_accompanies_never_leaves_whatever_field_it_was_given(li
 
     assert request(label) == "Davao Prov."
     assert forms("Hoogstraal", label) == []  # Given to a place field.
+
+
+@pytest.mark.parametrize(
+    ("line", "name"),
+    [
+        ("Col. J. Perez", "Perez"),
+        ("Colector J. Perez", "Perez"),
+        ("Collector: H. Hoogstraal", "Hoogstraal"),
+    ],
+)
+def test_the_spanish_and_english_markers_cut_their_clause(line, name):
+    # PLAN 4.8 as #200 states it (the coordinator's ruling on #191's final
+    # review): mid-run, before the collector is named, these had left whole.
+    label = f"Davao Prov.\n{line}"
+
+    assert request(label) == "Davao Prov."
+    assert forms(name, label) == []
 
 
 def test_every_token_of_a_non_place_literal_is_cut():
@@ -204,6 +227,8 @@ def test_a_token_carrying_a_digit_is_cut(token):
         *("Sept.", "sept.", "SEPT", "September", "May"),
         *("Mayo", "MAYO", "septiembre", "Ago.", "dic.", "Enero"),
         *("Setiembre", "set."),  # The variant the RAE accepts (coordinator).
+        # PLAN 4.8 as #200 states it: Spanish's older abbreviations.
+        *("Agto.", "agto.", "Sbre.", "OBRE.", "nbre.", "Dbre."),
     ],
 )
 def test_the_month_names_and_abbreviations_are_cut(month):
@@ -212,7 +237,9 @@ def test_the_month_names_and_abbreviations_are_cut(month):
     assert request(f"Mindanao {month}, P.I.") == "Mindanao, P.I."
 
 
-@pytest.mark.parametrize("date", ["3 VIII 1946", "3 viii 1946", "VIII 1946", "3 VIII"])
+@pytest.mark.parametrize(
+    "date", ["3 VIII 1946", "3 viii 1946", "VIII 1946", "3 VIII", "VIII/IX 1946"]
+)
 def test_a_roman_month_in_the_month_position_is_cut_and_never_written_out(date):
     # The coordinator's ruling of 2026-09-24 (4.8 in #185): a numeral I to XII,
     # in any case, next to a day or a year.
@@ -240,6 +267,8 @@ def test_a_roman_numeral_outside_a_date_stays(text):
         ("Mindanao, P.I. 3 Sept. '46", "Mindanao, P.I."),  # 105526321's line.
         ("3 SEPT. '46", ""),
         ("3 SEPT. 1946", ""),
+        ("3 Agto. 1946", ""),
+        ("3 Setiembre 1946", ""),
         ("Chimaltenango, 3 Mayo 1946", "Chimaltenango"),  # A Guatemalan line.
     ],
 )
@@ -398,38 +427,65 @@ def test_any_other_identifier_is_refused(identifier, source, response):
     )
 
 
-# How ids stand in the answers S8's readers receive (S8, 2026-09-24).
-TGN_RECONCILE = '{"result": [{"id": "tgn/1103742"}]}'
+# How ids stand in the answers S8's readers receive (S8, 2026-09-24), with a
+# date and a coordinate beside them.
+TGN_RECONCILE = '{"result": [{"id": "tgn/1103742", "estStart": "1946"}]}'
+TGN_COMPACT = '{"result":[{"id":"tgn/1103742"}]}'
 TGN_SPARQL = '{"s": {"type": "uri", "value": "http://vocab.getty.edu/tgn/1103742"}}'
-TGN_PLACE = '{"p": {"value": "http://vocab.getty.edu/tgn/1103742-place"}}'
-NGA_SEARCH = '{"features": [{"attributes": {"ufi": -2408936}}]}'
+TGN_PLACE = (
+    '{"p": {"type": "uri", "value": "http://vocab.getty.edu/tgn/1103742-place"}}'
+)
+NGA_SEARCH = '{"features": [{"attributes": {"ufi": -2408936, "lat": 7.3}}]}'
 NGA_FEATURES = '{"features": [{"attributes": {"adm1": "GT-04"}}]}'
-WIKIDATA_CLAIM = '{"mainsnak": {"datavalue": {"value": {"id": "Q928"}}}}'
+WIKIDATA_CLAIM = (
+    '{"id": "Q928$5B8C", "mainsnak": {"datavalue": {"value": {"id": "Q928"}}},'
+    ' "qualifiers": {"P585": [{"datavalue": {"value": {"time": "+1946-00-00"}}}]}}'
+)
 
 
 @pytest.mark.parametrize(
     ("identifier", "source", "response", "sent"),
     [
-        ("1103742", "tgn", TGN_RECONCILE, "1103742"),  # A slash borders it,
-        ("1103742", "tgn", TGN_SPARQL, "1103742"),  # in a URI too,
-        ("1103742", "tgn", TGN_PLACE, "1103742"),  # and so does "-place".
-        ("110374", "tgn", TGN_RECONCILE, None),
-        ("103742", "tgn", TGN_RECONCILE, None),
+        ("1103742", "tgn", TGN_RECONCILE, "1103742"),  # The digits after "tgn/",
+        ("1103742", "tgn", TGN_COMPACT, "1103742"),  # as services send it too.
+        ("110374", "tgn", TGN_RECONCILE, None),  # Part of an id.
+        ("1103742", "tgn", TGN_SPARQL, "1103742"),  # The subject URI.
+        ("1103742", "tgn", TGN_PLACE, None),  # A place URI is not the subject's.
         ("-2408936", "nga", NGA_SEARCH, "-2408936"),  # The minus is the id's.
         ("2408936", "nga", NGA_SEARCH, None),  # A positive UFI is another.
-        ("GT-04", "nga", NGA_FEATURES, "GT-04"),  # The hyphen joins the code.
+        ("GT-04", "nga", NGA_FEATURES, "GT-04"),
         ("04", "nga", NGA_FEATURES, None),
-        ("-04", "nga", NGA_FEATURES, None),
         ("GT-0", "nga", NGA_FEATURES, None),
         ("Q928", "wikidata", WIKIDATA_CLAIM, "Q928"),  # A statement's value.
+        ("Q928", "wikidata", "Q928", None),  # An answer that isn't JSON.
     ],
 )
-def test_an_identifier_stands_whole_in_the_answer_as_received(
+def test_an_identifier_is_the_whole_value_of_its_sources_id_field(
     identifier, source, response, sent
 ):
+    # PLAN 4.8 as #200 states it: only the field that carries the source's
+    # ids, as S8's readers receive the answers.
     assert place_request_identifier(identifier, source=source, response=response) == (
         sent
     )
+
+
+@pytest.mark.parametrize(
+    ("number", "source", "response"),
+    [
+        ("1946", "tgn", TGN_RECONCILE),  # A date: "estStart": "1946".
+        ("7", "nga", NGA_SEARCH),  # A coordinate: "lat": 7.3.
+        ("3", "nga", NGA_SEARCH),
+        ("1946", "nga", NGA_SEARCH.replace("7.3", "1946")),
+    ],
+)
+def test_a_label_number_the_answer_holds_only_as_a_date_or_coordinate_is_refused(
+    number, source, response
+):
+    # PLAN 4.8 as #200 states it: any whole token of the answer would have
+    # let "1946" or "3" leave as an identifier.
+    assert number in response
+    assert place_request_identifier(number, source=source, response=response) is None
 
 
 @pytest.mark.parametrize("number", ["0123456", "1946", "46"])
@@ -539,14 +595,36 @@ def test_the_reviewers_value_is_a_source_only_in_a_place_field():
             "Mindanao H. Hoogstraal\nleg.",
             "Mindanao H. Hoogstraal",
         ),
-        # A month in a language the knowledge doesn't list: Tagalog's June.
+        # Text the harness hasn't yet given a non-place field: a habitat, a
+        # catalogue number's letters, and an elevation's unit.
+        ("Mindanao, Mossy forest", "Mindanao, Mossy forest", "Mindanao, Mossy forest"),
+        ("FMNH INS 0123456", "FMNH INS 0123456", "FMNH INS"),
+        ("Mt. Apo, 6000 ft.", "Mt. Apo, 6000 ft.", "Mt. Apo, ft."),
+        # A name beside a marker the knowledge doesn't list: German's.
+        (
+            "Mindanao Sammler H. Hoogstraal",
+            "Mindanao Sammler H. Hoogstraal",
+            "Mindanao Sammler H. Hoogstraal",
+        ),
+        # A month in a language the knowledge doesn't list: Tagalog's June,
         ("Mindanao, 3 Hunyo 1946", "Mindanao, 3 Hunyo 1946", "Mindanao, Hunyo"),
+        # and a form of a listed one it doesn't list: the RAE's March.
+        ("Mindanao, 3 Mzo. 1946", "Mindanao, 3 Mzo. 1946", "Mindanao, Mzo."),
         # A lone or ranged month numeral with no day or year beside it.
         ("Mindanao VIII/IX", "Mindanao VIII/IX", "Mindanao VIII/IX"),
         # The cuts can take too much: a place's numeral beside a date number,
         ("Camp IV, 3 VIII 1946", "Camp IV, 3 VIII 1946", "Camp"),
         # a place named with a month word,
         ("Cape May", "Cape May", "Cape"),
+        # a marker's clause, wherever its words appear, a reviewer's value
+        # included, and a clause where "Col." stands for a colonia,
+        ("Mt. Apo", "Mt. Apo leg. Hoogstraal\nMt. Apo", ""),
+        ("Mt. Apo, Davao", "Mt. Apo leg. Hoogstraal\nDavao Prov.", "Davao"),
+        (
+            "Col. El Carmen, Chimaltenango",
+            "Col. El Carmen, Chimaltenango",
+            "Chimaltenango",
+        ),
         # and a tier-1 name whose numeral stands beside a number.
         ("Region XI (11)", PLACES, "Region"),
     ],
@@ -555,10 +633,18 @@ def test_the_reviewers_value_is_a_source_only_in_a_place_field():
         "collector-not-yet-named",
         "leg-in-the-next-clause",
         "leg-on-the-next-line",
+        "habitat",
+        "catalogue-letters",
+        "elevation-unit",
+        "unlisted-marker",
         "unlisted-language",
+        "unlisted-form",
         "lone-month-numerals",
         "camp-iv",
         "cape-may",
+        "marker-clause-elsewhere",
+        "marker-clause-reviewer",
+        "colonia",
         "tier-1-name-with-code",
     ],
 )

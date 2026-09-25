@@ -284,12 +284,12 @@ is `timeout`, any other `httpx` transport error is `provider_error`
 errors outside its `HTTPError` family such as `InvalidURL`, is `provider_error`
 with the fixed code `geocoding_unexpected_error`.
 
-**What a request may carry** (PLAN 4.8 as #191 states it at d6474f6, with the
-coordinator's rulings of 2026-09-24). `application/place_text.py` is the one
-filter. This tool applies it to every request, and S8's tiers import it for
-every value they send. The filter's output is what leaves; after it a value is
-only escaped or encoded, as an encoded URL parameter here and an escaped
-literal in S8's SPARQL.
+**What a request may carry** (PLAN 4.8 as #200 states it at ff4dbc0, on main
+after #191, with the coordinator's rulings of 2026-09-24).
+`application/place_text.py` is the one filter. This tool applies it to every
+request, and S8's tiers import it for every value they send. The filter's
+output is what leaves; after it a value is only escaped or encoded, as an
+encoded URL parameter here and an escaped literal in S8's SPARQL.
 - **Sources**, checked first, before any cut or full form. A value must be a
   whole-token slice, bounded by token edges, of one of its sources:
   - the reading's place-field literals (`country`, `province_state`, `county`,
@@ -327,25 +327,33 @@ literal in S8's SPARQL.
     place value, since the reviewer's correction is the authority there, but
     the other cuts do, so a date in it never leaves;
   - every token of every clause, between commas, semicolons or line breaks, that
-    holds a collector or determiner marker the knowledge names ("leg.", "coll.",
-    "det."), wherever the marker sits in it and in whichever text. A name a
-    marker accompanies never leaves, whatever field it was given. "Werner" is
-    cut where the record reads "Wernersdorf" and "leg. Werner", and
+    holds a collector or determiner marker the knowledge names, wherever the
+    marker sits in it and in whichever text. It names them in English and
+    Spanish in their usual forms: "leg.", "coll.", "Collector", "Collectors" and
+    "Collected"; "Col.", "Colector", "Colectores" and "Colectado"; and "det."
+    (the coordinator's ruling on #191's final review). A name a marker
+    accompanies never leaves, whatever field it was given, so "Col. J. Perez",
+    "Colector J. Perez" and "Collector: H. Hoogstraal" leave nothing. "Werner"
+    is cut where the record reads "Wernersdorf" and "leg. Werner", and
     "Wernersdorf" stays, since tokens compare whole;
   - every token that carries a digit, so no date, elevation or catalogue number
     leaves;
   - every month name and abbreviation the knowledge's date notations list, in
     any case. They list each month in full and abbreviated, in English and in
     Spanish, the pilot labels' languages, with the Spanish variant "setiembre"
-    and "set." too (the coordinator's ruling of 2026-09-24): "3 SEPT. 1946"
-    leaves nothing, and "Chimaltenango, 3 Mayo 1946" leaves "Chimaltenango";
+    and "set." (the coordinator's ruling of 2026-09-24), and with its older
+    abbreviations "agto.", "sbre.", "obre.", "nbre." and "dbre." (the
+    coordinator's ruling on #191's final review): "3 SEPT. 1946", "3 Setiembre
+    1946" and "3 Agto. 1946" leave nothing, and "Chimaltenango, 3 Mayo 1946"
+    leaves "Chimaltenango";
   - a Roman month in the month position: a token whose every word is a Roman
     numeral I to XII, in any case, next to a date number before or after it,
     across separators. A date number is a day or a year in the profile's forms:
     3, 14, 1946, '46 or -46. This is the coordinator's ruling of 2026-09-24,
     which replaced an earlier cut of every I to XII (4.8 in #185). So "3 VIII
-    1946", "VIII 1946", "Mindanao, VIII, 1946" and "Mindanao, VIII -46" leave
-    no numeral, while "Camp IV", a lone "VIII/IX" and the "I" of "P.I." stay.
+    1946", "VIII 1946", "Mindanao, VIII, 1946", "Mindanao, VIII -46" and
+    "VIII/IX 1946" leave no numeral, while "Camp IV", a lone "VIII/IX" and the
+    "I" of "P.I." stay.
 - **Full forms**, after the cuts (the coordinator's ruling, option c).
   - A notation token that survived may be written out in each full form the
     knowledge's table lists for it. The table carries sendable place words, not
@@ -358,26 +366,31 @@ literal in S8's SPARQL.
     written.
   - A full form counts only as the expansion of a notation present in an
     allowed source (coordinator ruling, 2026-09-24). A source written out in full
-    is a source too; a standalone full form, not written on the label, is not.
-- **Identifiers** (#191). `place_request_identifier(identifier, *, source,
-  response)` sends an identifier back unchanged to the tier-1 source whose own
-  answer holds it. `response` is that answer as the tool received it, never the
-  record or a list the agent supplies. The identifier must stand in it as a
-  whole token and match one of the source's documented patterns:
-  - `wikidata`: an item's Q-number;
-  - `tgn`: a subject id;
-  - `nga`: a feature id, or a first-order unit code such as "PH-DVC"
-    (coordinator ruling).
+    is a source too; a full form not itself in a source is not (4.8 in #200).
+- **Identifiers** (4.8 in #200). `place_request_identifier(identifier, *,
+  source, response)` sends an identifier back unchanged to the tier-1 source
+  that returned it in the field that carries that source's ids. `response` is
+  that answer's JSON as the tool received it. The identifier is checked against
+  that field alone, never another token of the answer, the record or a list
+  the agent supplies. It must be the field's whole value, or the id the value
+  holds, and match the source's documented pattern, as S8's readers receive the
+  answers:
+  - `wikidata`: an item's Q-number in an `id` field, as search hits and
+    statement values hold it;
+  - `tgn`: a subject id, from a reconciliation result's `id` after `tgn/`, or
+    from a subject URI (`http://vocab.getty.edu/tgn/` and the id) as a SPARQL
+    binding's `value`;
+  - `nga`: a feature id in `ufi`, a JSON number that keeps its minus sign, or a
+    first-order unit code such as "PH-DVC" in `adm1` (coordinator ruling).
 
-  TGN's and GNS's digit patterns match any label number, so where the
-  identifier came from is the guard: a catalogue number offered as a TGN id is
-  refused, since TGN's answer doesn't hold it. A whole token has no letter,
-  digit or hyphen before it and no letter or digit after it, as S8's readers
-  receive the answers: a slash borders a TGN id ("tgn/1103742"), a leading minus
-  belongs to an NGA feature id, so "2408936" never passes on an answer that
-  holds only "-2408936", and a unit code's hyphen joins it ("GT-04"). An
-  identifier carries no label text, so no cut applies, and anything else is
-  refused.
+  TGN's and GNS's digit patterns match any label number, and an answer also
+  holds numbers as dates and coordinates, so where the identifier came from is
+  the guard. A catalogue number offered as a TGN id is refused, and so is a
+  number the answer holds outside its id field, such as a TGN `estStart` of
+  "1946" or a GNS latitude of 7.3. A part of an id is refused too: "2408936"
+  where the answer holds "-2408936", or the "04" of "GT-04". So is an answer
+  that isn't JSON. An identifier carries no label text, so no cut applies, and
+  anything else is refused.
 - **Shape.** What survives keeps its clauses, single-spaced and joined by their
   own separators, with a line break wherever the dropped text held one, as S8's
   parser reads them. `place_request_forms` returns the value as written after
@@ -385,17 +398,24 @@ literal in S8's SPARQL.
   of its full forms (G29): "Davao Prov." leaves as "Davao Prov." or "Davao
   Province", and "Camiguin Is." as "Camiguin Is.", "Camiguin Island" or
   "Camiguin Islands". `place_request_text` returns the first form.
-- **Stated limit.** Text the filter cannot recognize can still leave: a name no
-  reading assigns to a non-place field, or one the harness hasn't yet given a
-  non-place field, when no marker in its own clause accompanies it. So,
-  mid-run, before the harness has named the collector, "Mindanao F.G. Wermer"
-  leaves whole, and "H. Hoogstraal" leaves when its "leg." sits in a
-  neighbouring clause or line. A month name in a language the knowledge doesn't
-  list can leave, such as Tagalog's "Hunyo", and so can a lone or ranged month
-  numeral with no day or year beside it ("VIII/IX"). The cuts can also take too
-  much: "Camp IV, 3 VIII 1946" sends only "Camp", "Cape May" sends "Cape", and a
-  tier-1 name whose numeral stands beside a number, such as "Region XI (11)",
-  loses the numeral. Tests pin each case, so a change in what can leave shows.
+- **Stated limit** (4.8 in #200). Text the filter cannot recognize can still
+  leave: text that no reading assigns to a non-place field and the harness
+  hasn't yet given one, when no marker the knowledge names sits in its clause.
+  So, mid-run, before the harness has named the non-place fields, "Mindanao
+  F.G. Wermer" leaves whole, "H. Hoogstraal" leaves when its "leg." sits in a
+  neighbouring clause or line, and so do a habitat such as "Mossy forest",
+  "FMNH INS" from a catalogue number and "ft." from "Mt. Apo, 6000 ft."; so
+  does a name beside a marker the knowledge doesn't list, such as German's
+  "Sammler". A month name in a language the knowledge doesn't list can leave,
+  such as Tagalog's "Hunyo", and so can a form of a listed language that it
+  doesn't list, such as the RAE's "Mzo.", and a lone or ranged month numeral
+  with no day or year beside it ("VIII/IX"). The cuts can also take too much:
+  "Camp IV, 3 VIII 1946" sends only "Camp"; "Cape May" sends "Cape"; a clause
+  holding a marker is cut wherever its words appear, so "Mt. Apo leg.
+  Hoogstraal" on one line takes "Mt. Apo" from every other line, a reviewer's
+  value included, and "Col. El Carmen", a colonia, is cut whole; and a tier-1
+  name whose numeral stands beside a number, such as "Region XI (11)", loses
+  the numeral. Tests pin each case, so a change in what can leave shows.
 
 This tool passes its query's sources, the place-field literals and the
 unassigned locality text, with the readings as context. It checks that every
