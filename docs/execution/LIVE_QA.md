@@ -34,12 +34,14 @@ no expansion until the user reviews and approves end-to-end results. Locally
 authored rasters are harness fixtures, never pilot records or quality evidence.
 
 > 2026-09-23: Superseded for the go-live program by
-> [`docs/execution/golive/PLAN.md` section
-> 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G2. Specimens are processed one at a time, on demand, including new
-> uploads, instead of waiting on the user's end-to-end review before any
-> expansion; the ten pilot specimens remain the acceptance cohort, processed
-> in order, and only they count toward it.
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2. Specimens are processed one at a time, on demand, including new uploads,
+> "instead of doing batch 10" (G2's words); in S2's reading, processing no
+> longer waits on the user's end-to-end review of the ten before any expansion.
+> The ten pilot specimens remain the acceptance cohort, processed in order, and
+> only they count toward it. The rest of the paragraph stands, including that
+> locally authored rasters are harness fixtures, never pilot records or quality
+> evidence.
 
 Initial admin supplied privately to the coordinator; no email/UID committed.
 Budget remains unavailable. Read-only metadata is allowed but the data owner
@@ -51,13 +53,21 @@ cloud mutation, hand deploy, main edits or interference with ports 3000/8000.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G2 and G11. No manifest is frozen and there is no approved object set to
-> freeze: each run is authorized on its own instead of per frozen manifest (PLAN
-> section 4.1 stage 2), and the ten remain the acceptance cohort, processed in
-> order. The concrete execution authorization is no longer an artifact:
-> authorization artifacts retire (G11), and the ten run through PLAN section 8's
-> per-specimen loop. The rest of the paragraph stands, including that this
-> harness makes no paid call, cloud mutation or hand deploy.
+> G2, G9, G11 and G30. No manifest is frozen and there is no approved object set
+> to freeze: each run is authorized on its own instead of per frozen manifest
+> (PLAN section 4.1 stage 2), and the ten remain the acceptance cohort,
+> processed in order. The concrete execution authorization is no longer an
+> artifact: authorization artifacts retire (G11). Downloading an existing cloud
+> specimen and running inference on it happen only inside PLAN section 8's
+> per-specimen loop: S7's local run with real models (step 1) and production
+> processing through the app (step 2); a new upload is processed on demand in
+> production (G2). The budget is no longer unavailable; there are two bounds:
+> G9's USD 25 ceiling, cumulative, infrastructure and models together, and
+> within it G30's USD 5 production model allowance, which the pipeline enforces
+> across every paid step and COST-BOUNDS tests (PLAN 4.3). G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). The
+> rest of the paragraph stands, including that this harness makes no paid call,
+> cloud mutation or hand deploy.
 
 ## Evidence states and verdict
 
@@ -80,15 +90,45 @@ gold set, `Verbatim D/T/S` semantics, Parties authority or automatic clearance.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G1 and G11. Automated clearance is in scope for this program: a record the
-> harness resolves is cleared without a human (G1). G11 retires the
-> independent-review reports, not the checker's evidence: the evidence-based
-> acceptance harness and the coordinator still make the final acceptance
-> decision, on the checker's evidence and through PLAN section 8's per-specimen
-> loop. The rest of the paragraph stands, including that all 20 PRD criteria
-> remain in the mapping even where policy or representative quality approval is
-> unavailable, and that ten pilot results establish no institutionally approved
-> representative gold set, `Verbatim D/T/S` semantics or Parties authority.
+> G1, G2, G9, G11 and G30. Automated clearance is in scope for this program: a
+> record the harness resolves is cleared without a human (G1). In S2's reading,
+> G11 retires the independent-review reports, not the checker's evidence: final
+> acceptance still belongs to the evidence-based acceptance harness and the
+> coordinator
+> ([`PROTECTED_RELEASE_HARNESS.md`](PROTECTED_RELEASE_HARNESS.md#sequence-without-circular-readiness-prerequisites)
+> step 8, and the coordinator's acceptance sign-off in [PLAN section
+> 6](golive/PLAN.md#6-sessions-ownership-and-branches)), on the checker's
+> evidence and through PLAN section 8's per-specimen loop, and DoD-6, the
+> owner's own new record run end to end with no intervention, needs the owner's
+> own confirmation ([PLAN section
+> 1](golive/PLAN.md#1-goal-and-definition-of-done)). The rest of the paragraph
+> stands, including that all 20 PRD criteria remain in the mapping even where
+> policy or representative quality approval is unavailable, and that ten pilot
+> results establish no institutionally approved representative gold set,
+> `Verbatim D/T/S` semantics or Parties authority. Within G9's USD 25 ceiling,
+> G30's USD 5 production model allowance is the bound the pipeline enforces
+> across every paid step and COST-BOUNDS tests (PLAN 4.3). The rest of
+> acceptance stands too, including every UI and live case the human-review
+> checker (`scripts/qa/live/human_review.py`) requires: the ten UI cases of
+> [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN, UI-INTAKE,
+> UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN,
+> UI-SEARCH-QUEUE, UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and
+> UI-NO-SYNTHETIC-FALLBACK) and the fifteen live cases of
+> [`LIVE_QA.md`](LIVE_QA.md) (AUTH-IDENTITY, AUTH-APPCHECK, AUTH-MEMBERSHIP,
+> AUTH-REVOKE, AUTH-CROSS-SCOPE, DATA-TEN, DATA-GENERATION, DATA-RESTORE,
+> PROVIDER-ACTUAL, COST-BOUNDS, RETRY-UNKNOWN, WORKER-RESTART, API-RESTART,
+> DEPLOY-IDENTITY and BROWSER-E2E), with UI-SIGN-IN's unverified and no-role
+> denial, UI-DENIAL-RECOVERY's unauthenticated, cross-organization or
+> cross-collection, viewer-write and revoked-access denials, in which stale
+> responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
+> and with the ten, in order and beside new uploads, in place of a frozen
+> manifest (G2), G9's USD 25 ceiling in place of the cohort budget, and the
+> release packet and the cohort ledger retired (G11). G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
+> S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
+> and worker SHAs and image digests and the SQL and rules revisions with the
+> release runs on main that deployed them, in place of the packet; the rest of
+> DEPLOY-IDENTITY stands.
 
 ## Contracts and ownership
 
@@ -103,13 +143,19 @@ schema; it does not derive authorization from a self-declared manifest field.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G2 and G11. There is no `specimen-pilot/v1` manifest and no authorization
-> reference to supply: each run is authorized on its own instead of per frozen
-> manifest (PLAN section 4.1 stage 2), and authorization artifacts retire (G11).
-> The ten remain the acceptance cohort, in established source order, and no
-> failed specimen leaves the denominator. The rest of the paragraph stands,
-> including that multiple original objects per specimen are retained and that
-> exact file SHA-256 is independently supplied.
+> G2 and G11. No `specimen-pilot/v1` manifest is frozen, and no authorization
+> reference or ready status authorizes use: each run is authorized on its own
+> instead of per frozen manifest (PLAN section 4.1 stage 2), and authorization
+> artifacts retire (G11). The manifest file's own SHA-256, supplied separately,
+> retires with it. What the manifest recorded of the ten stays: their identities
+> in established source order, one authorized scope, and each original's bucket,
+> object, generation, SHA-256 and size and its application-source binding. The
+> checker's checks are re-anchored to the ten
+> ([`golive/RELEASE.md`](golive/RELEASE.md#21-code-that-still-enforces-a-superseded-clause)
+> section 2.1, whose `manifest_ids` row lists what retires). The rest of the
+> paragraph stands, including that multiple original objects per specimen are
+> retained, that no failed specimen leaves the denominator, and that QA derives
+> no authorization from a self-declared field.
 
 Integration supplies full immutable combined commit, owner PRs, image digests,
 connector/rules revisions, clean-tree status, supported start/stop commands,
@@ -153,13 +199,19 @@ digests, IDs privately, and before/after retained-state counts when applicable.
 
 > 2026-09-23: The DATA-TEN, COST-BOUNDS, DEPLOY-IDENTITY and BROWSER-E2E rows are superseded in part for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G2, G9, G11 and G30. DATA-TEN reconciles the ten, in order, as the acceptance
-> cohort, with no frozen inventory; an eleventh or a changed-generation source
-> still cannot enter it, but a new upload may now enter on-demand processing
-> outside it (G2). COST-BOUNDS' concrete approved budget is the USD 25
-> cumulative ceiling, infrastructure and models together (G9), and G30's
-> per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
-> mechanism). In S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the
+> G2, G9, G11 and G30. The matrix's evidence binds the candidate and the ten,
+> not a frozen manifest's digest (G2). DATA-TEN reconciles the ten, in order, as
+> the acceptance cohort, with no frozen inventory; an eleventh or a
+> changed-generation source still cannot enter it, but a new upload may now
+> enter on-demand processing outside it (G2). COST-BOUNDS' concrete approved
+> budget is G30's USD 5 production model allowance, which the pipeline enforces
+> across every paid step, within G9's USD 25 ceiling, cumulative, infrastructure
+> and models together (PLAN 4.3); the acceptance lab's USD 5 share is separate.
+> G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+> mechanism). COST-BOUNDS tests them: each paid call reserves its worst-case
+> cost before it starts, an unknown outcome stays reserved in full, and once the
+> allowance is spent paid steps block as `program_allowance_exhausted`
+> (QUE-005). In S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the
 > deployed API and worker SHAs and image digests and the SQL and rules revisions
 > with the release runs on main that deployed them, in place of the packet; the
 > rest of DEPLOY-IDENTITY stands. BROWSER-E2E's full frozen ten is the ten pilot
@@ -236,16 +288,26 @@ does not allow unknown origin. No real Firebase token or App Check exercised.
 | Combined candidate, deploy target and restart controls | Not supplied: delivery freezes candidate after scoped PRs; no self-merge |
 | Institutional clearance, field semantics, representative quality approval | Not supplied: retain explicit blockers; never infer institutional sign-off |
 
-> 2026-09-23: The "Ready exact-ten manifest..." and "Cloud spending..." rows are superseded in part for the go-live program by
+> 2026-09-23: The "Ready exact-ten manifest...", "Cloud spending..." and "Institutional clearance..." rows are superseded in part for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G2, G9 and G11. No manifest is frozen: each run is authorized on its own
-> instead of per frozen manifest (PLAN section 4.1 stage 2), and the ten are the
-> acceptance cohort, processed in order (G2), so the first row's blocker no
-> longer applies. Cloud spending is bounded by the USD 25 cumulative ceiling,
-> infrastructure and models together (G9), and the release envelope and its
-> execution packet retire (G11), so the second row's blocker is answered rather
-> than pending; model data policy and provider routing stand. G30's per-call
-> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
+> G1, G2, G9, G11 and G30. No manifest is frozen: each run is authorized on its
+> own instead of per frozen manifest (PLAN section 4.1 stage 2), and the ten are
+> the acceptance cohort, processed in order (G2), so the first row no longer
+> waits on a ready manifest; the verified first-ten source order and each
+> original's generation, SHA-256 and import binding still apply (DATA-TEN,
+> DATA-GENERATION). Cloud spending has two bounds: G9's USD 25 ceiling,
+> cumulative, infrastructure and models together, and within it G30's USD 5
+> production model allowance, which the pipeline enforces across every paid step
+> and COST-BOUNDS tests (PLAN 4.3), and the release envelope and its execution
+> packet retire (G11), so the second row's blocker is answered rather than
+> pending; model data policy, provider routing and shutdown bounds stand. G30's
+> per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+> mechanism). A record the harness resolves is cleared without a human (G1), and
+> PLAN section 4.1 stage 8 removes the lane's institutional-approval, semantics
+> and human-approval gates for runs whose profile names `harness_route`, so
+> clearance no longer waits on institutional clearance there. The rest of the
+> third row stands: field semantics and representative quality approval are not
+> supplied, and nothing infers institutional sign-off.
 
 Next QA action: finish canonical local gate, submit scoped PR and watch all five
 checks. Then independently reproduce the frozen combined candidate and browser
@@ -263,12 +325,20 @@ lookup, finalization or clearance. Normal production policy remains unchanged.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G1 and G2. The pipeline of PLAN section 1 is now the scope: authority lookup,
-> finalization and clearance run, and a record the harness resolves is cleared
-> without a human, in place of this narrowly scoped, terminal
-> `processing_blocked` milestone (G1). No exact-ten manifest is frozen: each run
-> is authorized on its own instead of per frozen manifest (PLAN section 4.1
-> stage 2) (G2). Real SAM 3 plus two blind readings still run.
+> G1, G2 and G30. The pipeline of PLAN section 1 is now the scope: parsing,
+> authority lookup, finalization and clearance run, and a record the harness
+> resolves is cleared without a human (G1), in place of this narrowly scoped
+> milestone's terminal `processing_blocked` with
+> `pilot_evidence_review_required` and a null disposition. Production policy
+> follows PLAN section 4.1 stage 8, which removes the gates that contradict G1
+> for runs whose profile names `harness_route`. No exact-ten manifest is frozen:
+> each run is authorized on its own instead of per frozen manifest (PLAN section
+> 4.1 stage 2) (G2). The rest of the milestone stands, including the positive
+> spending reservation, now G30's per-call reservation against its USD 5
+> production model allowance within G9's USD 25 ceiling (PLAN 4.3), the pinned
+> source, model, prompt and configuration, and real SAM 3 plus two blind
+> readings. G30's per-call reservations stand (PLAN 4.3; the coordinator's
+> ruling on the mechanism).
 
 QA will independently attempt outside-ten and changed-binding entry, absent
 approval/budget, budget reset through run/profile/config changes, repeated
@@ -277,6 +347,17 @@ and history must not turn into risk approval or resume an unapproved normal
 pipeline. This milestone cannot satisfy PRD-07/08/10/11/14/15/17/19/20 as a full
 production pipeline; omitted stages and institutional quality remain blocked.
 Request sent to worker for a frozen candidate and failure-injection commands.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G1 and G30. The normal pipeline is the scope now (G1): its stages run, and the
+> approve and finalize routes behave as PLAN section 4.1 specifies instead of
+> staying blocked. The rest of the paragraph stands, including the outside-ten
+> and changed-binding entry attempts, an absent budget failing closed, a budget
+> reset through run, profile or configuration changes, repeated delivery and
+> stop/restart, and that evidence correction and history never turn into risk
+> approval. G30's per-call reservations stand (PLAN 4.3; the coordinator's
+> ruling on the mechanism).
 
 The data index repair requires a separate frozen candidate: compare exact
 index definitions before startup, after schema restart, after DDL, and after
@@ -341,12 +422,47 @@ the PR body so historical candidate observations are not silently relabeled.
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11. G11 retires the independent-review reports, not the evidence: complete
-> live case evidence is still required, and the evidence-based acceptance
-> harness and the coordinator still make the final acceptance decision, on the
-> checker's evidence and through PLAN section 8's per-specimen loop. The rest of
-> the paragraph stands, including that this change alone grants no approval and
-> establishes no real SAM serving.
+> G2, G9, G11 and G30. In S2's reading, G11 retires the independent-review
+> reports, not the evidence: complete live case evidence is still required, and
+> final acceptance still belongs to the evidence-based acceptance harness and
+> the coordinator
+> ([`PROTECTED_RELEASE_HARNESS.md`](PROTECTED_RELEASE_HARNESS.md#sequence-without-circular-readiness-prerequisites)
+> step 8, and the coordinator's acceptance sign-off in [PLAN section
+> 6](golive/PLAN.md#6-sessions-ownership-and-branches)), on the checker's
+> evidence and through PLAN section 8's per-specimen loop, and DoD-6, the
+> owner's own new record run end to end with no intervention, needs the owner's
+> own confirmation ([PLAN section
+> 1](golive/PLAN.md#1-goal-and-definition-of-done)). In S2's reading of G11 and
+> PLAN 4.6, the SAM runtime's matching source commit is the merged commit its
+> release run built SAM 3 from, since T2 rebuilds SAM 3 only when its inputs
+> change;
+> [`golive/RELEASE.md`](golive/RELEASE.md#21-code-that-still-enforces-a-superseded-clause)
+> section 2.1 lists the checker's line (`acceptance.py` 497). The rest of the
+> paragraph stands, including that this change alone grants no approval and
+> establishes no real SAM serving. Within G9's USD 25 ceiling, G30's USD 5
+> production model allowance is the bound the pipeline enforces across every
+> paid step and COST-BOUNDS tests (PLAN 4.3). The rest of acceptance stands too,
+> including every UI and live case the human-review checker
+> (`scripts/qa/live/human_review.py`) requires: the ten UI cases of
+> [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN, UI-INTAKE,
+> UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN,
+> UI-SEARCH-QUEUE, UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and
+> UI-NO-SYNTHETIC-FALLBACK) and the fifteen live cases of
+> [`LIVE_QA.md`](LIVE_QA.md) (AUTH-IDENTITY, AUTH-APPCHECK, AUTH-MEMBERSHIP,
+> AUTH-REVOKE, AUTH-CROSS-SCOPE, DATA-TEN, DATA-GENERATION, DATA-RESTORE,
+> PROVIDER-ACTUAL, COST-BOUNDS, RETRY-UNKNOWN, WORKER-RESTART, API-RESTART,
+> DEPLOY-IDENTITY and BROWSER-E2E), with UI-SIGN-IN's unverified and no-role
+> denial, UI-DENIAL-RECOVERY's unauthenticated, cross-organization or
+> cross-collection, viewer-write and revoked-access denials, in which stale
+> responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
+> and with the ten, in order and beside new uploads, in place of a frozen
+> manifest (G2), G9's USD 25 ceiling in place of the cohort budget, and the
+> release packet and the cohort ledger retired (G11). G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
+> S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
+> and worker SHAs and image digests and the SQL and rules revisions with the
+> release runs on main that deployed them, in place of the packet; the rest of
+> DEPLOY-IDENTITY stands.
 
 ## Recovery and rollback
 
