@@ -157,6 +157,7 @@ def test_segmentation_is_judged_against_the_lanes_coverage_check():
     assert false_alarm["status"] == "not checked" and "false alarm" in false_alarm["detail"]
     assert stage_2([left, right], two_labels)["status"] == "not built"  # no pass without the check
     assert stage_2([whole], two_labels, "confirmed")["status"] == "failed"  # one region, two labels
+    assert stage_2([left, right], two_labels, "pending")["status"] == "not checked"  # another outcome
     for outcome in ("confirmed", "unconfirmed"):  # no ground truth outside the ten
         assert stage_2([left], "subject_999", outcome)["status"] == "not checked"
     assert lab_checks.label_boxes(two_labels) == [(0.0, 0.34), (0.62, 1.0)]
@@ -193,8 +194,9 @@ def test_two_readings_of_one_route_on_one_region_fail_stage_3():
 
 
 def test_a_gbif_occurrence_request_in_any_record_of_any_run_fails_while_d4_is_off():
-    # D4 is held: its occurrence check is off and sends nothing (PLAN 2, coordinator rulings). Only real
-    # request shapes count; every GBIF record but species match (G23) and GADM fails.
+    # D4 is held: its occurrence check is off and sends nothing (PLAN 2, coordinator rulings). PLAN 4.8's
+    # table lists GBIF for species match (G23) and the held occurrence search; only real occurrence-request
+    # shapes fail here. GADM and any other GBIF call have their own test below.
     def stage_7(key, value, requests=0, previous=False, blobs=()):
         snap = snapshot()
         (snap.setdefault("previous_runs", []).append(snapshot()["run"] | {"id": "run-1", key: value})
@@ -204,6 +206,19 @@ def test_a_gbif_occurrence_request_in_any_record_of_any_run_fails_while_d4_is_of
 
     real = [
         ("evidence", [{"locator": "https://API.GBIF.ORG/v1/%6Fccurrence/search?q=x"}]),
+        ("tool_calls", [{"call_key": "k1", "tool": "gbif_occurrence_search"}]),
+        # main's shapes: an authority result names its source, and evidence has a host-less locator.
+        ("authority_results", {"authority:0:geography_lookup": {
+            "tool_id": "geography_lookup", "field_key": "country", "source_id": "gbif_occurrence",
+            "status": "success", "blob_ref": "b", "sha256": "0" * 64}}),
+        ("evidence", [{"kind": "authority", "source": "gbif", "locator": "/v1/occurrence/search",
+                       "excerpt": "", "raw_ref": "r", "digest": "d"}]),
+        ("evidence", [{"source": "gbif", "locator": "/v1/./occurrence/search"}]),
+        # a client removes every dot segment, however many (#83 round 1)
+        ("evidence", [{"source": "gbif", "locator": "/v1/././occurrence/search"}]),
+        ("evidence", [{"source": "gbif", "locator": "/v1/x/../occurrence/search"}]),
+        ("authority_results", {"k": {"context_json": '{"museum_published": true}'}}),
+        ("authority_results", {"k": {"signals": {"occurrence": "supports"}}}),
         ("tool_calls", [{"tool": "occurrence_search", "source": "gbif", "arguments": {"q": "x"}}]),
         ("tool_calls", [{"tool": "taxonomy_verifier", "source": "gbif", "arguments": {"recordedBy": "x"}}]),
         ("lookups", [{"provider": "gbif", "adapter_version": "occurrence-v1", "query": {"catalogNumber": "1"}}]),
@@ -218,8 +233,9 @@ def test_a_gbif_occurrence_request_in_any_record_of_any_run_fails_while_d4_is_of
         ("evidence", [{"locator": "https://bionomia.net/occurrence/123"}]),
         ("tool_calls", [{"tool": "taxonomy_verifier", "source": "gbif", "arguments": {"name": "Epipsocus"},
                          "result": {"candidates": [{"numOccurrences": 12}]}}]),
-        ("lookups", [{"provider": "gbif", "adapter_version": "species-match-v2.1", "query": {"name": "x"}}]),
-        ("lookups", [{"provider": "gbif_gadm", "adapter_version": "gbif-gadm-1", "query": {"q": "Davao"}}]),
+        ("lookups", [{"provider": "gbif", "adapter_version": "species-match-v2.1", "status": "success",
+                      "query": {"name": "x"}}]),
+        ("evidence", [{"kind": "authority", "source": "gbif", "locator": "/v2/species/match"}]),
         ("authority_results", {"k": {"museum_published": False, "signals": {"occurrence": None}}}),
         ("tool_calls", [{"tool": "occurrence_search", "source": "gbif", "outcome": "policy_blocked"}]),
         ("transcripts", [{"region_id": "r1", "observation_ids": [], "alternatives": [], "resolved": True,
@@ -229,6 +245,43 @@ def test_a_gbif_occurrence_request_in_any_record_of_any_run_fails_while_d4_is_of
         assert stage_7(key, value)["status"] != "failed", (key, value)
     absent = stage_7("lookups", [], requests=None)
     assert absent["status"] == "not checked" and "hook" in absent["detail"]
+
+
+def test_a_gadm_call_fails_against_plan_4_8_and_other_gbif_calls_are_reported():
+    # Coordinator ruling (2026-09-25): PLAN 4.8 does not use GADM, not even as a measurement, so a GADM call
+    # fails on that ground; it is not an occurrence request (D4). Reporting any other GBIF call is the lab's
+    # own choice: PLAN 4.8's only GBIF rows are species match (G23) and the held occurrence search.
+    def stage_7(key, value):
+        snap = snapshot()
+        snap["run"][key] = value
+        return next(s for s in lab_checks.check_stages(evidence(snap), SOURCE, SUBJECT) if s["stage"] == "7")
+
+    for key, value in (
+        ("lookups", [{"provider": "gbif_gadm", "adapter_version": "gbif-gadm-1", "status": "success"}]),
+        ("tool_calls", [{"tool": "geography_lookup", "source": "gbif_gadm", "arguments": {"q": "Davao"}}]),
+    ):
+        stage = stage_7(key, value)
+        assert stage["status"] == "failed" and "GADM is not used (PLAN 4.8)" in stage["detail"], key
+    other = stage_7("tool_calls", [{"tool": "dataset_lookup", "source": "gbif", "arguments": {"q": "x"}}])
+    assert other["status"] != "failed" and "outside PLAN 4.8" in other["detail"]
+    # with no tool-call record, the reported call is the stage's whole finding (#83 round 1)
+    alone = stage_7("lookups", [{"provider": "gbif", "adapter_version": "dataset-v1", "status": "success"}])
+    assert alone["status"] == "not checked" and "outside PLAN 4.8" in alone["detail"], alone
+    assert "0 tool calls" not in alone["detail"], alone
+
+
+def test_134s_species_match_evidence_is_not_reported_outside_plan_4_8():
+    # #134 (harness_ledger.py) records a GBIF species match's evidence as source "gbif" with the locator
+    # "usage/<key>", or with no locator when the lookup failed; its tool call names the evidence it wrote.
+    snap = snapshot()
+    snap["run"]["tool_calls"] = [{"call_key": "k1", "tool": "taxonomy_verifier", "source": "gbif",
+                                  "outcome": "failed", "evidence_id": "ev-2"}]
+    snap["run"]["evidence"] = [
+        {"id": "ev-1", "kind": "lookup", "source": "gbif", "locator": "usage/5143893", "excerpt": "gbif success"},
+        {"id": "ev-2", "kind": "lookup", "source": "gbif", "locator": None, "excerpt": "gbif failed"},
+    ]
+    stage = next(s for s in lab_checks.check_stages(evidence(snap), SOURCE, SUBJECT) if s["stage"] == "7")
+    assert stage["status"] == "not checked" and "outside PLAN 4.8" not in stage["detail"], stage
 
 def test_stage_4_is_not_built_only_without_run_rows_and_never_passes_an_empty_set():
     other_run = {"pipeline_run": [{"id": "another-run", "specimen_id": "specimen-1"}]}

@@ -12645,3 +12645,47 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: a comparison widened to catch a leak also widens what it can over-cut ("Mt." against "M.T."). Name one over-cut case in the limit when the rule lands, so a test pins it.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live S4: removing the GBIF GADM geography adapter (PLAN 4.8 licence fix)
+
+- Task: the coordinator's licence ruling (13:31Z). PLAN 4.8 (PLAN.md:669) does not use GADM, not even as a measurement, because its terms bar redistribution and commercial use, yet main still wired GBIF's GADM search as the production "geography" authority tool. One small pull request from main, ahead of the S4 chain: #216.
+- Branch/worktree: `golive/harness-no-gadm`, from `main` at d8291a0, in `.claude/worktrees/cool-haslett-aa79b5`. Commits:
+  - 7757332e: the failing tests.
+  - 85be7cb5: the removal.
+  - 5f2bf579: this entry.
+  - 776aa720: round 2.
+  - 85ef0a0f: round 3, text and tests.
+  - cbaf7b50: the merge of main d663a0c (#83).
+  - 2f55d8a8: the lab sentence after #83.
+  - Round 4's text fix.
+- Outcome:
+  - `ProductionAdapters` wires only the parties tool, and the geography cost reservation is gone (`test_production_wiring_holds_no_gadm_source`).
+  - `application/geography.py` and `tests/test_geography.py` are deleted.
+  - `plan_authorities` no longer plans a geography lookup (`test_a_profile_naming_geography_plans_no_geography_lookup`). `authority_query` drops the GADM-only historical context. Place fields get no geography authority until the harness's geography tool lands.
+  - The harness tests that used the GADM adapter use the parties adapter, and the registry tests use a neutral example source.
+  - Spec: PLAN 4.8 and the coordinator's ruling. `docs/execution/EVIDENCE_HARNESS.md` records the removal instead of describing the adapter.
+- Validation actually run:
+  - Round 1: three of the four new tests failed on main, each for its intended reason; the resume test passes before and after. Gates, one at a time, on 85be7cb5: `pre-commit run --all-files` passed; `pytest tests` 1498 passed, 31 skipped; `pytest scripts` 1562 passed, 50 skipped; `check_ui_strings` 0 violations.
+  - Round 2, on 776aa720: pre-commit passed; `pytest tests` 1500 passed, 31 skipped; `pytest scripts` 1562 passed, 50 skipped; 0 violations.
+  - Round 3, on the round-3 tree before its gate line was filled in (85ef0a0f): pre-commit passed; `pytest tests` 1501 passed, 31 skipped; `pytest scripts` 1562 passed, 50 skipped; 0 violations.
+  - The merge turn, on 2f55d8a8, with nothing changed under `src/` or `tests/`: pre-commit on the changed files passed; `pytest scripts` 1595 passed, 50 skipped; 0 violations.
+  - Round 4, text and test comments only: pre-commit on the changed files passed; `tests/test_gadm_not_used.py` and `tests/test_parties.py` 21 passed; 0 violations.
+- Durable learnings:
+  1. No collection profile in the repository names the "geography" tool (the one profile lists `taxonomy_verifier`), and `collection_profiles.py`'s history never did. So no run from a repository profile could plan a GADM lookup. The adapter was reachable only through the wiring and the planner branch.
+  2. Each authority step compares only its own tool's pin (`authority_pins`). A run pinned before a tool is removed therefore resumes unchanged, unless its plan names the removed tool (`test_a_run_pinned_with_the_removed_tool_still_resumes`).
+  3. A log line is append-only once merged, so claim only what a test or the code shows. "Every form", "sends nothing" and "any GADM call" each went further than what showed them.
+- Round 2 (the steward's review, comment 5834271655):
+  - The size-cap test moves onto the parties adapter.
+  - The scan matches the patterns round 1's review proposed (`gbif[_-]gadm`, `gadm_search`, `geocode/(gadm|reverse)`, `api.gbif.org/v1/geocode`), case-insensitively.
+  - A run whose plan still names a geography task blocks at that step with `tool_not_allowlisted_or_version_mismatch` when the field has a value. Without one, the step is recorded unresolved and the run goes to review (round 3's correctness review ran that case). Either way that step sends nothing, and earlier steps such as parties still run (`test_a_run_planned_with_the_removed_tool_blocks_without_a_request`, whose label has a `province_state` value).
+  - `docs/execution/EVIDENCE_HARNESS.md` and `docs/execution/ACCEPTANCE.md` no longer describe the adapter as live or cite its test as evidence.
+- Round 3 (comment 5834843588):
+  - The round-2 line above was reworded: it had said the scan matches every form of the name, and that such a run sends nothing.
+  - The scan also matches `gadm.org`, `ucdavis.edu/(data/)?gadm` and `gadm` followed by a digit. It leaves a bare "GADM" out on purpose, since the comments saying it is not used name it.
+  - A valid JSON body padded past the size cap pins the rule that a truncated response is malformed.
+- Round 4 (comment 5835391741): the #83 sentence below now names exactly what #83's check fails. The planned-task line above now states its condition. Every sentence in this entry and the pull request body was checked against the code, a test or a cited review.
+- Remaining follow-ups:
+  - The first chain pull request to merge main after this one (#98) takes the three `production.py` lines cleanly. A trial merge of #98's head with this branch was clean, and so are S3's lane branches (the round-2 integration review).
+  - S7's #83, merged as d663a0c before this pull request, makes `scripts/lab/lab_checks.py` fail a run whose records carry the removed adapter's identity (`gbif_gadm`, or a `gbif-gadm` version), the coordinator's lab item (coordinator.md:434).
+  - PLAN.md's ownership list and the S4 brief still name `geography.py` (the coordinator's next plan pull request).
+  - S8's research probe and `docs/GBIF.md` still mention GADM; S8's open #217 drops the probe's call.
