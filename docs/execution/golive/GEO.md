@@ -405,3 +405,73 @@ S8 drafts two itineraries:
   105526324 fits the base camp. Another collector, or a later date, fits none.
 - The Apo label fits the six camps of November 1946 whose slope is east or
   unstated.
+
+## 7. Tier 1: Getty TGN
+
+The owner's tier 1 names Getty TGN (G35). `georef_tgn.py` builds requests to two
+Getty services and reads the answers into section 2's `Place` records. It sends
+nothing itself: the tool sends each request and records it as a sub-call. Both
+services answer anonymously under ODC-By 1.0, so no access is needed, and
+Getty's token-gated gateway is not used (PLAN 2.3; #94, S32).
+
+**Requests.**
+- The reconciliation service finds TGN places by one reading's name: type
+  `/tgn`, ten results. The tool passes only text S4's place-request filter
+  returns (PLAN 4.8). The type and the limit are reviewed constants.
+- The SPARQL endpoint reads up to 50 records at a time by TGN id. One query
+  reads each record's GVP name, place types, point and chain of preferred
+  parents; a second reads every name with its language. An id is digits only
+  and is checked before a query is built, so no record value enters SPARQL.
+
+**Reading.**
+- **Name.** A place's name is its English preferred name when TGN has one, else
+  its GVP name, which TGN often writes inverted ("Apo, Mount"). Its other names
+  follow, the preferred ones first, codes included.
+- **Kinds.** Each place type is an AAT reference with its name, the preferred
+  type first.
+- **Country and parents.** The country is the nearest place on the chain of
+  preferred parents, the place itself included, whose preferred type is
+  "nations" (`aat:300128207`). The parents are the places between the place and
+  its country, nearest first. A country or a parent keeps its GVP name.
+- **Point.** TGN's point, read only when its latitude and longitude are in
+  range.
+- **Dates.** TGN dates names, not places, so a place carries no dates and
+  section 5 reads it as `undated`. The dates of names, such as "Commonwealth of
+  the Philippines" (1935 to 1946), are not read yet.
+- **Missing ids.** An id TGN does not hold is skipped.
+
+**Outcomes.** One table covers both services.
+
+| Answer | Outcome |
+|---|---|
+| HTTP 200 with one or more results or records | `success` |
+| HTTP 200 with none | `no_match` |
+| HTTP 200 with an empty body | `empty_response` |
+| a body that isn't the expected JSON object | `malformed_response` |
+| HTTP 429 | `rate_limited` |
+| HTTP 401 | `authentication_error` |
+| HTTP 403 | `authorization_error` |
+| any other status | `provider_error` |
+
+A timeout is the caller's to record.
+
+**Credit.** Every place carries the license ODC-By-1.0. The credit is the line
+Getty's data-services page asks for (checked 2026-09-24): "Contains information
+from the J. Paul Getty Trust, Getty Research Institute, Thesaurus of Geographic
+Names, which is made available under the ODC Attribution License".
+
+**Tests.** `tests/test_georef_tgn.py` reads answers recorded on 2026-09-24: the
+reconciliation service's for twelve pilot names, and the SPARQL endpoint's for
+the 24 records they led to. The tests check:
+- "Mount Apo" finds the mountain first, filed under Cotabato, with "Mount Apo"
+  among its names.
+- Every place "Mount McKinley" finds lies in the United States; one is Denali.
+- TGN holds no Yepocapa, no Mount Talomo and no "Chimaltenago".
+- "Davao Province" finds a city first. TGN files that name under a record typed
+  "special cities" that also carries "Davao City", and it has no record of the
+  1914-1967 province: #94's trap again.
+- "Philippine Islands" finds a ridge in Wisconsin first. The Philippines carries
+  that name too, and its English name is "Philippines".
+- Codes among the names ("RP", "PHL", "GT03") are not full names (section 1).
+- The Chimaltenango department and its capital lie in Guatemala.
+- Every row of the outcome table.
