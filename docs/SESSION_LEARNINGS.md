@@ -12598,3 +12598,20 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (4) Every tier-1 source gives WGS84 points, so for the pilot the datum adds nothing. The radius comes down to the feature's radial and the coordinates' precision: 1.5 m for GeoNames' five decimals at Yepocapa.
 - Failed approaches: none.
 - Remaining follow-ups: radials need boundaries (geoBoundaries for units; nothing yet for a town's or a mountain's extent); the derivations (task 6) once S4's #144 merges; tier 2 (task 5) once #113 merges.
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 6b: a unit's extent, and a circle inside it
+
+- Task: brief task 6, the geometry behind containment (the coordinator's reading of G37) and county precision (the coordinator's reading of G38), on synthetic boundaries until the owner approves downloading geoBoundaries' files.
+- Branch and worktree: `golive/geo-geometry` in `.claude/worktrees/geo-build`, stacked on #192. PR #193.
+- Outcome: `georef_geometry.py` provides the geometry, in pure Python (numpy is not a project dependency).
+  - It reads GeoJSON boundaries and tests a point with the even-odd rule.
+  - It measures clearance to the nearest edge in meters.
+  - It admits a circle only with the file's simplification margin to spare.
+  - It finds a unit's smallest enclosing circle, moving the center onto the boundary when the circle's center falls outside the unit, as the Quick Reference Guide asks.
+- Validation: 11 tests on synthetic boundaries; `uv run pytest -q` (3,265 passed, 81 skipped: `tests/` and `scripts/` together); pre-commit.
+- Durable learnings:
+  - (1) geoBoundaries' open release is not one licence. Each boundary carries its source's: CC BY 3.0 IGO for the Philippine units (NAMRIA, PSA, OCHA) and Guatemala's municipios (CONRED, OCHA FISS), and ODbL for Guatemala's departments, which come from OpenStreetMap. The coordinator ruled the ODbL file out and credits per file (#191).
+  - (2) The Philippine files are 441 to 532 MB each at full resolution. The simplified files come from mapshaper's Douglas-Peucker at 100 m with a 0.00001-degree snap, a documented error, so containment on them keeps a 101.2 m margin. The metadata API states no tolerance; the builder script does.
+  - (3) A smallest enclosing circle's center can fall in a hole or a notch. The Guide then wants the center on the boundary, and the farthest-vertex distance is convex along each edge, so a ternary search per edge, pruned by a lower bound, finds it.
+- Failed approaches: a first test expected the framed square's center inside, but its smallest circle is centered in the hole. That case now tests the move onto the hole's edge.
+- Remaining follow-ups: the owner's approval to download and pin geoBoundaries' simplified Philippine files and Guatemala's municipios (and CONRED's departments if needed), with each file's margin and credit in the manifest; then containment and county precision as derivations, once S4's #144 merges.
