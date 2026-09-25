@@ -266,48 +266,97 @@ first pass 0.068, harness probe 0.021.
 
 ## 6. The harness's tools, and the taxonomy tool (stage 7, part 1)
 
-HAR-007, HAR-008, HAR-009, HAR-010; owner decisions G23, G25, G28. A profile
-maps each field to tool ids (S3's `CollectionProfile.field_tools`); the slide
-pilot maps `taxon` to `taxonomy_verifier`, the five locality fields to
+HAR-007, HAR-008, HAR-009, HAR-010; owner decisions G23, G25, G26, G28 and G35.
+A profile maps each field to tool ids (S3's `CollectionProfile.field_tools`);
+the slide pilot maps `taxon` to `taxonomy_verifier`, the five locality fields to
 `geography_lookup`, `fmnh_ins_number` to `catalog_number_validator` and the
 three date fields to `date_parser`. Every other field is transcribed as seen.
 
 **Every tool** answers with a `ToolResult` (`application/harness_tools.py`):
 exactly one HAR-008 outcome, the candidates behind it, and one `SourceCall` per
 provider request with the query, the retrieval time, the outcome, the attempt,
-the stored response and its digest, and on failure `retry_after` and a
-sanitized error. The harness records one S5 `ToolCall` row per source call. A
-rate limit, a timeout or a provider error is retried inside the tool with
-backoff and jitter, never sooner than the provider's `Retry-After` and at most
-three attempts, every attempt recorded (HAR-009); a `Retry-After` longer than a
-step may wait ends the retries at once. No tool writes a field.
+the source's licence, the stored response and its digest, and on failure
+`retry_after` and a sanitized error. The harness records one S5 `ToolCall` row
+per source call. A rate limit, a timeout or a provider error is retried inside
+the tool with backoff and jitter, never sooner than the provider's
+`Retry-After` (an HTTP-date is rounded up to the next second) and at most three
+attempts, every attempt recorded (HAR-009); a `Retry-After` longer than a step
+may wait ends the retries at once. No tool writes a field. The types keep G26:
+a Google place candidate carries a place ID and no name or components, and no
+georeference candidate cites Google (G35's openly licensed sources only); a
+Google source call's stored record is the tool's own (place ID, outcome and
+response fingerprint), never Google's body.
 
 **`taxonomy_verifier`** (`application/taxonomy_tool.py`). The query is the
-scientific name the literal writes: its first capitalized word and the
-lower-case epithets after it, ending at a qualifier ("Epipsocus sp. 1" asks
-for "Epipsocus"); a literal without one ("Sp. 30") is `no_match` with no
-request. GBIF species match v2 against the pinned COL XR checklist decides the
-outcome (G23), as GBIF.md 118-130 sets it:
+scientific name the literal writes, read from its leading words: a title-case
+genus, then optionally a parenthesized subgenus, epithets (hyphenated, as in
+"c-album", or an old capitalized epithet such as "Smithi"), a subspecies or
+variety marker with its epithet ("ssp.", "var."), and an author-year authorship
+("Linnaeus, 1758"). A qualifier ("sp. 1", "cf.") ends the name, and a det., leg.
+or coll. clause ends the literal. Nothing the literal does not write is sent,
+and neither is text that is no name: a bare capitalized word after a name may
+be a collector or a place, so authorship is taken only in the author-year form
+(S4's reading of PLAN 4.8 and `GBIF.md` 109). A literal that begins with no
+genus ("Sp. 30 ♀ Davao", "det. Mockford", "Coll. F. G. Werner") is `no_match`
+with no request. The label's rank follows from the name: a genus alone is genus
+rank (G25), one epithet a species, a subspecies or variety its own rank. The
+workflow's `lookup` step goes through the same reading, so it sends no request
+for such text either.
 
-- `success` (row 1): an exact match whose usage is accepted, has a key, sits in
-  class Insecta, has the rank the label's name gives (a genus alone is genus
-  rank, G25; a binomial is a species; a trinomial a subspecies), and has no
-  plausible alternative.
-- A *plausible alternative* (row 4) is another exact match of the same name
-  whose status is accepted, provisionally accepted or doubtful and whose name
-  with authorship differs: a live homonym. Synonym records of the same name,
-  duplicates of the same name and authorship, and variant or fuzzy names stay
-  in the evidence but are not plausible alternatives.
-- `ambiguous`: an exact synonym (row 2: the label's name is kept and the
-  accepted usage is proposed separately), a fuzzy or variant match (rows 3, 4),
-  a higher-rank match (row 5), a plausible alternative, or a usage outside
-  Insecta. `no_match`: GBIF matched nothing. A matchType GBIF documents, VARIANT
+GBIF species match v2 against the pinned COL XR checklist decides the outcome
+(G23), under the coordinator's ruling that success is `GBIF.md` 126-130's (S4
+brief 166-170; coordinator.md:19), as its rulings of 22:46Z on 2026-09-25
+refine it (coordinator.md:476-478). GBIF is sent the name with its authorship
+when written, `taxonRank`, kingdom Animalia and class Insecta from the profile,
+and the checklist key (`GBIF.md` 107-114; PLAN 4.8).
+
+- `success` (row 1, `GBIF.md` 126): an exact match whose usage is accepted, has
+  a key, has the label's canonical name (`canonicalName`, compared exactly) at
+  the label's rank, sits in class Insecta (the compatible classification, as
+  the coordinator ruled at 22:46Z), and has no homonym conflict.
+- A *homonym conflict* (row 4, `GBIF.md` 129, as the coordinator ruled at
+  22:46Z): another exact alternative with the same canonical name and other
+  authorship, in class Insecta, whatever its status. Non-exact alternatives,
+  alternatives outside the class, and a duplicate of the same name and
+  authorship stay in the evidence but do not count. The pilot's "Epipsocus
+  sp. 1" goes to review under it: GBIF's answer lists "Epipsocus Badonnel, 1955"
+  beside the accepted "Epipsocus Hagen, 1866".
+- An *exact synonym* (row 2, `GBIF.md` 127, as the coordinator ruled at 22:46Z
+  from G28 and G1) clears when its accepted usage passes row 1's test: the
+  accepted usage GBIF returns, at the label's rank, in class Insecta, and no
+  homonym conflict for the label's name. The final value is the accepted name,
+  the verbatim stays the label's spelling, and the synonym's status and the
+  accepted usage are recorded. Otherwise it is `ambiguous`.
+- `ambiguous`: a fuzzy or variant match (row 3), a higher-rank match (row 5), a
+  homonym conflict, a usage that is not accepted, another canonical name or
+  rank, a usage outside Insecta, or an exact synonym that does not clear.
+  `no_match`: GBIF matched nothing. A match type GBIF documents, VARIANT
   included, is never `malformed_response`.
+- A body whose parts do not have the types GBIF documents (a usage, an
+  alternative or its diagnostics that is not an object, a name, rank or status
+  that is not a string, a name over 500 characters) is `malformed_response`,
+  never an exception, and so is a body nested too deeply to parse.
 
-Global Names Verifier (Catalogue of Life and GBIF sources) and the Catalogue of
-Life match API are asked as well, each its own source call. They never change
-the outcome. When one of them answers differently from GBIF (success against
-anything else) the result carries the warning
+Every GBIF candidate carries `scientificName` (GBIF v2 names it `name`), so the
+reviewer's existing `taxonomy_resolution` decision can select it. GBIF's usage,
+accepted usage, classification and alternatives are kept as `GBIF.md` 134-160's
+evidence contract lists them, the coordinator's reading of what may be stored;
+G28 itself stores the label's spelling and GBIF's settled name.
+
+Global Names Verifier (Catalogue of Life and GBIF Backbone sources) and the
+Catalogue of Life match API are asked as well, each its own source call with its
+licence (CC BY 4.0 for each source), and each is sent the canonical name only.
+The Catalogue of Life is pinned to its release COL26.9 (dataset 316321, issued
+2026-09-11), not the moving `3LR` alias (PRD 543). They never change the
+outcome. When GBIF answered and one of them answers differently (success
+against anything else) the result carries the warning
 `taxonomy_source_disagreement:{source}`; when one is unavailable after its
-retries, `taxonomy_support_unavailable:{source}`. BugGuide is not called. GBIF's
-names may be stored (G28).
+retries, or answers a truncated or malformed body (which is not retried),
+`taxonomy_support_unavailable:{source}`. BugGuide is not called.
+
+**One deadline.** The tool has 60 seconds in all, half the default external
+step timeout (S4's choice), and GBIF comes first: GBIF's attempts, and each
+request's own timeout, fit inside it, and the supporting sources get only the
+time left. A supporting source with less than 5 seconds left is not asked: its
+source call records `timeout` with `tool_deadline`, and the result warns
+`taxonomy_support_unavailable:{source}`.
