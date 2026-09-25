@@ -11835,6 +11835,28 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the four workflow tests failed before the change (no step, no fields); after it, 14 workflow-adjacent suites give 216 passed, 3 skipped; the full-suite gates are in the pull request.
 - Durable learnings: `adjudicate` rebuilds every region's transcript each time it runs, so a per-region model step needs its own place on the run (`first_pass_decisions`) until `adjudicate` copies it; putting the call's record in `run.observations` would have counted it as a third independent reading in the policy's route check.
 - Remaining follow-ups: S3 carries `first_pass_route` through `classify_and_select` and adds the `first_pass` reservation (the pilot launch's stage set lacks it); S5's writer for the new fields; `decision_kind="human"` for a reviewer's transcription decision (S5); field-level G19, G20 and G27 in T3 and T4.
+
+### 2026-09-25 — Go-live S4: #98's review fixes before it makes the first pass live
+
+- Task: the steward's review of #97 (12:29Z) named four fixes #98 must carry before its turn: G19 in the request, the crop's digest, the cap-hit split, and the call kept out of the readings. The steward then pulled in input binding and a null-pick test. The coordinator ruled on "material" and G19 at 12:31Z.
+- Branch/worktree: `golive/harness-first-pass-wiring`, in `.claude/worktrees/cool-haslett-aa79b5`.
+- Outcome:
+  - The code decides materiality: spans equal once case-folded are capitalization alone. A pick stands only when every material difference supports it; otherwise the first pass returns no reading (G19). The request states the rule, and the answer no longer carries a `material` flag.
+  - The call's `input_sha256` is the crop's digest. `Observation.request_sha256` holds the request's (agreed with S5).
+  - `first_pass_direct` refuses readings that aren't the region's own, once each, in route order. The workflow refuses a decision whose verdicts, `material` flags or pick break its contract.
+  - `run_agent_bounded` raises Pydantic AI's `UsageLimitExceeded` for an answer cut off at its output cap (agreed with S3). Every `UsageLimitExceeded` it raises carries `run_messages` and `run_usage`.
+  - #159's first-pass cap rule now lands here: a first pass stopped by a cap selects no reading.
+  - Spec: `docs/execution/golive/HARNESS.md` sections 3 and 4.
+- Validation actually run: 23 new or changed tests failed before the implementation, each for its intended reason; after it the three suites give 43 passed. Gates, one at a time: `pre-commit run --all-files` passed; `pytest tests` 1534 passed, 31 skipped; `pytest scripts` 1547 passed, 50 skipped; `check_ui_strings` 0 violations.
+- Durable learnings:
+  1. Pydantic AI 2.40 gives each `capture_run_messages` context only the runs it is the innermost context for. A caller's capture around `run_agent_bounded` sees nothing once that function captures for itself, so the function hands its messages to the caller on the exception instead.
+  2. Pydantic AI counts a response's usage, then checks the token total, then appends the response. A run stopped by its total keeps that response's usage when the usage is counted in place, but not the response.
+  3. `IncompleteToolCall` is raised only once the output retry is cut off too. An empty answer at its cap is not retried.
+- Remaining follow-ups:
+  - Until S3's #153 merges, a reader's answer cut off at its output cap blocks as `external_outcome_unknown`, like its true cap hit on main.
+  - The legacy extractor (`harness.py`) has no cap handler at any head.
+  - When the chain reaches #159, its `usage` argument must replace this PR's own counter.
+
 ### 2026-09-23 — Go-live release workstream (S2), T1b: the owner decisions in the release runbooks and histories
 
 - Task: the same S2 session as the T1a entry, second half of brief item T1.
