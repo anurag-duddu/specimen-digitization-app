@@ -101,7 +101,10 @@ def test_reviewed_region_is_reported_as_a_substitute_not_a_pass():
     snap = snapshot(
         previous=[blocked], segmentation={}, stage="processing_blocked",
         blocker="external_outcome_unknown", disposition=None, reasons=[],
-        attempts={"parse": 1}, completed_steps=["classify", "segment", "adjudicate"],
+        attempts={"parse": 1}, completed_steps=[
+            "pin_dependencies", "classify", "quality_check", "segment",
+            "transcribe:r1:handwriting-qwen", "transcribe:r1:handwriting-muse", "adjudicate",
+        ],
     )
     result = lab_checks.check_stages(
         evidence(snap, actions=[{"action": "reviewed_region"}]), SOURCE, SUBJECT
