@@ -101,14 +101,24 @@ ELEVATION = re.compile(
     r"(?P<unit>ft\b\.?|feet\b|foot\b|['’′](?!\d)|m\b\.?|met(?:er|re)s?\b))?",
     re.I,
 )
-# Commas and semicolons separate parts. A comma after a digit and before exactly
-# three digits ("1,463") or a one- or two-digit decimal ("0,5", "1463,5") is
-# inside a number; any other comma between digits separates, as in a reader's
-# "6-Sept-1946,6400'".
-SEPARATOR = re.compile(r";|(?<!\d),|,(?!\d{1,3}(?!\d))")
+# Commas and semicolons separate parts. A comma is inside a number in a thousands
+# group led by one to three digits ("1,463", "1,463,200") or before a one- or
+# two-digit decimal ("0,5", "1463,5"); any other comma between digits separates:
+# after a four-digit year even before three digits ("6-Sept-1946,640'"), and
+# before four digits ("6-Sept-1946,6400'").
+SEPARATOR = re.compile(r";|(?<!\d),|,(?!\d{1,3}(?!\d))|(?<=\d{4}),(?=\d{3}(?!\d))")
+# A number is read only in a valid grouping: digits with at most one comma or dot
+# ("1,463", "0,125", "1463,5"), or thousands groups of three digits marked all by
+# commas or all by dots, with an optional decimal after the other mark
+# ("1,463,200", "1.463.200,5"). Any other grouping ("1,5,3", "12,34,567") is set
+# aside.
+VALID_NUMBER = re.compile(
+    r"\d+(?:[.,]\d+)?|\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{1,3}(?:\.\d{3})+(?:,\d+)?"
+)
 # A number beside another digit group across a space ("4 800 ft.") has an unsure
-# grouping, so it is set aside rather than cut short.
-GROUP_BEFORE = re.compile(r"(?<!\d)\d{1,3}\s+$")
+# grouping, so it is set aside rather than cut short; a two-digit year after an
+# apostrophe ("'46 850 m") is no such group.
+GROUP_BEFORE = re.compile(r"(?<![\d'‘’′])\d{1,3}\s+$")
 GROUP_AFTER = re.compile(r"\s+\d{3}(?!\d)")
 
 
@@ -247,8 +257,9 @@ def letters_apart(a: str, b: str, cap: int = 2) -> int:
 
 def is_full_name(name: str) -> bool:
     """True when every word is a notation in the table or a full word (no period
-    inside it, no period after four letters or fewer, no digit, and not three
-    capitals or fewer: "PH", "PHL", "RP"), and some word is not a notation."""
+    inside it, no period after four letters or fewer, no digit or other numeral,
+    and not three capitals or fewer: "PH", "PHL", "RP"), and some word is not a
+    notation."""
     words = [word.strip(",;:") for word in name.split()]
     names = [word for word in words if not _notation(word)]
     return bool(names) and all(_full_word(word) for word in names)
@@ -313,15 +324,16 @@ def variants(literals: Iterable[tuple[str, str]]) -> tuple[Variant, ...]:
 def _segments(text: str) -> Iterable[str]:
     """Lines joined where a word needs the next one (a feature notation, a unit
     written before its name, or a linking word) and where a line starts with a
-    linking word, then split into parts. Lines are kept as word lists, so the
-    joins stay linear in the text's length."""
+    lowercase linking word ("of Mt. Apo"; a capitalized one begins a name, "Del
+    Carmen"), then split into parts. Lines are kept as word lists, so the joins
+    stay linear in the text's length."""
     lines: list[list[str]] = []
     carry: list[str] = []
     for line in text.splitlines():
         words = line.split()
         if not words:
             continue
-        if not carry and lines and fold(words[0]) in LINKS:
+        if not carry and lines and words[0].islower() and fold(words[0]) in LINKS:
             carry = lines.pop()
         carry += words
         if fold(carry[-1]) in JOINERS:
@@ -339,10 +351,11 @@ def _segments(text: str) -> Iterable[str]:
 def _offset(segment: str) -> tuple[_Piece, list[Elevation]] | None:
     """An offset ("5 km NE of Yepocapa") and the elevation phrases after it. Its
     place follows the rules for any part: a place with a digit or without a
-    letter is kept aside with its offset."""
+    letter is kept aside with its offset. A malformed distance ("1,5,3 km") is no
+    offset, so the segment is kept aside whole."""
     match = OFFSET.match(segment)
     bearing = _bearing(match["head"]) if match else None
-    if match is None or bearing is None:
+    if match is None or bearing is None or not VALID_NUMBER.fullmatch(match["distance"]):
         return None
     rest, found = _elevations(match["rest"])
     rest = rest.strip(" ,;:")
@@ -364,16 +377,30 @@ def _placeable(text: str) -> bool:
 
 
 def _numeral(text: str) -> bool:
-    return any(unicodedata.category(c) in NUMERALS for c in text)
+    """A numeral of any script, as written or in its compatibility form: "½", "Ⅳ"
+    (whose form is the letters "IV"), or "㏠" (whose form is "1日")."""
+    forms = (text, unicodedata.normalize("NFKD", text))
+    return any(unicodedata.category(c) in NUMERALS for form in forms for c in form)
 
 
-def _space_grouped(segment: str, match: re.Match[str]) -> bool:
-    """Whether an elevation's number sits beside another digit group across a
-    space, as in "4 800 ft." or "Elev. 4 800 ft."."""
+def _unsure(segment: str, match: re.Match[str]) -> bool:
+    """Whether an elevation's number is unsure, so the phrase is set aside rather
+    than cut short: a malformed grouping ("1,5,3 m"), a number with a comma or
+    dot glued to a date's hyphen ("12-IV-1948,95 m"), or a number beside another
+    digit group across a space ("4 800 ft.", "Elev. 4 800 ft.")."""
+    numbers = (match["low"], match["high"]) if match["high"] else (match["low"],)
+    if not all(VALID_NUMBER.fullmatch(number) for number in numbers):
+        return True
+    start = match.start("low")
+    if start and segment[start - 1] in "-–" and re.search(r"[.,]", match["low"]):
+        return True
+    # Searched only in the few characters before the number, so a long segment
+    # stays linear: segments hold single spaces, so a digit group and its space
+    # take at most four characters.
+    before = GROUP_BEFORE.search(segment, max(0, start - 8), start)
     last = match.end("high") if match["high"] else match.end("low")
-    before = GROUP_BEFORE.search(segment[: match.start("low")])
     return bool(
-        (before and re.match(r"\d{3}(?!\d)", match["low"])) or GROUP_AFTER.match(segment[last:])
+        (before and re.match(r"\d{3}(?!\d)", match["low"])) or GROUP_AFTER.match(segment, last)
     )
 
 
@@ -383,7 +410,7 @@ def _elevations(segment: str) -> tuple[str, list[Elevation]]:
     rest: list[str] = []
     last = 0
     for match in ELEVATION.finditer(segment):
-        if not (match["prefix"] or match["unit"]) or _space_grouped(segment, match):
+        if not (match["prefix"] or match["unit"]) or _unsure(segment, match):
             continue
         unit = match["unit"]
         if unit:
@@ -419,7 +446,8 @@ def _piece(segment: str) -> _Piece:
 
 def _place(written: str, text: str) -> _Piece:
     """A place piece: the unit word, before or after the name, leaves the name. A
-    name left with no letter ("Depto. de ?") or only a linking word is set aside."""
+    name left with no letter ("Depto. de ?"), keying to nothing ("Prov. Dept.") or
+    only a linking word is set aside."""
     words = written.split()
     unit = None
     if len(words) > 1 and fold(words[0]) in UNIT_WORDS:
@@ -429,7 +457,7 @@ def _place(written: str, text: str) -> _Piece:
     elif len(words) > 1 and fold(words[-1]) in UNIT_WORDS:
         unit, words = UNIT_WORDS[fold(words[-1])], words[:-1]
     name = " ".join(words).strip(" ,;:")
-    if not any(c.isalpha() for c in name) or all(fold(word) in LINKS for word in name.split()):
+    if not comparison_key(name) or all(fold(word) in LINKS for word in name.split()):
         return _Piece("unplaced", text)
     if name.endswith(".") and not _abbreviated(name.split()[-1]):
         name = name[:-1]
