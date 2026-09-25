@@ -160,3 +160,106 @@ literal. A region the run holds a first-pass decision for is recorded as
 `first_pass`, with the pick and call that decision records, and a pick G19
 allows. The legacy extraction call receives a resolved transcript with its text
 as its only alternative, and without its handoffs, differences or call.
+
+## 5. The Hugging Face routes for the first pass and the harness (T1)
+
+G7 runs the first pass and the harness on Hugging Face models through the
+existing gateway. Two routes are registered. S4 recommended them in its T1
+report to the coordinator at 22:48Z on 2026-09-23, and the coordinator approved
+them on that report's figures (its message to S4 at 22:52:14Z;
+coordinator.md:58). The first-pass table below recomputes those figures from the
+same saved calls (2026-09-25): its seconds are medians, where the report's were
+mostly means, and it adds MiniMax-M3's second run, which finished after the
+report. Neither pick changes.
+
+| Route | Model | Provider | Input | Use |
+|---|---|---|---|---|
+| `first-pass-glm` | `zai-org/GLM-5.3-Flash` | `deepinfra` | text, image | the first pass (sections 3 and 4) |
+| `harness-deepseek` | `deepseek-ai/DeepSeek-V4.1-Flash` | `deepinfra` | text | the harness; provisional until the acceptance lab re-measures it with the real harness and G29's prompt |
+
+Both use DeepInfra, which the `handwriting-muse` reader already uses, so no
+new provider enters the data-policy review; neither shares a model family
+with a reader.
+They are a separate stage route set: the reader routes stay the gateway's
+initial set, which the pilot launch, its stage list and the release check
+compare a profile's readers against; the gateway resolves either set.
+
+**Pinned by model id and provider**, as the readers are. The approval message
+said "Pin both routes (provider and model revision) as the readers are pinned";
+the coordinator's ruling at 19:21Z on 2026-09-25 (option (a),
+coordinator.md:456) corrected "provider and model revision" to "model id and
+provider", on S4's finding that Hugging Face routed inference exposes no model
+revision. The router's `/v1/models` entries in S4's T1 catalog snapshots
+(2026-09-23) give each model's id, owner, creation time and architecture and,
+for each provider, its status, pricing, context length, latency, throughput and
+tool and structured-output support, but no revision. A chat-completions
+response, as `huggingface_hub` 1.18.0 parses it, has `id`, `created`, `model`,
+`system_fingerprint`, `choices` and `usage`, and no revision either. Each reader
+and first-pass call keeps its provider responses, and in them the response's
+`model` (Pydantic AI's `model_name`), so a version string a provider puts there
+is on the record without a new field. Pydantic AI 2.40 does not keep
+`system_fingerprint`, and no field is added for it (the coordinator's ruling at
+19:29Z, coordinator.md:458). The preflight checks each route is live with the
+capabilities it needs.
+
+**Each route in its role** (the steward's review of #107). A reader is pinned
+from the initial reader set only, as on main, so a profile that names the
+first-pass or the harness route as a reader fails the pin step. A reader call
+blocks as `pinned_model_route_unavailable` unless its route is a
+`handwriting_transcriber` with image input; `transcribe_label_image`, which has
+no caller, raises `ModelGatewayConfigurationError` on any other route. The
+first-pass route is pinned only when it is registered as
+`transcription_first_pass` with image input, and the first-pass call checks the
+same before its request: any other route, the harness's text-only one or a
+reader's included, blocks the step as `pinned_model_route_unavailable`.
+
+**The paid smoke test** (`specimen-huggingface-preflight --live-route`) runs one
+synthetic prompt under a reading's caps: 4,096 output tokens a response, two
+requests (the answer and one output retry), and a stop once the run passes
+16,000 tokens in all (Pydantic AI checks the total after each response). A route
+that takes images needs the `--image` fixture and is sent it; a text-only route
+is sent a synthetic sentence, never an image, and refuses `--image`.
+
+**How they were chosen.** The ten pilot slides, cropped by hand to their left
+label, were read by both readers (19 of 20 readings; 9 labels disagree). Each
+candidate ran the first pass as section 3 specifies (the managed prompt
+unchanged, readers shown as A and B with the order alternating). Its verdicts
+were scored against S4's full-resolution reading of the crops: 11 material
+disagreements, 1 ambiguous span, 2 fluent traps (the label's "Chimaltenago",
+which one reader corrected to "Chimaltenango") and 7 capitalization-only
+differences. Candidates were ranked by the fewest confidently wrong verdicts
+(S4's criterion, which the coordinator agreed), then by the coordinator's
+tie-breaks (its message to S4 at 21:45:54Z on 2026-09-23): the fewest failed
+traps, then the most correct. The table follows that order on each candidate's
+first run. GLM, MiniMax and DeepSeek ran a second time, with the reader order
+flipped. Median seconds are over a candidate's valid calls, leaving out calls
+that waited on retries after an HTTP 402 (payment required), nine in the table,
+seven of them in DeepSeek's first run; USD per call is the mean over its valid
+calls.
+
+| First-pass candidate (DeepInfra) | Valid answers | Confidently wrong | Traps failed | Correct | Abstained | Median seconds | USD per call |
+|---|---|---|---|---|---|---|---|
+| GLM-5.3-Flash | 16 of 16 | 2 and 2 | 0 and 0 | 6 and 6 | 3 and 3 | 11 | 0.00029 |
+| Qwen3.5-397B-A17B | 6 of 8 (2 timed out at the router's 120 s) | 2 | 0 of 1 | 5 | 1 | 22 | 0.0057 |
+| MiniMax-M3 | 16 of 16 | 3 and 6 | 0 and 2 | 4 and 4 | 4 and 1 | 25 | 0.0018 |
+| DeepSeek-V4.1-Flash | 16 of 16 | 3 and 4 | 2 and 1 | 6 and 5 | 2 and 2 | 4 | 0.00040 |
+| Qwen3-VL-235B-A22B | 8 of 8 | 6 | 1 | 3 | 2 | 8 | 0.00035 |
+
+Gemma-4-31B produced valid output once in eight calls; Kimi-K2.6 and Inkling
+timed out at the router's 120 s limit on every call, which production would
+record as an unknown outcome. GLM's two confident errors ("la" for "1a" and
+"a" for "2") are in slide-preparation codes, not in fields.
+
+The harness candidates, each served by DeepInfra, ran four real scenarios with
+typed tools (live GBIF, a geography tool answering `authentication_error`, a
+date parser and a catalog validator), one of them the decided taxon "Epipocous"
+with "Epipsocus" as the raw fallback. DeepSeek-V4.1-Flash completed all four,
+got all 9 key field literals right, never looped, and took 16 s and USD 0.0017
+per run; its misses (three literals joined across label lines, one slide code
+taken as a date) are the kinds the harness's deterministic checks turn into
+unresolved fields (HAR-019). GLM-5.3-Flash took slide codes as dates three
+times; Qwen3-VL-235B was slowest (71 s) and looped once; DeepSeek-V4-Flash-0731
+looped to the request limit once; Gemma-4-31B failed every run.
+
+The measurement spent USD 0.106 of the program's USD 25 (G9): readers 0.016,
+first pass 0.068, harness probe 0.021.

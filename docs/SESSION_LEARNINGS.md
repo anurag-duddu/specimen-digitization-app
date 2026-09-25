@@ -11836,6 +11836,46 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: `adjudicate` rebuilds every region's transcript each time it runs, so a per-region model step needs its own place on the run (`first_pass_decisions`) until `adjudicate` copies it; putting the call's record in `run.observations` would have counted it as a third independent reading in the policy's route check.
 - Remaining follow-ups: S3 carries `first_pass_route` through `classify_and_select` and adds the `first_pass` reservation (the pilot launch's stage set lacks it); S5's writer for the new fields; `decision_kind="human"` for a reviewer's transcription decision (S5); field-level G19, G20 and G27 in T3 and T4.
 
+### 2026-09-23 — Go-live S4: the first-pass and harness routes (T1)
+
+- Task: go-live S4, topic T1: choose provider-pinned Hugging Face routes for the first pass (vision) and the harness (tool calling), measure them on real crops, report to the coordinator, register them (G7).
+- Branch/worktree: `golive/harness-hf-routes`, stacked on `golive/harness-first-pass-wiring` until #98 merged, in `.claude/worktrees/cool-haslett-aa79b5`. Pull request #107. Commits:
+  - aa69eae9: failing tests.
+  - 020ba4f3: the routes.
+  - 80485ead: this entry.
+  - 74967ddb: a merge of #98's branch while this one was stacked on it.
+  - b0c3061b: the merge of main f10eb19 at its turn.
+  - 260c7ed5: this entry's references.
+  - 308bb7e2: moves #98's first-pass pin test, which patched `INITIAL_HUGGINGFACE_ROUTES` in `production`, to the stage route set.
+  - 697e065a: the merge of main dfd1ad8 (#217).
+  - ff9879c9: round 2's failing tests and spec.
+  - 52f22027: round 2's fix.
+  - a4b1c890: round 2's entry, and the commit that fills in its gate line.
+  - 8a6f7dff: round 3's tests (one of them failing) and spec.
+  - 423b3c5c: round 3's fix.
+  - Round 3's entry, and its gate line.
+- Outcome: `first-pass-glm` (`zai-org/GLM-5.3-Flash`) and `harness-deepseek` (`deepseek-ai/DeepSeek-V4.1-Flash`, provisional) on DeepInfra, approved by the coordinator; the method, the tables and the USD 0.106 spend are in `docs/execution/golive/HARNESS.md` section 5. They are a separate `STAGE_HUGGINGFACE_ROUTES` set; the gateway resolves the union `HUGGINGFACE_ROUTES`.
+- Validation actually run:
+  - Round 1: the two new gateway tests failed before registration; after it, the gateway, preflight, first-pass, worker-launch and model-runtime suites pass (67), `uv run pytest scripts/ -q` 1547 passed; the live preflight (`specimen-huggingface-preflight --live-route <route>`) reported all four routes ready in the router catalog and structured output valid on both new routes.
+  - At its turn, one at a time on 308bb7e2: `pre-commit run --all-files` passed; `pytest tests` 1561 passed, 31 skipped; `pytest scripts` 1595 passed, 50 skipped; `check_ui_strings` 0 violations. The full suite on b0c3061b and 260c7ed5 had failed #98's pin test, which 308bb7e2 fixes.
+  - On the merge head 697e065a, which changes nothing under `src/` or `tests/`: pre-commit on #217's files passed; `pytest scripts` 1597 passed, 50 skipped; 0 violations.
+  - Round 3, one at a time on 021264b8, the round-3 tree before this line was filled in: `pre-commit run --all-files` passed; `pytest tests` 1577 passed, 31 skipped; `pytest scripts` 1597 passed, 50 skipped; `check_ui_strings` 0 violations.
+  - Round 2, one at a time on a4b1c890, the round-2 tree before this line was filled in: `pre-commit run --all-files` passed; `pytest tests` 1575 passed, 31 skipped; `pytest scripts` 1597 passed, 50 skipped; `check_ui_strings` 0 violations.
+- Durable learnings: (1) `INITIAL_HUGGINGFACE_ROUTES` is read as "the readers" by the pilot launch (`worker_launch.py`, its transcribe stages), `evidence_pilot.py` and the release activation check (`scripts/ci/deploy_runtime.py` 385); adding any other route to it failed 17 release-plane tests, so new capabilities get their own route set. (2) Reasoning models on DeepInfra (Kimi-K2.6, Qwen3.5-397B, Inkling) hit the router's 120-second gateway timeout, which production would record as an unknown outcome. (3) The logged latency of a measurement must time only the successful attempt: HTTP 402 backoff put DeepSeek's first-run median at 64 s, against 4 s over its calls without a 402 retry. (4) The router's `/v1/models` catalog is public and lists per-provider prices, tool and structured-output support. (5) A route registered in the combined set can be looked up by id from any role, so the reader and first-pass calls now check the route's `logical_capability` and input, as the collection classifier already did (`hf_collection_classifier.py` 217-218). (6) A table built from several runs needs one statistic for each column: section 5's "Median seconds" mixed means with medians, and one figure no saved call reproduced, until round 2 recomputed the column from the saved calls. (7) A credit narrowed from a transcript search is only as good as the search: the coordinator's message of 21:45:54Z on 2026-09-23 is stored as a queued-message attachment, which S4's grep helper did not read, so round 2 credited S4 with the coordinator's tie-breaks. Find the source message before narrowing or moving a credit.
+- Round 2 (the steward's review, comment 5838228590):
+  - The blocker: the routing doc credits the approval to the coordinator (coordinator.md:58); G7 requires only that the first pass and the harness run on a Hugging Face model through the existing gateway and token.
+  - Each route in its role. Readers are pinned from the initial reader set, as on main (`test_a_stage_route_named_as_a_reader_is_not_pinned`). A reader call and the first-pass call block as `pinned_model_route_unavailable` outside their role (`test_a_reader_call_refuses_a_route_that_is_not_an_image_reader`, and the harness and reader cases of `test_each_block_stops_the_first_pass_before_any_request`). A first-pass route is pinned only as a `transcription_first_pass` route with image input (`test_pin_dependencies_pins_only_a_first_pass_route_that_takes_the_crop`, now with `harness-deepseek`).
+  - The paid smoke test runs under a reading's caps and sends an image only to a route that takes one (four new tests in `tests/test_huggingface_preflight.py`).
+  - The pin is model id and provider: the coordinator's ruling at 19:21Z (coordinator.md:456) corrects its approval message of 22:52:14Z on 2026-09-23. HARNESS.md section 5 records S4's finding that routed inference exposes no revision, and that Pydantic AI keeps a response's `model` but not its `system_fingerprint`; no field is added for it (the coordinator's ruling at 19:29Z).
+  - HARNESS.md section 5's table gains MiniMax's second run and follows the stated ranking; its seconds and costs are recomputed from the saved calls. The provisional condition names G29's prompt; the reference reading is S4's, and the tie-breaks are the coordinator's (21:45:54Z on 2026-09-23); the harness candidates ran on DeepInfra.
+  - A mutation probe undid each new check in turn, and a test failed for each.
+- Round 3 (the steward's review, comment 5839097352):
+  - The blocker: HARNESS.md section 5 and the round-2 line above said the tie-breaks were S4's. S4's message of 21:45Z on 2026-09-23 proposed only the criterion; the coordinator's reply at 21:45:54Z set the tie-breaks. Both lines now credit the coordinator, in the steward's wording, and the round-2 line was fixed in place.
+  - HARNESS.md section 5 and `model_gateway.py` say the coordinator approved on the figures of S4's T1 report (22:48Z on 2026-09-23). The first-pass table recomputes them from the same calls, with medians where the report's seconds were mostly means and with MiniMax-M3's second run, which finished after the report; neither pick changes.
+  - The smoke test's request limit is pinned (`test_live_smoke_is_capped_like_a_reading`); setting it to 50 or None fails the test. Section 5 says the run stops once past 16,000 tokens, since Pydantic AI checks the total after each response.
+  - `transcribe_label_image`, which has no caller, raises `ModelGatewayConfigurationError` on a route that is not an image reader (`test_a_label_transcription_refuses_a_route_that_is_not_an_image_reader`).
+- Remaining follow-ups: S3 puts the two route ids in the Insects slide profile; the profile pull request that first names them lands after #132, #135 and #149 (security's routing in round 1: #135 supplies the price list, #149 the first-pass output cap); the acceptance lab re-measures the harness route with the real harness (T3) and with the G29 notations in its prompt.
+
 ### 2026-09-25 — Go-live S4: #98's review fixes before it makes the first pass live
 
 - Task: the steward's review of #97 (12:29Z) named four fixes #98 must carry before its turn: G19 in the request, the crop's digest, the cap-hit split, and the call kept out of the readings. The steward then pulled in input binding and a null-pick test. The coordinator gave its reading of "material" and G19 at 12:31Z.
