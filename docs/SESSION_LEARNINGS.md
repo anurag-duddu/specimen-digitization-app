@@ -11887,6 +11887,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - whitespace-split numbers;
   - route ids on spans.
   - At #159's turn, its "coordinator's G30 reading" citation goes to G19 as well.
+- Correction to #216's entry (SL:12642), appended here at the steward's ruling (comment 5835821246): "S3's lane branches take the three production.py lines cleanly; 15 of the 19 lane heads have other conflicts (SECRET_SCAN_REVIEW.md, and workflow.py for five) that also occur against main. The lane check was round 2's correctness review (comment 5834843588), not the integration review. At SL:12634 the planned-task test backs 'that step sends nothing'; that earlier steps such as parties still run was shown by the correctness review's old-order probe (comment 5835391741)."
 
 ### 2026-09-23 — Go-live release workstream (S2), T1b: the owner decisions in the release runbooks and histories
 
