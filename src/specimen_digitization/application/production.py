@@ -43,6 +43,8 @@ actor_uid = contextvars.ContextVar("verified_actor_uid", default=None)
 LOGGER = logging.getLogger(__name__)
 # Specimens whose written projection rows this process remembers (DATA_CONTRACT.md 11).
 PROJECTED_SPECIMENS = 256
+# Roles whose saves also write review decisions; AppendReviewDecisionV1 admits no other.
+REVIEW_ROLES = {"reviewer", "manager", "admin"}
 
 
 class ProjectionRejected(RuntimeError):
@@ -427,7 +429,7 @@ class SqlConnectRepository:
             )["specimenSnapshot"]
             committed = self._snapshot(row)
             # A replayed save still catches up rows a lost pass did not write.
-            self.write_projection(principal.scope, committed)
+            self.write_projection(principal.scope, committed, principal.role in REVIEW_ROLES)
             return committed
         specimen = specimen.model_copy(deep=True)
         specimen.version = expected + 1
@@ -476,10 +478,10 @@ class SqlConnectRepository:
             variables,
             mutation=True,
         )
-        self.write_projection(principal.scope, specimen)
+        self.write_projection(principal.scope, specimen, principal.role in REVIEW_ROLES)
         return specimen
 
-    def write_projection(self, scope, specimen) -> ProjectionResult:
+    def write_projection(self, scope, specimen, reviewer=False) -> ProjectionResult:
         """Write the normalized rows this revision supports (DATA_CONTRACT.md 11).
 
         Never raises: the snapshot is already committed, and the next save resumes
@@ -494,7 +496,9 @@ class SqlConnectRepository:
                 self._projected.popitem(last=False)
             pending = [
                 w
-                for w in writes(specimen, self.locate, self._sized, base["actorUid"])
+                for w in writes(
+                    specimen, self.locate, self._sized, base["actorUid"], reviewer
+                )
                 if w.key not in written
             ]
         except Exception as error:
