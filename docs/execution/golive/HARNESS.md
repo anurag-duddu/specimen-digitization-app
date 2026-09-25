@@ -27,3 +27,49 @@ the provider's circuit, and accepts retry and reprocess. It is never
 `external_outcome_unknown`, which retry and reprocess refuse. The exception's
 class name is logged to the trace; its message is not, because it may carry
 provider headers or label text.
+
+## 3. The LLM first-pass call (stage 6)
+
+The owner's rule (PLAN 2.1): "LLM does first pass at which final RAW transcript
+should run against (it should also give at a VLM level what was returned to the
+harness)". G7 runs it on a Hugging Face model; G19 and G20 decide what follows.
+This section is the call; section 4 schedules it and records its decision.
+
+**Input.** The crop the readers saw, each reading's raw transcript verbatim, and
+the numbered differences between the readings from a deterministic token
+alignment; a difference in whitespace alone is not listed. Readers appear as
+Reader A, B, … in the profile's route order, never by model or route name.
+Instructions are the pinned managed prompt
+`transcription-disagreement-adjudication`, unchanged: its "route material
+ambiguity to human review" is expressed by returning no reading and recording
+the unresolved differences, and G19 then decides the route.
+
+**Model and budget.** The profile's `first_pass_route`, pinned in
+`run.dependencies` like the reader routes, provider pinned (no automatic
+routing); a route that is not registered is not pinned, so the call blocks. A
+call is budgeted like a reading: two requests (the answer and one output
+retry), 16000 tokens, and the stage cost reservation `first_pass`, one key for
+every region. Its circuit is the first-pass route's provider.
+
+**Output**, validated before it is used: the selected reader or none; for every
+numbered difference exactly one verdict (a reader, `neither`, or `uncertain`)
+and whether it is material (more than capitalization); a rationale; one note per
+reader. The first pass never writes text: the decided transcript is the selected
+reading's literal text, verbatim. No merging, no rewriting. The call's own
+provenance is an `Observation` (route, model, provider, prompt version, digest
+of the crop and request, raw responses, tokens, latency, finish state) whose
+`literal_text` is empty.
+
+**Failures** (G6, QUE-005, PRD section 15). A rate limit or another provider
+error, HTTP 402 included, is retried with backoff through the workflow's
+existing retry, then blocks as operational; an authentication or authorization
+error blocks at once. A timeout or a server error may follow an accepted,
+billable call, so, as for the readers, it is `external_outcome_unknown` and
+waits for the operator. A response that still fails validation after Pydantic
+AI's one output retry is `model_malformed_response`, a known operational block
+that accepts retry; this applies to the readers' calls too. A missing pinned
+route or prompt blocks as `pinned_model_route_unavailable` or
+`pinned_prompt_unavailable`. None of these produces a queue disposition.
+
+**Tracing.** The agent carries no instrumentation override; it inherits the
+lane's global setting (content on, binary off in approved-content mode, S3 T5).

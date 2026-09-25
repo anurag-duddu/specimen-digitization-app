@@ -57,7 +57,11 @@ def has_active_lease(run, current: datetime | None = None) -> bool:
 
 def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
     import asyncio
-    from pydantic_ai.exceptions import ModelHTTPError, UsageLimitExceeded
+    from pydantic_ai.exceptions import (
+        ModelHTTPError,
+        UnexpectedModelBehavior,
+        UsageLimitExceeded,
+    )
 
     # UsageLimits checks returned token usage; it does not tell the provider to
     # stop generation. Bound each initial/retry response at request time too.
@@ -107,4 +111,9 @@ def run_agent_bounded(agent, prompt, *, timeout_seconds: float, usage_limits):
         # A workflow retry must never turn an ambiguous 5xx into duplicate spend.
         raise AdapterFailure(
             "model_" + status.value, status, outcome_unknown=exc.status_code >= 500
+        ) from exc
+    except UnexpectedModelBehavior as exc:
+        # The provider answered, but its output stayed invalid after the retry.
+        raise AdapterFailure(
+            "model_malformed_response", LookupStatus.MALFORMED, outcome_unknown=False
         ) from exc

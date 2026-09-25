@@ -108,10 +108,12 @@ def circuit_for(workflow, principal, run, step):
         config = run.dependencies.get("authority_pins", {}).get(
             tool, {"unconfigured": tool}
         )
-    elif step.startswith("transcribe:") or step == "parse":
+    elif step.startswith(("transcribe:", "first_pass:")) or step == "parse":
         route = (
             step.split(":")[-1]
             if step.startswith("transcribe:")
+            else run.profile.first_pass_route
+            if step.startswith("first_pass:")
             else run.profile.routes[0]
         )
         selected = run.dependencies.get("routes", {}).get(route, {})
