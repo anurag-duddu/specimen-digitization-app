@@ -25,6 +25,7 @@ from specimen_digitization.application.thread import (
     TRACE_URL_SETTING,
     ThreadTooLarge,
     assemble,
+    evidence_places,
     keys,
     trace_url_template,
 )
@@ -349,6 +350,25 @@ def test_a_google_call_keeps_place_ids_and_a_no_match_is_a_call_too():
         "completed_at": "2026-09-23T12:05:00.000000Z",
     }
     assert (no_match["outcome"], no_match["evidence_id"], no_match["field_keys"]) == ("no_match", nowhere.id, ["county"])
+
+
+def test_each_evidence_item_is_placed_by_the_call_that_made_it():
+    s = synthetic_run()
+    left, right = s.run.regions
+    right_qwen, right_muse = s.run.observations[2:]
+    place, _, gbif, _, place_right = s.run.lookups
+    by_qwen, by_muse = s.run.evidence[:2]
+    places = evidence_places(s.run)
+    # G32 looks the city up once per label: each lookup is placed by its own call (S6's #189),
+    # the decided transcript's by its decision's region, a raw reading's with that reading.
+    assert places[place.id] == (left.id, [])
+    assert places[place_right.id] == (right.id, [right_qwen.id])
+    assert places[place.id][0] != places[place_right.id][0]
+    assert places[gbif.id] == (right.id, [right_qwen.id])
+    # Stored evidence keeps its own region and readings.
+    assert (places[by_qwen.id], places[by_muse.id]) == ((right.id, [right_qwen.id]), (right.id, [right_muse.id]))
+    # Evidence no call made and the snapshot does not hold, the coverage check's, has no place.
+    assert derived_id("coverage", s.run.id, "e" * 64) not in places
 
 
 def test_every_other_outcome_stays_in_tool_calls_with_its_error_and_retry():
