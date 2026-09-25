@@ -11858,13 +11858,50 @@ because the hooks runner hands a native asset hook only `PATH`.
 
 ### 2026-09-23 — Go-live acceptance lab (S7), T1: the lab runner and specimen 1's first real run
 
-- Task: Claude Code session "Run the acceptance lab one specimen at a time" (S7 of the go-live program, `docs/execution/golive/PLAN.md` section 8), worktree `.claude/worktrees/serene-margulis-7d6bd8`.
-- Branch/worktree: first opened as #81 from `golive/lab-runner` (`709ae3c` base); at the PR steward's request split into three stacked pull requests from `origin/main` `7e3afb8`: `golive/lab-checks` (spec delta and stage checks), `golive/lab-runner-core` (the runner's core) and `golive/lab-lane` (the lane, the command line and this closeout), each red before green. #81 was closed in their favour.
-- Outcome: `scripts/lab/run_specimen.py` fetches `microscopic-slides/<subject>.jpeg` with application default credentials, drives `create_app(adapters=...)` through its upload routes (`scripts/lab/lab_lane.py`, SQLite or a fresh SQL Connect emulator per run), scores each PLAN 4.1 stage from what the app recorded (`scripts/lab/lab_checks.py`), prices tokens from `LIVE_PILOT_COST.md`, redacts token values and shapes from every text it writes, and writes `~/specimen-golive/runs/<subject>/<timestamp>/` plus `~/specimen-golive/reports/<subject>.md`. First real run of `subject_105526321` (`20260923T211535Z`, real readers, reviewed-region substitute): stages 1, 3, 5 and 9 passed; 2 substituted; 4, 6, 7 and the app trace not built; 8 blocked at `parse` with `external_outcome_unknown`. Filed #79 (lane: synthetic-mode uploads get the synthetic profile, whose integrity rule expects the image hash while real readers record the crop hash) and #80 (harness: a deterministic error inside an external step is recorded as an unknown outcome, not retryable and with no class recorded). Cost: USD 0.0022 for the run, at most USD 0.0025 for the diagnostic replays; the lab's share of G9 is USD 5.00.
-- Validation actually run: `uv run pytest scripts/lab -q` 21 passed, 1 skipped; the emulator test with `SPECIMEN_TEST_SQL_EMULATOR=true` passed; `uv run pytest scripts/ -q` 1568 passed, 51 skipped; commit hooks passed on every commit; `pre-commit run --all-files` passed; a dry run and a real run of `subject_105526321`.
-- Durable learnings: (1) `sam3_server.py` cannot start outside Cloud Run and needs a Google ID token, a bucket and a ten-item manifest; it also refuses to start with `HF_TOKEN` set and loads an offline, digest-pinned checkpoint (revision `3c879f39` is cached in the lab Mac's Hugging Face cache). S3 folds a lab mode into its T3. (2) With `SPECIMEN_SAM3_ENDPOINT` unset, `ProductionAdapters.segment` blocks cleanly with `sam3_serving_contract_not_configured_use_reviewed_regions`, and the reviewer route accepts regions; an `http://` endpoint instead becomes a leased `external_outcome_unknown` that retry refuses. (3) Replaying a failed step's pieces from `snapshot.json` (the model child in-process; `execute_phase` without model calls) recovers the exception class that the workflow's generic handler hides. (4) On slides 324 to 328 the locality is on a right-hand label; the barcode's printed catalog number sits just outside the handwritten label (about 0.31 to 0.36 of the width on 321), so the lab's boxes include it; Muse read `FMNHINS 4486784` from it and Qwen did not. (5) PostgreSQL caps its Unix socket path at 103 bytes, so `serve-local.sh` fails under a deep `TMPDIR`. (6) Logfire 5.0.0 finds its credentials through `LOGFIRE_CREDENTIALS_DIR`; without them, `send_to_logfire=True` prompts interactively. (7) Upload completion needs the revision returned by the last content chunk, not the item's.
-- Failed approaches: pointing the emulator's `TMPDIR` at the run directory (socket path too long); calling `Workflow.parse` as an instance method (it is static).
-- Remaining follow-ups: rerun specimen 1 after #79 and #80 merge; move the lane to `mode="emulator"` after S3's T1a and T4; replace the substitute with SAM 3 after S3's T3 and report the lane's coverage check against the lab's label boxes per subject (G15); fill the stage 4, 6, 7 and trace checks as S5's and S4's contracts merge.
+- Task: Claude Code session "Run the acceptance lab one specimen at a time" (S7 of the go-live program, `docs/execution/golive/PLAN.md` section 8), worktree `.claude/worktrees/serene-margulis-7d6bd8`, 2026-09-23 to 2026-09-25.
+- Branch/worktree: first opened as #81 from `golive/lab-runner`. At the PR steward's request it was split into three stacked pull requests, each red before green:
+  - #82 `golive/lab-checks`: the spec delta and stage checks;
+  - #83 `golive/lab-runner-core`: the runner's core;
+  - #84 `golive/lab-lane`: the lane, the command line and this closeout.
+
+  Later changes were merged forward through the stack, never rebased. #81 was closed.
+- Outcome: `scripts/lab/run_specimen.py` runs one specimen through the lane on this workstation and writes `~/specimen-golive/runs/<subject>/<timestamp>/` plus `~/specimen-golive/reports/<subject>.md`.
+  - It fetches the original with application default credentials.
+  - It drives `create_app(adapters=...)` through the upload routes (`scripts/lab/lab_lane.py`: SQLite or a fresh SQL Connect emulator per run).
+  - It scores each PLAN 4.1 stage from what the app recorded (`scripts/lab/lab_checks.py`).
+  - Cost: it prices tokens and keeps the lab's own tally against its USD 5.00 share (G9, G30). Every paid attempt without settled usage is held at the full per-call bound until production's ledger lands.
+  - It redacts token values, token shapes and instance addresses from every text it writes.
+  - Only the ten pilot slides are declared not sensitive (G31).
+- Runs of `subject_105526321`:
+  - `20260923T211535Z`: stages 1, 3, 5 and 9 passed; 2 substituted; 4, 6, 7 and the app trace not built; 8 blocked at `parse` with `external_outcome_unknown`. Filed #79 (lane: synthetic-mode uploads get the synthetic profile) and #80 (harness: a deterministic error recorded as an unknown outcome).
+  - `20260925T094409Z`, on main with #86: #80's fix verified (`evidence_integrity_failure`, lease released, retry and reprocess offered).
+  - Lab spend USD 0.027.
+- Expectations: `LAB.md` records the expected outcome for the ten (G42 and the owner's G35 to G45): review for all ten, with the right reasons. The owner's words and the coordinator's readings are kept apart. Per-slide tables are outside the repository (`field-coverage.md`, `expected-outcomes.md`).
+- Validation actually run:
+  - `uv run pytest scripts/lab -q`: 29 passed, 1 skipped on #84;
+  - the emulator-gated test passed with `SPECIMEN_TEST_SQL_EMULATOR=true`;
+  - `uv run pytest scripts/ -q`: 1560 passed, 50 skipped on #82's head;
+  - `pre-commit run --all-files` passed;
+  - two real runs and one dry run of `subject_105526321`.
+- Durable learnings:
+  1. **SAM 3 locally.** `sam3_server.py` cannot start outside Cloud Run, and it refuses `HF_TOKEN`. The pinned checkpoint `3c879f39` is cached in the lab Mac's Hugging Face cache. With `SPECIMEN_SAM3_ENDPOINT` unset, `segment` blocks cleanly with `sam3_serving_contract_not_configured_use_reviewed_regions`.
+  2. **Replay a failed step.** Replaying its pieces from `snapshot.json` recovers the exception class that a generic handler hides.
+  3. **Label layout.** On slides 324 to 328 the locality is on a right-hand label. The barcode's printed catalog number sits just outside the handwritten label.
+  4. **PostgreSQL socket paths.** They are capped at 103 bytes, so the emulator needs a short `TMPDIR`.
+  5. **Logfire credentials.** Logfire 5.0.0 finds them through `LOGFIRE_CREDENTIALS_DIR`.
+  6. **Upload completion.** It needs the revision returned by the last content chunk.
+  7. **Mergeability and union merges.** GitHub's mergeability ignores `merge=union`: merge main locally.
+  8. **Stacked squash-merged PRs.** A file edited low in the stack must be merged forward, or the children hit add/add conflicts.
+  9. **Unsettled usage after #86.** A paid call that returns and then fails has no settled usage, so holding only unknown outcomes undercounts.
+  10. **Units.** A unit is never guessed: both readers dropped 322's foot mark.
+  11. **Owner's words.** An owner decision is cited in the owner's words, with the coordinator's reading labelled as such.
+- Failed approaches: pointing the emulator's `TMPDIR` at the run directory (the socket path was too long); calling `Workflow.parse` as an instance method (it is static).
+- Remaining follow-ups:
+  - rerun specimen 1 in emulator mode once S3's #85, #89 and #93 merge (that fixes #79), with the local T3a commits and the DoD-4 SQL parity check;
+  - SAM 3 lab mode and the G15 calibration (S3 T3);
+  - switch the DoD-4 check to `projection.writes` (S5 #146), and save `thread.json` (S5 #171);
+  - check trace contents once a Logfire read token exists;
+  - T4a's private pilot reference after the production import.
 ### 2026-09-23 — S8 retrospective georeferencing research: the plan, the pilot localities, a read-only probe
 
 - Task: Claude Code session S8, "Research retrospective georeferencing for the harness", in the go-live program (owner decision G12, brief `docs/execution/golive/briefs/S8-georeferencing-research.md`). Ten Sonnet research subagents (Wikidata; GeoNames and NGA GNS; Getty TGN, WHG and PSGC; GEOLocate and the point-radius method; GBIF, iDigBio and Bionomia; Google Maps Platform and Mapbox terms; Darwin Core and ABCD/EFG; the pilot toponyms' history; Geology and Anthropology sources; elevation models and OpenStreetMap), one Explore survey of the repository and one Opus synthesis subagent.
