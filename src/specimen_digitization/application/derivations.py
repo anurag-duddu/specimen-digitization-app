@@ -24,7 +24,7 @@ from decimal import ROUND_HALF_EVEN, Decimal
 
 from .domain import Evidence, FieldValue, Proposal, ValueState
 from .harness_tools import Check, Derivation, LocalityLiteral, SourceRef
-from .place_text import PLACE_FIELDS
+from .place_text import PLACE_FIELDS, fold
 
 RULES_VERSION = "derivation-rules-v1"
 METRES_PER_FOOT = Decimal("0.3048")  # Exact, by the 1959 definition.
@@ -276,12 +276,14 @@ def rest_place_inputs(
 ) -> RestPlaceInputs:
     """PLAN 4.8's filter inputs derive_rest's place call takes from the run and
     the reviewer's values (#208's security review; the coordinator's rulings
-    of 06:36Z and 07:33Z on 2026-09-25). Each place value in `filled` is the
-    reviewer's, anchored on the harness's value for that field in the run under
-    review, so what the reviewer kept is cut; every value the harness gave a
-    non-place field, kept or replaced, joins the reviewer's own non-place
-    values, which alone cut the reviewer's own text. The call adds the
-    readings' texts and non-place literals."""
+    of 06:36Z, 07:33Z and 08:01Z on 2026-09-25). Each place value in `filled`
+    is the reviewer's, anchored on every text the run holds for that field, so
+    what the reviewer kept is cut. Every value the harness gave a non-place
+    field, kept or replaced, joins the reviewer's non-place values; of those,
+    only what the reviewer entered or changed, equal to no text the run holds
+    for that field once folded, is the reviewer's own and alone cuts the
+    reviewer's own text. The call adds the readings' texts and non-place
+    literals."""
     literals = [
         LocalityLiteral(
             field_key=key,
@@ -289,12 +291,17 @@ def rest_place_inputs(
             source_observation_id="review_decision",
             source_region_id=f"decision/{decision_id}",
             reviewer=True,
-            anchor=(run.fields[key].literal or None) if key in run.fields else None,
+            anchors=_held(run.fields.get(key)),
         )
         for key, value in filled.items()
         if key in PLACE_FIELDS
     ]
-    own = [value for key, value in filled.items() if key not in PLACE_FIELDS]
+    others = {key: value for key, value in filled.items() if key not in PLACE_FIELDS}
+    own = [
+        value
+        for key, value in others.items()
+        if fold(value) not in {fold(text) for text in _held(run.fields.get(key))}
+    ]
     harness = [
         value.literal
         for key, value in run.fields.items()
@@ -302,9 +309,18 @@ def rest_place_inputs(
     ]
     return RestPlaceInputs(
         literals=literals,
-        non_place_literals=list(dict.fromkeys([*harness, *own])),
+        non_place_literals=list(dict.fromkeys([*harness, *others.values()])),
         reviewer_non_place_literals=own,
     )
+
+
+def _held(value: FieldValue | None) -> list[str]:
+    """Every text the run holds for a field: its settled literal and each
+    reading's verbatim, the first pass's decided literal among them (08:01Z)."""
+    if value is None:
+        return []
+    texts = [value.literal, *value.verbatim_by_observation.values()]
+    return list(dict.fromkeys(text for text in texts if text))
 
 
 def _iso_precision(value: str) -> str | None:

@@ -87,15 +87,24 @@ class PlaceKnowledge(Protocol):
 @dataclass(frozen=True)
 class ReviewerValue:
     """A place value the reviewer entered or changed in "fill the rest"
-    (HARNESS.md section 13; the coordinator's rulings of 06:36Z and 07:33Z on
-    2026-09-25). `anchor` is the harness's value for that field in the run
-    under review, None when the harness gave it none; `non_place_literals` are
-    the reviewer's own non-place values. The reviewer's own text, the tokens
-    sharing no folded word with the anchor, is cut by those and the other cuts
-    alone; what the reviewer kept is cut like any other source."""
+    (HARNESS.md section 13; the coordinator's rulings of 06:36Z, 07:33Z and
+    08:01Z on 2026-09-25). `anchors` are every text the run holds for that
+    field, none when it holds nothing; `non_place_literals` are the reviewer's
+    own non-place values. The reviewer's own text, the tokens matching no
+    anchor token by a folded word or by letters and digits run together, is
+    cut by those and the other cuts alone; what matches is cut like any other
+    source."""
 
-    anchor: str | None
+    anchors: Sequence[str]
     non_place_literals: Sequence[str]
+
+
+class _Cuts(NamedTuple):
+    """What the cuts compare a token with: folded words, and the non-place
+    values' tokens by their letters and digits run together (08:24Z)."""
+
+    words: frozenset[str]
+    runs: frozenset[str]
 
 
 class _Dates(NamedTuple):
@@ -174,7 +183,8 @@ def place_request_forms(
                 for literal in reviewer.non_place_literals
                 for f in _forms(literal, table)
             },
-            frozenset(fold(reviewer.anchor or "").split()),
+            frozenset(w for a in reviewer.anchors for w in fold(a).split()),
+            frozenset(_run(t) for a in reviewer.anchors for t in TOKEN.findall(a)),
         )
 
     def dropped(value: str, where: Sequence[tuple[str, int]]) -> set[int]:
@@ -183,11 +193,12 @@ def place_request_forms(
         taken = _dropped(value, where, cut, dates, literals)
         if spared is None:
             return taken
-        own_cut, own_literals, anchor = spared
+        own_cut, own_literals, anchor_words, anchor_runs = spared
         own = {
             token.start()
             for token in TOKEN.finditer(value)
-            if anchor.isdisjoint(fold(token.group()).split())
+            if anchor_words.isdisjoint(fold(token.group()).split())
+            and _run(token.group()) not in anchor_runs
         }
         return (taken - own) | (
             _dropped(value, where, own_cut, dates, own_literals) & own
@@ -341,7 +352,7 @@ def _forms(text: str, table: Mapping[str, tuple[str, ...]]) -> list[str]:
 def _dropped(
     text: str,
     places: Sequence[tuple[str, int]],
-    cut: frozenset[str],
+    cut: _Cuts,
     dates: _Dates,
     literals: set[str],
 ) -> set[int]:
@@ -463,13 +474,23 @@ def _date_number(token: str) -> bool:
 
 def _bare(token: str) -> str:
     """`token` without what isn't a letter or a digit at either end: "'46" and
-    "–46" are "46", and "(1946)" and "1946?" are "1946"."""
+    "–46" are "46", and "(1946)" and "1946?" are "1946". A modifier letter such
+    as U+02BC ("ʼ46") is an apostrophe here, not a letter (08:01Z)."""
     start, end = 0, len(token)
-    while start < end and not token[start].isalnum():
+    while start < end and not _letter_or_digit(token[start]):
         start += 1
-    while end > start and not token[end - 1].isalnum():
+    while end > start and not _letter_or_digit(token[end - 1]):
         end -= 1
     return token[start:end]
+
+
+def _letter_or_digit(character: str) -> bool:
+    return character.isalnum() and unicodedata.category(character) != "Lm"
+
+
+def _run(text: str) -> str:
+    """`text`'s letters and digits run together, folded: "F.G." is "fg"."""
+    return "".join(fold(text).split())
 
 
 def _cut_words(
@@ -477,11 +498,14 @@ def _cut_words(
     non_place_literals: Sequence[str],
     knowledge: PlaceKnowledge,
     table: Mapping[str, tuple[str, ...]],
-) -> frozenset[str]:
+) -> _Cuts:
     """The folded words the cuts name, and every character of a token that
     holds one is cut: every word of every non-place literal in any of its
     forms; every word of every source clause that holds a marker; the month
-    words; and a notation's own when a full form of it is cut."""
+    words; and a notation's own when a full form of it is cut. The non-place
+    literals' tokens also cut by their letters and digits run together, so
+    "F.G. Wermer" cuts "FG" and "Wer-mer" (the coordinator's ruling of 08:24Z
+    on 2026-09-25)."""
     markers = {w for marker in knowledge.PERSON_MARKERS for w in fold(marker).split()}
     words = {w for month in knowledge.MONTH_WORDS for w in fold(month).split()}
     for literal in non_place_literals:
@@ -495,12 +519,23 @@ def _cut_words(
     for written, full in table.items():
         if any(not words.isdisjoint(fold(form).split()) for form in full):
             words.update(written.split())
-    return frozenset(words)
+    runs = {
+        _run(token)
+        for literal in non_place_literals
+        for form in _forms(literal, table)
+        for token in TOKEN.findall(form)
+    }
+    return _Cuts(frozenset(words), frozenset(runs - {""}))
 
 
-def _cut(token: str, words: frozenset[str]) -> bool:
-    """A token that carries a digit, or any word the cuts name."""
-    return any(c.isdigit() for c in token) or not words.isdisjoint(fold(token).split())
+def _cut(token: str, cuts: _Cuts) -> bool:
+    """A token that carries a digit, any word the cuts name, or a non-place
+    literal's token by its letters and digits run together."""
+    return (
+        any(c.isdigit() for c in token)
+        or not cuts.words.isdisjoint(fold(token).split())
+        or _run(token) in cuts.runs
+    )
 
 
 def _joint(separators: Sequence[str]) -> str:

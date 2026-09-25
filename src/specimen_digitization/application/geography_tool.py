@@ -184,7 +184,7 @@ def geocoding_address(query: GeographyQuery) -> tuple[str, str | None]:
         reviewer = None
         if item.reviewer:
             reviewer = ReviewerValue(
-                anchor=item.anchor,
+                anchors=item.anchors,
                 non_place_literals=query.reviewer_non_place_literals,
             )
         elif not any(item.literal in reading for reading in query.reading_texts):

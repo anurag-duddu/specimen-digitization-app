@@ -73,12 +73,11 @@ class LocalityLiteral(Frozen):
     source_observation_id: str
     source_region_id: str
     # In "fill the rest", a place value the reviewer entered or changed: a
-    # source though no reading holds it, with the harness's value for its
-    # field in the run under review as the anchor of the reviewer's own text
-    # (HARNESS.md sections 7 and 13; the coordinator's rulings of 06:36Z and
-    # 07:33Z on 2026-09-25).
+    # source though no reading holds it, with every text the run holds for its
+    # field as the anchor of the reviewer's own text (HARNESS.md sections 7 and
+    # 13; the coordinator's rulings of 06:36Z, 07:33Z and 08:01Z on 2026-09-25).
     reviewer: bool = False
-    anchor: str | None = None
+    anchors: list[str] = Field(default_factory=list)
 
 
 class GeographyQuery(Frozen):
