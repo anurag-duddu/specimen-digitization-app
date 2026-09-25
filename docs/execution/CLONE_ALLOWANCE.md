@@ -1,10 +1,26 @@
 # First-production recovery allowance
 
+> 2026-09-23: The owner's decisions in
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> supersede parts of this document for the go-live program. Each superseded
+> clause keeps its original text and carries a dated note naming the
+> decision.
+
 This source contract replaces the absent-clone CREATE-history admission check.
 The filtered operations request returned HTTP 403; omitting the instance returned
 HTTP 400. Neither result proves unused allowance. Existing-instance operation
 history, native ownership, temporary-principal lifecycle and clone disposal checks
 remain required. This contract does not issue authority or qualify native setup.
+
+> 2026-09-23: For the go-live program, under
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11 and the coordinator's ruling D1, this allowance guards only the first
+> apply's single restore clone. The on-demand backup before every apply needs
+> no claim. `authority_sha256` and `manifest_sha256` below bind the retired
+> action packet and its manifest, so the first apply's claim needs new
+> bindings. The release workstream's T3d, which applies while the runtime
+> runs ([`golive/RELEASE.md`](golive/RELEASE.md)), will define them; until it
+> does, no gate-path release makes this claim.
 
 ## Typed authority and baseline
 
@@ -112,6 +128,12 @@ No new packet, window, ledger reservation or native claim is created by the
 source implementation. The cumulative USD 5 cap and exact ten-specimen scope
 remain unchanged. Provider behavior and effective grant success require root's
 native qualification; offline fixtures alone cannot establish them.
+
+> 2026-09-23: The USD 5 cap and the exact ten-specimen scope are superseded
+> for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G9 and G2: the spending ceiling is USD 25, cumulative, and specimens are
+> processed one at a time, on demand, with the ten as the acceptance cohort.
 
 Primary provider contracts:
 [objects.insert](https://docs.cloud.google.com/storage/docs/json_api/v1/objects/insert),
