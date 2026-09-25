@@ -12276,3 +12276,21 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: an identifier check is only as strict as the field it reads. "Returned by the source" has to name the id field, because an answer's dates and coordinates are numbers too, and a digit pattern matches them.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-24 — Go-live program: plan corrections after #200
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-10`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #200's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/200#issuecomment-5826590054), items 1-4.
+  - S7's T4a: the pilot reference file lives under `~/specimen-release-private/` and never enters the repository, a PR, an issue, a message or a log (PLAN 7.7). It's written to the checker's read conditions: outside Git, a regular file its user owns, mode 600, no symlink, at most 1 MiB, UUIDs in the established source order, bytes unchanged once pinned. The coordinator reads the file itself against DoD-4's subject ids; the digest is only what S2's checker pins. An expired sign-in goes through OWNER_ACTIONS.md and the coordinator (PLAN 7.6).
+  - S8's brief: identifiers come from the field of the source's answer that carries its ids, and "never sent" defers to 4.8's limit.
+  - PLAN 4.8's filter:
+    - A date number beside a Roman month also counts with any apostrophe or dash ("‘46", "–46"), as an ordinal day ("3rd"), or with punctuation around it ("1946.", "1946?", "(1946)"). A numeral that shares its token with a word ("mid-VIII 1946") is named in the limit.
+    - The limit names a value the harness gave a non-place field and the reviewer replaced in "fill the rest", and the "Col." colonia over-cut ("Col. El Carmen, Chimaltenango" sends only "Chimaltenango").
+    - Markers are named as labels write them, in Latin ("leg.", "det."), English and Spanish, with a "det." test.
+    - The labels say "#191's round-1 and final reviews" where both rounds ruled.
+  - Correction (dated 2026-09-24): commit 3783749's message and #200's PR body said the coordinator checks the file's SHA-256 against DoD-4's subject ids. A digest can't be checked against subject ids: the coordinator reads the file itself, and the digest is only what S2's checker pins. #200's PR body is corrected; the commit message stays as pushed.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: a verification step has to name what it verifies. "Check the digest against the subject ids" sounds like a check, but a digest only proves which bytes were read. The contents need a reader.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).

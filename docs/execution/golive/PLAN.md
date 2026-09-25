@@ -453,22 +453,26 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     a non-place field; every token of every clause, between commas, semicolons
     or line breaks, that holds a collector or determiner marker the profile's
     notations name, wherever the marker sits in it, and the notations name
-    those markers in English and Spanish in their usual forms, such as "leg.",
-    "coll.", "Collector", "Col.", "Colector" and "det." (coordinator ruling of
-    2026-09-24, on #191's final review); every token that carries a digit;
-    every month name and abbreviation the profile's date notations list, in any
-    case, and they list each month in full and abbreviated in English and
-    Spanish, the pilot labels' languages, in the usual forms and older ones,
-    such as "Sept.", "September", "Mayo", "setiembre" and "Agto." (coordinator
-    rulings of 2026-09-24, on #191's reviews and on S4's #183); and a token
-    whose every word is a Roman numeral I to XII, in any case, such as "VIII"
-    or "VIII/IX", next to a date number, a day or a year in the profile's forms
-    (3, 14, 1946, '46 or -46), before or after it, across separators
-    (coordinator ruling on S4's #183, 2026-09-24). So "VIII" goes in "3 VIII
-    1946", "Mindanao, VIII, 1946" and "Mindanao, VIII -46", and "VIII/IX" in
-    "VIII/IX 1946", while "Camp IV" and "P.I." stay. The readings' non-place
-    literals do not cut the reviewer's own place value, since the reviewer's
-    correction is the authority there.
+    those markers as labels write them, in Latin ("leg.", "det."), English
+    ("coll.", "Collector") and Spanish ("Col.", "Colector") (coordinator
+    rulings of 2026-09-24, on #191's and #200's final reviews); every token
+    that carries a digit; every month name and abbreviation the profile's date
+    notations list, in any case, and they list each month in full and
+    abbreviated in English and Spanish, the pilot labels' languages, in the
+    usual forms and older ones, such as "Sept.", "September", "Mayo",
+    "setiembre" and "Agto." (coordinator rulings of 2026-09-24, on #191's
+    round-1 and final reviews and on S4's #183); and a token whose every word
+    is a Roman numeral I to XII, in any case, such as "VIII" or "VIII/IX", next
+    to a date number, before or after it, across separators. A date number is a
+    day or a year in the profile's forms (3, 14, 1946, '46 or -46), also
+    written with any apostrophe or dash ("‘46", "–46"), as an ordinal day
+    ("3rd"), or with punctuation before or after it ("1946.", "1946?",
+    "(1946)") (coordinator rulings on S4's #183 and on #200's final review,
+    2026-09-24). So "VIII" goes in "3 VIII 1946", "Mindanao, VIII, 1946",
+    "Mindanao, VIII -46", "Mindanao, VIII ‘46", "VIII 1946?" and "3rd VIII",
+    and "VIII/IX" in "VIII/IX 1946", while "Camp IV" and "P.I." stay. The
+    readings' non-place literals do not cut the reviewer's own place value,
+    since the reviewer's correction is the authority there.
   - Expansion, after the cuts: a surviving notation token that the table
     assigns to place fields only, and that appears in an allowed source, may be
     replaced by each full form the table lists for it, so "Davao Prov." is sent
@@ -477,20 +481,21 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     brings back a cut character. A full form with no such notation in a source,
     and not itself in a source, is refused (coordinator ruling on S4's #183).
   - Identifiers (coordinator rulings of 2026-09-24: on #185's review item 1, on
-    S4's question about NGA's unit codes, and on #191's reviews for where an
-    identifier comes from): an identifier a tier-1 source returned in its own
-    answer, in the field that carries that source's identifiers, and matching
-    that source's documented identifier pattern (a Wikidata item's Q-number, a
-    TGN subject id, a GNS feature id, or a GNS first-order unit code such as
-    "PH-DVC"), may be sent back to that same source unchanged. It is checked
-    against that field of the source's answer as the tool received it, never
-    against another token of the answer, the record or a list the agent
-    supplies. TGN's and GNS's digit patterns match any label number, such as
-    "1946", and an answer also holds numbers as dates and coordinates, such as
-    a TGN `estStart` of "1946" or a GNS latitude of 7.3, so where it came from
-    is the guard: an identifier the source did not return in that field is
-    refused, and so is one that fails the pattern. Identifiers skip the source
-    check above, and they carry no label text, so no cut applies to them.
+    S4's question about NGA's unit codes, and on #191's round-1 and final
+    reviews for where an identifier comes from): an identifier a tier-1 source
+    returned in its own answer, in the field that carries that source's
+    identifiers, and matching that source's documented identifier pattern (a
+    Wikidata item's Q-number, a TGN subject id, a GNS feature id, or a GNS
+    first-order unit code such as "PH-DVC"), may be sent back to that same
+    source unchanged. It is checked against that field of the source's answer
+    as the tool received it, never against another token of the answer, the
+    record or a list the agent supplies. TGN's and GNS's digit patterns match
+    any label number, such as "1946", and an answer also holds numbers as dates
+    and coordinates, such as a TGN `estStart` of "1946" or a GNS latitude of
+    7.3, so where it came from is the guard: an identifier the source did not
+    return in that field is refused, and so is one that fails the pattern.
+    Identifiers skip the source check above, and they carry no label text, so
+    no cut applies to them.
   - Fixed parts: query properties such as P625, P582 and P1365, paging, limits
     and headers (a project User-Agent naming no person or email) are reviewed
     constants, not record values, with a test that they carry no label text.
@@ -507,24 +512,25 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     request the place tool makes, tier 1, tier 2 and "fill the rest" alike.
   - Tests show exactly what it guarantees: "H. Hoogstraal leg." and a slice of
     it such as "Hoogstraa"; "Werner" where the record reads "Wernersdorf" and
-    "leg. Werner"; "Col. J. Perez", "Colector J. Perez" and "Collector: H.
-    Hoogstraal"; "3 Sept. '46", "3 SEPT. '46" and "3 SEPT. 1946";
-    "Chimaltenango, 3 Mayo 1946", "3 Setiembre 1946" and "3 Agto. 1946"; "3
-    VIII 1946", "3 viii 1946", "Mindanao, VIII, 1946", "Mindanao, VIII -46" and
-    "VIII/IX 1946"; "Mindanao, P.I. 3 Sept. '46"; "Camp IV"; "Davao Prov., leg.
-    Hoogstraal"; "Philippine Islands" written on the label and "P.I." expanded
-    to it; every full form the table lists; a reviewer's corrected collector
-    spelling that matches no reading literal; a reviewer's place value that a
-    reading's non-place literal would otherwise cut, and one with a date in it;
-    a literal the harness gives a non-place field refused as a source; tier-1
-    identifiers passing, a catalogue number offered as a TGN identifier
-    refused, a label number the answer holds only as a date or a coordinate
-    refused (a TGN `estStart` of "1946", a GNS latitude of 7.3), and other
-    values refused; the fixed parts and the User-Agent carrying no label text;
-    and a place value with a quote in it reaching the query escaped. No cut
-    character leaves, each expansion carries only full forms the table lists,
-    and a value not drawn from those sources is refused. Tests also pin each
-    case the limit names, so a change in what can leave shows.
+    "leg. Werner"; "Col. J. Perez", "Colector J. Perez", "Collector: H.
+    Hoogstraal" and "Davao Prov., det. F.G. Werner"; "3 Sept. '46", "3 SEPT.
+    '46" and "3 SEPT. 1946"; "Chimaltenango, 3 Mayo 1946", "3 Setiembre 1946"
+    and "3 Agto. 1946"; "3 VIII 1946", "3 viii 1946", "Mindanao, VIII, 1946",
+    "Mindanao, VIII -46", "Mindanao, VIII ‘46", "VIII –46", "VIII 1946?", "3rd
+    VIII" and "VIII/IX 1946"; "Mindanao, P.I. 3 Sept. '46"; "Camp IV"; "Davao
+    Prov., leg. Hoogstraal"; "Philippine Islands" written on the label and
+    "P.I." expanded to it; every full form the table lists; a reviewer's
+    corrected collector spelling that matches no reading literal; a reviewer's
+    place value that a reading's non-place literal would otherwise cut, and one
+    with a date in it; a literal the harness gives a non-place field refused as
+    a source; tier-1 identifiers passing, a catalogue number offered as a TGN
+    identifier refused, a label number the answer holds only as a date or a
+    coordinate refused (a TGN `estStart` of "1946", a GNS latitude of 7.3), and
+    other values refused; the fixed parts and the User-Agent carrying no label
+    text; and a place value with a quote in it reaching the query escaped. No
+    cut character leaves, each expansion carries only full forms the table
+    lists, and a value not drawn from those sources is refused. Tests also pin
+    each case the limit names, so a change in what can leave shows.
   - Its stated limit: text the filter cannot recognize can still leave. That is
     text that no reading assigns to a non-place field and the harness has not
     yet given one, when no marker the profile names sits in its clause
@@ -533,16 +539,22 @@ The place tool follows these coordinator rulings, from the reviews of #124,
     leaves whole, "H. Hoogstraal" leaves when its "leg." sits in a neighbouring
     clause or line, and so do a habitat such as "Mossy forest", "FMNH INS" from
     a catalogue number and "ft." from "Mt. Apo, 6000 ft."; so does a name
-    beside a marker the profile doesn't list. A month name in a language the
-    profile doesn't list can leave, and so can a form of a listed language that
-    it doesn't list, and a lone or ranged month numeral with no day or year
-    beside it, such as "VIII/IX". The cuts can also take too much: a place's
-    own numeral beside a date number goes, so "Camp IV, 3 VIII 1946" sends only
-    "Camp"; a place named with a month word loses that word, so "Cape May"
-    sends "Cape"; a clause holding a marker is cut wherever its words appear,
-    so "Mt. Apo leg. Hoogstraal" on one line takes "Mt. Apo" from every other
-    line, a reviewer's value included; and a tier-1 name whose numeral stands
-    beside a number, such as a region written with its code, loses the numeral.
+    beside a marker the profile doesn't list. In "fill the rest", a value the
+    harness gave a non-place field and the reviewer replaced can leave when no
+    reading assigns it (coordinator ruling of 2026-09-24, on #200's final
+    review). A month name in a language the profile doesn't list can leave, and
+    so can a form of a listed language that it doesn't list, a lone or ranged
+    month numeral with no day or year beside it, such as "VIII/IX", and a
+    numeral that shares its token with a word, such as "mid-VIII 1946". The
+    cuts can also take too much: a place's own numeral beside a date number
+    goes, so "Camp IV, 3 VIII 1946" sends only "Camp"; a place named with a
+    month word loses that word, so "Cape May" sends "Cape"; a colonia written
+    "Col." is cut as a collector's clause, so "Col. El Carmen, Chimaltenango"
+    sends only "Chimaltenango"; a clause holding a marker is cut wherever its
+    words appear, so "Mt. Apo leg. Hoogstraal" on one line takes "Mt. Apo" from
+    every other line, a reviewer's value included; and a tier-1 name whose
+    numeral stands beside a number, such as a region written with its code,
+    loses the numeral.
 - The Maps key, and any credential a later source needs, is kept in Secret
   Manager and follows section 4.5's rule: no span, log line, exception text,
   stored error, tool-call result, test fixture or lab folder records it or the
