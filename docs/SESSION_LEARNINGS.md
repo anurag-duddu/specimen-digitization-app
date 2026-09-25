@@ -12049,3 +12049,21 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (3) Keep curator review in the data: entries carry their sources and a nullable confirmation. Confirming one is then a small, reviewable pull request that cites the owner's record.
 - Failed approaches: a first draft required the label date to fall wholly inside a camp's dates, and it matched nothing for month-precision labels.
 - Remaining follow-ups: the curator's answers on the three review sheets, each becoming a confirmation PR; Getty TGN and NGA GNS (task 2); tier 2 (task 5).
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 2c: tier 1 Getty TGN
+
+- Task: brief task 2, Getty TGN (G35). Build its requests and read its answers into the shared `Place` record, sending nothing itself; every reading the tool sends passes S4's place-request filter (PLAN 4.8).
+- Branch and worktree: `golive/geo-tgn` in `.claude/worktrees/geo-build`, stacked on #156. PR #188.
+- Outcome: `georef_tgn.py` does four things.
+  - It builds requests: a reconciliation query (type `/tgn`, ten results) for one reading, and two fixed SPARQL queries for up to 50 digit-only TGN ids.
+  - It reads records: name (English preferred, else the GVP name), AAT place types, the country as the nearest "nations" place on the preferred chain, the parents below it, and the point.
+  - It reads every name with its language.
+  - It maps each answer to one outcome. Every place carries ODC-By-1.0, and the credit line comes from Getty's data-services page.
+- Validation: 24 tests on the recorded TGN answers; `uv run pytest -q` (3,193 passed, 81 skipped: `tests/` and `scripts/` together); pre-commit.
+- Durable learnings:
+  - (1) TGN's own name for a place is often inverted ("Apo, Mount") or vernacular ("Pilipinas" for the Philippines). The natural and English forms are among its terms, so matching runs over every term, and the display name prefers an English preferred term.
+  - (2) TGN mixes up Davao City and Davao del Norte. The record typed "special cities" carries "Davao Province", "Province of Davao" and "Province of Davao del Norte", while the province's record carries "Davao City" as its Tagalog preferred name. TGN has no dated record of the 1914-1967 province, so a name match alone would map a 1946 label onto modern Davao City. The hierarchy gate and Wikidata's history have to decide.
+  - (3) The reconciliation service ranks loose token matches. "Mount Talomo" returns "Mounts" and "Mount", and "Philippine Islands" returns a ridge in Wisconsin first. A hit is only a candidate id: the tool matches names from the records and applies the country gate.
+  - (4) TGN lists codes among a place's names ("PH", "PHL", "RP", "ISO608", "GT03", "RPC3"). Section 1's full-name rule already keeps them out of the one-letter gate.
+- Failed approaches: a first draft named a nation's own country reference by its GVP name, so the Philippines was "Philippines" but its country "Pilipinas". A nation now names itself as it is named.
+- Remaining follow-ups: NGA GNS (task 2); tier 2 (task 5) once S4's #113 merges; the request builder, which calls S4's filter (#183).
