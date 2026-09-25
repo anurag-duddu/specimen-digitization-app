@@ -44,8 +44,8 @@ Chosen on 2026-09-23 from measurements on the ten pilot slides, recorded in
 2026-09-23 (coordinator.md:58); G7 requires only that the first pass and the
 harness run on a Hugging Face model through the existing gateway and token. They
 share the `handwriting-muse` reader's provider and no reader's model family.
-Each is pinned by model id and provider, as the readers are, and used only in
-its role (HARNESS.md section 5).
+Each is pinned by model id and provider, as the readers are, and a reader or
+first-pass call refuses a route outside its role (HARNESS.md section 5).
 
 Automatic provider policies such as `auto`, `fastest`, `cheapest`, and
 `preferred` are rejected by the gateway. A provider outage must produce a typed
