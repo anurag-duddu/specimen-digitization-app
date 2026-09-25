@@ -42,8 +42,11 @@ PLACE_FIELDS = ("country", "province_state", "county", "city", "precise_location
 SEPARATOR = re.compile(r"(\r?\n|[,;])")
 TOKEN = re.compile(r"([^\s,;]+)")
 # A day or a year as written, which puts a Roman numeral beside it in the month
-# position: 3, 14, 1946, or the profile's year forms '46 and -46.
-DATE_NUMBER = re.compile(r"\d{1,2}|\d{4}|['’-]\d{2}")
+# position: 3, 14, 1946, the profile's year forms '46 and -46 with any
+# apostrophe or dash, or an ordinal day such as "3rd", each read bare, so with
+# any punctuation before or after it, "1946." or "(1946)" (PLAN 4.8 as #203
+# states it).
+DATE_NUMBER = re.compile(r"\d{1,2}|\d{4}|\d{1,2}(?:st|nd|rd|th)", re.IGNORECASE)
 # The fields of each tier-1 source's answer that carry its own ids, each with
 # its documented pattern and the id a matching value holds (PLAN 4.8 as #200
 # states it; S8's readers #139, #188 and #190). An identifier carries no label
@@ -344,10 +347,21 @@ def _roman_months(text: str, roman: frozenset[str]) -> set[int]:
         if (
             words
             and roman.issuperset(words)
-            and any(DATE_NUMBER.fullmatch(t.group().strip(".()[]:")) for t in beside)
+            and any(DATE_NUMBER.fullmatch(_bare(t.group())) for t in beside)
         ):
             starts.add(token.start())
     return starts
+
+
+def _bare(token: str) -> str:
+    """`token` without what isn't a letter or a digit at either end: "'46" and
+    "–46" are "46", and "(1946)" and "1946?" are "1946"."""
+    start, end = 0, len(token)
+    while start < end and not token[start].isalnum():
+        start += 1
+    while end > start and not token[end - 1].isalnum():
+        end -= 1
+    return token[start:end]
 
 
 def _cut_words(
