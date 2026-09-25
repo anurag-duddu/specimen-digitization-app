@@ -103,7 +103,8 @@ def elevation_derivations(fields: Mapping[str, FieldValue]) -> list[Derivation]:
             method="stated_elevation"
             if rules == ["stated_elevation"]
             else "unit_conversion",
-            authority=SourceRef(name="field_harness", version=RULES_VERSION),
+            # The rule's owner: a G41 value names apply_derivations (#124).
+            authority=SourceRef(name="apply_derivations", version=RULES_VERSION),
             inputs={root: fields[root].literal},
             evidence=[Check(name=r, result="supports", detail=RULES[r]) for r in rules],
         )
