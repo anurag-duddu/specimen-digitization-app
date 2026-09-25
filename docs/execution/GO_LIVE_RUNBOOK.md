@@ -386,8 +386,11 @@ execution outcome, and the per-specimen receipts in Storage.
    > retired (G11). G30's per-call reservations stand (PLAN 4.3; the
    > coordinator's ruling on the mechanism). In S2's reading of G11 and PLAN
    > 4.6, DEPLOY-IDENTITY compares the deployed API and worker SHAs and image
-   > digests and the SQL and rules revisions with the release runs on main that
-   > deployed them, in place of the packet; the rest of DEPLOY-IDENTITY stands.
+   > digests with the candidate's own runtime release run, and the SQL and rules
+   > revisions with the data release run that deployed them, which is the
+   > candidate's own or a main run at or before the candidate with those inputs
+   > unchanged between the two, in place of the packet; the rest of
+   > DEPLOY-IDENTITY stands.
 3. Reconcile cost: every reservation category closed with an artifact, the
    ledger appended, the cumulative total inside USD 12.
    > 2026-09-23: Superseded for the go-live program by [`docs/execution/golive/PLAN.md`

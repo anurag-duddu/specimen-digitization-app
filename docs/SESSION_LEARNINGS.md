@@ -12208,6 +12208,43 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learning: when a correction is itself history, check it against the primary record (the review comments) before writing it. The earlier round pairing was corrected from memory and was wrong twice.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above.
 
+### 2026-09-24 — Go-live release workstream (S2), T1e: #184's merge follow-ups, SAM 3's candidate binding and the ten's private record
+
+- Task: the S2 session, the PR steward's follow-ups from #184's merge review (comment 5825626144, Decision items 1-7). Items 1 and 2 are release guarantees that the checker pull request must also implement.
+- Branch/worktree: `golive/release-docs-checker-guarantees`, from `main` at `ee90e3b` (#184's merge), in this session's worktree.
+- Outcome:
+  - **SAM 3 stays bound to the candidate** (`golive/RELEASE.md` 2.1's `acceptance.py` 497 row; `LIVE_QA.md`'s third-runtime note). Its commit is the candidate or, once T2 reuses an unchanged SAM 3 image, a commit on main at or before the candidate with SAM 3's inputs unchanged between the two. Either way, the candidate's own release run deployed the image built from that commit. A digest the candidate's own run did not deploy fails. The row names the rest of DEPLOYMENT-PROVENANCE in full.
+  - **The ten's private record** (the 333-334 pin row; `LIVE_QA.md`'s contracts note):
+    - the checker reads the ten from `specimen-pilot-reference/v1`, per the coordinator's ruling in its message to S2 of 2026-09-24, 01:15Z on 09-25;
+    - S7 writes it after PLAN section 8 step 2, and the coordinator verifies it against DoD-4's subject ids;
+    - its SHA-256, supplied separately, still pins it on the command line;
+    - the read keeps `private_manifest`'s checks (`acceptance.py` 116-133).
+  - **New rows** for the human-review scope checks (295-296, 310, 324-325, 330-332) and for `ready_for_independent_review` (311, 314; `acceptance.py` 525).
+  - **Smaller fixes:**
+    - `PilotLaunch`'s copy of the map retires with it (G2);
+    - PRD-10's approval and semantics gates are gone for `harness_route` runs (the coordinator's reading of G1, #158);
+    - the G15 reading cites the coordinator's message to S2 of 2026-09-24, 01:00Z on 09-25, answering #184's round-1 question;
+    - **DEPLOY-IDENTITY bound to the candidate**, as #199's round 1 recommended. The API and worker SHAs and image digests compare with the candidate's own runtime release run. The SQL and rules revisions compare with the data release run that deployed them: the candidate's own, or a main run at or before it with those inputs unchanged. All eleven notes that carry the settled sentence change, and a new 2.1 row (`acceptance.py` 482-493, 502-507) records the checker's side;
+    - the nits: G11's protections stay; the scope never granted sensitive access or infrastructure authority; the no-reset sum moves to COST-BOUNDS; "a new upload no longer waits"; "its independent reconciliation"; `evidence_pilot.py` sets the review block; row 176's missing lines; the manifest's selection and ready-status clauses and DATA-TEN's gate; three manual subcriteria, not four.
+- Corrections to [the T1d entry](#2026-09-24--go-live-release-workstream-s2-t1d-165s-merge-follow-ups-and-the-acceptance-documents-notes), 2026-09-24. That entry stays as merged:
+  - Its checker-rows bullet: a specimen the harness clears drops only the review checks 201-207 and 209-217. The coverage check (208) covers every record in the coordinator's reading of G15 (`6625690`).
+  - Its G15 mention: the reading's source is the coordinator's message to S2 of 2026-09-24, 01:00Z on 09-25, answering #184's round-1 question.
+  - Its correction of #165's follow-up sentence: the sentence is #165's "and will add `scripts/qa/live/` to PLAN section 6", not #165's "Remaining follow-ups" line.
+  - Its Commits list also includes `6625690` (the G15 reading) and the merges `c9c42a4`, `a132268` and `e582a9f`. #184 merged as `ee90e3b`.
+  - Its G30 sweep: 66 of 66 at the merged head, not 65 of 65.
+- Commits/PRs: PR #199: the fixes `a3ca34c`, this closeout `5e1410d`, the merge `770f99a`, the blank line `6e8e0b7`, and review round 1's commit.
+- Validation actually run:
+  - the G30 sweep over every dated note: 66 of 66;
+  - the acceptance sweep: all 4 notes on the acceptance decision carry the full sentence;
+  - every "USD 25" note in the two documents names G30's USD 5;
+  - every line the new rows cite, checked against `human_review.py` and `acceptance.py`;
+  - pre-commit, `tests/test_deployment_policy.py`, `git diff --check` and the relative-link check (60 links, none broken).
+- Durable learnings:
+  - A binding that retires must name what replaces it. "Compare with the release run that deployed it" alone accepts any earlier run's image. Keep the candidate in every provenance rule.
+  - A ruling that arrives after a note is written can contradict the note. The manifest's separately supplied digest was retired in one note and kept by the next ruling. Re-read notes against each new ruling.
+- Failed approaches: round 1's SAM row dropped the candidate, and round 1's PilotLaunch wording kept a map that G2 retires. #184's merge review caught both. #199's round 1 caught the `harness_route` scope tagged "(G1)". G1's own words name no route; the scope is the coordinator's reading of G1 (#158).
+- Remaining follow-ups: the checker pull request implements items 1 and 2, the new rows, and the G15 reading.
+
 ### 2026-09-25 — Go-live S6: #182's review follow-ups, the reviewer's own day, and log corrections
 
 - Task: the steward's review of #182 (merged as `0fec108`; comment 5825106429, items 1-4 and 7), and the coordinator's ruling of 2026-09-25 applying design/01 H2.1 to the queue's date filter.
@@ -12295,6 +12332,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - At #140's turn, fold #197's date-key case into #140's `searchValueLabel` switch (item 3). Git merges the two declarations cleanly, and the result would not compile.
   - At #73's turn, record the zone rulings in UI.md with the times above.
   - When the stack merges `main`, regenerate its queue, queue-selection and workbench-history goldens, and re-verify those of #102, #114, #133 and #140.
+
 ### 2026-09-25 — S8: #94's review follow-ups, and a correction to its entry
 
 - Task: the steward's round-3 review of #94 (merged as `e6bcfa7`; comment 5826083660, Decision items 1-5), done in a small docs pull request on `main`.
@@ -12313,6 +12351,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. A licence cell holds two facts: the licence and the channel. The Philippine files' metadata cites HDX as its licence source, but the files come from geoBoundaries, so copying "via HDX" named the wrong channel.
 - Failed approaches: none.
 - Remaining follow-ups: none from the review. The steward checks #183's identifier field rule at #183's turn. The 259 ids S8's readers send back already come from the fields it reads.
+
 ### 2026-09-24 — Go-live program: plan corrections after #191
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
@@ -12372,3 +12411,45 @@ because the hooks runner hands a native asset hook only `PATH`.
   - At #140's turn, fold #197's `searchValueLabel` date case into #140's switch.
   - At #73's turn, record the zone rulings in UI.md with their times.
   - When the stack merges `main`, regenerate its queue, queue-selection and workbench-history goldens, and re-verify those of #102, #114, #133 and #140.
+### 2026-09-25 — S8: #201's review follow-ups, and a correction to its entry
+
+- Task: the steward's review of #201 (merged as `400a444`; comment 5826776118, Decision items 1 and 2), done in a second small docs pull request on `main`. Item 3 waits for #154's turn.
+- Branch/worktree: `golive/geo-plan-followups-2` from `main` at `400a444`; `.claude/worktrees/busy-thompson-19cc3b`.
+- Outcome, in `docs/product-requirements/GEOREFERENCING.md`:
+  - 3.4 no longer scores a label lag: a unit that had ended by the date is not valid and is never scored, and a label-lag value waits on D5's tolerance;
+  - `valid_on`'s docstring says #154's `use_on` reports the same case as "ended", with `gap_days`;
+  - the blueprint's Wikidata tier keeps only search-hit ids matching `Q[1-9][0-9]*`, the Identifiers pattern;
+  - nothing in the tool's context is put in a request (:80);
+  - Bionomia, queried by collector, needs the owner's explicit exception to PLAN 4.8, as D4's `recordedBy` queries do;
+  - step 1 names the owner's dismissal of D4 and D5 and dates the coordinator's "wait" for D8, D10 and D12;
+  - the dropped "and" at :325 is back, and "licenses" is spelled as elsewhere.
+- Corrections to the entry "S8: #94's review follow-ups, and a correction to its entry" (the log is append-only; a blank line now separates it from the next heading):
+  - its pull request is #201, merged as `400a444`;
+  - #201 had two docs commits, `ae67eb8` and `0a8c657`, and the merge `561132f` of `main` at `b500f6b`; the citations were re-checked at `b500f6b` as well as at `e6bcfa7`, and `0a8c657` aligned :80 with #200's stated limit;
+  - "The 259 ids S8's readers send back" has no source in the repository. It is the count from S8's local check of 2026-09-25: every id the Wikidata, TGN and NGA readers take from the recorded answers in `tests/fixtures/georeferencing/` (on #198's stack) for a follow-up request, checked against #183's field rule by a script outside the repository. S4 recorded the result in #183's pull request body. In the repository it is not confirmed.
+- Commits/PRs: one docs commit; no red and green commits, since no product behaviour changes.
+- Validation actually run: pre-commit on the changed files; the plan's illustrative Python block parses; every `file:line` citation re-checked by script at `400a444`.
+- Durable learnings:
+  1. A number in the log needs its source in the repository, or a plain "not confirmed". A count from a local script reads as established when nothing a reader can open backs it.
+  2. When merging `main` into a branch that appended to the log, check the seam: git joins two appended entries without the blank line between them.
+- Failed approaches: none.
+- Remaining follow-ups: at #154's turn, label GEO.md:324's "The owner held D5, so no tolerance widens a place's dates" as the coordinator's interim rule (PLAN 2.3's D4/D5 row).
+
+### 2026-09-24 — Go-live program: plan corrections after #200
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-10`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #200's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/200#issuecomment-5826590054), items 1-4.
+  - S7's T4a: the pilot reference file lives under `~/specimen-release-private/` and never enters the repository, a PR, an issue, a message or a log (PLAN 7.7). It's written to the checker's read conditions: outside Git, a regular file its user owns, mode 600, no symlink, at most 1 MiB, UUIDs in the established source order, bytes unchanged once pinned. The coordinator reads the file itself against DoD-4's subject ids; the digest is only what S2's checker pins. An expired sign-in goes through OWNER_ACTIONS.md and the coordinator (PLAN 7.6).
+  - S8's brief: identifiers come from the field of the source's answer that carries its ids, and "never sent" defers to 4.8's limit.
+  - PLAN 4.8's filter:
+    - A date number beside a Roman month also counts with any apostrophe or dash ("‘46", "–46"), as an ordinal day ("3rd"), or with punctuation around it ("1946.", "1946?", "(1946)"). A numeral that shares its token with a word ("mid-VIII 1946") is named in the limit.
+    - The limit names a value the harness gave a non-place field and the reviewer replaced in "fill the rest", and the "Col." colonia over-cut ("Col. El Carmen, Chimaltenango" sends only "Chimaltenango").
+    - Markers are named as labels write them, in Latin ("leg.", "det."), English and Spanish, with a "det." test.
+    - The labels say "#191's round-1 and final reviews" where both rounds ruled.
+  - PLAN section 6's S2 row names the release and approval documents #199's integration reviewer listed (LIVE_QA, RELEASE_ACCEPTANCE, PROTECTED_RELEASE_HARNESS, GO_LIVE_RUNBOOK, APPROVED_LOGFIRE_TRACING) and `golive/RELEASE.md`, beside the catch-all. After #199 moved two lines of `DEPLOYMENT.md`, the citation 924-930 becomes 926-932 in PLAN and S2's brief (same text).
+  - Correction (dated 2026-09-24): commit 3783749's message and #200's PR body said the coordinator checks the file's SHA-256 against DoD-4's subject ids. A digest can't be checked against subject ids: the coordinator reads the file itself, and the digest is only what S2's checker pins. #200's PR body is corrected; the commit message stays as pushed.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: a verification step has to name what it verifies. "Check the digest against the subject ids" sounds like a check, but a digest only proves which bytes were read. The contents need a reader.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).

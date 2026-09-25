@@ -2,7 +2,7 @@
 
 **Status:** Proposed, not accepted by the owner (G12). The owner asked for the retrospective tool to be fully implemented (G34, 2026-09-24) and set its design the same day (G35 to G41; the owner's diagram is in 1.2), and S8 builds it. D4 and D5 are held, D8, D10 and D12 wait for their phase except for Getty TGN, wanted now (the coordinator's reading of G35), and D11 and D13 are the coordinator's engineering rulings. The Google Maps geography tool (G10) stays in production until two gates pass: the owner accepts this plan as G35 to G42 revise it (G12), and the acceptance lab shows this tool matches or beats the Google module (coordinator, 2026-09-24).
 
-**Last verified:** repository references on 2026-09-25; sources S32 and S33, and S18's per-file licences, on 2026-09-24; the other sources on 2026-09-23
+**Last verified:** repository references on 2026-09-25; sources S32 and S33, and S18's per-file licenses, on 2026-09-24; the other sources on 2026-09-23
 
 **Scope:** How the harness's geography tool turns historical locality text into country, province or state, county and city values and a point-radius georeference, with typed outcomes and provenance: first for the Insects pilot, then for the Botany, Zoology, Geology and Anthropology profiles. The plan changes no queue logic (G5) and no code by itself.
 
@@ -77,7 +77,7 @@ In the follow-up on storage the owner chose "Open sources + Google ID": "Store c
 
 This plan follows the owner's three tiers. Its tier 0, the museum's curated places and itineraries, now feeds tier 1; where the sections below still say tier 0, they mean those curated entries.
 
-What any request carries, the diagram's "surrounding context" included, is governed by PLAN 4.8 (the coordinator's rulings): the elevations, dates and collectors in the tool's `context` (1.1) are used inside the tool and never put in a request, and the place text a request draws on goes through S4's filter, whose cuts keep dates, elevations and collectors out within PLAN 4.8's stated limit.
+What any request carries, the diagram's "surrounding context" included, is governed by PLAN 4.8 (the coordinator's rulings): nothing in the tool's `context` (1.1) is put in a request, since its elevations, dates, collectors and ids are used inside the tool, and the place text a request draws on goes through S4's filter, whose cuts keep dates, elevations and collectors out within PLAN 4.8's stated limit.
 
 | Owner's tier | In this plan | What the decisions of 2026-09-24 change |
 |---|---|---|
@@ -115,7 +115,7 @@ S8 builds the geographic derivations (containment, Copernicus elevation, gazette
 | Point-radius method | T3 uncertainty, computed in-house | not applicable | open guides [S12][S13][S20] | no service returned an uncertainty outside the USA | build (D13, the coordinator's ruling) |
 | GEOLocate | T3 candidate source, USA only | anonymous; no published limit; the community paces 3 s a request [S6] | no published web-service terms [S6] | `state` ignored outside the USA; uncertainty "Unavailable"; Apo tied with a Makati "Mount Apo" | not used; sends nothing until a ruling adds it to PLAN 4.8, and it serves no locality outside the USA |
 | SRTM through OpenTopoData; Copernicus GLO-30 | T3 elevation: research; production | OpenTopoData 1 request a second, 1,000 a day, 100 points a request; Copernicus tiles on anonymous S3 [S21] | per dataset; Copernicus free with attribution to DLR and Airbus [S21] | every pilot point; SRTM LE90 is 16 m [S21] | research only; Copernicus for production (D11, the coordinator's ruling) and for derived elevations (G37) |
-| iDigBio, Bionomia | T3 corroboration; collector itineraries | anonymous [S22] | per record | FMNH Philippines 1946-47: 8,674 records, against 8,752 on GBIF | not used; sends nothing until a ruling adds it to PLAN 4.8 (Bionomia is queried by collector) |
+| iDigBio, Bionomia | T3 corroboration; collector itineraries | anonymous [S22] | per record | FMNH Philippines 1946-47: 8,674 records, against 8,752 on GBIF | not used; sends nothing until a ruling adds it to PLAN 4.8, and Bionomia, which is queried by collector, also needs the owner's explicit exception to PLAN 4.8, as D4's `recordedBy` queries do (PLAN 2.3) |
 | Macrostrat, PBDB, Mindat; Pleiades, PeriodO, Local Contexts | T3 Geology (formation, fossils, minerals); T1 and T3 Anthropology (ancient places, periods, governance) | Mindat and Local Contexts need keys; the others are anonymous [S23][S24][S25] | Macrostrat CC BY 4.0, PBDB unverified [S23]; Mindat CC BY-NC-SA 4.0 with beta limits [S24]; Pleiades CC BY 3.0, PeriodO public domain [S25] | Apo point: Cenozoic volcanic rocks; Mindat refused anonymous calls | not used; sends nothing until a ruling adds it to PLAN 4.8; per profile (3.7), after D10 |
 
 S4's Google rules in T3a and S8's refinements map Google's statuses onto the eleven outcomes [S11]. S8's refinements, marked (S8), set the georeference's own status only, which routes no record (G39); the place fields follow S4's rules (G34), so no review route is added (G5). Because `administrative_area` and `locality` only bias a query, a 1946 "Davao Province" request can return `OK` anchored on a centroid, so an approximate location never counts as a point georeference.
@@ -201,7 +201,7 @@ Hard gates come first; after them a transparent score ranks candidates for revie
 | Component | Values (proposed) | Weight (proposed) |
 |---|---|---|
 | Name match | exact 1.0; alias 0.9; historic alias or confirmed crosswalk 0.8; fuzzy at edit distance 1 0.6, at 2 0.4 | 0.25 |
-| Temporal validity | valid 1.0; label lag 0.7; undated 0.6 | 0.15 |
+| Temporal validity | valid 1.0; undated 0.6. A unit that had ended by the date is not valid and is never scored; a label-lag value waits on D5's tolerance | 0.15 |
 | Hierarchy consistency | supports 1.0; not assessable 0.5 (a conflict is a hard gate) | 0.20 |
 | Independent sources | two or more storable sources agreeing 1.0; one 0.5; copies of one source count once | 0.15 |
 | Uncertainty radius | 1 minus the radius over the profile's maximum, not below 0 | 0.10 |
@@ -322,7 +322,7 @@ Caching follows HAR-017 and `GBIF.md` 365-397: keyed by provider, operation, com
 
 ## 5. Python blueprint and orchestration
 
-The code below is illustrative, not production code, and predates G35 to G41: its tier 0 is now the curated part of tier 1, its checks record measurements only while D4 and D5 are held, its score cut-off (`below_cutoff`) and label-lag tolerance wait with D5, its containment step's GADM is not used (PLAN 4.8), its QID enrichment sends back only ids read from each `search` hit's `id` field, never from any other token of the answer, checked with the patterns in S4's filter and sent as `wd:` prefixed names, as PLAN 4.8's Identifiers rule requires; the build follows `docs/execution/golive/GEO.md`, which #130 adds. The implementation registers under S4's `geography_lookup` id; inside it adapters run tier by tier, and the sub-adapters of one tier run concurrently while an HTTP gate admits each host through the repository's `provider_circuit.ProviderCircuit`, paces it, honors `Retry-After` through `retry_after` and `retry_delay` (`reliability.py` 25-47), maps each response to one of the eleven outcomes and records a sub-call for HAR-010 (query, source, retrieval time, response digest, raw reference, license; the tool version and matched identifiers travel on the result and its candidates). S4 owns `State`, `to_tool_result` and, until T3a merges, `to_authority_result` (built on `result_base`, so the lineage check at `evidence_harness.py` 451-456 holds). S8's additions to T3a, which S4 accepted on 2026-09-23, carry the plan's output:
+The code below is illustrative, not production code, and predates G35 to G41: its tier 0 is now the curated part of tier 1, its checks record measurements only while D4 and D5 are held, its score cut-off (`below_cutoff`) and label-lag tolerance wait with D5, its containment step's GADM is not used (PLAN 4.8), and its QID enrichment sends back only ids read from each `search` hit's `id` field, never from any other token of the answer, checked with the patterns in S4's filter and sent as `wd:` prefixed names, as PLAN 4.8's Identifiers rule requires; the build follows `docs/execution/golive/GEO.md`, which #130 adds. The implementation registers under S4's `geography_lookup` id; inside it adapters run tier by tier, and the sub-adapters of one tier run concurrently while an HTTP gate admits each host through the repository's `provider_circuit.ProviderCircuit`, paces it, honors `Retry-After` through `retry_after` and `retry_delay` (`reliability.py` 25-47), maps each response to one of the eleven outcomes and records a sub-call for HAR-010 (query, source, retrieval time, response digest, raw reference, license; the tool version and matched identifiers travel on the result and its candidates). S4 owns `State`, `to_tool_result` and, until T3a merges, `to_authority_result` (built on `result_base`, so the lineage check at `evidence_harness.py` 451-456 holds). S8's additions to T3a, which S4 accepted on 2026-09-23, carry the plan's output:
 
 | T3a element (S8's addition) | Why the plan needs it | Today's `AuthorityResult` |
 |---|---|---|
@@ -357,7 +357,7 @@ GROUP BY ?item
 
 ```python
 """Illustrative blueprint, not production code (S8, 2026-09-23). "S4:" marks a harness choice."""
-import asyncio, hashlib, json, math, time
+import asyncio, hashlib, json, math, re, time
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Literal, Protocol
@@ -367,6 +367,7 @@ from specimen_digitization.application.domain import OPERATIONAL, LookupStatus
 from specimen_digitization.application.reliability import retry_after, retry_delay
 
 ENRICH = (Path(__file__).parent / "enrich.rq").read_text()  # the tested payload above
+QID = re.compile(r"Q[1-9][0-9]*")  # PLAN 4.8's Identifiers pattern; the build takes S4's filter's
 Signal = Literal["supports", "conflicts", "not_assessable"]
 RETRYABLE = {LookupStatus.RATE_LIMITED, LookupStatus.TIMEOUT, LookupStatus.PROVIDER}
 HTTP = {401: LookupStatus.AUTHENTICATION, 403: LookupStatus.AUTHORIZATION, 429: LookupStatus.RATE_LIMITED}
@@ -448,7 +449,7 @@ def classify(response: httpx.Response) -> LookupStatus:
 
 def valid_on(valid_from: str | None, valid_to: str | None, day: date) -> tuple[str, int | None]:  # 3.2
     """The validity on the collection date, and for a unit that had ended by then the gap in days,
-    recorded as a `label_lag` finding (#154's `use_on` does the same)."""
+    recorded as a `label_lag` finding (#154's `use_on` reports this case as "ended", with `gap_days`)."""
     if not valid_from and not valid_to:
         return "undated", None
     if valid_from and date.fromisoformat(valid_from[:10]) > day:
@@ -465,7 +466,8 @@ class WikidataTier1:  # discovery through the Action API, then one SPARQL enrich
                   "limit": 7, "format": "json"}  # S4: CirrusSearch "name~1" when this finds nothing
         call, body, wait = await gate.get("wikidata", "CC0-1.0", self.api, search)
         calls, ok = [call], call.outcome == LookupStatus.SUCCESS
-        ids = [hit["id"] for hit in json.loads(body).get("search", [])] if ok else []
+        hits = json.loads(body).get("search", []) if ok else []
+        ids = [hit["id"] for hit in hits if QID.fullmatch(str(hit.get("id")))]  # each hit's `id` field only
         if ids:
             query = {"query": ENRICH % " ".join(f"wd:{i}" for i in ids), "format": "json"}
             call, body, wait = await gate.get("wikidata", "CC0-1.0", self.sparql, query)
@@ -550,7 +552,7 @@ Replayed against the probe's recorded responses, the code returns `no_match` for
 
 | # | Step | Owner | Exit criterion |
 |---|---|---|---|
-| 1 | Owner decisions: D1 to D3, D6, D7 and D9 (G35 to G39) and D14 (G27) are decided, and D15 is decided for the Google tool (G34) and applied to this tool in the coordinator's reading; D4 and D5 are held (the coordinator's rulings, PLAN 2.3); D11 and D13 are the coordinator's rulings; D8, D10 and D12 wait, except Getty TGN, wanted now (the coordinator's reading of G35) | owner | recorded here, 2026-09-24 |
+| 1 | Owner decisions: D1 to D3, D6, D7 and D9 (G35 to G39) and D14 (G27) are decided, and D15 is decided for the Google tool (G34) and applied to this tool in the coordinator's reading; D4 and D5 were put to the owner and dismissed, so they are held (the coordinator's rulings, PLAN 2.3); D11 and D13 are the coordinator's rulings; D8, D10 and D12 wait (coordinator, 2026-09-24), except Getty TGN, wanted now (the coordinator's reading of G35) | owner | recorded here, 2026-09-24 |
 | 2 | Confirm or reject the McKinley crosswalk entry and the 1946-47 expedition itinerary from S8's review sheets, routed through the owner. On 2026-09-24 the owner decided not to send the sheets for now: "That’s fine. Human review is ok" (the owner's message, relayed by the coordinator; PLAN 2.3). No entry is confirmed, and an unconfirmed entry never settles a field (G36), so the six McKinley slides' places go to needs human review. In the coordinator's reading of G36 (its correction of 00:43Z on 2026-09-25, PLAN 2.3), Mt. Apo is a mapped peak, not a curated entry, so the Apo slide's place may settle from gazetteer evidence with its record, or stay unresolved, and which Mount Apo is meant is itself unsettled (GeoNames 6569865 is a 640 m "Mount Apo" near Malita; S8's sheet 3). Only the itinerary's refinement of the Apo slide is a curated entry, and it waits. The entries stay unconfirmed | the Insects collection manager or a curator they name (G36) | a confirmed entry lands in a pull request that cites the owner's recorded confirmation, with a test that an unconfirmed entry never settles; the repository records the confirming role and date, never a name (G36; the coordinator's ruling in PLAN 4.8) |
 | 3 | Merge T3a with S8's accepted additions; map the pilot's geography fields to `geography_lookup` | S4, S3 | contract tests pass |
 | 4 | Build tier 1 (curated entries, itineraries, Wikidata, the GeoNames dumps, GNS, Getty TGN) with fakes and the probe's recorded responses as fixtures (HAR-018) | S8 (G34, G35) | the fixtures reproduce the probe's results for the four localities |

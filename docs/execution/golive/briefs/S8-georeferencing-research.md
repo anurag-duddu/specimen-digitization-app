@@ -40,16 +40,17 @@ governs every outside request: every value your tool takes from the
 record or a tier-1 result, in any parameter of any request, goes through 4.8's place-request
 filter, which is S4's single filter and which your request builder calls
 (coordinator ruling). A tier-1 source's own identifiers follow 4.8's
-Identifiers rule instead: taken only from that source's own answer, checked
-with the patterns in S4's filter module rather than a copy of them, and sent
-back to that source unchanged, as a prefixed name such as `tgn:1000123` in
+Identifiers rule instead: taken only from the field of that source's answer
+that carries its identifiers, checked with the patterns in S4's filter module
+rather than a copy of them, and sent back to that source unchanged, as a prefixed name such as `tgn:1000123` in
 SPARQL. A request template's own constants, such as P625 or
 LIMIT 10, are reviewed fixed parts, not record values. The profile's notation
 expansions may be sent as 4.8 allows, and your parser passes the literal to
 the filter, which expands it. Dates are
-compared locally and never sent, so the charter's target-year constraint is
-applied to results, never put in a query; elevation phrases stay as written
-for local parsing and are never sent. Tests show the filter's guarantees on
+compared locally, and the filter keeps them out of requests within 4.8's stated
+limit, so the charter's target-year constraint is applied to results, never put
+in a query. Elevation phrases stay as written for local parsing, and the filter
+keeps them out of requests within that limit (a unit such as "ft." can leave). Tests show the filter's guarantees on
 your own requests (coordinator ruling).
 
 0. Manifest: pin each dataset file's source, version or dump date, size and
