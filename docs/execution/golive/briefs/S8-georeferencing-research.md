@@ -74,8 +74,9 @@ your own requests (coordinator ruling).
 6. Tier 3 and the geographic derivations (D13, D11, G37, G38, G41): the
    in-house point-radius engine; containment for county and city against
    the boundary files PLAN 4.8 names (geoBoundaries' Philippine files and
-   CONRED's COD-AB file for Guatemala, each under its own file's licence,
-   CC BY 3.0 IGO via HDX, and credited), with the circle widened by the
+   CONRED's COD-AB file for Guatemala, each under CC BY 3.0 IGO as its own
+   source states it, geoBoundaries' metadata for the Philippine files and
+   HDX for CONRED's, and credited), with the circle widened by the
    stated simplification error for the simplified Philippine files; elevation from Copernicus
    GLO-30 where the label states none; a location derived from a settled county
    at county precision (G38); all as derivation results behind S4's interface,

@@ -12223,3 +12223,24 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. A source check that accepts whatever a caller found in the text is no source check, and the cuts become the only defence. Name the fields a caller may draw from, and state in the limit what the cuts alone can't catch.
   3. A coordinator correction written after an owner's quote reads as following from the owner's words. Label it as a reading, with its date and source, even when it only corrects the coordinator's own earlier line.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-24 — Go-live program: plan corrections after #191
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-9`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #191's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/191#issuecomment-5825808641). In PLAN 4.8's filter:
+    - An identifier counts only in the field that carries its source's ids, never as another token of the answer, so a TGN `estStart` of "1946" or a GNS latitude of 7.3 can't pass as one.
+    - The limit's class sentence says "text", not "a name", and "no marker the profile names". A habitat ("Mossy forest"), a catalogue prefix ("FMNH INS") and a unit ("ft.") leave mid-run too, and so does a name beside a marker the profile doesn't list.
+    - The profile names collector and determiner markers in English and Spanish ("Col.", "Colector", "Collector"), and month forms old and new ("Agto."). The limit names a form of a listed language that the profile doesn't list.
+    - A Roman month is a token whose every word is a numeral I to XII, so "VIII/IX 1946" is cut.
+    - The limit names the marker clause's over-cut across lines, and the notations bullet defers to the limit.
+    - The month listing carries its own label, and "not itself in a source" replaces "not written on the label".
+  - Licences: "via HDX" applies to CONRED's file only. The Philippine files' licence is the one geoBoundaries' metadata states for each file (PLAN 4.8's table, S8's task 6).
+  - Corrections (dated 2026-09-24) to the entry "2026-09-24 — Go-live program: plan corrections after #185" above:
+    - Its line '"Werner" beside "Wernersdorf" is cut' should read '"Werner" is cut where the record reads "Wernersdorf" and "leg. Werner"'.
+    - Its line "a name that no reading gives a non-place field, and the harness hasn't yet" paraphrases PLAN 4.8. At #191's head, 4.8 read "a name no reading assigns to a non-place field, or one the harness has not yet given a non-place field, when no marker in its own clause accompanies it". This PR rewrites that sentence.
+    - Its line "geoBoundaries' Philippine files and CONRED's COD-AB file for Guatemala, CC BY 3.0 IGO via HDX" puts "via HDX" on both files. It applies to CONRED's file only; the Philippine licence comes from geoBoundaries' metadata. The line also omits the simplified-file margin: for the simplified Philippine files, the circle is widened by the stated simplification error.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: an identifier check is only as strict as the field it reads. "Returned by the source" has to name the id field, because an answer's dates and coordinates are numbers too, and a digit pattern matches them.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
