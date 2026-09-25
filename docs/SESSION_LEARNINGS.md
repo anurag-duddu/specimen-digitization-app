@@ -12604,12 +12604,20 @@ because the hooks runner hands a native asset hook only `PATH`.
 
 - Task: the steward's follow-up (2026-09-25) from security's review of #216. The research probe still called GBIF's GADM reverse geocoder behind `--held-steps`, and `docs/GBIF.md` still recommended GADM, though PLAN 4.8 rules GADM out, not even as a measurement.
 - Branch/worktree: `golive/geo-gadm-superseded` in `.claude/worktrees/geo-build`.
-- Outcome: In progress (pull request open for review).
-- Commits/PRs: #217. The red `e3d3633` marks GBIF.md's three GADM passages superseded in place and adds a guard test; the green commit after it removes the probe's GADM step and its report fields, and corrects the probe's docstring, help text and README.
-- Validation: the guard test fails on `main` and passes after the green; the probe parses and prints its help; `uv run pytest -q` gives 3,069 passed, 81 skipped.
-- Durable learnings: PLAN, the briefs and GEOREFERENCING.md cite `docs/GBIF.md` by line number, so a note added inside an existing line keeps every reference valid where a new line would shift them.
-- Failed approaches: a first draft added the notes as new blockquote lines, which would have shifted those references; it was rewritten before any commit.
-- Remaining follow-ups: None.
+- Outcome: In progress (pull request open; review round 1 had no blocking finding and asked for one more push).
+- Commits/PRs: #217.
+  - The red `e3d3633` marks three of GBIF.md's GADM passages superseded in place (:61, :256 and :467) and adds a guard test.
+  - The green `89e08a2` removes the probe's GADM step and its report fields, and corrects the probe's docstring, help text and README. `b67be62` names #217 here.
+  - `main` was merged in at #217's turns as `ded2172` (#83) and `193c791` (#216). `ce46a85` adds the blank line the union merge dropped before #216's entry.
+  - Review round 1 (comment 5836111240) found GBIF.md's other two GADM passages (:11 and :322) and the `gadm` block in GBIF's occurrence records. It is answered by the red `11ad5e8` and the green commit after it: the two passages are marked in place, the guard applies #216's pattern, and stored responses drop the block.
+- Validation: the first guard test fails on `main` and passes after the green, and the probe parses and prints its help. `uv run pytest -q` gave 3,069 passed on `89e08a2`, 3,102 on `ded2172` and 3,097 on `ce46a85`, with 81 skipped each time. Round 1's storage test fails on `ce46a85` and passes on its green.
+- Durable learnings: PLAN, the briefs, DATA_CONTRACT.md:329 and GEOREFERENCING.md cite `docs/GBIF.md` by line number, so a note added inside an existing line keeps every reference valid where a new line would shift them.
+- Failed approaches:
+  - A first draft added the notes as new blockquote lines, which would have shifted those references; it was rewritten before any commit.
+  - The first push counted three GADM passages, and review round 1 found two more. Search a document for every mention of a retired source before calling the set complete.
+- Remaining follow-ups:
+  - GEOREFERENCING.md:15 still calls `application/geography.py`, which #216 deleted, today's geography tool. That goes to S8's next GEOREFERENCING change.
+  - PLAN.md:753 could add docs/GBIF.md to S8's row. That goes to the coordinator's next plan PR.
 
 ### 2026-09-25 — Go-live S4: removing the GBIF GADM geography adapter (PLAN 4.8 licence fix)
 

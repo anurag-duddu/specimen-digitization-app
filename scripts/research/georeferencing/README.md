@@ -42,6 +42,9 @@ descriptive User-Agent, at least 1.1 seconds between requests to the same host,
 `Retry-After` honoured once, and nothing written outside `--out` (the raw
 responses with their SHA-256, `report.json` and `summary.md`). A default run
 skips every GBIF request, and `--held-steps` adds only the occurrence search.
+GBIF's occurrence records carry GADM's divisions in a `gadm` block, which the
+probe removes before it keeps or stores a response, so the stored file and its
+SHA-256 hold no GADM data (PLAN 4.8).
 
 The crosswalk entry mapping "Mount McKinley" to "Mount Talomo" is a hypothesis
 for curator review, taken from the expedition narrative, not a fact.

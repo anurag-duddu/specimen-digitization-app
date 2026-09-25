@@ -122,9 +122,13 @@ class Client:
         if outcome != "success" or url.endswith(".zip"):
             return self._record(url, params, outcome, body if outcome == "success" else None, body)
         try:
-            return self._record(url, params, outcome, response.json(), body)
+            data = response.json()
         except ValueError:
             return self._record(url, params, "malformed_response", None, body)
+        # GBIF's occurrence records carry GADM's divisions in a "gadm" block. GADM is not
+        # used, not even as a measurement (PLAN 4.8), so the block is never kept or stored.
+        kept = _without_gadm(data)
+        return self._record(url, params, outcome, kept, body if kept == data else json.dumps(kept).encode())
 
     def _record(self, url: str, params: dict[str, Any], outcome: str, data: Any, body: bytes) -> tuple[str, Any]:
         digest = hashlib.sha256(body).hexdigest()
@@ -133,6 +137,15 @@ class Client:
         self.calls.append({"url": url, "params": params, "outcome": outcome, "sha256": digest,
                            "retrieved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
         return outcome, data
+
+
+def _without_gadm(value: Any) -> Any:
+    """The value without any "gadm" key, at any depth."""
+    if isinstance(value, dict):
+        return {key: _without_gadm(item) for key, item in value.items() if key != "gadm"}
+    if isinstance(value, list):
+        return [_without_gadm(item) for item in value]
+    return value
 
 
 def km(a: tuple[float, float], b: tuple[float, float]) -> float:
