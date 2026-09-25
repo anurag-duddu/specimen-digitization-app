@@ -12434,3 +12434,20 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: date a ruling where its record dates it. A ruling logged "04:17Z on 2026-09-25" and labelled "2026-09-24" in the plan reads as two rulings. Use the UTC date in both places.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live program: plan corrections after #206
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-12`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #206's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/206#issuecomment-5828020578), items 1-6. It carries the coordinator's rulings of 06:36Z and 06:37Z on 2026-09-25, each recorded in `status/coordinator.md` before it was sent.
+  - PLAN 4.8's filter:
+    - The ordinal endings are a closed list: st, nd, rd, th, d, er, º, ª. Other spellings ("1.º", "1o", "1ro", "2do", "1.er") and a word joining two months ("VIII y IX 1946") are named in the limit. The Roman-month cut stops widening there before the pilot.
+    - Sparing covers only place values the reviewer entered or changed. A harness place value the reviewer left unchanged is cut like any other source, so a kept "Mindanao F.G. Wermer" sends "Mindanao".
+    - A cut date token is one with a digit, a month word or a Roman month. "15 de agosto de 1946" is tested, and the limit names the one-sided connector ("Chimaltenango de 1946" sends "Chimaltenango de").
+    - "mid-VIII" can leave whole, labelled with the 04:17Z and 05:38Z rulings. "1ª VIII" joins the tests, and the credits add #206.
+  - PLAN's header states the date convention: a label with a time is UTC, and a date alone is New York time, as the coordinator's records are. So the #191-era labels of 2026-09-24 stand.
+  - S7's T4a: the coordinator compares its own hash of the bytes it read with the SHA-256 S7 sent.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: a filter's stated limit is how a list of cases stops growing. When each widening only surfaces the next spelling, close the list, name the rest, and pin them so any change shows.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
