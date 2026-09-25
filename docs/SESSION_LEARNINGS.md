@@ -11879,8 +11879,10 @@ because the hooks runner hands a native asset hook only `PATH`.
   - It drives `create_app(adapters=...)` through the upload routes (`scripts/lab/lab_lane.py`: SQLite or a fresh SQL Connect emulator per run).
   - It scores each PLAN 4.1 stage from what the app recorded (`scripts/lab/lab_checks.py`).
   - Cost: it prices tokens and keeps the lab's own tally against its USD 5.00 share (G9, G30). Every paid attempt without settled usage is held at the full per-call bound until production's ledger lands.
-  - It redacts PLAN 7.7's categories from every text it writes: token values and shapes, instance addresses, identities, and billing and organization ids. Fields that name a person are redacted by name. It refuses to run without its private values file in `~/specimen-release-private/`.
+  - It redacts PLAN 7.7's categories from every text it writes: token values and shapes, instance addresses, identities, and billing and organization ids. Fields that name a person are redacted by name, including `SourceAsset.uploaderUid` and `ProfileVersion.approvedBy`. It refuses to run unless its private values file is under `~/specimen-release-private/` (PLAN 840).
   - It fails a run that sends a GBIF occurrence request while D4 is held. It counts such requests at `bounded_http` in the parent process, and scans every run's records and receipt blobs.
+  - It fails any GADM call on its own ground: PLAN 4.8 does not use GADM (coordinator ruling, 2026-09-25). Other GBIF calls outside PLAN 4.8's table are reported for the coordinator.
+  - The subject report carries each run's `verdict.md`, a person's verdict that the runner only reads, on every rebuild.
   - Only the ten pilot slides are declared not sensitive (G31).
 - Runs of `subject_105526321`:
   - `20260923T211535Z`: stages 1, 3, 5 and 9 passed; 2 substituted; 4, 6, 7 and the app trace not built; 8 blocked at `parse` with `external_outcome_unknown`. Filed #79 (lane: synthetic-mode uploads get the synthetic profile) and #80 (harness: a deterministic error recorded as an unknown outcome).
@@ -11888,10 +11890,10 @@ because the hooks runner hands a native asset hook only `PATH`.
   - Lab spend USD 0.027.
 - Expectations: `LAB.md` records the expected outcome for the ten (G42 and the owner's G35 to G45): review for all ten, with the right reasons. The owner's words and the coordinator's readings are kept apart. Per-slide tables are outside the repository (`field-coverage.md`, `expected-outcomes.md`).
 - Validation actually run:
-  - `uv run pytest scripts/lab -q`: 29 passed, 1 skipped on #84;
+  - `uv run pytest scripts/lab -q`: 39 passed, 1 skipped on #84 after the fourth review's follow-ups (34 passed on #83);
   - the emulator-gated test passed with `SPECIMEN_TEST_SQL_EMULATOR=true`;
-  - `uv run pytest scripts/ -q`: 1560 passed, 50 skipped on #82's head;
-  - `pre-commit run --all-files` passed;
+  - `uv run pytest scripts/ -q`: 1560 passed, 50 skipped on #82's head. Not rerun for the fourth review's follow-ups: the load average was 43 to 58, above the lab's limit of 12;
+  - `pre-commit run --all-files` passed; for the fourth review's follow-ups, pre-commit on the changed files passed;
   - two real runs and one dry run of `subject_105526321`.
 - Durable learnings:
   1. **SAM 3 locally.** `sam3_server.py` cannot start outside Cloud Run, and it refuses `HF_TOKEN`. The pinned checkpoint `3c879f39` is cached in the lab Mac's Hugging Face cache. With `SPECIMEN_SAM3_ENDPOINT` unset, `segment` blocks cleanly with `sam3_serving_contract_not_configured_use_reviewed_regions`.
@@ -11907,6 +11909,8 @@ because the hooks runner hands a native asset hook only `PATH`.
   11. **Owner's words.** An owner decision is cited in the owner's words, with the coordinator's reading labelled as such.
   12. **Where GBIF calls happen.** GBIF reads run in a child process (`bounded_http`, then `run_isolated`, then `Popen`), so an in-process `httpx` hook sees none of them; count at `bounded_http` in the parent.
   13. **Which coverage field to read.** The lab scores the run snapshot, where #111 writes `coverage_check.outcome` (confirmed or unconfirmed). The thread API's `status` is a derived view.
+  14. **Name the right ground.** A GADM call is not an occurrence request. Filing it under D4 would point the owner at the wrong rule, so it fails against PLAN 4.8 with its own reason.
+  15. **Generated reports lose hand-written text.** A report rebuilt from scratch drops anything a person added to it. Keep the person's words in a file the runner only reads (`verdict.md`) and carry it in on every rebuild.
 - Failed approaches: pointing the emulator's `TMPDIR` at the run directory (the socket path was too long); calling `Workflow.parse` as an instance method (it is static).
 - Remaining follow-ups:
   - rerun specimen 1 in emulator mode once S3's #85, #89 and #93 merge (that fixes #79), with the local T3a commits and the DoD-4 SQL parity check;
