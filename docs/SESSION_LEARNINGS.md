@@ -11808,6 +11808,15 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: (1) a Pydantic AI agent's structured output is a tool call, so the replay defect also broke every reader's invalid-output retry, not only harness tools. (2) `PrivateProviderModel` hides provider bodies as "provider_request_failed"; the unwrapped HTTP 402 body read "You have depleted your monthly included credits. Purchase pre-paid credits to continue using Inference Providers", and calls kept slipping through intermittently, which looked like a transient fault. (3) The router's `/v1/models` catalog is public and lists per-provider pricing, tool and structured-output support; its chat responses carry `usage.estimated_cost`.
 - Failed approaches: calling `asyncio.run` per request with one pinned model closed the event loop the async client was bound to; one run per process fixed it.
 - Remaining follow-ups: the owner's pre-paid Hugging Face credits (queued in `~/specimen-golive/OWNER_ACTIONS.md`); the first-pass and harness candidate measurements and the route report to the coordinator; then T2 to T4.
+
+### 2026-09-23 — Go-live S4: a failure after a settled external effect is a known block (issue #80)
+
+- Task: go-live S4 ("Build the LLM first pass and agentic harness"), issue #80 from the acceptance lab (S7): on specimen 1 a deterministic `EvidenceIntegrityError` inside `parse`, raised after the extraction call had returned, was stored as `external_outcome_unknown` with a lease, so retry and reprocess refused the record.
+- Branch/worktree: `golive/harness-parse-outcome`, stacked on `golive/harness-hf-tool-call-args` (#77), in `.claude/worktrees/s4-parse-outcome`.
+- Outcome: `Workflow._step` marks the step's effect settled once its adapter call returns. After that, `EvidenceIntegrityError` from the phase check becomes `OperationalBlock("evidence_integrity_failure")` (as in `finalize`), any other exception becomes `stage_failed_inspect_private_worker_logs`, the lease is released, the provider's circuit is not charged, and the exception class is logged without its message. A failure inside the call itself still records `external_outcome_unknown`. Spec: `docs/execution/golive/HARNESS.md` section 2.
+- Validation actually run: the two new tests failed before the fix with `external_outcome_unknown`; after it, `tests/test_step_outcome.py`, `tests/test_application.py` and `tests/test_api_runtime.py` pass (73 tests); the full-suite gates are listed in the pull request.
+- Durable learnings: the intent checkpoint writes `external_outcome_unknown` before every external step, and the generic handler kept it for any exception in that step, so a deterministic bug after a successful paid call looked exactly like a lost provider response and locked the record out of retry.
+- Remaining follow-ups: the lab's root cause of the integrity failure is #79 (S3); the post-step deadline check still resets a step to unknown when a deterministic phase alone overruns the effect timeout.
 ### 2026-09-23 — Go-live release workstream (S2), T1b: the owner decisions in the release runbooks and histories
 
 - Task: the same S2 session as the T1a entry, second half of brief item T1.
@@ -12585,3 +12594,24 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: none new.
 - Failed approaches: none.
 - Remaining follow-ups: at #154's turn, label GEO.md's "The owner held D5" as the coordinator's interim rule (PLAN 2.3's D4/D5 row); at #183's turn, re-check the plan's QID pattern against #183's final pattern.
+### 2026-09-25 — Go-live program: plan corrections after #209
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-14`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #209's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/209#issuecomment-5828996693), items 1-3. It carries the coordinator's rulings of 08:01Z and, after #210's review, 08:24Z on 2026-09-25, recorded in `status/coordinator.md` before they were sent.
+  - PLAN 4.8's filter:
+    - The sparing anchor is every text the run holds for the field: the harness's settled literal, the first pass's decided literal where there is one, and each reading's verbatim for the field. A token matches it by any folded word, or by its letters and digits run together.
+    - The non-place cuts also compare tokens by their letters and digits run together (the 08:24Z ruling on #210's review, option (a)). Without that, a kept "FG" met cuts that compare folded words only and left. Now "Wermer's", "F.G.Werner", "FG" for "F.G.", "Wer-mer", "Wer.mer" and a reading's verbatim the reviewer picks are cut. A split, merged or shortened spelling ("Wer mer", "FGWermer", "Werm.") still leaves, and the limit says so.
+    - The limit says a name the reviewer adds or respells in a place value leaves even when the collectors field holds it, and that the sparing rule is not refined further before the pilot.
+    - A numeral leaves when the nearest token on each side, passing over bare punctuation and the listed connectors, is anything but a date number. That replaces the list of joins, and the examples include "VIII & IX 1946" and "VIII ca. 1946".
+  - G32-G34 carry "2026-09-24" inside their rows, since the owner answered them after section 2.1's heading date. No line is added above PLAN 412, so the corrected citations stand.
+  - The header says "revised 07:34Z". S6's brief dates the run-states ruling (00:37Z on 2026-09-24) and the url_launcher approval (22:07Z on 2026-09-23) apart.
+  - CONRED's COD-AB file joins GeoNames as a pinned local copy in `~/specimen-golive/datasets/cod-ab-gtm/<retrieval date>/`, never downloaded again, since HDX serves only the latest file. This is the coordinator's ruling of 08:05Z on 2026-09-25, revising the 04:49Z ruling of 2026-09-24 for that file. It is in PLAN 4.8's datasets bullet, S2's T4d and S8's task 0, matching S8's manifest (#198) and S2's upload generator. S2's T4d gets a second run when the boundary files arrive with #198.
+  - Correction (dated 2026-09-25) to the entry "2026-09-25 — Go-live program: plan corrections after #206" above: its line "a date alone is New York time, as the coordinator's records are" was revised by #209. A date alone carries its record's date, since the records mix UTC and New York dates.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing. Round 1 re-ran the script from main's files; that checkout also reset the index, so afc2ffd committed main's S6 brief and dropped f1efa72's S6 change, and 5a09430 restored it.
+- Durable learnings:
+  1. An anchor for "what the reviewer changed" has to be every text the reviewer could have copied from, not the one value the harness settled. Otherwise picking a reading's text counts as the reviewer's own.
+  2. A match rule has to hold at every step it passes through. "FG" counted as kept, but the cuts it then met compared folded words only, so it still left.
+  3. `git checkout <ref> -- <files>` sets the index as well as the working tree. After re-running a script on those files, stage every file it writes, or the commit carries the ref's version.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
