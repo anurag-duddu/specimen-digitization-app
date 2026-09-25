@@ -98,10 +98,11 @@ NUMBER = r"\d+(?:[.,]\d+)*"
 # and horizontal-bar dashes, minus sign, and small and fullwidth hyphen-minus.
 DASHES = "-\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d"
 # A range joins its numbers by a dash of any kind or a slash, or by "to", or by
-# the Spanish "a" between spaces: "4000-4500 ft", "4000—4500 ft", "1500 a 2000 m".
+# "a", "and" or "y" between spaces: "4000-4500 ft", "4000—4500 ft", "1500 a 2000
+# m", "entre 1500 y 2000 m".
 RANGE = (
     rf"(?P<low>{NUMBER})"
-    rf"(?:(?:\s*(?:[{DASHES}/]|to)\s*|\s+a\s+)(?P<high>{NUMBER}))?"
+    rf"(?:(?:\s*(?:[{DASHES}/]|to)\s*|\s+(?:a|and|y)\s+)(?P<high>{NUMBER}))?"
 )
 PREFIX = r"\b(?:elev(?:ation)?|alt(?:itude)?)\b\.?\s*:?\s*"
 # An elevation has a prefix, a unit or both; a foot mark followed by a digit is
@@ -132,6 +133,9 @@ OPENINGS = "([{"
 # After other text, two or four digits before a number's first comma or dot could
 # be a year run into another number: "12 IV 1948,95 m", "IV 26,950 m".
 YEAR_LEAD = re.compile(r"(?:\d\d|\d{4})[.,]")
+# A number after another number and a single word may be a range's upper number,
+# joined by a word no range join lists: "4000 hasta 4500 ft".
+TOP_ALONE = re.compile(r"\d\s+[^\W\d_]+\.?\s+$")
 # The brackets an elevation leaves empty: "Mt. Apo (1463 m)".
 EMPTY_BRACKETS = re.compile(r"\(\s*\)|\[\s*\]|\{\s*\}")
 # A number beside another digit group across a space ("4 800 ft.") has an unsure
@@ -413,6 +417,8 @@ def _unsure(segment: str, match: re.Match[str], paired: bool) -> bool:
       other elevation (`paired`) comes first ("12.IV.1948,95 m", "4'800 m");
     - after other text, first digits that could be a year ("Sept. 1946,95 m",
       "IV 26,950 m"), or a range's upper number with a decimal ("4-1948,95 m");
+    - after another number and a single word, unless it pairs with another
+      elevation ("4000 hasta 4500 ft", but "4800 ft 1463 m" reads both);
     - beside another digit group across a space ("4 800 ft.", "Elev. 4 800 ft.")."""
     low, high = match["low"], match["high"]
     numbers = (low, high) if high else (low,)
@@ -422,6 +428,8 @@ def _unsure(segment: str, match: re.Match[str], paired: bool) -> bool:
     if start and not (segment[start - 1].isspace() or segment[start - 1] in OPENINGS or paired):
         return True
     if (start and YEAR_LEAD.match(low)) or (high and _decimal(high)):
+        return True
+    if not paired and TOP_ALONE.search(segment, max(0, start - 40), start):
         return True
     # Searched only in the few characters before the number, so a long segment
     # stays linear: segments hold single spaces, so a digit group and its space
