@@ -4,7 +4,7 @@ import json
 import pytest
 
 from test_authority_registry import query
-from test_geography import payload, service
+from test_parties import adapter, payload
 from specimen_digitization.application.evidence_harness import (
     BudgetUsage,
     FieldProposal,
@@ -26,7 +26,7 @@ def spec(**changes):
             PhaseSpec(
                 name=p,
                 version="1",
-                allowed_tools=("geography",) if p == "lookup" else (),
+                allowed_tools=("parties",) if p == "lookup" else (),
             )
             for p in (
                 "parse",
@@ -59,9 +59,10 @@ def literal(**changes):
 def test_all_phases_keep_candidates_and_meaningful_failed_gates(authority_server):
     state, client = authority_server
     state["body"] = json.dumps(payload()).encode()
-    lookup = service(client)[0].lookup(
-        query(historical_context="historical jurisdiction unknown")
-    )
+    found = adapter(client)[0].lookup(query())
+    # A captured candidate the source could not confirm for this literal.
+    unresolved = found.candidates[0].model_copy(update={"relation": "unresolved"})
+    lookup = found.model_copy(update={"candidates": (unresolved,)})
     parsed = run_phase(spec(), PhaseInput(phase="parse", literals=(literal(),)))
     assert parsed.proposals[0].candidate == "Illinois"
     enriched = run_phase(
@@ -150,13 +151,13 @@ def test_applicability_missing_phase_and_budget_are_explicit():
 def test_single_effect_checkpoint_and_replay_over_actual_http(authority_server):
     state, client = authority_server
     state["body"] = json.dumps(payload()).encode()
-    adapter, _ = service(client)
-    runner = HarnessRunner({"geography": adapter})
+    tool, _ = adapter(client)
+    runner = HarnessRunner({"parties": tool})
     call = ToolCall(
         call_id="call-1",
         phase="lookup",
-        tool_id="geography",
-        tool_version=adapter.version,
+        tool_id="parties",
+        tool_version=tool.version,
         reserved_cost_microunits=0,
     )
     saved = []
@@ -196,13 +197,13 @@ def test_allowlist_cost_and_budget_prevent_effect_and_checkpoint_failure_does_no
     authority_server,
 ):
     state, client = authority_server
-    adapter, _ = service(client)
-    runner = HarnessRunner({"geography": adapter})
+    tool, _ = adapter(client)
+    runner = HarnessRunner({"parties": tool})
     call = ToolCall(
         call_id="call",
         phase="lookup",
-        tool_id="geography",
-        tool_version=adapter.version,
+        tool_id="parties",
+        tool_version=tool.version,
         reserved_cost_microunits=0,
     )
     for changed, usage in (
@@ -251,7 +252,7 @@ def test_search_snippet_without_captured_authority_response_cannot_normalize(
 ):
     state, client = authority_server
     state["body"] = json.dumps(payload()).encode()
-    lookup = service(client)[0].lookup(query()).model_copy(update={"raw_ref": None})
+    lookup = adapter(client)[0].lookup(query()).model_copy(update={"raw_ref": None})
     result = run_phase(
         spec(), PhaseInput(phase="normalize", literals=(literal(),), lookups=(lookup,))
     )
