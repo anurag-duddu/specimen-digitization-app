@@ -563,7 +563,7 @@ class SearchFiltersState extends State<SearchFilters> {
   /// Material component this file may not reach for, so the two instants are
   /// typed as days and converted here: each to the moment it begins on the
   /// reviewer's clock, in UTC (design/01 H2.1; coordinator ruling for S6,
-  /// 2026-09-25, 01:26:02Z).
+  /// 2026-09-25, 01:26Z).
   //
   // TODO(specimen_ui): a UiDateField, so a reviewer picks a day rather than
   // spelling one. Not a slot's to build until it has an entry in 10 section 4,
@@ -833,7 +833,7 @@ class _Group extends StatelessWidget {
 /// A typed day, as the instant it begins on the reviewer's clock, in UTC;
 /// null when the text is not a day the calendar has. The reviewer types
 /// their own day, and the API filters on instants (design/01 H2.1;
-/// coordinator ruling for S6, 2026-09-25, 01:26:02Z).
+/// coordinator ruling for S6, 2026-09-25, 01:26Z).
 DateTime? typedDayStart(String raw) {
   final RegExpMatch? match = _dayPattern.firstMatch(raw.trim());
   if (match == null) return null;

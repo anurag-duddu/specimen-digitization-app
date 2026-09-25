@@ -12391,14 +12391,14 @@ because the hooks runner hands a native asset hook only `PATH`.
     - in "Go-live S6: server instants read on the reviewer's clock" (#182): the validation line;
     - in "Go-live S6: #181's review follow-ups, and corrections to its entry" (#182): the validation line;
     - in "Go-live S6: #182's review follow-ups, the reviewer's own day, and log corrections" (#197): the validation line.
-  - The rulings list in "Go-live S6: #197's review follow-ups, and dated corrections to earlier entries" missed rulings. Every lettered ruling to S6, and the unlettered ones this log cites, by send time. The times are from the coordinator's status file (coordinator.md, lines 202-248), except those marked (s), which are from the steward's #205 review (comment 5827740760); this session's receipt times agree to within seconds:
-    - 2026-09-24 00:37:36Z (s): reasons, option (a), and run states, option (c).
+  - The rulings list in "Go-live S6: #197's review follow-ups, and dated corrections to earlier entries" missed rulings. Every lettered ruling to S6, and the unlettered ones this log cites, by send time. The times are from the coordinator's status file, coordinator.md: 2026-09-25 01:26:02Z and 01:35:36Z at lines 202-212, the 2026-09-24 rulings from 01:13:52Z to 23:30:28Z at 226-248, 2026-09-25 00:01:16Z and 00:20:33Z at 264-283, and 2026-09-24 00:37:36Z at 302, in the timed index from line 285. This session's receipt times agree to within seconds:
+    - 2026-09-24 00:37:36Z: reasons, option (a), and run states, option (c).
     - 2026-09-24 01:13:52Z: the reason filter, option (b). Until S5's T5, the filter offers only codes stored without a suffix (PLAN.md 407-408).
     - 2026-09-24 22:59:13Z: layer labels, option (b).
     - 2026-09-24 23:10:57Z: pin the time zone in the test harness (#181).
     - 2026-09-24 23:30:28Z: server instants on the reviewer's clock, from design/01 line 149 (in H1.9) and H2.1 (#182).
-    - 2026-09-25 00:01:16Z (s): the wording rulings: `field_harness` (a), `review_decision` (b), the derivation words, G45 (a), `authority_identity` (a) (#187).
-    - 2026-09-25 00:20:33Z (s): per-label lookups, option (c) (waiting on S5's #171).
+    - 2026-09-25 00:01:16Z: the wording rulings: `field_harness` (a), `review_decision` (b), the derivation words, G45 (a), `authority_identity` (a) (#187).
+    - 2026-09-25 00:20:33Z: per-label lookups, option (c) (waiting on S5's #171).
     - 2026-09-25 01:26:02Z: H2.1 option (b), the reviewer's own day (#197).
     - 2026-09-25 01:35:36Z: no migration of saved filter sets (#197).
     So four different rulings were each "(b)", and that entry's learning 2 holds with four.
