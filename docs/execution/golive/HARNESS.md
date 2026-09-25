@@ -705,3 +705,48 @@ geography, a scientific name to taxonomy (PLAN 4.8).
 
 **The `lookup` step** makes no GBIF call of its own once the harness verified the
 taxon: its GBIF lookup is already on the run for the queue decision.
+
+## 15. Bounded retries (G30)
+
+The coordinator's ruling of 2026-09-24 on G30: a call's later request goes only
+if it cannot cross the call's reservation. It applies to every call through
+`run_agent_bounded`: the readers, the first pass, the harness and the old
+extraction agent. S3 writes it here, with S4's sign-off, because it changes the
+shared agent setup.
+
+- **Bounded feedback.** A later request carries pydantic-ai's validation
+  feedback, which lists every error with the input it rejected. An answer with
+  thousands of wrong-typed list items would carry thousands of errors.
+  `PrivateProviderModel` sends every feedback within
+  `RETRY_FEEDBACK_MAX_BYTES` (8,192), measured as the provider receives it:
+  - a list of errors keeps the first `RETRY_FEEDBACK_MAX_ERRORS` (20), each
+    `input` and `msg` shortened, and one more entry counting the rest;
+  - a text feedback, such as a `ModelRetry` message, is cut to fit.
+
+  The answer being corrected is already in the conversation, so a shortened
+  echo of it loses nothing the model needs.
+- **A budget.** `run_agent_bounded(..., budget=None)` takes a `CallBudget`: the
+  call's reservation and its route's prices. Before each request after the
+  first, the next request's input is bounded by the last answer's reported
+  input and output tokens, the new parts in bytes (a token is never shorter
+  than a byte) and 256 tokens of framing. If what was spent, plus that input
+  and the request's output cap at the route's prices, could cross the
+  reservation, the request is not sent. pydantic-ai's `UsageLimitExceeded` is
+  raised before it, so each caller keeps its own mapping (section 11, the
+  first pass's cap hit). A later request after an answer that reported no
+  usage, or one that carries an image, cannot be bounded and is not sent
+  either.
+  - The first request is not checked here. The lane sizes the call's
+    reservation for it from the crop (LANE.md T2d).
+  - With no budget, nothing changes.
+- **A reading stopped by its limits is a failed reading** (the coordinator's
+  reading of G6 and G30, 2026-09-24). The limits are its token limits or its
+  reservation. The model child reports it as `stopped` with the code
+  `model_usage_limit`, where it used to end as `external_outcome_unknown`.
+  - Its `transcribe` step completes with no observation, and the run goes on.
+    The step's cost record keeps the call.
+  - The region is then one reading short: no first pass runs, its transcript
+    stays unresolved, and the queue decision sends the record to review with
+    `independent_observations_missing`.
+  - An operational block would only park the record, since a retry of the
+    same crop under the same limits would likely stop the same way.
