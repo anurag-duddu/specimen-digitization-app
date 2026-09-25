@@ -12115,7 +12115,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Outcome:
   - Addresses #185's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/185#issuecomment-5824745385). Item 1 first: a tier-1 source's identifiers, matching its documented pattern, may be sent back to that source unchanged. Without this, S8's #139, #188 and #190 would fail closed.
   - Also in PLAN 4.8's filter:
-    - whole-token sources and cuts by character span, so a slice such as "Hoogstraa" cannot leave;
+    - exact-substring sources and cuts by character span over the reading, so no character of a slice such as "Hoogstraa" that a cut covers can leave;
     - month names and Roman-numeral months cut in any case, the numeral only as a whole token beside a day or a year;
     - a full form written on the label counts as a source;
     - a value is only escaped or encoded after the filter, in SPARQL or in an API such as Wikidata's;

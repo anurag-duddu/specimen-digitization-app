@@ -425,7 +425,7 @@ The place tool follows these coordinator rulings, from #124's reviews:
   escaped or encoded.
   - Sources, checked first, before any cut or expansion: exact substrings of
     the reading, taken from its place fields
-    (`country`, `province_state`, `county`, `city`, `precise_location`) and of
+    (`country`, `province_state`, `county`, `city`, `precise_location`) and from
     its unassigned locality text (the part of the lines holding those fields
     that no reading assigns to any field); the names tier 1 returns; and, in
     "fill the rest", the reviewer's value in a place field. A value drawn from
