@@ -208,12 +208,24 @@ def test_live_smoke_sends_an_image_only_to_a_route_that_takes_one(
 
 
 def test_live_smoke_is_capped_like_a_reading(monkeypatch, tmp_path) -> None:
-    # A reading's caps: 4,096 output tokens a response, two requests and
-    # 16,000 tokens in all (production.py's reader call).
+    # A reading's caps: 4,096 output tokens a response, two requests, and a
+    # stop once the run passes 16,000 tokens (production.py's reader call).
+    limits = []
+    run_sync = huggingface_preflight.Agent.run_sync
+
+    def recording(self, *args, **kwargs):
+        limits.append(kwargs.get("usage_limits"))
+        return run_sync(self, *args, **kwargs)
+
+    monkeypatch.setattr(huggingface_preflight.Agent, "run_sync", recording)
     seen = []
     live_smoke(monkeypatch, tmp_path, seen, "first-pass-glm", image=True)
     ((_, settings),) = seen
     assert (settings or {}).get("max_tokens") == 4096
+    assert [
+        (getattr(limit, "request_limit", None), getattr(limit, "total_tokens_limit", None))
+        for limit in limits
+    ] == [(2, 16000)]
 
     with pytest.raises(UsageLimitExceeded):
         live_smoke(

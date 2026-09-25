@@ -164,9 +164,13 @@ as its only alternative, and without its handoffs, differences or call.
 ## 5. The Hugging Face routes for the first pass and the harness (T1)
 
 G7 runs the first pass and the harness on Hugging Face models through the
-existing gateway. Two routes are registered. S4 recommended them on the
-measurements below, and the coordinator approved them on 2026-09-23 (its message
-to S4 at 22:52:14Z; coordinator.md:58):
+existing gateway. Two routes are registered. S4 recommended them in its T1
+report to the coordinator at 22:48Z on 2026-09-23, and the coordinator approved
+them on that report's figures (its message to S4 at 22:52:14Z;
+coordinator.md:58). The first-pass table below recomputes those figures from the
+same saved calls (2026-09-25): its seconds are medians, where the report's were
+mostly means, and it adds MiniMax-M3's second run, which finished after the
+report. Neither pick changes.
 
 | Route | Model | Provider | Input | Use |
 |---|---|---|---|---|
@@ -202,15 +206,17 @@ capabilities it needs.
 from the initial reader set only, as on main, so a profile that names the
 first-pass or the harness route as a reader fails the pin step. A reader call
 blocks as `pinned_model_route_unavailable` unless its route is a
-`handwriting_transcriber` with image input. The first-pass route is pinned only
-when it is registered as `transcription_first_pass` with image input, and the
-first-pass call checks the same before its request: any other route, the
-harness's text-only one or a reader's included, blocks the step as
-`pinned_model_route_unavailable`.
+`handwriting_transcriber` with image input; `transcribe_label_image`, which has
+no caller, raises `ModelGatewayConfigurationError` on any other route. The
+first-pass route is pinned only when it is registered as
+`transcription_first_pass` with image input, and the first-pass call checks the
+same before its request: any other route, the harness's text-only one or a
+reader's included, blocks the step as `pinned_model_route_unavailable`.
 
 **The paid smoke test** (`specimen-huggingface-preflight --live-route`) runs one
 synthetic prompt under a reading's caps: 4,096 output tokens a response, two
-requests (the answer and one output retry) and 16,000 tokens in all. A route
+requests (the answer and one output retry), and a stop once the run passes
+16,000 tokens in all (Pydantic AI checks the total after each response). A route
 that takes images needs the `--image` fixture and is sent it; a text-only route
 is sent a synthetic sentence, never an image, and refuses `--image`.
 
@@ -221,13 +227,15 @@ unchanged, readers shown as A and B with the order alternating). Its verdicts
 were scored against S4's full-resolution reading of the crops: 11 material
 disagreements, 1 ambiguous span, 2 fluent traps (the label's "Chimaltenago",
 which one reader corrected to "Chimaltenango") and 7 capitalization-only
-differences. Candidates were ranked by the fewest confidently wrong verdicts, as
-agreed with the coordinator, then by S4's tie-breaks: the fewest failed traps,
-then the most correct. The table follows that order on each candidate's first
-run. GLM, MiniMax and DeepSeek ran a second time, with the reader order flipped.
-Median seconds are over a candidate's valid calls, leaving out calls that waited
-on retries after an HTTP 402 (payment required), nine in the table, seven of
-them in DeepSeek's first run; USD per call is the mean over its valid calls.
+differences. Candidates were ranked by the fewest confidently wrong verdicts
+(S4's criterion, which the coordinator agreed), then by the coordinator's
+tie-breaks (its message to S4 at 21:45:54Z on 2026-09-23): the fewest failed
+traps, then the most correct. The table follows that order on each candidate's
+first run. GLM, MiniMax and DeepSeek ran a second time, with the reader order
+flipped. Median seconds are over a candidate's valid calls, leaving out calls
+that waited on retries after an HTTP 402 (payment required), nine in the table,
+seven of them in DeepSeek's first run; USD per call is the mean over its valid
+calls.
 
 | First-pass candidate (DeepInfra) | Valid answers | Confidently wrong | Traps failed | Correct | Abstained | Median seconds | USD per call |
 |---|---|---|---|---|---|---|---|
