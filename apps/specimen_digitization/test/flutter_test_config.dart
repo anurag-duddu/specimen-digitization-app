@@ -14,7 +14,10 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_digitization/src/wall_time.dart';
 import 'package:specimen_ui/specimen_ui.dart';
+
+import 'central_time.dart';
 
 /// Where the package's assets sit, relative to the application root, which is
 /// where `flutter test` runs.
@@ -48,6 +51,12 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   await _loadPhosphor();
 
   HttpOverrides.global = before;
+
+  // Every instant a screen prints is read in US Central time, the zone the
+  // goldens were rendered in, whatever the machine's zone. Without this a
+  // machine that moves zone fails the History goldens with no code change
+  // (coordinator ruling for S6, 2026-09-24; `test/wall_time_test.dart`).
+  debugWallTimeOverride = centralWallTime;
   await testMain();
 }
 
