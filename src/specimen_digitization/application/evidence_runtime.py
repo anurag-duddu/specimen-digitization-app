@@ -553,10 +553,8 @@ def plan_authorities(specimen):
         plan.append(
             {"tool_id": "parties", "field_key": "identified_by_irn", "required": True}
         )
-    if "geography" in tools:
-        plan.append(
-            {"tool_id": "geography", "field_key": "province_state", "required": True}
-        )
+    # No geography authority: GADM is not used (PLAN 4.8), so place fields go to
+    # review until the harness's geography tool lands.
     return plan
 
 
@@ -581,9 +579,6 @@ def authority_query(specimen, task, blobs):
         else "restricted",
         literal=literal.literal,
         evidence_ids=literal.evidence_ids,
-        historical_context=specimen.run.fields["date_visited_from"].literal
-        if task["tool_id"] == "geography"
-        else None,
     )
 
 
