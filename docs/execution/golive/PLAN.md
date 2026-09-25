@@ -429,11 +429,15 @@ The place tool follows these coordinator rulings, from #124's reviews:
     its unassigned locality text (the part of the lines holding those fields
     that no reading assigns to any field); the names tier 1 returns; and, in
     "fill the rest", the reviewer's value in a place field. A value drawn from
-    anything else is refused. A full form written on the label, such as
+    anything else is refused. Each caller names its sources, and a value taken
+    from a source must be a whole-token slice of it, or it is refused; the
+    harness names its own field literals, each found character for character
+    in the reading, as its sources. A full form written on the label, such as
     "Philippine Islands", is a source like any other place text.
   - Cuts, applied only to those values and by character span over the
     reading, so no character a cut covers can leave however a value is sliced
-    (a slice that is not a whole token is cut this way, not refused): every token
+    (so a harness literal that is itself part of a reading's token is cut
+    this way, not refused): every token
     of every literal any reading assigns to a non-place field, and of every
     value a reviewer puts in a non-place field; every token of every clause,
     between commas, semicolons or line breaks, that holds a collector or
