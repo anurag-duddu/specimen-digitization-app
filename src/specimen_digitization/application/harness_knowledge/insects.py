@@ -28,7 +28,8 @@ class Notation:
 
 
 # Each month in full and abbreviated, in English and in Spanish, the pilot
-# labels' languages (PLAN 4.8 in #191).
+# labels' languages (PLAN 4.8 in #191), with the Spanish variant the RAE
+# accepts, "setiembre" and "set." (the coordinator's ruling of 2026-09-24).
 MONTHS_ENGLISH = (
     *("January", "February", "March", "April", "May", "June", "July"),
     *("August", "September", "October", "November", "December"),
@@ -37,9 +38,9 @@ MONTHS_ENGLISH = (
 )
 MONTHS_SPANISH = (
     *("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio"),
-    *("agosto", "septiembre", "octubre", "noviembre", "diciembre"),
+    *("agosto", "septiembre", "setiembre", "octubre", "noviembre", "diciembre"),
     *("ene.", "feb.", "mar.", "abr.", "may.", "jun.", "jul.", "ago.", "sep."),
-    *("sept.", "oct.", "nov.", "dic."),
+    *("sept.", "set.", "oct.", "nov.", "dic."),
 )
 
 NOTATIONS = (
