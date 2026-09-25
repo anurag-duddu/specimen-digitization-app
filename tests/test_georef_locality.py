@@ -1,8 +1,10 @@
 """Reading locality text for the retrospective georeferencing tool (GEO.md 1)."""
 
 import itertools
+import random
 import re
 import time
+import unicodedata
 
 import pytest
 
@@ -777,7 +779,15 @@ def test_a_prefix_or_a_low_no_year_could_be_still_reads(text):
         ("6000-7000 ft 1830-2130 m", ["6000-7000 ft", "1830-2130 m"]),
         ("1829-2134 m 6000-7000 ft", ["1829-2134 m", "6000-7000 ft"]),
         ("4800 ft 1946-2500 m", ["4800 ft"]),
-        ("6000-7000 ft 1900-2134 m", ["6000-7000 ft"]),
+        # The tolerance's edges, compared exactly: 1866 is within 2%, 1867 is not, and
+        # "6375 ft" is exactly 2% off "1905 m".
+        ("6000-7000 ft 1866-2134 m", ["6000-7000 ft", "1866-2134 m"]),
+        ("6000-7000 ft 1867-2134 m", ["6000-7000 ft"]),
+        ("6375-7375 ft 1905-2248 m", ["6375-7375 ft", "1905-2248 m"]),
+        # With the range first and set aside, the elevation after it is checked
+        # against the range's numbers and set aside too.
+        ("1946-2500 m 4800 ft", []),
+        ("1792-2134 m 6000-7000 ft", []),
     ],
 )
 def test_a_year_like_range_beside_another_elevation_reads_only_if_they_convert(text, read):
@@ -901,9 +911,10 @@ def test_a_year_in_other_digits_is_still_a_year(zero):
 
 
 def test_a_range_runs_upward_by_its_whole_parts_in_any_digits():
-    for text in ("4500-\uff14\uff10\uff10\uff10 m", "2,000-1,463.5 ft"):
+    # A decimal part, in thousands groups or not, sets a range aside too (round 8).
+    for text in ("4500-\uff14\uff10\uff10\uff10 m", "2,000-1,463.5 ft", "1,200-1,463.5 ft"):
         assert read_locality(text).elevations == (), text
-    for text in ("1,200-1,463.5 ft", "1.200-1.463,5 m", "\uff11\uff15\uff10\uff10-2000 m"):
+    for text in ("1,200-1,500 ft", "1.200-1.500 m", "\uff11\uff15\uff10\uff10-2000 m"):
         assert [e.text for e in read_locality(text).elevations] == [text], text
 
 
@@ -939,6 +950,364 @@ def test_the_check_between_two_numbers_is_linear(text, count):
     reading = read_locality(text)
     assert time.monotonic() - started < 5
     assert len(reading.elevations) == count
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Sept., ?, 1946,95 m",
+        "Sept.\nCNHM\n1946,95 m",
+        "IV\nCNHM.\n1948.950 m",
+        "Sept.\n\u200b\n1946,95 m",
+        "12 IV, ?, FMNH, 1948,95 m",
+    ],
+)
+def test_a_part_that_folds_to_nothing_passes_the_date_on(text):
+    # A part with no letter or digit, or only an institution code, stands between
+    # a month or a number and the year without resetting it.
+    reading = read_locality(text)
+    assert (reading.elevations, reading.parts) == ((), ())
+
+
+def test_a_link_before_a_month_begins_a_date_not_a_name():
+    reading = read_locality("Mindanao\nde julio, 1946,95 m")
+    assert ([part.name for part in reading.parts], reading.elevations) == (["Mindanao"], ())
+    reading = read_locality("Mindanao\nof July,1934\n9500 m")
+    assert [part.name for part in reading.parts] == ["Mindanao"]
+    assert [part.name for part in read_locality("E. slope\nof Mt. Apo").parts] == ["Mt. Apo"]
+
+
+def test_a_range_with_a_decimal_in_either_number_is_set_aside():
+    # A year may have run into the decimal, a prefix before it or not.
+    for text, places in (
+        ("Mindanao, 1946,95-2500 m", ["Mindanao"]),
+        ("Guatemala, 26,5-850 m", ["Guatemala"]),
+        ("Elev. 1946,95-2500 m", []),
+        ("Alt. 620,31 -9500 m", []),
+        ("ELEV: 1.463,26 -9500 ft", []),
+    ):
+        reading = read_locality(text)
+        assert (reading.elevations, [part.name for part in reading.parts]) == ((), places), text
+    # A number in thousands groups has no decimal, and reads.
+    assert [e.text for e in read_locality("1,946-2,500 m").elevations] == ["1,946-2,500 m"]
+
+
+@pytest.mark.parametrize(
+    "text", ["Del Mar", "de Mayo", "Mar", "May", "Set", "Ene", "Ag", "I", "V", "X"]
+)
+def test_a_part_of_only_month_words_is_no_place(text):
+    reading = read_locality(text)
+    assert (reading.parts, reading.unplaced) == ((), (text,))
+
+
+def test_after_a_part_of_only_month_words_a_range_is_set_aside():
+    # The cost: "Mayo" is a month, so the part after it counts as one after a number.
+    for text in ("Mayo, 1500-2000 m", "Mayo, 12,300 ft"):
+        assert read_locality(text).elevations == (), text
+
+
+@pytest.mark.parametrize(
+    ("text", "month"),
+    [("mid-Sept., 1946.950 m", "mid-Sept"), ("late Aug., 1946,95 m", "late Aug.")],
+)
+def test_a_month_that_shares_its_part_reads_as_a_name(text, month):
+    # The stated cost: a qualifier list would be new design (G5).
+    reading = read_locality(text)
+    assert [part.name for part in reading.parts] == [month]
+    assert [e.text for e in reading.elevations] == [text.split(", ")[1]]
+
+
+# The two baseline readers' transcripts of 105526321, whole, from the lab run of
+# 2026-09-25. Read as one literal, "6400'" comes after "3 Sept. '46" with words
+# between, so it is set aside. The tool reads each place field's own literal
+# (GEOREFERENCING.md 1.1, "Input"), which leaves such lines out.
+BASELINE_105526321 = (
+    "10-6-78-la\nE. slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.\nF.G. Werner\n"
+    "3 sept. '46\nMossy forest 6400'\nsp. 30 \u2640",
+    "10-6-78-1a\nE. slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.\nF. G. wermer\n"
+    "3 sept. '46\nMossy forest 6400'\nSp. 30 \u2640\nFMNHINS\n4486784",
+)
+
+
+@pytest.mark.parametrize("text", BASELINE_105526321)
+def test_the_line_break_rule_costs_a_whole_transcript_its_elevation(text):
+    reading = read_locality(text)
+    assert reading.elevations == ()
+    names = [part.name for part in reading.parts]
+    assert names[:4] == ["Mt. McKinley", "Davao", "Mindanao", "P.I."]
+
+
+def test_across_a_comma_marks_join_and_other_words_end_the_check():
+    for text in (
+        "4000, ~ 4500 m",
+        "4000 ~, 4500 m",
+        "4000, ?, 4500 m",
+        "4000 to, 4500 m",
+        "4000 ~,\n4500 m",
+    ):
+        assert read_locality(text).elevations == (), text
+    for text, read in (
+        ("Camp 3, Mt. Apo 1500 m", ["1500 m"]),
+        ("6-Sept-1946, Elev.6400", ["Elev.6400"]),
+        ("1946, 950 m", ["950 m"]),
+        # The cost: a word after a comma starts a part, so the top reads.
+        ("4000, hasta 4500 m", ["4500 m"]),
+    ):
+        assert [e.text for e in read_locality(text).elevations] == read, text
+
+
+def test_a_number_with_no_unit_running_into_a_date_is_set_aside():
+    # It runs straight into more letters or digits, or has a decimal part that a
+    # number or a month follows in its part.
+    for text in (
+        "Elevation 6400,13.sbre.",
+        "alt 1.463,27-of jun.",
+        "Elev.6400,13.XI",
+        "el. 6400,12 Sep",
+        "el. 6400,12 de julio",
+        "Elev.3300,12 4 1948",
+        "el. 1.463,18 of may.",
+    ):
+        assert read_locality(text).elevations == (), text
+    for text in (
+        "Elev. 6400.",
+        "Elev. 6400)",
+        "Elev.6400",
+        "Elev. 1463,5 Davao",
+        "Elev. 6400 Sept.",
+    ):
+        assert len(read_locality(text).elevations) == 1, text
+
+
+# A seeded random generator over every token class the reviews found: months with
+# and without qualifiers and links; years, decimals and grouped numbers; parts that
+# fold to nothing and institution codes; prefixes, joins and marks; line breaks and
+# commas; digit scripts and units. Every number's digit groups are unique in its
+# layout, so a reading traces back to what the layout wrote. The stated cost is
+# exempt: a month that shares its part with a qualifier reads as a name.
+RANDOM_PLACES = (
+    *("Mindanao", "Davao", "Guatemala", "Yepocapa"),
+    *("Chimaltenango", "Mt. Apo", "Davao Prov."),
+)
+RANDOM_FILLERS = (
+    *("?", "-", "\u2014", "\u2026", "\u200b", "*", "\u00b7"),
+    *("CNHM", "CNHM.", "FMNH", "fmnh", "( )"),
+)
+RANDOM_BREAKS = (
+    *("\n", "\r\n", "\r", "\x0b", "\x0c", "\x1c"),
+    *("\x1d", "\x1e", "\x85", "\u2028", "\u2029"),
+)
+RANDOM_SEPARATORS = (", ", ",", "; ", " ,", ",\n", ";\n")
+RANDOM_PREFIXES = (
+    *("Elev. ", "Elev.", "ELEV: ", "Elevation ", "Alt. "),
+    *("alt ", "el. ", "Altitude: ", "El."),
+)
+RANDOM_UNITS = (" m", " ft", " ft.", "'", " feet", " metres", "m", "ft", " M", " FT")
+RANDOM_TAILS = ("95", "950", "9500", "75", "750", "7500")
+RANDOM_SINGLES = ("4800", "3300", "6400", "1,463", "1.463", "12,300", "2,954", "620", "3,048")
+RANDOM_PAIRS = (
+    *(("4000", "4500"), ("1,200", "1,500"), ("1.200", "1.500"), ("2500", "3000")),
+    *(("6000", "7000"), ("1800", "2200"), ("10", "50"), ("1500", "2000"), ("5,500", "6,000")),
+)
+QUALIFIERS = ("mid-", "late ", "early ", "end of ", "fin de ")
+
+
+def digit_groups(number):
+    """A number's digit groups in ASCII: "1,463" is {"1", "463"}."""
+    ascii_digits = "".join(str(unicodedata.decimal(c)) if c.isdecimal() else c for c in number)
+    return set(re.split(r"[.,]", ascii_digits))
+
+
+class RandomLayout:
+    """One random layout, with what it wrote: date numbers, ranges and month words."""
+
+    def __init__(self, rng):
+        self.rng = rng
+        self.chunks = []
+        self.used = set()
+        self.date_groups = set()
+        self.ranges = []
+        self.date_words = set()
+        self.exempt_words = set()
+
+    def fresh(self, values):
+        def groups(value):
+            numbers = [value] if isinstance(value, str) else value
+            return set().union(*(digit_groups(n) for n in numbers))
+
+        pool = [v for v in values if not groups(v) & self.used]
+        if not pool:
+            return None
+        value = self.rng.choice(pool)
+        self.used |= groups(value)
+        return value
+
+    def zero(self):
+        return self.rng.choice(ZEROS) if self.rng.random() < 0.3 else "0"
+
+    def boundary(self):
+        r = self.rng.random()
+        if r < 0.45:
+            return self.rng.choice(RANDOM_SEPARATORS)
+        if r < 0.9:
+            return self.rng.choice(RANDOM_BREAKS)
+        return self.rng.choice(RANDOM_SEPARATORS) + self.rng.choice(RANDOM_BREAKS)
+
+    def join(self):
+        """A range join, spaced or not, maybe broken across lines, by a comma or by a
+        part with no letter. A word no rule lists ends the check across a comma (a
+        stated cost), so such a join is broken only by line breaks."""
+        rng = self.rng
+        join = rng.choice((*RANGE_WORDS, *OTHER_JOINS))
+        worded = join in OTHER_JOINS and any(c.isalpha() for c in join)
+        form = rng.choice((join, f" {join} ", f"{join} ", f" {join}"))
+        r = rng.random()
+        if r < 0.2:
+            line_break = rng.choice(RANDOM_BREAKS)
+            form = rng.choice(
+                (f"{form}{line_break}", f"{line_break}{form}", f"{line_break}{join}{line_break}")
+            )
+        elif r < 0.3 and not worded:
+            separator = rng.choice((",", ", ", ";", "; "))
+            form = rng.choice((f"{separator}{form}", f"{form}{separator}"))
+        elif r < 0.38:
+            filler = rng.choice(("?", "-", "*", "CNHM", "\u2026"))
+            around = (lambda: rng.choice(RANDOM_BREAKS)) if worded else self.boundary
+            form = f"{form}{around()}{filler}{around()}"
+        return form
+
+    def month(self):
+        rng = self.rng
+        unused = [m for m in PROFILE_MONTHS if fold(m) not in self.date_words]
+        month = rng.choice(unused or PROFILE_MONTHS)
+        bare = month.rstrip(".")
+        written = rng.choice((month, month.lower(), month.upper(), bare, f"{bare}."))
+        if rng.random() < 0.15:
+            written = rng.choice(("de ", "del ", "of ")) + written
+        return fold(month), written
+
+    def place(self):
+        self.chunks.append(self.rng.choice(RANDOM_PLACES))
+
+    def filler(self):
+        self.chunks.append(self.rng.choice(RANDOM_FILLERS))
+
+    def single(self):
+        value = self.fresh(RANDOM_SINGLES)
+        if value is not None:
+            prefix = self.rng.choice(("", "", "", *RANDOM_PREFIXES))
+            unit = self.rng.choice(RANDOM_UNITS) if not prefix or self.rng.random() < 0.6 else ""
+            self.chunks.append(f"{prefix}{in_digits(value, self.zero())}{unit}")
+
+    def range(self):
+        pair = self.fresh(RANDOM_PAIRS)
+        if pair is not None:
+            zero = self.zero()
+            low, high = (in_digits(n, zero) for n in pair)
+            prefix = self.rng.choice(("", "", "", *RANDOM_PREFIXES))
+            self.chunks.append(f"{prefix}{low}{self.join()}{high}{self.rng.choice(RANDOM_UNITS)}")
+            self.ranges.append((low, high))
+
+    def date(self):
+        rng = self.rng
+        zero = self.zero()
+        kinds = ("month", "month", "qualified", "day-month", "numeric", "bare", "month-day")
+        kind = rng.choice(kinds)
+        years = (str(rng.randint(1700, 2099)), rng.choice(("26", "46", "48", "31")))
+        year_value = self.fresh(years)
+        if year_value is None:
+            return
+        year = in_digits(year_value, zero)
+        if len(year_value) == 2 and rng.random() < 0.3:
+            year = rng.choice(("'", "\u2019")) + year
+        numbers, head, words, qualified = [year_value], "", None, False
+        if kind in ("month", "qualified"):
+            words, head = self.month()
+            if kind == "qualified":
+                head, qualified = rng.choice(QUALIFIERS) + head, True
+        elif kind in ("day-month", "month-day"):
+            words, month = self.month()
+            day = self.fresh([str(d) for d in range(1, 29)])
+            numbers.append(day)
+            day = in_digits(day, zero)
+            if kind == "day-month":
+                head = f"{day}{rng.choice((' ', '-', '.', '/'))}{month}"
+            else:
+                head = f"{month} {day}"
+        elif kind == "numeric":
+            day = self.fresh([str(d) for d in range(13, 29)])
+            month_number = self.fresh([str(m) for m in range(1, 13)])
+            numbers += [day, month_number]
+            mark = rng.choice(("-", ".", "/"))
+            head = f"{in_digits(day, zero)}{mark}{in_digits(month_number, zero)}"
+        split = False
+        if head:
+            if rng.random() < 0.6:
+                split, link = True, self.boundary()
+                for _ in range(rng.choice((0, 0, 1, 2))):
+                    link += rng.choice(RANDOM_FILLERS) + self.boundary()
+            else:
+                link = rng.choice((" ", "-", ".", "/", "\u2013", ", "))
+                split = link == ", "
+            dated = f"{head}{link}{year}"
+        else:
+            dated = year
+        if words is not None:
+            self.date_words.add(words)
+        if qualified and split:
+            self.exempt_words.add(words)
+        elif head:
+            # A bare year is a number like any other; with a head, the date's
+            # numbers are its year, day and month number.
+            self.date_groups.update(numbers)
+        tail_kind = rng.choice(("none", "glued", "space", "break", "join", "join", "join"))
+        tail = self.fresh(RANDOM_TAILS) if tail_kind != "none" else None
+        if tail is None:
+            self.chunks.append(dated)
+            return
+        tail, unit = in_digits(tail, zero), rng.choice(RANDOM_UNITS)
+        if tail_kind == "glued":
+            self.chunks.append(f"{dated}{rng.choice((',', '.'))}{tail}{unit}")
+        elif tail_kind == "space":
+            self.chunks.append(f"{dated} {tail}{unit}")
+        elif tail_kind == "break":
+            self.chunks.append(f"{dated}{rng.choice(RANDOM_BREAKS)}{tail}{unit}")
+        else:
+            self.chunks.append(f"{dated}{self.join()}{tail}{unit}")
+            self.ranges.append((year.lstrip("'\u2019"), tail))
+
+    def build(self):
+        makers = (
+            *(self.place, self.filler, self.single, self.range),
+            *(self.date, self.date, self.range),
+        )
+        for _ in range(self.rng.randint(1, 5)):
+            self.rng.choice(makers)()
+        text = ""
+        for chunk in self.chunks:
+            text = f"{text}{self.boundary()}{chunk}" if text else chunk
+        return text
+
+
+@pytest.mark.parametrize("seed", range(16))
+def test_random_layouts_keep_the_three_properties(seed):
+    rng = random.Random(seed)
+    for _ in range(1000):
+        layout = RandomLayout(rng)
+        text = layout.build()
+        reading = read_locality(text)
+        for e in reading.elevations:
+            held = digit_groups(e.low) | (digit_groups(e.high) if e.high else set())
+            # No elevation holds a date's number.
+            assert not held & layout.date_groups, (text, e.text)
+            # No range is read by one of its numbers alone, or by part of one.
+            for low, high in layout.ranges:
+                ends = digit_groups(low) | digit_groups(high)
+                assert not held & ends or (e.low, e.high) == (low, high), (text, e.text)
+        # No date fragment is a part, save the stated cost.
+        for part in reading.parts:
+            dated = set(fold(part.text).split()) & layout.date_words
+            assert not dated - layout.exempt_words, (text, part.text)
 
 
 def test_brackets_open_a_part_and_a_colon_glues():
