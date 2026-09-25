@@ -32,6 +32,8 @@ TRACE_ID = re.compile(r"[0-9a-f]{32}")
 # The disagreement score orders review; it is not a probability (SCR-004, SCR-005).
 CALIBRATION = "uncalibrated review priority"
 COVERAGE_SOURCE = "label-coverage-check"
+# A derivation record's locator names its method (S4's `derivation:{method}`).
+DERIVATION = "derivation:"
 # The coverage check's own reason codes, by the check that raises them (label_coverage.py).
 REGION_COUNT_CODES = ("zero_regions", "region_out_of_bounds", "label_region_count_out_of_range")
 FULL_IMAGE_CODES = ("cross_check_detection_outside_labels",)
@@ -247,6 +249,19 @@ class FindingThread(Part):
     evidence_ids: list[str]
 
 
+class DerivationAuthority(Part):
+    name: str | None
+    version: str | None
+
+
+class Derivation(Part):
+    """How a derived value was reached, for the client to name its rule (S6, agreed with S4)."""
+
+    method: str | None
+    rules: list[str]
+    authority: DerivationAuthority
+
+
 class FieldThread(Part):
     field_key: str
     group: str
@@ -254,6 +269,7 @@ class FieldThread(Part):
     # G38's layer, from the snapshot, and a derived value's input fields (S4's FieldValue, #144).
     layer: Literal["verbatim", "settled", "derived"] | None
     derived_from: list[str]
+    derivation: Derivation | None
     verbatim: list[Verbatim]
     parsed: str | None
     precision: str | None
@@ -727,6 +743,7 @@ def _fields(run, row: dict, written: Current, evidence: list[dict], tool_calls: 
         # the field out, so it adds no verbatim.
         derived = [found for found in present if found.get("derivedFromFieldKeys") is not None]
         inputs = derived[0]["derivedFromFieldKeys"] if derived else getattr(value, "derived_from", None)
+        identity = _first(present, "authorityIdentity")
         result.append(
             FieldThread(
                 field_key=key,
@@ -734,6 +751,7 @@ def _fields(run, row: dict, written: Current, evidence: list[dict], tool_calls: 
                 state=field["state"] if field else present[0]["state"],
                 layer=getattr(value, "layer", None),
                 derived_from=list(inputs or []),
+                derivation=_derivation(run, value, derived, items, identity),
                 verbatim=[
                     Verbatim(
                         text=found.get("literalValue"),
@@ -749,7 +767,7 @@ def _fields(run, row: dict, written: Current, evidence: list[dict], tool_calls: 
                 century_rule=stated.get("century_rule"),
                 normalized=_first(present, "normalizedValue"),
                 authority_id=_first(present, "authorityId"),
-                authority_identity=_first(present, "authorityIdentity"),
+                authority_identity=identity,
                 settled_observation_ids=settled_observation_ids(
                     present, tool_calls, mapped=mapped, settled=settled
                 ),
@@ -768,6 +786,37 @@ def _fields(run, row: dict, written: Current, evidence: list[dict], tool_calls: 
             )
         )
     return result
+
+
+def _derivation(run, value, derived: list[dict], items: dict, identity) -> Derivation | None:
+    """How a derived value was reached (section 8), from its rows and the snapshot, reading no
+    stored record; null for a field that is not derived."""
+    if not derived and getattr(value, "layer", None) != "derived":
+        return None
+    # The method is in the locator of the evidence deciding its candidate, else, before that
+    # row is written, of the snapshot's derivation record.
+    locators = [
+        (items.get(_id(link["evidenceId"])) or {}).get("locator") or ""
+        for found in derived
+        for link in found.get("links") or []
+        if link["relation"] == "decides"
+    ]
+    if not any(locator.startswith(DERIVATION) for locator in locators):
+        relations = getattr(value, "evidence_relations", None) or {}
+        locators = [
+            item.locator
+            for item in run.evidence
+            if item.kind == "derivation" and relations.get(item.id) == "decides"
+        ]
+    method = next(
+        (locator[len(DERIVATION):] for locator in locators if locator.startswith(DERIVATION)), None
+    )
+    authority = identity or getattr(value, "authority_identity", None) or {}
+    return Derivation(
+        method=method,
+        rules=list(getattr(value, "derivation_rules", None) or []),
+        authority=DerivationAuthority(name=authority.get("source"), version=authority.get("version")),
+    )
 
 
 def _first(rows: list[dict], name: str):

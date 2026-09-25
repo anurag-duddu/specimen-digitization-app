@@ -463,6 +463,7 @@
       "state": "supported",
       "layer": "settled",
       "derived_from": [],
+      "derivation": null,
       "verbatim": [
         {
           "text": "Ill.",
@@ -496,6 +497,7 @@
       "state": "supported",
       "layer": "settled",
       "derived_from": [],
+      "derivation": null,
       "verbatim": [
         {
           "text": "Chicago",
@@ -569,6 +571,7 @@
       "state": "unresolved",
       "layer": "verbatim",
       "derived_from": [],
+      "derivation": null,
       "verbatim": [
         {
           "text": "Cook Co.",
@@ -603,6 +606,7 @@
       "state": "supported",
       "layer": "settled",
       "derived_from": [],
+      "derivation": null,
       "verbatim": [
         {
           "text": "VII-46",
@@ -627,6 +631,7 @@
       "state": "supported",
       "layer": "settled",
       "derived_from": [],
+      "derivation": null,
       "verbatim": [
         {
           "text": "Aedes aegypti L.",
@@ -688,11 +693,80 @@
       ]
     },
     {
+      "field_key": "elevation_to_ft",
+      "group": "optional",
+      "state": "supported",
+      "layer": null,
+      "derived_from": [],
+      "derivation": null,
+      "verbatim": [
+        {
+          "text": "6,400 ft",
+          "input_source": "decided_transcript",
+          "region_id": "00000000-0000-4000-8000-000000000010",
+          "observation_id": null
+        }
+      ],
+      "parsed": "6400",
+      "precision": null,
+      "century_rule": null,
+      "normalized": null,
+      "authority_id": null,
+      "authority_identity": null,
+      "settled_observation_ids": [],
+      "evidence": [],
+      "findings": []
+    },
+    {
+      "field_key": "elevation_to_m",
+      "group": "optional",
+      "state": "supported",
+      "layer": "derived",
+      "derived_from": [
+        "elevation_to_ft"
+      ],
+      "derivation": {
+        "method": "unit_conversion",
+        "rules": [
+          "feet_to_metres"
+        ],
+        "authority": {
+          "name": "apply_derivations",
+          "version": "derivation-rules-v1"
+        }
+      },
+      "verbatim": [],
+      "parsed": "1950.72",
+      "precision": null,
+      "century_rule": null,
+      "normalized": null,
+      "authority_id": null,
+      "authority_identity": {
+        "source": "apply_derivations",
+        "source_record_id": null,
+        "credit": null,
+        "version": "derivation-rules-v1"
+      },
+      "settled_observation_ids": [],
+      "evidence": [
+        {
+          "evidence_id": "00000000-0000-4000-8000-000000000037",
+          "relation": "decides",
+          "source": "apply_derivations",
+          "locator": "derivation:unit_conversion",
+          "outcome": "recorded",
+          "observation_ids": []
+        }
+      ],
+      "findings": []
+    },
+    {
       "field_key": "identified_by_irn",
       "group": "optional",
       "state": "unknown",
       "layer": null,
       "derived_from": [],
+      "derivation": null,
       "verbatim": [],
       "parsed": null,
       "precision": null,
