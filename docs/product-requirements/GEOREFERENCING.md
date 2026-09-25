@@ -77,7 +77,7 @@ In the follow-up on storage the owner chose "Open sources + Google ID": "Store c
 
 This plan follows the owner's three tiers. Its tier 0, the museum's curated places and itineraries, now feeds tier 1; where the sections below still say tier 0, they mean those curated entries.
 
-What any request carries, the diagram's "surrounding context" included, is governed by PLAN 4.8 (the coordinator's rulings): the elevations, dates and collectors in the tool's `context` (1.1) are used inside the tool and never sent.
+What any request carries, the diagram's "surrounding context" included, is governed by PLAN 4.8 (the coordinator's rulings): the elevations, dates and collectors in the tool's `context` (1.1) are used inside the tool and never put in a request, and the place text a request draws on goes through S4's filter, whose cuts keep dates, elevations and collectors out within PLAN 4.8's stated limit.
 
 | Owner's tier | In this plan | What the decisions of 2026-09-24 change |
 |---|---|---|
