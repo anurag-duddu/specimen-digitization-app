@@ -12,7 +12,7 @@ import re
 import sys
 import time
 import traceback
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qsl, unquote, urlsplit
 
 import lab_checks
 
@@ -30,21 +30,28 @@ SHAPES = re.compile(
     r"hf_[A-Za-z0-9]{16,}|(?<=Bearer )[A-Za-z0-9._~+/=-]+|ya29\.[A-Za-z0-9._-]+"
     r"|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
     r"|(?:https?://)?[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.run\.app(?:/[A-Za-z0-9._~/%-]*)?"  # stops at quotes
-    r"|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"  # an email, such as a caller named by an ADC error
-    r"|AIza[0-9A-Za-z_-]{35}|pylf_[A-Za-z0-9_]{8,}"  # Google API keys and Logfire tokens
+    r"|[A-Za-z0-9._%+-]+(?:@|%40)[A-Za-z0-9.-]+\.[A-Za-z]{2,}"  # an email, also percent-encoded
+    r"|AIza[0-9A-Za-z_-]{35}|pylf_[A-Za-z0-9_]{8,}",  # Google API keys and Logfire tokens
+    re.I,
 )
-LOGFIRE_ORG = re.compile(r"(logfire-(?:us|eu)\.pydantic\.dev/)[^/\s\"']+")
-TEXT_SUFFIXES = {".json", ".md", ".txt", ".log"}
+LOGFIRE_ORG = re.compile(r"(logfire-(?:us|eu)\.pydantic\.dev/)[^/\s\"']+", re.I)
+# Always redacted, even with a stray invalid byte; any other artifact is redacted when it decodes as UTF-8.
+TEXT_SUFFIXES = {".json", ".jsonl", ".md", ".txt", ".log", ".csv", ".html", ".xml"}
+MIN_VALUE = 3  # a shorter private value is never matched
 REPOSITORY = Path(__file__).resolve().parents[2]
 PRIVATE_ROOT = Path.home() / "specimen-release-private"  # PLAN 840: private artifacts, never in a repository
-# Fields that name a person, redacted by field wherever they appear (PLAN 7.7): the snapshot's uploader and
-# actors, and the SQL columns, including SourceAsset.uploaderUid and ProfileVersion.approvedBy.
-PERSON_FIELDS = {"uploader", "actor", "actor_uid", "created_by", "uid", "user_id", "uploader_uid", "approved_by"}
+# Fields that name a person, redacted by field wherever they appear (PLAN 7.7): the snapshot's uploader,
+# actors and classification_selection.actor_id, and the SQL columns, including SourceAsset.uploaderUid and
+# ProfileVersion.approvedBy.
+PERSON_FIELDS = {"uploader", "actor", "actor_id", "actor_uid", "created_by", "uid", "user_id", "uploader_uid",
+                 "approved_by"}
 # Until production's reserve-then-settle ledger lands, every paid attempt whose usage the run did not
 # settle stays reserved at the full per-call bound: an unknown outcome (coordinator, 2026-09-23) and,
 # since #86, a call that returned and then failed with a known blocker, whose usage the workflow does
-# not record. The bound is the readers' and extraction's usage limit (production.py,
-# total_tokens_limit=16000) at the highest known price. SAM 3 on this workstation is free.
+# not record. The coordinator's ruling names the bound, not a figure: the lab's figure is the readers' and
+# extraction's usage limit (production.py, total_tokens_limit=16000) at the highest known price, a worst case
+# for the call's cost that sits below PLAN 4.3's reservation floor of 20,000 micro-dollars per request. A run
+# that cannot be priced once its lane started is held whole at --max-run-usd. SAM 3 on this workstation is free.
 PAID_STEP = re.compile(r"transcribe:|parse$|first_pass|harness|extract")
 CALL_TOKEN_BOUND = 16_000
 
@@ -69,27 +76,34 @@ def parse_args(argv=None):
     parser.add_argument("--lab-allowance-usd", type=float, default=5.00)
     parser.add_argument("--timeout-seconds", type=float, default=1800)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--report-only", action="store_true",
+                        help="rebuild the subject report from the run folders, for example after a verdict.md")
     return parser.parse_args(argv)
 
 
 class Redactor:
-    def __init__(self, env):
-        values = {env.get(name) or "" for name in TOKEN_VARIABLES}
-        if env.get("LAB_REDACT_VALUES_FILE"):
-            try:
-                values |= {line.strip() for line in Path(env["LAB_REDACT_VALUES_FILE"]).read_text().splitlines()}
-            except OSError:
-                pass
-        values = {v for v in values if len(v) >= 3}
-        self.values = sorted((v for v in values if len(v) >= 8), key=len, reverse=True)
+    """PLAN 7.7's categories, in any case. The private values come from the caller, which read the values
+    file once (values_file); the redactor never reads a file itself."""
+
+    def __init__(self, env, values=()):
+        found = {(env.get(name) or "").strip() for name in TOKEN_VARIABLES} | {v.strip() for v in values}
+        found = {v for v in found if len(v) >= MIN_VALUE}
+        longest_first = sorted((v for v in found if len(v) >= 8), key=len, reverse=True)
+        self.patterns = [re.compile(re.escape(v), re.I) for v in longest_first]
         # A short value is matched as a whole word, so it cannot mangle ordinary text.
-        self.words = [re.compile(rf"(?<![\w-]){re.escape(v)}(?![\w-])") for v in values if len(v) < 8]
+        self.patterns += [re.compile(rf"(?<![\w-]){re.escape(v)}(?![\w-])", re.I) for v in found if len(v) < 8]
+        try:
+            home = str(Path.home())
+        except RuntimeError:
+            home = ""
+        # The account name in a home path can equal the Logfire organization slug (PLAN 7.7).
+        self.home = re.compile(re.escape(home) + r"(?![\w.-])") if len(home) > 1 else None
 
     def __call__(self, text):
-        for value in self.values:
-            text = text.replace(value, "[redacted]")
-        for word in self.words:
-            text = word.sub("[redacted]", text)
+        if self.home:
+            text = self.home.sub("~", text)
+        for pattern in self.patterns:
+            text = pattern.sub("[redacted]", text)
         return SHAPES.sub("[redacted]", LOGFIRE_ORG.sub(r"\1[redacted]", text))
 
 
@@ -126,23 +140,28 @@ def preflight(options, env, loadavg):
         problems.append("SPECIMEN_APPROVED_INFERENCE is not true")
     if not options.dry_run and not env.get("HF_TOKEN"):
         problems.append("HF_TOKEN is not set")
-    problems += values_file_problems(env.get("LAB_REDACT_VALUES_FILE"))
     return problems
 
 
-def values_file_problems(name):
-    """The private values the redactor needs: in ~/specimen-release-private/, never in a repository."""
+def values_file(name):
+    """The private values the redactor needs, and any reason to refuse. The file must be under
+    ~/specimen-release-private/ (PLAN 840): its location is checked before any read, and it is read once,
+    from the resolved path."""
     if not name:
-        return ["LAB_REDACT_VALUES_FILE is not set"]
+        return set(), ["LAB_REDACT_VALUES_FILE is not set"]
     path = Path(name).expanduser().resolve()
     if PRIVATE_ROOT.expanduser().resolve() not in path.parents:
-        return [f"LAB_REDACT_VALUES_FILE must be under {PRIVATE_ROOT}"]
+        return set(), [f"LAB_REDACT_VALUES_FILE must be under {PRIVATE_ROOT}"]
     try:
-        if not path.read_text().strip():
-            return ["LAB_REDACT_VALUES_FILE is empty"]
-    except OSError:
-        return ["LAB_REDACT_VALUES_FILE is unreadable"]
-    return []
+        text = path.read_text()
+    except (OSError, UnicodeDecodeError):
+        return set(), ["LAB_REDACT_VALUES_FILE is unreadable"]
+    if not text.strip():
+        return set(), ["LAB_REDACT_VALUES_FILE is empty"]
+    values = {line.strip() for line in text.splitlines() if len(line.strip()) >= MIN_VALUE}
+    if not values:
+        return set(), [f"LAB_REDACT_VALUES_FILE has no value of at least {MIN_VALUE} characters"]
+    return values, []
 
 
 def run_directory(root, now):
@@ -211,13 +230,22 @@ class Run:
             data = json.dumps(redact_people(data), indent=2, ensure_ascii=False, default=str)
         if isinstance(data, str):
             data = data.encode()
-        if target.suffix in TEXT_SUFFIXES:
-            text = data.decode("utf-8", errors="replace")
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:  # an image or other binary file is written as it came
+            text = data.decode("utf-8", errors="replace") if target.suffix.lower() in TEXT_SUFFIXES else None
+        if text is not None:
             clean = self.redact(text)
             if clean != text:
                 self.record["redacted_files"].append(name)
             data = clean.encode()
         target.write_bytes(data)
+
+    def failed(self, name, exc):
+        """A failure outside any phase, such as the lane's teardown: recorded, never lost."""
+        self.record["phases"].append({"name": name, "status": "failed", "seconds": 0.0,
+                                      "error": self.redact(f"{type(exc).__name__}: {exc}")})
+        self.log.write(self.redact(traceback.format_exc()))
 
     @contextmanager
     def phase(self, name):
@@ -236,11 +264,24 @@ class Run:
 
 
 def occurrence_request(url, params=None):
-    """A request to GBIF's occurrence API: the percent-decoded path, any case, and GBIF query keys."""
-    parts = urlsplit(unquote(str(url)).lower())
-    keys = {str(k).lower() for k in (params or {})}
-    return parts.hostname == "api.gbif.org" and (
-        parts.path.startswith("/v1/occurrence") or bool(keys & lab_checks.OCCURRENCE_KEYS))
+    """A request to GBIF's occurrence API as a client sends it: the host in any case, the path percent-decoded
+    without dot segments, and occurrence query keys in the parameters or in the URL."""
+    parts = urlsplit(str(url))
+    keys = query_keys(params) | query_keys(parts.query)
+    return unquote(parts.hostname or "").lower() == "api.gbif.org" and (
+        lab_checks.decoded(parts.path).startswith("/v1/occurrence") or bool(keys & lab_checks.OCCURRENCE_KEYS))
+
+
+def query_keys(params):
+    if isinstance(params, bytes):
+        params = params.decode("utf-8", errors="replace")
+    if isinstance(params, str):
+        return {key.lower() for key, _ in parse_qsl(params, keep_blank_values=True)}
+    if isinstance(params, dict):
+        return {str(key).lower() for key in params}
+    if isinstance(params, (list, tuple)):
+        return {str(pair[0]).lower() for pair in params if isinstance(pair, (list, tuple)) and pair}
+    return set()
 
 
 @contextmanager
@@ -306,11 +347,17 @@ def lab_trace(options, record, redact):
 
 
 def execute(options, *, fetch, lane_factory, env, clock, loadavg, commit):
-    redact = Redactor(env)
-    problems = preflight(options, env, loadavg)
+    values, problems = values_file(env.get("LAB_REDACT_VALUES_FILE"))  # located first, then read once
+    if not options.report_only:
+        problems += preflight(options, env, loadavg)
     if problems:
         print("refused: " + "; ".join(problems), file=sys.stderr)
         return 3
+    redact = Redactor(env, values)
+    if options.report_only:  # a person's verdict reaches the subject report without another run
+        write_subject_report(options, redact)
+        print(f"rebuilt the report of {options.subject}")
+        return 0
     started = clock()
     path = run_directory(options.runs_root / options.subject, started)
     record = {
@@ -322,58 +369,77 @@ def execute(options, *, fetch, lane_factory, env, clock, loadavg, commit):
         "approvals": "synthetic mode: the profile's approvals are a local fixture",
     }
     run = Run(options, path, redact, record)
-    source = evidence = None
-    with run.phase("fetch"):
-        data, meta = fetch(options.subject)
-        source = dict(meta, size_bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
-        run.write(f"inputs/{options.subject}.jpeg", data)
-        run.write("inputs/source.json", source)
-    record["source"] = source
-    if source and not options.dry_run:
-        with ExitStack() as stack, lab_trace(options, record, redact), count_gbif_occurrence(record):
-            specimen_id = actions = None
-            with run.phase("ingest"):
-                lane = stack.enter_context(lane_factory(path / "state", options, env))
-                specimen_id = lane.ingest(options.subject + ".jpeg", data, "image/jpeg")
-                record["specimen_id"] = specimen_id
-            if specimen_id:
-                with run.phase("process"):
-                    actions = lane.process(specimen_id, time.monotonic() + options.timeout_seconds)
-                record["actions"] = actions or []
-                with run.phase("collect"):
-                    evidence = lane.collect(specimen_id)
-                    evidence["actions"] = record["actions"]
-                    for name, blob in evidence["artifacts"].items():
-                        run.write(name, blob)
-                    for table, rows in evidence["rows"].items():
-                        run.write(f"rows/{table}.json", rows)
-                    run.write("snapshot.json", evidence["snapshot"])
-                    run.write("workspace.json", evidence["workspace"])
-                    record["rows"] = {t: len(r) for t, r in evidence["rows"].items()}
-    if evidence:
-        with run.phase("check"):
-            evidence["gbif_occurrence_requests"] = record.get("gbif_occurrence_requests")
-            evidence["d4_blob_hits"] = [name for name, blob in evidence["artifacts"].items()
-                                        if name.startswith("receipts/") and lab_checks.occurrence_request(
-                                            blob.decode("utf-8", errors="replace"))]
-            record["stages"] = lab_checks.check_stages(evidence, source, options.subject)
-            record["costs"] = price(evidence["snapshot"])
-            record["timings"] = timings(evidence["snapshot"])
-            if record["costs"]["total_usd"] > options.max_run_usd:
-                record["stages"].append({"stage": "cost", "name": "Run cost", "status": "failed",
-                                         "detail": f"above --max-run-usd {options.max_run_usd}"})
+    lane_started = priced = False
+    try:
+        source = evidence = None
+        with run.phase("fetch"):
+            data, meta = fetch(options.subject)
+            source = dict(meta, size_bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+            run.write(f"inputs/{options.subject}.jpeg", data)
+            run.write("inputs/source.json", source)
+        record["source"] = source
+        if source and not options.dry_run:
+            try:
+                with ExitStack() as stack, lab_trace(options, record, redact), count_gbif_occurrence(record):
+                    specimen_id = actions = None
+                    with run.phase("ingest"):
+                        lane = stack.enter_context(lane_factory(path / "state", options, env))
+                        lane_started = True  # completing the upload starts processing, so paid calls may run
+                        specimen_id = lane.ingest(options.subject + ".jpeg", data, "image/jpeg")
+                        record["specimen_id"] = specimen_id
+                    if specimen_id:
+                        with run.phase("process"):
+                            actions = lane.process(specimen_id, time.monotonic() + options.timeout_seconds)
+                        record["actions"] = actions or []
+                        with run.phase("collect"):
+                            evidence = lane.collect(specimen_id)
+                            evidence["actions"] = record["actions"]
+                            for name, blob in evidence["artifacts"].items():
+                                run.write(name, blob)
+                            for table, rows in evidence["rows"].items():
+                                run.write(f"rows/{table}.json", rows)
+                            run.write("snapshot.json", evidence["snapshot"])
+                            run.write("workspace.json", evidence["workspace"])
+                            record["rows"] = {t: len(r) for t, r in evidence["rows"].items()}
+            except Exception as exc:  # the lane's teardown: the run is still priced, scored and written
+                run.failed("teardown", exc)
+        if evidence:
+            with run.phase("check"):
+                record["costs"] = price(evidence["snapshot"])  # before scoring, so a failed check keeps it
+                priced = True
+                record["timings"] = timings(evidence["snapshot"])
+                evidence["gbif_occurrence_requests"] = record.get("gbif_occurrence_requests")
+                evidence["d4_blob_hits"] = [name for name, blob in evidence["artifacts"].items()
+                                            if name.startswith("receipts/") and lab_checks.occurrence_blob(
+                                                blob.decode("utf-8", errors="replace"))]
+                record["stages"] = lab_checks.check_stages(evidence, source, options.subject)
+                if record["costs"]["total_usd"] > options.max_run_usd:
+                    record["stages"].append({"stage": "cost", "name": "Run cost", "status": "failed",
+                                             "detail": f"above --max-run-usd {options.max_run_usd}"})
+    finally:
+        if lane_started and not priced:
+            record["costs"] = {"total_usd": options.max_run_usd, "held_at_run_bound": True}
+        code = finish(options, run, clock)
+    return code
+
+
+def finish(options, run, clock):
+    """run.json, the run's report and the subject report, written whatever happened before."""
+    record = run.record
     # The lab's running tally against its share of G9; production's ledger never sees lab calls (G30).
     record["lab_spend_usd"] = recorded_spend(options.runs_root) + record["costs"]["total_usd"]
     record["lab_allowance_usd"] = options.lab_allowance_usd
     record["phases"].append({"name": "report", "status": "passed", "seconds": 0.0})
-    record["result"] = "dry-run" if options.dry_run and source else lab_checks.verdict(
+    record["result"] = "dry-run" if options.dry_run and record.get("source") else lab_checks.verdict(
         record["phases"], record["stages"])
     record["finished_at"] = clock().isoformat()
-    run.write("run.json", record)
-    run.write("report.md", render(record))
-    write_subject_report(options, redact)
-    run.log.close()
-    print(f"{record['result']}: {path}")
+    try:
+        run.write("run.json", record)
+        run.write("report.md", render(record))
+        write_subject_report(options, run.redact)
+    finally:
+        run.log.close()
+    print(f"{record['result']}: {run.path}")
     return {"pass": 0, "dry-run": 0, "incomplete": 1, "fail": 1}.get(record["result"], 2)
 
 
@@ -403,6 +469,8 @@ def render(record):
               f"at most {costs.get('other_usd_upper_bound', 0):.6f}, SAM 3 local 0. Unpriced routes: "
               f"{costs.get('unpriced_routes', [])}. Paid attempts without settled usage, held at the full "
               f"per-call bound: {costs.get('unsettled_attempts', [])}, USD {costs.get('unsettled_usd_bound', 0):.6f}.", "",
+              *(["The run could not be priced after its lane started, so it is held whole at --max-run-usd.", ""]
+                if costs.get("held_at_run_bound") else []),
               f"Lab spend to date: USD {record['lab_spend_usd']:.6f} of {record['lab_allowance_usd']:.2f}, "
               "the lab's share of G9, kept apart from production's model allowance (G30)."]
     lines += ["", "## Lab actions", ""] + [f"- {cell(a)}" for a in record["actions"] or ["none"]]
@@ -435,9 +503,13 @@ def write_subject_report(options, redact):
         latest = latest or path
         passed = sum(s["status"] == "passed" for s in r["stages"])
         try:
-            verdict = (path / "verdict.md").read_text().strip()
-        except OSError:
+            verdict = (path / "verdict.md").read_bytes().decode("utf-8").strip()
+        except FileNotFoundError:
             verdict = ""
+        except UnicodeDecodeError:
+            verdict = "(verdict.md is not UTF-8 text: save it as UTF-8, then rebuild with --report-only)"
+        except OSError:
+            verdict = "(verdict.md cannot be read: fix it, then rebuild with --report-only)"
         if verdict:
             verdicts += ["", f"### {r['run']}", ""] + [("###" + x if x.startswith("#") else x)
                                                        for x in verdict.splitlines()]
@@ -448,7 +520,10 @@ def write_subject_report(options, redact):
     if verdicts:
         lines += ["", "## Verdicts recorded by a person"] + verdicts
     if latest:
-        body = (latest / "report.md").read_text().splitlines()
+        try:
+            body = (latest / "report.md").read_text().splitlines()
+        except (OSError, ValueError):
+            body = ["(report.md is missing or unreadable)"]
         lines += ["", "## Latest run", ""] + [("#" + x if x.startswith("#") else x) for x in body]
     options.reports_root.mkdir(parents=True, exist_ok=True)
     (options.reports_root / f"{options.subject}.md").write_text(redact("\n".join(lines) + "\n"))
