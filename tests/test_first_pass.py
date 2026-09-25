@@ -33,7 +33,10 @@ from specimen_digitization.application.first_pass import (
 from specimen_digitization.application.reliability import AdapterFailure
 from specimen_digitization.application.storage import LocalBlobs
 from specimen_digitization.application.workflow import OperationalBlock
-from specimen_digitization.model_gateway import HuggingFaceInferenceRoute
+from specimen_digitization.model_gateway import (
+    HUGGINGFACE_ROUTES,
+    HuggingFaceInferenceRoute,
+)
 from specimen_digitization.prompts import PromptName, ResolvedPrompt
 
 QWEN = "VI-24-68-7.\nEpipocous\nsp.1\n♀ terminalia"
@@ -123,7 +126,9 @@ def test_first_pass_cost_reservation_is_one_key_for_every_region():
     assert reservations.for_step("first_pass:region-7") == 900
 
 
-ROUTE = HuggingFaceInferenceRoute("fp-test", "first_pass", "vendor/vision", "novita")
+ROUTE = HuggingFaceInferenceRoute(
+    "fp-test", "transcription_first_pass", "vendor/vision", "novita"
+)
 PROMPT = ResolvedPrompt(
     name=PromptName.DISAGREEMENT_ADJUDICATION,
     text="Compare the candidate transcripts against the supplied image.",
@@ -146,6 +151,13 @@ INCOMPLETE = dict(VALID, verdicts=VALID["verdicts"][:1])
 PINNED = {"model_id": ROUTE.model_id, "provider": ROUTE.provider}
 PROMPTS = {PROMPT.name.value: PROMPT.model_dump(mode="json")}
 DEPENDENCIES = {"routes": {ROUTE.route_id: PINNED}, "prompts": PROMPTS}
+
+
+def pinned_route(route_id):
+    """Dependencies that pin this registered route exactly, with the prompt."""
+    route = HUGGINGFACE_ROUTES[route_id]
+    pin = {"model_id": route.model_id, "provider": route.provider}
+    return {"routes": {route_id: pin}, "prompts": PROMPTS}
 
 
 def direct_first_pass(
@@ -174,7 +186,7 @@ def direct_first_pass(
 
     class Gateway:
         def __init__(self, timeout_seconds=None):
-            self.routes = {ROUTE.route_id: ROUTE}
+            self.routes = {ROUTE.route_id: ROUTE, **HUGGINGFACE_ROUTES}
 
         def route(self, route_id):
             return self.routes[route_id]
@@ -437,6 +449,20 @@ def test_only_capitalization_is_not_material(a, b, material):
             {"dependencies": {"routes": {ROUTE.route_id: PINNED}}},
             "pinned_prompt_unavailable",
         ),
+        (
+            {
+                "profile": Profile(first_pass_route="harness-deepseek"),
+                "dependencies": pinned_route("harness-deepseek"),
+            },
+            "pinned_model_route_unavailable",
+        ),
+        (
+            {
+                "profile": Profile(first_pass_route="handwriting-qwen"),
+                "dependencies": pinned_route("handwriting-qwen"),
+            },
+            "pinned_model_route_unavailable",
+        ),
     ],
     ids=[
         "no spending approval",
@@ -446,6 +472,8 @@ def test_only_capitalization_is_not_material(a, b, material):
         "an unregistered route",
         "a route pinned to another provider",
         "no pinned prompt",
+        "the harness route, pinned",
+        "a reader route, pinned",
     ],
 )
 def test_each_block_stops_the_first_pass_before_any_request(
@@ -472,20 +500,27 @@ def test_each_block_stops_the_first_pass_before_any_request(
 
 
 @pytest.mark.parametrize(
-    "route,registered", [("first-pass-glm", True), ("fp-unregistered", False)]
+    "route,pinned",
+    [
+        ("first-pass-glm", True),
+        ("fp-unregistered", False),
+        # Registered, but for the harness and for text only.
+        ("harness-deepseek", False),
+    ],
 )
-def test_pin_dependencies_pins_only_a_registered_first_pass_route(
-    tmp_path, route, registered
+def test_pin_dependencies_pins_only_a_first_pass_route_that_takes_the_crop(
+    tmp_path, route, pinned
 ):
-    # The first-pass route comes from the stage route set (HARNESS.md section 5).
+    # A route registered for the first pass, with image input (HARNESS.md
+    # section 5); any other stays unpinned, so the first-pass step blocks.
     run = Run(profile=Profile(first_pass_route=route))
 
     pins = production.ProductionAdapters(LocalBlobs(tmp_path)).pin_dependencies(run)
 
     routes = pins["routes"]
-    assert set(routes) == {*run.profile.routes, *([route] * registered)}
-    if registered:
-        stage = production.STAGE_HUGGINGFACE_ROUTES[route]
+    assert set(routes) == {*run.profile.routes, *([route] * pinned)}
+    if pinned:
+        stage = HUGGINGFACE_ROUTES[route]
         assert routes[route] == {"model_id": stage.model_id, "provider": stage.provider}
 
 
