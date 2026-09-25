@@ -12067,3 +12067,21 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (4) TGN lists codes among a place's names ("PH", "PHL", "RP", "ISO608", "GT03", "RPC3"). Section 1's full-name rule already keeps them out of the one-letter gate.
 - Failed approaches: a first draft named a nation's own country reference by its GVP name, so the Philippines was "Philippines" but its country "Pilipinas". A nation now names itself as it is named.
 - Remaining follow-ups: NGA GNS (task 2); tier 2 (task 5) once S4's #113 merges; the request builder, which calls S4's filter (#183).
+
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 2d: tier 1 NGA GNS
+
+- Task: brief task 2, NGA GNS, the last tier-1 gazetteer. The owner's follow-up to G35 names NGA among the open sources whose coordinates are stored, credited. Build its requests and read its answers into the shared `Place` record, sending nothing itself.
+- Branch and worktree: `golive/geo-nga` in `.claude/worktrees/geo-build`, stacked on #188. PR #190.
+- Outcome: `georef_nga.py` builds three requests and reads their answers.
+  - An exact name search puts the name, as one quoted literal, in a fixed where clause.
+  - It reads features by checked id and first-order units by checked code.
+  - A feature is read with its approved name first, its class and designation, the country from its first-order code, and that unit as its parent.
+  - GNS's own errors, reported inside HTTP 200 answers, map to outcomes. Terminated features are skipped.
+- Validation: 31 tests on the recorded GNS answers; `uv run pytest -q` (3,224 passed, 81 skipped: `tests/` and `scripts/` together); pre-commit.
+- Durable learnings:
+  - (1) GNS's termination dates are not event dates. Kalinga-Apayao, divided by Republic Act 7878 in 1995, is terminated on 2012-03-15, while Maguindanao's 2022-09-17 is its plebiscite day. A date that can lag by 17 years cannot be read as a place's end without wrong history (G36). The reader skips terminated features, and history leans on Wikidata.
+  - (2) GNS writes first-order codes in the GENC form "PH-DAV". Their two letters are the ISO code GeoNames uses for the pilot's countries. A first-order unit's own code is itself, and a country-wide code ("PH-000") names no unit.
+  - (3) ArcGIS reports its errors inside an HTTP 200 answer (`{"error": {"code": 400}}`) and caps an answer at 3,000 rows with `exceededTransferLimit`. Both need outcomes of their own: a search cut short is `ambiguous`.
+  - (4) GNS and GeoNames agree to five decimals on Yepocapa's town and municipio, since GeoNames draws on GNS. Under #94's score (3.4), copies of one source count once.
+- Failed approaches: a first draft listed a first-order unit as its own parent (Davao del Norte under PH-DAV). A first-order unit now has none.
+- Remaining follow-ups: tier 2 (task 5) once S4's #113 merges; the request builder, which calls S4's filter (#183); the derivations (task 6) once #144 merges.
