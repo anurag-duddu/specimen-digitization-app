@@ -165,20 +165,25 @@ def reported_literals(query: GeographyQuery) -> dict[str, list[str]]:
 
 def geocoding_address(query: GeographyQuery) -> tuple[str, str | None]:
     """The address PLAN 4.8 lets leave, or the fixed code refusing the query.
-    Every literal, the unassigned locality text's too, must be drawn from the
-    readings. Google's row of 4.8 sends a literal with its reading's place
-    fields, so the address is the place-field literals from the most to the
-    least precise field, each as written after the filter's cuts."""
+    Every literal, the unassigned locality text's too, must be character for
+    character in a reading. The query's literals are the filter's sources and
+    the readings its context (4.8 in #191). Google's row of 4.8 sends a literal
+    with its reading's place fields, so the address is the place-field literals
+    from the most to the least precise field, each as written after the cuts."""
     knowledge = KNOWLEDGE.get(query.knowledge_id or "")
     if knowledge is None:
         return "", "place_knowledge_unavailable"
+    literals = [item.literal for item in query.literals]
     sent: dict[str, list[str]] = {}
     for item in query.literals:
+        if not any(item.literal in reading for reading in query.reading_texts):
+            return "", "place_text_refused"
         text = place_request_text(
             item.literal,
-            sources=query.reading_texts,
+            sources=literals,
             non_place_literals=query.non_place_literals,
             knowledge=knowledge,
+            readings=query.reading_texts,
         )
         if text is None:
             return "", "place_text_refused"

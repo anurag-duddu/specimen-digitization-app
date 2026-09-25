@@ -12029,5 +12029,11 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (1) Word-level matching is right for names and wrong for Roman numerals: "P.I." folds to the words "p i", so an "I" cut by word would have cut the Philippines. A Roman month is cut only when every word of a token is one and, by the coordinator's later ruling, only beside a day or a year (the month position), so "Camp IV" stays too.
   - (2) A marker clause has to be cut from the reading, not only from the text being sent. Otherwise a collector the agent gives to a place field leaves on its own.
   - (3) Unassigned text as a no-field literal broke two test fakes that built outcomes for every literal; fakes have to model which fields the real tool reports.
-  - (4) A substring source and whole-token cuts don't compose. A value may start or end inside a token, so "Hoogstraa" passed both checks. The cut has to follow the source's own tokens (by character span) wherever the value occurs, and #185's review caught it. Refusing values that don't end on token edges would also close the gap, but it turns a copy cut short into a blocked run.
-- Remaining follow-ups: S8 imports `place_request_forms` for its tiers once this is on a branch it can stack on. S3's profile switch names v3 and lands after this PR (coordinator ruling). The coordinator's next plan PR (#180) records the Roman-month cut and the key's wording.
+  - (4) A substring source and whole-token cuts don't compose. A value may start or end inside a token, so "Hoogstraa" passed both checks; #185's review caught it. #191 closed it both ways:
+    - sources became whole-token slices of the place-field literals and unassigned text, with the readings read only as context;
+    - every cut, a non-place literal's included, works by character span on every text the value occurs in.
+    The harness passes its own literals as the sources. So an agent's literal cut short is cut in its reading, not refused, and a copy cut short never blocks a run.
+- Remaining follow-ups:
+  - S8 imports `place_request_forms` and `place_request_identifier` for its tiers.
+  - S3's profile switch names v3 and lands after this PR (coordinator ruling).
+  - At this PR's turn, 4.8 on main should read as #191 states it.

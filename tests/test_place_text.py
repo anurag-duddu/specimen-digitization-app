@@ -268,13 +268,16 @@ def test_the_readings_are_context_for_the_cuts_not_a_source():
     reading = "Davao Prov.\nMindanao Hoogstraal leg."
 
     # "Mindanao" is only in the reading here, so it is no source ...
-    assert place_request_forms(
-        "Mindanao",
-        sources=["Davao Prov."],
-        readings=[reading],
-        non_place_literals=(),
-        knowledge=insects,
-    ) is None
+    assert (
+        place_request_forms(
+            "Mindanao",
+            sources=["Davao Prov."],
+            readings=[reading],
+            non_place_literals=(),
+            knowledge=insects,
+        )
+        is None
+    )
     # ... and the reading's marker clause cuts a place literal taken from it.
     assert given("Mindanao Hoogstraal", reading) == []
 
@@ -348,7 +351,9 @@ def test_a_tier_1_identifier_goes_back_unchanged_to_its_source(identifier, sourc
     ],
 )
 def test_any_other_identifier_is_refused(identifier, source, returned):
-    assert place_request_identifier(identifier, source=source, returned=returned) is None
+    assert (
+        place_request_identifier(identifier, source=source, returned=returned) is None
+    )
 
 
 def test_a_dropped_clause_keeps_the_line_break_it_held():

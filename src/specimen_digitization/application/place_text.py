@@ -3,21 +3,23 @@ decides what label text a place request may carry. The geography tool applies
 it to every request it sends and S8's tiers to every value theirs send, so it
 imports nothing of the harness.
 
-A value a request takes from the reading, from tier 1 or from a reviewer draws
-only on exact substrings of its sources: the record's readings, the names tier
-1 returns, and in "fill the rest" the reviewer's value in a place field. A value
-drawn from anything else is refused. From those values, and only there, the
-filter cuts every token of every literal any reading assigns to a non-place
-field and of every value a reviewer puts in one; every token of every clause,
-between commas, semicolons or line breaks, that holds a collector or determiner
-marker the profile's notations name, wherever the marker sits in it; every
-token that carries a digit; the month names and abbreviations the profile
-lists; and a Roman month beside a day or a year. Each cut follows the source's
-own tokens, so a value that starts or ends inside a token loses it. A notation
-token that survives
-may then be written out in each of its full forms from the profile's table, and
-a notation is cut whenever one of its full forms is. Text the filter cannot
-recognize, such as a name no reading assigns to any field and no marker
+A value a request takes from the record or from a tier-1 name must be a
+whole-token slice of its sources: the reading's place-field literals and
+unassigned locality text, the names tier 1 returns, and in "fill the rest" the
+reviewer's value in a place field. The record's readings are read for the cuts
+but are no source, and a value drawn from anything else is refused. From those
+values, and only there, the filter cuts by character span every token of every
+literal any reading assigns to a non-place field and of every value a reviewer
+puts in one; every token of every clause, between commas, semicolons or line
+breaks, that holds a collector or determiner marker the profile's notations
+name, wherever the marker sits in it; every token that carries a digit; the
+month names and abbreviations the profile lists, in any case; and a Roman month
+beside a day or a year. So a value cut short inside a token loses it. A
+notation token that survives may then be written out in each of its full forms
+from the profile's table, and a notation is cut whenever one of its full forms
+is. A tier-1 identifier goes back unchanged to the source that returned it when
+it matches that source's documented pattern (PLAN 4.8 in #191). Text the filter
+cannot recognize, such as a name no reading assigns to any field and no marker
 accompanies, can still leave: that is its stated limit.
 """
 
@@ -38,6 +40,14 @@ TOKEN = re.compile(r"([^\s,;]+)")
 # A day or a year as written, which puts a Roman numeral beside it in the month
 # position: 3, 14, 1946, or the profile's year forms '46 and -46.
 DATE_NUMBER = re.compile(r"\d{1,2}|\d{4}|['’-]\d{2}")
+# Each tier-1 source's documented identifier patterns (PLAN 4.8 in #191; S8's
+# readers #139, #188 and #190). An identifier carries no label text.
+IDENTIFIERS = {
+    "wikidata": (re.compile(r"Q[1-9][0-9]*"),),  # An item's Q-number.
+    "tgn": (re.compile(r"[0-9]{1,10}"),),  # A TGN subject id.
+    # A GNS feature id, or a first-order unit code (coordinator ruling).
+    "nga": (re.compile(r"-?[0-9]{1,10}"), re.compile(r"[A-Z]{2}-[A-Z0-9]{1,3}")),
+}
 
 
 class PlaceKnowledge(Protocol):
@@ -65,26 +75,37 @@ def place_request_forms(
     sources: Sequence[str],
     non_place_literals: Sequence[str],
     knowledge: PlaceKnowledge,
+    readings: Sequence[str] = (),
 ) -> list[str] | None:
     """Every form of `text` a place request may carry. None refuses the
-    request: `text` is not an exact substring of a source, or of a source
+    request: `text` is not a whole-token slice of a source, or of a source
     written out in full. Otherwise the clauses that survive the cuts,
     single-spaced and joined by their own separators, first as written, then
     with every notation token in each of its full forms (G29); [] when nothing
     survives, and then nothing is sent.
 
-    `sources` are the record's reading texts, the names tier 1 returned and the
-    reviewer's values in place fields. `non_place_literals` are every literal
-    any reading assigns to a non-place field and every value a reviewer puts
-    in one: a corrected collector's spelling matches no reading's literal."""
+    `sources` are the reading's place-field literals and unassigned locality
+    text, the names tier 1 returned and the reviewer's values in place fields.
+    `readings` are the record's reading texts, read for the cuts but no source.
+    `non_place_literals` are every literal any reading assigns to a non-place
+    field and every value a reviewer puts in one: a corrected collector's
+    spelling matches no reading's literal."""
     table = _full_forms(knowledge)
-    readable = [form for source in sources for form in _forms(source, table)]
-    places = [(source, at) for source in readable for at in _found(source, text)]
-    if not text.strip() or not places:
+    allowed = [form for source in sources for form in _forms(source, table)]
+    if not text.strip() or not any(
+        _on_token_edges(source, at, text)
+        for source in allowed
+        for at in _found(source, text)
+    ):
         return None
-    cut = _cut_words(readable, non_place_literals, knowledge, table)
+    context = list(
+        dict.fromkeys([*allowed, *(f for r in readings for f in _forms(r, table))])
+    )
+    places = [(source, at) for source in context for at in _found(source, text)]
+    cut = _cut_words(context, non_place_literals, knowledge, table)
     roman = frozenset(fold(month) for month in knowledge.ROMAN_MONTHS)
-    written = _surviving(text, _dropped(text, places, cut, roman))
+    literals = {f for literal in non_place_literals for f in _forms(literal, table)}
+    written = _surviving(text, _dropped(text, places, cut, roman, literals))
     return _forms(written, table) if written else []
 
 
@@ -94,6 +115,7 @@ def place_request_text(
     sources: Sequence[str],
     non_place_literals: Sequence[str],
     knowledge: PlaceKnowledge,
+    readings: Sequence[str] = (),
 ) -> str | None:
     """The first of `place_request_forms`, the value as written after the cuts;
     "" when nothing survives, None when it is refused."""
@@ -102,8 +124,22 @@ def place_request_text(
         sources=sources,
         non_place_literals=non_place_literals,
         knowledge=knowledge,
+        readings=readings,
     )
     return None if forms is None else next(iter(forms), "")
+
+
+def place_request_identifier(
+    identifier: str, *, source: str, returned: Sequence[str]
+) -> str | None:
+    """An identifier a tier-1 source returned, sent back to that same source
+    unchanged when it matches one of the source's documented patterns. It
+    carries no label text, so no cut applies; None refuses it (PLAN 4.8 in
+    #191)."""
+    patterns = IDENTIFIERS.get(source, ())
+    if identifier in returned and any(p.fullmatch(identifier) for p in patterns):
+        return identifier
+    return None
 
 
 def unassigned_text(
@@ -119,9 +155,14 @@ def unassigned_text(
             first = bisect_right(starts, at) - 1
             held.update(range(first, bisect_right(starts, at + len(literal) - 1)))
     free = [True] * len(text)
+    tokens = list(TOKEN.finditer(text))
     for literal in {*place_literals, *assigned}:
         for at in _found(text, literal):
-            free[at : at + len(literal)] = [False] * len(literal)
+            end = at + len(literal)
+            free[at:end] = [False] * len(literal)
+            for token in tokens:  # A literal copied short covers its whole token.
+                if token.start() < end and at < token.end():
+                    free[token.start() : token.end()] = [False] * len(token.group())
     pieces = []
     for number in sorted(held):
         end = starts[number + 1] - 1 if number + 1 < len(starts) else len(text)
@@ -137,6 +178,24 @@ def _found(text: str, literal: str) -> list[int]:
         found.append(at)
         at = text.find(literal, at + 1)
     return found
+
+
+def _on_token_edges(source: str, at: int, text: str) -> bool:
+    """Whether `text`, found at `at` in `source`, starts and ends on token edges
+    once its own outer spaces and separators are set aside (PLAN 4.8 in #191):
+    "Mt. McKinley" of "E. slope Mt. McKinley", never "t. McKinl"."""
+    core = text.strip().strip(",;").strip()
+    if not core:
+        return False
+    start = at + text.index(core)
+    end = start + len(core)
+    return (start == 0 or _edge(source[start - 1])) and (
+        end == len(source) or _edge(source[end])
+    )
+
+
+def _edge(character: str) -> bool:
+    return character.isspace() or character in ",;"
 
 
 def _full_forms(knowledge: PlaceKnowledge) -> dict[str, tuple[str, ...]]:
@@ -161,21 +220,30 @@ def _dropped(
     places: Sequence[tuple[str, int]],
     cut: frozenset[str],
     roman: frozenset[str],
+    literals: set[str],
 ) -> set[int]:
     """Where each token of `text` the cuts take starts. A token is cut when the
-    cuts name it, or when the source token it lies in is cut at any place the
-    value occurs, so a value that starts or ends inside a token loses it too:
-    the "Hoogstraa" of "H. Hoogstraal leg." (the steward's review of #185)."""
+    cuts name it, or when the token it lies in is cut in any text the value
+    occurs in, so a value that starts or ends inside a token loses it too: the
+    "Hoogstraa" of "H. Hoogstraal leg." (the steward's review of #185). There a
+    token is cut when the cuts name it, when it is a Roman month in the month
+    position, or when a non-place literal covers any of it, so a literal copied
+    short still cuts its whole token (PLAN 4.8 in #191)."""
     tokens = [(token.start(), token.end()) for token in TOKEN.finditer(text)]
     dropped = {start for start, end in tokens if _cut(text[start:end], cut)}
     spans: dict[str, list[tuple[int, int]]] = {}
     for source, at in places:
         if source not in spans:
             months = _roman_months(source, roman)
+            covered = [
+                (a, a + len(lit)) for lit in literals for a in _found(source, lit)
+            ]
             spans[source] = [
                 (token.start(), token.end())
                 for token in TOKEN.finditer(source)
-                if token.start() in months or _cut(token.group(), cut)
+                if token.start() in months
+                or _cut(token.group(), cut)
+                or any(lo < token.end() and token.start() < hi for lo, hi in covered)
             ]
         for start, end in tokens:
             if any(low < at + end and at + start < high for low, high in spans[source]):
