@@ -12,6 +12,7 @@ import re
 import sys
 import time
 import traceback
+from urllib.parse import unquote, urlsplit
 
 import lab_checks
 
@@ -34,6 +35,9 @@ SHAPES = re.compile(
 )
 LOGFIRE_ORG = re.compile(r"(logfire-(?:us|eu)\.pydantic\.dev/)[^/\s\"']+")
 TEXT_SUFFIXES = {".json", ".md", ".txt", ".log"}
+REPOSITORY = Path(__file__).resolve().parents[2]
+# Fields that name a person, redacted by field wherever they appear (PLAN 7.7).
+PERSON_FIELDS = {"uploader", "actor", "actor_uid", "created_by", "uid", "user_id"}
 # Until production's reserve-then-settle ledger lands, every paid attempt whose usage the run did not
 # settle stays reserved at the full per-call bound: an unknown outcome (coordinator, 2026-09-23) and,
 # since #86, a call that returned and then failed with a known blocker, whose usage the workflow does
@@ -87,6 +91,14 @@ class Redactor:
         return SHAPES.sub("[redacted]", LOGFIRE_ORG.sub(r"\1[redacted]", text))
 
 
+def redact_people(value):
+    if isinstance(value, dict):
+        return {k: ("[redacted]" if k in PERSON_FIELDS and v else redact_people(v)) for k, v in value.items()}
+    if isinstance(value, list):
+        return [redact_people(v) for v in value]
+    return value
+
+
 def recorded_spend(runs_root):
     total = 0.0
     for path in runs_root.glob("*/*/run.json"):
@@ -112,7 +124,23 @@ def preflight(options, env, loadavg):
         problems.append("SPECIMEN_APPROVED_INFERENCE is not true")
     if not options.dry_run and not env.get("HF_TOKEN"):
         problems.append("HF_TOKEN is not set")
+    problems += values_file_problems(env.get("LAB_REDACT_VALUES_FILE"))
     return problems
+
+
+def values_file_problems(name):
+    """The private values the redactor needs: in ~/specimen-release-private/, never in a repository."""
+    if not name:
+        return ["LAB_REDACT_VALUES_FILE is not set"]
+    path = Path(name).expanduser().resolve()
+    if path == REPOSITORY or REPOSITORY in path.parents:
+        return ["LAB_REDACT_VALUES_FILE points inside the repository"]
+    try:
+        if not path.read_text().strip():
+            return ["LAB_REDACT_VALUES_FILE is empty"]
+    except OSError:
+        return ["LAB_REDACT_VALUES_FILE is unreadable"]
+    return []
 
 
 def run_directory(root, now):
@@ -178,7 +206,7 @@ class Run:
         target = self.path / name
         target.parent.mkdir(parents=True, exist_ok=True)
         if isinstance(data, (dict, list)):
-            data = json.dumps(data, indent=2, ensure_ascii=False, default=str)
+            data = json.dumps(redact_people(data), indent=2, ensure_ascii=False, default=str)
         if isinstance(data, str):
             data = data.encode()
         if target.suffix in TEXT_SUFFIXES:
@@ -205,31 +233,54 @@ class Run:
             self.log.write(f"{name}: {entry['status']} in {entry['seconds']} s\n")
 
 
+def occurrence_request(url, params=None):
+    """A request to GBIF's occurrence API: the percent-decoded path, any case, and GBIF query keys."""
+    parts = urlsplit(unquote(str(url)).lower())
+    keys = {str(k).lower() for k in (params or {})}
+    return parts.hostname == "api.gbif.org" and (
+        parts.path.startswith("/v1/occurrence") or bool(keys & lab_checks.OCCURRENCE_KEYS))
+
+
 @contextmanager
 def count_gbif_occurrence(record):
-    """D4 is held, so its occurrence check sends nothing: count in-process requests to the occurrence API."""
+    """D4 is held, so its occurrence check sends nothing. GBIF reads leave through bounded_http, whose
+    request is counted here in the parent before the child process sends it; injected httpx clients are
+    counted too. Without the hook the count is None, which stage 7 reads as not checked."""
     import httpx
 
+    try:
+        from specimen_digitization.application import http_effect
+    except ImportError:
+        http_effect = None
+    bounded = getattr(http_effect, "bounded_http", None)
+    record["gbif_occurrence_requests"] = 0 if bounded else None
     sync_send, async_send = httpx.Client.send, httpx.AsyncClient.send
-    record["gbif_occurrence_requests"] = 0
 
-    def d4(request):
-        if request.url.host == "api.gbif.org" and request.url.path.startswith("/v1/occurrence"):
+    def count(url, params=None):
+        if occurrence_request(url, params) and record["gbif_occurrence_requests"] is not None:
             record["gbif_occurrence_requests"] += 1
 
+    def counted_bounded(url, *args, **kwargs):
+        count(url, kwargs.get("params"))
+        return bounded(url, *args, **kwargs)
+
     def counted_send(self, request, *args, **kwargs):
-        d4(request)
+        count(request.url)
         return sync_send(self, request, *args, **kwargs)
 
     async def counted_async_send(self, request, *args, **kwargs):
-        d4(request)
+        count(request.url)
         return await async_send(self, request, *args, **kwargs)
 
+    if bounded:
+        http_effect.bounded_http = counted_bounded
     httpx.Client.send, httpx.AsyncClient.send = counted_send, counted_async_send
     try:
         yield
     finally:
         httpx.Client.send, httpx.AsyncClient.send = sync_send, async_send
+        if bounded:
+            http_effect.bounded_http = bounded
 
 
 @contextmanager
@@ -299,13 +350,13 @@ def execute(options, *, fetch, lane_factory, env, clock, loadavg, commit):
                     record["rows"] = {t: len(r) for t, r in evidence["rows"].items()}
     if evidence:
         with run.phase("check"):
+            evidence["gbif_occurrence_requests"] = record.get("gbif_occurrence_requests")
+            evidence["d4_blob_hits"] = [name for name, blob in evidence["artifacts"].items()
+                                        if name.startswith("receipts/") and lab_checks.occurrence_request(
+                                            blob.decode("utf-8", errors="replace"))]
             record["stages"] = lab_checks.check_stages(evidence, source, options.subject)
             record["costs"] = price(evidence["snapshot"])
             record["timings"] = timings(evidence["snapshot"])
-            if record.get("gbif_occurrence_requests"):
-                record["stages"].append({"stage": "d4", "name": "No GBIF occurrence request (D4 held)",
-                                         "status": "failed", "detail": f"{record['gbif_occurrence_requests']} "
-                                         "in-process requests to api.gbif.org/v1/occurrence"})
             if record["costs"]["total_usd"] > options.max_run_usd:
                 record["stages"].append({"stage": "cost", "name": "Run cost", "status": "failed",
                                          "detail": f"above --max-run-usd {options.max_run_usd}"})
