@@ -303,6 +303,7 @@ def test_a_roman_numeral_outside_a_date_stays(text):
     [
         ("Mindanao, VIII -46", "Mindanao"),  # "-46" is a year form of the profile.
         ("Mindanao, VIII ‘46", "Mindanao"),  # With any apostrophe (#203),
+        ("Mindanao, VIII ʼ46", "Mindanao"),  # U+02BC too (08:01Z),
         ("Mindanao, VIII 1946.", "Mindanao"),  # and a clause-final period.
         ("Mindanao, P.I. 3 Sept. '46", "Mindanao, P.I."),  # 105526321's line.
         ("3 SEPT. '46", ""),
@@ -398,7 +399,7 @@ def test_the_readings_non_place_literals_do_not_cut_the_reviewers_place_value():
         readings=[reading],
         non_place_literals=[habitat],
         knowledge=insects,
-        reviewer=ReviewerValue(anchor=None, non_place_literals=[]),
+        reviewer=ReviewerValue(anchors=(), non_place_literals=[]),
     )
 
     assert (as_read, as_reviewed) == ("", "Mindanao")
@@ -416,7 +417,7 @@ def test_a_date_in_the_reviewers_place_value_is_cut():
             readings=["Davao Prov.\nMindanao, P.I."],
             non_place_literals=[],
             knowledge=insects,
-            reviewer=ReviewerValue(anchor=None, non_place_literals=[]),
+            reviewer=ReviewerValue(anchors=(), non_place_literals=[]),
         )
         == "Mindanao"
     )
@@ -630,18 +631,18 @@ HARNESS_PLACE = "Mindanao F.G. Wermer"  # The harness's precise_location.
 RECORD = "Davao Prov.\nMindanao F.G. Wermer"
 
 
-def reviewed(value, *, anchor=HARNESS_PLACE, own=()):
-    """A place value the reviewer entered or changed, in "fill the rest", with
-    the harness's value for its field as the anchor and the harness's
-    collector "F.G. Wermer" among the non-place values; `own` are the
-    reviewer's own non-place values (PLAN 4.8 as #209 states it)."""
+def reviewed(value, *, anchors=(HARNESS_PLACE,), own=(), harness=("F.G. Wermer",)):
+    """A place value the reviewer entered or changed, in "fill the rest": its
+    anchor is every text the run holds for its field, and the harness's
+    collector "F.G. Wermer" is among the non-place values; `own` are the
+    reviewer's own non-place values (PLAN 4.8 on main after #210)."""
     return place_request_text(
         value,
         sources=[value],
         readings=[RECORD],
-        non_place_literals=["F.G. Wermer", *own],
+        non_place_literals=[*harness, *own],
         knowledge=insects,
-        reviewer=ReviewerValue(anchor=anchor, non_place_literals=own),
+        reviewer=ReviewerValue(anchors=anchors, non_place_literals=own),
     )
 
 
@@ -669,11 +670,35 @@ def test_a_token_sharing_any_folded_word_with_the_anchor_is_kept():
 
 def test_a_value_typed_into_an_empty_field_is_the_reviewers_own_text():
     # Spared whole from the readings' and the harness's non-place values (07:33Z),
-    assert reviewed(HARNESS_PLACE, anchor=None) == HARNESS_PLACE
+    assert reviewed(HARNESS_PLACE, anchors=()) == HARNESS_PLACE
     # while the reviewer's own non-place values, and every other cut, still
     # reach it.
-    assert reviewed(HARNESS_PLACE, anchor=None, own=["F.G. Wermer"]) == "Mindanao"
-    assert reviewed("Mindanao, 3 Sept. 1946", anchor=None) == "Mindanao"
+    assert reviewed(HARNESS_PLACE, anchors=(), own=["F.G. Wermer"]) == "Mindanao"
+    assert reviewed("Mindanao, 3 Sept. 1946", anchors=()) == "Mindanao"
+
+
+@pytest.mark.parametrize("token", ["Wermer's", "F.G.Werner", "FG"])
+def test_a_token_matching_the_anchor_by_word_or_run_together_is_kept(token):
+    # The coordinator's ruling of 08:01Z: a token matches when any folded word
+    # is the anchor's, or its letters and digits run together equal an anchor
+    # token's ("FG" for "F.G."); what matches is cut like any other source.
+    assert reviewed(f"Mindanao {token}") == "Mindanao"
+
+
+def test_the_anchor_is_every_text_the_run_holds_for_the_field():
+    # 08:01Z: where readers disagree there is no literal, and the verbatim the
+    # reviewer picks is no more the reviewer's than the literal would be.
+    verbatims = ("Mindanao F.G. Wermer", "Mindanao F.G. Werner")
+    assert reviewed("Mindanao F.G. Wermer", anchors=verbatims) == "Mindanao"
+
+
+def test_a_mixed_value_spares_only_the_reviewers_own_words():
+    # #209's final review: the harness gave "Mindanao F.G. Wermer" and the
+    # habitat "Mossy forest"; the reviewer's added "Mossy forest" is spared.
+    sent = reviewed(
+        "Mindanao F.G. Wermer, Mossy forest", harness=("F.G. Wermer", "Mossy forest")
+    )
+    assert sent == "Mindanao, Mossy forest"
 
 
 def test_the_stated_limit_a_name_the_reviewer_adds_can_leave():
@@ -681,6 +706,39 @@ def test_the_stated_limit_a_name_the_reviewer_adds_can_leave():
     # non-place field.
     assert reviewed("Mindanao, H. Hoogstraal") == "Mindanao, H. Hoogstraal"
     assert reviewed("Mindanao, H. Hoogstraal", own=["H. Hoogstraal"]) == "Mindanao"
+
+
+def test_the_stated_limit_a_respelled_name_leaves_though_the_collectors_hold_it():
+    # 08:01Z: the harness's collectors "F.G. Werner", kept, don't cut the
+    # reviewer's respelling "Werner"; the reviewer's own change to them does.
+    harness = ("F.G. Werner",)
+    assert reviewed("Mindanao Werner", harness=harness) == "Mindanao Werner"
+    assert reviewed("Mindanao Werner", harness=(), own=harness) == "Mindanao"
+
+
+@pytest.mark.parametrize("token", ["FG", "Wer-mer", "Wer.mer"])
+def test_the_non_place_cuts_compare_letters_and_digits_run_together(token):
+    # The coordinator's ruling of 08:24Z: "F.G. Wermer" cuts "FG" for "F.G.",
+    # and its "Wermer" however punctuated.
+    assert request(f"Mindanao {token} Wermer", others=["F.G. Wermer"]) == "Mindanao"
+
+
+def test_the_reviewers_own_non_place_values_cut_by_run_together_too():
+    # 08:24Z: with the collectors changed to "F.G. Werner", "FG Werner" sends
+    # nothing.
+    assert reviewed("FG Werner", anchors=(), own=["F.G. Werner"]) == ""
+
+
+@pytest.mark.parametrize("spelling", ["Wer mer", "FGWermer", "Werm."])
+def test_the_stated_limit_a_split_merged_or_shortened_spelling_leaves(spelling):
+    # 08:24Z: it matches nothing, so the non-place cuts miss it.
+    text = f"Mindanao {spelling}"
+    assert request(text, others=["F.G. Wermer"]) == text
+
+
+def test_the_stated_limit_a_place_word_like_a_collectors_initials_is_cut():
+    # #215: with a collector "M.T. Smith", "Mt." reads like its initials.
+    assert request("Mt. Apo", others=["M.T. Smith"]) == "Apo"
 
 
 @pytest.mark.parametrize(
@@ -764,6 +822,8 @@ def test_fill_the_rest_cuts_every_value_the_harness_gave_a_non_place_field(
         ("Mindanao, VIII y IX 1946", "Mindanao, VIII y IX 1946", "Mindanao, VIII y"),
         ("Mindanao, VIII – IX 1946", "Mindanao, VIII – IX 1946", "Mindanao, VIII –"),
         ("Mindanao, VIII, IX 1946", "Mindanao, VIII, IX 1946", "Mindanao, VIII"),
+        ("Mindanao, VIII & IX 1946", "Mindanao, VIII & IX 1946", "Mindanao, VIII &"),
+        ("Mindanao, VIII ca. 1946", "Mindanao, VIII ca. 1946", "Mindanao, VIII ca."),
         # and a connector with a date on one side only.
         ("Chimaltenango de 1946", "Chimaltenango de 1946", "Chimaltenango de"),
         # A numeral that shares its token with a word (#203).
@@ -807,6 +867,8 @@ def test_fill_the_rest_cuts_every_value_the_harness_gave_a_non_place_field(
         "months-joined-by-y",
         "months-joined-by-a-spaced-dash",
         "months-joined-by-a-comma",
+        "months-joined-by-an-ampersand",
+        "a-circa-between",
         "one-sided-connector",
         "numeral-in-a-word",
         "camp-iv",

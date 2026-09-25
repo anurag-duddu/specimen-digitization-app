@@ -284,9 +284,9 @@ is `timeout`, any other `httpx` transport error is `provider_error`
 errors outside its `HTTPError` family such as `InvalidURL`, is `provider_error`
 with the fixed code `geocoding_unexpected_error`.
 
-**What a request may carry** (PLAN 4.8 as #209 states it at b4856e8, on main
-after #208, with the coordinator's rulings of 2026-09-24 and 2026-09-25, the
-last at 07:33Z).
+**What a request may carry** (PLAN 4.8 as #215 states it at ab378205, on main
+after #210, with the coordinator's rulings of 2026-09-24 and 2026-09-25, the
+last at 08:24Z).
 `application/place_text.py` is the one filter. This tool applies it to every
 request, and S8's tiers import it for every value they send. The filter's
 output is what leaves; after it a value is only escaped or encoded, as an
@@ -314,12 +314,15 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
   non-place field's literal, and a query that names no knowledge
   (`place_knowledge_unavailable`).
 - **Cuts**, only on those values. A token of the value is cut when a cut below
-  reaches it in the value itself, tokens comparing by their folded words, or
-  when, at any occurrence of the value in any text, the readings included, a
-  token it lies in is cut. So a value in no reading, such as a tier-1 name, is
-  cut too, and a value that starts or ends inside a token loses that token: the
-  "Hoogstraa" of "H. Hoogstraal leg." leaves nothing (the steward's review of
-  #185). No cut character leaves, however the value is sliced. The filter cuts:
+  reaches it in the value itself, or when, at any occurrence of the value in any
+  text, the readings included, a token it lies in is cut. Tokens compare by
+  their folded words, and the non-place cuts also compare them by their letters
+  and digits run together, so "FG" for "F.G.", "Wer-mer" and "Wer.mer" meet the
+  cut that "F.G. Wermer" makes (the coordinator's ruling of 08:24Z on
+  2026-09-25). So a value in no reading, such as a tier-1 name, is cut too, and
+  a value that starts or ends inside a token loses that token: the "Hoogstraa"
+  of "H. Hoogstraal leg." leaves nothing (the steward's review of #185). No cut
+  character leaves, however the value is sliced. The filter cuts:
   - every token of every literal any reading assigns to a non-place field, year
     literals included, of every value the harness gave a non-place field,
     whether a reviewer kept it or replaced it (the coordinator's ruling of
@@ -327,16 +330,20 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
     cuts every token it covers where it occurs: a collector copied short, "F.G.
     Wern", still cuts "Werner", and a corrected spelling matches no reading's
     literal. The readings' and the harness's non-place values don't cut the
-    reviewer's own text, since the reviewer's correction is the authority
-    there: the tokens of a place value the reviewer entered or changed that
-    share no folded word with its anchor, the harness's value for that field in
-    the run under review. Where the harness gave the field no value, every
-    token is the reviewer's own. What the reviewer kept, a token sharing a
-    folded word with the anchor, is cut like any other source, so a case-only
-    change spares nothing and "Mindanao F.G. Wermer, P.I." spares only "P.I."
-    (the coordinator's rulings of 06:36Z and 07:33Z on 2026-09-25). The other
+    reviewer's own text, since the reviewer's correction is the authority there:
+    the tokens of a place value the reviewer entered or changed that match
+    nothing the run holds for that field. That anchor is every such text: the
+    harness's settled literal, the first pass's decided literal where there is
+    one, and each reading's verbatim for the field. A token matches when any of
+    its folded words is a folded word of the anchor, or when its letters and
+    digits run together equal an anchor token's. Matching tokens are cut like
+    any other source, and where the run holds nothing for the field, every token
+    is the reviewer's own (the coordinator's rulings of 06:36Z, 07:33Z, 07:53Z
+    and 08:01Z on 2026-09-25). So a case-only change spares nothing, "Mindanao
+    F.G. Wermer, P.I." spares only "P.I.", "Wermer's", "F.G.Werner" and "FG" for
+    "F.G." are cut, and so is a reading's verbatim the reviewer picks. The other
     cuts reach the reviewer's own text too, so a date in it never leaves. The
-    filter takes the anchor and the reviewer's own non-place values as
+    filter takes the anchor's texts and the reviewer's own non-place values as
     `reviewer`;
   - every token of every clause, between commas, semicolons or line breaks, that
     holds a collector or determiner marker the knowledge names, wherever the
@@ -366,23 +373,23 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
     numeral I to XII, in any case, next to a date number before or after it,
     across separators. A date number is a day or a year in the profile's forms,
     3, 14, 1946, '46 or -46, also written with any apostrophe or dash ("‘46",
-    "–46"), as an ordinal day ending in st, nd, rd, th, d, er, º or ª ("3rd",
-    "2d", "1er", "1º"), as a range whose parts, split at a dash or slash, are
-    each one ("3-4", "1946/47"), or with punctuation before or after it
-    ("1946.", "1946?", "(1946)"). The search for the neighbour skips a token
+    "ʼ46", "–46"), as an ordinal day ending in st, nd, rd, th, d, er, º or ª
+    ("3rd", "2d", "1er", "1º"), as a range whose parts, split at a dash or
+    slash, are each one ("3-4", "1946/47"), or with punctuation before or after
+    it ("1946.", "1946?", "(1946)"). The search for the neighbour skips a token
     with no letter or digit, and the date connectors the knowledge's date
     notations list, "de", "del" and "of". A connector is itself cut when the
     tokens on both sides of it, skipping lone punctuation, are cut date tokens:
-    a token with a digit, a month word or a Roman month in the month position.
-    A clause left with no word drops. This is the coordinator's ruling of
+    a token with a digit, a month word or a Roman month in the month position. A
+    clause left with no word drops. This is the coordinator's ruling of
     2026-09-24, which replaced an earlier cut of every I to XII (4.8 in #185),
     as #203 and the rulings of 2026-09-25 (05:38Z, 05:39Z) widen it. So "3 VIII
-    1946", "VIII 1946", "Mindanao, VIII, 1946", "Mindanao, VIII -46",
-    "Mindanao, VIII ‘46", "VIII –46", "VIII 1946?", "Mindanao, VIII 1946.",
-    "3rd VIII", "VIII/IX 1946", "Mindanao, 2d VIII", "1º VIII", "1er VIII", "3-4
-    VIII", "VIII 1946/47", "3 - VIII - 1946", "3 de VIII de 1946" and "3rd of
-    VIII 1946" leave no numeral and no connector, while "Camp IV", a lone
-    "VIII/IX", the "I" of "P.I." and the "de" of "San Juan de Dios" stay.
+    1946", "VIII 1946", "Mindanao, VIII, 1946", "Mindanao, VIII -46", "Mindanao,
+    VIII ‘46", "VIII –46", "VIII 1946?", "Mindanao, VIII 1946.", "3rd VIII",
+    "VIII/IX 1946", "Mindanao, 2d VIII", "1º VIII", "1er VIII", "3-4 VIII",
+    "VIII 1946/47", "3 - VIII - 1946", "3 de VIII de 1946" and "3rd of VIII
+    1946" leave no numeral and no connector, while "Camp IV", a lone "VIII/IX",
+    the "I" of "P.I." and the "de" of "San Juan de Dios" stay.
 - **Full forms**, after the cuts (the coordinator's ruling, option c).
   - A notation token that survived may be written out in each full form the
     knowledge's table lists for it. The table carries sendable place words, not
@@ -427,7 +434,7 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
   of its full forms (G29): "Davao Prov." leaves as "Davao Prov." or "Davao
   Province", and "Camiguin Is." as "Camiguin Is.", "Camiguin Island" or
   "Camiguin Islands". `place_request_text` returns the first form.
-- **Stated limit** (4.8 as #209 states it). Text the filter cannot recognize can
+- **Stated limit** (4.8 as #215 states it). Text the filter cannot recognize can
   still leave: text that no reading assigns to a non-place field and the harness
   hasn't given one (mid-run, not yet; in "fill the rest", never), when no marker
   the knowledge names sits in its clause. So, mid-run, before the harness has
@@ -436,36 +443,43 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
   so do a habitat such as "Mossy forest", "FMNH INS" from a catalogue number and
   "ft." from "Mt. Apo, 6000 ft."; so does a name beside a marker the knowledge
   doesn't list, such as German's "Sammler". In "fill the rest", a name the
-  reviewer adds to a place value can leave, unless the reviewer also puts it in
-  a non-place field, whose value still cuts it (07:33Z). A month name in a
-  language the knowledge doesn't list can leave, such as Tagalog's "Hunyo", and
-  so can a form of a listed language that it doesn't list, such as the RAE's
-  "en.", and a lone or ranged month numeral with no day or year beside it
-  ("VIII/IX"). A token that joins a numeral to a word can leave whole, so
-  "mid-VIII 1946" sends "mid-VIII". The ordinal endings are closed (st, nd, rd,
-  th, d, er, º, ª), and the Roman-month cut is not widened further before the
-  pilot, so a bare month numeral leaves beside an ordinal written any other way:
-  "Mindanao, 1.º VIII", "1.ª VIII", "1o VIII", "1ro VIII", "2do VIII" and "1.er
-  VIII" each send "Mindanao, VIII", and "Mindanao, primero de VIII", a day in
-  words, leaves whole. A word, a spaced dash or a comma that joins two months
-  leaves the first: "Mindanao, VIII y IX 1946" sends "Mindanao, VIII y",
-  "Mindanao, VIII – IX 1946" sends "Mindanao, VIII –" and "Mindanao, VIII, IX
-  1946" sends "Mindanao, VIII". A connector with a date on one side only stays,
-  so "Chimaltenango de 1946" sends "Chimaltenango de". The cuts can also take
-  too much: "Camp IV, 3 VIII 1946" sends only "Camp"; "Cape May" sends "Cape",
-  and "Ag. Exp. Sta." sends "Exp. Sta."; a colonia written "Col." is cut as a
-  collector's clause, so "Col. El Carmen, Chimaltenango" sends only
-  "Chimaltenango"; a clause holding a marker is cut wherever its words appear,
-  so "Mt. Apo leg. Hoogstraal" on one line takes "Mt. Apo" from every other
-  line, a reviewer's value included; and a tier-1 name whose numeral stands
-  beside a number, such as "Region XI (11)", loses the numeral. Tests pin each
-  case, so a change in what can leave shows.
+  reviewer adds or respells in a place value is spared the readings' and the
+  harness's non-place cuts, so it leaves even when the collectors field holds
+  it, unless the reviewer entered or changed that non-place field (07:33Z and
+  08:01Z). A spelling that splits a name ("Wer mer"), merges it ("FGWermer") or
+  shortens it ("Werm.") matches nothing, so it counts as the reviewer's own, the
+  non-place cuts miss it, and it leaves (08:24Z). A month name in a language the
+  knowledge doesn't list can leave, such as Tagalog's "Hunyo", and so can a form
+  of a listed language that it doesn't list, such as the RAE's "en.", and a lone
+  or ranged month numeral with no day or year beside it ("VIII/IX"). A token
+  that joins a numeral to a word can leave whole, so "mid-VIII 1946" sends
+  "mid-VIII". The ordinal endings are closed (st, nd, rd, th, d, er, º, ª), and
+  the Roman-month cut is not widened further before the pilot, so a bare month
+  numeral leaves beside an ordinal written any other way: "Mindanao, 1.º VIII",
+  "1.ª VIII", "1o VIII", "1ro VIII", "2do VIII" and "1.er VIII" each send
+  "Mindanao, VIII", and "Mindanao, primero de VIII", a day in words, leaves
+  whole. Anything but a date number, bare punctuation or a listed connector
+  between two months leaves the first: "Mindanao, VIII y IX 1946" sends
+  "Mindanao, VIII y", "Mindanao, VIII – IX 1946" sends "Mindanao, VIII –",
+  "Mindanao, VIII, IX 1946" sends "Mindanao, VIII", "Mindanao, VIII & IX 1946"
+  sends "Mindanao, VIII &", and "Mindanao, VIII ca. 1946" sends "Mindanao, VIII
+  ca.". A connector with a date on one side only stays, so "Chimaltenango de
+  1946" sends "Chimaltenango de". The cuts can also take too much: "Camp IV, 3
+  VIII 1946" sends only "Camp"; "Cape May" sends "Cape", and "Ag. Exp. Sta."
+  sends "Exp. Sta."; a place word that reads like a non-place value's initials
+  goes, so with a collector "M.T. Smith", "Mt. Apo" sends "Apo" (#215); a
+  colonia written "Col." is cut as a collector's clause, so "Col. El Carmen,
+  Chimaltenango" sends only "Chimaltenango"; a clause holding a marker is cut
+  wherever its words appear, so "Mt. Apo leg. Hoogstraal" on one line takes "Mt.
+  Apo" from every other line, a reviewer's value included; and a tier-1 name
+  whose numeral stands beside a number, such as "Region XI (11)", loses the
+  numeral. Tests pin each case, so a change in what can leave shows.
 
 This tool passes its query's sources, the place-field literals and the
 unassigned locality text, with the readings as context. It checks that every
 literal is in a reading, but sends the place-field literals only. In "fill the
 rest", a place value the reviewer entered or changed comes marked as the
-reviewer's (`LocalityLiteral.reviewer`) with its anchor. It is a source though
+reviewer's (`LocalityLiteral.reviewer`) with its anchors. It is a source though
 no reading holds it, as 4.8's sources allow, and the tool cuts each value with
 its own lists: a reviewer's value with `reviewer`, so the query's
 `reviewer_non_place_literals` alone cut the reviewer's own text, and every
@@ -982,19 +996,22 @@ S5 stores. The reviewer edits it and approves it through the decision route.
   the harness's non-place values don't cut the reviewer's own text, since the
   reviewer's correction is the authority there (the coordinator's rulings of
   2026-09-25, 05:38Z and 05:39Z). The reviewer's own text is the tokens of a
-  place value the reviewer entered or changed that share no folded word with
-  its anchor, the harness's value for that field in the run under review, and
-  every token where the harness gave the field no value. What the reviewer
-  kept is cut like any other source (06:36Z and 07:33Z). Every other cut
-  reaches the reviewer's own text too: the reviewer's own non-place values, the
-  markers' clauses, digits, months and Roman months (section 7), so a date in
-  it never leaves.
+  place value the reviewer entered or changed that match nothing the run holds
+  for that field: its anchor, the harness's settled literal and each reading's
+  verbatim for the field, the first pass's decided literal among them. Where the
+  run holds nothing for the field, every token is the reviewer's own. What the
+  reviewer kept is cut like any other source (06:36Z, 07:33Z, 07:53Z and
+  08:01Z). Every other cut reaches the reviewer's own text too: the reviewer's
+  own non-place values, the markers' clauses, digits, months and Roman months
+  (section 7), so a date in it never leaves.
 - `rest_place_inputs(run, filled, *, decision_id)` gives that call what
-  derive_rest holds (#208's security review): each place value in `filled` as
-  a reviewer's literal with its anchor from `run.fields`, so what the reviewer
-  kept is cut; every value the harness gave a non-place field with the
-  reviewer's own as `non_place_literals`; and the reviewer's own non-place
-  values. The call adds the readings' texts and non-place literals.
+  derive_rest holds (#208's security review): each place value in `filled` as a
+  reviewer's literal with its anchor's texts from `run.fields`, so what the
+  reviewer kept is cut; every value the harness gave a non-place field, with the
+  reviewer's own, as `non_place_literals`; and as `reviewer_non_place_literals`
+  only the non-place values the reviewer entered or changed, since a value
+  equal, folded, to a text the run holds for that field is the harness's
+  (08:01Z). The call adds the readings' texts and non-place literals.
 - The proposal (`domain.Proposal`) carries the proposed fields, the new
   evidence they cite, and the tool calls, lookups and findings. Those stay empty
   until a derivation makes a call.

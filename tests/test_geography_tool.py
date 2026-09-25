@@ -514,15 +514,16 @@ def test_a_non_place_fields_literal_is_never_a_source_and_refuses_the_query():
 FILL_RECORD = "Davao Prov.\nMindanao F.G. Wermer"
 
 
-def reviewers(field_key, literal, anchor=None):
-    """A place value the reviewer entered or changed in "fill the rest"."""
+def reviewers(field_key, literal, *anchors):
+    """A place value the reviewer entered or changed in "fill the rest", with
+    every text the run holds for its field as the anchor."""
     return LocalityLiteral(
         field_key=field_key,
         literal=literal,
         source_observation_id="review_decision",
         source_region_id="decision/d-1",
         reviewer=True,
-        anchor=anchor,
+        anchors=list(anchors),
     )
 
 

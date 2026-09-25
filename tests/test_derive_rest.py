@@ -123,14 +123,18 @@ def test_a_reviewers_date_fills_date_visited_to():
 
 
 def test_the_place_calls_inputs_anchor_each_reviewer_value_on_the_run():
-    # #208's security review, the coordinator's rulings of 06:36Z and 07:33Z
-    # (HARNESS.md section 13): each place value in `filled` is the reviewer's,
-    # anchored on the harness's value for that field in the run under review,
-    # so what the reviewer kept is cut; a field the harness left empty has none.
+    # #208's security review, the coordinator's rulings of 06:36Z, 07:33Z and
+    # 08:01Z (HARNESS.md section 13): each place value in `filled` is the
+    # reviewer's, anchored on every text the run holds for that field, the
+    # settled literal and each reading's verbatim, so what the reviewer kept is
+    # cut; a field the run holds nothing for has no anchor.
     run = Run(
         fields={
             "precise_location": stated("Mindanao F.G. Wermer"),
             "province_state": FieldValue(),
+            "county": FieldValue(
+                verbatim_by_observation={"o-1": "Davao", "o-2": "Davao City"}
+            ),
             "collectors": stated("F.G. Wermer"),
             "habitat": stated("Mossy forest"),
         }
@@ -138,27 +142,36 @@ def test_the_place_calls_inputs_anchor_each_reviewer_value_on_the_run():
     filled = {
         "precise_location": "Mindanao F.G. Wermer, P.I.",
         "province_state": "Davao del Sur",
+        "county": "Davao",
         "collectors": "F.G. Werner",
+        "habitat": "mossy forest",  # Kept: equal, folded, to what the run holds.
     }
 
     inputs = rest_place_inputs(run, filled, decision_id="d-1")
 
     assert [
-        (item.field_key, item.literal, item.reviewer, item.anchor)
+        (item.field_key, item.literal, item.reviewer, item.anchors)
         for item in inputs.literals
     ] == [
         (
             "precise_location",
             "Mindanao F.G. Wermer, P.I.",
             True,
-            "Mindanao F.G. Wermer",
+            ["Mindanao F.G. Wermer"],
         ),
-        ("province_state", "Davao del Sur", True, None),
+        ("province_state", "Davao del Sur", True, []),
+        ("county", "Davao", True, ["Davao", "Davao City"]),
     ]
     assert {
         (item.source_observation_id, item.source_region_id) for item in inputs.literals
     } == {("review_decision", "decision/d-1")}
     # Every value the harness gave a non-place field, kept or replaced, and the
-    # reviewer's own; the reviewer's own alone cut the reviewer's own text.
-    assert inputs.non_place_literals == ["F.G. Wermer", "Mossy forest", "F.G. Werner"]
+    # reviewer's own; only what the reviewer entered or changed is the
+    # reviewer's own, and alone cuts the reviewer's own text (08:01Z).
+    assert inputs.non_place_literals == [
+        "F.G. Wermer",
+        "Mossy forest",
+        "F.G. Werner",
+        "mossy forest",
+    ]
     assert inputs.reviewer_non_place_literals == ["F.G. Werner"]
