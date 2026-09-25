@@ -284,9 +284,8 @@ is `timeout`, any other `httpx` transport error is `provider_error`
 errors outside its `HTTPError` family such as `InvalidURL`, is `provider_error`
 with the fixed code `geocoding_unexpected_error`.
 
-**What a request may carry** (PLAN 4.8 as #215 states it at ab378205, on main
-after #210, with the coordinator's rulings of 2026-09-24 and 2026-09-25, the
-last at 08:24Z).
+**What a request may carry** (PLAN 4.8 on main after #215, a867d56, with the
+coordinator's rulings of 2026-09-24 and 2026-09-25, the last at 08:24Z).
 `application/place_text.py` is the one filter. This tool applies it to every
 request, and S8's tiers import it for every value they send. The filter's
 output is what leaves; after it a value is only escaped or encoded, as an
@@ -434,16 +433,16 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
   of its full forms (G29): "Davao Prov." leaves as "Davao Prov." or "Davao
   Province", and "Camiguin Is." as "Camiguin Is.", "Camiguin Island" or
   "Camiguin Islands". `place_request_text` returns the first form.
-- **Stated limit** (4.8 as #215 states it). Text the filter cannot recognize can
-  still leave: text that no reading assigns to a non-place field and the harness
-  hasn't given one (mid-run, not yet; in "fill the rest", never), when no marker
-  the knowledge names sits in its clause. So, mid-run, before the harness has
-  named the non-place fields, "Mindanao F.G. Wermer" leaves whole, "H.
-  Hoogstraal" leaves when its "leg." sits in a neighbouring clause or line, and
-  so do a habitat such as "Mossy forest", "FMNH INS" from a catalogue number and
-  "ft." from "Mt. Apo, 6000 ft."; so does a name beside a marker the knowledge
-  doesn't list, such as German's "Sammler". In "fill the rest", a name the
-  reviewer adds or respells in a place value is spared the readings' and the
+- **Stated limit** (4.8 on main after #215). Text the filter cannot recognize
+  can still leave: text that no reading assigns to a non-place field and the
+  harness hasn't given one (mid-run, not yet; in "fill the rest", never), when
+  no marker the knowledge names sits in its clause. So, mid-run, before the
+  harness has named the non-place fields, "Mindanao F.G. Wermer" leaves whole,
+  "H. Hoogstraal" leaves when its "leg." sits in a neighbouring clause or line,
+  and so do a habitat such as "Mossy forest", "FMNH INS" from a catalogue number
+  and "ft." from "Mt. Apo, 6000 ft."; so does a name beside a marker the
+  knowledge doesn't list, such as German's "Sammler". In "fill the rest", a name
+  the reviewer adds or respells in a place value is spared the readings' and the
   harness's non-place cuts, so it leaves even when the collectors field holds
   it, unless the reviewer entered or changed that non-place field (07:33Z and
   08:01Z). A spelling that splits a name ("Wer mer"), merges it ("FGWermer") or
