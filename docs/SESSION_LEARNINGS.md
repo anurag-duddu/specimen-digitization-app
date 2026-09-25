@@ -12150,3 +12150,22 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: an approval hash must come from outside the artifact it approves. A self-consistent artifact with two collection ids swapped carries its own matching internal digest, so only the owner-held digest of the exact bytes catches it. Read secrets once, and drop them from the environment before any child process starts, so a CLI or connector never inherits them.
 - Failed approaches: the subagent's first green left the secrets in the step's environment, where `gh` and the Node SQL connector inherited them. This session's review had them taken out before any child process starts, folded into the rebuilt red and green.
 - Remaining follow-ups: the worker's membership (the stacked PR). The merge waits for #123 and the coordinator's explicit go-ahead.
+
+### 2026-09-24 — Go-live release workstream (S2), T3e: the worker's membership and the owner's summarize approval
+
+- Task: the S2 session, T3e's second pull request (`docs/execution/golive/RELEASE.md` section 4.5): the worker's membership and the owner's approval record.
+- Branch/worktree: `golive/release-data-bootstrap-worker`, stacked on `golive/release-data-bootstrap`. The subagent wrote the red and green commits.
+- Outcome:
+  - **The request.** The worker's membership follows `WORKER_MEMBERSHIP.md` (#96): an active organization membership, and one `operator` row without sensitive access on the collection the committed key `insects` resolves to. #96's reviewed code regenerates the request from the approved artifact, with the UID from `DATA_WORKER_ACTOR_UID`.
+  - **Read first.** The organization's rows and the worker's are read and classified before any effect.
+  - **The account check.** Before every membership step, an exact one too, a read-only `accounts:lookup` by `localId` refuses unless exactly one account exists, disabled, with no email, password, phone, provider or tenant.
+  - **The write.** An absent membership is written once and read back exactly, with each record encrypted to the recipient. An exact one skips, and anything else fails.
+  - **The approval record.** `scripts/data/hierarchy_approval.py summarize ARTIFACT` prints a value-free summary. Only on `APPROVE` does it create `hierarchy-approval.sha256` and `hierarchy-approval.json`, mode 600, never overwriting either.
+  - **Owner inputs.** `infra/release/OWNER_INPUTS.md` says what the owner supplies for the run and that all three secrets are deleted afterwards.
+- Commits/PRs: the spec delta `124c1b9`; red `a2f72c2`; green `9eb02cb`; this closeout.
+- Validation actually run:
+  - the subagent: red 283 failed and 43 passed in six files, each red confirmed against the pre-fix code; green 326 passed, and 270 more in the neighbouring suites; the full `scripts/` suite, 2147 passed and 60 skipped; the three `tests/` files, 127 passed; a local run of the real bootstrap against the Data Connect emulator on 127.0.0.1, with synthetic data;
+  - this session: after the cherry-pick onto part 1 and the spec delta, red 283 failed and 43 passed, and green 326 passed, in the six focused files; the neighbouring suites, 221 passed; the full `scripts/` suite, 2147 passed and 60 skipped.
+- Durable learnings: an account check that guards a membership must also run when the membership is already exact. The account may have been enabled, or gained a provider, since the write. A verify path that skipped the check would pass silently while an account someone can sign in with holds the membership.
+- Failed approaches: the subagent's first green ran the account check only before a write, so an exact membership was verified without it. This session's review moved the check before every membership step, folded into the rebuilt red and green.
+- Remaining follow-ups: the owner's run needs the setup window opened once, after #123, with the three secrets set, and the secrets deleted right after the run passes. The merge waits for the coordinator's explicit go-ahead.
