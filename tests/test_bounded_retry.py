@@ -3,6 +3,9 @@
 docs/execution/golive/HARNESS.md section 15; the coordinator's G30 ruling.
 """
 
+import json
+from types import SimpleNamespace
+
 import pytest
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, ModelRetry
@@ -28,6 +31,12 @@ from specimen_digitization.application.reliability import (
 from specimen_digitization.model_gateway import INITIAL_HUGGINGFACE_ROUTES
 from specimen_digitization.provider_privacy import PrivateProviderModel
 from test_cohort_reading_barrier import segment_all
+from specimen_digitization.application.api import SYNTHETIC_COLLECTION, SYNTHETIC_ORG, SYNTHETIC_TEXT
+from specimen_digitization.application.domain import Disposition, Principal, Run, Scope
+from specimen_digitization.application.reliability import ReadingStopped
+from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository, digest
+from specimen_digitization.application.workflow import SyntheticAdapters, Workflow
+from test_application import client, intake
 from test_dynamic_pilot_reservations import dynamic_cohort
 
 LIMITS = UsageLimits(request_limit=2, total_tokens_limit=16000)
@@ -132,7 +141,7 @@ def test_without_a_budget_the_retry_goes_as_before():
     assert len(seen) == 2
 
 
-def test_a_reading_stopped_by_its_limits_is_a_known_failure(tmp_path, monkeypatch):
+def test_a_reading_stopped_by_its_limits_is_reported_as_stopped(tmp_path, monkeypatch):
     c = dynamic_cohort(tmp_path, monkeypatch)
     segment_all(c)
     item = c.repo.get(c.launch.scope, c.launch.specimens[0].specimen_id)
@@ -172,8 +181,57 @@ def test_a_reading_stopped_by_its_limits_is_a_known_failure(tmp_path, monkeypatc
         "get_bounded",
         lambda ref, limit: get_bounded(ref.split(":")[0], limit),
     )
-    with pytest.raises(AdapterFailure) as failure:
+    with pytest.raises(ReadingStopped) as stopped:
         ProductionAdapters(c.flow.blobs)._transcribe_direct(item, region, route)
-    assert failure.value.code == "model_usage_limit"
-    assert failure.value.status == LookupStatus.POLICY
-    assert failure.value.outcome_unknown is False
+    assert stopped.value.code == "model_usage_limit"
+
+
+def test_the_model_child_reports_a_stopped_reading_as_stopped(tmp_path, monkeypatch):
+    # Across the process boundary it is a known status, not a failure.
+    from specimen_digitization.application import model_runtime
+
+    body = model_runtime.stopped_result(ReadingStopped("model_usage_limit"))
+    assert json.loads(body) == {"status": "stopped", "code": "model_usage_limit"}
+    c = dynamic_cohort(tmp_path, monkeypatch)
+    segment_all(c)
+    item = c.repo.get(c.launch.scope, c.launch.specimens[0].specimen_id)
+    isolated = SimpleNamespace(status="completed", cleanup_complete=True, value=body)
+    monkeypatch.setattr(model_runtime, "run_isolated", lambda *args, **kwargs: isolated)
+    route = next(iter(INITIAL_HUGGINGFACE_ROUTES))
+    with pytest.raises(ReadingStopped) as stopped:
+        model_runtime.invoke_model(
+            ProductionAdapters(c.flow.blobs),
+            item,
+            "transcribe",
+            region=item.run.regions[0],
+            route=route,
+        )
+    assert stopped.value.code == "model_usage_limit"
+
+
+class StoppingReader(SyntheticAdapters):
+    """The second route's reading stops at its limits."""
+
+    def transcribe(self, specimen, region, route):
+        if route == specimen.run.profile.routes[1]:
+            raise ReadingStopped("model_usage_limit")
+        return super().transcribe(specimen, region, route)
+
+
+def test_a_stopped_reading_completes_its_step_and_the_record_goes_to_review(tmp_path):
+    row = intake(client(tmp_path))
+    repo = SQLiteRepository(tmp_path / "state.sqlite3")
+    scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+    principal = Principal(user_id="synthetic-reviewer", scope=scope, role="reviewer")
+    specimen = repo.get(scope, row["specimen_id"])
+    specimen.run = Run(profile=specimen.run.profile)
+    repo.save(principal, specimen, specimen.version, "new-run", digest({"new": True}))
+    adapters = StoppingReader(LocalBlobs(tmp_path / "blobs"), SYNTHETIC_TEXT)
+
+    run = Workflow(repo, adapters.blobs, adapters).drain(principal, specimen.id).run
+
+    stopped = [s for s in run.completed_steps if s.endswith(":" + run.profile.routes[1])]
+    assert stopped and all(s.startswith("transcribe:") for s in stopped)
+    assert {o.route_id for o in run.observations} == {run.profile.routes[0]}
+    assert run.stage == "finalized" and run.disposition == Disposition.REVIEW
+    assert any(r.startswith("independent_observations_missing:") for r in run.reasons)

@@ -104,7 +104,8 @@ def elevation_derivations(fields: Mapping[str, FieldValue]) -> list[Derivation]:
             method="stated_elevation"
             if rules == ["stated_elevation"]
             else "unit_conversion",
-            authority=SourceRef(name="field_harness", version=RULES_VERSION),
+            # The rule's owner: a G41 value names apply_derivations (#124).
+            authority=SourceRef(name="apply_derivations", version=RULES_VERSION),
             inputs={root: fields[root].literal},
             evidence=[Check(name=r, result="supports", detail=RULES[r]) for r in rules],
         )
@@ -196,15 +197,25 @@ def apply_derivations(
         relations = {rule.id: "decides"} | dict.fromkeys(item.call_evidence, "supports")
         for source in derivation.inputs:
             relations |= dict.fromkeys(known[source].evidence_ids, "supports")
+        authority = derivation.authority
         filled[key] = FieldValue(
             state=ValueState.SUPPORTED,
             parsed=derivation.value,
             precision=derivation.precision,
-            authority_id=derivation.authority.record_id,
+            authority_id=authority.record_id,
+            # Its authority and version, with no name key: G26's rule tests
+            # for the key (agreed with S5, 2026-09-24).
+            authority_identity={
+                "source": authority.name,
+                "source_record_id": authority.record_id,
+                "credit": authority.credit,
+                "version": authority.version,
+            },
             evidence_ids=list(relations),
             evidence_relations=relations,
             layer="derived",
             derived_from=list(derivation.inputs),
+            derivation_rules=[check.name for check in derivation.evidence],
             reason=f"derived:{derivation.method}",
         )
     return filled, evidence

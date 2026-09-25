@@ -206,6 +206,24 @@ def test_a_range_in_feet_fills_the_metre_fields_by_the_exact_factor():
     }
 
 
+def test_a_g41_value_names_its_stated_field_its_rule_and_apply_derivations():
+    # A derived value counts only with its record (#124, PLAN 4.8).
+    filled, evidence, blobs = derive(EMPTY | {"elevation_from_ft": stated("4000")})
+
+    rule = next(e for e in evidence if e.id in filled["elevation_from_m"].evidence_ids)
+    record = json.loads(blobs.puts[rule.raw_ref])["derivation"]
+    assert rule.source == "apply_derivations"
+    assert (record["inputs"], record["method"]) == (
+        {"elevation_from_ft": "4000"},
+        "unit_conversion",
+    )
+    assert (record["authority"]["name"], record["authority"]["version"]) == (
+        "apply_derivations",
+        "derivation-rules-v1",
+    )
+    assert [check["name"] for check in record["evidence"]] == ["feet_to_metres"]
+
+
 def test_a_single_metre_value_is_both_ends_and_fills_the_feet_fields():
     filled, _, _ = derive(EMPTY | {"elevation_from_m": stated("1200 m")})
 
@@ -315,3 +333,58 @@ def test_a_written_range_keeps_both_ends_and_an_unsettled_date_fills_nothing():
 
     assert date_derivations(both) == []
     assert date_derivations(NO_DATES | {"date_visited_from": unsettled}) == []
+
+
+RULES_IDENTITY = {
+    "source": "apply_derivations",
+    "source_record_id": None,
+    "credit": None,
+    "version": "derivation-rules-v1",
+}
+
+
+def test_a_rule_fill_names_its_authority_its_version_and_its_rules():
+    # The steward's review of #180, agreed with S5 (2026-09-24): the value itself
+    # names its authority with the rules version, and no name key (G26's rule
+    # tests for the key); PLAN's G44 reading and 4.8 ask for both.
+    fields = EMPTY | {"elevation_from_m": stated("1200 m")}
+    elevations, _, _ = derive(fields)
+    # G41's authority is its rule step's name (#144 names it apply_derivations).
+    steps = {d.field_key: d.authority.name for d in elevation_derivations(fields)}
+    dates = NO_DATES | {"date_visited_from": dated("1946-09", "month", "IX.1946")}
+    to = apply(dates, date_derivations(dates))[0]["date_visited_to"]
+
+    assert {k: v.authority_identity for k, v in elevations.items()} == {
+        key: RULES_IDENTITY | {"source": step} for key, step in steps.items()
+    }
+    assert {k: v.derivation_rules for k, v in elevations.items()} == {
+        "elevation_to_m": ["stated_elevation"],
+        "elevation_from_ft": ["metres_to_feet"],
+        "elevation_to_ft": ["stated_elevation", "metres_to_feet"],  # In order.
+    }
+    assert (to.authority_identity, to.derivation_rules) == (
+        RULES_IDENTITY,
+        ["one_date_both_ends"],
+    )
+
+
+def test_a_dataset_derivation_names_its_record_credit_and_version():
+    source = SourceRef(
+        name="geoboundaries",
+        record_id="GTM-ADM2-4",
+        version="6.0.0",
+        credit="geoBoundaries credit, from S8's manifest",
+    )
+    found = derivation("county", "Chimaltenango", {"city": "place-1"})
+
+    filled, _, _ = apply(FIELDS, [found.model_copy(update={"authority": source})])
+
+    county = filled["county"]
+    assert county.authority_identity == {
+        "source": "geoboundaries",
+        "source_record_id": "GTM-ADM2-4",
+        "credit": "geoBoundaries credit, from S8's manifest",
+        "version": "6.0.0",
+    }
+    assert county.derivation_rules == ["circle_inside_unit"]
+    assert FieldValue().derivation_rules == []  # Any other value has none.

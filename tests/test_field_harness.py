@@ -1,6 +1,7 @@
 """The stage 7 field harness (HARNESS.md section 11)."""
 
 import json
+import time
 from dataclasses import replace
 from functools import partial
 
@@ -298,7 +299,7 @@ def test_every_field_is_decided_from_recorded_outcomes():
         "place-chimaltenango",
         "Chimaltenango",
     )
-    # Verbatim locality text: transcribed, never settled by a geocoder (PRD 515).
+    # Verbatim locality text: transcribed, never settled by a geocoder (PRD 519).
     assert (
         fields["precise_location"].literal,
         fields["precise_location"].authority_id,
@@ -475,6 +476,22 @@ def test_geocoding_is_one_budget_for_the_agent_and_the_final_lookups():
     assert outcome.blocker == "harness_geography_lookup_policy_blocked"
 
 
+def test_two_identical_calls_in_one_response_make_one_request():
+    # pydantic-ai runs a response's tool calls in parallel threads unless told
+    # otherwise. The harness runs them one at a time, so the ledger's record of
+    # the first answers the second, and the caps count exactly.
+    class Slow(Fakes):
+        def verify_taxon(self, literal):
+            time.sleep(0.05)  # Both calls would be in flight together.
+            return super().verify_taxon(literal)
+
+    twice = [("verify_taxon", {"reading": "2A", "literal": "Epipsocus"})] * 2
+
+    _, fakes = harness(twice, FULL, fakes=Slow())
+
+    assert len([c for c in fakes.calls if c[0] == "taxon"]) == 1
+
+
 def test_tool_calls_past_the_run_cap_are_refused_without_a_lookup():
     twice = [("verify_taxon", {"reading": "2A", "literal": "Epipsocus"})] * 2
     seen = []
@@ -556,6 +573,47 @@ def test_elevations_the_label_leaves_out_are_derived_with_evidence():
     }
     rules = {e.locator for e in outcome.evidence if e.kind == "derivation"}
     assert rules == {"derivation:stated_elevation", "derivation:unit_conversion"}
+
+
+def test_a_value_the_model_asserts_without_a_record_does_not_count():
+    # #124: a derived value counts only with its record. The agent can only
+    # propose what a reading says; the metres come from G41's rule alone.
+    reading = Reading("r1", "o-muse", "decided_transcript", "Volcan Fuego, 3937 ft")
+    asserted = answer(
+        **{"1A": {"elevation_from_ft": "3937 ft", "elevation_from_m": "1250 m"}}
+    )
+    seen = []
+
+    outcome, _ = harness(
+        asserted,
+        answer(**{"1A": {"elevation_from_ft": "3937 ft"}}),
+        seen=seen,
+        readings=[reading],
+        plan=ELEVATIONS,
+    )
+
+    retry = [
+        p.content
+        for m in seen[1][0]
+        for p in getattr(m, "parts", [])
+        if type(p).__name__ == "RetryPromptPart"
+    ]
+    assert retry == ["elevation_from_m: copy the literal exactly as reading 1A has it"]
+    metres = outcome.fields["elevation_from_m"]
+    assert (metres.layer, metres.parsed, metres.derived_from) == (
+        "derived",
+        "1200",
+        ["elevation_from_ft"],
+    )
+    (rule,) = [
+        e
+        for e in outcome.evidence
+        if e.id in metres.evidence_ids and e.kind == "derivation"
+    ]
+    assert (rule.source, rule.locator) == (
+        "apply_derivations",
+        "derivation:unit_conversion",
+    )
 
 
 def test_a_geography_results_derivation_fills_a_field_the_label_leaves_out():

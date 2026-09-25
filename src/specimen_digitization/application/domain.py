@@ -266,6 +266,9 @@ class FieldValue(Record):
     # derived from other fields (G37), naming the fields it came from.
     layer: Literal["verbatim", "settled", "derived"] | None = None
     derived_from: list[str] = Field(default_factory=list)
+    # A derived value's rules, its checks' names in the order applied, which it
+    # names with its authority's version (HARNESS.md section 13).
+    derivation_rules: list[str] = Field(default_factory=list)
     evidence_relations: dict[str, Literal["decides", "supports", "contradicts"]] = (
         Field(default_factory=dict)
     )

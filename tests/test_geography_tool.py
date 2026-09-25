@@ -98,7 +98,7 @@ QUERY = query(
 )
 ADDRESS = "Mt. Apo, DAVAO CITY., Davão del Sur, P.I."
 # The fields the tool reports on: precise_location only helps form the address
-# and is never settled by a geocoder result (PRD 515; S8's D3 pending).
+# and is never settled by a geocoder result (PRD 519; S8's D3 pending).
 FIELDS = ("city", "county", "country")
 
 

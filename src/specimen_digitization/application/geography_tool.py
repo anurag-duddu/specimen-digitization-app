@@ -10,7 +10,7 @@ address components and coordinates are read in memory to compute outcomes and ar
 never returned, stored or logged; the key is redacted from httpx's request logs.
 Label notations such as "Prov." are dropped before comparing, and aliases the
 harness supplies count as matches (G29). precise_location only helps form the
-address: it is verbatim text that no geocoder result settles (PRD 515). An
+address: it is verbatim text that no geocoder result settles (PRD 519). An
 accepted S8 plan replaces this module (G12).
 """
 
@@ -156,7 +156,7 @@ def assigned_literals(query: GeographyQuery) -> dict[str, list[str]]:
 
 def reported_literals(query: GeographyQuery) -> dict[str, list[str]]:
     """The assigned fields the tool reports on: all but precise_location, which
-    stays verbatim locality text that no geocoder result settles (PRD 515;
+    stays verbatim locality text that no geocoder result settles (PRD 519;
     where such a phrase is waits for S8's D3)."""
     fields = assigned_literals(query)
     fields.pop("precise_location", None)

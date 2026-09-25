@@ -11939,9 +11939,9 @@ because the hooks runner hands a native asset hook only `PATH`.
 
 - Task: go-live S3, the coordinator's G30 ruling of 2026-09-24: a later request carries bounded validation feedback and goes only if it cannot cross its call's reservation. It lives in the shared agent setup, so it is stacked on S4's T3c at S4's request.
 - Branch/worktree: `golive/lane-bounded-retry`, stacked on `golive/harness-parse` (#150), in S3's scratchpad worktree `bounded-retry`.
-- Outcome: `reliability.py` gains `RETRY_FEEDBACK_MAX_ERRORS` (20), `RETRY_FEEDBACK_MAX_BYTES` (8,192), `bounded_feedback`, `bounded_messages`, `CallBudget` and `run_agent_bounded(..., budget=None)`. `PrivateProviderModel` sends every agent's feedback within the bound. With a budget, a later request that could cross the reservation raises `UsageLimitExceeded` before it is sent. The production reader maps `UsageLimitExceeded` to `model_usage_limit` (G6). Spec: `docs/execution/golive/HARNESS.md` section 15.
+- Outcome: `reliability.py` gains `RETRY_FEEDBACK_MAX_ERRORS` (20), `RETRY_FEEDBACK_MAX_BYTES` (8,192), `bounded_feedback`, `bounded_messages`, `CallBudget` and `run_agent_bounded(..., budget=None)`. `PrivateProviderModel` sends every agent's feedback within the bound. With a budget, a later request that could cross the reservation raises `UsageLimitExceeded` before it is sent. A reading stopped by its limits is a failed reading (the coordinator's reading of G6 and G30): the production reader raises `ReadingStopped`, the model child reports it as `stopped`, and the workflow completes the `transcribe` step with no observation, so the queue decision sends the record to review with `independent_observations_missing`. Spec: `docs/execution/golive/HARNESS.md` section 15.
 - Validation actually run: the new tests fail without the change and pass with it; the generation-budget, provider-privacy, reader-timeout and first-pass tests are unchanged; the full Python suite and pre-commit pass.
-- Durable learnings: (1) pydantic-ai's feedback echoes each rejected input, so an answer of thousands of wrong-typed list items grows the retry's input about twentyfold, and no usage limit sees it before sending. (2) The model-settings callable runs with the pending request already in `ctx.messages`, which makes a pre-send bound possible without a history processor on every agent. (3) A reading stopped by its token limits used to end as `external_outcome_unknown`, because the model child cannot map an exception it does not know.
+- Durable learnings: (1) pydantic-ai's feedback echoes each rejected input, so an answer of thousands of wrong-typed list items grows the retry's input about twentyfold, and no usage limit sees it before sending. (2) The model-settings callable runs with the pending request already in `ctx.messages`, which makes a pre-send bound possible without a history processor on every agent. (3) A reading stopped by its token limits used to end as `external_outcome_unknown`, because the model child cannot map an exception it does not know; an operational block would only park the record, since the same crop under the same limits would likely stop the same way.
 - Remaining follow-ups: the readers and the first pass pass their crop-sized reservation as `budget` in the route wiring PR on `main`; S4's usage PR (`harness_calls`, the `RunUsage`, the first pass's cap hit) builds on this.
 
 ### 2026-09-24 — Go-live S4: the queue decision (T4)
@@ -12002,7 +12002,8 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: (1) The real runs (USD 0.0135, three pilot slides) found what no fake would: the agent put preparation codes into the catalogue number, the collectors, the dates and even the locality. It also copied one written value into both From and To, which made the To fields look stated by the label rather than derived. (2) Tools caught the fields they check. Fields with no tool keep what the agent assigns, so the knowledge is the first defence there. Whether a per-field check belongs in the queue decision is before the owner.
 - The owner then answered (2026-09-24, relayed by the coordinator), and the same PR builds both answers.
   - G44, "Fill To, derived": one written collecting date fills Date Visited To, derived from Date Visited From with its record (`stated_date`, rule `one_date_both_ends`) and From's precision. Review's "fill the rest" does the same.
-  - G45, "Yes, check the kind": the Insects knowledge's `SHAPES` name what a value in a field no lookup checks must not look like. Each rule is a real run's case. On the harness's runs the queue decision sends a failing value to review with `value_shape_mismatch:{field}`; in `verbatim_dts`, whose meaning PRD 522 leaves unconfirmed, it is a finding that never routes. Spec: HARNESS.md sections 12, 13 and 16.
+  - G45, "Yes, check the kind": the Insects knowledge's `SHAPES` name what a value in a field no lookup checks must not look like. Each rule is a real run's case. On the harness's runs the queue decision sends a failing value to review with `value_shape_mismatch:{field}`; in `verbatim_dts`, whose meaning PRD 529 leaves unconfirmed, it is a finding that never routes. Spec: HARNESS.md sections 12, 13 and 16.
+- After #124 merged (53d756e), the PRD citations follow main's line numbers: Precise Location is PRD 519 and Verbatim D/T/S PRD 529 (the steward's final review).
 - Remaining follow-ups: S7's lab condition 8 fails a run with a preparation code in any field, the same check from the other side. PRD open question 3, on `verbatim_dts`, goes to the owner with D4 and D5 when there's a natural moment.
 
 ### 2026-09-24 — Go-live S4: an end the agent copied is derived, not stated
@@ -12046,6 +12047,13 @@ because the hooks runner hands a native asset hook only `PATH`.
   - S8 imports `place_request_forms` and `place_request_text` (readings required), `place_request_identifier(identifier, *, source, response)` with `response` the answer's JSON, and `query.sources`, which holds the unassigned text again. S8 reruns its recorded ids against the field rule.
   - S3's profile switch names v3 and lands after this PR (coordinator ruling).
   - At this PR's turn, 4.8 on main should read as #191 states it.
+- Added after the steward's review of #180 (2026-09-24), agreed with S5: a derived value now names its own authority and rules.
+  - `authority_identity` is `{source, source_record_id, credit, version}` from its authority, with no `name` key.
+  - `derivation_rules` are its checks' names in the order applied.
+  - So the value names its rule and the rules version, as PLAN's G44 reading and 4.8 ask, and the thread reads them without a blob read. Spec: HARNESS.md section 13.
+- Remaining follow-ups: S5's #170 records `version` in the contract at its turn. G41's authority reads `apply_derivations` once #144's add-on reaches this branch from main.
+- Addendum, the coordinator's second #124 review: G41's derivations name `apply_derivations` as their authority, so a G41 value names its stated field, its rule and the code that applied it. New tests show that the model can't assert a derived value: a metre value no reading states is returned for a retry, and the metres come only from G41's record. The queue decision's side of the rule comes with T4.
+- Addendum, found by a later gate run under load: pydantic-ai runs a response's tool calls in parallel threads unless told otherwise. So two identical calls in one turn could both miss the ledger's record and make two requests, and the caps' counters could race. The harness now runs its tool calls one at a time (`ToolManager.parallel_execution_mode("sequential")` around the agent run). A test with a slow fake makes the race certain without the fix. Lesson: a check-then-record cache behind agent tools needs serial tool execution or a lock, whatever the model usually does.
 ### 2026-09-23 — Go-live release workstream (S2), T1b: the owner decisions in the release runbooks and histories
 
 - Task: the same S2 session as the T1a entry, second half of brief item T1.
@@ -12761,4 +12769,23 @@ because the hooks runner hands a native asset hook only `PATH`.
   - S7's T4a: the coordinator compares its own hash of the bytes it read with the SHA-256 S7 sent.
 - Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
 - Durable learning: a filter's stated limit is how a list of cases stops growing. When each widening only surfaces the next spelling, close the list, name the rest, and pin them so any change shows.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live program: plan corrections after #208
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-13`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #208's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/208#issuecomment-5828661954), items 1-6. It carries the coordinator's rulings of 07:33Z and 07:34Z on 2026-09-25, each recorded in `status/coordinator.md` before it was sent.
+  - PLAN 4.8's filter:
+    - The sparing anchor (item 2): only the reviewer's own text is spared. That is the tokens whose folded words the harness's value for that field, in the run under review, does not hold. A case-only change spares nothing, and "Mindanao F.G. Wermer, P.I." spares only "P.I.". The limit names a name the reviewer adds.
+    - An ordinal day is a one- or two-digit day followed directly by one of the eight endings. The limit names an ordinal written any other way ("1.ª" included), a day in words, and a spaced dash or a comma between months. It also carries the 06:36Z "not widened further before the pilot", with its label.
+    - The one-sided connector carries the 05:39Z label, and the credits add #208.
+  - PLAN's header restates the date convention: a label with only a date carries its record's date, since the records mix UTC and New York dates. Nothing is re-dated. This supersedes the durable learning "Use the UTC date in both places" in the entry "2026-09-25 — Go-live program: plan corrections after #203" above.
+  - Correction (dated 2026-09-25): #208's header paragraph moved PLAN's lines down by five.
+    - The entry "2026-09-24 — Go-live program: plan corrections after #174" above cites "PLAN 190", now PLAN 195.
+    - The entry "2026-09-25 — Go-live S6: #202's review follow-ups, and dated corrections" above cites "PLAN.md 407-408" for the reason filter, now PLAN 412-413.
+    - The coordinator's note at #208's turn ("no citation moved") checked only other documents' citations, and missed these two. This PR keeps the header at four lines, so both new numbers stand.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: a line inserted near the top of a cited document moves every citation below it, including those in append-only logs. Keep header edits line-neutral, or re-map the log's citations with an appended correction in the same PR.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).

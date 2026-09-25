@@ -229,7 +229,7 @@ def called(
 ) -> Called:
     """What one tool result settles for one field. The geography tool reports
     only the admin-level fields; precise_location is transcribed, never settled
-    by a geocoder result (PRD 515), so asking for it is refused."""
+    by a geocoder result (PRD 519), so asking for it is refused."""
     if result.tool == "geography_lookup" and field_key not in result.field_outcomes:
         raise ValueError(f"field_not_reported:{field_key}")
     outcome = result.field_outcomes.get(field_key, result.outcome)
