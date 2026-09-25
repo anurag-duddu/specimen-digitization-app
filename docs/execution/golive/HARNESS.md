@@ -393,8 +393,9 @@ when their `authority_id` and `parsed` are equal.
 every reading, as transcribed (`supported`). Differing literals without a
 decided transcript are `ambiguous` with `readings_conflict`. `precise_location`
 is one of them: it stays verbatim locality text, never replaced or settled by a
-geocoder result (PRD 515). Where such a phrase actually is waits for the
-owner's ruling on S8's D3.
+geocoder result (PRD 515). Where such a phrase actually is was left to the
+owner's ruling on S8's D3; G36 has since decided it: a curator confirms each
+place, and an unconfirmed one never settles a field.
 
 **A numeric date's order** (G29, G33) comes only from the dates in every
 model's reading of the specimen, not only the decided transcript. A date with
