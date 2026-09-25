@@ -11879,10 +11879,18 @@ because the hooks runner hands a native asset hook only `PATH`.
 ### 2026-09-23 — Go-live S4: the harness tool results and the taxonomy tool (T3a, part 1)
 
 - Task: go-live S4, topic T3a: the harness's typed tools. This part is the shared result types and `taxonomy_verifier`; the geography tool and the date and catalog validators follow as their own pull requests.
-- Branch/worktree: `golive/harness-tools-taxonomy`, stacked on `golive/harness-hf-routes` (#107), in `.claude/worktrees/cool-haslett-aa79b5`.
+- Branch/worktree: `golive/harness-tools-taxonomy`, stacked on `golive/harness-hf-routes` (#107) until #107 merged, in `.claude/worktrees/cool-haslett-aa79b5`. Pull request #109. Commits:
+  - db8e8da8: failing tests.
+  - af6acde9: the tool results and the taxonomy tool.
+  - e7e7f662: this entry.
+  - 00baa586: a merge of #107's branch while this one was stacked on it.
+  - 5afb5991: the merge of main 569c336 (#107) at its turn. The session log's union driver split #107's merged entry around this one and kept this branch's stale copies of three of #107's round-1 lines; the resolution keeps main's #107 entry whole, with this entry after it.
+  - This entry's references, and its gate line.
 - Outcome: `application/harness_tools.py` (`ToolResult`, `SourceCall`, the geography interface agreed with S8, `with_retries`); `application/taxonomy_tool.py` (`verify_taxon`: GBIF decides under G23, Global Names Verifier and the Catalogue of Life support and warn). `lookup.py` applies GBIF.md 118-130 at the label's own rank (G25), as the coordinator ruled: an exact accepted genus now satisfies a genus-only label, an exact synonym is ambiguous with its accepted usage as its own candidate, and VARIANT is ambiguous instead of `malformed_response`. Spec: `docs/execution/golive/HARNESS.md` section 6.
-- Validation actually run: the new tests failed before the change (no module), and the updated GBIF fixture test failed on today's rule; after it, the taxonomy, application, evidence-harness and authority-runtime suites give 62 passed, 1 skipped.
-- Durable learnings: (1) with `verbose=true`, GBIF lists alternatives even for clean exact matches (4 for "Apis mellifera"), so the old "no alternatives" rule made `success` unreachable; the live-homonym test is what GBIF.md row 4 means. (2) GBIF v2 returns VARIANT for a near spelling ("Epipocous" gives the beetle genus Epipocus at confidence 93), which the old adapter mapped to `malformed_response`, an operational block. (3) The Catalogue of Life match API returns the same usage id as GBIF's COL XR checklist (8MQRG for Epipsocus).
+- Validation actually run:
+  - Round 1: the new tests failed before the change (no module), and the updated GBIF fixture test failed on today's rule; after it, the taxonomy, application, evidence-harness and authority-runtime suites give 62 passed, 1 skipped.
+  - At its turn: TURN_GATES_PLACEHOLDER
+- Durable learnings: (1) with `verbose=true`, GBIF lists alternatives even for clean exact matches (4 for "Apis mellifera"), so the old "no alternatives" rule made `success` unreachable for such matches; the live-homonym test is what GBIF.md row 4 means. (2) GBIF v2 returns VARIANT for a near spelling ("Epipocous" gives the beetle genus Epipocus at confidence 93), which the old adapter mapped to `malformed_response`, an operational block. (3) The Catalogue of Life match API returns the same usage id as GBIF's COL XR checklist (8MQRG for Epipsocus). (4) The session log's union driver keeps both sides of a conflicting hunk, so a branch that holds an older copy of an entry main has since edited brings the old lines back and can split that entry; after merging main, `git diff origin/main -- docs/SESSION_LEARNINGS.md` should show only the branch's own entry.
 - Remaining follow-ups: the geography and validators pull requests; T3b (the agent) and T3c (workflow integration, `record_model_usage`/`record_tool_usage` from S3's `lane_costs`).
 
 ### 2026-09-25 — Go-live S4: #98's review fixes before it makes the first pass live
