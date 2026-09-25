@@ -12332,6 +12332,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - At #140's turn, fold #197's date-key case into #140's `searchValueLabel` switch (item 3). Git merges the two declarations cleanly, and the result would not compile.
   - At #73's turn, record the zone rulings in UI.md with the times above.
   - When the stack merges `main`, regenerate its queue, queue-selection and workbench-history goldens, and re-verify those of #102, #114, #133 and #140.
+
 ### 2026-09-25 — S8: #94's review follow-ups, and a correction to its entry
 
 - Task: the steward's round-3 review of #94 (merged as `e6bcfa7`; comment 5826083660, Decision items 1-5), done in a small docs pull request on `main`.
@@ -12396,6 +12397,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. When merging `main` into a branch that appended to the log, check the seam: git joins two appended entries without the blank line between them.
 - Failed approaches: none.
 - Remaining follow-ups: at #154's turn, label GEO.md:324's "The owner held D5, so no tolerance widens a place's dates" as the coordinator's interim rule (PLAN 2.3's D4/D5 row).
+
 ### 2026-09-24 — Go-live program: plan corrections after #200
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
