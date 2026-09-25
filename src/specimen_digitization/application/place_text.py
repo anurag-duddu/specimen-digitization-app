@@ -14,8 +14,9 @@ field and of every value a reviewer puts in one; every token of every clause,
 between commas, semicolons or line breaks, that holds a collector or determiner
 marker the profile's notations name, wherever the marker sits in it; every
 token that carries a digit; the month names and abbreviations the profile's
-date notations list, in English and in Spanish, in any case; and a Roman month
-beside a day or a year. So a value cut short inside a token loses it. A
+date notations list, in English and in Spanish, in any case; a Roman month
+beside a day or a year; and a date connector inside a date. So a value cut
+short inside a token loses it. A
 notation token that survives may then be written out in each of its full forms
 from the profile's table; a notation is cut whenever one of its full forms is,
 and each form a full form makes is cut again by character, so no expansion
@@ -34,7 +35,7 @@ import re
 import unicodedata
 from bisect import bisect_right
 from collections.abc import Mapping, Sequence
-from typing import Protocol
+from typing import NamedTuple, Protocol
 
 # PLAN 4.8's place fields; every other field is a non-place field.
 PLACE_FIELDS = ("country", "province_state", "county", "city", "precise_location")
@@ -43,10 +44,14 @@ SEPARATOR = re.compile(r"(\r?\n|[,;])")
 TOKEN = re.compile(r"([^\s,;]+)")
 # A day or a year as written, which puts a Roman numeral beside it in the month
 # position: 3, 14, 1946, the profile's year forms '46 and -46 with any
-# apostrophe or dash, or an ordinal day such as "3rd", each read bare, so with
-# any punctuation before or after it, "1946." or "(1946)" (PLAN 4.8 as #203
-# states it).
-DATE_NUMBER = re.compile(r"\d{1,2}|\d{4}|\d{1,2}(?:st|nd|rd|th)", re.IGNORECASE)
+# apostrophe or dash, or an ordinal day in st, nd, rd, th, d, er, º or ª, each
+# read bare, so with any punctuation before or after it, "1946." or "(1946)"
+# (PLAN 4.8 on main after #203; the coordinator's rulings of 2026-09-25). A
+# range whose parts, split at a dash or a slash, are each one counts too.
+DATE_NUMBER = re.compile(
+    r"\d{1,2}|\d{4}|\d{1,2}(?:st|nd|rd|th|d|er|º|ª)", re.IGNORECASE
+)
+DATE_RANGE = re.compile(r"[/\-‐‑‒–—―−]")
 # The fields of each tier-1 source's answer that carry its own ids, each with
 # its documented pattern and the id a matching value holds (PLAN 4.8 as #200
 # states it; S8's readers #139, #188 and #190). An identifier carries no label
@@ -74,7 +79,17 @@ class PlaceKnowledge(Protocol):
     PERSON_MARKERS: Sequence[str]
     MONTH_WORDS: Sequence[str]
     ROMAN_MONTHS: Sequence[str]
+    DATE_CONNECTORS: Sequence[str]
     FULL_FORMS: Mapping[str, Sequence[str]]
+
+
+class _Dates(NamedTuple):
+    """The folded words the date cuts read: the Roman months I to XII, the
+    month words, and the connectors a date's parts may be joined by."""
+
+    roman: frozenset[str]
+    months: frozenset[str]
+    connectors: frozenset[str]
 
 
 def fold(text: str) -> str:
@@ -126,9 +141,13 @@ def place_request_forms(
     )
     places = [(source, at) for source in context for at in _found(source, text)]
     cut = _cut_words(context, non_place_literals, knowledge, table)
-    roman = frozenset(fold(month) for month in knowledge.ROMAN_MONTHS)
+    dates = _Dates(
+        roman=frozenset(fold(month) for month in knowledge.ROMAN_MONTHS),
+        months=frozenset(w for m in knowledge.MONTH_WORDS for w in fold(m).split()),
+        connectors=frozenset(fold(c) for c in knowledge.DATE_CONNECTORS),
+    )
     literals = {f for literal in non_place_literals for f in _forms(literal, table)}
-    written = _surviving(text, _dropped(text, places, cut, roman, literals))
+    written = _surviving(text, _dropped(text, places, cut, dates, literals))
     if not written:
         return []
     # Each form a full form makes is cut again, by character span in the form
@@ -137,7 +156,7 @@ def place_request_forms(
     written_out = _forms(written, table)[1:]
     return [
         written,
-        *(f for f in written_out if not _dropped(f, [(f, 0)], cut, roman, literals)),
+        *(f for f in written_out if not _dropped(f, [(f, 0)], cut, dates, literals)),
     ]
 
 
@@ -278,29 +297,30 @@ def _dropped(
     text: str,
     places: Sequence[tuple[str, int]],
     cut: frozenset[str],
-    roman: frozenset[str],
+    dates: _Dates,
     literals: set[str],
 ) -> set[int]:
     """Where each token of `text` the cuts take starts. A token is cut when the
     cuts name it, or when the token it lies in is cut in any text the value
     occurs in, so a value that starts or ends inside a token loses it too: the
     "Hoogstraa" of "H. Hoogstraal leg." (the steward's review of #185). There a
-    token is cut when the cuts name it, when it is a Roman month in the month
-    position, or when a non-place literal covers any of it, so a literal copied
-    short still cuts its whole token (PLAN 4.8 in #191)."""
+    token is cut when the cuts name it, when a date takes it (a Roman month in
+    the month position, or a connector inside a date), or when a non-place
+    literal covers any of it, so a literal copied short still cuts its whole
+    token (PLAN 4.8 in #191)."""
     tokens = [(token.start(), token.end()) for token in TOKEN.finditer(text)]
     dropped = {start for start, end in tokens if _cut(text[start:end], cut)}
     spans: dict[str, list[tuple[int, int]]] = {}
     for source, at in places:
         if source not in spans:
-            months = _roman_months(source, roman)
+            dated = _date_cuts(source, dates)
             covered = [
                 (a, a + len(lit)) for lit in literals for a in _found(source, lit)
             ]
             spans[source] = [
                 (token.start(), token.end())
                 for token in TOKEN.finditer(source)
-                if token.start() in months
+                if token.start() in dated
                 or _cut(token.group(), cut)
                 or any(lo < token.end() and token.start() < hi for lo, hi in covered)
             ]
@@ -333,24 +353,67 @@ def _surviving(text: str, dropped: set[int]) -> str:
     return "".join(left)
 
 
-def _roman_months(text: str, roman: frozenset[str]) -> set[int]:
-    """Where each Roman month in the month position starts: a token whose every
-    word is a numeral I to XII, beside a day or a year, before or after it,
-    across separators ("3 VIII 1946", "Mindanao, VIII, 1946"), and never the
-    "I" of "P.I." or the "IV" of "Camp IV" (the coordinator's ruling of
-    2026-09-24)."""
+def _date_cuts(text: str, dates: _Dates) -> set[int]:
+    """Where each token of `text` starts that a date takes beyond its digits
+    and month words (the coordinator's rulings of 2026-09-24 and 2026-09-25):
+    - a Roman month in the month position, a token whose every word is a
+      numeral I to XII, beside a day or a year, before or after it, across
+      separators ("3 VIII 1946", "Mindanao, VIII, 1946"), and never the "I" of
+      "P.I." or the "IV" of "Camp IV". The search for its neighbour skips lone
+      punctuation and the date connectors ("3 - VIII - 1946", "3 de VIII");
+    - a date connector whose neighbours on both sides, past lone punctuation,
+      are cut date tokens: a token with a digit, a month word or a Roman month
+      ("3 de VIII de 1946", but never the "de" of "San Juan de Dios")."""
     tokens = list(TOKEN.finditer(text))
-    starts = set()
-    for index, token in enumerate(tokens):
-        words = fold(token.group()).split()
-        beside = tokens[max(index - 1, 0) : index] + tokens[index + 1 : index + 2]
-        if (
-            words
-            and roman.issuperset(words)
-            and any(DATE_NUMBER.fullmatch(_bare(t.group())) for t in beside)
+    words = [fold(token.group()).split() for token in tokens]
+    lone = [not any(c.isalnum() for c in token.group()) for token in tokens]
+    joins = [len(w) == 1 and w[0] in dates.connectors for w in words]
+
+    def beside(index: int, step: int, past_connectors: bool) -> int | None:
+        index += step
+        while 0 <= index < len(tokens) and (
+            lone[index] or (past_connectors and joins[index])
         ):
-            starts.add(token.start())
-    return starts
+            index += step
+        return index if 0 <= index < len(tokens) else None
+
+    roman = {
+        index
+        for index, word in enumerate(words)
+        if word
+        and dates.roman.issuperset(word)
+        and any(
+            found is not None and _date_number(tokens[found].group())
+            for found in (beside(index, -1, True), beside(index, 1, True))
+        )
+    }
+
+    def cut_date(index: int | None) -> bool:
+        return index is not None and (
+            index in roman
+            or any(c.isdigit() for c in tokens[index].group())
+            or not dates.months.isdisjoint(words[index])
+        )
+
+    inside = {
+        index
+        for index in range(len(tokens))
+        if joins[index]
+        and cut_date(beside(index, -1, False))
+        and cut_date(beside(index, 1, False))
+    }
+    return {tokens[index].start() for index in roman | inside}
+
+
+def _date_number(token: str) -> bool:
+    """A day or a year as the month position reads it, bare: 3, 1946, '46,
+    "3rd", "1º", or a range of them split at a dash or a slash ("3-4",
+    "1946/47")."""
+    bare = _bare(token)
+    if DATE_NUMBER.fullmatch(bare):
+        return True
+    parts = DATE_RANGE.split(bare)
+    return len(parts) > 1 and all(DATE_NUMBER.fullmatch(part) for part in parts)
 
 
 def _bare(token: str) -> str:

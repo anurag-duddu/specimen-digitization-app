@@ -55,6 +55,9 @@ MONTHS_SPANISH = (
     *("agto.", "sbre.", "obre.", "nbre.", "dbre."),
     *("febr.", "mzo.", "ag."),
 )
+# The connectors a date's parts may be joined by: "3 de VIII de 1946", "3rd of
+# VIII 1946" (the coordinator's rulings of 2026-09-25, 05:38Z and 05:39Z).
+DATE_CONNECTORS = ("de", "del", "of")
 
 NOTATIONS = (
     Notation("P.I.", ("Philippine Islands, the Philippines",), ("country",)),
@@ -112,6 +115,11 @@ NOTATIONS = (
     Notation(
         ", ".join(MONTHS_SPANISH),
         ("the month",),
+        ("date_visited_from", "date_visited_to", "date_identified"),
+    ),
+    Notation(
+        ", ".join(DATE_CONNECTORS),
+        ("joins a date's parts, as in 3 de VIII de 1946 or 3rd of VIII 1946",),
         ("date_visited_from", "date_visited_to", "date_identified"),
     ),
     Notation(

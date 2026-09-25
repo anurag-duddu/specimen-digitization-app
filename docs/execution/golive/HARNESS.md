@@ -284,8 +284,8 @@ is `timeout`, any other `httpx` transport error is `provider_error`
 errors outside its `HTTPError` family such as `InvalidURL`, is `provider_error`
 with the fixed code `geocoding_unexpected_error`.
 
-**What a request may carry** (PLAN 4.8 on main after #203, eea5943, with the
-coordinator's rulings of 2026-09-24 and of 2026-09-25 at 05:38Z and 05:39Z).
+**What a request may carry** (PLAN 4.8 as #206 states it at 93f4897, on main
+after #203, with the coordinator's rulings of 2026-09-24 and 2026-09-25).
 `application/place_text.py` is the one filter. This tool applies it to every
 request, and S8's tiers import it for every value they send. The filter's
 output is what leaves; after it a value is only escaped or encoded, as an
@@ -320,12 +320,14 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
   "Hoogstraa" of "H. Hoogstraal leg." leaves nothing (the steward's review of
   #185). No cut character leaves, however the value is sliced. The filter cuts:
   - every token of every literal any reading assigns to a non-place field, year
-    literals included, and of every value a reviewer puts in one. A literal
+    literals included, of every value the harness gave a non-place field,
+    whether a reviewer kept it or replaced it (the coordinator's ruling of
+    05:38Z on 2026-09-25), and of every value a reviewer puts in one. A literal
     cuts every token it covers where it occurs: a collector copied short, "F.G.
     Wern", still cuts "Werner", and a corrected spelling matches no reading's
-    literal. The readings' non-place literals don't cut the reviewer's own
-    place value, since the reviewer's correction is the authority there, but
-    the other cuts do, so a date in it never leaves;
+    literal. The readings' and the harness's non-place values don't cut the
+    reviewer's own place value, since the reviewer's correction is the
+    authority there, but the other cuts do, so a date in it never leaves;
   - every token of every clause, between commas, semicolons or line breaks, that
     holds a collector or determiner marker the knowledge names, wherever the
     marker sits in it and in whichever text. It names them as labels write
@@ -415,27 +417,28 @@ encoded URL parameter here and an escaped literal in S8's SPARQL.
   of its full forms (G29): "Davao Prov." leaves as "Davao Prov." or "Davao
   Province", and "Camiguin Is." as "Camiguin Is.", "Camiguin Island" or
   "Camiguin Islands". `place_request_text` returns the first form.
-- **Stated limit** (4.8 on main after #203). Text the filter cannot recognize
+- **Stated limit** (4.8 as #206 states it). Text the filter cannot recognize
   can still leave: text that no reading assigns to a non-place field and the
-  harness hasn't yet given one, when no marker the knowledge names sits in its
-  clause. So, mid-run, before the harness has named the non-place fields,
-  "Mindanao F.G. Wermer" leaves whole, "H. Hoogstraal" leaves when its "leg."
-  sits in a neighbouring clause or line, and so do a habitat such as "Mossy
-  forest", "FMNH INS" from a catalogue number and "ft." from "Mt. Apo, 6000
-  ft."; so does a name beside a marker the knowledge doesn't list, such as
-  German's "Sammler". A month name in a language the knowledge doesn't list
-  can leave, such as Tagalog's "Hunyo", and so can a form of a listed language
-  that it doesn't list, such as the RAE's "en.", a lone or ranged month
-  numeral with no day or year beside it ("VIII/IX"), and a numeral that shares
-  its token with a word, whose whole token leaves ("mid-VIII 1946"). The cuts
-  can also take too much: "Camp IV, 3 VIII 1946" sends only "Camp"; "Cape May"
-  sends "Cape", and "Ag. Exp. Sta." sends "Exp. Sta."; a colonia written "Col."
-  is cut as a collector's clause, so "Col. El Carmen, Chimaltenango" sends only
-  "Chimaltenango"; a clause holding a marker is cut wherever its words appear,
-  so "Mt. Apo leg. Hoogstraal" on one line takes "Mt. Apo" from every other
-  line, a reviewer's value included; and a tier-1 name whose numeral stands
-  beside a number, such as "Region XI (11)", loses the numeral. Tests pin each
-  case, so a change in what can leave shows.
+  harness hasn't given one (mid-run, not yet; in "fill the rest", never), when
+  no marker the knowledge names sits in its clause. So, mid-run, before the
+  harness has named the non-place fields, "Mindanao F.G. Wermer" leaves whole,
+  "H. Hoogstraal" leaves when its "leg." sits in a neighbouring clause or line,
+  and so do a habitat such as "Mossy forest", "FMNH INS" from a catalogue
+  number and "ft." from "Mt. Apo, 6000 ft."; so does a name beside a marker the
+  knowledge doesn't list, such as German's "Sammler". A month name in a
+  language the knowledge doesn't list can leave, such as Tagalog's "Hunyo", and
+  so can a form of a listed language that it doesn't list, such as the RAE's
+  "en.", and a lone or ranged month numeral with no day or year beside it
+  ("VIII/IX"). A token that joins a numeral to a word leaves whole, so
+  "mid-VIII 1946" sends "mid-VIII". The cuts can also take too much: "Camp IV,
+  3 VIII 1946" sends only "Camp"; "Cape May" sends "Cape", and "Ag. Exp. Sta."
+  sends "Exp. Sta."; a colonia written "Col." is cut as a collector's clause,
+  so "Col. El Carmen, Chimaltenango" sends only "Chimaltenango"; a clause
+  holding a marker is cut wherever its words appear, so "Mt. Apo leg.
+  Hoogstraal" on one line takes "Mt. Apo" from every other line, a reviewer's
+  value included; and a tier-1 name whose numeral stands beside a number, such
+  as "Region XI (11)", loses the numeral. Tests pin each case, so a change in
+  what can leave shows.
 
 This tool passes its query's sources, the place-field literals and the
 unassigned locality text, with the readings as context. It checks that every
