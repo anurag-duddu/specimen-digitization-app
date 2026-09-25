@@ -227,7 +227,7 @@ above do not change.
 |---|---|---|
 | `decision_kind` | `identical_readings`, `first_pass`, `human` | how the decided transcript was reached |
 | `selected_observation_id` | `str \| None` | the reading chosen; `text` is its `literal_text`, verbatim |
-| `first_pass_call` | `Observation \| None` | the model call's provenance, same model as the readers' observations, with `literal_text` empty and the structured answer at `raw_ref`; set only for `first_pass` |
+| `first_pass_call` | `Observation \| None` | the model call's provenance, same model as the readers' observations, with `literal_text` empty and the structured answer at `raw_ref`; set only for `first_pass`. Its `input_sha256` is the crop's digest, like every observation's; `request_sha256` names its text request (S4, #98) and stays in the snapshot |
 | `differences` | `list[FirstPassDifference]` | one per aligned difference: `number`, `spans` (per observation, exact `start` and `end` offsets into that reading's `literal_text` and the `text`), `verdict` (an observation id, `neither` or `uncertain`) and `material` |
 | `reason` (exists) | `str \| None` | the first pass's rationale, or the reviewer's reason |
 | `handoffs` | `list[ReaderHandoff]` | one per reading handed to the harness |
