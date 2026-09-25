@@ -251,13 +251,14 @@ ambiguity means no pick; the harness then runs on each raw reading, and every
 reading is a `raw_reading` handoff). The first pass selects a reading only when
 every material difference's verdict supports it: a material difference whose
 verdict is `neither` or `uncertain` means no pick, and "material" means more
-than capitalization, computed in code (coordinator reading, 2026-09-25 12:31Z;
-S4, #98). So only a reviewer's decision can select a reading while a material
-difference is still `neither` or `uncertain`: it is resolved, and that
-difference is stored in `alternatives`. For decisions other than a reviewer's,
-unresolved is exactly the negation of the domain's `resolved` flag, which means
-a reading was selected (S4, #98). For a reviewer's decision, unresolved means
-the reviewer left it unresolved.
+than capitalization: spans are compared lower-cased in code, so "Straße" and
+"Strasse" differ (coordinator readings, 2026-09-25 12:31Z and 14:05Z; S4, #98).
+So only a reviewer's decision can select a reading while a material difference
+is still `neither` or `uncertain`: it is resolved, and that difference is stored
+in `alternatives`. For decisions other than a reviewer's, unresolved is exactly
+the negation of the domain's `resolved` flag, which means a reading was selected
+(S4, #98). For a reviewer's decision, unresolved means the reviewer left it
+unresolved.
 
 The rationale and the notes are null for `identical_readings`. That kind also
 covers identical readings that stay unresolved, such as unreadable spans or an
