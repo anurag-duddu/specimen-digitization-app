@@ -11,21 +11,68 @@ endpoint.
 
 ## Read first
 
-1. `docs/execution/golive/PLAN.md`, especially sections 4.4 and 4.7.
+1. `docs/execution/golive/PLAN.md`, especially sections 4.4, 4.7 and 4.8.
 2. `~/specimen-golive/research/03-data-model-and-persistence.md` (all),
    `01-backend-pipeline-stages.md` stage 4, and `05-flutter-client.md` sections
    2 and 4.
-3. `dataconnect/`, `application/storage.py`, `application/production.py` 80-532,
+3. `dataconnect/`, `application/storage.py`, `application/production.py` 80-534,
    `application/active_graph.py`, `docs/execution/DATA.md`, `DATA_CHECKSUM.md`,
    `DATA_PAGING.md`, `CONTRACTS.md`.
 
 ## Constraints
 
-- Additive only: new tables and nullable columns. Never destructive.
+- Additive only, as PLAN section 4.4 defines it: expand-only. Dropping NOT NULL
+  is allowed only on columns your contract names with a reason, never on a key
+  column, a column of any unique constraint, or the provenance and idempotency
+  keys (`ModelObservation.runId`, `regionId`, `provider`, `modelVersion`,
+  `stepKey`, and the TRN-005 provenance `rawAssetId`, `promptVersion` and
+  `inputSha256` on every table that carries them); S2's gate reads a checked-in list of the allowed columns and
+  refuses all of these even when the list names them. Every new connector
+  operation is `@auth(level: NO_ACCESS)` with the membership `@check`s
+  (`DATA.md` 73). Never destructive.
+- The one unique-constraint exception (PLAN section 4.4): #88 adds
+  `source_asset_specimen_object` on (organizationId, collectionId, specimenId,
+  bucket, objectName, generation) beside `specimen_unique_1`, which keeps
+  governing; your writer PR (T2a) removes it from the schema and adds one fixed
+  statement in `dataconnect/sql/` dropping exactly that unique index, because the
+  migration allowlist admits no drop, whatever the diff carries; S2's release
+  runs it before it computes the diff, and only after its own read-back of the
+  live database shows the new constraint in place, over its six columns and
+  valid.
+- G30's ledger is S3's `worker_cursor` document (`AuxiliaryDocument`), written
+  through `SaveDocumentV2` only at the revision it was checked against;
+  `cost_basis` is `computed`, `billed` or `reserved`, the last for a call whose
+  outcome is unknown, held at its full reservation (coordinator rulings).
+- G38: each field value records its layer, verbatim, settled or derived, and
+  a derived value what it came from; a reviewer's value is the review
+  decision; the thread shows every layer, with the first pass beside any
+  reviewer decision; the "fill the rest" route follows PLAN section 4.8
+  (T6). G37 and G41 revise G22 in the contract. A field without a lookup whose readers all
+  read the same text takes that text as its verbatim and its value, on one
+  label as on several (coordinator reading of G27 and G32); its contract
+  change (`DATA_CONTRACT.md` 295-304 and 321-323) lands in T2b's delta (T2's second PR, after T2a's #146), and T6
+  carries it only if T2b slips. G39: no georeference fields for the pilot.
+- Key everything per region: a specimen can carry several labels, and five
+  pilot slides carry two (PLAN section 3).
+- `Run.field_groups` is new, and you decide its shape. From Google geocoding only
+  the place ID, the outcome and a response fingerprint are stored (G26); no
+  Google names, address parts or coordinates anywhere. Parsed dates carry their
+  precision and, where G24's rule set the century, that rule; a date the
+  harness could not settle keeps every candidate reading (G29). A place or taxon
+  field stores both its verbatim text and its settled final value; when the
+  first pass picked no reading and the readers' literals differ, each reader's
+  reading is kept and none is chosen (G27, G28). You decide the shape.
+- `AppendProfileVersionV2` stays open to operators so that the projection can
+  record each run's profile snapshot; `approvedBy` is null unless the caller is
+  a reviewer or above with sensitive access (main's rule for approval claims),
+  and the worker writes null.
+- `search.py` is yours (PLAN section 6); #85 adds one literal to it and needs
+  your sign-off.
 - Versioned operations follow the existing pattern (new V-numbered operations
   with old and new adapter tests, `DATA_CHECKSUM.md` 64-84).
 - Every new table updates `scripts/ci/release_sql_catalog.sql` and the table
-  count test (`scripts/ci/test_data_release.py` 253-261) in the same PR.
+  count test (`scripts/ci/test_data_release.py` 253-261) in the same PR. That
+  test file is S2's; change only the count and tell S2.
 - The first data release may go out before your schema; your schema then lands
   as an additive apply while the runtime runs (the release workstream, S2,
   builds that path).
@@ -39,7 +86,8 @@ section 4): the disagreement score per region; the transcription's region
 (required by `CONTRACTS.md` 185), the first pass's decision and what each reader
 handed to the harness; the harness's tool calls (tool, arguments, typed outcome,
 result, attempt, primary or fallback input); each field's group (mandatory or
-optional) and source (decided transcript or raw reading); the run's trace id;
+optional) and source (decided transcript or raw reading); the automatic
+coverage check's result and evidence (G15); the run's trace id;
 `LabelRegion.cropAssetId` nullable if the domain needs it. Add connector
 mutations (the existing `Append*` plus new ones) with the existing `@check`
 authorization pattern, and emulator tests. S3 and S4 code against this PR, so
@@ -53,6 +101,13 @@ decisions. Emulator-backed tests (`--persistence sql-emulator`). Give the
 acceptance lab (S7) a way to see the same rows locally: the emulator, or SQLite
 parity.
 
+**T2c. Derived values in SQL,** right after T2b and before T3 (coordinator
+ruling): the nullable `derivedFromFieldKeys` and `authorityIdentity`,
+`AppendFieldCandidateV3` with `derived`, `AppendToolCallV2` with
+`reviewDecisionId`, the writer mapping, and the test that a derived value
+lacking its record does not count. V3 must be on main and applied before the
+first production run. T6 keeps the route and the proposal.
+
 **T3. The thread API.** `GET /specimens/{id}/thread` in a new module, reading
 the normalized rows (and the snapshot for anything not yet normalized),
 returning everything PLAN section 4.7 lists, with the trace id, a typed response
@@ -63,11 +118,35 @@ the wire examples from a non-production app (production disables
 `/openapi.json`, `api.py` 458-461), and update the client's contract-test
 amendments together with the UI workstream (S6).
 
+**T6. Layers and derivations (G37, G38, G41, G44),** once S4's derivation action
+exists. `FieldValue.layer` (verbatim, settled or derived) and `derived_from`,
+agreed with S4, whose SQL T2c adds; the
+contract's elevation and date rules follow G37, G41 and G44; a derived candidate stores
+its settled inputs; its dataset or authority with version, or, for a G41 or
+G44 fill, the stated field and its rule with the rules version; and its tool-call id or its
+`apply_derivations` step (PLAN section 4.8), with a test that a value without them is not
+a derived value; and the "fill the rest" route, a POST on the specimen with the field
+the reviewer filled and the expected revision, which refuses a record
+declared Sensitive, requires review rights, and enqueues a derivation job
+that S3's worker runs with S4's `derive_rest`, reserving each paid call under
+G30. The job stores a proposal, read when the job ends, which the reviewer
+edits and approves through the existing decision route (PLAN section 4.8).
+
+**T5. Reason-code search, last.** A new view beside the search view carrying
+each reason's code, and `SearchSpecimensV2` matching a code with its own
+entries and every `code:suffix` entry, never a shared stem; SQLite the same;
+the API moves to V2; the old view and `SearchSpecimens` stay unchanged,
+since the gate refuses a changed view.
+
 ## Coordination
 
 S3 supplies the run fields and the trace id; S4 supplies the shapes of the
 first-pass decision and the tool calls (agree them in T1); S6 consumes the
-thread API; S2's data plane applies your schema.
+thread API; S2's data plane applies your schema. In `production.py` you own
+`SqlConnectRepository` (80-534); the adapters (535-910) are S3's. `domain.py`
+has no single owner; where S3 and S4 need the same shape, you decide it. Where
+the specification is silent or contradictory, stop and ask the coordinator; do
+not decide (G5).
 
 ## Done
 
