@@ -51,6 +51,8 @@ JOINERS = frozenset({*FEATURES, *UNITS_BEFORE, *LINKS})
 # Unicode categories fold drops, and those that make a character a number.
 MARKS = frozenset({"Mn", "Me", "Cf"})
 NUMERALS = frozenset({"Nd", "Nl", "No"})
+# The Hangul fillers are letters by category but show nothing, so fold drops them.
+FILLERS = frozenset("\u115f\u1160\u3164\uffa0")
 COUNTRIES = ((re.compile(r"P\.\s?I\.?", re.I), "Philippine Islands"),)
 # The museum's own names on its labels, never a place.
 INSTITUTIONS = re.compile(r"\b(?:CNHM|FMNH)\b\.?", re.I)
@@ -92,7 +94,15 @@ OFFSET = re.compile(
 # A number is read whole, its dots and commas included: "1,463", "1.463",
 # "6.400", "0,5", "1463,5" (G36).
 NUMBER = r"\d+(?:[.,]\d+)*"
-RANGE = rf"(?P<low>{NUMBER})(?:\s*(?:-|–|to)\s*(?P<high>{NUMBER}))?"
+# Dashes of every kind: hyphen-minus, hyphen, non-breaking hyphen, figure, en, em
+# and horizontal-bar dashes, minus sign, and small and fullwidth hyphen-minus.
+DASHES = "-\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d"
+# A range joins its numbers by a dash of any kind or a slash, or by "to", or by
+# the Spanish "a" between spaces: "4000-4500 ft", "4000—4500 ft", "1500 a 2000 m".
+RANGE = (
+    rf"(?P<low>{NUMBER})"
+    rf"(?:(?:\s*(?:[{DASHES}/]|to)\s*|\s+a\s+)(?P<high>{NUMBER}))?"
+)
 PREFIX = r"\b(?:elev(?:ation)?|alt(?:itude)?)\b\.?\s*:?\s*"
 # An elevation has a prefix, a unit or both; a foot mark followed by a digit is
 # a year ("'46"), not an elevation.
@@ -107,18 +117,27 @@ ELEVATION = re.compile(
 # after a four-digit year even before three digits ("6-Sept-1946,640'"), and
 # before four digits ("6-Sept-1946,6400'").
 SEPARATOR = re.compile(r";|(?<!\d),|,(?!\d{1,3}(?!\d))|(?<=\d{4}),(?=\d{3}(?!\d))")
+# Thousands groups of three digits marked all by commas or all by dots, with an
+# optional decimal after the other mark: "1,463", "1,463,200", "1.463.200,5".
+THOUSANDS = r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{1,3}(?:\.\d{3})+(?:,\d+)?"
+GROUPED = re.compile(THOUSANDS)
 # A number is read only in a valid grouping: digits with at most one comma or dot
-# ("1,463", "0,125", "1463,5"), or thousands groups of three digits marked all by
-# commas or all by dots, with an optional decimal after the other mark
-# ("1,463,200", "1.463.200,5"). Any other grouping ("1,5,3", "12,34,567") is set
-# aside.
-VALID_NUMBER = re.compile(
-    r"\d+(?:[.,]\d+)?|\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d{1,3}(?:\.\d{3})+(?:,\d+)?"
-)
+# ("1,463", "0,125", "1463,5"), or thousands groups. Any other grouping ("1,5,3",
+# "12,34,567") is set aside.
+VALID_NUMBER = re.compile(rf"\d+(?:[.,]\d+)?|{THOUSANDS}")
+# An elevation needs a space, the part's start, one of these opening brackets or
+# another elevation right before it; a number glued to other text may be a date's
+# year ("12.IV.1948,95 m") or a range's upper number ("4000a4500 ft").
+OPENINGS = "([{"
+# After other text, two or four digits before a number's first comma or dot could
+# be a year run into another number: "12 IV 1948,95 m", "IV 26,950 m".
+YEAR_LEAD = re.compile(r"(?:\d\d|\d{4})[.,]")
+# The brackets an elevation leaves empty: "Mt. Apo (1463 m)".
+EMPTY_BRACKETS = re.compile(r"\(\s*\)|\[\s*\]|\{\s*\}")
 # A number beside another digit group across a space ("4 800 ft.") has an unsure
-# grouping, so it is set aside rather than cut short; a two-digit year after an
-# apostrophe ("'46 850 m") is no such group.
-GROUP_BEFORE = re.compile(r"(?<![\d'‘’′])\d{1,3}\s+$")
+# grouping, so it is set aside rather than cut short. A two-digit year after an
+# apostrophe ("'46 850 m") is no such group, but one digit is ("'4 800 ft.").
+GROUP_BEFORE = re.compile(r"(?<!\d)(?!(?<=['‘’′])\d\d\s)\d{1,3}\s+$")
 GROUP_AFTER = re.compile(r"\s+\d{3}(?!\d)")
 
 
@@ -198,14 +217,16 @@ class _Piece:
 
 def fold(text: str) -> str:
     """Casefold, strip diacritics, other marks and format characters (Unicode Mn,
-    Me and Cf, such as a variation selector or a zero-width space), and turn
-    anything else but letters and digits into single spaces: "Chimaltenángo,"
-    folds to "chimaltenango"."""
+    Me and Cf, such as a variation selector or a zero-width space) and the
+    invisible Hangul fillers, and turn anything else but letters and digits into
+    single spaces: "Chimaltenángo," folds to "chimaltenango"."""
     decomposed = unicodedata.normalize("NFKD", text.casefold())
     kept = "".join(
         c if c.isalnum() else " "
         for c in decomposed
-        if not unicodedata.combining(c) and unicodedata.category(c) not in MARKS
+        if not unicodedata.combining(c)
+        and unicodedata.category(c) not in MARKS
+        and c not in FILLERS
     )
     return " ".join(kept.split())
 
@@ -323,17 +344,18 @@ def variants(literals: Iterable[tuple[str, str]]) -> tuple[Variant, ...]:
 
 def _segments(text: str) -> Iterable[str]:
     """Lines joined where a word needs the next one (a feature notation, a unit
-    written before its name, or a linking word) and where a line starts with a
-    lowercase linking word ("of Mt. Apo"; a capitalized one begins a name, "Del
-    Carmen"), then split into parts. Lines are kept as word lists, so the joins
-    stay linear in the text's length."""
+    written before its name, or a linking word) and where a line starts with "of"
+    in any case ("OF MT. APO"; "of" begins no name) or a lowercase "de" or "del"
+    (a capitalized one begins a name, "Del Carmen"), then split into parts. Lines
+    are kept as word lists, so the joins stay linear in the text's length."""
     lines: list[list[str]] = []
     carry: list[str] = []
     for line in text.splitlines():
         words = line.split()
         if not words:
             continue
-        if not carry and lines and words[0].islower() and fold(words[0]) in LINKS:
+        link = fold(words[0])
+        if not carry and lines and link in LINKS and (link == "of" or words[0].islower()):
             carry = lines.pop()
         carry += words
         if fold(carry[-1]) in JOINERS:
@@ -383,25 +405,37 @@ def _numeral(text: str) -> bool:
     return any(unicodedata.category(c) in NUMERALS for form in forms for c in form)
 
 
-def _unsure(segment: str, match: re.Match[str]) -> bool:
+def _unsure(segment: str, match: re.Match[str], paired: bool) -> bool:
     """Whether an elevation's number is unsure, so the phrase is set aside rather
-    than cut short: a malformed grouping ("1,5,3 m"), a number with a comma or
-    dot glued to a date's hyphen ("12-IV-1948,95 m"), or a number beside another
-    digit group across a space ("4 800 ft.", "Elev. 4 800 ft.")."""
-    numbers = (match["low"], match["high"]) if match["high"] else (match["low"],)
+    than read, and a date's year never joins it (GEO.md 1, "Unsure numbers"):
+    - a malformed grouping ("1,5,3 m");
+    - glued to the text before it, where no space, part start, opening bracket or
+      other elevation (`paired`) comes first ("12.IV.1948,95 m", "4'800 m");
+    - after other text, first digits that could be a year ("Sept. 1946,95 m",
+      "IV 26,950 m"), or a range's upper number with a decimal ("4-1948,95 m");
+    - beside another digit group across a space ("4 800 ft.", "Elev. 4 800 ft.")."""
+    low, high = match["low"], match["high"]
+    numbers = (low, high) if high else (low,)
     if not all(VALID_NUMBER.fullmatch(number) for number in numbers):
         return True
-    start = match.start("low")
-    if start and segment[start - 1] in "-–" and re.search(r"[.,]", match["low"]):
+    start = match.start()
+    if start and not (segment[start - 1].isspace() or segment[start - 1] in OPENINGS or paired):
+        return True
+    if (start and YEAR_LEAD.match(low)) or (high and _decimal(high)):
         return True
     # Searched only in the few characters before the number, so a long segment
     # stays linear: segments hold single spaces, so a digit group and its space
     # take at most four characters.
-    before = GROUP_BEFORE.search(segment, max(0, start - 8), start)
-    last = match.end("high") if match["high"] else match.end("low")
-    return bool(
-        (before and re.match(r"\d{3}(?!\d)", match["low"])) or GROUP_AFTER.match(segment, last)
-    )
+    begin = match.start("low")
+    before = GROUP_BEFORE.search(segment, max(0, begin - 8), begin)
+    end = match.end("high") if high else match.end("low")
+    return bool((before and re.match(r"\d{3}(?!\d)", low)) or GROUP_AFTER.match(segment, end))
+
+
+def _decimal(number: str) -> bool:
+    """A number with a comma or dot that is not in thousands groups: "1463,5",
+    "1946,63", "1948.950"."""
+    return ("," in number or "." in number) and not GROUPED.fullmatch(number)
 
 
 def _elevations(segment: str) -> tuple[str, list[Elevation]]:
@@ -410,7 +444,9 @@ def _elevations(segment: str) -> tuple[str, list[Elevation]]:
     rest: list[str] = []
     last = 0
     for match in ELEVATION.finditer(segment):
-        if not (match["prefix"] or match["unit"]) or _unsure(segment, match):
+        # A mark right after another elevation pairs the two: "4800 ft/1463 m".
+        paired = bool(found) and match.start() - last <= 1
+        if not (match["prefix"] or match["unit"]) or _unsure(segment, match, paired):
             continue
         unit = match["unit"]
         if unit:
@@ -419,7 +455,7 @@ def _elevations(segment: str) -> tuple[str, list[Elevation]]:
         rest.append(segment[last : match.start()])
         last = match.end()
     rest.append(segment[last:])
-    return " ".join(" ".join(rest).split()), found
+    return " ".join(EMPTY_BRACKETS.sub(" ", " ".join(rest)).split()), found
 
 
 def _piece(segment: str) -> _Piece:
