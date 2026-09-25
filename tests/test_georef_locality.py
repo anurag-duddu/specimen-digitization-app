@@ -888,14 +888,15 @@ def test_a_line_break_reads_as_a_space_between_two_numbers():
     assert read_locality("Elev.6400\nSept. 3, 1946").elevations == ()
     reading = read_locality("4000\nhasta\n4500 m")
     assert ([part.name for part in reading.parts], reading.elevations) == (["hasta"], ())
-    # An elevation or its prefix starting the next line reads, and a comma or
-    # semicolon at a line's edge, or an elevation read before, stops the check.
+    # An elevation or its prefix starting the next line reads, and an elevation read
+    # before stops the check; a comma or semicolon does not (the coordinator's reading
+    # at 22:22Z on 2026-09-25).
     for text, read in (
         ("3 Sept. '46\nElev. 6400'", ["Elev. 6400'"]),
         ("3 Sept. '46\n850 m", ["850 m"]),
         ("Elev.6400\n3 Sept. '46", ["Elev.6400"]),
-        ("12-IV-1948,\nChimaltenango 1500 m", ["1500 m"]),
-        ("12-IV-1948\nChimaltenango;\n1500 m", ["1500 m"]),
+        ("12-IV-1948,\nChimaltenango 1500 m", []),
+        ("12-IV-1948\nChimaltenango;\n1500 m", []),
         ("Yepocapa 4800 ft.\nChimaltenango\n1500 m", ["4800 ft.", "1500 m"]),
         ("Elev.6400\nAlt. 1950 m", ["Elev.6400", "Alt. 1950 m"]),
     ):
@@ -942,8 +943,14 @@ def test_the_prefixes_include_the_profiles_el():
         ("Elev. 1 ~ " * 20000, 0),
         ("a\n" * 20000 + "1 m", 1),
         ("1 m ~ " * 20000, 20000),
+        # The run check reads only to the next letter, digit or space.
+        ("Elev.1(" * 100000, 1),
+        ("Elev.1( " * 100000, 100000),
     ],
-    ids=["tildes", "broken dashes", "prefixed tildes", "word lines", "unit tildes"],
+    ids=[
+        *("tildes", "broken dashes", "prefixed tildes", "word lines", "unit tildes"),
+        *("run into marks", "runs ending in spaces"),
+    ],
 )
 def test_the_check_between_two_numbers_is_linear(text, count):
     started = time.monotonic()
@@ -1037,28 +1044,43 @@ def test_the_line_break_rule_costs_a_whole_transcript_its_elevation(text):
     assert names[:4] == ["Mt. McKinley", "Davao", "Mindanao", "P.I."]
 
 
-def test_across_a_comma_marks_join_and_other_words_end_the_check():
+def test_across_a_comma_any_word_continues_the_check():
+    # The coordinator's reading at 22:22Z on 2026-09-25 (coordinator.md:468): the
+    # reader never reads a range's top alone or makes a range word a place part.
     for text in (
         "4000, ~ 4500 m",
         "4000 ~, 4500 m",
         "4000, ?, 4500 m",
         "4000 to, 4500 m",
         "4000 ~,\n4500 m",
+        "4000, hasta 4500 m",
+        "4000, up to 4500 m",
+        "1500, bis 2000 m",
+        "4000, at\u00e9 4500 m",
+        "4000, \u00e0 4500 m",
+        "4000 hasta, 4500 m",
+        "Camp 3, Mt. Apo 1500 m",
+        "Km 42, a 1500 m",
     ):
-        assert read_locality(text).elevations == (), text
-    for text, read in (
-        ("Camp 3, Mt. Apo 1500 m", ["1500 m"]),
-        ("6-Sept-1946, Elev.6400", ["Elev.6400"]),
-        ("1946, 950 m", ["950 m"]),
-        # The cost: a word after a comma starts a part, so the top reads.
-        ("4000, hasta 4500 m", ["4500 m"]),
-    ):
+        reading = read_locality(text)
+        assert (reading.elevations, reading.parts) == ((), ()), text
+    for text, read in (("6-Sept-1946, Elev.6400", ["Elev.6400"]), ("1946, 950 m", ["950 m"])):
         assert [e.text for e in read_locality(text).elevations] == read, text
+    # A word alone in its own part between the numbers stays a part, a lookup
+    # candidate the lookups verify (the coordinator's ruling at 22:25Z,
+    # coordinator.md:470).
+    for text, name in (
+        ("4000, hasta, 4500 m", "hasta"),
+        ("12-IV-1948, Yepocapa, 1500 m", "Yepocapa"),
+    ):
+        reading = read_locality(text)
+        assert ([part.name for part in reading.parts], reading.elevations) == ([name], ()), text
 
 
 def test_a_number_with_no_unit_running_into_a_date_is_set_aside():
     # It runs straight into more letters or digits, or has a decimal part that a
-    # number or a month follows in its part.
+    # number or a month follows, in its part or the next. A unit outside the list
+    # glued on is set aside with it ("Alt. 2100msnm"); what fold drops is nothing.
     for text in (
         "Elevation 6400,13.sbre.",
         "alt 1.463,27-of jun.",
@@ -1067,6 +1089,8 @@ def test_a_number_with_no_unit_running_into_a_date_is_set_aside():
         "el. 6400,12 de julio",
         "Elev.3300,12 4 1948",
         "el. 1.463,18 of may.",
+        "Alt. 2100msnm",
+        "Elev.6400pies",
     ):
         assert read_locality(text).elevations == (), text
     for text in (
@@ -1075,24 +1099,127 @@ def test_a_number_with_no_unit_running_into_a_date_is_set_aside():
         "Elev.6400",
         "Elev. 1463,5 Davao",
         "Elev. 6400 Sept.",
+        "Elev.6400\u3164",
     ):
         assert len(read_locality(text).elevations) == 1, text
+
+
+# The letters Python counts as alphanumeric that `fold` drops, the 21 the steward's
+# round-8 review names: what `fold` drops is nothing in the checks that keep a
+# date's number and a range's end out of an elevation.
+FOLD_DROPPED_LETTERS = (
+    *("\u037a", "\u115f", "\u1160", "\u3164", "\uffa0"),
+    *(chr(code) for code in range(0xFC5E, 0xFC64)),
+    *(chr(code) for code in range(0xFE70, 0xFE7F, 2)),
+    *("\uff9e", "\uff9f"),
+)
+
+
+@pytest.mark.parametrize("dropped", [*FOLD_DROPPED_LETTERS, "\u200b", "\u00ad", "\u0301"])
+def test_what_fold_drops_is_nothing(dropped):
+    # A part of it passes the date on; beside a join word or a mark it hides
+    # nothing; before a month it is no word; between two numbers it is no word and
+    # no mark; after a link it hides no month.
+    for text in (f"Sept.\n{dropped}\n1946,95 m", f"IV, {dropped}, 1948.950 m"):
+        reading = read_locality(text)
+        assert (reading.elevations, reading.parts) == ((), ()), text
+    for text in (
+        f"4000, ~{dropped} 4500 m",
+        f"4000, t{dropped}o 4500 m",
+        f"el. 6400,12 {dropped} Sep",
+    ):
+        assert read_locality(text).elevations == (), text
+    assert [e.text for e in read_locality(f"3 Sept. '46 {dropped} 850 m").elevations] == ["850 m"]
+    reading = read_locality(f"Mindanao\nde {dropped} julio 1946,95 m")
+    assert ([part.name for part in reading.parts], reading.elevations) == (["Mindanao"], ())
+
+
+def test_an_institution_code_in_any_width_is_matched_as_fold_reads_it():
+    wide = "\uff23\uff2e\uff28\uff2d"
+    reading = read_locality(f"Sept.\n{wide}\n1946,95 m")
+    assert (reading.elevations, reading.parts, reading.institutions) == ((), (), (wide,))
+    reading = read_locality(f"{wide}. E. Slope Mt. Apo")
+    assert [part.name for part in reading.parts] == ["Mt. Apo"]
+    assert reading.institutions == (f"{wide}.",)
+
+
+@pytest.mark.parametrize(
+    ("text", "name"),
+    [
+        ("Vi\u00f1a\ndel Mar", "Vi\u00f1a del Mar"),
+        ("Isle\nof May", "Isle of May"),
+        ("Plaza\nde Mayo", "Plaza de Mayo"),
+    ],
+)
+def test_a_link_and_a_month_with_no_number_after_them_join_as_a_name(text, name):
+    assert [part.name for part in read_locality(text).parts] == [name]
+
+
+def test_a_link_and_a_month_begin_a_date_only_with_a_number_right_after_the_month():
+    # A number after a name that starts with a month is no date's.
+    for text, read in (
+        ("E. slope\nof May Hill", []),
+        ("E. slope\nof May Hill\n1500 m", ["1500 m"]),
+        ("E. slope\nof May Hill 1500 m", ["1500 m"]),
+    ):
+        reading = read_locality(text)
+        (part,) = reading.parts
+        assert (part.name, part.relation) == ("May Hill", "slope"), text
+        assert [e.text for e in reading.elevations] == read, text
+    (part,) = read_locality("5 km N\nof Mar Chiquita").parts
+    assert (part.name, part.relation, part.distance) == ("Mar Chiquita", "offset", "5")
+    # The number may be glued to the month, since the line is read as `fold` reads
+    # it, come after a link after the month, or start the next line that holds more
+    # than what folds to nothing or an institution code. An institution code
+    # between them is no word.
+    for text in (
+        "Mindanao\nde julio, 1946,95 m",
+        "Mindanao\nde julio,1946,95 m",
+        "Mindanao\nde julio-1946.95 m",
+        "Mindanao\nde julio de 1946",
+        "Mindanao\nde julio, CNHM, 1946,95 m",
+        "Mindanao\nde julio\n1946,95 m",
+        "Mindanao\nde julio\n?\n1946,95 m",
+        "Mindanao\nde julio\nCNHM\n1946,95 m",
+    ):
+        reading = read_locality(text)
+        names = [part.name for part in reading.parts]
+        assert (names, reading.elevations) == (["Mindanao"], ()), text
+    # The costs: a name of a link and a month with a number after it reads as a
+    # date, and a date with no number right after its month reads as a name.
+    reading = read_locality("Vi\u00f1a\ndel Mar\n1500-2000 m")
+    assert ([part.name for part in reading.parts], reading.elevations) == (["Vi\u00f1a"], ())
+    reading = read_locality("Isle\nof May\n1500 m")
+    names, read = [part.name for part in reading.parts], [e.text for e in reading.elevations]
+    assert (names, read) == (["Isle"], ["1500 m"])
+    for text in ("Mindanao\nde julio", "Mindanao\nde julio\nCamp 3"):
+        assert [part.name for part in read_locality(text).parts] == ["Mindanao de julio"], text
+
+
+def test_a_day_is_looked_for_in_the_next_part_too():
+    assert read_locality("Elev.6400,12, XI.1946").elevations == ()
+    assert [e.text for e in read_locality("Elev. 1463,5, Mt. Apo").elevations] == ["Elev. 1463,5"]
 
 
 # A seeded random generator over every token class the reviews found: months with
 # and without qualifiers and links; years, decimals and grouped numbers; parts that
 # fold to nothing and institution codes; prefixes, joins and marks; line breaks and
 # commas; digit scripts and units. Every number's digit groups are unique in its
-# layout, so a reading traces back to what the layout wrote. The stated cost is
-# exempt: a month that shares its part with a qualifier reads as a name.
+# layout, so a reading traces back to what the layout wrote. One stated cost is
+# exempt: a month that shares its part with a qualifier reads as a name. Joins with
+# a word beside a comma are generated too, since the coordinator's reading at 22:22Z
+# on 2026-09-25 sets them aside.
 RANDOM_PLACES = (
     *("Mindanao", "Davao", "Guatemala", "Yepocapa"),
     *("Chimaltenango", "Mt. Apo", "Davao Prov."),
 )
 RANDOM_FILLERS = (
     *("?", "-", "\u2014", "\u2026", "\u200b", "*", "\u00b7"),
-    *("CNHM", "CNHM.", "FMNH", "fmnh", "( )"),
+    *("\u3164", "\uffa0", "\u037a", "\ufe72"),
+    *("CNHM", "CNHM.", "FMNH", "fmnh", "( )", "\uff23\uff2e\uff28\uff2d"),
 )
+# Characters fold drops, put inside a join now and then.
+RANDOM_DROPPED = ("\u200b", "\u00ad", "\u3164", "\u2060")
 RANDOM_BREAKS = (
     *("\n", "\r\n", "\r", "\x0b", "\x0c", "\x1c"),
     *("\x1d", "\x1e", "\x85", "\u2028", "\u2029"),
@@ -1155,11 +1282,9 @@ class RandomLayout:
 
     def join(self):
         """A range join, spaced or not, maybe broken across lines, by a comma or by a
-        part with no letter. A word no rule lists ends the check across a comma (a
-        stated cost), so such a join is broken only by line breaks."""
+        part with no letter, and now and then with a character fold drops inside it."""
         rng = self.rng
         join = rng.choice((*RANGE_WORDS, *OTHER_JOINS))
-        worded = join in OTHER_JOINS and any(c.isalpha() for c in join)
         form = rng.choice((join, f" {join} ", f"{join} ", f" {join}"))
         r = rng.random()
         if r < 0.2:
@@ -1167,13 +1292,15 @@ class RandomLayout:
             form = rng.choice(
                 (f"{form}{line_break}", f"{line_break}{form}", f"{line_break}{join}{line_break}")
             )
-        elif r < 0.3 and not worded:
+        elif r < 0.3:
             separator = rng.choice((",", ", ", ";", "; "))
             form = rng.choice((f"{separator}{form}", f"{form}{separator}"))
         elif r < 0.38:
             filler = rng.choice(("?", "-", "*", "CNHM", "\u2026"))
-            around = (lambda: rng.choice(RANDOM_BREAKS)) if worded else self.boundary
-            form = f"{form}{around()}{filler}{around()}"
+            form = f"{form}{self.boundary()}{filler}{self.boundary()}"
+        if rng.random() < 0.1:
+            cut = rng.randint(0, len(form))
+            form = form[:cut] + rng.choice(RANDOM_DROPPED) + form[cut:]
         return form
 
     def month(self):
@@ -1231,7 +1358,7 @@ class RandomLayout:
             numbers.append(day)
             day = in_digits(day, zero)
             if kind == "day-month":
-                head = f"{day}{rng.choice((' ', '-', '.', '/'))}{month}"
+                head = f"{day}{rng.choice((' ', '-', '.', '/', ', '))}{month}"
             else:
                 head = f"{month} {day}"
         elif kind == "numeric":
