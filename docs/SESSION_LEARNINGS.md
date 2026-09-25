@@ -12560,7 +12560,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 ### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 3: the reference-dataset manifest
 
 - Task: pin the files the tool reads from the project's storage, the Copernicus GLO-30 tiles (D11) and the GeoNames dumps (PLAN 4.8), so that S2 can write the owner's upload command from a reviewed manifest.
-- Branch and worktree: `golive/geo-datasets` in `.claude/worktrees/geo-build`, stacked on #139. PR #151.
+- Branch and worktree: `golive/geo-datasets` in `.claude/worktrees/geo-build`, stacked on #139, as PR #151. Re-cut on 2026-09-25 by the coordinator's option (b) as `golive/geo-datasets-2`, stacked on #130: PR #211, replacing #151, with the same red and green commits cherry-picked with `-x`.
 - Outcome:
   - `georef_datasets.py` pins five files by the SHA-256 of their exact bytes, with the source URL, retrieval date, license and credit text for each.
   - The pinned files are three 1-degree GLO-30 tiles and the Philippines and Guatemala GeoNames dumps of 2026-09-24.
@@ -12584,7 +12584,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 ### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 6a: tier 3's point-radius uncertainty
 
 - Task: brief task 6's pure part, the in-house point-radius uncertainty (D13), tested against the Georeferencing Calculator's own worked examples.
-- Branch and worktree: `golive/geo-radius` in `.claude/worktrees/geo-build`, stacked on #190. PR #192.
+- Branch and worktree: `golive/geo-radius` in `.claude/worktrees/geo-build`, stacked on #190, as PR #192. Re-cut on 2026-09-25 by the coordinator's option (b) as `golive/geo-radius-2`, stacked on #211: PR #212, replacing #192, with the same red and green commits cherry-picked with `-x`.
 - Outcome: `georef_radius.py` ports the Calculator's arithmetic in meters.
   - The sources of uncertainty: radial, source, measurement, coordinate precision on the datum's ellipsoid, datum, and offset and heading precision.
   - The six locality types' combinations. Orthogonal offsets count distance precision in two dimensions, and an offset at a heading widens into a cone.
@@ -12602,7 +12602,7 @@ because the hooks runner hands a native asset hook only `PATH`.
 ### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 6b: a unit's extent, and a circle inside it
 
 - Task: brief task 6, the geometry behind containment (the coordinator's reading of G37) and county precision (the coordinator's reading of G38), on synthetic boundaries until the owner approves downloading geoBoundaries' files.
-- Branch and worktree: `golive/geo-geometry` in `.claude/worktrees/geo-build`, stacked on #192. PR #193.
+- Branch and worktree: `golive/geo-geometry` in `.claude/worktrees/geo-build`, stacked on #192, as PR #193. Re-cut on 2026-09-25 by the coordinator's option (b) as `golive/geo-geometry-2`, stacked on #212: PR #213, replacing #193, with the same red and green commits cherry-picked with `-x`.
 - Outcome: `georef_geometry.py` provides the geometry, in pure Python (numpy is not a project dependency).
   - It reads GeoJSON boundaries and tests a point with the even-odd rule.
   - It measures clearance to the nearest edge in meters.
