@@ -281,6 +281,7 @@ def test_a_date_connector_goes_only_inside_a_date():
     # A connector is cut when the tokens on both sides of it are cut date
     # tokens: a digit, a month word or a Roman month.
     assert request("Chimaltenango, 15 de agosto de 1946") == "Chimaltenango"
+    assert request("15 de agosto de 1946") == ""  # Beside a month word (06:36Z).
     assert request("San Juan de Dios, 3 de VIII de 1946") == "San Juan de Dios"
     for place in ("San Juan de Dios", "Valle del Cauca", "Gulf of Davao"):
         assert request(place) == place
@@ -622,6 +623,24 @@ def test_the_reviewers_value_is_a_source_only_in_a_place_field():
     )
 
 
+def test_fill_the_rest_cuts_a_harness_place_value_the_reviewer_left_unchanged():
+    # The coordinator's ruling of 06:36Z on 2026-09-25, HARNESS.md section 13:
+    # only the place values the reviewer entered or changed are spared. The
+    # harness's precise_location, kept, is a source cut like any other, here by
+    # the harness's collector.
+    record = "Davao Prov.\nMindanao F.G. Wermer"
+
+    sent = place_request_text(
+        "Mindanao F.G. Wermer",  # The harness's precise_location, kept.
+        sources=["Mindanao F.G. Wermer"],
+        readings=[record],
+        non_place_literals=["F.G. Wermer"],  # The harness's collector.
+        knowledge=insects,
+    )
+
+    assert sent == "Mindanao"
+
+
 @pytest.mark.parametrize(
     "reviewer", [(), ("F.G. Werner",)], ids=["harness-value-kept", "replaced"]
 )
@@ -685,6 +704,17 @@ def test_fill_the_rest_cuts_every_value_the_harness_gave_a_non_place_field(
         ("3 en. 1946", "3 en. 1946", "en."),
         # A lone or ranged month numeral with no day or year beside it.
         ("Mindanao VIII/IX", "Mindanao VIII/IX", "Mindanao VIII/IX"),
+        # A bare month numeral beside an ordinal the closed list doesn't hold
+        # (the coordinator's ruling of 06:36Z on 2026-09-25),
+        ("Mindanao, 1.º VIII", "Mindanao, 1.º VIII", "Mindanao, VIII"),
+        ("Mindanao, 1o VIII", "Mindanao, 1o VIII", "Mindanao, VIII"),
+        ("Mindanao, 1ro VIII", "Mindanao, 1ro VIII", "Mindanao, VIII"),
+        ("Mindanao, 2do VIII", "Mindanao, 2do VIII", "Mindanao, VIII"),
+        ("Mindanao, 1.er VIII", "Mindanao, 1.er VIII", "Mindanao, VIII"),
+        # a word that joins two months, which is no connector,
+        ("Mindanao, VIII y IX 1946", "Mindanao, VIII y IX 1946", "Mindanao, VIII y"),
+        # and a connector with a date on one side only.
+        ("Chimaltenango de 1946", "Chimaltenango de 1946", "Chimaltenango de"),
         # A numeral that shares its token with a word (#203).
         ("Mindanao, mid-VIII 1946", "Mindanao, mid-VIII 1946", "Mindanao, mid-VIII"),
         # The cuts can take too much: a place's numeral beside a date number,
@@ -716,6 +746,13 @@ def test_fill_the_rest_cuts_every_value_the_harness_gave_a_non_place_field(
         "unlisted-language",
         "unlisted-form",
         "lone-month-numerals",
+        "ordinal-1-point-o",
+        "ordinal-1o",
+        "ordinal-1ro",
+        "ordinal-2do",
+        "ordinal-1-point-er",
+        "months-joined-by-y",
+        "one-sided-connector",
         "numeral-in-a-word",
         "camp-iv",
         "cape-may",
