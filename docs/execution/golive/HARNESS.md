@@ -203,3 +203,66 @@ anything else) the result carries the warning
 `taxonomy_source_disagreement:{source}`; when one is unavailable after its
 retries, `taxonomy_support_unavailable:{source}`. BugGuide is not called. GBIF's
 names may be stored (G28).
+
+## 7. The geography tool on Google (stage 7, part 2)
+
+G10, G12, G26, G29. `geography_lookup` (`application/geography_tool.py`) is the
+first version of the geography tool behind the interface of section 6; an
+accepted S8 plan replaces this module, not the interface.
+
+**One call per reading** carries every locality literal of that reading. The
+address is the reading's unassigned locality text when there is any, otherwise
+its assigned literals from the most to the least precise field. The key comes
+from `SPECIMEN_GOOGLE_MAPS_API_KEY`; a missing or rejected key is
+`authentication_error`, an operational block (QUE-005). Retries follow section
+6; an HTTP 401 or 403 is final at once. Every call's source is exactly
+`google-maps-geocoding`, the string the data contract pins for Google (#88,
+rule 1.6).
+
+**The mapping from Google's response to our outcomes is one function**,
+`map_geocoding_response`, so that a pending owner decision changes only it. One
+result without `partial_match` is `success`; a partial match or several results
+is `ambiguous`; `ZERO_RESULTS` is `no_match`. Per field, a success needs every
+literal of the field to equal, after folding (case, accents, punctuation and
+label notations such as "Prov."), the name of an address component at one of
+the field's levels, or a name the profile's aliases give for it ("P.I." as the
+Philippines); otherwise that field is `no_match`. The folding and the aliases
+are G29 applied to places: PLAN's G29 row makes it the harness's principle to
+work through every reading a notation allows, "for dates and for every other
+field", from the harness knowledge each subcollection's profile carries.
+
+**A near spelling** (G34, the owner's answer to S8's D15, 2026-09-24) can clear
+a field no name matches, with the place ID and no name. It needs a single result
+without `partial_match`, as any success does, and all three of G34's conditions:
+(1) a component at the field's levels has a long name within one edit of the
+folded literal, never a short name or code: "P.I." is not one letter off "PH",
+and only the profile's alias confirms it; (2) it is the only such component; (3)
+every other admin field of the reading, and at least one, matched by name or
+alias. FMNH 105526330's "Chimaltenago" clears its department this way, because
+Google's department is "Chimaltenango" and "GUAT." names its country. A live
+check on 2026-09-24 found that Google answers that address with one result and
+no partial match. The tool then warns `near_spelling:{field}`; the harness
+records it as a warning finding, which never routes the record. The label's
+spelling stays the verbatim (G27). Denali still clears nothing: no component
+there is one edit from "Davao" or "P.I.".
+
+**`precise_location` is verbatim locality text** (PRD 515). Its literal helps
+form the address, but the tool reports no outcome and no place for it, so
+nothing it returns can settle or replace it; where such a phrase actually is
+waits for the owner's ruling on S8's D3 (coordinator, 2026-09-23). A result for
+the wrong place settles no field either, because each admin-level field is
+checked against its own literal: Google puts "E. slope Mt. McKinley" at Denali,
+Alaska, where no component is named "Davao" or "P.I.".
+
+**What is kept** (G26, Google's terms): per request only the place ID, our
+outcome and the sha256 of the full response. Google's names, address components
+and coordinates are read in memory to compute the outcomes and are never
+returned to the agent, stored, traced or logged. The key travels as a URL
+parameter, the only form the Geocoding API accepts (a header key is refused,
+checked 2026-09-23); a filter redacts it from the `httpx` log, and the lane must
+not record raw request URLs in traces. An exception's text can quote the
+request URL, and the key with it, so no exception leaves the request: a timeout
+is `timeout`, any other `httpx` transport error is `provider_error`
+(`geocoding_transport_error`), and every other failure, including the `httpx`
+errors outside its `HTTPError` family such as `InvalidURL`, is `provider_error`
+with the fixed code `geocoding_unexpected_error`.
