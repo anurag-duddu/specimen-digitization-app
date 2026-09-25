@@ -98,3 +98,15 @@ def test_the_emulator_lane_dumps_every_table(tmp_path):
         lane.process(specimen_id, time.monotonic() + 120)
         evidence = lane.collect(specimen_id)
     assert any(evidence["rows"].values())
+
+
+def test_receipt_blobs_are_collected_for_the_d4_scan(tmp_path):
+    # Run receipts keep only blob_ref, sha256, state and call_id; the request itself is in the blob.
+    from specimen_digitization.application.domain import Run
+    from specimen_digitization.application.storage import LocalBlobs
+
+    blobs = LocalBlobs(tmp_path / "blobs")
+    body = b'{"url": "https://api.gbif.org/v1/occurrence/search"}'
+    receipt = {"blob_ref": blobs.put(body), "sha256": "0" * 64, "state": "completed", "call_id": "authority:0/x"}
+    run = Run(authority_receipts={"authority:0:x": receipt, "other": {"state": "reserved"}})
+    assert lab_lane.receipt_blobs(run, blobs) == {"receipts/authority_0_x.json": body}
