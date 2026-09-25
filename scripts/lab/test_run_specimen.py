@@ -60,11 +60,13 @@ def fetch(subject):
 
 def run(tmp_path, *args, lane=None, env=ENV, load=1.0, clock=START, values="default"):
     lanes = []
+    private = tmp_path / "private"  # stands in for ~/specimen-release-private/ (PLAN 840)
     if values == "default":
-        values = tmp_path / "private" / "redact-values"
+        values = private / "redact-values"
         values.parent.mkdir(parents=True, exist_ok=True)
         values.write_text("adminuidfixture\n")
     env = dict(env) if values is None else dict(env, LAB_REDACT_VALUES_FILE=str(values))
+    run_specimen.PRIVATE_ROOT, saved = private, run_specimen.PRIVATE_ROOT
 
     def lane_factory(state, options, environment):
         lanes.append(lane or FakeLane())
@@ -74,11 +76,14 @@ def run(tmp_path, *args, lane=None, env=ENV, load=1.0, clock=START, values="defa
         [SUBJECT, "--runs-root", str(tmp_path / "runs"),
          "--reports-root", str(tmp_path / "reports"), "--no-logfire", *args]
     )
-    code = run_specimen.execute(
-        options, fetch=fetch, lane_factory=lane_factory, env=env,
-        clock=lambda: clock, loadavg=lambda: (load, load, load),
-        commit=lambda: {"head": "f" * 40, "dirty": False},
-    )
+    try:
+        code = run_specimen.execute(
+            options, fetch=fetch, lane_factory=lane_factory, env=env,
+            clock=lambda: clock, loadavg=lambda: (load, load, load),
+            commit=lambda: {"head": "f" * 40, "dirty": False},
+        )
+    finally:
+        run_specimen.PRIVATE_ROOT = saved
     return code, lanes
 
 
@@ -293,7 +298,9 @@ def test_the_values_file_is_required_private_and_never_in_the_repository(tmp_pat
     empty = tmp_path / "empty"
     empty.write_text("")
     inside = Path(run_specimen.__file__).resolve().parents[2] / "scripts" / "lab" / "never-created"
-    for values in (None, empty, tmp_path / "missing", inside):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.write_text("adminuidfixture\n")
+    for values in (None, empty, tmp_path / "missing", inside, elsewhere):
         code, lanes = run(tmp_path, values=values)
         assert code == 3 and lanes == [], values
     assert not (tmp_path / "runs" / SUBJECT).exists()  # nothing written
@@ -309,11 +316,25 @@ def test_fields_that_name_a_person_are_redacted_by_field(tmp_path):
             snap["audit"] = [{"id": "a1", "actor": "Firstname Lastname", "action": "upload", "reason": "",
                               "before": {}, "after": {}, "created_at": "2026-09-25T00:00:00+00:00"}]
             snap["run"]["transcripts"][0]["actor"] = "Firstname Lastname"
-            evidence["rows"] = {"audit_event": [{"id": "e1", "actor_uid": "Firstname Lastname"}]}
+            evidence["rows"] = {"audit_event": [{"id": "e1", "actor_uid": "Firstname Lastname"}],
+                                "source_asset": [{"id": "a1", "uploader_uid": "Firstname Lastname"}],
+                                "profile_version": [{"id": "p1", "approved_by": "Firstname Lastname"}]}
             return evidence
 
     run(tmp_path, lane=PersonLane())
     path = only_run(tmp_path)
-    for name in ("snapshot.json", "rows/audit_event.json"):
+    for name in ("snapshot.json", "rows/audit_event.json", "rows/source_asset.json", "rows/profile_version.json"):
         assert "Firstname Lastname" not in (path / name).read_text(), name
     assert json.loads((path / "snapshot.json").read_text())["asset"]["uploader"] == "[redacted]"
+
+
+def test_a_persons_verdict_survives_every_rebuild_of_the_subject_report(tmp_path):
+    # PLAN 8 step 3 keeps the record in reports/<subject>.md, which the runner rebuilds: a person writes
+    # a run's verdict.md, which the runner never writes and carries into the report.
+    run(tmp_path)
+    verdict = only_run(tmp_path) / "verdict.md"
+    verdict.write_text("failed: the review names habitat, which the label states\n")
+    run(tmp_path, clock=START + timedelta(hours=1))
+    report = (tmp_path / "reports" / f"{SUBJECT}.md").read_text()
+    assert "failed: the review names habitat, which the label states" in report
+    assert verdict.read_text() == "failed: the review names habitat, which the label states\n"
