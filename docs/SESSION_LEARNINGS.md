@@ -12430,7 +12430,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - #204 had two docs commits, `27a7a60` and `83d3a1e`, and the merge `c0dc0a7` of `main` at `eea5943`, and its citations were re-checked at `eea5943` as well as at `400a444`;
   - where it says "the Identifiers pattern", read S4's filter's pattern for PLAN 4.8's Q-number: PLAN 4.8 names only the Q-number, and the regex is S4's.
 - Correction to the entry "S8: #94's review follow-ups, and a correction to its entry": where it says "as 3.2 and #154's `use_on` do", #154 names the case `Use("ended", gap_days=...)`, not "not valid" with a `label_lag` finding. The rule is the same, and the names differ.
-- Commits/PRs: the pull request that adds this entry, which lists its commits; no red and green commits, since no product behaviour changes.
+- Commits/PRs: #207, which lists its commits; no red and green commits, since no product behaviour changes.
 - Validation actually run: pre-commit on the changed files; the plan's illustrative Python block parses; every `file:line` citation re-checked by script at `37ae404`.
 - Durable learnings:
   1. An entry a pull request adds is not on `main` until the merge, so it can still change. At each turn's push, update the entry's commits and checks with the rest; after the merge, only a dated correction can fix it. Three rounds of corrections here came from entries written before their turn's merge.
