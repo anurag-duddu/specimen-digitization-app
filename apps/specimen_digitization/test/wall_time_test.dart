@@ -7,16 +7,29 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_digitization/src/screens/workbench/moments.dart';
 import 'package:specimen_digitization/src/wall_time.dart';
 import 'package:specimen_digitization/src/widgets/queue_row.dart';
 
 import 'central_time.dart';
 
-/// A read of the host's zone: converting to it, asking its name or offset,
-/// or building an instant from the host's wall-clock fields.
+/// What the guard checks, line by line: converting to the host zone, asking
+/// its name or offset, building an instant from the host's wall-clock
+/// fields (`DateTime(`, `DateTime.new(`) or from an epoch without `isUtc`,
+/// reading a wall-clock field of `DateTime.now()`, and touching the seam's
+/// own override or host reader. A parse of text without a zone is not
+/// checked: the server's instants carry one (DATA_CONTRACT.md).
 final RegExp _hostZone = RegExp(
-  r'\.toLocal\(\)|\.timeZoneName\b|\.timeZoneOffset\b|\bDateTime\(',
+  r'\.toLocal\(\)|\.timeZoneName\b|\.timeZoneOffset\b|\bDateTime(\.new)?\('
+  r'|from(Milli|Micro)secondsSinceEpoch\((?![^)]*isUtc:\s*true)'
+  r'|DateTime\.now\(\)\.(year|month|day|hour|minute|second|millisecond'
+  r'|microsecond|weekday)\b'
+  r'|\bdebugWallTimeOverride\b|\bhostWallTime\b',
 );
+
+/// Where the guard looks. A root that goes missing fails the guard rather
+/// than passing it by scanning nothing.
+const List<String> _roots = <String>['lib', 'packages/specimen_ui/lib'];
 
 void main() {
   group('the suite pins Central time', () {
@@ -43,6 +56,32 @@ void main() {
 
     test('the pin is the harness default, not a per-test choice', () {
       expect(debugWallTimeOverride, same(centralWallTime));
+    });
+
+    test('History cites an instant in CDT, which CI checks too', () {
+      // Goldens compare on macOS only; this runs everywhere (#181 review).
+      expect(citedInstant('2026-09-07T10:00:00Z'), '7 Sep 2026, 05:00 CDT');
+    });
+  });
+
+  group("a browser's zone name reads as design/02 writes it", () {
+    // A browser names the zone in full, "Central Daylight Time" (#181
+    // review); 02 section 4.14 writes "CDT".
+    test('a name of several words is shortened to its initials', () {
+      for (final (String name, String short) in <(String, String)>[
+        ('Central Daylight Time', 'CDT'),
+        ('Eastern Standard Time', 'EST'),
+        ('Central European Summer Time', 'CEST'),
+        ('Coordinated Universal Time', 'UTC'),
+      ]) {
+        expect(zoneAbbreviation(name), short, reason: name);
+      }
+    });
+
+    test('an abbreviation or an offset is kept as it is', () {
+      for (final String name in <String>['CDT', 'UTC', 'GMT+05:30']) {
+        expect(zoneAbbreviation(name), name);
+      }
     });
   });
 
@@ -115,19 +154,21 @@ void main() {
     });
 
     test('nothing else in lib reads the host zone', () {
+      for (final String root in _roots) {
+        expect(Directory(root).existsSync(), isTrue, reason: '$root is gone');
+      }
       final List<String> leaks = <String>[
-        for (final String root in <String>['lib', 'packages/specimen_ui/lib'])
-          if (Directory(root).existsSync())
-            for (final FileSystemEntity entity in Directory(
-              root,
-            ).listSync(recursive: true))
-              if (entity is File &&
-                  entity.path.endsWith('.dart') &&
-                  !entity.path.endsWith('lib/src/wall_time.dart'))
-                for (final (int index, String line)
-                    in entity.readAsLinesSync().indexed)
-                  if (_hostZone.hasMatch(line))
-                    '${entity.path}:${index + 1}: ${line.trim()}',
+        for (final String root in _roots)
+          for (final FileSystemEntity entity in Directory(
+            root,
+          ).listSync(recursive: true))
+            if (entity is File &&
+                entity.path.endsWith('.dart') &&
+                !entity.path.endsWith('lib/src/wall_time.dart'))
+              for (final (int index, String line)
+                  in entity.readAsLinesSync().indexed)
+                if (_hostZone.hasMatch(line))
+                  '${entity.path}:${index + 1}: ${line.trim()}',
       ];
       expect(
         leaks,
