@@ -12605,8 +12605,8 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Task: the steward's follow-up (2026-09-25) from security's review of #216. The research probe still called GBIF's GADM reverse geocoder behind `--held-steps`, and `docs/GBIF.md` still recommended GADM, though PLAN 4.8 rules GADM out, not even as a measurement.
 - Branch/worktree: `golive/geo-gadm-superseded` in `.claude/worktrees/geo-build`.
 - Outcome: In progress (pull request open for review).
-- Commits/PRs: the red `e3d3633` marks GBIF.md's three GADM passages superseded in place and adds a guard test; the green commit after it removes the probe's GADM step and its report fields, and corrects the probe's docstring, help text and README.
-- Validation: the guard test fails on `main` and passes after the green; the probe parses and prints its help.
+- Commits/PRs: #217. The red `e3d3633` marks GBIF.md's three GADM passages superseded in place and adds a guard test; the green commit after it removes the probe's GADM step and its report fields, and corrects the probe's docstring, help text and README.
+- Validation: the guard test fails on `main` and passes after the green; the probe parses and prints its help; `uv run pytest -q` gives 3,069 passed, 81 skipped.
 - Durable learnings: PLAN, the briefs and GEOREFERENCING.md cite `docs/GBIF.md` by line number, so a note added inside an existing line keeps every reference valid where a new line would shift them.
 - Failed approaches: a first draft added the notes as new blockquote lines, which would have shifted those references; it was rewritten before any commit.
 - Remaining follow-ups: None.
