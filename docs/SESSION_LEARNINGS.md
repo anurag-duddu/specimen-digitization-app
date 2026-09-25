@@ -11889,6 +11889,16 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Validation actually run: the tests fail without the module and pass with it; the full Python suites and pre-commit pass.
 - Durable learnings: (1) Three sources under one tool at attempt 1 collide in a call key without a source segment, so two of GBIF, GNV and COL would be dropped as replays. S5's key now carries `{source or "-"}` right after the tool. (2) A call on the decided transcript names no reading in the contract, so the record's `observation_id` is empty there even though the harness knows which reading it was; the region names the decision. (3) The geography tool reports no outcome for `precise_location`, so a field lookup that fell back to the call's overall outcome would have settled it; asking for an unreported field is refused instead.
 - Remaining follow-ups: T3b part 2b, the agent and its prompt with the Insects knowledge; then T3c and T4.
+
+### 2026-09-24 — Go-live S4: the harness agent (T3b, part 2b)
+
+- Task: go-live S4, topic T3b part 2b: the Pydantic AI harness agent on the harness route, under owner decisions G30, G33 and G40. Its managed prompt and the Insects harness knowledge moved to their own pull request at the steward's request.
+- Branch/worktree: `golive/harness-agent`, stacked on `golive/harness-ledger` (#134), in `.claude/worktrees/cool-haslett-aa79b5`.
+- Outcome: `application/field_harness.py` (`run_harness`, `resolve`, `FieldPlan`). Spec: `docs/execution/golive/HARNESS.md` section 11.
+- Validation actually run: the agent tests fail without the module and pass with it; the full Python suites and pre-commit pass.
+- Durable learnings: (1) A post-response token check does not bound what a run spends: pydantic-ai checks `input_tokens_limit` after each response, so the request that crosses the limit is itself bounded by construction instead, through a prompt byte cap, a tool-call cap and the output cap on its history. That makes S3's reservation provable. (2) One geocoding budget covers the agent's checks and the final lookups, and geography arguments are sorted by field. Without that, a check and the final call on the same literals were two paid requests. (3) The agent names readings 1A, 1B, 2A, never by model; the first pass's reader letters taught the same lesson.
+- Remaining follow-ups: T3d part a (G37 and G38 layers and the derivations that need no outside data), the first pass's G30 output cap, T3c (the `parse` step), T4 (the queue decision), T3d part b (S8's derivations and `derive_rest`), and the geography name-key alignment with S8.
+- Addendum, found by a later gate run under load: pydantic-ai runs a response's tool calls in parallel threads unless told otherwise. So two identical calls in one turn could both miss the ledger's record and make two requests, and the caps' counters could race. The harness now runs its tool calls one at a time (`ToolManager.parallel_execution_mode("sequential")` around the agent run). A test with a slow fake makes the race certain without the fix. Lesson: a check-then-record cache behind agent tools needs serial tool execution or a lock, whatever the model usually does.
 ### 2026-09-23 — Go-live release workstream (S2), T1b: the owner decisions in the release runbooks and histories
 
 - Task: the same S2 session as the T1a entry, second half of brief item T1.
