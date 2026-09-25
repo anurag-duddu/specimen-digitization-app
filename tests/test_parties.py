@@ -11,10 +11,12 @@ from specimen_digitization.application.authority_registry import AuthorityRegist
 from specimen_digitization.application.parties import PartiesAdapter, PartiesConnection
 
 
-def adapter(client=None, approved=True, token=True):
+def adapter(client=None, approved=True, token=True, **changes):
     blobs = Blobs()
     return PartiesAdapter(
-        AuthorityRegistry(version="1", sources=(source(True, approved=approved),)),
+        AuthorityRegistry(
+            version="1", sources=(source(True, approved=approved, **changes),)
+        ),
         blobs,
         PartiesConnection(
             source_id="parties",
@@ -121,3 +123,17 @@ def test_parties_timeout_is_operational():
     with httpx.Client(transport=httpx.MockTransport(timeout)) as client:
         result = adapter(client)[0].lookup(query())
     assert result.status == "timeout" and result.operationally_blocked
+
+
+def test_an_oversize_response_is_bounded_and_not_a_match(authority_server):
+    # The registry's streamed size cap and its truncated-capture reason, moved
+    # here with the GADM adapter's removal (#216).
+    state, client = authority_server
+    state["body"] = b"x" * 10000
+    service, blobs = adapter(client, max_response_bytes=256)
+
+    result = service.lookup(query())
+
+    assert result.status == "malformed_response"
+    assert "response_capture_truncated" in result.reasons
+    assert len(blobs.values[result.raw_ref]) == 256

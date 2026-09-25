@@ -4,6 +4,7 @@ geography adapter; until the harness's geography tool lands, place fields get no
 geography authority and go to review."""
 
 import json
+import re
 
 # ruff: noqa: F811 -- pytest fixture injection shares the imported fixture name
 from pathlib import Path
@@ -33,6 +34,16 @@ from specimen_digitization.application.storage import (
 from specimen_digitization.application.workflow import SyntheticAdapters, Workflow
 
 SOURCE = Path(__file__).resolve().parents[1] / "src" / "specimen_digitization"
+# Every form GBIF's GADM service or its geocoder can be named by (the review of #216).
+GADM = re.compile(
+    r"gbif[_-]gadm|gadm_search|geocode/(gadm|reverse)|api\.gbif\.org/v1/geocode", re.I
+)
+OLD_PIN = {
+    "version": "gbif-gadm-1",
+    "registry_sha256": "0" * 64,
+    "connection_sha256": None,
+    "reserved_cost_microunits": 0,
+}
 
 
 def test_production_wiring_holds_no_gadm_source(tmp_path):
@@ -52,8 +63,7 @@ def test_no_code_path_names_the_gadm_source_or_its_endpoint():
     assert modules
     assert not (SOURCE / "application" / "geography.py").exists()
     for module in modules:
-        text = module.read_text()
-        assert "geocode/gadm" not in text and "gbif_gadm" not in text, module
+        assert not GADM.search(module.read_text()), module
 
 
 def test_a_profile_naming_geography_plans_no_geography_lookup():
@@ -65,9 +75,9 @@ def test_a_profile_naming_geography_plans_no_geography_lookup():
     assert plan_authorities(SimpleNamespace(run=run)) == []
 
 
-def test_a_run_pinned_with_the_removed_tool_still_resumes(tmp_path, authority_server):
-    # S3's check: a run pinned before the removal holds a "geography" pin; each
-    # authority step compares only its own tool's pin, so the run goes on.
+def at_the_first_authority_step(tmp_path, authority_server):
+    """A synthetic run with the parties tool, pinned and planned, stopped before
+    its first authority step."""
     state, http = authority_server
     state["body"] = json.dumps(payload(name="Synthetic Collector")).encode()
     blobs = LocalBlobs(tmp_path / "blobs")
@@ -122,12 +132,16 @@ def test_a_run_pinned_with_the_removed_tool_still_resumes(tmp_path, authority_se
             break
         workflow.step(principal, specimen.id)
     assert Workflow.next_step(specimen.run) == "authority:0:parties"
-    specimen.run.dependencies["authority_pins"]["geography"] = {
-        "version": "gbif-gadm-1",
-        "registry_sha256": "0" * 64,
-        "connection_sha256": None,
-        "reserved_cost_microunits": 0,
-    }
+    return state, repo, workflow, principal, specimen
+
+
+def test_a_run_pinned_with_the_removed_tool_still_resumes(tmp_path, authority_server):
+    # S3's check: a run pinned before the removal holds a "geography" pin; each
+    # authority step compares only its own tool's pin, so the run goes on.
+    state, repo, workflow, principal, specimen = at_the_first_authority_step(
+        tmp_path, authority_server
+    )
+    specimen.run.dependencies["authority_pins"]["geography"] = OLD_PIN
     repo.save(principal, specimen, specimen.version, "old-pin", digest({"old": 1}))
 
     run = workflow.drain(principal, specimen.id).run
@@ -135,3 +149,23 @@ def test_a_run_pinned_with_the_removed_tool_still_resumes(tmp_path, authority_se
     assert run.blocker != "authority_configuration_changed_requires_new_run"
     assert [r["state"] for r in run.authority_receipts.values()] == ["completed"]
     assert len(state["requests"]) == 1
+
+
+def test_a_run_planned_with_the_removed_tool_blocks_without_a_request(
+    tmp_path, authority_server
+):
+    # A plan made before the removal still names a "geography" task. Its step
+    # finds no tool, so it blocks with a typed reason and sends nothing.
+    state, repo, workflow, principal, specimen = at_the_first_authority_step(
+        tmp_path, authority_server
+    )
+    task = {"tool_id": "geography", "field_key": "province_state", "required": True}
+    specimen.run.authority_plan = [task, *specimen.run.authority_plan]
+    specimen.run.dependencies["authority_pins"]["geography"] = OLD_PIN
+    repo.save(principal, specimen, specimen.version, "old-plan", digest({"old": 2}))
+
+    run = workflow.drain(principal, specimen.id).run
+
+    assert run.stage == "processing_blocked"
+    assert run.blocker == "tool_not_allowlisted_or_version_mismatch"
+    assert state["requests"] == []
