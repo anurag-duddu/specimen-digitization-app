@@ -12003,6 +12003,7 @@ because the hooks runner hands a native asset hook only `PATH`.
   - Tracking rows are a later PR's work order, so each must name exactly what a decision retires and what stays.
 - Failed approaches: none.
 - Remaining follow-ups: S2 changes those `human_review.py` lines after T3d.
+
 ### 2026-09-24 — Go-live program: plan after #104, owner decisions G32 to G45
 
 - Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
@@ -12047,6 +12048,56 @@ because the hooks runner hands a native asset hook only `PATH`.
   - Owner questions saved for a natural moment: D4 (with its queries as a 4.8 exception), D5, and what `verbatim_dts` holds (`PRD.md`'s open question 3).
   - The first production run waits for #163's live initialization and #170's V3 apply.
   - The owner's pending actions: the readiness marker, #119's IAM list after its review, the curator sheets, and the dataset upload.
+
+### 2026-09-24 — Go-live release workstream (S2), T1d: #165's merge follow-ups and the acceptance documents' notes
+
+- Task: the S2 session. It covers:
+  - the PR steward's follow-ups from #165's merge review (comment 5814254045);
+  - #165 round 1's deferred nit: dated notes in `RELEASE_ACCEPTANCE.md` and `LIVE_QA.md`, which `golive/RELEASE.md` section 2 requires;
+  - #184's review round 1 (comment 5824636022).
+- Branch/worktree: `golive/release-docs-checker-rows`, from `main` at `275b399`, in this session's worktree. A Sonnet documents subagent drafted the two documents' banners and notes in its own worktree. This session audited every note and rewrote the ones that needed it.
+- Outcome:
+  - **The checker rows.** `golive/RELEASE.md` section 2.1's rows name exactly what a decision retires and what stays, since the checker pull request follows them:
+    - `HUMAN-NO-AUTOMATIC-CLEARANCE` retires only automatic clearance. A correction or save still never approves institutional semantics or risk (`human_review.py` 194-195). The 194-200 row retires only `human_approved`, the disposition and the stage.
+    - The frozen manifest is only the cohort's anchor (103, 168). The cohort and the denominator stay ten, and each of the ten the harness did not clear needs its complete human record. A specimen the harness clears keeps its evidence checks and drops only the review checks (201-217).
+    - COHORT-BUDGET and `cohort_budget` (`acceptance.py` 348-420) retire whole. The bound is G30's USD 5 production model allowance within G9's USD 25, and COST-BOUNDS tests it. The unknown-effects rule moves to COST-BOUNDS.
+    - New rows: `human_review.py` 315; the command-line manifest pin, where the candidate-SHA pin stays; the coverage checks drawn from the manifest; `manifest_ids`; DEPLOYMENT-PROVENANCE's `sam_commit_sha`, since T2 rebuilds SAM 3 only when its inputs change; and HUMAN-LABEL-COVERAGE and `coverage_confirmed` (51, 124 and 208), which follow the coordinator's reading of G15 (2026-09-24): the lane's automatic check is the coverage confirmation for every record, and the human confirmation step retires.
+  - **The two documents.** `RELEASE_ACCEPTANCE.md` and `LIVE_QA.md` gain their banners and dated notes beside the clauses the owner decisions contradict. They cover:
+    - the projection section, the cost evidence contract and the retained record list;
+    - the evidence-only pilot and the budget pointer;
+    - the checker's scope file;
+    - LIVE_QA's threat-matrix rows, launch blockers and milestone.
+
+    Every note on the spending bound names G30's USD 5 within G9's USD 25. Every note on the acceptance decision carries the full acceptance sentence and G30's, and labels the decider as S2's reading, with its sources and the owner's DoD-6 confirmation.
+- Corrections to [#165's entry](#2026-09-24--go-live-release-workstream-s2-t1c-78s-acceptance-follow-ups), 2026-09-24. That entry stays as merged:
+  - Its manifest bullet is corrected: the frozen manifest is only the cohort's anchor (103, 168). 169, 175 and 290, the evidence fields, and the original-bytes and scope checks are re-anchored to the ten, not retired.
+  - Its follow-up sentence is out of date: PLAN section 6 already names `scripts/qa/live/` as S2's.
+  - In its Commits line, `3926f0d` is the commit that names the rows' owner, S2.
+- Commits/PRs: PR #184.
+  - The rows: `ecefacd`.
+  - The subagent's notes: `7f13272`.
+  - This session's audit: `af66a3f`.
+  - The closeout: `bf00f52`.
+  - Review round 1's commit.
+- Validation actually run:
+  - the G30 sweep over every dated note: 65 of 65 carry the sentence;
+  - the acceptance sweep: all 4 notes that describe the acceptance decision carry the full sentence, verbatim, as does the projection note;
+  - every "USD 25" note in the two documents names G30's USD 5;
+  - pre-commit, `tests/test_deployment_policy.py`, `git diff --check` and the relative-link check (60 links, none broken).
+- Durable learnings:
+  - The PR steward's review replaces pull-request review, not acceptance. In S2's reading, G11 retires the independent-review reports, and the evidence-based acceptance harness and the coordinator still decide acceptance. The owner confirms DoD-6.
+  - Carry one settled wording across every document ("each run is authorized on its own instead of per frozen manifest"). A paraphrase reads as a new claim.
+  - The budget has two layers: G9's USD 25 ceiling over everything, and G30's USD 5 production model allowance inside it, which the pipeline enforces and COST-BOUNDS tests. A note that says only "USD 25 replaces USD 5" hides the bound that is actually enforced.
+  - A keyword sweep sees only a note's own text. A clause can hold a reservation that a closed list in its note retires. Read each superseded clause against its note, end with "the rest stands", and audit the neighbouring paragraphs too.
+  - The session log is append-only, even for this session's own merged entry. Correct it from the new entry, with a link back.
+- Failed approaches:
+  - The subagent's first draft handed acceptance to the steward's pull-request review in three notes, and called the cohort "verified". The audit caught both.
+  - Round 1 found what the audit missed:
+    - G30's USD 5 misstated as USD 25 in the spending notes;
+    - a closed list in the milestone note that retired G30's reservation;
+    - two G1 clauses without a note;
+    - an in-place edit of #165's entry.
+- Remaining follow-ups: the checker pull request (`scripts/qa/live/`, after T3d), which follows the corrected rows.
 
 ### 2026-09-24 — Go-live S6: goldens no longer depend on the host's time zone
 
