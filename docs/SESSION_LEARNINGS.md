@@ -12565,3 +12565,19 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. A match rule has to hold at every step it passes through. "FG" counted as kept, but the cuts it then met compared folded words only, so it still left.
   3. `git checkout <ref> -- <files>` sets the index as well as the working tree. After re-running a script on those files, stage every file it writes, or the commit carries the ref's version.
 - Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live program: plan corrections after #210
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-15`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #210's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/210#issuecomment-5829879623), items 1-4. All the edits are line-neutral above PLAN 412, so the citations corrected earlier stand.
+  - PLAN 4.8's filter:
+    - The limit names the run-together over-cut: a collector "M.T. Smith" turns "Mt. Apo" into "Apo", and "L.A. Cruz" turns "La Libertad" into "Libertad". Less text leaves, so it fails safely.
+    - The sparing limit reads "unless the reviewer's own value there holds it". The 08:24Z label says the ruling changes the cuts, not the sparing rule. The credits add #210.
+  - PLAN 2.3's datasets row names T4d's two runs: GeoNames and GLO-30 when #211 merges, and the boundary files with #198 after #183. 4.8's datasets bullet pins each file by the retrieval date or release commit the manifest records, not "by version".
+  - S2's T4d limits the 08:05Z label to the COD-AB file.
+  - G35-G40, G44 and G45 carry their date (2026-09-24) inside their rows, as G32-G34 do. G41 and G43 already cite the dated decisions file.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: a comparison widened to catch a leak also widens what it can over-cut ("Mt." against "M.T."). Name one over-cut case in the limit when the rule lands, so a test pins it.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
