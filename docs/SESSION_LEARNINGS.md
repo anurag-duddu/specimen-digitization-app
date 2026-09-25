@@ -11884,9 +11884,13 @@ because the hooks runner hands a native asset hook only `PATH`.
 ### 2026-09-23 — Go-live S4: the harness's tool ledger (T3b, part 2a)
 
 - Task: go-live S4, topic T3b part 2a: the one way the harness reaches a tool (HAR-007), recording every request as the data contract reads it (HAR-010; #88 sections 3.1, 4.3 and 4.4) and turning each result into what one field sees.
-- Branch/worktree: `golive/harness-ledger`, stacked on `golive/harness-resolution`, in `.claude/worktrees/cool-haslett-aa79b5`.
-- Outcome: `application/harness_ledger.py` (`ToolLedger`, `Tools`, `call_key`, `called`). `Run` gains `tool_calls: list[ToolCallRecord]`, and `Evidence.locator` becomes optional for failed lookups. Spec: `docs/execution/golive/HARNESS.md` section 10.
-- Validation actually run: the tests fail without the module and pass with it; the full Python suites and pre-commit pass.
+- Branch/worktree: `golive/harness-ledger`, stacked on `golive/harness-resolution` (#131), in `.claude/worktrees/cool-haslett-aa79b5`. Pull request #134. Commits:
+  - 5f119e10 and 776bb384: the failing tests, then the ledger.
+  - ac152f52: this entry.
+  - c2c9b18a and f7ef63b2: merges of #131's branch while this one was stacked on it.
+  - Before its turn: this list, and the entry's wording on `Evidence.locator`.
+- Outcome: `application/harness_ledger.py` (`ToolLedger`, `Tools`, `call_key`, `called`). `Run` gains `tool_calls: list[ToolCallRecord]`, and `Evidence.locator` may be None, still required, for failed lookups. Spec: `docs/execution/golive/HARNESS.md` section 10.
+- Validation actually run: the tests fail without the module and pass with it; the full Python suites and pre-commit pass. Rerun on 2026-09-25 from each commit's own tree: 5f119e10 fails to import the module, and 776bb384 passes 11.
 - Durable learnings: (1) Three sources under one tool at attempt 1 collide in a call key without a source segment, so two of GBIF, GNV and COL would be dropped as replays. S5's key now carries `{source or "-"}` right after the tool. (2) A call on the decided transcript names no reading in the contract, so the record's `observation_id` is empty there even though the harness knows which reading it was; the region names the decision. (3) The geography tool reports no outcome for `precise_location`, so a field lookup that fell back to the call's overall outcome would have settled it; asking for an unreported field is refused instead.
 - Remaining follow-ups: T3b part 2b, the agent and its prompt with the Insects knowledge; then T3c and T4.
 ### 2026-09-23 — Go-live release workstream (S2), T1b: the owner decisions in the release runbooks and histories
