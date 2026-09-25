@@ -48,8 +48,9 @@ the unresolved differences, and G19 then decides the route.
 `run.dependencies` like the reader routes, provider pinned (no automatic
 routing); a route that is not registered is not pinned, so the call blocks. A
 call is budgeted like a reading: two requests (the answer and one output
-retry), 16000 tokens, and the stage cost reservation `first_pass`, one key for
-every region. Its circuit is the first-pass route's provider.
+retry), each capped at 1,024 output tokens so that its worst case can be
+reserved (G30; T1's first passes used at most 406), 16000 tokens, and the stage
+cost reservation `first_pass`, one key for every region. Its circuit is the first-pass route's provider.
 
 **Output**, validated before it is used: the selected reader or none; for every
 numbered difference exactly one verdict (a reader, `neither`, or `uncertain`)

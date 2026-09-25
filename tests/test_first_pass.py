@@ -122,11 +122,14 @@ VALID = {
 INCOMPLETE = dict(VALID, verdicts=VALID["verdicts"][:1])
 
 
-def direct_first_pass(monkeypatch, tmp_path, calls, *answers):
-    """first_pass_direct against a fake provider that gives these answers in turn."""
+def direct_first_pass(monkeypatch, tmp_path, calls, *answers, settings=None):
+    """first_pass_direct against a fake provider that gives these answers in turn;
+    `settings` collects each request's model settings."""
 
     def respond(messages, info):
         calls.append(messages)
+        if settings is not None:
+            settings.append(info.model_settings)
         answer = answers[min(len(calls), len(answers)) - 1]
         return ModelResponse(
             parts=[ToolCallPart(info.output_tools[0].name, json.dumps(answer))],
@@ -197,6 +200,19 @@ def test_an_incomplete_answer_is_retried_once_with_the_problem(monkeypatch, tmp_
     assert len(calls) == 2 and decision.rationale == VALID["rationale"]
     retry = calls[1][-1].parts[-1]
     assert retry.content == "give exactly one verdict for each difference 1 to 3"
+
+
+def test_every_first_pass_request_is_capped_at_its_measured_output_budget(
+    monkeypatch, tmp_path
+):
+    # G30: each request reserves its worst case; T1's first passes used at most
+    # 406 output tokens.
+    settings = []
+
+    direct_first_pass(monkeypatch, tmp_path, [], INCOMPLETE, VALID, settings=settings)
+
+    assert [s["max_tokens"] for s in settings] == [1024, 1024]
+    assert first_pass_module.MAX_OUTPUT_TOKENS == 1024
 
 
 def test_an_answer_that_stays_invalid_is_a_known_malformed_response(

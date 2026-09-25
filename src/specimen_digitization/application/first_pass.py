@@ -188,6 +188,11 @@ def output_problems(output: FirstPassOutput, letters, count: int) -> list[str]:
     return problems
 
 
+# G30: every request reserves its worst case, so its output is capped from the
+# measured runs (T1: at most 406 output tokens in 16 first passes).
+MAX_OUTPUT_TOKENS = 1024
+
+
 def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
     """Run the first pass for one region in the isolated model child."""
     from .reliability import run_agent_bounded
@@ -226,6 +231,7 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
         name="first_pass_" + route_id.replace("-", "_"),
         output_type=FirstPassOutput,
         instructions=prompt.text,
+        model_settings={"max_tokens": MAX_OUTPUT_TOKENS},
     )
 
     @agent.output_validator
