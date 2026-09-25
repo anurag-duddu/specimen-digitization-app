@@ -161,7 +161,8 @@ GeoNames files from `~/specimen-golive/datasets/geonames/<dump date>/` and
 CONRED's COD-AB file for Guatemala from
 `~/specimen-golive/datasets/cod-ab-gtm/<retrieval date>/`, checked for size
 and SHA-256 and never downloaded again, since neither source keeps the bytes
-S8 pinned (coordinator ruling of 08:05Z on 2026-09-25); the Copernicus tiles
+S8 pinned (coordinator ruling of 08:05Z on 2026-09-25, for the COD-AB file);
+the Copernicus tiles
 and geoBoundaries' Philippine files downloaded anonymously and checked; each uploaded with
 `--no-clobber` to `application/sha256/<sha256>`, then listed. Never from an
 agent shell. Send it to the coordinator to relay. The boundary files arrive with
