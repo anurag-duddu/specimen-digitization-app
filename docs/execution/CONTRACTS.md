@@ -245,6 +245,16 @@ exhausted viable approved attempts and retry eligibility. Missing configuration,
 429, timeout, invalid credentials, outage, budget exhaustion and code error are
 operational blocks. No reviewer action may simply waive missing evidence.
 
+> 2026-09-23: Superseded for the go-live program, for the lane, by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1.
+> Two clearance gates above no longer apply: "approved semantics/policy" (the
+> institutional-approval and semantics gates, `policy.py` 31-34) and "any
+> required human approval" (`policy.py` 138-139). A record the agentic harness
+> resolves is cleared without a human. Every other gate stays, as G19, G20 and
+> G24 apply them, including label
+> coverage, which the lane now checks automatically (G15), and the operational
+> blocks, which retry and are not a queue; needs human review and deferral stay
+> as this contract defines them.
+
 ## Application-owned processing interfaces
 
 `HarnessRunner.run_phase(snapshot, profile, phase, transcript_refs, tool_registry,

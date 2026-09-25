@@ -11,8 +11,10 @@ import 'package:specimen_digitization/src/widgets/thumbnail.dart';
 
 import 'harness.dart';
 
-final DateTime _updated = DateTime(2026, 9, 13, 14, 32);
-final DateTime _now = DateTime(2026, 9, 14, 9);
+// Instants in the host zone, built from UTC so they are the same instants on
+// every machine: 14:32 and 09:00 CDT on the suite's pinned clock.
+final DateTime _updated = DateTime.utc(2026, 9, 13, 19, 32).toLocal();
+final DateTime _now = DateTime.utc(2026, 9, 14, 14).toLocal();
 
 Widget _row({
   bool selected = false,
@@ -66,10 +68,7 @@ void main() {
   });
 
   test('the absolute form is the citable one', () {
-    expect(
-      absoluteTime(DateTime(2026, 9, 13, 14, 32)),
-      startsWith('13 Sep 2026, 14:32 '),
-    );
+    expect(absoluteTime(_updated), '13 Sep 2026, 14:32 CDT');
   });
 
   testWidgets('renders the title, reason, chip, meter and relative age', (
@@ -125,6 +124,34 @@ void main() {
     );
     // Relative time is never the only form a reader gets.
     expect(find.bySemanticsLabel('18 h'), findsNothing);
+    handle.dispose();
+  });
+
+  testWidgets("a server instant is spoken on the reviewer's clock", (
+    WidgetTester tester,
+  ) async {
+    final SemanticsHandle handle = tester.ensureSemantics();
+    await pumpComponent(
+      tester,
+      SizedBox(
+        width: 700,
+        child: QueueRow(
+          id: 'fixture-001',
+          title: 'FMNH-0001',
+          reason: 'Two readings disagree on the locality',
+          status: SpecimenStatus.needsReview,
+          // In UTC, as the server sends it and `queueUpdatedAt` parses it.
+          updatedAt: DateTime.utc(2026, 9, 8, 5, 1),
+          now: DateTime.utc(2026, 9, 14, 14),
+          onOpen: () {},
+        ),
+      ),
+    );
+    expect(
+      find.bySemanticsLabel(RegExp(r'updated 8 Sep 2026, 00:01 CDT$')),
+      findsOneWidget,
+      reason: "the zone is said, and it is the reviewer's (design/01 H1.9)",
+    );
     handle.dispose();
   });
 
