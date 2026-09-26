@@ -1385,6 +1385,10 @@ PLACE_WORDS = [
     ("Epipsocus Davao, Mindanao 1946", ["Davao City", "Mindanao, P.I."], "Epipsocus"),
     # A real author who shares a word with the place text loses it.
     ("Xus yus Davao, 1900", ["Davao"], "Xus yus"),
+    ("Xus yus Davao-Smith, 1900", ["Davao"], "Xus yus"),
+    # Read again until the authorship holds no place word: once "Davao"
+    # leaves, "Hawaii 1900" reads as authorship, and "Hawaii" leaves too.
+    ("Carabus Hawaii Davao, 1900", ["Hawaii", "Davao"], "Carabus"),
     # What remains goes through the rules above: a leading "&" joins no
     # author, so the name is read only in part.
     ("Xus yus Davao & Smith, 1900", ["Davao"], "Xus yus"),

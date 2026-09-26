@@ -5,6 +5,7 @@ import json
 import re
 import time
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 import httpx
@@ -125,6 +126,9 @@ UNREAD_WORDS = frozenset(
 HYBRID_SIGNS = frozenset({"×", "x", "X", "✕", "✖", "⨯"})
 SEX_SIGNS = frozenset("♀♂⚥")
 NOT_NAMES = QUALIFIERS | CLAUSES | NEVER_EPITHETS | MONTHS | ROMAN_MONTHS | MARKERS | UNREAD_MARKERS
+# PLAN 4.8's place fields: their literals, and the reading's unassigned
+# locality text, are the place text a taxonomy request never carries.
+PLACE_FIELDS = ("country", "province_state", "county", "city", "precise_location")
 MAX_WORDS = 40  # of a literal read; a name and its authorship are far shorter
 MAX_WORD_LENGTH = 64  # a literal with a longer word among them writes no name
 MAX_AUTHORS = 4
@@ -274,24 +278,28 @@ def _authorship(words: list[str]) -> tuple[str | None, int]:
     """An author-year authorship at the start of `words`, and the words it
     takes: one to four authors (title-case surnames, with any particles and
     initials), joined by "&", "et" or a comma, then a year; in parentheses or
-    not, and bounded. Anything else is no authorship."""
-    authors, pending, joined = 0, False, True
+    not, and bounded. A joiner needs an author after it ("Smith & 1900" is
+    none). Anything else is no authorship."""
+    # `dangling`: a joiner no author has followed yet.
+    authors, pending, joined, dangling = 0, False, True, False
     for count, word in enumerate(words[:AUTHORSHIP_WORDS], 1):
         token = word[1:] if count == 1 and word.startswith("(") else word
         if YEAR.match(token.rstrip(".,;:)")):
             text = " ".join(words[:count])
-            if authors and not pending and len(text) <= MAX_AUTHORSHIP_LENGTH:
+            complete = authors and not (pending or dangling)
+            if complete and len(text) <= MAX_AUTHORSHIP_LENGTH:
                 return text, count
             return None, 0
         bare = token.rstrip(",")
-        if bare in {"&", "et"} and authors and not pending:
-            joined = True
+        if bare in {"&", "et"} and authors and not (pending or dangling):
+            joined = dangling = True
         elif bare == "al." and joined and authors:
-            authors, joined = authors + 1, token.endswith(",")
+            authors, joined, dangling = authors + 1, token.endswith(","), False
         elif (INITIALS.match(bare) or bare in PARTICLES) and (joined or pending):
             pending = True
         elif _surname(bare) and (joined or pending):
-            authors, pending, joined = authors + 1, False, token.endswith(",")
+            authors, pending, dangling = authors + 1, False, False
+            joined = token.endswith(",")
             if authors > MAX_AUTHORS:
                 return None, 0
         else:
@@ -306,9 +314,48 @@ def _normalized(literal: str) -> str:
     return "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
 
 
-def scientific_name(literal: str) -> ScientificName | None:
+def fold(text: str) -> str:
+    """PLAN 4.8's folding: casefold, strip diacritics and turn anything but
+    letters and digits into single spaces, so "Petén," folds to "peten" and
+    "P.I." to "p i"."""
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    kept = "".join(
+        c if c.isalnum() else " " for c in decomposed if not unicodedata.combining(c)
+    )
+    return " ".join(kept.split())
+
+
+def _words(literal: str) -> list[str]:
+    """The words the reader reads: the literal's first MAX_WORDS, normalized."""
+    return _normalized(literal).split(maxsplit=MAX_WORDS)[:MAX_WORDS]
+
+
+def _without_places(words: list[str], place_text: Iterable[str]) -> list[str]:
+    """`words` without the place words their authorship holds (the
+    coordinator's ruling of 02:07Z on 2026-09-26, applying PLAN 4.8): each
+    token of the authorship that shares a folded word with the reading's place
+    text is dropped, and the name is read again, until its authorship holds
+    none. What remains is read by the reader's own rules."""
+    places = frozenset(word for text in place_text for word in fold(text).split())
+    while places:
+        span = _read(words)[1] or (0, 0)
+        dropped = {
+            index
+            for index in range(*span)
+            if not places.isdisjoint(fold(words[index]).split())
+        }
+        if not dropped:
+            break
+        words = [word for index, word in enumerate(words) if index not in dropped]
+    return words
+
+
+def scientific_name(
+    literal: str, place_text: Iterable[str] = ()
+) -> ScientificName | None:
     """The scientific name a taxon literal writes, or None when it writes none
-    (HARNESS.md section 6).
+    (HARNESS.md section 6). `place_text` is the reading's place-field literals
+    and unassigned locality text, whose words the authorship loses.
 
     The literal must begin with a title-case genus, which a qualifier before it
     marks doubtful. The words after it are read as a parenthesized subgenus,
@@ -322,25 +369,41 @@ def scientific_name(literal: str) -> ScientificName | None:
     articles and conjunctions among them, marks the name read only in part. A
     word the literal does not write is never sent, and neither is text that is
     no name (PLAN 4.8)."""
-    words = _normalized(literal).split(maxsplit=MAX_WORDS)[:MAX_WORDS]
+    return _read(_without_places(_words(literal), place_text))[0]
+
+
+def without_place_words(literal: str, place_text: Iterable[str]) -> str:
+    """The literal as a taxonomy request may carry it: without the place words
+    its authorship holds, so that reading it gives the name `scientific_name`
+    reads with that place text. The workflow's lookup step sends it through
+    its adapter, which takes a literal."""
+    words = _words(literal)
+    kept = _without_places(words, place_text)
+    return literal if kept == words else " ".join(kept)
+
+
+def _read(words: list[str]) -> tuple[ScientificName | None, tuple[int, int] | None]:
+    """The name `words` write, or None, and where its authorship lies among
+    them."""
     for index, word in enumerate(words):
         if _word(word) in CLAUSES:
             words = words[:index]
             break
     if not words or any(len(word) > MAX_WORD_LENGTH for word in words):
-        return None
+        return None, None
+    cut = words
     # A qualifier or a question mark before the genus marks it doubtful.
     doubt = None
     if _qualifier(words[0]) in DOUBT_MARKERS or words[0] == "?":
         doubt, words = _qualifier(words[0]) or "?", words[1:]
     if not words:
-        return None
+        return None, None
     first = words[0]
     if "?" in first:
         doubt, first = doubt or "?", first.replace("?", "")
     genus = _core(first)
     if not GENUS.match(genus) or genus.lower() in NOT_NAMES:
-        return None
+        return None, None
     subgenus, epithets, marker, rank, partly = None, [], None, "GENUS", doubt
     ended, rest = _ends(first), words[1:]
     if not ended and rest and SUBGENUS.match(rest[0].rstrip(",;:")):
@@ -362,18 +425,21 @@ def scientific_name(literal: str) -> ScientificName | None:
                 rank, rest = "SUBSPECIES", rest[1:]
     if partly is None and rest and _hybrid(rest[0]):
         partly = "hybrid"
-    authorship = None
+    authorship, span = None, None
     if partly is None and rest and (
         not _ends_name(rest[0]) or _word(rest[0]) in PARTICLES
     ):
+        start = len(cut) - len(rest)
         authorship, used = _authorship(rest)
+        span = (start, start + used) if authorship else None
         rest = rest[used:]
     # Fail closed: whatever follows must end the name.
     if partly is None and rest and not _ends_name(rest[0]):
         partly = _core(rest[0]) or rest[0]
-    return ScientificName(
+    name = ScientificName(
         genus, subgenus, tuple(epithets), marker, rank, authorship, partly
     )
+    return name, span
 
 
 def _class_of(classification) -> str | None:

@@ -234,9 +234,13 @@ def verify_taxon(
     sleep=time.sleep,
     clock=time.monotonic,
     deadline_seconds: float = DEADLINE_SECONDS,
+    place_text=(),
 ) -> Verification:
-    """Verify the scientific name in a taxon literal (G23)."""
-    parsed = scientific_name(literal)
+    """Verify the scientific name in a taxon literal (G23). `place_text` is the
+    reading's place-field literals and unassigned locality text, which the
+    caller gives: no word of it leaves in the authorship (the coordinator's
+    ruling of 02:07Z on 2026-09-26, applying PLAN 4.8)."""
+    parsed = scientific_name(literal, place_text)
     if parsed is None:
         return Verification(
             ToolResult(
