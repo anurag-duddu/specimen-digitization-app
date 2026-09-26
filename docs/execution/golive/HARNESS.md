@@ -302,8 +302,10 @@ as the steward's reviews of rounds 1 to 3 tightened it:
   epithet with a patronym's or a place's ending ("Smithi", "Canadensis") that
   does not begin an author-year authorship ("Rossi, 1790" is an author); and a
   subspecies or variety marker with its epithet ("ssp.", "var."). Trailing
-  punctuation is not part of a word, and a word ending in a comma or a period
-  ends the name.
+  punctuation is not part of a word. A word ending in a comma, a semicolon, a
+  colon or a period is the name's last: only an authorship or a word that ends
+  the name may follow it, and any other word marks the name read only in part
+  ("Bombus impatiens, Davao").
 - **A qualifier after the genus** ("sp. 1", "cf.", "aff.", "nr.") makes a
   genus-level identification: the genus is asked and may clear, and the species
   is never asked (the coordinator's reading of G25 and G28 at 01:11Z on
@@ -315,15 +317,20 @@ as the steward's reviews of rounds 1 to 3 tightened it:
   - a clause naming a person, in English, Spanish, Latin, French or German,
     abbreviated or spelled out ("det.", "coll.", "determinado", "colectado",
     "determinavit", "lgt.", "vid.", "teste", "dét.", "Sammler");
-  - prepositions and "et" in those languages ("in", "en", "por", "prope",
-    "bei", "with"), and the particles of an author's name ("de", "van", "du",
-    "la"), which may still begin one;
+  - the prepositions and "et" the reader lists as ends in those languages
+    ("in", "en", "por", "prope", "bei", "with"), and the particles of an
+    author's name ("de", "van", "du", "la"), which may still begin one;
   - sex, life-stage, type-status and nomenclatural words ("female", "fem.",
     "juv.", "imago", "paratype", "nov.", "group");
   - months in full or abbreviated, in English and Spanish ("June", "Aug.",
     "julio"), and the Roman months I to XII but X, which is also a hybrid sign;
   - a number or a written date ("1946", "13-5-48", "12.v.1948"), and sex signs
     ("♀").
+- **Other listed words mark the name.** The reader also lists other
+  prepositions, articles and conjunctions in those languages ("sur", "auf",
+  "bajo", "sub", "the", "und"). It never reads one as an epithet, and the name
+  does not end on one, so the name is read only in part and nothing after it is
+  sent ("Epipsocus bajo corteza, Petén 1987").
 - **Authorship**, only in the author-year form and bounded: one to four authors
   (title-case surnames, never a month or a Roman month, with particles such as
   "de" and initials such as "F."), joined by "&", "et" or a comma, then a year,
@@ -343,13 +350,17 @@ as the steward's reviews of rounds 1 to 3 tightened it:
   fervidus", "Epipsocus Mt. Apo 1946", "Apis mellifera L." (an author without a
   year) and "Epipsocus Hagen, 1866 Davao" go to review, never clearing at
   genus or species.
-- **What syntax cannot settle** (S4's reading): a lone title-case word such as
-  "Davao" or "Werner" reads as a genus; a title-case word with a patronym's or a
-  place's ending, such as "Hawaii" or "Suzuki", reads as a capitalized epithet;
-  "(Davao)" reads as a subgenus; and after a name, a title-case word and a year
-  ("Genus Word Year": "Epipsocus Davao 1946", "Epipsocus Werner, 1946") read as
-  authorship. Each is then sent as part of the name; no other place or date
-  after a name is.
+- **What syntax cannot settle** (S4's reading): a word in a name's place
+  reads as that part of the name. A lone title-case word such as "Davao" or
+  "Werner" reads as a genus. A lower-case word after the genus, such as
+  "corteza", reads as an epithet unless a list holds it. A title-case word with
+  a patronym's or a place's ending, such as "Hawaii" or "Suzuki", reads as a
+  capitalized epithet, and "(Davao)" as a subgenus. After a name, title-case
+  words and a year in the author-year form read as authorship ("Genus Word
+  Year": "Epipsocus Davao 1946", "Epipsocus Werner, 1946", "Epipsocus Davao,
+  Mindanao 1946", "Epipsocus corteza, Petén 1987"). Each is then sent as part
+  of the name. Nothing else is: the query holds only the name's parts, as far
+  as they were read.
 
 A literal that begins with no genus ("Sp. 30 ♀ Davao", "det. Mockford", "Coll.
 F. G. Werner", "collected by Werner 1946") is `no_match` with no request. The
@@ -429,11 +440,13 @@ against anything else) the result carries the warning
 `taxonomy_source_disagreement:{source}`; when one is unavailable after its
 retries, or answers a truncated or malformed body (which is not retried),
 `taxonomy_support_unavailable:{source}`. An answer of a type its API does not
-document (GNV's `matchType` outside its list or a `taxonomicStatus` that is
-not a string; COL's `match` not a boolean, a `type` that is not a string or a
-`usage` that is not an object), and a body in an encoding the fetch cannot
-read, are malformed, with the sanitized error `malformed_response`: never
-retried, and never a disagreement. BugGuide is not called.
+document is malformed, with the sanitized error `malformed_response`: GNV's
+`matchType` outside its list, or a `bestResult` that is not an object or whose
+`taxonomicStatus` is not a string; COL's `match` not a boolean, a `type` that
+is not a string, or a `usage` that is not an object or whose `status` or
+`name` is not a string. A body in an encoding the fetch cannot read is
+malformed, with the sanitized error `unsupported_encoding`. Neither is
+retried, and neither is a disagreement. BugGuide is not called.
 
 **One deadline.** The tool has 60 seconds in all, half the default external
 step timeout (S4's choice), and GBIF comes first: GBIF's attempts, and each
