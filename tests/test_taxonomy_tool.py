@@ -13,6 +13,7 @@ from specimen_digitization.application.domain import LookupStatus as S
 from specimen_digitization.application.lookup import (
     CLAUSES,
     NEVER_EPITHETS,
+    UNREAD_WORDS,
     scientific_name,
 )
 from specimen_digitization.application.storage import LocalBlobs
@@ -1366,6 +1367,15 @@ OTHER_WORDS = [
 
 @pytest.mark.parametrize("word", OTHER_WORDS)
 def test_other_listed_words_mark_the_name(word):
+    after_genus = scientific_name(f"Xus {word} Davao 1946")
+    after_species = scientific_name(f"Xus yus {word} zus Davao 1946")
+
+    assert (after_genus.query, after_genus.partly_read) == ("Xus", word)
+    assert (after_species.query, after_species.partly_read) == ("Xus yus", word)
+
+
+@pytest.mark.parametrize("word", sorted(UNREAD_WORDS))
+def test_every_other_listed_word_marks_the_name(word):
     after_genus = scientific_name(f"Xus {word} Davao 1946")
     after_species = scientific_name(f"Xus yus {word} zus Davao 1946")
 

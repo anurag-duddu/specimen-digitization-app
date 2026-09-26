@@ -72,9 +72,10 @@ CLAUSES = frozenset(
 # The particles of an author's name ("de Geer", "van der Linden").
 PARTICLES = frozenset("de da di du van von der den la le".split())
 # Words that end the name, never an epithet or an author, so nothing after them
-# is read: prepositions and "et" in English, Spanish, Latin and German; the
-# particles, which may still begin an author's name; and sex, life-stage,
-# type-status and nomenclatural words.
+# is read: the prepositions and "et" in English, Spanish, Latin and German that
+# the reader takes as ends (UNREAD_WORDS lists others); the particles, which
+# may still begin an author's name; and sex, life-stage, type-status and
+# nomenclatural words.
 NEVER_EPITHETS = PARTICLES | frozenset(
     "by in on at from ex et with near prope ad bei en por con cerca del sobre "
     "male males female females fem macho machos hembra hembras larva larvae "
@@ -99,6 +100,28 @@ SUBSPECIES_MARKERS = frozenset({"ssp", "subsp"})
 MARKERS = SUBSPECIES_MARKERS | {"var"}
 # Infraspecific markers the reader does not take: the name is read only in part.
 UNREAD_MARKERS = frozenset("f fo forma ab aberr morph morpha race natio subvar".split())
+# Other prepositions, articles and conjunctions in English, Spanish, Latin,
+# French and German: never an epithet, and not an end, so the name is read only
+# in part and nothing after them is sent (HARNESS.md section 6). A title-case
+# one may still be a genus or an author.
+UNREAD_WORDS = frozenset(
+    "about above across after against along among amongst around before behind "
+    "below beneath beside besides between beyond during for inside into of off "
+    "onto out outside over past per through throughout till toward towards "
+    "under underneath until unto upon via within without an the and or nor but "
+    "al ante bajo contra desde durante entre hacia hasta mediante para según "
+    "segun sin tras vía junto dentro fuera encima debajo detrás detras delante "
+    "alrededor lejos el los las lo un una unos unas ni pero "
+    "apud circa circum cum extra infra inter intra iuxta juxta ob post prae "
+    "praeter pro propter sec secundum sine sub super supra trans ultra versus "
+    "ac atque aut vel sed nec neque "
+    "au aux avec chez contre dans derrière derriere devant hors jusqu jusque "
+    "malgré malgre par parmi pendant pour près pres sans selon sous sur vers "
+    "les des une ou mais "
+    "am an auf aus bis durch für fur gegen hinter im mit nach neben ohne seit um "
+    "unter über uber vom vor während wahrend wegen zu zum zur zwischen die das "
+    "dem ein eine einem einen einer und oder".split()
+)
 HYBRID_SIGNS = frozenset({"×", "x", "X", "✕", "✖", "⨯"})
 SEX_SIGNS = frozenset("♀♂⚥")
 NOT_NAMES = QUALIFIERS | CLAUSES | NEVER_EPITHETS | MONTHS | ROMAN_MONTHS | MARKERS | UNREAD_MARKERS
@@ -214,9 +237,9 @@ def _ends_name(word: str) -> bool:
 def _epithet(word: str) -> bool:
     """An epithet as written, and nothing else in the word but trailing
     punctuation: lower-case letters with any accents and inner hyphens, or an
-    old capitalized epithet."""
+    old capitalized epithet; never a word the lists hold."""
     core = _core(word)
-    if len(core) < 2 or core.lower() in NOT_NAMES:
+    if len(core) < 2 or core.lower() in NOT_NAMES or core.lower() in UNREAD_WORDS:
         return False
     if CAPITALIZED_EPITHET.match(core):
         return True
@@ -293,11 +316,12 @@ def scientific_name(literal: str) -> ScientificName | None:
     inner hyphens, or an old capitalized epithet; a subspecies or variety marker
     with its epithet; and a bounded author-year authorship. A qualifier after
     the genus makes a genus-level identification. A word that ends the name
-    (a clause naming a person, a preposition, a sex, stage, type-status or
-    nomenclatural word, a month or a date) ends the reading, and any other word
-    the reader does not take marks the name read only in part. A word the
-    literal does not write is never sent, and neither is text that is no name
-    (PLAN 4.8)."""
+    (a clause naming a person, a preposition listed as an end, a sex, stage,
+    type-status or nomenclatural word, a month or a date) ends the reading, and
+    any other word the reader does not take, the other listed prepositions,
+    articles and conjunctions among them, marks the name read only in part. A
+    word the literal does not write is never sent, and neither is text that is
+    no name (PLAN 4.8)."""
     words = _normalized(literal).split(maxsplit=MAX_WORDS)[:MAX_WORDS]
     for index, word in enumerate(words):
         if _word(word) in CLAUSES:
@@ -486,14 +510,14 @@ def _shape_ok(payload: dict) -> bool:
     def key_ok(key) -> bool:
         if type(key) is int:
             return 0 <= key < MAX_KEY
-        return isinstance(key, str) and (key == "" or bool(KEY.match(key)))
+        return isinstance(key, str) and bool(KEY.match(key))
 
     def usage_ok(usage) -> bool:
         if usage is None:
             return True
         return (
             isinstance(usage, dict)
-            and key_ok(usage.get("key", ""))
+            and (usage.get("key") is None or key_ok(usage["key"]))
             and _text_ok(usage.get("name"))
             and bool(usage["name"])  # A usage names itself: the final value.
             and all(
