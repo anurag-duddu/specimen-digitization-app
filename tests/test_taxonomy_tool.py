@@ -231,9 +231,16 @@ MELLIFERA = usage("Apis mellifera Linnaeus, 1758", "SPECIES")
         ("Bombus cf. impatiens", "Bombus"),
         ("cf. Bombus impatiens", "Bombus impatiens"),
         ("Bombus? impatiens", "Bombus impatiens"),
-        # The residual in full (HARNESS.md section 6): after a name, title-case
-        # words and a year read as authorship, and a lower-case word no list
-        # holds reads as an epithet.
+        # What syntax cannot settle (HARNESS.md section 6): a word in a name's
+        # place reads as that part of the name. A lone title-case word is a
+        # genus, a patronym's or a place's ending a capitalized epithet, a
+        # parenthesized word a subgenus, title-case words and a year after a
+        # name authorship, and a lower-case word no list holds an epithet.
+        ("Davao", "Davao"),
+        ("Werner", "Werner"),
+        ("Epipsocus Hawaii", "Epipsocus Hawaii"),
+        ("Epipsocus Suzuki", "Epipsocus Suzuki"),
+        ("Epipsocus (Davao) 1946", "Epipsocus (Davao)"),
         ("Epipsocus Davao, Mindanao 1946", "Epipsocus Davao, Mindanao 1946"),
         ("Epipsocus corteza, Petén 1987", "Epipsocus corteza Petén 1987"),
         # Other listed prepositions, articles and conjunctions mark the name,
