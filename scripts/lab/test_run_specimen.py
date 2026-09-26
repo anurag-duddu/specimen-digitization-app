@@ -493,6 +493,7 @@ class DotSegmentLane(FakeLane):
                     "https://api.gbif.org/v1/%20/../occurrence/search", "https://api.gbif.org/v1;x/occurrence/search",
                     # #84 round 3: pinned here too; the last resolves to species match and is not counted
                     "https://api.gbif.org/v1/occurrence/;x/../search", "https://api.gbif.org/v1/occurrence//../search",
+                    "https://api.gbif.org/v1/occurrence/;/../search",  # #84 round 4: the eleventh form
                     "https://api.gbif.org/v1/%5C/../occurrence/search",
                     "https://api.gbif.org/v1/occurrence%3F/../../v2/species/match",
                     "https://api.gbif.org/v2/species/match?name=Epipsocus"):  # the last is species match
@@ -512,7 +513,7 @@ def test_the_parent_count_removes_dot_segments_and_reads_query_keys_in_the_url(t
     monkeypatch.setattr(http_effect, "bounded_http", fake_bounded_http)
     run(tmp_path, lane=DotSegmentLane())
     summary = json.loads((only_run(tmp_path) / "run.json").read_text())
-    assert summary["gbif_occurrence_requests"] == 19
+    assert summary["gbif_occurrence_requests"] == 20
 
 
 def test_a_receipt_blob_recording_an_occurrence_query_fails_stage_7(tmp_path, monkeypatch):
@@ -766,9 +767,14 @@ def test_a_ctrl_c_during_the_apps_request_stops_the_run_and_is_recorded(tmp_path
     from test_lab_lane import InterruptingAdapters, jpeg
     from specimen_digitization.application.api import SYNTHETIC_TEXT
 
-    lane = lab_lane.AppLane(tmp_path / "lane",
-                            adapters_factory=lambda blobs: InterruptingAdapters(blobs, SYNTHETIC_TEXT),
-                            persistence="sqlite", segmentation="sam3", subject=SUBJECT)
+    made = []
+
+    def interrupting(blobs):
+        made.append(InterruptingAdapters(blobs, SYNTHETIC_TEXT))
+        return made[-1]
+
+    lane = lab_lane.AppLane(tmp_path / "lane", adapters_factory=interrupting, persistence="sqlite",
+                            segmentation="sam3", subject=SUBJECT)
     image = jpeg()
     with pytest.raises(KeyboardInterrupt):
         run(tmp_path, lane=lane,
@@ -777,3 +783,4 @@ def test_a_ctrl_c_during_the_apps_request_stops_the_run_and_is_recorded(tmp_path
     ingest = next(p for p in summary["phases"] if p["name"] == "ingest")
     assert ingest["status"] == "failed" and "KeyboardInterrupt" in ingest["error"]
     assert summary["result"] == "error" and summary["costs"]["total_usd"] == pytest.approx(0.75)
+    assert made[0].readings_after > 0  # the drain's later paid calls still ran before the request returned

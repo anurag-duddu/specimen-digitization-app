@@ -433,3 +433,33 @@ def test_a_blob_holding_escaped_json_is_read_at_each_level():
     # #84 round 3: the blob's record branch applied only the record test, not the text test to its strings.
     inner = '{"url": "https:\\/\\/api.gbif.org\\/v1\\/occurrence\\/search"}'
     assert lab_checks.occurrence_blob(json.dumps({"context_json": inner}))
+
+
+def test_a_gbif_records_path_inside_a_value_or_a_key_counts():
+    # #84 round 4: round 3 read a value only as one whole path and skipped keys.
+    records = [{"kind": "lookup", "source": "gbif", "locator": value}
+               for value in ("GET /v1/occurrence/search?catalogNumber=1", "fetched /v1/occurrence/search",
+                             "path=/v1/occurrence/search")]
+    records.append({"kind": "lookup", "source": "gbif", "result": {"/v1/occurrence/search": "x"}})
+    for record in records:
+        assert stage_7_of(record)["status"] == "failed", record
+        assert lab_checks.occurrence_blob(json.dumps(record)), record
+
+
+def test_a_record_holding_escaped_json_counts_in_the_record_scan():
+    # #84 round 4: json.dumps doubled the escaped slashes, and only the blob scan read strings on their own.
+    inner = '{"url": "https:\\/\\/api.gbif.org\\/v1\\/occurrence\\/search"}'
+    assert stage_7_of({"kind": "authority", "source": "web", "context_json": inner})["status"] == "failed"
+
+
+def test_an_empty_port_and_idn_dots_name_api_gbif_org_in_stored_text():
+    # #84 round 4: httpx sends each of these to api.gbif.org.
+    for host in ("api.gbif.org:", "api\u3002gbif\u3002org", "api\uff0egbif\uff0eorg", "api\uff61gbif\uff61org"):
+        url = f"https://{host}/v1/occurrence/search"
+        assert lab_checks.occurrence_request(url), url
+        assert stage_7_of({"kind": "authority", "source": "web", "locator": url})["status"] == "failed", url
+
+
+def test_a_double_encoded_path_is_decoded_once_as_the_client_sends_it():
+    # #84 round 4: stated, not caught: httpx decodes once, so %252F stays an encoded slash in the path.
+    assert not lab_checks.occurrence_request("https://api.gbif.org/v1%252Foccurrence%252Fsearch")

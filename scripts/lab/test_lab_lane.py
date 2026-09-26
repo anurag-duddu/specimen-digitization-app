@@ -186,16 +186,22 @@ def test_a_ctrl_c_while_the_emulator_starts_stops_it(tmp_path, monkeypatch):
 
 
 class InterruptingAdapters(SyntheticAdapters):
-    """Sends this process a Ctrl-C while the app's /complete drain runs segment."""
+    """Sends this process a Ctrl-C while the app's /complete drain runs segment, and counts the readings after it."""
 
     def segment(self, specimen):
+        self.readings_after = 0
         os.kill(os.getpid(), signal.SIGINT)
         return super().segment(specimen)
 
+    def transcribe(self, specimen, region, route):
+        self.readings_after += 1
+        return super().transcribe(specimen, region, route)
+
 
 def test_a_ctrl_c_during_the_apps_request_is_raised_when_the_request_returns(tmp_path):
-    # #84 round 3: the test client turns a BaseException in a request into a 500, so the lane holds a Ctrl-C
-    # while a request runs and raises it once the request returns; the previous handler comes back after.
+    # #84 rounds 3-4: the test client swallows a BaseException raised during a request (a 500 if the app had not
+    # started its response, otherwise the endpoint's own response), so the lane holds a Ctrl-C while a request
+    # runs and raises it once the request returns; the previous handler comes back after.
     before = signal.getsignal(signal.SIGINT)
     lane = lab_lane.AppLane(tmp_path / "state",
                             adapters_factory=lambda blobs: InterruptingAdapters(blobs, SYNTHETIC_TEXT),
