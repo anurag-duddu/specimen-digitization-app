@@ -23,8 +23,11 @@ OCCURRENCE_KEYS = {"catalognumber", "recordedby", "occurrenceid", "institutionco
 MUSEUM_PUBLISHED = re.compile(r'\\*"museum_published\\*"\s*:\s*true')  # S8's check ran, escaped or not
 OCCURRENCE_SIGNAL = re.compile(r'\\*"occurrence\\*"\s*:\s*\\*"(?:supports|conflicts)')
 IDENTITY = ("source", "provider", "source_id", "tool", "tool_id")
-GBIF_HOST = re.compile(r"(?<![\w-])api\.gbif\.org\.?(?::\d+)?(?![\w.-])", re.I)  # a trailing dot or a port allowed
+DOTS = "[.\u3002\uff0e\uff61]"  # "." and the ideographic and fullwidth dots that IDNA reads as "."
+# api.gbif.org with a trailing dot, a port or an empty port allowed, as httpx sends to it
+GBIF_HOST = re.compile(rf"(?<![\w-])api{DOTS}gbif{DOTS}org{DOTS}?(?::\d*)?(?![\w\u3002\uff0e\uff61.-])", re.I)
 URL_TAIL = re.compile(r"[^\s\"'<>\\]*")  # a URL's path, query and fragment as written
+PATH_TOKEN = re.compile(r"/[^\s\"'<>\\]*")
 SCHEME = re.compile(r"[a-z][a-z0-9+.-]*://", re.I)
 PROVENANCE = ("model_id", "provider", "prompt_version", "input_sha256", "raw_ref", "raw_sha256")
 # Labels of the ten pilot slides as fractions of the frame's width, full height (S8's
@@ -237,13 +240,14 @@ def decoded(text):
 
 
 def gbif_host(host):
-    return decoded(host).rstrip(".") == "api.gbif.org"  # a trailing dot names the same host
+    return re.sub(DOTS, ".", decoded(host)).rstrip(".") == "api.gbif.org"  # a trailing dot names the same host
 
 
 def client_paths(url):
-    """A URL's path as the client sends it (httpx.URL: "." and ".." removed on the path as written, a ".." above
-    the root included) and as a server may then read it (percent-decoded, ";" parameters dropped, slashes merged,
-    "." and ".." resolved again), in lower case. A literal backslash stays a character."""
+    """A URL's path first as httpx.URL builds it ("." and ".." removed on the path as written, a ".." above the
+    root included, then percent-decoded once, as .path is), and again as a server may then read it (";" parameters
+    dropped, slashes merged, "." and ".." resolved again), in lower case. Decoded only once, a double-encoded path
+    does not count; a literal backslash stays a character."""
     try:
         sent = httpx.URL(str(url)).path
     except Exception:  # not a URL the client could send
@@ -257,8 +261,9 @@ def gbif_urls(text):
     """Every api.gbif.org URL in stored text, looked for as written and again after each of up to four decoding
     steps. A URL found at one level has its host and path blanked before the next, so its own escapes are never
     re-read as structure; its query stays, and a URL encoded inside another surfaces a level down."""
-    text = str(text).replace("\\/", "/")  # JSON's escaped slashes
+    text = str(text)
     for _ in range(5):
+        text = text.replace("\\/", "/")  # JSON's escaped slashes, undone at every step
         spans = []
         for match in GBIF_HOST.finditer(text):
             tail = URL_TAIL.match(text, match.end()).group(0)
@@ -274,8 +279,9 @@ def gbif_urls(text):
 
 
 def value_paths(value):
-    """A GBIF record's string value read as a path: an absolute URL on any host, a path from the root, a relative
-    path, which resolves from the root, or a "//" reference, read both as a host and path and as a path."""
+    """A GBIF record's string read as paths: the whole string as an absolute URL on any host, a path from the
+    root, a relative path resolved from the root, or a "//" reference, read both as a host and path and as a path;
+    and every "/" token inside it as a path from the root."""
     value = str(value).strip()
     if SCHEME.match(value):
         urls = [value]
@@ -283,13 +289,18 @@ def value_paths(value):
         urls = ["https:" + value, "https://api.gbif.org" + value]
     else:
         urls = ["https://api.gbif.org" + ("" if value.startswith("/") else "/") + value]
+    for token in PATH_TOKEN.findall(value):
+        urls += ["https:" + token, "https://api.gbif.org" + token] if token.startswith("//") else [
+            "https://api.gbif.org" + token]
     return [path for url in urls for path in client_paths(url)]
 
 
 def strings_in(value, depth=0):
-    """Every string in a parsed value; a string that holds JSON is parsed and read too, four levels deep."""
+    """Every string in a parsed value, keys included; a string that holds JSON is parsed and read too, four
+    levels deep."""
     if isinstance(value, dict):
-        for item in value.values():
+        for key, item in value.items():
+            yield str(key)
             yield from strings_in(item, depth)
     elif isinstance(value, list):
         for item in value:
@@ -380,7 +391,8 @@ def gbif_calls(runs):
             if not isinstance(record, dict) or held_by_policy(record):
                 continue
             version = str(record.get("adapter_version") or record.get("tool_version") or "").lower()
-            if occurrence_request(json.dumps(record, default=str)) or occurrence_record(record):
+            if (occurrence_request(json.dumps(record, default=str)) or occurrence_record(record)
+                    or any(occurrence_request(value) for value in strings_in(record))):
                 d4.append(f"{where}/{name}")
             elif "gbif_gadm" in identity(record) or version.startswith("gbif-gadm"):
                 gadm.append(f"{where}/{name}")

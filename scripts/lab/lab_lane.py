@@ -103,9 +103,9 @@ class AppLane:
                 self.restore_sigint()
 
     def on_sigint(self, signum, frame):
-        """The test client turns a BaseException raised during a request into a 500, so a first Ctrl-C during one
-        of the app's requests is held until the request returns, when call() raises it. Any other, a second one
-        included, is raised at once."""
+        """The test client swallows a BaseException raised during one of the app's requests (a 500 if the app had
+        not started its response, otherwise the endpoint's own response), so a first Ctrl-C during a request is
+        held until the request returns, when call() raises it. Outside a request, a Ctrl-C is raised at once."""
         if self.in_request and not self.interrupted:
             self.interrupted = True
             return
