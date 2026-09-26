@@ -290,41 +290,66 @@ that is S4's stated rule for the Google tool (#113), not a type check.
 
 **`taxonomy_verifier`** (`application/taxonomy_tool.py`). The query is the
 scientific name the literal writes, read from its leading words. Nothing the
-literal does not write is sent, and neither is text that is no name. This is
-S4's reading of PLAN 4.8 and `GBIF.md` 109, as the steward's reviews of rounds 1
-and 2 tightened it:
+literal does not write is sent, and neither is text that is no name. The reader
+fails closed (the steward's review of round 3): a word it does not take marks
+the name read only in part. This is S4's reading of PLAN 4.8 and `GBIF.md` 109,
+as the steward's reviews of rounds 1 to 3 tightened it:
+- **First** the text is normalized to NFC, and format characters (zero-width
+  spaces, soft hyphens and the like) are dropped.
 - **The name**: a title-case genus; optionally a parenthesized subgenus, written
   out or abbreviated ("(Pyrobombus)", "(P.)"); epithets in lower case, with any
-  accents or hyphens as written ("impatiëns", "c-album"), or an old capitalized
-  epithet with a patronym's or a place's ending ("Smithi", "Canadensis"); and a
+  accents and inner hyphens ("impatiëns", "c-album"), or an old capitalized
+  epithet with a patronym's or a place's ending ("Smithi", "Canadensis") that
+  does not begin an author-year authorship ("Rossi, 1790" is an author); and a
   subspecies or variety marker with its epithet ("ssp.", "var."). Trailing
   punctuation is not part of a word, and a word ending in a comma or a period
   ends the name.
-- **What ends it**: a qualifier ("sp. 1", "cf."), a hybrid sign ("×", or "x"
-  standing alone), and words that are never epithets: a person clause,
-  abbreviated or spelled out ("det.", "leg.", "coll.", "ident.", "determined",
-  "collected"), the words by, in, on, at, from, ex and de, and sex and
-  life-stage words ("female", "larva"). Nothing after them is read.
+- **A qualifier after the genus** ("sp. 1", "cf.", "aff.", "nr.") makes a
+  genus-level identification: the genus is asked and may clear, and the species
+  is never asked (the coordinator's reading of G25 and G28 at 01:11Z on
+  2026-09-26, coordinator.md:504). A qualifier or a question mark before the
+  genus or on it ("cf. Bombus impatiens", "Bombus? impatiens") marks the genus
+  doubtful, so the name is read only in part.
+- **Words that end the name**, so nothing after them is read and the name is
+  not marked:
+  - a clause naming a person, in English, Spanish, Latin, French or German,
+    abbreviated or spelled out ("det.", "coll.", "determinado", "colectado",
+    "determinavit", "lgt.", "vid.", "teste", "dét.", "Sammler");
+  - prepositions and "et" in those languages ("in", "en", "por", "prope",
+    "bei", "with"), and the particles of an author's name ("de", "van", "du",
+    "la"), which may still begin one;
+  - sex, life-stage, type-status and nomenclatural words ("female", "fem.",
+    "juv.", "imago", "paratype", "nov.", "group");
+  - months in full or abbreviated, in English and Spanish ("June", "Aug.",
+    "julio"), and the Roman months I to XII but X, which is also a hybrid sign;
+  - a number or a written date ("1946", "13-5-48", "12.v.1948"), and sex signs
+    ("♀").
 - **Authorship**, only in the author-year form and bounded: one to four authors
-  (title-case surnames, with particles such as "de" and initials such as "F."),
-  joined by "&", "et" or a comma, then a year, in parentheses or not
-  ("Linnaeus, 1758", "(de Geer, 1775)", "Smith & Jones, 1901"). A year alone
-  ("Epipsocus 1946") or a place before a year ("Davao City 1946", "Mt. Apo
-  1946") is no authorship, and neither is sent.
+  (title-case surnames, never a month or a Roman month, with particles such as
+  "de" and initials such as "F."), joined by "&", "et" or a comma, then a year,
+  in parentheses or not ("Linnaeus, 1758", "(de Geer, 1775)", "Smith & Jones,
+  1901").
 - **Bounds**: only the first 40 words are read, a literal with a word over 64
   characters before any person clause writes no name, and authorship is at most
   four authors and 200 characters.
-- **A name read only in part never succeeds.** When a genus is followed by a
-  word that could be an epithet but is none the reader takes ("Bombus
-  Pennsylvanicus", "Epipsocus Davao City 1946"), or the name has a hybrid sign
-  ("Xus yus × zus"), the query is the name as far as it was read, without that
-  word, and the match can only be `ambiguous`: the result warns
-  `taxonomy_name_partly_read`, and the lookup records why (`partly_read`).
+- **A name read only in part never succeeds.** Any other word after the name or
+  its authorship marks it, and so do a hybrid sign ("×", "x", "X", "✕"), a
+  marker the reader does not take ("ab.", "f.", "forma", "morph"), a marker
+  without its epithet ("ssp. Zus") and a doubt on the genus. The query is the
+  name as far as it was read, without the rest, and the match can only be
+  `ambiguous`: the result warns `taxonomy_name_partly_read`, and the lookup
+  records why (`partly_read`). So "Coccinella 7-punctata", "Bombus impatiens?",
+  "Bombus 'impatiens'", "Bombus impa-" at a line's end, "Bombus impatiens /
+  fervidus", "Epipsocus Mt. Apo 1946", "Apis mellifera L." (an author without a
+  year) and "Epipsocus Hagen, 1866 Davao" go to review, never clearing at
+  genus or species.
 - **What syntax cannot settle** (S4's reading): a lone title-case word such as
   "Davao" or "Werner" reads as a genus; a title-case word with a patronym's or a
   place's ending, such as "Hawaii" or "Suzuki", reads as a capitalized epithet;
-  "(Davao)" reads as a subgenus; and a surname and year after a name, such as
-  "Werner, 1946", reads as authorship. Each is then sent as part of the name.
+  "(Davao)" reads as a subgenus; and after a name, a title-case word and a year
+  ("Genus Word Year": "Epipsocus Davao 1946", "Epipsocus Werner, 1946") read as
+  authorship. Each is then sent as part of the name; no other place or date
+  after a name is.
 
 A literal that begins with no genus ("Sp. 30 ♀ Davao", "det. Mockford", "Coll.
 F. G. Werner", "collected by Werner 1946") is `no_match` with no request. The
@@ -375,14 +400,19 @@ and the checklist key (`GBIF.md` 107-114; PLAN 4.8).
   included, is never `malformed_response`.
 - A body whose parts do not have the types GBIF documents is
   `malformed_response`, never an exception: a usage, an alternative or its
-  diagnostics that is not an object; a name, rank or status that is not a
-  string; a name over 500 characters, a rank or status over 40, or a key that
-  is neither a string of at most 64 characters nor a non-negative integer; a
-  classification element that is not an object with a string name and rank; an
-  object that gives a key twice; or nesting deeper than 32 levels.
+  diagnostics that is not an object; a usage without a name; a name, canonical
+  name or authorship over 500 characters or with a control or format
+  character; a rank or status outside the values GBIF and ChecklistBank
+  document; a key that is neither 1 to 32 letters and digits nor an integer
+  from 0 below 10^12; an alternative's match type outside GBIF's; a
+  classification element that is not an object with such a name and rank; an
+  object that gives a key twice; or nesting deeper than 32 levels, in the match
+  body or in the index metadata the lookup stores (the steward's review of
+  round 3).
 
-Every GBIF candidate carries `scientificName`, always GBIF's own `name` (GBIF
-v2's field, within 500 characters) and never a body's `scientificName`, so the
+Every GBIF candidate is a usage's documented fields alone (key, name,
+canonical name, authorship, rank and status), with `scientificName` always
+GBIF's own `name`, never a body's field or a usage nested inside one, so the
 reviewer's existing `taxonomy_resolution` decision can select it and stores
 GBIF's name. GBIF's usage,
 accepted usage, classification and alternatives are kept as `GBIF.md` 134-160's
@@ -399,9 +429,11 @@ against anything else) the result carries the warning
 `taxonomy_source_disagreement:{source}`; when one is unavailable after its
 retries, or answers a truncated or malformed body (which is not retried),
 `taxonomy_support_unavailable:{source}`. An answer of a type its API does not
-document (GNV's `matchType` outside its list, COL's `match` not a boolean), and
-a body in an encoding the fetch cannot read, are malformed: never retried, and
-never a disagreement. BugGuide is not called.
+document (GNV's `matchType` outside its list or a `taxonomicStatus` that is
+not a string; COL's `match` not a boolean, a `type` that is not a string or a
+`usage` that is not an object), and a body in an encoding the fetch cannot
+read, are malformed, with the sanitized error `malformed_response`: never
+retried, and never a disagreement. BugGuide is not called.
 
 **One deadline.** The tool has 60 seconds in all, half the default external
 step timeout (S4's choice), and GBIF comes first: GBIF's attempts, and each
