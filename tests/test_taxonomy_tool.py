@@ -9,6 +9,11 @@ import httpx
 import pytest
 
 from specimen_digitization.application.domain import LookupStatus as S
+from specimen_digitization.application.lookup import (
+    CLAUSES,
+    NEVER_EPITHETS,
+    scientific_name,
+)
 from specimen_digitization.application.storage import LocalBlobs
 from specimen_digitization.application.taxonomy_tool import query_name, verify_taxon
 
@@ -149,6 +154,15 @@ MELLIFERA = usage("Apis mellifera Linnaeus, 1758", "SPECIES")
         ("Bombus impatiens F. Smith, 1854", "Bombus impatiens F. Smith, 1854"),
         # What syntax cannot settle (HARNESS.md section 6): read as authorship.
         ("Epipsocus Werner, 1946", "Epipsocus Werner, 1946"),
+        # A comma ends the name; four authors at most, 200 characters at most.
+        ("Xus yus, zus", "Xus yus"),
+        ("Bombus, impatiens", "Bombus"),
+        ("Epipsocus Aa & Bb & Cc & Dd, 1946", "Epipsocus Aa & Bb & Cc & Dd, 1946"),
+        ("Epipsocus Aa & Bb & Cc & Dd & Ee, 1946", "Epipsocus"),
+        (
+            "Epipsocus " + " & ".join(c + c.lower() * 59 for c in "ABCD") + ", 1946",
+            "Epipsocus",
+        ),
         ("Sp. 30 ♀", None),
         ("sp 22", None),
         ("Sp 22", None),
@@ -975,3 +989,46 @@ def test_a_gbif_body_nested_too_deep_to_store_is_malformed(tmp_path):
 
     assert result.outcome == S.MALFORMED == lookup.status
     assert lookup.model_dump_json()
+
+
+def test_nothing_after_a_person_clause_is_read():
+    # The bounds apply to the name's words, not to a note after a clause.
+    assert query_name("Epipsocus det. " + "M" * 70_000) == "Epipsocus"
+
+
+@pytest.mark.parametrize(
+    "literal",
+    [
+        "Epipsocus Mt. Apo 1946",
+        "Epipsocus in Davao 1946",
+        "Epipsocus 1946",
+        "Epipsocus female",
+        "Epipsocus det. Mockford",
+    ],
+)
+def test_a_genus_followed_by_text_that_is_no_epithet_clears_at_genus(tmp_path, literal):
+    # Neither an abbreviation such as "Mt.", nor a word that is never an
+    # epithet, nor a year leaves the name read only in part.
+    result, lookup = run(tmp_path, literal, transport(gbif("EXACT", EPIPSOCUS)))
+
+    assert result.outcome == S.SUCCESS == lookup.status
+    assert "partly_read" not in lookup.metadata
+
+
+def test_an_alternative_that_is_the_usage_itself_is_no_homonym(tmp_path):
+    reply = gbif(
+        "EXACT",
+        usage("Apis mellifera", "SPECIES"),
+        [alternative("Apis mellifera", "EXACT", "ACCEPTED", "K1")],
+    )
+
+    assert run(tmp_path, "Apis mellifera", transport(reply)).result.outcome == S.SUCCESS
+
+
+@pytest.mark.parametrize("word", sorted(CLAUSES | NEVER_EPITHETS))
+def test_every_word_that_ends_the_name_ends_it(word):
+    after_genus = scientific_name(f"Xus {word} zus")
+    after_species = scientific_name(f"Xus yus {word} zus")
+
+    assert (after_genus.query, after_genus.partly_read) == ("Xus", None)
+    assert (after_species.query, after_species.partly_read) == ("Xus yus", None)

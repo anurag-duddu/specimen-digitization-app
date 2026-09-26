@@ -123,7 +123,7 @@ class GeoreferenceCandidate(Frozen):
     uncertainty_m: float | None = Field(default=None, ge=0)
     datum: str | None = None
     protocol: str | None = None
-    sources: list[SourceRef] = Field(default_factory=list)
+    sources: list[SourceRef] = Field(min_length=1)  # Every point is cited.
     coordinate_precision: float | None = None
     footprint_wkt: str | None = None
     spatial_fit: float | None = None

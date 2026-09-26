@@ -11,7 +11,6 @@ called.
 from __future__ import annotations
 
 import hashlib
-import json
 import time
 from typing import NamedTuple
 from urllib.parse import quote
@@ -25,11 +24,12 @@ from .lookup import (
     SYNONYM_STATUSES,
     GbifTaxonomy,
     no_name_lookup,
+    parse_json,
     scientific_name,
 )
 from .reliability import retry_after
 
-TOOL_VERSION = "taxonomy-verifier-v2"
+TOOL_VERSION = "taxonomy-verifier-v3"
 GNV_URL = "https://verifier.globalnames.org/api/v1/verifications/"
 # The Catalogue of Life release, pinned in the evidence (PRD 543): COL26.9,
 # issued 2026-09-11, the release the `3LR` alias named on 2026-09-25.
@@ -54,6 +54,12 @@ ANSWERS = frozenset(
         LookupStatus.EMPTY,
     }
 )
+# The match types Global Names Verifier documents; any other is malformed.
+GNV_MATCH_TYPES = frozenset(
+    {"NoMatch", "Exact", "Fuzzy", "PartialExact", "PartialFuzzy", "FacetedSearch", "Virus"}
+)
+# A body the fetch could not read whole or decode: malformed, never retried.
+UNREADABLE = frozenset({"truncated", "unsupported_encoding"})
 STATUSES = {
     401: LookupStatus.AUTHENTICATION,
     403: LookupStatus.AUTHORIZATION,
@@ -75,7 +81,8 @@ def query_name(literal: str) -> str | None:
 
 def _get(url, params, client, timeout):
     """One bounded GET: (status code, body, Retry-After, failure code). A
-    truncated body is `truncated`, which the source call records as malformed."""
+    truncated body is `truncated`, and one in an encoding the fetch cannot read
+    `unsupported_encoding`; the source call records either as malformed."""
     try:
         if client is not None:
             response = client.get(url, params=params, timeout=timeout)
@@ -92,8 +99,9 @@ def _get(url, params, client, timeout):
         )
         if captured["failure"]:
             return None, b"", "", captured["failure"]
-        if captured["truncated"]:
-            return captured["status_code"], captured["body"], "", "truncated"
+        if captured["truncated"] or captured.get("unsupported_encoding"):
+            failure = "truncated" if captured["truncated"] else "unsupported_encoding"
+            return captured["status_code"], captured["body"], "", failure
         return captured["status_code"], captured["body"], captured["retry_after"], None
     except httpx.TimeoutException:
         return None, b"", "", "timeout"
@@ -110,14 +118,15 @@ def _source_call(source, query, attempt, blobs, fetched, decide) -> SourceCall:
         "attempt": attempt,
         "license": LICENSES[source],
     }
-    if failure == "truncated":
-        # A body cut at the size limit is malformed and not retried (HAR-009).
+    if failure in UNREADABLE:
+        # A body cut at the size limit, or in an encoding the fetch cannot
+        # read, is malformed and not retried (HAR-009).
         return SourceCall(
             **call,
             outcome=LookupStatus.MALFORMED,
             raw_ref=blobs.put(body),
             response_sha256=hashlib.sha256(body).hexdigest(),
-            sanitized_error="truncated",
+            sanitized_error=failure,
         )
     if failure or status != 200:
         outcome = (
@@ -132,7 +141,7 @@ def _source_call(source, query, attempt, blobs, fetched, decide) -> SourceCall:
             sanitized_error=failure or f"http_{status}",
         )
     try:
-        outcome = decide(json.loads(body))
+        outcome = decide(parse_json(body))
     except (ValueError, TypeError, AttributeError, IndexError, KeyError, RecursionError):
         outcome = LookupStatus.MALFORMED
     return SourceCall(
@@ -146,9 +155,13 @@ def _source_call(source, query, attempt, blobs, fetched, decide) -> SourceCall:
 def _gnv_outcome(payload) -> LookupStatus:
     first = payload["names"][0]
     match = first["matchType"]
+    best = first.get("bestResult") or {}
+    if not isinstance(match, str) or match not in GNV_MATCH_TYPES:
+        raise ValueError("gnv_match_type")  # Malformed, never a disagreement.
+    if not isinstance(best, dict):
+        raise ValueError("gnv_best_result")
     if match == "NoMatch":
         return LookupStatus.NO_MATCH
-    best = first.get("bestResult") or {}
     if match == "Exact" and best.get("taxonomicStatus") == "Accepted":
         return LookupStatus.SUCCESS
     return LookupStatus.AMBIGUOUS
@@ -156,8 +169,10 @@ def _gnv_outcome(payload) -> LookupStatus:
 
 def _col_outcome(name):
     def decide(payload) -> LookupStatus:
-        usage = payload.get("usage") or {}
-        if payload.get("type") == "none" or not payload.get("match"):
+        match, usage = payload.get("match"), payload.get("usage") or {}
+        if not isinstance(match, bool) or not isinstance(usage, dict):
+            raise ValueError("col_match")  # Malformed, never a disagreement.
+        if payload.get("type") == "none" or not match:
             return LookupStatus.NO_MATCH
         if usage.get("status") == "accepted" and usage.get("name") == name:
             return LookupStatus.SUCCESS
@@ -232,6 +247,7 @@ def verify_taxon(
             response_sha256=found.digest,
             license=LICENSES["gbif"],
             retry_after_seconds=found.retry_after_seconds,
+            sanitized_error=None if found.status in ANSWERS else found.status.value,
         )
 
     calls = with_retries(gbif_call, sleep=sleep, deadline=end, clock=clock)
@@ -280,7 +296,8 @@ def verify_taxon(
         )
     gnv, col = support
     decided = lookups[-1]
-    warnings = []
+    # A name read only in part never succeeds (section 6).
+    warnings = ["taxonomy_name_partly_read"] if parsed.partly_read else []
     for final in (gnv[-1], col[-1]):
         if final.outcome not in ANSWERS:
             warnings.append(f"taxonomy_support_unavailable:{final.source}")
