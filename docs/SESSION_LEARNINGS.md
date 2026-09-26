@@ -11967,3 +11967,24 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (4) `serve-local.sh` puts PostgreSQL's socket in `$TMPDIR`. A long `TMPDIR`, such as a session scratchpad, overflows the Unix socket path limit and `pg_ctl` cannot start; keep the default.
 - Failed approaches: one migration that swapped the unique (the emulator dropped the old index before creating the new one); removing `specimen_unique_1` from `schema.gql` alone (a `COMPATIBLE` apply never drops it).
 - Remaining follow-ups: S2's named-exception sync in #99, so CI admits step 2; S2's T3d before any release runs the drop on a database where #88's step 1 is live; T2b (stages 6 to 8), stacked on this; T3, the thread API.
+### 2026-09-25 — Go-live data contract (S5, in #146): GBIF's success rule after #109's rulings
+
+- Task: the coordinator's message to S5, just after its 23:58Z ruling. `DATA_CONTRACT.md` 324-333 on main was stale after the rulings on #109 recorded in `status/coordinator.md`:
+  - 22:46Z on 2026-09-25: what a homonym conflict is, and that an exact synonym whose accepted usage passes GBIF.md 126 clears (G28, G1);
+  - 23:58Z: a missing `acceptedUsage` status counts as accepted, and any other status goes to review.
+  The coordinator offered S5's new pull request after #171, or whichever S5 pull request is in turn first. #146 is. The steward routed the same lines (ledger, 2026-09-25 23:57Z).
+- Branch: `golive/data-projection` (#146), from `fecbe59`, pushed with #146's merge of main.
+- Outcome:
+  - GBIF's `success` is an `EXACT` match, for a name read in full, in class Insecta, at the label's rank and with no homonym conflict. It is either an `ACCEPTED` usage with a key, or a synonym (not pro parte) whose accepted usage passes the same test.
+  - A cleared synonym's accepted usage is the settled value (`normalized` its name, `authority_id` its key), and the label's spelling stays the verbatim.
+  - A homonym conflict is another `EXACT` same-name alternative by other authorship in class Insecta, whatever its status. S4's HARNESS.md section 6 has the cases where GBIF leaves out a class, a name or an authorship.
+  - The rule lists the `ambiguous` cases; a name read only in part is one.
+  - Each clause follows #109's head `c9af56f`:
+    - `lookup.py`: `homonym_conflict` (463), `row_one` (490), `cleared_synonym` (505, the status at 521), the candidates and metadata it records (763-778), and the name read only in part (790-794);
+    - `workflow.py` 560-568, which settles the first candidate;
+    - `HARNESS.md` 399-428.
+- Validation actually run: the pre-commit hooks. This is contract text only, with no code or test in S5's files; #109's tests cover the rule itself.
+- Durable learnings:
+  - (1) A contract line that restates another session's rule goes stale with that session's rulings. Cite the ruling times and the code the text follows, so a reviewer can check both.
+  - (2) Re-check such a line against the other pull request's current head before pushing. The text was first written against #109's `aebf0790`. By `c9af56f`, #109 had added three cases that text lacked: a pro parte synonym never clears, a name read only in part never succeeds, and the homonym cases where GBIF leaves a field out. The contract now points to HARNESS.md for those edge cases rather than restating them.
+- Remaining follow-ups: #146's turn, after S2's #99: merge main again, "PR #146 ready", S2's re-sign.

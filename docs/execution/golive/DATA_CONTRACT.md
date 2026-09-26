@@ -337,16 +337,32 @@ run, not in SQL.
   for GBIF). Both are set only from a call whose outcome is `success`. A field
   without a lookup that clears across labels on identical texts has that common
   text in `normalized`, since `literal` is None there (G32).
-  - GBIF's `success` (S4's T3a, under the coordinator's GBIF.md ruling and G25)
-    is an `EXACT` match of an `ACCEPTED` usage with a key, in class Insecta, at
-    the rank the label's name gives (a genus alone `GENUS`, a binomial
-    `SPECIES`, a trinomial `SUBSPECIES`), with no live homonym.
-  - `FUZZY`, `VARIANT`, `HIGHERRANK` and an exact synonym are `ambiguous`
-    (GBIF.md 127-128). The label name stays the verbatim with no settled value;
-    the reason codes the queue then records are S4's policy. For a synonym,
-    S4 appends GBIF's `acceptedUsage` to that lookup's `candidates`, where
-    the reviewer's `taxonomy_resolution` decision can select it: the
-    accepted usage is proposed separately and never replaces the verbatim.
+  - GBIF's `success` (S4's T3a, under the coordinator's GBIF.md ruling and
+    G25, as its rulings on #109 of 2026-09-25 at 22:46Z and 23:58Z refine it;
+    S4's HARNESS.md section 6, in #109, has the whole rule) is an `EXACT`
+    match, for a name read in full, in class Insecta, at the rank the label's
+    name gives (a genus alone `GENUS`, one epithet `SPECIES`, a subspecies or
+    variety its own rank), with no homonym conflict, of either:
+    - an `ACCEPTED` usage with a key (GBIF.md 126); or
+    - a synonym, not pro parte, whose accepted usage has a key, the same rank
+      and the status `ACCEPTED` or none, since GBIF v2's `acceptedUsage` is
+      accepted by definition; any other status goes to review (GBIF.md 127;
+      G28, G1). The accepted usage is then the settled value: `normalized` is
+      its name and `authority_id` its key. The label's spelling stays the
+      verbatim, and the lookup keeps the synonym, with its status, in its
+      `candidates` and the accepted usage in its metadata.
+  - A homonym conflict (GBIF.md 129) is another `EXACT` alternative with the
+    same canonical name and other authorship in class Insecta, whatever its
+    status. HARNESS.md section 6 says how an alternative counts when GBIF
+    leaves out its class, its canonical name or an authorship.
+  - These are `ambiguous` (GBIF.md 127-130): a fuzzy, variant or higher-rank
+    match, a homonym conflict, an exact match failing row 126, an exact
+    synonym that doesn't clear, and a name read only in part. The label name
+    stays the verbatim with no settled value; the reason codes the queue then
+    records are S4's policy. For a synonym that doesn't clear, S4 appends
+    GBIF's `acceptedUsage` to that lookup's `candidates`, where the
+    reviewer's `taxonomy_resolution` decision can select it: the accepted
+    usage is proposed separately and never replaces the verbatim.
 - `evidence_relations: dict[str, Literal["decides", "supports", "contradicts"]]`
   (G23). It has exactly one entry per id in `evidence_ids`, with no default, and
   maps each to that source's relation to the value: GBIF `decides`; Global Names
