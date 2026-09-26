@@ -5,6 +5,7 @@ import json
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
+from urllib.parse import unquote_plus
 
 import httpx
 import pytest
@@ -225,6 +226,8 @@ MELLIFERA = usage("Apis mellifera Linnaeus, 1758", "SPECIES")
         ("Formica rufa group", "Formica rufa"),
         ("Xus yus sensu Smith", "Xus yus"),
         ("Xus yus Rossi, 1790", "Xus yus Rossi, 1790"),
+        # A joiner needs an author after it (HARNESS.md section 6).
+        ("Xus yus Smith & 1900", "Xus yus"),
         ("Apis mellifera ligustica", "Apis mellifera ligustica"),
         # The coordinator's reading of 01:11Z on 2026-09-26: a qualifier after
         # the genus is a genus-level identification; before it, a doubt.
@@ -1370,6 +1373,66 @@ OTHER_WORDS = [
     "mit",
     "und",
 ]
+
+
+PLACE_WORDS = [
+    # The coordinator's pins.
+    ("Epipsocus Davao, Mindanao 1946", ["Davao", "Mindanao"], "Epipsocus"),
+    ("Epipsocus corteza, Petén 1987", ["Petén"], "Epipsocus corteza"),
+    # Folded as PLAN 4.8 folds, word by word, from place-field literals and
+    # unassigned locality text alike.
+    ("Epipsocus corteza, Petén 1987", ["PETEN"], "Epipsocus corteza"),
+    ("Epipsocus Davao, Mindanao 1946", ["Davao City", "Mindanao, P.I."], "Epipsocus"),
+    # A real author who shares a word with the place text loses it.
+    ("Xus yus Davao, 1900", ["Davao"], "Xus yus"),
+    # What remains goes through the rules above: a leading "&" joins no
+    # author, so the name is read only in part.
+    ("Xus yus Davao & Smith, 1900", ["Davao"], "Xus yus"),
+    # Only the authorship loses place words, and only the place text's.
+    ("Xus yus Smith, 1900", ["Davao"], "Xus yus Smith, 1900"),
+    ("Epipsocus Davao, Mindanao 1946", ["Davao"], "Epipsocus Mindanao 1946"),
+    ("Epipsocus Hagen, 1866 Davao", ["Davao"], "Epipsocus Hagen, 1866"),
+]
+
+
+@pytest.mark.parametrize("literal,places,query", PLACE_WORDS)
+def test_the_authorship_loses_every_place_word_of_the_reading(
+    tmp_path, literal, places, query
+):
+    # The coordinator's ruling of 02:07Z on 2026-09-26, applying PLAN 4.8: the
+    # taxonomy tools send the taxon name, never place text.
+    requests = []
+
+    run(tmp_path, literal, transport(gbif("NONE"), requests=requests), place_text=places)
+
+    sent = next(r for r in requests if r.url.path == "/v2/species/match")
+    assert sent.url.params["scientificName"] == query
+
+
+def folded(text):
+    decomposed = unicodedata.normalize("NFKD", text.casefold())
+    kept = "".join(
+        c if c.isalnum() else " " for c in decomposed if not unicodedata.combining(c)
+    )
+    return set(kept.split())
+
+
+@pytest.mark.parametrize("literal,places,query", PLACE_WORDS[:2])
+def test_no_request_carries_a_place_word_of_the_reading(tmp_path, literal, places, query):
+    requests = []
+
+    run(
+        tmp_path,
+        literal,
+        transport(gbif("NONE"), gnv=GNV_NONE, col=COL_NONE, requests=requests),
+        place_text=places,
+    )
+
+    words = set().union(*(folded(place) for place in places))
+    assert requests
+    for request in requests:
+        sent = unquote_plus(str(request.url)) + " " + request.content.decode()
+        assert not words & folded(sent)
 
 
 @pytest.mark.parametrize("word", OTHER_WORDS)

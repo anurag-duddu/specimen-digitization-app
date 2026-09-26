@@ -336,6 +336,23 @@ as the steward's reviews of rounds 1 to 3 tightened it:
   "de" and initials such as "F."), joined by "&", "et" or a comma, then a year,
   in parentheses or not ("Linnaeus, 1758", "(de Geer, 1775)", "Smith & Jones,
   1901").
+  A joiner needs an author after it, so "Smith & 1900" is no authorship.
+- **Place words leave the authorship** (the coordinator's ruling of 02:07Z on
+  2026-09-26, coordinator.md:515, applying PLAN 4.8's "The taxonomy tools send
+  the taxon name, never place text"). Before a taxonomy request is built, every
+  token of the authorship that shares a folded word with the reading's
+  place-field literals or unassigned locality text is dropped, folded as PLAN
+  4.8 folds (case, diacritics and punctuation set aside), and the name is read
+  again, until its authorship holds no such word. What remains is sent or
+  refused by the rules above. So "Epipsocus Davao, Mindanao 1946", with "Davao"
+  and "Mindanao" in the place text, is asked as "Epipsocus", and "Epipsocus
+  corteza, Petén 1987", with "Petén", as "Epipsocus corteza". A real author who
+  shares a word with the place text loses it ("Xus yus Davao, 1900" is asked
+  as "Xus yus"): a weaker match, which the ruling accepts as failing safely.
+  The tool takes the place text from its caller, the harness. The workflow's
+  `lookup` step passes the literals of the run's place fields (`country`,
+  `province_state`, `county`, `city`, `precise_location`); it holds no
+  unassigned locality text, so there only those words leave.
 - **Bounds**: only the first 40 words are read, a literal with a word over 64
   characters before any person clause writes no name, and authorship is at most
   four authors and 200 characters.
@@ -359,8 +376,10 @@ as the steward's reviews of rounds 1 to 3 tightened it:
   words and a year in the author-year form read as authorship ("Genus Word
   Year": "Epipsocus Davao 1946", "Epipsocus Werner, 1946", "Epipsocus Davao,
   Mindanao 1946", "Epipsocus corteza, Petén 1987"). Each is then sent as part
-  of the name. Nothing else is: the query holds only the name's parts, as far
-  as they were read.
+  of the name, but for the place words that leave the authorship (above), so a
+  place the reading's place text does not hold, or a person, can still go out
+  as authorship. Nothing else is sent: the query holds only the name's parts,
+  as far as they were read.
 
 A literal that begins with no genus ("Sp. 30 ♀ Davao", "det. Mockford", "Coll.
 F. G. Werner", "collected by Werner 1946") is `no_match` with no request. The

@@ -14,6 +14,7 @@ from specimen_digitization.application.api import (
     SYNTHETIC_ORG,
     SYNTHETIC_COLLECTION,
     SYNTHETIC_TEXT,
+    SYNTHETIC_VALUES,
 )
 from specimen_digitization.application.domain import (
     MANDATORY,
@@ -560,6 +561,38 @@ def test_whitespace_and_unbacked_normalization_cannot_clear(tmp_path):
     s.run.fields["country"].literal = "United States"
     s.run.fields["country"].normalized = "Invented normalized country"
     assert "unsupported_normalized:country" in evaluate(s.run)
+
+
+def test_the_workflow_lookup_sends_no_place_word_of_the_run(tmp_path):
+    # The coordinator's ruling of 02:07Z on 2026-09-26 (PLAN 4.8): the
+    # authorship loses every word of the run's place-field literals.
+    sent = []
+
+    def gbif(request):
+        if request.url.path.endswith("/metadata"):
+            return httpx.Response(200, json={"alias": "fixture-index"})
+        sent.append(request.url.params["scientificName"])
+        return httpx.Response(200, json={"diagnostics": {"matchType": "NONE"}})
+
+    app = local_app(tmp_path, TOKEN)
+
+    class Gbif(SyntheticAdapters):
+        def lookup(self, name):
+            return GbifTaxonomy(
+                self.blobs, httpx.Client(transport=httpx.MockTransport(gbif))
+            ).lookup(name)
+
+    values = dict(
+        SYNTHETIC_VALUES,
+        taxon="Epipsocus Davao, Mindanao 1946",
+        city="Davao",
+        province_state="Mindanao",
+    )
+    text = "\n".join(f"{key}: {value}" for key, value in values.items())
+    app.state.workflow.adapters = Gbif(LocalBlobs(tmp_path / "blobs"), text)
+    intake(TestClient(app, raise_server_exceptions=False))
+
+    assert sent == ["Epipsocus"]
 
 
 def test_review_selects_a_gbif_v2_candidate_by_its_name(tmp_path):
