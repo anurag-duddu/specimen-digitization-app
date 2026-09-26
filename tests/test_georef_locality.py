@@ -3,6 +3,7 @@
 import itertools
 import random
 import re
+import sys
 import time
 import unicodedata
 
@@ -889,14 +890,15 @@ def test_a_line_break_reads_as_a_space_between_two_numbers():
     reading = read_locality("4000\nhasta\n4500 m")
     assert ([part.name for part in reading.parts], reading.elevations) == (["hasta"], ())
     # An elevation or its prefix starting the next line reads, and an elevation read
-    # before stops the check; a comma or semicolon does not (the coordinator's reading
-    # at 22:22Z on 2026-09-25).
+    # before stops the check. A comma or semicolon stops it after a number that could
+    # be no range's low, such as a date's glued year (the coordinator's refinement at
+    # 00:38Z on 2026-09-26, and its ruling at 00:52Z).
     for text, read in (
         ("3 Sept. '46\nElev. 6400'", ["Elev. 6400'"]),
         ("3 Sept. '46\n850 m", ["850 m"]),
         ("Elev.6400\n3 Sept. '46", ["Elev.6400"]),
-        ("12-IV-1948,\nChimaltenango 1500 m", []),
-        ("12-IV-1948\nChimaltenango;\n1500 m", []),
+        ("12-IV-1948,\nChimaltenango 1500 m", ["1500 m"]),
+        ("12-IV-1948\nChimaltenango;\n1500 m", ["1500 m"]),
         ("Yepocapa 4800 ft.\nChimaltenango\n1500 m", ["4800 ft.", "1500 m"]),
         ("Elev.6400\nAlt. 1950 m", ["Elev.6400", "Alt. 1950 m"]),
     ):
@@ -1044,9 +1046,11 @@ def test_the_line_break_rule_costs_a_whole_transcript_its_elevation(text):
     assert names[:4] == ["Mt. McKinley", "Davao", "Mindanao", "P.I."]
 
 
-def test_across_a_comma_any_word_continues_the_check():
-    # The coordinator's reading at 22:22Z on 2026-09-25 (coordinator.md:468): the
-    # reader never reads a range's top alone or makes a range word a place part.
+def test_across_a_comma_the_check_goes_on_only_from_a_bare_number():
+    # The coordinator's reading at 22:22Z on 2026-09-25 (coordinator.md:468), refined
+    # at 00:38Z on 2026-09-26 (:498): after a bare number, with no unit or prefix of
+    # its own and nothing glued before it (00:52Z, :501), any word or mark continues
+    # the check across a comma or semicolon, so its range is never read by the top.
     for text in (
         "4000, ~ 4500 m",
         "4000 ~, 4500 m",
@@ -1064,17 +1068,89 @@ def test_across_a_comma_any_word_continues_the_check():
     ):
         reading = read_locality(text)
         assert (reading.elevations, reading.parts) == ((), ()), text
-    for text, read in (("6-Sept-1946, Elev.6400", ["Elev.6400"]), ("1946, 950 m", ["950 m"])):
+    # A number with its own unit or prefix is a complete elevation, and a glued one,
+    # such as a date's year, could be no range's low: either ends the check. With
+    # nothing but the comma after a bare number, the next elevation reads too.
+    for text, read in (
+        ("6-Sept-1946, Elev.6400", ["Elev.6400"]),
+        ("12-IV-1948, Yepocapa, 1500 m", ["1500 m"]),
+        ("12-IV-1948, Yepocapa, Elev. 1500 m", ["Elev. 1500 m"]),
+        ("1946, 950 m", ["950 m"]),
+    ):
         assert [e.text for e in read_locality(text).elevations] == read, text
-    # A word alone in its own part between the numbers stays a part, a lookup
-    # candidate the lookups verify (the coordinator's ruling at 22:25Z,
-    # coordinator.md:470).
+    # A word alone in its own part stays a part, a lookup candidate the lookups
+    # verify (the coordinator's ruling at 22:25Z, coordinator.md:470).
     for text, name in (
         ("4000, hasta, 4500 m", "hasta"),
         ("12-IV-1948, Yepocapa, 1500 m", "Yepocapa"),
     ):
+        assert [part.name for part in read_locality(text).parts] == [name], text
+
+
+def test_the_comma_rule_s_stated_costs():
+    # The coordinator's rulings at 00:52Z on 2026-09-26 (coordinator.md:502): (1) a
+    # prefixed low with a comma or semicolon in its join reads both ends as separate
+    # elevations; (2) a date's glued year before such a join reads only the
+    # elevation after it; (3) a low glued into the number before it by a comma reads
+    # the top, and the number before too when it reads, the low's digits in it. A
+    # leftover range word is a lookup candidate that matches no place; so is one
+    # after an elevation read, as on one line.
+    for text, read, names in (
+        ("Elev. 4000, hasta 4500 m", ["Elev. 4000", "4500 m"], ["hasta"]),
+        ("alt 6000 & ; 7000 ft.", ["alt 6000", "7000 ft."], []),
+        ("ene.-1983, to 950 ft.", ["950 ft."], []),
+        ("IV-1948, hasta 95 m", ["95 m"], ["hasta"]),
+        ("Elevation 3300,10 - ; 50 m", ["50 m"], []),
+        ("Elev.3300,26 up to ; 750 feet", ["Elev.3300,26", "750 feet"], ["up to"]),
+        ("4000 m hasta 4500 m", ["4000 m", "4500 m"], ["hasta"]),
+        ("4000 m up to 4500 m", ["4000 m", "4500 m"], ["up to"]),
+    ):
         reading = read_locality(text)
-        assert ([part.name for part in reading.parts], reading.elevations) == ([name], ()), text
+        elevations = [e.text for e in reading.elevations]
+        assert (elevations, [part.name for part in reading.parts]) == (read, names), text
+
+
+# The two baseline readers' whole transcripts of 105526322, 105526329 and
+# 105526330, from the reader baseline of 2026-09-23. Each states its elevation, which
+# round 9's comma reading set aside and its refinement at 00:38Z on 2026-09-26 reads
+# again (coordinator.md:498).
+BASELINE_STATED = (
+    (
+        "CNHM. ESlope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I.\n6-Sept-1946, Elev. 6400\n"
+        "H. Hoogstraal leg.\nshrubs, mostly forest\nwings 4 head\nsp. 30 \u2640\n9-25-81-16",
+        "Elev. 6400",
+    ),
+    (
+        "CNHM. E Slope Mt.\nMcKinley, Davao Prov.\nMindanao, P.I.\n6-Sept-1946, Elev.6400\n"
+        "H. Hoogstraal leg.\nShrubs, mostly forest\nWings 4 head\nSp.30 \u2640\np-95-81-16",
+        "Elev.6400",
+    ),
+    (
+        "IV-29-68-4\nYepocapa, 4800ft.\nChimaltenango,\nGuatemala\nIV-23-48\nR.D.mitchell\n"
+        "sp #1 \u2642\nhead & legs",
+        "4800ft.",
+    ),
+    (
+        "IV- 29-68-4\nYepocapa, 4800ft.\nChimaltenago,\nGuatemala\nIV-23-48\nR.D.Mitchell\n"
+        "Sp#1 \u2642\nhead & legs",
+        "4800ft.",
+    ),
+    (
+        "IV-29-68-a\nYepocapa, 4800 ft.\nChimaltenango\nGuatemala, IV-25\n1948, R.D. Mitchell\n"
+        "\u2640 legs Sp.#1",
+        "4800 ft.",
+    ),
+    (
+        "IV-29-68-2\nYepocapa,4800 ft.\nChimaltenago\nGuatemala,IV-26\n1948, R.D. Mitchell\n"
+        "\u2640 legs Sp.#1",
+        "4800 ft.",
+    ),
+)
+
+
+@pytest.mark.parametrize(("text", "stated"), BASELINE_STATED)
+def test_a_baseline_transcript_reads_its_stated_elevation(text, stated):
+    assert [e.text for e in read_locality(text).elevations] == [stated]
 
 
 def test_a_number_with_no_unit_running_into_a_date_is_set_aside():
@@ -1105,8 +1181,8 @@ def test_a_number_with_no_unit_running_into_a_date_is_set_aside():
 
 
 # The letters Python counts as alphanumeric that `fold` drops, the 21 the steward's
-# round-8 review names: what `fold` drops is nothing in the checks that keep a
-# date's number and a range's end out of an elevation.
+# round-8 review names. `fold` drops six of them outright; the other fifteen are
+# spacing marks, whose compatibility form is a space and combining marks.
 FOLD_DROPPED_LETTERS = (
     *("\u037a", "\u115f", "\u1160", "\u3164", "\uffa0"),
     *(chr(code) for code in range(0xFC5E, 0xFC64)),
@@ -1115,11 +1191,38 @@ FOLD_DROPPED_LETTERS = (
 )
 
 
-@pytest.mark.parametrize("dropped", [*FOLD_DROPPED_LETTERS, "\u200b", "\u00ad", "\u0301"])
+def spacing_mark(c):
+    """Whether the character's compatibility form is a space and combining marks."""
+    form = unicodedata.normalize("NFKD", c)
+    return (
+        not c.isspace()
+        and form[:1] == " "
+        and len(form) > 1
+        and all(unicodedata.category(mark) in ("Mn", "Me") for mark in form[1:])
+    )
+
+
+# Every spacing mark in the Unicode data this Python holds, "\u02dc" and "\u203e"
+# among them (the round-9 review counts 50).
+SPACING_MARKS = tuple(filter(spacing_mark, map(chr, range(sys.maxunicode + 1))))
+# What `fold` drops outright: the six letters, format characters and a combining mark.
+DROPPED = (
+    *(c for c in FOLD_DROPPED_LETTERS if not spacing_mark(c)),
+    *("\u200b", "\u00ad", "\u2060", "\ufeff", "\u0301"),
+)
+
+
+def test_the_spacing_marks_hold_the_review_s_examples():
+    assert {"\u02dc", "\u203e", "\u037a", "\ufe70", "\ufc5e"} <= set(SPACING_MARKS)
+    assert len(DROPPED) == 11
+
+
+@pytest.mark.parametrize("dropped", DROPPED)
 def test_what_fold_drops_is_nothing(dropped):
-    # A part of it passes the date on; beside a join word or a mark it hides
-    # nothing; before a month it is no word; between two numbers it is no word and
-    # no mark; after a link it hides no month.
+    # The reader's patterns read the text without it (the round-9 review's first
+    # blocker). A part of it passes the date on; beside a join word or a mark it hides
+    # nothing; inside or beside a number it splits nothing; before a month it is no
+    # word; after a link it hides no month.
     for text in (f"Sept.\n{dropped}\n1946,95 m", f"IV, {dropped}, 1948.950 m"):
         reading = read_locality(text)
         assert (reading.elevations, reading.parts) == ((), ()), text
@@ -1127,11 +1230,105 @@ def test_what_fold_drops_is_nothing(dropped):
         f"4000, ~{dropped} 4500 m",
         f"4000, t{dropped}o 4500 m",
         f"el. 6400,12 {dropped} Sep",
+        f"Elev. 4{dropped} 800 ft.",
+        f"14 m{dropped}arzo 1948",
+        f"Sept. 3 '{dropped}46",
     ):
         assert read_locality(text).elevations == (), text
-    assert [e.text for e in read_locality(f"3 Sept. '46 {dropped} 850 m").elevations] == ["850 m"]
+    for text, numbers in (
+        (f"3 Sept. '46 {dropped} 850 m", [("850", None)]),
+        (f"Elev. 1463{dropped},5 m", [("1463,5", None)]),
+        (f"Mt. Apo 1{dropped},463 m", [("1,463", None)]),
+        (f"el. {dropped}1,200 - 1{dropped},500 ft", [("1,200", "1,500")]),
+        (f"Elev. 64{dropped}00", [("6400", None)]),
+    ):
+        assert [(e.low, e.high) for e in read_locality(text).elevations] == numbers, text
     reading = read_locality(f"Mindanao\nde {dropped} julio 1946,95 m")
     assert ([part.name for part in reading.parts], reading.elevations) == (["Mindanao"], ())
+
+
+@pytest.mark.parametrize("mark", SPACING_MARKS)
+def test_a_spacing_mark_is_a_mark(mark):
+    # The round-9 review's second blocker: between two numbers it joins them, on one
+    # line and across a line break, or a comma after a bare number; a part of only it
+    # passes the date on.
+    for text in (
+        f"4000 {mark} 4500 m",
+        f"Elev. 1500 {mark} 2000 m",
+        f"Alt. 1,200 {mark} 1,500 ft",
+        f"3 Sept. '46 {mark} 850 m",
+        f"4000 {mark}, 4500 m",
+        f"4000, {mark} 4500 m",
+        f"4000 {mark}\n4500 m",
+        f"4000\n{mark} 4500 m",
+        f"Sept.\n{mark}\n1946,95 m",
+    ):
+        assert read_locality(text).elevations == (), text
+    # The stated cost (1): a prefixed low with a comma in its join reads apart.
+    reading = read_locality(f"Elev. 1500 {mark}, 2000 m")
+    assert [e.text for e in reading.elevations] == ["Elev. 1500", "2000 m"]
+
+
+def test_the_patterns_read_what_shows_and_keep_what_was_written():
+    zero = "\u200b"
+    reading = read_locality(f"Elev. 1463{zero},5 m")
+    assert [(e.text, e.low) for e in reading.elevations] == [(f"Elev. 1463{zero},5 m", "1463,5")]
+    reading = read_locality(f"Mt. Apo (1463{zero} m)")
+    elevations = [e.text for e in reading.elevations]
+    assert (elevations, [part.name for part in reading.parts]) == ([f"1463{zero} m"], ["Mt. Apo"])
+    (part,) = read_locality(f"5 km N{zero} of Yepo{zero}capa").parts
+    assert (part.name, part.key, part.relation) == (f"Yepo{zero}capa", "yepocapa", "offset")
+    for text in (f"E.{zero} slope Mt. Apo", "E. slope\n\u3164 of Mt. Apo"):
+        (part,) = read_locality(text).parts
+        assert (part.name, part.relation) == ("Mt. Apo", "slope"), text
+    assert read_locality(f"Mindanao, P.{zero}I.").parts[1].readings == ("Philippine Islands",)
+    reading = read_locality("Mindanao, CNHM\u0301.")
+    assert (reading.institutions, reading.unplaced) == (("CNHM\u0301.",), ())
+    # A soft hyphen that ends a line, what `fold` drops after it aside, shows as a
+    # hyphen: here it breaks a range.
+    for text in ("Elev. 1500\u00ad\n2000 m", f"Elev. 1500\u00ad{zero}\n2000 m"):
+        assert read_locality(text).elevations == (), text
+
+
+def shown(text):
+    """Whether the text holds something other than spaces, marks, format characters and
+    Hangul fillers."""
+    return any(
+        not c.isspace() and unicodedata.category(c) not in ("Mn", "Me", "Cf")
+        for c in unicodedata.normalize("NFKD", text)
+        if c not in "\u115f\u1160\u3164\uffa0"
+    )
+
+
+def reading_values(text):
+    """A reading by value: elevation numbers and folded texts, part keys with their
+    relations and units, and the folded unplaced texts that show."""
+    reading = read_locality(text)
+    return (
+        [(e.low, e.high, e.unit, fold(e.text)) for e in reading.elevations],
+        [(p.key, p.relation, p.distance, p.unit) for p in reading.parts],
+        [fold(u) for u in reading.unplaced if shown(u)],
+        [fold(i) for i in reading.institutions],
+    )
+
+
+@pytest.mark.parametrize("seed", range(4))
+def test_what_fold_drops_changes_no_reading(seed):
+    # Put anywhere in a random layout, what `fold` drops changes nothing read, save a
+    # soft hyphen that ends a line (only spaces and what `fold` drops after it),
+    # which shows as a hyphen.
+    rng = random.Random(seed)
+    for _ in range(500):
+        text = RandomLayout(rng).build()
+        changed = text
+        for _ in range(rng.randint(1, 4)):
+            cut = rng.randint(0, len(changed))
+            lines = changed[cut:].splitlines(keepends=True)
+            dropped = rng.choice(DROPPED)
+            if dropped == "\u00ad" and lines and not shown(lines[0]):
+                continue
+            changed = changed[:cut] + dropped + changed[cut:]
+        assert reading_values(changed) == reading_values(text), (text, changed)
 
 
 def test_an_institution_code_in_any_width_is_matched_as_fold_reads_it():
@@ -1181,6 +1378,9 @@ def test_a_link_and_a_month_begin_a_date_only_with_a_number_right_after_the_mont
         "Mindanao\nde julio\n1946,95 m",
         "Mindanao\nde julio\n?\n1946,95 m",
         "Mindanao\nde julio\nCNHM\n1946,95 m",
+        "Mindanao\nde julio, \u02bc46",
+        "Mindanao\nde julio \u02bc46",
+        "Mindanao\nde julio\n\u02bc46",
     ):
         reading = read_locality(text)
         names = [part.name for part in reading.parts]
@@ -1205,10 +1405,13 @@ def test_a_day_is_looked_for_in_the_next_part_too():
 # and without qualifiers and links; years, decimals and grouped numbers; parts that
 # fold to nothing and institution codes; prefixes, joins and marks; line breaks and
 # commas; digit scripts and units. Every number's digit groups are unique in its
-# layout, so a reading traces back to what the layout wrote. One stated cost is
-# exempt: a month that shares its part with a qualifier reads as a name. Joins with
-# a word beside a comma are generated too, since the coordinator's reading at 22:22Z
-# on 2026-09-25 sets them aside.
+# layout, so a reading traces back to what the layout wrote, and what `fold` drops
+# goes anywhere now and then. Joins with a word beside a comma are generated too.
+# Two kinds of stated cost are exempt, by name: a month that shares its part with a
+# qualifier reads as a name; and a range whose join holds a comma or semicolon may
+# read an end alone when its low has a prefix or is glued to the text before it (the
+# coordinator's rulings at 00:52Z on 2026-09-26: a prefixed low, a date's glued year,
+# a low glued into the number before it by a comma).
 RANDOM_PLACES = (
     *("Mindanao", "Davao", "Guatemala", "Yepocapa"),
     *("Chimaltenango", "Mt. Apo", "Davao Prov."),
@@ -1218,8 +1421,8 @@ RANDOM_FILLERS = (
     *("\u3164", "\uffa0", "\u037a", "\ufe72"),
     *("CNHM", "CNHM.", "FMNH", "fmnh", "( )", "\uff23\uff2e\uff28\uff2d"),
 )
-# Characters fold drops, put inside a join now and then.
-RANDOM_DROPPED = ("\u200b", "\u00ad", "\u3164", "\u2060")
+# Characters fold drops, put anywhere in a layout now and then.
+RANDOM_DROPPED = ("\u200b", "\u00ad", "\u3164", "\u2060", "\ufeff", "\u0301")
 RANDOM_BREAKS = (
     *("\n", "\r\n", "\r", "\x0b", "\x0c", "\x1c"),
     *("\x1d", "\x1e", "\x85", "\u2028", "\u2029"),
@@ -1239,6 +1442,18 @@ RANDOM_PAIRS = (
 QUALIFIERS = ("mid-", "late ", "early ", "end of ", "fin de ")
 
 
+def glued_before(text, start):
+    """Whether something is glued to the number at `start` as the reader sees it: no
+    space, line break, opening bracket or semicolon comes before it, and no comma but
+    one after a digit, which may put the number inside the one before."""
+    if start == 0:
+        return False
+    before = text[start - 1]
+    if before.isspace() or before in "([{;":
+        return False
+    return before != "," or (start > 1 and text[start - 2].isdecimal())
+
+
 def digit_groups(number):
     """A number's digit groups in ASCII: "1,463" is {"1", "463"}."""
     ascii_digits = "".join(str(unicodedata.decimal(c)) if c.isdecimal() else c for c in number)
@@ -1256,6 +1471,10 @@ class RandomLayout:
         self.ranges = []
         self.date_words = set()
         self.exempt_words = set()
+        # Ranges the comma rule's stated costs let read an end alone, and the chunks
+        # whose range becomes one if the comma before the chunk glues its low.
+        self.apart = set()
+        self.comma_chunks = {}
 
     def fresh(self, values):
         def groups(value):
@@ -1282,7 +1501,7 @@ class RandomLayout:
 
     def join(self):
         """A range join, spaced or not, maybe broken across lines, by a comma or by a
-        part with no letter, and now and then with a character fold drops inside it."""
+        part with no letter."""
         rng = self.rng
         join = rng.choice((*RANGE_WORDS, *OTHER_JOINS))
         form = rng.choice((join, f" {join} ", f"{join} ", f" {join}"))
@@ -1298,10 +1517,17 @@ class RandomLayout:
         elif r < 0.38:
             filler = rng.choice(("?", "-", "*", "CNHM", "\u2026"))
             form = f"{form}{self.boundary()}{filler}{self.boundary()}"
-        if rng.random() < 0.1:
-            cut = rng.randint(0, len(form))
-            form = form[:cut] + rng.choice(RANDOM_DROPPED) + form[cut:]
         return form
+
+    def comma_join(self, pair, join, apart):
+        """Note a range whose join holds a comma or semicolon: it may read an end
+        alone when its low has a prefix or is glued to the text before it (`apart`), or
+        when the comma before its chunk glues the low to the number before (`build`)."""
+        if any(c in join for c in ",;"):
+            if apart:
+                self.apart.add(pair)
+            else:
+                self.comma_chunks[len(self.chunks) - 1] = pair
 
     def month(self):
         rng = self.rng
@@ -1332,8 +1558,10 @@ class RandomLayout:
             zero = self.zero()
             low, high = (in_digits(n, zero) for n in pair)
             prefix = self.rng.choice(("", "", "", *RANDOM_PREFIXES))
-            self.chunks.append(f"{prefix}{low}{self.join()}{high}{self.rng.choice(RANDOM_UNITS)}")
+            join = self.join()
+            self.chunks.append(f"{prefix}{low}{join}{high}{self.rng.choice(RANDOM_UNITS)}")
             self.ranges.append((low, high))
+            self.comma_join((low, high), join, apart=bool(prefix))
 
     def date(self):
         rng = self.rng
@@ -1400,8 +1628,12 @@ class RandomLayout:
         elif tail_kind == "break":
             self.chunks.append(f"{dated}{rng.choice(RANDOM_BREAKS)}{tail}{unit}")
         else:
-            self.chunks.append(f"{dated}{self.join()}{tail}{unit}")
-            self.ranges.append((year.lstrip("'\u2019"), tail))
+            join = self.join()
+            self.chunks.append(f"{dated}{join}{tail}{unit}")
+            digits = year.lstrip("'\u2019")
+            self.ranges.append((digits, tail))
+            glued = glued_before(dated, len(dated) - len(digits))
+            self.comma_join((digits, tail), join, apart=glued)
 
     def build(self):
         makers = (
@@ -1411,8 +1643,15 @@ class RandomLayout:
         for _ in range(self.rng.randint(1, 5)):
             self.rng.choice(makers)()
         text = ""
-        for chunk in self.chunks:
-            text = f"{text}{self.boundary()}{chunk}" if text else chunk
+        for index, chunk in enumerate(self.chunks):
+            if text:
+                text += self.boundary()
+            if index in self.comma_chunks and glued_before(text, len(text)):
+                self.apart.add(self.comma_chunks[index])
+            text += chunk
+        for _ in range(self.rng.choice((0, 0, 1, 2))):
+            cut = self.rng.randint(0, len(text))
+            text = text[:cut] + self.rng.choice(RANDOM_DROPPED) + text[cut:]
         return text
 
 
@@ -1427,10 +1666,15 @@ def test_random_layouts_keep_the_three_properties(seed):
             held = digit_groups(e.low) | (digit_groups(e.high) if e.high else set())
             # No elevation holds a date's number.
             assert not held & layout.date_groups, (text, e.text)
-            # No range is read by one of its numbers alone, or by part of one.
+            # No range is read by one of its numbers alone, or by part of one, save the
+            # comma rule's stated costs, which read its ends apart: no elevation holds
+            # both, though a low glued into the number before it is read in that one.
             for low, high in layout.ranges:
                 ends = digit_groups(low) | digit_groups(high)
-                assert not held & ends or (e.low, e.high) == (low, high), (text, e.text)
+                if not held & ends or (e.low, e.high) == (low, high):
+                    continue
+                both = digit_groups(low) <= held and digit_groups(high) <= held
+                assert (low, high) in layout.apart and not both, (text, e.text)
         # No date fragment is a part, save the stated cost.
         for part in reading.parts:
             dated = set(fold(part.text).split()) & layout.date_words

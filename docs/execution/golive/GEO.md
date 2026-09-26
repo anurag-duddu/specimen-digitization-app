@@ -24,6 +24,18 @@ Nothing it produces leaves the tool except through PLAN 4.8's filter. No part,
 name or reading is sent as it stands, and a part can hold text that is no place,
 such as a collector's name.
 
+**What shows.** The reader's patterns read the text without what `fold` drops:
+format characters such as a zero-width space, a word joiner or a soft hyphen,
+combining marks, and the invisible Hangul fillers. What a pattern finds is cut
+from the text as written, so nothing it drops splits a number, a unit or a word.
+"Elev. 1463" U+200B ",5 m" reads as written, with the number "1463,5"; "Mt. Apo
+1" U+200B ",463 m" reads "1,463 m"; and "14 m" U+00AD "arzo 1948" reads nothing. A
+soft hyphen that ends a line, with only spaces and what `fold` drops after it,
+shows as a hyphen and is read as one, so "Elev. 1500" U+00AD / "2000 m" is a range
+broken across lines, set aside. A spacing mark, whose compatibility form is a
+space and combining marks ("˜" U+02DC, "‾" U+203E), shows, and is a mark
+(**Unsure numbers**, below).
+
 **Lines and parts.** Commas and semicolons separate parts, except a comma inside a
 number. That is a thousands group led by one to three digits ("1,463 m",
 "1,463,200"), or a one- or two-digit decimal ("0,5 km", "1463,5 m"). Any other
@@ -44,7 +56,9 @@ right after the month, glued to it or not, or after a "de", "del" or "of" after
 it ("de julio,1946", "de julio de 1946"), or, when the month or such a link ends
 the line, starts the next line that holds more than what folds to nothing or an
 institution code ("de julio" / "1946"). Institution codes and what `fold` drops
-are no words here (**Months**, below).
+are no words here, and the number may come after an apostrophe-shaped letter
+(U+02BB to U+02BD), which Python counts as a letter: "Mindanao" / "de julio, ʼ46"
+keeps "Mindanao" (**Months**, below).
 
 **Notations (G29).** The Insects harness reads these whole words in any case,
 with or without the period; they come from the pilot's labels and from the unit
@@ -179,34 +193,58 @@ across line breaks as across spaces, with every line break Python's
 "1500-" / "2000 m", "entre 1500 y" / "2000 m", "4000" / "hasta 4500 m" and
 "Elev. 1500-" / "2000 m" are set aside. A part with no number passes the check
 on ("4000" / "to" / "4500 m"). The check reads across commas and semicolons the
-same way, so any word or mark after a number continues it, and the reader never
-reads a range's top alone or makes a range word a place part. This is the
-coordinator's reading at 22:22Z on 2026-09-25, from G36 and G40. So "4000,
-hasta 4500 m", "4000, up to 4500 m", "1500, bis 2000 m", "4000, até 4500 m",
-"4000, à 4500 m", "4000 hasta, 4500 m", "4000, ~ 4500 m", "4000 ~, 4500 m",
-"4000, ?, 4500 m" and "4000 to, 4500 m" are set aside. So are "Camp 3, Mt. Apo
-1500 m" and "Km 42, a 1500 m", a missed reading rather than a wrong one, while
-"6-Sept-1946, Elev.6400" and "1946, 950 m" read. What `fold` drops is no word
-and no mark here: with a Hangul filler between "3 Sept. '46" and "850 m",
-"850 m" still reads. The cost of reading line breaks, commas and semicolons as
-spaces: after a part that ends in a number no elevation took, an elevation that
-words come before in the next parts is set aside, as on one line. So
-"12-IV-1948" / "Chimaltenango" / "1500 m" keeps "Chimaltenango" and sets
-"1500 m" aside, "12-IV-1948" / "Chimaltenango 1500 m" and "12-IV-1948," /
-"Chimaltenango 1500 m" set the second line aside, and "Elev.6400" / "Sept. 3,
-1946" sets "Elev.6400" aside. The pilot's own readings pay it: both baseline
+same way from a bare number, one with no unit or prefix of its own and nothing
+glued before it (a space, the part's start or an opening bracket comes first, as
+an elevation's number needs), which could be a range's low: any word or mark
+after it continues the check, so that number's range is never read by its top
+alone. This is the coordinator's reading at 22:22Z on 2026-09-25, from G36 and
+G40, as the coordinator refined it at 00:38Z on 2026-09-26 and ruled at 00:52Z.
+So "4000, hasta 4500 m", "4000, up to 4500 m", "1500, bis 2000 m", "4000, até
+4500 m", "4000, à 4500 m", "4000 hasta, 4500 m", "4000, ~ 4500 m", "4000 ~,
+4500 m", "4000, ?, 4500 m" and "4000 to, 4500 m" are set aside. So are "Camp 3,
+Mt. Apo 1500 m" and "Km 42, a 1500 m", a missed reading rather than a wrong one. A
+number with its own unit ("4800 ft.") or prefix ("Elev. 6400") is a complete
+elevation and ends the check, and so does a glued one, such as a date's year,
+which can be no range's low. So "6-Sept-1946, Elev.6400", "12-IV-1948, Yepocapa,
+1500 m", "12-IV-1948, Yepocapa, Elev. 1500 m" and "12-IV-1948," / "Chimaltenango
+1500 m" read, as "1946, 950 m" does with nothing but the comma between. So do the
+six elevations stated in the two baseline readers' whole transcripts of 105526322,
+105526329 and 105526330, which round 9's reading set aside: "Elev. 6400",
+"Elev.6400", "4800ft." twice and "4800 ft." twice. Counted off-branch on the 35
+pilot readings on this machine (19 of the 20 in the reader baseline of
+2026-09-23, where 105526326's handwriting-qwen read failed, and S8's 16), the
+refined reading changes none from ec8d73b, while round 9's lost those six. The
+coordinator's three stated costs (00:52Z): a prefixed low with a comma or
+semicolon in its join reads both ends as separate elevations ("Elev. 4000, hasta
+4500 m", "alt 6000 & ; 7000 ft."); a date's glued year before such a join reads
+only the elevation after it ("ene.-1983, to 950 ft."); and a low glued into the
+number before it by a comma reads the top ("Elevation 3300,10 - ; 50 m"), and the
+number before too when it reads, the low's digits in it ("Elev.3300,26 up to ;
+750 feet" reads "Elev.3300,26" and "750 feet"). None lets a date's number into an
+elevation or a date fragment become a part, and a range word left over ("hasta")
+is a lookup candidate that matches no place. What `fold` drops is no word and no
+mark here: with a Hangul filler between "3 Sept. '46" and "850 m", "850 m" still
+reads. The cost of reading line breaks as spaces:
+after a part that ends in a number no elevation took, an elevation that words
+come before in the next parts is set aside, as on one line, when only line breaks
+stand between or the number is bare. So "12-IV-1948" / "Chimaltenango" / "1500 m"
+keeps "Chimaltenango" and sets "1500 m" aside, "12-IV-1948" / "Chimaltenango
+1500 m" sets the second line aside, and "Elev.6400" / "Sept. 3, 1946" sets
+"Elev.6400" aside. The pilot's own readings pay it: both baseline
 readers' transcripts of 105526321, read whole as one literal, hold "3 sept. '46"
 / "Mossy forest 6400'" and set "6400'" aside. The tool reads each place field's
 own literal, the exact transcript substring of that field, with the date and
 elevation literals passed apart (`GEOREFERENCING.md` 1.1, "Input"), so a literal
 leaves such lines out. An elevation or its prefix starting the next part still
-reads ("3 Sept. '46" / "Elev. 6400'", "3 Sept. '46" / "850 m"). A word alone in
-its own part between two numbers stays a part, as any part of words does:
-"4000" / "hasta" / "4500 m" and "4000, hasta, 4500 m" keep "hasta", and
-"12-IV-1948, Yepocapa, 1500 m" keeps "Yepocapa". The coordinator's ruling at
-22:25Z on 2026-09-25 keeps this cost: a place part is a lookup candidate the
-lookups verify, not a conclusion. "to", "a", "and" or "y" alone is kept aside
-(**Unplaced text**, below).
+reads ("3 Sept. '46" / "Elev. 6400'", "3 Sept. '46" / "850 m"). A range word
+still becomes a place part in three ways. Alone in its own part between two
+numbers, it stays a part as any part of words does: "4000" / "hasta" / "4500 m"
+and "4000, hasta, 4500 m" keep "hasta", and "12-IV-1948, Yepocapa, 1500 m" keeps
+"Yepocapa". The coordinator's ruling at 22:25Z on 2026-09-25 keeps this cost: a
+place part is a lookup candidate the lookups verify, not a conclusion. After an
+elevation read, as on one line: "4000 m hasta 4500 m" keeps "hasta", and "4000 m
+up to 4500 m" keeps "up to". And in the stated costs above. "to", "a", "and" or
+"y" alone is kept aside (**Unplaced text**, below).
 
 **Months.** A part of only a month is kept aside, never a place, and the part
 after it counts as one after a number, since the year may follow: "July,
@@ -319,12 +357,18 @@ prefix or with "Elev.", "Alt." or "el.", in the four digit scripts. A seeded
 random generator then mixes every token class the reviews found (months with and
 without qualifiers and links; years, decimals and grouped numbers; parts that
 fold to nothing, letters `fold` drops among them, and institution codes in any
-width; prefixes, marks and every join, beside a comma or semicolon too and now
-and then with a character `fold` drops inside it; line breaks and commas; digit
-scripts and units) into 16,000 layouts from 16 fixed seeds, and checks the same
-three properties in each. One stated cost is exempt: a month that shares its part
-with a qualifier reads as a name. Further tests cover every notation in any case
-and with or without its period, the letters `fold` drops that the round-8 review
-names, headings between features or beside none, offsets and their places,
-numbers read whole or set aside, line joins, variants, months, the
+width; prefixes, marks and every join, beside a comma or semicolon too; line
+breaks and commas; digit scripts and units; and now and then a character `fold`
+drops, anywhere) into 16,000 layouts from 16 fixed seeds, and checks the same
+three properties in each. Two kinds of stated cost are exempt, by name: a month
+that shares its part with a qualifier reads as a name, and a range in one of the
+comma rule's three stated costs reads its ends apart, though no elevation holds
+both. Another 2,000 of its layouts are read again with up to four characters
+`fold` drops put anywhere, a soft hyphen never where it would end a line, and must
+read the same. Further tests
+cover every notation in any case and with or without its period, the letters
+`fold` drops outright, every spacing mark in the Unicode data Python holds (50
+under Python 3.11), the six baseline transcripts' stated elevations, headings
+between features or beside none, offsets and their places, numbers read whole or
+set aside, line joins, variants, months, the
 elevation forms, and the comparison rules.
