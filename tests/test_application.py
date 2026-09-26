@@ -14,6 +14,7 @@ from specimen_digitization.application.api import (
     SYNTHETIC_ORG,
     SYNTHETIC_COLLECTION,
     SYNTHETIC_TEXT,
+    SYNTHETIC_VALUES,
 )
 from specimen_digitization.application.domain import (
     MANDATORY,
@@ -241,8 +242,19 @@ def test_lookup_http_failure_taxonomy(tmp_path, status, expected):
     "match,usage,expected",
     [
         ("NONE", None, LookupStatus.NO_MATCH),
-        ("HIGHERRANK", {"key": "1", "rank": "GENUS"}, LookupStatus.AMBIGUOUS),
-        ("EXACT", {"key": "x", "rank": "SPECIES"}, LookupStatus.SUCCESS),
+        ("HIGHERRANK", {"key": "1", "name": "Fixture", "rank": "GENUS"}, LookupStatus.AMBIGUOUS),
+        (
+            "EXACT",
+            {
+                "key": "x",
+                "name": "Fixture",
+                "canonicalName": "Fixture",
+                "rank": "GENUS",
+                "status": "ACCEPTED",
+            },
+            LookupStatus.SUCCESS,
+        ),
+        ("VARIANT", {"key": "x", "name": "Fixture", "rank": "GENUS"}, LookupStatus.AMBIGUOUS),
     ],
 )
 def test_lookup_match_not_confidence(tmp_path, match, usage, expected):
@@ -254,13 +266,14 @@ def test_lookup_match_not_confidence(tmp_path, match, usage, expected):
             200,
             json={
                 "usage": usage,
+                "classification": [{"rank": "CLASS", "name": "Insecta"}],
                 "diagnostics": {"matchType": match, "confidence": 100},
             },
         )
 
     result = GbifTaxonomy(
         LocalBlobs(tmp_path), httpx.Client(transport=httpx.MockTransport(response))
-    ).lookup("fixture")
+    ).lookup("Fixture")
     assert result.status == expected
     assert result.metadata["index"]["alias"] == "fixture-index"
 
@@ -273,7 +286,7 @@ def test_lookup_timeout_and_malformed(tmp_path):
         GbifTaxonomy(
             LocalBlobs(tmp_path), httpx.Client(transport=httpx.MockTransport(timeout))
         )
-        .lookup("fixture")
+        .lookup("Fixture")
         .status
         == LookupStatus.TIMEOUT
     )
@@ -286,7 +299,7 @@ def test_lookup_timeout_and_malformed(tmp_path):
                 )
             ),
         )
-        .lookup("fixture")
+        .lookup("Fixture")
         .status
         == LookupStatus.MALFORMED
     )
@@ -548,6 +561,172 @@ def test_whitespace_and_unbacked_normalization_cannot_clear(tmp_path):
     s.run.fields["country"].literal = "United States"
     s.run.fields["country"].normalized = "Invented normalized country"
     assert "unsupported_normalized:country" in evaluate(s.run)
+
+
+def test_the_workflow_lookup_sends_no_place_word_of_the_run(tmp_path):
+    # The coordinator's ruling of 02:07Z on 2026-09-26 (PLAN 4.8): the
+    # authorship loses every word of the run's place-field literals.
+    sent = []
+
+    def gbif(request):
+        if request.url.path.endswith("/metadata"):
+            return httpx.Response(200, json={"alias": "fixture-index"})
+        sent.append(request.url.params["scientificName"])
+        return httpx.Response(200, json={"diagnostics": {"matchType": "NONE"}})
+
+    app = local_app(tmp_path, TOKEN)
+
+    class Gbif(SyntheticAdapters):
+        def lookup(self, name):
+            return GbifTaxonomy(
+                self.blobs, httpx.Client(transport=httpx.MockTransport(gbif))
+            ).lookup(name)
+
+    values = dict(
+        SYNTHETIC_VALUES,
+        taxon="Epipsocus Davao, Mindanao 1946",
+        city="Davao",
+        province_state="Mindanao",
+    )
+    text = "\n".join(f"{key}: {value}" for key, value in values.items())
+    app.state.workflow.adapters = Gbif(LocalBlobs(tmp_path / "blobs"), text)
+    intake(TestClient(app, raise_server_exceptions=False))
+
+    assert sent == ["Epipsocus"]
+
+
+def test_review_selects_a_gbif_v2_candidate_by_its_name(tmp_path):
+    # GBIF v2 usages carry `name`, not `scientificName`; the review decision
+    # selects by `scientificName` (#109 round 2, blocker 3).
+    def gbif(request):
+        if request.url.path.endswith("/metadata"):
+            return httpx.Response(200, json={"alias": "fixture-index"})
+        insecta = [{"rank": "CLASS", "name": "Insecta"}]
+
+        def found(key, author):
+            return {
+                "key": key,
+                "name": "Synthetic taxon " + author,
+                "canonicalName": "Synthetic taxon",
+                "authorship": author,
+                "rank": "SPECIES",
+                "status": "ACCEPTED",
+            }
+
+        return httpx.Response(
+            200,
+            json={
+                "usage": found("K1", "Smith, 1900"),
+                "classification": insecta,
+                "diagnostics": {
+                    "matchType": "EXACT",
+                    "alternatives": [
+                        {
+                            "usage": found("K9", "Jones, 1950"),
+                            "classification": insecta,
+                            "diagnostics": {"matchType": "EXACT"},
+                        }
+                    ],
+                },
+            },
+        )
+
+    app = local_app(tmp_path, TOKEN)
+
+    class Gbif(SyntheticAdapters):
+        def lookup(self, name):
+            return GbifTaxonomy(
+                self.blobs, httpx.Client(transport=httpx.MockTransport(gbif))
+            ).lookup("Synthetic taxon")
+
+    app.state.workflow.adapters = Gbif(LocalBlobs(tmp_path / "blobs"), SYNTHETIC_TEXT)
+    c = TestClient(app, raise_server_exceptions=False)
+    row = intake(c)
+    work = c.get(
+        PREFIX + f"/specimens/{row['specimen_id']}/workspace", headers=HEADERS
+    ).json()
+    assert "taxonomy_unresolved" in work["reason_codes"]
+    result = c.post(
+        PREFIX + f"/specimens/{row['specimen_id']}/decisions",
+        headers=dict(HEADERS, **{"Idempotency-Key": "select-gbif-v2"}),
+        json={
+            "expected_revision": work["revision"],
+            "base_record_version_id": work["record_version_id"],
+            "kind": "taxonomy_resolution",
+            "after": {"authority_id": "K9"},
+            "reason": "The homonym the label means",
+        },
+    )
+    assert result.status_code == 200, result.text
+    taxon = result.json()["fields"]["taxon"]
+    assert taxon["authority_id"] == "K9"
+
+
+def test_review_stores_gbifs_name_never_a_usage_nested_in_one(tmp_path):
+    # The steward's review of #109 round 3: api.py unwraps a candidate's
+    # "usage", so a usage nested inside GBIF's usage must never reach it.
+    def gbif(request):
+        if request.url.path.endswith("/metadata"):
+            return httpx.Response(200, json={"alias": "fixture-index"})
+        insecta = [{"rank": "CLASS", "name": "Insecta"}]
+
+        def found(key, author):
+            return {
+                "key": key,
+                "name": "Synthetic taxon " + author,
+                "canonicalName": "Synthetic taxon",
+                "authorship": author,
+                "rank": "SPECIES",
+                "status": "ACCEPTED",
+            }
+
+        usage = dict(found("K1", "Smith, 1900"))
+        usage["usage"] = {"key": "K1", "scientificName": "Homo sapiens"}
+        return httpx.Response(
+            200,
+            json={
+                "usage": usage,
+                "classification": insecta,
+                "diagnostics": {
+                    "matchType": "EXACT",
+                    "alternatives": [
+                        {
+                            "usage": found("K9", "Jones, 1950"),
+                            "classification": insecta,
+                            "diagnostics": {"matchType": "EXACT"},
+                        }
+                    ],
+                },
+            },
+        )
+
+    app = local_app(tmp_path, TOKEN)
+
+    class Gbif(SyntheticAdapters):
+        def lookup(self, name):
+            return GbifTaxonomy(
+                self.blobs, httpx.Client(transport=httpx.MockTransport(gbif))
+            ).lookup("Synthetic taxon")
+
+    app.state.workflow.adapters = Gbif(LocalBlobs(tmp_path / "blobs"), SYNTHETIC_TEXT)
+    c = TestClient(app, raise_server_exceptions=False)
+    row = intake(c)
+    work = c.get(
+        PREFIX + f"/specimens/{row['specimen_id']}/workspace", headers=HEADERS
+    ).json()
+    result = c.post(
+        PREFIX + f"/specimens/{row['specimen_id']}/decisions",
+        headers=dict(HEADERS, **{"Idempotency-Key": "select-gbif-nested"}),
+        json={
+            "expected_revision": work["revision"],
+            "base_record_version_id": work["record_version_id"],
+            "kind": "taxonomy_resolution",
+            "after": {"authority_id": "K1"},
+            "reason": "The accepted usage",
+        },
+    )
+    assert result.status_code == 200, result.text
+    assert result.json()["fields"]["taxon"]["normalized"] == "Synthetic taxon Smith, 1900"
 
 
 def test_review_resolves_authority_ambiguity_without_overwriting_lookup(tmp_path):

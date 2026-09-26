@@ -28,12 +28,14 @@ def retry_after(value: str | None, current: datetime | None = None) -> int | Non
     try:
         if value.strip().isdigit():
             return max(0, int(value.strip()))
+        import math
+
         date = parsedate_to_datetime(value)
         if date.tzinfo is None:
             date = date.replace(tzinfo=timezone.utc)
-        return max(
-            0, int((date - (current or datetime.now(timezone.utc))).total_seconds())
-        )
+        # Rounded up, so a retry never comes sooner than the date asks.
+        seconds = (date - (current or datetime.now(timezone.utc))).total_seconds()
+        return max(0, math.ceil(seconds))
     except (ValueError, TypeError, OverflowError):
         return None
 
