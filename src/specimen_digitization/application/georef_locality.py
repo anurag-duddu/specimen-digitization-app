@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from bisect import bisect_left
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 
@@ -58,6 +58,9 @@ ASCII_WORDS = re.compile(r"[a-z0-9]+")
 # The Hangul fillers are letters by category but show nothing, so fold drops them.
 FILLERS = frozenset("\u115f\u1160\u3164\uffa0")
 COUNTRIES = ((re.compile(r"P\.\s?I\.?", re.I), "Philippine Islands"),)
+# The apostrophe-shaped modifier letters, which Python counts as letters and fold
+# keeps; a two-digit year may follow one.
+APOSTROPHE_LETTERS = "\u02bb\u02bc\u02bd"
 # The museum's own names on its labels, never a place, matched on folded text so
 # that any width or form of the letters is found ("CNHM", full-width too).
 INSTITUTIONS = re.compile(r"\b(?:cnhm|fmnh)\b")
@@ -172,9 +175,12 @@ YEAR = re.compile(r"\d\d|1[7-9]\d\d|20\d\d")
 # reads, since a year would not convert (the coordinator's reading, extended at
 # 17:40Z). Compared as exact fractions, so a tolerance's edge is kept.
 FOOT = Fraction("0.3048")
-# The brackets an elevation leaves empty: "Mt. Apo (1463 m)", full-width ones too.
-EMPTY_BRACKETS = re.compile(
-    r"[(\uff08]\s*[)\uff09]|[\[\uff3b]\s*[\]\uff3d]|[{\uff5b]\s*[}\uff5d]"
+# A bracket pair and what it holds, for the brackets an elevation leaves empty:
+# "Mt. Apo (1463 m)", full-width ones too.
+BRACKETED = re.compile(
+    r"[(\uff08][^()\uff08\uff09]*[)\uff09]"
+    r"|[\[\uff3b][^\[\]\uff3b\uff3d]*[\]\uff3d]"
+    r"|[{\uff5b][^{}\uff5b\uff5d]*[}\uff5d]"
 )
 # A number beside another digit group across a space ("4 800 ft.") has an unsure
 # grouping, so it is set aside rather than cut short. A two-digit year after an
@@ -339,8 +345,8 @@ def is_full_name(name: str) -> bool:
     """True when every word is a notation in the table or a full word (no period
     inside it, no period after four letters or fewer, no digit or other numeral,
     and not three capitals or fewer: "PH", "PHL", "RP"), and some word is not a
-    notation."""
-    words = [word.strip(",;:") for word in name.split()]
+    notation. The words are read as they show, what `fold` drops aside."""
+    words = [word.strip(",;:") for word in _visible(name)[0].split()]
     names = [word for word in words if not _notation(word)]
     return bool(names) and all(_full_word(word) for word in names)
 
@@ -360,21 +366,30 @@ def read_locality(text: str) -> LocalityText:
     pieces: list[_Piece] = []
     elevations: list[Elevation] = []
     institutions: list[str] = []
-    parts: list[str] = []
-    for part in _parts(text):
+    parts: list[tuple[str, bool]] = []
+    for part, separated in _parts(text):
         cleaned, found = _institutions(part)
         institutions += found
-        parts.append(cleaned)
+        parts.append((cleaned, separated))
     aheads = _aheads(parts)
-    firsts = _firsts(parts)
+    firsts = _firsts([segment for segment, _ in parts])
     numbered = False
     # Whether a word or a mark stands between the last number no elevation took
-    # and this part; None when no such number stands before it. Line breaks,
-    # commas and semicolons read as spaces, since a range's join may stand across
-    # any of them ("4000 -" / "4500 ft", "4000, hasta 4500 m": the coordinator's
-    # reading at 22:22Z on 2026-09-25).
+    # and this part; None when no such number stands before it. Line breaks read
+    # as spaces, since a range's join may stand across them ("4000 -" / "4500 ft").
+    # Commas and semicolons do too, but only after a number that could be a range's
+    # low (`low`): the coordinator's reading at 22:22Z on 2026-09-25 ("4000, hasta
+    # 4500 m"), refined at 00:38Z on 2026-09-26 and ruled at 00:52Z. A number with
+    # its own unit or prefix is a complete elevation, and a glued one could be no
+    # range's low: either ends the check.
     gap: bool | None = None
-    for index, segment in enumerate(parts):
+    low = False
+    for index, (segment, separated) in enumerate(parts):
+        if separated and not low:
+            gap = None
+        # The number ahead is looked for across line breaks only: a phrase with no
+        # unit has a prefix, so it is a complete elevation.
+        ahead = None if index + 1 < len(parts) and parts[index + 1][1] else aheads[index + 1]
         # A part right after one that holds a number, or only a month, may start
         # with the year: "July 4, 1946.9500 ft", "IV-26" / "1948.950 m",
         # "July, 1946.950 m". A part that folds to nothing ("?", a Hangul filler, or
@@ -382,20 +397,20 @@ def read_locality(text: str) -> LocalityText:
         after_number = numbered
         if fold(segment):
             numbered = _numeral(segment) or _dated(segment)
-        offset = _offset(segment, aheads[index + 1], firsts[index + 1])
+        offset = _offset(segment, ahead, firsts[index + 1])
         if offset is not None:
-            piece, found, tail = offset
+            piece, found, tail, tail_low = offset
             pieces.append(piece)
         else:
-            rest, found, tail = _elevations(
-                segment, after_number, gap, aheads[index + 1], firsts[index + 1]
+            rest, found, tail, tail_low = _elevations(
+                segment, after_number, gap, ahead, firsts[index + 1]
             )
             rest = rest.strip(" ,;:")
             if rest:
                 pieces.append(_piece(rest))
         elevations += found
         if tail is not None:
-            gap = tail
+            gap, low = tail, tail_low
         elif any(c.isdecimal() for c in segment):
             gap = None
         elif gap is not None:
@@ -427,48 +442,71 @@ def variants(literals: Iterable[tuple[str, str]]) -> tuple[Variant, ...]:
     )
 
 
-def _parts(text: str) -> list[str]:
-    """The literal's parts in order. Lines are joined where a word needs the next
+def _parts(text: str) -> list[tuple[str, bool]]:
+    """The literal's parts in order, each with whether a comma or semicolon stands
+    between it and the part before. Lines are joined where a word needs the next
     one (a feature notation, a unit written before its name, or a linking word) and
     where a line starts with "of" in any case ("OF MT. APO"; "of" begins no name) or
     a lowercase "de" or "del" (a capitalized one begins a name, "Del Carmen"),
     unless that line is a date: the link, a month, and a number right after the
     month or at the start of the next line (`_date_line`: "de julio, 1946", "de
     julio" / "1946"). Otherwise it is a name ("Viña" / "del Mar", "of May Hill").
-    Lines are kept as word lists, so the joins stay linear in the text's length."""
-    raw = [words for words in (line.split() for line in text.splitlines()) if words]
+    The joins read the words that show: a word of only what `fold` drops is none of
+    them. A soft hyphen that ends a line shows as a hyphen. Separators are found in
+    the visible text (`_visible`) and cut from the text as written. Lines are kept as
+    word lists, so the joins stay linear in the text's length."""
+    raw: list[list[str]] = []
+    for line, whole in zip(text.splitlines(), text.splitlines(keepends=True)):
+        if line != whole:
+            line = _line_end_hyphen(line)
+        words = line.split()
+        if words:
+            raw.append(words)
+    shown = [[word for word in words if _visible(word)[0]] for words in raw]
     # For each line, and one past the last: whether the next line with more than
     # what folds to nothing or institution codes starts with a number.
     starts: list[bool] = [False] * (len(raw) + 1)
     for row in reversed(range(len(raw))):
         kept = fold(_institutions(" ".join(raw[row]))[0])
-        starts[row] = kept[0].isdecimal() if kept else starts[row + 1]
+        starts[row] = _number_first(kept) if kept else starts[row + 1]
     lines: list[list[str]] = []
+    # Each line's last word that shows, which says whether the next line joins it.
+    lasts: list[str] = []
     carry: list[str] = []
+    last = ""
     for row, words in enumerate(raw):
-        link = fold(words[0])
-        joins_up = link == "of" or words[0].islower()
+        seen = shown[row]
+        link = fold(seen[0]) if seen else ""
         if (
             not carry
             and lines
             and link in LINKS
-            and joins_up
-            and not _date_line(words, starts[row + 1])
+            and (link == "of" or seen[0].islower())
+            and not _date_line(seen, starts[row + 1])
         ):
-            carry = lines.pop()
+            carry, last = lines.pop(), lasts.pop()
         carry += words
-        if fold(carry[-1]) in JOINERS:
+        last = seen[-1] if seen else last
+        if fold(last) in JOINERS:
             continue
         lines.append(carry)
-        carry = []
+        lasts.append(last)
+        carry, last = [], ""
     if carry:
         lines.append(carry)
-    return [
-        " ".join(piece.split())
-        for words in lines
-        for piece in SEPARATOR.split(" ".join(words))
-        if piece.strip()
-    ]
+    parts: list[tuple[str, bool]] = []
+    separated = False
+    for words in lines:
+        line = " ".join(words)
+        seen_line, where = _visible(line)
+        cuts = [-1, *(where[match.start()] for match in SEPARATOR.finditer(seen_line)), len(line)]
+        for number, (start, end) in enumerate(zip(cuts, cuts[1:])):
+            piece = line[start + 1 : end]
+            separated = separated or number > 0
+            if piece.strip():
+                parts.append((" ".join(piece.split()), separated))
+                separated = False
+    return parts
 
 
 def _date_line(words: list[str], number_next: bool) -> bool:
@@ -476,19 +514,63 @@ def _date_line(words: list[str], number_next: bool) -> bool:
     link, and a number comes right after the month, a link between them aside
     ("de julio, 1946", "de julio,1946", "de julio de 1946"), or starts the next
     line when the month ends this one. Institution codes and what `fold` drops are
-    no words here, so "of May Hill" / "1500 m" is a name."""
+    no words here, so "of May Hill" / "1500 m" is a name; an apostrophe-shaped
+    letter before the number is none either (`_number_first`)."""
     after = fold(_institutions(" ".join(words[1:]))[0]).split()
     if not after or after[0] not in MONTHS:
         return False
     rest = after[1:]
     if rest and rest[0] in LINKS:
         rest = rest[1:]
-    return rest[0][0].isdecimal() if rest else number_next
+    return _number_first(rest[0]) if rest else number_next
+
+
+def _line_end_hyphen(line: str) -> str:
+    """The line, with a soft hyphen that ends it shown as the hyphen it shows as: one
+    that only spaces and what `fold` drops follow."""
+    end = len(line)
+    while end > 0 and (line[end - 1].isspace() or not _kept(line[end - 1])):
+        end -= 1
+    at = line.find("\u00ad", end)
+    return line if at < 0 else f"{line[:at]}-{line[at + 1 :]}"
+
+
+def _number_first(folded: str) -> bool:
+    """Whether folded text starts with a digit, after any of the apostrophe-shaped
+    modifier letters (U+02BB, U+02BC, U+02BD), which Python counts as letters and
+    `fold` keeps: a two-digit year may follow one."""
+    return folded.lstrip(APOSTROPHE_LETTERS)[:1].isdecimal()
+
+
+def _visible(text: str) -> tuple[str, Sequence[int]]:
+    """The text without what `fold` drops (a zero-width space, a soft hyphen, a word
+    joiner, a combining mark, a Hangul filler), which the reader's patterns read,
+    and where each of its characters, and one past the last, stands in `text`: what
+    they find is cut from the text as written, as `_institutions` cuts its codes.
+    Spaces that dropping leaves side by side, or at either end, go too, so the
+    visible text holds single spaces as the parts do. Parts in ASCII hold nothing
+    `fold` drops and are single-spaced already."""
+    if text.isascii():
+        return text, range(len(text) + 1)
+    kept: list[int] = []
+    for index, c in enumerate(text):
+        if _kept(c) and not (c.isspace() and (not kept or text[kept[-1]].isspace())):
+            kept.append(index)
+    if kept and text[kept[-1]].isspace():
+        kept.pop()
+    return "".join(text[index] for index in kept), [*kept, len(text)]
+
+
+def _written(text: str, where: Sequence[int], start: int, end: int) -> str:
+    """The text as written from the visible characters `start` to `end`, what
+    `fold` drops between them included."""
+    return text[where[start] : where[end - 1] + 1] if end > start else ""
 
 
 def _institutions(part: str) -> tuple[str, list[str]]:
     """The part without the museum's own names in it, matched as `fold` reads them
-    ("CNHM.", full-width "\uff23\uff2e\uff28\uff2d"), and those names as written."""
+    ("CNHM.", full-width "\uff23\uff2e\uff28\uff2d"), and those names as written,
+    with the period after one, what `fold` drops before it aside."""
     if part.isascii() and not INSTITUTIONS.search(fold(part)):
         return part, []
     folded: list[str] = []
@@ -502,8 +584,11 @@ def _institutions(part: str) -> tuple[str, list[str]]:
     last = 0
     for match in INSTITUTIONS.finditer("".join(folded)):
         start, end = where[match.start()], where[match.end() - 1] + 1
-        if end < len(part) and _kept(part[end]) == ".":
-            end += 1
+        after = end
+        while after < len(part) and not _kept(part[after]):
+            after += 1
+        if after < len(part) and _kept(part[after]) == ".":
+            end = after + 1
         found.append(part[start:end])
         keep.append(part[last:start])
         last = end
@@ -520,17 +605,18 @@ def _kept(c: str) -> str:
     return _unmarked(kept) if not kept.isascii() else kept
 
 
-def _aheads(parts: list[str]) -> list[bool | None]:
+def _aheads(parts: list[tuple[str, bool]]) -> list[bool | None]:
     """For each part, and one past the last, whether a word or a mark stands
-    between the end of the part before it and the next number; None when no number
-    follows. The later number's own prefix is no part of it."""
+    between the end of the part before it and the next number, across line breaks
+    but no comma or semicolon; None when no number follows before one. The later
+    number's own prefix is no part of it. It reads the visible parts."""
     aheads: list[bool | None] = [None] * (len(parts) + 1)
     for index in reversed(range(len(parts))):
-        segment = parts[index]
+        segment = _visible(parts[index][0])[0]
         digit = next((i for i, c in enumerate(segment) if c.isdecimal()), None)
         if digit is not None:
             aheads[index] = _gap(PREFIX_END.sub("", segment[:digit]))
-        elif aheads[index + 1] is not None:
+        elif aheads[index + 1] is not None and not parts[index + 1][1]:
             aheads[index] = _gap(segment) or aheads[index + 1]
     return aheads
 
@@ -547,26 +633,29 @@ def _firsts(parts: list[str]) -> list[tuple[str, ...]]:
 
 def _offset(
     segment: str, ahead: bool | None = None, following: tuple[str, ...] = ()
-) -> tuple[_Piece, list[Elevation], bool | None] | None:
+) -> tuple[_Piece, list[Elevation], bool | None, bool] | None:
     """An offset ("5 km NE of Yepocapa") and the elevation phrases after it. Its
     place follows the rules for any part: a place with a digit or without a
     letter is kept aside with its offset. A malformed distance ("1,5,3 km") is no
-    offset, so the segment is kept aside whole."""
-    match = OFFSET.match(segment)
+    offset, so the segment is kept aside whole. It reads the visible segment."""
+    seen, where = _visible(segment)
+    match = OFFSET.match(seen)
     bearing = _bearing(match["head"]) if match else None
     if match is None or bearing is None or not VALID_NUMBER.fullmatch(match["distance"]):
         return None
-    rest, found, tail = _elevations(match["rest"], ahead=ahead, following=following)
+    rest, found, tail, low = _elevations(
+        segment[where[match.start("rest")] :], ahead=ahead, following=following
+    )
     rest = rest.strip(" ,;:")
     if not _placeable(rest):
-        return _Piece("unplaced", segment), found, tail
+        return _Piece("unplaced", segment), found, tail, low
     unit = match["unit"].casefold()
     piece = _place(rest, segment)
-    piece.heading = Heading(match["head"], bearing)
+    piece.heading = Heading(_written(segment, where, *match.span("head")), bearing)
     piece.relation = "offset"
     piece.distance = match["distance"]
     piece.distance_unit = "km" if unit[0] == "k" else "mi" if unit[:2] == "mi" else "m"
-    return piece, found, tail
+    return piece, found, tail, low
 
 
 def _placeable(text: str) -> bool:
@@ -731,21 +820,24 @@ def _joined(
 
 def _gap(text: str) -> bool:
     """Whether a text between two numbers may join them as a range: it holds a word
-    or a mark as `fold` reads it, across a line break, a comma or a semicolon too
-    (the coordinator's reading at 22:22Z on 2026-09-25: "4000, hasta 4500 m" is set
-    aside). What `fold` drops is nothing."""
+    or a mark as `fold` reads it, across a line break too, and across a comma or a
+    semicolon after a bare number (the coordinator's reading at 22:22Z on 2026-09-25,
+    refined at 00:38Z on 2026-09-26: "4000, hasta 4500 m" is set aside). What `fold`
+    drops is nothing; a character it keeps as a space is a mark (`_mark`)."""
     if text.isspace() or not text:
         return False
     return bool(fold(text)) or any(_mark(c) for c in text)
 
 
 def _mark(c: str) -> bool:
-    """A character `fold` keeps that is no letter, digit, space or opening bracket,
-    as `fold` keeps it: one whose compatibility form is a space and marks is a
-    space."""
-    if c in OPENINGS:
+    """A character that is no space or opening bracket, which `fold` keeps as
+    something other than letters and digits: a spacing mark whose compatibility
+    form is a space and combining marks ("\u02dc", "\u203e") is one, while what
+    `fold` drops is none."""
+    if c.isspace() or c in OPENINGS:
         return False
-    return any(not (kept.isalnum() or kept.isspace()) for kept in _kept(c))
+    kept = _kept(c)
+    return bool(kept) and not any(k.isalnum() for k in kept)
 
 
 def _ascii(number: str) -> str:
@@ -819,19 +911,24 @@ def _elevations(
     before: bool | None = None,
     ahead: bool | None = None,
     following: tuple[str, ...] = (),
-) -> tuple[str, list[Elevation], bool | None]:
-    """Elevation phrases out of the segment, each as written (G27, G38), and
+) -> tuple[str, list[Elevation], bool | None, bool]:
+    """Elevation phrases out of the segment, each as written (G27, G38),
     whether a word or a mark follows the last number no elevation took (None when
-    every number was taken). `after_number` says the part before this one holds a
+    every number was taken), and whether that number could be a range's low
+    (`_range_low`). `after_number` says the part before this one holds a
     number or only a month; `before` and `ahead` are `_joined`'s, and `following`
-    the next parts' first words."""
+    the next parts' first words. The patterns read the visible segment
+    (`_visible`); each phrase and the rest are cut from the segment as written, and
+    a phrase's numbers are its visible ones."""
+    seen, where = _visible(segment)
     found: list[Elevation] = []
     rest: list[str] = []
     last = 0
+    written = 0
     # Opening brackets at the part's start are no text before a number.
-    lead = len(segment) - len(segment.lstrip(" " + OPENINGS))
-    digits = [index for index, c in enumerate(segment) if c.isdecimal()]
-    phrases = [match for match in ELEVATION.finditer(segment) if match["prefix"] or match["unit"]]
+    lead = len(seen) - len(seen.lstrip(" " + OPENINGS))
+    digits = [index for index, c in enumerate(seen) if c.isdecimal()]
+    phrases = [match for match in ELEVATION.finditer(seen) if match["prefix"] or match["unit"]]
     # Neighbours, one in feet and one in metres, that convert to each other.
     converting = {
         index
@@ -845,16 +942,45 @@ def _elevations(
         after = after_number or match.start() > lead
         # Only the last phrase in the segment reads on into the next parts.
         later = following if index == len(phrases) - 1 else ()
-        if _unsure(segment, match, paired, after, index in converting, later) or _joined(
-            segment, match, digits, last, before, ahead
+        if _unsure(seen, match, paired, after, index in converting, later) or _joined(
+            seen, match, digits, last, before, ahead
         ):
             continue
-        found.append(Elevation(match.group(0).strip(), match["low"], match["high"], _unit(match)))
-        rest.append(segment[last : match.start()])
-        last = match.end()
-    rest.append(segment[last:])
-    tail = _gap(segment[digits[-1] + 1 :]) if digits and digits[-1] >= last else None
-    return " ".join(EMPTY_BRACKETS.sub(" ", " ".join(rest)).split()), found, tail
+        text = _written(segment, where, *match.span())
+        found.append(Elevation(text.strip(), match["low"], match["high"], _unit(match)))
+        rest.append(segment[written : where[match.start()]])
+        last, written = match.end(), where[match.end() - 1] + 1
+    rest.append(segment[written:])
+    tail, low = None, False
+    if digits and digits[-1] >= last:
+        tail = _gap(seen[digits[-1] + 1 :])
+        low = _range_low(seen, digits[-1], lead, phrases[-1] if phrases else None)
+    return " ".join(_unbracketed(" ".join(rest)).split()), found, tail, low
+
+
+def _unbracketed(text: str) -> str:
+    """The text without the brackets an elevation left empty ("Mt. Apo (1463 m)"
+    leaves "Mt. Apo"), where brackets that hold only what `fold` drops are empty too."""
+    return BRACKETED.sub(
+        lambda match: match[0] if _visible(match[0][1:-1])[0].strip() else " ", text
+    )
+
+
+def _range_low(segment: str, end: int, lead: int, phrase: re.Match[str] | None) -> bool:
+    """Whether the number whose last digit is at `end` could be a range's low: it
+    is bare, with no unit or prefix of its own (no phrase holds it), and nothing is
+    glued to it before (a space, the part's start or an opening bracket comes
+    first, as an elevation's number needs). A date's year ("12-IV-1948") is none.
+    It reads back only over the number."""
+    if phrase is not None and phrase.start() <= end < phrase.end():
+        return False
+    start = end
+    while start > 0 and (
+        segment[start - 1].isdecimal()
+        or (segment[start - 1] in ".," and start > 1 and segment[start - 2].isdecimal())
+    ):
+        start -= 1
+    return start <= lead or segment[start - 1].isspace() or segment[start - 1] in OPENINGS
 
 
 def _piece(segment: str) -> _Piece:
@@ -865,12 +991,14 @@ def _piece(segment: str) -> _Piece:
         return _Piece(
             "unit", segment, unit=UNIT_WORDS[word], unit_first=word in UNITS_BEFORE
         )
+    # The heading patterns read the visible segment; the rest is cut as written.
+    seen, where = _visible(segment)
     for pattern in (LEADING_HEADING, TRAILING_HEADING):
-        match = pattern.match(segment)
-        heading = _heading(match) if match else None
+        match = pattern.match(seen)
+        heading = _heading(match, segment, where) if match else None
         if heading is None:
             continue
-        rest = match["rest"].strip(" ,;:")
+        rest = _written(segment, where, *match.span("rest")).strip(" ,;:")
         if not any(c.isalpha() for c in rest):  # nothing, or no letter: "E. slope -"
             return _Piece("heading", segment, heading=heading, relation=_relation(match))
         piece = _place(rest, segment)
@@ -882,8 +1010,8 @@ def _piece(segment: str) -> _Piece:
 def _place(written: str, text: str) -> _Piece:
     """A place piece: the unit word, before or after the name, leaves the name. A
     name left with no letter ("Depto. de ?"), keying to nothing ("Prov. Dept.") or
-    only a linking word is set aside."""
-    words = written.split()
+    only a linking word is set aside. It reads the words that show, each as written."""
+    words = [word for word in written.split() if _visible(word)[0]]
     unit = None
     if len(words) > 1 and fold(words[0]) in UNIT_WORDS:
         unit, words = UNIT_WORDS[fold(words[0])], words[1:]
@@ -894,8 +1022,9 @@ def _place(written: str, text: str) -> _Piece:
     name = " ".join(words).strip(" ,;:")
     if not comparison_key(name) or {fold(word) for word in name.split()} <= LINKS | JOINS:
         return _Piece("unplaced", text)
-    if name.endswith(".") and not _abbreviated(name.split()[-1]):
-        name = name[:-1]
+    seen, where = _visible(name)
+    if seen.endswith(".") and not _abbreviated(seen.split()[-1]):
+        name = name[: where[len(seen) - 1]] + name[where[len(seen) - 1] + 1 :]
     return _Piece("place", text, name=name, unit=unit)
 
 
@@ -945,7 +1074,7 @@ def _part(piece: _Piece) -> Part:
         for word in piece.name.split()
     )
     for pattern, country in COUNTRIES:
-        if pattern.fullmatch(piece.name):
+        if pattern.fullmatch(_visible(piece.name)[0]):
             reading = country
     readings = (
         (f"{reading} {UNIT_NAMES[piece.unit]}", reading) if piece.unit else (reading,)
@@ -972,15 +1101,16 @@ def _feature(name: str) -> str | None:
     return None
 
 
-def _heading(match: re.Match[str]) -> Heading | None:
-    """The heading of a slope phrase; a word run into its relation ("Eastside")
-    is a name, while a reader's joined "ESlope" is still a heading."""
+def _heading(match: re.Match[str], segment: str, where: Sequence[int]) -> Heading | None:
+    """The heading of a slope phrase, found in the visible segment and kept as
+    written; a word run into its relation ("Eastside") is a name, while a reader's
+    joined "ESlope" is still a heading."""
     head = match["head"]
     bearing = _bearing(head)
     letters = sum(c.isalpha() for c in head)
     if bearing is None or (not match["gap"] and not head.endswith(".") and letters > 3):
         return None
-    return Heading(head, bearing)
+    return Heading(_written(segment, where, *match.span("head")), bearing)
 
 
 def _bearing(head: str) -> float | None:
