@@ -282,63 +282,109 @@ the tool with backoff and jitter, never sooner than the provider's
 `Retry-After` (an HTTP-date is rounded up to the next second) and at most three
 attempts, every attempt recorded (HAR-009); a `Retry-After` longer than a step
 may wait ends the retries at once. No tool writes a field. The types keep G26:
-a Google place candidate carries a place ID and no name or components, and no
-georeference candidate cites Google (G35's openly licensed sources only); a
-Google source call's stored record is the tool's own (place ID, outcome and
-response fingerprint), never Google's body.
+a Google place candidate carries a place ID and no name or components, and a
+georeference candidate names at least one source, none of them Google (G35's
+openly licensed sources only). A Google source call's stored record is the
+tool's own (place ID, outcome and response fingerprint), never Google's body:
+that is S4's stated rule for the Google tool (#113), not a type check.
 
 **`taxonomy_verifier`** (`application/taxonomy_tool.py`). The query is the
-scientific name the literal writes, read from its leading words: a title-case
-genus, then optionally a parenthesized subgenus, epithets (hyphenated, as in
-"c-album", or an old capitalized epithet such as "Smithi"), a subspecies or
-variety marker with its epithet ("ssp.", "var."), and an author-year authorship
-("Linnaeus, 1758"). A qualifier ("sp. 1", "cf.") ends the name, and a det., leg.
-or coll. clause ends the literal. Nothing the literal does not write is sent,
-and neither is text that is no name: a bare capitalized word after a name may
-be a collector or a place, so authorship is taken only in the author-year form
-(S4's reading of PLAN 4.8 and `GBIF.md` 109). A literal that begins with no
-genus ("Sp. 30 ♀ Davao", "det. Mockford", "Coll. F. G. Werner") is `no_match`
-with no request. The label's rank follows from the name: a genus alone is genus
-rank (G25), one epithet a species, a subspecies or variety its own rank. The
-workflow's `lookup` step goes through the same reading, so it sends no request
-for such text either.
+scientific name the literal writes, read from its leading words. Nothing the
+literal does not write is sent, and neither is text that is no name. This is
+S4's reading of PLAN 4.8 and `GBIF.md` 109, as the steward's reviews of rounds 1
+and 2 tightened it:
+- **The name**: a title-case genus; optionally a parenthesized subgenus, written
+  out or abbreviated ("(Pyrobombus)", "(P.)"); epithets in lower case, with any
+  accents or hyphens as written ("impatiëns", "c-album"), or an old capitalized
+  epithet with a patronym's or a place's ending ("Smithi", "Canadensis"); and a
+  subspecies or variety marker with its epithet ("ssp.", "var."). Trailing
+  punctuation is not part of a word, and a word ending in a comma or a period
+  ends the name.
+- **What ends it**: a qualifier ("sp. 1", "cf."), a hybrid sign ("×", or "x"
+  standing alone), and words that are never epithets: a person clause,
+  abbreviated or spelled out ("det.", "leg.", "coll.", "ident.", "determined",
+  "collected"), the words by, in, on, at, from, ex and de, and sex and
+  life-stage words ("female", "larva"). Nothing after them is read.
+- **Authorship**, only in the author-year form and bounded: one to four authors
+  (title-case surnames, with particles such as "de" and initials such as "F."),
+  joined by "&", "et" or a comma, then a year, in parentheses or not
+  ("Linnaeus, 1758", "(de Geer, 1775)", "Smith & Jones, 1901"). A year alone
+  ("Epipsocus 1946") or a place before a year ("Davao City 1946", "Mt. Apo
+  1946") is no authorship, and neither is sent.
+- **Bounds**: only the first 40 words are read, a literal with a word over 64
+  characters before any person clause writes no name, and authorship is at most
+  four authors and 200 characters.
+- **A name read only in part never succeeds.** When a genus is followed by a
+  word that could be an epithet but is none the reader takes ("Bombus
+  Pennsylvanicus", "Epipsocus Davao City 1946"), or the name has a hybrid sign
+  ("Xus yus × zus"), the query is the name as far as it was read, without that
+  word, and the match can only be `ambiguous`: the result warns
+  `taxonomy_name_partly_read`, and the lookup records why (`partly_read`).
+- **What syntax cannot settle** (S4's reading): a lone title-case word such as
+  "Davao" or "Werner" reads as a genus; a title-case word with a patronym's or a
+  place's ending, such as "Hawaii" or "Suzuki", reads as a capitalized epithet;
+  "(Davao)" reads as a subgenus; and a surname and year after a name, such as
+  "Werner, 1946", reads as authorship. Each is then sent as part of the name.
+
+A literal that begins with no genus ("Sp. 30 ♀ Davao", "det. Mockford", "Coll.
+F. G. Werner", "collected by Werner 1946") is `no_match` with no request. The
+label's rank follows from the name: a genus alone is genus rank (G25), one
+epithet a species, a subspecies or variety its own rank. The workflow's `lookup`
+step goes through the same reading, so it sends no request for such text
+either, and a species label never clears there at genus.
 
 GBIF species match v2 against the pinned COL XR checklist decides the outcome
 (G23), under the coordinator's ruling that success is `GBIF.md` 126-130's (S4
 brief 166-170; coordinator.md:19), as its rulings of 22:46Z on 2026-09-25
-refine it (coordinator.md:476-478). GBIF is sent the name with its authorship
+refine it for homonyms and correct it for exact synonyms, which the brief sent
+to review (coordinator.md:476-478). GBIF is sent the name with its authorship
 when written, `taxonRank`, kingdom Animalia and class Insecta from the profile,
 and the checklist key (`GBIF.md` 107-114; PLAN 4.8).
 
 - `success` (row 1, `GBIF.md` 126): an exact match whose usage is accepted, has
   a key, has the label's canonical name (`canonicalName`, compared exactly) at
   the label's rank, sits in class Insecta (the compatible classification, as
-  the coordinator ruled at 22:46Z), and has no homonym conflict.
+  the coordinator ruled at 22:46Z), and has no homonym conflict, for a name
+  read in full.
 - A *homonym conflict* (row 4, `GBIF.md` 129, as the coordinator ruled at
   22:46Z): another exact alternative with the same canonical name and other
   authorship, in class Insecta, whatever its status. Non-exact alternatives,
   alternatives outside the class, and a duplicate of the same name and
-  authorship stay in the evidence but do not count. The pilot's "Epipsocus
-  sp. 1" goes to review under it: GBIF's answer lists "Epipsocus Badonnel, 1955"
-  beside the accepted "Epipsocus Hagen, 1866".
+  authorship stay in the evidence but do not count. An exact alternative
+  missing its class or its canonical name counts, and so does one whose
+  authorship, like the usage's, is empty: nothing shows either is another name
+  (the steward's review of round 2). The usage itself, by its key, never counts.
+  The pilot's "Epipsocus sp. 1" goes to review under it: GBIF's answer lists
+  "Epipsocus Badonnel, 1955" beside the accepted "Epipsocus Hagen, 1866".
 - An *exact synonym* (row 2, `GBIF.md` 127, as the coordinator ruled at 22:46Z
   from G28 and G1) clears when its accepted usage passes row 1's test: the
   accepted usage GBIF returns, at the label's rank, in class Insecta, and no
-  homonym conflict for the label's name. The final value is the accepted name,
-  the verbatim stays the label's spelling, and the synonym's status and the
-  accepted usage are recorded. Otherwise it is `ambiguous`.
+  homonym conflict for the label's name (S4's reading of whose conflict
+  counts). GBIF v2 gives the accepted usage no status, since it is the accepted
+  name by definition, so a missing status counts as accepted and any other
+  status sends the match to review (the coordinator's ruling of 23:58Z,
+  coordinator.md:492). A pro parte synonym has several accepted usages, which
+  `GBIF.md` 129 sends to review, so it never clears. The final value is the
+  accepted name, the verbatim stays the label's spelling, and the synonym's
+  status and the accepted usage are recorded. Otherwise it is `ambiguous`.
 - `ambiguous`: a fuzzy or variant match (row 3), a higher-rank match (row 5), a
   homonym conflict, a usage that is not accepted, another canonical name or
-  rank, a usage outside Insecta, or an exact synonym that does not clear.
+  rank, a usage outside Insecta, an exact synonym that does not clear, and a
+  name read only in part.
   `no_match`: GBIF matched nothing. A match type GBIF documents, VARIANT
   included, is never `malformed_response`.
-- A body whose parts do not have the types GBIF documents (a usage, an
-  alternative or its diagnostics that is not an object, a name, rank or status
-  that is not a string, a name over 500 characters) is `malformed_response`,
-  never an exception, and so is a body nested too deeply to parse.
+- A body whose parts do not have the types GBIF documents is
+  `malformed_response`, never an exception: a usage, an alternative or its
+  diagnostics that is not an object; a name, rank or status that is not a
+  string; a name over 500 characters, a rank or status over 40, or a key that
+  is neither a string of at most 64 characters nor a non-negative integer; a
+  classification element that is not an object with a string name and rank; an
+  object that gives a key twice; or nesting deeper than 32 levels.
 
-Every GBIF candidate carries `scientificName` (GBIF v2 names it `name`), so the
-reviewer's existing `taxonomy_resolution` decision can select it. GBIF's usage,
+Every GBIF candidate carries `scientificName`, always GBIF's own `name` (GBIF
+v2's field, within 500 characters) and never a body's `scientificName`, so the
+reviewer's existing `taxonomy_resolution` decision can select it and stores
+GBIF's name. GBIF's usage,
 accepted usage, classification and alternatives are kept as `GBIF.md` 134-160's
 evidence contract lists them, the coordinator's reading of what may be stored;
 G28 itself stores the label's spelling and GBIF's settled name.
@@ -352,7 +398,10 @@ outcome. When GBIF answered and one of them answers differently (success
 against anything else) the result carries the warning
 `taxonomy_source_disagreement:{source}`; when one is unavailable after its
 retries, or answers a truncated or malformed body (which is not retried),
-`taxonomy_support_unavailable:{source}`. BugGuide is not called.
+`taxonomy_support_unavailable:{source}`. An answer of a type its API does not
+document (GNV's `matchType` outside its list, COL's `match` not a boolean), and
+a body in an encoding the fetch cannot read, are malformed: never retried, and
+never a disagreement. BugGuide is not called.
 
 **One deadline.** The tool has 60 seconds in all, half the default external
 step timeout (S4's choice), and GBIF comes first: GBIF's attempts, and each

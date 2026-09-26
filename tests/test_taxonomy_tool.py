@@ -38,6 +38,10 @@ def alternative(name, match, status, key, rank="SPECIES", classification=INSECTA
     }
 
 
+def without(record, field):
+    return {k: v for k, v in record.items() if k != field}
+
+
 def gbif(match, found=None, alternatives=(), classification=INSECTA, accepted=None):
     body = {
         "usage": found,
@@ -121,6 +125,30 @@ MELLIFERA = usage("Apis mellifera Linnaeus, 1758", "SPECIES")
         # A capitalized clause would otherwise read as author-year authorship.
         ("Bombus impatiens Det. Mockford, 1990", "Bombus impatiens"),
         ("Bombus impatiens Coll. Werner, 1946", "Bombus impatiens"),
+        # The steward's probes of round 2: a species label read in full.
+        ("Bombus impatiens.", "Bombus impatiens"),
+        ("Bombus impatiens, det. Smith", "Bombus impatiens"),
+        ("Bombus impatiëns", "Bombus impatiëns"),
+        ("Bombus (P.) impatiens", "Bombus (P.) impatiens"),
+        # Read only in part: the word or the hybrid is never sent.
+        ("Bombus Pennsylvanicus", "Bombus"),
+        ("Xus yus × zus", "Xus yus"),
+        # Text that is no name: clauses, prepositions, places, dates, sex.
+        ("Epipsocus determined by Mockford 1987", "Epipsocus"),
+        ("Epipsocus collected by Werner 1946", "Epipsocus"),
+        ("Epipsocus ident. Mockford", "Epipsocus"),
+        ("Epipsocus in Davao 1946", "Epipsocus"),
+        ("Epipsocus Mt. Apo 1946", "Epipsocus"),
+        ("Epipsocus Davao City 1946", "Epipsocus"),
+        ("Epipsocus 1946", "Epipsocus"),
+        ("Xus yus female", "Xus yus"),
+        ("Xus yus on Rosa", "Xus yus"),
+        # Authorship, bounded: authors, then a year.
+        ("Xus yus de Geer, 1775", "Xus yus de Geer, 1775"),
+        ("Bombus impatiens Smith & Jones, 1901", "Bombus impatiens Smith & Jones, 1901"),
+        ("Bombus impatiens F. Smith, 1854", "Bombus impatiens F. Smith, 1854"),
+        # What syntax cannot settle (HARNESS.md section 6): read as authorship.
+        ("Epipsocus Werner, 1946", "Epipsocus Werner, 1946"),
         ("Sp. 30 ♀", None),
         ("sp 22", None),
         ("Sp 22", None),
@@ -128,6 +156,8 @@ MELLIFERA = usage("Apis mellifera Linnaeus, 1758", "SPECIES")
         ("Sp. 30 ♀ det. Mockford", None),
         ("det. Mockford", None),
         ("Coll. F. G. Werner", None),
+        ("collected by Werner 1946", None),
+        ("In Davao 1946", None),
     ],
 )
 def test_the_query_is_the_scientific_name_the_literal_writes(literal, expected):
@@ -146,6 +176,12 @@ def test_the_query_is_the_scientific_name_the_literal_writes(literal, expected):
         ("Xus yus ssp. zus", "SUBSPECIES"),
         ("Xus yus zus", "SUBSPECIES"),
         ("Xus yus var. zus", "VARIETY"),
+        ("Bombus impatiens.", "SPECIES"),
+        ("Bombus impatiens, det. Smith", "SPECIES"),
+        ("Bombus impatiëns", "SPECIES"),
+        ("Bombus (P.) impatiens", "SPECIES"),
+        ("Bombus Pennsylvanicus", "GENUS"),
+        ("Xus yus × zus", "SPECIES"),
     ],
 )
 def test_gbif_is_asked_for_the_name_at_the_rank_the_label_writes(
@@ -261,6 +297,22 @@ def test_epipsocus_goes_to_review_under_the_homonym_ruling(tmp_path):
             ),
             S.SUCCESS,
         ),
+        (
+            alternative(
+                "Apis mellifera Smith, 1850", "EXACT", "ACCEPTED", "K9", classification=None
+            ),
+            S.AMBIGUOUS,
+        ),
+        (
+            {
+                **alternative("Apis mellifera Smith, 1850", "EXACT", "ACCEPTED", "K9"),
+                "usage": without(
+                    usage("Apis mellifera Smith, 1850", "SPECIES", "ACCEPTED", "K9"),
+                    "canonicalName",
+                ),
+            },
+            S.AMBIGUOUS,
+        ),
     ],
     ids=[
         "a synonym homonym",
@@ -269,6 +321,8 @@ def test_epipsocus_goes_to_review_under_the_homonym_ruling(tmp_path):
         "outside Insecta",
         "not exact",
         "the same name and authorship",
+        "no class shows it is outside Insecta",
+        "no canonical name shows it is another name",
     ],
 )
 def test_a_homonym_conflict_is_an_exact_same_name_by_another_author_in_insecta(
@@ -338,17 +392,20 @@ ACCEPTED_MELLIFERA = {
 }
 
 
-def test_an_exact_synonym_clears_with_its_accepted_name(tmp_path):
+@pytest.mark.parametrize("status", [None, "ACCEPTED"])
+def test_an_exact_synonym_clears_with_its_accepted_name(tmp_path, status):
     # The coordinator's ruling of 22:46Z (G28, G1): the accepted usage passes
     # row 1, so the field clears with the accepted name; the synonym status and
-    # the accepted usage stay on the record (GBIF.md 127).
-    reply = gbif("EXACT", MELLIFICA, accepted=ACCEPTED_MELLIFERA)
+    # the accepted usage stay on the record (GBIF.md 127). GBIF v2 gives the
+    # accepted usage no status: it is the accepted name (ruling of 23:58Z).
+    accepted = dict(ACCEPTED_MELLIFERA, **({"status": status} if status else {}))
+    reply = gbif("EXACT", MELLIFICA, accepted=accepted)
 
     result, lookup = run(tmp_path, "Apis mellifica", transport(reply))
 
     assert result.outcome == S.SUCCESS == lookup.status
     assert [(t.usage_key, t.status, t.accepted_usage_key) for t in result.taxa] == [
-        ("A1", None, None),
+        ("A1", status, None),
         ("S1", "SYNONYM", "A1"),
     ]
     assert lookup.candidates[0]["key"] == "A1"
@@ -377,6 +434,20 @@ def test_an_exact_synonym_clears_with_its_accepted_name(tmp_path):
             "not an insect",
         ),
         (gbif("EXACT", MELLIFICA), "no accepted usage"),
+        (
+            gbif(
+                "EXACT", MELLIFICA, accepted=dict(ACCEPTED_MELLIFERA, status="DOUBTFUL")
+            ),
+            "its accepted usage has a status other than ACCEPTED",
+        ),
+        (
+            gbif(
+                "EXACT",
+                dict(MELLIFICA, status="PROPARTE_SYNONYM"),
+                accepted=ACCEPTED_MELLIFERA,
+            ),
+            "a pro parte synonym has several accepted usages",
+        ),
     ],
 )
 def test_an_exact_synonym_stays_in_review_when_its_accepted_usage_fails_row_one(
@@ -418,6 +489,29 @@ def deep(levels):
         gbif("EXACT", dict(MELLIFERA, name=5)),
         gbif("EXACT", dict(MELLIFERA, rank=["SPECIES"])),
         gbif("EXACT", dict(MELLIFERA, name="Apis mellifera " + "x" * 640_000)),
+        gbif("EXACT", dict(MELLIFERA, key="K" * 870_000)),
+        gbif("EXACT", dict(MELLIFERA, key=True)),
+        gbif("EXACT", dict(MELLIFERA, rank="SPECIES" * 10)),
+        gbif("EXACT", dict(MELLIFERA, status=["ACCEPTED"])),
+        gbif("EXACT", MELLIFERA, classification=["x"]),
+        gbif(
+            "EXACT",
+            MELLIFERA,
+            [
+                alternative(
+                    "Apis mellifera Smith, 1850", "EXACT", "ACCEPTED", "K9", classification=["x"]
+                )
+            ],
+        ),
+        httpx.Response(
+            200,
+            content=(
+                json.dumps(gbif("EXACT", MELLIFERA))[:-1]
+                + ', "usage": '
+                + json.dumps(usage("Homo sapiens Linnaeus, 1758", "SPECIES"))
+                + "}"
+            ).encode(),
+        ),
     ],
     ids=[
         "an alternative's diagnostics",
@@ -426,6 +520,13 @@ def deep(levels):
         "a name",
         "a rank",
         "a 640 kB name",
+        "an 870 kB key",
+        "a boolean key",
+        "a rank over 40 characters",
+        "a status that is a list",
+        "a classification element",
+        "an alternative's classification element",
+        "a key given twice",
     ],
 )
 def test_a_malformed_gbif_body_is_malformed_response(tmp_path, body):
@@ -693,4 +794,184 @@ def test_the_types_keep_google_to_a_place_id():
         PlaceCandidate(field_key="country", source=google, components={"country": "PH"})
     with pytest.raises(ValidationError):
         GeoreferenceCandidate(latitude=7.0, longitude=125.0, sources=[SourceRef(name=google)])
+    with pytest.raises(ValidationError):
+        GeoreferenceCandidate(latitude=7.0, longitude=125.0, sources=[])
     PlaceCandidate(field_key="country", source="geonames", name="Philippines")
+
+
+BOMBUS = usage("Bombus Latreille, 1802", "GENUS")
+IMPATIENS = usage("Bombus impatiens Cresson, 1863", "SPECIES")
+SPECIES_LABELS = [
+    "Bombus impatiens.",
+    "Bombus impatiens, det. Smith",
+    "Bombus impatiëns",
+    "Bombus (P.) impatiens",
+    "Bombus Pennsylvanicus",
+]
+
+
+@pytest.mark.parametrize("literal", SPECIES_LABELS)
+def test_a_species_label_never_clears_at_genus(tmp_path, literal):
+    # The steward's probes of round 2: GBIF's exact genus answered each of
+    # these, and each cleared as "Bombus Latreille, 1802" (G25).
+    result, lookup = run(tmp_path, literal, transport(gbif("EXACT", BOMBUS)))
+
+    assert result.outcome == S.AMBIGUOUS == lookup.status
+
+
+@pytest.mark.parametrize("literal", SPECIES_LABELS)
+def test_the_workflow_lookup_never_clears_a_species_label_at_genus(tmp_path, literal):
+    from specimen_digitization.application.lookup import GbifTaxonomy
+
+    client = transport(gbif("EXACT", BOMBUS))
+
+    assert GbifTaxonomy(LocalBlobs(tmp_path), client).lookup(literal).status == (
+        S.AMBIGUOUS
+    )
+
+
+@pytest.mark.parametrize(
+    "literal", ["Bombus impatiens.", "Bombus impatiens, det. Smith", "Bombus (P.) impatiens"]
+)
+def test_a_species_label_read_in_full_clears_at_species(tmp_path, literal):
+    result, _ = run(tmp_path, literal, transport(gbif("EXACT", IMPATIENS)))
+
+    assert result.outcome == S.SUCCESS
+
+
+@pytest.mark.parametrize(
+    "literal,reply,why",
+    [
+        ("Bombus Pennsylvanicus", gbif("EXACT", BOMBUS), "Pennsylvanicus"),
+        ("Epipsocus Davao City 1946", gbif("EXACT", EPIPSOCUS), "Davao"),
+        ("Xus yus × zus", gbif("EXACT", usage("Xus yus Smith, 1900", "SPECIES")), "hybrid"),
+        ("Xus × Yus", gbif("EXACT", usage("Xus Smith, 1900", "GENUS")), "hybrid"),
+    ],
+)
+def test_a_name_read_only_in_part_never_succeeds(tmp_path, literal, reply, why):
+    # A word after the genus that could be an epithet, or a hybrid sign, never
+    # ends in a success, and the word is never sent (the steward's review).
+    requests = []
+
+    result, lookup = run(tmp_path, literal, transport(reply, requests=requests))
+
+    assert result.outcome == S.AMBIGUOUS == lookup.status
+    assert "taxonomy_name_partly_read" in result.warnings
+    assert lookup.metadata["partly_read"] == why
+    assert not any(why in str(request.url) for request in requests)
+
+
+def test_no_unbounded_text_reaches_the_sources(tmp_path):
+    many = "Epipsocus " + "Aa " * 100_000 + "1946"
+    joined = "Epipsocus " + "Aa & " * 50 + "Bb, 1946"
+    requests = []
+
+    run(tmp_path, many, transport(gbif("EXACT", EPIPSOCUS), requests=requests))
+
+    assert query_name(many) == query_name(joined) == "Epipsocus"
+    assert query_name("Epipsocus " + "a" * 70_000) is None
+    assert max(len(str(request.url)) for request in requests) < 2_000
+
+
+@pytest.mark.parametrize("own", ["Homo sapiens", {"name": "Homo sapiens"}, "x" * 640_000])
+def test_the_final_value_is_gbifs_name_never_a_bodys_own(tmp_path, own):
+    # What the workflow's lookup and the review decision store as the value.
+    reply = gbif("EXACT", dict(MELLIFERA, scientificName=own))
+
+    result, lookup = run(tmp_path, "Apis mellifera", transport(reply))
+
+    assert result.outcome == S.SUCCESS
+    assert lookup.candidates[0]["scientificName"] == "Apis mellifera Linnaeus, 1758"
+
+
+def test_two_authorless_usages_of_one_name_are_a_homonym_conflict(tmp_path):
+    reply = gbif(
+        "EXACT",
+        usage("Apis mellifera", "SPECIES"),
+        [alternative("Apis mellifera", "EXACT", "ACCEPTED", "K9")],
+    )
+
+    assert run(tmp_path, "Apis mellifera", transport(reply)).result.outcome == S.AMBIGUOUS
+
+
+def test_a_supporting_answer_of_the_wrong_type_is_malformed_not_a_disagreement(tmp_path):
+    gnv = {"names": [{"matchType": 7}]}
+    col = dict(COL_ACCEPTED, match="false")
+
+    result, _ = run(
+        tmp_path, "Epipsocus", transport(gbif("EXACT", EPIPSOCUS), gnv=gnv, col=col)
+    )
+
+    assert result.outcome == S.SUCCESS
+    assert [c.outcome for c in result.sub_calls if c.source != "gbif"] == [
+        S.MALFORMED,
+        S.MALFORMED,
+    ]
+    assert result.warnings == [
+        "taxonomy_support_unavailable:gnv",
+        "taxonomy_support_unavailable:col",
+    ]
+
+
+def test_a_failed_gbif_call_carries_a_sanitized_error(tmp_path):
+    failed = httpx.Response(503)
+
+    result, _ = run(tmp_path, "Epipsocus", transport(failed, failed, failed))
+
+    assert [c.sanitized_error for c in result.sub_calls if c.source == "gbif"] == [
+        "provider_error"
+    ] * 3
+
+
+def test_a_supporting_body_in_an_unreadable_encoding_is_malformed_and_not_retried(
+    tmp_path, monkeypatch
+):
+    from specimen_digitization.application import http_effect
+
+    def bounded(url, **options):
+        if "gbif.org" in url:
+            body = json.dumps(
+                {"alias": "fixture-index"}
+                if url.endswith("/metadata")
+                else gbif("EXACT", EPIPSOCUS)
+            ).encode()
+            return {
+                "failure": None,
+                "truncated": False,
+                "status_code": 200,
+                "body": body,
+                "retry_after": "",
+            }
+        body = json.dumps(GNV_EXACT if "globalnames" in url else COL_ACCEPTED).encode()
+        return {
+            "failure": None,
+            "truncated": False,
+            "unsupported_encoding": True,
+            "status_code": 200,
+            "body": body,
+            "retry_after": "",
+        }
+
+    monkeypatch.setattr(http_effect, "bounded_http", bounded)
+
+    result, _ = run(tmp_path, "Epipsocus", None)
+
+    assert result.outcome == S.SUCCESS
+    assert [
+        (c.source, c.attempt, c.outcome, c.sanitized_error) for c in result.sub_calls[1:]
+    ] == [
+        ("gnv", 1, S.MALFORMED, "unsupported_encoding"),
+        ("col", 1, S.MALFORMED, "unsupported_encoding"),
+    ]
+
+
+def test_a_gbif_body_nested_too_deep_to_store_is_malformed(tmp_path):
+    # Pre-existing, from the steward's review of round 2: a body nested a few
+    # hundred levels parsed and succeeded, then its record could not be written.
+    body = gbif("EXACT", MELLIFERA)
+    body["diagnostics"]["note"] = json.loads(deep(300))
+
+    result, lookup = run(tmp_path, "Apis mellifera", transport(body))
+
+    assert result.outcome == S.MALFORMED == lookup.status
+    assert lookup.model_dump_json()
