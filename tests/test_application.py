@@ -241,7 +241,7 @@ def test_lookup_http_failure_taxonomy(tmp_path, status, expected):
     "match,usage,expected",
     [
         ("NONE", None, LookupStatus.NO_MATCH),
-        ("HIGHERRANK", {"key": "1", "rank": "GENUS"}, LookupStatus.AMBIGUOUS),
+        ("HIGHERRANK", {"key": "1", "name": "Fixture", "rank": "GENUS"}, LookupStatus.AMBIGUOUS),
         (
             "EXACT",
             {
@@ -253,7 +253,7 @@ def test_lookup_http_failure_taxonomy(tmp_path, status, expected):
             },
             LookupStatus.SUCCESS,
         ),
-        ("VARIANT", {"key": "x", "rank": "GENUS"}, LookupStatus.AMBIGUOUS),
+        ("VARIANT", {"key": "x", "name": "Fixture", "rank": "GENUS"}, LookupStatus.AMBIGUOUS),
     ],
 )
 def test_lookup_match_not_confidence(tmp_path, match, usage, expected):

@@ -619,6 +619,7 @@ def deep(levels):
             ],
         ),
         gbif("EXACT", MELLIFERA, classification=[{"rank": "CLASS", "name": "In" + chr(0)}]),
+        gbif("EXACT", MELLIFERA, classification=[{"rank": "IGNORE", "name": "Insecta"}]),
         httpx.Response(
             200,
             content=(
@@ -655,6 +656,7 @@ def deep(levels):
         "an authorship with a control character",
         "an alternative's match type that is not a string",
         "a classification name with a control character",
+        "a classification rank GBIF does not document",
         "a key given twice",
     ],
 )
@@ -1165,6 +1167,9 @@ def test_nothing_after_a_person_clause_is_read():
         "Epipsocus determinado por Mockford 1987",
         "Epipsocus paratype",
         "Epipsocus fem. 13-v-1946",
+        "Epipsocus 13-5-48",
+        "Epipsocus 12.v.1948",
+        "Epipsocus ♀",
     ],
 )
 def test_a_genus_followed_by_text_that_is_no_epithet_clears_at_genus(tmp_path, literal):
@@ -1278,3 +1283,22 @@ def test_a_supporting_answer_field_of_the_wrong_type_is_malformed(tmp_path, gnv,
     malformed = [c for c in result.sub_calls if c.outcome == S.MALFORMED]
     assert malformed and {c.sanitized_error for c in malformed} == {"malformed_response"}
     assert not any("disagreement" in w for w in result.warnings)
+
+
+def test_an_alternative_is_its_documented_fields_alone(tmp_path):
+    # Its usage, diagnostics and classification; nothing a body adds.
+    other = dict(
+        alternative("Apis mellifera Smith, 1850", "EXACT", "ACCEPTED", "K9"),
+        usage2={"key": "K9", "scientificName": "Homo sapiens"},
+    )
+
+    _, lookup = run(tmp_path, "Apis mellifera", transport(gbif("EXACT", MELLIFERA, [other])))
+
+    assert set(lookup.candidates[1]) == {"usage", "diagnostics", "classification"}
+
+
+@pytest.mark.parametrize("mark", ["♀", "♂", "♂♀", "2♀"])
+def test_sex_signs_end_the_name(mark):
+    name = scientific_name(f"Xus yus {mark} Davao")
+
+    assert (name.query, name.partly_read) == ("Xus yus", None)

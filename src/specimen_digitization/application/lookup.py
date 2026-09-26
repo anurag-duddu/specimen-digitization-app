@@ -4,6 +4,7 @@ import hashlib
 import json
 import re
 import time
+import unicodedata
 from dataclasses import dataclass
 
 import httpx
@@ -24,41 +25,99 @@ SYNONYM_STATUSES = frozenset(
 # A pro parte synonym has several accepted usages, which GBIF.md 129 sends to
 # review, so only the other synonyms can clear (the steward's review of round 2).
 CLEARING_SYNONYMS = SYNONYM_STATUSES - {"PROPARTE_SYNONYM"}
-# The name a literal writes (HARNESS.md section 6: S4's reading, as the
-# steward's reviews tightened it). A qualifier ("sp. 1", "cf.") ends the name.
+# The statuses and ranks GBIF and ChecklistBank document. Any other value is
+# malformed, so no free text reaches the harness as a status or a rank.
+GBIF_STATUSES = frozenset(
+    "ACCEPTED PROVISIONALLY_ACCEPTED DOUBTFUL SYNONYM HETEROTYPIC_SYNONYM "
+    "HOMOTYPIC_SYNONYM PROPARTE_SYNONYM AMBIGUOUS_SYNONYM MISAPPLIED "
+    "BARE_NAME".split()
+)
+GBIF_RANKS = frozenset(
+    "SUPERDOMAIN DOMAIN SUBDOMAIN INFRADOMAIN EMPIRE REALM SUBREALM SUPERKINGDOM "
+    "KINGDOM SUBKINGDOM INFRAKINGDOM SUPERPHYLUM PHYLUM SUBPHYLUM INFRAPHYLUM "
+    "PARVPHYLUM MICROPHYLUM NANOPHYLUM CLAUDIUS GIGACLASS MEGACLASS SUPERCLASS "
+    "CLASS SUBCLASS INFRACLASS SUBTERCLASS PARVCLASS SUPERDIVISION DIVISION "
+    "SUBDIVISION INFRADIVISION SUPERLEGION LEGION SUBLEGION INFRALEGION "
+    "MEGACOHORT SUPERCOHORT COHORT SUBCOHORT INFRACOHORT GIGAORDER MAGNORDER "
+    "GRANDORDER MIRORDER SUPERORDER ORDER NANORDER HYPOORDER MINORDER SUBORDER "
+    "INFRAORDER PARVORDER FALANX MEGAFAMILY GRANDFAMILY SUPERFAMILY EPIFAMILY "
+    "FAMILY SUBFAMILY INFRAFAMILY SUPERTRIBE TRIBE SUBTRIBE INFRATRIBE "
+    "SUPRAGENERIC_NAME SUPERGENUS GENUS SUBGENUS INFRAGENUS SUPERSECTION "
+    "SECTION SUBSECTION SUPERSECTION_BOTANY SECTION_BOTANY SUBSECTION_BOTANY "
+    "SUPERSECTION_ZOOLOGY SECTION_ZOOLOGY SUBSECTION_ZOOLOGY SUPERSERIES SERIES "
+    "SUBSERIES INFRAGENERIC_NAME SPECIES_AGGREGATE SPECIES INFRASPECIFIC_NAME "
+    "GREX KLEPTON SUBSPECIES CULTIVAR_GROUP CONVARIETY INFRASUBSPECIFIC_NAME "
+    "PROLES NATIO ABERRATION MORPH SUPERVARIETY VARIETY SUBVARIETY SUPERFORM "
+    "FORM SUBFORM PATHOVAR BIOVAR CHEMOVAR MORPHOVAR PHAGOVAR SEROVAR CHEMOFORM "
+    "FORMA_SPECIALIS LUSUS CULTIVAR MUTATIO STRAIN OTHER UNRANKED".split()
+)
+# The name a literal writes (HARNESS.md section 6), read failing closed (the
+# steward's review of round 3): a word the reader does not take marks the name
+# read only in part, so it never succeeds. A qualifier after the genus makes a
+# genus-level identification; before it, it marks the genus doubtful (the
+# coordinator's reading of 01:11Z on 2026-09-26).
 QUALIFIERS = frozenset("sp spp cf aff nr near".split())
-# A clause naming a person, abbreviated or spelled out, ends the literal.
+DOUBT_MARKERS = frozenset("cf aff nr near".split())
+# A clause naming a person ends the literal: English, Spanish, Latin, French
+# and German markers, abbreviated or spelled out.
 CLAUSES = frozenset(
-    "det determ determined ident identif identified leg legit coll col "
-    "collected collector collectors".split()
+    "det determ determined determiner ident identif identified leg legit lg lgt "
+    "coll col collected collector collectors vid vidit rev revid revidit conf "
+    "confirmed confirmavit teste dt dét déterminé recogn recognovit "
+    "determinavit sammler determinado determinada determinó colectado "
+    "colectada colectó colector colectores colecta recolectado recolectada "
+    "recolector recolectores identificado identificó revisado revisó "
+    "confirmado".split()
 )
-# Words that are never epithets, so the name ends before them: prepositions
-# ("de" may still begin an author's name) and sex and life-stage words.
-NEVER_EPITHETS = frozenset(
-    "by in on at from ex de male males female females larva larvae nymph "
-    "nymphs pupa pupae adult adults worker workers queen queens".split()
-)
-SUBSPECIES_MARKERS = frozenset({"ssp", "subsp"})
-MARKERS = SUBSPECIES_MARKERS | {"var"}
-STOPS = QUALIFIERS | CLAUSES | NEVER_EPITHETS | MARKERS
-HYBRID_SIGNS = frozenset({"×", "x"})
 # The particles of an author's name ("de Geer", "van der Linden").
 PARTICLES = frozenset("de da di du van von der den la le".split())
+# Words that end the name, never an epithet or an author, so nothing after them
+# is read: prepositions and "et" in English, Spanish, Latin and German; the
+# particles, which may still begin an author's name; and sex, life-stage,
+# type-status and nomenclatural words.
+NEVER_EPITHETS = PARTICLES | frozenset(
+    "by in on at from ex et with near prope ad bei en por con cerca del sobre "
+    "male males female females fem macho machos hembra hembras larva larvae "
+    "nymph nymphs pupa pupae adult adults worker workers queen queens teneral "
+    "imago juv juvenile immature egg eggs exuvia exuviae type types holotype "
+    "paratype paratypes allotype lectotype paralectotype paralectotypes "
+    "neotype syntype syntypes cotype cotypes topotype topotypes holotipo "
+    "paratipo paratipos nov gen comb stat emend sensu auct agg group "
+    "complex".split()
+)
+# Months in full and abbreviated, English and Spanish, and the Roman months but
+# X, which is also a hybrid sign: a date, never an author.
+MONTHS = frozenset(
+    "january february march april may june july august september october "
+    "november december jan feb mar apr jun jul aug sep sept oct nov dec enero "
+    "febrero marzo abril mayo junio julio agosto septiembre setiembre octubre "
+    "noviembre diciembre ene abr ago set dic agto sbre obre nbre dbre febr mzo "
+    "ag".split()
+)
+ROMAN_MONTHS = frozenset("i ii iii iv v vi vii viii ix xi xii".split())
+SUBSPECIES_MARKERS = frozenset({"ssp", "subsp"})
+MARKERS = SUBSPECIES_MARKERS | {"var"}
+# Infraspecific markers the reader does not take: the name is read only in part.
+UNREAD_MARKERS = frozenset("f fo forma ab aberr morph morpha race natio subvar".split())
+HYBRID_SIGNS = frozenset({"×", "x", "X", "✕", "✖", "⨯"})
+SEX_SIGNS = frozenset("♀♂⚥")
+NOT_NAMES = QUALIFIERS | CLAUSES | NEVER_EPITHETS | MONTHS | ROMAN_MONTHS | MARKERS | UNREAD_MARKERS
 MAX_WORDS = 40  # of a literal read; a name and its authorship are far shorter
 MAX_WORD_LENGTH = 64  # a literal with a longer word among them writes no name
 MAX_AUTHORS = 4
 AUTHORSHIP_WORDS = 24
 MAX_AUTHORSHIP_LENGTH = 200
 MAX_NAME_LENGTH = 500  # A longer name from GBIF is malformed, not a candidate.
-MAX_KEY_LENGTH = 64
-MAX_CODE_LENGTH = 40  # a rank or a status
+MAX_KEY = 10**12  # a numeric key's bound
 MAX_DEPTH = 32  # a body's nesting; GBIF's own is a few levels
+KEY = re.compile(r"[A-Za-z0-9]{1,32}\Z")
 GENUS = re.compile(r"[A-Z][a-z]+\Z")
 SUBGENUS = re.compile(r"\(([A-Z][a-z]*\.?)\)\Z")  # "(Pyrobombus)" or "(P.)"
 # An old capitalized epithet (a patronym or a place), never a person's surname.
 CAPITALIZED_EPITHET = re.compile(r"[A-Z][a-z]+(?:i|ae|orum|arum|ensis)\Z")
 INITIALS = re.compile(r"(?:[A-Z]\.)+\Z")  # "F." or "F.G."
 YEAR = re.compile(r"[12]\d{3}\Z")
+QUALIFIER = re.compile(r"([A-Za-z]+)[^A-Za-z]*\Z")  # "sp.", "Sp.#1", "cf."
 
 
 @dataclass(frozen=True)
@@ -71,9 +130,9 @@ class ScientificName:
     marker: str | None  # the subspecies or variety marker, as written
     rank: str  # GENUS, SPECIES, SUBSPECIES or VARIETY
     authorship: str | None
-    # Why the name was read only in part: "hybrid", or the word after a genus
-    # that could be an epithet the reader does not take. Such a name never
-    # succeeds (HARNESS.md section 6).
+    # Why the name was read only in part: "hybrid", the doubt marked on the
+    # genus, a marker the reader does not take, or the first word it could not
+    # read. Such a name never succeeds (HARNESS.md section 6).
     partly_read: str | None = None
 
     @property
@@ -106,46 +165,85 @@ def _core(word: str) -> str:
     return word.rstrip(".,;:")
 
 
+def _word(word: str) -> str:
+    """A word as the word lists compare it: lower case, without surrounding
+    punctuation."""
+    return word.strip(".,;:()[]'\"?!").lower()
+
+
 def _ends(word: str) -> bool:
     """Whether a word ends the name: a comma, a semicolon, a colon or a period."""
     return word[-1:] in {".", ",", ";", ":"}
+
+
+def _qualifier(word: str) -> str | None:
+    """The qualifier a word is ("sp.", "Sp.#1", "cf."), or None."""
+    match = QUALIFIER.match(word)
+    found = match.group(1).lower() if match else None
+    return found if found in QUALIFIERS else None
 
 
 def _hybrid(word: str) -> bool:
     return word in HYBRID_SIGNS or word.startswith("×")
 
 
-def _epithet(word: str, capitalized: bool = True) -> bool:
-    """An epithet as written: lower case with any accents or hyphens, or, when
-    allowed, an old capitalized epithet; never a word that ends the name."""
-    core = _core(word)
-    if len(core) < 2 or core.lower() in STOPS:
+def _date(word: str) -> bool:
+    """A number or a written date ("1946", "13-5-48", "12.v.1948"): digits,
+    with no letters but a Roman month or a month's."""
+    if not any(ch.isdigit() for ch in word):
         return False
-    if capitalized and CAPITALIZED_EPITHET.match(core):
-        return True
-    return core[0].islower() and all(part.isalpha() for part in core.split("-"))
+    runs = re.findall(r"[^\W\d_]+", word)
+    return all(run.lower() in ROMAN_MONTHS or run.lower() in MONTHS for run in runs)
 
 
-def _could_be_epithet(word: str) -> bool:
-    """A word after a genus that could be an epithet the reader does not take:
-    letters, and neither a word that ends the name nor an abbreviation of at
-    most three letters ("Mt.")."""
+def _ends_name(word: str) -> bool:
+    """A word that ends the name, so nothing after it is read: a qualifier, a
+    word that is never an epithet, a month, a Roman month, a number or date, or
+    sex signs."""
+    bare = _word(word)
+    return bool(
+        _qualifier(word)
+        or bare in NEVER_EPITHETS
+        or bare in MONTHS
+        or bare in ROMAN_MONTHS
+        or _date(word)
+        or (word and all(ch in SEX_SIGNS or ch.isdigit() for ch in word))
+    )
+
+
+def _epithet(word: str) -> bool:
+    """An epithet as written, and nothing else in the word but trailing
+    punctuation: lower-case letters with any accents and inner hyphens, or an
+    old capitalized epithet."""
     core = _core(word)
+    if len(core) < 2 or core.lower() in NOT_NAMES:
+        return False
+    if CAPITALIZED_EPITHET.match(core):
+        return True
+    return all(part.isalpha() and part == part.lower() for part in core.split("-"))
+
+
+def _takes(words: list[str]) -> bool:
+    """Whether the first word is an epithet the reader takes: an epithet, and,
+    when capitalized, not the start of an author-year authorship ("Rossi,
+    1790" is an author, not an epithet)."""
     return (
-        len(core) > 1
-        and all(part.isalpha() for part in core.split("-"))
-        and core.lower() not in STOPS
-        and not (word.endswith(".") and len(core) <= 3)
+        bool(words)
+        and not _ends_name(words[0])
+        and _epithet(words[0])
+        and not (words[0][0].isupper() and _authorship(words)[0])
     )
 
 
 def _surname(word: str) -> bool:
-    """A title-case surname, perhaps abbreviated ("Fabr."), in any script."""
+    """A title-case surname, perhaps abbreviated ("Fabr."), in any script; never
+    a month, a Roman month or a word that ends the name."""
     core = word[:-1] if word.endswith(".") else word
     return (
         len(core) > 1
         and core[0].isupper()
         and core.replace("'", "").replace("-", "").isalpha()
+        and core.lower() not in NOT_NAMES
     )
 
 
@@ -178,53 +276,77 @@ def _authorship(words: list[str]) -> tuple[str | None, int]:
     return None, 0
 
 
+def _normalized(literal: str) -> str:
+    """NFC, without format characters (zero-width spaces, soft hyphens and the
+    like), so that a word reads as it is written."""
+    text = unicodedata.normalize("NFC", literal)
+    return "".join(ch for ch in text if unicodedata.category(ch) != "Cf")
+
+
 def scientific_name(literal: str) -> ScientificName | None:
     """The scientific name a taxon literal writes, or None when it writes none
     (HARNESS.md section 6).
 
-    The literal must begin with a title-case genus. The words after it are read
-    as a parenthesized subgenus, written out or abbreviated; epithets in lower
-    case, with any accents or hyphens, or an old capitalized epithet; a
-    subspecies or variety marker with its epithet; and a bounded author-year
-    authorship. A qualifier, a hybrid sign and a word that is never an epithet
-    end the name, and a clause naming a person ends the literal. A word the
+    The literal must begin with a title-case genus, which a qualifier before it
+    marks doubtful. The words after it are read as a parenthesized subgenus,
+    written out or abbreviated; epithets in lower case, with any accents or
+    inner hyphens, or an old capitalized epithet; a subspecies or variety marker
+    with its epithet; and a bounded author-year authorship. A qualifier after
+    the genus makes a genus-level identification. A word that ends the name
+    (a clause naming a person, a preposition, a sex, stage, type-status or
+    nomenclatural word, a month or a date) ends the reading, and any other word
+    the reader does not take marks the name read only in part. A word the
     literal does not write is never sent, and neither is text that is no name
     (PLAN 4.8)."""
-    words = literal.split(maxsplit=MAX_WORDS)[:MAX_WORDS]
+    words = _normalized(literal).split(maxsplit=MAX_WORDS)[:MAX_WORDS]
     for index, word in enumerate(words):
-        if _core(word).lower() in CLAUSES:
+        if _word(word) in CLAUSES:
             words = words[:index]
             break
     if not words or any(len(word) > MAX_WORD_LENGTH for word in words):
         return None
-    genus = _core(words[0])
-    if not GENUS.match(genus) or genus.lower() in STOPS:
+    # A qualifier or a question mark before the genus marks it doubtful.
+    doubt = None
+    if _qualifier(words[0]) in DOUBT_MARKERS or words[0] == "?":
+        doubt, words = _qualifier(words[0]) or "?", words[1:]
+    if not words:
         return None
-    subgenus, epithets, marker, rank, partly = None, [], None, "GENUS", None
-    ended, rest = _ends(words[0]), words[1:]
+    first = words[0]
+    if "?" in first:
+        doubt, first = doubt or "?", first.replace("?", "")
+    genus = _core(first)
+    if not GENUS.match(genus) or genus.lower() in NOT_NAMES:
+        return None
+    subgenus, epithets, marker, rank, partly = None, [], None, "GENUS", doubt
+    ended, rest = _ends(first), words[1:]
     if not ended and rest and SUBGENUS.match(rest[0].rstrip(",;:")):
         subgenus = SUBGENUS.match(rest[0].rstrip(",;:")).group(1)
         ended, rest = rest[0][-1:] in {",", ";", ":"}, rest[1:]
-    if not ended and rest and _epithet(rest[0]):
+    if not ended and _takes(rest):
         epithets, rank = [_core(rest[0])], "SPECIES"
         ended, rest = _ends(rest[0]), rest[1:]
-    if epithets and not ended and rest:
-        if _core(rest[0]).lower() in MARKERS and len(rest) > 1 and _epithet(rest[1]):
-            variety = _core(rest[0]).lower() == "var"
-            epithets.append(_core(rest[1]))
-            marker, rank = rest[0], "VARIETY" if variety else "SUBSPECIES"
-            rest = rest[2:]
-        elif _epithet(rest[0], capitalized=False):
-            epithets.append(_core(rest[0]))
-            rank, rest = "SUBSPECIES", rest[1:]
-    if rest and _hybrid(rest[0]):
+        # A marker without its epithet, or one the reader does not take, is
+        # left for the fail-closed check below.
+        if not ended and rest:
+            core = _core(rest[0])
+            if core in MARKERS and _takes(rest[1:]):
+                epithets.append(_core(rest[1]))
+                marker, rank = rest[0], "VARIETY" if core == "var" else "SUBSPECIES"
+                rest = rest[2:]
+            elif _takes(rest):
+                epithets.append(core)
+                rank, rest = "SUBSPECIES", rest[1:]
+    if partly is None and rest and _hybrid(rest[0]):
         partly = "hybrid"
     authorship = None
-    if partly is None and rest:
+    if partly is None and rest and (
+        not _ends_name(rest[0]) or _word(rest[0]) in PARTICLES
+    ):
         authorship, used = _authorship(rest)
         rest = rest[used:]
-    if partly is None and not epithets and rest and _could_be_epithet(rest[0]):
-        partly = _core(rest[0])
+    # Fail closed: whatever follows must end the name.
+    if partly is None and rest and not _ends_name(rest[0]):
+        partly = _core(rest[0]) or rest[0]
     return ScientificName(
         genus, subgenus, tuple(epithets), marker, rank, authorship, partly
     )
@@ -294,7 +416,8 @@ def cleared_synonym(name: ScientificName, usage, accepted, classification, alter
     """Row 2 (GBIF.md 127) as the coordinator ruled at 22:46Z (G28, G1): an
     exact synonym of the label's name clears when its accepted usage passes row
     1's test, the accepted usage GBIF returns at the label's rank, in Insecta,
-    with no homonym conflict for the label's name. GBIF v2's accepted usage is
+    with no homonym conflict for the label's name, which is S4's reading of
+    whose conflict counts (HARNESS.md section 6). GBIF v2's accepted usage is
     the accepted name by definition, so a missing status counts as accepted and
     any other status sends the match to review (the coordinator's ruling of
     23:58Z). A pro parte synonym never clears."""
@@ -340,26 +463,45 @@ def _depth_ok(value, limit: int = MAX_DEPTH) -> bool:
     return True
 
 
+def _text_ok(value) -> bool:
+    """A string within the name bound, with no control or format character, so
+    nothing hidden reaches the harness (the steward's review of round 3)."""
+    return (
+        isinstance(value, str)
+        and len(value) <= MAX_NAME_LENGTH
+        and not any(unicodedata.category(ch) in {"Cc", "Cf"} for ch in value)
+    )
+
+
+def _one_of(value, values: frozenset) -> bool:
+    return value is None or (isinstance(value, str) and value in values)
+
+
 def _shape_ok(payload: dict) -> bool:
     """The parts the decision reads have the types GBIF documents, within their
-    bounds. Anything else is `malformed_response`, never an exception."""
+    bounds: keys of letters and digits, ranks and statuses GBIF and
+    ChecklistBank document, and names without control or format characters.
+    Anything else is `malformed_response`, never an exception."""
 
-    def text_ok(value, limit: int) -> bool:
-        return value is None or (isinstance(value, str) and len(value) <= limit)
+    def key_ok(key) -> bool:
+        if type(key) is int:
+            return 0 <= key < MAX_KEY
+        return isinstance(key, str) and (key == "" or bool(KEY.match(key)))
 
     def usage_ok(usage) -> bool:
         if usage is None:
             return True
-        if not isinstance(usage, dict):
-            return False
-        key = usage.get("key", "")
         return (
-            ((type(key) is int and key >= 0) or (isinstance(key, str) and len(key) <= MAX_KEY_LENGTH))
+            isinstance(usage, dict)
+            and key_ok(usage.get("key", ""))
+            and _text_ok(usage.get("name"))
+            and bool(usage["name"])  # A usage names itself: the final value.
             and all(
-                text_ok(usage.get(field), MAX_NAME_LENGTH)
-                for field in ("name", "canonicalName", "authorship")
+                usage.get(field) is None or _text_ok(usage[field])
+                for field in ("canonicalName", "authorship")
             )
-            and all(text_ok(usage.get(field), MAX_CODE_LENGTH) for field in ("rank", "status"))
+            and _one_of(usage.get("rank"), GBIF_RANKS)
+            and _one_of(usage.get("status"), GBIF_STATUSES)
         )
 
     def classification_ok(classification) -> bool:
@@ -367,10 +509,15 @@ def _shape_ok(payload: dict) -> bool:
             isinstance(classification, list)
             and all(
                 isinstance(level, dict)
-                and text_ok(level.get("name"), MAX_NAME_LENGTH)
-                and text_ok(level.get("rank"), MAX_CODE_LENGTH)
+                and (level.get("name") is None or _text_ok(level["name"]))
+                and _one_of(level.get("rank"), GBIF_RANKS)
                 for level in classification
             )
+        )
+
+    def match_ok(diagnostics) -> bool:
+        return isinstance(diagnostics, dict) and _one_of(
+            diagnostics.get("matchType"), GBIF_MATCH_TYPES | {"NONE"}
         )
 
     diagnostics = payload.get("diagnostics")
@@ -384,7 +531,7 @@ def _shape_ok(payload: dict) -> bool:
         and classification_ok(payload.get("classification"))
         and all(
             isinstance(other, dict)
-            and isinstance(other.get("diagnostics"), dict)
+            and match_ok(other.get("diagnostics"))
             and isinstance(other.get("usage"), dict)
             and usage_ok(other["usage"])
             and classification_ok(other.get("classification"))
@@ -393,15 +540,28 @@ def _shape_ok(payload: dict) -> bool:
     )
 
 
+USAGE_FIELDS = ("key", "name", "canonicalName", "authorship", "rank", "status")
+
+
 def selectable(usage: dict) -> dict:
-    """GBIF v2 names a usage `name`; the reviewer's `taxonomy_resolution`
-    decision selects by `scientificName` (api.py) and stores it, so each
-    candidate's `scientificName` is GBIF's own `name`, within its bound, and
-    never a body's field (the steward's review of round 2)."""
-    kept = {key: value for key, value in usage.items() if key != "scientificName"}
-    if isinstance(usage.get("name"), str) and usage["name"]:
-        kept["scientificName"] = usage["name"]
+    """A candidate is a usage's documented fields alone, with `scientificName`
+    always GBIF's own `name`: the reviewer's `taxonomy_resolution` decision
+    selects by it and stores it (api.py), and unwraps a candidate's "usage", so
+    neither a field a body adds nor a usage nested in one reaches it (the
+    steward's reviews of rounds 2 and 3)."""
+    kept = {field: usage[field] for field in USAGE_FIELDS if field in usage}
+    kept["scientificName"] = usage.get("name")
     return kept
+
+
+def _alternative(other: dict) -> dict:
+    """An alternative as a candidate: its usage, its diagnostics and its
+    classification, and nothing else."""
+    return {
+        "usage": selectable(other["usage"]),
+        "diagnostics": other["diagnostics"],
+        "classification": other.get("classification"),
+    }
 
 
 def no_name_lookup(literal: str) -> Lookup:
@@ -525,7 +685,7 @@ class GbifTaxonomy:
             first = [accepted, usage] if synonym else [usage, accepted]
             result.candidates = [
                 selectable(found) for found in first if isinstance(found, dict)
-            ] + [{**other, "usage": selectable(other["usage"])} for other in alternatives]
+            ] + [_alternative(other) for other in alternatives]
             if match_type == "NONE":
                 result.status = LookupStatus.NO_MATCH
             elif synonym or (
@@ -578,8 +738,15 @@ class GbifTaxonomy:
                     metadata.status_code, LookupStatus.PROVIDER
                 )
             else:
-                result.metadata["index"] = parse_json(metadata.content)
-                result.metadata["metadata_raw_ref"] = self.blobs.put(metadata.content)
+                index = parse_json(metadata.content)
+                if not isinstance(index, dict) or not _depth_ok(index):
+                    # Bounded like the match body, so the record can be stored.
+                    result.status = LookupStatus.MALFORMED
+                else:
+                    result.metadata["index"] = index
+                    result.metadata["metadata_raw_ref"] = self.blobs.put(
+                        metadata.content
+                    )
         except httpx.TimeoutException:
             result.status = LookupStatus.TIMEOUT
         except httpx.HTTPError:

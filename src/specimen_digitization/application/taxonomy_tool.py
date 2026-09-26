@@ -140,25 +140,33 @@ def _source_call(source, query, attempt, blobs, fetched, decide) -> SourceCall:
             retry_after_seconds=retry_after(retry),
             sanitized_error=failure or f"http_{status}",
         )
+    error = None
     try:
         outcome = decide(parse_json(body))
     except (ValueError, TypeError, AttributeError, IndexError, KeyError, RecursionError):
-        outcome = LookupStatus.MALFORMED
+        outcome, error = LookupStatus.MALFORMED, "malformed_response"
     return SourceCall(
         **call,
         outcome=outcome,
         raw_ref=blobs.put(body),
         response_sha256=hashlib.sha256(body).hexdigest(),
+        sanitized_error=error,
     )
 
 
 def _gnv_outcome(payload) -> LookupStatus:
+    """GNV's answer, every field it reads typed: anything else is malformed,
+    never a disagreement."""
     first = payload["names"][0]
     match = first["matchType"]
-    best = first.get("bestResult") or {}
+    best = first.get("bestResult")
     if not isinstance(match, str) or match not in GNV_MATCH_TYPES:
-        raise ValueError("gnv_match_type")  # Malformed, never a disagreement.
-    if not isinstance(best, dict):
+        raise ValueError("gnv_match_type")
+    if best is None:
+        best = {}
+    if not isinstance(best, dict) or not isinstance(
+        best.get("taxonomicStatus"), (str, type(None))
+    ):
         raise ValueError("gnv_best_result")
     if match == "NoMatch":
         return LookupStatus.NO_MATCH
@@ -169,10 +177,21 @@ def _gnv_outcome(payload) -> LookupStatus:
 
 def _col_outcome(name):
     def decide(payload) -> LookupStatus:
-        match, usage = payload.get("match"), payload.get("usage") or {}
-        if not isinstance(match, bool) or not isinstance(usage, dict):
-            raise ValueError("col_match")  # Malformed, never a disagreement.
-        if payload.get("type") == "none" or not match:
+        """COL's answer, every field it reads typed: anything else is
+        malformed, never a disagreement."""
+        match, kind, usage = payload.get("match"), payload.get("type"), payload.get("usage")
+        if (
+            not isinstance(match, bool)
+            or not isinstance(kind, (str, type(None)))
+            or not isinstance(usage, (dict, type(None)))
+        ):
+            raise ValueError("col_answer")
+        usage = usage or {}
+        if not all(
+            isinstance(usage.get(field), (str, type(None))) for field in ("status", "name")
+        ):
+            raise ValueError("col_usage")
+        if kind == "none" or not match:
             return LookupStatus.NO_MATCH
         if usage.get("status") == "accepted" and usage.get("name") == name:
             return LookupStatus.SUCCESS
