@@ -37,12 +37,12 @@ def query(**changes):
 
 def source(parties=False, **changes):
     values = dict(
-        source_id="parties" if parties else "gbif_gadm",
+        source_id="parties" if parties else "example_places",
         version="synthetic-source-v1",
         endpoint="https://museum.example/fmnh/eparties"
         if parties
-        else "https://api.gbif.org/v1/geocode/gadm/search",
-        operations=("eparties_search",) if parties else ("gadm_search",),
+        else "https://places.example/search",
+        operations=("eparties_search",) if parties else ("place_search",),
         scopes=(("synthetic", "insects"),),
         classifications=("public",),
         approved=True,
@@ -100,7 +100,7 @@ def authority_server():
 
 def test_registry_denies_cross_scope_classification_operation_and_unapproved():
     registry = AuthorityRegistry(version="1", sources=(source(),))
-    assert registry.authorize("gbif_gadm", "gadm_search", query())
+    assert registry.authorize("example_places", "place_search", query())
     for change in (
         {"organization_id": "other"},
         {"collection_id": "other"},
@@ -108,14 +108,14 @@ def test_registry_denies_cross_scope_classification_operation_and_unapproved():
     ):
         assert (
             registry.authorize(
-                "gbif_gadm", "gadm_search", query().model_copy(update=change)
+                "example_places", "place_search", query().model_copy(update=change)
             )
             is None
         )
-    assert registry.authorize("gbif_gadm", "write", query()) is None
+    assert registry.authorize("example_places", "write", query()) is None
     assert (
         AuthorityRegistry(version="1", sources=(source(approved=False),)).authorize(
-            "gbif_gadm", "gadm_search", query()
+            "example_places", "place_search", query()
         )
         is None
     )
