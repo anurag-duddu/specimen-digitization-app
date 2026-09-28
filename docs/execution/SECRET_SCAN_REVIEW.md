@@ -291,12 +291,13 @@ and the tree file stay fully scanned by both tools.
 Reviewed 2026-09-23. The go-live data contract
 (`docs/execution/golive/DATA_CONTRACT.md`) changes `dataconnect/schema/schema.gql`
 and `dataconnect/connector/paging.gql`, and adds
-`dataconnect/connector/projection.gql` and, with the projection writer (T2a),
-`dataconnect/sql/drop-specimen-unique-1.sql`. So the `source_files` digests in
-the three data plan templates (`data-apply`, `data-bootstrap` and
+`dataconnect/connector/projection.gql`, with the projection writer (T2a)
+`dataconnect/sql/drop-specimen-unique-1.sql`, and with the thread API (T3)
+`dataconnect/connector/thread.gql`. So the `source_files` digests in the three
+data plan templates (`data-apply`, `data-bootstrap` and
 `data-initialize-missing`) change for those files and gain one entry for each
-new file. They are the same shape as the seventeen digests recorded above: SHA256 of
-committed repository bytes, recomputed and compared by
+new file. They are the same shape as the seventeen digests recorded above:
+SHA256 of committed repository bytes, recomputed and compared by
 `scripts/ci/test_release_plan_templates.py`.
 
 Detect-secrets 1.5.0 reports them as Hex High Entropy String findings in those
@@ -305,14 +306,16 @@ regenerated, with `is_secret` unset and the existing key order; no filter,
 plugin, threshold or other entry was changed, and no path exclusion was
 introduced.
 
-Gitleaks 8.30.1 then flags the new `hashed_secret` scanner metadata lines. Four
-identifiers, `194c36a80ba3af74fb9b52787d2b84519db53f88`,
+Gitleaks 8.30.1 then flags the new `hashed_secret` scanner metadata lines. Five
+identifiers, `10188370075cecf438d000ceba073b30ef37f51f`,
+`194c36a80ba3af74fb9b52787d2b84519db53f88`,
 `21278b4f11c26d6df13314ba601efef30119af89`,
 `aba49eafb6ae9e7722b0adc0a90305e76aa18647` and
 `e95967e06b2d59f519cd9cf4e264a6c2f0dbb02e`, were appended to the existing
 rule-local AND exception for the release plan template fingerprints. Each was
-independently confirmed to be SHA-1 of the new digest of one of those four
+independently confirmed to be SHA-1 of the new digest of one of those five
 source files. The two identifiers for the digests these files replaced,
 `06e81594ebb746015377b29d9b2abd834f4ebdf4` and
-`c6868c3eb8b0c137d07d184b825898dda1b70331`, matched nothing any more and were
-removed. The templates stay fully scanned by both tools.
+`c6868c3eb8b0c137d07d184b825898dda1b70331` (`schema.gql` and `projection.gql`
+before T2c), matched nothing any more and were removed. The templates stay
+fully scanned by both tools.
