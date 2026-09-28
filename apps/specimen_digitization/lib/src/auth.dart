@@ -320,8 +320,10 @@ class LocalFixtureSession implements SessionAccess {
   final Uri _baseUrl;
   final http.Client _client;
 
-  /// The modes a loopback server may report to this session.
-  static const Set<String> localModes = <String>{'synthetic'};
+  /// The modes a loopback server may report to this session: `synthetic`
+  /// fixtures, or `emulator`, the acceptance lab serving a run with the
+  /// pipeline's own semantics (UI.md T5.1). Never `production`.
+  static const Set<String> localModes = <String>{'synthetic', 'emulator'};
   String? _bearer;
   String _userId = '';
   int _generation = 0;

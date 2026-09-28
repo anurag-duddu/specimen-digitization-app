@@ -79,7 +79,8 @@ class ApiSpecimenRepository
   final Future<String?> Function()? appCheckToken;
   final String? expectedMode;
 
-  /// The modes a build accepts when it accepts more than one.
+  /// The modes a build accepts when it accepts more than one: the local
+  /// build's loopback server reports `synthetic` or `emulator` (UI.md T5.1).
   final Set<String>? expectedModes;
   final String Function()? expectedUserId;
   final Uri baseUrl;
@@ -504,7 +505,8 @@ class ApiSpecimenRepository
       mode = textOf(result['mode'], 'unsupported');
       blockers = result['runtime_blockers'] as List? ?? [];
       if (!['production', 'emulator', 'synthetic'].contains(mode) ||
-          (expectedMode != null && mode != expectedMode)) {
+          (expectedMode != null && mode != expectedMode) ||
+          expectedModes?.contains(mode) == false) {
         throw const ApiFailure(
           'The server environment does not match this build. Check configuration before continuing.',
           code: 'mode_mismatch',

@@ -45,10 +45,12 @@ Future<void> main() async {
         throw StateError('Synthetic access is restricted to a local API');
       }
       session = LocalFixtureSession(baseUrl: uri);
+      // A loopback server in either local mode: fixtures, or the lab's
+      // served run (UI.md T5.1).
       repository = ApiSpecimenRepository(
         baseUrl: uri,
         token: session.token,
-        expectedMode: 'synthetic',
+        expectedModes: LocalFixtureSession.localModes,
       );
     } else {
       final options = DefaultFirebaseOptions.currentPlatform;
