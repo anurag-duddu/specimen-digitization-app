@@ -12156,3 +12156,39 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. Read the client's session contract before planning a served backend. S7's emulator-mode plan was sound for fidelity, and the client would have refused it at sign-in. One read of `auth.dart` found that before the lab spent a run.
 - Failed approaches: none.
 - Remaining follow-ups: the lab's trace link waits on the coordinator's ruling about a lab trace template (S7 asked). Until then `trace.url` is null, and the Processing disclosure names the trace ID without "Open trace".
+
+### 2026-09-28 — Go-live S6 T2.3 part six: evidence labels, derived values in words, and the lab's first look
+
+- Task: go-live workstream S6. Two inputs:
+  - S5's #171 T3-2, pushed at `648cd7e`: `fields[].derivation` and each evidence entry's `region_id`;
+  - the coordinator's rulings of 18:55Z on 2026-09-28: derived values in words, the local sign-in's line, and the 413/503 caveat staying in Processing.
+  Both serve the owner's look at the lab's 321 run (step 4 of 02:30Z).
+- Branch/worktree: `golive/ui-derivation-words`, stacked on `golive/ui-local-lab` (#221), which it merges for the sign-in line; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome: UI.md T2.3 part six and T5.1.
+  - Each evidence line ends with its region's label ("· Label 1"). A region locator that already names it is not repeated.
+  - A derived value's lines are its rules in the coordinator's words (the last two the owner's own, G41 and G44), then "Rules version derivation-rules-v1".
+    - An unknown rule shows its server word.
+    - The derivation's own evidence line is not drawn.
+  - S5's example at `a559bef8` is the canonical fixture again, byte for byte.
+  - #221 gains the sign-in line "This email only labels your session on this computer. It isn't a museum account."
+- Commits/PRs:
+  - part six: red `d27e8925`, green `774b9a69`, doc `cf7ff636`, merge of #221's branch `d5151c25`;
+  - item 4: red `d6fc4d4b`, green `229d3224`;
+  - #221's sign-in line: red `e43340ea`, green `0acecee9`;
+  - the lab-only fix `5c48c53a`: one `searchValueLabel` on `lab/integration`.
+  The PR is stacked on #221.
+- Validation actually run:
+  - `flutter analyze --fatal-infos`: no issues;
+  - `check_ui_strings.py`: 0 violations;
+  - the full app suite: 1,781 passed, 8 skipped, 0 failed, with `TZ=America/Chicago`;
+  - format, the web release build and the route smoke check;
+  - on the lab tree with the fix: 1,802 passed, 7 skipped, 1 failed. The failure was the drift test against S5's then unpushed example, which this branch's re-copy clears.
+  - S7's served 321 answers, replayed through the app's real repository, controller and screens at 1180 and 390 dp: no exception.
+- Durable learnings:
+  1. The desktop app stopped my preview web server 2 h 11 min after it started, while this session was not open in a window, and gave no reason. My "served at 18091" message went out hours later, so for 8 h the page answered nothing while two sessions said it was up. Check a served page at the moment you say it is served, and watch it while others depend on it.
+  2. Two branches can each add a top-level function with the same name in different parts of one file. Git merges them without a conflict, and only the analyzer sees the duplicate: `searchValueLabel` on `lab/integration`. A clean merge of stacks is not a compiled tree.
+  3. The thread lists only the fields the run wrote a candidate for (15 of 321's 20), while the record lists all of them. S7's "20 fields" and my "15" were both right. Name the source with the count.
+- Failed approaches: I started a full-suite run while the untracked scratch replay test was still in `test/`. Its golden comparisons against older renders would have failed, so I stopped it, moved the file out, and reran.
+- Remaining follow-ups:
+  - verify the Maps-key rerun of 321 (a decision and "Open trace") when S7 serves it;
+  - the local sign-in's heading "Test data access" is unchanged (observation sent to the coordinator).
