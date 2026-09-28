@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/widgets/specimen_status.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'harness.dart';
 
@@ -48,6 +49,123 @@ void main() {
     test('the wire unknown is the field state, not the fallback', () {
       expect(SpecimenStatus.fromWire('unknown'), SpecimenStatus.unknownValue);
     });
+
+    // PRD 10.1: "Any processing stage may enter Retry scheduled, Paused,
+    // Cancelled, or Processing blocked." The summary sends each as `status`.
+    test('maps every operational state the summary sends', () {
+      expect(
+        SpecimenStatus.fromWire('retry_scheduled'),
+        SpecimenStatus.retryScheduled,
+      );
+      expect(SpecimenStatus.fromWire('paused'), SpecimenStatus.paused);
+      expect(SpecimenStatus.fromWire('cancelled'), SpecimenStatus.cancelled);
+      for (final SpecimenStatus status in <SpecimenStatus>[
+        SpecimenStatus.retryScheduled,
+        SpecimenStatus.paused,
+        SpecimenStatus.cancelled,
+      ]) {
+        expect(status.isRecordStatus, isTrue, reason: status.name);
+      }
+    });
+  });
+
+  group('operational states', () {
+    test('say the word PRD 10.1 uses for each', () {
+      expect(SpecimenStatus.retryScheduled.label, 'Retry scheduled');
+      expect(SpecimenStatus.paused.label, 'Paused');
+      expect(SpecimenStatus.cancelled.label, 'Cancelled');
+    });
+
+    test('draw the operational triple, never a queue colour', () {
+      for (final SpecimenStatus status in <SpecimenStatus>[
+        SpecimenStatus.retryScheduled,
+        SpecimenStatus.paused,
+        SpecimenStatus.cancelled,
+      ]) {
+        expect(status.tokenKey, 'state.blocked', reason: status.name);
+      }
+    });
+
+    test('draw the registry glyph whose meaning matches', () {
+      expect(SpecimenStatus.retryScheduled.iconSpec, UiIcons.time);
+      expect(SpecimenStatus.paused.iconSpec, UiIcons.blocked);
+      expect(SpecimenStatus.cancelled.iconSpec, UiIcons.stop);
+    });
+  });
+
+  group('ofRecord', () {
+    test('the disposition is the queue, whatever the run state says', () {
+      expect(
+        SpecimenStatus.ofRecord(disposition: 'cleared', state: 'completed'),
+        SpecimenStatus.cleared,
+      );
+      expect(
+        SpecimenStatus.ofRecord(
+          disposition: 'needs_human_review',
+          state: 'processing_blocked',
+        ),
+        SpecimenStatus.needsReview,
+      );
+    });
+
+    test('with no disposition the run state is shown', () {
+      expect(
+        SpecimenStatus.ofRecord(state: 'processing_blocked'),
+        SpecimenStatus.blocked,
+      );
+      expect(
+        SpecimenStatus.ofRecord(state: 'running'),
+        SpecimenStatus.processing,
+      );
+      expect(
+        SpecimenStatus.ofRecord(state: 'retry_scheduled'),
+        SpecimenStatus.retryScheduled,
+      );
+    });
+
+    test('a completed run with no disposition has no queue to show', () {
+      expect(
+        SpecimenStatus.ofRecord(state: 'completed'),
+        SpecimenStatus.unknown,
+      );
+    });
+
+    test('a field state is never drawn as a record state', () {
+      expect(SpecimenStatus.ofRecord(state: 'unknown'), SpecimenStatus.unknown);
+      expect(
+        SpecimenStatus.ofRecord(state: 'supported'),
+        SpecimenStatus.unknown,
+      );
+      expect(
+        SpecimenStatus.ofRecord(disposition: 'unresolved'),
+        SpecimenStatus.unknown,
+      );
+    });
+
+    test('nothing sent is state unknown', () {
+      expect(SpecimenStatus.ofRecord(), SpecimenStatus.unknown);
+    });
+
+    // An unmapped value is shown, not swallowed: a disposition the client
+    // cannot name is never hidden behind the run state.
+    test('an unrecognised disposition is state unknown, not the run', () {
+      expect(
+        SpecimenStatus.ofRecord(disposition: 'escalated', state: 'running'),
+        SpecimenStatus.unknown,
+      );
+      expect(
+        SpecimenStatus.ofRecord(disposition: 'running', state: 'running'),
+        SpecimenStatus.unknown,
+        reason: 'a run state is not a queue, even in the disposition slot',
+      );
+    });
+
+    test('a blank disposition is no disposition', () {
+      expect(
+        SpecimenStatus.ofRecord(disposition: '  ', state: 'running'),
+        SpecimenStatus.processing,
+      );
+    });
   });
 
   group('words', () {
@@ -72,6 +190,19 @@ void main() {
       expect(SpecimenStatus.cleared.semanticsLabel, 'Queue: cleared');
       expect(SpecimenStatus.unknownValue.semanticsLabel, 'Field: unknown');
       expect(SpecimenStatus.unknown.semanticsLabel, 'Queue: state unknown');
+    });
+
+    // PRD 10.1: the operational states are "not final data-quality queues",
+    // so a screen reader hears them as the run's state.
+    test('an operational state is heard as the run, never a queue', () {
+      expect(SpecimenStatus.processing.semanticsLabel, 'Run: processing');
+      expect(SpecimenStatus.blocked.semanticsLabel, 'Run: processing blocked');
+      expect(
+        SpecimenStatus.retryScheduled.semanticsLabel,
+        'Run: retry scheduled',
+      );
+      expect(SpecimenStatus.paused.semanticsLabel, 'Run: paused');
+      expect(SpecimenStatus.cancelled.semanticsLabel, 'Run: cancelled');
     });
 
     test('every semantics phrase is 100 characters or fewer', () {
