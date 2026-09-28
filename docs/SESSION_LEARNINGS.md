@@ -12202,18 +12202,19 @@ because the hooks runner hands a native asset hook only `PATH`.
   - A lookup is named by its source ("Google Maps lookup"), a check by its tool ("Date parse").
   - Typed outcomes are in words, with the server's word for any other outcome.
   - The meta line names the text a call ran on, a later attempt, the fields it served, and a found Google place's ID only.
-  - The placement and the words are proposals to the coordinator under G5.
-- Commits/PRs: red `5145ce4b` (5 failed for the stated reasons), green `c3aec3e8`; the PR is stacked on #222.
+  - The placement and the words follow the coordinator's rulings of 20:05Z (placement (a); "Catalog number check" in US spelling; "Found", "Several places match", "No match" and "Could not complete", with the server's word for anything else). A call with no region goes in the Processing disclosure.
+- Commits/PRs: red `5145ce4b` (5 failed for the stated reasons), green `c3aec3e8`; the rulings: red `7922f4a3` (3 failed), green `28560f14`; the PR is stacked on #222.
 - Validation actually run:
   - `flutter analyze --fatal-infos`: no issues;
   - `check_ui_strings.py`: 0 violations;
   - the design-system package with #90's commits: 793 passed, gallery goldens included;
-  - the full app suite: 1,784 passed, 8 skipped, 0 failed, with `TZ=America/Chicago`;
+  - the full app suite: 1,785 passed, 8 skipped, 0 failed, with `TZ=America/Chicago`;
   - format, the web release build and the route smoke check;
-  - S7's served 321 answers replayed through the app: all six calls drawn, the three lookups each "Several places match" with their reader and fields.
+  - S7's served 321 answers replayed through the app: all six calls drawn, the three lookups each "Several places match" with their reader and fields;
+  - the served app runs build `28560f14` since 20:23Z, checked by `curl` for the words in the served bundle.
 - Durable learnings:
   1. Merging a PR branch that was brought up to a newer main also merges that main. #90's branch carried 45 files of main's changes (PLAN.md, the briefs). Cherry-picking its two component commits kept this stack's diff to what it reviews.
   2. The canonical example and the live run name tools differently (`geocode` against `geography_lookup`). Naming a lookup by its source, which the vocabulary already words, keeps a tool's id off the screen for both.
   3. A scratch probe that runs after the test switched segments reports an absence that isn't one. Probe the tree while the segment is on screen.
 - Failed approaches: merging `origin/golive/ui-timeline` whole. I undid it before pushing (see learning 1).
-- Remaining follow-ups: the coordinator's ruling on the placement and the words; the served app's rebuild when the coordinator allows it.
+- Remaining follow-ups: confirm my reading of the ruling for edge cases: "Several places match" only for Google's ambiguous answer, and the server's word ("Ambiguous", "Empty response") elsewhere.
