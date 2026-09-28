@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart' as crypto;
 import 'package:http/http.dart' as http;
 import 'models.dart';
 import 'sources.dart';
+import 'thread/thread.dart';
 import 'vocabulary.dart';
 
 /// How long the client waits for one exchange with the runtime API.
@@ -763,6 +764,13 @@ class ApiSpecimenRepository
       return _artifactSummary(scope, id, e);
     }
   }
+
+  @override
+  Future<SpecimenThread?> thread(
+    CollectionScope scope,
+    String specimenId, {
+    String? runId,
+  }) async => null;
 
   @override
   Future<HistoryPage> historyPage(

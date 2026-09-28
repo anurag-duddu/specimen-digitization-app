@@ -122,6 +122,7 @@ class ReviewWorkbench extends StatefulWidget {
     this.onBack,
     this.account,
     this.thread,
+    this.threadGap,
   });
   final Specimen specimen;
 
@@ -129,6 +130,10 @@ class ReviewWorkbench extends StatefulWidget {
   /// T2.3). The Readings segment draws each region's comparison and decision
   /// from it, and the Fields segment who wrote each text and what settled it.
   final SpecimenThread? thread;
+
+  /// Why no thread is drawn, when the reviewer should hear it (UI.md T2.6).
+  /// The Processing disclosure says it where the run's provenance would be.
+  final ThreadGap? threadGap;
   final Future<Json> Function(Specimen, ArtifactRequest)?
   loadHistoricalArtifact;
   final Future<Json> Function(ArtifactRequest)? loadArtifact;
@@ -1132,6 +1137,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           busy: widget.busy,
           onAction: _send,
           thread: widget.thread,
+          threadGap: widget.threadGap,
         ),
       ],
     ),

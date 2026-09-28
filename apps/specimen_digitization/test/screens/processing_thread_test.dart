@@ -38,12 +38,14 @@ Future<void> pumpDetail(
   WidgetTester tester,
   Specimen specimen, {
   SpecimenThread? thread,
+  ThreadGap? threadGap,
 }) => pumpComponent(
   tester,
   SingleChildScrollView(
     child: ProcessingDetail(
       specimen: specimen,
       thread: thread,
+      threadGap: threadGap,
       canOperate: false,
       busy: false,
       onAction: (_) async {},
@@ -53,6 +55,51 @@ Future<void> pumpDetail(
 );
 
 void main() {
+  // A thread the record screen asked for and could not draw is said where
+  // the run's provenance would be (UI.md T2.6).
+  for (final (ThreadGap gap, String label, String why)
+      in <(ThreadGap, String, String)>[
+        (
+          ThreadGap.tooLarge,
+          "The run's details are too large to show.",
+          "The server sends a run's details whole or not at all. The readings "
+              'and fields shown come from the record.',
+        ),
+        (
+          ThreadGap.unreadable,
+          "The run's details could not be read.",
+          'The readings and fields shown come from the record. The next '
+              'refresh tries again.',
+        ),
+      ]) {
+    testWidgets('a thread not drawn is said where the run would be '
+        '(${gap.name})', (WidgetTester tester) async {
+      await pumpDetail(tester, record(), threadGap: gap);
+
+      expect(find.text(label), findsOneWidget);
+      expect(find.text('Run'), findsNothing);
+
+      await tester.tap(find.text('Why'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(why), findsOneWidget);
+    });
+  }
+
+  testWidgets('a thread that has loaded says nothing of a gap', (
+    WidgetTester tester,
+  ) async {
+    await pumpDetail(
+      tester,
+      record(),
+      thread: SpecimenThread.fromJson(fixtureJson()),
+      threadGap: ThreadGap.unreadable,
+    );
+
+    expect(find.text("The run's details could not be read."), findsNothing);
+    expect(find.text('Run'), findsOneWidget);
+  });
+
   testWidgets('the run, its profile and the policy are named', (
     WidgetTester tester,
   ) async {

@@ -54,6 +54,7 @@ class ProcessingDisclosure extends StatelessWidget {
     required this.busy,
     required this.onAction,
     this.thread,
+    this.threadGap,
   });
 
   final Specimen specimen;
@@ -63,6 +64,10 @@ class ProcessingDisclosure extends StatelessWidget {
 
   /// The run's thread, when it has loaded (UI.md T2.5).
   final SpecimenThread? thread;
+
+  /// Why the run's thread is not drawn, when the reviewer should hear it
+  /// (UI.md T2.6).
+  final ThreadGap? threadGap;
 
   /// The disclosure's own title, fixed so the strip and its tests agree.
   static const String title = 'Processing';
@@ -99,6 +104,7 @@ class ProcessingDisclosure extends StatelessWidget {
         busy: busy,
         onAction: onAction,
         thread: thread,
+        threadGap: threadGap,
       ),
     );
   }
@@ -113,6 +119,7 @@ class ProcessingDetail extends StatelessWidget {
     required this.busy,
     required this.onAction,
     this.thread,
+    this.threadGap,
   });
 
   final Specimen specimen;
@@ -122,6 +129,10 @@ class ProcessingDetail extends StatelessWidget {
 
   /// The run's thread, which names where the run came from (UI.md T2.5).
   final SpecimenThread? thread;
+
+  /// Why the run's thread is not drawn, said where its provenance would be
+  /// (UI.md T2.6).
+  final ThreadGap? threadGap;
 
   /// The labels of the run's provenance.
   static const String runLabel = 'Run';

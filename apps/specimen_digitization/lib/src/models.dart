@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'thread/thread.dart';
 import 'vocabulary.dart';
 
 /// Protected-access denials must reach the workspace even when a child panel
@@ -208,6 +209,17 @@ abstract class SpecimenRepository {
     ArtifactRequest artifact,
   );
   Future<Specimen> specimen(CollectionScope scope, String id);
+
+  /// The thread of a record's run: the active run, or [runId] (UI.md T2.6).
+  ///
+  /// Null when the server keeps no thread for that run: an unknown run, or a
+  /// runtime that writes none (404, DATA_CONTRACT.md section 8). A 413 or a
+  /// 503 is an [ApiFailure] the record screen names.
+  Future<SpecimenThread?> thread(
+    CollectionScope scope,
+    String specimenId, {
+    String? runId,
+  });
   Future<HistoryPage> historyPage(
     CollectionScope scope,
     String id, {

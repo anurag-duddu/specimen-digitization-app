@@ -16,7 +16,7 @@
 //     described by the published request contract, or is named in the
 //     amendment below with the line of backend source that declares it. The
 //     amendment is a shrink only backlog: the published snapshot predates
-//     fifteen routes and five properties the backend has, and every entry
+//     sixteen routes and five properties the backend has, and every entry
 //     leaves this file when the snapshot is regenerated.
 //  3. An unknown field never breaks a response, and a missing optional field
 //     renders as unmeasured rather than as zero (design/00-north-star.md,
@@ -84,6 +84,9 @@ const Map<String, String> routeAmendment = <String, String>{
       'src/specimen_digitization/application/api.py:1509',
   '/v1/organizations/{organization_id}/specimens/{specimen_id}/disagreements/{region_id}':
       'src/specimen_digitization/application/api.py:1525',
+  // S5's #171 at `c149115`, which this client's fetch depends on (UI.md T2.6).
+  '/v1/organizations/{organization_id}/specimens/{specimen_id}/thread':
+      'src/specimen_digitization/application/api.py:1678',
   '/v1/organizations/{organization_id}/decisions:batch':
       'src/specimen_digitization/application/api.py:2035',
 };
@@ -202,7 +205,7 @@ final Json contractWorkspace =
 ///
 /// A floor, so this probe can never go quiet: it once recorded one path and
 /// reported that every path the client makes is described.
-const int reachableRoutes = 29;
+const int reachableRoutes = 30;
 
 void main() {
   final Json contract =
@@ -347,6 +350,8 @@ void main() {
       await attempt(() => repository.profiles(scope));
       await attempt(() => repository.specimenPage(scope));
       await attempt(() => repository.specimen(scope, 'sp-1'));
+      await attempt(() => repository.thread(scope, 'sp-1'));
+      await attempt(() => repository.thread(scope, 'sp-1', runId: 'run-1'));
       await attempt(
         () => repository.historyPage(scope, 'sp-1', throughRevision: 3),
       );

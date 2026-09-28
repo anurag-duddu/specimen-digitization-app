@@ -15,6 +15,7 @@ import 'app/shell.dart';
 import 'auth.dart';
 import 'models.dart';
 import 'screens/queue/queue_screen.dart';
+import 'thread/thread.dart';
 
 /// How often the queue asks the server for the current page.
 const Duration queuePollInterval = Duration(seconds: 20);
@@ -171,6 +172,12 @@ class WorkspaceController extends ChangeNotifier {
 
   /// The record the workbench has open.
   Specimen? get selected => _selected;
+
+  /// The open record's thread, when the server keeps one (UI.md T2.6).
+  SpecimenThread? get thread => null;
+
+  /// Why the open record shows no thread, when the reviewer should hear it.
+  ThreadGap? get threadGap => null;
 
   /// The identifier the workbench route asked for.
   String? get selectedId => _selectedId;

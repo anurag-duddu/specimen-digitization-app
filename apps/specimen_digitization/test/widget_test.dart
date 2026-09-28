@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/auth.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/thread/thread.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workbench.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -164,6 +165,12 @@ class TestRepository implements SpecimenRepository {
   }) async => query == 'missing' ? [] : [fixture];
   @override
   Future<Specimen> specimen(CollectionScope scope, String id) async => fixture;
+  @override
+  Future<SpecimenThread?> thread(
+    CollectionScope scope,
+    String specimenId, {
+    String? runId,
+  }) async => null;
   @override
   Future<Specimen> review(
     CollectionScope scope,

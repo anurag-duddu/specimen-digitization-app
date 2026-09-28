@@ -33,6 +33,7 @@ import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/auth.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/sources.dart';
+import 'package:specimen_digitization/src/thread/thread.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 
 /// Where the window opens. `--dart-define=CAPTURE_LOCATION=...`, defaulting to
@@ -340,6 +341,13 @@ class _CaptureRepository implements SpecimenRepository, SourceRepository {
   Future<Specimen> specimen(CollectionScope scope, String id) async =>
       _records.where((Specimen record) => record.id == id).firstOrNull ??
       _records.first;
+
+  @override
+  Future<SpecimenThread?> thread(
+    CollectionScope scope,
+    String specimenId, {
+    String? runId,
+  }) async => null;
 
   @override
   Future<Json> artifact(

@@ -670,6 +670,17 @@ class ThreadFinding extends _View {
   List<String> get evidenceIds => _texts('evidence_ids');
 }
 
+/// Why a record shows no thread, when the reviewer should hear it (UI.md
+/// T2.6). A 404 is not a gap: the server keeps no thread for that run, and
+/// nothing is said.
+enum ThreadGap {
+  /// 413 `thread_limit_exceeded`: the server sends a run whole or not at all.
+  tooLarge,
+
+  /// A 503, a failed connection or a timeout. The next refresh asks again.
+  unreadable,
+}
+
 /// One specimen run's whole thread.
 class SpecimenThread extends _View {
   /// The thread in [json].

@@ -418,6 +418,51 @@ four placements: "Adding `url_launcher` as a dependency for the real 'Open
 trace' link is fine"). On the web it is a real link that opens in a new
 tab, and elsewhere it opens the system browser.
 
+### T2.6 The record screen fetches its thread
+
+S5's #171 serves the thread: `GET
+/v1/organizations/{organization_id}/specimens/{specimen_id}/thread`, declared
+at `src/specimen_digitization/application/api.py:1678` at `c149115`, with
+DATA_CONTRACT.md section 8, "Method" to "Local runtime". T2.1 left the fetch
+for the route's arrival. The workbench now asks for the thread of the open
+record's active run and hands it to what T2.2 to T2.5 draw.
+
+- **When.** The workspace controller asks when a record opens, and again when
+  the open record's version changes: after a save, or after a poll that
+  brings a new version. A poll that brings the same version asks for nothing.
+  An answer for a record or a version that is no longer open is dropped.
+- **Nothing waits on it.** Until the thread arrives, and whenever there is
+  none, the segments draw from the record as they did before the route. After
+  a new version of the same record, the thread on screen stays until the new
+  one arrives, so the Readings segment does not rebuild under the reviewer.
+  Another record never shows the last one's thread.
+- **404 `not_found`** is no thread, and nothing is said: the local runtime
+  keeps none, and a run that history compaction moved out has none.
+- **413 `thread_limit_exceeded`.** The server sends a run whole or not at
+  all. The segments draw from the record, and the Processing disclosure, where
+  T2.5 places the run, says so where the run's provenance would be. The caveat
+  reads "The run's details are too large to show." Its Why reads "The server
+  sends a run's details whole or not at all. The readings and fields shown
+  come from the record."
+- **503 `runtime_unavailable`, a failed connection or a timeout.** The same,
+  with the caveat "The run's details could not be read." and the Why "The
+  readings and fields shown come from the record. The next refresh tries
+  again." The server's message names where and never the content, and the
+  client does not show it.
+- **Asking again.** After a 503, a failed connection or a timeout, the next
+  quiet poll asks again. A 404 or a 413 is not asked again for the same
+  version, since the answer would not change.
+- **401 and 403** are the record's own: the workspace's access failure, as
+  for the record itself.
+- **History.** A previous version keeps its own record. A previous run's
+  thread (`run_id`) is not asked for yet.
+- **Contract.** The route joins `routeAmendment` in
+  `test/live_wire_contract_test.dart` with the line that declares it. The
+  probe reaches it with and without `run_id`.
+
+The caveat sits where T2.5 puts the run's facts. A different place is the
+coordinator's call (G5).
+
 ## T3 Queue and processing
 
 Brief T3. The coordinator ruled on two T3 questions on 2026-09-24, and a
