@@ -12001,6 +12001,19 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Failed approaches: a first cut invented an `ingested` "not requested" wire state, a per-profile `process_on_intake` switch and a reviewer-only rule for `/process`; all three were product behaviour nobody asked for (G5) and were removed before review.
 - Remaining follow-ups: T1b; T4 (pilot profile as configuration, fixes #79); T3 (SAM 3 per run, lab mode, G15 coverage check, whose concrete check goes to the coordinator before it is built); T2 (drain, collection fence, program allowance ledger, per-call cost records, `ListDueWorkV2`); T5 (tracing).
 - Merge turn (2026-09-27, the steward's "next"): `origin/main` at `54ac2ff` merged in, not rebased, as `73b3b33`; the one conflict, in this log, was resolved by the union driver. On `73b3b33`: `pre-commit run --from-ref origin/main --to-ref HEAD` passed; `uv run pytest -q` 3,255 passed, 82 skipped.
+### 2026-09-23 — Go-live release workstream (S2), T2a: the gate that admits the runtime planes from GitHub facts
+
+- Task: the S2 session, brief item T2 step one (`docs/execution/golive/RELEASE.md` section 3.1).
+- Branch/worktree: `golive/release-runtime-gate` in `.claude/worktrees/zealous-euler-da786e`, stacked on #76's branch. An Opus subagent implemented it test-first in an isolated worktree; this session reviewed the diff and integrated it.
+- Outcome: `scripts/ci/release_gate.py` admits a runtime job without an envelope. It checks the job context (with the retired `RELEASE_AUTHORIZED_SHA` no longer required); that the commit is on `main`; that exactly one merged pull request of this repository produced it, with the reviewed tree; and that the five required checks passed in the latest attempt of its CI/CD push run, waiting for that run up to a bounded time. It writes an owner-only gate record in place of the envelope packet and exports its digest. `release_admission.admit` re-admits a gate record for the runtime planes only. No workflow uses the gate yet; T2c switches the workflow.
+- Commits/PRs: spec `0da26ca`, `f9df3d4`; red `76c9d53`; green `e5fe68c`; the spec correction and this closeout.
+- Validation actually run: the red run failed at collection (no module), and `test_release_context.py` had 6 failures on the new keyword. Green: 207 targeted tests passed; `uv run pytest scripts/ -q` passed 1,656 with 50 skipped (run by the subagent at load 11.6); pre-commit passed on all five files. The subagent's mutation check broke 61 checks one at a time, and the tests caught all 61.
+- Durable learnings:
+  - The CI run's `path` is exactly `.github/workflows/ci-cd.yml`, and the five required job names match. Both were checked against the live API; nothing had verified them before, because no envelope was ever minted.
+  - Tip-of-main is the wrong guard for automatic deploys: frequent merges would abort healthy runs mid-deploy. Workflow concurrency plus a rollback guard on the deployed `source-sha` label (T2b) protects the same thing.
+  - The repository deletes merged branches (`delete_branch_on_merge`), so a PR stacked on another's branch retargets to `main` when that one merges.
+- Failed approaches: none.
+- Remaining follow-ups: in T2b, the publication supervisor must check the context without the retired variable, and its `--admit` step must accept a gate record without a plan. In T2c, the admission job's timeout must exceed the 3,300-second CI wait. If CI is re-run with "Re-run failed jobs" rather than "Re-run all jobs", the gate may fail closed; this is unverified.
 ### 2026-09-23 — Go-live acceptance lab (S7), T1: the lab runner and specimen 1's first real run
 
 - Task: Claude Code session "Run the acceptance lab one specimen at a time" (S7 of the go-live program, `docs/execution/golive/PLAN.md` section 8), worktree `.claude/worktrees/serene-margulis-7d6bd8`, 2026-09-23 to 2026-09-25.
