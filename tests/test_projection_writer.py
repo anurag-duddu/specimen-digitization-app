@@ -206,3 +206,48 @@ def test_the_local_repository_has_nothing_to_project(tmp_path):
     """SQLiteRepository writes no normalized rows (section 11), so every pass is complete."""
     s = specimen()
     assert SQLiteRepository(tmp_path / "local.db").write_projection(s.scope, s) == ProjectionResult(True)
+
+
+def test_a_runs_profile_rows_are_first_written_with_the_pin_of_their_profile(tmp_path):
+    """#146 round 1 (B4): classify chooses the profile and re-queues pin_dependencies, so the save
+    between them still carries the first pin, of the empty profile. A row is written once (a
+    primary-key conflict counts as written), so its first insert must already name the snapshot
+    it pins. The synthetic workflow drives the real step order; after every save the writer's rows
+    are recorded, and the first write of each key is the one the connector keeps."""
+    import hashlib
+
+    from test_first_pass_workflow import ChoosingAdapters, start
+
+    from specimen_digitization.application.projection import Blob, writes
+    from specimen_digitization.application.storage import digest
+
+    first = {}
+
+    def locate(ref):
+        sha, _, generation = ref.partition(":")
+        return Blob("local", sha, generation or "0")
+
+    class Recording(SQLiteRepository):
+        def save(self, principal, specimen, expected, key, request_digest):
+            saved = super().save(principal, specimen, expected, key, request_digest)
+            try:
+                rows = writes(saved.model_copy(deep=True), locate, lambda ref: 1, "worker")
+            except Exception:  # the writer reports not_computed and writes nothing
+                rows = []
+            for write in rows:
+                first.setdefault(write.key, write)
+            return saved
+
+    adapters = ChoosingAdapters(LocalBlobs(tmp_path / "blobs"), lambda readings: readings[1].id)
+    workflow, principal, specimen_id = start(tmp_path, adapters)
+    workflow.repository = Recording(tmp_path / "state.sqlite3")
+    run = workflow.drain(principal, specimen_id).run
+    pinned = digest(run.profile_snapshot)
+    profiles = {w.variables["id"]: w.variables for w in first.values() if w.operation == "AppendProfileVersionV2"}
+    (row,) = [w.variables for w in first.values() if w.operation == "AppendPipelineRunV2"]
+    assert [p["configSha256"] for p in profiles.values()] == [pinned]
+    assert all(hashlib.sha256(p["configObject"].encode()).hexdigest() == p["configSha256"] for p in profiles.values())
+    assert profiles[row["profileVersionId"]]["configSha256"] == pinned
+    assert row["pinnedVersions"]["profile"]["sha256"] == pinned
+    assert row["pinnedVersions"]["profile"]["registry_version"] == run.profile_registry_version
+    assert row["pinnedVersions"]["dependencies"] == run.dependencies
