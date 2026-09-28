@@ -76,8 +76,22 @@ class WorkbenchFields extends StatefulWidget {
   /// for S6, 2026-09-24).
   static const String setByReviewer = 'Set by a reviewer';
 
-  /// Each rule a derived value was filled by, in words.
-  static const Map<String, String> ruleWords = <String, String>{};
+  /// Each rule a derived value was filled by, in words (UI.md T2.3 part
+  /// six, item 4): the coordinator's words of 18:55Z on 2026-09-28, the last
+  /// two the owner's own, from G41 and G44. A rule missing here keeps the
+  /// server's word.
+  static const Map<String, String> ruleWords = <String, String>{
+    'feet_to_metres': 'Converted from feet (1 ft = 0.3048 m)',
+    'metres_to_feet': 'Converted from metres (1 ft = 0.3048 m)',
+    'stated_elevation':
+        'The label gives one elevation, so it fills both From and To',
+    'one_date_both_ends':
+        'The label gives one date, so it fills both Date visited from and '
+        'Date visited to',
+  };
+
+  /// The last of a derived value's lines: the version of its rules.
+  static String rulesVersion(String version) => 'Rules version $version';
 
   @override
   State<WorkbenchFields> createState() => _WorkbenchFieldsState();
@@ -308,7 +322,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
           evidence: <String>[
             for (final ThreadEvidence item
                 in run?.evidence ?? const <ThreadEvidence>[])
-              _evidenceLine(item),
+              if (!_statedByRules(run!, item)) _evidenceLine(item),
             ..._identityLines(run),
           ],
           onEdit: blocked != null
@@ -514,6 +528,20 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
   /// A label region's locator, `region:{region id}`, on literal evidence.
   static const String _regionPrefix = 'region:';
 
+  /// A derivation's locator, `derivation:{method}` (DATA_CONTRACT.md
+  /// section 8, `derivation`).
+  static const String _derivationPrefix = 'derivation:';
+
+  /// True for a derived value's own derivation evidence, which its rule
+  /// lines state once (coordinator ruling of 18:55Z on 2026-09-28). Without
+  /// a `derivation` nothing states it, so the line stays.
+  static bool _statedByRules(ThreadField run, ThreadEvidence evidence) {
+    final ThreadDerivation? derivation = run.derivation;
+    return derivation != null &&
+        ((evidence.locator?.startsWith(_derivationPrefix) ?? false) ||
+            evidence.source == derivation.authorityName);
+  }
+
   /// The source ids S5 confirmed on 2026-09-24 that read in words of their
   /// own: the harness's literal evidence, a reviewer's filled value (T6)
   /// and Google's pinned id (rule 1.6).
@@ -593,9 +621,19 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
   /// The settled value's authority record, then the credit its licence asks
   /// for, one step away in the Values disclosure (coordinator ruling for S6,
   /// 2026-09-24). A Google identity is its place ID alone (G26). A derived
-  /// value's authority is its rules, which arrive with `fields[].derivation`
-  /// (S5, #171), so it shows none until then.
+  /// value's authority is its rules, one line each in the order applied,
+  /// then their version (UI.md T2.3 part six, item 4); one without a
+  /// `derivation` shows none.
   List<String> _identityLines(ThreadField? run) {
+    if (run?.derivation case final ThreadDerivation derivation) {
+      return <String>[
+        for (final String rule in derivation.rules)
+          WorkbenchFields.ruleWords[rule] ??
+              sentenceCase(vocabularyLabel(rule)),
+        if (derivation.authorityVersion case final String version)
+          WorkbenchFields.rulesVersion(version),
+      ];
+    }
     final ThreadAuthorityIdentity? identity = run?.authorityIdentity;
     if (identity == null || run!.layer == ThreadFieldLayer.derived) {
       return const <String>[];
