@@ -494,6 +494,14 @@ def _evidence(run: Run, asset) -> list[Write]:
                 },
             )
         )
+    # The harness ledger records a lookup call's result as evidence of kind "lookup": it takes
+    # the outcome of the call that made it, with a locator only when it succeeded, and keeps its
+    # stored body; other evidence is recorded (section 11; #134's precondition G).
+    outcomes = {
+        record.evidence_id: _value(record.outcome)
+        for record in getattr(run, "tool_calls", None) or []
+        if record.evidence_id
+    }
     for item in run.evidence:
         if not (item.raw_ref and item.digest):
             continue
@@ -507,7 +515,7 @@ def _evidence(run: Run, asset) -> list[Write]:
                     "sourceVersion": "unrecorded",
                     "adapterVersion": item.kind,
                     "query": {},
-                    "outcome": "recorded",
+                    "outcome": outcomes.get(item.id, "recorded") if item.kind == "lookup" else "recorded",
                     "locator": item.locator,
                     "responseSha256": item.digest,
                     "capturedAt": item.created_at,
