@@ -12407,6 +12407,52 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (6) Merging main can shift the line numbers the plan cites. #76 moved the PRD's open items by three lines, so G rows appeared to settle other owner-only items. After each merge, map the citations of every file it touched from the old version to the new.
 - Remaining follow-ups: the owner's field list (G8); S2's IAM list and the T3e membership run; the owner's rulings on S8's D1-D13 after the steward reviews #94; the G15 calibration sign-off; the lab's re-measurement of the harness model with G29's prompt.
 
+### 2026-09-24 — Go-live projection writer, stages 1 to 5, and step 2 of the SourceAsset swap (S5 T2a)
+
+- Task: S5 T2a, the projection writer's first half; pull request "[golive:data] The projection writer, stages 1 to 5, and step 2 of the SourceAsset swap".
+- Branch/worktree: `golive/data-projection` in `.claude/worktrees/epic-rhodes-d168f3`, from `origin/main` at `08861f5` (#88 merged).
+- Commits: `65aebf3` and `9fc64d6` (the pure mapping, red then green); `a457c36` (locating blobs without reading them); `7300490` and `f292161` (the repository writes the projection after every save); `cad3d18` and `7eb7acc` (#88's second review); `f5afb4c` and `de476e1` (the fixed drop of `specimen_unique_1`); `ebd038a` and `362efb9` (#88's final review); this entry.
+- Outcome:
+  - `application/projection.py` maps a specimen to the connector writes of stages 1 to 5, parents first, with UUIDv5 ids under one fixed namespace: the original, the profile version, the run and its trace (`RecordRunTraceV1`, set once), regions (`region/{run}/{domain region id}` with `domainRegionId`), readings with their raw-response assets, and comparisons in the fixed pair order.
+  - Asset rows are keyed per specimen (`asset/{specimen}/{bucket}/{object}/{generation}`), because the content-addressed, create-only blob store makes byte-identical assets of different specimens one object.
+  - `SqlConnectRepository.write_projection` runs after every save and never raises. A primary-key conflict counts as already written, and a pass stops at the first failed write, since later rows may reference it.
+  - Step 2 of the swap (coordinator ruling on #88; PLAN 4.4 in #124): the schema declares only `source_asset_specimen_object`, and `dataconnect/sql/drop-specimen-unique-1.sql` is one `DROP INDEX CONCURRENTLY IF EXISTS`. The local runners apply it after reading the new constraint back; the release's T3d does the same live. The three data plan templates, `.secrets.baseline`, `.gitleaks.toml` and `SECRET_SCAN_REVIEW.md` carry the new file's fingerprint.
+  - #88's final review: every masked refusal test now breaks exactly one rule. The contract lists G25 and G30 to G32, gives #124's reason for two applies, labels the coordinator's rulings, and follows #109's taxonomy codes.
+- Validation actually run, at `362efb9`:
+  - `uv run pytest -q`: 3063 passed, 82 skipped;
+  - `pre-commit run --all-files`: exit 0;
+  - the release pinning tests in `scripts/ci`: 53 passed;
+  - `projection-test.mjs` against PostgreSQL 18 and the Data Connect emulator 3.2.0: 12 PASS;
+  - a scratchpad copy with a valid-value control beside each generic refusal: all 5 controls accepted;
+  - `tests/test_sqlconnect_projection.py` against `serve-local.sh`: 1 passed.
+- Durable learnings:
+  - (1) A Data Connect `@check` without a message fails as "permission denied", and one membership check here carries many rules in a conjunction. A refusal test can then pass on an unrelated conjunct. Prove each refusal with a control that changes only the field under test, in a scratchpad copy, so the committed test stays clean.
+  - (2) The emulator's compatible migration drops before it creates, each statement in autocommit, while production's `COMPATIBLE` never drops what the schema stops declaring (firebase-tools 15.8.0 `schemaMigration.js` 512-517). A unique swap therefore takes two applies and a fixed, reviewed drop after a live read-back.
+  - (3) zsh does not word-split an unquoted `$var`: a list of test paths in one variable reaches pytest as one path, and it reports "no tests ran". Use `${=var}` or pass the paths.
+  - (4) `serve-local.sh` puts PostgreSQL's socket in `$TMPDIR`. A long `TMPDIR`, such as a session scratchpad, overflows the Unix socket path limit and `pg_ctl` cannot start; keep the default.
+- Failed approaches: one migration that swapped the unique (the emulator dropped the old index before creating the new one); removing `specimen_unique_1` from `schema.gql` alone (a `COMPATIBLE` apply never drops it).
+- Remaining follow-ups: S2's named-exception sync in #99, so CI admits step 2; S2's T3d before any release runs the drop on a database where #88's step 1 is live; T2b (stages 6 to 8), stacked on this; T3, the thread API.
+### 2026-09-25 — Go-live data contract (S5, in #146): GBIF's success rule after #109's rulings
+
+- Task: the coordinator's message to S5, just after its 23:58Z ruling. `DATA_CONTRACT.md` 324-333 on main was stale after the rulings on #109 recorded in `status/coordinator.md`:
+  - 22:46Z on 2026-09-25: what a homonym conflict is, and that an exact synonym whose accepted usage passes GBIF.md 126 clears (G28, G1);
+  - 23:58Z: a missing `acceptedUsage` status counts as accepted, and any other status goes to review.
+  The coordinator offered S5's new pull request after #171, or whichever S5 pull request is in turn first. #146 is. The steward routed the same lines (ledger, 2026-09-25 23:57Z).
+- Branch: `golive/data-projection` (#146), from `fecbe59`, pushed with #146's merge of main.
+- Outcome:
+  - GBIF's `success` is an `EXACT` match, for a name read in full, in class Insecta, at the label's rank and with no homonym conflict. It is either an `ACCEPTED` usage with a key, or a synonym (not pro parte) whose accepted usage passes the same test.
+  - A cleared synonym's accepted usage is the settled value (`normalized` its name, `authority_id` its key), and the label's spelling stays the verbatim.
+  - A homonym conflict is another `EXACT` same-name alternative by other authorship in class Insecta, whatever its status. S4's HARNESS.md section 6 has the cases where GBIF leaves out a class, a name or an authorship.
+  - The rule lists the `ambiguous` cases; a name read only in part is one.
+  - Each clause follows #109's head `c9af56f`:
+    - `lookup.py`: `homonym_conflict` (463), `row_one` (490), `cleared_synonym` (505, the status at 521), the candidates and metadata it records (763-778), and the name read only in part (790-794);
+    - `workflow.py` 560-568, which settles the first candidate;
+    - `HARNESS.md` 399-428.
+- Validation actually run: the pre-commit hooks. This is contract text only, with no code or test in S5's files; #109's tests cover the rule itself.
+- Durable learnings:
+  - (1) A contract line that restates another session's rule goes stale with that session's rulings. Cite the ruling times and the code the text follows, so a reviewer can check both.
+  - (2) Re-check such a line against the other pull request's current head before pushing. The text was first written against #109's `aebf0790`. By `c9af56f`, #109 had added three cases that text lacked: a pro parte synonym never clears, a name read only in part never succeeds, and the homonym cases where GBIF leaves a field out. The contract now points to HARNESS.md for those edge cases rather than restating them.
+- Remaining follow-ups: #146's turn, after S2's #99: merge main again, "PR #146 ready", S2's re-sign.
 ### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 1: reading locality text
 
 - Task: the owner asked for the retrospective georeferencing tool to be fully implemented (G34, 2026-09-24). S8 moved from research to building, in the new modules the coordinator accepted (flat `georef_*.py` and `georeferencing_tool.py`), with spec deltas in `docs/execution/golive/GEO.md`.
@@ -13112,3 +13158,78 @@ because the hooks runner hands a native asset hook only `PATH`.
   - S7's #83, merged as d663a0c before this pull request, makes `scripts/lab/lab_checks.py` fail a run whose records carry the removed adapter's identity (`gbif_gadm`, or a `gbif-gadm` version), the coordinator's lab item (coordinator.md:434).
   - PLAN.md's ownership list and the S4 brief still name `geography.py` (the coordinator's next plan pull request).
   - S8's research probe and `docs/GBIF.md` still mention GADM; S8's open #217 drops the probe's call.
+### 2026-09-28 — Go-live projection writer (S5 T2a, #146): ready for its turn after #99
+
+- Task: the steward's routing on 2026-09-28.
+  - First, about 02:17Z: merge main ahead of the turn and resolve #146's conflicts.
+  - Then, after S2's #99 merged as `734eb1c` at 05:13Z: merge main again, update S2's `scripts/ci/test_schema_gate.py` for step 2, and ask S2 for a sign-off naming the final head.
+- Branch/worktree: `golive/data-projection` (#146) in `.claude/worktrees/epic-rhodes-d168f3`.
+- Commits:
+  - `d3ba600`: the contract's GBIF rule, with its own entry.
+  - `6d6b817` and `abe5a43`: merges of main `54ac2ff` and `734eb1c`.
+  - `76269ac`: S2's schema gate test.
+  - This entry.
+- Outcome:
+  - Both merges conflicted only in `docs/SESSION_LEARNINGS.md`, which its union driver resolves; each side's lines survive, in order. GitHub's mergeability check does not apply the driver, so it showed #146 as conflicting.
+  - S2's `test_schema_gate.py` built the schema from before the swap by removing `source_asset_specimen_object` from the committed schema. On main that schema held step 1.
+    - #146 commits step 2, so the removal left neither constraint, and collection failed.
+    - The test now puts `specimen_unique_1` back in the new constraint's place, and checks step one from there.
+    - It also admits the committed schema as step two.
+    - S2 reviewed the change by message. Its sign-off comment will name the final head.
+  - The contract's GBIF rule (`d3ba600`) was re-checked at #109's `cd7ae66`. The rule functions are unchanged, and the only change in the candidates is a cap on the alternatives.
+- Validation actually run at `76269ac`, each gate started at a one-minute load under 12:
+  - `tests/`: 3565 passed, 32 skipped;
+  - `scripts/`: 1882 passed, 51 skipped;
+  - `test-postgres.sh`: exit 0, with 79 PASS lines;
+  - the opt-in emulator test: 1 passed;
+  - `check_ui_strings.py`: 0 violations;
+  - `schema_gate.py` against main's `dataconnect/` as the live side: `additive`.
+- Durable learnings:
+  - (1) GitHub's mergeability check ignores `.gitattributes` merge drivers.
+    - A pull request whose only conflict is `SESSION_LEARNINGS.md` shows as conflicting, while a local merge with the union driver is clean.
+    - `git merge-tree --write-tree --name-only` tells the two apart without touching a worktree.
+  - (2) A test that derives its fixtures from the committed tree pins the tree's state.
+    - S2's test assumed step 1 was committed, so the pull request that commits step 2 had to move the derivation with it.
+    - `gate(STEP1, SCHEMA)` now pins that the committed tree is an admitted step two.
+- Remaining follow-ups:
+  - At "#146 is next": merge main once, run the gates again and push.
+  - Then send "PR #146 ready", and get S2's sign-off comment naming that head.
+### 2026-09-28 — Go-live projection writer (S5 T2a, #146): round 1
+
+- Task: the steward's round-1 verdict at `0a68bb2` (issuecomment-5864861862).
+  - It found two blockers under the pilot-first bar, B4 and B3.
+  - It listed nine follow-ups for S5's post-chain pull request.
+- Branch/worktree: `golive/data-projection` in `.claude/worktrees/epic-rhodes-d168f3`.
+- Commits:
+  - `f9a9a0f`: B3.
+  - `0937d01`: B4, red.
+  - `838ccf5`: B4, green.
+  - `e6d4324`: the merge of main `109ec155`, with #113.
+  - This entry.
+- Outcome:
+  - B4:
+    - `classify` chooses the profile and re-queues `pin_dependencies`, so the save between them still carries the first pin, of the empty profile.
+    - The writer emitted `ProfileVersion` and `PipelineRun` at that save. Its rows are insert-only, so every run kept a `ProfileVersion` whose `configSha256` is the empty profile's digest, and a `PipelineRun` pointing at it.
+    - Both rows now wait until `Run.dependencies` pin the current snapshot: its digest, and its registry version. Dependencies without the pin raise, and the pass is `not_computed`, as before.
+    - The contract states the condition in sections 2 and 4.1. The test fixtures now pin the registry version as `pin_dependencies` does.
+  - B3: the list of owner decisions credited the owner with G30's reservation mechanism. It now reads "USD 5 (reserve-then-settle is the coordinator's ruling, PLAN 4.3)". The list's other entries match their PLAN rows.
+- Validation actually run:
+  - Red `0937d01`: the new test, which drives the synthetic workflow's real step order, found two `ProfileVersion` rows. The first had the empty profile's digest.
+  - Green:
+    - the writer, projection, workflow, application and schema-gate tests: 199 passed;
+    - the reviewer's probe reports each row first written after the re-pin, with the final pin.
+  - At `e6d4324`, each gate started at a one-minute load under 12:
+    - `tests/`: 4479 passed, 32 skipped;
+    - `scripts/`: 1882 passed, 51 skipped;
+    - `test-postgres.sh`: exit 0, with 79 PASS lines;
+    - the opt-in emulator test: 1 passed;
+    - `check_ui_strings.py`: 0 violations;
+    - `schema_gate.py` against main's `dataconnect/`: `additive`.
+- Durable learnings:
+  - (1) Write a create-once row only when its inputs are final.
+    - The writer's rows are insert-only: a primary-key conflict counts as written. So a save between two steps that must both run before the row is right freezes the wrong row for good.
+    - Guard on the pin that makes the value final, not on the value being present.
+  - (2) Tests that set a derived field by hand hide ordering bugs.
+    - Both fixtures set `dependencies` directly, and they left out a key the workflow always writes.
+    - Drive the real step order at least once.
+- Remaining follow-ups: the verdict's nine, in S5's post-chain pull request.
