@@ -258,16 +258,19 @@ def test_connector_changes_outside_the_rules_are_refused_by_name(connector, expe
     assert check(connector=connector) == expected
 
 
-LOCATOR = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], "  locator: String!", "  locator: String")}
+# The committed schema already carries the contract's four relaxations (#88), so the live schema from before them is the
+# committed one with `locator` NOT NULL again.
+STRICT_LOCATOR = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], "  locator: String\n", "  locator: String!\n")}
 
 
 def test_protected_keys_are_fixed_and_only_a_listed_column_drops_not_null():
     assert M.PROTECTED == {("ModelObservation", f) for f in ("runId", "regionId", "provider", "modelVersion", "stepKey",
                                                              "rawAssetId", "promptVersion", "inputSha256")}
-    types = M.parse_schema(SCHEMA)  # every protected and listed field is a NOT NULL field of the committed schema
-    assert all(types[table]["fields"][field]["non_null"] for table, field in M.PROTECTED | set(M.parse_relaxations(CONTRACT)))
-    assert gate(SCHEMA, LOCATOR, CONNECTOR, CONNECTOR) == []
-    assert M.check_additive(SCHEMA, LOCATOR, CONNECTOR, CONNECTOR, relaxations={}) == [
+    types = M.parse_schema(SCHEMA)  # every protected field is NOT NULL in the committed schema; every listed one relaxed
+    assert all(types[table]["fields"][field]["non_null"] for table, field in M.PROTECTED)
+    assert not any(types[table]["fields"][field]["non_null"] for table, field in M.parse_relaxations(CONTRACT))
+    assert gate(STRICT_LOCATOR, SCHEMA, CONNECTOR, CONNECTOR) == []
+    assert M.check_additive(STRICT_LOCATOR, SCHEMA, CONNECTOR, CONNECTOR, relaxations={}) == [
         "EvidenceItem.locator: NOT NULL dropped outside the named relaxations"]
 
 
@@ -318,14 +321,14 @@ def test_the_gate_reads_the_merged_trees_contract_by_default(tmp_path, monkeypat
     assert M.CONTRACT == M.ROOT / "docs/execution/golive/DATA_CONTRACT.md"
     monkeypatch.setattr(M, "CONTRACT", tmp_path / "DATA_CONTRACT.md")
     with pytest.raises(ValueError, match="^data contract missing$"):
-        M.check_additive(SCHEMA, LOCATOR, CONNECTOR, CONNECTOR)
+        M.check_additive(STRICT_LOCATOR, SCHEMA, CONNECTOR, CONNECTOR)
     (tmp_path / "DATA_CONTRACT.md").write_text(CONTRACT)
-    assert M.check_additive(SCHEMA, LOCATOR, CONNECTOR, CONNECTOR) == []  # T3b1's call, without a keyword
+    assert M.check_additive(STRICT_LOCATOR, SCHEMA, CONNECTOR, CONNECTOR) == []  # T3b1's call, without a keyword
     assert M.read_relaxations(tmp_path / "DATA_CONTRACT.md") == M.parse_relaxations(CONTRACT)
 
 
 def test_the_real_contract_relaxes_exactly_these_four_columns():
-    # Red on this branch until #88, which adds section 3.3's table to the contract, is on main.
+    # Section 3.3's table, which #88 added to the contract on main.
     assert set(M.read_relaxations()) == {("SourceAsset", "width"), ("SourceAsset", "height"), ("LabelRegion", "cropAssetId"),
                                          ("EvidenceItem", "locator")}
 
@@ -333,11 +336,15 @@ def test_the_real_contract_relaxes_exactly_these_four_columns():
 # PLAN 4.4's one closed @unique exception (#104): create before drop, over two merges.
 UNIQUE = '@unique(indexName: "specimen_unique_1", fields: ["bucket", "objectName", "generation"])'
 SIX = ("organizationId", "collectionId", "specimenId", "bucket", "objectName", "generation")
+SIX_UNIQUE = (' @unique(indexName: "source_asset_specimen_object", fields: ["organizationId", "collectionId", "specimenId", '
+              '"bucket", "objectName", "generation"])')
+# The committed schema is already step 1 (#88), so the schema from before the swap is it without the new constraint.
+PRE = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], SIX_UNIQUE, "")}
 WHY, REMOVED, NEW_OVER = ("SourceAsset: @unique specimen_unique_1 ", "SourceAsset: type-level @unique removed or changed",
                           "SourceAsset: new type-level @unique over an existing field")
 
 
-def unique(base=SCHEMA, old=True, new=SIX, index="source_asset_specimen_object", extra=""):
+def unique(base=PRE, old=True, new=SIX, index="source_asset_specimen_object", extra=""):
     """base with SourceAsset's committed unique kept or dropped, beside a new unique over these fields, if any."""
     names = ", ".join(f'"{field}"' for field in new or ())
     added = f' @unique(indexName: "{index}", fields: [{names}])' if new else ""
@@ -346,11 +353,11 @@ def unique(base=SCHEMA, old=True, new=SIX, index="source_asset_specimen_object",
 
 STEP1 = unique()
 STEP2 = unique(STEP1, old=False, new=None)
-KEYED = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], 'type SourceAsset @table(key: ["organizationId", "collectionId", "id"])',
+KEYED = {**PRE, "schema.gql": edit(PRE["schema.gql"], 'type SourceAsset @table(key: ["organizationId", "collectionId", "id"])',
                                       'type SourceAsset @table(key: ["bucket", "objectName", "generation"])')}
 SPECIMEN_ID = '  specimenId: UUID!\n  specimen: Specimen! @ref(constraintName: "scope_ref_8"'
-NULLABLE = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], SPECIMEN_ID, SPECIMEN_ID.replace("UUID!", "UUID"))}
-MISSING = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], SPECIMEN_ID, SPECIMEN_ID.split("\n")[1])}
+NULLABLE = {**PRE, "schema.gql": edit(PRE["schema.gql"], SPECIMEN_ID, SPECIMEN_ID.replace("UUID!", "UUID"))}
+MISSING = {**PRE, "schema.gql": edit(PRE["schema.gql"], SPECIMEN_ID, SPECIMEN_ID.split("\n")[1])}
 USES = {
     "a key lookup by its fields": 'query FindAsset @auth(level: NO_ACCESS) {\n  sourceAsset(key: {generation: "1", '
                                   'objectName: "o", bucket_expr: "\'b\'"}) { id }\n}\n',
@@ -378,15 +385,15 @@ def test_the_one_unique_exception_is_closed_and_takes_two_merges():
 
 
 @pytest.mark.parametrize(("live", "merged", "expected"), [
-    (SCHEMA, unique(old=False), [WHY + "dropped in the change that adds source_asset_specimen_object; create before drop takes "
+    (PRE, unique(old=False), [WHY + "dropped in the change that adds source_asset_specimen_object; create before drop takes "
                                        "two merges", REMOVED, NEW_OVER]),
-    (SCHEMA, unique(old=False, new=SIX[2:]), [WHY + "dropped in the change that adds source_asset_specimen_object; create "
+    (PRE, unique(old=False, new=SIX[2:]), [WHY + "dropped in the change that adds source_asset_specimen_object; create "
                                                     "before drop takes two merges", REMOVED, NEW_OVER]),
-    (SCHEMA, unique(new=SIX[2:]), [NEW_OVER]),
-    (SCHEMA, unique(old=False, new=None), [REMOVED]),
+    (PRE, unique(new=SIX[2:]), [NEW_OVER]),
+    (PRE, unique(old=False, new=None), [REMOVED]),
     (STEP1, unique(old=False, new=SIX[2:]), [REMOVED, NEW_OVER]),
-    (SCHEMA, unique(old=False, index="source_asset_object"), [REMOVED, NEW_OVER]),
-    (SCHEMA, unique(extra=' @unique(indexName: "asset_kind", fields: ["kind", "specimenId"])'), [NEW_OVER]),
+    (PRE, unique(old=False, index="source_asset_object"), [REMOVED, NEW_OVER]),
+    (PRE, unique(extra=' @unique(indexName: "asset_kind", fields: ["kind", "specimenId"])'), [NEW_OVER]),
     (KEYED, unique(KEYED), [WHY + "is the primary key", NEW_OVER]),
     (unique(KEYED), unique(unique(KEYED), old=False, new=None), [WHY + "is the primary key", REMOVED]),
     (NULLABLE, unique(NULLABLE), ["SourceAsset: @unique source_asset_specimen_object adds nullable or missing column specimenId",
@@ -401,7 +408,7 @@ def test_everything_else_about_the_unique_exception_stays_refused(live, merged, 
 
 
 @pytest.mark.parametrize(("column", "live", "merged", "standard"), [
-    ("generation", SCHEMA, STEP1, NEW_OVER), ("specimenId", STEP1, STEP2, REMOVED)], ids=["step one", "step two"])
+    ("generation", PRE, STEP1, NEW_OVER), ("specimenId", STEP1, STEP2, REMOVED)], ids=["step one", "step two"])
 def test_the_unique_exception_never_covers_a_protected_key(monkeypatch, column, live, merged, standard):
     monkeypatch.setattr(M, "PROTECTED", M.PROTECTED | {("SourceAsset", column)})
     assert gate(live, merged, CONNECTOR, CONNECTOR) == [
@@ -476,17 +483,17 @@ def test_committed_tree_is_additive_against_itself():
     assert operations and set(M.parse_connector(CONNECTOR)) == operations
 
 
-def test_representative_change_from_pull_request_88_is_additive_but_not_with_a_provenance_key():
+def test_the_change_pull_request_88_merged_is_additive_but_not_with_a_provenance_key():
+    # #88 is on main, so its change is the committed tree against the live schema from before it: the named relaxations
+    # NOT NULL again (the crop's relation field follows its column, as the pull request did) and its new table absent.
     text = SCHEMA["schema.gql"]
-    for old, new in (("  width: Int!\n  height: Int!\n", "  width: Int\n  height: Int\n"),
-                     # The crop's relation field follows its column, as the pull request does.
-                     ("  cropAssetId: UUID!\n  cropAsset: SourceAsset!", "  cropAssetId: UUID\n  cropAsset: SourceAsset"),
-                     ("  unresolved: Boolean!\n", "  unresolved: Boolean!\n" + TRANSCRIPTION)):
+    for old, new in (("  width: Int\n  height: Int\n", "  width: Int!\n  height: Int!\n"),
+                     ("  cropAssetId: UUID\n  cropAsset: SourceAsset @ref", "  cropAssetId: UUID!\n  cropAsset: SourceAsset! @ref")):
         text = edit(text, old, new)
-    merged, connector = {**SCHEMA, "schema.gql": text + COMPARISON}, {**CONNECTOR, "projection.gql": PROJECTION}
-    assert gate(SCHEMA, merged, CONNECTOR, connector) == []
-    merged["schema.gql"] = edit(merged["schema.gql"], "  stepKey: String!\n  provider:", "  stepKey: String\n  provider:")
-    assert gate(SCHEMA, merged, CONNECTOR, connector) == [
+    live = {**SCHEMA, "schema.gql": drop(text, r"\ntype ReadingComparison @table.*?\n}\n")}
+    assert gate(live, SCHEMA, CONNECTOR, CONNECTOR) == []
+    merged = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], "  stepKey: String!\n  provider:", "  stepKey: String\n  provider:")}
+    assert gate(live, merged, CONNECTOR, CONNECTOR) == [
         "ModelObservation.stepKey: NOT NULL dropped on a key, unique or provenance field"]
 
 
@@ -522,8 +529,8 @@ def test_cli_compares_live_directories_with_the_committed_tree(tmp_path, capsys)
             (tmp_path / kind / name).write_text(text)
         arguments += [f"--live-{kind}", str(tmp_path / kind)]
     assert M.main(arguments) == 0 and capsys.readouterr().out == "additive\n"
-    (tmp_path / "schema" / "extra.gql").write_text(COMPARISON)
-    assert M.main(arguments) == 1 and capsys.readouterr().out == "ReadingComparison: table removed or renamed\n"
+    (tmp_path / "schema" / "extra.gql").write_text(COMPARISON.replace("ReadingComparison", "RetiredComparison"))
+    assert M.main(arguments) == 1 and capsys.readouterr().out == "RetiredComparison: table removed or renamed\n"
     with pytest.raises(SystemExit, match="placeholder"):
         M.main([*arguments[:2], "--live-schema", str(tmp_path), "--live-connector", str(tmp_path / "connector")])
     with pytest.raises(SystemExit, match="data contract missing"):
