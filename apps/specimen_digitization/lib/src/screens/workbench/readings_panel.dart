@@ -21,6 +21,7 @@ import '../../thread/thread.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import 'evidence_picker.dart';
+import 'harness_lookups.dart';
 import 'reader_name.dart';
 
 /// The width below which two reading cards stack instead of sitting side by
@@ -176,12 +177,18 @@ class WorkbenchReadings extends StatelessWidget {
   }
 
   /// One listed region's section: its cards, and from the thread, its
-  /// comparison and its decision.
+  /// comparison, its decision and the harness's calls on its text.
   Widget _section(Object? regionId, List<Widget> cards) {
     final SpecimenThread? loaded = thread;
     final ThreadRegion? threaded = regionId is String
         ? loaded?.regionOf(regionId)
         : null;
+    final List<ThreadToolCall> calls = <ThreadToolCall>[
+      if (regionId is String)
+        for (final ThreadToolCall call
+            in loaded?.toolCalls ?? const <ThreadToolCall>[])
+          if (call.regionId == regionId) call,
+    ];
     return ReadingsRegionSection(
       regionId: regionId is String ? regionId : null,
       title: _regionName(regionId),
@@ -199,7 +206,24 @@ class WorkbenchReadings extends StatelessWidget {
               run: loaded.run,
               reviewerDecision: threaded?.reviewerDecision,
             ),
+      lookups: calls.isEmpty
+          ? null
+          : HarnessLookups(
+              calls: calls,
+              readerName: _readerName,
+              fieldName: _fieldName,
+            ),
     );
+  }
+
+  /// A field's name as the record calls it, for the harness's calls.
+  String _fieldName(String key) {
+    for (final Json field in specimen.fields) {
+      if (field['field_key'] == key) {
+        return textOf(field['display_name'], vocabularyLabel(key));
+      }
+    }
+    return vocabularyLabel(key);
   }
 
   /// The name a reader goes by here.
@@ -530,6 +554,7 @@ class ReadingsRegionSection extends StatelessWidget {
     required this.cards,
     this.comparisons = const <Widget>[],
     this.decision,
+    this.lookups,
     this.unassigned = false,
   });
 
@@ -547,6 +572,10 @@ class ReadingsRegionSection extends StatelessWidget {
 
   /// How the region's transcript was decided.
   final Widget? decision;
+
+  /// The harness's calls on the region's text, after its decision (UI.md
+  /// T2.7).
+  final Widget? lookups;
 
   /// True for the section that collects readings with no listed region.
   final bool unassigned;
@@ -601,6 +630,10 @@ class ReadingsRegionSection extends StatelessWidget {
           if (decided != null) ...<Widget>[
             SizedBox(height: ui.space.s3),
             decided,
+          ],
+          if (lookups case final Widget shown) ...<Widget>[
+            SizedBox(height: ui.space.s3),
+            shown,
           ],
         ],
       ),
