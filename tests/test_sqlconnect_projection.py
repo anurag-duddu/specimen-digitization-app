@@ -33,6 +33,8 @@ pytestmark = pytest.mark.skipif(
     reason="Requires explicitly started isolated SQL Connect/PostgreSQL emulator",
 )
 PROFILE = {"id": "zoology_insects_slides", "version": "1.0.0", "segmentation_settings": {"concept_prompt": "label"}}
+# Main's Transcript carries the first pass's decision fields; the stand-in sets its own.
+DECISION_FIELDS = {"decision_kind", "selected_observation_id", "first_pass_call", "differences", "handoffs"}
 
 
 def admin(query: str) -> dict:
@@ -203,7 +205,7 @@ def test_saves_project_the_first_pass_harness_fields_and_decision(tmp_path, capl
         call = left.model_copy(update={"id": Observation.model_fields["id"].default_factory(), "route_id": "first-pass", "literal_text": "", "raw_ref": call_raw, "raw_sha256": call_raw})
         run.transcripts = [
             DecidedTranscript(
-                **run.transcripts[0].model_dump(),
+                **run.transcripts[0].model_dump(exclude=DECISION_FIELDS),
                 decision_kind="first_pass",
                 selected_observation_id=left.id,
                 first_pass_call=call,
