@@ -21,8 +21,8 @@ specimen record/id". These owner decisions are included:
 - G26, only the place id from Google;
 - G27 and G28, a place or taxon field keeps both its verbatim and its settled
   value;
-- G30, paid model calls spend at most USD 5, each reserving its worst-case cost
-  before it starts;
+- G30, paid model calls spend at most USD 5 (reserve-then-settle is the
+  coordinator's ruling, PLAN 4.3);
 - G31, the ten pilot slides are not sensitive;
 - G32, a field found on two labels is settled per label on its own evidence, and
   clears when both labels settle to the same value.
