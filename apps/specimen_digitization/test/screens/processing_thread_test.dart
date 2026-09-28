@@ -86,6 +86,31 @@ void main() {
     });
   }
 
+  testWidgets('a call with no region is listed in Processing (UI.md T2.7)', (
+    WidgetTester tester,
+  ) async {
+    final Json json = fixtureJson();
+    (json['tool_calls'] as List<dynamic>).add(<String, dynamic>{
+      'phase': 'lookup',
+      'tool': 'geography_lookup',
+      'source': 'google-maps-geocoding',
+      'outcome': 'no_match',
+      'input_source': 'review',
+      'region_id': null,
+      'observation_id': null,
+      'review_decision_id': 'decision-1',
+      'attempt': 1,
+      'field_keys': <String>['city'],
+      'result': <String, dynamic>{'place_ids': <String>[]},
+    });
+    await pumpDetail(tester, record(), thread: SpecimenThread.fromJson(json));
+
+    expect(find.text('Harness lookups'), findsOneWidget);
+    expect(find.text('Google Maps lookup'), findsOneWidget);
+    expect(find.text('No match'), findsOneWidget);
+    expect(find.textContaining("Reviewer's text"), findsOneWidget);
+  });
+
   testWidgets('a thread that has loaded says nothing of a gap', (
     WidgetTester tester,
   ) async {

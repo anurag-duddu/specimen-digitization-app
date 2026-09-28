@@ -508,42 +508,41 @@ outcomes (a geography lookup shows the place ID and its outcome only,
 G26)". The thread's `tool_calls` (DATA_CONTRACT.md section 8) are every call
 the harness made, in the order they ran, and #90's `UiTimeline` (T2a) draws
 them. Nothing drew them before. The lab's served 321 run of 2026-09-28 made
-six calls: a catalogue-number check, two date parses, and three Google
+six calls: a catalog-number check, two date parses, and three Google
 geography lookups on Label 2's raw readings, each ambiguous (G36). The
 ambiguous lookups add no field evidence, so they were invisible.
 
-- **Where.** Per label, in the Readings segment, after "Handed to the
+The coordinator ruled at 20:05Z on 2026-09-28 (coordinator.md "##
+2026-09-28"):
+
+- **Where.** Per label, in the Readings segment, right after "Handed to the
   harness", under the heading "Harness lookups", in the order the calls ran.
-  A call with no region, which runs on a reviewer's text (T6), is not drawn
-  yet.
+  A call with no region, which runs on a reviewer's text (T6), goes in the
+  Processing disclosure under the same heading.
 - **Title.** A lookup is named by its source, "Google Maps lookup", "GBIF
   lookup", "Catalogue of Life lookup", so a tool's id never reaches the
   screen. A check with no source is named by its tool: "Date parse",
-  "Catalogue number check". Any other tool keeps its server word.
+  "Catalog number check" (US spelling, matching the museum's field and the
+  tool's name). Any other tool keeps its server word.
 - **Outcome**, beside the title, from `LookupStatus` (HAR-008):
-  - "Found" for success;
-  - "Several places match" for ambiguous;
+  - "Found" for success, a check's included;
+  - "Several places match" for Google's ambiguous answer;
   - "No match";
-  - "Nothing returned" for an empty response;
   - "Could not complete" for an operational failure: rate limited, timeout,
     authentication, authorization, provider, malformed response, or policy
     blocked.
-  An unknown outcome keeps its server word. A check that passed reads
-  "Passed".
+  Anything else keeps the server's word. That includes an ambiguous answer
+  from a source that is not Google, where "places" would not be true, and
+  an empty response. A call with no outcome reads "Outcome not recorded".
 - **Marker.** A lookup that found its record gets the authority tone and
-  glyph. An ambiguous, no-match or empty answer gets the needs-review tone,
-  with the field state's glyph for ambiguous. An operational failure gets the
-  blocked tone, and a check that passed is neutral with a check glyph. The
-  words always carry the state too.
+  glyph, and a check that found its answer is neutral with a check glyph.
+  An ambiguous or no-match answer gets the needs-review tone, with the field
+  state's glyph for ambiguous. An operational failure gets the blocked tone.
+  The words always carry the state too.
 - **Meta.** The text it ran on ("Qwen's reading", "Decided transcript"),
   "Attempt 2" when it is not the first, then the fields it served ("For city
   and county"). A lookup that found a Google place adds "place ID <id>", and
   never a name (G26).
-
-The placement and the words were proposed to the coordinator under G5 at
-about 20:05Z on 2026-09-28. The words for a check, and naming a lookup by
-its source, refine that proposal here. They change to the coordinator's
-answer.
 
 ## T3 Queue and processing
 

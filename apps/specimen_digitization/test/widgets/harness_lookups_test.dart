@@ -104,7 +104,8 @@ void main() {
     expect(find.byType(UiTimeline), findsOneWidget);
     for (final String text in <String>[
       HarnessLookups.title,
-      'Catalogue number check',
+      // US spelling, the coordinator's ruling at 20:05Z on 2026-09-28.
+      'Catalog number check',
       'Decided transcript · For FMNH number',
       'Date parse',
       "Reader A's reading · For Verbatim date",
@@ -117,7 +118,9 @@ void main() {
     ]) {
       expect(find.text(text), findsWidgets, reason: text);
     }
-    expect(find.text('Passed'), findsNWidgets(2));
+    // A check that found its answer reads as a lookup that found its record.
+    expect(find.text('Found'), findsNWidgets(3));
+    expect(find.text('Passed'), findsNothing);
     expect(find.textContaining('geography_lookup'), findsNothing);
     expect(find.textContaining('catalog_number_validator'), findsNothing);
   });
@@ -139,13 +142,32 @@ void main() {
         outcome: 'strange_state',
         reading: 'obs-b',
       ),
+      call(
+        phase: 'lookup',
+        tool: 'gbif',
+        source: 'gbif',
+        outcome: 'ambiguous',
+        reading: 'obs-b',
+      ),
+      call(
+        phase: 'lookup',
+        tool: 'gbif',
+        source: 'gbif',
+        outcome: 'empty_response',
+        reading: 'obs-a',
+      ),
     ]);
 
     expect(tester.takeException(), isNull);
-    expect(find.text('GBIF lookup'), findsOneWidget);
+    expect(find.text('GBIF lookup'), findsNWidgets(3));
     expect(find.text('Could not complete'), findsOneWidget);
     expect(find.text('New checker'), findsOneWidget);
     expect(find.text('Strange state'), findsOneWidget);
+    // "Places" is Google's answer; another source's ambiguous answer, and an
+    // empty one, keep the server's word.
+    expect(find.text('Several places match'), findsNothing);
+    expect(find.text('Ambiguous'), findsOneWidget);
+    expect(find.text('Empty response'), findsOneWidget);
   });
 
   testWidgets('a label with no calls draws nothing', (
