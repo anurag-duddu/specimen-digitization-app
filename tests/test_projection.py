@@ -97,7 +97,8 @@ def pinned(s: Specimen) -> Specimen:
     )
     s.run.profile_snapshot = PROFILE
     s.run.profile_registry_version = "registry-1"
-    s.run.dependencies = {"profile_snapshot_sha256": digest(PROFILE)}
+    # As pin_dependencies pins them (workflow.py), after classify chose the profile.
+    s.run.dependencies = {"profile_snapshot_sha256": digest(PROFILE), "profile_registry_version": "registry-1"}
     return s
 
 

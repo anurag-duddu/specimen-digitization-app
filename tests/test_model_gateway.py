@@ -1,9 +1,21 @@
 from __future__ import annotations
 
+import json
+from dataclasses import replace
+
+import httpx
 import pytest
+from huggingface_hub.hf_api import InferenceProviderMapping
+from huggingface_hub.inference._providers._common import (
+    HARDCODED_MODEL_INFERENCE_MAPPING,
+)
+from huggingface_hub.utils import _http as hf_http
+from pydantic_ai import Agent
+from pydantic_ai.models.huggingface import HuggingFaceModel
 
 from specimen_digitization import model_gateway
 from specimen_digitization.model_gateway import (
+    HUGGINGFACE_ROUTES,
     INITIAL_HUGGINGFACE_ROUTES,
     HuggingFaceInferenceRoute,
     HuggingFaceModelGateway,
@@ -60,7 +72,7 @@ def test_gateway_builds_model_with_pinned_provider_and_org_billing(
 
     monkeypatch.setattr(model_gateway, "AsyncInferenceClient", FakeClient)
     monkeypatch.setattr(model_gateway, "HuggingFaceProvider", FakeProvider)
-    monkeypatch.setattr(model_gateway, "HuggingFaceModel", FakeModel)
+    monkeypatch.setattr(model_gateway, "ArgumentPreservingHuggingFaceModel", FakeModel)
 
     gateway = HuggingFaceModelGateway(token="hf_do_not_log", bill_to="field-museum")
     gateway.model_for("handwriting-muse")
@@ -99,3 +111,156 @@ def test_explicit_gateway_credential_does_not_require_environment(monkeypatch):
     import os
 
     assert "HF_TOKEN" not in os.environ
+
+
+def _completion(message: dict[str, object]) -> dict[str, object]:
+    return {
+        "id": "completion",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "meta-models/Muse-Glimmer-30B",
+        "system_fingerprint": "fake",
+        "choices": [
+            {"index": 0, "finish_reason": "stop", "message": message, "logprobs": None}
+        ],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+    }
+
+
+def test_replayed_tool_calls_keep_their_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second model turn resends the earlier tool call with its arguments."""
+    route = INITIAL_HUGGINGFACE_ROUTES["handwriting-muse"]
+    monkeypatch.setitem(
+        HARDCODED_MODEL_INFERENCE_MAPPING,
+        route.provider,
+        {
+            route.model_id: InferenceProviderMapping(
+                provider=route.provider,
+                hf_model_id=route.model_id,
+                providerId=route.model_id,
+                status="live",
+                task="conversational",
+            )
+        },
+    )
+    replies = iter(
+        [
+            _completion(
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": "lookup",
+                                "arguments": '{"name": "alpha"}',
+                            },
+                        }
+                    ],
+                }
+            ),
+            _completion({"role": "assistant", "content": "code 7"}),
+        ]
+    )
+    sent: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path.endswith("/chat/completions")
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json=next(replies))
+
+    # huggingface_hub reads this factory on every request; monkeypatch restores it.
+    monkeypatch.setattr(
+        hf_http,
+        "_GLOBAL_ASYNC_CLIENT_FACTORY",
+        lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    agent = Agent(HuggingFaceModelGateway(token="hf_test").model_for(route.route_id))
+
+    @agent.tool_plain
+    def lookup(name: str) -> str:
+        return f"code {7 if name == 'alpha' else 0}"
+
+    assert agent.run_sync("Look up alpha.").output == "code 7"
+    replayed = [
+        call
+        for message in sent[1]["messages"]
+        for call in message.get("tool_calls") or []
+    ]
+    assert replayed == [
+        {
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "lookup", "arguments": '{"name": "alpha"}'},
+        }
+    ]
+
+
+def test_pydantic_ai_still_maps_tool_calls_through_the_overridden_hook() -> None:
+    """If pydantic-ai renames the hook, the argument fix silently stops applying."""
+    assert isinstance(vars(HuggingFaceModel)["_map_tool_call"], staticmethod)
+
+
+def test_first_pass_and_harness_routes_are_pinned_on_the_reader_provider() -> None:
+    gateway = HuggingFaceModelGateway(token="hf_test")
+
+    first_pass = gateway.route("first-pass-glm")
+    harness = gateway.route("harness-deepseek")
+
+    assert (first_pass.model_id, first_pass.provider) == (
+        "zai-org/GLM-5.3-Flash",
+        "deepinfra",
+    )
+    assert first_pass.required_input_modalities == ("text", "image")
+    assert (harness.model_id, harness.provider) == (
+        "deepseek-ai/DeepSeek-V4.1-Flash",
+        "deepinfra",
+    )
+    assert harness.required_input_modalities == ("text",)
+    readers = {
+        route.model_id
+        for route in gateway.routes_for_capability("handwriting_transcriber")
+    }
+    assert {first_pass.model_id, harness.model_id}.isdisjoint(readers)
+    assert gateway.routes_for_capability("transcription_first_pass") == (first_pass,)
+    assert gateway.routes_for_capability("field_harness") == (harness,)
+
+
+def test_a_route_serves_a_role_with_images_only_in_that_role_with_image_input() -> None:
+    reader = INITIAL_HUGGINGFACE_ROUTES["handwriting-qwen"]
+
+    assert reader.serves_with_images("handwriting_transcriber")
+    assert not reader.serves_with_images("transcription_first_pass")
+    text_only = replace(reader, required_input_modalities=("text",))
+    assert not text_only.serves_with_images("handwriting_transcriber")
+
+
+def test_preflight_accepts_the_new_routes_when_the_catalog_serves_them() -> None:
+    from specimen_digitization.huggingface_preflight import validate_route
+
+    def served(model_id, modalities):
+        return {
+            "id": model_id,
+            "architecture": {"input_modalities": list(modalities)},
+            "providers": [
+                {
+                    "provider": "deepinfra",
+                    "status": "live",
+                    "supports_structured_output": True,
+                }
+            ],
+        }
+
+    catalog = [
+        served("zai-org/GLM-5.3-Flash", ("text", "image")),
+        served("deepseek-ai/DeepSeek-V4.1-Flash", ("text", "image")),
+    ]
+
+    for route_id in ("first-pass-glm", "harness-deepseek"):
+        assert validate_route(HUGGINGFACE_ROUTES[route_id], catalog)["ready"]
+    # The pilot launch and the release check read the initial set as the readers.
+    assert set(INITIAL_HUGGINGFACE_ROUTES) == {"handwriting-qwen", "handwriting-muse"}

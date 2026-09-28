@@ -11798,6 +11798,271 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Failed approaches: a first draft of the plan specified adjudication behaviour and routing conditions the owner had not asked for; the owner rejected new design decisions, and the plan now quotes the owner's rules and the existing specification instead.
 - Remaining follow-ups: the owner's field list; the owner actions queued in `~/specimen-golive/OWNER_ACTIONS.md`; launching and coordinating the seven sessions.
 
+### 2026-09-23 — Go-live S4: tool-call arguments survive replay; first real-crop measurements
+
+- Task: Claude Code session "Build the LLM first pass and agentic harness" (go-live S4), brief `docs/execution/golive/briefs/S4-first-pass-and-harness.md`, topic T1 (Hugging Face routes for the first pass and the harness).
+- Branch/worktree: `golive/harness-hf-tool-call-args` from `origin/main` at `3398ed5`, in `.claude/worktrees/cool-haslett-aa79b5`.
+- Outcome: `HuggingFaceModelGateway.model_for` returns `ArgumentPreservingHuggingFaceModel`, which resends every earlier tool call with its arguments. pydantic-ai 2.40 sets `function.arguments` on a replayed call, but huggingface_hub 1.18 rebuilds the call with `dataclasses.asdict`, which keeps only the declared `name`, `parameters` and `description`; the latest releases (pydantic-ai 2.48, huggingface_hub 1.32) still behave the same. Spec delta in `docs/execution/golive/HARNESS.md` section 1. Route registration is held until the measurements are reported (coordinator, 2026-09-23).
+- Validation actually run: the new replay test failed before the fix (the replayed call had no `arguments`) and passes after it; `uv run pytest tests/ -q` 1458 passed, 31 skipped, 1 failed (`test_worker_cleanup_cutoff.py::test_actual_production_handler_cannot_allow_sdk_continuation`, a subprocess marker-file race at a one-minute load near 20; it passes alone); `uv run pytest scripts/ -q` 1547 passed, 50 skipped; `pre-commit run --all-files` passed. Live, before and after the fix: gemma-4-31B on DeepInfra returned HTTP 422 `messages.2.assistant.tool_calls.0.function.arguments` "Field required" on the second turn, then completed; Qwen3-VL-30B on Novita accepted the argument-less replay silently.
+- Measurements (paid, USD 0.016): the two reader routes on manual left-label crops of the ten pilot slides, 19 of 20 readings (Qwen failed structured output on `subject_105526326`); 9 of 10 labels disagree. The disagreements include one reader right and the other wrong ("1a" and "la", "Werner" and "Wermer", "22" and "aa", "Epipsocus" and "Epipocous"), both readers wrong (an ampersand read as "4", "+" or "♀"), and a fluent correction of a literal spelling ("Chimaltenago" on the label, "Chimaltenango" from Qwen).
+- Durable learnings: (1) a Pydantic AI agent's structured output is a tool call, so the replay defect also broke every reader's invalid-output retry, not only harness tools. (2) `PrivateProviderModel` hides provider bodies as "provider_request_failed"; the unwrapped HTTP 402 body read "You have depleted your monthly included credits. Purchase pre-paid credits to continue using Inference Providers", and calls kept slipping through intermittently, which looked like a transient fault. (3) The router's `/v1/models` catalog is public and lists per-provider pricing, tool and structured-output support; its chat responses carry `usage.estimated_cost`.
+- Failed approaches: calling `asyncio.run` per request with one pinned model closed the event loop the async client was bound to; one run per process fixed it.
+- Remaining follow-ups: the owner's pre-paid Hugging Face credits (queued in `~/specimen-golive/OWNER_ACTIONS.md`); the first-pass and harness candidate measurements and the route report to the coordinator; then T2 to T4.
+
+### 2026-09-23 — Go-live S4: a failure after a settled external effect is a known block (issue #80)
+
+- Task: go-live S4 ("Build the LLM first pass and agentic harness"), issue #80 from the acceptance lab (S7): on specimen 1 a deterministic `EvidenceIntegrityError` inside `parse`, raised after the extraction call had returned, was stored as `external_outcome_unknown` with a lease, so retry and reprocess refused the record.
+- Branch/worktree: `golive/harness-parse-outcome`, stacked on `golive/harness-hf-tool-call-args` (#77), in `.claude/worktrees/s4-parse-outcome`.
+- Outcome: `Workflow._step` marks the step's effect settled once its adapter call returns. After that, `EvidenceIntegrityError` from the phase check becomes `OperationalBlock("evidence_integrity_failure")` (as in `finalize`), any other exception becomes `stage_failed_inspect_private_worker_logs`, the lease is released, the provider's circuit is not charged, and the exception class is logged without its message. A failure inside the call itself still records `external_outcome_unknown`. Spec: `docs/execution/golive/HARNESS.md` section 2.
+- Validation actually run: the two new tests failed before the fix with `external_outcome_unknown`; after it, `tests/test_step_outcome.py`, `tests/test_application.py` and `tests/test_api_runtime.py` pass (73 tests); the full-suite gates are listed in the pull request.
+- Durable learnings: the intent checkpoint writes `external_outcome_unknown` before every external step, and the generic handler kept it for any exception in that step, so a deterministic bug after a successful paid call looked exactly like a lost provider response and locked the record out of retry.
+- Remaining follow-ups: the lab's root cause of the integrity failure is #79 (S3); the post-step deadline check still resets a step to unknown when a deterministic phase alone overruns the effect timeout.
+
+### 2026-09-23 — Go-live S4: the LLM first-pass call (stage 6, part 1)
+
+- Task: go-live S4 ("Build the LLM first pass and agentic harness"), topic T2 of `docs/execution/golive/briefs/S4-first-pass-and-harness.md`, split in two to stay near the 600-line review limit: this part is the call; the next pull request schedules it and records its decision.
+- Branch/worktree: `golive/harness-first-pass-call`, stacked on `golive/harness-parse-outcome` (#86), in `.claude/worktrees/cool-haslett-aa79b5`; the code was written by an implementation subagent in its own worktree and split here.
+- Outcome: `application/first_pass.py` computes the token differences between the two readings as exact spans of each, builds a request that names readers only by letter, and runs a Pydantic AI agent on the profile's pinned `first_pass_route` with the managed prompt `transcription-disagreement-adjudication` unchanged. The answer must give one verdict per numbered difference (a reader, `neither` or `uncertain`), a reader or none, a rationale and a note per reader; one output retry, then `model_malformed_response`, a known operational block, now also for the readers. The call's provenance is an `Observation` with empty `literal_text`. Nothing schedules the call yet.
+- Validation actually run: the new tests failed before the implementation (no module); after it, 7 pass, and 14 related suites (model runtime and tracing, circuits, telemetry, reservations, reader timeouts, worker launch, application, step outcome) give 304 passed, 1 skipped.
+- Durable learnings: (1) `isolated_model_span` refuses an operation outside its allow-list, so a new model-child operation must also be named in `observability.py` and `bounded_telemetry.py`, or the child fails before the model is called. (2) An answer still invalid after Pydantic AI's one output retry raised `UnexpectedModelBehavior`, which `run_agent_bounded` did not map, so the child failed and the run was recorded as an unknown outcome that retry refuses.
+- Remaining follow-ups: the next pull request (scheduling and recording); the first-pass route from the T1 measurements; S3's profile value for `first_pass_route` and the `first_pass` reservation.
+
+### 2026-09-23 — Go-live S4: scheduling the first pass and recording its decision (stage 6, part 2)
+
+- Task: go-live S4, topic T2 part 2: the workflow runs the first-pass call of part 1 and records, per region, the decision and what each reading handed to the harness (PLAN section 1; G19).
+- Branch/worktree: `golive/harness-first-pass-wiring`, stacked on `golive/harness-first-pass-call`, in `.claude/worktrees/cool-haslett-aa79b5`.
+- Outcome: `first_pass:{region}` runs for every region whose readings differ, before `adjudicate` and never after it; identical readings keep today's rule, recorded as `identical_readings`; `adjudicate` records `decision_kind`, the selected reading verbatim (or none), the call, the verdicts, the rationale and one `ReaderHandoff` per reading, with every stage 5 alignment field unchanged. With no selection every reading is handed over as `raw_reading` (G19). Spec: `docs/execution/golive/HARNESS.md` section 4.
+- Validation actually run: the four workflow tests failed before the change (no step, no fields); after it, 14 workflow-adjacent suites give 216 passed, 3 skipped; the full-suite gates are in the pull request.
+- Durable learnings: `adjudicate` rebuilds every region's transcript each time it runs, so a per-region model step needs its own place on the run (`first_pass_decisions`) until `adjudicate` copies it; putting the call's record in `run.observations` would have counted it as a third independent reading in the policy's route check.
+- Remaining follow-ups: S3 carries `first_pass_route` through `classify_and_select` and adds the `first_pass` reservation (the pilot launch's stage set lacks it); S5's writer for the new fields; `decision_kind="human"` for a reviewer's transcription decision (S5); field-level G19, G20 and G27 in T3 and T4.
+
+### 2026-09-23 — Go-live S4: the first-pass and harness routes (T1)
+
+- Task: go-live S4, topic T1: choose provider-pinned Hugging Face routes for the first pass (vision) and the harness (tool calling), measure them on real crops, report to the coordinator, register them (G7).
+- Branch/worktree: `golive/harness-hf-routes`, stacked on `golive/harness-first-pass-wiring` until #98 merged, in `.claude/worktrees/cool-haslett-aa79b5`. Pull request #107. Commits:
+  - aa69eae9: failing tests.
+  - 020ba4f3: the routes.
+  - 80485ead: this entry.
+  - 74967ddb: a merge of #98's branch while this one was stacked on it.
+  - b0c3061b: the merge of main f10eb19 at its turn.
+  - 260c7ed5: this entry's references.
+  - 308bb7e2: moves #98's first-pass pin test, which patched `INITIAL_HUGGINGFACE_ROUTES` in `production`, to the stage route set.
+  - 697e065a: the merge of main dfd1ad8 (#217).
+  - ff9879c9: round 2's failing tests and spec.
+  - 52f22027: round 2's fix.
+  - a4b1c890: round 2's entry, and the commit that fills in its gate line.
+  - 8a6f7dff: round 3's tests (one of them failing) and spec.
+  - 423b3c5c: round 3's fix.
+  - Round 3's entry, and its gate line.
+- Outcome: `first-pass-glm` (`zai-org/GLM-5.3-Flash`) and `harness-deepseek` (`deepseek-ai/DeepSeek-V4.1-Flash`, provisional) on DeepInfra, approved by the coordinator; the method, the tables and the USD 0.106 spend are in `docs/execution/golive/HARNESS.md` section 5. They are a separate `STAGE_HUGGINGFACE_ROUTES` set; the gateway resolves the union `HUGGINGFACE_ROUTES`.
+- Validation actually run:
+  - Round 1: the two new gateway tests failed before registration; after it, the gateway, preflight, first-pass, worker-launch and model-runtime suites pass (67), `uv run pytest scripts/ -q` 1547 passed; the live preflight (`specimen-huggingface-preflight --live-route <route>`) reported all four routes ready in the router catalog and structured output valid on both new routes.
+  - At its turn, one at a time on 308bb7e2: `pre-commit run --all-files` passed; `pytest tests` 1561 passed, 31 skipped; `pytest scripts` 1595 passed, 50 skipped; `check_ui_strings` 0 violations. The full suite on b0c3061b and 260c7ed5 had failed #98's pin test, which 308bb7e2 fixes.
+  - On the merge head 697e065a, which changes nothing under `src/` or `tests/`: pre-commit on #217's files passed; `pytest scripts` 1597 passed, 50 skipped; 0 violations.
+  - Round 3, one at a time on 021264b8, the round-3 tree before this line was filled in: `pre-commit run --all-files` passed; `pytest tests` 1577 passed, 31 skipped; `pytest scripts` 1597 passed, 50 skipped; `check_ui_strings` 0 violations.
+  - Round 2, one at a time on a4b1c890, the round-2 tree before this line was filled in: `pre-commit run --all-files` passed; `pytest tests` 1575 passed, 31 skipped; `pytest scripts` 1597 passed, 50 skipped; `check_ui_strings` 0 violations.
+- Durable learnings: (1) `INITIAL_HUGGINGFACE_ROUTES` is read as "the readers" by the pilot launch (`worker_launch.py`, its transcribe stages), `evidence_pilot.py` and the release activation check (`scripts/ci/deploy_runtime.py` 385); adding any other route to it failed 17 release-plane tests, so new capabilities get their own route set. (2) Reasoning models on DeepInfra (Kimi-K2.6, Qwen3.5-397B, Inkling) hit the router's 120-second gateway timeout, which production would record as an unknown outcome. (3) The logged latency of a measurement must time only the successful attempt: HTTP 402 backoff put DeepSeek's first-run median at 64 s, against 4 s over its calls without a 402 retry. (4) The router's `/v1/models` catalog is public and lists per-provider prices, tool and structured-output support. (5) A route registered in the combined set can be looked up by id from any role, so the reader and first-pass calls now check the route's `logical_capability` and input, as the collection classifier already did (`hf_collection_classifier.py` 217-218). (6) A table built from several runs needs one statistic for each column: section 5's "Median seconds" mixed means with medians, and one figure no saved call reproduced, until round 2 recomputed the column from the saved calls. (7) A credit narrowed from a transcript search is only as good as the search: the coordinator's message of 21:45:54Z on 2026-09-23 is stored as a queued-message attachment, which S4's grep helper did not read, so round 2 credited S4 with the coordinator's tie-breaks. Find the source message before narrowing or moving a credit.
+- Round 2 (the steward's review, comment 5838228590):
+  - The blocker: the routing doc credits the approval to the coordinator (coordinator.md:58); G7 requires only that the first pass and the harness run on a Hugging Face model through the existing gateway and token.
+  - Each route in its role. Readers are pinned from the initial reader set, as on main (`test_a_stage_route_named_as_a_reader_is_not_pinned`). A reader call and the first-pass call block as `pinned_model_route_unavailable` outside their role (`test_a_reader_call_refuses_a_route_that_is_not_an_image_reader`, and the harness and reader cases of `test_each_block_stops_the_first_pass_before_any_request`). A first-pass route is pinned only as a `transcription_first_pass` route with image input (`test_pin_dependencies_pins_only_a_first_pass_route_that_takes_the_crop`, now with `harness-deepseek`).
+  - The paid smoke test runs under a reading's caps and sends an image only to a route that takes one (four new tests in `tests/test_huggingface_preflight.py`).
+  - The pin is model id and provider: the coordinator's ruling at 19:21Z (coordinator.md:456) corrects its approval message of 22:52:14Z on 2026-09-23. HARNESS.md section 5 records S4's finding that routed inference exposes no revision, and that Pydantic AI keeps a response's `model` but not its `system_fingerprint`; no field is added for it (the coordinator's ruling at 19:29Z).
+  - HARNESS.md section 5's table gains MiniMax's second run and follows the stated ranking; its seconds and costs are recomputed from the saved calls. The provisional condition names G29's prompt; the reference reading is S4's, and the tie-breaks are the coordinator's (21:45:54Z on 2026-09-23); the harness candidates ran on DeepInfra.
+  - A mutation probe undid each new check in turn, and a test failed for each.
+- Round 3 (the steward's review, comment 5839097352):
+  - The blocker: HARNESS.md section 5 and the round-2 line above said the tie-breaks were S4's. S4's message of 21:45Z on 2026-09-23 proposed only the criterion; the coordinator's reply at 21:45:54Z set the tie-breaks. Both lines now credit the coordinator, in the steward's wording, and the round-2 line was fixed in place.
+  - HARNESS.md section 5 and `model_gateway.py` say the coordinator approved on the figures of S4's T1 report (22:48Z on 2026-09-23). The first-pass table recomputes them from the same calls, with medians where the report's seconds were mostly means and with MiniMax-M3's second run, which finished after the report; neither pick changes.
+  - The smoke test's request limit is pinned (`test_live_smoke_is_capped_like_a_reading`); setting it to 50 or None fails the test. Section 5 says the run stops once past 16,000 tokens, since Pydantic AI checks the total after each response.
+  - `transcribe_label_image`, which has no caller, raises `ModelGatewayConfigurationError` on a route that is not an image reader (`test_a_label_transcription_refuses_a_route_that_is_not_an_image_reader`).
+- Remaining follow-ups: S3 puts the two route ids in the Insects slide profile; the profile pull request that first names them lands after #132, #135 and #149 (security's routing in round 1: #135 supplies the price list, #149 the first-pass output cap); the acceptance lab re-measures the harness route with the real harness (T3) and with the G29 notations in its prompt.
+
+### 2026-09-23 — Go-live S4: the harness tool results and the taxonomy tool (T3a, part 1)
+
+- Task: go-live S4, topic T3a: the harness's typed tools. This part is the shared result types and `taxonomy_verifier`; the geography tool and the date and catalog validators follow as their own pull requests.
+- Branch/worktree: `golive/harness-tools-taxonomy`, stacked on `golive/harness-hf-routes` (#107) until #107 merged, in `.claude/worktrees/cool-haslett-aa79b5`. Pull request #109. Commits:
+  - db8e8da8: failing tests.
+  - af6acde9: the tool results and the taxonomy tool.
+  - e7e7f662: this entry.
+  - 00baa586: a merge of #107's branch while this one was stacked on it.
+  - 5afb5991: the merge of main 569c336 (#107) at its turn. The session log's union driver split #107's merged entry around this one and kept this branch's stale copies of three of #107's round-1 lines; the resolution keeps main's #107 entry whole, with this entry after it.
+  - c47ecce3 and eca7f90f: this entry's references, and its gate line.
+  - 3ae2d154 and 5f4bd15a: round 2's failing tests and spec, then the fixes.
+  - 29c59ae9 and aebf0790: round 2's entry, and its gate line.
+  - bdfd61c1 and 741e3d1f: round 3's failing tests and spec, then the fixes.
+  - 4fa59968 and 1d7d6fb0: round 3's entry, and its gate line.
+  - cd4b9b5b and 0f07fd7c: round 4's failing tests and spec, then the fixes.
+  - 7243d784: round 4's entry.
+  - ea0b8cdd and d6e6ce45: round 4's second pair, from S4's audit of section 6 against the code before the push.
+  - 75464ce8: this entry's update for them.
+  - 8434d5bc: pins of what section 6 says syntax cannot settle.
+  - 6b079133: this entry's update for the pins.
+  - d15e3028 and 2591c554: round 4's third pair, the coordinator's ruling of 02:07Z: place words leave the authorship.
+  - 475aaa8c and c9af56fe: this entry's update for them, and its gate line.
+  - 5fa37632 and c9837650: round 5's failing tests and spec, then the fixes.
+  - be0a8b7b: round 5's entry.
+  - c6aa4c70: two pins and two sentences scoped to the tests, from S4's check of round 5 before the push.
+  - 4090aeea: this entry's update for it.
+  - 41ba294a and 88f8fcc8: the merge of main 54ac2ff (#84) at this PR's turn, and this entry's gate line for it.
+  - 10bbdc6d and 0531e9d6: the merge of main 61cdff2 (#91) at the turn after it, and this entry's gate line for it.
+  - cc7856fd and a3df167b: the merge of main 1d6d383 (#130) at the turn after that, and this entry's gate line for it.
+  - b3f366b1 and e27334c1: round 6's failing tests and spec, then the fixes.
+  - c7dde303 and f9ba91c7: round 6's entry, and its gate line.
+  - 75d27726: the merge of main 734eb1c (#99) at round 6's turn; the session log keeps main's file whole, with this entry after the one before it.
+  - This entry's gate line for it.
+- Outcome: `application/harness_tools.py` (`ToolResult`, `SourceCall`, the geography interface agreed with S8, `with_retries`); `application/taxonomy_tool.py` (`verify_taxon`: GBIF decides under G23, Global Names Verifier and the Catalogue of Life support and warn). `lookup.py` applies GBIF.md 126-130, as the coordinator ruled (S4 brief 166-170; coordinator.md:19), at the label's own rank, which for a genus-only label is the genus (G25, the owner's decision): an exact accepted genus now satisfies a genus-only label, and VARIANT is ambiguous instead of `malformed_response`. The coordinator's rulings of 22:46Z on 2026-09-25 (coordinator.md:476-478) set the homonym conflict and let an exact synonym clear through its accepted usage (round 2 below). Spec: `docs/execution/golive/HARNESS.md` section 6.
+- Validation actually run:
+  - Round 1: the new tests failed before the change (no module), and the updated GBIF fixture test failed on today's rule; after it, the taxonomy, application, evidence-harness and authority-runtime suites give 62 passed, 1 skipped.
+  - Round 2: red 3ae2d154 fails 46 new cases against round 1's code (45 in `tests/test_taxonomy_tool.py`, 1 API test), each for its reason, while the file's other 32 cases and the 5 updated fixture cases pass; green 5f4bd15a passes all 80 taxonomy cases; a mutation probe undid each of 28 new rules and a test failed for each. One at a time on 29c59ae9, the tree before this line was filled in: `pre-commit run --all-files` passed; `pytest tests` 1659 passed, 31 skipped; `pytest scripts` 1597 passed, 50 skipped; `check_ui_strings` 0 violations.
+  - Round 3: red bdfd61c1 fails 53 cases against round 2's code, each for its reason: 52 new cases in `tests/test_taxonomy_tool.py` and the types test, which now also refuses a georeference with no source. 14 new cases pass there as pins, among them the status-less and DOUBTFUL accepted usages, and the file's other 78 cases pass. Green 741e3d1f passes all 193 cases, 48 of them added in green: 12 after a mutation probe that undid each of 38 new rules in turn found their rules unpinned (with them, a test failed for each), and 36 that pin every word the spec lists as ending the name. One at a time on 4fa59968, the tree before this line was filled in: `pre-commit run --all-files` passed; `pytest tests` 1772 passed, 31 skipped; `pytest scripts` 1597 passed, 50 skipped; `check_ui_strings` 0 violations.
+  - Round 4: red cd4b9b5b grows `tests/test_taxonomy_tool.py` from 193 to 309 cases and adds one API test. 88 of the 309 fail on round 3's code, each for its reason, and the API test fails storing "Homo sapiens". Green 0f07fd7c passes all 419 cases and the API test. 9 cases were added in green, after a mutation probe of round 4's rules found them unpinned; with them, a test fails for each of 31 rules. Two other rules turned out to be branches the fail-closed check already covered, and were removed. The every-word test grows by 101 cases with the word lists, and two application fixtures' usages gain the name every GBIF v2 usage carries. Red ea0b8cdd, from S4's audit before the push, adds 39 cases: 33 fail on 0f07fd7c, each for its reason, and 6 pass as pins. Green d6e6ce45 passes all 642 cases, 184 of them the every-word test of the new list, and a mutation probe undid each of round 4's 34 rules in turn, and a test failed for each. 8434d5bc pins five more cases, the forms section 6 says syntax cannot settle that no test held ("Davao" and "Werner" alone, "Epipsocus Hawaii", "Epipsocus Suzuki", "Epipsocus (Davao) 1946"), and all 647 cases pass. Red d15e3028 adds 13 cases, 12 in the taxonomy file and 1 in the application tests, and all 13 fail on 6b079133, each for its reason. Green 2591c554 passes all 661 taxonomy cases and the 33 application tests. 2 of the cases were added in green, after a mutation probe of the pair's 11 rules found two unpinned; with them, a test fails for each of the 11, and still for each of round 4's 34 earlier rules. One at a time on 475aaa8c, the tree before this line was filled in: `pre-commit run --all-files` passed; `pytest tests` 2242 passed, 31 skipped; `pytest scripts` 1597 passed, 50 skipped; `check_ui_strings` 0 violations.
+  - Round 5: red 5fa37632 fails 153 cases on c9af56fe, each for its reason. 64 are among the 75 added. The other 89 are changed cases: the 87 every-word cases, which now also check the word after an end word, and the two doubt rows, which now expect nothing sent. The other 11 added cases pass as pins: the stated residual forms, the reading-again case and the Latinized epithet. Green c9837650 passes all 767 taxonomy cases and the 36 application tests. 36 cases came with green: 22 from the word lists' every-word tests, and 14 after a mutation probe of the 30 new rules found five without a test. Four got cases; the fifth, the surrogate check in the name-text check, which the encodability check covers first, is pinned directly. With them, a test fails for each of the 30, and still for each of round 4's 45. c6aa4c70 pins two more pairings section 6 states, and all 769 taxonomy cases pass. One at a time on cc7856fd, the merge of main 1d6d383, the tree before this line was filled in: `pre-commit run --all-files` passed; `pytest tests` 4320 passed, 31 skipped; `pytest scripts` 1770 passed, 51 skipped; `check_ui_strings` 0 violations.
+  - Round 6: red b3f366b1 fails 14 cases on a3df167b, each for its reason: six workflow runs of withheld names end processing_blocked, six withheld tool lookups have no stored record, a lookup keeps 101 candidates, and a 100-alternative answer doesn't reach review. Green e27334c1 passes all 770 taxonomy cases and the 41 application tests, the end-to-end runs among them finalized in review, and a mutation probe undid each of the two rules, and a test failed for each. One at a time on 75d27726, the merge of main 734eb1c, the tree before this line was filled in: `pre-commit run --all-files` passed; `pytest tests` 4326 passed, 31 skipped; `pytest scripts` 1877 passed, 51 skipped; `check_ui_strings` 0 violations.
+  - At its turn, one at a time on c47ecce3, the tree before this line was filled in: `pre-commit run --all-files` passed; `pytest tests` 1599 passed, 31 skipped; `pytest scripts` 1597 passed, 50 skipped; `check_ui_strings` 0 violations.
+- Durable learnings: (1) with `verbose=true`, GBIF lists alternatives even for clean exact matches (4 for "Apis mellifera"), so the old "no alternatives" rule made `success` unreachable for such matches; the live-homonym test was S4's reading of row 4 (GBIF.md 129), which the coordinator's ruling of 22:46Z replaced (round 2 below). (2) GBIF v2 returns VARIANT for a near spelling ("Epipocous" gives the beetle genus Epipocus at confidence 93), which the old adapter mapped to `malformed_response`, an operational block. (3) The Catalogue of Life match API returns the same usage id as GBIF's COL XR checklist (8MQRG for Epipsocus). (4) The session log's union driver keeps both sides of a conflicting hunk, so a branch that holds an older copy of an entry main has since edited brings the old lines back and can split that entry; after merging main, `git diff origin/main -- docs/SESSION_LEARNINGS.md` should show only the branch's own entry. (5) A name reader that classifies each word by its shape keeps misreading label text: round 2 read "determined by" as epithets and "Davao City 1946" as authorship. Round 3 reads fixed slots, ends the name at any word it cannot take, and marks a genus followed by a word that could be an epithet as read only in part, so an unreadable label goes to review instead of clearing. (6) Round 4 went further: each round's probes found another class of words the reader dropped or misread. Failing closed (a word the reader does not take marks the name) ended the words it dropped; the words it misreads, such as a preposition read as an epithet, need lists, and what no list holds is the residual section 6 states. (7) Check the spec against the code sentence by sentence before a push: S4's audit of round 4 found four sentences the code contradicted and one rule no test pinned. (8) A word list invites a claim about the whole class it samples. Say what the list holds ("the months listed") and pin the residual, so a probe of an unlisted word finds a stated residual rather than a false claim.
+- Round 2 (the steward's review, comment 5840682333, and the coordinator's rulings of 22:46Z on 2026-09-25, coordinator.md:476-478):
+  - (Round 3 below replaces this reading, after the steward's probes found it misread label text.) The query is the scientific name the literal writes, word for word from its leading title-case genus: a parenthesized subgenus, hyphenated and capitalized epithets, subspecies and variety kept as ranks, and author-year authorship. Det., leg. and coll. clauses are cut, and text that writes no name ("Sp. 30 ♀ Davao", "Coll. F. G. Werner") makes no request, in the tool and in the workflow's lookup. GBIF is sent the name with `taxonRank`; GNV and COL the canonical name.
+  - Row 1 compares GBIF's `canonicalName` at the label's rank. A homonym conflict is an exact same-name alternative by another author in class Insecta, whatever its status. An exact synonym whose accepted usage passes row 1 clears with the accepted name, and its synonym status and the accepted usage are recorded. Under these rulings the pilot's "Epipsocus sp. 1" goes to review: GBIF's live answer on 2026-09-25 lists "Epipsocus Badonnel, 1955", an exact synonym in Insecta, beside the accepted "Epipsocus Hagen, 1866" (reported to the coordinator).
+  - A body of the wrong shape, a name over 500 characters or a body nested too deeply is `malformed_response`, never an exception. Every GBIF candidate carries `scientificName`, so the review decision can select it (`test_review_selects_a_gbif_v2_candidate_by_its_name`).
+  - One 60-second deadline bounds the tool, with GBIF first and support cut first. Every source call records its licence; COL is pinned to COL26.9 (dataset 316321); an HTTP-date `Retry-After` rounds up; the place and georeference types keep G26; a truncated support body is malformed and not retried; a disagreement needs an answer from GBIF.
+  - What changes in the workflow's `lookup` step, the path without the harness, which uses the same reading and rules. On main, a VARIANT is `malformed_response`, an operational block, and it now goes to review. Main succeeds only for an exact species match with no alternatives listed, which `verbose=true` makes rare, whatever the usage's status; now the rules above decide, so an exact accepted genus satisfies a genus-only label (G25) and an exact synonym clears only through its accepted usage. A success now records GBIF's settled name as the taxon's `normalized` value: v2 usages carry it as `name`, and the step reads `scientificName`, which main never found. Text that writes no name makes no request.
+- Round 3 (the steward's review, comment 5841328685, and the coordinator's ruling of 23:58Z on 2026-09-25, coordinator.md:492):
+  - The name reader reads a bounded grammar (HARNESS.md section 6). Trailing punctuation is stripped, and a comma or a period ends the name. Epithets keep their accents ("impatiëns"), and an abbreviated subgenus ("(P.)") is read. Person clauses, abbreviated or spelled out, and words that are never epithets (by, in, on, at, from, ex, de, and sex and life-stage words) end the name. Authorship is read only as one to four authors before a year, within 200 characters. So "Bombus impatiens.", "Bombus impatiens, det. Smith", "Bombus impatiëns" and "Bombus (P.) impatiens" are asked at species rank, and none clears at genus, in the tool or in the workflow's lookup; "Epipsocus determined by Mockford 1987", "Epipsocus in Davao 1946", "Epipsocus 1946" and "Xus yus on Rosa" send no person, place or date.
+  - A genus followed by a word that could be an epithet ("Bombus Pennsylvanicus", "Epipsocus Davao City 1946"), or a name with a hybrid sign ("Xus yus × zus"), is read only in part: the word is not sent, and the match is at best `ambiguous`, with the warning `taxonomy_name_partly_read`. HARNESS.md states, as S4's reading, what syntax cannot settle: "Davao" as a genus, "Hawaii" or "Suzuki" as an epithet, "(Davao)" as a subgenus, and "Werner, 1946" as authorship.
+  - A pro parte synonym goes to review. An accepted usage without a status counts as accepted, and one with any other status than ACCEPTED goes to review (the coordinator's ruling of 23:58Z). Every candidate's `scientificName` is GBIF's own `name`. Keys, ranks, statuses and classification elements are typed and bounded, a key given twice or nesting deeper than 32 levels is `malformed_response`, and a homonym conflict counts when nothing shows the alternative is another name. GNV's and COL's answers are type-checked, a supporting body in an encoding the fetch cannot read is malformed, GBIF's failed calls carry a sanitized error, and a georeference names at least one source. HARNESS.md labels the Google source call's stored record as S4's stated rule for #113, not a type check.
+- Round 4 (the steward's review, comment 5841823765, and the coordinator's reading of 01:11Z on 2026-09-26, coordinator.md:504):
+  - The name reader fails closed. The literal is normalized to NFC without format characters, and a word the reader does not take marks the name read only in part. So "Coccinella 7-punctata", "Bombus impatiens?", "Bombus 'impatiens'", a line-break hyphen, "Bombus impatiens / fervidus", "Xus yus X zus", "Xus yus ssp. Zus", "Epipsocus Mt. Apo 1946", "Apis mellifera L." and "Epipsocus Hagen, 1866 Davao" go to review and never clear at genus or species. A decomposed or zero-width-split epithet now reads, and "Carabus smithi Canadensis" is asked at subspecies.
+  - (Scoped to the lists in round 5, after the steward's review of round 4; round 5 also marks the words that change the taxon.) The listed clause words, which cut the literal where they stand, the prepositions listed as ends in English, Spanish, Latin, French and German, the particles of an author's name, and the listed sex, stage, type-status and nomenclatural words end the name. The listed months and the Roman months end it and are never authors, and a capitalized word that begins an author-year authorship ("Rossi, 1790") is an author. The steward's probes ("determinado por Mockford 1987", "en Petén 1987", "prope Davao 1946", "June 1946", "VII 1946", "Mindanao, July 1946") send no person, place or date. The residual is what syntax cannot settle, which HARNESS.md now states: after a name, title-case words and a year read as authorship ("Genus Word Year": "Epipsocus Davao 1946", "Epipsocus Davao, Mindanao 1946"), and a lower-case word no list holds reads as an epithet ("Epipsocus corteza, Petén 1987"). Since the coordinator's ruling of 02:07Z (below), an authorship loses the reading's place words, so only a place the reading's place text does not hold, or a person, still goes out as authorship.
+  - It folds in two of the gaps S4 found during round 3's review: particles and "et", and type-status and nomenclatural words, read as epithets. The third was the partly-read check running after an authorship, which S4 had proposed to skip; failing closed reverses that, and a word after an authorship now marks the name too.
+  - A qualifier after the genus clears at genus, with the species never asked; one before the genus, or a doubt on it, goes to review (the coordinator's reading).
+  - Keys match an id pattern (1 to 32 letters and digits, or an integer below 10^12). Ranks and statuses are the values GBIF and ChecklistBank document, names carry no control or format character, a usage must name itself, and an alternative's match type is typed. A candidate is a usage's documented fields, so a nested usage no longer reaches the review decision (`test_review_stores_gbifs_name_never_a_usage_nested_in_one`). The index metadata is bounded like the match body. GNV's and COL's answer fields are typed, and their malformed calls carry `malformed_response`.
+  - S4's audit of section 6 against the code before the push (ea0b8cdd, d6e6ce45). The spec now also says that a word after a comma marks the name, as the code already did. The audit found four sentences the code contradicted and one rule no test pinned:
+    - prepositions "in those languages" end the name, but only the listed ones did, and "bajo", "sub" or "près" read as an epithet. The reader now lists 184 other prepositions, articles and conjunctions in the five languages, which mark the name, so "Epipsocus bajo corteza, Petén 1987", "Epipsocus sub cortice, Davao 1946" and "Epipsocus près de Davao 1946" send only the genus and go to review;
+    - no other place or date after a name is sent, but "Epipsocus Davao, Mindanao 1946" and "Epipsocus corteza, Petén 1987" send both. Section 6 now states that residual, and tests pin both. The coordinator's ruling of 02:07Z then took the reading's place words out of the authorship (below);
+    - a body in an unreadable encoding carries `malformed_response`, but the code and its test give `unsupported_encoding`, which the spec now says;
+    - a key that is not 1 to 32 letters and digits is malformed, but an empty key was not; it now is;
+    - COL's usage `status` and `name` were typed in round 4 with no test; they are pinned, with GNV's best result.
+  - The coordinator's ruling of 02:07Z on 2026-09-26 (coordinator.md:515), applying PLAN 4.8 after S4 reported that residual (d15e3028, 2591c554): before a taxonomy request is built, every token of the authorship that shares a folded word with the reading's place-field literals or unassigned locality text is dropped, and the name is read again until its authorship holds none. The tool takes that place text from its caller, the harness; the workflow's lookup step passes the literals of the run's place fields. So "Epipsocus Davao, Mindanao 1946" is asked as "Epipsocus" and "Epipsocus corteza, Petén 1987" as "Epipsocus corteza", and neither pin's request to GBIF, GNV or COL carries a place word. A real author who shares a word with the place text loses it ("Xus yus Davao, 1900" is asked as "Xus yus"). S4's grammar, not the ruling: a joiner now needs an author after it, so "Smith & 1900" is no authorship.
+- Round 5 (the steward's review, comment 5842744984; the coordinator's ruling of 03:24Z and its confirmations of 03:31Z on 2026-09-26, coordinator.md:527 and :529-531):
+  - Words that change the taxon mark the name: a group, a complex or an aggregate ("group", "gr.", "grupo", "complex", "complejo", "agg."), a concept ("sensu", "auct."), and "et" joining two names. So "Formica rufa group", "Bombus impatiens auct. nec Cresson" and "Bombus impatiens et fervidus" go to review. A lone "V" or "v." marks the name ("Carabus auratus v. lotharingus"). So does an epithet-shaped word after a run of end words ("Coccinella 7 punctata", "Bombus ♀ impatiens", "Xus yus de zus"), except after a qualifier right after the genus.
+  - With the genus in doubt nothing is sent ("cf. Bombus impatiens", "Near Davao 1946", "Bombus? impatiens"), where round 4 sent the rest: the steward's should-fix 2, as the coordinator confirmed at 03:31Z.
+  - A genus, subgenus or epithet equal to a folded word of the reading's place text, or to a whole folded literal, is withheld, and the name is marked `place_word` (the coordinator's ruling of 03:24Z, word by word as confirmed at 03:31Z). "Epipsocus davao 1946", with "Davao" or "Davao City", is asked as "Epipsocus"; "Davao" alone sends nothing; "Epipsocus davaoensis" is still asked. A drop from the authorship that changes the name marks it: "Carabus Smithi Lewis, 1900", with "Lewis County", is asked as "Carabus Smithi". The workflow's lookup step goes through `lookup.taxonomy_lookup`, which marks what its adapter returns.
+  - The claims are scoped to the words the lists hold, in HARNESS.md and in this entry (fixed in place, the log rule). The residual is pinned: markers and months the lists don't hold ("Epipsocus collegit Werner 1946", "récolté", "recogido:", "bestimmt von", "gesammelt von", "Juni", "Juin", "Okt.", "Iunius") read by position. The Spanish type-status words join the list ("alotipo").
+  - Names refuse surrogate, private-use, unassigned, line- and paragraph-separator characters, variation selectors and whitespace only. A body or index metadata holding a string that cannot be encoded is malformed, so its record can be written. The place text is a sequence of texts, and a bare string raises TypeError.
+- Round 6 (the steward's round-5 verdict, comment 5863643792, under the coordinator's pilot-first bar of 02:07Z on 2026-09-28; its two blockers only):
+  - [B1] A name with nothing it may send (its genus in doubt, or place text) now reaches review. Its lookup stores a record of what was withheld and why, with its digest, which the run's evidence check requires of every ambiguous lookup; round 5 had left those runs blocked at finalize.
+  - [B4] A lookup keeps GBIF's usage, its accepted usage and at most its first 20 alternatives as candidates, so the review step's proposals stay within their bound of 100, and a 100-alternative answer reaches review. The diagnostics keep every alternative.
+- Remaining follow-ups: the geography and validators pull requests; T3b (the agent) and T3c (workflow integration, `record_model_usage`/`record_tool_usage` from S3's `lane_costs`); the brief's correction for exact synonyms, queued for the coordinator's next plan pull request (coordinator.md, section "Queued for the next plan PR"); #134's `FINDING_PREFIXES` must carry `taxonomy_name_partly_read`, which has no `:source` suffix, with a test, before #134 merges; S5's #146 re-syncs `DATA_CONTRACT.md` to #109's merged head; the harness pull request that calls `verify_taxon` (#134 first) passes the reading's place text, including #183's `unassigned_text` (coordinator.md:521); the round-5 verdict's seven follow-ups, four tagged beyond-ten, go into S4's post-chain pull request.
+
+### 2026-09-23 — Go-live S4: the Google geography tool (T3a, part 2)
+
+- Task: go-live S4, topic T3a part 2: `geography_lookup` on the Google Geocoding API (G10), behind the interface S8's retrospective georeferencing plan targets (G12).
+- Branch/worktree: `golive/harness-tools-geo`, stacked on `golive/harness-tools-taxonomy` (#109), in `.claude/worktrees/cool-haslett-aa79b5`; the module and tests were written by an implementation subagent in its own worktree, reviewed twice, and assembled here with one more rule. Pull request #113. Commits:
+  - ea8a8113 and fa371cfe: the failing tests, then the tool.
+  - fc8b7db6: this entry.
+  - a8923ed9 and 509c9aa3: the key guard and the pinned source id.
+  - 6292a1af: the key-guard learning.
+  - ea2a3909: HARNESS.md cites G29 for the folding and the aliases.
+  - d94a625b and 0890435c: `precise_location` is never settled.
+  - 88ad6e13: the `precise_location` learning.
+  - 69b9f8f2 and 0c55a101: G34's near spelling.
+  - 1b6b2b86: the G34 learning.
+  - 7ad20f0c: a merge of #109's branch while this one was stacked on it.
+  - fa2b2b9e: before its turn, section 7's and this entry's statements that the owner's later decisions overtook, with this list.
+  - d177cdd6: the merge of main 007361a at its turn. HARNESS.md section 6 takes main's text (#109's), with section 7 after it; the session log keeps main's file whole, with this entry after #109's.
+  - 487f30bb: this entry's gate line.
+  - Round 1's fix: G36 covers only the places and itinerary entries S8 drafts, and the tool's silence on `precise_location` and the admin-level check come from the coordinator's ruling (b) at 00:08:24Z on 2026-09-24, in section 7 and this entry. fa2b2b9e's message credited that silence to G36; it stays as written.
+  - This entry's round-1 gate line.
+- Outcome: `application/geography_tool.py`. Per request only the place ID, our outcome and the response's sha256 are kept (G26); per-field success needs a folded name match at the field's levels or a profile alias (G29); `precise_location` only forms the address and gets no outcome, by the coordinator's ruling (b) at 00:08:24Z on 2026-09-24, so that no stored result reads as locality resolution (PRD 515 keeps it verbatim; where such a phrase is was left to S8's D3, which G36 decided for the places and itinerary entries S8 drafts: a curator confirms each one, and an unconfirmed one never settles a field); the whole response mapping is one function so an owner decision changes only it (S8's D1 and D14, pending then, are decided since as G35 and G27). Spec: `docs/execution/golive/HARNESS.md` section 7.
+- Validation actually run: each step's tests, rerun on 2026-09-25 from each commit's own tree: ea8a8113 fails to import the module, fa371cfe passes 108; a8923ed9 fails 16 of 110, 509c9aa3 passes 110; d94a625b fails 51 of 116, 0890435c passes 116; 69b9f8f2 fails 71 of 131, 0c55a101 passes 131; a live check with the real key (two requests) found that the Geocoding API refuses the key in the `X-Goog-Api-Key` header (REQUEST_DENIED) and accepts it only as the `key` URL parameter. At its turn, one at a time on the tree of d177cdd6 (00b5a1b8), gated on an identical trial merge just before the turn: `pre-commit run --all-files` passed; `pytest tests` 4457 passed, 31 skipped; `pytest scripts` 1877 passed, 51 skipped; `check_ui_strings` 0 violations. Review round 1 (2026-09-28), one at a time on a9364f3e, the tree before this line was filled in: `pre-commit run --all-files` passed; `pytest tests` 4457 passed, 31 skipped; `pytest scripts` 1877 passed, 51 skipped; `check_ui_strings` 0 violations.
+- Durable learnings: (1) because the key must travel in the URL, a logging filter redacts it from the `httpx` log, and the lane must not record raw request URLs in traces (S3 told). (2) A naive "the result has a country component" rule vouches for the wrong place when Google resolves "Mt. McKinley" to Denali in Alaska; per-field name matching keeps such a result from settling any admin field, as the coordinator's ruling (b) at 00:08:24Z on 2026-09-24 asked. The same ruling removed a sibling-corroboration rule that once let `precise_location` hold, because a stored "precise_location: success" reads as locality resolution. (3) Google places Philippine provinces at the second administrative level, so a province is matched at levels 1 and 2. (4) Catching a client library's documented exception family is not a key guard: `httpx.InvalidURL` and the stream errors sit outside `httpx.HTTPError`, and any exception's text may quote the keyed URL, so the request now turns every other exception into a fixed code; found by re-reading the pull request against the steward's security review focus. (5) G34 (the owner's answer to D15) clears a near spelling only when the other admin fields confirm the place. A live check found that Google answers "Chimaltenago, GUAT." with one full result, not a partial match, so the rule does fire on the real label. Read to the letter, it would also have accepted a two-letter code one letter off ("P.I." folds to "pi", one edit from "PH"). The coordinator narrowed it to long names, because a code is not a name (00:47Z on 2026-09-24).
+- Remaining follow-ups: the validators pull request; T3b supplies the profile's aliases ("P.I." as the Philippines) and wires `record_tool_usage` (S3's lane_costs). PLAN 4.8's single place filter reaches this tool in #183, and the profile that names the harness route merges after #183 (MERGE_ORDER 5e, confirmed by the coordinator on 2026-09-25).
+
+### 2026-09-25 — Go-live S4: #98's review fixes before it makes the first pass live
+
+- Task: the steward's review of #97 (12:29Z) named four fixes #98 must carry before its turn: G19 in the request, the crop's digest, the cap-hit split, and the call kept out of the readings. The steward then pulled in input binding and a null-pick test. The coordinator gave its reading of "material" and G19 at 12:31Z.
+- Branch/worktree: `golive/harness-first-pass-wiring`, in `.claude/worktrees/cool-haslett-aa79b5`. Pull request #98. Commits: 3c6c2697 (spec and failing tests), 92994bd3 (implementation), c687d147 (this entry), and 6da5a55c (the merge of main d8291a0 at #98's first turn).
+- Outcome:
+  - The code decides materiality: spans equal once case-folded are capitalization alone. Round 2 made the comparison lower-cased (below). A pick stands only when every material difference supports it; otherwise the first pass returns no reading (G19). The request states the rule, and the answer no longer carries a `material` flag.
+  - The call's `input_sha256` is the crop's digest. `Observation.request_sha256` holds the request's (agreed with S5).
+  - `first_pass_direct` refuses readings that aren't the region's own, once each, in route order. The workflow refuses a decision whose verdicts, `material` flags or pick break its contract.
+  - `run_agent_bounded` raises Pydantic AI's `UsageLimitExceeded` for an answer cut off at its output cap (agreed with S3). Every `UsageLimitExceeded` it raises carries `run_messages` and `run_usage`.
+  - #159's first-pass cap rule now lands here: a first pass stopped by a cap selects no reading.
+  - Spec: `docs/execution/golive/HARNESS.md` sections 3 and 4.
+- Validation actually run: 23 new or changed tests failed before the implementation, each for its intended reason; after it the three suites give 43 passed. Gates, one at a time, on 92994bd3: `pre-commit run --all-files` passed; `pytest tests` 1534 passed, 31 skipped; `pytest scripts` 1547 passed, 50 skipped; `check_ui_strings` 0 violations.
+- Durable learnings:
+  1. Pydantic AI 2.40 gives each `capture_run_messages` context only the runs it is the innermost context for. A caller's capture around `run_agent_bounded` sees nothing once that function captures for itself, so the function hands its messages to the caller on the exception instead.
+  2. Pydantic AI counts a response's usage, then checks the token total, then appends the response. A run stopped by its total keeps that response's usage when the usage is counted in place, but not the response.
+  3. `IncompleteToolCall` is raised only once the output retry is cut off too. An empty answer at its cap is not retried.
+- Remaining follow-ups:
+  - Until S3's #153 merges, a reader's answer cut off at its output cap blocks as `external_outcome_unknown`, like its true cap hit on main.
+  - The legacy extractor (`harness.py`) has no cap handler at any head.
+  - When the chain reaches #159, its `usage` argument must replace this PR's own counter.
+
+### 2026-09-25 — Go-live S4: #98's round-2 review (G19's cap-hit citation and the finalize checks)
+
+- Task: the steward's round-1 review of #98 at 6da5a55 (comment 5833705040). It upheld one blocker: "G30 makes a cap hit the raw fallback" credited G30, which sets the allowance and says nothing about a fallback. It also named six should-fixes and some nits.
+- Branch/worktree: `golive/harness-first-pass-wiring`, in `.claude/worktrees/cool-haslett-aa79b5`. Pull request #98. Commits: e05c56f5 (spec and failing tests), 9dce6350 (implementation), 058dea1d (this entry), and a later commit that checks this entry's sentences against the code.
+- Outcome:
+  - A first pass stopped by its caps selects no reading. The citation is now G19 and the owner's words in PLAN section 1 ("can rely on raw ... if LLM decided transcript output fails").
+  - Materiality compares spans lower-cased, not case-folded. The coordinator's ruling at 14:05Z reads 12:31Z's "case-folded" as lower-cased, so "Straße" against "Strasse" stays material.
+  - HARNESS.md section 3 now covers four more points:
+    - S3's route wiring PR sizes each `first_pass` request's reservation from the crop, with a 20,000 floor per request, and the call reserves the sum;
+    - the owner's words are cited to PLAN section 1;
+    - the legacy extraction call shares the cap-hit split and has no handler;
+    - the managed prompt reaches the span (G3).
+  - Finalize (`integrity.py`) verifies each first-pass call's responses, region and input. It also checks that a machine-selected reading is the region's, with its literal as the text, until a reviewer's decision changes the transcript.
+  - The parent refuses a first-pass call returned for another route or asset.
+  - The extraction payload leaves out a transcript's handoffs, differences and call.
+  - The synthetic call names its readers' input.
+  - New tests pin the blocks, the registered first-pass route pin and the model-child round trip.
+- Validation actually run: 9 new or changed tests failed before the implementation, each for its intended reason. The blocks, the route pin, the child round trip and the reviewer-changed transcript pass before and after. The first finalize check blocked `test_http_transcription_abstention_preserves_readings_and_blocks_clear` until it skipped reviewer-changed transcripts. Gates on 9dce6350, one at a time: `pre-commit run --all-files` passed; `pytest tests` 1557 passed, 31 skipped; `pytest scripts` 1562 passed, 50 skipped; `check_ui_strings` 0 violations.
+- Durable learnings:
+  1. A reviewer's transcription decision (`api.py`) rewrites `text`, `resolved`, `value_state`, `actor` and `reason`, but leaves `decision_kind` and `selected_observation_id`. A check on a machine pick must skip transcripts with an `actor`, or finalize blocks a reviewed record whose text differs from the machine's pick, as `test_http_transcription_abstention_preserves_readings_and_blocks_clear` showed.
+  2. `INITIAL_HUGGINGFACE_ROUTES` is a read-only `mappingproxy`: a test patches the name in `production`, not an item.
+  3. Credit each rule to the decision that states it. A rule that follows from G19 must cite G19.
+- Remaining follow-ups (the S4 follow-up PR after the chain, which the steward tracks with #86's items):
+  - keep the raw messages of a `model_malformed_response` call (PRD 691, TRN-005);
+  - a blank or unreadable pick;
+  - the contract-invalid path's circuit charge and dropped call;
+  - `max_length` on free text;
+  - whitespace-split numbers;
+  - route ids on spans.
+  - At #159's turn, its "coordinator's G30 reading" citation goes to G19 as well.
+- Correction to #216's entry (SL:12642), appended here at the steward's ruling (comment 5835821246): "S3's lane branches take the three production.py lines cleanly; 15 of the 19 lane heads have other conflicts (SECRET_SCAN_REVIEW.md, and workflow.py for five) that also occur against main. The lane check was round 2's correctness review (comment 5834843588), not the integration review. At SL:12634 the planned-task test backs 'that step sends nothing'; that earlier steps such as parties still run was shown by the correctness review's old-order probe (comment 5835391741)."
+
+### 2026-09-25 — Go-live S4: #98's round-3 review (finalize binds machine transcripts to their decision)
+
+- Task: the steward's round-2 review of #98 at d17fd7af (comment 5836495516). All four reviewers approved, and the steward upheld one blocker: learning 3 above said G30 sets a cap. G30 is the allowance; the output caps are coordinator rulings (PLAN 4.3). Four should-fixes and some nits came with it.
+- Branch/worktree: `golive/harness-first-pass-wiring`, in `.claude/worktrees/cool-haslett-aa79b5`. Pull request #98. Commits: ceb589a4 (spec and failing tests), 1de7714f (implementation), this entry, and the merge of main at the turn.
+- Outcome:
+  - Learning 3 drops the clause that credited G30 with a cap.
+  - Finalize (`integrity.py`) binds each machine transcript (no reviewer `actor`) to its region:
+    - its text is none or one of its region's readings, and none when a machine kind selected nothing;
+    - a region the run holds a first-pass decision for is recorded as `first_pass`, with that decision's pick and call;
+    - the pick is one G19 allows (`g19_pick`).
+  - The extraction call gets a resolved transcript with its text as its only alternative.
+  - HARNESS.md section 3 says the 20,000 floor is per request, and that the call reserves the sum.
+  - Risk counts 4 + 6R weighted lane calls through parse, and says #93 is open and provisional.
+- Validation actually run:
+  - Seven of the new or changed tests failed before the implementation, each for its intended reason.
+  - A mutation probe disabled each of the twelve finalize checks in turn. Each time, exactly its own test case failed, including the crop reference and another region's pick, which round 2's review found no test covered.
+  - Gates, one at a time, on 1de7714f with this entry: `pre-commit run --all-files` passed; `pytest tests` 1559 passed, 31 skipped; `pytest scripts` 1595 passed, 50 skipped; `check_ui_strings` 0 violations.
+- Durable learnings:
+  1. A finalize check pins nothing unless its test breaks that check alone. A tamper that also trips another check leaves the first one free to be deleted. Forge the transcript and the run's decision together when only one check should see the forgery.
+  2. `verify_evidence` turns any exception into an integrity failure, so a probe that raises a KeyError proves nothing about the check it aimed at.
+- Remaining follow-ups: as in the round-2 entry. Before #159's turn, #159 must stop crediting G30 with the fallback where round 2's review found it: HARNESS.md section 3, first_pass.py, its test and the log.
+
+### 2026-09-23 — Go-live release workstream (S2), T1b: the owner decisions in the release runbooks and histories
+
+- Task: the same S2 session as the T1a entry, second half of brief item T1.
+- Branch/worktree: `golive/release-runbook-amendments` on `origin/main` `3398ed5`, in `.claude/worktrees/zealous-euler-da786e`.
+- Outcome: dated notes and banners in `GO_LIVE_RUNBOOK.md`, `GO_LIVE_READINESS.md`, `RELEASING.md`, `RELEASE_RUNTIME.md`, `RELEASE_DATA.md` and `PROTECTED_RELEASE_HARNESS.md`. Four notes in `PRD.md`, which the coordinator signed off: G14 beside section 9.2 steps 1-2 and after section 11.2's table (CLS-002), both restating G14 (the intake collection chooses the profile; there is no classification stage); and G16 beside the 12.4 rule that clearance needs every mandatory field and after the 12.4 mandatory-field table (`identified_by_irn` does not block clearance until EMu Parties is connected). Notes that keep a safeguard say so: post-merge reconciliation, the protected-branch and five-check admission, and the time-bounded initializer.
+- Commits/PRs: [PR #78](https://github.com/anurag-duddu/specimen-digitization-app/pull/78): amendments `7a83c61` and this closeout. It depends on [PR #76](https://github.com/anurag-duddu/specimen-digitization-app/pull/76).
+- Validation actually run: pre-commit hooks at commit (all passed); `git diff --check` clean; a link and anchor check over the 92 added links (0 broken, with `golive/RELEASE.md` resolved from #76's branch).
+- Durable learnings: a documents-only amendment still needs a size budget. At about 1,060 lines, T1 exceeded the program's 600-line review limit, so it was split along the line other sessions care about: the contracts they code against first, the runbooks and histories second.
+- Failed approaches: none beyond those in the T1a entry.
+- Remaining follow-ups: as in the T1a entry.
+
 ### 2026-09-23 — Go-live release workstream (S2), T1a: the owner decisions in the release, approval and product contracts
 
 - Task: Claude Code session "Release data and runtime planes on merge" (S2 of `docs/execution/golive/PLAN.md`), T1 of `briefs/S2-release-planes.md`.
@@ -11825,6 +12090,116 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: (1) GitHub auto-merge fires on green required checks alone, so it bypasses any review that is not itself a required check. (2) A plan that removes gates must trace every field only a person can set; searching for "human" missed `label_coverage_unconfirmed`. (3) Facts carried over from a survey of two slides were wrong for the set of ten; read every item of a small acceptance set before writing it into briefs. (4) Squash merges drop the red-then-green commits the plan relies on; the steward merges with `--merge`.
 - Failed approaches: none new. All four product and process questions this round went to the owner rather than being decided by the coordinator.
 - Remaining follow-ups: the owner's field list (G8); pre-paid Hugging Face credits (routed calls return HTTP 402); the Maps key, Logfire token and Hugging Face rotation commands in `~/specimen-golive/OWNER_ACTIONS.md`; S2's IAM list; S3's concrete coverage check, to take to the owner if it holds a product choice.
+
+### 2026-09-23 — Go-live release workstream (S2), T2a: the gate that admits the runtime planes from GitHub facts
+
+- Task: the S2 session, brief item T2 step one (`docs/execution/golive/RELEASE.md` section 3.1).
+- Branch/worktree: `golive/release-runtime-gate` in `.claude/worktrees/zealous-euler-da786e`, stacked on #76's branch. An Opus subagent implemented it test-first in an isolated worktree; this session reviewed the diff and integrated it.
+- Outcome: `scripts/ci/release_gate.py` admits a runtime job without an envelope. It checks the job context (with the retired `RELEASE_AUTHORIZED_SHA` no longer required); that the commit is on `main`; that exactly one merged pull request of this repository produced it, with the reviewed tree; and that the five required checks passed in the latest attempt of its CI/CD push run, waiting for that run up to a bounded time. It writes an owner-only gate record in place of the envelope packet and exports its digest. `release_admission.admit` re-admits a gate record for the runtime planes only. No workflow uses the gate yet; T2c switches the workflow.
+- Commits/PRs: spec `0da26ca`, `f9df3d4`; red `76c9d53`; green `e5fe68c`; the spec correction and this closeout.
+- Validation actually run: the red run failed at collection (no module), and `test_release_context.py` had 6 failures on the new keyword. Green: 207 targeted tests passed; `uv run pytest scripts/ -q` passed 1,656 with 50 skipped (run by the subagent at load 11.6); pre-commit passed on all five files. The subagent's mutation check broke 61 checks one at a time, and the tests caught all 61.
+- Durable learnings:
+  - The CI run's `path` is exactly `.github/workflows/ci-cd.yml`, and the five required job names match. Both were checked against the live API; nothing had verified them before, because no envelope was ever minted.
+  - Tip-of-main is the wrong guard for automatic deploys: frequent merges would abort healthy runs mid-deploy. Workflow concurrency plus a rollback guard on the deployed `source-sha` label (T2b) protects the same thing.
+  - The repository deletes merged branches (`delete_branch_on_merge`), so a PR stacked on another's branch retargets to `main` when that one merges.
+- Failed approaches: none.
+- Remaining follow-ups: in T2b, the publication supervisor must check the context without the retired variable, and its `--admit` step must accept a gate record without a plan. In T2c, the admission job's timeout must exceed the 3,300-second CI wait. If CI is re-run with "Re-run failed jobs" rather than "Re-run all jobs", the gate may fail closed; this is unverified.
+
+### 2026-09-23 — Go-live release workstream (S2), T3a: the additive-only gate for Data Connect changes
+
+- Task: the S2 session, brief item T3, step one (`docs/execution/golive/RELEASE.md` section 4.1), with the coordinator's D1 to D3 recorded in the T3 spec.
+- Branch/worktree: `golive/release-schema-gate`, stacked on #91's branch. An Opus subagent implemented it test-first in an isolated worktree; this session reviewed and integrated it.
+- Outcome:
+  - `scripts/ci/schema_gate.py` parses exactly the SDL this repository uses. It compares the live schema and connector sources with the merged ones, offline.
+  - It accepts new tables, new nullable fields, new foreign keys covering a new field, and dropping NOT NULL only on the checked-in list (`SourceAsset.width`, `SourceAsset.height`, `LabelRegion.cropAssetId`, plus relation fields over them). It also accepts new type-level constraints over new fields only, and new `NO_ACCESS` operations with the membership `@check`.
+  - It refuses everything else, naming each refusal without values. An empty live schema raises rather than admitting everything as new.
+  - No workflow calls the gate yet; T3b wires it.
+- Commits/PRs: spec `ef5eee9`; red `02066b0`; green `ab8e7cc`; the spec clarification and this closeout.
+- Validation actually run:
+  - Red: collection failed (no module).
+  - Green: 70 gate tests; `scripts/` 1,726 passed, 50 skipped (subagent, load 10.8); pre-commit passed.
+  - This session re-ran the CLI against #88's real files (`origin/golive/data-contract`): "additive", exit 0. In reverse it refuses, and the subagent counted all 43 of #88's changes flagged that way.
+- Durable learnings:
+  - A Data Connect relation field and its `@ref` column are one SQL column, so a named NOT NULL relaxation must carry its relation field with it.
+  - Scoped foreign keys always include the existing scope columns, so "foreign keys over new columns only" has to mean "covering at least one new column". That is safe, because PostgreSQL skips a foreign key on rows whose new column is null.
+  - Tokenizing, rather than matching lines, makes the membership-check rule immune to checks hidden in strings or comments.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - The gate checks that the membership `@check` is present, not what its expression says. `@check(expr: "true")` would pass, so the PR steward still reviews check expressions.
+  - T3b must never call the gate with a live schema but a missing connector, because every operation would then count as new.
+### 2026-09-23 — Go-live acceptance lab (S7), T1: the lab runner and specimen 1's first real run
+
+- Task: Claude Code session "Run the acceptance lab one specimen at a time" (S7 of the go-live program, `docs/execution/golive/PLAN.md` section 8), worktree `.claude/worktrees/serene-margulis-7d6bd8`, 2026-09-23 to 2026-09-25.
+- Branch/worktree: first opened as #81 from `golive/lab-runner`. At the PR steward's request it was split into three stacked pull requests, each red before green:
+  - #82 `golive/lab-checks`: the spec delta and stage checks;
+  - #83 `golive/lab-runner-core`: the runner's core;
+  - #84 `golive/lab-lane`: the lane, the command line and this closeout.
+
+  Later changes were merged forward through the stack, never rebased. #81 was closed.
+- Outcome: `scripts/lab/run_specimen.py` runs one specimen through the lane on this workstation and writes `~/specimen-golive/runs/<subject>/<timestamp>/` plus `~/specimen-golive/reports/<subject>.md`.
+  - It fetches the original with application default credentials.
+  - It drives `create_app(adapters=...)` through the upload routes (`scripts/lab/lab_lane.py`: SQLite or a fresh SQL Connect emulator per run).
+  - It scores each PLAN 4.1 stage from what the app recorded (`scripts/lab/lab_checks.py`).
+  - Cost: it prices tokens and keeps the lab's own tally against its USD 5.00 share (G9, G30). Every paid attempt without settled usage is held at the full per-call bound until production's ledger lands. PLAN 4.3 runs the lab under production's mechanism, so the lab reads that bound as the largest of the step's reservation in the profile (the stage's entry, or else the per-step reservation, as `workflow.py` reserves), PLAN 4.3's floor for a call's two requests (USD 0.04) and the 16,000-token limit at the top price.
+  - It redacts PLAN 7.7's categories from every artifact it writes that decodes as UTF-8, whatever its suffix. The app's own `state/`, which also holds the emulator's logs (initdb's log names the OS account), stays unredacted and is never shared. The categories: token values and shapes, instance addresses, identities, and billing and organization ids. Fields that name a person are redacted by name, including `SourceAsset.uploaderUid` and `ProfileVersion.approvedBy`. It refuses to run unless its private values file is under `~/specimen-release-private/` (PLAN 840). It checks the file's location before reading it, reads it once, and refuses a file with no usable value, or with a line that, once trimmed, holds any character other than ASCII letters, digits and `. _ @ : + -`. A `NAME:value` line still passes, since `:` belongs to Cloud SQL connection names.
+  - While D4 is held, it fails a run in which it finds a GBIF occurrence request: in any run's records, in the blobs its receipts point to, or among the requests it counts before sending, at `bounded_http` in the parent process and on injected `httpx` clients. It reads each counted request both as written and as `httpx` builds it. Every path is read first as `httpx.URL` builds it (dots removed on the path as written, then decoded once, as its `.path` is) and again as a server may then read it (`;` parameters dropped, slashes merged, dots resolved again). A path is decoded only once, so a double-encoded one does not count. A host's trailing dot, an empty port and IDN dots name the host as httpx reads them, and a literal backslash is not read as a slash. Stored text is searched as written and after each of up to four decoding steps; every record's strings, keys included, get that text test; and a GBIF record's strings count whole as absolute, rooted, relative or `//` paths, and by every `/` token inside them.
+  - It fails any GADM call on its own ground: PLAN 4.8 does not use GADM (coordinator ruling, 2026-09-25). Reporting other GBIF calls outside PLAN 4.8's table for the coordinator is the lab's own choice.
+  - The subject report carries each run's `verdict.md`, a person's verdict that the runner only reads, on every rebuild; `--report-only` rebuilds it without another run.
+  - It prices a run before scoring it. Once the lane has started, a run it cannot price is held whole at `--max-run-usd`, and `run.json` is first written then, held at that bound. `run.json`, the reports and the spend are written even when a phase or the lane's teardown fails. A Ctrl-C is recorded and stops the run in a phase, between the lane's phases or during its teardown, including when an error in a phase or in the teardown then replaces it. During one of the app's own requests, the lane holds it until the request returns and then raises it; the request's own work, the drain's later paid calls included, still runs, and the run stays held at `--max-run-usd`. Preflight refuses while any `run.json` is unreadable or holds a total that is not a finite number of at least zero, so, by the lab's own rule, an adjustment may only raise the tally. `--max-run-usd`, `--lab-allowance-usd`, `--max-load` and `--timeout-seconds` must be finite and above zero.
+  - Only the ten pilot slides are declared not sensitive (G31, on PRD.md 724's criteria). A run with the production adapters refuses any other subject: `main()` before the fetch, and `production_lane` before any upload. The lane itself refuses one whenever its adapters are not exactly `SyntheticAdapters`.
+- Runs of `subject_105526321`:
+  - `20260923T211535Z`: stages 1, 3, 5 and 9 passed; 2 substituted; 4, 6, 7 and the app trace not built; 8 blocked at `parse` with `external_outcome_unknown`. Filed #79 (lane: synthetic-mode uploads get the synthetic profile) and #80 (harness: a deterministic error recorded as an unknown outcome).
+  - `20260925T094409Z`, on main with #86: #80's fix verified (`evidence_integrity_failure`, lease released, retry and reprocess offered).
+  - Lab spend: USD 0.027 as the runs recorded it. On 2026-09-25 at 15:50Z (coordinator.md:448) the coordinator confirmed the later per-attempt bound and ruled one re-hold: the dated adjustment entry `runs/_adjustments/20260925T155129Z/run.json` re-holds the two real runs at USD 0.085 instead of 0.024. The tally now reads USD 0.087; the runs' own records are left as written.
+  - Both real runs predate identity and home-path redaction (`daffca4`, `c6c5228`, `09ca644`), and nothing has re-redacted them. Re-redact them before sharing any of their files.
+- Expectations: `LAB.md` records the expected outcome for the ten (G42 and the owner's G35 to G45): review for all ten, with the right reasons. The owner's words and the coordinator's readings are kept apart. Per-slide tables are outside the repository (`field-coverage.md`, `expected-outcomes.md`).
+- Validation actually run:
+  - `uv run pytest scripts/lab -q`: 39 passed, 1 skipped on #84 after the fourth review's follow-ups (34 passed on #83); after #83's round-1 review, 48 passed on #83 (`09ca644`) and 53 passed, 1 skipped on #84; after its round-2 follow-ups, 62 passed, 1 skipped on #84, and the same after merging main `dfd1ad8`; after #84's round-1 review, 77 passed, 1 skipped, and the same after merging main `569c336`; after its round 2, 95 passed, 1 skipped; after its round 3, 108 passed, 1 skipped; after its round 4, 112 passed, 1 skipped;
+  - the emulator-gated test passed with `SPECIMEN_TEST_SQL_EMULATOR=true`;
+  - `uv run pytest scripts/ -q`: 1560 passed, 50 skipped on #82's head; after the fourth review's follow-ups, 1581 passed, 50 skipped on #83's head `e169c2a` and 1586 passed, 51 skipped on #84's; after #83's round-1 review, 1595 passed, 50 skipped on #83 (`09ca644`) and 1600 passed, 51 skipped on #84; after the round-2 follow-ups, 1609 passed, 51 skipped on #84, and the emulator-gated lane test passed; after merging main `dfd1ad8`, 1611 passed, 51 skipped, and the emulator-gated test passed again; after #84's round-1 review, 1626 passed, 51 skipped, and the emulator-gated test passed, before and after merging main `569c336`; after its round 2, 1644 passed, 51 skipped, and the emulator-gated test passed; after its round 3, 1657 passed, 51 skipped, and the emulator-gated test passed; after its round 4, 1661 passed, 51 skipped, and the emulator-gated test passed;
+  - `pre-commit run --all-files` passed; for the fourth review's follow-ups, pre-commit on the changed files passed;
+  - two real runs and one dry run of `subject_105526321`.
+- Durable learnings:
+  1. **SAM 3 locally.** `sam3_server.py` cannot start outside Cloud Run, and it refuses `HF_TOKEN`. The pinned checkpoint `3c879f39` is cached in the lab Mac's Hugging Face cache. With `SPECIMEN_SAM3_ENDPOINT` unset, `segment` blocks cleanly with `sam3_serving_contract_not_configured_use_reviewed_regions`.
+  2. **Replay a failed step.** Replaying its pieces from `snapshot.json` recovers the exception class that a generic handler hides.
+  3. **Label layout.** On slides 324 to 328 the locality is on a right-hand label. The barcode's printed catalog number sits just outside the handwritten label.
+  4. **PostgreSQL socket paths.** They are capped at 103 bytes, so the emulator needs a short `TMPDIR`.
+  5. **Logfire credentials.** Logfire 5.0.0 finds them through `LOGFIRE_CREDENTIALS_DIR`.
+  6. **Upload completion.** It needs the revision returned by the last content chunk.
+  7. **Mergeability and union merges.** GitHub's mergeability ignores `merge=union`: merge main locally.
+  8. **Stacked squash-merged PRs.** A file edited low in the stack must be merged forward, or the children hit add/add conflicts.
+  9. **Unsettled usage after #86.** A paid call that returns and then fails has no settled usage, so holding only unknown outcomes undercounts.
+  10. **Units.** A unit is never guessed: both readers dropped 322's foot mark.
+  11. **Owner's words.** An owner decision is cited in the owner's words, with the coordinator's reading labelled as such.
+  12. **Where GBIF calls happen.** GBIF reads run in a child process (`bounded_http`, then `run_isolated`, then `Popen`), so an in-process `httpx` hook sees none of them; count at `bounded_http` in the parent.
+  13. **Which coverage field to read.** The lab scores the run snapshot, where #111 writes `coverage_check.outcome` (confirmed or unconfirmed). The thread API's `status` is a derived view.
+  14. **Name the right ground.** A GADM call is not an occurrence request. Filing it under D4 would point the owner at the wrong rule, so it fails against PLAN 4.8 with its own reason.
+  15. **Generated reports lose hand-written text.** A report rebuilt from scratch drops anything a person added to it. Keep the person's words in a file the runner only reads (`verdict.md`) and carry it in on every rebuild.
+  16. **Read a private file once, from the path you checked.** Preflight expanded `~` and the redactor did not, and the redactor swallowed the error, so it loaded nothing while preflight passed. Check the location, read once, hand the values over, and refuse when nothing usable loads.
+  17. **Record in a `finally`.** Once paid calls may have started, a run's spend and report must survive any failure. Price before scoring, and hold what cannot be priced at the run's bound.
+  18. **A red commit must fail for its named reasons.** A shared test helper that sets a symbol the red commit does not add fails every test for the same wrong reason and hides the new assertions.
+  19. **Count what the client sends.** `httpx` resolves a `..` above the root and merges `QueryParams` into the URL. Read a request both as written and as the client builds it; while D4 is held, counting more is the safe side.
+  20. **Refuse a file that parses but cannot match.** `NAME=value`, a quoted value, a comma or a trailing comment leaves a value that passes and never matches, and a byte-order mark hides the first value. Hold each line to an allowlist of the characters real values use, and read the file with `utf-8-sig`.
+  21. **Put a safety guard where the risk is.** A comment said the lane never processes a Sensitive slide, but nothing on the production path refused one. The refusal belongs where the production adapters are built, with a test.
+  22. **Read a path as the client sends it.** Home-made normalization kept diverging from what a client sends: it removed a URL's host with the `..`, let a decoded `%3F` hide a `..`, and dropped `;` before resolving `..`. Let the client library resolve the path as written, apply a server's reading on top, and search nested encodings one level at a time.
+  23. **Re-raise what a cleanup error replaced.** A Ctrl-C followed by an error in cleanup survives only as the error's `__context__`. Walk the chain and re-raise it, or the run carries on as if nothing stopped it.
+  24. **A test client can swallow a Ctrl-C.** Starlette's `TestClient(raise_server_exceptions=False)` swallows a `KeyboardInterrupt` raised during a request: a 500 if the app had not started its response, otherwise the endpoint's own response. Hold SIGINT while a request runs and raise it when the request returns; the request's work, paid calls included, still runs to its end.
+- Failed approaches: pointing the emulator's `TMPDIR` at the run directory (the socket path was too long); calling `Workflow.parse` as an instance method (it is static).
+- Remaining follow-ups:
+  - rerun specimen 1 in emulator mode once S3's #85, #89 and #93 merge (that fixes #79), with the local T3a commits and the DoD-4 SQL parity check;
+  - SAM 3 lab mode and the G15 calibration (S3 T3);
+  - switch the DoD-4 check to `projection.writes` (S5 #146), and save `thread.json` (S5 #171);
+  - check trace contents once a Logfire read token exists;
+  - T4a's private pilot reference after the production import.
+### 2026-09-23 — S8 retrospective georeferencing research: the plan, the pilot localities, a read-only probe
+
+- Task: Claude Code session S8, "Research retrospective georeferencing for the harness", in the go-live program (owner decision G12, brief `docs/execution/golive/briefs/S8-georeferencing-research.md`). Ten Sonnet research subagents (Wikidata; GeoNames and NGA GNS; Getty TGN, WHG and PSGC; GEOLocate and the point-radius method; GBIF, iDigBio and Bionomia; Google Maps Platform and Mapbox terms; Darwin Core and ABCD/EFG; the pilot toponyms' history; Geology and Anthropology sources; elevation models and OpenStreetMap), one Explore survey of the repository and one Opus synthesis subagent.
+- Branch/worktree: `golive/geo-research` from `origin/main` at `709ae3c`, in `.claude/worktrees/busy-thompson-19cc3b`. Pull request: [PR #94](https://github.com/anurag-duddu/specimen-digitization-app/pull/94), rebased onto `7e3afb8` (#74).
+- Outcome: `docs/product-requirements/GEOREFERENCING.md`, a plan in the charter's six sections, marked proposed and not accepted by the owner (G12), so the G10 Google Maps tool stays until the owner accepts the plan and the acceptance lab shows the new tool matches or beats it; and `scripts/research/georeferencing/pilot_probe.py`, a read-only probe of public sources for the pilot localities, whose GBIF occurrence and GADM steps run only with `--held-steps` (D4, PLAN 4.8). No product code or behaviour changed, no cloud resource touched, USD 0 spent.
+- Validation actually run: the probe on 2026-09-23, 72 anonymous requests, all `success`, output kept in the session scratchpad; pre-commit on every changed file, every hook passed; `python -m py_compile` of the probe; `uv run pytest scripts/ -q` 1,547 passed, 50 skipped, exit 0. `uv run pytest tests/ -q` not run: nothing under `src/` or `tests/` changed and the machine load was above the plan's limit.
+- Durable learnings: (1) The ten pilot slides hold four localities, not one: "E. slope Mt. McKinley" at 6400 ft and at 3300 ft, "E. slope Mt. Apo" (all "Davao Prov., Mindanao, P.I." or "Philippine Islands", 1946), and "Yepocapa, Mun. Yepocapa, Chimaltenago [sic], Guatemala" (1948). On 324 to 328 the locality is on the right-hand label; the left one holds only the preparation note. (2) Google Maps Platform Service Specific Terms 6.3.1 (last modified 2026-06-10) cap cached Geocoding latitude and longitude at 30 consecutive days; only place IDs may be kept, and 6.2 bars use with a non-Google map. A Google coordinate cannot be the stored or GBIF-published georeference. Only the `country` and `postal_code` components restrict results. (3) "Mount McKinley" in Davao appears on no map (Hoogstraal 1951, Fieldiana Zoology 33(1), p. 40). No gazetteer has it, and "Mount McKinley" searches return Denali. (4) GeoNames and NGA GNS attach "Davao Province" to modern Davao del Norte as an alternate name; Wikidata's Q15095071 is the 1914-1967 province with its three successors under P1366. The charter had P1365 and P1366 reversed. (5) The Field Museum's own published georeferences for "Mt McKinley, E slope" are two points 23.6 km apart, and neither agrees with the label elevations; the published "Mt Apo, east slope, Todaya" point lies near the summit with a stated 5.16 m uncertainty. (6) GEOLocate ignores `state` and returns no uncertainty outside the USA. (7) `handwriting-qwen` silently corrected "Chimaltenago" to "Chimaltenango"; both readers dropped the foot mark on 105526322. (8) The Wikidata Query Service answered 429 with `Retry-After: 120` after two requests from this machine; discovery through the Action API and SPARQL only for known items avoided it. (9) Getty TGN's legacy SPARQL no longer returns historic-name flags or dates, and WHG and Getty's new endpoint need tokens.
+- Failed approaches: two research subagents treated follow-up instructions sent through SendMessage as possible injected content and ignored them (the GeoNames Guatemala test and writing report files); the probe covered Guatemala instead. Put every instruction in the first prompt. The Biodiversity Heritage Library returned 403 to scripted fetches; the Internet Archive mirror (`biostor-65904`) had the narrative's text. The public Overpass instance timed out twice.
+- Remaining follow-ups: the owner decisions listed in the plan; S4's T3a interface, which accepted S8's five needs (unassigned locality text, per-field outcomes, historical and modern roles, per-candidate sources, one provenance entry per sub-call) and needs a paid-call path, since G35 keeps Google as tier 2, each call reserving its cost (G30); a curator's review of the "Mount McKinley" to "Mount Talomo" hypothesis and of the expedition itinerary; D14 is decided (G27, 2026-09-23, as #104 records it): under G20 a gazetteer confirms handwriting-qwen's silently corrected "Chimaltenango" over the label's "Chimaltenago"; the lookup settles the final value and the field clears, the verbatim is never replaced, and when the first pass picked no reading and the readers differ each reading is kept and none is chosen; D15 is decided too (G34, 2026-09-24): the Google tool clears a field with Google's place ID and no name only when Google's name is one letter off and fits the other place fields, and the owner asked for the retrospective tool to be fully implemented, which S8 now builds; the owner then decided D1 to D3, D6, D7 and D9 with a three-tier design of their own (G35 to G39, 2026-09-24), dismissed D4 and D5, which are held, set the harness's job (G40) and settled stated elevations (G41: convert and fill, revising G22); D11 and D13 are the coordinator's engineering rulings (Copernicus GLO-30 tiles; the in-house uncertainty engine), and D8, D10 and D12 wait for their phase, except Getty TGN; Phase 1 as the plan's section 6 describes.
 
 ### 2026-09-23 — Go-live data contract (S5 T1): projection tables, nullable columns, worker-compatible writes
 
@@ -11900,6 +12275,55 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (1) `PRD.md` 12.4's open items (558-564) mark what only the owner can settle. Plan wording must not settle any of them by implication, as "keeping partial precision" and "store matched names" did.
   - (2) The worker's connector identity is also its audit identity. Defaulting it to the administrator's UID would record every automated step as that person. `LIVE_PROCESSING.md` 62-63 already required a separate operator account.
 - Remaining follow-ups: the owner's Hugging Face credits, field list, source-registry secret and worker account; S2's IAM list; the G15 calibration.
+
+### 2026-09-23 — Go-live release workstream (S2), T3a follow-up: the closed two-step unique exception
+
+- Task: the S2 session, T3a follow-up for #104's corrected PLAN 4.4 and the steward's review of #104, applied in #99's sync.
+- Branch/worktree: `golive/release-schema-gate` (#99). An Opus subagent implemented it test-first in an isolated worktree, and this session reviewed and integrated it.
+- Outcome:
+  - `schema_gate.py` admits exactly two steps for `SourceAsset`:
+    - step one adds `source_asset_specimen_object` on (organizationId, collectionId, specimenId, bucket, objectName, generation) while `specimen_unique_1` stays declared;
+    - step two, in a later merge, drops `specimen_unique_1` only once the live schema has the new unique and no live operation uses the old one.
+  - Both steps in one merge are refused, with a reason naming create-before-drop.
+  - Each added column must be an existing NOT NULL column. Neither constraint may be the key or hold a protected key.
+  - `PROTECTED` gains TRN-005's `rawAssetId`, `promptVersion` and `inputSha256`.
+  - The NOT NULL relaxations are no longer hard-coded. The gate reads them from `DATA_CONTRACT.md` section 3.3 in the merged tree, strictly, so `EvidenceItem.locator` arrives with #88's contract. Key, `@unique` and never-list columns stay refused even when listed.
+- Commits/PRs:
+  - This session's earlier superset version was replaced before it was pushed. Its spec and code were squashed into one spec commit and one red/green pair.
+  - Spec `29763ba`, red `3d2917a`, green `38014da`, and this closeout.
+- Validation actually run:
+  - Red: 15 failed, 74 passed. Green: 89 gate tests.
+  - `scripts/` passed on the subagent's head: 1,745 passed, 50 skipped, at load 10.8. pre-commit passed.
+  - This session re-ran the CLI against #88's head `1163431` (step one): "additive", exit 0. The subagent's copy that goes straight to step two is refused with the create-before-drop reason, and is admitted once step one is the live tree.
+- Durable learnings:
+  - Data Connect's compatible migration drops an index before it creates the new one, each statement in autocommit (S5 measured it on the emulator). So a constraint swap is only safe as two applies, and the gate is the place to enforce that, not the release.
+  - A step rule that compares directive texts must keep the directive name in the text, or a same-argument `@index` could ride on a `@unique` exemption. The parser keeps it (`@unique(...)`).
+- Failed approaches: implementing the swap as one step with a superset check. One migration drops before it creates, so the apply would have had to build an unreviewed intermediate schema.
+- Remaining follow-ups: S5's writer PR (T2a) carries step two. It merges only after #88's data release has applied step one.
+### 2026-09-23 — Go-live release workstream (S2), T1a follow-up: #76's should-fixes
+
+- Task: the S2 session, the should-fix list from the PR steward's approval of #76 (comment 5804769771), carried in #78.
+- Branch/worktree: `golive/release-runbook-amendments` (#78), in this session's worktree.
+- Outcome:
+  - The owner-approved exact-version condition on the standing `secretAccessor` grants is restored, per the coordinator's ruling. Only the runtime expiration is superseded, and a version bump is an owner action.
+  - The never-in-prompts rule and the steward's replacement of the privacy review now stand in both restated trace scopes.
+  - G26 reads "a Google geocoding result keeps only…" throughout.
+  - `specimenDataRuntimeAbsence` is named in the time-bounded lists.
+  - D1 is labelled as the coordinator's ruling.
+  - Retention stays open in the Logfire approval.
+  - `CLONE_ALLOWANCE.md` gains its banner and a note: the allowance guards only the first apply's restore clone, and T3d states what its claim binds instead of the retired packet.
+- Commits/PRs: `876fc53` and this closeout, on #78. Later on #78:
+  - `8f04330`: RELEASE.md section 1 states PLAN 4.4 as #104 merged it;
+  - the review-fix commits for #78's five review rounds: `ccb8fad`, `7690f5b`, `c47984a`, `2d499b4`, `ac43a1b` and the round-5 commit. Round 4 swept every dated note that retires a ledger, cost or reservation. Before the sweep, 0 of 36 carried the exact G30 sentence (9 had a variant wording); after it, 37 of 37 do.
+  - Round 5 added `budget` to that sweep: six more notes, and two undated #76 lines, now carry the sentence. It also swept acceptance. Five notes made PLAN section 8's loop the whole of acceptance. Each now carries one sentence that keeps the rest, naming all 25 UI and live cases the human-review checker requires.
+- Validation actually run: pre-commit on the six changed files; `tests/test_deployment_policy.py` (6 passed); the 4 links the commit adds resolve.
+- Durable learnings:
+  - A note that retires one half of a paired condition ("the exact version and the runtime expiration") must say which half survives. Otherwise reviewers read it as retiring both.
+  - When a review finding recurs across files, sweep every sibling with a script before fixing any. Three rounds of fixing the named instances still left 27 of 36 notes without the G30 sentence, and one regex over the dated notes found those 27.
+  - A sweep is only as good as its vocabulary. The round-4 pattern missed the notes that say "budget", and it also skipped undated amendment paragraphs.
+  - A note that states what now holds must not read as a closed list. "The checks stand: A, B" retires everything unnamed; "the rest stands, including A, B" keeps it.
+- Failed approaches: none.
+- Remaining follow-ups: T4's grants list binds each secret at its exact version. T4c narrows `data_setup_window.py`.
 
 ### 2026-09-23 — Go-live program: plan after #87, owner decisions G27 to G29
 
@@ -12055,3 +12479,839 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (1) To split a pushed branch without rewriting it, build the lower part as a new branch from the base, out of the upper branch's final files. Then merge it into the upper branch, keeping the upper side on every conflict. The upper tree stays as it was, except for the union-merged log.
   - (2) Write the lower part's files from `git show <final>:<path>`, with scripted cuts that each assert they matched once, so nothing else changes.
 - Open questions and follow-ups: none new. The T3 entries of #171 hold the open ones.
+### 2026-09-27 — Go-live projection writer (S5, in #168): identical readings on main's Transcript
+
+- Task: S7's acceptance-lab report. On main plus #171 (`c1491157`), `test_today_identical_and_reviewer_decisions_are_recognised` failed: identical readings wrote no selected reading and an unresolved decision. S7 asked for a fix, red then green, in #171 or in the lowest S5 pull request that owns `projection.py`. The code is #168's, and the lines are unchanged up to #171, so the fix is here and merges up.
+- Branch/worktree: `golive/data-projection-stages` (#168), from `9e56a74`, in a scratchpad worktree. Held locally until #168's turn. Nothing deployed.
+- Commits:
+  - `f3c6b37`: red.
+  - `3e60928`: green.
+  - `b210060`: the opt-in emulator test's dump.
+  - This entry.
+  - Merged up, locally: #169 `83605bc`, #170 `3cd439f`, #178 `204024b`, #171 `725ad4d`.
+- Outcome:
+  - Main's `Transcript` (#98) always has `selected_observation_id`, None unless the first pass picked. The writer read that value whenever the attribute existed, so identical readings lost their selection. It now falls back to the first reading when the value is None (section 11).
+  - The opt-in emulator test built its stand-in from the domain transcript's dump. With main's `Transcript` it passed `decision_kind` twice and raised `TypeError`. It now leaves the five decision fields to the stand-in, in the same lines as `golive/data-reviewer-decision` (`003f6ce`). On this branch's domain, the exclusion changes nothing.
+- Validation actually run:
+  - Red `f3c6b37`: the new test failed with `('identical_readings', None, True)`, as S7 saw.
+  - Green: the projection tests, 35 passed.
+  - #171's new head `725ad4d`: the projection, thread and application tests, 155 passed.
+  - S7's combination, on a detached merge of main `54ac2ff`:
+    - with the pushed #171 `c1491157`, S7's test fails as reported;
+    - with `725ad4d`, the 155 pass.
+  - The full gates on main plus `725ad4d`, each started at a one-minute load under 12:
+    - `tests/`: 1703 passed, 34 skipped;
+    - `scripts/`: 1775 passed, 51 skipped;
+    - `test-postgres.sh`: exit 0, with 81 PASS lines;
+    - the opt-in emulator tests: 4 of 4.
+  - Pre-commit hooks ran on every commit.
+- Durable learnings:
+  - (1) `hasattr` tests the domain's shape, not the value.
+    - When another pull request adds the field with a None default, a branch that tests for the attribute silently changes behaviour.
+    - Test the value, and write the red test with the attribute present.
+  - (2) A fix belongs in the lowest stacked branch that owns the lines.
+    - Check first that the upper branches never touched them (here the block's digest was identical from #168 to #171); then each upward merge is clean.
+- Remaining follow-ups:
+  - #168's turn: merge main, run the gates, push.
+  - S7 merges `725ad4d`, or picks `3e60928` and `b210060`, into `lab/integration`.
+### 2026-09-25 — Go-live data contract (S5, in #146): GBIF's success rule after #109's rulings
+
+- Task: the coordinator's message to S5, just after its 23:58Z ruling. `DATA_CONTRACT.md` 324-333 on main was stale after the rulings on #109 recorded in `status/coordinator.md`:
+  - 22:46Z on 2026-09-25: what a homonym conflict is, and that an exact synonym whose accepted usage passes GBIF.md 126 clears (G28, G1);
+  - 23:58Z: a missing `acceptedUsage` status counts as accepted, and any other status goes to review.
+  The coordinator offered S5's new pull request after #171, or whichever S5 pull request is in turn first. #146 is. The steward routed the same lines (ledger, 2026-09-25 23:57Z).
+- Branch: `golive/data-projection` (#146), from `fecbe59`, pushed with #146's merge of main.
+- Outcome:
+  - GBIF's `success` is an `EXACT` match, for a name read in full, in class Insecta, at the label's rank and with no homonym conflict. It is either an `ACCEPTED` usage with a key, or a synonym (not pro parte) whose accepted usage passes the same test.
+  - A cleared synonym's accepted usage is the settled value (`normalized` its name, `authority_id` its key), and the label's spelling stays the verbatim.
+  - A homonym conflict is another `EXACT` same-name alternative by other authorship in class Insecta, whatever its status. S4's HARNESS.md section 6 has the cases where GBIF leaves out a class, a name or an authorship.
+  - The rule lists the `ambiguous` cases; a name read only in part is one.
+  - Each clause follows #109's head `c9af56f`:
+    - `lookup.py`: `homonym_conflict` (463), `row_one` (490), `cleared_synonym` (505, the status at 521), the candidates and metadata it records (763-778), and the name read only in part (790-794);
+    - `workflow.py` 560-568, which settles the first candidate;
+    - `HARNESS.md` 399-428.
+- Validation actually run: the pre-commit hooks. This is contract text only, with no code or test in S5's files; #109's tests cover the rule itself.
+- Durable learnings:
+  - (1) A contract line that restates another session's rule goes stale with that session's rulings. Cite the ruling times and the code the text follows, so a reviewer can check both.
+  - (2) Re-check such a line against the other pull request's current head before pushing. The text was first written against #109's `aebf0790`. By `c9af56f`, #109 had added three cases that text lacked: a pro parte synonym never clears, a name read only in part never succeeds, and the homonym cases where GBIF leaves a field out. The contract now points to HARNESS.md for those edge cases rather than restating them.
+- Remaining follow-ups: #146's turn, after S2's #99: merge main again, "PR #146 ready", S2's re-sign.
+### 2026-09-24 — S8 builds the retrospective georeferencing tool, part 1: reading locality text
+
+- Task: the owner asked for the retrospective georeferencing tool to be fully implemented (G34, 2026-09-24). S8 moved from research to building, in the new modules the coordinator accepted (flat `georef_*.py` and `georeferencing_tool.py`), with spec deltas in `docs/execution/golive/GEO.md`.
+- Branch and worktree: `golive/geo-locality-text` in `.claude/worktrees/geo-build`, the one build worktree the coordinator allowed; #94 stays in S8's first worktree. PR #130.
+- Outcome: `georef_locality.py` reads one locality literal into its parts, and nothing imports it yet. It covers:
+  - label notations (G29), with CNHM and FMNH read as institutions, never places;
+  - slopes and offsets with their headings;
+  - elevations kept as written, numbers whole with their dots and commas (G27, G38; G41's conversion and fill happen in S4's later layer);
+  - unplaced text;
+  - comparison keys, with the one-letter gate on full names only (the coordinator's reading of G34, 2026-09-24);
+  - variants that group readers' literals whose parts share their keys, each literal keeping its own reading, headings, offsets and elevations included (G19, G20).
+- Validation: the tests (64 at first, 110 after review round 2's fixes, 123 after round 3's, 1,288 after round 4's tables of date forms and range joins, 1,309 with the range words added at the round-5 turn, 2,676 after round 5's generated table of 16,128 rows in 1,344 groups, 2,686 with the coordinator's range-low reading, 2,691 with its paired-range extension, 1,783 after review round 6's answer, whose generated tables of 451,558 rows in 326 groups replace round 5's 1,344 groups, 1,827 after review round 7's answer, which adds a seeded random generator of 16,000 layouts, 1,859 after review round 8's answer, 1,909 after review round 9's, and 1,967 after review round 10's) use the ten pilot labels as S8 and the S7 baseline readers wrote them, plus cases for notations, headings, offsets, elevations and comparisons. Also run: `uv run pytest tests/ -q` (1,558 passed, 31 skipped), `uv run pytest scripts/ -q` (1,547 passed, 50 skipped) and pre-commit. At #130's turn on 2026-09-25, after `main` at `3e93ecb` was merged in, the full suite ran again on the merged branch. For review round 6's answer, with `main` at `dfd1ad8` merged in, `uv run pytest -q` on `3c4cf90` gave 4,939 passed, 81 skipped. For review round 7's answer, it gave 4,983 passed, 81 skipped on `20ff61d`, and 5,001 passed, 81 skipped on the merge `ec8d73b`. For review round 8's answer, it gave 5,033 passed, 81 skipped on `9a9167d`. For review round 9's answer, it gave 5,083 passed, 81 skipped on `6db2467`. For review round 10's answer, it gave 5,141 passed, 81 skipped on `fb63047`, before `main` at `54ac2ff` (#84) was merged in; on the merge, the locality tests and #84's lab tests pass.
+- Commits/PRs: #130. Red `505fb2b` and green `32dfb9d`. Two docs commits routed by the coordinator: `49118b6` (both gates for replacing the Google module) and `75247aa` (locality readings are compared locally, and requests go through PLAN 4.8's filter). The merges of `main` at its turn follow, with `6ef48a4` (#207's nits). Review round 1 (comment 5829514661, three blocking findings) is answered by the red `e7ca011` and the green `2536c7b`, review round 2 (comment 5830604467, one blocking finding) by the red `fa9d2fa` and the green `67c6223`, review round 3 (comment 5831395240, one blocking finding) by the red `89a70e7` and the green `6146a39`, and review round 4 (comment 5832900333, one blocking finding) by the red `559a7e8` and the green `db52709`. At the round-5 turn, as the steward allowed, `aca491c` pins each year row's exact outcome, and the red `732b39d` and the green `a808060` add "and" and "y" as range words and set aside a number after another number and one word. Review round 5 (comment 5834621048, one blocking finding) is answered by the red `bc6f02b` and the green `5f6cc49`. The coordinator's reading of 15:32Z on 2026-09-25, which sets aside a range whose low could be a year, lands at the round-6 turn as the red `1101fe4` and the green `f7472cb`. Its extension at 17:40Z, under which a year-like range beside another elevation reads only when the two convert, lands as the red `02bf0ee` and the green `e2ece93`. Review round 6 (comment 5836896549, three blocking findings and one should-fix) is answered by the red `9de3889` and the green `96d0067`. After `main` at `dfd1ad8` was merged in (`73fbb35`), `3c4cf90` pins what GEO.md stated and no table showed yet: months joined by "of" or "del", the full-word prefixes, and the stated cost of an unlisted month form; `8306632` records the suite run. Review round 7 (comment 5838794512, two blocking findings and a should-fix on the costs) is answered by the red `8ce987f` and the green `20ff61d`; `2a6d175` records the suite on `20ff61d`, and `ec8d73b` merges `main` at `569c336` (#107). Review round 8 (comment 5840462910, two blocking findings and four should-fixes) is answered by the red `ac1553a` and the green `9a9167d`, with the coordinator's reading at 22:22Z on 2026-09-25 on its second blocker (option (b): across a comma, any word after a number continues the check) and ruling at 22:25Z (a word alone in its own part between two numbers stays a part); `6f67672` records the suite on `9a9167d`. Review round 9 (comment 5841665425, two blocking findings and three items for the same push) is answered by the red `c923525` and the green `6db2467`, with the coordinator's refinement of the comma reading at 00:38Z on 2026-09-26 (the continuation starts only from a bare number) and rulings at 00:52Z (a bare number is unglued too; three partial range readings are stated costs); `513ccf3`, log only, records the suite on `6db2467`. Review round 10 (comment 5842577980, two blocking findings and four should-fixes) is answered by the red `2b6f9a2` and the green `fb63047`, with the coordinator's rulings at 02:02Z, 02:06Z and 02:08Z on 2026-09-26 (an approximation mark is no glue and belongs to its elevation) and at 03:07Z and 03:14Z (a number is glued only by a letter or digit right before it, or right before the marks right before it); `e23a4d4` merges `main` at `54ac2ff` (#84), and the log-only commit after it records the suite on `fb63047`.
+- Durable learnings:
+  - (1) A line break on a label is sometimes layout inside a name ("E. Slope Mt." / "McKinley") and sometimes a boundary between parts ("Mt. McKinley" / "Davao Prov."). The reliable signal, found in the real labels, is a line ending in a notation that needs the next word. A line starting with "of", in any case, continues the line before ("of Mt. Apo", "OF YEPOCAPA"), since "of" begins no name, and so does a lowercase "de" or "del"; a capitalized "De" or "Del" begins a name ("Del Carmen", "De la Paz"). Review round 3 found the second, and round 4 found that round 3's fix had stopped "OF" from joining.
+  - (2) Where a unit word sits depends on the label's language: after the name in English ("Davao Prov."), before it in Spanish ("Mun. Yepocapa"). A unit word standing alone joins the name on the side its language points to.
+  - (3) Folded abbreviations sit close to unrelated codes: "P.I." folds to "p i" here, and a fold that dropped the space would give "pi", one substitution from the ISO code "PH". That is why the coordinator's reading of G34 compares full names only, on both sides.
+  - (4) A session's worktree hook blocks writes into another worktree. Switch with `EnterWorktree` and a `path` rather than writing across.
+  - (5) A comma between digits is not always inside a number. It is one only in a thousands group led by one to three digits ("1,463") or before a one- or two-digit decimal ("0,5", "1463,5"). A four-digit year can't lead a thousands group, so after one a comma separates even before three digits. Review round 1 found numbers cut short ("0,5 km" read as "5"). Its fix kept every comma between digits, and review round 2's probe "6-Sept-1946,6400'" showed that it merged a date and an elevation; the S7 baseline readers wrote "6-Sept-1946, Elev.6400" (handwriting-muse) and "6-Sept-1946, Elev. 6400" (handwriting-qwen). Round 2's fix still merged a year and a three-digit tail ("6-Sept-1946,640'"), which review round 3 found. Round 3's fix looked only after a date's hyphen, and review round 4 found the same merge after a dotted, spaced or slashed date ("12.IV.1948,95 m"). A number that is unsure is set aside rather than read: glued to the text before it ("12.IV.1948,95 m", "4'800 m"), after other text with two or four digits before its first comma or dot ("Sept. 1946,95 m"), a range after other text ("Sept. 1946 - 850 m", round 5), in a malformed grouping ("1,5,3 m"), or beside another digit group across a space ("4 800 ft.").
+  - (6) An elevation keeps its words as the label wrote them, but its citation has to follow the owner's latest decision. G41 revised G22, so text that reads elevations cites G27 and G38 for keeping them as written and leaves G41's conversion to the layer that does it.
+  - (7) A compatibility decomposition can hide a numeral as well as reveal one. NFKD turns "㏠" into "1日", exposing a digit, but turns the numeral "Ⅳ" into the letters "IV". A numeral check therefore reads both the text as written and its NFKD form.
+  - (8) Fixing a class of misreadings one example at a time let each review round find the next example: a hyphen, then a dot, a space and a slash. Structural rules and a table of every date form narrowed it, and that table found a gap no reviewer had named, a spaced two-digit year before a three-digit tail ("IV 26,950 m"). But a hand-listed table covers only what it lists: review round 5 crossed the same date forms with the range joins and found 2,088 rows where the year became a range's low. A table generated as the cross product of the lists it tests (every date form crossed with every join, tail and unit) finds such rows before review does; round 5's found two more families ("4.1948" and a year on the line after "26 IV") while the rules were being written.
+  - (9) A rule that trades wrong conclusions (G36) against coverage (G1) is neither the builder's choice nor the reviewer's when the spec is silent (G5). Here S8 prototyped the rule off-branch and gave its numbers: what it sets aside, what it still reads, and which tests change. The steward put both options to the coordinator, whose reading of 15:32Z on 2026-09-25 chose to set aside a range whose low could be a year. Such a choice is cited as the coordinator's reading, not the owner's.
+  - (10) Round 6 was answered by generating every axis the reviewers named, rather than the rows the last round found. The axes were a year after a part of only a month, a join touching a number or broken across lines, and digits in other scripts. Crossed in full off-branch (2,313,360 year rows and 96,768 range rows), no row failed; the committed tables keep 451,558. A differential probe of 87,120 plausible layouts against the previous head showed only readings lost there, none gained; outside that corpus, "el." forms now read as prefixed ("el. 1800-2200 m"). The probe caught a bug before review: a comma at a line's end did not stop the check across the break.
+  - (11) When the review offers two routes, choose by what each costs on rows the tests hold. Month recognition keeps "Mt. Apo, 12,300 ft" and "Mt. Apo, 1500-2000 m", which the structural route would set aside. Its cost is a part that is only a month word ("Mayo") and any month form the profile does not list. Reading a line break as a space between two numbers costs an elevation that words come before on the lines after one ending in a number no elevation took. Without it, a range broken across two lines was read by its numbers apart: "4000 -" / "4500 ft" read "4500 ft", and "Elev. 1500-" / "2000 m" read both.
+  - (12) The file-writing tools turn a backslash-u escape into the raw character, in Python files too. Tests that need such escapes are written through a script, and every edit is checked for new non-ASCII characters.
+  - (13) A generated table checks the axes its lists name; a seeded random generator that mixes every token class found checks their combinations. Run against the round-7 head and then against each fix as it was written, it reproduced the review's first blocker and found four more routes the tables had missed: a range's joining word beside a comma ("4000 to, 4500 m"), a line that starts with "de" or "of" before a month joining the place above it, a number with no unit that a date's day runs into ("el. 6400,12 Sep", "el. 1.463,18 of may."), and a range that takes in the number before it through a glued comma ("Alt. 620,31 -9500 m", "ELEV: 1.463,26 -9500 ft"). Its checks are only as good as its labels: checks by exact value flagged the generator's own artifacts (a bare year run into a decimal is just a number), and checks by digit group trace each reading back to what the layout wrote.
+  - (14) A reader that folds its text must read it as its fold does. Review round 8's first blocker was 21 characters that Python counts as letters but `fold` drops: checks on the raw text saw a word where `fold` saw nothing, so a date's year passed through a part that was empty only to `fold`. Round 9 read each character through one helper, `_kept`, check by check, and the random generator found one more such check: a line's whitespace words missed a year glued to its month by a comma ("del december,48").
+  - (15) A narrowed rule needs probes from the side it narrows toward. The first narrowing of the line-start rule let a "de" or "of" line before a month begin a date whenever a number followed the month on its line or started the next line. It kept "Isle" / "of May" whole, but still cut "E. slope" / "of May Hill" / "1500 m" to the name "of May Hill", since the elevation's number followed the month too. Requiring the number right after the month keeps the name.
+  - (16) A normalization applied check by check splits the reader in two. Round 9's `_kept` reached the gap and month checks but not the grammar: the separators, the number pattern, the digit-group checks and the units still read raw text, so a zero-width space split "Elev. 1463,5 m" into "Elev. 1463" and "5 m" (review round 9's first blocker). Round 10 runs every pattern on the text without what `fold` drops and cuts what it finds from the text as written; the tests read 2,000 layouts again with such characters put anywhere, and require the same reading. "What `fold` drops is nothing" also held only for what it drops outright: the 50 spacing marks, whose compatibility form is a space and combining marks, show. Round 9 read them as spaces, so "4000 ˜ 4500 m" read its top alone (review round 9's second blocker).
+  - (17) A count of what a ruling changes must cover every corpus on the machine. S8's count for the 22:22Z comma reading covered 16 pilot readings and missed the shared reader baseline of 2026-09-23 in the coordination directory, where the steward found 6 of its 20 readings losing their stated elevation. The coordinator refined the rule at 00:38Z on 2026-09-26, and S8's count for the refinement covers all 35 readings with text.
+  - (18) What shows is not what `fold` keeps. Round 10's visible text dropped everything `fold` drops, so a combining mark on a space, which shows, read as nothing, and "4000 " U+0303 " 4500 m" read its top alone (review round 10's second blocker). Round 11 keeps what still shows (a combining mark with nothing that shows before it, and the spacing signs `fold` empties) and counts it as a mark. A cut from the text as written must then take the marks on its last character: without that, a mark on an elevation's last digit, an institution code or a comma was left at the start of the rest, where nothing showed before it, so it showed. The invariance test found this in the round, once it put combining marks right after letters and digits (12 of 400 seeds; 0 of 800 after the fix).
+  - (19) A ruling's wording can narrow what it means. The 03:07Z wording counted "the one mark" before a number as glue, which would have un-glued 00:52Z's own example, "ene.-1983" (two marks). Running the earlier rulings' examples as pins against a prototype of the new wording showed it before anything was pushed, and the coordinator restored the intent at 03:14Z. Before building a new wording, run every earlier pin and the ruling's own examples against it.
+- Failed approaches: fixing the year merge by the character before the number (a hyphen, in round 3), which left every other date punctuation open. Reading the spacing marks as spaces (round 9), which let a visible join read as none. Dropping from the visible text everything `fold` drops (round 10), which hid a combining mark that shows. Cutting a phrase at its last visible character (round 11's first prototype), which stranded the marks on it.
+- Remaining follow-ups, as of review round 10 (2026-09-26):
+  - the tiers and the derivations follow in #211-#214 and in #139-#198, the second chain after S4's #183;
+  - the tool itself follows after S4's #113 and #144;
+  - D1 to D3, D6, D7 and D9 are decided (G35 to G39), and D4 and D5 are held (the coordinator's rulings);
+  - the approximation marks (c., ca., circa, ±, ~, approx., aprox.) now read with their elevations (the coordinator's ruling at 02:08Z on 2026-09-26), which closes this follow-up for them; any other word beside an elevation still becomes a part ("about 1500 m" keeps "about");
+  - the reader keeps its own copies of the Insects profile's month words and of the seven approximation marks; once S4's #183 lands, with the marks added to the profile (02:06Z), both should read one list;
+  - a month that shares its part with a qualifier ("mid-Sept.") reads as a name, and the year after it reads; a list of qualifiers would be new design (G5), so the cost is stated in GEO.md 1 rather than closed.
+- Correction to #217's entry: the 3,098/81 run was on 21da3fe, #217's code before main (f10eb19, #98) was merged; the head 7b01962 ran 3,156 passed, 81 skipped. The GEOREFERENCING.md:15 and PLAN.md:753 follow-ups were routed by the steward's round-1 comment 5836111240.
+
+### 2026-09-24 — Go-live release workstream (S2), T1c: #78's acceptance follow-ups
+
+- Task: the S2 session, the PR steward's should-fix list from #78's merge review (comment 5808938104).
+- Branch/worktree: `golive/release-docs-acceptance-followups`, from `main` at `0632994`, in this session's worktree.
+- Outcome:
+  - The five acceptance notes now keep "every UI and live case" the human-review checker requires. It also requires four manual subcriteria and `HUMAN-RECORDS`, which the notes leave under "the rest stands".
+  - The notes no longer name the gate record, which main doesn't define, as the packet's replacement. The release packet and the cohort ledger retire (G11), and G9's USD 25 replaces the cohort budget. G30's sentence follows that retirement in every note.
+  - In S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API and worker SHAs and image digests and the SQL and rules revisions with the release runs on main that deployed them, and the rest of DEPLOY-IDENTITY stands.
+  - All five notes state G1 (a record the harness resolves is cleared without a human), and their headers name G1, G2, G9 and G11.
+  - `golive/RELEASE.md` section 2.1 tracks the `human_review.py` lines that still enforce what G1, G2, G9 and G11 retire:
+    - `HUMAN-NO-AUTOMATIC-CLEARANCE`'s automatic-clearance and institutional-approval clause (52, 124);
+    - the policy gates and the review block (194-200), keeping the rule that an operational block cannot qualify;
+    - the frozen manifest (103, 168-169, 175, 290), keeping the evidence fields and re-anchoring the original-bytes and scope checks to the ten;
+    - the manifest digest on SAM receipts, the report and case rows (224; `acceptance.py` 431, 443);
+    - COHORT-BUDGET (298-304; `acceptance.py` 512-517).
+
+    The coordinator assigned these to S2, after T3d, on 2026-09-24, and will add `scripts/qa/live/` to PLAN section 6.
+- Commits/PRs: `8772220`, `3926f0d` (the owner) and the review round's commit.
+- Validation actually run: pre-commit; `tests/test_deployment_policy.py`; `git diff --check`; the relative-link check; the acceptance sweep (5 of 5 notes carry the updated sentence).
+- Durable learnings:
+  - A replacement named in a note must exist where the reader is, on main. Name what retires, and say what the check compares against now.
+  - A note that newly retires a ledger or a budget takes G30's sentence, even when it only restates a substitution.
+  - Tracking rows are a later PR's work order, so each must name exactly what a decision retires and what stays.
+- Failed approaches: none.
+- Remaining follow-ups: S2 changes those `human_review.py` lines after T3d.
+
+### 2026-09-24 — Go-live program: plan after #104, owner decisions G32 to G45
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-review-corrections-4`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Records owner decisions G32 to G34. G34 decides S8's D15 for the Google tool and makes the retrospective georeferencing tool of #94 a build; its D items then went to the owner, who decided six of them as G35 to G39 (below).
+  - Records owner decisions G35 to G45 (G42 answers G8 with the field list; G43 confirms G16; G44 and G45 come from S4's real runs): S8's D1, D2, D3, D6, D7 and D9, plus the harness's job. G37 and G41 revise G22 for elevation. Also records the coordinator reading from #88's review: a field without a lookup whose readers all agree takes that text and clears. D4 and D5 are on hold.
+  - Addresses the steward's final review of #104 (https://github.com/anurag-duddu/specimen-digitization-app/pull/104#issuecomment-5805226880). Covered: G30's mechanism in section 4.3 (worst-case reservation, what settles a call, the atomic ledger, token and request caps, SAM 3's startup); the worker-account rule labelled a coordinator ruling; the owner-held approval hash; the live read-back as the release's own check; who writes G29's rules and notations; the URL ban in fixtures and lab folders; the NOT NULL ban on every table with TRN-005's columns; the lab's ledger.
+  - Records coordinator rulings: `cost_basis: reserved` for an unknown outcome; `url_launcher` for #122; S6's reason filter and run-state picker; S5's reason-code search as its T5.
+  - Correction to the entry "2026-09-23 — Go-live program: plan after #87, owner decisions G27 to G29" above. That entry also records G30 and G31, and its follow-ups should list D15 with D1 to D13.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learnings:
+  - (1) Check a tool's generated SQL against the reviewed setup, not only its documentation. Data Connect compiles `uuidV4()` to `uuid_generate_v4()`, which needs `uuid-ossp`; firebase-tools runs `CREATE EXTENSION` as a temporary built-in superuser with a password, and the reviewed initializer adds no extensions. S2's first-release spec would have stopped at its migration step; S2's revised T3c spec, now #147 (a236fd97), has the initializer create exactly that extension.
+  - (2) firebase-tools shows objects the schema stops declaring only in its STRICT diff, so a `COMPATIBLE` apply should not drop them. Either way, S2's migration allowlist admits no drop, so a planned drop needs its own reviewed statement, run after a live read-back and before the diff.
+  - (3) A summary of another session's option can be broader than the option. The plan's wording of D15's option (b), a place ID whenever Google settles one place, would have cleared a Philippine label to Denali, Alaska; S8's D15 covers only a near spelling. Quote the proposer's condition, and put the question to the owner with the regression case in hand.
+  - (4) An owner's free-text answer can add scope ("fully implemented"). Record it verbatim, turn the new scope into owned work, and keep the owner's other pending decisions pending rather than reading acceptance into them.
+  - (5) Before widening a reading, check what the owner declined earlier. The coordinator read G37's "like other fields" as allowing unit conversion and filled endpoints, which the owner had declined by name at G22. #124's review caught it, and the owner then chose them explicitly (G41). A reading never overturns an explicit refusal; ask instead.
+- Failed approach: none. The first draft of section 4.4 turned one list item into separate sentences, which cut the rest of the list off from its lead-in, so it was rewritten with semicolons.
+- Remaining follow-ups: owner questions saved for a natural moment: D4, D5, and what `verbatim_dts` holds (`PRD.md`'s open question 3). D8, D10 and D12 wait for their phase. Still open: relaying #119's IAM list after its review, then #123's window packet; the G15 calibration sign-off. When #78 merges, re-map the citations into the files it changes (PRD, RELEASE_RUNTIME, RELEASE_AUTHORIZATION, DEPLOYMENT).
+
+### 2026-09-24 — Go-live program: plan corrections after #124
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-5`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #124's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/124#issuecomment-5813970741):
+    - the place-request filter covers what is sent, and a request's fixed parts are reviewed constants;
+    - the reviewer's value counts only in a place field;
+    - notation expansions happen inside S4's single filter (coordinator ruling);
+    - S4's brief points to PLAN section 4.8 instead of restating it;
+    - G45's `verbatim_dts` exception appears at stage 8 and in T4;
+    - S5's T6 names G44;
+    - D4's queries go to the owner as an explicit exception to 4.8 when D4 is taken up.
+  - Re-maps PLAN's DEPLOYMENT citation after #165.
+  - Correction to the entry "2026-09-24 — Go-live program: plan after #104, owner decisions G32 to G45" above. Its follow-ups say to re-map #78's citations when #78 merges; #124 did that, and #165's re-map is in this pull request.
+- Validation actually run: the edit scripts' exact-single-match and table-width checks, and the citation re-map by content match against main. CI on the pull request: Not confirmed at the time of writing.
+- Durable learnings:
+  - (1) A security rule must say what it limits. "Place text only" was first read as a rule on what S8's tiers receive. It now states that it covers every value that leaves, and that a request's fixed parts are reviewed constants.
+  - (2) Point a brief to the plan section instead of restating a rule there. S4's brief kept an older copy of the filter that would have refused `derive_rest`.
+  - (3) Five review rounds of the same filter each found a real gap: G40's narrowing, S8's own requests, a name before its marker, month names, and a reviewer's non-place values. A filter specification needs worked cases from the real labels ("H. Hoogstraal leg.", "3 Sept. '46") in its first draft.
+- Remaining follow-ups:
+  - Owner questions saved for a natural moment: D4 (with its queries as a 4.8 exception), D5, and what `verbatim_dts` holds (`PRD.md`'s open question 3).
+  - The first production run waits for #163's live initialization and #170's V3 apply.
+  - The owner's pending actions: the readiness marker, #119's IAM list after its review, the curator sheets, and the dataset upload.
+
+### 2026-09-24 — Go-live release workstream (S2), T1d: #165's merge follow-ups and the acceptance documents' notes
+
+- Task: the S2 session. It covers:
+  - the PR steward's follow-ups from #165's merge review (comment 5814254045);
+  - #165 round 1's deferred nit: dated notes in `RELEASE_ACCEPTANCE.md` and `LIVE_QA.md`, which `golive/RELEASE.md` section 2 requires;
+  - #184's review round 1 (comment 5824636022).
+- Branch/worktree: `golive/release-docs-checker-rows`, from `main` at `275b399`, in this session's worktree. A Sonnet documents subagent drafted the two documents' banners and notes in its own worktree. This session audited every note and rewrote the ones that needed it.
+- Outcome:
+  - **The checker rows.** `golive/RELEASE.md` section 2.1's rows name exactly what a decision retires and what stays, since the checker pull request follows them:
+    - `HUMAN-NO-AUTOMATIC-CLEARANCE` retires only automatic clearance. A correction or save still never approves institutional semantics or risk (`human_review.py` 194-195). The 194-200 row retires only `human_approved`, the disposition and the stage.
+    - The frozen manifest is only the cohort's anchor (103, 168). The cohort and the denominator stay ten, and each of the ten the harness did not clear needs its complete human record. A specimen the harness clears keeps its evidence checks and drops only the review checks (201-217).
+    - COHORT-BUDGET and `cohort_budget` (`acceptance.py` 348-420) retire whole. The bound is G30's USD 5 production model allowance within G9's USD 25, and COST-BOUNDS tests it. The unknown-effects rule moves to COST-BOUNDS.
+    - New rows: `human_review.py` 315; the command-line manifest pin, where the candidate-SHA pin stays; the coverage checks drawn from the manifest; `manifest_ids`; DEPLOYMENT-PROVENANCE's `sam_commit_sha`, since T2 rebuilds SAM 3 only when its inputs change; and HUMAN-LABEL-COVERAGE and `coverage_confirmed` (51, 124 and 208), which follow the coordinator's reading of G15 (2026-09-24): the lane's automatic check is the coverage confirmation for every record, and the human confirmation step retires.
+  - **The two documents.** `RELEASE_ACCEPTANCE.md` and `LIVE_QA.md` gain their banners and dated notes beside the clauses the owner decisions contradict. They cover:
+    - the projection section, the cost evidence contract and the retained record list;
+    - the evidence-only pilot and the budget pointer;
+    - the checker's scope file;
+    - LIVE_QA's threat-matrix rows, launch blockers and milestone.
+
+    Every note on the spending bound names G30's USD 5 within G9's USD 25. Every note on the acceptance decision carries the full acceptance sentence and G30's, and labels the decider as S2's reading, with its sources and the owner's DoD-6 confirmation.
+- Corrections to [#165's entry](#2026-09-24--go-live-release-workstream-s2-t1c-78s-acceptance-follow-ups), 2026-09-24. That entry stays as merged:
+  - Its manifest bullet is corrected: the frozen manifest is only the cohort's anchor (103, 168). 169, 175 and 290, the evidence fields, and the original-bytes and scope checks are re-anchored to the ten, not retired.
+  - Its follow-up sentence is out of date: PLAN section 6 already names `scripts/qa/live/` as S2's.
+  - In its Commits line, `3926f0d` is the commit that names the rows' owner, S2.
+- Commits/PRs: PR #184.
+  - The rows: `ecefacd`.
+  - The subagent's notes: `7f13272`.
+  - This session's audit: `af66a3f`.
+  - The closeout: `bf00f52`.
+  - Review round 1's commit.
+- Validation actually run:
+  - the G30 sweep over every dated note: 65 of 65 carry the sentence;
+  - the acceptance sweep: all 4 notes that describe the acceptance decision carry the full sentence, verbatim, as does the projection note;
+  - every "USD 25" note in the two documents names G30's USD 5;
+  - pre-commit, `tests/test_deployment_policy.py`, `git diff --check` and the relative-link check (60 links, none broken).
+- Durable learnings:
+  - The PR steward's review replaces pull-request review, not acceptance. In S2's reading, G11 retires the independent-review reports, and the evidence-based acceptance harness and the coordinator still decide acceptance. The owner confirms DoD-6.
+  - Carry one settled wording across every document ("each run is authorized on its own instead of per frozen manifest"). A paraphrase reads as a new claim.
+  - The budget has two layers: G9's USD 25 ceiling over everything, and G30's USD 5 production model allowance inside it, which the pipeline enforces and COST-BOUNDS tests. A note that says only "USD 25 replaces USD 5" hides the bound that is actually enforced.
+  - A keyword sweep sees only a note's own text. A clause can hold a reservation that a closed list in its note retires. Read each superseded clause against its note, end with "the rest stands", and audit the neighbouring paragraphs too.
+  - The session log is append-only, even for this session's own merged entry. Correct it from the new entry, with a link back.
+- Failed approaches:
+  - The subagent's first draft handed acceptance to the steward's pull-request review in three notes, and called the cohort "verified". The audit caught both.
+  - Round 1 found what the audit missed:
+    - G30's USD 5 misstated as USD 25 in the spending notes;
+    - a closed list in the milestone note that retired G30's reservation;
+    - two G1 clauses without a note;
+    - an in-place edit of #165's entry.
+- Remaining follow-ups: the checker pull request (`scripts/qa/live/`, after T3d), which follows the corrected rows.
+
+### 2026-09-24 — Go-live S6: goldens no longer depend on the host's time zone
+
+- Task: coordinator ruling for S6, 2026-09-24: pin the time zone in the test harness, keep the goldens' visible CDT, and add a test that fails if the host zone leaks in.
+- Branch/worktree: `golive/ui-golden-zone`, based on `main`; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `lib/src/wall_time.dart` is the one place the app reads a zone. In the app `wallTime` reads the host zone; `test/flutter_test_config.dart` pins it to US Central time through `debugWallTimeOverride`.
+  - `absoluteTime` keeps its output exactly: UTC in, UTC out, and any other instant on the wall clock. History uses `absoluteWallTime` in place of its own `toLocal()`.
+  - A guard test fails on any other host-zone read in `lib`: `toLocal()`, `timeZoneName`, `timeZoneOffset`, or the local-time `DateTime(...)` constructor.
+  - `queue_row_test` now builds its instants from UTC.
+- Commits/PRs: red `2ba8eb7`; green ``afb176f``; the pull request is based on `main`.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the full app suite in four zones, each 1,582 passed, 7 skipped, 0 failed, with no golden updated: the host (America/New_York, EDT), UTC, Asia/Kolkata (IST) and America/Chicago (CDT).
+- Durable learnings:
+  1. A test that builds an instant with `DateTime(y, m, d, h, mm)` names a different moment on every machine. It passed only because the code under test read the same host zone back. Pinning the formatter exposed it at once, so run the suite in a zone that is not the goldens' before calling a zone fix done. This machine being in New York made that free.
+  2. Pin behavior, not format. The server's instants arrive in UTC, and parts of the app print them as UTC. Routing everything through the pinned clock would have changed visible text the coordinator ruled must not change. The seam replaces the host zone only where the app actually read it.
+  3. Dart has no in-process way to change the zone, and `Zone` does not intercept `toLocal()`. An override variable in the `debug…Override` idiom is the smallest seam that works on every platform.
+- Failed approaches: the red tests first expected `absoluteTime` of a UTC instant to print CDT. That would have changed the UTC texts on screen, so those tests now target `absoluteWallTime`, and a new test pins the UTC rule.
+- Remaining follow-ups: none for the zone. Once this merges, sessions can drop `TZ=America/Chicago`.
+
+### 2026-09-24 — Go-live S6: server instants read on the reviewer's clock
+
+- Task: coordinator ruling for S6, 2026-09-24, from design/01 (H1.9 at line 149, and H2.1): the source screen's "listed … UTC" and the queue row's spoken time read on the reviewer's clock through `wall_time`, and the spoken time says the zone.
+- Branch/worktree: `golive/ui-reviewer-clock`, stacked on `golive/ui-golden-zone` (#181); `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `absoluteTime` is the single citable form, always on the reviewer's wall clock with its zone (02 section 4.14). #181's UTC branch and `absoluteWallTime` fold back into it.
+  - The source screen's header reads "listed 14 Sep 2026, 05:22 CDT" in the suite.
+  - The queue row speaks a server instant as "updated 8 Sep 2026, 00:01 CDT".
+  - The 24 source-screen goldens were regenerated, in Central time, and nothing else moved.
+- Commits/PRs: red `f1e0f46`; green ``ae9d194``; the pull request depends on #181.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the three changed test files 46 passed; the full app suite 1,583 passed, 7 skipped, 0 failed, on the host zone (America/New_York).
+- Durable learnings:
+  1. Run the suite without updating first, and let its failures list what moved. Here the list was exactly the 24 images of the one surface the ruling named. That proves the change's reach before any golden is touched, and makes a stray moved image a question rather than a regeneration.
+  2. Regenerate with the narrowest name filter that covers the moved scenes, then check that the count of changed images equals the count of failures.
+- Failed approaches: none.
+- Remaining follow-ups: none for time display.
+### 2026-09-24 — Go-live program: plan corrections after #174
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-6`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #174's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/174#issuecomment-5823796196). PLAN 4.8's filter now lists, in order:
+    - its sources, checked first, including each full form the notation table lists for a notation assigned to place fields only;
+    - its cuts, including Roman-numeral months, with the reviewer's own place value exempt from the readings' non-place cuts;
+    - the expansion, whose full forms go through the same cuts;
+    - the fixed request parts, with the key treated as the Secret Manager credential it is and record values entering SPARQL only as escaped literals;
+    - the named tests, among them "3 VIII 1946" and a reviewer's corrected collector spelling.
+  - S8's request builder calling S4's single filter is recorded as a labelled ruling in 4.8 and in S8's brief.
+  - The agreeing no-lookup clear carries G45's `verbatim_dts` exception. S5's T6 names the rule alternative for G41 and G44 fills.
+  - Correction to the entry "2026-09-24 — Go-live program: plan corrections after #124" above:
+    - its outcome omits that S2's brief line 143 was re-mapped with PLAN 190;
+    - its learning (3) paired gaps with rounds loosely: G40's narrowing came in round 4, S8's own requests in round 5, and the name before its marker, month names and a reviewer's non-place values in the rounds after.
+- Validation actually run: the edit script's exact-single-match checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: a filter specification is a pipeline. State its steps in order: source check, cuts, expansion, then the cuts again on what the expansion added. Several review findings came from steps whose order was only implied.
+- Remaining follow-ups: unchanged from the entry above.
+
+### 2026-09-25 — Go-live S6: #181's review follow-ups, and corrections to its entry
+
+- Task: the steward's review of #181 (merged as `e11ea68`; comment 5824438013, items 1-4 and 7), done in #182, which touches the same seam.
+- Branch/worktree: `golive/ui-reviewer-clock` (#182), retargeted to `main` after #181 merged, with `main` merged in; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `debugWallTimeOverride` counts only under `kDebugMode`, so a release build always reads the host zone. The host reader is private, and the guard flags either name anywhere else in `lib`.
+  - On the web a browser names the zone in full ("Central Daylight Time"). `zoneAbbreviation` shortens a name of several words to its initials, as 02 section 4.14 writes it ("CDT"), keeping UTC as UTC and an abbreviation or an offset as it is.
+  - The guard now also checks the `DateTime.new` constructor, an epoch without `isUtc`, and wall-clock fields of `DateTime.now()`. A scanned root that goes missing fails it, and its doc claims only what it checks.
+  - A History assertion runs in CI, where goldens don't compare: `citedInstant('2026-09-07T10:00:00Z')` is "7 Sep 2026, 05:00 CDT".
+- Corrections to the entry "Go-live S6: goldens no longer depend on the host's time zone" (item 7; the log is append-only):
+  - its pull request is #181, merged as `e11ea68`;
+  - its claim that "a guard test fails on any other host-zone read" was wider than the regex. The regex checked `toLocal()`, `timeZoneName`, `timeZoneOffset` and `DateTime(`, not the other reads listed above;
+  - a release build honoured the override;
+  - on the web the zone read as a full name, not the "CDT" design/02 asks for.
+- Commits/PRs: red `09f6fc7`; green `02df2f6`; in #182.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the zone, queue row and source screen tests 49 passed; the full app suite 1,586 passed, 7 skipped, 0 failed, on the host zone (America/New_York, no `TZ` set: the pin is in).
+- Durable learnings:
+  1. A guard's doc must claim exactly what its check checks. "Fails on any other host-zone read" read as complete, and the reviewer found five reads it missed. Name the patterns, and name what isn't checked.
+  2. A `debug…Override` must be gated by `kDebugMode` where it is read, as Flutter's own overrides are. A global that release code honours is a production switch anyone can flip.
+  3. `DateTime.timeZoneName` differs by platform: the VM gives "CDT", dart2js gives the browser's "Central Daylight Time". Code that prints a zone for a web app must normalize it, and a VM-only test suite will never show the difference.
+- Failed approaches: none.
+- Remaining follow-ups: at #73's turn, record the coordinator's zone ruling in UI.md (PLAN 7.2). At the turns of #102, #114, #133 and #140, re-verify their goldens on macOS after merging `main`, and regenerate any that differ.
+### 2026-09-24 — Go-live program: plan corrections after #180
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-7`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #180's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/180#issuecomment-5824214679) in PLAN 4.8's filter:
+    - its scope covers values from the record or a tier-1 result, and its output is what leaves;
+    - Roman-numeral months are cut only in the month position and in any case, so the "I" of "P.I." stays;
+    - an expansion uses each full form the table lists, as sendable words, and only for a notation present in an allowed source (the coordinator ruling on S4's #183);
+    - the fixed parts carry no label text, headers included, with named tests for that, the User-Agent, an escaped quote and a reviewer's place value;
+    - the limit now names tier-1 names the month cut can trim.
+  - Other items:
+    - G35's reading says "the same reading's place fields" in requests 4.8 governs;
+    - `verbatim_dts` is labelled a coordinator hold, not a G45 exception;
+    - S4's T3d takes the G41/G44 record alternative;
+    - S8's brief says "record or tier-1 result", and "through S4's filter" for tier 2.
+  - Corrections (dated 2026-09-24):
+    - The entry "2026-09-24 — Go-live program: plan corrections after #174" above paired rounds wrongly again. In #124's reviews, round 3 found G40's narrowing, the name before its marker ("H. Hoogstraal leg.") and month names ("Sept."); round 4 found S8's own requests; round 5 found the reviewer's non-place values.
+    - That entry's "carries G45's `verbatim_dts` exception" should read "carries the coordinator hold for `verbatim_dts` (section 2.3)": G45 itself has no exception.
+- Validation actually run: the edit script's exact-single-match checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: when a correction is itself history, check it against the primary record (the review comments) before writing it. The earlier round pairing was corrected from memory and was wrong twice.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above.
+
+### 2026-09-24 — Go-live release workstream (S2), T1e: #184's merge follow-ups, SAM 3's candidate binding and the ten's private record
+
+- Task: the S2 session, the PR steward's follow-ups from #184's merge review (comment 5825626144, Decision items 1-7). Items 1 and 2 are release guarantees that the checker pull request must also implement.
+- Branch/worktree: `golive/release-docs-checker-guarantees`, from `main` at `ee90e3b` (#184's merge), in this session's worktree.
+- Outcome:
+  - **SAM 3 stays bound to the candidate** (`golive/RELEASE.md` 2.1's `acceptance.py` 497 row; `LIVE_QA.md`'s third-runtime note). Its commit is the candidate or, once T2 reuses an unchanged SAM 3 image, a commit on main at or before the candidate with SAM 3's inputs unchanged between the two. Either way, the candidate's own release run deployed the image built from that commit. A digest the candidate's own run did not deploy fails. The row names the rest of DEPLOYMENT-PROVENANCE in full.
+  - **The ten's private record** (the 333-334 pin row; `LIVE_QA.md`'s contracts note):
+    - the checker reads the ten from `specimen-pilot-reference/v1`, per the coordinator's ruling in its message to S2 of 2026-09-24, 01:15Z on 09-25;
+    - S7 writes it after PLAN section 8 step 2, and the coordinator verifies it against DoD-4's subject ids;
+    - its SHA-256, supplied separately, still pins it on the command line;
+    - the read keeps `private_manifest`'s checks (`acceptance.py` 116-133).
+  - **New rows** for the human-review scope checks (295-296, 310, 324-325, 330-332) and for `ready_for_independent_review` (311, 314; `acceptance.py` 525).
+  - **Smaller fixes:**
+    - `PilotLaunch`'s copy of the map retires with it (G2);
+    - PRD-10's approval and semantics gates are gone for `harness_route` runs (the coordinator's reading of G1, #158);
+    - the G15 reading cites the coordinator's message to S2 of 2026-09-24, 01:00Z on 09-25, answering #184's round-1 question;
+    - **DEPLOY-IDENTITY bound to the candidate**, as #199's round 1 recommended. The API and worker SHAs and image digests compare with the candidate's own runtime release run. The SQL and rules revisions compare with the data release run that deployed them: the candidate's own, or a main run at or before it with those inputs unchanged. All eleven notes that carry the settled sentence change, and a new 2.1 row (`acceptance.py` 482-493, 502-507) records the checker's side;
+    - the nits: G11's protections stay; the scope never granted sensitive access or infrastructure authority; the no-reset sum moves to COST-BOUNDS; "a new upload no longer waits"; "its independent reconciliation"; `evidence_pilot.py` sets the review block; row 176's missing lines; the manifest's selection and ready-status clauses and DATA-TEN's gate; three manual subcriteria, not four.
+- Corrections to [the T1d entry](#2026-09-24--go-live-release-workstream-s2-t1d-165s-merge-follow-ups-and-the-acceptance-documents-notes), 2026-09-24. That entry stays as merged:
+  - Its checker-rows bullet: a specimen the harness clears drops only the review checks 201-207 and 209-217. The coverage check (208) covers every record in the coordinator's reading of G15 (`6625690`).
+  - Its G15 mention: the reading's source is the coordinator's message to S2 of 2026-09-24, 01:00Z on 09-25, answering #184's round-1 question.
+  - Its correction of #165's follow-up sentence: the sentence is #165's "and will add `scripts/qa/live/` to PLAN section 6", not #165's "Remaining follow-ups" line.
+  - Its Commits list also includes `6625690` (the G15 reading) and the merges `c9c42a4`, `a132268` and `e582a9f`. #184 merged as `ee90e3b`.
+  - Its G30 sweep: 66 of 66 at the merged head, not 65 of 65.
+- Commits/PRs: PR #199: the fixes `a3ca34c`, this closeout `5e1410d`, the merge `770f99a`, the blank line `6e8e0b7`, and review round 1's commit.
+- Validation actually run:
+  - the G30 sweep over every dated note: 66 of 66;
+  - the acceptance sweep: all 4 notes on the acceptance decision carry the full sentence;
+  - every "USD 25" note in the two documents names G30's USD 5;
+  - every line the new rows cite, checked against `human_review.py` and `acceptance.py`;
+  - pre-commit, `tests/test_deployment_policy.py`, `git diff --check` and the relative-link check (60 links, none broken).
+- Durable learnings:
+  - A binding that retires must name what replaces it. "Compare with the release run that deployed it" alone accepts any earlier run's image. Keep the candidate in every provenance rule.
+  - A ruling that arrives after a note is written can contradict the note. The manifest's separately supplied digest was retired in one note and kept by the next ruling. Re-read notes against each new ruling.
+- Failed approaches: round 1's SAM row dropped the candidate, and round 1's PilotLaunch wording kept a map that G2 retires. #184's merge review caught both. #199's round 1 caught the `harness_route` scope tagged "(G1)". G1's own words name no route; the scope is the coordinator's reading of G1 (#158).
+- Remaining follow-ups: the checker pull request implements items 1 and 2, the new rows, and the G15 reading.
+
+### 2026-09-25 — Go-live S6: #182's review follow-ups, the reviewer's own day, and log corrections
+
+- Task: the steward's review of #182 (merged as `0fec108`; comment 5825106429, items 1-4 and 7), and the coordinator's ruling of 2026-09-25 applying design/01 H2.1 to the queue's date filter.
+- Branch/worktree: `golive/ui-zone-followups`, based on `main`; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `zoneAbbreviation` shortens only the US zones, UTC, GMT and BST, from a table. Any other name is kept as given: initials made "Central European Standard Time" CEST and Pakistan's PST.
+  - A typed filter day is the reviewer's own day. `typedDayStart` returns the instant it begins on the reviewer's clock, through `wallDayStart`, which is built on `wallTime` so the suite's pin answers it too, and sends it to the API in UTC. A record at 23:30 on the 7th is now outside "on or after the 8th". The queue's chip shows a date bound as the day, "8 Sep 2026", where it showed "2026-09-08T00:00:00.000Z".
+  - A human declaration's recorded time reads in words, absolute only (02 section 4.14), where it showed the raw instant.
+  - The dead `absoluteDay` is gone, the seam's doc lists what the line-based guard cannot see, and the guard exempts the seam by its exact path.
+- Raw UTC on screen, which the review found (item 2): the declaration's "Recorded by … · <created_at>" and the queue's date chip. Both are fixed here, the chip under the coordinator's ruling.
+- Corrections to earlier entries (item 7; the log is append-only):
+  - "Go-live S6: goldens no longer depend on the host's time zone" is #181. Its green commit is `afb176f` (the entry doubled the backticks). Its learning 2, "pin behavior, not format … parts of the app print them as UTC", was overtaken by #182: the coordinator ruled from design/01 H1.9 that server instants read on the reviewer's clock. The lasting learning is narrower: a pin fixes the zone, and the text is for the design rules to decide.
+  - "Go-live S6: server instants read on the reviewer's clock" is #182, merged as `0fec108`. Its green commit is `ae9d194` (the entry doubled the backticks). Where it says the source screen reads "05:22 CDT" and the queue row speaks "00:01 CDT", that is the suite. In the app they read in the host zone, not Central: CDT is only the suite's pin.
+- Commits/PRs: red `5c734f1`; green `4facbf8`; the pull request is based on `main`.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; `check_ui_strings.py` 0 violations; the zone, day-filter, declaration, queue row and saved-filter tests 45 passed; the full app suite 1,596 passed, 7 skipped, 0 failed, on the host zone (America/New_York, no `TZ` set), no golden moved.
+- Durable learnings:
+  1. An abbreviation built from initials is a guess that happens to work in en-US. For names shown to people, prefer a table of the names you know, and show every other name as given.
+  2. A reverse seam, from wall-clock day to instant, is best built on the forward seam. Two fixed-point steps over `wallTime` find midnight in any zone, the pinned one included, with no second override to keep in step.
+  3. A test for a zone rule should name the boundary case the rule exists for. Here that is a record at 23:30 on the 7th against "on or after the 8th", not just a round trip.
+- Failed approaches: none.
+- Remaining follow-ups (items 5 and 6): at #73's turn, record both zone rulings (2026-09-24 and 2026-09-25, with their times) in UI.md. When S6's #73-#189 stack merges `main`, regenerate its queue, queue-selection and workbench-history goldens, which now render CDT text, together with #181's note on #102, #114, #133 and #140.
+### 2026-09-24 — Go-live program: plan corrections after #185
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-8` (#191), in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #185's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/185#issuecomment-5824745385) and round 1 of #191's (https://github.com/anurag-duddu/specimen-digitization-app/pull/191#issuecomment-5825311705). PLAN 4.8's filter, as it stands at this PR's head:
+    - Sources are whole-token slices of the sources each caller names. The harness names only the place-field literals it gives, each found character for character in a reading, and the unassigned locality text; a literal it gives a non-place field is never a source.
+    - Cuts are decided on the value's own tokens, compared by their folded words, and at every occurrence of the value in every text, the readings included, by character span. So a tier-1 name, a reviewer's value or a full form is cut too, "Werner" beside "Wernersdorf" is cut, and no slice such as "Hoogstraa" leaves. Every caller passes the readings.
+    - Every month name and abbreviation the profile lists is cut in any case, and the profile lists them in English and Spanish ("Mayo"). A Roman numeral is cut only as a whole token beside a date number (3, 14, 1946, '46 or -46).
+    - Tier-1 identifiers (#185's item 1; NGA's unit codes on S4's question) go back only to the source that returned them in its own answer, pattern-checked, and never come from the record or the agent, since TGN's and GNS's digit patterns match label numbers such as "1946". In SPARQL they are the source's prefixed names (`tgn:`).
+    - The scope covers the record and tier-1 results, identifiers aside, and the Wikidata, TGN and NGA rows list the ids they send.
+    - A full form written on the label is a source. After the filter, a value is only escaped or encoded.
+    - The stated limit names what can still leave: a name that no reading gives a non-place field, and the harness hasn't yet (mid-run, "Mindanao F.G. Wermer", and "H. Hoogstraal" with its "leg." in the next clause); month names in other languages; and a lone "VIII/IX". It also names what is over-cut: "Camp IV, 3 VIII 1946" sends "Camp", and "Cape May" sends "Cape".
+  - Boundary licences per file: geoBoundaries' Philippine files and CONRED's COD-AB file for Guatemala, CC BY 3.0 IGO via HDX, never geoBoundaries' ODbL OpenStreetMap file. Both are named wherever the datasets are pinned: PLAN 2.3 and 4.8, S2's T4d and S8's task 6.
+  - Section 2.3 records the owner's curator decision verbatim, "That’s fine. Human review is ok" (2026-09-24). The McKinley places go to review. The Apo slide's case is labelled as the coordinator's reading of G36: its place may settle from gazetteer evidence or stay unresolved, and only the itinerary's refinement waits.
+  - "Place text (4.8's sources)" replaces "place fields" in G35's reading, the Google row and S8's brief. The G27/G32 reading label sits right after "on one label as on several". S5's T6 names the stated field.
+  - Corrections (dated 2026-09-24):
+    - The entry "2026-09-24 — Go-live program: plan corrections after #124" above: its line "G45's `verbatim_dts` exception appears at stage 8 and in T4" should read "the coordinator hold for `verbatim_dts` (section 2.3) appears at stage 8 and in T4". G45 itself has no exception.
+    - The entry "2026-09-24 — Go-live program: plan corrections after #180" above: its line "Roman-numeral months are cut only in the month position and in any case" answered #180's review, but the month position it means was set by the coordinator's ruling on S4's #183 (2026-09-24), and the line omits that rule. The position is a whole token beside a date number, a day or a year in the profile's forms (3, 14, 1946, '46 or -46), before or after it, across separators.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learnings:
+  1. A filter's source check and its cuts need one unit, and each cut must be decided at every occurrence of a value, not the first. A first-occurrence span sends "Werner" from "Wernersdorf" beside "leg. Werner".
+  2. A source check that accepts whatever a caller found in the text is no source check, and the cuts become the only defence. Name the fields a caller may draw from, and state in the limit what the cuts alone can't catch.
+  3. A coordinator correction written after an owner's quote reads as following from the owner's words. Label it as a reading, with its date and source, even when it only corrects the coordinator's own earlier line.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live S6: #197's review follow-ups, and dated corrections to earlier entries
+
+- Task: the steward's review of #197 (merged as `587761f`; comment 5826222264, items 1, 2, 4 and 5).
+- Branch/worktree: `golive/ui-zone-followups-2`, based on `main`; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - `wallDayStart` no longer lands on the day before where the clocks jump over midnight on a daylight-saving day: Havana on the second Sunday of March, Santiago on the first Sunday of September, the Azores on the last Sunday of March. When its second step does not read as the typed day, it returns the first step's instant, the jump, which is the day's first moment.
+    - A synthetic zone that moves from UTC-5 to UTC-4 at what would have been 00:00 pins this.
+    - The steward's sweep of all 598 zones for 2026-2030 passes under this rule.
+    - The pilot's zone (Central) is unaffected.
+  - The guard's doc, in the seam and in its test, lists what a line-based check cannot see:
+    - a `now` held in a variable;
+    - `copyWith` and `toString`/`toIso8601String` on a local instant;
+    - tear-offs;
+    - split expressions and reads through another package;
+    - zoneless parses;
+    - code outside the two roots.
+    It also names the correct UTC epoch call split across lines, which it wrongly rejects.
+  - The code cites ruling (b) with its time, 01:26Z, at `wallDayStart` and `typedDayStart`. The typed-day comment no longer says "exactly as they were converted before".
+- Corrections to earlier entries (item 4; the log is append-only, and these entries are on `main`):
+  - The entry "Go-live S6: #182's review follow-ups, the reviewer's own day, and log corrections" (#197) says in learning 2 that two fixed-point steps over `wallTime` "find midnight in any zone". That is false for a day that has no midnight; this entry's fix covers it.
+  - Where my entries give a zone name (CDT, Central) for what the app shows, read "the host zone, not Central". CDT is only the suite's pin.
+  - The coordinator's rulings for S6, by the time this session received them:
+    - 2026-09-24 22:59Z: layer labels, option (b): "As written", "Settled", "Derived from …". This is the layer entries' "(b)", a different ruling from the H2.1 "(b)" below.
+    - 2026-09-24 23:11Z: pin the time zone in the test harness (#181).
+    - 2026-09-24 23:30Z: server instants read on the reviewer's clock, from design/01 H1.9 (#182).
+    - 2026-09-25 01:26Z: H2.1 option (b), a typed day is the reviewer's own day (#197).
+    - 2026-09-25 01:35Z: no migration of saved filter sets (#197).
+  - Two corrections to #197's risk note (item 5):
+    - A filter set saved before #197 that is reopened and resubmitted through the sheet, west of UTC, moves its bound about a day earlier. In Chicago it goes from 00:00Z on the 8th to 05:00Z on the 7th, 19 hours, because the reopened sheet shows the 7th.
+    - `magic_link.dart` only reads `queryParameters`; it does not build them.
+- Commits/PRs: red `6856b87`; green `a655cdc`; the pull request is based on `main`.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the zone and day-filter tests 22 passed; the full app suite 1,597 passed, 7 skipped, 0 failed, on the host zone with no `TZ` set, no golden moved.
+- Durable learnings:
+  1. "Any zone" is a claim about every zone's worst day. A fixed-point search over a wall clock converges only where the target wall time exists. Where the clocks jump over it, the search must notice and return the jump. A synthetic zone makes that testable without a zone database.
+  2. Name a ruling by its time, not by its option letter: two different rulings were both "(b)".
+- Failed approaches: none.
+- Remaining follow-ups:
+  - At #140's turn, fold #197's date-key case into #140's `searchValueLabel` switch (item 3). Git merges the two declarations cleanly, and the result would not compile.
+  - At #73's turn, record the zone rulings in UI.md with the times above.
+  - When the stack merges `main`, regenerate its queue, queue-selection and workbench-history goldens, and re-verify those of #102, #114, #133 and #140.
+
+### 2026-09-25 — S8: #94's review follow-ups, and a correction to its entry
+
+- Task: the steward's round-3 review of #94 (merged as `e6bcfa7`; comment 5826083660, Decision items 1-5), done in a small docs pull request on `main`.
+- Branch/worktree: `golive/geo-plan-followups` from `main` at `e6bcfa7`; `.claude/worktrees/busy-thompson-19cc3b`.
+- Outcome, in `docs/product-requirements/GEOREFERENCING.md`:
+  - the unassigned literal is PLAN 4.8's unassigned locality text, the part of the lines holding the place fields that no reading assigns to any field;
+  - the illustrative `valid_on` returns "not valid" for a unit that had ended by the collection date, with the gap as a `label_lag` finding, as 3.2 and #154's `use_on` do, so a 1980 "Davao Prov." label no longer matches Q15095071;
+  - the Philippine boundary files come via geoBoundaries; HDX is CONRED's channel only;
+  - G30's reservation mechanism, D15 for this tool and D5's hold are labelled as the coordinator's, and the Apo reading carries its date and its hedge;
+  - smaller wording and date fixes.
+- Correction to the entry "S8 retrospective georeferencing research: the plan, the pilot localities, a read-only probe" (the log is append-only): its remaining follow-ups cite "(G30)" for each Google call reserving its cost. The reservation mechanism is the coordinator's ruling (PLAN 2.1's G30 row and section 4.3), so read it as "(G30; the coordinator's ruling on the mechanism, PLAN 4.3)".
+- Commits/PRs: one docs commit; no red and green commits, since no product behaviour changes.
+- Validation actually run: pre-commit on the changed files; every `file:line` citation re-checked by script at `e6bcfa7`, identical to `ad84482`.
+- Durable learnings:
+  1. An illustrative function's state names become its contract. `valid_on` returned "label_lag" as a fourth validity state, and `decide` dropped only "not valid", so a name of any age passed the anachronism filter. A finding goes beside the state, never in place of it.
+  2. A licence cell holds two facts: the licence and the channel. The Philippine files' metadata cites HDX as its licence source, but the files come from geoBoundaries, so copying "via HDX" named the wrong channel.
+- Failed approaches: none.
+- Remaining follow-ups: none from the review. The steward checks #183's identifier field rule at #183's turn. The 259 ids S8's readers send back already come from the fields it reads.
+
+### 2026-09-24 — Go-live program: plan corrections after #191
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-9`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #191's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/191#issuecomment-5825808641). In PLAN 4.8's filter:
+    - An identifier counts only in the field that carries its source's ids, never as another token of the answer, so a TGN `estStart` of "1946" or a GNS latitude of 7.3 can't pass as one.
+    - The limit's class sentence says "text", not "a name", and "no marker the profile names". A habitat ("Mossy forest"), a catalogue prefix ("FMNH INS") and a unit ("ft.") leave mid-run too, and so does a name beside a marker the profile doesn't list.
+    - The profile names collector and determiner markers in English and Spanish ("Col.", "Colector", "Collector"), and month forms old and new ("Agto."). The limit names a form of a listed language that the profile doesn't list.
+    - A Roman month is a token whose every word is a numeral I to XII, so "VIII/IX 1946" is cut.
+    - The limit names the marker clause's over-cut across lines, and the notations bullet defers to the limit.
+    - The month listing carries its own label, and "not itself in a source" replaces "not written on the label".
+  - Licences: "via HDX" applies to CONRED's file only. The Philippine files' licence is the one geoBoundaries' metadata states for each file (PLAN 4.8's table, S8's task 6).
+  - S7's brief gains T4a, the private pilot reference file (`specimen-pilot-reference/v1`), from the coordinator's ruling sent to S2 and S7 at 01:15Z on 2026-09-25. The steward's review of #199 found it in no brief and no S7 PR.
+  - Corrections (dated 2026-09-24) to the entry "2026-09-24 — Go-live program: plan corrections after #185" above:
+    - Its line '"Werner" beside "Wernersdorf" is cut' should read '"Werner" is cut where the record reads "Wernersdorf" and "leg. Werner"'.
+    - Its line "a name that no reading gives a non-place field, and the harness hasn't yet" paraphrases PLAN 4.8. At #191's head, 4.8 read "a name no reading assigns to a non-place field, or one the harness has not yet given a non-place field, when no marker in its own clause accompanies it". This PR rewrites that sentence.
+    - Its line "geoBoundaries' Philippine files and CONRED's COD-AB file for Guatemala, CC BY 3.0 IGO via HDX" puts "via HDX" on both files. It applies to CONRED's file only; the Philippine licence comes from geoBoundaries' metadata. The line also omits the simplified-file margin: for the simplified Philippine files, the circle is widened by the stated simplification error.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: an identifier check is only as strict as the field it reads. "Returned by the source" has to name the id field, because an answer's dates and coordinates are numbers too, and a digit pattern matches them.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live S6: #202's review follow-ups, and dated corrections
+
+- Task: the steward's review of #202 (merged as `3b23663`; comment 5826966972, items 1-4).
+- Branch/worktree: `golive/ui-zone-followups-3`, based on `main`; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome:
+  - The seam cites the zone pin at 23:10:57Z.
+  - Its day-start comment says the second step lands on the day before only west of UTC, and on the jump east of it.
+  - Its doc says where the clocks repeat midnight, it returns the first midnight west of UTC and the second east of it. The #202 review's sweep of 2024-2030 found 21 repeated midnights, all west of UTC (Havana each November, the Azores each October), and none east.
+  - The guard's docs add a chained read, `DateTime.now().add(d).day`, and the wrongful rejection of a one-line UTC epoch call whose argument has parentheses.
+  - On a day whose midnight the clocks skip, `typedDayOf` reads the typed day and the chip shows it ("8 Sep 2026"), through a synthetic zone the two tests now share.
+  - The zone test's header no longer names the machine's zone.
+- Corrections to earlier entries (item 1; the log is append-only, and these entries are on `main`):
+  - These lines named the machine's zone, and should read "the host zone, not Central":
+    - in "Go-live S6: goldens no longer depend on the host's time zone" (#181): the validation line and learning 1;
+    - in "Go-live S6: server instants read on the reviewer's clock" (#182): the validation line;
+    - in "Go-live S6: #181's review follow-ups, and corrections to its entry" (#182): the validation line;
+    - in "Go-live S6: #182's review follow-ups, the reviewer's own day, and log corrections" (#197): the validation line.
+  - The rulings list in "Go-live S6: #197's review follow-ups, and dated corrections to earlier entries" missed rulings. Every lettered ruling to S6, and the unlettered ones this log cites, by send time. The times are from the coordinator's status file, coordinator.md: 2026-09-25 01:26:02Z and 01:35:36Z at lines 202-212, the 2026-09-24 rulings from 01:13:52Z to 23:30:28Z at 226-248, 2026-09-25 00:01:16Z and 00:20:33Z at 264-283, and 2026-09-24 00:37:36Z at 302, in the timed index from line 285. This session's receipt times agree to within seconds:
+    - 2026-09-24 00:37:36Z: reasons, option (a), and run states, option (c).
+    - 2026-09-24 01:13:52Z: the reason filter, option (b). Until S5's T5, the filter offers only codes stored without a suffix (PLAN.md 407-408).
+    - 2026-09-24 22:59:13Z: layer labels, option (b).
+    - 2026-09-24 23:10:57Z: pin the time zone in the test harness (#181).
+    - 2026-09-24 23:30:28Z: server instants on the reviewer's clock, from design/01 line 149 (in H1.9) and H2.1 (#182).
+    - 2026-09-25 00:01:16Z: the wording rulings: `field_harness` (a), `review_decision` (b), the derivation words, G45 (a), `authority_identity` (a) (#187).
+    - 2026-09-25 00:20:33Z: per-label lookups, option (c) (waiting on S5's #171).
+    - 2026-09-25 01:26:02Z: H2.1 option (b), the reviewer's own day (#197).
+    - 2026-09-25 01:35:36Z: no migration of saved filter sets (#197).
+    So four different rulings were each "(b)", and that entry's learning 2 holds with four.
+  - That entry's pull request is #202, merged as `3b23663`.
+- Commits/PRs: #205, based on `main`: `e1d15c9` (docs and pinning tests), `50e0129` (the 2026-09-24 times to the second), `abdc641` (a blank line the union merge lost), and a fix for the #205 review. There is no red commit, since the tests pin what #202 already fixed.
+- Validation actually run: `flutter analyze --fatal-infos` no issues; the zone and day-filter tests 23 passed; the full app suite on the host zone, not Central, with no `TZ` set: 1,598 passed, 7 skipped, 0 failed, no golden moved. At the #205 review's fix: `flutter analyze --fatal-infos` no issues; the zone, day-filter and declaration tests 24 passed.
+- Durable learnings:
+  1. A correction list is a claim of completeness too. Build it from the records (the transcript's timestamps, PLAN.md), not from memory, or narrow its heading to what it covers.
+  2. Say where an algorithm's reasoning holds. "Sends the second step back to the day before" was true west of UTC only, and the code was right in both halves while the comment covered one.
+  3. Quote a sweep's result; don't paraphrase it. "21 repeated midnights, all west of UTC, where it returns the first" became "none, and it returns the second" in this entry's first push. The #205 review caught it before merge.
+- Failed approaches: this entry's first push said no zone repeats midnight in 2024-2030 and that the second midnight is returned. The #205 review (comment 5827740760) found it false before merge (learning 3).
+- Remaining follow-ups:
+  - At #133's turn, cite the reason-filter ruling as 01:13:52Z (item 5).
+  - At #140's turn, fold #197's `searchValueLabel` date case into #140's switch.
+  - At #73's turn, record the zone rulings in UI.md with their times.
+  - When the stack merges `main`, regenerate its queue, queue-selection and workbench-history goldens, and re-verify those of #102, #114, #133 and #140.
+
+### 2026-09-25 — S8: #201's review follow-ups, and a correction to its entry
+
+- Task: the steward's review of #201 (merged as `400a444`; comment 5826776118, Decision items 1 and 2), done in a second small docs pull request on `main`. Item 3 waits for #154's turn.
+- Branch/worktree: `golive/geo-plan-followups-2` from `main` at `400a444`; `.claude/worktrees/busy-thompson-19cc3b`.
+- Outcome, in `docs/product-requirements/GEOREFERENCING.md`:
+  - 3.4 no longer scores a label lag: a unit that had ended by the date is not valid and is never scored, and a label-lag value waits on D5's tolerance;
+  - `valid_on`'s docstring says #154's `use_on` reports the same case as "ended", with `gap_days`;
+  - the blueprint's Wikidata tier keeps only search-hit ids matching `Q[1-9][0-9]*`, the Identifiers pattern;
+  - nothing in the tool's context is put in a request (:80);
+  - Bionomia, queried by collector, needs the owner's explicit exception to PLAN 4.8, as D4's `recordedBy` queries do;
+  - step 1 names the owner's dismissal of D4 and D5 and dates the coordinator's "wait" for D8, D10 and D12;
+  - the dropped "and" at :325 is back, and "licenses" is spelled as elsewhere.
+- Corrections to the entry "S8: #94's review follow-ups, and a correction to its entry" (the log is append-only; a blank line now separates it from the next heading):
+  - its pull request is #201, merged as `400a444`;
+  - #201 had two docs commits, `ae67eb8` and `0a8c657`, and the merge `561132f` of `main` at `b500f6b`; the citations were re-checked at `b500f6b` as well as at `e6bcfa7`, and `0a8c657` aligned :80 with #200's stated limit;
+  - "The 259 ids S8's readers send back" has no source in the repository. It is the count from S8's local check of 2026-09-25: every id the Wikidata, TGN and NGA readers take from the recorded answers in `tests/fixtures/georeferencing/` (on #198's stack) for a follow-up request, checked against #183's field rule by a script outside the repository. S4 recorded the result in #183's pull request body. In the repository it is not confirmed.
+- Commits/PRs: one docs commit; no red and green commits, since no product behaviour changes.
+- Validation actually run: pre-commit on the changed files; the plan's illustrative Python block parses; every `file:line` citation re-checked by script at `400a444`.
+- Durable learnings:
+  1. A number in the log needs its source in the repository, or a plain "not confirmed". A count from a local script reads as established when nothing a reader can open backs it.
+  2. When merging `main` into a branch that appended to the log, check the seam: git joins two appended entries without the blank line between them.
+- Failed approaches: none.
+- Remaining follow-ups: at #154's turn, label GEO.md:324's "The owner held D5, so no tolerance widens a place's dates" as the coordinator's interim rule (PLAN 2.3's D4/D5 row).
+
+### 2026-09-24 — Go-live program: plan corrections after #200
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-10`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #200's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/200#issuecomment-5826590054), items 1-4.
+  - S7's T4a: the pilot reference file lives under `~/specimen-release-private/` and never enters the repository, a PR, an issue, a message or a log (PLAN 7.7). It's written to the checker's read conditions: outside Git, a regular file its user owns, mode 600, no symlink, at most 1 MiB, UUIDs in the established source order, bytes unchanged once pinned. The coordinator reads the file itself against DoD-4's subject ids; the digest is only what S2's checker pins. An expired sign-in goes through OWNER_ACTIONS.md and the coordinator (PLAN 7.6).
+  - S8's brief: identifiers come from the field of the source's answer that carries its ids, and "never sent" defers to 4.8's limit.
+  - PLAN 4.8's filter:
+    - A date number beside a Roman month also counts with any apostrophe or dash ("‘46", "–46"), as an ordinal day ("3rd"), or with punctuation around it ("1946.", "1946?", "(1946)"). A numeral that shares its token with a word ("mid-VIII 1946") is named in the limit.
+    - The limit names a value the harness gave a non-place field and the reviewer replaced in "fill the rest", and the "Col." colonia over-cut ("Col. El Carmen, Chimaltenango" sends only "Chimaltenango").
+    - Markers are named as labels write them, in Latin ("leg.", "det."), English and Spanish, with a "det." test.
+    - The labels say "#191's round-1 and final reviews" where both rounds ruled.
+  - PLAN section 6's S2 row names the release and approval documents #199's integration reviewer listed (LIVE_QA, RELEASE_ACCEPTANCE, PROTECTED_RELEASE_HARNESS, GO_LIVE_RUNBOOK, APPROVED_LOGFIRE_TRACING) and `golive/RELEASE.md`, beside the catch-all. After #199 moved two lines of `DEPLOYMENT.md`, the citation 924-930 becomes 926-932 in PLAN and S2's brief (same text).
+  - Correction (dated 2026-09-24): commit 3783749's message and #200's PR body said the coordinator checks the file's SHA-256 against DoD-4's subject ids. A digest can't be checked against subject ids: the coordinator reads the file itself, and the digest is only what S2's checker pins. #200's PR body is corrected; the commit message stays as pushed.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: a verification step has to name what it verifies. "Check the digest against the subject ids" sounds like a check, but a digest only proves which bytes were read. The contents need a reader.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — S8: #204's review follow-ups, and corrections to two entries
+
+- Task: the steward's review of #204 (merged as `37ae404`; comment 5827566240, follow-ups 1 and 2), done in a third small docs pull request on `main`. Follow-up 3 waits for #154's turn.
+- Branch/worktree: `golive/geo-plan-followups-3` from `main` at `37ae404`; `.claude/worktrees/busy-thompson-19cc3b`.
+- Outcome, in `docs/product-requirements/GEOREFERENCING.md`:
+  - 3.4's temporal row says the ended unit is never scored "while D5 is held", since D5's option (a) would let a name count for ten years;
+  - "D8, D10 and D12 wait" carries "(coordinator, 2026-09-24)" in the status line, in the decisions paragraph and in the held-and-waiting text, and that text now has its own heading after the owner's answers instead of sitting among them;
+  - the blueprint's regex is S4's filter's pattern for PLAN 4.8's Q-number, matched whole, at the pattern and in the note on the illustrative code.
+- Corrections to the entry "S8: #201's review follow-ups, and a correction to its entry" (the log is append-only):
+  - its pull request is #204, merged as `37ae404`;
+  - #204 had two docs commits, `27a7a60` and `83d3a1e`, and the merge `c0dc0a7` of `main` at `eea5943`, and its citations were re-checked at `eea5943` as well as at `400a444`;
+  - where it says "the Identifiers pattern", read S4's filter's pattern for PLAN 4.8's Q-number: PLAN 4.8 names only the Q-number, and the regex is S4's.
+- Correction to the entry "S8: #94's review follow-ups, and a correction to its entry": where it says "as 3.2 and #154's `use_on` do", #154 names the case `Use("ended", gap_days=...)`, not "not valid" with a `label_lag` finding. The rule is the same, and the names differ.
+- Commits/PRs: #207, which lists its commits; no red and green commits, since no product behaviour changes.
+- Validation actually run: pre-commit on the changed files; the plan's illustrative Python block parses; every `file:line` citation re-checked by script at `37ae404`, and again at `702bcb2` after `main` was merged in at #207's turn. That merge joined #206's entry to this one with no blank line, and #207 adds it.
+- Durable learnings:
+  1. An entry a pull request adds is not on `main` until the merge, so it can still change. At each turn's push, update the entry's commits and checks with the rest; after the merge, only a dated correction can fix it. Three rounds of corrections here came from entries written before their turn's merge.
+  2. A heading inside a section inherits the section's claim. "Held and waiting" sat under "The owner's answers of 2026-09-24", so a reader took the coordinator's holds for the owner's words.
+- Failed approaches: none.
+- Remaining follow-ups: at #154's turn, label GEO.md:324's "The owner held D5, so no tolerance widens a place's dates" as the coordinator's interim rule (PLAN 2.3's D4/D5 row).
+
+### 2026-09-25 — Go-live program: plan corrections after #203
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-11`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #203's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/203#issuecomment-5827391717), items 1-6. It carries the coordinator's rulings of 05:38Z, 05:39Z and 05:40Z on 2026-09-25, each recorded in `status/coordinator.md` before it was sent.
+  - PLAN 4.8's filter:
+    - The cut list gains every value the harness gave a non-place field, whether a reviewer kept or replaced it. The readings' and the harness's non-place values spare the reviewer's own place value. The limit's fill-the-rest sentence goes, and its opening sentence now covers text the harness never gave a non-place field.
+    - A date number beside a Roman month also counts as an ordinal day ending in "d", "er", "º" or "ª", or as a range joined by a dash or slash ("3-4", "1946/47"). The search for it passes over lone punctuation and the profile's date connectors ("de", "del", "of"). A connector between two cut date tokens is cut too, so "San Juan de Dios" keeps its "de".
+    - "mid-VIII 1946" sends "mid-VIII": the whole token leaves. That case and the "Col." over-cut carry the 04:17Z ruling's label.
+    - The markers are examples again ("such as"), and the lead-in credits #200 and #203.
+  - PLAN section 6's S2 row lists its documents as examples ("such as"), adding RELEASING.md, HUMAN_REVIEW_RELEASE.md and COHORT_READING_ADMISSION.md.
+  - S7's T4a: the file is owned by the account that runs the checker, and its bytes freeze once S7 sends the SHA-256. The coordinator hashes the bytes it read, so the bytes checked are the bytes S2 pins. Its label carries 04:17Z on 2026-09-25.
+  - Correction (dated 2026-09-25) to the entry "2026-09-24 — Go-live program: plan corrections after #200" above: its heading and its line "Correction (dated 2026-09-24)" should carry 2026-09-25. Its work and its ruling came after 00:00Z on 2026-09-25 (the ruling at 04:17Z), and the coordinator's record dates them so. PLAN 4.8 and S7's T4a now label that ruling "04:17Z on 2026-09-25".
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: date a ruling where its record dates it. A ruling logged "04:17Z on 2026-09-25" and labelled "2026-09-24" in the plan reads as two rulings. Use the UTC date in both places.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live program: plan corrections after #206
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-12`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #206's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/206#issuecomment-5828020578), items 1-6. It carries the coordinator's rulings of 06:36Z and 06:37Z on 2026-09-25, each recorded in `status/coordinator.md` before it was sent.
+  - PLAN 4.8's filter:
+    - The ordinal endings are a closed list: st, nd, rd, th, d, er, º, ª. Other spellings ("1.º", "1o", "1ro", "2do", "1.er") and a word joining two months ("VIII y IX 1946") are named in the limit. The Roman-month cut stops widening there before the pilot.
+    - Sparing covers only place values the reviewer entered or changed. A harness place value the reviewer left unchanged is cut like any other source, so a kept "Mindanao F.G. Wermer" sends "Mindanao".
+    - A cut date token is one with a digit, a month word or a Roman month. "15 de agosto de 1946" is tested, and the limit names the one-sided connector ("Chimaltenango de 1946" sends "Chimaltenango de").
+    - "mid-VIII" can leave whole, labelled with the 04:17Z and 05:38Z rulings. "1ª VIII" joins the tests, and the credits add #206.
+  - PLAN's header states the date convention: a label with a time is UTC, and a date alone is New York time, as the coordinator's records are. So the #191-era labels of 2026-09-24 stand.
+  - S7's T4a: the coordinator compares its own hash of the bytes it read with the SHA-256 S7 sent.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: a filter's stated limit is how a list of cases stops growing. When each widening only surfaces the next spelling, close the list, name the rest, and pin them so any change shows.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live program: plan corrections after #208
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-13`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #208's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/208#issuecomment-5828661954), items 1-6. It carries the coordinator's rulings of 07:33Z and 07:34Z on 2026-09-25, each recorded in `status/coordinator.md` before it was sent.
+  - PLAN 4.8's filter:
+    - The sparing anchor (item 2): only the reviewer's own text is spared. That is the tokens whose folded words the harness's value for that field, in the run under review, does not hold. A case-only change spares nothing, and "Mindanao F.G. Wermer, P.I." spares only "P.I.". The limit names a name the reviewer adds.
+    - An ordinal day is a one- or two-digit day followed directly by one of the eight endings. The limit names an ordinal written any other way ("1.ª" included), a day in words, and a spaced dash or a comma between months. It also carries the 06:36Z "not widened further before the pilot", with its label.
+    - The one-sided connector carries the 05:39Z label, and the credits add #208.
+  - PLAN's header restates the date convention: a label with only a date carries its record's date, since the records mix UTC and New York dates. Nothing is re-dated. This supersedes the durable learning "Use the UTC date in both places" in the entry "2026-09-25 — Go-live program: plan corrections after #203" above.
+  - Correction (dated 2026-09-25): #208's header paragraph moved PLAN's lines down by five.
+    - The entry "2026-09-24 — Go-live program: plan corrections after #174" above cites "PLAN 190", now PLAN 195.
+    - The entry "2026-09-25 — Go-live S6: #202's review follow-ups, and dated corrections" above cites "PLAN.md 407-408" for the reason filter, now PLAN 412-413.
+    - The coordinator's note at #208's turn ("no citation moved") checked only other documents' citations, and missed these two. This PR keeps the header at four lines, so both new numbers stand.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: a line inserted near the top of a cited document moves every citation below it, including those in append-only logs. Keep header edits line-neutral, or re-map the log's citations with an appended correction in the same PR.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — S8: #207's review nits, folded into #130 at its turn
+
+- Task: the optional nits of the steward's review of #207 (merged as `0581b08`; comment 5828202433), folded into #130 at its turn, as the steward allowed.
+- Branch/worktree: `golive/geo-locality-text` (#130) in `.claude/worktrees/geo-build`, with `main` at `3e93ecb` merged in.
+- Outcome, in `docs/product-requirements/GEOREFERENCING.md`:
+  - the decisions paragraph says the options stand as the owner was asked only for D1 to D7, D9, D14 and D15; D8 and D10 to D13 were not put to the owner;
+  - the note on the illustrative code says each QID is a whole-string match (`fullmatch`) of S4's filter's pattern for PLAN 4.8's Q-number, as its Identifiers rule requires, and goes as a `wd:` prefixed name, as its Fixed parts require.
+- Corrections to the entry "S8: #204's review follow-ups, and corrections to two entries" (the log is append-only):
+  - where it says "so a reader took the coordinator's holds for the owner's words", read "could take": no reader did;
+  - its Outcome also labelled D4 and D5's hold in the plan's status line, and marked the moved held-and-waiting text "(coordinator, PLAN 2.3)".
+- Commits/PRs: #130, which lists its commits.
+- Validation actually run: pre-commit; the plan's illustrative Python block parses; the full suite on #130's merged branch.
+- Durable learnings: none new.
+- Failed approaches: none.
+- Remaining follow-ups: at #154's turn, label GEO.md's "The owner held D5" as the coordinator's interim rule (PLAN 2.3's D4/D5 row); at #183's turn, re-check the plan's QID pattern against #183's final pattern.
+
+### 2026-09-25 — Go-live program: plan corrections after #209
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-14`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #209's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/209#issuecomment-5828996693), items 1-3. It carries the coordinator's rulings of 08:01Z and, after #210's review, 08:24Z on 2026-09-25, recorded in `status/coordinator.md` before they were sent.
+  - PLAN 4.8's filter:
+    - The sparing anchor is every text the run holds for the field: the harness's settled literal, the first pass's decided literal where there is one, and each reading's verbatim for the field. A token matches it by any folded word, or by its letters and digits run together.
+    - The non-place cuts also compare tokens by their letters and digits run together (the 08:24Z ruling on #210's review, option (a)). Without that, a kept "FG" met cuts that compare folded words only and left. Now "Wermer's", "F.G.Werner", "FG" for "F.G.", "Wer-mer", "Wer.mer" and a reading's verbatim the reviewer picks are cut. A split, merged or shortened spelling ("Wer mer", "FGWermer", "Werm.") still leaves, and the limit says so.
+    - The limit says a name the reviewer adds or respells in a place value leaves even when the collectors field holds it, and that the sparing rule is not refined further before the pilot.
+    - A numeral leaves when the nearest token on each side, passing over bare punctuation and the listed connectors, is anything but a date number. That replaces the list of joins, and the examples include "VIII & IX 1946" and "VIII ca. 1946".
+  - G32-G34 carry "2026-09-24" inside their rows, since the owner answered them after section 2.1's heading date. No line is added above PLAN 412, so the corrected citations stand.
+  - The header says "revised 07:34Z". S6's brief dates the run-states ruling (00:37Z on 2026-09-24) and the url_launcher approval (22:07Z on 2026-09-23) apart.
+  - CONRED's COD-AB file joins GeoNames as a pinned local copy in `~/specimen-golive/datasets/cod-ab-gtm/<retrieval date>/`, never downloaded again, since HDX serves only the latest file. This is the coordinator's ruling of 08:05Z on 2026-09-25, revising the 04:49Z ruling of 2026-09-24 for that file. It is in PLAN 4.8's datasets bullet, S2's T4d and S8's task 0, matching S8's manifest (#198) and S2's upload generator. S2's T4d gets a second run when the boundary files arrive with #198.
+  - Correction (dated 2026-09-25) to the entry "2026-09-25 — Go-live program: plan corrections after #206" above: its line "a date alone is New York time, as the coordinator's records are" was revised by #209. A date alone carries its record's date, since the records mix UTC and New York dates.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing. Round 1 re-ran the script from main's files; that checkout also reset the index, so afc2ffd committed main's S6 brief and dropped f1efa72's S6 change, and 5a09430 restored it.
+- Durable learnings:
+  1. An anchor for "what the reviewer changed" has to be every text the reviewer could have copied from, not the one value the harness settled. Otherwise picking a reading's text counts as the reviewer's own.
+  2. A match rule has to hold at every step it passes through. "FG" counted as kept, but the cuts it then met compared folded words only, so it still left.
+  3. `git checkout <ref> -- <files>` sets the index as well as the working tree. After re-running a script on those files, stage every file it writes, or the commit carries the ref's version.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — Go-live program: plan corrections after #210
+
+- Task: Claude Code session `local_fd0c16d6-a543-4464-b003-a94d627d17b8` ("App production launch plan"), coordinator of the go-live program.
+- Branch/worktree: `golive/plan-corrections-15`, in `.claude/worktrees/frontend-design-dev-2580c8`.
+- Outcome:
+  - Addresses #210's final review (https://github.com/anurag-duddu/specimen-digitization-app/pull/210#issuecomment-5829879623), items 1-4. All the edits are line-neutral above PLAN 412, so the citations corrected earlier stand.
+  - PLAN 4.8's filter:
+    - The limit names the run-together over-cut: a collector "M.T. Smith" turns "Mt. Apo" into "Apo", and "L.A. Cruz" turns "La Libertad" into "Libertad". Less text leaves, so it fails safely.
+    - The sparing limit reads "unless the reviewer's own value there holds it". The 08:24Z label says the ruling changes the cuts, not the sparing rule. The credits add #210.
+  - PLAN 2.3's datasets row names T4d's two runs: GeoNames and GLO-30 when #211 merges, and the boundary files with #198 after #183. 4.8's datasets bullet pins each file by the retrieval date or release commit the manifest records, not "by version".
+  - S2's T4d limits the 08:05Z label to the COD-AB file.
+  - G35-G40, G44 and G45 carry their date (2026-09-24) inside their rows, as G32-G34 do. G41 and G43 already cite the dated decisions file.
+- Validation actually run: the edit script's exact-single-match and table-width checks. CI on the pull request: Not confirmed at the time of writing.
+- Durable learning: a comparison widened to catch a leak also widens what it can over-cut ("Mt." against "M.T."). Name one over-cut case in the limit when the rule lands, so a test pins it.
+- Remaining follow-ups: unchanged from the entry "plan corrections after #124" above, less the curator sheets (decided by the owner).
+
+### 2026-09-25 — S8 drops GADM from the research probe and marks GBIF.md's GADM use superseded
+
+- Task: the steward's follow-up (2026-09-25) from security's review of #216. The research probe still called GBIF's GADM reverse geocoder behind `--held-steps`, and `docs/GBIF.md` still recommended GADM, though PLAN 4.8 rules GADM out, not even as a measurement.
+- Branch/worktree: `golive/geo-gadm-superseded` in `.claude/worktrees/geo-build`.
+- Outcome: In progress (pull request open; review round 1 had no blocking finding and asked for one more push).
+- Commits/PRs: #217.
+  - The red `e3d3633` marks three of GBIF.md's GADM passages superseded in place (:61, :256 and :467) and adds a guard test.
+  - The green `89e08a2` removes the probe's GADM step and its report fields, and corrects the probe's docstring, help text and README. `b67be62` names #217 here.
+  - `main` was merged in at #217's turns as `ded2172` (#83) and `193c791` (#216). `ce46a85` adds the blank line the union merge dropped before #216's entry.
+  - Review round 1 (comment 5836111240) found GBIF.md's other two GADM passages (:11 and :322) and the `gadm` block in GBIF's occurrence records. It is answered by the red `11ad5e8` and the green commit after it: the two passages are marked in place, the guard applies #216's pattern, and stored responses drop the block.
+- Validation: the first guard test fails on `main` and passes after the green, and the probe parses and prints its help. `uv run pytest -q` gave 3,069 passed on `89e08a2`, 3,102 on `ded2172`, 3,097 on `ce46a85` and 3,098 on `21da3fe` (round 1's green, the head's code), with 81 skipped each time. Round 1's storage test fails on `ce46a85` and passes on its green.
+- Durable learnings: PLAN, the briefs, DATA_CONTRACT.md:329 and GEOREFERENCING.md cite `docs/GBIF.md` by line number, so a note added inside an existing line keeps every reference valid where a new line would shift them.
+- Failed approaches:
+  - A first draft added the notes as new blockquote lines, which would have shifted those references; it was rewritten before any commit.
+  - The first push counted three GADM passages, and review round 1 found two more. Search a document for every mention of a retired source before calling the set complete.
+- Remaining follow-ups:
+  - GEOREFERENCING.md:15 still calls `application/geography.py`, which #216 deleted, today's geography tool. That goes to S8's next GEOREFERENCING change.
+  - PLAN.md:753 could add docs/GBIF.md to S8's row. That goes to the coordinator's next plan PR.
+
+### 2026-09-25 — Go-live S4: removing the GBIF GADM geography adapter (PLAN 4.8 licence fix)
+
+- Task: the coordinator's licence ruling (13:31Z). PLAN 4.8 (PLAN.md:669) does not use GADM, not even as a measurement, because its terms bar redistribution and commercial use, yet main still wired GBIF's GADM search as the production "geography" authority tool. One small pull request from main, ahead of the S4 chain: #216.
+- Branch/worktree: `golive/harness-no-gadm`, from `main` at d8291a0, in `.claude/worktrees/cool-haslett-aa79b5`. Commits:
+  - 7757332e: the failing tests.
+  - 85be7cb5: the removal.
+  - 5f2bf579: this entry.
+  - 776aa720: round 2.
+  - 85ef0a0f: round 3, text and tests.
+  - cbaf7b50: the merge of main d663a0c (#83).
+  - 2f55d8a8: the lab sentence after #83.
+  - Round 4's text fix.
+- Outcome:
+  - `ProductionAdapters` wires only the parties tool, and the geography cost reservation is gone (`test_production_wiring_holds_no_gadm_source`).
+  - `application/geography.py` and `tests/test_geography.py` are deleted.
+  - `plan_authorities` no longer plans a geography lookup (`test_a_profile_naming_geography_plans_no_geography_lookup`). `authority_query` drops the GADM-only historical context. Place fields get no geography authority until the harness's geography tool lands.
+  - The harness tests that used the GADM adapter use the parties adapter, and the registry tests use a neutral example source.
+  - Spec: PLAN 4.8 and the coordinator's ruling. `docs/execution/EVIDENCE_HARNESS.md` records the removal instead of describing the adapter.
+- Validation actually run:
+  - Round 1: three of the four new tests failed on main, each for its intended reason; the resume test passes before and after. Gates, one at a time, on 85be7cb5: `pre-commit run --all-files` passed; `pytest tests` 1498 passed, 31 skipped; `pytest scripts` 1562 passed, 50 skipped; `check_ui_strings` 0 violations.
+  - Round 2, on 776aa720: pre-commit passed; `pytest tests` 1500 passed, 31 skipped; `pytest scripts` 1562 passed, 50 skipped; 0 violations.
+  - Round 3, on the round-3 tree before its gate line was filled in (85ef0a0f): pre-commit passed; `pytest tests` 1501 passed, 31 skipped; `pytest scripts` 1562 passed, 50 skipped; 0 violations.
+  - The merge turn, on 2f55d8a8, with nothing changed under `src/` or `tests/`: pre-commit on the changed files passed; `pytest scripts` 1595 passed, 50 skipped; 0 violations.
+  - Round 4, text and test comments only: pre-commit on the changed files passed; `tests/test_gadm_not_used.py` and `tests/test_parties.py` 21 passed; 0 violations.
+- Durable learnings:
+  1. No collection profile in the repository names the "geography" tool (the one profile lists `taxonomy_verifier`), and `collection_profiles.py`'s history never did. So no run from a repository profile could plan a GADM lookup. The adapter was reachable only through the wiring and the planner branch.
+  2. Each authority step compares only its own tool's pin (`authority_pins`). A run pinned before a tool is removed therefore resumes unchanged, unless its plan names the removed tool (`test_a_run_pinned_with_the_removed_tool_still_resumes`).
+  3. A log line is append-only once merged, so claim only what a test or the code shows. "Every form", "sends nothing" and "any GADM call" each went further than what showed them.
+- Round 2 (the steward's review, comment 5834271655):
+  - The size-cap test moves onto the parties adapter.
+  - The scan matches the patterns round 1's review proposed (`gbif[_-]gadm`, `gadm_search`, `geocode/(gadm|reverse)`, `api.gbif.org/v1/geocode`), case-insensitively.
+  - A run whose plan still names a geography task blocks at that step with `tool_not_allowlisted_or_version_mismatch` when the field has a value. Without one, the step is recorded unresolved and the run goes to review (round 3's correctness review ran that case). Either way that step sends nothing, and earlier steps such as parties still run (`test_a_run_planned_with_the_removed_tool_blocks_without_a_request`, whose label has a `province_state` value).
+  - `docs/execution/EVIDENCE_HARNESS.md` and `docs/execution/ACCEPTANCE.md` no longer describe the adapter as live or cite its test as evidence.
+- Round 3 (comment 5834843588):
+  - The round-2 line above was reworded: it had said the scan matches every form of the name, and that such a run sends nothing.
+  - The scan also matches `gadm.org`, `ucdavis.edu/(data/)?gadm` and `gadm` followed by a digit. It leaves a bare "GADM" out on purpose, since the comments saying it is not used name it.
+  - A valid JSON body padded past the size cap pins the rule that a truncated response is malformed.
+- Round 4 (comment 5835391741): the #83 sentence below now names exactly what #83's check fails. The planned-task line above now states its condition. Every sentence in this entry and the pull request body was checked against the code, a test or a cited review.
+- Remaining follow-ups:
+  - The first chain pull request to merge main after this one (#98) takes the three `production.py` lines cleanly. A trial merge of #98's head with this branch was clean, and so are S3's lane branches (the round-2 integration review).
+  - S7's #83, merged as d663a0c before this pull request, makes `scripts/lab/lab_checks.py` fail a run whose records carry the removed adapter's identity (`gbif_gadm`, or a `gbif-gadm` version), the coordinator's lab item (coordinator.md:434).
+  - PLAN.md's ownership list and the S4 brief still name `geography.py` (the coordinator's next plan pull request).
+  - S8's research probe and `docs/GBIF.md` still mention GADM; S8's open #217 drops the probe's call.
+### 2026-09-28 — Go-live projection writer (S5 T2a, #146): ready for its turn after #99
+
+- Task: the steward's routing on 2026-09-28.
+  - First, about 02:17Z: merge main ahead of the turn and resolve #146's conflicts.
+  - Then, after S2's #99 merged as `734eb1c` at 05:13Z: merge main again, update S2's `scripts/ci/test_schema_gate.py` for step 2, and ask S2 for a sign-off naming the final head.
+- Branch/worktree: `golive/data-projection` (#146) in `.claude/worktrees/epic-rhodes-d168f3`.
+- Commits:
+  - `d3ba600`: the contract's GBIF rule, with its own entry.
+  - `6d6b817` and `abe5a43`: merges of main `54ac2ff` and `734eb1c`.
+  - `76269ac`: S2's schema gate test.
+  - This entry.
+- Outcome:
+  - Both merges conflicted only in `docs/SESSION_LEARNINGS.md`, which its union driver resolves; each side's lines survive, in order. GitHub's mergeability check does not apply the driver, so it showed #146 as conflicting.
+  - S2's `test_schema_gate.py` built the schema from before the swap by removing `source_asset_specimen_object` from the committed schema. On main that schema held step 1.
+    - #146 commits step 2, so the removal left neither constraint, and collection failed.
+    - The test now puts `specimen_unique_1` back in the new constraint's place, and checks step one from there.
+    - It also admits the committed schema as step two.
+    - S2 reviewed the change by message. Its sign-off comment will name the final head.
+  - The contract's GBIF rule (`d3ba600`) was re-checked at #109's `cd7ae66`. The rule functions are unchanged, and the only change in the candidates is a cap on the alternatives.
+- Validation actually run at `76269ac`, each gate started at a one-minute load under 12:
+  - `tests/`: 3565 passed, 32 skipped;
+  - `scripts/`: 1882 passed, 51 skipped;
+  - `test-postgres.sh`: exit 0, with 79 PASS lines;
+  - the opt-in emulator test: 1 passed;
+  - `check_ui_strings.py`: 0 violations;
+  - `schema_gate.py` against main's `dataconnect/` as the live side: `additive`.
+- Durable learnings:
+  - (1) GitHub's mergeability check ignores `.gitattributes` merge drivers.
+    - A pull request whose only conflict is `SESSION_LEARNINGS.md` shows as conflicting, while a local merge with the union driver is clean.
+    - `git merge-tree --write-tree --name-only` tells the two apart without touching a worktree.
+  - (2) A test that derives its fixtures from the committed tree pins the tree's state.
+    - S2's test assumed step 1 was committed, so the pull request that commits step 2 had to move the derivation with it.
+    - `gate(STEP1, SCHEMA)` now pins that the committed tree is an admitted step two.
+- Remaining follow-ups:
+  - At "#146 is next": merge main once, run the gates again and push.
+  - Then send "PR #146 ready", and get S2's sign-off comment naming that head.
+### 2026-09-28 — Go-live projection writer (S5 T2a, #146): round 1
+
+- Task: the steward's round-1 verdict at `0a68bb2` (issuecomment-5864861862).
+  - It found two blockers under the pilot-first bar, B4 and B3.
+  - It listed nine follow-ups for S5's post-chain pull request.
+- Branch/worktree: `golive/data-projection` in `.claude/worktrees/epic-rhodes-d168f3`.
+- Commits:
+  - `f9a9a0f`: B3.
+  - `0937d01`: B4, red.
+  - `838ccf5`: B4, green.
+  - `e6d4324`: the merge of main `109ec155`, with #113.
+  - This entry.
+- Outcome:
+  - B4:
+    - `classify` chooses the profile and re-queues `pin_dependencies`, so the save between them still carries the first pin, of the empty profile.
+    - The writer emitted `ProfileVersion` and `PipelineRun` at that save. Its rows are insert-only, so every run kept a `ProfileVersion` whose `configSha256` is the empty profile's digest, and a `PipelineRun` pointing at it.
+    - Both rows now wait until `Run.dependencies` pin the current snapshot: its digest, and its registry version. Dependencies without the pin raise, and the pass is `not_computed`, as before.
+    - The contract states the condition in sections 2 and 4.1. The test fixtures now pin the registry version as `pin_dependencies` does.
+  - B3: the list of owner decisions credited the owner with G30's reservation mechanism. It now reads "USD 5 (reserve-then-settle is the coordinator's ruling, PLAN 4.3)". The list's other entries match their PLAN rows.
+- Validation actually run:
+  - Red `0937d01`: the new test, which drives the synthetic workflow's real step order, found two `ProfileVersion` rows. The first had the empty profile's digest.
+  - Green:
+    - the writer, projection, workflow, application and schema-gate tests: 199 passed;
+    - the reviewer's probe reports each row first written after the re-pin, with the final pin.
+  - At `e6d4324`, each gate started at a one-minute load under 12:
+    - `tests/`: 4479 passed, 32 skipped;
+    - `scripts/`: 1882 passed, 51 skipped;
+    - `test-postgres.sh`: exit 0, with 79 PASS lines;
+    - the opt-in emulator test: 1 passed;
+    - `check_ui_strings.py`: 0 violations;
+    - `schema_gate.py` against main's `dataconnect/`: `additive`.
+- Durable learnings:
+  - (1) Write a create-once row only when its inputs are final.
+    - The writer's rows are insert-only: a primary-key conflict counts as written. So a save between two steps that must both run before the row is right freezes the wrong row for good.
+    - Guard on the pin that makes the value final, not on the value being present.
+  - (2) Tests that set a derived field by hand hide ordering bugs.
+    - Both fixtures set `dependencies` directly, and they left out a key the workflow always writes.
+    - Drive the real step order at least once.
+- Remaining follow-ups: the verdict's nine, in S5's post-chain pull request.
