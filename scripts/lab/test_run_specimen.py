@@ -174,7 +174,9 @@ def test_paid_attempts_without_settled_usage_count_at_their_full_bound():
     # Until production's reserve-then-settle ledger lands, every paid attempt whose usage the run did
     # not settle is held at the full per-call bound: an unknown outcome (coordinator, 2026-09-23) and,
     # since #86, a call that returned and then failed with a known blocker, whose usage the workflow
-    # does not record. Local SAM 3 costs nothing.
+    # does not record. Local SAM 3 costs nothing. PLAN 4.3 runs the lab under production's mechanism, so
+    # the lab reads the bound as the largest of: the step's reservation in the run's profile, PLAN 4.3's
+    # floor for a call's two requests (USD 0.04), and the call's 16,000-token limit at the top price.
     earlier = snapshot()["run"] | {
         "id": "run-1", "stage": "processing_blocked", "blocker": "external_outcome_unknown",
         "attempts": {"segment": 1, "parse": 1}, "completed_steps": ["classify"], "observations": [],
@@ -186,10 +188,27 @@ def test_paid_attempts_without_settled_usage_count_at_their_full_bound():
     costs = run_specimen.price(snap)
     # run-1: parse with an unknown outcome; run-2: a retried reader attempt, and parse after a known failure
     assert sorted(costs["unsettled_attempts"]) == ["parse", "parse", "transcribe:r1:handwriting-qwen"]
-    assert costs["unsettled_usd_bound"] == pytest.approx(3 * 16_000 * 1.20e-6)
-    assert costs["total_usd"] == pytest.approx(
-        costs["readers_usd"] + costs["other_usd_upper_bound"] + 3 * 16_000 * 1.20e-6
-    )
+    assert costs["unsettled_usd_bound"] == pytest.approx(3 * 0.04)
+    assert costs["total_usd"] == pytest.approx(costs["readers_usd"] + costs["other_usd_upper_bound"] + 3 * 0.04)
+
+
+def test_a_uniform_request_reservation_counts_when_the_profile_has_no_stage_reservations():
+    # #84 round 1: workflow.py reserves request_cost_reservation_micros per step when no stage reservations exist.
+    snap = snapshot(stage="processing_blocked", blocker="external_outcome_unknown", attempts={"parse": 1},
+                    completed_steps=["classify", "segment"])
+    snap["run"]["profile"]["execution"]["request_cost_reservation_micros"] = 70_000
+    assert run_specimen.price(snap)["unsettled_usd_bound"] == pytest.approx(0.07)
+
+
+def test_a_reservation_the_profile_records_raises_the_bound_for_its_step():
+    snap = snapshot(stage="processing_blocked", blocker="external_outcome_unknown",
+                    attempts={"transcribe:r1:handwriting-qwen": 2, "parse": 1},
+                    completed_steps=["classify", "segment", "transcribe:r1:handwriting-qwen"])
+    snap["run"]["profile"]["execution"]["stage_cost_reservations"] = {
+        "version": "stage-cost-reservations-v1",
+        "cost_micros": {"transcribe:handwriting-qwen": 90_000, "parse": 30_000}}
+    costs = run_specimen.price(snap)
+    assert costs["unsettled_usd_bound"] == pytest.approx(0.09 + 0.04)  # parse's 0.03 is below the floor
 
 
 def test_costs_price_each_reading_and_bound_the_remaining_tokens():
@@ -248,9 +267,21 @@ def test_the_redactor_ignores_case_and_percent_encoding():
     # in another case all survived.
     redact = run_specimen.Redactor({"HF_BILL_TO": "Example-Billing-Org"})
     text = redact("host SPECIMEN-SAM-X1.A.RUN.APP; https://Logfire-US.pydantic.dev/Owner-Org/project; "
-                  "caller admin%40example.org; billed to example-billing-org and EXAMPLE-BILLING-ORG")
-    for leak in ("RUN.APP", "Owner-Org", "admin%40example.org", "example-billing-org", "EXAMPLE-BILLING-ORG"):
+                  "caller admin%40example.org, again admin%2540example.org; "
+                  "billed to example-billing-org and EXAMPLE-BILLING-ORG")
+    for leak in ("RUN.APP", "Owner-Org", "admin%40example.org", "admin%2540example.org", "example-billing-org",
+                 "EXAMPLE-BILLING-ORG"):
         assert leak not in text, leak
+
+
+def test_home_paths_are_found_in_any_case(monkeypatch):
+    # #83 round 2: macOS paths ignore case, so a home path can be written in another case; #84 round 1: a
+    # home path that ends a sentence is found too, but not a longer name that starts with it.
+    monkeypatch.setenv("HOME", "/Users/labfixture")
+    redact = run_specimen.Redactor({})
+    assert redact("/users/labfixture/runs and /USERS/LABFIXTURE/x") == "~/runs and ~/x"
+    text = "saved under /Users/labfixture. Then /Users/labfixture.old"
+    assert redact(text) == "saved under ~. Then /Users/labfixture.old"
 
 
 class OccurrenceLane(FakeLane):
@@ -416,6 +447,7 @@ def test_a_run_that_cannot_be_priced_is_held_at_its_bound(tmp_path):
     assert summary["costs"]["total_usd"] == pytest.approx(0.75)
     assert summary["lab_spend_usd"] == pytest.approx(0.75)
     assert run_specimen.recorded_spend(tmp_path / "runs") == pytest.approx(0.75)
+    assert "the lab's own rule" in (only_run(tmp_path) / "report.md").read_text()
 
 
 def test_a_failed_check_keeps_the_priced_spend(tmp_path, monkeypatch):
@@ -451,8 +483,23 @@ class DotSegmentLane(FakeLane):
 
         for url in ("https://api.gbif.org/v1/./occurrence/search", "https://api.gbif.org/v1/x/../occurrence/search",
                     "https://api.gbif.org/v1/././occurrence", "https://api.gbif.org/v1/species/search?catalogNumber=1",
+                    "https://api.gbif.org/../v1/occurrence/search",  # ".." above the root (#83 round 2)
+                    # #84 round 1: encoded dots, merged slashes and a trailing host dot
+                    "https://api.gbif.org/%2E%2E/v1/occurrence/search", "https://api.gbif.org/v1//occurrence/12345",
+                    "https://api.gbif.org./v1/occurrence/search", "https://api.gbif.org//v1/occurrence/search",
+                    "https://api.gbif.org/v2/%2e%2e/%2e%2e/v1/occurrence/search",
+                    # #84 round 2: a segment that decodes to "?" or a space, and a ";" parameter
+                    "https://api.gbif.org/%3F/../v1/occurrence/search",
+                    "https://api.gbif.org/v1/%20/../occurrence/search", "https://api.gbif.org/v1;x/occurrence/search",
+                    # #84 round 3: pinned here too; the last resolves to species match and is not counted
+                    "https://api.gbif.org/v1/occurrence/;x/../search", "https://api.gbif.org/v1/occurrence//../search",
+                    "https://api.gbif.org/v1/occurrence/;/../search",  # #84 round 4: the eleventh form
+                    "https://api.gbif.org/v1/%5C/../occurrence/search",
+                    "https://api.gbif.org/v1/occurrence%3F/../../v2/species/match",
                     "https://api.gbif.org/v2/species/match?name=Epipsocus"):  # the last is species match
             http_effect.bounded_http(url, timeout_seconds=1, max_bytes=1)
+        http_effect.bounded_http("https://api.gbif.org/v1/species/search", timeout_seconds=1, max_bytes=1,
+                                 params=httpx.QueryParams({"recordedBy": "Hoogstraal"}))
         client = httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={})))
         client.get("https://api.gbif.org/v1/species/search", params={"recordedBy": "Hoogstraal"})
         client.get("https://api.gbif.org/v1/species/search?institutionCode=FMNH")
@@ -466,7 +513,7 @@ def test_the_parent_count_removes_dot_segments_and_reads_query_keys_in_the_url(t
     monkeypatch.setattr(http_effect, "bounded_http", fake_bounded_http)
     run(tmp_path, lane=DotSegmentLane())
     summary = json.loads((only_run(tmp_path) / "run.json").read_text())
-    assert summary["gbif_occurrence_requests"] == 6
+    assert summary["gbif_occurrence_requests"] == 20
 
 
 def test_a_receipt_blob_recording_an_occurrence_query_fails_stage_7(tmp_path, monkeypatch):
@@ -531,3 +578,209 @@ def test_a_report_only_rebuild_carries_a_new_verdict_without_preflight_or_fetch(
     assert "passed: every reason matches the expected outcome" in report
     code, _ = run(tmp_path, "--report-only", values=None, fetcher=no_fetch)
     assert code == 3  # the report is redacted, so the values file is still required
+
+
+@pytest.mark.parametrize("line", ["ADMIN_UID=adminuidfixture", '"adminuidfixture"', "adminuidfixture # admin",
+                                  "admin uid fixture", "'adminuidfixture'", "uid1fixture,uid2fixture",
+                                  "adminuidfixture\u200b", "adminuidfixture\nsecondvalue\ufeff"])
+def test_a_values_file_line_that_is_not_one_bare_value_is_refused(tmp_path, line, capsys):
+    # #83 round 2: such a file passed, and its value never matched anything. The refusal names the line
+    # number, never its private content.
+    values = tmp_path / "private" / "values"
+    values.parent.mkdir()
+    values.write_text(f"{line}\n")
+    code, lanes = run(tmp_path, values=values)
+    assert code == 3 and lanes == []
+    captured = capsys.readouterr()
+    assert "lines [" in captured.err and "adminuidfixture" not in captured.out + captured.err
+
+
+def test_a_byte_order_mark_does_not_hide_the_first_value(tmp_path):
+    values = tmp_path / "private" / "values"
+    values.parent.mkdir()
+    values.write_bytes("\ufeffadminuidfixture\n".encode())
+    run(tmp_path, lane=PlantedLane(), values=values)
+    assert "adminuidfixture" not in (only_run(tmp_path) / "workspace.json").read_text()
+
+
+def test_a_report_only_rebuild_without_any_run_is_refused(tmp_path):
+    code, lanes = run(tmp_path, "--report-only")
+    assert code == 3 and lanes == []
+    assert not (tmp_path / "reports" / f"{SUBJECT}.md").exists()
+
+
+class InterruptedLane(FakeLane):
+    def process(self, specimen_id, deadline):
+        raise KeyboardInterrupt
+
+
+def test_ctrl_c_is_recorded_as_a_failure_and_the_run_held_at_its_bound(tmp_path):
+    # #83 round 2: an interrupted phase was recorded as passed.
+    with pytest.raises(KeyboardInterrupt):
+        run(tmp_path, lane=InterruptedLane())
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    process = next(p for p in summary["phases"] if p["name"] == "process")
+    assert process["status"] == "failed" and "KeyboardInterrupt" in process["error"]
+    assert summary["result"] == "error" and summary["costs"]["total_usd"] == pytest.approx(0.75)
+
+
+class InterruptedTeardownLane(InterruptedLane):
+    def __exit__(self, *exc):
+        super().__exit__(*exc)
+        raise RuntimeError("could not stop the emulator")
+
+
+def test_ctrl_c_still_stops_the_run_when_the_teardown_then_fails(tmp_path):
+    # #84 round 1: the teardown's error replaced the interrupt, so the check ran and execute returned 2.
+    with pytest.raises(KeyboardInterrupt):
+        run(tmp_path, lane=InterruptedTeardownLane())
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    names = {p["name"]: p for p in summary["phases"]}
+    assert "check" not in names and names["teardown"]["status"] == "failed"
+    assert summary["costs"]["total_usd"] == pytest.approx(0.75)
+
+
+def test_run_json_holds_the_run_bound_from_the_moment_the_lane_starts(tmp_path):
+    # #84 round 1: a run killed after the lane starts must still count in the tally (G9).
+    seen = {}
+
+    class WatchingLane(FakeLane):
+        def ingest(self, filename, data, media_type):
+            record = self.state.parent / "run.json"
+            seen["total"] = json.loads(record.read_text())["costs"]["total_usd"] if record.exists() else None
+            return super().ingest(filename, data, media_type)
+
+    lane = WatchingLane()
+    original = run_specimen.execute
+
+    def execute(options, *, lane_factory, **kwargs):
+        def factory(state, opts, env):
+            lane.state = state
+            return lane_factory(state, opts, env)
+        return original(options, lane_factory=factory, **kwargs)
+
+    run_specimen.execute, saved = execute, run_specimen.execute
+    try:
+        run(tmp_path, lane=lane)
+    finally:
+        run_specimen.execute = saved
+    assert seen["total"] == pytest.approx(0.75)
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    assert summary["costs"]["total_usd"] == pytest.approx(0.00083 + 0.0006)  # priced at the end
+    assert summary["lab_spend_usd"] == pytest.approx(0.00083 + 0.0006)  # the run counts once
+
+
+@pytest.mark.parametrize("total", ["NaN", "-0.5", '"0.1"', None])
+def test_a_tally_that_cannot_be_trusted_stops_the_next_run(tmp_path, total):
+    # #84 round 1: an unreadable or non-finite total was skipped or passed preflight's comparison, and an
+    # adjustment may only raise the tally.
+    earlier = tmp_path / "runs" / "_adjustments" / "20260925T000000Z"
+    earlier.mkdir(parents=True)
+    (earlier / "run.json").write_text("{not json" if total is None else '{"costs": {"total_usd": %s}}' % total)
+    code, lanes = run(tmp_path)
+    assert code == 3 and lanes == []
+
+
+def test_main_refuses_a_slide_outside_the_ten_before_any_fetch(tmp_path, monkeypatch):
+    # #84 round 1 (blocking): only the ten are not sensitive (G31); a run of any other slide would send a
+    # Sensitive image to the model providers. A dry run builds no lane and fetches only.
+    calls = []
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setattr(run_specimen, "execute", lambda options, **kwargs: calls.append(options.subject) or 0)
+    roots = ["--runs-root", str(tmp_path / "runs"), "--reports-root", str(tmp_path / "reports")]
+    assert run_specimen.main(["subject_105526331", *roots]) == 3 and calls == []
+    assert run_specimen.main(["subject_105526331", "--dry-run", *roots]) == 0
+    assert run_specimen.main(["subject_105526321", *roots]) == 0
+    assert calls == ["subject_105526331", "subject_105526321"]
+
+
+class TeardownInterruptedLane(FakeLane):
+    """A Ctrl-C during the teardown itself, then an error while cleaning up after it."""
+
+    def __exit__(self, *exc):
+        try:
+            raise KeyboardInterrupt
+        finally:
+            raise RuntimeError("could not stop the emulator")
+
+
+class Truthless:
+    def __bool__(self):
+        raise KeyboardInterrupt  # arrives between the process and collect phases
+
+
+class BetweenPhasesLane(TeardownFailsLane):
+    def process(self, specimen_id, deadline):
+        return Truthless()
+
+
+@pytest.mark.parametrize("lane", [TeardownInterruptedLane, BetweenPhasesLane])
+def test_a_ctrl_c_outside_a_phase_still_stops_the_run_when_the_teardown_fails(tmp_path, lane):
+    # #84 round 2: only a phase recorded the interrupt, so one during the teardown or between phases was lost.
+    with pytest.raises(KeyboardInterrupt):
+        run(tmp_path, lane=lane())
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    names = {p["name"]: p for p in summary["phases"]}
+    assert "check" not in names and names["teardown"]["status"] == "failed"
+    assert names["interrupted"]["status"] == "failed" and summary["result"] == "error"
+
+
+def test_a_value_is_trimmed_before_the_allowlist_and_still_redacts(tmp_path):
+    # #84 round 2: the claim is "a line that, once trimmed, holds any other character".
+    values = tmp_path / "private" / "values"
+    values.parent.mkdir()
+    values.write_text("  adminuidfixture\u00a0\n")
+    run(tmp_path, lane=PlantedLane(), values=values)
+    assert "adminuidfixture" not in (only_run(tmp_path) / "workspace.json").read_text()
+
+
+@pytest.mark.parametrize("flag", ["--max-run-usd", "--lab-allowance-usd", "--max-load", "--timeout-seconds"])
+@pytest.mark.parametrize("value", ["nan", "inf", "-1", "0"])
+def test_a_budget_or_load_flag_must_be_finite_and_positive(flag, value):
+    # #84 round 2: NaN passed preflight's comparisons, and the killed-run hold trusts --max-run-usd.
+    with pytest.raises(SystemExit):
+        run_specimen.parse_args([SUBJECT, flag, value])
+
+
+class ReplacedInterruptLane(FakeLane):
+    """A Ctrl-C in a phase, then an error while cleaning up after it, as when stop() times out."""
+
+    def process(self, specimen_id, deadline):
+        try:
+            raise KeyboardInterrupt
+        finally:
+            raise RuntimeError("stop timed out")
+
+
+def test_an_interrupt_that_an_error_replaced_in_a_phase_still_stops_the_run(tmp_path):
+    # #84 round 3: Run.phase recorded the RuntimeError and carried on; the interrupt was in its __context__.
+    with pytest.raises(KeyboardInterrupt):
+        run(tmp_path, lane=ReplacedInterruptLane())
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    process = next(p for p in summary["phases"] if p["name"] == "process")
+    assert process["status"] == "failed" and "check" not in {p["name"] for p in summary["phases"]}
+
+
+def test_a_ctrl_c_during_the_apps_request_stops_the_run_and_is_recorded(tmp_path):
+    # #84 round 3: with the real lane, a Ctrl-C during /complete's drain is raised when the request returns.
+    import lab_lane
+    from test_lab_lane import InterruptingAdapters, jpeg
+    from specimen_digitization.application.api import SYNTHETIC_TEXT
+
+    made = []
+
+    def interrupting(blobs):
+        made.append(InterruptingAdapters(blobs, SYNTHETIC_TEXT))
+        return made[-1]
+
+    lane = lab_lane.AppLane(tmp_path / "lane", adapters_factory=interrupting, persistence="sqlite",
+                            segmentation="sam3", subject=SUBJECT)
+    image = jpeg()
+    with pytest.raises(KeyboardInterrupt):
+        run(tmp_path, lane=lane,
+            fetcher=lambda subject: (image, {"bucket": "b", "object_name": "o", "generation": "1"}))
+    summary = json.loads((only_run(tmp_path) / "run.json").read_text())
+    ingest = next(p for p in summary["phases"] if p["name"] == "ingest")
+    assert ingest["status"] == "failed" and "KeyboardInterrupt" in ingest["error"]
+    assert summary["result"] == "error" and summary["costs"]["total_usd"] == pytest.approx(0.75)
+    assert made[0].readings_after > 0  # the drain's later paid calls still ran before the request returned
