@@ -296,6 +296,25 @@ def test_today_identical_and_reviewer_decisions_are_recognised():
     assert "AppendTranscriptionVersionV2" not in ops(writes(undecided, locate, size, "worker-uid"))
 
 
+def test_identical_readings_select_the_first_when_the_transcript_records_none():
+    """Main's Transcript (#98) always carries `selected_observation_id`, None unless the first
+    pass picked. Identical readings still decide by the first reading (section 11; S7's lab,
+    2026-09-28)."""
+    s = base()
+    right, left = s.run.observations
+    transcript = s.run.transcripts[0]
+    s.run.observations = [right, left.model_copy(update={"literal_text": right.literal_text})]
+    s.run.transcripts = [
+        DecidedTranscript.model_validate(
+            {**transcript.model_dump(), "selected_observation_id": None, "resolved": True, "text": right.literal_text}
+        )
+    ]
+    identical = rows(writes(s, locate, size, "worker-uid"), "AppendTranscriptionVersionV2")
+    assert [(d["decisionKind"], d["selectedObservationId"], d["unresolved"]) for d in identical] == [
+        ("identical_readings", transcript.observation_ids[0], False)
+    ]
+
+
 def test_lookups_and_stored_evidence_become_evidence_items():
     s = first_pass(base())
     found = lookup(s)

@@ -275,3 +275,15 @@ def test_a_derived_date_keeps_its_precision():
     (candidate,) = candidate_of(writes(s, locate, size, "worker-uid"), "date_visited_to")
     assert candidate["parsedValue"] == {"value": "1946-07", "precision": "month", "century_rule": century}
     assert (candidate["derivation"], candidate["derivedFromFieldKeys"]) == ("derived", ["date_visited_from"])
+
+
+def test_a_derived_value_keeps_its_authority_and_version():
+    """PLAN 4.8 and S4's #172: a derived value's identity names its authority and version, and the
+    writer passes it through unchanged."""
+    s, decides = derived_run()
+    identity = {"source": "apply_derivations", "source_record_id": None, "credit": None, "version": "derivation-rules-v1"}
+    derived = s.run.fields["elevation_from_m"]
+    s.run.fields["elevation_from_m"] = derived.model_copy(update={"authority_identity": identity})
+    (candidate,) = candidate_of(writes(s, locate, size, "worker-uid"), "elevation_from_m")
+    assert candidate["authorityIdentity"] == identity
+    assert candidate["derivation"] == "derived"
