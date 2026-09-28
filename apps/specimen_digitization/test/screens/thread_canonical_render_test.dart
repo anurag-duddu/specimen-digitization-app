@@ -115,6 +115,16 @@ void main() {
           'The first pass chose no reading',
           'Transcription not resolved',
           'Handed to the harness',
+          // The harness's calls on each label, in the order they ran
+          // (UI.md T2.7).
+          'Harness lookups',
+          'Google Maps lookup',
+          'GBIF lookup',
+          'Catalogue of Life lookup',
+          'Found',
+          'No match',
+          'Decided transcript · For province state and city · place ID '
+              'fixture-place',
         ]) {
           expect(find.text(text), findsWidgets, reason: text);
         }
