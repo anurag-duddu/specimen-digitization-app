@@ -427,14 +427,14 @@ def scientific_name(
     epithets in lower case, with any accents or inner hyphens, or an old
     capitalized epithet; a subspecies or variety marker with its epithet; and a
     bounded author-year authorship. A qualifier right after the genus makes a
-    genus-level identification. A word that ends the name (a clause naming a
-    person, a preposition listed as an end, a listed sex, stage, type-status or
-    nomenclatural word, a listed month, a date) ends the reading, unless an
-    epithet-shaped word follows it. Any other word the reader does not take,
-    the words that change the taxon and the other listed prepositions,
-    articles and conjunctions among them, marks the name read only in part. A
-    word the literal does not write is never sent, and neither is text that is
-    no name (PLAN 4.8)."""
+    genus-level identification. A clause naming a person cuts the literal.
+    Any other word that ends the name (a preposition listed as an end, a listed
+    sex, stage, type-status or nomenclatural word, a listed month, a date) ends
+    the reading, unless an epithet-shaped word follows it. Any other word the
+    reader does not take, the words that change the taxon and the other listed
+    prepositions, articles and conjunctions among them, marks the name read
+    only in part. A word the literal does not write is never sent, and neither
+    is text that is no name (PLAN 4.8)."""
     places = _place_words(place_text)
     words = _words(literal)
     name = _read(words)[0]

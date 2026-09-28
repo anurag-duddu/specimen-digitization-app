@@ -394,12 +394,13 @@ each of its lists holds only the words it lists, so what syntax cannot settle
   marker the reader does not take ("ab.", "f.", "forma", "morph") and a marker
   without its epithet ("ssp. Zus"). The query is the name as far as it was
   read, without the rest, and the match can only be `ambiguous`: the result
-  warns `taxonomy_name_partly_read`, and the lookup records why
-  (`partly_read`: the word, or `place_word` for place text). So "Coccinella
-  7-punctata", "Bombus impatiens?", "Bombus 'impatiens'", "Bombus impa-" at a
-  line's end, "Bombus impatiens / fervidus", "Epipsocus Mt. Apo 1946", "Apis
-  mellifera L." (an author without a year) and "Epipsocus Hagen, 1866 Davao"
-  go to review, never clearing at genus or species.
+  warns `taxonomy_name_partly_read`, and the lookup records why in
+  `partly_read`: the word it could not read, "hybrid", or `place_word` for
+  place text (a doubt on the genus records its qualifier or "?"). So
+  "Coccinella 7-punctata", "Bombus impatiens?", "Bombus 'impatiens'", "Bombus
+  impa-" at a line's end, "Bombus impatiens / fervidus", "Epipsocus Mt. Apo
+  1946", "Apis mellifera L." (an author without a year) and "Epipsocus Hagen,
+  1866 Davao" go to review, never clearing at genus or species.
 - **What syntax cannot settle** (S4's reading): a word in a name's place reads
   as that part of the name, and a list holds only the words it lists.
   - A lone title-case word such as "Davao" or "Werner" reads as a genus. A

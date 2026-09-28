@@ -1634,8 +1634,10 @@ WITHHELD = [
     ("Epipsocus davao 1946", ["Davao"], "Epipsocus"),
     ("Epipsocus davao 1946", ["Davao City"], "Epipsocus"),
     ("Epipsocus (Davao) 1946", ["Davao"], "Epipsocus"),
+    ("Epipsocus (Davao) 1946", ["Davao City"], "Epipsocus"),
     ("Xus yus davao", ["Davao"], "Xus yus"),
     ("Davao", ["Davao"], None),
+    ("Davao", ["Davao City"], None),
     ("Carabus Smithi Lewis, 1900", ["Lewis County"], "Carabus Smithi"),
     # A name part equal to a whole folded literal (the confirmation of 03:31Z).
     ("Epipsocus santa-cruz 1946", ["Santa-Cruz"], "Epipsocus"),
