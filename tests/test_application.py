@@ -595,6 +595,55 @@ def test_the_workflow_lookup_sends_no_place_word_of_the_run(tmp_path):
     assert sent == ["Epipsocus"]
 
 
+@pytest.mark.parametrize(
+    "taxon,sent",
+    [("Epipsocus davao 1946", ["Epipsocus"]), ("Davao", []), ("cf. Epipsocus", [])],
+)
+def test_the_workflow_lookup_withholds_what_it_may_not_send(tmp_path, taxon, sent):
+    # The coordinator's rulings of 03:24Z and 03:31Z on 2026-09-26: a name part
+    # equal to a word of the run's place-field literals, or a genus in doubt,
+    # is never sent, and the name goes to review.
+    asked = []
+
+    def gbif(request):
+        if request.url.path.endswith("/metadata"):
+            return httpx.Response(200, json={"alias": "fixture-index"})
+        asked.append(request.url.params["scientificName"])
+        return httpx.Response(
+            200,
+            json={
+                "usage": {
+                    "key": "K1",
+                    "name": "Epipsocus Hagen, 1866",
+                    "canonicalName": "Epipsocus",
+                    "authorship": "Hagen, 1866",
+                    "rank": "GENUS",
+                    "status": "ACCEPTED",
+                },
+                "classification": [{"rank": "CLASS", "name": "Insecta"}],
+                "diagnostics": {"matchType": "EXACT"},
+            },
+        )
+
+    app = local_app(tmp_path, TOKEN)
+
+    class Gbif(SyntheticAdapters):
+        def lookup(self, name):
+            return GbifTaxonomy(
+                self.blobs, httpx.Client(transport=httpx.MockTransport(gbif))
+            ).lookup(name)
+
+    values = dict(SYNTHETIC_VALUES, taxon=taxon, city="Davao")
+    text = "\n".join(f"{key}: {value}" for key, value in values.items())
+    app.state.workflow.adapters = Gbif(LocalBlobs(tmp_path / "blobs"), text)
+    row = intake(TestClient(app, raise_server_exceptions=False))
+
+    scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+    specimen = SQLiteRepository(tmp_path / "state.sqlite3").get(scope, row["specimen_id"])
+    assert asked == sent
+    assert specimen.run.lookups[-1].status == LookupStatus.AMBIGUOUS
+
+
 def test_review_selects_a_gbif_v2_candidate_by_its_name(tmp_path):
     # GBIF v2 usages carry `name`, not `scientificName`; the review decision
     # selects by `scientificName` (#109 round 2, blocker 3).

@@ -230,10 +230,14 @@ MELLIFERA = usage("Apis mellifera Linnaeus, 1758", "SPECIES")
         ("Xus yus Smith & 1900", "Xus yus"),
         ("Apis mellifera ligustica", "Apis mellifera ligustica"),
         # The coordinator's reading of 01:11Z on 2026-09-26: a qualifier after
-        # the genus is a genus-level identification; before it, a doubt.
+        # the genus is a genus-level identification. Before it, or "?" on the
+        # genus, it leaves the genus in doubt, and nothing is sent (its
+        # confirmation of 03:31Z).
         ("Bombus cf. impatiens", "Bombus"),
-        ("cf. Bombus impatiens", "Bombus impatiens"),
-        ("Bombus? impatiens", "Bombus impatiens"),
+        ("cf. Bombus impatiens", None),
+        ("Bombus? impatiens", None),
+        ("Near Davao 1946", None),
+        ("nr. Davao 1946", None),
         # What syntax cannot settle (HARNESS.md section 6): a word in a name's
         # place reads as that part of the name. A lone title-case word is a
         # genus, a patronym's or a place's ending a capitalized epithet, a
@@ -246,6 +250,19 @@ MELLIFERA = usage("Apis mellifera Linnaeus, 1758", "SPECIES")
         ("Epipsocus (Davao) 1946", "Epipsocus (Davao)"),
         ("Epipsocus Davao, Mindanao 1946", "Epipsocus Davao, Mindanao 1946"),
         ("Epipsocus corteza, Petén 1987", "Epipsocus corteza Petén 1987"),
+        # A person-clause marker or a month the lists do not hold reads by
+        # position: the residual HARNESS.md section 6 states.
+        ("Epipsocus collegit Werner 1946", "Epipsocus collegit Werner 1946"),
+        ("Epipsocus récolté Werner 1946", "Epipsocus récolté Werner 1946"),
+        ("Epipsocus recogido: Werner 1946", "Epipsocus recogido Werner 1946"),
+        ("Epipsocus bestimmt von Werner 1946", "Epipsocus bestimmt von Werner 1946"),
+        ("Epipsocus gesammelt von Werner 1946", "Epipsocus gesammelt von Werner 1946"),
+        ("Epipsocus Juni 1946", "Epipsocus Juni 1946"),
+        ("Epipsocus Juin 1946", "Epipsocus Juin 1946"),
+        ("Epipsocus Okt. 1946", "Epipsocus Okt. 1946"),
+        ("Epipsocus Iunius 1946", "Epipsocus Iunius 1946"),
+        # The Spanish type-status words listed end the name.
+        ("Epipsocus alotipo Davao 1946", "Epipsocus"),
         # Other listed prepositions, articles and conjunctions mark the name,
         # so nothing after them is sent.
         ("Epipsocus bajo corteza, Petén 1987", "Epipsocus"),
@@ -266,9 +283,9 @@ MELLIFERA = usage("Apis mellifera Linnaeus, 1758", "SPECIES")
     ],
 )
 def test_the_query_is_the_scientific_name_the_literal_writes(literal, expected):
-    # Anchored on the leading title-case genus; clauses, places, dates and
-    # collectors are never sent (PLAN 4.8), but for the residual HARNESS.md
-    # section 6 states: "Genus Word Year" reads as authorship.
+    # Anchored on the leading title-case genus. The listed clauses,
+    # prepositions, months and dates are never sent (PLAN 4.8); what syntax
+    # cannot settle is the residual HARNESS.md section 6 states, pinned above.
     assert query_name(literal) == expected
 
 
@@ -595,6 +612,11 @@ def deep(levels):
     return "[" * levels + "]" * levels
 
 
+def raw(body):
+    """A body as JSON text, a lone surrogate escaped as JSON allows it."""
+    return httpx.Response(200, content=json.dumps(body).encode())
+
+
 @pytest.mark.parametrize(
     "body",
     [
@@ -654,6 +676,14 @@ def deep(levels):
                 + "}"
             ).encode(),
         ),
+        raw(gbif("EXACT", dict(MELLIFERA, name="Apis mellifera" + chr(0xD800)))),
+        gbif("EXACT", dict(MELLIFERA, name="Apis mellifera" + chr(0xE000))),
+        gbif("EXACT", dict(MELLIFERA, name="Apis mellifera" + chr(0x0378))),
+        gbif("EXACT", dict(MELLIFERA, name="Apis mellifera" + chr(0x2028))),
+        gbif("EXACT", dict(MELLIFERA, authorship="Linnaeus, 1758" + chr(0x2029))),
+        gbif("EXACT", dict(MELLIFERA, name="Apis mellifera" + chr(0xFE0F))),
+        gbif("EXACT", dict(MELLIFERA, name="   ")),
+        raw(dict(gbif("EXACT", MELLIFERA), diagnostics={"matchType": "EXACT", "note": chr(0xD800)})),
     ],
     ids=[
         "an alternative's diagnostics",
@@ -684,12 +714,21 @@ def deep(levels):
         "a classification name with a control character",
         "a classification rank GBIF does not document",
         "a key given twice",
+        "a name with a lone surrogate",
+        "a name with a private-use character",
+        "a name with an unassigned character",
+        "a name with a line separator",
+        "an authorship with a paragraph separator",
+        "a name with a variation selector",
+        "a name of whitespace only",
+        "a lone surrogate in a field no check reads",
     ],
 )
 def test_a_malformed_gbif_body_is_malformed_response(tmp_path, body):
     result, lookup = run(tmp_path, "Apis mellifera", transport(body))
 
     assert result.outcome == S.MALFORMED == lookup.status
+    assert lookup.model_dump_json()  # The record can be written.
 
 
 def test_a_deeply_nested_supporting_body_is_malformed_and_gbif_still_decides(tmp_path):
@@ -1038,9 +1077,59 @@ SPECIES_XY = usage("Xus yus Smith, 1900", "SPECIES")
             "Epipsocus Hagen, 1866",
         ),
         ("Epipsocus Mindanao, July 1946", gbif("EXACT", EPIPSOCUS), "Mindanao", "Epipsocus"),
-        # The coordinator's reading of 01:11Z: a doubt on the genus goes to review.
-        ("cf. Bombus impatiens", gbif("EXACT", IMPATIENS), "cf", "Bombus impatiens"),
-        ("Bombus? impatiens", gbif("EXACT", IMPATIENS), "?", "Bombus impatiens"),
+        # The steward's review of round 4: words that change the taxon, a lone
+        # "v.", and an epithet-shaped word after an end word mark the name.
+        (
+            "Formica rufa group",
+            gbif("EXACT", usage("Formica rufa Linnaeus, 1761", "SPECIES")),
+            "group",
+            "Formica rufa",
+        ),
+        (
+            "Culex pipiens complex",
+            gbif("EXACT", usage("Culex pipiens Linnaeus, 1758", "SPECIES")),
+            "complex",
+            "Culex pipiens",
+        ),
+        (
+            "Bombus lucorum agg.",
+            gbif("EXACT", usage("Bombus lucorum (Linnaeus, 1761)", "SPECIES")),
+            "agg",
+            "Bombus lucorum",
+        ),
+        (
+            "Bombus terrestris sensu lato",
+            gbif("EXACT", usage("Bombus terrestris (Linnaeus, 1758)", "SPECIES")),
+            "sensu",
+            "Bombus terrestris",
+        ),
+        (
+            "Bombus impatiens auct. nec Cresson",
+            gbif("EXACT", IMPATIENS),
+            "auct",
+            "Bombus impatiens",
+        ),
+        ("Bombus impatiens et fervidus", gbif("EXACT", IMPATIENS), "et", "Bombus impatiens"),
+        (
+            "Carabus auratus v. lotharingus",
+            gbif("EXACT", usage("Carabus auratus Linnaeus, 1761", "SPECIES")),
+            "v",
+            "Carabus auratus",
+        ),
+        (
+            "Coccinella 7 punctata",
+            gbif("EXACT", usage("Coccinella Linnaeus, 1758", "GENUS")),
+            "punctata",
+            "Coccinella",
+        ),
+        (
+            "Coccinella 7-\npunctata",
+            gbif("EXACT", usage("Coccinella Linnaeus, 1758", "GENUS")),
+            "punctata",
+            "Coccinella",
+        ),
+        ("Bombus ♀ impatiens", gbif("EXACT", BOMBUS), "impatiens", "Bombus"),
+        ("Xus yus de zus", gbif("EXACT", SPECIES_XY), "zus", "Xus yus"),
         # Section 6: other listed words, and a word after a comma, mark the name.
         ("Epipsocus bajo corteza, Petén 1987", gbif("EXACT", EPIPSOCUS), "bajo", "Epipsocus"),
         ("Epipsocus près de Davao 1946", gbif("EXACT", EPIPSOCUS), "près", "Epipsocus"),
@@ -1227,13 +1316,95 @@ def test_an_alternative_that_is_the_usage_itself_is_no_homonym(tmp_path):
     assert run(tmp_path, "Apis mellifera", transport(reply)).result.outcome == S.SUCCESS
 
 
-@pytest.mark.parametrize("word", sorted(CLAUSES | NEVER_EPITHETS))
-def test_every_word_that_ends_the_name_ends_it(word):
+@pytest.mark.parametrize("word", sorted(CLAUSES))
+def test_every_person_clause_cuts_the_literal(word):
     after_genus = scientific_name(f"Xus {word} zus")
     after_species = scientific_name(f"Xus yus {word} zus")
 
     assert (after_genus.query, after_genus.partly_read) == ("Xus", None)
     assert (after_species.query, after_species.partly_read) == ("Xus yus", None)
+
+
+@pytest.mark.parametrize("word", sorted(NEVER_EPITHETS))
+def test_every_word_that_ends_the_name_ends_it(word):
+    # Nothing after it is read, but an epithet-shaped word after it marks the
+    # name (the steward's review of round 4).
+    for literal, query, why in (
+        (f"Xus {word} Davao", "Xus", None),
+        (f"Xus yus {word} 1946", "Xus yus", None),
+        (f"Xus yus {word} zus", "Xus yus", "zus"),
+    ):
+        name = scientific_name(literal)
+        assert (name.query, name.partly_read) == (query, why), literal
+
+
+@pytest.mark.parametrize(
+    "word",
+    ["June", "Aug.", "julio", "VII", "1946", "13-5-48", "♀", "female", "paratype", "in", "de", "sp."],
+)
+def test_an_epithet_shaped_word_after_an_end_word_marks_the_name(word):
+    # The steward's review of round 4: the word may be the name's own.
+    name = scientific_name(f"Xus yus {word} zus")
+
+    assert (name.query, name.partly_read) == ("Xus yus", "zus")
+
+
+# Words that change the taxon (the steward's review of round 4): a group, a
+# complex or an aggregate, a concept, "et" joining two names, and a lone "v.".
+CONCEPTS = [
+    "group",
+    "gr.",
+    "grp.",
+    "grupo",
+    "complex",
+    "complejo",
+    "agg.",
+    "aggr.",
+    "sensu",
+    "auct.",
+    "auctt.",
+    "auctorum",
+    "et",
+    "v.",
+    "V",
+]
+
+
+@pytest.mark.parametrize("word", CONCEPTS)
+def test_a_word_that_changes_the_taxon_marks_the_name(word):
+    after_genus = scientific_name(f"Xus {word} Davao")
+    after_species = scientific_name(f"Xus yus {word} zus")
+
+    assert (after_genus.query, after_genus.partly_read) == ("Xus", word.rstrip("."))
+    assert (after_species.query, after_species.partly_read) == (
+        "Xus yus",
+        word.rstrip("."),
+    )
+
+
+@pytest.mark.parametrize(
+    "literal,why",
+    [
+        ("cf. Bombus impatiens", "cf"),
+        ("Bombus? impatiens", "?"),
+        ("Near Davao 1946", "near"),
+        ("nr. Davao 1946", "nr"),
+    ],
+)
+def test_a_doubt_on_the_genus_sends_nothing_and_goes_to_review(tmp_path, literal, why):
+    # The coordinator's reading of 01:11Z and its confirmation of 03:31Z on
+    # 2026-09-26 (coordinator.md:504, :531): with the genus in doubt, nothing
+    # is sent, and the name goes to review as ambiguous.
+    requests = []
+
+    result, lookup = run(
+        tmp_path, literal, transport(gbif("EXACT", IMPATIENS), requests=requests)
+    )
+
+    assert requests == []
+    assert result.outcome == S.AMBIGUOUS == lookup.status
+    assert result.warnings == ["taxonomy_name_partly_read"]
+    assert lookup.metadata["partly_read"] == why
 
 
 @pytest.mark.parametrize(
@@ -1386,9 +1557,15 @@ PLACE_WORDS = [
     # A real author who shares a word with the place text loses it.
     ("Xus yus Davao, 1900", ["Davao"], "Xus yus"),
     ("Xus yus Davao-Smith, 1900", ["Davao"], "Xus yus"),
-    # Read again until the authorship holds no place word: once "Davao"
-    # leaves, "Hawaii 1900" reads as authorship, and "Hawaii" leaves too.
+    # Once "Davao" leaves, "Hawaii 1900" would read as authorship: the drop
+    # changes the name, which is asked as first read, and "Hawaii" is withheld
+    # as place text (the coordinator's ruling of 03:24Z).
     ("Carabus Hawaii Davao, 1900", ["Hawaii", "Davao"], "Carabus"),
+    # Read again until the authorship holds no place word: once "1900" leaves,
+    # "Smith, Davao, 1901" reads as authorship, and "Davao" leaves too.
+    ("Xus yus Smith, 1900 Davao, 1901", ["Davao 1900"], "Xus yus Smith, 1901"),
+    # A Latinized epithet is no place word (the coordinator's ruling of 03:24Z).
+    ("Epipsocus davaoensis", ["Davao"], "Epipsocus davaoensis"),
     # What remains goes through the rules above: a leading "&" joins no
     # author, so the name is read only in part.
     ("Xus yus Davao & Smith, 1900", ["Davao"], "Xus yus"),
@@ -1419,6 +1596,81 @@ def folded(text):
         c if c.isalnum() else " " for c in decomposed if not unicodedata.combining(c)
     )
     return set(kept.split())
+
+
+# The coordinator's ruling of 03:24Z on 2026-09-26, word by word as confirmed
+# at 03:31Z: a name part equal to the reading's place text is withheld; and a
+# drop from the authorship that changes the name marks it too (the steward's
+# review of round 4).
+WITHHELD = [
+    ("Epipsocus davao 1946", ["Davao"], "Epipsocus"),
+    ("Epipsocus davao 1946", ["Davao City"], "Epipsocus"),
+    ("Epipsocus (Davao) 1946", ["Davao"], "Epipsocus"),
+    ("Xus yus davao", ["Davao"], "Xus yus"),
+    ("Davao", ["Davao"], None),
+    ("Carabus Smithi Lewis, 1900", ["Lewis County"], "Carabus Smithi"),
+]
+
+
+@pytest.mark.parametrize("literal,places,query", WITHHELD)
+def test_place_text_in_the_name_is_withheld_and_the_name_goes_to_review(
+    tmp_path, literal, places, query
+):
+    requests = []
+
+    result, lookup = run(
+        tmp_path,
+        literal,
+        transport(gbif("EXACT", EPIPSOCUS), requests=requests),
+        place_text=places,
+    )
+
+    assert result.outcome == S.AMBIGUOUS == lookup.status
+    assert "taxonomy_name_partly_read" in result.warnings
+    assert lookup.metadata["partly_read"] == "place_word"
+    sent = [
+        r.url.params["scientificName"]
+        for r in requests
+        if r.url.path == "/v2/species/match"
+    ]
+    assert sent == ([query] if query else [])
+    words = set().union(*(folded(place) for place in places))
+    for request in requests:
+        assert not words & folded(unquote_plus(str(request.url)) + " " + request.content.decode())
+
+
+def test_the_place_text_is_a_sequence_of_texts(tmp_path):
+    # A bare string would be read letter by letter (the steward's review of
+    # round 4).
+    with pytest.raises(TypeError):
+        scientific_name("Epipsocus Davao, 1946", "Davao")
+    with pytest.raises(TypeError):
+        run(
+            tmp_path,
+            "Epipsocus Davao, 1946",
+            transport(gbif("EXACT", EPIPSOCUS)),
+            place_text="Davao",
+        )
+
+
+def test_an_index_metadata_body_that_cannot_be_stored_is_malformed(tmp_path):
+    # The steward's review of round 4: a lone surrogate would stop the record
+    # from being written, and the specimen with it.
+    def handler(request):
+        if request.url.path.endswith("/metadata"):
+            return raw({"alias": chr(0xD800)})
+        if request.url.host == "api.gbif.org":
+            return httpx.Response(200, json=gbif("EXACT", MELLIFERA))
+        if request.url.host == "verifier.globalnames.org":
+            return httpx.Response(200, json=GNV_EXACT)
+        return httpx.Response(200, json=COL_ACCEPTED)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    result, lookup = run(tmp_path, "Apis mellifera", client)
+
+    assert result.outcome == S.MALFORMED == lookup.status
+    assert lookup.model_dump_json()
 
 
 @pytest.mark.parametrize("literal,places,query", PLACE_WORDS[:2])
