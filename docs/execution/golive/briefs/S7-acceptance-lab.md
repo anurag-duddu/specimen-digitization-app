@@ -73,7 +73,8 @@ then 3, one at a time. Each failure becomes a GitHub issue (label `golive` plus
 the workstream; no secrets or identities) and a message to the owning session
 and the coordinator. Rerun after the fix merges. Offer recorded real responses
 to S4 as test fixtures, never a Google geocoding response beyond the place ID,
-the outcome and the fingerprint (G26). Declare the pilot's import not
+the outcome and the fingerprint (G26), and never a recorded request's URL,
+which carries the key, in a fixture or a lab folder. Declare the pilot's import not
 sensitive, on the owner's verified classification of the ten (G31); the
 worker never sees a record declared Sensitive (PLAN section 2.2).
 
@@ -84,8 +85,47 @@ owner's Chrome with permission). Check the SQL rows (read-only), the Logfire
 trace (every stage, prompts visible) and the thread in the app; write the
 report; rerun until the run is flawless; then the next specimen.
 
+**T4a. The pilot reference file** (coordinator ruling on S2's offline-checker
+question, sent to you and to S2 at 01:15Z on 2026-09-25; how it's kept and
+checked, coordinator rulings of 04:17Z on 2026-09-25 on #200's final review,
+of 05:40Z on #203's and of 06:37Z on #206's). Once PLAN section 8 step 2 has
+imported the ten, and before S2's offline checker reads them, write a private
+file with schema `specimen-pilot-reference/v1`: the ordinal, the specimen
+UUIDs in the established source order, the one scope, and each original's
+bucket, object, generation, SHA-256 and size, plus the application-source
+binding. It has no authorization fields: no `status`,
+`authorization_reference` or frozen inventory digest. Build it from the
+import's own records and a read-only object listing.
+
+- It carries scope ids, so it lives under `~/specimen-release-private/` and
+  never enters the repository, a PR, an issue, a message or a log (PLAN
+  section 7.7).
+- Write it the way S2's checker reads it (`private_manifest` in
+  `scripts/qa/live/acceptance.py`): outside Git, a regular file owned by the
+  account that runs the checker, mode 600, no symlink, at most 1 MiB. Its
+  bytes are frozen once you send its SHA-256.
+- Tell the coordinator its path and SHA-256. The coordinator reads the file
+  itself against DoD-4's subject ids, hashes the bytes it read and compares
+  that hash with the SHA-256 you sent, so the bytes it checked are the bytes
+  S2's checker then pins by that digest on the command line; the digest proves
+  the bytes, not the contents.
+- Cloud reads need the owner's gcloud sign-in. If it has expired, write the
+  sign-in into `~/specimen-golive/OWNER_ACTIONS.md` and message the
+  coordinator (PLAN section 7.6); don't ask the owner directly.
+
 Record every run's cost in its report and keep the program within G9; the
-lab's share is USD 5. Your expected label boxes for the ten are the ground
+lab's share is USD 5, reserved and settled under PLAN section 4.3's mechanism
+with the lab's own ledger; until that ledger exists, your tally counts each
+run's worst case before it and every unknown outcome at its full bound
+(coordinator, 2026-09-24). Expected outcomes follow G35 to G42: the six
+McKinley slides go to needs human review until a curator confirms their place
+(G36), a filled field carries its layer and evidence (G37, G38), a stated
+elevation fills both ends and the other unit by the exact factor, as derived
+values (G41; the Guatemala slides' "4800 ft"), and no Google
+coordinate appears in any row, trace, log or lab folder (G35). All ten still go
+to review, because no label states `date_identified`, which nothing can derive
+(G42); G43 to G45 apply as `~/specimen-golive/reports/expected-outcomes.md`
+records. Your expected label boxes for the ten are the ground
 truth for the lane's automatic coverage check (G15): report its hits and misses
 per subject. Where the specification is silent or contradictory, stop and ask
 the coordinator; do not decide (G5).

@@ -11,6 +11,7 @@ import 'dart:typed_data';
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
+import '../wall_time.dart';
 import 'risk_meter.dart';
 import 'specimen_status.dart';
 import 'status_chip.dart';
@@ -48,10 +49,21 @@ const List<String> _months = <String>[
 
 String _two(int value) => value.toString().padLeft(2, '0');
 
-/// The citable form: `13 Sep 2026, 14:32 CDT`.
-String absoluteTime(DateTime moment) =>
-    '${moment.day} ${_months[moment.month - 1]} ${moment.year}, '
-    '${_two(moment.hour)}:${_two(moment.minute)} ${moment.timeZoneName}';
+/// The citable form on the reviewer's wall clock, with its zone: `13 Sep
+/// 2026, 14:32 CDT` (02 section 4.14). An instant parsed in UTC, as the
+/// server sends one, reads on that clock too, so no reviewer converts zones
+/// in their head (design/01 H1.9; coordinator ruling for S6, 2026-09-24).
+String absoluteTime(DateTime instant) {
+  final WallTime wall = wallTime(instant);
+  return '${_date(wall)}, ${_two(wall.hour)}:${_two(wall.minute)} ${wall.zone}';
+}
+
+/// The day of [instant] on the reviewer's wall clock, the way the citable
+/// form spells it: `13 Sep 2026`.
+String absoluteDate(DateTime instant) => _date(wallTime(instant));
+
+String _date(WallTime wall) =>
+    '${wall.day} ${_months[wall.month - 1]} ${wall.year}';
 
 /// A queue row: thumbnail, identifier, reason, status, risk and age.
 ///
