@@ -99,3 +99,15 @@ def test_the_lanes_configuration_scrubs_the_key(monkeypatch):
     assert options["scrubbing"].extra_patterns == [observability.KEY_QUERY]
     record = logging.getLogger("lane").makeRecord("lane", logging.INFO, __file__, 1, URL, (), None)
     assert record.getMessage() == SCRUBBED
+
+
+def test_the_bounded_configuration_scrubs_the_key_too(monkeypatch):
+    # Production's bounded export returns before the default path's tail, and
+    # its log records reach Cloud Logging all the same.
+    monkeypatch.setattr(observability, "_configured_settings", None)
+    monkeypatch.setattr(logging, "_logRecordFactory", logging.getLogRecordFactory())
+    monkeypatch.setenv("SPECIMEN_TRACE_EXPORT_MODE", "bounded-v1")
+    monkeypatch.setattr(observability, "_configure_bounded", lambda settings, **kwargs: settings)
+    observability.configure_observability()
+    record = logging.getLogger("lane").makeRecord("lane", logging.INFO, __file__, 1, URL, (), None)
+    assert record.getMessage() == SCRUBBED
