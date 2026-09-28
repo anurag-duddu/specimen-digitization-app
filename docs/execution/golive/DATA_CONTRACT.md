@@ -109,7 +109,7 @@ reads them.
 | 8 Queue | `Run.disposition`, `Run.reasons`, `Run.findings`, `Run.profile.policy_version`, `Run.fields`, `Run.field_groups` | `RecordVersion`, `ResolvedField` with `fieldGroup`, a hard `ValidationFinding` per reason code and a warning or info one per `Run.findings` entry; `Specimen.disposition` as today |
 | 9 Linkage | ids throughout | every row carries `runId` or a parent that does |
 | Trace | `Run.trace_id` (S3) | `PipelineRun.traceId` |
-| Profile | `Run.profile`, `Run.profile_snapshot`, `Run.dependencies["profile_snapshot_sha256"]` | `ProfileVersion`, then `PipelineRun`, once `profile_snapshot` is non-empty |
+| Profile | `Run.profile`, `Run.profile_snapshot`, `Run.profile_registry_version`, `Run.dependencies["profile_snapshot_sha256"]` and `["profile_registry_version"]` | `ProfileVersion`, then `PipelineRun`, once the dependencies pin the current snapshot: its digest and its registry version. Classify chooses the profile and pins again, and each row is written once (#146 round 1). |
 | Attempts | `Run.attempts`, `Run.blocker`, `Run.next_retry_at` | `Checkpoint` per step attempt |
 | Human decisions | `DecisionInput` handled in `api.py` | `ReviewDecision`; the real action in `AuditEvent` through `SaveSpecimenV3`'s `action` |
 
@@ -218,8 +218,10 @@ above do not change.
 - `Run.coverage_check` (G15): the check's version, outcome, region count, the
   full-image cross-check's result, reason codes, the evidence blob's ref and
   digest, and when it ran.
-- The profile identity after classify: `Run.profile.id`, `Run.profile.version`,
-  `Run.profile_snapshot`, `Run.dependencies["profile_snapshot_sha256"]`.
+- The profile identity after classify, as `pin_dependencies` pins it again:
+  `Run.profile.id`, `Run.profile.version`, `Run.profile_snapshot`,
+  `Run.profile_registry_version`, and `Run.dependencies["profile_snapshot_sha256"]`
+  and `["profile_registry_version"]`.
 
 ### 4.2 From the first pass (S4), on each region's `Transcript`
 

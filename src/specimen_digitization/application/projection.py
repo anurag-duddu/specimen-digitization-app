@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from .domain import Observation, Run, Specimen, Transcript
-from .storage import canonical_json
+from .storage import canonical_json, digest
 
 NAMESPACE = uuid.uuid5(
     uuid.NAMESPACE_URL, "urn:fieldmuseum:specimen-digitization:projection:v1"
@@ -66,8 +66,9 @@ def writes(specimen: Specimen, locate: Locate, size: Size, actor: str) -> list[W
     """Every row the specimen supports so far, each after the rows it references."""
     result = [_original(specimen, locate)]
     run = specimen.run
-    if not run.profile_snapshot:
-        # Until the profile is pinned the run has only the default profile.
+    if not run.profile_snapshot or not _pins_its_profile(run):
+        # Until the dependencies pin this profile snapshot, the run has only the original: its rows
+        # are written once, and classify replaces the profile before it pins again (section 11).
         return result
     profile = _profile_version(specimen)
     result += [profile, _run(specimen, profile.variables["id"])]
@@ -111,6 +112,18 @@ def _original(specimen: Specimen, locate: Locate) -> Write:
             "acquisitionMethod": "intake",
             "uploaderUid": asset.uploader,
         },
+    )
+
+
+def _pins_its_profile(run) -> bool:
+    """Whether the run's dependencies pin its current profile snapshot and registry version.
+
+    Classify chooses the profile and re-queues pin_dependencies, so until that pin the
+    dependencies still name the profile from before classification. Dependencies without the
+    pin raise, and the pass is not computed."""
+    return (
+        run.dependencies["profile_snapshot_sha256"] == digest(run.profile_snapshot)
+        and run.dependencies["profile_registry_version"] == run.profile_registry_version
     )
 
 
