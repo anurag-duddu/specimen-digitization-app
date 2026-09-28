@@ -13016,3 +13016,39 @@ because the hooks runner hands a native asset hook only `PATH`.
   - S7's #83, merged as d663a0c before this pull request, makes `scripts/lab/lab_checks.py` fail a run whose records carry the removed adapter's identity (`gbif_gadm`, or a `gbif-gadm` version), the coordinator's lab item (coordinator.md:434).
   - PLAN.md's ownership list and the S4 brief still name `geography.py` (the coordinator's next plan pull request).
   - S8's research probe and `docs/GBIF.md` still mention GADM; S8's open #217 drops the probe's call.
+### 2026-09-28 — Go-live projection writer (S5 T2a, #146): ready for its turn after #99
+
+- Task: the steward's routing on 2026-09-28.
+  - First, about 02:17Z: merge main ahead of the turn and resolve #146's conflicts.
+  - Then, after S2's #99 merged as `734eb1c` at 05:13Z: merge main again, update S2's `scripts/ci/test_schema_gate.py` for step 2, and ask S2 for a sign-off naming the final head.
+- Branch/worktree: `golive/data-projection` (#146) in `.claude/worktrees/epic-rhodes-d168f3`.
+- Commits:
+  - `d3ba600`: the contract's GBIF rule, with its own entry.
+  - `6d6b817` and `abe5a43`: merges of main `54ac2ff` and `734eb1c`.
+  - `76269ac`: S2's schema gate test.
+  - This entry.
+- Outcome:
+  - Both merges conflicted only in `docs/SESSION_LEARNINGS.md`, which its union driver resolves; each side's lines survive, in order. GitHub's mergeability check does not apply the driver, so it showed #146 as conflicting.
+  - S2's `test_schema_gate.py` built the schema from before the swap by removing `source_asset_specimen_object` from the committed schema. On main that schema held step 1.
+    - #146 commits step 2, so the removal left neither constraint, and collection failed.
+    - The test now puts `specimen_unique_1` back in the new constraint's place, and checks step one from there.
+    - It also admits the committed schema as step two.
+    - S2 reviewed the change by message. Its sign-off comment will name the final head.
+  - The contract's GBIF rule (`d3ba600`) was re-checked at #109's `cd7ae66`. The rule functions are unchanged, and the only change in the candidates is a cap on the alternatives.
+- Validation actually run at `76269ac`, each gate started at a one-minute load under 12:
+  - `tests/`: 3565 passed, 32 skipped;
+  - `scripts/`: 1882 passed, 51 skipped;
+  - `test-postgres.sh`: exit 0, with 79 PASS lines;
+  - the opt-in emulator test: 1 passed;
+  - `check_ui_strings.py`: 0 violations;
+  - `schema_gate.py` against main's `dataconnect/` as the live side: `additive`.
+- Durable learnings:
+  - (1) GitHub's mergeability check ignores `.gitattributes` merge drivers.
+    - A pull request whose only conflict is `SESSION_LEARNINGS.md` shows as conflicting, while a local merge with the union driver is clean.
+    - `git merge-tree --write-tree --name-only` tells the two apart without touching a worktree.
+  - (2) A test that derives its fixtures from the committed tree pins the tree's state.
+    - S2's test assumed step 1 was committed, so the pull request that commits step 2 had to move the derivation with it.
+    - `gate(STEP1, SCHEMA)` now pins that the committed tree is an admitted step two.
+- Remaining follow-ups:
+  - At "#146 is next": merge main once, run the gates again and push.
+  - Then send "PR #146 ready", and get S2's sign-off comment naming that head.
