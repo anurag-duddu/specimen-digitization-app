@@ -40,9 +40,14 @@ def contract(*rows):
     return "### 3.3 Relaxed constraints\n\n| Constraint | Change | Why |\n|---|---|---|\n" + "".join(f"| {row} |\n" for row in rows)
 
 
-def gate(*sources):
+# A table a page would not render as section 3.3's, placed before the visible one.
+HIDDEN = "| Constraint | Change | Why |\n|---|---|---|\n| `Leak.b` | drop `NOT NULL` | hidden |\n"
+MARKUP = "relaxed-constraints section holds markup a page renders differently"
+
+
+def gate(*sources, **options):
     """The gate with the fixture contract's relaxations; the real contract has a test of its own."""
-    return M.check_additive(*sources, relaxations=M.parse_relaxations(CONTRACT))
+    return M.check_additive(*sources, relaxations=M.parse_relaxations(CONTRACT), **options)
 
 
 BASE = r'''# A comment with { braces } and "quotes" never counts.
@@ -106,6 +111,8 @@ mutation AddRegion($organizationId: UUID!, $actorUid: String!, $id: UUID!) @auth
 }
 '''
 MEMBERSHIP = 'organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }'
+LIST_CHECK = '''@check(expr: "this.active && (vars.afterId == null || vars.afterId.matches('^[a-f]{8}$'))")'''
+INSERT = "  labelRegion_insert(data: {organizationId: $organizationId, id: $id})\n"
 # Representative pieces of the pull request #88 data contract change.
 COMPARISON = r'''
 type ReadingComparison @table(key: ["organizationId", "collectionId", "id"]) @unique(indexName: "reading_comparison_pair", fields: ["organizationId", "collectionId", "runId", "regionId", "leftObservationId", "rightObservationId"]) {
@@ -156,7 +163,6 @@ def check(schema=BASE, connector=OPS):
 
 ACCEPTED = {
     "new table": (BASE + COMPARISON, OPS),
-    "new view": (BASE + 'type Other @view(sql: "SELECT 1 AS one") {\n  one: Int\n}\n', OPS),
     "new nullable fields with a reference over a new field": (edit(BASE, "  note: String\n", "  note: String\n  regionId: UUID\n"
         '  region: LabelRegion @ref(constraintName: "asset_region", fields: ["organizationId", "regionId"])\n'
         "  score: Float @default(value: 0.5)\n  labels: [String!] @index\n"), OPS),
@@ -171,9 +177,12 @@ ACCEPTED = {
         edit(edit(OPS, "(\n  $organizationId: UUID!, $actorUid: String!,\n  $afterId: String = null\n)",
                   "($organizationId: UUID! $actorUid: String! $afterId: String = null)"),
              "  query @redact {", "  query @redact { # membership first {")),
-    # Copies of the existing operations under new names, plus one more mutation.
+    # Copies of the existing operations under new names, the query's check made the plain one, plus one more mutation.
     "new operations at NO_ACCESS with the membership check": (
-        BASE, OPS + NEW_OP + OPS.replace("ListAssets", "ListAssetsV2").replace("AddAsset", "AddAssetV2")),
+        BASE, OPS + NEW_OP + edit(OPS, LIST_CHECK, '@check(expr: "this.active")').replace("ListAssets", "ListAssetsV2")
+        .replace("AddAsset", "AddAssetV2")),
+    "a membership check with a message": (BASE, OPS + edit(NEW_OP, '@check(expr: "this.active")',
+                                                            '@check(message: "not a member", expr: "this.active == true")')),
 }
 
 
@@ -220,6 +229,16 @@ SCHEMA_REFUSED = [
     ("@table key changed", edit(BASE, '@table(key: "id")', '@table(key: ["id", "provider"])'), ["ModelObservation: @table key or name changed"]),
     ("view changed", edit(BASE, "AS b --", "AS c --"), ["AssetListing: view changed"]),
     ("view removed", drop(BASE, r"type AssetListing .*?\n}\n"), ["AssetListing: view removed or renamed"]),
+    # PLAN 4.4 admits new tables and nullable columns; a view or an SQL default would run its own SQL (#99 review).
+    ("new view", BASE + 'type Other @view(sql: "SELECT 1 AS one") {\n  one: Int\n}\n', ["Other: new view"]),
+    ("new view carrying a second statement", BASE + 'type Other @view(sql: "SELECT 1 AS one; DROP TABLE public.source_asset")'
+     ' {\n  one: Int\n}\n', ["Other: new view"]),
+    ("new view over a system catalog", BASE + 'type Other @view(name: "pg_roles") {\n  rolname: String\n}\n',
+     ["Other: new view"]),
+    ("new field with an SQL default", edit(BASE, "  note: String\n", '  note: String\n  score: Float @default(sql: "1")\n'),
+     ["SourceAsset.score: new field with an SQL default"]),
+    ("new table with an SQL default", BASE + 'type Other @table {\n  id: UUID! @default(sql: "gen_random_uuid()")\n}\n',
+     ["Other.id: new field with an SQL default"]),
 ]
 
 
@@ -250,6 +269,22 @@ CONNECTOR_REFUSED = [
      ["AddRegion: new operation does not declare $actorUid: String!"]),
     ("actor with a default", OPS + edit(NEW_OP, "$actorUid: String!", '$actorUid: String! = "someone"'),
      ["AddRegion: new operation does not declare $actorUid: String!"]),
+    # #99's review: presence alone admitted each of these.
+    ("NO_ACCESS only on a variable", OPS + edit(NEW_OP, "$id: UUID!) @auth(level: NO_ACCESS)", "$id: UUID! @auth(level: "
+     "NO_ACCESS))"), ["AddRegion: new operation not at @auth(level: NO_ACCESS)"]),
+    ("a membership check anyone passes", OPS + edit(NEW_OP, '@check(expr: "this.active")', '@check(expr: "true")'),
+     ["AddRegion: new operation's organizationMember @check is not the active-member check"]),
+    ("an optional membership check", OPS + edit(NEW_OP, '@check(expr: "this.active")', '@check(expr: "this.active", '
+     'optional: true)'), ["AddRegion: new operation's organizationMember @check is not the active-member check"]),
+    ("a membership check with more conditions", OPS + edit(OPS, LIST_CHECK, LIST_CHECK).replace("ListAssets", "ListAssetsV2")
+     .replace("AddAsset", "AddAssetV2"), ["ListAssetsV2: new operation's organizationMember @check is not the active-member "
+                                          "check"]),
+    ("a mutation without @transaction", OPS + edit(NEW_OP, " @transaction", ""), ["AddRegion: new mutation without "
+                                                                                  "@transaction"]),
+    ("a write before the membership check", OPS + edit(edit(NEW_OP, INSERT, ""), "  query @redact {", INSERT + "  query @redact {"),
+     ["AddRegion: new mutation writes before the organizationMember @check"]),
+    ("a delete of every row", OPS + edit(NEW_OP, INSERT, "  labelRegion_deleteMany(all: true)\n"),
+     ["AddRegion: new operation writes every row"]),
 ]
 
 
@@ -272,6 +307,28 @@ def test_protected_keys_are_fixed_and_only_a_listed_column_drops_not_null():
     assert gate(STRICT_LOCATOR, SCHEMA, CONNECTOR, CONNECTOR) == []
     assert M.check_additive(STRICT_LOCATOR, SCHEMA, CONNECTOR, CONNECTOR, relaxations={}) == [
         "EvidenceItem.locator: NOT NULL dropped outside the named relaxations"]
+
+
+def nullable(schema, table, field):
+    """The schema with one table's field made nullable."""
+    text = schema["schema.gql"]
+    block = re.search(rf"\ntype {table} @table.*?\n}}\n", text, re.S).group(0)
+    return {**schema, "schema.gql": edit(text, block, re.sub(rf"(\n  {field}: \w+)!", r"\1", block, count=1))}
+
+
+@pytest.mark.parametrize("column", ["PipelineRun.inputSha256", "Checkpoint.inputSha256", "EvidenceItem.rawAssetId",
+                                    "ModelObservation.promptVersion"])
+def test_trn005_provenance_keeps_not_null_on_every_table_that_carries_it(column):
+    # PLAN 4.4: `rawAssetId`, `promptVersion` and `inputSha256` "on every table that carries them" (#99 review).
+    assert M.PROVENANCE == {"rawAssetId", "promptVersion", "inputSha256"}
+    types = M.parse_schema(SCHEMA)
+    assert all(types[table]["fields"][field]["non_null"] for table, field in (
+        ("PipelineRun", "inputSha256"), ("Checkpoint", "inputSha256"), ("EvidenceItem", "rawAssetId"),
+        ("ModelObservation", "rawAssetId"), ("ModelObservation", "promptVersion"), ("ModelObservation", "inputSha256")))
+    table, field = column.split(".")
+    listed = M.parse_relaxations(contract(f"`{column}` | drop `NOT NULL` | a reason the gate never accepts here"))
+    assert M.check_additive(SCHEMA, nullable(SCHEMA, table, field), CONNECTOR, CONNECTOR, relaxations=listed) == [
+        f"{column}: NOT NULL dropped on a key, unique or provenance field"]
 
 
 @pytest.mark.parametrize(("column", "old"), [
@@ -310,11 +367,32 @@ def test_the_contract_table_names_each_relaxed_column_with_its_reason():
     (contract("`Leak.b` `C.d` | drop `NOT NULL` | why"), "malformed relaxed column name"),
     (contract("`Leak.b` | drop `NOT NULL` |  "), "empty relaxation reason"),
     (contract("`Leak.b` | drop `NOT NULL` | why", "`C.d` and `Leak.b` | drop `NOT NULL` | why"), "duplicate relaxed column"),
+    # #99's review: a table GitHub never shows as the section's first table must not be the one the gate reads.
+    (contract("`A.b` | drop `NOT NULL` | why").replace("\n\n|", "\n\n<!--\n" + HIDDEN + "-->\n\n|", 1), MARKUP),
+    (contract("`A.b` | drop `NOT NULL` | why").replace("\n\n|", "\n\n```md\n" + HIDDEN + "```\n\n|", 1), MARKUP),
+    (contract("`A.b` | drop `NOT NULL` | why").replace("\n\n|", "\n\n~~~\n" + HIDDEN + "~~~\n\n|", 1), MARKUP),
+    (contract("`A.b` | drop `NOT NULL` | why").replace("\n\n|", "\n\n" + "".join(f"    {line}\n" for line in HIDDEN.splitlines())
+                                                        + "\n|", 1), MARKUP),
+    (contract("`A.b` | drop `NOT NULL` | why").replace("\n\n|", "\n\n<div>\n\n" + HIDDEN + "\n</div>\n\n|", 1), MARKUP),
+    (contract("`A.b` | drop `NOT NULL` | why", "`C.d` | drop `NOT NULL` | why").replace(" |\n| `C", " | | `C"), MARKUP),
+    (contract("`A.b` | drop `NOT NULL` | why", "`C.d` | drop `NOT NULL` | why").replace(" |\n| `C", " |\x85| `C"), MARKUP),
+    (contract("`A.b` | drop `NOT NULL` | why", "`C.d` | drop `NOT NULL` | why").replace(" |\n| `C", " |\f| `C"), MARKUP),
+    (contract("`A.b` | drop `NOT NULL` | why\t"), MARKUP),
 ], ids=["no heading", "a second heading", "no table in the section", "another header", "no separator row", "a short row",
-        "lower-case table", "unquoted name", "names without a separator", "empty reason", "duplicate column"])
+        "lower-case table", "unquoted name", "names without a separator", "empty reason", "duplicate column",
+        "a table in an HTML comment", "a fenced table", "a tilde-fenced table", "an indented table", "a table in an HTML block",
+        "a line separator", "a next-line character", "a form feed", "a tab"])
 def test_a_malformed_contract_section_fails_closed_without_values(text, message):
     with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
         M.parse_relaxations(text)
+
+
+def test_the_contract_section_is_read_as_github_renders_it():
+    # A carriage return alone ends a line for GitHub too, so both rows are the table's; markup elsewhere is not read.
+    assert set(M.parse_relaxations(contract("`A.b` | drop `NOT NULL` | why", "`C.d` | drop `NOT NULL` | why").replace(
+        " |\n| `C", " |\r| `C"))) == {("A", "b"), ("C", "d")}
+    assert set(M.parse_relaxations("<!-- elsewhere -->\n```\ncode\n```\n" + contract("`A.b` | drop `NOT NULL` | why")
+                                   + "\n## 4. Next\n\n<!-- after -->\n")) == {("A", "b")}
 
 
 def test_the_gate_reads_the_merged_trees_contract_by_default(tmp_path, monkeypatch):
@@ -342,12 +420,13 @@ SIX_UNIQUE = (' @unique(indexName: "source_asset_specimen_object", fields: ["org
 PRE = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], SIX_UNIQUE, "")}
 WHY, REMOVED, NEW_OVER = ("SourceAsset: @unique specimen_unique_1 ", "SourceAsset: type-level @unique removed or changed",
                           "SourceAsset: new type-level @unique over an existing field")
+READ_BACK = WHY + "is dropped only after the release reads the live database back"
 
 
-def unique(base=PRE, old=True, new=SIX, index="source_asset_specimen_object", extra=""):
+def unique(base=PRE, old=True, new=SIX, index="source_asset_specimen_object", extra="", arguments=""):
     """base with SourceAsset's committed unique kept or dropped, beside a new unique over these fields, if any."""
     names = ", ".join(f'"{field}"' for field in new or ())
-    added = f' @unique(indexName: "{index}", fields: [{names}])' if new else ""
+    added = f' @unique(indexName: "{index}", fields: [{names}]{arguments})' if new else ""
     return {**base, "schema.gql": edit(base["schema.gql"], UNIQUE, (UNIQUE if old else "") + added + extra)}
 
 
@@ -379,7 +458,9 @@ def test_the_one_unique_exception_is_closed_and_takes_two_merges():
               "NO_ACCESS) {\n  sourceAsset(key: {organizationId: $organizationId, collectionId: $collectionId, id: $id}) { id }\n}\n"}
     for connector in (CONNECTOR, by_key):
         assert gate(SCHEMA, STEP1, connector, connector) == []
-        assert gate(STEP1, STEP2, connector, connector) == []
+        # Step 2 compares committed text, so it waits for the release's own read-back of the live database (4.4).
+        assert gate(STEP1, STEP2, connector, connector) == [READ_BACK]
+        assert gate(STEP1, STEP2, connector, connector, unique_read_back=True) == []
     lookup = {**CONNECTOR, "uses.gql": USES["a key lookup by its fields"]}  # a use matters only to the drop
     assert gate(SCHEMA, STEP1, lookup, lookup) == []
 
@@ -400,11 +481,15 @@ def test_the_one_unique_exception_is_closed_and_takes_two_merges():
                                   NEW_OVER]),
     (MISSING, unique(NULLABLE), ["SourceAsset: @unique source_asset_specimen_object adds nullable or missing column specimenId",
                                  NEW_OVER]),
+    # #99's review: step one compared only the index name and the field set.
+    (PRE, unique(arguments=', where: "generation IS NOT NULL"'), [NEW_OVER]),
+    (PRE, unique(new=SIX[::-1]), [NEW_OVER]),
 ], ids=["one merge", "one merge to other fields", "step one over other fields", "drop before the new unique is live",
         "step two changing the new unique", "unlisted replacement", "another new uniqueness", "primary key in step one",
-        "primary key in step two", "nullable added column", "brand-new added column"])
+        "primary key in step two", "nullable added column", "brand-new added column", "step one with another argument",
+        "step one in another field order"])
 def test_everything_else_about_the_unique_exception_stays_refused(live, merged, expected):
-    assert gate(live, merged, CONNECTOR, CONNECTOR) == expected
+    assert gate(live, merged, CONNECTOR, CONNECTOR, unique_read_back=True) == expected
 
 
 @pytest.mark.parametrize(("column", "live", "merged", "standard"), [
@@ -418,7 +503,15 @@ def test_the_unique_exception_never_covers_a_protected_key(monkeypatch, column, 
 @pytest.mark.parametrize("operation", USES.values(), ids=USES)
 def test_the_old_unique_is_not_dropped_while_an_existing_operation_uses_it(operation):
     connector = {**CONNECTOR, "uses.gql": operation}
-    assert gate(STEP1, STEP2, connector, connector) == [WHY + "is used by existing operation FindAsset", REMOVED]
+    assert gate(STEP1, STEP2, connector, connector, unique_read_back=True) == [WHY + "is used by operation FindAsset", REMOVED]
+
+
+def test_the_old_unique_is_not_dropped_while_a_new_operation_uses_it():
+    # #99's review: a use the same merge adds counts too; this one passes every other rule for a new operation.
+    upsert = ("mutation UpsertAsset($organizationId: UUID!, $actorUid: String!) @auth(level: NO_ACCESS) @transaction {\n"
+              f"  query @redact {{\n    {MEMBERSHIP}\n  }}\n  sourceAsset_upsert(data: {{bucket: \"b\"}})\n}}\n")
+    assert gate(STEP1, STEP2, CONNECTOR, {**CONNECTOR, "uses.gql": upsert}, unique_read_back=True) == [
+        WHY + "is used by operation UpsertAsset", REMOVED]
 
 
 def test_schema_parser_keeps_values_and_normalizes_layout():
@@ -464,6 +557,7 @@ def test_connector_splitter_balances_braces_outside_strings_and_comments():
     ("schema", "type T @table { a: Int @unique @unique }", "T.a: duplicate field or directive"),
     ("schema", "type T @table { a: Int }\ntype T @table { b: Int }", "duplicate type T"),
     ("schema", "type T @table { a: [Int }", "expected ]"),
+    ("schema", "type T @table { a: [[Int]] }", "unsupported nested list type"),
     ("connector", "fragment Leak on T { a }", "unsupported connector construct: fragment"),
     ("connector", "query { leak }", "expected a name"),
     ("connector", "query Q @auth(level: NO_ACCESS) { a { b }", "unexpected end"),
@@ -473,6 +567,12 @@ def test_unknown_constructs_fail_closed_without_content(parse, text, message):
     with pytest.raises(ValueError, match=message) as raised:
         getattr(M, f"parse_{parse}")({"source.gql": text})
     assert "leak" not in str(raised.value).lower()
+
+
+def test_a_deep_list_type_fails_closed_without_a_traceback():
+    # #99's review: 5,000 brackets raised RecursionError, which the CLI's ValueError handler missed.
+    with pytest.raises(ValueError, match="^unsupported nested list type$"):
+        M.parse_schema({"source.gql": "type T @table { a: " + "[" * 5000 + "Int" + "]" * 5000 + " }"})
 
 
 def test_committed_tree_is_additive_against_itself():
@@ -520,6 +620,36 @@ def test_sources_from_rest_responses_and_committed_directories(tmp_path):
         M.read_tree(tmp_path)
 
 
+@pytest.mark.parametrize("make", [
+    lambda root: (root / "nested").mkdir() or (root / "nested" / "extra.gql").write_text("type Leak @table { a: Int }"),
+    lambda root: (root / "extra.graphql").write_text("type Leak @table { a: Int }"),
+    lambda root: (root / "folder.gql").mkdir(),
+    lambda root: (root / "link.gql").symlink_to(root / "a.gql"),
+], ids=["a nested source", "a .graphql source", "a folder named .gql", "a symbolic link"])
+def test_a_source_directory_holds_only_what_the_release_sends(tmp_path, make):
+    # firebase-tools reads **/*.{gql,graphql} (#99's review); the release sends the top-level *.gql files alone.
+    (tmp_path / "a.gql").write_text("type A @table { a: Int }")
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "README.md").write_text("a folder without sources is not read")
+    assert M.read_tree(tmp_path) == {"a.gql": "type A @table { a: Int }"}
+    make(tmp_path)
+    with pytest.raises(ValueError, match="^source directory holds more than its top-level .gql files$"):
+        M.read_tree(tmp_path)
+
+
+def test_no_release_applies_data_connect_through_firebase_tools():
+    # The data release applies the gate's files through the Data Connect API; firebase-tools would read more (#99's review).
+    config = (M.ROOT / "dataconnect/dataconnect.yaml").read_text()
+    assert re.search(r"^schema:\n  source: \./schema\n", config, re.M)
+    assert re.search(r"^connectorDirs:\n  - \./connector\n(?!  - )", config, re.M)
+    paths = [*(M.ROOT / ".github/workflows").glob("*.yml"), *(M.ROOT / "scripts/ci").glob("*.sh"),
+             *(M.ROOT / "scripts/ci").glob("*.mjs"), *(path for path in (M.ROOT / "scripts/ci").glob("*.py")
+                                                      if not path.name.startswith("test_"))]
+    assert len(paths) > 20
+    for path in paths:
+        assert not re.search(r"--only[= ][^\n]*dataconnect|\bdataconnect:[a-z]", path.read_text()), path.name
+
+
 def test_cli_compares_live_directories_with_the_committed_tree(tmp_path, capsys):
     (tmp_path / "contract.md").write_text(CONTRACT)
     arguments = ["--contract", str(tmp_path / "contract.md")]
@@ -531,7 +661,8 @@ def test_cli_compares_live_directories_with_the_committed_tree(tmp_path, capsys)
     assert M.main(arguments) == 0 and capsys.readouterr().out == "additive\n"
     (tmp_path / "schema" / "extra.gql").write_text(COMPARISON.replace("ReadingComparison", "RetiredComparison"))
     assert M.main(arguments) == 1 and capsys.readouterr().out == "RetiredComparison: table removed or renamed\n"
+    (tmp_path / "empty").mkdir()
     with pytest.raises(SystemExit, match="placeholder"):
-        M.main([*arguments[:2], "--live-schema", str(tmp_path), "--live-connector", str(tmp_path / "connector")])
+        M.main([*arguments[:2], "--live-schema", str(tmp_path / "empty"), "--live-connector", str(tmp_path / "connector")])
     with pytest.raises(SystemExit, match="data contract missing"):
         M.main(["--contract", str(tmp_path / "missing.md"), *arguments[2:]])
