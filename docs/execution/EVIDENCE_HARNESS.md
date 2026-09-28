@@ -16,9 +16,10 @@ dependencies, infrastructure and other worktrees are unchanged.
   are rejected. An approved endpoint is server configuration, never model input.
 - `AuthorityQuery(organization_id, collection_id, data_classification, literal,
   evidence_ids, historical_context=None)` carries the retained literal lineage.
-- `PartiesAdapter(registry, blobs, connection=None, token=None, client=None)` and
-  `GeographyAdapter(registry, blobs, client=None)` expose `lookup(query)` returning
-  immutable `AuthorityResult`, using the existing `LookupStatus` taxonomy.
+- `PartiesAdapter(registry, blobs, connection=None, token=None, client=None)`
+  exposes `lookup(query)` returning immutable `AuthorityResult`, using the existing
+  `LookupStatus` taxonomy. The GBIF GADM geography adapter is removed: GADM is not
+  used (PLAN 4.8).
 - Results preserve literal text, input evidence IDs, exact non-secret query JSON
   and SHA-256, retrieval time, source/adapter versions, raw-body blob reference
   and SHA-256, candidate identities, support/unresolved relations, context and
@@ -84,18 +85,13 @@ Official references checked in this task:
 - [Field Museum search implementation](https://github.com/fieldmuseum/emurestapi-examples/blob/main/php/src/Texpress/Search.php)
 - [Field Museum search example](https://github.com/fieldmuseum/emurestapi-examples/blob/main/php/tests/Unit/SearchTest.php)
 - [Axiell Texpress search contract](https://help.emu.axiell.com/emurestapi/3.1.3/04-Resources-Texpress.html)
-- [GBIF Occurrence/GADM API](https://techdocs.gbif.org/en/openapi/v1/occurrence)
 
-Geography uses the fixed public GBIF GADM search endpoint. One read-only public
-`Illinois` probe confirmed the results/endOfRecords envelope, modern region ID,
-variants and higherRegions shape. This was public data, no paid inference or
-private specimen query. An exact unique modern administrative name can support a
-candidate. Multiple or incomplete results remain ambiguous. Historical context
-forces ambiguity and is retained separately in candidate context alongside modern
-parents; the adapter does not resolve historical jurisdiction, city/site precision
-or coordinates. Mapcarta/Google automation is not enabled or silently substituted.
-The source must explicitly approve GADM for the collection; repository guidance
-allows modern supporting evidence, not institutional clearance by itself.
+The GBIF GADM geography adapter this section described is removed (#216). GADM
+is not used, not even as a measurement (PLAN 4.8, a coordinator ruling that the
+coordinator's licence ruling of 2026-09-25 confirmed), because its terms bar
+redistribution and commercial use. No source, registry entry or planned task
+names it. Until the harness's geography tool lands, place fields get no
+geography authority and go to review.
 
 ## Bounds and recovery
 
@@ -120,11 +116,11 @@ Authority client transport injection is a test seam, not production approval.
 
 ## Verification and remaining integration gates
 
-New tests exercise actual local TCP HTTP request/response bytes for both adapters,
-including read-only POST method override, minimal selected fields, scope denial,
-wrong tenant/module, candidate identity, missing credentials, modern/historical
-ambiguity, no-match, empty, malformed, 401/403/429/5xx, redirect rejection and body
-bounds. Timeout injection uses httpx MockTransport and is explicitly synthetic.
+New tests exercise actual local TCP HTTP request/response bytes for the Parties
+adapter, including read-only POST method override, minimal selected fields, scope
+denial, wrong tenant/module, candidate identity, missing credentials, no-match,
+empty, malformed, 401/403/429/5xx, redirect rejection and body bounds (the
+size-cap test moved from the removed GADM adapter's tests, #216). Timeout injection uses httpx MockTransport and is explicitly synthetic.
 Harness tests cover intent/completion, input tampering, output digest tampering,
 zero-call replay, unknown outcome, checkpoint failure before network, budget and
 tool allowlists, evidence propagation, competing candidates, missing authority
@@ -134,7 +130,7 @@ cannot erase hard findings or create a clearance disposition.
 
 Validation performed:
 
-- `uv run pytest tests/test_authority_registry.py tests/test_parties.py tests/test_geography.py tests/test_evidence_harness.py tests/test_review_risk.py -q`: 41 scoped tests pass as part of the full suite.
+- `uv run pytest tests/test_authority_registry.py tests/test_parties.py tests/test_geography.py tests/test_evidence_harness.py tests/test_review_risk.py -q`: 41 scoped tests pass as part of the full suite. `tests/test_geography.py` went with the GADM adapter (#216).
 - `scripts/ci/verify.sh`: 95 Python tests pass, two existing SQL-emulator-only tests skip; repository hooks and both secret scanners pass; Flutter analyze, widget test and release web build pass.
 - `uvx ruff check` with undefined/unused-name checks on all ten new Python files and `git diff --check`: pass.
 

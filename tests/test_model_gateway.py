@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import httpx
 import pytest
@@ -227,6 +228,15 @@ def test_first_pass_and_harness_routes_are_pinned_on_the_reader_provider() -> No
     assert {first_pass.model_id, harness.model_id}.isdisjoint(readers)
     assert gateway.routes_for_capability("transcription_first_pass") == (first_pass,)
     assert gateway.routes_for_capability("field_harness") == (harness,)
+
+
+def test_a_route_serves_a_role_with_images_only_in_that_role_with_image_input() -> None:
+    reader = INITIAL_HUGGINGFACE_ROUTES["handwriting-qwen"]
+
+    assert reader.serves_with_images("handwriting_transcriber")
+    assert not reader.serves_with_images("transcription_first_pass")
+    text_only = replace(reader, required_input_modalities=("text",))
+    assert not text_only.serves_with_images("handwriting_transcriber")
 
 
 def test_preflight_accepts_the_new_routes_when_the_catalog_serves_them() -> None:
