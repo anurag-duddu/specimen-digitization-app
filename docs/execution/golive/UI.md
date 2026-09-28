@@ -348,6 +348,25 @@ checked against design/02. S5 confirmed the source ids the same day.
    words, "Converted from feet (1 ft = 0.3048 m)", with the rules version
    only as detail.
 
+Part six reads what S5's #171 T3-2 adds (`golive/data-thread-api` at
+`648cd7e`; DATA_CONTRACT.md section 8, 787-799, which S5 called final on
+2026-09-28):
+
+1. Each evidence entry's `region_id`, the label region the tool call or the
+   stored evidence came from. Its line ends with that label, "· Label 1" or
+   "· Label 2". So the two lookups G32 runs for a field read on two labels
+   no longer print the same line. Evidence no region made, such as a
+   derivation's, names none. A `region:` locator already names its label,
+   so the label is said once.
+2. Each derived field's `derivation`: its method, its rules in the order
+   applied, and the rules' authority with its version. The model reads it
+   here. Item 3 of part five puts it in words.
+3. S5's example at `a559bef8` (the blob of `thread-example.json` from
+   `6547154c` through `648cd7e`) is again the canonical fixture, byte for
+   byte. It adds G44's derived date, `date_visited_to`, filled from
+   `date_visited_from` by the rule `one_date_both_ends`. In it, the lookup
+   on Label 2's raw reading also names that reading.
+
 ### T2.4 The coverage check and the decision's findings
 
 The thread explains what the record states; it never adds a blocker the

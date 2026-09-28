@@ -162,10 +162,14 @@ void main() {
           'As written',
           "$qwen's reading supports this value · Label 2",
           "$muse's reading supports this value · Label 2",
-          'Google Maps supports this value · place ID fixture-place',
+          // Each source names the label it came from (#171 T3-2), so the
+          // two lookups G32 runs for the city no longer read the same.
+          'Google Maps supports this value · place ID fixture-place · Label 1',
+          'Google Maps supports this value · place ID fixture-place · Label 2',
           'Google Maps place ID fixture-place',
-          'GBIF decides this value · gbif/species/1651891',
-          'Catalogue of Life contradicts this value · col/taxon/fixture-col-taxon',
+          'GBIF decides this value · gbif/species/1651891 · Label 2',
+          'Catalogue of Life contradicts this value · col/taxon/fixture-col-taxon '
+              '· Label 2',
           'GBIF record 1651891',
           'fixture credit',
           "Label 1 · $qwen · decided transcript · settled the value",

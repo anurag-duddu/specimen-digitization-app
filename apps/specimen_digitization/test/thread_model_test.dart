@@ -577,6 +577,11 @@ void main() {
     ThreadField fieldOf(SpecimenThread thread, String key) =>
         thread.fields.firstWhere((ThreadField f) => f.fieldKey == key);
 
+    // The example's two label regions, in the order the Readings sections
+    // number them.
+    const String labelOne = '00000000-0000-4000-8000-000000000010';
+    const String labelTwo = '00000000-0000-4000-8000-000000000011';
+
     // The client and the server test one file. The server's copy reaches
     // this branch when #171 merges; until then there is nothing to compare.
     final File serverExample = File(
@@ -631,8 +636,16 @@ void main() {
       expect(city.authorityIdentity?.sourceRecordId, 'fixture-place');
       expect(
         city.evidence.map((ThreadEvidence e) => e.observationIds.length),
-        <int>[0, 0, 1, 1],
-        reason: 'a lookup quotes no reading; the harness quotes one each',
+        <int>[0, 1, 1, 1],
+        reason:
+            "the lookup on Label 1's decided transcript names no reading; the "
+            "one on Label 2's raw reading names it, and the harness quotes one "
+            'each (#171 T3-2)',
+      );
+      expect(
+        city.evidence.map((ThreadEvidence e) => e.regionId),
+        <String>[labelOne, labelTwo, labelTwo, labelTwo],
+        reason: 'each entry names the label region it came from (#171 T3-2)',
       );
 
       final ThreadField county = fieldOf(thread, 'county');
@@ -655,6 +668,24 @@ void main() {
       expect(hard.ruleVersion, 'insects-clearance-v1');
       expect(hard.outcome, 'fail');
       expect(hard.evidenceIds, isEmpty);
+    });
+
+    test('a derived value names its derivation (#171 T3-2)', () {
+      final SpecimenThread thread = SpecimenThread.fromJson(canonical());
+      final ThreadField to = fieldOf(thread, 'date_visited_to');
+      expect(to.layer, ThreadFieldLayer.derived);
+      expect(to.derivedFrom, <String>['date_visited_from']);
+      final ThreadDerivation? derivation = to.derivation;
+      expect(derivation?.method, 'stated_date');
+      expect(derivation?.rules, <String>['one_date_both_ends']);
+      expect(derivation?.authorityName, 'apply_derivations');
+      expect(derivation?.authorityVersion, 'derivation-rules-v1');
+      expect(
+        to.evidence.first.regionId,
+        isNull,
+        reason: 'no label region made the derivation itself',
+      );
+      expect(fieldOf(thread, 'taxon').derivation, isNull);
     });
 
     test("a reviewer's decision sits beside the model's first pass", () {

@@ -525,6 +525,35 @@ class ThreadEvidence extends _View {
 
   /// The readings this evidence quotes; empty for a lookup.
   List<String> get observationIds => _texts('observation_ids');
+
+  /// The label region the evidence came from: the tool call's region, else
+  /// the stored evidence's (#171 T3-2). Null for evidence no region made,
+  /// such as a derivation's.
+  String? get regionId => null;
+}
+
+/// How a derived value was filled (#171 T3-2; G37, G41, G44): its method,
+/// its rules in the order they were applied, and the rules' authority.
+class ThreadDerivation extends _View {
+  const ThreadDerivation._(super.json);
+
+  /// The derivation in [json], or null for a field that is not derived.
+  static ThreadDerivation? fromJson(Object? json) {
+    final Json? map = _object(json);
+    return map == null ? null : ThreadDerivation._(map);
+  }
+
+  /// The method, as sent (`stated_date`).
+  String? get method => _t('method');
+
+  /// The rules, in the order applied, as sent (`one_date_both_ends`).
+  List<String> get rules => _texts('rules');
+
+  /// The rules' authority, as named (`apply_derivations`).
+  String? get authorityName => _text(_map('authority')['name']);
+
+  /// The rules' version (`derivation-rules-v1`).
+  String? get authorityVersion => _text(_map('authority')['version']);
 }
 
 /// The authority record a settled value was settled against (PLAN 4.8).
@@ -578,6 +607,9 @@ class ThreadField extends _View {
 
   /// The fields a derived value was filled from; empty for any other (G37).
   List<String> get derivedFrom => _texts('derived_from');
+
+  /// How a derived value was filled; null for any other value (#171 T3-2).
+  ThreadDerivation? get derivation => null;
 
   /// What was written: one entry for the decided transcript, or one per
   /// reader when the first pass chose none (G27, G28). A derived field has

@@ -888,4 +888,56 @@ void main() {
       );
     });
   });
+
+  group('the label each source came from (#171 T3-2)', () {
+    const String qwen = 'Qwen/Qwen2.5-VL-72B-Instruct';
+
+    testWidgets('each evidence line names its label, once', (
+      WidgetTester tester,
+    ) async {
+      final Json json = fixtureJson();
+      final List<dynamic> evidence =
+          fieldIn(json, 'country')['evidence'] as List<dynamic>;
+      (evidence.single as Json)['region_id'] = 'region-left';
+      evidence
+        ..add(<String, dynamic>{
+          'evidence_id': 'evidence-geo-2',
+          'relation': 'supports',
+          'source': 'google-maps-geocoding',
+          'locator': 'place/fixture-place-id-zacapa',
+          'outcome': 'success',
+          'region_id': 'region-right',
+          'observation_ids': <String>['obs-right-qwen'],
+        })
+        ..add(<String, dynamic>{
+          'evidence_id': 'evidence-quote-1',
+          'relation': 'supports',
+          'source': 'field_harness',
+          'locator': 'region:region-right',
+          'outcome': 'recorded',
+          'region_id': 'region-right',
+          'observation_ids': <String>['obs-right-qwen'],
+        });
+      final SpecimenThread thread = SpecimenThread.fromJson(json);
+      await pumpFields(tester, recordJson(thread), thread: thread);
+
+      expect(
+        inRow('country', find.text('$googleLine · Label 1')),
+        findsOneWidget,
+      );
+      expect(
+        inRow('country', find.text('$googleLine · Label 2')),
+        findsOneWidget,
+        reason: 'the two lookups G32 runs no longer read the same',
+      );
+      expect(
+        inRow(
+          'country',
+          find.text("$qwen's reading supports this value · Label 2"),
+        ),
+        findsOneWidget,
+        reason: 'a region locator already names its label, so it is said once',
+      );
+    });
+  });
 }

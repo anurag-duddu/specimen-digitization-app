@@ -463,6 +463,7 @@
       "state": "supported",
       "layer": "settled",
       "derived_from": [],
+      "derivation": null,
       "verbatim": [
         {
           "text": "Ill.",
@@ -485,6 +486,7 @@
           "source": "google-maps-geocoding",
           "locator": "place/fixture-place",
           "outcome": "success",
+          "region_id": "00000000-0000-4000-8000-000000000010",
           "observation_ids": []
         }
       ],
@@ -496,6 +498,7 @@
       "state": "supported",
       "layer": "settled",
       "derived_from": [],
+      "derivation": null,
       "verbatim": [
         {
           "text": "Chicago",
@@ -530,6 +533,7 @@
           "source": "google-maps-geocoding",
           "locator": "place/fixture-place",
           "outcome": "success",
+          "region_id": "00000000-0000-4000-8000-000000000010",
           "observation_ids": []
         },
         {
@@ -538,7 +542,10 @@
           "source": "google-maps-geocoding",
           "locator": "place/fixture-place",
           "outcome": "success",
-          "observation_ids": []
+          "region_id": "00000000-0000-4000-8000-000000000011",
+          "observation_ids": [
+            "00000000-0000-4000-8000-000000000022"
+          ]
         },
         {
           "evidence_id": "00000000-0000-4000-8000-000000000035",
@@ -546,6 +553,7 @@
           "source": "field_harness",
           "locator": "region:00000000-0000-4000-8000-000000000011",
           "outcome": "recorded",
+          "region_id": "00000000-0000-4000-8000-000000000011",
           "observation_ids": [
             "00000000-0000-4000-8000-000000000022"
           ]
@@ -556,6 +564,7 @@
           "source": "field_harness",
           "locator": "region:00000000-0000-4000-8000-000000000011",
           "outcome": "recorded",
+          "region_id": "00000000-0000-4000-8000-000000000011",
           "observation_ids": [
             "00000000-0000-4000-8000-000000000023"
           ]
@@ -569,6 +578,7 @@
       "state": "unresolved",
       "layer": "verbatim",
       "derived_from": [],
+      "derivation": null,
       "verbatim": [
         {
           "text": "Cook Co.",
@@ -603,6 +613,7 @@
       "state": "supported",
       "layer": "settled",
       "derived_from": [],
+      "derivation": null,
       "verbatim": [
         {
           "text": "VII-46",
@@ -618,7 +629,74 @@
       "authority_id": null,
       "authority_identity": null,
       "settled_observation_ids": [],
-      "evidence": [],
+      "evidence": [
+        {
+          "evidence_id": "00000000-0000-4000-8000-000000000037",
+          "relation": "supports",
+          "source": "field_harness",
+          "locator": "region:00000000-0000-4000-8000-000000000010",
+          "outcome": "recorded",
+          "region_id": "00000000-0000-4000-8000-000000000010",
+          "observation_ids": [
+            "00000000-0000-4000-8000-000000000020"
+          ]
+        }
+      ],
+      "findings": []
+    },
+    {
+      "field_key": "date_visited_to",
+      "group": "mandatory",
+      "state": "supported",
+      "layer": "derived",
+      "derived_from": [
+        "date_visited_from"
+      ],
+      "derivation": {
+        "method": "stated_date",
+        "rules": [
+          "one_date_both_ends"
+        ],
+        "authority": {
+          "name": "apply_derivations",
+          "version": "derivation-rules-v1"
+        }
+      },
+      "verbatim": [],
+      "parsed": "1946-07",
+      "precision": "month",
+      "century_rule": null,
+      "normalized": null,
+      "authority_id": null,
+      "authority_identity": {
+        "source": "apply_derivations",
+        "source_record_id": null,
+        "credit": null,
+        "version": "derivation-rules-v1"
+      },
+      "settled_observation_ids": [],
+      "evidence": [
+        {
+          "evidence_id": "00000000-0000-4000-8000-000000000038",
+          "relation": "decides",
+          "source": "apply_derivations",
+          "locator": "derivation:stated_date",
+          "outcome": "recorded",
+          "region_id": null,
+          "observation_ids": []
+        },
+        {
+          "evidence_id": "00000000-0000-4000-8000-000000000037",
+          "relation": "supports",
+          "source": "field_harness",
+          "locator": "region:00000000-0000-4000-8000-000000000010",
+          "outcome": "recorded",
+          "region_id": "00000000-0000-4000-8000-000000000010",
+          "observation_ids": [
+            "00000000-0000-4000-8000-000000000020"
+          ]
+        }
+      ],
       "findings": []
     },
     {
@@ -627,6 +705,7 @@
       "state": "supported",
       "layer": "settled",
       "derived_from": [],
+      "derivation": null,
       "verbatim": [
         {
           "text": "Aedes aegypti L.",
@@ -662,7 +741,10 @@
           "source": "gbif",
           "locator": "gbif/species/1651891",
           "outcome": "success",
-          "observation_ids": []
+          "region_id": "00000000-0000-4000-8000-000000000011",
+          "observation_ids": [
+            "00000000-0000-4000-8000-000000000022"
+          ]
         },
         {
           "evidence_id": "00000000-0000-4000-8000-000000000033",
@@ -670,7 +752,10 @@
           "source": "col",
           "locator": "col/taxon/fixture-col-taxon",
           "outcome": "success",
-          "observation_ids": []
+          "region_id": "00000000-0000-4000-8000-000000000011",
+          "observation_ids": [
+            "00000000-0000-4000-8000-000000000022"
+          ]
         }
       ],
       "findings": [
@@ -693,6 +778,7 @@
       "state": "unknown",
       "layer": null,
       "derived_from": [],
+      "derivation": null,
       "verbatim": [],
       "parsed": null,
       "precision": null,
