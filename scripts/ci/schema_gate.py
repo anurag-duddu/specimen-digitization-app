@@ -10,12 +10,16 @@ import argparse
 from collections import Counter
 from pathlib import Path
 import re
+import unicodedata
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT, HEADING = ROOT / "docs/execution/golive/DATA_CONTRACT.md", "### 3.3 Relaxed constraints"
-# Provenance and idempotency keys, TRN-005's included, that no change ever relaxes.
+MARKUP = "relaxed-constraints section holds markup a page renders differently"
+# Provenance and idempotency keys that no change ever relaxes: ModelObservation's, and TRN-005's provenance on every table
+# that carries it, EvidenceItem, PipelineRun and Checkpoint included (PLAN 4.4).
 PROTECTED = frozenset(("ModelObservation", field) for field in ("runId", "regionId", "provider", "modelVersion", "stepKey",
                                                                "rawAssetId", "promptVersion", "inputSha256"))
+PROVENANCE = frozenset(("rawAssetId", "promptVersion", "inputSha256"))
 # PLAN 4.4's one closed @unique exception: (table, old indexName, old fields) -> ((new indexName, new fields), reason).
 NAMED_UNIQUE_RELAXATIONS = {("SourceAsset", "specimen_unique_1", ("bucket", "objectName", "generation")): (
     ("source_asset_specimen_object", ("organizationId", "collectionId", "specimenId", "bucket", "objectName", "generation")),
@@ -25,6 +29,9 @@ KEYWORDS = {"type", "enum", "input", "interface", "union", "scalar", "directive"
             "subscription", "query", "mutation"}
 AUTH, ACTOR = "@auth(level: NO_ACCESS)", "$actorUid: String!"
 MEMBERSHIP = "organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check("
+# The membership @check's arguments, a message aside: an active member, never optional (RELEASE.md 4.1).
+ACTIVE = ({"expr": '"this.active"'}, {"expr": '"this.active == true"'})
+WRITE = re.compile(r"_(?:insert|insertMany|update|updateMany|delete|deleteMany|upsert|upsertMany)$")
 # GraphQL lexing: commas and comments are insignificant; a string, block strings too (\""" escaped), is one token.
 TOKEN = re.compile(r'(?P<skip>[\s,]+|#[^\n\r]*)|(?P<block>"""(?:\\"""|(?!""")[\s\S])*+""")'
                    r'|(?P<string>"(?:\\.|[^"\\\n\r])*")|(?P<name>[_A-Za-z][_0-9A-Za-z]*)'
@@ -155,19 +162,36 @@ def _names(directive: str, argument: str, default: tuple[str, ...] = ()) -> tupl
     return tuple(item[1:-1] for item in values)
 
 
+def _arguments(directive: str) -> dict:
+    """One canonical directive's arguments by name."""
+    ((_, arguments),) = _directives(_Stream(_tokens(directive)))
+    return dict(arguments)
+
+
+def _protected(table: str, field: str) -> bool:
+    return (table, field) in PROTECTED or field in PROVENANCE
+
+
+def _sql_default(field: dict) -> bool:
+    """Whether a field's @default carries SQL text, not a value or an expression."""
+    return "default" in field["directives"] and "sql" in _arguments(field["directives"]["default"])
+
+
 def _sql(name: str, directive: str | None) -> str:
     """The SQL name of a type or field: its directive's name argument, else Data Connect's snake case."""
     explicit = _names(directive, "name") if directive else ()
     return explicit[0] if explicit else re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
 
-def _type(stream: _Stream) -> tuple[str, str]:
+def _type(stream: _Stream, nested: bool = False) -> tuple[str, str]:
     """A type reference as its base name and its list and NOT NULL shape: [String!]! is ("String", "[!]!")."""
     if stream.peek() != "[":
         base, shape = stream.name(), ""
+    elif nested:
+        raise ValueError("unsupported nested list type")
     else:
         stream.next()
-        base, inner = _type(stream)
+        base, inner = _type(stream, True)
         shape = f"[{inner}{stream.next(']')[1]}"
     return base, shape + (stream.next()[1] if stream.peek() == "!" else "")
 
@@ -208,11 +232,11 @@ def parse_connector(files: dict[str, str]) -> dict[str, dict]:
     return operations
 
 
-def _users(name: str, table: dict, index: str, fields: set[str], operations: dict) -> list[str]:
+def _users(name: str, table: dict, index: str, fields: set[str], operations: list[tuple[str, dict]]) -> list[str]:
     """Operations using a unique: a key access naming its fields, an upsert, an onConflict naming it; unclear is a use."""
     rows = {name[:1].lower() + name[1:], *_names(table["directives"]["table"][0], "singular")}
     keyed, users = {row + suffix for row in rows for suffix in ("", "_update", "_delete")}, set()
-    for operation, value in operations.items():
+    for operation, value in operations:
         tokens = [token for _, token in _tokens(value["body"])]
         for at, token in enumerate(tokens):
             if token in keyed and tokens[at + 1:at + 2] == ["("]:
@@ -230,14 +254,17 @@ def _users(name: str, table: dict, index: str, fields: set[str], operations: dic
     return sorted(users)
 
 
-def _swaps(name: str, old: dict, new: dict, operations: dict) -> tuple[set[str], list[str]]:
-    """PLAN 4.4's closed @unique exception, create before drop over two merges: what a valid step exempts; refusals."""
+def _swaps(name: str, old: dict, new: dict, operations: list, read_back: bool) -> tuple[set[str], list[str]]:
+    """PLAN 4.4's closed @unique exception, create before drop over two merges: what a valid step exempts; refusals.
+    Step 2 compares committed text, so it waits for the caller's read-back of the live database (RELEASE.md 4.1)."""
     exempt, refusals = set(), []
     for (before, listed), ((after, wider), _) in ((k[1:], v) for k, v in NAMED_UNIQUE_RELAXATIONS.items() if k[0] == name):
         was, kept, had, now = ([text for text in value["directives"].get("unique", ()) if _names(text, "indexName") == (index,)]
                                for value, index in ((old, before), (new, before), (old, after), (new, after)))
-        old_listed, new_live, new_merged = (len(texts) == 1 and set(_names(texts[0], "fields")) == set(fields)
-                                            for texts, fields in ((was, listed), (had, wider), (now, wider)))
+        # Exactly the entry's constraint: its index name and its fields in order, and no other argument.
+        old_listed, new_live, new_merged = (len(texts) == 1 and _arguments(texts[0]) == {
+            "fields": tuple(f'"{field}"' for field in fields), "indexName": f'"{index}"'}
+            for texts, index, fields in ((was, before, listed), (had, after, wider), (now, after, wider)))
         adds = old_listed and kept == was and not had and new_merged  # step one: the old unique stays declared
         drops = old_listed and not kept and new_live and now == had  # step two: the new unique is live and stays
         where, key = f"{name}: @unique {before}", set(_names(old["directives"]["table"][0], "key", ("id",)))
@@ -250,16 +277,18 @@ def _swaps(name: str, old: dict, new: dict, operations: dict) -> tuple[set[str],
         reasons += [f"{name}: @unique {after} adds nullable or missing column {column}" for column in sorted({*wider} - {*listed})
                     if not all(value["fields"].get(column, {}).get("non_null") for value in (old, new))]
         reasons += [f"{where} to {after} covers protected key {column}" for column in sorted({*listed, *wider})
-                    if (name, column) in PROTECTED]
-        reasons += [f"{where} is used by existing operation {user}" for user in _users(name, old, before, set(listed), operations)
+                    if _protected(name, column)]
+        reasons += [f"{where} is used by operation {user}" for user in _users(name, old, before, set(listed), operations)
                     if drops]
         refusals += reasons
+        if drops and not reasons and not read_back:
+            refusals.append(f"{where} is dropped only after the release reads the live database back")
         exempt |= set() if reasons else {now[0] if adds else was[0]}
     return exempt, refusals
 
 
-def _table(name: str, old: dict, new: dict, types: dict, operations: dict, relaxations: dict) -> list[str]:
-    exempt, refusals = _swaps(name, old, new, operations)
+def _table(name: str, old: dict, new: dict, types: dict, operations: list, relaxations: dict, read_back: bool) -> list[str]:
+    exempt, refusals = _swaps(name, old, new, operations, read_back)
     refusals += [f"{name}: @table key or name changed"] if new["directives"]["table"] != old["directives"]["table"] else []
     for kind in ("unique", "index"):
         before, after = Counter(old["directives"].get(kind, ())), Counter(new["directives"].get(kind, ()))
@@ -290,7 +319,7 @@ def _table(name: str, old: dict, new: dict, types: dict, operations: dict, relax
             ref = now["directives"].get("ref")  # a relation field follows a listed column its @ref covers
             follows = ref is not None and any((name, column) in relaxations and column in new["fields"]
                                               and not new["fields"][column]["non_null"] for column in _names(ref, "fields"))
-            if (name, field) in PROTECTED or field in guarded:
+            if _protected(name, field) or field in guarded:
                 refusals.append(f"{where}: NOT NULL dropped on a key, unique or provenance field")
             elif (name, field) not in relaxations and not follows:
                 refusals.append(f"{where}: NOT NULL dropped outside the named relaxations")
@@ -305,7 +334,21 @@ def _table(name: str, old: dict, new: dict, types: dict, operations: dict, relax
             refusals.append(f"{where}: new foreign key over existing fields only")
         elif not foreign and now["type"] in types:  # implicit foreign-key columns may already exist
             refusals.append(f"{where}: new relation without @ref fields over a new field")
+        if _sql_default(now):
+            refusals.append(f"{where}: new field with an SQL default")
     return refusals
+
+
+def _own_directives(header: list[str]) -> list[tuple[str, tuple]]:
+    """An operation's own directives, after its variable definitions; a variable's directive is not the operation's."""
+    at = _skip(header, 2) if header[2:3] == ["("] else 2
+    return _directives(_Stream(_tokens(" ".join(header[at:]))))
+
+
+def _check_arguments(body: list[str], at: int) -> dict:
+    """The arguments of the @check a MEMBERSHIP match at `at` ends with, its message aside."""
+    start = at + len(_tokens(MEMBERSHIP)) - 3  # the @ of @check
+    return {key: value for key, value in _arguments(" ".join(body[start:_skip(body, start + 2)])).items() if key != "message"}
 
 
 def _operations(live: dict, merged: dict) -> list[str]:
@@ -313,37 +356,61 @@ def _operations(live: dict, merged: dict) -> list[str]:
                 for name, operation in sorted(live.items()) if merged.get(name) != operation]
     for name in sorted(set(merged) - set(live)):
         header, body = ([token for _, token in _tokens(merged[name][part])] for part in ("header", "body"))
-        if len(_find(header, "@auth")) != 1 or not _find(header, AUTH):
+        own = _own_directives(header)
+        if len(_find(header, "@auth")) != 1 or ("auth", (("level", "NO_ACCESS"),)) not in own:
             refusals.append(f"{name}: new operation not at {AUTH}")
         # A default would let a caller omit the actor that the membership check binds.
         if len(_find(header, ACTOR)) == len(_find(header, ACTOR + " =")):
             refusals.append(f"{name}: new operation does not declare {ACTOR}")
-        if not _find(body, MEMBERSHIP):
+        checks = _find(body, MEMBERSHIP)
+        if not checks:
             refusals.append(f"{name}: new operation without the organizationMember @check")
+        elif any(_check_arguments(body, at) not in ACTIVE for at in checks):
+            refusals.append(f"{name}: new operation's organizationMember @check is not the active-member check")
+        # Admin access bypasses @auth, so the check runs inside the writes, before them and in their transaction (DATA.md).
+        if merged[name]["kind"] == "mutation":
+            writes = [at for at, token in enumerate(body) if WRITE.search(token) and body[at + 1:at + 2] == ["("]]
+            if ("transaction", ()) not in own:
+                refusals.append(f"{name}: new mutation without @transaction")
+            if checks and writes and writes[0] < checks[0]:
+                refusals.append(f"{name}: new mutation writes before the organizationMember @check")
         # A skipped or excluded field runs no @check.
         if any(_find(tokens, directive) for tokens in (header, body) for directive in ("@skip", "@include")):
             refusals.append(f"{name}: new operation uses @skip or @include")
+        if _find(body, "all:"):
+            refusals.append(f"{name}: new operation writes every row")
     return refusals
 
 
 def check_additive(live_schema: dict[str, str], merged_schema: dict[str, str], live_connector: dict[str, str],
-                   merged_connector: dict[str, str], *, relaxations: dict | None = None) -> list[str]:
+                   merged_connector: dict[str, str], *, relaxations: dict | None = None,
+                   unique_read_back: bool = False) -> list[str]:
     """Refusals for the merged sources against the live ones (RELEASE.md 4.1); empty means additive. The empty placeholder
-    raises (the caller initializes), as unparseable sources do. Relaxations default to the merged tree's contract."""
+    raises (the caller initializes), as unparseable sources do. Relaxations default to the merged tree's contract.
+    unique_read_back: the caller's own read-back of the live database shows the swap's new unique in place, over its
+    columns and valid (RELEASE.md 4.4); only then is the swap's step 2 admitted."""
     live, merged, operations = parse_schema(live_schema), parse_schema(merged_schema), parse_connector(live_connector)
     if not live:
         raise ValueError("the live schema is the empty placeholder; the release initializes instead")
-    relaxations, refusals = read_relaxations() if relaxations is None else relaxations, []
+    relaxations, refusals, merged_operations = read_relaxations() if relaxations is None else relaxations, [], parse_connector(
+        merged_connector)
+    uses = [*operations.items(), *merged_operations.items()]  # a use the same merge adds counts too
     for name, old in sorted(live.items()):
         new = merged.get(name)
         if old["kind"] == "table" and new and new["kind"] == "table":
-            refusals += _table(name, old, new, merged, operations, relaxations)
+            refusals += _table(name, old, new, merged, uses, relaxations, unique_read_back)
         elif new != old:  # a view must stay exactly as it is; a table cannot become a view
             refusals.append(f"{name}: {old['kind']} {'changed' if new and old['kind'] == 'view' else 'removed or renamed'}")
     existing = {_sql(name, value["directives"][value["kind"]][0]) for name, value in live.items()}
-    refusals += [f"{name}: new type over an existing SQL table or view" for name in sorted(set(merged) - set(live))
-                 if _sql(name, merged[name]["directives"][merged[name]["kind"]][0]) in existing]
-    return refusals + _operations(operations, parse_connector(merged_connector))
+    for name in sorted(set(merged) - set(live)):
+        value = merged[name]
+        if _sql(name, value["directives"][value["kind"]][0]) in existing:
+            refusals.append(f"{name}: new type over an existing SQL table or view")
+        if value["kind"] == "view":  # PLAN 4.4 admits new tables; a view runs its own SQL
+            refusals.append(f"{name}: new view")
+        refusals += [f"{name}.{field}: new field with an SQL default" for field, now in sorted(value["fields"].items())
+                     if _sql_default(now)]
+    return refusals + _operations(operations, merged_operations)
 
 
 def _read(path: Path) -> str:
@@ -354,20 +421,34 @@ def _read(path: Path) -> str:
 
 
 def read_tree(directory: Path) -> dict[str, str]:
-    """The committed *.gql sources of one directory by file name, the paths a release uploads."""
-    if not Path(directory).is_dir():
+    """The committed *.gql sources of one directory by file name, the paths a release uploads. firebase-tools would read
+    **/*.{gql,graphql} there, so anything more fails closed: a nested or .graphql source, or a .gql entry that is not a
+    regular file (RELEASE.md 4.1)."""
+    directory = Path(directory)
+    if not directory.is_dir():
         raise ValueError("source directory missing")
-    return {path.name: _read(path) for path in sorted(Path(directory).glob("*.gql"))}
+    if any(path.is_symlink() or (path.suffix in (".gql", ".graphql") and (
+            path.parent != directory or path.suffix != ".gql" or not path.is_file())) for path in directory.rglob("*")):
+        raise ValueError("source directory holds more than its top-level .gql files")
+    return {path.name: _read(path) for path in sorted(directory.glob("*.gql"))}
 
 
 def parse_relaxations(text: str) -> dict[tuple[str, str], str]:
-    """The NOT NULL drops that the contract's section 3.3 table names, {(table, field): reason}, read strictly."""
-    lines = [line.strip() for line in text.splitlines()]
-    if lines.count(HEADING) != 1:
+    """The NOT NULL drops that the contract's section 3.3 table names, {(table, field): reason}, read strictly and as a
+    page renders them, so the table a reviewer sees is the one read: lines end at LF, CRLF or CR, and the section holds no
+    HTML comment or block, no fenced or indented code, and no whitespace but the space (RELEASE.md 4.1)."""
+    lines = re.split(r"\r\n|\r|\n", text)
+    if [line.strip() for line in lines].count(HEADING) != 1:
         raise ValueError("relaxed-constraints heading missing or repeated")
+    start = [line.strip() for line in lines].index(HEADING) + 1
+    section = lines[start:next((at for at in range(start, len(lines)) if re.match(r" {0,3}#", lines[at])), len(lines))]
+    if any("<!--" in line or re.match(r"\s*(?:<|```|~~~)| {4,}\S", line) for line in section) or any(
+            unicodedata.category(char) in ("Cc", "Cf", "Zl", "Zp") or (unicodedata.category(char) == "Zs" and char != " ")
+            for char in "".join(section)):
+        raise ValueError(MARKUP)
     table: list[list[str]] = []
-    for line in lines[lines.index(HEADING) + 1:]:  # the section's first table, before the next heading
-        if line.startswith("#") or (table and not line.startswith("|")):
+    for line in section:  # the section's first table
+        if table and not line.startswith("|"):
             break
         if line.startswith("|"):
             table.append([cell.strip() for cell in re.split(r"(?<!\\)\|", line)[1:-1]])

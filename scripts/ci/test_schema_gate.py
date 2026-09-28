@@ -281,7 +281,8 @@ CONNECTOR_REFUSED = [
                                           "check"]),
     ("a mutation without @transaction", OPS + edit(NEW_OP, " @transaction", ""), ["AddRegion: new mutation without "
                                                                                   "@transaction"]),
-    ("a write before the membership check", OPS + edit(edit(NEW_OP, INSERT, ""), "  query @redact {", INSERT + "  query @redact {"),
+    ("a write before the membership check",
+     OPS + edit(edit(NEW_OP, INSERT, ""), "  query @redact {", INSERT + "  query @redact {"),
      ["AddRegion: new mutation writes before the organizationMember @check"]),
     ("a delete of every row", OPS + edit(NEW_OP, INSERT, "  labelRegion_deleteMany(all: true)\n"),
      ["AddRegion: new operation writes every row"]),
