@@ -871,7 +871,8 @@ def serve_runs(mode):
     from ..observability import CaptureMode, configure_observability
 
     # Metadata only: the service reads images and never exports them (T5c).
-    configure_observability(capture_mode=CaptureMode.METADATA)
+    # No agent runs here, so its image carries no pydantic-ai (T5c).
+    configure_observability(capture_mode=CaptureMode.METADATA, instrument_agents=False)
     offline_checkpoint_digest()
     if mode == "lab":
         authenticate = lab_authenticator(os.environ["SPECIMEN_SAM3_LAB_TOKEN"])

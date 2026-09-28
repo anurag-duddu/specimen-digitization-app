@@ -101,7 +101,7 @@ def _bounded_remaining(ledger):
     return value
 
 
-def _configure_bounded(settings, *, send_to_logfire):
+def _configure_bounded(settings, *, send_to_logfire, instrument_agents=True):
     global _configured_settings, _bounded_runtime
     from .bounded_telemetry import Ledger, MetadataBatchProcessor, bounded_sdk_options
 
@@ -162,10 +162,11 @@ def _configure_bounded(settings, *, send_to_logfire):
         sampling=logfire.SamplingOptions(head=1.0),
         resource_attributes={"specimen.telemetry.capture_mode": "metadata"},
     )
-    logfire.instrument_pydantic_ai(
-        include_content=False, include_binary_content=False,
-        include_model_request_parameters=False, version=5,
-    )
+    if instrument_agents:
+        logfire.instrument_pydantic_ai(
+            include_content=False, include_binary_content=False,
+            include_model_request_parameters=False, version=5,
+        )
     _bounded_runtime = {"binding": binding, "processor": processor, "remaining": remaining}
     _configured_settings = settings
     return settings
@@ -233,16 +234,21 @@ def configure_observability(
     *,
     send_to_logfire: bool | None = None,
     capture_mode: CaptureMode | None = None,
+    instrument_agents: bool = True,
 ) -> ObservabilitySettings:
     """Configure Logfire once before agent or provider instrumentation.
 
     Content is exported only when ``approved-content`` is explicitly selected.
     Binary image bytes are never exported by this application integration.
+    A process that runs no agent, such as the SAM 3 service, passes
+    ``instrument_agents=False`` and needs no pydantic-ai.
     """
     global _configured_settings
     if os.getenv("SPECIMEN_TRACE_EXPORT_MODE") is not None:
         settings = ObservabilitySettings.from_environment(capture_mode=capture_mode)
-        return _configure_bounded(settings, send_to_logfire=send_to_logfire)
+        return _configure_bounded(
+            settings, send_to_logfire=send_to_logfire, instrument_agents=instrument_agents
+        )
     settings = ObservabilitySettings.from_environment(capture_mode=capture_mode)
     if _configured_settings is not None:
         if settings != _configured_settings:
@@ -266,12 +272,13 @@ def configure_observability(
         configure_options["send_to_logfire"] = send_to_logfire
 
     logfire.configure(**configure_options)
-    logfire.instrument_pydantic_ai(
-        include_content=settings.include_content,
-        include_binary_content=settings.include_binary_content,
-        include_model_request_parameters=settings.include_model_request_parameters,
-        version=5,
-    )
+    if instrument_agents:
+        logfire.instrument_pydantic_ai(
+            include_content=settings.include_content,
+            include_binary_content=settings.include_binary_content,
+            include_model_request_parameters=settings.include_model_request_parameters,
+            version=5,
+        )
     _configured_settings = settings
     return settings
 
