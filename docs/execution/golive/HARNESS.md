@@ -716,8 +716,8 @@ when their `authority_id` and `parsed` are equal.
   projects like any other evidence (#88).
 - `evidence_relations` has one entry per evidence id. Literals `support`; a
   success's evidence has the relation the tool reports: GBIF `decides`, Global
-  Names Verifier and Catalogue of Life `support` or `contradict`, and Google
-  `supports` (G23). Only a success's evidence is linked.
+  Names Verifier and Catalogue of Life `support` or `contradict` (G23), and
+  Google `supports` (rule 1.6). Only a success's evidence is linked.
 - A tool's warnings (`taxonomy_source_disagreement:{source}`,
   `taxonomy_support_unavailable:{source}`) and `spelling_disagreement` go to
   `Run.findings` as warnings with their evidence, never to `Run.reasons`.
