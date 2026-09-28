@@ -11,6 +11,7 @@ library;
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
+import '../../models.dart';
 import '../../thread/thread.dart';
 import '../../vocabulary.dart';
 
@@ -36,11 +37,12 @@ class HarnessLookups extends StatelessWidget {
   /// The section's heading, and what a screen reader hears for the list.
   static const String title = 'Harness lookups';
 
-  /// The checks with no source, by their tool. Any other tool keeps its
-  /// server word.
+  /// The checks with no source, by their tool, in the coordinator's words of
+  /// 20:05Z on 2026-09-28 ("Catalog" in US spelling, the museum's field and
+  /// the tool's name). Any other tool keeps its server word.
   static const Map<String, String> toolWords = <String, String>{
     'date_parser': 'Date parse',
-    'catalog_number_validator': 'Catalogue number check',
+    'catalog_number_validator': 'Catalog number check',
   };
 
   /// `LookupStatus` values that are the service failing, not an answer
@@ -68,21 +70,29 @@ class HarnessLookups extends StatelessWidget {
     return toolWords[tool] ?? sentenceCase(vocabularyLabel(tool));
   }
 
-  /// How it ended, in words. A lookup's success found its record; a check's
-  /// passed.
+  /// How it ended, in the coordinator's words of 20:05Z on 2026-09-28. Any
+  /// other outcome keeps the server's word: an ambiguous answer from a source
+  /// that is not Google, where "places" would not be true, and an empty one.
   static String outcomeOf(ThreadToolCall call) => switch (call.outcome) {
-    'success' => call.source == null ? 'Passed' : 'Found',
-    'ambiguous' =>
-      call.source == _googleSource
-          ? 'Several places match'
-          : 'Several records match',
+    'success' => 'Found',
+    'ambiguous' when call.source == _googleSource => 'Several places match',
     'no_match' => 'No match',
-    'empty_response' => 'Nothing returned',
     final String outcome when _couldNotComplete.contains(outcome) =>
       'Could not complete',
     final String outcome => sentenceCase(vocabularyLabel(outcome)),
     null => 'Outcome not recorded',
   };
+
+  /// A field's name as [specimen] calls it, for a call's meta line.
+  static String Function(String fieldKey) namesIn(Specimen specimen) =>
+      (String key) {
+        for (final Json field in specimen.fields) {
+          if (field['field_key'] == key) {
+            return textOf(field['display_name'], vocabularyLabel(key));
+          }
+        }
+        return vocabularyLabel(key);
+      };
 
   /// "A", "A and B", "A, B and C".
   static String _listed(List<String> items) => items.length < 2
@@ -125,8 +135,7 @@ class HarnessLookups extends StatelessWidget {
       'success' => (null, UiIcons.check),
       // The field state's glyph for ambiguous (specimen_status.dart).
       'ambiguous' => (ui.color.status.needsReview, UiIcons.superseded),
-      'no_match' ||
-      'empty_response' => (ui.color.status.needsReview, UiIcons.unknown),
+      'no_match' => (ui.color.status.needsReview, UiIcons.unknown),
       final String failed when _couldNotComplete.contains(failed) => (
         ui.color.status.blocked,
         UiIcons.blocked,

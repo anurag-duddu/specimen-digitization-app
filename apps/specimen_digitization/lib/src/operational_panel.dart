@@ -21,7 +21,9 @@ import 'package:url_launcher/link.dart';
 import 'administrator_contact.dart';
 import 'models.dart';
 import 'review_context.dart';
+import 'screens/workbench/harness_lookups.dart';
 import 'screens/workbench/moments.dart';
+import 'screens/workbench/reader_name.dart';
 import 'thread/thread.dart';
 import 'vocabulary.dart';
 import 'widgets/widgets.dart';
@@ -241,6 +243,14 @@ class ProcessingDetail extends StatelessWidget {
     final DateTime? lease = DateTime.tryParse(textOf(run['lease_until'], ''));
     final bool activeLease = lease != null && lease.isAfter(DateTime.now());
     final String? currency = run['cost_currency'] as String?;
+    // The harness's calls on no label's text, as on a reviewer's (UI.md
+    // T2.7): the Readings sections list the rest, each under its label.
+    final SpecimenThread? loaded = thread;
+    final List<ThreadToolCall> unplaced = <ThreadToolCall>[
+      for (final ThreadToolCall call
+          in loaded?.toolCalls ?? const <ThreadToolCall>[])
+        if (call.regionId == null) call,
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -326,6 +336,14 @@ class ProcessingDetail extends StatelessWidget {
               why: threadUnreadableWhy,
             ),
           },
+        ],
+        if (loaded != null && unplaced.isNotEmpty) ...<Widget>[
+          SizedBox(height: ui.space.s3),
+          HarnessLookups(
+            calls: unplaced,
+            readerName: (String? id) => readerName(specimen, loaded, id),
+            fieldName: HarnessLookups.namesIn(specimen),
+          ),
         ],
         if (attempts.isNotEmpty) ...<Widget>[
           SizedBox(height: ui.space.s2),

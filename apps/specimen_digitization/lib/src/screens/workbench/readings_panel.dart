@@ -211,19 +211,9 @@ class WorkbenchReadings extends StatelessWidget {
           : HarnessLookups(
               calls: calls,
               readerName: _readerName,
-              fieldName: _fieldName,
+              fieldName: HarnessLookups.namesIn(specimen),
             ),
     );
-  }
-
-  /// A field's name as the record calls it, for the harness's calls.
-  String _fieldName(String key) {
-    for (final Json field in specimen.fields) {
-      if (field['field_key'] == key) {
-        return textOf(field['display_name'], vocabularyLabel(key));
-      }
-    }
-    return vocabularyLabel(key);
   }
 
   /// The name a reader goes by here.
