@@ -34,6 +34,9 @@ class RunEngine(FixtureEngine):
         found = [pair for pair in self.predict(image, prompt) if pair[1] >= threshold]
         return found[:limit]
 
+    def detect_many(self, image, prompts, **settings):
+        return [self.detect(image, prompt, **settings) for prompt in prompts]
+
 
 class RunObjects(MemoryObjects):
     """The pilot fixture store plus the per-run source read and mask reference."""

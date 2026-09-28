@@ -40,7 +40,11 @@ class DetectionEngine(FixtureEngine):
 
     def __init__(self, label=(0.9, 0.4, 0.05), cross=(0.7,)):
         super().__init__()
-        self.label, self.cross, self.detected = label, cross, []
+        self.label, self.cross, self.detected, self.many = label, cross, [], []
+
+    def detect_many(self, image, prompts, **settings):
+        self.many.append(list(prompts))
+        return [self.detect(image, prompt, **settings) for prompt in prompts]
 
     def detect(self, image, prompt, *, threshold, mask_threshold, limit):
         self.calls += 1
@@ -222,3 +226,116 @@ def test_the_lab_can_name_another_cross_check_concept(monkeypatch):
     assert cross_check_override(lab=False) is None
     monkeypatch.delenv("SPECIMEN_SAM3_LAB_CROSS_CHECK_CONCEPT")
     assert cross_check_override(lab=True) is None
+
+
+def test_one_vision_pass_serves_the_label_and_the_cross_check():
+    # The pilot's two concepts in one engine call, so the image is encoded
+    # once: two passes did not fit the service's deadline (the acceptance lab).
+    engine = DetectionEngine()
+    raw, client, _ = serve(engine)
+    response = post(client, run_request(raw, parameters=PILOT_PARAMETERS))
+    assert response.status_code == 200, response.text
+    assert engine.many == [["label", "text"]]
+
+
+class Grid:
+    """Just enough of a tensor's array for Image.fromarray, without numpy."""
+
+    def __init__(self, cells):
+        self.cells = cells
+
+    def cpu(self):
+        return self
+
+    def numpy(self):
+        return self
+
+    def astype(self, dtype):
+        return self
+
+    def __mul__(self, factor):
+        return Grid([[value * factor for value in row] for row in self.cells])
+
+    @property
+    def __array_interface__(self):
+        rows, columns = len(self.cells), len(self.cells[0])
+        return {"shape": (rows, columns), "typestr": "|u1", "strides": (columns, 1), "version": 3}
+
+    def tobytes(self):
+        return bytes(value for row in self.cells for value in row)
+
+
+class Score(float):
+    def item(self):
+        return float(self)
+
+
+class Found:
+    """What the processor's post-processing returns for one concept."""
+
+    def __init__(self, boxes, scores):
+        self.masks = [
+            Grid([[int(x0 <= x < x1 and y0 <= y < y1) for x in range(4)] for y in range(4)])
+            for x0, y0, x1, y1 in boxes
+        ]
+        self.scores = [Score(value) for value in scores]
+
+
+class FakeProcessor:
+    def __init__(self, found):
+        self.found, self.calls, self.sizes = found, [], []
+
+    def __call__(self, images=None, text=None, return_tensors=None):
+        self.calls.append("image" if images is not None else text)
+        if images is not None:
+            sizes = type("Sizes", (), {"tolist": lambda s: [[4, 4]]})()
+            return {"pixel_values": "pixels", "original_sizes": sizes}
+        return {"input_ids": text, "attention_mask": "mask:" + text}
+
+    def post_process_instance_segmentation(self, output, *, threshold, mask_threshold, target_sizes):
+        self.sizes.append(target_sizes)
+        found = self.found[output]
+        return [{"masks": found.masks, "scores": found.scores}]
+
+
+class FakeModel:
+    def __init__(self):
+        self.vision, self.calls = 0, []
+
+    def get_vision_features(self, pixel_values):
+        self.vision += 1
+        return ("vision", pixel_values)
+
+    def __call__(self, **inputs):
+        self.calls.append(inputs)
+        return inputs["input_ids"]
+
+
+def test_the_engine_encodes_the_image_once_for_every_concept():
+    import contextlib
+
+    from specimen_digitization.application.sam3_server import Sam3Engine
+
+    engine = object.__new__(Sam3Engine)
+    engine.processor = FakeProcessor(
+        {
+            "label": Found([(0, 0, 2, 2), (2, 2, 4, 4)], [0.6, 0.9]),
+            "text": Found([(0, 0, 1, 1)], [0.7]),
+        }
+    )
+    engine.model = FakeModel()
+    engine.torch = type("Torch", (), {"inference_mode": staticmethod(contextlib.nullcontext)})
+    found = engine.detect_many(
+        Image.new("RGB", (4, 4)), ["label", "text"], threshold=0.5, mask_threshold=0.5, limit=64
+    )
+    assert engine.model.vision == 1
+    assert engine.processor.calls == ["image", "label", "text"]
+    assert [call["vision_embeds"] for call in engine.model.calls] == [("vision", "pixels")] * 2
+    assert [(call["input_ids"], call["attention_mask"]) for call in engine.model.calls] == [
+        ("label", "mask:label"),
+        ("text", "mask:text"),
+    ]
+    assert engine.processor.sizes == [[[4, 4]], [[4, 4]]]
+    # Highest scores first, as one concept's detect returned them.
+    assert [[score for _, score in concept] for concept in found] == [[0.9, 0.6], [0.7]]
+    assert all(mask.size == (4, 4) and mask.mode == "L" for concept in found for mask, _ in concept)
