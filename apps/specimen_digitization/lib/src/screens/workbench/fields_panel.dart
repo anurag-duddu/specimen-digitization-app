@@ -525,8 +525,10 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
   /// Google record is named only by its place ID (G26), and a label region
   /// by its label. The harness's literal evidence names the reading it
   /// quotes, by its reader, and a reviewer's filled value is a line of its
-  /// own (coordinator rulings for S6, 2026-09-24). A source, relation or
-  /// outcome this client does not know keeps the server's word.
+  /// own (coordinator rulings for S6, 2026-09-24). Each line ends with the
+  /// label its evidence came from, said once when the locator already names
+  /// it (UI.md T2.3 part six). A source, relation or outcome this client does
+  /// not know keeps the server's word.
   String _evidenceLine(ThreadEvidence evidence) {
     if (evidence.source == _reviewSource) return WorkbenchFields.setByReviewer;
     final List<String> readers = <String>[
@@ -550,10 +552,17 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
       null => source,
     };
     final String? locator = evidence.locator;
+    final String? where = locator == null ? null : _locatorWords(locator);
+    final String? label = labelName(
+      widget.specimen,
+      widget.thread,
+      evidence.regionId,
+    );
     final String? outcome = evidence.outcome;
     return <String>[
       claim,
-      if (locator != null) _locatorWords(locator),
+      ?where,
+      if (label != null && label != where) label,
       // Section 8 lists only successful and recorded evidence, so neither
       // outcome is news.
       if (outcome != null && outcome != 'success' && outcome != 'recorded')

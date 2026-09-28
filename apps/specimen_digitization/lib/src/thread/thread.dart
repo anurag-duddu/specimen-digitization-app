@@ -529,7 +529,7 @@ class ThreadEvidence extends _View {
   /// The label region the evidence came from: the tool call's region, else
   /// the stored evidence's (#171 T3-2). Null for evidence no region made,
   /// such as a derivation's.
-  String? get regionId => null;
+  String? get regionId => _t('region_id');
 }
 
 /// How a derived value was filled (#171 T3-2; G37, G41, G44): its method,
@@ -609,7 +609,8 @@ class ThreadField extends _View {
   List<String> get derivedFrom => _texts('derived_from');
 
   /// How a derived value was filled; null for any other value (#171 T3-2).
-  ThreadDerivation? get derivation => null;
+  ThreadDerivation? get derivation =>
+      ThreadDerivation.fromJson(_json['derivation']);
 
   /// What was written: one entry for the decided transcript, or one per
   /// reader when the first pass chose none (G27, G28). A derived field has
