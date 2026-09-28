@@ -38,6 +38,7 @@ from .evidence_harness import (
 )
 from .region_pixels import region_png
 from .integrity import EvidenceIntegrityError, verify_evidence
+from .lookup import PLACE_FIELDS, taxonomy_lookup
 from .policy import finalize
 from .storage import BlobStore, Repository, digest
 from .reliability import AdapterFailure, retry_delay
@@ -362,12 +363,21 @@ class Workflow:
                 region = next(r for r in run.regions if r.id == step.split(":", 1)[1])
                 readings = [o for o in run.observations if o.region_id == region.id]
                 decision = self.adapters.first_pass(specimen, region, readings)
+                from .first_pass import UNRESOLVED_VERDICTS, g19_pick, is_material
+
                 ids = {o.id for o in readings}
+                selected = decision.selected_observation_id
                 if (
                     decision.region_id != region.id
                     or decision.call.region_id != region.id
-                    or decision.selected_observation_id not in ids | {None}
-                    or any(set(d.spans) != ids for d in decision.differences)
+                    or selected not in ids | {None}
+                    or any(
+                        set(d.spans) != ids
+                        or d.verdict not in ids | UNRESOLVED_VERDICTS
+                        or d.material != is_material(d.spans.values())
+                        for d in decision.differences
+                    )
+                    or g19_pick(selected, decision.differences) != selected
                 ):
                     raise OperationalBlock("first_pass_contract_invalid")
                 run.first_pass_decisions = [
@@ -525,7 +535,15 @@ class Workflow:
             elif step == "lookup":
                 name = run.fields["taxon"].literal
                 if name:
-                    outcome = self.adapters.lookup(name)
+                    # No word of the run's place-field literals is sent, and
+                    # a genus in doubt sends nothing (the coordinator's rulings
+                    # of 02:07Z, 03:24Z and 03:31Z on 2026-09-26, PLAN 4.8).
+                    places = [
+                        run.fields[key].literal
+                        for key in PLACE_FIELDS
+                        if key in run.fields and run.fields[key].literal
+                    ]
+                    outcome = taxonomy_lookup(self.adapters.lookup, name, places, self.blobs)
                     run.lookups.append(outcome)
                     if outcome.status in OPERATIONAL:
                         raise OperationalBlock("taxonomy_" + outcome.status.value)

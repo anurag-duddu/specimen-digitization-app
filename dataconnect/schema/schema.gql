@@ -83,10 +83,10 @@ type ProfileVersion @table(key: ["organizationId", "collectionId", "id"]) {
   createdAt: Timestamp! @default(expr: "request.time")
 }
 
-# Step 1 of making object uniqueness per specimen (DATA_CONTRACT.md 3.3): the blob store is
-# content-addressed, so byte-identical assets of different specimens are one stored object. T2a
-# drops specimen_unique_1 in a later apply, once this constraint exists.
-type SourceAsset @table(key: ["organizationId", "collectionId", "id"]) @unique(indexName: "specimen_unique_1", fields: ["bucket", "objectName", "generation"]) @unique(indexName: "source_asset_specimen_object", fields: ["organizationId", "collectionId", "specimenId", "bucket", "objectName", "generation"]) {
+# Object uniqueness is per specimen (DATA_CONTRACT.md 3.3): the blob store is content-addressed,
+# so byte-identical assets of different specimens are one stored object. #88 declared this
+# constraint beside specimen_unique_1; this second apply drops the old one.
+type SourceAsset @table(key: ["organizationId", "collectionId", "id"]) @unique(indexName: "source_asset_specimen_object", fields: ["organizationId", "collectionId", "specimenId", "bucket", "objectName", "generation"]) {
   organizationId: UUID!
   collectionId: UUID!
   collection: Collection! @ref(constraintName: "scope_ref_7", fields: ["organizationId", "collectionId"])

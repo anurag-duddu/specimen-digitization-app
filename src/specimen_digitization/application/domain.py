@@ -153,6 +153,8 @@ class Observation(Record):
     provider: str
     prompt_version: str
     input_sha256: str
+    # A first-pass call's text request, apart from its crop (HARNESS.md 3).
+    request_sha256: str | None = None
     literal_text: str
     unreadable_spans: list[str] = Field(default_factory=list)
     raw_ref: str

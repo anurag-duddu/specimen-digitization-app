@@ -1,6 +1,7 @@
 """Durable local reference adapters; production adapters live separately."""
 
 from __future__ import annotations
+from dataclasses import dataclass
 import hashlib
 from .active_graph import original_run_digest, unpack
 import json
@@ -12,7 +13,7 @@ from typing import Protocol
 from .domain import Principal, Scope, Specimen, WorkItem, WorkPage, now
 
 
-def digest(value: object) -> str:
+def canonical_json(value: object) -> str:
     def canonical(item):
         if isinstance(item, dict):
             return {k: canonical(v) for k, v in item.items()}
@@ -22,11 +23,13 @@ def digest(value: object) -> str:
             return int(item)
         return item
 
-    return hashlib.sha256(
-        json.dumps(
-            canonical(value), sort_keys=True, separators=(",", ":"), allow_nan=False
-        ).encode()
-    ).hexdigest()
+    return json.dumps(
+        canonical(value), sort_keys=True, separators=(",", ":"), allow_nan=False
+    )
+
+
+def digest(value: object) -> str:
+    return hashlib.sha256(canonical_json(value).encode()).hexdigest()
 
 
 class Conflict(RuntimeError):
@@ -83,6 +86,19 @@ def work_available_at(specimen: Specimen) -> str | None:
     return now()
 
 
+@dataclass(frozen=True)
+class ProjectionResult:
+    """Whether a pass wrote every normalized row a revision supports (DATA_CONTRACT.md 11).
+
+    `stopped_at` names the step a stopped pass did not write, a connector operation, or
+    `not_computed` when the rows could not be computed; it never holds row data. After a
+    run's final save the lane re-projects until a pass is complete (coordinator ruling).
+    """
+
+    complete: bool
+    stopped_at: str | None = None
+
+
 class Repository(Protocol):
     def due_page(
         self, scope: Scope, cutoff: str, after_id: str | None, limit: int = 50
@@ -100,6 +116,7 @@ class Repository(Protocol):
         key: str,
         digest: str,
     ) -> Specimen: ...
+    def write_projection(self, scope: Scope, specimen: Specimen) -> ProjectionResult: ...
 
 
 class BlobStore(Protocol):
@@ -532,3 +549,7 @@ class SQLiteRepository:
                 ),
             )
         return payload
+
+    def write_projection(self, scope: Scope, specimen: Specimen) -> ProjectionResult:
+        """No normalized rows locally (DATA_CONTRACT.md 11), so every pass is complete."""
+        return ProjectionResult(True)

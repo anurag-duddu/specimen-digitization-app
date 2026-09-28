@@ -42,6 +42,13 @@ class HuggingFaceInferenceRoute:
                 "routing and policy suffixes are not allowed."
             )
 
+    def serves_with_images(self, logical_capability: str) -> bool:
+        """Whether this route plays the role and takes the text and image it is sent."""
+        return self.logical_capability == logical_capability and {
+            "text",
+            "image",
+        }.issubset(self.required_input_modalities)
+
 
 INITIAL_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
     {
@@ -61,8 +68,9 @@ INITIAL_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingPro
 )
 # The reader routes above stay the whole initial set: the pilot launch, its
 # stage list and the release check compare a profile's readers against it.
-# The first pass and the harness were approved 2026-09-23 on the T1
-# measurements (docs/execution/golive/HARNESS.md section 5).
+# The coordinator approved the first-pass and harness routes on 2026-09-23 on
+# the figures of S4's T1 report; docs/execution/golive/HARNESS.md section 5
+# recomputes them from the same calls.
 STAGE_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
     {
         "first-pass-glm": HuggingFaceInferenceRoute(
