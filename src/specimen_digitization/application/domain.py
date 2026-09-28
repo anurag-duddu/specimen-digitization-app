@@ -153,6 +153,8 @@ class Observation(Record):
     provider: str
     prompt_version: str
     input_sha256: str
+    # A first-pass call's text request, apart from its crop (HARNESS.md 3).
+    request_sha256: str | None = None
     literal_text: str
     unreadable_spans: list[str] = Field(default_factory=list)
     raw_ref: str
@@ -160,6 +162,44 @@ class Observation(Record):
     created_at: str = Field(default_factory=now)
     input_tokens: int = 0
     output_tokens: int = 0
+
+
+class ReadingSpan(Record):
+    """The text between two character offsets of one reading."""
+
+    start: int = Field(ge=0)
+    end: int = Field(ge=0)
+    text: str
+
+
+class FirstPassDifference(Record):
+    """One numbered difference between the readings, with the first pass's verdict:
+    the supported reading's observation ID, `neither` or `uncertain`."""
+
+    number: int = Field(ge=1)
+    spans: dict[str, ReadingSpan]
+    verdict: str
+    material: bool
+
+
+class FirstPassDecision(Record):
+    """The first pass for one region: a reading chosen verbatim, or none."""
+
+    region_id: str
+    selected_observation_id: str | None
+    rationale: str
+    notes: dict[str, str]
+    differences: list[FirstPassDifference]
+    call: Observation
+
+
+class ReaderHandoff(Record):
+    """What one reading handed to the harness (HARNESS.md section 4)."""
+
+    observation_id: str
+    role: Literal["decided_transcript", "raw_reading"]
+    handed_text: str
+    note: str | None = None
 
 
 class Transcript(Record):
@@ -177,6 +217,11 @@ class Transcript(Record):
     alignment_status: str | None = None
     alignment_algorithm: str | None = None
     alignment_reasons: list[str] = Field(default_factory=list)
+    decision_kind: Literal["identical_readings", "first_pass", "human"] | None = None
+    selected_observation_id: str | None = None
+    first_pass_call: Observation | None = None
+    differences: list[FirstPassDifference] = Field(default_factory=list)
+    handoffs: list[ReaderHandoff] = Field(default_factory=list)
 
 
 class Evidence(Record):
@@ -251,7 +296,7 @@ class StageCostReservations(Record):
         import re
 
         if any(
-            stage not in {"segment", "classify", "parse"}
+            stage not in {"segment", "classify", "parse", "first_pass"}
             and not re.fullmatch(r"transcribe:[a-z0-9][a-z0-9-]{0,99}", stage)
             for stage in self.cost_micros
         ):
@@ -264,6 +309,8 @@ class StageCostReservations(Record):
             if len(parts) != 3:
                 return None
             step = "transcribe:" + parts[2]
+        elif step.startswith("first_pass:"):
+            step = "first_pass"  # One reservation for every region's first pass.
         return self.cost_micros.get(step)
 
 
@@ -330,6 +377,7 @@ class Profile(Record):
     policy_version: str = "insects-clearance-v1"
     mandatory_fields: tuple[str, ...] = MANDATORY
     routes: tuple[str, str] = ("handwriting-qwen", "handwriting-muse")
+    first_pass_route: str | None = None
     synthetic: bool = False
     institutional_policy_approved: bool = False
     semantics_confirmed: bool = False
@@ -365,6 +413,7 @@ class Run(Record):
     completed_steps: list[str] = Field(default_factory=list)
     regions: list[Region] = Field(default_factory=list)
     observations: list[Observation] = Field(default_factory=list)
+    first_pass_decisions: list[FirstPassDecision] = Field(default_factory=list)
     transcripts: list[Transcript] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
     fields: dict[str, FieldValue] = Field(
