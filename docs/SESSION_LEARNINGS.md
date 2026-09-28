@@ -13153,3 +13153,42 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Remaining follow-ups:
   - At "#146 is next": merge main once, run the gates again and push.
   - Then send "PR #146 ready", and get S2's sign-off comment naming that head.
+### 2026-09-28 — Go-live projection writer (S5 T2a, #146): round 1
+
+- Task: the steward's round-1 verdict at `0a68bb2` (issuecomment-5864861862).
+  - It found two blockers under the pilot-first bar, B4 and B3.
+  - It listed nine follow-ups for S5's post-chain pull request.
+- Branch/worktree: `golive/data-projection` in `.claude/worktrees/epic-rhodes-d168f3`.
+- Commits:
+  - `f9a9a0f`: B3.
+  - `0937d01`: B4, red.
+  - `838ccf5`: B4, green.
+  - `e6d4324`: the merge of main `109ec155`, with #113.
+  - This entry.
+- Outcome:
+  - B4:
+    - `classify` chooses the profile and re-queues `pin_dependencies`, so the save between them still carries the first pin, of the empty profile.
+    - The writer emitted `ProfileVersion` and `PipelineRun` at that save. Its rows are insert-only, so every run kept a `ProfileVersion` whose `configSha256` is the empty profile's digest, and a `PipelineRun` pointing at it.
+    - Both rows now wait until `Run.dependencies` pin the current snapshot: its digest, and its registry version. Dependencies without the pin raise, and the pass is `not_computed`, as before.
+    - The contract states the condition in sections 2 and 4.1. The test fixtures now pin the registry version as `pin_dependencies` does.
+  - B3: the list of owner decisions credited the owner with G30's reservation mechanism. It now reads "USD 5 (reserve-then-settle is the coordinator's ruling, PLAN 4.3)". The list's other entries match their PLAN rows.
+- Validation actually run:
+  - Red `0937d01`: the new test, which drives the synthetic workflow's real step order, found two `ProfileVersion` rows. The first had the empty profile's digest.
+  - Green:
+    - the writer, projection, workflow, application and schema-gate tests: 199 passed;
+    - the reviewer's probe reports each row first written after the re-pin, with the final pin.
+  - At `e6d4324`, each gate started at a one-minute load under 12:
+    - `tests/`: 4479 passed, 32 skipped;
+    - `scripts/`: 1882 passed, 51 skipped;
+    - `test-postgres.sh`: exit 0, with 79 PASS lines;
+    - the opt-in emulator test: 1 passed;
+    - `check_ui_strings.py`: 0 violations;
+    - `schema_gate.py` against main's `dataconnect/`: `additive`.
+- Durable learnings:
+  - (1) Write a create-once row only when its inputs are final.
+    - The writer's rows are insert-only: a primary-key conflict counts as written. So a save between two steps that must both run before the row is right freezes the wrong row for good.
+    - Guard on the pin that makes the value final, not on the value being present.
+  - (2) Tests that set a derived field by hand hide ordering bugs.
+    - Both fixtures set `dependencies` directly, and they left out a key the workflow always writes.
+    - Drive the real step order at least once.
+- Remaining follow-ups: the verdict's nine, in S5's post-chain pull request.
