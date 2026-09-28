@@ -294,7 +294,15 @@ class WorkbenchReadings extends StatelessWidget {
 
   Widget _differences(BuildContext context, Json run) {
     final List<Json> transcriptions = objects(specimen.data['transcriptions']);
-    final List<Json> disagreements = objects(specimen.data['disagreements']);
+    // One row per region. A region with a transcription is described by it;
+    // the list of differences speaks only for a region no transcription
+    // covers, which is the shape older records and fixtures carry.
+    final Set<Object?> described = <Object?>{
+      for (final Json t in transcriptions) t['region_id'],
+    };
+    final List<Json> disagreements = objects(
+      specimen.data['disagreements'],
+    ).where((Json d) => !described.contains(d['region_id'])).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -337,21 +345,10 @@ class WorkbenchReadings extends StatelessWidget {
                 'Agreement between readings does not mean every label was '
                 'found.',
           ),
-        for (final Json d in disagreements)
-          _DifferenceRow(
-            title: '${_regionName(d['region_id'])}: the readings differ',
-            detail: (d['alternatives'] as List? ?? <Object?>[])
-                .map((Object? a) => a.toString())
-                .join(' · '),
-            payload: d,
-          ),
+        for (final Json d in disagreements) _regionRow(d),
         for (final Json t in transcriptions)
-          _DifferenceRow(
-            title: t['resolved'] == true
-                ? '${_regionName(t['region_id'])}: resolved'
-                : '${_regionName(t['region_id'])}: unresolved',
-            detail: textOf(t['verbatim_text'], textOf(t['text'], '')),
-            payload: t,
+          _regionRow(
+            t,
             extra: t.containsKey('alignment_status')
                 ? TranscriptionComparisonSummary(transcription: t)
                 : null,
@@ -379,6 +376,53 @@ class WorkbenchReadings extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  /// What a region's row says after its name, one word per state (02
+  /// section 6, rule 18).
+  static const String resolvedState = 'resolved';
+
+  /// The row of a region whose readings differ and are not resolved.
+  static const String differState = 'the readings differ';
+
+  /// The row of a region whose readings agree but are not resolved.
+  static const String unresolvedState = 'unresolved';
+
+  /// One region's row: resolved, the readings differ, or unresolved, by the
+  /// one rule the blockers use (UI.md T1.3), whichever list it came from.
+  Widget _regionRow(Json t, {Widget? extra}) {
+    final bool resolved = t['resolved'] == true;
+    final bool differ = readingsDiffer(t, specimen.observations);
+    final String state = resolved
+        ? resolvedState
+        : differ
+        ? differState
+        : unresolvedState;
+    return _DifferenceRow(
+      title: '${_regionName(t['region_id'])}: $state',
+      detail: !resolved && differ
+          ? _alternatives(t)
+          : textOf(t['verbatim_text'], textOf(t['text'], '')),
+      // A resolved region whose readings differed keeps them in view: a
+      // decision is audited against what it chose between.
+      readings: resolved && differ ? _alternatives(t) : null,
+      payload: t,
+      extra: extra,
+    );
+  }
+
+  /// A region's distinct readings, as one line of metadata values: the
+  /// transcription's alternatives, or the region's own readings when it has
+  /// none (see `distinctReadings`).
+  String _alternatives(Json transcription) {
+    final Object? alternatives = transcription['alternatives'];
+    final Iterable<String> texts = alternatives is List
+        ? alternatives.map((Object? a) => a.toString())
+        : specimen.observations
+              .where((Json o) => o['region_id'] == transcription['region_id'])
+              .map(_literalOf)
+              .toSet();
+    return texts.join(' · ');
   }
 
   Future<void> _resolve(BuildContext context) async {
@@ -410,12 +454,17 @@ class _DifferenceRow extends StatelessWidget {
     required this.title,
     required this.detail,
     required this.payload,
+    this.readings,
     this.extra,
   });
 
   final String title;
   final String detail;
   final Json payload;
+
+  /// The readings a resolved region chose between, when they differed.
+  final String? readings;
+
   final Widget? extra;
 
   @override
@@ -432,6 +481,23 @@ class _DifferenceRow extends StatelessWidget {
             Text(title, style: ui.type.label),
             if (detail.isNotEmpty && detail != 'Not recorded')
               Text(detail, style: ui.type.mono.literalDense),
+            if (readings case final String chosenFrom)
+              Text.rich(
+                TextSpan(
+                  children: <InlineSpan>[
+                    TextSpan(
+                      text: 'Readings: ',
+                      style: ui.type.bodySmall.copyWith(
+                        color: ui.color.inkSecondary,
+                      ),
+                    ),
+                    TextSpan(
+                      text: chosenFrom,
+                      style: ui.type.mono.literalDense,
+                    ),
+                  ],
+                ),
+              ),
             ?extra,
             EvidenceDrawer(payload: payload, section: title),
           ],
