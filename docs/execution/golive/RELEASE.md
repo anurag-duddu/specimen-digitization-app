@@ -320,11 +320,11 @@ the merged `dataconnect/schema/*.gql` and `dataconnect/connector/*.gql`,
 offline. It parses only the SDL this repository uses. It reads only the
 top-level `*.gql` files of those two folders, the files the data release
 sends. It fails closed on anything else firebase-tools would read there: a
-nested folder, a `*.graphql` file, or an entry that is not a regular file. The
-data release applies exactly those files through the Data Connect API. It
-never applies them through `firebase deploy` or a `firebase dataconnect:`
-command, which read `**/*.{gql,graphql}` and every `connectorDirs` entry. It
-accepts:
+source in a nested folder, a `*.graphql` file, a `*.gql` entry that is not a
+regular file, or a symbolic link. The data release applies exactly those files
+through the Data Connect API. It never applies them through `firebase deploy`
+or a `firebase dataconnect:` command, which read `**/*.{gql,graphql}` and every
+`connectorDirs` entry. It accepts:
 
 - new `@table` types, whatever their fields, except a field whose `@default`
   carries SQL (below);
