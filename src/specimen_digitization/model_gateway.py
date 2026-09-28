@@ -12,8 +12,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from huggingface_hub import AsyncInferenceClient
+from huggingface_hub import AsyncInferenceClient, ChatCompletionInputToolCall
 from pydantic import SecretStr
+from pydantic_ai.messages import ToolCallPart
 from pydantic_ai.models.huggingface import HuggingFaceModel
 from pydantic_ai.providers.huggingface import HuggingFaceProvider
 
@@ -41,6 +42,13 @@ class HuggingFaceInferenceRoute:
                 "routing and policy suffixes are not allowed."
             )
 
+    def serves_with_images(self, logical_capability: str) -> bool:
+        """Whether this route plays the role and takes the text and image it is sent."""
+        return self.logical_capability == logical_capability and {
+            "text",
+            "image",
+        }.issubset(self.required_input_modalities)
+
 
 INITIAL_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
     {
@@ -58,6 +66,49 @@ INITIAL_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingPro
         ),
     }
 )
+# The reader routes above stay the whole initial set: the pilot launch, its
+# stage list and the release check compare a profile's readers against it.
+# The coordinator approved the first-pass and harness routes on 2026-09-23 on
+# the figures of S4's T1 report; docs/execution/golive/HARNESS.md section 5
+# recomputes them from the same calls.
+STAGE_HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
+    {
+        "first-pass-glm": HuggingFaceInferenceRoute(
+            route_id="first-pass-glm",
+            logical_capability="transcription_first_pass",
+            model_id="zai-org/GLM-5.3-Flash",
+            provider="deepinfra",
+        ),
+        "harness-deepseek": HuggingFaceInferenceRoute(
+            route_id="harness-deepseek",
+            logical_capability="field_harness",
+            model_id="deepseek-ai/DeepSeek-V4.1-Flash",
+            provider="deepinfra",
+            required_input_modalities=("text",),
+        ),
+    }
+)
+HUGGINGFACE_ROUTES: Mapping[str, HuggingFaceInferenceRoute] = MappingProxyType(
+    {**INITIAL_HUGGINGFACE_ROUTES, **STAGE_HUGGINGFACE_ROUTES}
+)
+
+
+class ArgumentPreservingHuggingFaceModel(HuggingFaceModel):
+    """Resend earlier tool calls with the arguments the model produced.
+
+    pydantic-ai sets ``function.arguments`` on each replayed tool call, but
+    huggingface_hub rebuilds the call with ``dataclasses.asdict``, which keeps
+    only the declared ``name``, ``parameters`` and ``description``. Without
+    this override every turn after a tool call or an invalid-output retry goes
+    out without arguments: DeepInfra rejects it with HTTP 422 and Novita hands
+    the model an empty call.
+    """
+
+    @staticmethod
+    def _map_tool_call(t: ToolCallPart) -> ChatCompletionInputToolCall:
+        call = HuggingFaceModel._map_tool_call(t)
+        call["function"]["arguments"] = t.args_as_json_str()
+        return call
 
 
 class HuggingFaceModelGateway:
@@ -84,7 +135,7 @@ class HuggingFaceModelGateway:
         self._timeout_seconds = timeout_seconds
         self._token = SecretStr(resolved_token)
         self._bill_to = bill_to if bill_to is not None else os.getenv("HF_BILL_TO")
-        selected_routes = INITIAL_HUGGINGFACE_ROUTES if routes is None else routes
+        selected_routes = HUGGINGFACE_ROUTES if routes is None else routes
         self._routes = MappingProxyType(dict(selected_routes))
 
     @property
@@ -109,7 +160,7 @@ class HuggingFaceModelGateway:
             if route.logical_capability == logical_capability
         )
 
-    def model_for(self, route_id: str) -> HuggingFaceModel:
+    def model_for(self, route_id: str) -> ArgumentPreservingHuggingFaceModel:
         """Return a Pydantic AI model bound to the route's concrete provider."""
         route = self.route(route_id)
         timeout_options = (
@@ -126,4 +177,4 @@ class HuggingFaceModelGateway:
         provider = HuggingFaceProvider(
             hf_client=client, api_key=self._token.get_secret_value()
         )
-        return HuggingFaceModel(route.model_id, provider=provider)
+        return ArgumentPreservingHuggingFaceModel(route.model_id, provider=provider)

@@ -28,6 +28,7 @@ def encoded(value):
 def run_summary(run):
     omitted = {
         "observations",
+        "first_pass_decisions",
         "transcripts",
         "fields",
         "evidence",
