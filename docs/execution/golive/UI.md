@@ -623,6 +623,10 @@ same, so it refused the lab.
 - The production build is unchanged: it expects `production`.
 - The band still says "Test environment" for the local build. The lab's
   records are not approved museum records, which is all the band claims.
+- The local sign-in no longer says "Test data only", which was not true of
+  the lab's real slides. Its line reads "This email only labels your
+  session on this computer. It isn't a museum account." (coordinator ruling
+  at 18:55Z on 2026-09-28). The band stays.
 - The lab is not served in `synthetic` mode instead. That mode swaps the
   profile registry, processes runs in-process and marks the policy approved,
   so the owner would see other semantics than the pipeline's.
