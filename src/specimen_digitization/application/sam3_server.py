@@ -341,23 +341,44 @@ class Sam3Engine:
 
     def detect(self, image, prompt, *, threshold, mask_threshold, limit):
         """Every detection at or above the threshold, highest scores first."""
-        inputs = self.processor(images=image, text=prompt, return_tensors="pt")
-        with self.torch.inference_mode():
-            output = self.model(**inputs)
-        result = self.processor.post_process_instance_segmentation(
-            output,
-            threshold=threshold,
-            mask_threshold=mask_threshold,
-            target_sizes=inputs.get("original_sizes").tolist(),
+        return self.detect_many(
+            image, [prompt], threshold=threshold, mask_threshold=mask_threshold, limit=limit
         )[0]
-        found = [
-            (
-                Image.fromarray(mask.cpu().numpy().astype("uint8") * 255),
-                float(score.item()),
+
+    def detect_many(self, image, prompts, *, threshold, mask_threshold, limit):
+        """Each concept's detections, as detect gives them, from one pass of the
+        vision encoder: the concepts share the image's features (LANE.md T3b)."""
+        image_inputs = self.processor(images=image, return_tensors="pt")
+        sizes = image_inputs["original_sizes"].tolist()
+        found = []
+        with self.torch.inference_mode():
+            vision = self.model.get_vision_features(
+                pixel_values=image_inputs["pixel_values"]
             )
-            for mask, score in zip(result["masks"], result["scores"], strict=True)
-        ]
-        return sorted(found, key=lambda pair: pair[1], reverse=True)[:limit]
+            for prompt in prompts:
+                text = self.processor(text=prompt, return_tensors="pt")
+                output = self.model(
+                    vision_embeds=vision,
+                    input_ids=text["input_ids"],
+                    attention_mask=text.get("attention_mask"),
+                )
+                result = self.processor.post_process_instance_segmentation(
+                    output,
+                    threshold=threshold,
+                    mask_threshold=mask_threshold,
+                    target_sizes=sizes,
+                )[0]
+                pairs = [
+                    (
+                        Image.fromarray(mask.cpu().numpy().astype("uint8") * 255),
+                        float(score.item()),
+                    )
+                    for mask, score in zip(result["masks"], result["scores"], strict=True)
+                ]
+                found.append(
+                    sorted(pairs, key=lambda pair: pair[1], reverse=True)[:limit]
+                )
+        return found
 
     def predict(self, image, prompt):
         inputs = self.processor(images=image, text=prompt, return_tensors="pt")
@@ -599,15 +620,19 @@ class RunSegmenter:
                 raise HTTPException(409, "sam3_busy")
         raise HTTPException(409, "sam3_run_attempts_exhausted")
 
-    def _detect(self, image, concept, parameters):
-        found = self.engine.detect(
+    def _detect(self, image, concepts, parameters):
+        """Every concept's detections from one engine call, which encodes the
+        image once for all of them (LANE.md T3b)."""
+        found = self.engine.detect_many(
             image,
-            concept,
+            concepts,
             threshold=parameters["record_floor"],
             mask_threshold=parameters["mask_threshold"],
             limit=parameters["max_detections"],
         )
-        for mask, score in found:
+        if len(found) != len(concepts):
+            raise HTTPException(422, "sam3_invalid_mask")
+        for mask, score in (pair for concept in found for pair in concept):
             if (
                 mask.size != image.size
                 or mask.mode != "L"
@@ -631,7 +656,10 @@ class RunSegmenter:
         image = decode_source(raw, request)
         parameters = Sam3Parameters.model_validate(request.parameters).applied()
         self._claim(prefix, request_sha256)
-        label = self._detect(image, request.prompt, parameters)
+        concept = parameters["cross_check_concept"]
+        concepts = [request.prompt, *([concept] if concept else [])]
+        found = self._detect(image, concepts, parameters)
+        label = found[0]
         kept = [(mask, score) for mask, score in label if score >= parameters["label_threshold"]]
         regions, evidence = (
             mask_regions(
@@ -650,14 +678,8 @@ class RunSegmenter:
             dict(item, ref=region["mask_ref"])
             for item, region in zip(evidence, regions, strict=True)
         ]
-        concept = parameters["cross_check_concept"]
         cross_check = (
-            {
-                "concept": concept,
-                "detections": detections(self._detect(image, concept, parameters)),
-            }
-            if concept
-            else None
+            {"concept": concept, "detections": detections(found[1])} if concept else None
         )
         response = {
             "model_id": SAM3_MODEL.repo_id,
