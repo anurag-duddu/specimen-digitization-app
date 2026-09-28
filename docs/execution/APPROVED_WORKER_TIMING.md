@@ -14,9 +14,11 @@
 > the single bounded worker execution, timing clock T and SAM life reserve
 > this document defines; the ten pilot specimens remain the acceptance
 > cohort, processed in order, and SAM 3 scales to zero instead of expiring
-> after an hour. Release envelopes, cost ledgers and reservations, including
-> the reservation budget and approval digest this document requires, are
-> retired; data and runtime releases now deploy automatically on merge.
+> after an hour. Release envelopes, the release and cohort cost ledgers and
+> their reservations, including the reservation budget and approval digest
+> this document requires, are retired; data and runtime releases now deploy
+> automatically on merge. G30's per-call reservations stand (PLAN 4.3; the
+> coordinator's ruling on the mechanism).
 
 The combined approval recorded on 2026-09-14 adds one explicit timing dialect.
 It does not change legacy launches. This document describes source behavior and
@@ -114,11 +116,13 @@ The original SAM activation lifetime remains at most one hour in both dialects.
 > section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G3 and G11. System prompts and text inputs and outputs at every VLM, LLM
 > and SAM 3 level, SAM 3 parameters and the harness's tool calls with
-> arguments and results (geocoding keeps only what G26 allows) are recorded
-> in Logfire, one trace per run linked
-> from the specimen record, not the metadata-only, worker-only scope this
-> section fixes; the amended scope is in
-> [APPROVED_LOGFIRE_TRACING.md](APPROVED_LOGFIRE_TRACING.md). The
+> arguments and results (a Google geocoding result keeps only what G26
+> allows) are recorded in Logfire, one trace per run linked from the specimen
+> record, not the metadata-only, worker-only scope this section fixes; the
+> amended scope is in
+> [APPROVED_LOGFIRE_TRACING.md](APPROVED_LOGFIRE_TRACING.md). Secrets and the
+> identities of the app's users never enter prompts or tool arguments, and
+> scrubbing is only the backstop. The
 > independent transport/privacy/completion review this section keeps as a
 > release gate is retired with the other independent-review gates; the PR
 > steward's review of each pull request replaces it.
