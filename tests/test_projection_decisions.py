@@ -66,6 +66,12 @@ class ToolCallRecord(BaseModel):
     completed_at: str | None = None
 
 
+class LedgerEvidence(Evidence):
+    """S4's widened Evidence (#134): a lookup that didn't succeed has no locator."""
+
+    locator: str | None = None
+
+
 class DecidedTranscript(Transcript):
     decision_kind: str | None = None
     selected_observation_id: str | None = None
@@ -357,6 +363,55 @@ def test_lookups_and_stored_evidence_become_evidence_items():
     assert (asset["kind"], asset["sha256"], asset["width"]) == ("evidence_record", "9" * 64, None)
     assert (items[1]["outcome"], items[1]["locator"]) == ("no_match", None)
     assert items[2]["locator"] == "gbif/1"
+
+
+def test_the_ledgers_lookup_evidence_takes_the_outcome_of_its_call():
+    """Precondition G (a) of #134's verdict: the harness ledger records a lookup call's result as
+    an Evidence of kind "lookup", with its stored body, and a locator only when it succeeded. Its
+    row takes the outcome of the call whose evidence_id names it (section 11); a validator's
+    stored verdict stays recorded, with its region locator (#138 stores the record)."""
+    s = first_pass(base())
+    region, reading = s.run.regions[0], s.run.observations[0]
+
+    def item(kind, source, locator, fill):
+        return LedgerEvidence(
+            kind=kind,
+            region_id=region.id,
+            observation_ids=[reading.id],
+            source=source,
+            locator=locator,
+            excerpt=source,
+            raw_ref=f"{fill * 64}:1",
+            digest=fill * 64,
+        )
+
+    def call(tool, outcome, evidence, n):
+        return ToolCallRecord(
+            call_key=f"lookup:{tool}:raw_reading:{region.id}:{reading.id}:{n * 16}:1",
+            phase="lookup",
+            tool=tool,
+            tool_version=f"{tool}-1",
+            source=tool,
+            field_keys=["taxon"],
+            input_source="raw_reading",
+            region_id=region.id,
+            observation_id=reading.id,
+            arguments={"name": "Epipocous"},
+            outcome=outcome,
+            evidence_id=evidence.id,
+        )
+
+    ambiguous = item("lookup", "gbif", None, "d")
+    found = item("lookup", "gbif", "usage/1651891", "e")
+    verdict = item("validation", "date_parser", f"region:{region.id}", "f")
+    s.run.evidence = [ambiguous, found, verdict]
+    s.run.tool_calls = [call("gbif", "ambiguous", ambiguous, "1"), call("gbif", "success", found, "2"),
+                        call("date_parser", "success", verdict, "3")]
+    items = {i["id"]: i for i in rows(writes(s, locate, size, "worker-uid"), "AppendEvidenceItemV2")}
+    assert (items[ambiguous.id]["outcome"], items[ambiguous.id]["locator"]) == ("ambiguous", None)
+    assert items[ambiguous.id]["responseSha256"] == "d" * 64
+    assert (items[found.id]["outcome"], items[found.id]["locator"]) == ("success", "usage/1651891")
+    assert (items[verdict.id]["outcome"], items[verdict.id]["locator"]) == ("recorded", f"region:{region.id}")
 
 
 def test_tool_calls_point_at_the_decision_they_ran_on_and_the_evidence_they_made():
