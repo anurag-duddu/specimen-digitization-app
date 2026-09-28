@@ -109,7 +109,16 @@ A request copies both into the run's `profile.execution` as
 `approved_cost_limit_micros` and `stage_cost_reservations`. The existing workflow
 checks enforce them per paid step (`workflow.py` 191-231), and classification
 carries `execution` forward unchanged (`collection_runtime.py` 108). A profile
-without `processing` serializes and hashes exactly as before.
+without `processing` serializes exactly as before.
+
+A profile's digest is the canonical digest of its JSON (`storage.digest`, keys
+sorted), like every other pinned digest. Data Connect returns a stored snapshot
+with its keys reordered, because PostgreSQL's jsonb keeps no key order. The rules a
+run pinned at classify are recomputed from that snapshot before `segment`, so a
+digest over the dict fields' insertion order blocked every stored run
+(`segmentation_profile_rules_unresolved`; the acceptance lab, 2026-09-28). No run
+pinned before this change exists: the production data plane is initialized only
+at #163, and a reprocess pins its new run afresh.
 
 The allowance comes from the profile the run will use. That is the collection a
 reviewer selected, if one did; otherwise it is the intake collection (G14),
