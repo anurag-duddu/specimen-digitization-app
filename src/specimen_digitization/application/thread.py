@@ -2,9 +2,10 @@
 
 Pure: assembles GetRunThreadV1's rows and the specimen's snapshot into the response S6's client
 reads. The rows are the SQL projection (section 11): regions, readings, comparisons, the first
-pass, handoffs, tool calls and evidence. The snapshot, which stays the source of truth, gives the
-run's state and cost, the image, segmentation and the coverage check. It also says which
-decisions, candidates and record version are current: those are keyed by their content, so the
+pass, handoffs, tool calls, field candidates and the queue decision. The snapshot, which stays
+the source of truth, gives the run's state and cost, the image, segmentation, the coverage check,
+each field's layer and which of its entries settled, by the writer's own rule. It also says which
+decision, candidates and record version are current: those are keyed by their content, so the
 ids come from what the writer writes for the snapshot and the operation reads exactly them. A
 region shows the model's decision and a reviewer's beside it, never one in place of the other.
 """
@@ -14,6 +15,7 @@ from __future__ import annotations
 import os
 import re
 from collections import defaultdict
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -22,7 +24,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict
 
 from .integrity import EvidenceIntegrityError
-from .projection import Blob, RefusedContent, writes
+from .projection import LINKABLE, Blob, RefusedContent, settled_entries, writes
 
 TRACE_URL_SETTING = "SPECIMEN_TRACE_URL_TEMPLATE"
 TRACE_PLACEHOLDER = "{trace_id}"
@@ -30,6 +32,8 @@ TRACE_ID = re.compile(r"[0-9a-f]{32}")
 # The disagreement score orders review; it is not a probability (SCR-004, SCR-005).
 CALIBRATION = "uncalibrated review priority"
 COVERAGE_SOURCE = "label-coverage-check"
+# A derivation record's locator names its method (S4's `derivation:{method}`).
+DERIVATION = "derivation:"
 # The coverage check's own reason codes, by the check that raises them (label_coverage.py).
 REGION_COUNT_CODES = ("zero_regions", "region_out_of_bounds", "label_region_count_out_of_range")
 FULL_IMAGE_CODES = ("cross_check_detection_outside_labels",)
@@ -218,6 +222,78 @@ class ToolCall(Part):
     completed_at: str | None
 
 
+class Verbatim(Part):
+    text: str | None
+    input_source: str | None
+    region_id: str | None
+    observation_id: str | None
+
+
+class FieldEvidence(Part):
+    evidence_id: str
+    relation: str
+    source: str
+    locator: str | None
+    outcome: str
+    # Where it comes from (S6's #189): a lookup's call's region and raw reading, stored
+    # evidence's own; `evidence_places`.
+    region_id: str | None
+    observation_ids: list[str]
+
+
+class FindingThread(Part):
+    rule_id: str
+    rule_version: str
+    severity: str
+    outcome: str
+    field_key: str | None
+    reason_code: str
+    evidence_ids: list[str]
+
+
+class DerivationAuthority(Part):
+    name: str | None
+    version: str | None
+
+
+class Derivation(Part):
+    """How a derived value was reached, for the client to name its rule (S6, agreed with S4)."""
+
+    method: str | None
+    rules: list[str]
+    authority: DerivationAuthority
+
+
+class FieldThread(Part):
+    field_key: str
+    group: str
+    state: str
+    # G38's layer, from the snapshot, and a derived value's input fields (S4's FieldValue, #144).
+    layer: Literal["verbatim", "settled", "derived"] | None
+    derived_from: list[str]
+    derivation: Derivation | None
+    verbatim: list[Verbatim]
+    parsed: str | None
+    precision: str | None
+    century_rule: str | None
+    normalized: str | None
+    authority_id: str | None
+    # The settled value's authority, {name, source, source_record_id, credit} (PLAN 4.8).
+    authority_identity: dict[str, Any] | None
+    settled_observation_ids: list[str]
+    evidence: list[FieldEvidence]
+    # The record's findings that name the field (G45), as in the decision.
+    findings: list[FindingThread]
+
+
+class DecisionThread(Part):
+    disposition: str | None
+    policy_version: str
+    reason_codes: list[str]
+    summary: str
+    findings: list[FindingThread]
+
+
 class Thread(Part):
     """The response of section 8, field for field."""
 
@@ -230,6 +306,8 @@ class Thread(Part):
     coverage_check: CoverageCheck
     regions: list[RegionThread]
     tool_calls: list[ToolCall]
+    fields: list[FieldThread]
+    decision: DecisionThread | None
 
 
 def trace_url_template(env=None) -> str | None:
@@ -351,6 +429,8 @@ def assemble(
         coverage_check=_coverage(run, evidence),
         regions=_regions(row, written),
         tool_calls=[_tool_call(call) for call in tool_calls],
+        fields=_fields(run, row, written, evidence, tool_calls),
+        decision=_decision(row, written),
     )
 
 
@@ -613,6 +693,229 @@ def _tool_call(call: dict) -> ToolCall:
         evidence_id=_id(call.get("evidenceId")),
         started_at=call.get("startedAt"),
         completed_at=call.get("completedAt"),
+    )
+
+
+def _group(run, key: str) -> str:
+    """A field's group as the writer pins it (section 11): `Run.field_groups`, else mandatory
+    when the profile lists the field and optional otherwise."""
+    groups = getattr(run, "field_groups", None) or {}
+    return groups.get(key) or ("mandatory" if key in run.profile.mandatory_fields else "optional")
+
+
+def _fields(run, row: dict, written: Current, evidence: list[dict], tool_calls: list[dict]) -> list[FieldThread]:
+    rows = {_id(c["id"]): c for c in row.get("candidates") or []}
+    records = [r for r in row.get("records") or [] if _id(r["id"]) == written.record]
+    resolved = {f["fieldKey"]: f for f in records[0].get("fields") or []} if records else {}
+    # The record's findings, each on the field it names (G45), as the decision lists them.
+    findings = defaultdict(list)
+    for found in (records[0].get("findings") or []) if records else []:
+        findings[found.get("fieldKey")].append(_finding(found))
+    items = {_id(e["id"]): e for e in evidence}
+    # Each evidence item's region and readings: a lookup's call's, stored evidence's own.
+    places = evidence_places(run)
+    # Each reading's region, for the writer's settle rule.
+    regions = {o.id: o.region_id for o in run.observations}
+    result = []
+    for key, value in run.fields.items():
+        # The field's current candidates, in the domain map's order.
+        ids = written.candidates.get(key, [])
+        present = [rows[c] for c in ids if c in rows]
+        field = resolved.get(key)
+        if not present and field is None:
+            continue
+        # A per-label or per-reader map (G27, G28, G32), rather than one verbatim.
+        verbatim = getattr(value, "verbatim_by_observation", None) or {}
+        mapped = bool(verbatim)
+        # The writer writes one candidate per map entry, in the map's order, and the entry settled
+        # exactly when its own rule names the entry's reading (section 4.3).
+        settling = settled_entries(value, regions) if mapped else set()
+        settled = [c for c, reading in zip(ids, verbatim) if reading in settling]
+        # Evidence links to the entry it names, settled or not (section 4.3); each item once.
+        links, seen = [], set()
+        for found in present:
+            for link in found.get("links") or []:
+                item = items.get(_id(link["evidenceId"]))
+                if item is not None and item["outcome"] in LINKABLE and item["id"] not in seen:
+                    seen.add(item["id"])
+                    links.append((link, item))
+        parsed = _first(present, "parsedValue")
+        stated = parsed if isinstance(parsed, dict) else {"value": parsed}
+        # A derived value's candidate names its inputs and has no literal (T2c); the label leaves
+        # the field out, so it adds no verbatim.
+        derived = [found for found in present if found.get("derivedFromFieldKeys") is not None]
+        inputs = derived[0]["derivedFromFieldKeys"] if derived else getattr(value, "derived_from", None)
+        identity = _first(present, "authorityIdentity")
+        result.append(
+            FieldThread(
+                field_key=key,
+                group=(field or {}).get("fieldGroup") or _group(run, key),
+                state=field["state"] if field else present[0]["state"],
+                layer=getattr(value, "layer", None),
+                derived_from=list(inputs or []),
+                derivation=_derivation(run, value, derived, items, identity),
+                verbatim=[
+                    Verbatim(
+                        text=found.get("literalValue"),
+                        input_source=found.get("inputSource"),
+                        region_id=_region_of(found, "sourceTranscription", "sourceObservation"),
+                        observation_id=_reading(found) if mapped else _id(found.get("sourceObservationId")),
+                    )
+                    for found in present
+                    if found.get("derivedFromFieldKeys") is None
+                ],
+                parsed=stated.get("value"),
+                precision=stated.get("precision"),
+                century_rule=stated.get("century_rule"),
+                normalized=_first(present, "normalizedValue"),
+                authority_id=_first(present, "authorityId"),
+                authority_identity=identity,
+                settled_observation_ids=settled_observation_ids(
+                    present, tool_calls, mapped=mapped, settled=settled
+                ),
+                evidence=[
+                    FieldEvidence(
+                        evidence_id=_id(link["evidenceId"]),
+                        relation=link["relation"],
+                        source=item["source"],
+                        locator=item.get("locator"),
+                        outcome=item["outcome"],
+                        region_id=places.get(_id(link["evidenceId"]), (None, []))[0],
+                        observation_ids=places.get(_id(link["evidenceId"]), (None, []))[1],
+                    )
+                    for link, item in links
+                ],
+                findings=findings.get(key, []),
+            )
+        )
+    return result
+
+
+def _derivation(run, value, derived: list[dict], items: dict, identity) -> Derivation | None:
+    """How a derived value was reached (section 8), from its rows and the snapshot, reading no
+    stored record; null for a field that is not derived."""
+    if not derived and getattr(value, "layer", None) != "derived":
+        return None
+    # The method is in the locator of the evidence deciding its candidate, else, before that
+    # row is written, of the snapshot's derivation record.
+    locators = [
+        (items.get(_id(link["evidenceId"])) or {}).get("locator") or ""
+        for found in derived
+        for link in found.get("links") or []
+        if link["relation"] == "decides"
+    ]
+    if not any(locator.startswith(DERIVATION) for locator in locators):
+        relations = getattr(value, "evidence_relations", None) or {}
+        locators = [
+            item.locator
+            for item in run.evidence
+            if item.kind == "derivation" and relations.get(item.id) == "decides"
+        ]
+    method = next(
+        (locator[len(DERIVATION):] for locator in locators if locator.startswith(DERIVATION)), None
+    )
+    authority = identity or getattr(value, "authority_identity", None) or {}
+    return Derivation(
+        method=method,
+        rules=list(getattr(value, "derivation_rules", None) or []),
+        authority=DerivationAuthority(name=authority.get("source"), version=authority.get("version")),
+    )
+
+
+def _first(rows: list[dict], name: str):
+    return next((row[name] for row in rows if row.get(name) is not None), None)
+
+
+def _reading(candidate: dict) -> str | None:
+    """A map entry's reading: a raw reading's own, or its label's selected reading (G32)."""
+    if candidate.get("inputSource") == "decided_transcript":
+        return _id((candidate.get("sourceTranscription") or {}).get("selectedObservationId"))
+    return _id(candidate.get("sourceObservationId"))
+
+
+def settled_observation_ids(
+    candidate_rows: list[dict],
+    tool_calls: list[dict],
+    *,
+    mapped: bool,
+    settled: Collection[str] = (),
+) -> list[str]:
+    """The readings through which the field's value settled, in verbatim order (section 8).
+
+    `candidate_rows` are the field's current candidates in the domain map's order and
+    `tool_calls` the run's, as GetRunThreadV1 returns them; `mapped` says the field is a verbatim
+    map, and `settled` names the candidates of the map entries that settled by the writer's own
+    rule (`projection.settled_entries`), never by their values or links.
+    - A settled raw-reading entry names its reading.
+    - A settled decided entry names the raw readings a fallback lookup confirmed (G20): those of
+      the raw-reading calls whose evidence, linked to it, decides or supports the value. Without
+      one it names its selected reading.
+    - A single decided transcript names its fallback readings the same way, or none, and any
+      other field names none.
+    """
+    if not mapped:
+        only = candidate_rows[0] if len(candidate_rows) == 1 else None
+        if only is not None and only.get("inputSource") == "decided_transcript":
+            return _fallback(only, tool_calls)
+        return []
+    chosen = {_id(ident) for ident in settled}
+    result = []
+    for candidate in candidate_rows:
+        if _id(candidate["id"]) not in chosen:
+            continue
+        decided = candidate.get("inputSource") == "decided_transcript"
+        confirmed = _fallback(candidate, tool_calls) if decided else []
+        if confirmed:
+            result += confirmed
+        elif (reading := _reading(candidate)) is not None:
+            result.append(reading)
+    return result
+
+
+def _fallback(candidate: dict, tool_calls: list[dict]) -> list[str]:
+    """The raw readings whose lookups confirmed a decided entry's value (G20), each once."""
+    confirming = {
+        _id(link["evidenceId"])
+        for link in candidate.get("links") or []
+        if link["relation"] in ("decides", "supports")
+    }
+    readings = []
+    for call in tool_calls:
+        reading = _id(call.get("observationId"))
+        if (
+            _id(call.get("evidenceId")) in confirming
+            and call.get("inputSource") == "raw_reading"
+            and reading is not None
+            and reading not in readings
+        ):
+            readings.append(reading)
+    return readings
+
+
+def _decision(row: dict, written: Current) -> DecisionThread | None:
+    records = [r for r in row.get("records") or [] if _id(r["id"]) == written.record]
+    if not records:
+        return None
+    record = records[0]
+    return DecisionThread(
+        disposition=record.get("disposition"),
+        policy_version=record["policyVersion"],
+        reason_codes=list(record.get("reasonCodes") or []),
+        summary=record["summary"],
+        findings=[_finding(f) for f in record.get("findings") or []],
+    )
+
+
+def _finding(found: dict) -> FindingThread:
+    """One `ValidationFinding` row, the same in the decision and on the field it names."""
+    return FindingThread(
+        rule_id=found["ruleId"],
+        rule_version=found["ruleVersion"],
+        severity=found["severity"],
+        outcome=found["outcome"],
+        field_key=found.get("fieldKey"),
+        reason_code=found["reasonCode"],
+        evidence_ids=[_id(e) for e in found.get("evidenceIds") or []],
     )
 
 

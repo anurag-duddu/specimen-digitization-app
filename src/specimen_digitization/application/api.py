@@ -56,6 +56,7 @@ from .storage import (
     SnapshotTooLarge,
     digest,
 )
+from .thread import ThreadTooLarge, assemble, keys as thread_keys, trace_url_template
 from .workflow import OperationalBlock, SyntheticAdapters, Workflow
 
 SYNTHETIC_ORG = "00000000-0000-4000-8000-000000000001"
@@ -277,6 +278,8 @@ def classify_error(exc) -> tuple[int, str, str, str]:
         status, code, category = 422, "source_object_changed", "conflict"
     if isinstance(exc, SnapshotTooLarge):
         status, code, category = 413, "snapshot_too_large", "policy"
+    if isinstance(exc, ThreadTooLarge):
+        status, code, category = 413, "thread_limit_exceeded", "policy"
     if isinstance(exc, (GraphTooLarge, WorkspaceTooLarge)):
         status, code, category = (
             413,
@@ -452,6 +455,8 @@ def create_app(
             )
     if mode == "synthetic" and not token:
         raise ValueError("Synthetic bearer token required")
+    # The thread's trace link (DATA_CONTRACT.md 8); a malformed setting stops the start.
+    trace_template = trace_url_template()
     app = FastAPI(
         title="Specimen Digitization",
         version="0.1",
@@ -1669,6 +1674,31 @@ def create_app(
     def workbench(organization_id: str, specimen_id: str, user=Depends(identity)):
         p, s = find(user, organization_id, specimen_id)
         return render_workspace(s, p)
+
+    @app.get(prefix + "/specimens/{specimen_id}/thread")
+    def thread(
+        organization_id: str,
+        specimen_id: str,
+        run_id: str | None = None,
+        user=Depends(identity),
+    ):
+        """One run's record thread from SQL (DATA_CONTRACT.md 8), the active run by default."""
+        # The workspace route's lookup: the same members, sensitivity rule and errors.
+        p, s = find(user, organization_id, specimen_id)
+        wanted = s.run.id if run_id is None else run_id
+        run = next((r for r in (s.run, *s.previous_runs) if r.id == wanted), None)
+        if run is None:
+            # Unknown and another specimen's get one answer, so no other run is revealed.
+            raise Missing(wanted)
+        rows = repository.run_thread(p.scope, s.id, run.id, thread_keys(s, run))
+        view = s if run is s.run else s.model_copy(update={"run": run})
+        return assemble(
+            s,
+            run,
+            rows,
+            status=summary(view, p.role)["status"],
+            trace_url_template=trace_template,
+        ).model_dump(mode="json")
 
     @app.get(prefix + "/assets/{asset_id}/access")
     def asset_access(organization_id: str, asset_id: str, user=Depends(identity)):

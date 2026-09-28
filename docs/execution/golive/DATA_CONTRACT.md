@@ -678,7 +678,7 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
     "error": null, "retry_after": null, "evidence_id": "…",
     "started_at": "…", "completed_at": "…"}],
   "fields": [{"field_key": "city", "group": "mandatory", "state": "supported",
-    "layer": "settled", "derived_from": [],
+    "layer": "settled", "derived_from": [], "derivation": null,
     "verbatim": [{"text": "…", "input_source": "decided_transcript", "region_id": "…",
       "observation_id": null}],
     "parsed": null, "precision": null, "century_rule": null,
@@ -784,6 +784,19 @@ must never serve a sensitive specimen's run. Values in `…` are elided:
   is empty for any other. A derived field's value, identity and evidence are
   those of its `derived` candidate, as for any settled field (T2c), and it has
   no `verbatim`, since the label leaves it out.
+- `derivation` says how a derived value was reached, so the client can name its
+  rule in plain words from the rule's id (S6's ask, agreed with S4 and the
+  coordinator). It is null for any field that is not derived, and otherwise
+  `{"method": "unit_conversion", "rules": ["feet_to_metres"], "authority":
+  {"name": "apply_derivations", "version": "derivation-rules-v1"}}`:
+  - `method` comes from the locator `derivation:{method}` of the evidence that
+    `decides` the derived candidate, else, before that row is written, of the
+    snapshot's derivation `Evidence`;
+  - `rules` are the snapshot field's `derivation_rules`, the checks in the
+    order applied (S4's #172);
+  - `authority` is the field's `authority_identity`: its `source` as the name,
+    and its `version`.
+  None of it reads a stored record.
 - `authority_identity` is the settled value's authority, `{name, source,
   source_record_id, credit}` (PLAN 4.8; S4), and null when the value has none.
   A Google-confirmed value's has no `name` (G26).
@@ -978,10 +991,15 @@ replays without duplicates or warnings. `tests/test_projection_derived.py` (T2c)
 checks the derived candidate, that a derived value without its record does not
 count, the authority identity, the Google refusal and the review call.
 
-For the thread (T3): `tests/test_thread.py` (the assembly of section 8 through
-the regions, tool calls and coverage check, the current rows' ids and the read
-bounds) runs in CI. It reads `GetRunThreadV1`'s rows as `tests/thread_fixtures.py`
-emulates them from the writer's writes.
+For the thread (T3): `tests/test_thread.py` (the assembly, section 8 field by
+field, and the canonical example) and `tests/test_thread_api.py` (the workspace
+route's authorization, not found for another specimen's run and an unknown one,
+the active run by default, 503 without the content for a run that holds a
+credential or a Google name, no thread on SQLite) run in CI. Both read
+`GetRunThreadV1`'s rows as `tests/thread_fixtures.py` emulates them from the
+writer's writes; `tests/test_sqlconnect_thread.py`, opt-in like the writer's
+emulator test, saves the synthetic run through `SqlConnectRepository` and checks
+that the real operation's thread equals the emulated one.
 
 ## 11. Projection writer (S5 T2)
 
