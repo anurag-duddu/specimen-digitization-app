@@ -598,3 +598,31 @@ gate change:
   checksums match), and the gate allows its label regions.
 - A pilot-shaped record, whose view the server strips, keeps "This
   photograph has no verified orientation, so label regions are not drawn."
+
+## T5 The lab's run in the web app
+
+The coordinator's ruling at 02:30Z on 2026-09-28, step 4
+(`status/coordinator.md` 578-591): "Once S5's thread API and S6's screens are
+in the build, S6 serves the web app locally against the lab's emulator, so
+the owner can see each specimen's thread."
+
+### T5.1 The local build signs in to an emulator-mode API
+
+S7's lab serves a run from `create_app` in `emulator` mode: the pipeline's
+own semantics on the published profile, on the lab's SQL emulator and the
+run's blobs, behind one bearer on a loopback port (`lab/integration` at
+`66baf39f`). The local build (`SPECIMEN_LOCAL_SYNTHETIC=true`, where the
+developer pastes a bearer into `LocalFixtureSession`) signed in only to a
+server whose `/v1/session` said `synthetic`, and its repository expected the
+same, so it refused the lab.
+
+- The local build accepts a loopback server that reports `synthetic` or
+  `emulator`, at sign-in and in the repository's session check. It still
+  refuses `production` and any other mode, and it still talks only to a
+  loopback address.
+- The production build is unchanged: it expects `production`.
+- The band still says "Test environment" for the local build. The lab's
+  records are not approved museum records, which is all the band claims.
+- The lab is not served in `synthetic` mode instead. That mode swaps the
+  profile registry, processes runs in-process and marks the policy approved,
+  so the owner would see other semantics than the pipeline's.

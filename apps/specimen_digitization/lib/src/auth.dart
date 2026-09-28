@@ -319,6 +319,9 @@ class LocalFixtureSession implements SessionAccess {
   }
   final Uri _baseUrl;
   final http.Client _client;
+
+  /// The modes a loopback server may report to this session.
+  static const Set<String> localModes = <String>{'synthetic'};
   String? _bearer;
   String _userId = '';
   int _generation = 0;
@@ -354,7 +357,7 @@ class LocalFixtureSession implements SessionAccess {
     try {
       final result = await probe.request('GET', '/v1/session');
       if (generation != _generation) return;
-      if (result['mode'] != 'synthetic' ||
+      if (!localModes.contains(result['mode']) ||
           result['user_id'] is! String ||
           (result['user_id'] as String).isEmpty ||
           result['memberships'] is! List ||

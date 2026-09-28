@@ -54,6 +54,7 @@ class ApiSpecimenRepository
     required this.token,
     http.Client? client,
     this.expectedMode,
+    this.expectedModes,
     this.appCheckToken,
     this.expectedUserId,
   }) : _client = client ?? http.Client() {
@@ -77,6 +78,9 @@ class ApiSpecimenRepository
   }
   final Future<String?> Function()? appCheckToken;
   final String? expectedMode;
+
+  /// The modes a build accepts when it accepts more than one.
+  final Set<String>? expectedModes;
   final String Function()? expectedUserId;
   final Uri baseUrl;
   final Future<String?> Function() token;
