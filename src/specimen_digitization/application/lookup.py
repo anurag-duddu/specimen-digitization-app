@@ -5,8 +5,8 @@ import json
 import re
 import time
 import unicodedata
-from collections.abc import Iterable
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 
 import httpx
 from .domain import Lookup, LookupStatus
@@ -73,19 +73,26 @@ CLAUSES = frozenset(
 # The particles of an author's name ("de Geer", "van der Linden").
 PARTICLES = frozenset("de da di du van von der den la le".split())
 # Words that end the name, never an epithet or an author, so nothing after them
-# is read: the prepositions and "et" in English, Spanish, Latin and German that
-# the reader takes as ends (UNREAD_WORDS lists others); the particles, which
-# may still begin an author's name; and sex, life-stage, type-status and
-# nomenclatural words.
+# is read: the prepositions in English, Spanish, Latin and German that the
+# reader takes as ends (UNREAD_WORDS lists others); the particles, which may
+# still begin an author's name; and the sex, life-stage, type-status and
+# nomenclatural words that leave the taxon as it is.
 NEVER_EPITHETS = PARTICLES | frozenset(
-    "by in on at from ex et with near prope ad bei en por con cerca del sobre "
+    "by in on at from ex with near prope ad bei en por con cerca del sobre "
     "male males female females fem macho machos hembra hembras larva larvae "
     "nymph nymphs pupa pupae adult adults worker workers queen queens teneral "
     "imago juv juvenile immature egg eggs exuvia exuviae type types holotype "
     "paratype paratypes allotype lectotype paralectotype paralectotypes "
     "neotype syntype syntypes cotype cotypes topotype topotypes holotipo "
-    "paratipo paratipos nov gen comb stat emend sensu auct agg group "
-    "complex".split()
+    "holotipos paratipo paratipos alotipo alotipos lectotipo lectotipos "
+    "paralectotipo paralectotipos neotipo neotipos sintipo sintipos cotipo "
+    "cotipos topotipo topotipos nov gen comb stat emend".split()
+)
+# Words that change the taxon a name stands for: a group, a complex or an
+# aggregate of species, or a concept (sensu, auct.). They mark the name, so it
+# never clears as the species (the steward's review of round 4).
+CONCEPT_WORDS = frozenset(
+    "group gr grp grupo complex complejo agg aggr sensu auct auctt auctorum".split()
 )
 # Months in full and abbreviated, English and Spanish, and the Roman months but
 # X, which is also a hybrid sign: a date, never an author.
@@ -97,14 +104,17 @@ MONTHS = frozenset(
     "ag".split()
 )
 ROMAN_MONTHS = frozenset("i ii iii iv v vi vii viii ix xi xii".split())
+# A "V" or "v." standing alone may be "var.", so it marks the name; the other
+# Roman months end it (the steward's review of round 4).
+ROMAN_MONTH_ENDS = ROMAN_MONTHS - {"v"}
 SUBSPECIES_MARKERS = frozenset({"ssp", "subsp"})
 MARKERS = SUBSPECIES_MARKERS | {"var"}
 # Infraspecific markers the reader does not take: the name is read only in part.
 UNREAD_MARKERS = frozenset("f fo forma ab aberr morph morpha race natio subvar".split())
 # Other prepositions, articles and conjunctions in English, Spanish, Latin,
-# French and German: never an epithet, and not an end, so the name is read only
-# in part and nothing after them is sent (HARNESS.md section 6). A title-case
-# one may still be a genus or an author.
+# French and German, "et" joining two names among them: never an epithet, and
+# not an end, so the name is read only in part and nothing after them is sent
+# (HARNESS.md section 6). A title-case one may still be a genus or an author.
 UNREAD_WORDS = frozenset(
     "about above across after against along among amongst around before behind "
     "below beneath beside besides between beyond during for inside into of off "
@@ -115,7 +125,7 @@ UNREAD_WORDS = frozenset(
     "alrededor lejos el los las lo un una unos unas ni pero "
     "apud circa circum cum extra infra inter intra iuxta juxta ob post prae "
     "praeter pro propter sec secundum sine sub super supra trans ultra versus "
-    "ac atque aut vel sed nec neque "
+    "et ac atque aut vel sed nec neque "
     "au aux avec chez contre dans derrière derriere devant hors jusqu jusque "
     "malgré malgre par parmi pendant pour près pres sans selon sous sur vers "
     "les des une ou mais "
@@ -125,10 +135,20 @@ UNREAD_WORDS = frozenset(
 )
 HYBRID_SIGNS = frozenset({"×", "x", "X", "✕", "✖", "⨯"})
 SEX_SIGNS = frozenset("♀♂⚥")
-NOT_NAMES = QUALIFIERS | CLAUSES | NEVER_EPITHETS | MONTHS | ROMAN_MONTHS | MARKERS | UNREAD_MARKERS
+NOT_NAMES = (
+    QUALIFIERS
+    | CLAUSES
+    | NEVER_EPITHETS
+    | CONCEPT_WORDS
+    | MONTHS
+    | ROMAN_MONTHS
+    | MARKERS
+    | UNREAD_MARKERS
+)
 # PLAN 4.8's place fields: their literals, and the reading's unassigned
 # locality text, are the place text a taxonomy request never carries.
 PLACE_FIELDS = ("country", "province_state", "county", "city", "precise_location")
+PLACE_WORD = "place_word"  # why a name is marked: the reading's place text
 MAX_WORDS = 40  # of a literal read; a name and its authorship are far shorter
 MAX_WORD_LENGTH = 64  # a literal with a longer word among them writes no name
 MAX_AUTHORS = 4
@@ -157,9 +177,11 @@ class ScientificName:
     marker: str | None  # the subspecies or variety marker, as written
     rank: str  # GENUS, SPECIES, SUBSPECIES or VARIETY
     authorship: str | None
-    # Why the name was read only in part: "hybrid", the doubt marked on the
-    # genus, a marker the reader does not take, or the first word it could not
-    # read. Such a name never succeeds (HARNESS.md section 6).
+    # Why the name was read only in part: "hybrid", the doubt on the genus, a
+    # marker the reader does not take, the first word it could not read, or
+    # PLACE_WORD for the reading's place text. Such a name never succeeds
+    # (HARNESS.md section 6). A name whose genus is withheld, in doubt or
+    # place text, has no genus and sends nothing.
     partly_read: str | None = None
 
     @property
@@ -225,14 +247,14 @@ def _date(word: str) -> bool:
 
 def _ends_name(word: str) -> bool:
     """A word that ends the name, so nothing after it is read: a qualifier, a
-    word that is never an epithet, a month, a Roman month, a number or date, or
-    sex signs."""
+    word that is never an epithet, a listed month, a Roman month but V, a
+    number or date, or sex signs."""
     bare = _word(word)
     return bool(
         _qualifier(word)
         or bare in NEVER_EPITHETS
         or bare in MONTHS
-        or bare in ROMAN_MONTHS
+        or bare in ROMAN_MONTH_ENDS
         or _date(word)
         or (word and all(ch in SEX_SIGNS or ch.isdigit() for ch in word))
     )
@@ -330,13 +352,24 @@ def _words(literal: str) -> list[str]:
     return _normalized(literal).split(maxsplit=MAX_WORDS)[:MAX_WORDS]
 
 
-def _without_places(words: list[str], place_text: Iterable[str]) -> list[str]:
+def _place_words(place_text: Sequence[str]) -> frozenset[str]:
+    """The reading's place text as the reader compares it: each folded word, and
+    each whole folded literal (PLAN 4.8's folding). A bare string is refused,
+    since it would be read letter by letter (the steward's review of round 4)."""
+    if isinstance(place_text, str):
+        raise TypeError("place_text is a sequence of texts, not one string")
+    folded = [fold(text) for text in place_text]
+    return frozenset(word for text in folded for word in text.split()) | frozenset(
+        text for text in folded if text
+    )
+
+
+def _without_places(words: list[str], places: frozenset[str]) -> list[str]:
     """`words` without the place words their authorship holds (the
     coordinator's ruling of 02:07Z on 2026-09-26, applying PLAN 4.8): each
     token of the authorship that shares a folded word with the reading's place
     text is dropped, and the name is read again, until its authorship holds
     none. What remains is read by the reader's own rules."""
-    places = frozenset(word for text in place_text for word in fold(text).split())
     while places:
         span = _read(words)[1] or (0, 0)
         dropped = {
@@ -350,36 +383,101 @@ def _without_places(words: list[str], place_text: Iterable[str]) -> list[str]:
     return words
 
 
+def _slots(name: ScientificName) -> tuple:
+    return (name.genus, name.subgenus, name.epithets, name.marker, name.rank)
+
+
+def _withheld(reason: str) -> ScientificName:
+    """A name with nothing it may send: no genus, marked with why."""
+    return ScientificName("", None, (), None, "GENUS", None, reason)
+
+
+def _without_place_parts(name: ScientificName, places: frozenset[str]) -> ScientificName:
+    """The name up to its first part equal to the reading's place text, marked
+    (the coordinator's ruling of 03:24Z on 2026-09-26, word by word as confirmed
+    at 03:31Z): a genus, subgenus or epithet whose folded form is a folded word
+    of the place text, or a whole folded literal, is never sent."""
+    if fold(name.genus) in places:
+        return _withheld(PLACE_WORD)
+    if name.subgenus and fold(name.subgenus) in places:
+        return ScientificName(name.genus, None, (), None, "GENUS", None, PLACE_WORD)
+    for index, epithet in enumerate(name.epithets):
+        if fold(epithet) in places:
+            kept = name.epithets[:index]
+            rank = "SPECIES" if kept else "GENUS"
+            return ScientificName(
+                name.genus, name.subgenus, kept, None, rank, None, PLACE_WORD
+            )
+    return name
+
+
 def scientific_name(
-    literal: str, place_text: Iterable[str] = ()
+    literal: str, place_text: Sequence[str] = ()
 ) -> ScientificName | None:
     """The scientific name a taxon literal writes, or None when it writes none
     (HARNESS.md section 6). `place_text` is the reading's place-field literals
-    and unassigned locality text, whose words the authorship loses.
+    and unassigned locality text: their words leave the authorship, and a name
+    part equal to one is withheld, marking the name (the coordinator's rulings
+    of 02:07Z and 03:24Z on 2026-09-26). A name with no genus left sends
+    nothing.
 
-    The literal must begin with a title-case genus, which a qualifier before it
-    marks doubtful. The words after it are read as a parenthesized subgenus,
-    written out or abbreviated; epithets in lower case, with any accents or
-    inner hyphens, or an old capitalized epithet; a subspecies or variety marker
-    with its epithet; and a bounded author-year authorship. A qualifier after
-    the genus makes a genus-level identification. A word that ends the name
-    (a clause naming a person, a preposition listed as an end, a sex, stage,
-    type-status or nomenclatural word, a month or a date) ends the reading, and
-    any other word the reader does not take, the other listed prepositions,
+    The literal must begin with a title-case genus; a qualifier before it, or a
+    question mark on it, leaves it in doubt, so nothing is sent. The words
+    after it are read as a parenthesized subgenus, written out or abbreviated;
+    epithets in lower case, with any accents or inner hyphens, or an old
+    capitalized epithet; a subspecies or variety marker with its epithet; and a
+    bounded author-year authorship. A qualifier right after the genus makes a
+    genus-level identification. A word that ends the name (a clause naming a
+    person, a preposition listed as an end, a listed sex, stage, type-status or
+    nomenclatural word, a listed month, a date) ends the reading, unless an
+    epithet-shaped word follows it. Any other word the reader does not take,
+    the words that change the taxon and the other listed prepositions,
     articles and conjunctions among them, marks the name read only in part. A
     word the literal does not write is never sent, and neither is text that is
     no name (PLAN 4.8)."""
-    return _read(_without_places(_words(literal), place_text))[0]
-
-
-def without_place_words(literal: str, place_text: Iterable[str]) -> str:
-    """The literal as a taxonomy request may carry it: without the place words
-    its authorship holds, so that reading it gives the name `scientific_name`
-    reads with that place text. The workflow's lookup step sends it through
-    its adapter, which takes a literal."""
+    places = _place_words(place_text)
     words = _words(literal)
-    kept = _without_places(words, place_text)
+    name = _read(words)[0]
+    if name is None or not name.genus or not places:
+        return name
+    again = _read(_without_places(words, places))[0]
+    if again is not None and _slots(again) == _slots(name):
+        name = again
+    else:
+        # The drop changed the name: it is asked as first read, without its
+        # authorship, and marked (the steward's review of round 4).
+        name = replace(name, authorship=None, partly_read=PLACE_WORD)
+    return _without_place_parts(name, places)
+
+
+def without_place_words(literal: str, place_text: Sequence[str]) -> str:
+    """The literal without the place words its authorship holds, so that
+    reading it gives the name `scientific_name` reads with that place text,
+    when no name part is place text."""
+    words = _words(literal)
+    kept = _without_places(words, _place_words(place_text))
     return literal if kept == words else " ".join(kept)
+
+
+def taxonomy_lookup(
+    lookup: Callable[[str], Lookup], literal: str, place_text: Sequence[str]
+) -> Lookup:
+    """The workflow's taxonomy lookup, through an adapter that takes a literal
+    (HARNESS.md section 6; the coordinator's rulings of 02:07Z, 03:24Z and
+    03:31Z on 2026-09-26). A name with nothing it may send, its genus in doubt
+    or place text, makes no request and goes to review. A name marked for
+    place text is asked as far as it may be, and never succeeds. Any other
+    literal goes without the place words its authorship holds."""
+    name = scientific_name(literal, place_text)
+    if name is not None and not name.genus:
+        return withheld_lookup(literal, name.partly_read)
+    if name is not None and name.partly_read == PLACE_WORD:
+        found = lookup(name.query)
+        found.metadata["partly_read"] = PLACE_WORD
+        if found.status == LookupStatus.SUCCESS:
+            found.status = LookupStatus.AMBIGUOUS
+        return found
+    return lookup(without_place_words(literal, place_text))
 
 
 def _read(words: list[str]) -> tuple[ScientificName | None, tuple[int, int] | None]:
@@ -392,7 +490,9 @@ def _read(words: list[str]) -> tuple[ScientificName | None, tuple[int, int] | No
     if not words or any(len(word) > MAX_WORD_LENGTH for word in words):
         return None, None
     cut = words
-    # A qualifier or a question mark before the genus marks it doubtful.
+    # A qualifier or a question mark before the genus, or on it, leaves the
+    # genus in doubt: nothing is sent (the coordinator's reading of 01:11Z and
+    # its confirmation of 03:31Z on 2026-09-26).
     doubt = None
     if _qualifier(words[0]) in DOUBT_MARKERS or words[0] == "?":
         doubt, words = _qualifier(words[0]) or "?", words[1:]
@@ -404,7 +504,9 @@ def _read(words: list[str]) -> tuple[ScientificName | None, tuple[int, int] | No
     genus = _core(first)
     if not GENUS.match(genus) or genus.lower() in NOT_NAMES:
         return None, None
-    subgenus, epithets, marker, rank, partly = None, [], None, "GENUS", doubt
+    if doubt:
+        return _withheld(doubt), None
+    subgenus, epithets, marker, rank, partly = None, [], None, "GENUS", None
     ended, rest = _ends(first), words[1:]
     if not ended and rest and SUBGENUS.match(rest[0].rstrip(",;:")):
         subgenus = SUBGENUS.match(rest[0].rstrip(",;:")).group(1)
@@ -433,9 +535,17 @@ def _read(words: list[str]) -> tuple[ScientificName | None, tuple[int, int] | No
         authorship, used = _authorship(rest)
         span = (start, start + used) if authorship else None
         rest = rest[used:]
-    # Fail closed: whatever follows must end the name.
-    if partly is None and rest and not _ends_name(rest[0]):
-        partly = _core(rest[0]) or rest[0]
+    # Fail closed: whatever follows must end the name. An epithet-shaped word
+    # after an end word may be the name's own, so it marks the name too (the
+    # steward's review of round 4), but after a qualifier right after the genus,
+    # the 01:11Z reading's genus-level identification.
+    if partly is None and rest:
+        if not _ends_name(rest[0]):
+            partly = _core(rest[0]) or rest[0]
+        elif epithets or not _qualifier(rest[0]):
+            after = next((word for word in rest[1:] if not _ends_name(word)), None)
+            if after is not None and _epithet(after):
+                partly = _core(after)
     name = ScientificName(
         genus, subgenus, tuple(epithets), marker, rank, authorship, partly
     )
@@ -539,27 +649,65 @@ def parse_json(content: bytes):
     return json.loads(content, object_pairs_hook=_unique)
 
 
-def _depth_ok(value, limit: int = MAX_DEPTH) -> bool:
-    """Whether a parsed body nests no deeper than `limit`, checked without
-    recursion, so a body the record cannot store is refused first."""
-    stack = [(value, 1)]
-    while stack:
-        item, depth = stack.pop()
-        if isinstance(item, (dict, list)):
-            if depth > limit:
-                return False
-            children = item.values() if isinstance(item, dict) else item
-            stack.extend((child, depth + 1) for child in children)
+def _encodable(text: str) -> bool:
+    """Whether a string can be written as UTF-8: a lone surrogate cannot."""
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
     return True
 
 
+def _storable(value, limit: int = MAX_DEPTH) -> bool:
+    """Whether a parsed body can be stored: it nests no deeper than `limit`,
+    and every string in it, key or value, can be encoded. Checked without
+    recursion, so a body the record cannot store is refused first (the
+    steward's reviews of rounds 2 to 4)."""
+    stack = [(value, 1)]
+    while stack:
+        item, depth = stack.pop()
+        if isinstance(item, str):
+            if not _encodable(item):
+                return False
+        elif isinstance(item, (dict, list)):
+            if depth > limit:
+                return False
+            if isinstance(item, dict):
+                if not all(_encodable(key) for key in item):
+                    return False
+                stack.extend((child, depth + 1) for child in item.values())
+            else:
+                stack.extend((child, depth + 1) for child in item)
+    return True
+
+
+# Characters no name holds: control, format, surrogate, private-use and
+# unassigned code points, and line and paragraph separators (the steward's
+# reviews of rounds 3 and 4).
+HIDDEN = frozenset({"Cc", "Cf", "Cs", "Co", "Cn", "Zl", "Zp"})
+
+
+def _variation_selector(ch: str) -> bool:
+    code = ord(ch)
+    return (
+        0xFE00 <= code <= 0xFE0F
+        or 0xE0100 <= code <= 0xE01EF
+        or 0x180B <= code <= 0x180F
+    )
+
+
 def _text_ok(value) -> bool:
-    """A string within the name bound, with no control or format character, so
-    nothing hidden reaches the harness (the steward's review of round 3)."""
+    """A string within the name bound, with no hidden character: no control,
+    format, surrogate, private-use or unassigned code point, line or paragraph
+    separator, or variation selector, so nothing hidden reaches the harness
+    (the steward's reviews of rounds 3 and 4)."""
     return (
         isinstance(value, str)
         and len(value) <= MAX_NAME_LENGTH
-        and not any(unicodedata.category(ch) in {"Cc", "Cf"} for ch in value)
+        and not any(
+            unicodedata.category(ch) in HIDDEN or _variation_selector(ch)
+            for ch in value
+        )
     )
 
 
@@ -585,7 +733,7 @@ def _shape_ok(payload: dict) -> bool:
             isinstance(usage, dict)
             and (usage.get("key") is None or key_ok(usage["key"]))
             and _text_ok(usage.get("name"))
-            and bool(usage["name"])  # A usage names itself: the final value.
+            and bool(usage["name"].strip())  # A usage names itself: the final value.
             and all(
                 usage.get(field) is None or _text_ok(usage[field])
                 for field in ("canonicalName", "authorship")
@@ -654,6 +802,19 @@ def _alternative(other: dict) -> dict:
     }
 
 
+def withheld_lookup(literal: str, reason: str) -> Lookup:
+    """A name with nothing it may send, its genus in doubt or place text:
+    `ambiguous`, with no request, so it goes to review (the coordinator's
+    reading of 01:11Z and rulings of 03:24Z and 03:31Z on 2026-09-26)."""
+    return Lookup(
+        provider="gbif",
+        adapter_version="species-match-v2.3",
+        query={},
+        status=LookupStatus.AMBIGUOUS,
+        metadata={"verbatim_name": literal, "partly_read": reason},
+    )
+
+
 def no_name_lookup(literal: str) -> Lookup:
     """A literal that writes no scientific name: `no_match`, with no request."""
     return Lookup(
@@ -674,6 +835,9 @@ class GbifTaxonomy:
         parsed = name if isinstance(name, ScientificName) else scientific_name(name)
         if parsed is None:
             return no_name_lookup(name)
+        if not parsed.genus:
+            literal = name if isinstance(name, str) else ""
+            return withheld_lookup(literal, parsed.partly_read)
         query = {
             "scientificName": parsed.query,
             "taxonRank": parsed.rank,
@@ -749,7 +913,7 @@ class GbifTaxonomy:
             payload = parse_json(response.content)
             if (
                 not isinstance(payload, dict)
-                or not _depth_ok(payload)
+                or not _storable(payload)
                 or not _shape_ok(payload)
             ):
                 result.status = LookupStatus.MALFORMED
@@ -829,7 +993,7 @@ class GbifTaxonomy:
                 )
             else:
                 index = parse_json(metadata.content)
-                if not isinstance(index, dict) or not _depth_ok(index):
+                if not isinstance(index, dict) or not _storable(index):
                     # Bounded like the match body, so the record can be stored.
                     result.status = LookupStatus.MALFORMED
                 else:

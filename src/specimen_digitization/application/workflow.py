@@ -38,7 +38,7 @@ from .evidence_harness import (
 )
 from .region_pixels import region_png
 from .integrity import EvidenceIntegrityError, verify_evidence
-from .lookup import PLACE_FIELDS, without_place_words
+from .lookup import PLACE_FIELDS, taxonomy_lookup
 from .policy import finalize
 from .storage import BlobStore, Repository, digest
 from .reliability import AdapterFailure, retry_delay
@@ -535,15 +535,15 @@ class Workflow:
             elif step == "lookup":
                 name = run.fields["taxon"].literal
                 if name:
-                    # The authorship loses the words of the run's place-field
-                    # literals (the coordinator's ruling of 02:07Z on
-                    # 2026-09-26, applying PLAN 4.8).
+                    # No word of the run's place-field literals is sent, and
+                    # a genus in doubt sends nothing (the coordinator's rulings
+                    # of 02:07Z, 03:24Z and 03:31Z on 2026-09-26, PLAN 4.8).
                     places = [
                         run.fields[key].literal
                         for key in PLACE_FIELDS
                         if key in run.fields and run.fields[key].literal
                     ]
-                    outcome = self.adapters.lookup(without_place_words(name, places))
+                    outcome = taxonomy_lookup(self.adapters.lookup, name, places)
                     run.lookups.append(outcome)
                     if outcome.status in OPERATIONAL:
                         raise OperationalBlock("taxonomy_" + outcome.status.value)

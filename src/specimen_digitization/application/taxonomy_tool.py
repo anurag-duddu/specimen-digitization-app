@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import time
+from collections.abc import Sequence
 from typing import NamedTuple
 from urllib.parse import quote
 
@@ -26,6 +27,7 @@ from .lookup import (
     no_name_lookup,
     parse_json,
     scientific_name,
+    withheld_lookup,
 )
 from .reliability import retry_after
 
@@ -74,9 +76,9 @@ class Verification(NamedTuple):
 
 def query_name(literal: str) -> str | None:
     """The scientific name a taxon literal writes, as GBIF is asked for it
-    (`lookup.scientific_name`), or None when it writes none."""
+    (`lookup.scientific_name`), or None when nothing is asked."""
     parsed = scientific_name(literal)
-    return parsed.query if parsed else None
+    return (parsed.query or None) if parsed else None
 
 
 def _get(url, params, client, timeout):
@@ -234,12 +236,14 @@ def verify_taxon(
     sleep=time.sleep,
     clock=time.monotonic,
     deadline_seconds: float = DEADLINE_SECONDS,
-    place_text=(),
+    place_text: Sequence[str] = (),
 ) -> Verification:
     """Verify the scientific name in a taxon literal (G23). `place_text` is the
-    reading's place-field literals and unassigned locality text, which the
-    caller gives: no word of it leaves in the authorship (the coordinator's
-    ruling of 02:07Z on 2026-09-26, applying PLAN 4.8)."""
+    reading's place-field literals and unassigned locality text, a sequence of
+    texts the caller gives: none of it is sent (the coordinator's rulings of
+    02:07Z and 03:24Z on 2026-09-26, applying PLAN 4.8). A name with nothing it
+    may send, its genus in doubt or place text, makes no request and goes to
+    review."""
     parsed = scientific_name(literal, place_text)
     if parsed is None:
         return Verification(
@@ -250,6 +254,16 @@ def verify_taxon(
                 warnings=["no_scientific_name"],
             ),
             no_name_lookup(literal),
+        )
+    if not parsed.genus:
+        return Verification(
+            ToolResult(
+                tool="taxonomy_verifier",
+                tool_version=TOOL_VERSION,
+                outcome=LookupStatus.AMBIGUOUS,
+                warnings=["taxonomy_name_partly_read"],
+            ),
+            withheld_lookup(literal, parsed.partly_read),
         )
     end = clock() + deadline_seconds
     gbif, lookups = GbifTaxonomy(blobs, client), []

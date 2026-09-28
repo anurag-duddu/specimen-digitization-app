@@ -13,8 +13,11 @@ import pytest
 from specimen_digitization.application.domain import LookupStatus as S
 from specimen_digitization.application.lookup import (
     CLAUSES,
+    CONCEPT_WORDS,
     NEVER_EPITHETS,
     UNREAD_WORDS,
+    GbifTaxonomy,
+    _text_ok,
     scientific_name,
 )
 from specimen_digitization.application.storage import LocalBlobs
@@ -684,6 +687,7 @@ def raw(body):
         gbif("EXACT", dict(MELLIFERA, name="Apis mellifera" + chr(0xFE0F))),
         gbif("EXACT", dict(MELLIFERA, name="   ")),
         raw(dict(gbif("EXACT", MELLIFERA), diagnostics={"matchType": "EXACT", "note": chr(0xD800)})),
+        raw(dict(gbif("EXACT", MELLIFERA), diagnostics={"matchType": "EXACT", chr(0xD800): 1})),
     ],
     ids=[
         "an alternative's diagnostics",
@@ -722,6 +726,7 @@ def raw(body):
         "a name with a variation selector",
         "a name of whitespace only",
         "a lone surrogate in a field no check reads",
+        "a lone surrogate in a key",
     ],
 )
 def test_a_malformed_gbif_body_is_malformed_response(tmp_path, body):
@@ -1340,7 +1345,23 @@ def test_every_word_that_ends_the_name_ends_it(word):
 
 @pytest.mark.parametrize(
     "word",
-    ["June", "Aug.", "julio", "VII", "1946", "13-5-48", "♀", "female", "paratype", "in", "de", "sp."],
+    [
+        "June",
+        "Aug.",
+        "julio",
+        "VII",
+        "1946",
+        "13-5-48",
+        "♀",
+        "female",
+        "paratype",
+        "in",
+        "de",
+        "sp.",
+        # The first word after a run of end words.
+        "female ♀",
+        "13 VII 1946",
+    ],
 )
 def test_an_epithet_shaped_word_after_an_end_word_marks_the_name(word):
     # The steward's review of round 4: the word may be the name's own.
@@ -1380,6 +1401,13 @@ def test_a_word_that_changes_the_taxon_marks_the_name(word):
         "Xus yus",
         word.rstrip("."),
     )
+
+
+@pytest.mark.parametrize("word", sorted(CONCEPT_WORDS))
+def test_every_word_that_changes_the_taxon_marks_the_name(word):
+    name = scientific_name(f"Xus yus {word} zus")
+
+    assert (name.query, name.partly_read) == ("Xus yus", word)
 
 
 @pytest.mark.parametrize(
@@ -1609,6 +1637,8 @@ WITHHELD = [
     ("Xus yus davao", ["Davao"], "Xus yus"),
     ("Davao", ["Davao"], None),
     ("Carabus Smithi Lewis, 1900", ["Lewis County"], "Carabus Smithi"),
+    # A name part equal to a whole folded literal (the confirmation of 03:31Z).
+    ("Epipsocus santa-cruz 1946", ["Santa-Cruz"], "Epipsocus"),
 ]
 
 
@@ -1637,6 +1667,50 @@ def test_place_text_in_the_name_is_withheld_and_the_name_goes_to_review(
     words = set().union(*(folded(place) for place in places))
     for request in requests:
         assert not words & folded(unquote_plus(str(request.url)) + " " + request.content.decode())
+
+
+def test_gbif_itself_asks_nothing_for_a_genus_in_doubt(tmp_path):
+    # Whatever calls it, the lookup sends nothing for a withheld name.
+    requests = []
+
+    found = GbifTaxonomy(
+        LocalBlobs(tmp_path), transport(gbif("EXACT", IMPATIENS), requests=requests)
+    ).lookup("cf. Bombus impatiens")
+
+    assert requests == []
+    assert (found.status, found.metadata["partly_read"]) == (S.AMBIGUOUS, "cf")
+
+
+@pytest.mark.parametrize(
+    "ch",
+    [
+        chr(0xD800),
+        chr(0xE000),
+        chr(0x0378),
+        chr(0x2028),
+        chr(0x2029),
+        chr(0xFE0F),
+        chr(0xE0100),
+        chr(7),
+        chr(0x202E),
+    ],
+    ids=[
+        "a surrogate",
+        "a private-use character",
+        "an unassigned character",
+        "a line separator",
+        "a paragraph separator",
+        "a variation selector",
+        "an ideographic variation selector",
+        "a control character",
+        "a format character",
+    ],
+)
+def test_no_hidden_character_passes_as_name_text(ch):
+    # The steward's reviews of rounds 3 and 4. A lone surrogate is refused
+    # earlier too, as a string that cannot be encoded.
+    assert _text_ok("Apis mellifera")
+    assert not _text_ok("Apis mellifera" + ch)
 
 
 def test_the_place_text_is_a_sequence_of_texts(tmp_path):
