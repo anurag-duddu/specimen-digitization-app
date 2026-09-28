@@ -450,8 +450,9 @@ record's active run and hands it to what T2.2 to T2.5 draw.
   again." The server's message names where and never the content, and the
   client does not show it.
 - **Asking again.** After a 503, a failed connection or a timeout, the next
-  quiet poll asks again. A 404 or a 413 is not asked again for the same
-  version, since the answer would not change.
+  refresh that answers asks again, whether the poll's or one the reviewer
+  asks for. A 404 or a 413 is not asked again for the same version, since
+  the answer would not change.
 - **401 and 403** are the record's own: the workspace's access failure, as
   for the record itself.
 - **History.** A previous version keeps its own record. A previous run's

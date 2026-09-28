@@ -144,6 +144,25 @@ class WorkspaceController extends ChangeNotifier {
   int _holds = 0;
   SpecimenPage? _deferredPage;
 
+  /// The open record's thread, and why it is missing when the reviewer
+  /// should hear it (UI.md T2.6).
+  SpecimenThread? _thread;
+  ThreadGap? _threadGap;
+
+  /// The record, as its collection and identifier, and the version the
+  /// thread on screen was asked for.
+  (String, String)? _threadRecord;
+  int? _threadRevision;
+
+  /// Counts the thread requests, so an answer for a record or a version that
+  /// is no longer open is dropped.
+  int _threadGeneration = 0;
+
+  /// Counts the refreshes that answered. A thread that could not be read is
+  /// asked for again once this passes the count at its failure.
+  int _refreshes = 0;
+  int? _threadRetryAfter;
+
   StreamSubscription<ApiFailure>? _accessSubscription;
   Timer? _poll;
   AppLifecycleListener? _lifecycle;
@@ -174,10 +193,10 @@ class WorkspaceController extends ChangeNotifier {
   Specimen? get selected => _selected;
 
   /// The open record's thread, when the server keeps one (UI.md T2.6).
-  SpecimenThread? get thread => null;
+  SpecimenThread? get thread => _thread;
 
   /// Why the open record shows no thread, when the reviewer should hear it.
-  ThreadGap? get threadGap => null;
+  ThreadGap? get threadGap => _threadGap;
 
   /// The identifier the workbench route asked for.
   String? get selectedId => _selectedId;
@@ -362,7 +381,83 @@ class WorkspaceController extends ChangeNotifier {
   }
 
   void _notify() {
-    if (!_disposed) notifyListeners();
+    if (_disposed) return;
+    _followThread();
+    notifyListeners();
+  }
+
+  /// Keeps the thread with the open record (UI.md T2.6).
+  ///
+  /// Every path that replaces the record ends in [_notify], which calls this,
+  /// so none of them has to remember the thread. It asks once a version: a
+  /// poll that brings the same version asks for nothing, and a thread that
+  /// could not be read is asked for again after the next refresh.
+  void _followThread() {
+    final CollectionScope? scope = _scope;
+    final Specimen? record = _selected;
+    if (scope == null) {
+      _forgetThread();
+      return;
+    }
+    if (record == null) {
+      // A record that is loading keeps its thread for when it arrives;
+      // another record, or none, never shows it.
+      if (_selectedId != _threadRecord?.$2) _forgetThread();
+      return;
+    }
+    final (String, String) owner = (scope.key, record.id);
+    final int? retryAfter = _threadRetryAfter;
+    final bool retry = retryAfter != null && _refreshes > retryAfter;
+    if (owner == _threadRecord && record.revision == _threadRevision) {
+      if (!retry) return;
+    } else if (owner != _threadRecord) {
+      // Another record never shows the last one's thread. A new version of
+      // the same record keeps it until the new one arrives, so the Readings
+      // segment does not rebuild under the reviewer.
+      _thread = null;
+      _threadGap = null;
+    }
+    _threadRecord = owner;
+    _threadRevision = record.revision;
+    _threadRetryAfter = null;
+    unawaited(_fetchThread(scope, record.id, ++_threadGeneration));
+  }
+
+  Future<void> _fetchThread(
+    CollectionScope scope,
+    String id,
+    int generation,
+  ) async {
+    try {
+      final SpecimenThread? thread = await repository.thread(scope, id);
+      if (_disposed || generation != _threadGeneration) return;
+      _thread = thread;
+      _threadGap = null;
+    } catch (error) {
+      if (_disposed || generation != _threadGeneration) return;
+      final int? status = error is ApiFailure ? error.status : null;
+      if (status == 401 || status == 403) {
+        // The route shares the record's authorization, so a denial is the
+        // record's own.
+        _recordFailure(error);
+      } else {
+        _thread = null;
+        _threadGap = status == 413 ? ThreadGap.tooLarge : ThreadGap.unreadable;
+        // The same version answers 413 the same way; anything else may not.
+        if (status != 413) _threadRetryAfter = _refreshes;
+      }
+    }
+    _notify();
+  }
+
+  void _forgetThread() {
+    if (_threadRecord == null && _thread == null && _threadGap == null) return;
+    _threadGeneration++;
+    _thread = null;
+    _threadGap = null;
+    _threadRecord = null;
+    _threadRevision = null;
+    _threadRetryAfter = null;
   }
 
   /// Holds the list still while a row has focus or a sheet is open, so a quiet
@@ -474,6 +569,7 @@ class WorkspaceController extends ChangeNotifier {
           ? null
           : await repository.specimen(scope, openId);
       if (_disposed || generation != _listGeneration) return;
+      _refreshes++;
       // The open record is the record load's to own. A refresh only carries
       // it along when nothing opened or closed a record meanwhile.
       final bool ownsRecord = openRecord == _recordGeneration;

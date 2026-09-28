@@ -6,7 +6,8 @@
 /// permits. A measurement the server did not record is never rendered as
 /// zero, and an action the server forbids is never rendered at all. From the
 /// thread it names where the run came from: the run, its profile, the
-/// policy, and the trace with "Open trace" (UI.md T2.5).
+/// policy, and the trace with "Open trace" (UI.md T2.5). Where the thread
+/// could not be drawn, a caveat in the same place says why (UI.md T2.6).
 library;
 
 import 'dart:async';
@@ -152,6 +153,27 @@ class ProcessingDetail extends StatelessWidget {
   /// A run that recorded no trace.
   static const String noTrace = 'No trace recorded';
 
+  /// A thread the server refused as too large, said where the run's
+  /// provenance would be (UI.md T2.6).
+  static const String threadTooLarge =
+      "The run's details are too large to show.";
+
+  /// Why: the server shows a run whole or not at all, and what is drawn
+  /// comes from the record.
+  static const String threadTooLargeWhy =
+      "The server sends a run's details whole or not at all. The readings "
+      'and fields shown come from the record.';
+
+  /// A thread that could not be read: a 503, a failed connection or a
+  /// timeout (UI.md T2.6).
+  static const String threadUnreadable = "The run's details could not be read.";
+
+  /// Why: what is drawn comes from the record, and the next refresh asks
+  /// again.
+  static const String threadUnreadableWhy =
+      'The readings and fields shown come from the record. The next refresh '
+      'tries again.';
+
   /// The blocker of a run stopped by the program's spent allowance (G30).
   static const String allowanceBlocker = 'program_allowance_exhausted';
 
@@ -290,7 +312,21 @@ class ProcessingDetail extends StatelessWidget {
             style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
           ),
         ],
-        if (thread case final SpecimenThread loaded) ..._provenance(ui, loaded),
+        if (thread case final SpecimenThread loaded)
+          ..._provenance(ui, loaded)
+        else if (threadGap case final ThreadGap gap) ...<Widget>[
+          SizedBox(height: ui.space.s2),
+          switch (gap) {
+            ThreadGap.tooLarge => const CaveatText(
+              label: threadTooLarge,
+              why: threadTooLargeWhy,
+            ),
+            ThreadGap.unreadable => const CaveatText(
+              label: threadUnreadable,
+              why: threadUnreadableWhy,
+            ),
+          },
+        ],
         if (attempts.isNotEmpty) ...<Widget>[
           SizedBox(height: ui.space.s2),
           Text('Attempts', style: ui.type.label),

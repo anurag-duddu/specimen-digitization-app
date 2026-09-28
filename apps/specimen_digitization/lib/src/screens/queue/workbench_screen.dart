@@ -191,6 +191,10 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
               account: AppShell.accountOnRecordBar(WindowClass.of(context))
                   ? ShellAccountMenu(controller: controller)
                   : null,
+              // The run's thread, which the controller keeps with the open
+              // record, and why it is missing when it is (UI.md T2.6).
+              thread: controller.thread,
+              threadGap: controller.threadGap,
             ),
     );
   }

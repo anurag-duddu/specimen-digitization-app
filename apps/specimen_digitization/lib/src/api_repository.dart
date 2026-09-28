@@ -770,7 +770,25 @@ class ApiSpecimenRepository
     CollectionScope scope,
     String specimenId, {
     String? runId,
-  }) async => null;
+  }) async {
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
+    try {
+      final result = await request(
+        'GET',
+        '${_root(scope)}/specimens/${Uri.encodeComponent(specimenId)}/thread',
+        query: runId == null ? null : {'run_id': runId},
+      );
+      _checkAccess(epoch, userId);
+      return SpecimenThread.fromJson(result);
+    } on ApiFailure catch (e) {
+      // The server keeps no thread for this run: an unknown run, or a
+      // runtime that writes none (DATA_CONTRACT.md section 8).
+      if (e.status != 404) rethrow;
+      _checkAccess(epoch, userId);
+      return null;
+    }
+  }
 
   @override
   Future<HistoryPage> historyPage(
