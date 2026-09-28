@@ -317,24 +317,40 @@ Live state, read on 2026-09-23:
 
 `scripts/ci/schema_gate.py` compares the live schema and connector sources with
 the merged `dataconnect/schema/*.gql` and `dataconnect/connector/*.gql`,
-offline. It parses only the SDL this repository uses. It accepts:
+offline. It parses only the SDL this repository uses. It reads only the
+top-level `*.gql` files of those two folders, the files the data release
+sends. It fails closed on anything else firebase-tools would read there: a
+nested folder, a `*.graphql` file, or an entry that is not a regular file. The
+data release applies exactly those files through the Data Connect API. It
+never applies them through `firebase deploy` or a `firebase dataconnect:`
+command, which read `**/*.{gql,graphql}` and every `connectorDirs` entry. It
+accepts:
 
-- new `@table` types, whatever their fields;
+- new `@table` types, whatever their fields, except a field whose `@default`
+  carries SQL (below);
 - new nullable fields on existing tables, including a new foreign key that
-  covers at least one new field. Scoped foreign keys always include the
-  existing `organizationId` and `collectionId`, and PostgreSQL does not
-  enforce a foreign key on rows whose new, nullable column is null;
+  covers at least one new field (S2's reading of PLAN 4.4's "foreign keys
+  over new columns only"). Scoped foreign keys always include the existing
+  `organizationId` and `collectionId`, and PostgreSQL does not enforce a
+  foreign key on rows whose new, nullable column is null;
 - removing `!` only from a field that section 3.3 of the data contract
   (`docs/execution/golive/DATA_CONTRACT.md`) lists with its reason. The gate
   reads that table strictly from the merged tree, and fails closed on a
-  missing or malformed one. Today it lists `SourceAsset.width`,
-  `SourceAsset.height`, `LabelRegion.cropAssetId` and `EvidenceItem.locator`.
-  A relation field whose `@ref(fields:)` covers a listed column may follow it,
-  since they are the same SQL column. The gate never removes `!` from a key
-  field, a `@unique` field, or a provenance or idempotency key
-  (`ModelObservation` `runId`, `regionId`, `provider`, `modelVersion`,
-  `stepKey`, and the TRN-005 provenance `rawAssetId`, `promptVersion` and
-  `inputSha256`), even when the list names it;
+  missing or malformed one. It reads the section as GitHub renders it, so
+  the table a reviewer sees is the one it reads. Lines end only at LF, CRLF
+  or CR. The section holds no HTML comment or block and no fenced or
+  indented code. Its only whitespace character is the space. Today it lists
+  `SourceAsset.width`, `SourceAsset.height`, `LabelRegion.cropAssetId` and
+  `EvidenceItem.locator`. A row in the merged tree authorizes a drop in the
+  same merge, so reviewers check every new row against PLAN 4.4 and the
+  never-list below. A relation field whose `@ref(fields:)` covers a listed
+  column may follow it, since they are the same SQL column. The gate never
+  removes `!` from a key field, a `@unique` field, or a provenance or
+  idempotency key. These are `ModelObservation`'s `runId`, `regionId`,
+  `provider`, `modelVersion` and `stepKey`, and the TRN-005 provenance
+  `rawAssetId`, `promptVersion` and `inputSha256` on every table that
+  carries them, `EvidenceItem`, `PipelineRun` and `Checkpoint` included
+  (PLAN 4.4). The gate refuses the drop even when the list names the field;
 - one closed exception for a unique constraint (PLAN section 4.4,
   coordinator ruling on #88). `SourceAsset`'s `specimen_unique_1` on
   (bucket, objectName, generation) gives way to `source_asset_specimen_object`
@@ -343,27 +359,50 @@ offline. It parses only the SDL this repository uses. It accepts:
   one object across specimens. The swap takes two merges, so that a unique
   constraint governs the table at every moment while writers run. The gate
   admits exactly these two steps from its checked-in entry:
-  1. adding exactly `source_asset_specimen_object` while `specimen_unique_1`
-     is still declared in both schemas, so the old constraint keeps
-     governing. Every column it adds must be an existing NOT NULL column,
-     since PostgreSQL treats NULLs as distinct;
+  1. adding exactly `source_asset_specimen_object`, with no argument but its
+     `indexName` and its `fields` in the entry's order, while
+     `specimen_unique_1` is still declared in both schemas, so the old
+     constraint keeps governing. Every column it adds must be an existing
+     NOT NULL column, since PostgreSQL treats NULLs as distinct;
   2. in a later merge, removing exactly `specimen_unique_1` from the schema,
      only when the live schema already has `source_asset_specimen_object`
-     and no live operation uses the old constraint (a lookup, upsert or
-     `onConflict` on its fields). The migration admits no drop, whatever
-     Data Connect's diff carries, so the data release drops the old
+     and no live or merged operation uses the old constraint (a lookup,
+     upsert or `onConflict` on its fields). The migration admits no drop,
+     whatever Data Connect's diff carries, so the data release drops the old
      constraint itself. It runs S5's one fixed, reviewed statement in
      `dataconnect/sql/` before it computes that diff, and only after its own
      read-back of the live database shows `source_asset_specimen_object` in
      place, over its six columns and valid (4.4). The gate compares
-     committed text only.
+     committed text only, so it admits this step only when its caller says
+     that read-back passed. No caller says so until T3d's drop step pins the
+     statement's SHA-256 and reads the live database back. Until then, step 2
+     is refused.
 
   Both steps in one merge, and any other change to a unique constraint, are
   refused. Neither constraint may be the table's key or hold a never-list key;
 - a new type-level `@unique` or `@index` whose fields are all new;
-- new connector operations whose header carries `@auth(level: NO_ACCESS)` and
-  whose body checks `organizationMember(key: {organizationId: $organizationId,
-  uid: $actorUid})` with `@check`.
+- new connector operations that:
+  - carry `@auth(level: NO_ACCESS)` as their own and only `@auth`;
+  - declare `$actorUid: String!` without a default;
+  - check `organizationMember(key: {organizationId: $organizationId, uid:
+    $actorUid})` with exactly `@check(expr: "this.active")` or
+    `@check(expr: "this.active == true")`, where a `message` may follow and
+    `optional` may not;
+  - use no `@skip`, `@include` or `all:` argument;
+  - if a mutation, also carry `@transaction` and make that check before the
+    first write.
+
+The gate checks only those marks of an operation. Reviewers check the rest of
+every new or changed operation, which the gate cannot (PLAN 4.4, `DATA.md`
+73):
+- every read and write is filtered to the checked `$organizationId` and
+  `$collectionId`, never unfiltered and never another organization's;
+- the `collectionMember` `@check`'s role expression fits the operation;
+- sensitive fields are read only behind a `canViewSensitive` check;
+- deletes and updates are bounded by the same filters.
+
+The first initialization (4.3) has nothing live to compare, so the gate never
+checks the connector it applies; those reviews are its only check.
 
 It refuses everything else, and names each refusal without values:
 - a removed or renamed table or field;
@@ -371,9 +410,11 @@ It refuses everything else, and names each refusal without values:
 - an added `!`, or a new non-null field on an existing table;
 - a new `@unique` or `@index` over an existing field, or a removed or changed
   type-level constraint, other than the two steps above;
-- a changed or removed `@view`;
+- a new, changed or removed `@view`, and a new field whose `@default` carries
+  SQL. PLAN 4.4 admits only new tables and nullable columns, and both of
+  these would run their own SQL text in the database;
 - a removed or changed operation, compared with whitespace normalized;
-- a new operation at another auth level or without the membership check.
+- a new operation without the marks above.
 
 When the live schema is the empty placeholder there is nothing to compare, and
 the release initializes instead (4.3).
@@ -405,7 +446,11 @@ with point-in-time recovery are on. The ordinary identity then:
    point-in-time recovery must be on. On the first apply after the plane goes
    live, that backup is also restored into a short-lived clone; the clone's
    catalog is checked and the clone is deleted (D1).
-2. The gate of section 4.1 must pass.
+2. The gate of section 4.1 must pass. For step 2 of the unique swap, the
+   release first reads the live database back and gives the gate the result.
+   Once the gate passes, it runs S5's statement, checked against its pinned
+   SHA-256, before validate-only. T3d's drop step adds this. Until it lands,
+   the gate refuses step 2.
 3. The schema is applied with `MIGRATE_COMPATIBLE`: validate-only first, then
    conditional on the live etag. The apply sends the merged sources unchanged
    and never builds a schema of its own. A change one migration would order
