@@ -79,7 +79,8 @@ def read_run(asset: Asset, texts=("Chicago, Ill.", "Chicago, Il1.")) -> Run:
     run = Run(
         profile=Profile(id="zoology_insects_slides", version="1.0.0", routes=("handwriting-qwen", "handwriting-muse")),
         profile_snapshot=PROFILE,
-        dependencies={"profile_snapshot_sha256": digest(PROFILE)},
+        # As pin_dependencies pins them: the snapshot and this run's registry version (#146 round 1).
+        dependencies={"profile_snapshot_sha256": digest(PROFILE), "profile_registry_version": None},
         stage="transcribe",
     )
     region = Region(id=str(uuid4()), asset_id=asset.id, x=10, y=20, width=390, height=160, order=0, method="sam3", version="rev-1")
