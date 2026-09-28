@@ -300,6 +300,9 @@ def configure_observability(
     Binary image bytes are never exported by this application integration.
     """
     global _configured_settings
+    # Log records lose the Geocoding key whichever export runs, the bounded
+    # one included: its records reach the platform's logs too (T5d).
+    install_key_scrubbing()
     if os.getenv("SPECIMEN_TRACE_EXPORT_MODE") is not None:
         settings = ObservabilitySettings.from_environment(capture_mode=capture_mode)
         return _configure_bounded(settings, send_to_logfire=send_to_logfire)
@@ -327,7 +330,6 @@ def configure_observability(
         configure_options["send_to_logfire"] = send_to_logfire
 
     logfire.configure(**configure_options)
-    install_key_scrubbing()
     logfire.instrument_pydantic_ai(
         include_content=settings.include_content,
         include_binary_content=settings.include_binary_content,
