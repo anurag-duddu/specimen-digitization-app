@@ -11986,3 +11986,38 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (2) Reviewer-only operations must never be attempted on a worker's pass, or the pass stops there for good. The writer skips them and keeps their ids, so a later reviewer's pass writes them in order.
 - Failed approaches: refusing every `raw_reading` handoff on a decision that selected a reading (first #88 review): S4 hands the unselected readers to the harness as raw readings.
 - Remaining follow-ups: T2b-2, stacked on this; S4's domain types in place of the test stand-ins once #131 merges.
+### 2026-09-27 — Go-live projection writer (S5, in #168): identical readings on main's Transcript
+
+- Task: S7's acceptance-lab report. On main plus #171 (`c1491157`), `test_today_identical_and_reviewer_decisions_are_recognised` failed: identical readings wrote no selected reading and an unresolved decision. S7 asked for a fix, red then green, in #171 or in the lowest S5 pull request that owns `projection.py`. The code is #168's, and the lines are unchanged up to #171, so the fix is here and merges up.
+- Branch/worktree: `golive/data-projection-stages` (#168), from `9e56a74`, in a scratchpad worktree. Held locally until #168's turn. Nothing deployed.
+- Commits:
+  - `f3c6b37`: red.
+  - `3e60928`: green.
+  - `b210060`: the opt-in emulator test's dump.
+  - This entry.
+  - Merged up, locally: #169 `83605bc`, #170 `3cd439f`, #178 `204024b`, #171 `725ad4d`.
+- Outcome:
+  - Main's `Transcript` (#98) always has `selected_observation_id`, None unless the first pass picked. The writer read that value whenever the attribute existed, so identical readings lost their selection. It now falls back to the first reading when the value is None (section 11).
+  - The opt-in emulator test built its stand-in from the domain transcript's dump. With main's `Transcript` it passed `decision_kind` twice and raised `TypeError`. It now leaves the five decision fields to the stand-in, in the same lines as `golive/data-reviewer-decision` (`003f6ce`). On this branch's domain, the exclusion changes nothing.
+- Validation actually run:
+  - Red `f3c6b37`: the new test failed with `('identical_readings', None, True)`, as S7 saw.
+  - Green: the projection tests, 35 passed.
+  - #171's new head `725ad4d`: the projection, thread and application tests, 155 passed.
+  - S7's combination, on a detached merge of main `54ac2ff`:
+    - with the pushed #171 `c1491157`, S7's test fails as reported;
+    - with `725ad4d`, the 155 pass.
+  - The full gates on main plus `725ad4d`, each started at a one-minute load under 12:
+    - `tests/`: 1703 passed, 34 skipped;
+    - `scripts/`: 1775 passed, 51 skipped;
+    - `test-postgres.sh`: exit 0, with 81 PASS lines;
+    - the opt-in emulator tests: 4 of 4.
+  - Pre-commit hooks ran on every commit.
+- Durable learnings:
+  - (1) `hasattr` tests the domain's shape, not the value.
+    - When another pull request adds the field with a None default, a branch that tests for the attribute silently changes behaviour.
+    - Test the value, and write the red test with the attribute present.
+  - (2) A fix belongs in the lowest stacked branch that owns the lines.
+    - Check first that the upper branches never touched them (here the block's digest was identical from #168 to #171); then each upward merge is clean.
+- Remaining follow-ups:
+  - #168's turn: merge main, run the gates, push.
+  - S7 merges `725ad4d`, or picks `3e60928` and `b210060`, into `lab/integration`.
