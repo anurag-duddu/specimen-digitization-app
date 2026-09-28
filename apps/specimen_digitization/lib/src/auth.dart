@@ -212,7 +212,8 @@ class _SignInScreenState extends State<_FixtureSignInScreen> {
     return UiScaffold(
       body: AutofillGroup(
         child: AuthLayout(
-          title: _fixture ? 'Test data access' : 'Sign in to your collection',
+          // The coordinator's words, 19:06Z on 2026-09-28 (UI.md T5.1).
+          title: _fixture ? 'Lab sign-in' : 'Sign in to your collection',
           children: <Widget>[
             if (_fixture)
               const CaveatText(

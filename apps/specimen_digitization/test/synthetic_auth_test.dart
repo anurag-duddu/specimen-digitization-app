@@ -58,6 +58,9 @@ void main() {
     );
     expect(find.text(fixtureSignInLine), findsOneWidget);
     expect(find.textContaining('Test data only'), findsNothing);
+    // The heading, in the coordinator's words of 19:06Z on 2026-09-28.
+    expect(find.text('Lab sign-in'), findsOneWidget);
+    expect(find.textContaining('Test data access'), findsNothing);
     await tester.pumpWidget(const SizedBox());
     session.dispose();
   });
