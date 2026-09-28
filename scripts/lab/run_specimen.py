@@ -338,7 +338,7 @@ class Run:
 
 def occurrence_request(url, params=None):
     """A request to GBIF's occurrence API (LAB.md, stage 7): the URL read as written and as httpx builds it,
-    parameters merged; each path read as the client sends it and as a server may then read it
+    parameters merged; each path read as httpx.URL builds it and as a server may then read it
     (lab_checks.client_paths); the host in any case; and occurrence query keys. Reading both ways counts more,
     never less, while D4 is held."""
     import httpx

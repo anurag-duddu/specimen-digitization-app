@@ -464,7 +464,8 @@ def test_a_double_encoded_path_is_decoded_once_as_httpx_builds_it():
     # #84 round 4: stated, not caught: httpx decodes once, so %252F stays an encoded slash in the path. #84's
     # follow-ups: the record scan decodes a GBIF record's strings once too.
     assert not lab_checks.occurrence_request("https://api.gbif.org/v1%252Foccurrence%252Fsearch")
-    assert stage_7_of({"kind": "lookup", "source": "gbif", "locator": "/v1%252Foccurrence%252Fsearch"})["status"] != "failed"
+    doubled = {"kind": "lookup", "source": "gbif", "locator": "/v1%252Foccurrence%252Fsearch"}
+    assert stage_7_of(doubled)["status"] != "failed"
 
 
 def test_a_gbif_records_token_shown_by_one_decoding_or_unescaping_counts():

@@ -27,7 +27,8 @@ DOTS = "[.\u3002\uff0e\uff61]"  # "." and the ideographic and fullwidth dots tha
 # api.gbif.org with a trailing dot, a port or an empty port allowed, as httpx sends to it
 GBIF_HOST = re.compile(rf"(?<![\w-])api{DOTS}gbif{DOTS}org{DOTS}?(?::\d*)?(?![\w\u3002\uff0e\uff61.-])", re.I)
 URL_TAIL = re.compile(r"[^\s\"'<>\\]*")  # a URL's path, query and fragment as written
-PATH_TOKEN = re.compile(r"/[^\s\"'<>\\]*")
+PATH_TOKEN = re.compile(r"/[^\s\"'<>\\,|]*")  # a "/" token inside a string, split at "," and "|" as in a list
+SPECIES_PATH = re.compile(r"/v2/species/match(?:/.*)?")
 SCHEME = re.compile(r"[a-z][a-z0-9+.-]*://", re.I)
 PROVENANCE = ("model_id", "provider", "prompt_version", "input_sha256", "raw_ref", "raw_sha256")
 # Labels of the ten pilot slides as fractions of the frame's width, full height (S8's
@@ -278,10 +279,9 @@ def gbif_urls(text):
         text = plain
 
 
-def value_paths(value):
-    """A GBIF record's string read as paths: the whole string as an absolute URL on any host, a path from the
-    root, a relative path resolved from the root, or a "//" reference, read both as a host and path and as a path;
-    and every "/" token inside it as a path from the root."""
+def whole_paths(value):
+    """A GBIF record's whole string read as a path: an absolute URL on any host, a path from the root, a relative
+    path resolved from the root, or a "//" reference, read both as a host and path and as a path."""
     value = str(value).strip()
     if SCHEME.match(value):
         urls = [value]
@@ -289,10 +289,28 @@ def value_paths(value):
         urls = ["https:" + value, "https://api.gbif.org" + value]
     else:
         urls = ["https://api.gbif.org" + ("" if value.startswith("/") else "/") + value]
-    for token in PATH_TOKEN.findall(value):
-        urls += ["https:" + token, "https://api.gbif.org" + token] if token.startswith("//") else [
-            "https://api.gbif.org" + token]
     return [path for url in urls for path in client_paths(url)]
+
+
+def token_paths(value):
+    """Every "/" token inside a GBIF record's string, read as a path from the root: in the string as written, with
+    JSON's escaped slashes undone, and percent-decoded once. What decoding reveals is data, not structure: a decoded
+    token's "%", "?" and "#" are escaped again, so it is neither decoded twice nor split at a decoded "?"."""
+    value = str(value)
+    unescaped = value.replace("\\/", "/")
+    readings = [(value, False), (unescaped, False), (unquote(value), True), (unquote(unescaped), True)]
+    urls = []
+    for text, decoded_once in readings:
+        for token in PATH_TOKEN.findall(text):
+            if decoded_once:
+                token = token.replace("%", "%25").replace("?", "%3F").replace("#", "%23")
+            urls += ["https:" + token, "https://api.gbif.org" + token] if token.startswith("//") else [
+                "https://api.gbif.org" + token]
+    return [path for url in urls for path in client_paths(url)]
+
+
+def value_paths(value):
+    return whole_paths(value) + token_paths(value)
 
 
 def strings_in(value, depth=0):
@@ -361,7 +379,7 @@ def species_match(record):
     """PLAN 4.8's species match (G23), by tool, adapter or path; #134's evidence has a usage/<key> locator."""
     version = str(record.get("adapter_version") or record.get("tool_version") or "").lower()
     return ("taxonomy_verifier" in identity(record) or version.startswith("species-match")
-            or any(path.startswith("/v2/species/match") for value in strings_in(record) for path in value_paths(value))
+            or any(SPECIES_PATH.fullmatch(path) for value in strings_in(record) for path in whole_paths(value))
             or str(record.get("locator") or "").lower().startswith("usage/"))
 
 
@@ -391,7 +409,8 @@ def gbif_calls(runs):
             if not isinstance(record, dict) or held_by_policy(record):
                 continue
             version = str(record.get("adapter_version") or record.get("tool_version") or "").lower()
-            if (occurrence_request(json.dumps(record, default=str)) or occurrence_record(record)
+            if (occurrence_request(json.dumps(record, default=str))
+                    or any(occurrence_record(r) for r in records_in(record) if not held_by_policy(r))
                     or any(occurrence_request(value) for value in strings_in(record))):
                 d4.append(f"{where}/{name}")
             elif "gbif_gadm" in identity(record) or version.startswith("gbif-gadm"):
