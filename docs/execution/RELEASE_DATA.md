@@ -13,6 +13,13 @@ change, private image read, paid model call, push, merge or deployment was
 performed by this owner. Read `AGENTS.md` and all of `docs/DEPLOYMENT.md` before
 work. The coordinator owns the separate runtime/data delivery amendment.
 
+> 2026-09-23: The owner's decisions in
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> supersede parts of this document for the go-live program. Each superseded
+> clause keeps its original text and carries a dated note naming the decision.
+> [`golive/RELEASE.md`](golive/RELEASE.md) lists the code that still enforces a
+> superseded clause until a later go-live pull request changes it.
+
 ## Reconciliation and private evidence
 
 GitHub freshly confirms [PR #8](https://github.com/anurag-duddu/specimen-digitization-app/pull/8)
@@ -47,6 +54,15 @@ decision-file pin matched:
 SHA256 `88d757ce9a5fd3474d092c803390c4e799bd2689a561d6ffe15403914486bd63`.
 The updated decisions-file SHA256 is
 `c8d2832623fd4fc9196917378399030cbcf3d20cb1bf34c51f5cbdfdf1ebe37a`.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
+> models together, replacing the USD 5 figure above; the resource/cost/identity
+> packet and authorization artifact described above are retired, replaced by
+> automatic deploy on merge after required checks and the PR steward's
+> approval. G30's per-call reservations stand (PLAN 4.3; the coordinator's
+> ruling on the mechanism).
 
 The preserved data handoff is
 `/Users/anuragduddu/.codex/private/live-rollout/data-20260908/final-3d60a1b-handoff.json`
@@ -116,6 +132,10 @@ for the intended reasons, with 41 existing tests still passing:
   restore and the shared USD 5 total/daily ceiling. `data-resources.json` records
   supplied budget, two-hour restore authority and proposed allocations without
   claiming a quote, verified inventory or executed cloud change.
+  > 2026-09-23: Superseded for the go-live program by
+  > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+  > G9. The spending ceiling is USD 25, cumulative, replacing this USD 5
+  > total/daily ceiling.
 
 Independent coordinator review found eight additional proposal bypasses: inflated
 approved/proposed restore hours, backup allocation/ordinary reserve, negative
@@ -169,6 +189,13 @@ the shared content-addressed object prefix is not per-collection IAM isolation.
 3. Before any image read, coordinator reviews that frozen authority, exact byte
    bound, source transport/region price, and approved whole-test reservation.
    A changed/missing generation blocks its original specimen; no fallback to latest.
+   > 2026-09-23: Superseded for the go-live program by
+   > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+   > G2 and G11. Specimens are processed one at a time, on demand, instead of
+   > freezing an exact ten-record manifest before any read (PLAN section 4.1
+   > stage 2); the whole-test cost reservation this step describes is retired
+   > with the release cost ledgers. G30's per-call reservations stand (PLAN
+   > 4.3; the coordinator's ruling on the mechanism).
 4. After authorized data delivery and successful recovery rehearsal, lookup only
    the approved email in Firebase Auth for this project. Privately export UID,
    email, emailVerified and disabled; require exact verified/enabled identity and
@@ -191,6 +218,11 @@ the shared content-addressed object prefix is not per-collection IAM isolation.
    every `application_source.source_object_index` binds the approved original.
    Freeze and externally pin ready-manifest bytes. Pass the same hash, UID/scope
    and readiness reference to API, worker launch policy, SAM and QA.
+   > 2026-09-23: Superseded for the go-live program by
+   > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+   > G2. Specimens are processed one at a time, on demand, instead of freezing
+   > and pinning one ready-manifest for the whole cohort before launch (PLAN
+   > section 4.1 stage 2).
 8. Verify denial for anonymous/unverified/wrong-collection identities and
    restart/reload persistence. Preserve the original denominator of ten even
    if a specimen needs review or is blocked. Structural manifest validation
@@ -204,6 +236,14 @@ has multiple originals, retaining those associations is mandatory; a single
 primary application source must not be reported as processing every original.
 
 ## Cheapest safe restore and cost admission
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G9 and G11. The spending ceiling is USD 25, cumulative, infrastructure and
+> models together, replacing the USD 5 ceiling and its USD 4/USD 1/USD 0.75
+> sub-allocations reserved below; release envelopes and the release's
+> cost-gated reservations are retired for this program. G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 Reuse an already successful, sufficiently fresh native backup when it covers
 the quiesced source checkpoint. Otherwise price and approve one new backup.
@@ -223,6 +263,14 @@ supplemental index definitions/validity; `IF NOT EXISTS` does not repair a
 wrong or invalid index. Resume only the verified runtime revision. Preserve
 recovery proof before removal of the temporary target; cleanup of this new
 target alone now has user authority, without source deletion or retention changes.
+
+> 2026-09-23: For additive applies, quiescing writers is superseded for the
+> go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11, as [`DEPLOYMENT.md`](../DEPLOYMENT.md)'s note on this item explains:
+> the uniqueness the pause protects is never absent during an additive
+> apply, so writers keep running. The backup, the supplemental index checks
+> and the catalog comparison stay.
 
 The current planning allocation is **USD 1 for incremental backup/restore**
 inside the shared USD 5 ceiling; ordinary reservations target USD 4 and leave
@@ -291,6 +339,17 @@ data agree exact intake/manifest bindings; protected delivery applies approved
 changes; independent QA verifies real recovery/import/identity and public product
 acceptance. Budget and prior PR merge are resolved decisions, not missing inputs.
 
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G11. Data releases deploy automatically once the required checks pass and the
+> PR steward approves; release envelopes, release cost packets, authorization
+> artifacts and independent-review gating are retired for this program. G30's
+> per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+> mechanism). `DEPLOYMENT.md`'s approved contract and
+> `RELEASE_AUTHORIZATION.md`'s list of what remains forbidden stand, and the
+> protected-ref and five-check admission moves into the data plane's gate
+> (`golive/RELEASE.md` section 1).
+
 ## Subsequent actual connector integration and metadata checkpoint
 
 The coordinator assigned an actual local SQL Connect stage-cost/launch-ledger
@@ -312,6 +371,15 @@ history and save paths. Active org/collection membership, writer role,
 sensitivity, CAS and deny-all direct client checks remain. Both control kinds
 remain excluded from ordinary offset/keyset document lists. The new
 `scripts/data/pilot-ledger-test.mjs` runs in the existing PostgreSQL harness.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G2 and G11. The `PilotLaunch` copy of the stage-cost reservations, its
+> digest pin and the source-cohort launch ledger this connector work supports
+> are retired; data releases deploy automatically once the required checks
+> pass and the PR steward approves. The per-stage reservation map
+> (`ExecutionPolicy.stage_cost_reservations`) stays, and G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 Actual connector red: `/tmp/specimen-release-pilot-ledger-red-20260908.log` and
 `/tmp/specimen-release-stage-map-connector-isolated-red-20260908.log` (one snapshot
@@ -362,12 +430,27 @@ script provide the surviving source-order evidence. Metadata freeze and current
 cost packet are being prepared; no actual source sensitivity classification is
 established merely by public acquisition provenance.
 
+> 2026-09-23: The classification this paragraph leaves open is closed for the
+> go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G31: the owner checked the ten pilot slides against `PRD.md`'s sensitivity
+> criteria and classified them not sensitive on 2026-09-23, so their import
+> declares them not sensitive on that verified classification.
+
 The user now requires a complete ten-specimen human-review journey, deferring
 automated classification and clearance. Initial administrator sensitive access
 remains false. A separate scoped contract is in progress for explicit new
 non-sensitive intake while retaining default-sensitive legacy evidence,
 creator-only control documents and no downgrade. This ledger correction does
 not relax any sensitivity check or classify actual images.
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G1. Automated clearance is in scope for this program: a record the harness
+> resolves is cleared without a human; human review and deferral stay as the
+> specification defines them. The sensitivity defaults above stand:
+> default-sensitive legacy evidence, creator-only control documents, no
+> downgrade, and the initial administrator's sensitive access stays false.
 
 ## Explicit classification connector follow-up
 
@@ -470,6 +553,12 @@ and disk. An illustrative 10 GiB backup retained seven days adds $0.1969968;
 operations and extra copies. Actual backup size and retention must be admitted
 to the shared USD 5 ledger. No retention schedule or deletion beyond the approved
 new clone was authorized here. [Cloud SQL pricing](https://cloud.google.com/sql/pricing).
+
+> 2026-09-23: Superseded for the go-live program by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+> G9. The spending ceiling is USD 25, cumulative, infrastructure and models
+> together, replacing this shared USD 5 release ledger. G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
 
 The region selector updates the storage and instance tables together. The
 generic $0.0105 rate belongs to the Iowa default; $0.018 in search results was
