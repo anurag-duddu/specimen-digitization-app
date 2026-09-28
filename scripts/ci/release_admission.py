@@ -263,8 +263,14 @@ def github_snapshot(packet: dict) -> dict:
 
 
 def admit(packet_path: Path, plane: str, *, now: float | None = None) -> dict:
+    import release_gate  # Lazy: the gate builds on this module.
+
     env = dict(os.environ)
     packet = read_packet(packet_path, env)
+    if release_gate.is_gate_record(packet):
+        # G11: the runtime planes admit from GitHub facts; every other packet keeps the envelope path below.
+        require(plane in release_gate.GATE_PLANES, "gate records admit only the runtime planes until the data plane moves")
+        return release_gate.readmit(packet_path, plane, env, now=now)
     require(packet.get("plane") == plane, "wrong release plane")
     # Reject context before any remote lookup. Rechecked immediately before every mutation.
     validate_context(env, plane, packet.get("source_sha", ""))
