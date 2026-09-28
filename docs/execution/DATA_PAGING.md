@@ -58,6 +58,13 @@ compatibility. Old rows with null scheduling remain discoverable in runnable sta
 Do not mix old/new worker writers after activating scheduling without validating
 projection semantics: a V1 save does not update an existing schedule timestamp.
 
+`ListDueWorkV2` (the go-live lane's worker, `docs/execution/golive/DATA_CONTRACT.md`)
+differs in two ways. It lists due rows oldest due time first, `(workAvailableAt, id)`,
+with the cursor `(afterAt, afterId)`. It does not list a row whose due time is null:
+the V3 saves always carry one for a runnable stage (`storage.py` `work_available_at`),
+so a null due time there means the row is not waiting for the worker. `ListDueWork`
+keeps its behaviour for the legacy callers.
+
 Additional projections in `paging.gql`:
 
 - `ListSpecimenPage(scope, actorUid, cutoff, afterId, limit, includeSensitive)`

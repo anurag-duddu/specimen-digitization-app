@@ -1266,7 +1266,9 @@ class _ActiveFilterChips extends StatelessWidget {
                   for (final MapEntry<String, String> entry in filters.entries)
                     UiChip(
                       key: ValueKey<String>('filter-chip-${entry.key}'),
-                      label: '${searchFieldLabel(entry.key)}: ${entry.value}',
+                      label:
+                          '${searchFieldLabel(entry.key)}: '
+                          '${searchValueLabel(entry.key, entry.value)}',
                       variant: UiChipVariant.input,
                       onRemove: () =>
                           unawaited(controller.removeFilter(entry.key)),

@@ -10,6 +10,7 @@ from .domain import (
     AuditEvent,
     Evidence,
     FieldValue,
+    FirstPassDecision,
     Lookup,
     LookupStatus,
     Observation,
@@ -37,6 +38,7 @@ from .evidence_harness import (
 )
 from .region_pixels import region_png
 from .integrity import EvidenceIntegrityError, verify_evidence
+from .lookup import PLACE_FIELDS, taxonomy_lookup
 from .policy import finalize
 from .storage import BlobStore, Repository, digest
 from .reliability import AdapterFailure, retry_delay
@@ -51,6 +53,9 @@ class PipelineAdapters(Protocol):
     def transcribe(
         self, specimen: Specimen, region: Region, route: str
     ) -> Observation: ...
+    def first_pass(
+        self, specimen: Specimen, region: Region, readings: list[Observation]
+    ) -> FirstPassDecision: ...
     def lookup(self, name: str) -> Lookup: ...
 
 
@@ -157,7 +162,7 @@ class Workflow:
                 digest({"unknown": step}),
             )
         external = (
-            step.startswith("transcribe:")
+            step.startswith(("transcribe:", "first_pass:"))
             or step in {"segment", "lookup"}
             or step.startswith("authority:")
             or (step == "parse" and hasattr(self.adapters, "extract"))
@@ -171,12 +176,13 @@ class Workflow:
         effect_timeout = policy.effect_timeout_for_step(step)
         external_weight = (
             2
-            if (step.startswith("transcribe:") or step == "parse")
+            if (step.startswith(("transcribe:", "first_pass:")) or step == "parse")
             and not run.profile.synthetic
             else 1
         )
         billable = external and (
-            step.startswith("transcribe:") or step in {"parse", "segment", "classify"}
+            step.startswith(("transcribe:", "first_pass:"))
+            or step in {"parse", "segment", "classify"}
         )
         reservation_tokens = 16000 if billable and not run.profile.synthetic else 0
         cost = (
@@ -286,6 +292,9 @@ class Workflow:
         previous_tokens = sum(
             o.input_tokens + o.output_tokens for o in run.observations
         )
+        # Set once the step's model or lookup call has returned: a later failure
+        # is deterministic and its outcome known (issue #80, HARNESS.md 2).
+        effect_settled = False
         try:
             if step == "pin_dependencies":
                 run.dependencies = (
@@ -350,11 +359,39 @@ class Workflow:
                 if observation.region_id != region.id or observation.route_id != route:
                     raise OperationalBlock("observation_contract_invalid")
                 run.observations.append(observation)
+            elif step.startswith("first_pass:"):
+                region = next(r for r in run.regions if r.id == step.split(":", 1)[1])
+                readings = [o for o in run.observations if o.region_id == region.id]
+                decision = self.adapters.first_pass(specimen, region, readings)
+                from .first_pass import UNRESOLVED_VERDICTS, g19_pick, is_material
+
+                ids = {o.id for o in readings}
+                selected = decision.selected_observation_id
+                if (
+                    decision.region_id != region.id
+                    or decision.call.region_id != region.id
+                    or selected not in ids | {None}
+                    or any(
+                        set(d.spans) != ids
+                        or d.verdict not in ids | UNRESOLVED_VERDICTS
+                        or d.material != is_material(d.spans.values())
+                        for d in decision.differences
+                    )
+                    or g19_pick(selected, decision.differences) != selected
+                ):
+                    raise OperationalBlock("first_pass_contract_invalid")
+                run.first_pass_decisions = [
+                    d for d in run.first_pass_decisions if d.region_id != region.id
+                ] + [decision]
+                call = decision.call
+                run.usage.tokens += call.input_tokens + call.output_tokens
             elif step == "adjudicate":
                 run.transcripts = []
+                decisions = {d.region_id: d for d in run.first_pass_decisions}
                 for region in run.regions:
                     readings = [o for o in run.observations if o.region_id == region.id]
                     texts = list(dict.fromkeys(o.literal_text for o in readings))
+                    from .first_pass import adjudication_record
                     from .reading_evidence import ReadingEvidenceInput, align_readings
 
                     alignment = None
@@ -380,10 +417,13 @@ class Workflow:
                         and bool(texts[0].strip())
                         and not any(o.unreadable_spans for o in readings)
                     )
+                    text, resolved, record = adjudication_record(
+                        readings, texts, resolved, decisions.get(region.id)
+                    )
                     run.transcripts.append(
                         Transcript(
                             region_id=region.id,
-                            text=texts[0] if resolved else None,
+                            text=text,
                             observation_ids=[o.id for o in readings],
                             alternatives=texts,
                             resolved=resolved,
@@ -400,6 +440,7 @@ class Workflow:
                             alignment_reasons=list(alignment.reasons)
                             if alignment
                             else ["independent_pair_incomplete"],
+                            **record,
                         )
                     )
             elif step == "parse":
@@ -494,7 +535,15 @@ class Workflow:
             elif step == "lookup":
                 name = run.fields["taxon"].literal
                 if name:
-                    outcome = self.adapters.lookup(name)
+                    # No word of the run's place-field literals is sent, and
+                    # a genus in doubt sends nothing (the coordinator's rulings
+                    # of 02:07Z, 03:24Z and 03:31Z on 2026-09-26, PLAN 4.8).
+                    places = [
+                        run.fields[key].literal
+                        for key in PLACE_FIELDS
+                        if key in run.fields and run.fields[key].literal
+                    ]
+                    outcome = taxonomy_lookup(self.adapters.lookup, name, places, self.blobs)
                     run.lookups.append(outcome)
                     if outcome.status in OPERATIONAL:
                         raise OperationalBlock("taxonomy_" + outcome.status.value)
@@ -534,10 +583,14 @@ class Workflow:
                 phase_result = refresh_review_evidence(specimen, self.blobs)
                 finalize(run)
                 apply_phase_gate(run, phase_result)
-            if step.startswith("authority:"):
-                execute_phase(specimen, "lookup", self.blobs)
-            if step in {"parse", "plan", "lookup", "resolve", "normalize", "validate"}:
-                execute_phase(specimen, step, self.blobs)
+            effect_settled = True
+            try:
+                if step.startswith("authority:"):
+                    execute_phase(specimen, "lookup", self.blobs)
+                if step in {"parse", "plan", "lookup", "resolve", "normalize", "validate"}:
+                    execute_phase(specimen, step, self.blobs)
+            except EvidenceIntegrityError as exc:
+                raise OperationalBlock(str(exc)) from exc
             if run.stage != "processing_blocked":
                 run.blocker = None
             run.lease_until = None
@@ -559,7 +612,9 @@ class Workflow:
             }:
                 self.schedule_retry(run, step, exc.retry_after_seconds)
         except OperationalBlock as exc:
-            circuit_failure = str(exc).removeprefix("taxonomy_")
+            circuit_failure = (
+                None if effect_settled else str(exc).removeprefix("taxonomy_")
+            )
             run.blocker = str(exc)
             run.stage = "processing_blocked"
             run.disposition = None
@@ -569,12 +624,19 @@ class Workflow:
                 "taxonomy_provider_error",
             }:
                 self.schedule_retry(run, step, run.lookups[-1].retry_after_seconds)
-        except Exception:
-            circuit_failure = "provider_error"
+        except Exception as exc:
+            outcome_unknown = external and not effect_settled
+            circuit_failure = "provider_error" if outcome_unknown else None
             # Do not expose raw exceptions containing provider headers or source text.
+            logfire.warn(
+                "Specimen step failed",
+                step=step,
+                exception_class=type(exc).__name__,
+                outcome_unknown=outcome_unknown,
+            )
             run.blocker = (
                 "external_outcome_unknown"
-                if external
+                if outcome_unknown
                 else "stage_failed_inspect_private_worker_logs"
             )
             run.stage = "processing_blocked"
@@ -658,6 +720,15 @@ class Workflow:
             for route in run.profile.routes:
                 key = f"transcribe:{region.id}:{route}"
                 if key not in run.completed_steps:
+                    return key
+        if "adjudicate" not in run.completed_steps:
+            # Differing readings get the LLM first pass (HARNESS.md section 3).
+            for region in run.regions:
+                texts = {
+                    o.literal_text for o in run.observations if o.region_id == region.id
+                }
+                key = f"first_pass:{region.id}"
+                if len(texts) > 1 and key not in run.completed_steps:
                     return key
         for step in (
             "adjudicate",
@@ -779,6 +850,13 @@ class SyntheticAdapters:
             raw_ref=ref,
             raw_sha256=hashlib.sha256(raw).hexdigest(),
         )
+
+    def first_pass(self, specimen, region, readings):
+        if not specimen.run.profile.synthetic:
+            raise OperationalBlock("synthetic_adapter_forbidden")
+        from .first_pass import synthetic_decision
+
+        return synthetic_decision(self.blobs, region, readings)
 
     def lookup(self, name):
         raw = (

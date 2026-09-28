@@ -11,6 +11,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 import 'models.dart';
 import 'review_context.dart';
+import 'screens/workbench/moments.dart';
 import 'vocabulary.dart';
 import 'widgets/widgets.dart';
 
@@ -257,7 +258,8 @@ class ReadingDeclarationView extends StatelessWidget {
                     style: line,
                   ),
                   Text(
-                    'Recorded by ${textOf(human['actor'])} · ${textOf(human['created_at'])}',
+                    'Recorded by ${textOf(human['actor'])} · '
+                    '${absoluteInstant(human['created_at'])}',
                     style: line,
                   ),
                   Text('Reason: ${textOf(human['reason'])}', style: line),
