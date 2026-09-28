@@ -559,7 +559,16 @@ def test_a_year_outside_1750_to_the_current_year_is_no_date(
 # "." or "-"; "12 x 46" may be a measurement.
 @pytest.mark.parametrize(
     "literal",
-    ["46", "Mossy forest", "iv-23-48", "iv-1948", "12 x 46", "12 vi 1946"],
+    [
+        "46",
+        "Mossy forest",
+        "iv-23-48",
+        "iv-1948",
+        "12 x 46",
+        "12 vi 1946",
+        # U+0130 matches I only under Unicode case rules: no numeral.
+        "12." + chr(0x130) + ".46",
+    ],
 )
 def test_a_literal_no_listed_notation_fits_is_no_date(literal):
     result = date_parser(literal, source_text=literal, date_rules=INSECTS)

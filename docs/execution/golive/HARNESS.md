@@ -628,6 +628,8 @@ harness settles which one the evidence supports (G29):
 - Readings outside the calendar or outside 1750 to the current year are
   dropped (`invalid_calendar_date`, `implausible_year`); identical readings are
   one.
+- A letter that matches a Roman numeral only under Unicode case rules, such as
+  `İ` (U+0130), is no numeral, and the literal is no date (`no_match`).
 - A slide-preparation code (`IV-29-68-4`, `10-6-78-1a`, four or more
   hyphen-joined parts whose first three are date-shaped), or a date-shaped part
   of one, is never a date (`slide_code`); any other part of a hyphen-joined
