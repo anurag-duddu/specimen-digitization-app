@@ -202,14 +202,20 @@ def test_a_ctrl_c_during_the_apps_request_is_raised_when_the_request_returns(tmp
     # #84 rounds 3-4: the test client swallows a BaseException raised during a request (a 500 if the app had not
     # started its response, otherwise the endpoint's own response), so the lane holds a Ctrl-C while a request
     # runs and raises it once the request returns; the previous handler comes back after.
-    before = signal.getsignal(signal.SIGINT)
-    lane = lab_lane.AppLane(tmp_path / "state",
-                            adapters_factory=lambda blobs: InterruptingAdapters(blobs, SYNTHETIC_TEXT),
-                            persistence="sqlite", segmentation="sam3", subject="subject_105526321")
+    before, made = signal.getsignal(signal.SIGINT), []
+
+    def interrupting(blobs):
+        made.append(InterruptingAdapters(blobs, SYNTHETIC_TEXT))
+        return made[-1]
+
+    lane = lab_lane.AppLane(tmp_path / "state", adapters_factory=interrupting, persistence="sqlite",
+                            segmentation="sam3", subject="subject_105526321")
     with pytest.raises(KeyboardInterrupt):
         with lane:
             lane.ingest("subject_105526321.jpeg", jpeg(), "image/jpeg")
     assert signal.getsignal(signal.SIGINT) is before
+    # A SIGINT to the runner's own process: the drain ran to its end (both readers) before the request returned.
+    assert made[0].readings_after == 2
 
 
 def test_a_subclass_of_the_synthetic_adapters_is_not_trusted_as_synthetic(tmp_path):

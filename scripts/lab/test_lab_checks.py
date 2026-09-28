@@ -460,6 +460,41 @@ def test_an_empty_port_and_idn_dots_name_api_gbif_org_in_stored_text():
         assert stage_7_of({"kind": "authority", "source": "web", "locator": url})["status"] == "failed", url
 
 
-def test_a_double_encoded_path_is_decoded_once_as_the_client_sends_it():
-    # #84 round 4: stated, not caught: httpx decodes once, so %252F stays an encoded slash in the path.
+def test_a_double_encoded_path_is_decoded_once_as_httpx_builds_it():
+    # #84 round 4: stated, not caught: httpx decodes once, so %252F stays an encoded slash in the path. #84's
+    # follow-ups: the record scan decodes a GBIF record's strings once too.
     assert not lab_checks.occurrence_request("https://api.gbif.org/v1%252Foccurrence%252Fsearch")
+    assert stage_7_of({"kind": "lookup", "source": "gbif", "locator": "/v1%252Foccurrence%252Fsearch"})["status"] != "failed"
+
+
+def test_a_gbif_records_token_shown_by_one_decoding_or_unescaping_counts():
+    # #84's follow-ups (item 2): these counted at 86b5242a; value_paths split only the raw string.
+    for value in ("path=%2Fv1%2Foccurrence%2Fsearch", "GET \\/v1\\/occurrence\\/search",
+                  '{"path": "\\/v1\\/occurrence\\/search'):
+        record = {"kind": "lookup", "source": "gbif", "locator": value}
+        assert stage_7_of(record)["status"] == "failed", value
+        assert lab_checks.occurrence_blob(json.dumps(record)), value
+
+
+def test_a_joined_path_list_is_read_path_by_path_and_is_not_species_match():
+    # #84's follow-ups (item 3): "a,b" was one token, read as species match, and left the other-calls report.
+    joined = stage_7_of({"kind": "lookup", "source": "gbif", "locator": "/v2/species/match,/v1/occurrence/search"})
+    assert joined["status"] == "failed", joined
+    other = stage_7_of({"kind": "lookup", "source": "gbif", "locator": "/v2/species/match|/v1/dataset/1"})
+    assert other["status"] != "failed" and "outside PLAN 4.8" in other["detail"], other
+    plain = stage_7_of({"kind": "lookup", "source": "gbif", "locator": "/v2/species/match"})
+    assert "outside PLAN 4.8" not in plain["detail"], plain
+
+
+def test_a_gbif_record_nested_in_another_record_counts_in_the_record_scan():
+    # #84's follow-ups (item 4): it counted only in the blob scan.
+    nested = {"kind": "authority", "source": "web", "call": {"source": "gbif", "locator": "/v1/occurrence/search"}}
+    assert stage_7_of(nested)["status"] == "failed"
+
+
+def test_json_held_in_strings_is_read_four_levels_deep():
+    # #84's follow-ups (item 4): stated in LAB.md; a fifth level is not parsed.
+    value = {"url": "https://api.gbif.org/v1/occurrence/search"}
+    for _ in range(4):
+        value = {"json": json.dumps(value).replace("/", "\\/")}
+    assert lab_checks.occurrence_blob(json.dumps(value))

@@ -496,6 +496,7 @@ class DotSegmentLane(FakeLane):
                     "https://api.gbif.org/v1/occurrence/;/../search",  # #84 round 4: the eleventh form
                     "https://api.gbif.org/v1/%5C/../occurrence/search",
                     "https://api.gbif.org/v1/occurrence%3F/../../v2/species/match",
+                    "https://api.gbif.org/v1%252Foccurrence%252Fsearch",  # decoded once, not counted (follow-ups)
                     "https://api.gbif.org/v2/species/match?name=Epipsocus"):  # the last is species match
             http_effect.bounded_http(url, timeout_seconds=1, max_bytes=1)
         http_effect.bounded_http("https://api.gbif.org/v1/species/search", timeout_seconds=1, max_bytes=1,
@@ -783,4 +784,5 @@ def test_a_ctrl_c_during_the_apps_request_stops_the_run_and_is_recorded(tmp_path
     ingest = next(p for p in summary["phases"] if p["name"] == "ingest")
     assert ingest["status"] == "failed" and "KeyboardInterrupt" in ingest["error"]
     assert summary["result"] == "error" and summary["costs"]["total_usd"] == pytest.approx(0.75)
-    assert made[0].readings_after > 0  # the drain's later paid calls still ran before the request returned
+    # A SIGINT to the runner's own process: the drain ran to its end (both readers) before the request returned.
+    assert made[0].readings_after == 2
