@@ -763,7 +763,10 @@ class SpecimenThread extends _View {
   List<ThreadToolCall> get toolCalls =>
       _each('tool_calls', ThreadToolCall.fromJson);
 
-  /// Every field, in the profile's order.
+  /// The fields the run wrote a candidate for, in the order sent. A field
+  /// with nothing extracted is not listed, so the workspace record, which
+  /// carries every profile field, stays the list the screen draws
+  /// (DATA_CONTRACT.md section 8, "Current rows").
   List<ThreadField> get fields => _each('fields', ThreadField.fromJson);
 
   /// The fields a supported value is needed for.
