@@ -12970,3 +12970,53 @@ because the hooks runner hands a native asset hook only `PATH`.
   - S7's #83, merged as d663a0c before this pull request, makes `scripts/lab/lab_checks.py` fail a run whose records carry the removed adapter's identity (`gbif_gadm`, or a `gbif-gadm` version), the coordinator's lab item (coordinator.md:434).
   - PLAN.md's ownership list and the S4 brief still name `geography.py` (the coordinator's next plan pull request).
   - S8's research probe and `docs/GBIF.md` still mention GADM; S8's open #217 drops the probe's call.
+
+### 2026-09-28 — Go-live release workstream (S2), T3a2: the schema gate closes #99's review gaps
+
+- Task: the S2 session, the six preconditions in #99's merge verdict (comment 5863901076, items 1-6). Each must be closed or guarded before the schema gate decides a real release. The steward checks them at the turns of #112 (T3b), T3c and T3d. Item 7's two tracebacks sit in the same lines, so this fixes them too.
+- Branch/worktree: `golive/release-gate-gaps`, from `main` at `734eb1c` (#99's merge), in this session's worktree.
+- Outcome:
+  - TRN-005's `rawAssetId`, `promptVersion` and `inputSha256` keep NOT NULL on every table that carries them (`PROVENANCE`), as PLAN 4.4 says. Before this, `EvidenceItem`, `PipelineRun` and `Checkpoint` were unprotected.
+  - A new operation must meet all of these:
+    - its own `@auth` is `NO_ACCESS`;
+    - its `organizationMember` `@check` is exactly `this.active` or `this.active == true`. A `message` is allowed; `optional` is not;
+    - if it is a mutation, it carries `@transaction` and checks membership before its first write;
+    - it takes no `all:` argument.
+
+    Every operation on main and at the top of S5's chain already meets these, except the live `Memberships` and `Readiness`.
+  - RELEASE.md 4.1 names what the gate can't check as review items: the organization and collection filters, the collection role expression, `canViewSensitive`, and bounded deletes and updates. It also states that the first initialization applies main's reviewed connector with nothing live to compare.
+  - A new `@view`, and a new field whose `@default` carries SQL, are refused. PLAN 4.4 admits only new tables and nullable columns.
+  - Section 3.3 is read as a page renders it:
+    - lines end only at CommonMark's line endings;
+    - the section may hold no HTML comment or block, fence, or indented code;
+    - it may hold no whitespace but the space.
+
+    A new row authorizes its drop in the same merge, so it is a review item.
+  - The swap:
+    - step one must be exactly the entry;
+    - step two counts uses in merged operations;
+    - step two waits for `unique_read_back`. No caller passes it until T3d's drop step reads the live database back and runs S5's pinned statement (RELEASE.md 4.4 step 2).
+  - `read_tree` fails closed on anything else firebase-tools would read. A test pins `dataconnect.yaml`'s two folders, and checks that no workflow or release script runs a firebase-tools Data Connect command.
+  - RELEASE.md 4.1 labels the foreign-key rule as S2's reading of PLAN 4.4's "foreign keys over new columns only" (verdict item 8).
+- Commits/PRs: PR #219: spec `1d0de25`, red `8ae5079`, green `44c0c01`, and this closeout.
+- Validation actually run:
+  - Red: 51 failed, 92 passed. Green: 143 gate tests.
+  - `scripts/ci`: 1,633 passed, 50 skipped. One earlier run under load failed `test_publication_deadline.py::test_success_with_surviving_descendant_is_not_promoted`. It passed alone and in the full re-run.
+  - `tests/test_deployment_policy.py`: 6 passed, and pre-commit passed on each commit.
+  - S5's chain under the new gate, each head against the one below it:
+    - #146 against main reads only the step-two read-back refusal;
+    - #168, #169, #170, #178 and #171 read additive.
+- Durable learnings:
+  - A gate's input must be what reviewers see and what the deploy sends. The parser read tables that GitHub hides in a comment or a fence. It also split lines that GitHub keeps whole, at U+2028, NEL and form feed. All of these now fail closed.
+  - Presence is not a check. `@check(expr: "true")` passed "has a membership check". Pin the exact forms reviewed code uses, and name the semantic checks as review items.
+  - A step that depends on live state the gate can't see, such as the read-back, defaults to refusal. The caller confirms that state through an explicit keyword.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - At #112's turn, `committed_source` reads through `schema_gate.read_tree`, and a gate `ValueError` stops the release with its message.
+  - T3d's drop step, after #146:
+    - pins `drop-specimen-unique-1.sql`'s SHA-256;
+    - reads the live database back;
+    - passes `unique_read_back`;
+    - runs the statement before validate-only.
+  - If #146 merges first, this branch's merge of main updates S5's new step-two assertions (`76269ac`) to pass `unique_read_back`.
+  - #99's items 8-11 go to the coordinator (item 8) and to S2's post-chain PR.
