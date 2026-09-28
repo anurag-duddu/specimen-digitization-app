@@ -924,16 +924,18 @@ def test_a_range_runs_upward_by_its_whole_parts_in_any_digits():
 def test_the_prefixes_include_the_profiles_el():
     # "el." is the Insects profile's, with its period (the coordinator's reading at
     # 15:32Z: prefixes "as the profile's notations list them"). A word between a
-    # prefix and its number leaves the prefix unread.
+    # prefix and its number leaves the prefix unread, save an approximation mark (the
+    # coordinator's ruling at 02:08Z on 2026-09-26, coordinator.md:517).
     for text in (
         "el. 1800-2200 m",
         "EL.1500 m",
         "Elev: 1800-2200 m",
         "Elevation 1800-2200 m",
         "ALTITUDE: 1800-2200 m",
+        "Elev. ca. 1800-2200 m",
     ):
         assert [e.text for e in read_locality(text).elevations] == [text], text
-    for text in ("Elev. ca. 1800-2200 m", "el 1800-2200 m"):
+    for text in ("Elev. about 1800-2200 m", "el 1800-2200 m"):
         assert read_locality(text).elevations == (), text
 
 
@@ -1049,8 +1051,9 @@ def test_the_line_break_rule_costs_a_whole_transcript_its_elevation(text):
 def test_across_a_comma_the_check_goes_on_only_from_a_bare_number():
     # The coordinator's reading at 22:22Z on 2026-09-25 (coordinator.md:468), refined
     # at 00:38Z on 2026-09-26 (:498): after a bare number, with no unit or prefix of
-    # its own and nothing glued before it (00:52Z, :501), any word or mark continues
-    # the check across a comma or semicolon, so its range is never read by the top.
+    # its own and nothing glued before it (00:52Z, :501, as 03:07Z and 03:14Z narrow
+    # it, :523 and :525), any word or mark continues the check across a comma or
+    # semicolon, so its range is never read by the top.
     for text in (
         "4000, ~ 4500 m",
         "4000 ~, 4500 m",
@@ -1068,6 +1071,10 @@ def test_across_a_comma_the_check_goes_on_only_from_a_bare_number():
     ):
         reading = read_locality(text)
         assert (reading.elevations, reading.parts) == ((), ()), text
+    # So is an elevation after a part of its own, which ec8d73b read: a missed
+    # reading, not a wrong one.
+    reading = read_locality("Camp 3, Mt. Apo, Elev. 1500 m")
+    assert (reading.elevations, [part.name for part in reading.parts]) == ((), ["Mt. Apo"])
     # A number with its own unit or prefix is a complete elevation, and a glued one,
     # such as a date's year, could be no range's low: either ends the check. With
     # nothing but the comma after a bare number, the next elevation reads too.
@@ -1087,27 +1094,119 @@ def test_across_a_comma_the_check_goes_on_only_from_a_bare_number():
         assert [part.name for part in read_locality(text).parts] == [name], text
 
 
+def test_only_a_letter_or_digit_before_its_marks_glues_a_number():
+    # The coordinator's rulings at 03:07Z and 03:14Z on 2026-09-26 (coordinator.md:523,
+    # :525) narrow 00:52Z's "glued" to what it meant: a letter or digit right before a
+    # number, or right before the marks right before it, glues it, as a date's or a
+    # code's separators stand. Marks with nothing before them glue nothing, so the
+    # number still starts the comma continuation and its range is set aside: an
+    # asterisk, an acute accent, a combining acute that starts a line, a spacing sign
+    # Python counts as a letter, and an apostrophe after a space.
+    for text in (
+        "*6000 y; 7000 ft",
+        "\u00b46000 y; 7000 ft",
+        "\u03016000 y; 7000 ft",
+        "Yepocapa\n\u03016000 y; 7000 ft",
+        "\uff9e6000 y; 7000 ft",
+        "* *6000, to 7000 ft",
+        "Sep '46, to 950 ft.",
+        "Sept. 3 '46, to 950 ft.",
+    ):
+        assert read_locality(text).elevations == (), text
+    # Glued, a following range's top reads alone, as in the stated costs (2) and (3).
+    for text, read in (
+        ("IV-29-68-4, hasta 95 m", ["95 m"]),
+        ("12.IV.1948, hasta 95 m", ["95 m"]),
+        ("12/4/48, hasta 95 m", ["95 m"]),
+        ("12-IV-1948, hasta 95 m", ["95 m"]),
+        ("ene.-1983, to 950 ft.", ["950 ft."]),
+        ("No.-6000, to 7000 ft", ["7000 ft"]),
+        ("C4000, to 4500 ft", ["4500 ft"]),
+    ):
+        assert [e.text for e in read_locality(text).elevations] == read, text
+
+
+def test_an_approximation_mark_belongs_to_its_elevation():
+    # The coordinator's rulings of 2026-09-26 on the approximation marks (c., ca.,
+    # circa, the plus-minus sign, ~, approx., aprox.): no glue (02:02Z, coordinator.md
+    # :508, and 02:06Z, :511); glued or spaced, the mark belongs to the elevation as
+    # written, a prefix before it too (02:08Z, :517).
+    # A bare number after a mark still starts the comma continuation.
+    for text in (
+        "c.4000, to 4500 ft",
+        "\u00b14000, to 4500 ft",
+        "ca.1500, a 2000 m",
+        "c.4000, hasta 4500 m",
+        "c.4000, - 4500 m",
+        "circa4000, to 4500 ft",
+        "~4000, to 4500 ft",
+        "approx.4000, to 4500 ft",
+        "aprox.1500, a 2000 m",
+        "CA.1500, a 2000 m",
+        "Mt. Apo ca.1500, a 2000 m",
+    ):
+        assert read_locality(text).elevations == (), text
+    # The mark reads with its elevation, and the place keeps its name; any other word
+    # before an elevation stays with the place, as before.
+    for text, read, names in (
+        ("about 1500 m", ["1500 m"], ["about"]),
+        ("Mt. Apo about 1500 m", ["1500 m"], ["Mt. Apo about"]),
+        ("c.4000 ft", ["c.4000 ft"], []),
+        ("c.4000 ft, to 4500 ft", ["c.4000 ft", "4500 ft"], []),
+        ("ca. 1500 m", ["ca. 1500 m"], []),
+        ("\u00b14000 ft", ["\u00b14000 ft"], []),
+        ("circa4000 ft", ["circa4000 ft"], []),
+        ("Mt. Apo c.4000 ft", ["c.4000 ft"], ["Mt. Apo"]),
+        ("Mt. Apo ca. 1500 m", ["ca. 1500 m"], ["Mt. Apo"]),
+        ("Elev. c.4000 ft", ["Elev. c.4000 ft"], []),
+        ("Elev. ca. 1500 m", ["Elev. ca. 1500 m"], []),
+        ("Elev. ca. 1800-2200 m", ["Elev. ca. 1800-2200 m"], []),
+    ):
+        reading = read_locality(text)
+        elevations = [e.text for e in reading.elevations]
+        assert (elevations, [part.name for part in reading.parts]) == (read, names), text
+    # A mark right after another number joins the two, on one line or across a line
+    # break, as before; a date's mark is glued as the date is, and so is "C4000".
+    for text in (
+        "4000 ~ 4500 m",
+        "4000 ~4500 ft",
+        "1500 \u00b1 50 m",
+        "4000\n~ 4500 m",
+        "Elev. 1500 ~ 2000 m",
+        "C4000 ft",
+    ):
+        assert read_locality(text).elevations == (), text
+    assert [e.text for e in read_locality("12-IV-c.1948, hasta 95 m").elevations] == ["95 m"]
+
+
 def test_the_comma_rule_s_stated_costs():
     # The coordinator's rulings at 00:52Z on 2026-09-26 (coordinator.md:502): (1) a
     # prefixed low with a comma or semicolon in its join reads both ends as separate
     # elevations; (2) a date's glued year before such a join reads only the
     # elevation after it; (3) a low glued into the number before it by a comma reads
-    # the top, and the number before too when it reads, the low's digits in it. A
-    # leftover range word is a lookup candidate that matches no place; so is one
-    # after an elevation read, as on one line.
+    # the top. A leftover range word is a lookup candidate that matches no place; so
+    # is one after an elevation read, as on one line.
     for text, read, names in (
         ("Elev. 4000, hasta 4500 m", ["Elev. 4000", "4500 m"], ["hasta"]),
         ("alt 6000 & ; 7000 ft.", ["alt 6000", "7000 ft."], []),
         ("ene.-1983, to 950 ft.", ["950 ft."], []),
         ("IV-1948, hasta 95 m", ["95 m"], ["hasta"]),
         ("Elevation 3300,10 - ; 50 m", ["50 m"], []),
-        ("Elev.3300,26 up to ; 750 feet", ["Elev.3300,26", "750 feet"], ["up to"]),
         ("4000 m hasta 4500 m", ["4000 m", "4500 m"], ["hasta"]),
         ("4000 m up to 4500 m", ["4000 m", "4500 m"], ["up to"]),
     ):
         reading = read_locality(text)
         elevations = [e.text for e in reading.elevations]
         assert (elevations, [part.name for part in reading.parts]) == (read, names), text
+    # S8's finding within cost (3), recorded at coordinator.md:506, not a ruling: when
+    # the number the low is glued into reads, it holds the low's digits, as it did at
+    # ec8d73b; set aside, as in "Elevation 3300,10 - ; 50 m", it reads nothing.
+    reading = read_locality("Elev.3300,26 up to ; 750 feet")
+    elevations = [e.text for e in reading.elevations]
+    assert (elevations, [part.name for part in reading.parts]) == (
+        ["Elev.3300,26", "750 feet"],
+        ["up to"],
+    )
 
 
 # The two baseline readers' whole transcripts of 105526322, 105526329 and
@@ -1181,8 +1280,9 @@ def test_a_number_with_no_unit_running_into_a_date_is_set_aside():
 
 
 # The letters Python counts as alphanumeric that `fold` drops, the 21 the steward's
-# round-8 review names. `fold` drops six of them outright; the other fifteen are
-# spacing marks, whose compatibility form is a space and combining marks.
+# round-8 review names. Fifteen are spacing marks, whose compatibility form is a
+# space and combining marks; four are the Hangul fillers, which never show; and
+# U+FF9E and U+FF9F are spacing signs, which show (below).
 FOLD_DROPPED_LETTERS = (
     *("\u037a", "\u115f", "\u1160", "\u3164", "\uffa0"),
     *(chr(code) for code in range(0xFC5E, 0xFC64)),
@@ -1205,20 +1305,54 @@ def spacing_mark(c):
 # Every spacing mark in the Unicode data this Python holds, "\u02dc" and "\u203e"
 # among them (the round-9 review counts 50).
 SPACING_MARKS = tuple(filter(spacing_mark, map(chr, range(sys.maxunicode + 1))))
-# What `fold` drops outright: the six letters, format characters and a combining mark.
+# The Hangul fillers, and the combining marks Unicode makes default-ignorable: the
+# grapheme joiner, the Khmer inherent vowels and the variation selectors. Neither
+# ever shows.
+HANGUL_FILLERS = ("\u115f", "\u1160", "\u3164", "\uffa0")
+IGNORABLE_MARKS = frozenset(
+    (
+        *("\u034f", "\u17b4", "\u17b5", "\u180b", "\u180c", "\u180d", "\u180f"),
+        *map(chr, range(0xFE00, 0xFE10)),
+        *map(chr, range(0xE0100, 0xE01F0)),
+    )
+)
+# What `fold` drops that never shows: the fillers, format characters and
+# default-ignorable marks.
 DROPPED = (
-    *(c for c in FOLD_DROPPED_LETTERS if not spacing_mark(c)),
-    *("\u200b", "\u00ad", "\u2060", "\ufeff", "\u0301"),
+    *HANGUL_FILLERS,
+    *("\u200b", "\u00ad", "\u2060", "\ufeff"),
+    *("\u034f", "\u17b4", "\u180b", "\ufe0f", "\U000e0100"),
+)
+# What `fold` drops that still shows, each a mark (the round-10 review's second
+# blocker): every combining or enclosing mark but the default-ignorable ones, where
+# nothing that shows comes before it; and the spacing signs, which `fold` empties
+# though they take up space (U+FF9E, U+FF9F and spacing combining marks such as
+# U+1B44), anywhere.
+COMBINING_MARKS = tuple(
+    c
+    for c in map(chr, range(sys.maxunicode + 1))
+    if unicodedata.category(c) in ("Mn", "Me") and c not in IGNORABLE_MARKS
+)
+NO_SIGNS = ("Cc", "Cf", "Cn", "Co", "Cs", "Mn", "Me", "Zs", "Zl", "Zp")
+SPACING_SIGNS = tuple(
+    c
+    for c in map(chr, range(sys.maxunicode + 1))
+    if unicodedata.category(c) not in NO_SIGNS
+    and c not in HANGUL_FILLERS
+    and fold(f"a{c}b") == "ab"
 )
 
 
-def test_the_spacing_marks_hold_the_review_s_examples():
+def test_the_character_sets_hold_the_reviews_examples():
     assert {"\u02dc", "\u203e", "\u037a", "\ufe70", "\ufc5e"} <= set(SPACING_MARKS)
-    assert len(DROPPED) == 11
+    assert {"\uff9e", "\uff9f", "\u1b44", "\U0001d165"} <= set(SPACING_SIGNS)
+    assert {"\u0301", "\u0303", "\u20dd", "\u3099"} <= set(COMBINING_MARKS)
+    assert not {*DROPPED} & {*SPACING_MARKS, *SPACING_SIGNS, *COMBINING_MARKS}
+    assert len(DROPPED) == 13
 
 
 @pytest.mark.parametrize("dropped", DROPPED)
-def test_what_fold_drops_is_nothing(dropped):
+def test_what_never_shows_is_nothing(dropped):
     # The reader's patterns read the text without it (the round-9 review's first
     # blocker). A part of it passes the date on; beside a join word or a mark it hides
     # nothing; inside or beside a number it splits nothing; before a month it is no
@@ -1247,11 +1381,48 @@ def test_what_fold_drops_is_nothing(dropped):
     assert ([part.name for part in reading.parts], reading.elevations) == (["Mindanao"], ())
 
 
-@pytest.mark.parametrize("mark", SPACING_MARKS)
-def test_a_spacing_mark_is_a_mark(mark):
-    # The round-9 review's second blocker: between two numbers it joins them, on one
-    # line and across a line break, or a comma after a bare number; a part of only it
-    # passes the date on.
+@pytest.mark.parametrize("mark", ("\u0301", "\u0303", "\u0331", "\u20dd", "\u3099", "\U0001d167"))
+def test_a_combining_mark_on_what_shows_is_nothing(mark):
+    # On a letter, a digit or a mark it changes only how that character looks, so the
+    # patterns read the text without it, as `fold` does.
+    for text in (
+        f"4000, ~{mark} 4500 m",
+        f"4000, t{mark}o 4500 m",
+        f"14 m{mark}arzo 1948",
+        f"Sept. 3 '{mark}46",
+    ):
+        assert read_locality(text).elevations == (), text
+    for text, numbers in (
+        (f"3 Sept. '46{mark} 850 m", [("850", None)]),
+        (f"Elev. 1463{mark},5 m", [("1463,5", None)]),
+        (f"Mt. Apo 1{mark},463 m", [("1,463", None)]),
+        (f"el. 1{mark},200 - 1{mark},500 ft", [("1,200", "1,500")]),
+        (f"Elev. 64{mark}00", [("6400", None)]),
+    ):
+        assert [(e.low, e.high) for e in read_locality(text).elevations] == numbers, text
+    text = f"Elev. 1463{mark},5 m"
+    assert [e.text for e in read_locality(text).elevations] == [text]
+    reading = read_locality(f"Mindanao, CNHM{mark}.")
+    assert (reading.institutions, reading.unplaced) == ((f"CNHM{mark}.",), ())
+    # A cut from the text as written takes the marks on its last character, so none is
+    # left where nothing shows before it: after an elevation, after an institution
+    # code, and after a comma or semicolon, which reads as it would without the mark.
+    reading = read_locality(f"Elev.1,200{mark} and; Mt. Apo")
+    elevations, names = [e.text for e in reading.elevations], [p.name for p in reading.parts]
+    assert (elevations, names, reading.unplaced) == ([f"Elev.1,200{mark}"], ["Mt. Apo"], ("and",))
+    reading = read_locality(f"Alt. 2,954\nFMNH{mark}\nalt 620")
+    elevations = [e.text for e in reading.elevations]
+    assert (elevations, reading.institutions) == (["Alt. 2,954", "alt 620"], (f"FMNH{mark}",))
+    assert [p.name for p in read_locality(f"Davao,{mark} Mindanao").parts] == ["Davao", "Mindanao"]
+    assert read_locality(f"Mt. Apo;{mark} a").unplaced == ("a",)
+    for text in (f"4000,{mark} 4500 m", "4000, 4500 m"):
+        assert [e.text for e in read_locality(text).elevations] == ["4500 m"], text
+
+
+def assert_a_mark(mark):
+    """The round-9 review's second blocker and the round-10 review's: between two
+    numbers a mark that shows joins them, on one line and across a line break, or a
+    comma after a bare number; a part of only it passes the date on."""
     for text in (
         f"4000 {mark} 4500 m",
         f"Elev. 1500 {mark} 2000 m",
@@ -1263,10 +1434,22 @@ def test_a_spacing_mark_is_a_mark(mark):
         f"4000\n{mark} 4500 m",
         f"Sept.\n{mark}\n1946,95 m",
     ):
-        assert read_locality(text).elevations == (), text
+        assert read_locality(text).elevations == (), ascii(text)
     # The stated cost (1): a prefixed low with a comma in its join reads apart.
     reading = read_locality(f"Elev. 1500 {mark}, 2000 m")
-    assert [e.text for e in reading.elevations] == ["Elev. 1500", "2000 m"]
+    assert [e.text for e in reading.elevations] == ["Elev. 1500", "2000 m"], ascii(mark)
+
+
+@pytest.mark.parametrize("mark", (*SPACING_MARKS, *SPACING_SIGNS))
+def test_a_spacing_mark_or_sign_is_a_mark(mark):
+    assert_a_mark(mark)
+
+
+def test_a_combining_mark_with_nothing_shown_before_it_is_a_mark():
+    # On a space or starting a line it shows itself (the round-10 review's second
+    # blocker); a default-ignorable one never shows (above).
+    for mark in COMBINING_MARKS:
+        assert_a_mark(mark)
 
 
 def test_the_patterns_read_what_shows_and_keep_what_was_written():
@@ -1284,6 +1467,9 @@ def test_the_patterns_read_what_shows_and_keep_what_was_written():
     assert read_locality(f"Mindanao, P.{zero}I.").parts[1].readings == ("Philippine Islands",)
     reading = read_locality("Mindanao, CNHM\u0301.")
     assert (reading.institutions, reading.unplaced) == (("CNHM\u0301.",), ())
+    # A heading's rest is read as it shows: a Hangul filler in it is no letter.
+    (part,) = read_locality("E. slope \u3164, Mt. Apo").parts
+    assert (part.name, part.relation) == ("Mt. Apo", "slope")
     # A soft hyphen that ends a line, what `fold` drops after it aside, shows as a
     # hyphen: here it breaks a range.
     for text in ("Elev. 1500\u00ad\n2000 m", f"Elev. 1500\u00ad{zero}\n2000 m"):
@@ -1312,11 +1498,16 @@ def reading_values(text):
     )
 
 
+# Combining marks the invariance test puts right after a character that shows.
+ATTACHED = ("\u0301", "\u0303", "\u20dd")
+
+
 @pytest.mark.parametrize("seed", range(4))
-def test_what_fold_drops_changes_no_reading(seed):
-    # Put anywhere in a random layout, what `fold` drops changes nothing read, save a
+def test_what_never_shows_changes_no_reading(seed):
+    # Put anywhere in a random layout, what never shows changes nothing read, save a
     # soft hyphen that ends a line (only spaces and what `fold` drops after it),
-    # which shows as a hyphen.
+    # which shows as a hyphen; and so does a combining mark right after a letter or
+    # digit, which it only changes the look of.
     rng = random.Random(seed)
     for _ in range(500):
         text = RandomLayout(rng).build()
@@ -1324,8 +1515,10 @@ def test_what_fold_drops_changes_no_reading(seed):
         for _ in range(rng.randint(1, 4)):
             cut = rng.randint(0, len(changed))
             lines = changed[cut:].splitlines(keepends=True)
-            dropped = rng.choice(DROPPED)
+            dropped = rng.choice((*DROPPED, *ATTACHED))
             if dropped == "\u00ad" and lines and not shown(lines[0]):
+                continue
+            if dropped in ATTACHED and not (cut and fold(changed[cut - 1])):
                 continue
             changed = changed[:cut] + dropped + changed[cut:]
         assert reading_values(changed) == reading_values(text), (text, changed)
@@ -1396,8 +1589,33 @@ def test_a_link_and_a_month_begin_a_date_only_with_a_number_right_after_the_mont
         assert [part.name for part in read_locality(text).parts] == ["Mindanao de julio"], text
 
 
+@pytest.mark.parametrize(
+    "apostrophe",
+    ("\u02b9", "\u02bb", "\u02bc", "\u02bd", "\u02c8", "\u02ee", "\ua78b", "\ua78c"),
+)
+def test_a_year_may_follow_an_apostrophe_or_prime_shaped_letter(apostrophe):
+    # Python counts these as letters and `fold` keeps them: the modifier letters and
+    # the saltillo (the round-10 review's third should-fix).
+    for text in (
+        f"Mindanao\nde julio, {apostrophe}46",
+        f"Mindanao\nde julio {apostrophe}46",
+        f"Mindanao\nde julio\n{apostrophe}46",
+    ):
+        reading = read_locality(text)
+        names = [part.name for part in reading.parts]
+        assert (names, reading.elevations) == (["Mindanao"], ()), text
+
+
 def test_a_day_is_looked_for_in_the_next_part_too():
-    assert read_locality("Elev.6400,12, XI.1946").elevations == ()
+    # A month with its year run into it is a month there too (the round-10 review's
+    # first should-fix).
+    for text in (
+        "Elev.6400,12, XI.1946",
+        "Elev.6400,12, XI1946",
+        "el. 6400,3; julio1946",
+        "el. 6400,3; JULIO1946",
+    ):
+        assert read_locality(text).elevations == (), text
     assert [e.text for e in read_locality("Elev. 1463,5, Mt. Apo").elevations] == ["Elev. 1463,5"]
 
 
@@ -1411,7 +1629,8 @@ def test_a_day_is_looked_for_in_the_next_part_too():
 # qualifier reads as a name; and a range whose join holds a comma or semicolon may
 # read an end alone when its low has a prefix or is glued to the text before it (the
 # coordinator's rulings at 00:52Z on 2026-09-26: a prefixed low, a date's glued year,
-# a low glued into the number before it by a comma).
+# a low glued into the number before it by a comma; glued as the rulings at 03:07Z
+# and 03:14Z narrow it).
 RANDOM_PLACES = (
     *("Mindanao", "Davao", "Guatemala", "Yepocapa"),
     *("Chimaltenango", "Mt. Apo", "Davao Prov."),
@@ -1421,7 +1640,8 @@ RANDOM_FILLERS = (
     *("\u3164", "\uffa0", "\u037a", "\ufe72"),
     *("CNHM", "CNHM.", "FMNH", "fmnh", "( )", "\uff23\uff2e\uff28\uff2d"),
 )
-# Characters fold drops, put anywhere in a layout now and then.
+# Characters fold drops, put anywhere in a layout now and then; a combining mark
+# with nothing that shows before it shows, and is a mark there.
 RANDOM_DROPPED = ("\u200b", "\u00ad", "\u3164", "\u2060", "\ufeff", "\u0301")
 RANDOM_BREAKS = (
     *("\n", "\r\n", "\r", "\x0b", "\x0c", "\x1c"),
@@ -1443,15 +1663,22 @@ QUALIFIERS = ("mid-", "late ", "early ", "end of ", "fin de ")
 
 
 def glued_before(text, start):
-    """Whether something is glued to the number at `start` as the reader sees it: no
-    space, line break, opening bracket or semicolon comes before it, and no comma but
-    one after a digit, which may put the number inside the one before."""
-    if start == 0:
-        return False
-    before = text[start - 1]
-    if before.isspace() or before in "([{;":
-        return False
-    return before != "," or (start > 1 and text[start - 2].isdecimal())
+    """Whether something is glued to the number at `start` as the reader sees it: a
+    letter or digit right before it, or right before the marks right before it (the
+    coordinator's rulings at 03:07Z and 03:14Z on 2026-09-26). A space, line break,
+    opening bracket or semicolon ends the marks, and so does a comma, save one right
+    before the number after a digit, which may put the number inside the one before."""
+    end = start
+    while start > 0:
+        before = text[start - 1]
+        if before.isspace() or before in "([{\uff08\uff3b\uff5b;":
+            return False
+        if before == ",":
+            return start == end and start > 1 and text[start - 2].isdecimal()
+        if fold(before):
+            return True
+        start -= 1
+    return False
 
 
 def digit_groups(number):
@@ -1734,6 +1961,16 @@ def test_of_at_a_line_start_joins_the_line_before_in_any_case():
     assert (part.name, part.relation, part.distance) == ("YEPOCAPA", "offset", "5")
     (part,) = read_locality("County\nOf Cook").parts
     assert (part.name, part.unit) == ("Cook", "county")
+
+
+@pytest.mark.parametrize("invisible", [c for c in DROPPED if c != "\u00ad"])
+def test_a_line_that_shows_nothing_stays_with_the_line_before(invisible):
+    # So the line after joins the line before across it (the round-10 review's second
+    # should-fix). A soft hyphen alone on a line shows as a hyphen.
+    (part,) = read_locality(f"E. slope\n{invisible}\nof Mt. Apo").parts
+    assert (part.name, part.relation, part.key) == ("Mt. Apo", "slope", "mount apo")
+    (part,) = read_locality(f"5 KM NE\n{invisible}\nOF YEPOCAPA").parts
+    assert (part.name, part.relation, part.distance) == ("YEPOCAPA", "offset", "5")
 
 
 def test_only_a_two_digit_year_after_an_apostrophe_is_no_digit_group():
