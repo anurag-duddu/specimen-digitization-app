@@ -162,7 +162,9 @@ def test_the_service_configures_logfire_in_the_metadata_mode(monkeypatch, tmp_pa
     monkeypatch.setattr(
         observability,
         "configure_observability",
-        lambda **kwargs: modes.append(kwargs.get("capture_mode")),
+        lambda **kwargs: modes.append(
+            (kwargs.get("capture_mode"), kwargs.get("instrument_agents", True))
+        ),
     )
     monkeypatch.setattr(sam3_server, "offline_checkpoint_digest", lambda: None)
     monkeypatch.setattr(sam3_server, "Sam3Engine", lambda: None)
@@ -172,7 +174,8 @@ def test_the_service_configures_logfire_in_the_metadata_mode(monkeypatch, tmp_pa
     monkeypatch.setenv("SPECIMEN_SAM3_LAB_TOKEN", TOKEN)
     monkeypatch.setenv("SPECIMEN_SAM3_LAB_DIR", str(tmp_path))
     sam3_server.serve_runs("lab")
-    assert modes == [observability.CaptureMode.METADATA]
+    # The service runs no agent, so it needs no pydantic-ai in its image.
+    assert modes == [(observability.CaptureMode.METADATA, False)]
 
 
 def test_both_spans_record_the_parameters_as_applied_and_no_content():
@@ -192,3 +195,72 @@ def test_both_spans_record_the_parameters_as_applied_and_no_content():
         "sam3.model_revision",
         "sam3.checkpoint_sha256",
     }
+
+
+def test_the_service_configures_logfire_without_agent_instrumentation(monkeypatch):
+    import logfire
+
+    configured = []
+    monkeypatch.setattr(observability, "_configured_settings", None)
+    monkeypatch.setattr(logfire, "configure", lambda **kwargs: configured.append(kwargs))
+
+    def refuse(**kwargs):
+        raise AssertionError("the SAM 3 service instruments no agent")
+
+    monkeypatch.setattr(logfire, "instrument_pydantic_ai", refuse)
+    observability.configure_observability(
+        capture_mode=observability.CaptureMode.METADATA, instrument_agents=False
+    )
+    assert len(configured) == 1
+
+
+def closure(lock, name, environment):
+    """A package and everything it requires on this environment, from uv.lock."""
+    from packaging.markers import Marker
+
+    packages = {p["name"]: p for p in lock["package"]}
+    found, pending = {}, [name]
+    while pending:
+        current = pending.pop()
+        if current in found:
+            continue
+        package = packages[current]
+        found[current] = package["version"]
+        for dependency in package.get("dependencies", []):
+            marker = dependency.get("marker")
+            if marker is None or Marker(marker).evaluate(environment):
+                pending.append(dependency["name"])
+    return found
+
+
+# The SAM 3 image: CPython 3.13 on x86_64 Linux (containers/worker/sam3.Dockerfile).
+SAM3_IMAGE = {
+    "python_version": "3.13",
+    "python_full_version": "3.13.0",
+    "sys_platform": "linux",
+    "platform_system": "Linux",
+    "platform_machine": "x86_64",
+    "implementation_name": "cpython",
+    "platform_python_implementation": "CPython",
+    "os_name": "posix",
+    "extra": "",
+}
+
+
+def test_the_sam3_image_installs_logfire_as_the_lane_pins_it():
+    # T5c's spans need Logfire in the service; its image installs only its lock.
+    import re
+    import tomllib
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    lock = tomllib.loads((root / "uv.lock").read_text())
+    pinned = dict(
+        re.findall(
+            r"^([a-z0-9][a-z0-9._-]*)==([^\s\\]+)",
+            (root / "containers/worker/sam3-requirements.lock").read_text(),
+            re.M,
+        )
+    )
+    needed = closure(lock, "logfire", SAM3_IMAGE)
+    assert {name: pinned.get(name) for name in needed} == needed
