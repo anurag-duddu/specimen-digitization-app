@@ -597,12 +597,21 @@ def test_the_workflow_lookup_sends_no_place_word_of_the_run(tmp_path):
 
 @pytest.mark.parametrize(
     "taxon,sent",
-    [("Epipsocus davao 1946", ["Epipsocus"]), ("Davao", []), ("cf. Epipsocus", [])],
+    [
+        ("Epipsocus davao 1946", ["Epipsocus"]),
+        ("Davao", []),
+        ("cf. Epipsocus", []),
+        ("cf. Danaus plexippus", []),
+        ("? Danaus plexippus", []),
+        ("Danaus? plexippus", []),
+        ("Near Davao 1946", []),
+    ],
 )
 def test_the_workflow_lookup_withholds_what_it_may_not_send(tmp_path, taxon, sent):
     # The coordinator's rulings of 03:24Z and 03:31Z on 2026-09-26: a name part
     # equal to a word of the run's place-field literals, or a genus in doubt,
-    # is never sent, and the name goes to review.
+    # is never sent, and the name goes to review, end to end (the steward's
+    # review of round 5).
     asked = []
 
     def gbif(request):
@@ -642,6 +651,67 @@ def test_the_workflow_lookup_withholds_what_it_may_not_send(tmp_path, taxon, sen
     specimen = SQLiteRepository(tmp_path / "state.sqlite3").get(scope, row["specimen_id"])
     assert asked == sent
     assert specimen.run.lookups[-1].status == LookupStatus.AMBIGUOUS
+    assert (specimen.run.stage, specimen.run.disposition) == (
+        "finalized",
+        Disposition.REVIEW,
+    )
+
+
+def test_a_gbif_answer_with_a_hundred_alternatives_reaches_review(tmp_path):
+    # The steward's review of round 5: each alternative became a review
+    # proposal, and the resolve step's bound of 100 failed the stage.
+    def gbif(request):
+        if request.url.path.endswith("/metadata"):
+            return httpx.Response(200, json={"alias": "fixture-index"})
+        insecta = [{"rank": "CLASS", "name": "Insecta"}]
+
+        def found(key, author):
+            return {
+                "key": key,
+                "name": "Synthetic taxon " + author,
+                "canonicalName": "Synthetic taxon",
+                "authorship": author,
+                "rank": "SPECIES",
+                "status": "ACCEPTED",
+            }
+
+        return httpx.Response(
+            200,
+            json={
+                "usage": found("K1", "Smith, 1900"),
+                "classification": insecta,
+                "diagnostics": {
+                    "matchType": "EXACT",
+                    "alternatives": [
+                        {
+                            "usage": found(f"K{n}", f"Jones, {1800 + n}"),
+                            "classification": insecta,
+                            "diagnostics": {"matchType": "EXACT"},
+                        }
+                        for n in range(2, 102)
+                    ],
+                },
+            },
+        )
+
+    app = local_app(tmp_path, TOKEN)
+
+    class Gbif(SyntheticAdapters):
+        def lookup(self, name):
+            return GbifTaxonomy(
+                self.blobs, httpx.Client(transport=httpx.MockTransport(gbif))
+            ).lookup("Synthetic taxon")
+
+    app.state.workflow.adapters = Gbif(LocalBlobs(tmp_path / "blobs"), SYNTHETIC_TEXT)
+    row = intake(TestClient(app, raise_server_exceptions=False))
+
+    scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+    specimen = SQLiteRepository(tmp_path / "state.sqlite3").get(scope, row["specimen_id"])
+    assert (specimen.run.stage, specimen.run.disposition) == (
+        "finalized",
+        Disposition.REVIEW,
+    )
+    assert len(specimen.run.lookups[-1].candidates) == 21
 
 
 def test_review_selects_a_gbif_v2_candidate_by_its_name(tmp_path):

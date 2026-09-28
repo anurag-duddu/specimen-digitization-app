@@ -1,6 +1,7 @@
 """The taxonomy_verifier tool: HARNESS.md section 6 (G23, G25, G28; GBIF.md 126-130,
 with the coordinator's rulings of 22:46Z on 2026-09-25)."""
 
+import hashlib
 import json
 import unicodedata
 from datetime import datetime, timedelta, timezone
@@ -1433,6 +1434,10 @@ def test_a_doubt_on_the_genus_sends_nothing_and_goes_to_review(tmp_path, literal
     assert result.outcome == S.AMBIGUOUS == lookup.status
     assert result.warnings == ["taxonomy_name_partly_read"]
     assert lookup.metadata["partly_read"] == why
+    # A record of what was withheld, with its digest, so the run's evidence
+    # check reads it (the steward's review of round 5).
+    stored = LocalBlobs(tmp_path).get(lookup.raw_ref) if lookup.raw_ref else None
+    assert stored is not None and hashlib.sha256(stored).hexdigest() == lookup.digest
 
 
 @pytest.mark.parametrize(
@@ -1660,6 +1665,8 @@ def test_place_text_in_the_name_is_withheld_and_the_name_goes_to_review(
     assert result.outcome == S.AMBIGUOUS == lookup.status
     assert "taxonomy_name_partly_read" in result.warnings
     assert lookup.metadata["partly_read"] == "place_word"
+    stored = LocalBlobs(tmp_path).get(lookup.raw_ref) if lookup.raw_ref else None
+    assert stored is not None and hashlib.sha256(stored).hexdigest() == lookup.digest
     sent = [
         r.url.params["scientificName"]
         for r in requests
@@ -1713,6 +1720,22 @@ def test_no_hidden_character_passes_as_name_text(ch):
     # earlier too, as a string that cannot be encoded.
     assert _text_ok("Apis mellifera")
     assert not _text_ok("Apis mellifera" + ch)
+
+
+def test_a_lookup_keeps_at_most_twenty_alternatives_as_candidates(tmp_path):
+    # The steward's review of round 5: the review step takes at most 100
+    # proposals, so GBIF's first 20 alternatives are kept as candidates; the
+    # diagnostics keep them all.
+    others = [
+        alternative(f"Apis mellifera Smith{n}, 1900", "FUZZY", "ACCEPTED", f"K{n}")
+        for n in range(100)
+    ]
+
+    _, lookup = run(tmp_path, "Apis mellifera", transport(gbif("EXACT", MELLIFERA, others)))
+
+    assert len(lookup.candidates) == 21
+    assert [c["usage"]["key"] for c in lookup.candidates[1:]] == [f"K{n}" for n in range(20)]
+    assert len(lookup.metadata["diagnostics"]["alternatives"]) == 100
 
 
 def test_the_place_text_is_a_sequence_of_texts(tmp_path):

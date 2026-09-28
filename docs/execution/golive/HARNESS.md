@@ -427,7 +427,11 @@ F. G. Werner", "collected by Werner 1946") is `no_match` with no request. The
 label's rank follows from the name: a genus alone is genus rank (G25), one
 epithet a species, a subspecies or variety its own rank. The workflow's `lookup`
 step goes through the same reading, so it sends no request for such text
-either, and a species label never clears there at genus.
+either, and a species label never clears there at genus. A name with nothing it
+may send (its genus in doubt, or place text) is `ambiguous` with no request; its
+lookup stores a record of what was withheld and why, with its digest, so the
+run's evidence check reads it like any other lookup and the name reaches review
+(the steward's review of round 5).
 
 GBIF species match v2 against the pinned COL XR checklist decides the outcome
 (G23), under the coordinator's ruling that success is `GBIF.md` 126-130's (S4
@@ -491,7 +495,10 @@ reviewer's existing `taxonomy_resolution` decision can select it and stores
 GBIF's name. GBIF's usage,
 accepted usage, classification and alternatives are kept as `GBIF.md` 134-160's
 evidence contract lists them, the coordinator's reading of what may be stored;
-G28 itself stores the label's spelling and GBIF's settled name.
+G28 itself stores the label's spelling and GBIF's settled name. A lookup keeps
+GBIF's usage, its accepted usage and at most its first 20 alternatives as
+candidates, so the review step's proposals stay within their bound of 100; the
+diagnostics keep every alternative (the steward's review of round 5).
 
 Global Names Verifier (Catalogue of Life and GBIF Backbone sources) and the
 Catalogue of Life match API are asked as well, each its own source call with its
