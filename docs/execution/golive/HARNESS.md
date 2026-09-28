@@ -657,8 +657,9 @@ field, and nothing here invents a value (HAR-019).
 pass selected) and the raw readings: every reading when the first pass
 selected none (G19), otherwise the unselected ones, for the fallback (G20). Per
 field, each reading's literal, which must occur in that reading's text exactly;
-any other literal is refused. A field no reading has stays unknown, and
-nothing is called for it.
+any other literal is refused before anything is called, the raw readings' in
+the fallback too. A field no reading has stays unknown, and nothing is called
+for it.
 
 **With a decided transcript,** its literal is the field's verbatim (G27).
 
