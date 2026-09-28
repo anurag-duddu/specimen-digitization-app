@@ -55,7 +55,9 @@ your own requests (coordinator ruling).
 
 0. Manifest: pin each dataset file's source, version or dump date, size and
    SHA-256, with its credit text. Keep the GeoNames files in
-   `~/specimen-golive/datasets/geonames/<dump date>/`. S2 writes the owner's
+   `~/specimen-golive/datasets/geonames/<dump date>/`, and CONRED's COD-AB file
+   in `~/specimen-golive/datasets/cod-ab-gtm/<retrieval date>/`, since HDX
+   serves only the latest one. S2 writes the owner's
    upload command from the merged manifest (PLAN section 4.8).
 1. Locality text: the parts of a locality, label notations and their readings
    (G29), slope and bearing phrases, elevation phrases kept as written, query

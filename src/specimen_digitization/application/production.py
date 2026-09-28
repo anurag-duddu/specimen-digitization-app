@@ -5,9 +5,11 @@ import contextvars
 import hashlib
 from .active_graph import original_run_digest, unpack
 import json
+import logging
 import os
 import re
 import time
+from collections import OrderedDict
 from uuid import UUID
 
 import google.auth
@@ -18,17 +20,19 @@ from pydantic_ai.messages import ModelMessagesTypeAdapter
 
 from ..model_gateway import (
     HUGGINGFACE_ROUTES,
-    STAGE_HUGGINGFACE_ROUTES,
+    INITIAL_HUGGINGFACE_ROUTES,
     HuggingFaceModelGateway,
 )
 from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt, ResolvedPrompt
 from ..transcription import build_literal_transcription_agent
 from .domain import Observation, WorkItem, WorkPage, now
 from .lookup import GbifTaxonomy
+from .projection import Blob, writes
 from .storage import (
     compact_history,
     Conflict,
     Missing,
+    ProjectionResult,
     digest,
     check_snapshot,
     work_available_at,
@@ -40,6 +44,13 @@ from pydantic_ai.usage import UsageLimits
 from .worker_deadline import deadline_call, guarded
 
 actor_uid = contextvars.ContextVar("verified_actor_uid", default=None)
+LOGGER = logging.getLogger(__name__)
+# Specimens whose written projection rows this process remembers (DATA_CONTRACT.md 11).
+PROJECTED_SPECIMENS = 256
+
+
+class ProjectionRejected(RuntimeError):
+    """A projection write the connector refused for a reason other than a replay."""
 
 
 def sql_emulator_host() -> str:
@@ -94,6 +105,8 @@ class SqlConnectRepository:
     ):
         self.project = project
         self.graph_blobs = graph_blobs
+        self._projected: OrderedDict[str, set[str]] = OrderedDict()
+        self._sizes: dict[str, int] = {}
         if emulator_host:
             if (
                 project != "demo-specimen-data"
@@ -416,7 +429,10 @@ class SqlConnectRepository:
                 "GetSnapshot",
                 dict(base, id=receipt["specimenId"], revision=receipt["revision"]),
             )["specimenSnapshot"]
-            return self._snapshot(row)
+            committed = self._snapshot(row)
+            # A replayed save still catches up rows a lost pass did not write.
+            self.write_projection(principal.scope, committed)
+            return committed
         specimen = specimen.model_copy(deep=True)
         specimen.version = expected + 1
         if expected and not specimen.asset.sensitive:
@@ -464,7 +480,96 @@ class SqlConnectRepository:
             variables,
             mutation=True,
         )
+        self.write_projection(principal.scope, specimen)
         return specimen
+
+    def write_projection(self, scope, specimen) -> ProjectionResult:
+        """Write the normalized rows this revision supports (DATA_CONTRACT.md 11).
+
+        Never raises: the snapshot is already committed, and the next save resumes
+        wherever this pass stopped. The result says whether every row is written, or
+        the step the pass stopped at, so the lane can re-project a run's final save.
+        """
+        try:
+            base = self.variables(scope)
+            written = self._projected.setdefault(specimen.id, set())
+            self._projected.move_to_end(specimen.id)
+            while len(self._projected) > PROJECTED_SPECIMENS:
+                self._projected.popitem(last=False)
+            pending = [
+                w
+                for w in writes(specimen, self.locate, self._sized, base["actorUid"])
+                if w.key not in written
+            ]
+        except Exception as error:
+            LOGGER.warning(
+                "Projection for specimen %s not computed: %s", specimen.id, error
+            )
+            return ProjectionResult(False, "not_computed")
+        for write in pending:
+            try:
+                self._insert(write.operation, {**base, **write.variables})
+            except Exception as error:
+                # Later rows may reference this one, so the pass stops here.
+                LOGGER.warning(
+                    "Projection for specimen %s run %s stopped at %s: %s",
+                    specimen.id,
+                    specimen.run.id,
+                    write.operation,
+                    error,
+                )
+                return ProjectionResult(False, write.operation)
+            written.add(write.key)
+        return ProjectionResult(True)
+
+    @guarded
+    def _insert(self, operation, variables):
+        response = deadline_call(
+            self.session.post,
+            self.url + ":impersonateMutation",
+            json={"operationName": operation, "variables": variables},
+            timeout=30,
+        )
+        if response.status_code in {401, 403}:
+            raise PermissionError("SQL Connect access denied")
+        if response.status_code != 200:
+            raise OperationalBlock("sql_connect_unavailable_or_connector_not_published")
+        errors = deadline_call(response.json).get("errors") or []
+        if not errors:
+            return
+        first = errors[0]
+        message = str(first.get("message", "rejected"))
+        # A replayed row hits its primary key; any other conflict is a defect.
+        if (first.get("extensions") or {}).get("code") == "ALREADY_EXISTS" and (
+            "_pkey" in message
+        ):
+            return
+        raise ProjectionRejected(message[:200])
+
+    def locate(self, ref):
+        """Where a blob ref's bytes live: Cloud Storage objects, or local files."""
+        sha, _, generation = ref.partition(":")
+        if self.graph_blobs is None:
+            raise LookupError("No blob store to locate projection assets")
+        bucket = getattr(self.graph_blobs, "bucket", None)
+        if bucket is not None:
+            return Blob(bucket.name, "application/sha256/" + sha, generation)
+        return Blob("local", sha, generation or "0")
+
+    def blob_size(self, ref):
+        blob = self.locate(ref)
+        bucket = getattr(self.graph_blobs, "bucket", None)
+        if bucket is not None:
+            return bucket.get_blob(blob.object_name, generation=int(blob.generation)).size
+        return (self.graph_blobs.root / blob.object_name).stat().st_size
+
+    def _sized(self, ref):
+        # Content-addressed blobs never change size; read each once per process.
+        if ref not in self._sizes:
+            if len(self._sizes) >= 4096:
+                self._sizes.clear()
+            self._sizes[ref] = self.blob_size(ref)
+        return self._sizes[ref]
 
     def document(self, scope, kind, ident):
         row = self.execute(
@@ -627,14 +732,11 @@ class ProductionAdapters:
         self.classifier = configured_classifier(blobs)
         from .authority_registry import AuthorityRegistry
         from .parties import PartiesAdapter
-        from .geography import GeographyAdapter
 
         registry = AuthorityRegistry(version="unconfigured")
-        self.authority_tools = {
-            "parties": PartiesAdapter(registry, blobs),
-            "geography": GeographyAdapter(registry, blobs),
-        }
-        self.authority_cost_reservations = {"geography": 0}
+        # No GADM geography source: GADM is not used (PLAN 4.8).
+        self.authority_tools = {"parties": PartiesAdapter(registry, blobs)}
+        self.authority_cost_reservations = {}
 
     def pin_dependencies(self, run):
         inputs = CollectionPromptInputs(
@@ -646,16 +748,23 @@ class ProductionAdapters:
             name.value: resolve_prompt(name, inputs).model_dump(mode="json")
             for name in PromptName
         }
-        # An unregistered first-pass route stays unpinned, so its step blocks.
-        first_pass = run.profile.first_pass_route
         routes = {
             route: {
-                "model_id": HUGGINGFACE_ROUTES[route].model_id,
-                "provider": HUGGINGFACE_ROUTES[route].provider,
+                "model_id": INITIAL_HUGGINGFACE_ROUTES[route].model_id,
+                "provider": INITIAL_HUGGINGFACE_ROUTES[route].provider,
             }
             for route in run.profile.routes
-            + ((first_pass,) if first_pass in STAGE_HUGGINGFACE_ROUTES else ())
         }
+        # A first-pass route is pinned only in its role, with image input; any
+        # other stays unpinned, so its step blocks (HARNESS.md section 5).
+        first_pass = HUGGINGFACE_ROUTES.get(run.profile.first_pass_route)
+        if first_pass is not None and first_pass.serves_with_images(
+            "transcription_first_pass"
+        ):
+            routes[first_pass.route_id] = {
+                "model_id": first_pass.model_id,
+                "provider": first_pass.provider,
+            }
         return {
             "prompts": prompts,
             "routes": routes,
@@ -714,6 +823,9 @@ class ProductionAdapters:
         )
         gateway = HuggingFaceModelGateway(timeout_seconds=reader_timeout / 2)
         selected = gateway.route(route)
+        if not selected.serves_with_images("handwriting_transcriber"):
+            # Only an image reader's route reads a crop (HARNESS.md section 5).
+            raise OperationalBlock("pinned_model_route_unavailable")
         pins = specimen.run.dependencies
         expected = pins.get("routes", {}).get(route)
         if not expected or expected != {
