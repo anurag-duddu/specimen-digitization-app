@@ -51,6 +51,10 @@ start_connector() {
 apply_supplemental_indexes() {
   "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d "$database" -v ON_ERROR_STOP=1 -f dataconnect/sql/paging-indexes.sql
   "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d "$database" -v ON_ERROR_STOP=1 -f dataconnect/sql/search-indexes.sql
+  # Step 2 of the SourceAsset swap (DATA_CONTRACT.md 3.3), only once the per-specimen unique reads back
+  # in place, over its six columns and valid.
+  [[ "$(bash scripts/data/source-asset-read-back.sh "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d "$database")" == 1 ]]
+  "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d "$database" -v ON_ERROR_STOP=1 -f dataconnect/sql/drop-specimen-unique-1.sql
 }
 start_connector
 node scripts/data/connector-test.mjs
@@ -69,7 +73,7 @@ dc_pid=""
 printf 'INFO all synthetic application writers quiesced during schema reconciliation and index repair\n'
 start_connector
 index_count="$("$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d specimen-digitization-database -Atc "SELECT count(*) FROM pg_index JOIN pg_class ON pg_class.oid = indexrelid WHERE relname IN ('specimen_text_cursor', 'auxiliary_text_cursor', 'specimen_search_cursor', 'snapshot_search_batch') AND indisvalid")"
-printf '{"validSupplementalIndexesAfterEmulatorStartup":%s,"requiredPostSchemaPhase":"paging-indexes.sql + search-indexes.sql"}\n' "$index_count" > "$test_dir/source-reconciliation.json"
+printf '{"validSupplementalIndexesAfterEmulatorStartup":%s,"requiredPostSchemaPhase":"paging-indexes.sql + search-indexes.sql + drop-specimen-unique-1.sql"}\n' "$index_count" > "$test_dir/source-reconciliation.json"
 if [[ "$index_count" != "4" ]]; then
   printf 'OBSERVED emulator reconciliation removed supplemental indexes; explicit post-schema DDL reapplied\n'
 fi

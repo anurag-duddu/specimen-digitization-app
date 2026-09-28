@@ -338,8 +338,9 @@ UNIQUE = '@unique(indexName: "specimen_unique_1", fields: ["bucket", "objectName
 SIX = ("organizationId", "collectionId", "specimenId", "bucket", "objectName", "generation")
 SIX_UNIQUE = (' @unique(indexName: "source_asset_specimen_object", fields: ["organizationId", "collectionId", "specimenId", '
               '"bucket", "objectName", "generation"])')
-# The committed schema is already step 1 (#88), so the schema from before the swap is it without the new constraint.
-PRE = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], SIX_UNIQUE, "")}
+# The committed schema is step 2 (#146): the new constraint alone. The schema from before the swap has the old one in
+# its place.
+PRE = {**SCHEMA, "schema.gql": edit(SCHEMA["schema.gql"], SIX_UNIQUE, " " + UNIQUE)}
 WHY, REMOVED, NEW_OVER = ("SourceAsset: @unique specimen_unique_1 ", "SourceAsset: type-level @unique removed or changed",
                           "SourceAsset: new type-level @unique over an existing field")
 
@@ -378,10 +379,11 @@ def test_the_one_unique_exception_is_closed_and_takes_two_merges():
     by_key = {**CONNECTOR, "key.gql": "query GetAsset($organizationId: UUID!, $collectionId: UUID!, $id: UUID!) @auth(level: "
               "NO_ACCESS) {\n  sourceAsset(key: {organizationId: $organizationId, collectionId: $collectionId, id: $id}) { id }\n}\n"}
     for connector in (CONNECTOR, by_key):
-        assert gate(SCHEMA, STEP1, connector, connector) == []
+        assert gate(PRE, STEP1, connector, connector) == []
         assert gate(STEP1, STEP2, connector, connector) == []
+        assert gate(STEP1, SCHEMA, connector, connector) == []  # the committed schema is step 2 (#146)
     lookup = {**CONNECTOR, "uses.gql": USES["a key lookup by its fields"]}  # a use matters only to the drop
-    assert gate(SCHEMA, STEP1, lookup, lookup) == []
+    assert gate(PRE, STEP1, lookup, lookup) == []
 
 
 @pytest.mark.parametrize(("live", "merged", "expected"), [
