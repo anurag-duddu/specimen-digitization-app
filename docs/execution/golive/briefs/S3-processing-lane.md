@@ -55,14 +55,25 @@ replacing them. Enforce the per-run budget and the program allowance, USD 5 for
 production model calls (G30), with the existing cost fields (`domain.py` 286;
 `workflow.py` 208-213); a paid step past it blocks as
 `program_allowance_exhausted`, an operational block (QUE-005). Each paid call
-reserves its worst-case cost first, so a step's reservation must bound its
-worst case (SAM 3's 240-second deadline included), and settles to its computed
-or billed cost once its outcome is known; an unknown outcome stays reserved, a
-retry reserves again, and the run's own budget is never refunded. Record every
+reserves its worst-case cost first, bounded per request as PLAN 4.3 states
+(context length at the pinned input price plus the output cap, or the
+documented image-token rule plus the prompt and the output cap, for each
+request a call may make, with 20,000 as the floor), in one atomic check-and-reserve on the
+ledger (your T2b `worker_cursor` document, written only at the revision it was
+checked against), so a step's reservation must bound its worst case (SAM 3's
+startup, its 300-second request timeout and its 10-second shutdown, as #132
+computes; SAM 3 settles as `computed`). The "fill the rest" review action
+runs as a worker job you host, its paid calls reserved under G30 (PLAN
+section 4.8). Only usage the provider reports,
+or a billed amount it returns, settles a call and releases the rest of its
+reservation; a timeout, a transport error, a 5xx or a response without usage
+stays reserved in full as `cost_basis: reserved`; a settled cost above its
+reservation counts in full; a retry reserves again; nothing settled or held
+reserved is given back when a run fails or is retried. Record every
 paid call's cost as PLAN section 4.3 rules: usage, reservation, and a cost
 computed from a pinned price list whose version and date are recorded, or the
-billed amount where a provider returns one; SAM 3 by request seconds at the
-service's vCPU and memory rates.
+billed amount where a provider returns one; SAM 3 by its measured seconds,
+startup included, at the service's vCPU and memory rates.
 
 **T3. SAM 3 per run.** The client binding (`production.py` 851-852) and the
 server (`sam3_server.py` 358-380, 590-622) authorize each run the worker sends
@@ -75,7 +86,7 @@ five pilot slides, with the locality on the right-hand one (PLAN section 3); a
 missed label goes to human review under G15, and retuning the pinned SAM 3
 settings needs the coordinator first. Confirm coverage automatically (G15):
 check the segmentation result with the specification's region-count and
-full-image cross-checks (`PRD.md` 874), set `run.coverage_confirmed` from the
+full-image cross-checks (`PRD.md` 880), set `run.coverage_confirmed` from the
 result, record the evidence, and let a failed check send the record to the
 human queue with `label_coverage_unconfirmed`. The segment step's body in
 `workflow.py` is yours. Write the concrete check into `LANE.md` and send it to
@@ -86,13 +97,18 @@ pilot (G1), mapped to `Insects` beneath `Zoology`, with inheritance down the
 collection tree (`collection_profiles.py` 198-224 does not walk parents). It
 carries the segmentation settings (`label`, thresholds 0.5, at most 64
 regions); the two readers; the tools per field (S4 implements the tools); the
-mandatory and optional groups (G8: the specification's list until the owner's
-list arrives, with `identified_by_irn` optional (G16) and no Parties tool
-mapped to it, and the four elevation fields mandatory with nothing derived
-(G22); changing the groups must be one configuration edit); the
+mandatory and optional groups (G8: the owner's list, which is the
+specification's (G42), with `identified_by_irn` non-blocking until EMu
+Parties is connected (G16, G43) and no Parties tool
+mapped to it, and the four elevation fields mandatory, filled with authority and evidence
+(G37 and G41, revising G22); changing the groups must be one configuration edit); the
 existing uncalibrated risk policy, labelled uncalibrated; and the clearance rule
-reference (S4); the Insects date rule of G24 (a two-digit year reads as 19xx),
-recorded as a versioned rule. Optional fields must survive at runtime and reach the run as
+reference (S4); the Insects date rules of G24 (a two-digit year reads as 19xx)
+and G29 (a Roman numeral I to XII in the month position is that month),
+recorded as versioned rules that S4's date tool reads, and the id and version
+of the Insects harness knowledge that S4 writes (PLAN section 4.2); the lane
+policy's reason codes under the configuration's `reason_codes` key, generated
+from S4's `policy.py`, for S6's queue filter (coordinator ruling). Optional fields must survive at runtime and reach the run as
 `Run.field_groups`, a new field whose shape S5 decides (today they are dropped: `domain.py` 324-336,
 `collection_runtime.py` 106-118); S4 changes `parse` (`workflow.py` 685-719)
 to extract them.

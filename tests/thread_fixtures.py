@@ -368,7 +368,8 @@ def synthetic_run(
         ),
         profile_snapshot=PROFILE,
         profile_registry_version="registry-1",
-        dependencies={"profile_snapshot_sha256": digest(PROFILE)},
+        # As pin_dependencies pins them after classify (workflow.py; #146 round 1).
+        dependencies={"profile_snapshot_sha256": digest(PROFILE), "profile_registry_version": "registry-1"},
         stage="finalized",
         trace_id=TRACE,
         segmentation={
