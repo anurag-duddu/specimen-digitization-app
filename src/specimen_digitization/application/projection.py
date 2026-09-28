@@ -366,11 +366,10 @@ def _first_pass(
         step = f"first_pass:{transcript.region_id}"
         raw = asset(call.raw_ref, "raw_response")
         result.append(_reading(run, call, raw, independent=False, step_key=step))
-    if hasattr(transcript, "selected_observation_id"):
-        selected = transcript.selected_observation_id
-    else:
-        # Today's domain: identical readings decide by any one of them.
-        selected = transcript.observation_ids[0] if kind == "identical_readings" else None
+    selected = getattr(transcript, "selected_observation_id", None)
+    if selected is None and kind == "identical_readings" and transcript.observation_ids:
+        # Identical readings decide by any one of them when none is recorded (section 11).
+        selected = transcript.observation_ids[0]
     differences = [_plain(d) for d in getattr(transcript, "differences", None) or []]
     still_open = [
         d for d in differences if d.get("material") and d.get("verdict") in OPEN_VERDICTS
