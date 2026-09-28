@@ -27,6 +27,7 @@ MONTH_NAMES = {
     n: i for i, full in enumerate(MONTHS, 1) for n in (full[:3], full[:4], full)
 }
 ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII")
+ROMAN_MONTHS = {numeral: month for month, numeral in enumerate(ROMAN, 1)}
 EARLIEST_YEAR = 1750  # HAR-006: a plausible year is from 1750 to the current one.
 APOSTROPHES = "'’‘"  # A two-digit year's mark, straight or curly.
 _YEAR = rf"(?P<y>[{APOSTROPHES}]?[0-9]{{2}}|[0-9]{{4}})"
@@ -104,7 +105,9 @@ def date_parser(
     if roman and not roman_months:
         warnings = ["roman_numeral_months_not_enabled"]
         return _date_result(outcome=LookupStatus.NO_MATCH, warnings=warnings)
-    month = ROMAN.index(roman.upper()) + 1 if roman else MONTH_NAMES.get(name)
+    # A letter that matches a numeral only under Unicode case rules (U+0130)
+    # is none, so the literal is no date.
+    month = ROMAN_MONTHS.get(roman.upper()) if roman else MONTH_NAMES.get(name)
     if order is None or (month is None and order not in ("numeric", "year")):
         return _date_result(outcome=LookupStatus.NO_MATCH)
     roman_rule = [f"{version}:roman_numeral_months=true"] if roman else []
