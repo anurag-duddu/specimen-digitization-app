@@ -573,13 +573,16 @@ there is one edit from "Davao" or "P.I.".
 
 **`precise_location` is verbatim locality text** (PRD 515). Its literal helps
 form the address, but the tool reports no outcome and no place for it, so
-nothing it returns can settle or replace it; where such a phrase actually is was
+nothing it returns can settle or replace it: the coordinator's ruling (b) at
+00:08:24Z on 2026-09-24 took it out of the field outcomes, so that no stored
+result can read as locality resolution. Where such a phrase actually is was
 left to the owner's ruling on S8's D3 (the coordinator, 00:07Z on 2026-09-24).
-G36 has since decided it: a curator confirms each place, and an unconfirmed one
-never settles a field, so the tool's silence on `precise_location` stands. A
-result for the wrong place settles no field either, because each admin-level
-field is checked against its own literal: Google puts "E. slope Mt. McKinley" at
-Denali, Alaska, where no component is named "Davao" or "P.I.".
+G36 decided D3 for the places and itinerary entries S8 drafts, the places only
+the museum's own records know: a curator confirms each one, and an unconfirmed
+one never settles a field. A result for the wrong place settles no field either,
+because each admin-level field is checked against its own literal, as ruling
+(b) asked: Google puts "E. slope Mt. McKinley" at Denali, Alaska, where no
+component is named "Davao" or "P.I.".
 
 **What is kept** (G26, Google's terms): per request only the place ID, our
 outcome and the sha256 of the full response. Google's names, address components
