@@ -10,7 +10,7 @@ WITH approved(name) AS (SELECT unnest(ARRAY[
   'label_region','model_observation','transcription_version','evidence_item','field_candidate',
   'candidate_evidence','review_decision','audit_event','checkpoint','provider_connection',
   'auxiliary_document','auxiliary_version','auxiliary_receipt','record_version','resolved_field',
-  'validation_finding','outbox_event'
+  'validation_finding','outbox_event','reading_comparison','harness_input','tool_call'
 ]::text[])),
 expected_roles(kind,name) AS (VALUES
   ('owner','firebaseowner_specimen-digitization-database_public'),
