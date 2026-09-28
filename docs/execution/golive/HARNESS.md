@@ -609,10 +609,14 @@ occurs in the reading it was copied from (otherwise `policy_blocked`,
 **`date_parser`** returns every reading a date's notation allows, and the
 harness settles which one the evidence supports (G29):
 
-- Notations: a Roman-numeral month (I to XII, only when the profile's
-  `date_rules.roman_numeral_months` is on; lowercase only between a day and a
-  year joined by `.` or `-`, so `12 x 46` stays a possible measurement) with day
-  and year, with day only, or with a four-digit year; day, Roman month, year
+- Notations, a list S4 keeps and not a closed one (the owner's G29 answer: the
+  harness works out "all possible cases"): a Roman-numeral month (I to XII,
+  only when the profile's `date_rules.roman_numeral_months` is on; lowercase
+  only between a day and a year joined by `.` or `-`, so `12 x 46` stays a
+  possible measurement) with day and year, with day only, or with a year of
+  four digits or of two after an apostrophe (`XI.'46`, pilot 327's date, is
+  November 1946 under the century rule: G24 reads '46 as 1946, and G29 a Roman
+  numeral in the month position as the month); day, Roman month, year
   (`12.VI.1946`); day, month name, year (`3 sept. '46`, `6-Sept-1946`); month
   name, day, year (`Sept. 3, 1946`); month name and year; a year alone; and a
   numeric date, which gives both the month-day and the day-month reading unless
