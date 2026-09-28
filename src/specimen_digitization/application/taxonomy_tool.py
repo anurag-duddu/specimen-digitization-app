@@ -263,7 +263,7 @@ def verify_taxon(
                 outcome=LookupStatus.AMBIGUOUS,
                 warnings=["taxonomy_name_partly_read"],
             ),
-            withheld_lookup(literal, parsed.partly_read),
+            withheld_lookup(literal, parsed.partly_read, blobs),
         )
     end = clock() + deadline_seconds
     gbif, lookups = GbifTaxonomy(blobs, client), []

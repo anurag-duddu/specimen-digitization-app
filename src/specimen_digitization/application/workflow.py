@@ -543,7 +543,7 @@ class Workflow:
                         for key in PLACE_FIELDS
                         if key in run.fields and run.fields[key].literal
                     ]
-                    outcome = taxonomy_lookup(self.adapters.lookup, name, places)
+                    outcome = taxonomy_lookup(self.adapters.lookup, name, places, self.blobs)
                     run.lookups.append(outcome)
                     if outcome.status in OPERATIONAL:
                         raise OperationalBlock("taxonomy_" + outcome.status.value)

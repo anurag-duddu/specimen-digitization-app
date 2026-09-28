@@ -157,6 +157,10 @@ MAX_AUTHORSHIP_LENGTH = 200
 MAX_NAME_LENGTH = 500  # A longer name from GBIF is malformed, not a candidate.
 MAX_KEY = 10**12  # a numeric key's bound
 MAX_DEPTH = 32  # a body's nesting; GBIF's own is a few levels
+# GBIF's alternatives kept as review candidates: the review step takes at most
+# 100 proposals, and the diagnostics keep every alternative (the steward's
+# review of round 5).
+MAX_ALTERNATIVES = 20
 KEY = re.compile(r"[A-Za-z0-9]{1,32}\Z")
 GENUS = re.compile(r"[A-Z][a-z]+\Z")
 SUBGENUS = re.compile(r"\(([A-Z][a-z]*\.?)\)\Z")  # "(Pyrobombus)" or "(P.)"
@@ -460,7 +464,10 @@ def without_place_words(literal: str, place_text: Sequence[str]) -> str:
 
 
 def taxonomy_lookup(
-    lookup: Callable[[str], Lookup], literal: str, place_text: Sequence[str]
+    lookup: Callable[[str], Lookup],
+    literal: str,
+    place_text: Sequence[str],
+    blobs: BlobStore,
 ) -> Lookup:
     """The workflow's taxonomy lookup, through an adapter that takes a literal
     (HARNESS.md section 6; the coordinator's rulings of 02:07Z, 03:24Z and
@@ -470,7 +477,7 @@ def taxonomy_lookup(
     literal goes without the place words its authorship holds."""
     name = scientific_name(literal, place_text)
     if name is not None and not name.genus:
-        return withheld_lookup(literal, name.partly_read)
+        return withheld_lookup(literal, name.partly_read, blobs)
     if name is not None and name.partly_read == PLACE_WORD:
         found = lookup(name.query)
         found.metadata["partly_read"] = PLACE_WORD
@@ -802,15 +809,23 @@ def _alternative(other: dict) -> dict:
     }
 
 
-def withheld_lookup(literal: str, reason: str) -> Lookup:
+def withheld_lookup(literal: str, reason: str, blobs: BlobStore) -> Lookup:
     """A name with nothing it may send, its genus in doubt or place text:
     `ambiguous`, with no request, so it goes to review (the coordinator's
-    reading of 01:11Z and rulings of 03:24Z and 03:31Z on 2026-09-26)."""
+    reading of 01:11Z and rulings of 03:24Z and 03:31Z on 2026-09-26). Its
+    record of what was withheld and why is stored with its digest, so the run's
+    evidence check reads it like any other lookup (the steward's review of
+    round 5)."""
+    record = json.dumps(
+        {"withheld": reason, "verbatim_name": literal}, sort_keys=True
+    ).encode()
     return Lookup(
         provider="gbif",
         adapter_version="species-match-v2.3",
         query={},
         status=LookupStatus.AMBIGUOUS,
+        raw_ref=blobs.put(record),
+        digest=hashlib.sha256(record).hexdigest(),
         metadata={"verbatim_name": literal, "partly_read": reason},
     )
 
@@ -837,7 +852,7 @@ class GbifTaxonomy:
             return no_name_lookup(name)
         if not parsed.genus:
             literal = name if isinstance(name, str) else ""
-            return withheld_lookup(literal, parsed.partly_read)
+            return withheld_lookup(literal, parsed.partly_read, self.blobs)
         query = {
             "scientificName": parsed.query,
             "taxonRank": parsed.rank,
@@ -939,7 +954,7 @@ class GbifTaxonomy:
             first = [accepted, usage] if synonym else [usage, accepted]
             result.candidates = [
                 selectable(found) for found in first if isinstance(found, dict)
-            ] + [_alternative(other) for other in alternatives]
+            ] + [_alternative(other) for other in alternatives[:MAX_ALTERNATIVES]]
             if match_type == "NONE":
                 result.status = LookupStatus.NO_MATCH
             elif synonym or (
