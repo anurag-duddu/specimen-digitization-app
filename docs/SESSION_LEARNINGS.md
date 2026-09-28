@@ -12136,3 +12136,23 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. FastAPI's JSON carries no charset. `package:http` 1.6.0 decodes `application/json` without one as UTF-8, so a handwritten "°" or an accented collector's name survives. A Latin-1 default would have mangled them on screen, so it was worth checking before the owner's first look.
 - Failed approaches: the first draft of "another record never shows the last one's thread" never left an answer pending, so it could not catch a late one. I rewrote it with a pending answer per record before the red commit.
 - Remaining follow-ups: the caveat's placement follows T2.5's and is the coordinator's call (G5). History views don't ask for a previous run's thread yet.
+
+### 2026-09-28 — Go-live S6 T5.1: the local build signs in to the lab's emulator-mode API
+
+- Task: go-live workstream S6, the coordinator's ruling at 02:30Z on 2026-09-28, step 4: serve the web app against the lab's emulator so the owner can see each specimen's thread. S7's served app runs `create_app` in `emulator` mode behind one bearer on loopback.
+- Branch/worktree: `golive/ui-local-lab`, stacked on `golive/ui-thread-fetch` (#220); `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome: UI.md T5 and T5.1.
+  - `LocalFixtureSession.localModes` is `{synthetic, emulator}`.
+  - The sign-in probe and the local repository's session check (a new, additive `expectedModes`) accept either and refuse `production`.
+  - The loopback restriction, the production build and the band are unchanged.
+- Commits/PRs: red `7c35a179` (2 failed for the stated reasons), green `cc28194d`; the PR is stacked on #220.
+- Validation actually run:
+  - `flutter analyze --fatal-infos`: no issues;
+  - the two sign-in files: 8 passed;
+  - the full app suite: 1,776 passed, 8 skipped, 0 failed, with `TZ=America/Chicago`;
+  - format, the web release build and the route smoke check.
+- Durable learnings:
+  1. The local build's safety is the loopback restriction, enforced twice, and never talking to `production`, not the name of the local mode. Widening `synthetic` to `{synthetic, emulator}` keeps both.
+  2. Read the client's session contract before planning a served backend. S7's emulator-mode plan was sound for fidelity, and the client would have refused it at sign-in. One read of `auth.dart` found that before the lab spent a run.
+- Failed approaches: none.
+- Remaining follow-ups: the lab's trace link waits on the coordinator's ruling about a lab trace template (S7 asked). Until then `trace.url` is null, and the Processing disclosure names the trace ID without "Open trace".
