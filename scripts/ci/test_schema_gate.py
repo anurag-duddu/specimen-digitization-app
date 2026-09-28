@@ -375,7 +375,7 @@ def test_the_contract_table_names_each_relaxed_column_with_its_reason():
     (contract("`A.b` | drop `NOT NULL` | why").replace("\n\n|", "\n\n" + "".join(f"    {line}\n" for line in HIDDEN.splitlines())
                                                         + "\n|", 1), MARKUP),
     (contract("`A.b` | drop `NOT NULL` | why").replace("\n\n|", "\n\n<div>\n\n" + HIDDEN + "\n</div>\n\n|", 1), MARKUP),
-    (contract("`A.b` | drop `NOT NULL` | why", "`C.d` | drop `NOT NULL` | why").replace(" |\n| `C", " | | `C"), MARKUP),
+    (contract("`A.b` | drop `NOT NULL` | why", "`C.d` | drop `NOT NULL` | why").replace(" |\n| `C", " |\u2028| `C"), MARKUP),
     (contract("`A.b` | drop `NOT NULL` | why", "`C.d` | drop `NOT NULL` | why").replace(" |\n| `C", " |\x85| `C"), MARKUP),
     (contract("`A.b` | drop `NOT NULL` | why", "`C.d` | drop `NOT NULL` | why").replace(" |\n| `C", " |\f| `C"), MARKUP),
     (contract("`A.b` | drop `NOT NULL` | why\t"), MARKUP),
