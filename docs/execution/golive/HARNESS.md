@@ -766,6 +766,12 @@ injected, so tests use fakes. A request is one tool, one reading and its
 arguments; the same request again returns the recorded result and records
 nothing new.
 
+**A taxonomy request carries its reading's place text.** The caller gives the
+reading's place-field literals and unassigned locality text, and the ledger
+hands them to the taxonomy tool, which sends none of them (PLAN 4.8, as the
+coordinator ruled at 02:07Z and 03:24Z on 2026-09-26). They are context, not
+part of the request: the record's arguments and its call key leave them out.
+
 **Records.** Each source-call attempt is one `ToolCallRecord` in
 `Run.tool_calls`. A validator's call is one attempt with no source.
 
@@ -801,7 +807,9 @@ Only a success names a value:
 - Taxonomy: GBIF's usage key and name, with GBIF's evidence `decides`. Global
   Names Verifier's and Catalogue of Life's evidence `supports` unless that source
   disagreed with GBIF (G23), and a disagreement or an unavailable source is a
-  warning finding with that source's evidence.
+  warning finding with that source's evidence. A name read only in part
+  (`taxonomy_name_partly_read`) names no source, so its warning cites the
+  taxonomy tool's own record.
 - Geography: the place ID, and as `normalized` the literal the lookup matched by
   name, with Google's evidence only `supporting` (rule 1.6). A near spelling
   (G34) gives the place ID alone, and its `near_spelling:{field}` warning
