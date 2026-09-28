@@ -73,7 +73,8 @@ def processed(s: Specimen, blobs: LocalBlobs) -> Specimen:
     run = s.run
     run.profile = Profile(id="zoology_insects_slides", version="1.0.0", routes=("handwriting-qwen", "handwriting-muse"))
     run.profile_snapshot = PROFILE
-    run.dependencies = {"profile_snapshot_sha256": digest(PROFILE)}
+    # As pin_dependencies pins them (workflow.py), after classify chose the profile.
+    run.dependencies = {"profile_snapshot_sha256": digest(PROFILE), "profile_registry_version": run.profile_registry_version}
     region = Region(asset_id=s.asset.id, x=10, y=20, width=390, height=160, order=0, method="sam3", version="rev-1")
     readings = []
     for route, text in (("handwriting-qwen", "Chicago, Ill."), ("handwriting-muse", "Chicago, Il1.")):

@@ -21,8 +21,8 @@ specimen record/id". These owner decisions are included:
 - G26, only the place id from Google;
 - G27 and G28, a place or taxon field keeps both its verbatim and its settled
   value;
-- G30, paid model calls spend at most USD 5, each reserving its worst-case cost
-  before it starts;
+- G30, paid model calls spend at most USD 5 (reserve-then-settle is the
+  coordinator's ruling, PLAN 4.3);
 - G31, the ten pilot slides are not sensitive;
 - G32, a field found on two labels is settled per label on its own evidence, and
   clears when both labels settle to the same value.
@@ -109,7 +109,7 @@ reads them.
 | 8 Queue | `Run.disposition`, `Run.reasons`, `Run.findings`, `Run.profile.policy_version`, `Run.fields`, `Run.field_groups` | `RecordVersion`, `ResolvedField` with `fieldGroup`, a hard `ValidationFinding` per reason code and a warning or info one per `Run.findings` entry; `Specimen.disposition` as today |
 | 9 Linkage | ids throughout | every row carries `runId` or a parent that does |
 | Trace | `Run.trace_id` (S3) | `PipelineRun.traceId` |
-| Profile | `Run.profile`, `Run.profile_snapshot`, `Run.dependencies["profile_snapshot_sha256"]` | `ProfileVersion`, then `PipelineRun`, once `profile_snapshot` is non-empty |
+| Profile | `Run.profile`, `Run.profile_snapshot`, `Run.profile_registry_version`, `Run.dependencies["profile_snapshot_sha256"]` and `["profile_registry_version"]` | `ProfileVersion`, then `PipelineRun`, once the dependencies pin the current snapshot: its digest and its registry version. Classify chooses the profile and pins again, and each row is written once (#146 round 1). |
 | Attempts | `Run.attempts`, `Run.blocker`, `Run.next_retry_at` | `Checkpoint` per step attempt |
 | Human decisions | `DecisionInput` handled in `api.py` | `ReviewDecision`; the real action in `AuditEvent` through `SaveSpecimenV3`'s `action` |
 
@@ -218,8 +218,10 @@ above do not change.
 - `Run.coverage_check` (G15): the check's version, outcome, region count, the
   full-image cross-check's result, reason codes, the evidence blob's ref and
   digest, and when it ran.
-- The profile identity after classify: `Run.profile.id`, `Run.profile.version`,
-  `Run.profile_snapshot`, `Run.dependencies["profile_snapshot_sha256"]`.
+- The profile identity after classify, as `pin_dependencies` pins it again:
+  `Run.profile.id`, `Run.profile.version`, `Run.profile_snapshot`,
+  `Run.profile_registry_version`, and `Run.dependencies["profile_snapshot_sha256"]`
+  and `["profile_registry_version"]`.
 
 ### 4.2 From the first pass (S4), on each region's `Transcript`
 
@@ -227,7 +229,7 @@ above do not change.
 |---|---|---|
 | `decision_kind` | `identical_readings`, `first_pass`, `human` | how the decided transcript was reached |
 | `selected_observation_id` | `str \| None` | the reading chosen; `text` is its `literal_text`, verbatim |
-| `first_pass_call` | `Observation \| None` | the model call's provenance, same model as the readers' observations, with `literal_text` empty and the structured answer at `raw_ref`; set only for `first_pass` |
+| `first_pass_call` | `Observation \| None` | the model call's provenance, same model as the readers' observations, with `literal_text` empty and the structured answer at `raw_ref`; set only for `first_pass`. Its `input_sha256` is the crop's digest, like every observation's; `request_sha256` names its text request (S4, #98) and stays in the snapshot |
 | `differences` | `list[FirstPassDifference]` | one per aligned difference: `number`, `spans` (per observation, exact `start` and `end` offsets into that reading's `literal_text` and the `text`), `verdict` (an observation id, `neither` or `uncertain`) and `material` |
 | `reason` (exists) | `str \| None` | the first pass's rationale, or the reviewer's reason |
 | `handoffs` | `list[ReaderHandoff]` | one per reading handed to the harness |
@@ -248,11 +250,17 @@ The writer maps `TranscriptionVersion.spans` from `differences`, and
 **The unresolved rule** is the one definition of unresolved used everywhere. A
 region's decision is unresolved when no reading was selected (G19: material
 ambiguity means no pick; the harness then runs on each raw reading, and every
-reading is a `raw_reading` handoff). A selected reading with a material
-difference still `neither` or `uncertain` is resolved, and that difference is
-stored in `alternatives`. For decisions other than a reviewer's, unresolved is exactly the negation
-of the domain's `resolved` flag, which means a reading was selected (S4, #98).
-For a reviewer's decision, unresolved means the reviewer left it unresolved.
+reading is a `raw_reading` handoff). The first pass selects a reading only when
+every material difference's verdict supports it: a material difference whose
+verdict is `neither` or `uncertain` means no pick, and "material" means more
+than capitalization: spans are compared lower-cased in code, so "Straße" and
+"Strasse" differ (coordinator readings, 2026-09-25 12:31Z and 14:05Z; S4, #98).
+So only a reviewer's decision can select a reading while a material difference
+is still `neither` or `uncertain`: it is resolved, and that difference is stored
+in `alternatives`. For decisions other than a reviewer's, unresolved is exactly
+the negation of the domain's `resolved` flag, which means a reading was selected
+(S4, #98). For a reviewer's decision, unresolved means the reviewer left it
+unresolved.
 
 The rationale and the notes are null for `identical_readings`. That kind also
 covers identical readings that stay unresolved, such as unreadable spans or an
@@ -331,16 +339,32 @@ run, not in SQL.
   for GBIF). Both are set only from a call whose outcome is `success`. A field
   without a lookup that clears across labels on identical texts has that common
   text in `normalized`, since `literal` is None there (G32).
-  - GBIF's `success` (S4's T3a, under the coordinator's GBIF.md ruling and G25)
-    is an `EXACT` match of an `ACCEPTED` usage with a key, in class Insecta, at
-    the rank the label's name gives (a genus alone `GENUS`, a binomial
-    `SPECIES`, a trinomial `SUBSPECIES`), with no live homonym.
-  - `FUZZY`, `VARIANT`, `HIGHERRANK` and an exact synonym are `ambiguous`
-    (GBIF.md 127-128). The label name stays the verbatim with no settled value;
-    the reason codes the queue then records are S4's policy. For a synonym,
-    S4 appends GBIF's `acceptedUsage` to that lookup's `candidates`, where
-    the reviewer's `taxonomy_resolution` decision can select it: the
-    accepted usage is proposed separately and never replaces the verbatim.
+  - GBIF's `success` (S4's T3a, under the coordinator's GBIF.md ruling and
+    G25, as its rulings on #109 of 2026-09-25 at 22:46Z and 23:58Z refine it;
+    S4's HARNESS.md section 6, in #109, has the whole rule) is an `EXACT`
+    match, for a name read in full, in class Insecta, at the rank the label's
+    name gives (a genus alone `GENUS`, one epithet `SPECIES`, a subspecies or
+    variety its own rank), with no homonym conflict, of either:
+    - an `ACCEPTED` usage with a key (GBIF.md 126); or
+    - a synonym, not pro parte, whose accepted usage has a key, the same rank
+      and the status `ACCEPTED` or none, since GBIF v2's `acceptedUsage` is
+      accepted by definition; any other status goes to review (GBIF.md 127;
+      G28, G1). The accepted usage is then the settled value: `normalized` is
+      its name and `authority_id` its key. The label's spelling stays the
+      verbatim, and the lookup keeps the synonym, with its status, in its
+      `candidates` and the accepted usage in its metadata.
+  - A homonym conflict (GBIF.md 129) is another `EXACT` alternative with the
+    same canonical name and other authorship in class Insecta, whatever its
+    status. HARNESS.md section 6 says how an alternative counts when GBIF
+    leaves out its class, its canonical name or an authorship.
+  - These are `ambiguous` (GBIF.md 127-130): a fuzzy, variant or higher-rank
+    match, a homonym conflict, an exact match failing row 126, an exact
+    synonym that doesn't clear, and a name read only in part. The label name
+    stays the verbatim with no settled value; the reason codes the queue then
+    records are S4's policy. For a synonym that doesn't clear, S4 appends
+    GBIF's `acceptedUsage` to that lookup's `candidates`, where the
+    reviewer's `taxonomy_resolution` decision can select it: the accepted
+    usage is proposed separately and never replaces the verbatim.
 - `evidence_relations: dict[str, Literal["decides", "supports", "contradicts"]]`
   (G23). It has exactly one entry per id in `evidence_ids`, with no default, and
   maps each to that source's relation to the value: GBIF `decides`; Global Names

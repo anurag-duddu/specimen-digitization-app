@@ -146,8 +146,9 @@ and additive evidence contracts are in [APPROVED_RELEASE_BUDGET.md](APPROVED_REL
   > 2026-09-23: Superseded for the go-live program by
   > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
   > G9 and G11. The cumulative spending ceiling is USD 25, infrastructure and
-  > models together, and cost ledgers and reservations retire for this
-  > program.
+  > models together, and the release cost ledgers and their reservations
+  > retire for this program. G30's per-call reservations stand (PLAN 4.3; the
+  > coordinator's ruling on the mechanism).
 - One worker execution, 1 CPU/1 GiB, one task, zero platform retries, at most
   3500 seconds from original dispatch. Useful work stops by 3485; cleanup by 3500.
   The original SAM one-hour expiry remains unchanged. See
@@ -177,15 +178,17 @@ and additive evidence contracts are in [APPROVED_RELEASE_BUDGET.md](APPROVED_REL
   > `specimenDataInventoryProjectRead` stay standing with their conditions
   > unchanged. The rest of this item stands:
   > - the clone roles and `specimenDataRestoreAllowanceClaim` stay
-  >   time-bounded and open only for the first apply's single restore check;
+  >   time-bounded and open only for the first apply's single restore check
+  >   (the coordinator's ruling D1);
   > - `specimenDataRuntimeAbsence` stays time-bounded, unused by automatic
   >   applies;
   > - `specimenDataOwnerBootstrap`, the initializer role and
   >   `specimenDataInitializerDisposal` stay one-time and time-bounded through
   >   this setup window and are revoked after use.
   >
-  > Until T4 adapts `data_setup_window.py`, the window still renews the
-  > standing roles as well.
+  > Until T4 adapts `data_setup_window.py`, the window still renews three of
+  > the standing roles as well (`specimenDataSchemaPublish`,
+  > `specimenDataSourceBackup` and `specimenDataStorageRules`).
 
 This includes finishing, independently reviewing and using the bounded helpers
 for those effects with at most 187 metadata/IAM requests. Prepare all source,
@@ -224,7 +227,9 @@ the first-scope bootstrap.
   > G2 and G9. The ten specimens are now the acceptance cohort, processed one
   > at a time on demand alongside new uploads, and the budget this bullet points
   > back to is replaced by the cumulative USD 25 ceiling, infrastructure and
-  > models together. The memberships and sensitive access (off) stand.
+  > models together. G30's per-call reservations stand (PLAN 4.3; the
+  > coordinator's ruling on the mechanism). The memberships and sensitive
+  > access (off) stand.
 
 Everything else in this record, including the protected data lane, the
 evidence recipient, the independent review and the private identity rule,
@@ -254,8 +259,14 @@ approval and a privacy review.
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G3. Tracing now also covers system prompts and text inputs and outputs at
 > every VLM, LLM and SAM 3 level, SAM 3 parameters and the harness's tool
-> calls (geocoding keeps only what G26 allows), one trace per run linked from
-> the specimen record; images stay excluded. The amended scope is in
+> calls with their arguments and results (a Google geocoding result keeps only
+> what G26 allows), one trace per run linked from the specimen record; images
+> stay excluded. Secrets and the identities of the app's users never enter
+> prompts or tool arguments, and scrubbing is only the backstop. The accessor
+> grant keeps its exact-version condition, and only the runtime expiration is
+> superseded (G11). For this program, the PR steward's review replaces the
+> privacy review (the PR steward's reading of G11 on #76). The amended scope
+> is in
 > [APPROVED_LOGFIRE_TRACING.md](APPROVED_LOGFIRE_TRACING.md).
 
 The owner also asked for the IAM setup to proceed and offered approval. The
@@ -273,7 +284,8 @@ clock, and refuses if the live policy differs from the packet.
 > `specimenDataStorageRules` and `specimenDataSourceBackup` become standing;
 > `specimenDataInventorySqlConnect` and `specimenDataInventoryProjectRead`
 > stay standing with their conditions unchanged. These stay inside this
-> bounded window with its action packet and are revoked after use: the clone
-> roles, `specimenDataRestoreAllowanceClaim`, `specimenDataRuntimeAbsence`,
+> bounded window with its action packet, and their bindings expire when it
+> closes: the clone roles, `specimenDataRestoreAllowanceClaim` and
+> `specimenDataRuntimeAbsence`. The one-time roles,
 > `specimenDataOwnerBootstrap`, the initializer role and
-> `specimenDataInitializerDisposal`.
+> `specimenDataInitializerDisposal`, are also revoked after use.
