@@ -340,16 +340,23 @@ offline. It parses only the SDL this repository uses. It accepts:
   (bucket, objectName, generation) gives way to `source_asset_specimen_object`
   on (organizationId, collectionId, specimenId, bucket, objectName,
   generation), because the content-addressed blob store makes identical bytes
-  one object across specimens. One migration drops before it creates, each
-  statement in autocommit, so the swap takes two merges. The gate admits
-  exactly these two steps from its checked-in entry:
+  one object across specimens. The swap takes two merges, so that a unique
+  constraint governs the table at every moment while writers run. The gate
+  admits exactly these two steps from its checked-in entry:
   1. adding exactly `source_asset_specimen_object` while `specimen_unique_1`
-     is still declared in both schemas. Every column it adds must be an
-     existing NOT NULL column, since PostgreSQL treats NULLs as distinct;
-  2. in a later merge, dropping exactly `specimen_unique_1`, only when the
-     live schema already has `source_asset_specimen_object` and no live
-     operation uses the old constraint (a lookup, upsert or `onConflict` on
-     its fields).
+     is still declared in both schemas, so the old constraint keeps
+     governing. Every column it adds must be an existing NOT NULL column,
+     since PostgreSQL treats NULLs as distinct;
+  2. in a later merge, removing exactly `specimen_unique_1` from the schema,
+     only when the live schema already has `source_asset_specimen_object`
+     and no live operation uses the old constraint (a lookup, upsert or
+     `onConflict` on its fields). The migration admits no drop, whatever
+     Data Connect's diff carries, so the data release drops the old
+     constraint itself. It runs S5's one fixed, reviewed statement in
+     `dataconnect/sql/` before it computes that diff, and only after its own
+     read-back of the live database shows `source_asset_specimen_object` in
+     place, over its six columns and valid (4.4). The gate compares
+     committed text only.
 
   Both steps in one merge, and any other change to a unique constraint, are
   refused. Neither constraint may be the table's key or hold a never-list key;
