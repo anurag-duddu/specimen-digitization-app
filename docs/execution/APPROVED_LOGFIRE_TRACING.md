@@ -44,6 +44,8 @@ attempt and day; this approval is neither a new budget nor a complete price quot
 > G9. The spending ceiling is USD 25, cumulative, infrastructure and models
 > together, and Logfire usage counts against it
 > ([budget amendment](APPROVED_RELEASE_BUDGET.md#go-live-amendment-2026-09-23-g9)).
+> G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+> mechanism).
 
 ## Destination and permitted content
 
@@ -91,8 +93,10 @@ and the other retained product journeys.
 > G2, G3 and G11. Traces use the standard Logfire SDK path in its existing
 > `approved-content` mode (PLAN section 4.5) instead of the bounded transport;
 > its ceilings, its reservation ledger and the T+3485 deadline retire with the
-> single execution (G2) and the release ledgers (G11). SAM 3 and the API may
-> hold the writer token, because SAM 3 continues each run's trace.
+> single execution (G2) and the release ledgers (G11); G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism).
+> SAM 3 and the API may hold the writer token, because SAM 3 continues each
+> run's trace.
 
 | Dimension | Maximum |
 |---|---:|
@@ -147,11 +151,12 @@ the release plan, a launch payload or the identity receipt.
 > program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
 > G3 and G11. The worker, SAM 3 and API runtime identities each hold a standing
-> `roles/secretmanager.secretAccessor` on this secret. These standing grants
-> carry no version condition; the runtime release pins the version it
-> references in `scripts/ci/runtime_settings.py`. Hosting, GitHub and every
-> other identity still gain no writer access, and the writer value still never
-> appears in Git or in any output.
+> `roles/secretmanager.secretAccessor` on this secret. Only the runtime
+> expiration is superseded: each grant keeps the exact immutable version
+> condition (coordinator ruling on #76's review), so IAM enforces the version
+> on every read. A version bump is an owner action that updates the condition.
+> Hosting, GitHub and every other identity still gain no writer access, and the
+> writer value still never appears in Git or in any output.
 
 The runtime completion successor preserves the original action set and adds four
 effects: create the new parent, add its immutable version, grant the bounded worker
@@ -214,10 +219,35 @@ original-ten product journeys described in [DEPLOYMENT.md](../DEPLOYMENT.md).
 
 > 2026-09-23: Superseded for the go-live program by
 > [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G2 and G11. The PR steward's review of each pull request replaces the separate
-> independent review; all five checks on the exact merged commit and the
-> separate protected workflows stay; acceptance is the ten pilot specimens run
-> one at a time, in order (PLAN section 8).
+> G1, G2, G9 and G11. The PR steward's review of each pull request replaces the
+> separate independent review; all five checks on the exact merged commit and
+> the separate protected workflows stay; the ten pilot specimens are checked one
+> at a time, in order (PLAN section 8), with matching deployed revisions still
+> required; and a record the harness resolves is cleared without a human (G1).
+> The rest of acceptance stands, including every UI and live case the
+> human-review checker (`scripts/qa/live/human_review.py`) requires: the ten UI
+> cases of [`RELEASE_ACCEPTANCE.md`](RELEASE_ACCEPTANCE.md) (UI-SIGN-IN,
+> UI-INTAKE, UI-PROCESSING, UI-IMAGE-REGIONS, UI-LITERAL-UNCERTAINTY,
+> UI-SAVE-REOPEN, UI-SEARCH-QUEUE, UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and
+> UI-NO-SYNTHETIC-FALLBACK) and the fifteen live cases of
+> [`LIVE_QA.md`](LIVE_QA.md) (AUTH-IDENTITY, AUTH-APPCHECK, AUTH-MEMBERSHIP,
+> AUTH-REVOKE, AUTH-CROSS-SCOPE, DATA-TEN, DATA-GENERATION, DATA-RESTORE,
+> PROVIDER-ACTUAL, COST-BOUNDS, RETRY-UNKNOWN, WORKER-RESTART, API-RESTART,
+> DEPLOY-IDENTITY and BROWSER-E2E), with UI-SIGN-IN's unverified and no-role
+> denial, UI-DENIAL-RECOVERY's unauthenticated, cross-organization or
+> cross-collection, viewer-write and revoked-access denials, in which stale
+> responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
+> and with the ten, in order and beside new uploads, in place of a frozen
+> manifest (G2), G9's USD 25 ceiling in place of the cohort budget, and the
+> release packet and the cohort ledger retired (G11). G30's per-call
+> reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
+> S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
+> and worker SHAs and image digests with the candidate's own runtime release
+> run, and the SQL and rules revisions with the data release run that deployed
+> them, which is the candidate's own or a main run at or before the candidate
+> with those inputs unchanged between the two, in place of the packet; the rest
+> of DEPLOY-IDENTITY stands. Retention admission is not settled by G2 or G11 and
+> stays open.
 
 ## Go-live amendment, 2026-09-23 (G3)
 
@@ -249,8 +279,11 @@ specimen record." PLAN section 4.5 describes the instrumentation.
 - Writer access: the writer secret stays
   `projects/specimen-digitization/secrets/specimen-worker-logfire`. The worker,
   SAM 3 and API runtime identities hold a standing
-  `roles/secretmanager.secretAccessor` on it (G11); no other identity does.
-- Bounds and cost: the bounded transport's ceilings and reservation ledger
-  retire; Logfire usage counts against the USD 25 ceiling (G9).
+  `roles/secretmanager.secretAccessor` on it (G11), bound to its exact
+  version; no other identity does.
+- Bounds and cost: the bounded transport's ceilings and its reservation ledger
+  retire; Logfire usage counts against the USD 25 ceiling (G9), and G30's
+  per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
+  mechanism).
 - Lab runs: local acceptance runs use the same instrumentation with
   `environment=lab`.

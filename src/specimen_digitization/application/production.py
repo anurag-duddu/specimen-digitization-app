@@ -16,7 +16,11 @@ from google.cloud import storage
 from pydantic_ai import BinaryContent
 from pydantic_ai.messages import ModelMessagesTypeAdapter
 
-from ..model_gateway import HuggingFaceModelGateway, INITIAL_HUGGINGFACE_ROUTES
+from ..model_gateway import (
+    HUGGINGFACE_ROUTES,
+    INITIAL_HUGGINGFACE_ROUTES,
+    HuggingFaceModelGateway,
+)
 from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt, ResolvedPrompt
 from ..transcription import build_literal_transcription_agent
 from .domain import Observation, WorkItem, WorkPage, now
@@ -623,14 +627,11 @@ class ProductionAdapters:
         self.classifier = configured_classifier(blobs)
         from .authority_registry import AuthorityRegistry
         from .parties import PartiesAdapter
-        from .geography import GeographyAdapter
 
         registry = AuthorityRegistry(version="unconfigured")
-        self.authority_tools = {
-            "parties": PartiesAdapter(registry, blobs),
-            "geography": GeographyAdapter(registry, blobs),
-        }
-        self.authority_cost_reservations = {"geography": 0}
+        # No GADM geography source: GADM is not used (PLAN 4.8).
+        self.authority_tools = {"parties": PartiesAdapter(registry, blobs)}
+        self.authority_cost_reservations = {}
 
     def pin_dependencies(self, run):
         inputs = CollectionPromptInputs(
@@ -649,6 +650,16 @@ class ProductionAdapters:
             }
             for route in run.profile.routes
         }
+        # A first-pass route is pinned only in its role, with image input; any
+        # other stays unpinned, so its step blocks (HARNESS.md section 5).
+        first_pass = HUGGINGFACE_ROUTES.get(run.profile.first_pass_route)
+        if first_pass is not None and first_pass.serves_with_images(
+            "transcription_first_pass"
+        ):
+            routes[first_pass.route_id] = {
+                "model_id": first_pass.model_id,
+                "provider": first_pass.provider,
+            }
         return {
             "prompts": prompts,
             "routes": routes,
@@ -690,6 +701,13 @@ class ProductionAdapters:
 
         return invoke_model(self, specimen, "transcribe", region=region, route=route)
 
+    def first_pass(self, specimen, region, readings):
+        from .model_runtime import invoke_model
+
+        return invoke_model(
+            self, specimen, "first_pass", region=region, readings=readings
+        )
+
     def _transcribe_direct(self, specimen, region, route):
         if os.getenv("SPECIMEN_APPROVED_INFERENCE") != "true":
             raise OperationalBlock(
@@ -700,6 +718,9 @@ class ProductionAdapters:
         )
         gateway = HuggingFaceModelGateway(timeout_seconds=reader_timeout / 2)
         selected = gateway.route(route)
+        if not selected.serves_with_images("handwriting_transcriber"):
+            # Only an image reader's route reads a crop (HARNESS.md section 5).
+            raise OperationalBlock("pinned_model_route_unavailable")
         pins = specimen.run.dependencies
         expected = pins.get("routes", {}).get(route)
         if not expected or expected != {
