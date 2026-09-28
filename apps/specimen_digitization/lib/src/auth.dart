@@ -216,9 +216,12 @@ class _SignInScreenState extends State<_FixtureSignInScreen> {
           children: <Widget>[
             if (_fixture)
               const CaveatText(
+                // The coordinator's words, 18:55Z on 2026-09-28 (UI.md T5.1):
+                // a local server may serve the lab's real slides, so nothing
+                // here calls the data a test's.
                 label:
-                    'Test data only. This email is a test label, not a '
-                    'museum account.',
+                    "This email only labels your session on this computer. "
+                    "It isn't a museum account.",
                 why:
                     'Access needs a fixture token the local server accepts. '
                     'There is no live sign-in and no live model processing.',

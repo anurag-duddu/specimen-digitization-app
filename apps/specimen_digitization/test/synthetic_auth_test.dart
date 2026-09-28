@@ -38,7 +38,29 @@ class AccessRepository extends TestRepository {
   }
 }
 
+/// The local sign-in's line (UI.md T5.1; coordinator ruling at 18:55Z on
+/// 2026-09-28): the email labels a session, and nothing claims the data is a
+/// test's.
+const String fixtureSignInLine =
+    "This email only labels your session on this computer. It isn't a "
+    'museum account.';
+
 void main() {
+  testWidgets('the local sign-in never calls the data a test\'s', (
+    tester,
+  ) async {
+    final session = LocalFixtureSession(
+      baseUrl: Uri.parse('http://localhost:8018'),
+      client: MockClient((_) async => http.Response('{}', 500)),
+    );
+    await tester.pumpWidget(
+      SpecimenDigitizationApp(session: session, repository: TestRepository()),
+    );
+    expect(find.text(fixtureSignInLine), findsOneWidget);
+    expect(find.textContaining('Test data only'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    session.dispose();
+  });
   testWidgets('synthetic setup failure preserves environment banner', (
     tester,
   ) async {
@@ -140,7 +162,7 @@ void main() {
       await tester.tap(uiButton('Sign in'));
       await tester.pumpAndSettle();
       expect(find.textContaining('rejected the fixture token'), findsOneWidget);
-      expect(find.textContaining('Test data only.'), findsOneWidget);
+      expect(find.textContaining(fixtureSignInLine), findsOneWidget);
       expect(find.text('Collection queue'), findsNothing);
       expect(session.signedIn, false);
       offline = true;
@@ -148,7 +170,7 @@ void main() {
       await tester.tap(uiButton('Sign in'));
       await tester.pumpAndSettle();
       expect(find.textContaining('server is unavailable'), findsOneWidget);
-      expect(find.textContaining('Test data only.'), findsOneWidget);
+      expect(find.textContaining(fixtureSignInLine), findsOneWidget);
       expect(session.signedIn, false);
       await tester.pumpWidget(const SizedBox());
       session.dispose();
