@@ -939,5 +939,96 @@ void main() {
         reason: 'a region locator already names its label, so it is said once',
       );
     });
+
+    testWidgets('a derived value states its rules in order, then their '
+        'version, and no derivation line', (WidgetTester tester) async {
+      final Json json = fixtureJson();
+      (json['fields'] as List<dynamic>).add(<String, dynamic>{
+        'field_key': 'elevation_to_m',
+        'group': 'mandatory',
+        'state': 'supported',
+        'layer': 'derived',
+        'derived_from': <String>['elevation_from_ft'],
+        'derivation': <String, dynamic>{
+          'method': 'unit_conversion',
+          'rules': <String>[
+            'stated_elevation',
+            'feet_to_metres',
+            'gazetteer_names',
+          ],
+          'authority': <String, dynamic>{
+            'name': 'apply_derivations',
+            'version': 'derivation-rules-v1',
+          },
+        },
+        'verbatim': <Json>[],
+        'parsed': '1950.72',
+        'evidence': <Json>[
+          <String, dynamic>{
+            'evidence_id': 'evidence-derivation-2',
+            'relation': 'decides',
+            'source': 'apply_derivations',
+            'locator': 'derivation:unit_conversion',
+            'outcome': 'recorded',
+            'region_id': null,
+            'observation_ids': <String>[],
+          },
+          <String, dynamic>{
+            'evidence_id': 'evidence-quote-2',
+            'relation': 'supports',
+            'source': 'field_harness',
+            'locator': 'region:region-right',
+            'outcome': 'recorded',
+            'region_id': 'region-right',
+            'observation_ids': <String>['obs-right-qwen'],
+          },
+        ],
+      });
+      final SpecimenThread thread = SpecimenThread.fromJson(json);
+      await pumpFields(tester, recordJson(thread), thread: thread);
+
+      final List<String> lines = <String>[
+        for (final Text text in tester.widgetList<Text>(
+          inRow('elevation_to_m', find.byType(Text)),
+        ))
+          ?text.data,
+      ];
+      expect(
+        lines,
+        containsAllInOrder(<String>[
+          "$qwen's reading supports this value · Label 2",
+          // The coordinator's words of 18:55Z on 2026-09-28; this one is the
+          // owner's own, from G41.
+          'The label gives one elevation, so it fills both From and To',
+          'Converted from feet (1 ft = 0.3048 m)',
+          // A rule this client does not know keeps the server's word.
+          'Gazetteer names',
+          'Rules version derivation-rules-v1',
+        ]),
+      );
+      expect(
+        lines.where(
+          (String line) =>
+              line.contains('apply derivations') ||
+              line.contains('derivation:'),
+        ),
+        isEmpty,
+        reason: 'the rule lines state the derivation once',
+      );
+    });
+
+    testWidgets('each rule the profile applies reads in words', (
+      WidgetTester tester,
+    ) async {
+      expect(WorkbenchFields.ruleWords, <String, String>{
+        'feet_to_metres': 'Converted from feet (1 ft = 0.3048 m)',
+        'metres_to_feet': 'Converted from metres (1 ft = 0.3048 m)',
+        'stated_elevation':
+            'The label gives one elevation, so it fills both From and To',
+        'one_date_both_ends':
+            'The label gives one date, so it fills both Date visited from '
+            'and Date visited to',
+      });
+    });
   });
 }

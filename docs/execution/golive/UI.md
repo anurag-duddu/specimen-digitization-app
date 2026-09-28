@@ -366,6 +366,24 @@ Part six reads what S5's #171 T3-2 adds (`golive/data-thread-api` at
    byte. It adds G44's derived date, `date_visited_to`, filled from
    `date_visited_from` by the rule `one_date_both_ends`. In it, the lookup
    on Label 2's raw reading also names that reading.
+4. A derived value's authority lines (item 3 of part five), in the
+   coordinator's words of 18:55Z on 2026-09-28. The last two are the owner's
+   own, from G41 and G44. There is one line per rule, in the order applied:
+   - `feet_to_metres`: "Converted from feet (1 ft = 0.3048 m)"
+   - `metres_to_feet`: "Converted from metres (1 ft = 0.3048 m)", keeping
+     the exact factor, as G41 does
+   - `stated_elevation`: "The label gives one elevation, so it fills both
+     From and To"
+   - `one_date_both_ends`: "The label gives one date, so it fills both Date
+     visited from and Date visited to"
+   - a rule this client does not know: its server word.
+
+   The last line is the rules' version, "Rules version
+   derivation-rules-v1". The derivation's own evidence entry (source
+   `apply_derivations`, locator `derivation:{method}`) is not drawn, since
+   the rule lines state it once. A derived field without a `derivation`, as
+   a thread shaped before T3-2 sends, keeps its evidence lines and has no
+   rule lines.
 
 ### T2.4 The coverage check and the decision's findings
 

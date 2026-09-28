@@ -76,6 +76,9 @@ class WorkbenchFields extends StatefulWidget {
   /// for S6, 2026-09-24).
   static const String setByReviewer = 'Set by a reviewer';
 
+  /// Each rule a derived value was filled by, in words.
+  static const Map<String, String> ruleWords = <String, String>{};
+
   @override
   State<WorkbenchFields> createState() => _WorkbenchFieldsState();
 }

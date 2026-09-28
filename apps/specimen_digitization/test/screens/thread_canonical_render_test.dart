@@ -172,11 +172,21 @@ void main() {
               '· Label 2',
           'GBIF record 1651891',
           'fixture credit',
+          // G44's derived date states its rule and the rules' version
+          // (the coordinator's words, 18:55Z on 2026-09-28).
+          'The label gives one date, so it fills both Date visited from and '
+              'Date visited to',
+          'Rules version derivation-rules-v1',
           "Label 1 · $qwen · decided transcript · settled the value",
           "Label 2 · $qwen · raw reading · settled the value",
         ]) {
           expect(find.text(text), findsWidgets, reason: text);
         }
+        expect(
+          find.textContaining('apply derivations'),
+          findsNothing,
+          reason: 'the rule lines state the derivation once',
+        );
       });
 
       testWidgets('the Processing detail names the run and its trace', (
