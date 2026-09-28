@@ -40,13 +40,15 @@ _DAY, _NAME = "(?P<d>[0-9]{1,2})", r"(?P<name>[a-z]+)\.?"
 # or "-" (12.x.46): with spaces, 12 x 46 may be a measurement.
 _ROMAN = "(?P<roman>" + "|".join(reversed(ROMAN)) + ")"
 _UPPER_ROMAN = "(?-i:" + _ROMAN + ")"
-# The notations G24 and G29 approve, and no other; "numeric" reads both orders.
+# The notations S4 reads under G24 and G29. The list is S4's, not a closed one:
+# the owner's G29 answer has the harness work out all possible cases. "numeric"
+# reads both orders.
 NOTATIONS = [
     (order, re.compile(pattern, re.IGNORECASE))
     for order, pattern in (
         ("month-day-year", _UPPER_ROMAN + _SEP + _DAY + _AGAIN + _YEAR),
         ("month-day", _UPPER_ROMAN + _SEP + _NUMBER),
-        ("month-year", _UPPER_ROMAN + "(?:" + _DOT + r"|\s+)(?P<y>[0-9]{4})"),
+        ("month-year", _UPPER_ROMAN + "(?:" + _DOT + r"|\s+)" + _MARKED_YEAR),
         ("day-month-year", _DAY + _GAP + _UPPER_ROMAN + _GAP + _YEAR),
         ("day-month-year", _DAY + _DOT + _ROMAN + _DOT + _YEAR),
         ("numeric", "(?P<a>[0-9]{1,2})" + _SEP + "(?P<b>[0-9]{1,2})" + _AGAIN + _YEAR),
