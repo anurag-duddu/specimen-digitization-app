@@ -12111,3 +12111,28 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Durable learnings: (1) A unit test per component does not prove the components compose on real-shaped data. The canonical example exercises paths the synthetic fixtures don't: a two-label map with both entries settled, a no-pick label, an unresolved first pass, `recorded` literal evidence with `region:` locators, and model ids with slashes. (2) The one failure was my assertion, not the screen: the profile renders through the vocabulary ("zoology insects slides 1.0.0"). Read the existing test for a surface before asserting its words.
 - Failed approaches: none.
 - Remaining follow-ups: two identical Google lines appear for a two-label field (one lookup per label, and the thread doesn't say which label each came from). Raised with the coordinator, not changed.
+
+### 2026-09-28 — Go-live S6 T2.6: the record screen fetches its thread
+
+- Task: go-live workstream S6, brief T2, and the coordinator's ruling at 02:30Z on 2026-09-28, step 4 (`status/coordinator.md` 578-591): the owner sees each specimen's thread in the web app, served against the lab's emulator. The screens drew a thread only when a test handed them one; nothing asked the server for it.
+- Branch/worktree: `golive/ui-thread-fetch`, stacked on `golive/ui-canonical-render` (#189); `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome: UI.md T2.6.
+  - `SpecimenRepository.thread()` asks S5's #171 route (`api.py:1678` at `c149115`) for the active run's thread, or a previous one by `run_id`. A 404 is no thread.
+  - `WorkspaceController` keeps the thread with the open record:
+    - it asks once a version;
+    - it drops a late answer;
+    - another record never shows the last one's thread;
+    - a new version of the same record keeps the old thread until the new one arrives.
+  - A 413, a 503 or a failed connection is a caveat in the Processing disclosure, where the run's provenance would be. After a 503, the next refresh asks again.
+  - The route joins the wire contract's amendment, and the probe reaches it.
+- Commits/PRs: red `97d6126c` (16 failed for the stated reasons), green `b7427d7a`; the PR is stacked on #189.
+- Validation actually run:
+  - `flutter analyze --fatal-infos`: no issues;
+  - `check_ui_strings.py`: 0 violations;
+  - the three touched test files: 34 passed;
+  - the full app suite: 1,774 passed, 8 skipped, 0 failed, with `TZ=America/Chicago`.
+- Durable learnings:
+  1. Every path that replaces the open record ends in `WorkspaceController._notify()`, about ten of them. A dependent fetch hooked there can't be forgotten by a path added later. The retry then has to be gated on a counter of answered refreshes, not on the notification itself. Otherwise a persistent 503 loops: fetch, fail, notify, fetch.
+  2. FastAPI's JSON carries no charset. `package:http` 1.6.0 decodes `application/json` without one as UTF-8, so a handwritten "°" or an accented collector's name survives. A Latin-1 default would have mangled them on screen, so it was worth checking before the owner's first look.
+- Failed approaches: the first draft of "another record never shows the last one's thread" never left an answer pending, so it could not catch a late one. I rewrote it with a pending answer per record before the red commit.
+- Remaining follow-ups: the caveat's placement follows T2.5's and is the coordinator's call (G5). History views don't ask for a previous run's thread yet.
