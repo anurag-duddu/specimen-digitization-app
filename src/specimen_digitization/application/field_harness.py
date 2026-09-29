@@ -213,10 +213,38 @@ def run_harness(
         if exc.status != LookupStatus.MALFORMED:
             raise  # Provider failures stay operational (QUE-005).
         failure = "harness_malformed_output"
+    except Exception:  # noqa: BLE001 - a tool that breaks is the harness's (G6).
+        failure = "harness_tool_failed"
     return resolve(plan, names, output, ledger, asset_id, blobs, failure, usage, budget)
 
 
 def resolve(
+    plan, names, output, ledger, asset_id, blobs, failure=None, usage=None, budget=None
+) -> HarnessOutcome:
+    """Every field decided from recorded outcomes (section 9). A resolution
+    that raises on its inputs is a harness failure (G6): it decides no field
+    and keeps nothing it built, only the ledger's records of the calls it
+    made. A provider failure stays operational (QUE-005)."""
+    try:
+        return _resolve(
+            plan, names, output, ledger, asset_id, blobs, failure, usage, budget
+        )
+    except AdapterFailure:
+        raise
+    except Exception:  # noqa: BLE001 - any other raise is the harness's own.
+        return HarnessOutcome(
+            fields={key: FieldValue() for key in plan.fields},
+            evidence=list(ledger.evidence),
+            findings=[],
+            tool_calls=ledger.records,
+            lookups=ledger.lookups,
+            blocker=None,
+            failure="harness_resolution_failed",
+            usage=usage,
+        )
+
+
+def _resolve(
     plan, names, output, ledger, asset_id, blobs, failure=None, usage=None, budget=None
 ) -> HarnessOutcome:
     """Every field decided from recorded outcomes (section 9). Tool calls the

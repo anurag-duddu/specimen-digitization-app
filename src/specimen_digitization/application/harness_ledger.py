@@ -88,6 +88,8 @@ class ToolLedger:
         (PLAN 4.8; the coordinator's rulings of 02:07Z and 03:24Z on 2026-09-26)."""
         if tool not in PHASES:
             raise ValueError(f"tool_not_allowed:{tool}")
+        if not _storable(arguments):
+            raise ValueError("arguments_not_storable")
         key = json.dumps([tool, reading.observation_id, arguments], sort_keys=True)
         if key not in self._done:
             started = self.clock()
@@ -134,18 +136,21 @@ class ToolLedger:
         self, tool, reading, arguments, field_keys, result, started
     ) -> dict[str, str]:
         """One record per source-call attempt (a validator's call is its own
-        single attempt) and one evidence item per source's final call."""
+        single attempt) and one evidence item per source's final call, each
+        appended only once all of them are built."""
         completed = self.clock()
         attempts = list(result.sub_calls) or [None]
         finals = {c.source: c for c in result.sub_calls}  # The last attempt wins.
         evidence: dict[str, str] = {}
+        items: list[Evidence] = []
+        records: list[ToolCallRecord] = []
         for attempt in attempts:
             source = attempt.source if attempt is not None else None
             final = attempt is None or finals[source] is attempt
             evidence_id = None
             if final:
                 item = self._evidence(tool, reading, result, attempt)
-                self.evidence.append(item)
+                items.append(item)
                 evidence_id = evidence[source or tool] = item.id
             fields = {
                 "phase": PHASES[tool],
@@ -160,7 +165,7 @@ class ToolLedger:
                 "attempt": attempt.attempt if attempt is not None else 1,
                 "arguments": arguments,
             }
-            self.records.append(
+            records.append(
                 ToolCallRecord(
                     call_key=call_key(fields),
                     tool_version=result.tool_version,
@@ -173,6 +178,8 @@ class ToolLedger:
                     **fields,
                 )
             )
+        self.evidence.extend(items)
+        self.records.extend(records)
         return evidence
 
     def _evidence(
@@ -206,6 +213,27 @@ class ToolLedger:
             return called(field_key, literal, result, evidence)
 
         return call
+
+
+def _storable(value: object, depth: int = 0) -> bool:
+    """JSON a record can store: at most 32 levels deep, of objects with text
+    keys, lists, numbers, booleans, None and text that is valid Unicode."""
+    if depth > 32:
+        return False
+    if isinstance(value, dict):
+        return all(
+            isinstance(k, str) and _storable(k, depth + 1) and _storable(v, depth + 1)
+            for k, v in value.items()
+        )
+    if isinstance(value, list | tuple):
+        return all(_storable(v, depth + 1) for v in value)
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            return False
+        return True
+    return value is None or isinstance(value, bool | int | float)
 
 
 def served(tool: str, arguments: dict, field_key: str) -> list[str]:
