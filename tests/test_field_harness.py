@@ -118,7 +118,7 @@ class Fakes:
     def __init__(self):
         self.calls = []
 
-    def verify_taxon(self, literal):
+    def verify_taxon(self, literal, place_text=()):
         self.calls.append(("taxon", literal))
         taxon = TaxonCandidate(
             source="gbif",
@@ -435,7 +435,7 @@ def test_two_identical_calls_in_one_response_make_one_request():
     # otherwise. The harness runs them one at a time, so the ledger's record of
     # the first answers the second, and the caps count exactly.
     class Slow(Fakes):
-        def verify_taxon(self, literal):
+        def verify_taxon(self, literal, place_text=()):
             time.sleep(0.05)  # Both calls would be in flight together.
             return super().verify_taxon(literal)
 
