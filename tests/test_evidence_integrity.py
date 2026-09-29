@@ -1,6 +1,7 @@
 """Missing/corrupt immutable evidence must not produce a scientific disposition."""
 
 import hashlib
+import json
 
 import pytest
 
@@ -210,3 +211,52 @@ def test_source_supported_extraction_retains_verifiable_raw_digest(tmp_path):
     )
     verify_evidence(specimen, blobs)
     assert specimen.run.evidence[-1].digest == hashlib.sha256(raw).hexdigest()
+
+
+@pytest.mark.parametrize("record", ["intact", "other-response", "extra-key"])
+def test_google_evidence_is_verified_through_its_stored_record(tmp_path, record):
+    # G26 lets the record keep only the place ID, the outcome and the SHA-256 of
+    # Google's response, and that SHA-256 is the evidence's digest
+    # (DATA_CONTRACT.md:79-81), so the digest is not the stored body's.
+    app = local_app(tmp_path, TOKEN)
+    from fastapi.testclient import TestClient
+
+    with TestClient(app) as http:
+        row = intake(http)
+    from specimen_digitization.application.domain import Evidence, Scope
+
+    scope = Scope(
+        organization_id=row["organization_id"], collection_id=row["collection_id"]
+    )
+    specimen = app.state.workflow.repository.get(scope, row["specimen_id"])
+    blobs = LocalBlobs(tmp_path / "blobs")
+    response = hashlib.sha256(b"Google's full response").hexdigest()
+    kept = {
+        "outcome": "ambiguous",
+        "place_id": "ChIJ-davao",
+        "response_sha256": response,
+    }
+    if record == "other-response":
+        kept["response_sha256"] = hashlib.sha256(b"another response").hexdigest()
+    elif record == "extra-key":
+        kept["name"] = "Davao City"  # A Google name, which G26 forbids.
+    observation = specimen.run.observations[0]
+    specimen.run.evidence.append(
+        Evidence(
+            kind="lookup",
+            asset_id=specimen.asset.id,
+            region_id=observation.region_id,
+            observation_ids=[observation.id],
+            source="google-maps-geocoding",
+            locator=None,
+            excerpt="google-maps-geocoding ambiguous",
+            raw_ref=blobs.put(json.dumps(kept, sort_keys=True).encode()),
+            digest=response,
+        )
+    )
+
+    if record == "intact":
+        verify_evidence(specimen, blobs)
+    else:
+        with pytest.raises(EvidenceIntegrityError):
+            verify_evidence(specimen, blobs)

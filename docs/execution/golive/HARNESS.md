@@ -801,7 +801,10 @@ place-field literals; the agent's own check gives none yet.
 **Evidence.** Each source's final call is one `Evidence` item, linked from its
 record, and earlier attempts link none. A Google call that got no response (a
 timeout, for example) has none; its record keeps the outcome (the data
-contract's rule 1.6).
+contract's rule 1.6). A Google item's digest is the SHA-256 of Google's full
+response, and its stored record keeps only the place ID, the outcome and
+that SHA-256 (DATA_CONTRACT.md:79-81), so `verify_evidence` checks it through
+the record: exactly those keys, naming the item's digest.
 
 - Kind `lookup` for a source call and `validation` for a validator.
 - A lookup's `locator` is set exactly when it succeeded: `place/{place id}`
