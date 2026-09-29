@@ -108,6 +108,14 @@ transcription (T1.3), with its words and "Go to" Readings, so the region's
 reason is not listed a second time. Where the client's transcription reads
 resolved and the record still states the reason, the record's entry stays.
 
+A record that names its blocking transcriptions decides which regions block.
+A region it does not name was cleared by the run (G19, G20), whatever its
+transcription's flag says. The lab's rerun of 321 (run `a2ca4ea2`,
+2026-09-29) named one of its two unresolved regions, and the list had 14
+entries for its 13 reasons. A record that names none, like the pilot's, still
+takes its entries from the transcriptions (T1.3). This settles #73's review
+item 4: take transcription blockers from the backend's reasons.
+
 ### T1.5 The photograph is fetched once per checksum
 
 The queue's 20 second poll reloads the open record, and each reload downloaded
