@@ -156,6 +156,14 @@ void main() {
         outcome: 'empty_response',
         reading: 'obs-a',
       ),
+      // The coordinator's words at 01:00Z on 2026-09-29.
+      call(
+        phase: 'validate',
+        tool: 'taxonomy_verifier',
+        outcome: 'no_match',
+        input: 'decided_transcript',
+        fields: <String>['taxon'],
+      ),
     ]);
 
     expect(tester.takeException(), isNull);
@@ -168,6 +176,8 @@ void main() {
     expect(find.text('Several places match'), findsNothing);
     expect(find.text('Ambiguous'), findsOneWidget);
     expect(find.text('Empty response'), findsOneWidget);
+    expect(find.text('Taxonomy check'), findsOneWidget);
+    expect(find.text('No match'), findsOneWidget);
   });
 
   testWidgets('a label with no calls draws nothing', (

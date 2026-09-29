@@ -526,7 +526,9 @@ response. Both were sent once the coordinator's messaging resumed.
   lookup", "Catalogue of Life lookup", so a tool's id never reaches the
   screen. A check with no source is named by its tool: "Date parse",
   "Catalog number check" (US spelling, matching the museum's field and the
-  tool's name). Any other tool keeps its server word.
+  tool's name), and "Taxonomy check" for `taxonomy_verifier` (the
+  coordinator at 01:00Z on 2026-09-29, matching "Catalog number check").
+  Any other tool keeps its server word.
 - **Outcome**, beside the title, from `LookupStatus` (HAR-008):
   - "Found" for success, a check's included;
   - "Several places match" for Google's ambiguous answer;
