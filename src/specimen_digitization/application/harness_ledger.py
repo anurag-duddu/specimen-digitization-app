@@ -166,7 +166,10 @@ class ToolLedger:
             source = attempt.source if attempt is not None else None
             final = attempt is None or finals[source] is attempt
             evidence_id = None
-            if final:
+            # A Google call that got no response has no evidence; its record
+            # keeps the outcome (the data contract's rule 1.6).
+            answered = source != GOOGLE or attempt.raw_ref is not None
+            if final and answered:
                 item = self._evidence(tool, reading, result, attempt)
                 items.append(item)
                 evidence_id = evidence[source or tool] = item.id
