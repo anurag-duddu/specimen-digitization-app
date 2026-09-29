@@ -213,7 +213,9 @@ def test_source_supported_extraction_retains_verifiable_raw_digest(tmp_path):
     assert specimen.run.evidence[-1].digest == hashlib.sha256(raw).hexdigest()
 
 
-@pytest.mark.parametrize("record", ["intact", "other-response", "extra-key"])
+@pytest.mark.parametrize(
+    "record", ["intact", "other-response", "extra-key", "tampered-bytes"]
+)
 def test_google_evidence_is_verified_through_its_stored_record(tmp_path, record):
     # G26 lets the record keep only the place ID, the outcome and the SHA-256 of
     # Google's response, and that SHA-256 is the evidence's digest
@@ -250,11 +252,17 @@ def test_google_evidence_is_verified_through_its_stored_record(tmp_path, record)
             source="google-maps-geocoding",
             locator=None,
             excerpt="google-maps-geocoding ambiguous",
-            raw_ref=blobs.put(json.dumps(kept, sort_keys=True).encode()),
+            raw_ref=(ref := blobs.put(json.dumps(kept, sort_keys=True).encode())),
             digest=response,
         )
     )
 
+    if record == "tampered-bytes":
+        # Still a record naming the same response, but not the bytes stored.
+        other = {**kept, "place_id": "ChIJ-elsewhere"}
+        (tmp_path / "blobs" / ref).write_bytes(
+            json.dumps(other, sort_keys=True).encode()
+        )
     if record == "intact":
         verify_evidence(specimen, blobs)
     else:
