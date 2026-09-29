@@ -100,6 +100,14 @@ as a `validations` entry whose `reason_code` is the same string (`api.py`
 `workspace()`). The blockers list counted both. A reason code already stated by
 a validation finding is not listed again.
 
+An unresolved transcription is one entry too. This is a lab finding of
+2026-09-29: the lab's 323 run listed 27 entries for its 26 reasons. The
+record states it as `unresolved_transcription:{region id}`, both as a reason
+and as a finding. The client already lists that region from its
+transcription (T1.3), with its words and "Go to" Readings, so the region's
+reason is not listed a second time. Where the client's transcription reads
+resolved and the record still states the reason, the record's entry stays.
+
 ### T1.5 The photograph is fetched once per checksum
 
 The queue's 20 second poll reloads the open record, and each reload downloaded

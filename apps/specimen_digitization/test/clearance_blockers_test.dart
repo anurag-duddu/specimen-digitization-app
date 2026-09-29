@@ -96,6 +96,44 @@ void main() {
     expect(blockers, hasLength(2));
   });
 
+  // A lab finding of 2026-09-29: the lab's 323 run listed 27 entries for
+  // its 26 reasons, its unresolved transcription once from the record's
+  // transcriptions and again from the record's own reason.
+  test("an unresolved transcription the record states is one entry", () {
+    final List<ClearanceBlocker> blockers = blockersFor(
+      pilotRecord(
+        alternatives: <String>['Mt. McKinley', 'Mt. Mckinley'],
+        reasons: <String>[
+          'unresolved_transcription:r1',
+          'mandatory_unresolved:city',
+        ],
+      ),
+    );
+    expect(blockers, hasLength(2), reason: 'two reasons, two entries');
+    expect(
+      blockers.where((ClearanceBlocker b) => b.regionId == 'r1'),
+      hasLength(1),
+    );
+    expect(blockers.first.message, 'Two readings differ for Label 1');
+    expect(
+      blockers.map((ClearanceBlocker b) => b.message),
+      isNot(contains('Transcription not resolved')),
+      reason: "the region's own entry states it, with its words",
+    );
+  });
+
+  test("the record's reason still blocks where the transcription reads "
+      'resolved', () {
+    final List<ClearanceBlocker> blockers = blockersFor(
+      pilotRecord(
+        alternatives: <String>['A', 'B'],
+        resolved: true,
+        reasons: <String>['unresolved_transcription:r1'],
+      ),
+    );
+    expect(blockers, hasLength(1));
+  });
+
   test('a reason no finding states is still listed', () {
     final Specimen specimen = Specimen(<String, dynamic>{
       ...pilotRecord(alternatives: <String>['A'], resolved: true).data,
