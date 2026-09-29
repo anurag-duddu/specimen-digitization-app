@@ -634,3 +634,24 @@ def test_a_same_run_retry_keeps_the_earlier_records_and_numbers_on():
     assert again.records[:3] == first.records
     assert len(keys) == len(set(keys)) == 6
     assert [r.attempt for r in again.records[3:]] == [2, 2, 2]
+
+
+def test_a_google_call_that_got_no_response_has_no_evidence():
+    timed_out = SourceCall(
+        source=GOOGLE, query={"address": "x"}, retrieved_at="t", outcome=S.TIMEOUT
+    )
+    answer = ToolResult(
+        tool="geography_lookup",
+        tool_version="google-geocoding-v1",
+        outcome=S.TIMEOUT,
+        field_outcomes={"city": S.TIMEOUT},
+        sub_calls=[timed_out],
+    )
+    book = ledger(Fakes(place=answer))
+
+    book.run(
+        "geography_lookup", DECIDED, {"literals": [["city", "Chimaltenango"]]}, ["city"]
+    )
+
+    (record,) = book.records
+    assert (record.outcome, record.evidence_id, book.evidence) == (S.TIMEOUT, None, [])

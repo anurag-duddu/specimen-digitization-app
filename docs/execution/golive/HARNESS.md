@@ -799,7 +799,9 @@ place-field literals; the agent's own check gives none yet.
   source's final attempt, the one that answered them.
 
 **Evidence.** Each source's final call is one `Evidence` item, linked from its
-record, and earlier attempts link none.
+record, and earlier attempts link none. A Google call that got no response (a
+timeout, for example) has none; its record keeps the outcome (the data
+contract's rule 1.6).
 
 - Kind `lookup` for a source call and `validation` for a validator.
 - A lookup's `locator` is set exactly when it succeeded: `place/{place id}`
