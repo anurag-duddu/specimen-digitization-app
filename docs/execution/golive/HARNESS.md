@@ -806,7 +806,11 @@ contract's rule 1.6).
 - Kind `lookup` for a source call and `validation` for a validator.
 - A lookup's `locator` is set exactly when it succeeded: `place/{place id}`
   for Google, `usage/{key}` for GBIF, `name/{name}` for the supporting sources.
-  Otherwise it is empty. A validator's evidence keeps its region.
+  Otherwise it is empty. A validator's evidence keeps its region, and stores
+  its verdict as a record (the tool, the literal, the outcome, the parsed
+  value and the warnings) with its reference and SHA-256, as literal evidence
+  does, so that every evidence item has its stored record (agreed with S5 for
+  #168).
 - No Google name, component or coordinate reaches evidence, a record or a
   result: only the place ID, our outcome and the stored fingerprint (G26).
 - GBIF's lookup is also kept for the queue decision's taxonomy gate.

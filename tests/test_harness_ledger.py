@@ -655,3 +655,41 @@ def test_a_google_call_that_got_no_response_has_no_evidence():
 
     (record,) = book.records
     assert (record.outcome, record.evidence_id, book.evidence) == (S.TIMEOUT, None, [])
+
+
+class Stored:
+    """An in-memory blob store: each stored body under its reference."""
+
+    def __init__(self):
+        self.bodies = {}
+
+    def put(self, data: bytes) -> str:
+        ref = f"blob-{len(self.bodies) + 1}"
+        self.bodies[ref] = data
+        return ref
+
+
+def test_a_validators_evidence_stores_its_verdict_as_a_record():
+    verdict = validator(
+        "catalog_number_validator", S.SUCCESS, parsed={"catalog_number": "0123456"}
+    )
+    blobs = Stored()
+    book = ToolLedger(Fakes(catalog=verdict).tools(), asset_id="asset-1", blobs=blobs)
+
+    book.run(
+        "catalog_number_validator",
+        DECIDED,
+        {"literal": "FMNH INS 0123456"},
+        ["fmnh_ins_number"],
+    )
+
+    (item,) = book.evidence
+    stored = blobs.bodies[item.raw_ref]
+    assert item.digest == hashlib.sha256(stored).hexdigest()
+    assert json.loads(stored) == {
+        "tool": "catalog_number_validator",
+        "literal": "FMNH INS 0123456",
+        "outcome": "success",
+        "parsed": {"catalog_number": "0123456"},
+        "warnings": [],
+    }
