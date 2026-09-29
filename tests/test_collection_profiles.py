@@ -99,7 +99,8 @@ LEGACY_PROFILE_JSON = '{"id":"zoology_insects","version":"0.1.0-draft","collecti
 
 
 def test_legacy_profile_bytes_and_hash_survive_additive_schema():
-    from hashlib import sha256
+    import json
+
     from specimen_digitization.application.collection_profiles import (
         CollectionProfile,
         resolve_profile_rules,
@@ -107,7 +108,11 @@ def test_legacy_profile_bytes_and_hash_survive_additive_schema():
 
     profile = CollectionProfile.model_validate_json(LEGACY_PROFILE_JSON)
     assert profile.model_dump_json() == LEGACY_PROFILE_JSON
-    assert profile.digest == sha256(LEGACY_PROFILE_JSON.encode()).hexdigest()
+    # The digest is the canonical one of the same content, so it does not
+    # depend on how a store orders the snapshot's keys (LANE.md T1).
+    from specimen_digitization.application.storage import digest
+
+    assert profile.digest == digest(json.loads(LEGACY_PROFILE_JSON))
     assert profile.language_handling.unknown == "unmeasured"
     assert (
         profile.language_handling.mixed
