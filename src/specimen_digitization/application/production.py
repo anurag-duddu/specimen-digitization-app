@@ -26,6 +26,7 @@ from ..model_gateway import (
 from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt, ResolvedPrompt
 from ..transcription import build_literal_transcription_agent
 from .domain import Observation, WorkItem, WorkPage, now
+from .lane import run_status
 from .lookup import GbifTaxonomy
 from .projection import Blob, writes
 from .storage import (
@@ -454,14 +455,7 @@ class SqlConnectRepository:
             requestSha256=request_digest,
             idempotencyKey=key,
             operation=operation,
-            state=(
-                "completed"
-                if specimen.run.disposition
-                else specimen.run.stage
-                if specimen.run.stage
-                in {"retry_scheduled", "paused", "cancelled", "processing_blocked"}
-                else "running"
-            ),
+            state=run_status(specimen.run),
             sensitive=specimen.asset.sensitive,
             contractVersion="0.1",
             workAvailableAt=work_available_at(specimen),
