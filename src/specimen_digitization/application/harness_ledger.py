@@ -64,11 +64,23 @@ def call_key(record: dict) -> str:
 
 
 class ToolLedger:
-    def __init__(self, tools: Tools, *, asset_id: str, clock=now) -> None:
+    def __init__(
+        self,
+        tools: Tools,
+        *,
+        asset_id: str,
+        clock=now,
+        prior: Sequence[ToolCallRecord] = (),
+    ) -> None:
         self.tools = tools
         self.asset_id = asset_id
         self.clock = clock
-        self.records: list[ToolCallRecord] = []
+        # A same-run retry starts from the run's earlier records: they stay,
+        # and a repeated request numbers its attempts on, so no key repeats.
+        self.records: list[ToolCallRecord] = list(prior)
+        self._keys = {record.call_key for record in prior}
+        self._attempts: dict[str, int] = {}
+        self._count(prior)
         self.evidence: list[Evidence] = []
         self.lookups: list[Lookup] = []  # GBIF's, for the policy's taxonomy gate
         self._done: dict[str, tuple[ToolResult, dict[str, str]]] = {}
@@ -171,6 +183,7 @@ class ToolLedger:
                 "attempt": attempt.attempt if attempt is not None else 1,
                 "arguments": arguments,
             }
+            fields["attempt"] += self._attempts.get(_base(call_key(fields)), 0)
             records.append(
                 ToolCallRecord(
                     call_key=call_key(fields),
@@ -184,9 +197,20 @@ class ToolLedger:
                     **fields,
                 )
             )
+        keys = [record.call_key for record in records]
+        if len(set(keys)) != len(keys) or not self._keys.isdisjoint(keys):
+            raise ValueError("duplicate_call_key")
         self.evidence.extend(items)
         self.records.extend(records)
+        self._keys.update(keys)
+        self._count(records)
         return evidence
+
+    def _count(self, records: Sequence[ToolCallRecord]) -> None:
+        """The highest attempt recorded for each request and source."""
+        for record in records:
+            base = _base(record.call_key)
+            self._attempts[base] = max(self._attempts.get(base, 0), record.attempt)
 
     def _evidence(
         self, tool, reading, result: ToolResult, attempt: SourceCall | None
@@ -229,6 +253,11 @@ class ToolLedger:
             return called(field_key, literal, result, evidence)
 
         return call
+
+
+def _base(key: str) -> str:
+    """A call key without its attempt: one request and source."""
+    return key.rsplit(":", 1)[0]
 
 
 def _storable(value: object, depth: int = 0) -> bool:
