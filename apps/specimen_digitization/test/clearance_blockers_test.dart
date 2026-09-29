@@ -96,6 +96,89 @@ void main() {
     expect(blockers, hasLength(2));
   });
 
+  // A lab finding of 2026-09-29: the lab's 323 run listed 27 entries for
+  // its 26 reasons, its unresolved transcription once from the record's
+  // transcriptions and again from the record's own reason.
+  test("an unresolved transcription the record states is one entry", () {
+    final List<ClearanceBlocker> blockers = blockersFor(
+      pilotRecord(
+        alternatives: <String>['Mt. McKinley', 'Mt. Mckinley'],
+        reasons: <String>[
+          'unresolved_transcription:r1',
+          'mandatory_unresolved:city',
+        ],
+      ),
+    );
+    expect(blockers, hasLength(2), reason: 'two reasons, two entries');
+    expect(
+      blockers.where((ClearanceBlocker b) => b.regionId == 'r1'),
+      hasLength(1),
+    );
+    expect(blockers.first.message, 'Two readings differ for Label 1');
+    expect(
+      blockers.map((ClearanceBlocker b) => b.message),
+      isNot(contains('Transcription not resolved')),
+      reason: "the region's own entry states it, with its words",
+    );
+  });
+
+  // The lab's rerun of 321 (run a2ca4ea2): both regions read unresolved,
+  // and the record named one; the list had 14 entries for 13 reasons.
+  test('a record that names its blocking transcriptions decides which '
+      'regions block', () {
+    final Specimen specimen = Specimen(<String, dynamic>{
+      'specimen_id': 'lab-321',
+      'revision': 12,
+      'regions': <Json>[
+        <String, dynamic>{'region_id': 'r1'},
+        <String, dynamic>{'region_id': 'r2'},
+      ],
+      'transcriptions': <Json>[
+        for (final String region in <String>['r1', 'r2'])
+          <String, dynamic>{
+            'region_id': region,
+            'resolved': false,
+            'alternatives': <String>['A', 'B'],
+          },
+      ],
+      'reason_codes': <String>[
+        'unresolved_transcription:r2',
+        'mandatory_unresolved:city',
+      ],
+      'validation_findings': <Json>[
+        for (final String reason in <String>[
+          'unresolved_transcription:r2',
+          'mandatory_unresolved:city',
+        ])
+          <String, dynamic>{
+            'rule_id': reason,
+            'severity': 'hard',
+            'outcome': 'fail',
+            'reason_code': reason,
+          },
+      ],
+    });
+    final List<ClearanceBlocker> blockers = blockersFor(specimen);
+    expect(blockers, hasLength(2), reason: 'the record states two reasons');
+    expect(
+      blockers.map((ClearanceBlocker b) => b.regionId).whereType<String>(),
+      <String>['r2'],
+      reason: 'the run cleared r1, whatever its flag says (G19, G20)',
+    );
+  });
+
+  test("the record's reason still blocks where the transcription reads "
+      'resolved', () {
+    final List<ClearanceBlocker> blockers = blockersFor(
+      pilotRecord(
+        alternatives: <String>['A', 'B'],
+        resolved: true,
+        reasons: <String>['unresolved_transcription:r1'],
+      ),
+    );
+    expect(blockers, hasLength(1));
+  });
+
   test('a reason no finding states is still listed', () {
     final Specimen specimen = Specimen(<String, dynamic>{
       ...pilotRecord(alternatives: <String>['A'], resolved: true).data,

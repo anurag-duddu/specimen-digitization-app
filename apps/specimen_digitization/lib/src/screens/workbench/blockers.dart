@@ -61,8 +61,28 @@ List<ClearanceBlocker> blockersFor(
   final ClearanceBlocker? coverage = _coverageBlocker(specimen, thread);
   if (coverage != null) blockers.add(coverage);
 
+  // The regions the record names as blocking, `unresolved_transcription:
+  // {region id}`. A record that names any decides which regions block: one
+  // it does not name was cleared by the run (G19, G20), whatever its
+  // transcription's flag says. A record that names none, as the pilot's,
+  // leaves it to the transcriptions (UI.md T1.3 and T1.4).
+  final Set<String> named = <String>{
+    for (final Object? code in <Object?>[
+      ...specimen.data['reason_codes'] as List? ?? const <Object?>[],
+      for (final Json f in specimen.findings) f['reason_code'],
+    ])
+      if (code is String && code.startsWith(_transcriptionCodePrefix))
+        code.substring(_transcriptionCodePrefix.length),
+  };
+  // The regions whose transcription entry is listed: the record's own
+  // reason for one of them states the same thing and is not listed again
+  // (UI.md T1.4; the lab's 323).
+  final Set<String> transcribed = <String>{};
   for (final Json t in objects(specimen.data['transcriptions'])) {
     if (t['resolved'] == true) continue;
+    final String? id = t['region_id'] as String?;
+    if (named.isNotEmpty && !named.contains(id)) continue;
+    if (id != null) transcribed.add(id);
     final String region = _regionName(specimen, t['region_id']);
     blockers.add(
       ClearanceBlocker(
@@ -80,9 +100,16 @@ List<ClearanceBlocker> blockersFor(
     );
   }
 
+  bool statedByTranscription(Object? code) {
+    final String text = code?.toString() ?? '';
+    return text.startsWith(_transcriptionCodePrefix) &&
+        transcribed.contains(text.substring(_transcriptionCodePrefix.length));
+  }
+
   for (final Json f in specimen.findings) {
     // The coverage entry above states this one, with what was measured.
     if (coverage != null && f['reason_code'] == _coverageCode) continue;
+    if (statedByTranscription(f['reason_code'])) continue;
     final String? field = f['field_key'] as String?;
     blockers.add(
       ClearanceBlocker(
@@ -111,7 +138,9 @@ List<ClearanceBlocker> blockersFor(
   };
   for (final Object? code
       in specimen.data['reason_codes'] as List? ?? const <Object?>[]) {
-    if (stated.contains(code.toString())) continue;
+    if (stated.contains(code.toString()) || statedByTranscription(code)) {
+      continue;
+    }
     blockers.add(
       ClearanceBlocker(
         message: reasonLabel(code.toString()),
@@ -173,6 +202,10 @@ String _regionName(Specimen specimen, Object? regionId) {
 
 /// The reason a failed label coverage check leaves on the record (G15).
 const String _coverageCode = 'label_coverage_unconfirmed';
+
+/// The record's reason for an unresolved transcription, suffixed with its
+/// region's id.
+const String _transcriptionCodePrefix = 'unresolved_transcription:';
 
 /// The thread's failed coverage check, saying what each failed check
 /// measured, while the record still states the check's reason. A reviewer
