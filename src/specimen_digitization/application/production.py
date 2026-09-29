@@ -22,9 +22,10 @@ from ..model_gateway import (
     HUGGINGFACE_ROUTES,
     INITIAL_HUGGINGFACE_ROUTES,
     HuggingFaceModelGateway,
+    ModelGatewayConfigurationError,
 )
 from ..prompts import CollectionPromptInputs, PromptName, resolve_prompt, ResolvedPrompt
-from ..transcription import build_literal_transcription_agent
+from ..transcription import READING_USAGE_LIMITS, build_literal_transcription_agent
 from .domain import Observation, WorkItem, WorkPage, now
 from .lookup import GbifTaxonomy
 from .projection import Blob, writes
@@ -39,7 +40,6 @@ from .storage import (
 )
 from .workflow import OperationalBlock, crop_bytes
 from .reliability import run_agent_bounded
-from pydantic_ai.usage import UsageLimits
 
 from .worker_deadline import deadline_call, guarded
 
@@ -748,6 +748,10 @@ class ProductionAdapters:
             name.value: resolve_prompt(name, inputs).model_dump(mode="json")
             for name in PromptName
         }
+        if any(route not in INITIAL_HUGGINGFACE_ROUTES for route in run.profile.routes):
+            # A reader is pinned from the initial reader set only; any other
+            # route blocks the step with its reason (HARNESS.md section 5).
+            raise OperationalBlock("pinned_model_route_unavailable")
         routes = {
             route: {
                 "model_id": INITIAL_HUGGINGFACE_ROUTES[route].model_id,
@@ -822,7 +826,12 @@ class ProductionAdapters:
             "transcribe:" + region.id + ":" + route
         )
         gateway = HuggingFaceModelGateway(timeout_seconds=reader_timeout / 2)
-        selected = gateway.route(route)
+        try:
+            selected = gateway.route(route)
+        except ModelGatewayConfigurationError as exc:
+            # A reader retired or renamed after the run pinned it blocks before
+            # any request, not as an unknown outcome (HARNESS.md section 5).
+            raise OperationalBlock("pinned_model_route_unavailable") from exc
         if not selected.serves_with_images("handwriting_transcriber"):
             # Only an image reader's route reads a crop (HARNESS.md section 5).
             raise OperationalBlock("pinned_model_route_unavailable")
@@ -851,7 +860,7 @@ class ProductionAdapters:
                 BinaryContent(data=image, media_type="image/png"),
             ],
             timeout_seconds=reader_timeout,
-            usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
+            usage_limits=READING_USAGE_LIMITS,
         )
         latency_seconds = time.monotonic() - started
         # Preserve every provider response (including retries), excluding image-bearing requests.
@@ -910,7 +919,13 @@ class ProductionAdapters:
             timeout_seconds=specimen.run.profile.execution.external_timeout_seconds / 2
         )
         for route in specimen.run.profile.routes:
-            selected = gateway.route(route)
+            try:
+                selected = gateway.route(route)
+            except ModelGatewayConfigurationError as exc:
+                # A reader retired or renamed after the run pinned it (HARNESS.md 5).
+                raise OperationalBlock(
+                    "pinned_model_route_changed_requires_new_run"
+                ) from exc
             if specimen.run.dependencies.get("routes", {}).get(route) != {
                 "model_id": selected.model_id,
                 "provider": selected.provider,

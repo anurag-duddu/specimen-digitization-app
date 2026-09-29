@@ -23,6 +23,16 @@ from specimen_digitization.transcription import transcribe_label_image
 STAGE_ROUTES = ["first-pass-glm", "harness-deepseek"]
 # A reader retired or renamed after a run pinned it.
 RETIRED_READER = "handwriting-retired"
+REGION = Region(
+    asset_id="asset-1",
+    x=0,
+    y=0,
+    width=9,
+    height=9,
+    order=0,
+    method="m",
+    version="1",
+)
 
 
 @pytest.mark.parametrize("route", [*STAGE_ROUTES, RETIRED_READER])
@@ -43,13 +53,10 @@ def test_a_reader_call_blocks_on_a_route_no_longer_registered(monkeypatch, tmp_p
         profile=Profile(),
         dependencies={"routes": {RETIRED_READER: {"model_id": "m", "provider": "p"}}},
     )
-    region = Region(
-        asset_id="asset-1", x=0, y=0, width=9, height=9, order=0, method="m", version="1"
-    )
 
     with pytest.raises(OperationalBlock, match="^pinned_model_route_unavailable$"):
         production.ProductionAdapters(LocalBlobs(tmp_path))._transcribe_direct(
-            SimpleNamespace(run=run), region, RETIRED_READER
+            SimpleNamespace(run=run), REGION, RETIRED_READER
         )
 
 
@@ -113,12 +120,9 @@ def test_a_reader_call_refuses_a_route_that_is_not_an_image_reader(
             "prompts": adapters.pin_dependencies(Run(profile=Profile()))["prompts"],
         },
     )
-    region = Region(
-        asset_id="asset-1", x=0, y=0, width=9, height=9, order=0, method="m", version="1"
-    )
 
     with pytest.raises(OperationalBlock, match="^pinned_model_route_unavailable$"):
-        adapters._transcribe_direct(SimpleNamespace(run=run), region, route)
+        adapters._transcribe_direct(SimpleNamespace(run=run), REGION, route)
 
     assert built == []
 

@@ -202,8 +202,8 @@ is on the record without a new field. Pydantic AI 2.40 does not keep
 19:29Z, coordinator.md:458). The preflight checks each route is live with the
 capabilities it needs: its input modalities, structured output and tool calling.
 Pydantic AI 2.40's Hugging Face model sends no `response_format` and returns
-typed output through a tool call, so a route whose provider does not list
-`supports_tools` is not ready (the post-merge review of #107).
+typed output through a tool call, so a route whose provider does not report
+`supports_tools` as true is not ready (the post-merge review of #107).
 
 **Each route in its role** (the steward's review of #107). A reader is pinned
 from the initial reader set only, as on main, so a profile that names any other

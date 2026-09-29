@@ -251,6 +251,7 @@ def test_preflight_accepts_the_new_routes_when_the_catalog_serves_them() -> None
                     "provider": "deepinfra",
                     "status": "live",
                     "supports_structured_output": True,
+                    "supports_tools": True,
                 }
             ],
         }

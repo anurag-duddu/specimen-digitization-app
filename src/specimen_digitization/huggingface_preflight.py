@@ -13,8 +13,9 @@ import logfire
 from huggingface_hub import HfApi, hf_hub_download
 from pydantic import BaseModel
 from pydantic_ai import Agent, BinaryContent
-from pydantic_ai.usage import UsageLimits
 
+from .application.domain import ExecutionPolicy
+from .application.reliability import run_agent_bounded
 from .hub_models import SAM3_MODEL
 from .model_gateway import (
     HUGGINGFACE_ROUTES,
@@ -22,6 +23,7 @@ from .model_gateway import (
     HuggingFaceModelGateway,
 )
 from .observability import CaptureMode, configure_observability
+from .transcription import READING_USAGE_LIMITS
 
 ROUTER_MODELS_URL = "https://router.huggingface.co/v1/models"
 REQUIRED_RUNTIME_PERMISSIONS = frozenset(
@@ -29,6 +31,8 @@ REQUIRED_RUNTIME_PERMISSIONS = frozenset(
 )
 # The public sentence a text-only route's smoke test reads.
 SMOKE_TEXT = "The quick brown fox jumps over the lazy dog."
+# The fixture types a route that takes images may be sent.
+SMOKE_IMAGE_TYPES = {".jpeg": "image/jpeg", ".jpg": "image/jpeg", ".png": "image/png"}
 
 
 class SyntheticImageObservation(BaseModel):
@@ -98,7 +102,12 @@ def validate_route(
         and not missing_modalities
         and (
             not route.requires_structured_output
-            or provider.get("supports_structured_output") is True
+            or (
+                provider.get("supports_structured_output") is True
+                # Pydantic AI's Hugging Face model sends no response_format: typed
+                # output comes back through a tool call (HARNESS.md section 5).
+                and provider.get("supports_tools") is True
+            )
         )
     )
     return {
@@ -111,6 +120,7 @@ def validate_route(
         "structured_output": (
             provider.get("supports_structured_output") if provider else False
         ),
+        "tools": provider.get("supports_tools") if provider else False,
     }
 
 
@@ -130,34 +140,44 @@ def verify_sam3_access(token: str) -> dict[str, Any]:
     }
 
 
+def smoke_image_error(
+    route: HuggingFaceInferenceRoute, image_path: Path | None
+) -> str | None:
+    """Why the smoke test cannot send this route this ``--image``, if it cannot."""
+    if "image" not in route.required_input_modalities:
+        # A text-only route is never sent an image (HARNESS.md section 5).
+        if image_path is not None:
+            return "A text-only route takes no --image."
+        return None
+    if image_path is None:
+        return "--image is required with a route that takes images."
+    if image_path.suffix.lower() not in SMOKE_IMAGE_TYPES:
+        return "The live smoke image must be a PNG or JPEG file."
+    return None
+
+
 def run_live_image_smoke(
     token: str, *, route_id: str, image_path: Path | None, bill_to: str | None = None
 ) -> dict[str, Any]:
     gateway = HuggingFaceModelGateway(token=token, bill_to=bill_to)
     route = gateway.route(route_id)
-    if "image" not in route.required_input_modalities:
-        # A text-only route is never sent an image (HARNESS.md section 5).
-        if image_path is not None:
-            raise ValueError("A text-only route takes no --image.")
+    error = smoke_image_error(route, image_path)
+    if error:
+        raise ValueError(error)
+    if image_path is None:
         subject = "text"
         prompt: list[Any] = [
             "Describe this test text without inferring any private information: "
             + SMOKE_TEXT
         ]
     else:
-        if image_path is None:
-            raise ValueError("--image is required with a route that takes images.")
-        media_type = {
-            ".jpeg": "image/jpeg",
-            ".jpg": "image/jpeg",
-            ".png": "image/png",
-        }.get(image_path.suffix.lower())
-        if media_type is None:
-            raise ValueError("The live smoke image must be a PNG or JPEG file.")
         subject = "image"
         prompt = [
             "Describe this test image without inferring any private information.",
-            BinaryContent(data=image_path.read_bytes(), media_type=media_type),
+            BinaryContent(
+                data=image_path.read_bytes(),
+                media_type=SMOKE_IMAGE_TYPES[image_path.suffix.lower()],
+            ),
         ]
 
     agent = Agent(
@@ -179,12 +199,16 @@ def run_live_image_smoke(
             "specimen.model.upstream_provider": route.provider,
         },
     ):
-        result = agent.run_sync(
+        # A reading's caps, through the reader call's bounded run: its limits,
+        # its default time limit, and each response capped at what remains
+        # (HARNESS.md section 5).
+        result = run_agent_bounded(
+            agent,
             prompt,
-            # A reading's caps: the output cap run_agent_bounded sets, and the
-            # limits of production.py's reader call.
-            model_settings={"max_tokens": 4096},
-            usage_limits=UsageLimits(request_limit=2, total_tokens_limit=16000),
+            timeout_seconds=ExecutionPolicy().effect_timeout_for_step(
+                "transcribe:smoke:" + route.route_id
+            ),
+            usage_limits=READING_USAGE_LIMITS,
         )
     return {
         "route_id": route.route_id,
@@ -249,7 +273,7 @@ def main() -> None:
         choices=sorted(HUGGINGFACE_ROUTES),
         help=(
             "Optionally run one paid synthetic prompt through this route, under "
-            "a reading's token and request caps."
+            "a reading's token, request and time caps."
         ),
     )
     parser.add_argument(
@@ -269,6 +293,11 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
+    if args.live_route:
+        # Refused before any network call, paid or not.
+        error = smoke_image_error(HUGGINGFACE_ROUTES[args.live_route], args.image)
+        if error:
+            parser.error(error)
 
     token = os.getenv("HF_TOKEN")
     if not token:

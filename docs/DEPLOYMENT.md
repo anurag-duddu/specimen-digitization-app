@@ -305,8 +305,10 @@ non-paid and does not submit an image:
 uv run --env-file .env specimen-huggingface-preflight
 ```
 
-Paid live-route calls require explicit approval and an approved synthetic or
-public image. Never use private specimen material for a smoke test.
+Paid live-route calls require explicit approval. A route that takes images is
+sent only an approved synthetic or public image; a text-only route is sent a
+fixed public sentence and refuses `--image`. Never use private specimen material
+for a smoke test.
 
 These optional smoke commands are distinct from the user-authorized first-ten
 application pilot. The pilot requires its privately frozen originals, pinned

@@ -209,9 +209,7 @@ def test_live_cli_refuses_a_wrong_image_before_any_network_call(
     run_preflight.assert_not_called()
 
 
-def live_smoke(
-    monkeypatch, tmp_path, seen, route_id, *, image, usage=None, first=None
-):
+def live_smoke(monkeypatch, tmp_path, seen, route_id, *, image, usage=None, first=None):
     """The paid smoke test against a fake provider that records each request.
 
     ``first`` is the arguments and usage of an answer sent before the valid one.
