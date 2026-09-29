@@ -151,6 +151,11 @@ class Resolver:
         present = {o: t for o, t in literals.items() if t}
         if not present or (source is not None and not literals[source]):
             return FieldValue()
+        for observation, text in present.items():
+            # Each literal occurs in its own reading exactly; any other is
+            # refused before anything is called, the fallback's too (G19, G20).
+            if text not in self.readings[observation].text:
+                raise ValueError(f"literal_not_in_source:{observation}")
         if source is None:
             return self._settle_readers(key, region, present, call)
         literal, grounded = present[source], {source: present[source]}
