@@ -896,6 +896,14 @@ with S3 on 2026-09-25).
 - A harness failure decides no field and sends the record to review:
   - a prompt over its cap, before any call (`harness_input_too_large`);
   - a run that reaches a usage cap (`harness_usage_limit`);
-  - an answer still invalid after its retries (`harness_malformed_output`).
+  - an answer still invalid after its retries (`harness_malformed_output`);
+  - a tool that raises, or answers nothing, during the agent's run
+    (`harness_tool_failed`);
+  - a resolution that raises on its inputs (`harness_resolution_failed`).
+- Nothing half-made is kept. The ledger appends a request's records and
+  evidence only once all of them are built, and refuses arguments it could
+  not store (deeper than 32 levels, or text that is not valid Unicode). A
+  failed resolution keeps no field, literal evidence, finding or blocker,
+  only the ledger's records of the calls it made.
 - A provider error stays an operational block, as for every model call.
 - An operational tool outcome blocks the run (section 9).

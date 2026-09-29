@@ -498,3 +498,33 @@ def test_the_taxonomy_tool_sends_no_word_of_the_readings_place_text(tmp_path):
     assert sent
     assert not [url for url in sent if "davao" in url.lower()]
     assert not [url for url in sent if "mindanao" in url.lower()]
+
+
+@pytest.mark.parametrize(
+    "reading,field_keys",
+    [(Reading("r1", "o-x", "not_a_role", DECIDED.text), ["taxon"]), (DECIDED, [None])],
+    ids=["bad-role", "none-field-key"],
+)
+def test_a_record_that_cannot_be_built_keeps_no_evidence(reading, field_keys):
+    book = ledger(Fakes(taxon=taxonomy()))
+
+    with pytest.raises(ValueError):
+        book.run("taxonomy_verifier", reading, {"literal": "Epipsocus"}, field_keys)
+
+    assert (book.evidence, book.records) == ([], [])
+
+
+@pytest.mark.parametrize("extra", ["deep", "surrogate"])
+def test_arguments_the_record_could_not_store_are_refused(extra):
+    value = "x" + chr(0xD800)
+    if extra == "deep":
+        value = {}
+        for _ in range(40):
+            value = {"nested": value}
+    arguments = {"literal": "FMNH INS 0123456", "extra": value}
+    book = ledger(Fakes(catalog=validator("catalog_number_validator", S.SUCCESS)))
+
+    with pytest.raises(ValueError, match="arguments_not_storable"):
+        book.run("catalog_number_validator", DECIDED, arguments, ["fmnh_ins_number"])
+
+    assert (book.evidence, book.records) == ([], [])

@@ -22,6 +22,7 @@ from specimen_digitization.application.field_harness import (
     build_request,
     labelled,
     output_problems,
+    resolve,
     run_harness,
 )
 from specimen_digitization.application.field_resolution import Reading
@@ -486,3 +487,46 @@ def test_a_tool_call_outside_the_profiles_fields_is_returned_for_a_retry():
     ]
     assert retry == ["collectors is not a locality field"]
     assert outcome.fields["city"].state == V.SUPPORTED
+
+
+@pytest.mark.parametrize("broken", ["raises", "answers-nothing"])
+def test_a_tool_that_breaks_during_the_run_is_a_harness_failure(broken):
+    class Broken(Fakes):
+        def verify_taxon(self, literal, place_text=()):
+            # It raises, or answers nothing (None).
+            if broken == "raises":
+                raise ValueError("a bug in the tool")
+
+    check = [("verify_taxon", {"reading": "2A", "literal": "Epipsocus"})]
+
+    outcome, _ = harness(check, FULL, fakes=Broken())
+
+    assert outcome.failure == "harness_tool_failed"
+    assert all(value == FieldValue() for value in outcome.fields.values())
+
+
+def test_a_resolution_that_raises_is_a_harness_failure_that_keeps_nothing():
+    # An answer the validator never saw: reading 1A has no "Guatemala", so
+    # the resolver refuses it (literal_not_in_source) before any call.
+    fakes = Fakes()
+    ledger = ToolLedger(fakes.tools(), asset_id="asset-1")
+    output = HarnessOutput.model_validate(answer(**{"1A": {"country": "Guatemala"}}))
+
+    outcome = resolve(PLAN, labelled(READINGS), output, ledger, "asset-1", Blobs())
+
+    assert outcome.failure == "harness_resolution_failed"
+    assert all(value == FieldValue() for value in outcome.fields.values())
+    assert (outcome.evidence, outcome.findings, outcome.blocker) == ([], [], None)
+    assert fakes.calls == []
+
+
+def test_a_provider_failure_while_resolving_stays_an_operational_block():
+    class Down(Fakes):
+        def verify_taxon(self, literal, place_text=()):
+            raise AdapterFailure("gbif_unavailable", S.PROVIDER)
+
+    ledger = ToolLedger(Down().tools(), asset_id="asset-1")
+    output = HarnessOutput.model_validate(answer(**{"2A": {"taxon": "Epipsocus"}}))
+
+    with pytest.raises(AdapterFailure):
+        resolve(PLAN, labelled(READINGS), output, ledger, "asset-1", Blobs())
