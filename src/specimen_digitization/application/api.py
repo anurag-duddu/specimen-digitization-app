@@ -2425,6 +2425,10 @@ def create_app(
         idempotency_key: str = Header(default=""),
     ):
         p, s = find(user, organization_id, specimen_id)
+        # Starting processing is paid work: the operator membership that uploads
+        # and run actions require (CONTRACTS.md 48-49, 63), never a viewer's
+        # (the coordinator's ruling of 03:57Z on 2026-09-29).
+        principal(user, organization_id, p.scope.collection_id, write=True)
         if "evidence_pilot" in s.run.dependencies:
             raise Conflict("Evidence pilot permits retained-evidence corrections only")
         if mode == "synthetic":
