@@ -12226,15 +12226,17 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Outcome: UI.md T1.4 gains a paragraph.
   - The 27th was the unresolved transcription, counted twice. It appeared once as the region's own entry from the record's transcriptions (T1.3), "Two readings differ for Label 2", and again as the record's `unresolved_transcription:{region}` finding.
   - `blockersFor` now skips that finding or code for a region it already lists. A reason whose transcription reads resolved still blocks.
-- Commits/PRs: red `56f552d2` (1 failed: 3 entries for 2 reasons), green `8aa9fe76`; the PR is stacked on #223.
+  - The lab's rerun of 321 (run a2ca4ea2) showed the other half: 14 entries for 13 reasons. The record named one of its two unresolved regions, and the run had cleared the other (G19, G20). A record that names any `unresolved_transcription:{region}` now decides which regions block. A record that names none, like the pilot's, keeps T1.3's entries. This settles #73's review item 4.
+- Commits/PRs: red `56f552d2` (1 failed: 3 entries for 2 reasons), green `8aa9fe76`; the record-named regions: red `83d55527` (1 failed: 3 entries for 2 reasons), green `f55c2a46`; the PR is stacked on #223.
 - Validation actually run:
   - `flutter analyze --fatal-infos`: no issues;
   - `check_ui_strings.py`: 0 violations;
-  - the full app suite: 1,787 passed, 8 skipped, 0 failed, with `TZ=America/Chicago`;
+  - the full app suite: 1,788 passed, 8 skipped, 0 failed, with `TZ=America/Chicago`;
   - format, the web release build and the route smoke check;
-  - the app's own `blockersFor` on S7's served 323 answers: 26 entries, the record's 26 (27 before the fix).
+  - the app's own `blockersFor` on every saved lab run, each matching its record: 321's rerun a2ca4ea2 13 (14 before), 323 26 (27 before), 322 26, 321 run 90c85872 10, and 321 run 30b79037 34 (it showed 35).
 - Durable learnings:
   1. To answer "which is the 27th", run the app's own function on the served answers and print each entry. A guess among three plausible causes would have fixed the wrong one.
   2. T1.4's rule, "each reason blocks clearance once", deduplicated codes against findings only. Every source a list merges needs the same rule: here the client's own transcription entries.
+  3. After fixing a count, recount every saved run, not only the one reported. Run 30b79037's "35 things" was already 34 on its record hours earlier, and I read past it.
 - Failed approaches: none.
-- Remaining follow-ups: the detail line's raw rule id (ruled (b), post-chain), and the transcription entries taken from the backend's reasons (#73 verdict item 4, post-chain).
+- Remaining follow-ups: the detail line's raw rule id (ruled (b) at 01:25Z, post-chain). #73's verdict item 4 is settled here.
