@@ -513,7 +513,10 @@ geography lookups on Label 2's raw readings, each ambiguous (G36). The
 ambiguous lookups add no field evidence, so they were invisible.
 
 The coordinator ruled at 20:05Z on 2026-09-28 (coordinator.md "##
-2026-09-28"):
+2026-09-28"). Two later entries in that log confirm the rest: 20:14Z approves
+naming a lookup by its source and a check by its tool, and 20:24Z confirms the
+server's word for another source's ambiguous answer and for an empty
+response. Both were sent once the coordinator's messaging resumed.
 
 - **Where.** Per label, in the Readings segment, right after "Handed to the
   harness", under the heading "Harness lookups", in the order the calls ran.

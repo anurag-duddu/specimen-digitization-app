@@ -12217,4 +12217,4 @@ because the hooks runner hands a native asset hook only `PATH`.
   2. The canonical example and the live run name tools differently (`geocode` against `geography_lookup`). Naming a lookup by its source, which the vocabulary already words, keeps a tool's id off the screen for both.
   3. A scratch probe that runs after the test switched segments reports an absence that isn't one. Probe the tree while the segment is on screen.
 - Failed approaches: merging `origin/golive/ui-timeline` whole. I undid it before pushing (see learning 1).
-- Remaining follow-ups: confirm my reading of the ruling for edge cases: "Several places match" only for Google's ambiguous answer, and the server's word ("Ambiguous", "Empty response") elsewhere.
+- Remaining follow-ups: none from the rulings. The coordinator's log confirms the edge cases (20:24Z: "Several places match" only for Google, the server's word otherwise) and approves naming lookups by source and checks by tool (20:14Z).
