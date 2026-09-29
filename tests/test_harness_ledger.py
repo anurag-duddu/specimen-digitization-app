@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+from functools import partial
 
+import httpx
 import pytest
 
 from specimen_digitization.application.domain import Lookup
@@ -19,7 +21,8 @@ from specimen_digitization.application.harness_tools import (
     TaxonCandidate,
     ToolResult,
 )
-from specimen_digitization.application.taxonomy_tool import Verification
+from specimen_digitization.application.storage import LocalBlobs
+from specimen_digitization.application.taxonomy_tool import Verification, verify_taxon
 
 DECIDED = Reading(
     "r1",
@@ -405,3 +408,93 @@ def test_a_near_spelling_settles_the_place_id_alone_with_a_finding():
     assert (province.authority_id, province.normalized) == ("ChIJ-chimaltenango", None)
     assert province.warnings == {"near_spelling:province_state": (evidence.id,)}
     assert (country.normalized, country.warnings) == ("GUAT.", {})
+
+
+def test_a_partly_read_name_keeps_its_warning_with_the_tools_own_record():
+    # The code names no source (#109), so it cites the taxonomy tool's record.
+    withheld = Verification(
+        ToolResult(
+            tool="taxonomy_verifier",
+            tool_version="taxonomy-verifier-v1",
+            outcome=S.AMBIGUOUS,
+            warnings=["taxonomy_name_partly_read"],
+        ),
+        Lookup(
+            provider="gbif",
+            adapter_version="species-match-v2.3",
+            query={},
+            status=S.AMBIGUOUS,
+        ),
+    )
+    book = ledger(Fakes(taxon=withheld))
+
+    called = book.field_call("taxon", "taxonomy_verifier", taxon_arguments)(
+        "? Epipsocus", DECIDED
+    )
+
+    (record,) = book.evidence
+    assert called.outcome == S.AMBIGUOUS
+    assert called.warnings == {"taxonomy_name_partly_read": (record.id,)}
+
+
+def test_a_taxonomy_request_hands_its_readings_place_text_to_the_tool():
+    # PLAN 4.8 as ruled at 02:07Z and 03:24Z on 2026-09-26: context for the
+    # tool, never part of the recorded request.
+    fakes = Fakes(taxon=taxonomy())
+    book = ledger(fakes)
+
+    book.run(
+        "taxonomy_verifier",
+        DECIDED,
+        {"literal": "Epipsocus Chimaltenango"},
+        ["taxon"],
+        place_text=["Chimaltenango", "GUAT."],
+    )
+
+    assert fakes.calls == [
+        (
+            "taxon",
+            ("Epipsocus Chimaltenango",),
+            {"place_text": ("Chimaltenango", "GUAT.")},
+        )
+    ]
+    assert {json.dumps(r.arguments) for r in book.records} == {
+        json.dumps({"literal": "Epipsocus Chimaltenango"})
+    }
+
+
+def test_the_taxonomy_tool_sends_no_word_of_the_readings_place_text(tmp_path):
+    # End to end on the real tool: a city and a province the reading holds
+    # stand in the literal's authorship, and no request carries them.
+    sent = []
+
+    def endpoint(request):
+        sent.append(str(request.url))
+        if request.url.path.endswith("/metadata"):
+            return httpx.Response(200, json={"alias": "fixture-index"})
+        return httpx.Response(200, json={"diagnostics": {"matchType": "NONE"}})
+
+    tools = Tools(
+        verify_taxon=partial(
+            verify_taxon,
+            blobs=LocalBlobs(tmp_path),
+            client=httpx.Client(transport=httpx.MockTransport(endpoint)),
+            sleep=lambda s: None,
+        ),
+        geocode=None,
+        parse_date=None,
+        check_catalog_number=None,
+    )
+    book = ToolLedger(tools, asset_id="asset-1")
+
+    book.run(
+        "taxonomy_verifier",
+        DECIDED,
+        {"literal": "Epipsocus Davao, Mindanao 1946"},
+        ["taxon"],
+        place_text=["Davao City", "Mindanao"],
+    )
+
+    assert sent
+    assert not [url for url in sent if "davao" in url.lower()]
+    assert not [url for url in sent if "mindanao" in url.lower()]

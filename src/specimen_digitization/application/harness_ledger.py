@@ -24,17 +24,23 @@ PHASES = {
     "date_parser": "validate",
     "catalog_number_validator": "validate",
 }
-# Tool warnings that become findings when a call settles a field (G23).
-FINDING_PREFIXES = ("taxonomy_source_disagreement:", "taxonomy_support_unavailable:")
+# Tool warnings that become findings when a call settles a field (G23), and
+# a name read only in part (#109), whose code names no source.
+FINDING_PREFIXES = (
+    "taxonomy_source_disagreement:",
+    "taxonomy_support_unavailable:",
+    "taxonomy_name_partly_read",
+)
 GOOGLE = "google-maps-geocoding"
 
 
 @dataclass(frozen=True)
 class Tools:
     """The tool implementations, injected so that tests use fakes. Each takes
-    the literal and the text of the reading it was copied from."""
+    the literal and the text of the reading it was copied from; the taxonomy
+    tool takes the reading's place text instead, to send none of it."""
 
-    verify_taxon: Callable[[str], object]  # -> taxonomy_tool.Verification
+    verify_taxon: Callable[..., object]  # (literal, *, place_text) -> Verification
     geocode: Callable[[GeographyQuery], ToolResult]
     parse_date: Callable[..., ToolResult]  # (literal, *, source_text, year_literal)
     check_catalog_number: Callable[..., ToolResult]  # (literal, *, source_text)
@@ -73,24 +79,32 @@ class ToolLedger:
         reading: Reading,
         arguments: dict,
         field_keys: Sequence[str],
+        place_text: Sequence[str] = (),
     ) -> tuple[ToolResult, dict[str, str]]:
         """Run one request, or return its recorded result: the tool's result
-        and the evidence id of each source's final call."""
+        and the evidence id of each source's final call. A taxonomy request's
+        `place_text` (the reading's place-field literals and unassigned
+        locality text) goes to the tool, not into the request's identity
+        (PLAN 4.8; the coordinator's rulings of 02:07Z and 03:24Z on 2026-09-26)."""
         if tool not in PHASES:
             raise ValueError(f"tool_not_allowed:{tool}")
         key = json.dumps([tool, reading.observation_id, arguments], sort_keys=True)
         if key not in self._done:
             started = self.clock()
-            result = self._dispatch(tool, reading, arguments)
+            result = self._dispatch(tool, reading, arguments, place_text)
             evidence = self._record(
                 tool, reading, arguments, field_keys, result, started
             )
             self._done[key] = (result, evidence)
         return self._done[key]
 
-    def _dispatch(self, tool: str, reading: Reading, arguments: dict) -> ToolResult:
+    def _dispatch(
+        self, tool: str, reading: Reading, arguments: dict, place_text: Sequence[str]
+    ) -> ToolResult:
         if tool == "taxonomy_verifier":
-            verification = self.tools.verify_taxon(arguments["literal"])
+            verification = self.tools.verify_taxon(
+                arguments["literal"], place_text=tuple(place_text)
+            )
             self.lookups.append(verification.gbif)
             return verification.result
         if tool == "geography_lookup":
@@ -212,7 +226,8 @@ def called(
         raise ValueError(f"field_not_reported:{field_key}")
     outcome = result.field_outcomes.get(field_key, result.outcome)
     warnings = {
-        code: tuple(filter(None, [evidence.get(code.split(":", 1)[1])]))
+        # A code without a source cites the tool's own record.
+        code: tuple(filter(None, [evidence.get(code.partition(":")[2] or result.tool)]))
         for code in result.warnings
         if code.startswith(FINDING_PREFIXES)
     }
