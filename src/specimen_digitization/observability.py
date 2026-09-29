@@ -52,7 +52,9 @@ class ObservabilitySettings:
 
     @property
     def include_model_request_parameters(self) -> bool:
-        return True
+        # Pydantic AI includes the agent's static instructions in this field.
+        # A metadata trace must not export them with the request schema.
+        return self.capture_mode is CaptureMode.APPROVED_CONTENT
 
     @classmethod
     def from_environment(

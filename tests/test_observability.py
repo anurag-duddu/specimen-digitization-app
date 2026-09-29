@@ -6,6 +6,8 @@ from unittest.mock import Mock
 import logfire
 import pytest
 from logfire.testing import CaptureLogfire
+from pydantic_ai import Agent
+from pydantic_ai.models.test import TestModel
 
 from specimen_digitization import observability
 from specimen_digitization.logfire_smoke import run_synthetic_harness
@@ -49,7 +51,7 @@ def test_configure_observability_uses_metadata_policy_by_default(
     instrument.assert_called_once_with(
         include_content=False,
         include_binary_content=False,
-        include_model_request_parameters=True,
+        include_model_request_parameters=False,
         version=5,
     )
 
@@ -66,6 +68,41 @@ def test_approved_content_still_excludes_binary_images(
     assert settings.include_content is True
     assert settings.include_binary_content is False
     assert settings.include_model_request_parameters is True
+
+
+def test_metadata_harness_trace_excludes_static_instructions(
+    capfire: CaptureLogfire,
+) -> None:
+    settings = ObservabilitySettings.from_environment(capture_mode=CaptureMode.METADATA)
+    logfire.instrument_pydantic_ai(
+        include_content=settings.include_content,
+        include_binary_content=settings.include_binary_content,
+        include_model_request_parameters=settings.include_model_request_parameters,
+        version=5,
+    )
+    agent = Agent(
+        TestModel(),
+        name="field_harness_trace_contract",
+        instructions="PRIVATE-HARNESS-INSTRUCTION-CANARY",
+    )
+
+    @agent.tool_plain
+    def geocode(place: str) -> str:
+        return "PRIVATE-TOOL-RESULT-CANARY"
+
+    agent.run_sync("PRIVATE-LABEL-CANARY")
+
+    spans = capfire.exporter.exported_spans_as_dict()
+    invocation = next(
+        span for span in spans if span["name"] == "invoke_agent field_harness_trace_contract"
+    )
+    assert invocation["attributes"]["gen_ai.operation.name"] == "invoke_agent"
+    assert invocation["attributes"]["gen_ai.agent.name"] == "field_harness_trace_contract"
+    assert any(span["name"] == "execute_tool geocode" for span in spans)
+    serialized_spans = json.dumps(spans)
+    assert "PRIVATE-HARNESS-INSTRUCTION-CANARY" not in serialized_spans
+    assert "PRIVATE-LABEL-CANARY" not in serialized_spans
+    assert "PRIVATE-TOOL-RESULT-CANARY" not in serialized_spans
 
 
 @pytest.mark.parametrize("sample_rate", ["0", "1.1", "not-a-number"])
