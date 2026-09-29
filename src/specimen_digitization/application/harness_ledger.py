@@ -71,8 +71,12 @@ class ToolLedger:
         asset_id: str,
         clock=now,
         prior: Sequence[ToolCallRecord] = (),
+        blobs=None,
     ) -> None:
         self.tools = tools
+        # Where a validator's verdict record is stored; the parse step passes
+        # its blob store so that every evidence item has its stored record.
+        self.blobs = blobs
         self.asset_id = asset_id
         self.clock = clock
         # A same-run retry starts from the run's earlier records: they stay,
@@ -170,7 +174,7 @@ class ToolLedger:
             # keeps the outcome (the data contract's rule 1.6).
             answered = source != GOOGLE or attempt.raw_ref is not None
             if final and answered:
-                item = self._evidence(tool, reading, result, attempt)
+                item = self._evidence(tool, reading, result, attempt, arguments)
                 items.append(item)
                 evidence_id = evidence[source or tool] = item.id
             fields = {
@@ -216,11 +220,25 @@ class ToolLedger:
             self._attempts[base] = max(self._attempts.get(base, 0), record.attempt)
 
     def _evidence(
-        self, tool, reading, result: ToolResult, attempt: SourceCall | None
+        self, tool, reading, result: ToolResult, attempt: SourceCall | None, arguments
     ) -> Evidence:
-        """No Google text ever reaches evidence: only its place ID (G26)."""
+        """No Google text ever reaches evidence: only its place ID (G26). A
+        validator's evidence stores its verdict as a record, as literal
+        evidence does."""
         outcome = attempt.outcome if attempt is not None else result.outcome
         source = attempt.source if attempt is not None else tool
+        raw_ref = attempt.raw_ref if attempt is not None else None
+        digest = attempt.response_sha256 if attempt is not None else None
+        if attempt is None and self.blobs is not None:
+            verdict = {
+                "tool": tool,
+                "literal": arguments.get("literal"),
+                "outcome": outcome.value,
+                "parsed": result.parsed,
+                "warnings": list(result.warnings),
+            }
+            record = json.dumps(verdict, sort_keys=True).encode()
+            raw_ref, digest = self.blobs.put(record), hashlib.sha256(record).hexdigest()
         return Evidence(
             kind="lookup" if attempt is not None else "validation",
             asset_id=self.asset_id,
@@ -229,8 +247,8 @@ class ToolLedger:
             source=source,
             locator=_locator(source, outcome, result, reading, attempt),
             excerpt=f"{source} {outcome.value}",
-            raw_ref=attempt.raw_ref if attempt is not None else None,
-            digest=attempt.response_sha256 if attempt is not None else None,
+            raw_ref=raw_ref,
+            digest=digest,
         )
 
     def field_call(
