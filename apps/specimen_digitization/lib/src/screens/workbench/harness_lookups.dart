@@ -39,10 +39,12 @@ class HarnessLookups extends StatelessWidget {
 
   /// The checks with no source, by their tool, in the coordinator's words of
   /// 20:05Z on 2026-09-28 ("Catalog" in US spelling, the museum's field and
-  /// the tool's name). Any other tool keeps its server word.
+  /// the tool's name) and 01:00Z on 2026-09-29 ("Taxonomy check"). Any other
+  /// tool keeps its server word.
   static const Map<String, String> toolWords = <String, String>{
     'date_parser': 'Date parse',
     'catalog_number_validator': 'Catalog number check',
+    'taxonomy_verifier': 'Taxonomy check',
   };
 
   /// `LookupStatus` values that are the service failing, not an answer
