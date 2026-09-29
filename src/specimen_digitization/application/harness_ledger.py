@@ -83,11 +83,17 @@ class ToolLedger:
     ) -> tuple[ToolResult, dict[str, str]]:
         """Run one request, or return its recorded result: the tool's result
         and the evidence id of each source's final call. A taxonomy request's
-        `place_text` (the reading's place-field literals and unassigned
-        locality text) goes to the tool, not into the request's identity
-        (PLAN 4.8; the coordinator's rulings of 02:07Z and 03:24Z on 2026-09-26)."""
+        `place_text` (the reading's place text) goes to the tool, which sends
+        none of it (PLAN 4.8; the coordinator's rulings of 02:07Z and 03:24Z
+        on 2026-09-26), and into the request's recorded arguments."""
         if tool not in PHASES:
             raise ValueError(f"tool_not_allowed:{tool}")
+        if isinstance(place_text, str):
+            raise TypeError("place_text is a sequence of texts, not one text")
+        if place_text:
+            # Part of the request, S4's choice: another place text is another
+            # request, with its own record and call key.
+            arguments = {**arguments, "place_text": sorted(set(place_text))}
         if not _storable(arguments):
             raise ValueError("arguments_not_storable")
         key = json.dumps([tool, reading.observation_id, arguments], sort_keys=True)
@@ -201,14 +207,24 @@ class ToolLedger:
         )
 
     def field_call(
-        self, field_key: str, tool: str, arguments_for: Callable[[str, Reading], dict]
+        self,
+        field_key: str,
+        tool: str,
+        arguments_for: Callable[[str, Reading], dict],
+        place_text_for: Callable[[Reading], Sequence[str]] | None = None,
     ) -> FieldCall:
-        """The FieldCall the resolver uses for one field on one tool."""
+        """The FieldCall the resolver uses for one field on one tool, with each
+        reading's place text for a taxonomy request (PLAN 4.8)."""
 
         def call(literal: str, reading: Reading) -> Called:
             arguments = arguments_for(literal, reading)
+            place_text = place_text_for(reading) if place_text_for else ()
             result, evidence = self.run(
-                tool, reading, arguments, served(tool, arguments, field_key)
+                tool,
+                reading,
+                arguments,
+                served(tool, arguments, field_key),
+                place_text,
             )
             return called(field_key, literal, result, evidence)
 

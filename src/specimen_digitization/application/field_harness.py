@@ -29,6 +29,7 @@ from .field_resolution import (
     date_order_evidence,
 )
 from .harness_ledger import ToolLedger, called
+from .lookup import PLACE_FIELDS
 from .reliability import AdapterFailure, run_agent_bounded
 
 # G30: every request reserves its worst case, so a run is bounded by these caps
@@ -357,6 +358,21 @@ def _field_call(
             return settle(literal, reading)
 
         return bounded
+    if tool == "taxonomy_verifier":
+
+        def place_text(reading: Reading) -> list[str]:
+            # The reading's place-field literals, none of which the tool sends
+            # (PLAN 4.8; the coordinator's rulings of 02:07Z and 03:24Z on
+            # 2026-09-26).
+            return [
+                found[reading.observation_id]
+                for field_key, found in literals.items()
+                if field_key in PLACE_FIELDS and reading.observation_id in found
+            ]
+
+        return ledger.field_call(
+            key, tool, lambda literal, reading: {"literal": literal}, place_text
+        )
     if tool != "date_parser":
         return ledger.field_call(
             key, tool, lambda literal, reading: {"literal": literal}
