@@ -12218,3 +12218,23 @@ because the hooks runner hands a native asset hook only `PATH`.
   3. A scratch probe that runs after the test switched segments reports an absence that isn't one. Probe the tree while the segment is on screen.
 - Failed approaches: merging `origin/golive/ui-timeline` whole. I undid it before pushing (see learning 1).
 - Remaining follow-ups: none from the rulings. The coordinator's log confirms the edge cases (20:24Z: "Several places match" only for Google, the server's word otherwise) and approves naming lookups by source and checks by tool (20:14Z).
+
+### 2026-09-29 — Go-live S6 lab fix: the blockers count on 323 matches the record
+
+- Task: go-live workstream S6, a lab finding (B4 under the 02:07Z bar, per the 02:30Z ruling). S7 found that the lab's served 323 run (run 31be40d8) had 26 reasons on the record, while the screen said "27 things block clearance".
+- Branch/worktree: `golive/ui-lab-fix-blockers`, stacked on `golive/ui-lookups-timeline` (#223), since the code is from merged #73; `.claude/worktrees/serene-dhawan-00a1f3`.
+- Outcome: UI.md T1.4 gains a paragraph.
+  - The 27th was the unresolved transcription, counted twice. It appeared once as the region's own entry from the record's transcriptions (T1.3), "Two readings differ for Label 2", and again as the record's `unresolved_transcription:{region}` finding.
+  - `blockersFor` now skips that finding or code for a region it already lists. A reason whose transcription reads resolved still blocks.
+- Commits/PRs: red `56f552d2` (1 failed: 3 entries for 2 reasons), green `8aa9fe76`; the PR is stacked on #223.
+- Validation actually run:
+  - `flutter analyze --fatal-infos`: no issues;
+  - `check_ui_strings.py`: 0 violations;
+  - the full app suite: 1,787 passed, 8 skipped, 0 failed, with `TZ=America/Chicago`;
+  - format, the web release build and the route smoke check;
+  - the app's own `blockersFor` on S7's served 323 answers: 26 entries, the record's 26 (27 before the fix).
+- Durable learnings:
+  1. To answer "which is the 27th", run the app's own function on the served answers and print each entry. A guess among three plausible causes would have fixed the wrong one.
+  2. T1.4's rule, "each reason blocks clearance once", deduplicated codes against findings only. Every source a list merges needs the same rule: here the client's own transcription entries.
+- Failed approaches: none.
+- Remaining follow-ups: the detail line's raw rule id (ruled (b), post-chain), and the transcription entries taken from the backend's reasons (#73 verdict item 4, post-chain).
