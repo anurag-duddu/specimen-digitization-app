@@ -61,13 +61,28 @@ List<ClearanceBlocker> blockersFor(
   final ClearanceBlocker? coverage = _coverageBlocker(specimen, thread);
   if (coverage != null) blockers.add(coverage);
 
+  // The regions the record names as blocking, `unresolved_transcription:
+  // {region id}`. A record that names any decides which regions block: one
+  // it does not name was cleared by the run (G19, G20), whatever its
+  // transcription's flag says. A record that names none, as the pilot's,
+  // leaves it to the transcriptions (UI.md T1.3 and T1.4).
+  final Set<String> named = <String>{
+    for (final Object? code in <Object?>[
+      ...specimen.data['reason_codes'] as List? ?? const <Object?>[],
+      for (final Json f in specimen.findings) f['reason_code'],
+    ])
+      if (code is String && code.startsWith(_transcriptionCodePrefix))
+        code.substring(_transcriptionCodePrefix.length),
+  };
   // The regions whose transcription entry is listed: the record's own
-  // reason for one of them, `unresolved_transcription:{region id}`, states
-  // the same thing and is not listed again (UI.md T1.4; the lab's 323).
+  // reason for one of them states the same thing and is not listed again
+  // (UI.md T1.4; the lab's 323).
   final Set<String> transcribed = <String>{};
   for (final Json t in objects(specimen.data['transcriptions'])) {
     if (t['resolved'] == true) continue;
-    if (t['region_id'] case final String id) transcribed.add(id);
+    final String? id = t['region_id'] as String?;
+    if (named.isNotEmpty && !named.contains(id)) continue;
+    if (id != null) transcribed.add(id);
     final String region = _regionName(specimen, t['region_id']);
     blockers.add(
       ClearanceBlocker(
