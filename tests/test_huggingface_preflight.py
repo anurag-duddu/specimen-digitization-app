@@ -11,7 +11,8 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.usage import RequestUsage
 
-from specimen_digitization import huggingface_preflight
+from specimen_digitization import huggingface_preflight, transcription
+from specimen_digitization.application.domain import ExecutionPolicy
 from specimen_digitization.hub_models import NEMOTRON_VLM_MODEL, SAM3_MODEL
 from specimen_digitization.huggingface_preflight import (
     _token_permissions,
@@ -53,7 +54,7 @@ def test_token_permissions_merge_global_and_scoped_permissions() -> None:
     )
 
 
-def test_route_validation_requires_image_and_structured_output() -> None:
+def test_route_validation_requires_image_structured_output_and_tools() -> None:
     route = INITIAL_HUGGINGFACE_ROUTES["handwriting-qwen"]
     catalog = [
         {
@@ -64,6 +65,7 @@ def test_route_validation_requires_image_and_structured_output() -> None:
                     "provider": route.provider,
                     "status": "live",
                     "supports_structured_output": True,
+                    "supports_tools": True,
                 }
             ],
         }
@@ -72,6 +74,34 @@ def test_route_validation_requires_image_and_structured_output() -> None:
     report = validate_route(route, catalog)
 
     assert report["ready"] is True
+    assert report["missing_modalities"] == []
+    assert report["tools"] is True
+
+
+@pytest.mark.parametrize("tools", [False, None])
+@pytest.mark.parametrize("route_id", sorted(HUGGINGFACE_ROUTES))
+def test_route_validation_fails_closed_without_tool_calling(route_id, tools) -> None:
+    # Pydantic AI's Hugging Face model returns typed output through a tool call
+    # and never sends response_format (HARNESS.md section 5); None: unlisted.
+    route = HUGGINGFACE_ROUTES[route_id]
+    provider = {
+        "provider": route.provider,
+        "status": "live",
+        "supports_structured_output": True,
+    }
+    if tools is not None:
+        provider["supports_tools"] = tools
+    catalog = [
+        {
+            "id": route.model_id,
+            "architecture": {"input_modalities": ["text", "image"]},
+            "providers": [provider],
+        }
+    ]
+
+    report = validate_route(route, catalog)
+
+    assert report["ready"] is False
     assert report["missing_modalities"] == []
 
 
@@ -152,19 +182,55 @@ def test_live_cli_configures_and_flushes_logfire(monkeypatch) -> None:
     assert run_preflight.call_args.kwargs["image_path"] == Path("fixture.png")
 
 
-def live_smoke(monkeypatch, tmp_path, seen, route_id, *, image, usage=None):
-    """The paid smoke test against a fake provider that records each request."""
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["--live-route", "harness-deepseek", "--image", "fixture.png"],
+        ["--live-route", "first-pass-glm"],
+        ["--live-route", "first-pass-glm", "--image", "fixture.gif"],
+    ],
+)
+def test_live_cli_refuses_a_wrong_image_before_any_network_call(
+    monkeypatch, arguments
+) -> None:
+    configure = Mock()
+    run_preflight = Mock()
+    monkeypatch.setenv("HF_TOKEN", "hf_test")
+    monkeypatch.setattr(sys, "argv", ["specimen-huggingface-preflight", *arguments])
+    monkeypatch.setattr(huggingface_preflight, "configure_observability", configure)
+    monkeypatch.setattr(huggingface_preflight.logfire, "force_flush", Mock())
+    monkeypatch.setattr(huggingface_preflight, "run_preflight", run_preflight)
+
+    with pytest.raises(SystemExit) as refused:
+        huggingface_preflight.main()
+
+    assert refused.value.code == 2
+    configure.assert_not_called()
+    run_preflight.assert_not_called()
+
+
+def live_smoke(
+    monkeypatch, tmp_path, seen, route_id, *, image, usage=None, first=None
+):
+    """The paid smoke test against a fake provider that records each request.
+
+    ``first`` is the arguments and usage of an answer sent before the valid one.
+    """
+    answers = [first] if first else []
 
     def respond(messages, info):
         seen.append((messages, info.model_settings))
+        arguments, used = (
+            answers.pop(0)
+            if answers
+            else (
+                {"short_description": "a fixture", "contains_readable_text": True},
+                usage or RequestUsage(),
+            )
+        )
         return ModelResponse(
-            parts=[
-                ToolCallPart(
-                    info.output_tools[0].name,
-                    {"short_description": "a fixture", "contains_readable_text": True},
-                )
-            ],
-            usage=usage or RequestUsage(),
+            parts=[ToolCallPart(info.output_tools[0].name, arguments)],
+            usage=used,
             finish_reason="stop",
         )
 
@@ -208,24 +274,39 @@ def test_live_smoke_sends_an_image_only_to_a_route_that_takes_one(
 
 
 def test_live_smoke_is_capped_like_a_reading(monkeypatch, tmp_path) -> None:
-    # A reading's caps: 4,096 output tokens a response, two requests, and a
-    # stop once the run passes 16,000 tokens (production.py's reader call).
-    limits = []
-    run_sync = huggingface_preflight.Agent.run_sync
+    # A reading's caps (HARNESS.md section 5), through the reader call's bounded
+    # run: its limits, its time limit, and each response capped at what remains.
+    limits = transcription.READING_USAGE_LIMITS
+    assert (limits.request_limit, limits.total_tokens_limit) == (2, 16000)
+    calls = []
+    bounded = huggingface_preflight.run_agent_bounded
 
-    def recording(self, *args, **kwargs):
-        limits.append(kwargs.get("usage_limits"))
-        return run_sync(self, *args, **kwargs)
+    def recording(agent, prompt, **kwargs):
+        calls.append(kwargs)
+        return bounded(agent, prompt, **kwargs)
 
-    monkeypatch.setattr(huggingface_preflight.Agent, "run_sync", recording)
+    monkeypatch.setattr(huggingface_preflight, "run_agent_bounded", recording)
     seen = []
-    live_smoke(monkeypatch, tmp_path, seen, "first-pass-glm", image=True)
-    ((_, settings),) = seen
-    assert (settings or {}).get("max_tokens") == 4096
-    assert [
-        (getattr(limit, "request_limit", None), getattr(limit, "total_tokens_limit", None))
-        for limit in limits
-    ] == [(2, 16000)]
+    live_smoke(
+        monkeypatch,
+        tmp_path,
+        seen,
+        "first-pass-glm",
+        image=True,
+        # An invalid answer that used 14,000 tokens: the retry may generate only
+        # the 2,000 a reading has left.
+        first=(
+            {"short_description": "a fixture"},
+            RequestUsage(input_tokens=13000, output_tokens=1000),
+        ),
+    )
+
+    assert [settings["max_tokens"] for _, settings in seen] == [4096, 2000]
+    (call,) = calls
+    assert call["usage_limits"] is limits
+    assert call["timeout_seconds"] == ExecutionPolicy().effect_timeout_for_step(
+        "transcribe:region:handwriting-qwen"
+    )
 
     with pytest.raises(UsageLimitExceeded):
         live_smoke(

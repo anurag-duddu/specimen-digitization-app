@@ -7,6 +7,7 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 from fastapi.testclient import TestClient
 
+from specimen_digitization import transcription
 from specimen_digitization.application import model_runtime, production
 from specimen_digitization.application.domain import ExecutionPolicy
 from specimen_digitization.application.production import ProductionAdapters
@@ -59,6 +60,8 @@ def test_actual_reader_gateway_agent_and_process_share_timeout(
     def agent(*args, **kwargs):
         observed.append(("agent", kwargs["timeout_seconds"]))
         assert kwargs["usage_limits"].request_limit == 2
+        # The smoke test's caps are this call's (HARNESS.md section 5).
+        assert kwargs["usage_limits"] is transcription.READING_USAGE_LIMITS
         return original_agent(*args, **kwargs)
 
     monkeypatch.setattr(production, "run_agent_bounded", agent)
