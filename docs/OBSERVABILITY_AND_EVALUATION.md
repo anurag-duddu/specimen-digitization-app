@@ -2,7 +2,7 @@
 
 | Document field | Value |
 |---|---|
-| Status | Foundation implemented; external Logfire setup and gold dataset pending |
+| Status | Lab traces received; managed prompts, alerts, dashboards, and gold dataset pending |
 | Logfire project | `anuragduddu/specimen-digitization` |
 | Trace format | OpenTelemetry through Logfire and Pydantic AI |
 | Default capture | Metadata only; binary images always excluded |
@@ -49,7 +49,8 @@ trace -> evaluator or curator judgment -> dataset case -> experiment
 
 `LOGFIRE_CAPTURE_MODE=metadata` is the default for every environment. It records
 the trace tree, span attributes, model/provider, tokens, timing, errors, and
-model request schema. It excludes prompts, completions, and tool payloads.
+model names. It excludes prompts, completions, tool payloads, and model request
+parameters, which can contain static agent instructions.
 
 `LOGFIRE_CAPTURE_MODE=approved-content` additionally records prompt, completion,
 and tool text. It is for synthetic data or a specifically approved evaluation
