@@ -64,7 +64,9 @@ synthetic mode, five things make a request:
 3. `POST /specimens/{specimen_id}/process`, with an `Idempotency-Key`. Starting
    processing is paid work, so it requires the membership that uploads and run
    actions require (`CONTRACTS.md` 48-49 and 63: the `write` check in `api.py`,
-   which admits operator, reviewer, manager and admin), never a viewer's. A
+   which admits operator, reviewer, manager and admin; the coordinator's
+   confirmation of 04:09Z on 2026-09-29 reads the ruling's "operator or admin"
+   as that tier), never a viewer's. A
    viewer can see the specimen and its thread but cannot start or re-run a run:
    the refusal is `403`, before anything is queued or a worker started (the
    coordinator's ruling of 03:57Z on 2026-09-29, which corrects the brief's "any
