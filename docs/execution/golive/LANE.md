@@ -53,16 +53,23 @@ Processing starts on intake and on request (PLAN 4.1 row 1, G2). Outside
 synthetic mode, five things make a request:
 
 1. Upload completion. Every accepted upload becomes a processing job (`PRD.md`
-   9.1 step 6), and the uploader is the requesting actor. A duplicate upload
-   requests nothing.
+   9.1 step 6), and the uploader is the requesting actor. Uploading already
+   requires the operator membership (`CONTRACTS.md` 48-49), so a viewer never
+   starts processing this way. A duplicate upload requests nothing.
 2. Import from a source. Adding a source photograph to the queue is intake, so
    each specimen an import creates is queued the same way, and the worker is
    started once per import. This supersedes, for this program, the rule that an
    import dispatches nothing (`CONTRACTS.md` 654-662), which rested on the budget
    G9 has since set.
-3. `POST /specimens/{specimen_id}/process`, with an `Idempotency-Key`. It keeps
-   the endpoint's existing authorization: any member who can see the specimen.
-   The response is `202` with the specimen summary plus `dispatch` (see below).
+3. `POST /specimens/{specimen_id}/process`, with an `Idempotency-Key`. Starting
+   processing is paid work, so it requires the membership that uploads and run
+   actions require (`CONTRACTS.md` 48-49 and 63: the `write` check in `api.py`,
+   which admits operator, reviewer, manager and admin), never a viewer's. A
+   viewer can see the specimen and its thread but cannot start or re-run a run:
+   the refusal is `403`, before anything is queued or a worker started (the
+   coordinator's ruling of 03:57Z on 2026-09-29, which corrects the brief's "any
+   member who can see the record"). The response is `202` with the specimen
+   summary plus `dispatch` (see below).
    Synthetic mode keeps its existing behaviour: it drains the specimen inside the
    request and returns the workspace.
 4. The run actions `retry`, `resume` and `reprocess` (`POST /runs/{id}/actions`).
@@ -171,3 +178,6 @@ deadline, so the API's request timeout is 600 s.
 - Runtime configuration parsing for both new variables, and the production
   wiring of the registry, reader and dispatcher.
 - Synthetic-mode tests stay green unchanged.
+- A viewer's `/process` is refused with `403`, with no run queued and no
+  worker started, and a viewer cannot open a batch; the same request from the
+  operator tier is accepted.
