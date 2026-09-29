@@ -785,6 +785,10 @@ place-field literals; the agent's own check gives none yet.
   "-"}:{observation_id or "-"}:{first 16 hex of the SHA-256 of the arguments'
   canonical JSON}:{attempt}`, so GBIF, Global Names Verifier and Catalogue of
   Life calls of one request never collide.
+- No call key repeats. A ledger can start from the run's earlier records, as
+  a same-run retry needs: they stay, and a repeated request numbers its
+  attempts on from them. A tool answer whose attempts would repeat a key is
+  refused whole.
 - A call on the decided transcript names no reading; its region identifies the
   decision. A call on a raw reading names its observation.
 - `field_keys` are the fields the request serves: one geography request serves

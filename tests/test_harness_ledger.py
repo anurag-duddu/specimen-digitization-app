@@ -606,3 +606,31 @@ def test_only_googles_final_attempt_keeps_the_place_ids():
 
     first, last = (r.result for r in book.records)
     assert "place_ids" not in first and last["place_ids"] == ["ChIJ-chimaltenango"]
+
+
+def test_a_tool_that_repeats_a_source_attempt_is_refused_whole():
+    plain = taxonomy()
+    repeated = plain.result.model_copy(
+        update={"sub_calls": [*plain.result.sub_calls, source_call("col")]}
+    )
+    book = ledger(Fakes(taxon=Verification(repeated, plain.gbif)))
+
+    with pytest.raises(ValueError, match="duplicate_call_key"):
+        book.run("taxonomy_verifier", DECIDED, {"literal": "Epipsocus"}, ["taxon"])
+
+    assert (book.evidence, book.records) == ([], [])
+
+
+def test_a_same_run_retry_keeps_the_earlier_records_and_numbers_on():
+    first = ledger(Fakes(taxon=taxonomy()))
+    first.run("taxonomy_verifier", DECIDED, {"literal": "Epipsocus"}, ["taxon"])
+
+    again = ToolLedger(
+        Fakes(taxon=taxonomy()).tools(), asset_id="asset-1", prior=first.records
+    )
+    again.run("taxonomy_verifier", DECIDED, {"literal": "Epipsocus"}, ["taxon"])
+
+    keys = [r.call_key for r in again.records]
+    assert again.records[:3] == first.records
+    assert len(keys) == len(set(keys)) == 6
+    assert [r.attempt for r in again.records[3:]] == [2, 2, 2]
