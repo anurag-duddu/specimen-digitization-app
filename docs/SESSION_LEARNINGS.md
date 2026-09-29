@@ -13280,11 +13280,12 @@ because the hooks runner hands a native asset hook only `PATH`.
   cloud session with the built-in code-review skill; every finding was checked
   against the code before it was reported.
 - Branch/worktree: `claude/bold-darwin-nxp6t1`, from main `c0fc8f2`, in a cloud
-  container. Pull request: Not confirmed at this commit; the next commit names it.
+  container. Pull request: #225 (draft).
 - Commits:
   - `2843b64`: spec and failing tests (red).
   - `1c48eb3`: the fixes (green).
-  - This entry.
+  - `14093aa`: this entry.
+  - The next commit: the pull request's number and the whole-tree run.
 - Outcome:
   - (1) The preflight gated a route on the catalog's `supports_structured_output`
     only. Pydantic AI 2.40's Hugging Face model never sends `response_format`: it
@@ -13314,8 +13315,13 @@ because the hooks runner hands a native asset hook only `PATH`.
     failure for its intended reason.
   - Green `1c48eb3`: the three touched suites, 39 passed; with
     `test_first_pass.py` and `test_model_gateway.py`, 95 passed.
-  - The whole tree (`pytest -q`, as CI runs it): still running when this
-    entry was committed; the next commit records its result.
+  - The whole tree (`pytest -q`, as CI runs it), on `1c48eb3`'s code before
+    its formatting-only edit to two test files, whose suites passed again at
+    `1c48eb3`: 6531 passed, 77 skipped, 14 failed. The 14 fail the same way on
+    main `c0fc8f2` in the same container. Its egress proxy sets `SSL_CERT_FILE`
+    and `HTTPS_PROXY`, which `worker_trace_setup.py`'s identity check refuses (6
+    tests) and the bounded trace transport refuses as
+    `trace_tls_override_forbidden` (8 tests).
   - `pre-commit` (4.5.1) on the changed files: every hook passed.
   - Not run: `scripts/ci/verify.sh` as a whole. The container has uv 0.8.17
     (the script pins 0.12.5) and no Flutter, Dart or Firebase CLI; no Dart
@@ -13335,6 +13341,11 @@ because the hooks runner hands a native asset hook only `PATH`.
   - (3) Guard a gateway lookup by catching `ModelGatewayConfigurationError`,
     not by reading `gateway.routes`: several tests replace the gateway with a
     fake that has only `route()` and `model_for()`.
+  - (4) In a Claude Code cloud container, 14 trace tests fail by design, because
+    the egress proxy sets TLS and proxy variables the trace code refuses.
+    Before reading them as a regression, run them in a worktree of main with
+    `PYTHONPATH` set to that worktree's `src`: the editable install otherwise
+    imports the branch's code.
 - Remaining follow-ups:
   - Run the non-paid `specimen-huggingface-preflight` where the router is
     reachable and confirm all four routes report `supports_tools: true`.
