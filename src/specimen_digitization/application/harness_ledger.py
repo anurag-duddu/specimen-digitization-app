@@ -177,7 +177,7 @@ class ToolLedger:
                     tool_version=result.tool_version,
                     field_keys=list(field_keys),
                     outcome=attempt.outcome if attempt is not None else result.outcome,
-                    result=_bounded(tool, result, attempt),
+                    result=_bounded(tool, result, attempt, final),
                     evidence_id=evidence_id,
                     started_at=started,
                     completed_at=completed,
@@ -350,15 +350,20 @@ def _locator(
     return f"name/{attempt.query.get('name') or attempt.query.get('q')}"
 
 
-def _bounded(tool: str, result: ToolResult, attempt: SourceCall | None) -> dict:
-    """What a record keeps of the result: bounded, and for Google place IDs
-    only (#88, section 6)."""
+def _bounded(
+    tool: str, result: ToolResult, attempt: SourceCall | None, final: bool = True
+) -> dict:
+    """What a record keeps of the result: bounded, for Google place IDs only
+    (#88, section 6), and what a source answered only on its final attempt,
+    the one that answered it."""
     kept: dict = {}
     if attempt is not None:
         if attempt.sanitized_error:
             kept["error"] = attempt.sanitized_error
         if attempt.retry_after_seconds is not None:
             kept["retry_after"] = attempt.retry_after_seconds
+        if not final:
+            return kept
         if attempt.source == GOOGLE:
             kept["place_ids"] = sorted(
                 {p.source_record_id for p in result.places if p.source_record_id}
