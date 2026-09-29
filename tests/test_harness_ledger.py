@@ -580,3 +580,29 @@ def test_a_field_call_hands_its_readings_place_text_to_the_tool():
     call("Epipsocus Davao", DECIDED)
 
     assert [kwargs["place_text"] for _, _, kwargs in fakes.calls] == [("Davao",)]
+
+
+def test_only_gbifs_final_attempt_keeps_the_candidates():
+    book = ledger(Fakes(taxon=taxonomy(gbif_attempts=(S.RATE_LIMITED, S.SUCCESS))))
+
+    book.run("taxonomy_verifier", DECIDED, {"literal": "Epipsocus"}, ["taxon"])
+
+    limited, answered = (r.result for r in book.records if r.source == "gbif")
+    assert "candidates" not in limited and answered["candidates"]
+
+
+def test_only_googles_final_attempt_keeps_the_place_ids():
+    answer = geography({"city": S.SUCCESS})
+    timed_out = SourceCall(
+        source=GOOGLE, query={"address": "x"}, retrieved_at="t", outcome=S.TIMEOUT
+    )
+    final = answer.sub_calls[0].model_copy(update={"attempt": 2})
+    answer = answer.model_copy(update={"sub_calls": [timed_out, final]})
+    book = ledger(Fakes(place=answer))
+
+    book.run(
+        "geography_lookup", DECIDED, {"literals": [["city", "Chimaltenango"]]}, ["city"]
+    )
+
+    first, last = (r.result for r in book.records)
+    assert "place_ids" not in first and last["place_ids"] == ["ChIJ-chimaltenango"]

@@ -791,7 +791,8 @@ place-field literals; the agent's own check gives none yet.
   every locality field of its reading.
 - `result` is bounded: the sanitized error and Retry-After for a source call;
   GBIF's candidates (G28 allows its names); for Google, place IDs only (G26); a
-  validator's verdict and warnings.
+  validator's verdict and warnings. Candidates and place IDs go only on the
+  source's final attempt, the one that answered them.
 
 **Evidence.** Each source's final call is one `Evidence` item, linked from its
 record, and earlier attempts link none.
