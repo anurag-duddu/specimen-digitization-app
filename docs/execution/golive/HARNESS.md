@@ -768,10 +768,13 @@ arguments; the same request again returns the recorded result and records
 nothing new.
 
 **A taxonomy request carries its reading's place text.** The caller gives the
-reading's place-field literals and unassigned locality text, and the ledger
-hands them to the taxonomy tool, which sends none of them (PLAN 4.8, as the
-coordinator ruled at 02:07Z and 03:24Z on 2026-09-26). They are context, not
-part of the request: the record's arguments and its call key leave them out.
+reading's place text, and the ledger hands it to the taxonomy tool, which
+sends none of it (PLAN 4.8, as the coordinator ruled at 02:07Z and 03:24Z on
+2026-09-26). Keeping it in the request is S4's choice: the record's arguments
+hold it, so a request with other place text is made anew, never answered from
+the record of one made without it, and has its own call key. A bare text is
+refused rather than split into letters. The final calls give each reading's
+place-field literals; the agent's own check gives none yet.
 
 **Records.** Each source-call attempt is one `ToolCallRecord` in
 `Run.tool_calls`. A validator's call is one attempt with no source.

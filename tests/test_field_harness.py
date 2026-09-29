@@ -4,6 +4,7 @@ import json
 import time
 from functools import partial
 
+import httpx
 import pytest
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
@@ -38,7 +39,8 @@ from specimen_digitization.application.harness_tools import (
     ToolResult,
 )
 from specimen_digitization.application.reliability import AdapterFailure
-from specimen_digitization.application.taxonomy_tool import Verification
+from specimen_digitization.application.storage import LocalBlobs
+from specimen_digitization.application.taxonomy_tool import Verification, verify_taxon
 
 DATE_RULES = {
     "version": "date-rules-v1",
@@ -530,3 +532,49 @@ def test_a_provider_failure_while_resolving_stays_an_operational_block():
 
     with pytest.raises(AdapterFailure):
         resolve(PLAN, labelled(READINGS), output, ledger, "asset-1", Blobs())
+
+
+def test_the_final_taxonomy_call_sends_no_word_of_its_readings_place_literals(tmp_path):
+    # #134's verdict (precondition D): the literal the coordinator's 02:07Z
+    # ruling of 2026-09-26 pins, on the real taxonomy tool.
+    text = "Davao, Mindanao\nEpipsocus Davao, Mindanao 1946"
+    reading = Reading("r1", "o-muse", "decided_transcript", text)
+    sent = []
+
+    def endpoint(request):
+        sent.append(str(request.url))
+        if request.url.path.endswith("/metadata"):
+            return httpx.Response(200, json={"alias": "fixture-index"})
+        return httpx.Response(200, json={"diagnostics": {"matchType": "NONE"}})
+
+    tools = Tools(
+        verify_taxon=partial(
+            verify_taxon,
+            blobs=LocalBlobs(tmp_path),
+            client=httpx.Client(transport=httpx.MockTransport(endpoint)),
+            sleep=lambda s: None,
+        ),
+        geocode=Fakes().geocode,
+        parse_date=partial(date_parser, date_rules=DATE_RULES),
+        check_catalog_number=catalog_number_validator,
+    )
+    output = HarnessOutput.model_validate(
+        answer(
+            **{
+                "1A": {
+                    "taxon": "Epipsocus Davao, Mindanao 1946",
+                    "city": "Davao",
+                    "precise_location": "Davao, Mindanao",
+                }
+            }
+        )
+    )
+
+    resolve(
+        PLAN, labelled([reading]), output, ToolLedger(tools, asset_id="a"), "a", Blobs()
+    )
+
+    assert sent
+    assert not [
+        url for url in sent if "davao" in url.lower() or "mindanao" in url.lower()
+    ]

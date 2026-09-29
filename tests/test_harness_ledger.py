@@ -438,8 +438,8 @@ def test_a_partly_read_name_keeps_its_warning_with_the_tools_own_record():
 
 
 def test_a_taxonomy_request_hands_its_readings_place_text_to_the_tool():
-    # PLAN 4.8 as ruled at 02:07Z and 03:24Z on 2026-09-26: context for the
-    # tool, never part of the recorded request.
+    # PLAN 4.8 as ruled at 02:07Z and 03:24Z on 2026-09-26; the record keeps
+    # the place text as part of the request (S4's choice).
     fakes = Fakes(taxon=taxonomy())
     book = ledger(fakes)
 
@@ -458,8 +458,14 @@ def test_a_taxonomy_request_hands_its_readings_place_text_to_the_tool():
             {"place_text": ("Chimaltenango", "GUAT.")},
         )
     ]
-    assert {json.dumps(r.arguments) for r in book.records} == {
-        json.dumps({"literal": "Epipsocus Chimaltenango"})
+    assert {json.dumps(r.arguments, sort_keys=True) for r in book.records} == {
+        json.dumps(
+            {
+                "literal": "Epipsocus Chimaltenango",
+                "place_text": ["Chimaltenango", "GUAT."],
+            },
+            sort_keys=True,
+        )
     }
 
 
@@ -528,3 +534,49 @@ def test_arguments_the_record_could_not_store_are_refused(extra):
         book.run("catalog_number_validator", DECIDED, arguments, ["fmnh_ins_number"])
 
     assert (book.evidence, book.records) == ([], [])
+
+
+def test_a_request_with_other_place_text_is_made_anew_with_its_own_key():
+    fakes = Fakes(taxon=taxonomy())
+    book = ledger(fakes)
+
+    for place_text in ((), ("Davao",)):
+        book.run(
+            "taxonomy_verifier",
+            DECIDED,
+            {"literal": "Epipsocus Davao"},
+            ["taxon"],
+            place_text=place_text,
+        )
+
+    assert [kwargs["place_text"] for _, _, kwargs in fakes.calls] == [(), ("Davao",)]
+    keys = [r.call_key for r in book.records]
+    assert len(keys) == len(set(keys))
+
+
+def test_a_bare_text_is_refused_as_place_text():
+    fakes = Fakes(taxon=taxonomy())
+    book = ledger(fakes)
+
+    with pytest.raises(TypeError):
+        book.run(
+            "taxonomy_verifier",
+            DECIDED,
+            {"literal": "Epipsocus"},
+            ["taxon"],
+            place_text="Davao",
+        )
+
+    assert fakes.calls == []
+
+
+def test_a_field_call_hands_its_readings_place_text_to_the_tool():
+    fakes = Fakes(taxon=taxonomy())
+    book = ledger(fakes)
+
+    call = book.field_call(
+        "taxon", "taxonomy_verifier", taxon_arguments, lambda r: ["Davao"]
+    )
+    call("Epipsocus Davao", DECIDED)
+
+    assert [kwargs["place_text"] for _, _, kwargs in fakes.calls] == [("Davao",)]
