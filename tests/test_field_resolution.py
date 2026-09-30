@@ -376,6 +376,23 @@ def test_tool_warnings_become_findings_with_their_evidence_and_never_reasons():
     assert value.reason == "settled_by:taxonomy_verifier"
 
 
+@pytest.mark.parametrize(
+    "readings",
+    [[MUSE, QWEN], [RAW_MUSE, QWEN]],
+    ids=["fallback-after-the-pick", "no-pick"],
+)
+def test_a_literal_its_reading_lacks_is_refused_before_any_call(readings):
+    # The decided "GUAT." finds nothing; Qwen's reading has no "Guatemala",
+    # so that literal may not settle the field through G20 or G19.
+    resolver = Resolver(readings, "asset-1")
+    call = tool(**{"GUAT.": failed(S.NO_MATCH), "Guatemala": google("p-guatemala")})
+
+    with pytest.raises(ValueError, match="literal_not_in_source:o-qwen"):
+        resolver.settle("country", {"o-muse": "GUAT.", "o-qwen": "Guatemala"}, call)
+
+    assert call.made == []
+
+
 def test_a_literal_that_is_not_in_its_reading_is_refused():
     with pytest.raises(ValueError, match="literal_not_in_source:o-muse"):
         Resolver([MUSE], "a").transcribed("habitat", {"o-muse": "Mossy forest"})

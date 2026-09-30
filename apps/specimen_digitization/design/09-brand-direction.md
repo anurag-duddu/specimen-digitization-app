@@ -439,6 +439,9 @@ Phosphor glyph directly, so one meaning has one icon across the product
 | Deferred | `pauseCircle` | fill |
 | Processing | `spinnerGap` | regular, with the progress ring when determinate |
 | Processing blocked | `prohibit` | regular |
+| Retry scheduled (a stopped run with a set retry; the registry's `time` entry) | `clock` | regular |
+| Paused (shares `blocked`: processing has stopped until someone acts; the word tells them apart) | `prohibit` | regular |
+| Cancelled (draws the "Cancel processing" action's `stop` entry) | `stopCircle` | regular |
 | State unknown, Unknown (one registry key, `unknown`) | `question` | regular |
 | Model reading | `cpu` | regular |
 | Reviewer decision | `user` | regular |

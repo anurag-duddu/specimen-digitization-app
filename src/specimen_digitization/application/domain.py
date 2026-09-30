@@ -153,6 +153,8 @@ class Observation(Record):
     provider: str
     prompt_version: str
     input_sha256: str
+    # A first-pass call's text request, apart from its crop (HARNESS.md 3).
+    request_sha256: str | None = None
     literal_text: str
     unreadable_spans: list[str] = Field(default_factory=list)
     raw_ref: str
@@ -495,6 +497,8 @@ class Run(Record):
     dead_letter: bool = False
     lease_until: str | None = None
     created_at: str = Field(default_factory=now)
+    # When processing was requested (LANE.md T1). Omitted until then.
+    queued_at: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class AuditEvent(Record):

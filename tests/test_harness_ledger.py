@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+from functools import partial
 
+import httpx
 import pytest
 
 from specimen_digitization.application.domain import Lookup
@@ -19,7 +21,8 @@ from specimen_digitization.application.harness_tools import (
     TaxonCandidate,
     ToolResult,
 )
-from specimen_digitization.application.taxonomy_tool import Verification
+from specimen_digitization.application.storage import LocalBlobs
+from specimen_digitization.application.taxonomy_tool import Verification, verify_taxon
 
 DECIDED = Reading(
     "r1",
@@ -405,3 +408,288 @@ def test_a_near_spelling_settles_the_place_id_alone_with_a_finding():
     assert (province.authority_id, province.normalized) == ("ChIJ-chimaltenango", None)
     assert province.warnings == {"near_spelling:province_state": (evidence.id,)}
     assert (country.normalized, country.warnings) == ("GUAT.", {})
+
+
+def test_a_partly_read_name_keeps_its_warning_with_the_tools_own_record():
+    # The code names no source (#109), so it cites the taxonomy tool's record.
+    withheld = Verification(
+        ToolResult(
+            tool="taxonomy_verifier",
+            tool_version="taxonomy-verifier-v1",
+            outcome=S.AMBIGUOUS,
+            warnings=["taxonomy_name_partly_read"],
+        ),
+        Lookup(
+            provider="gbif",
+            adapter_version="species-match-v2.3",
+            query={},
+            status=S.AMBIGUOUS,
+        ),
+    )
+    book = ledger(Fakes(taxon=withheld))
+
+    called = book.field_call("taxon", "taxonomy_verifier", taxon_arguments)(
+        "? Epipsocus", DECIDED
+    )
+
+    (record,) = book.evidence
+    assert called.outcome == S.AMBIGUOUS
+    assert called.warnings == {"taxonomy_name_partly_read": (record.id,)}
+
+
+def test_a_taxonomy_request_hands_its_readings_place_text_to_the_tool():
+    # PLAN 4.8 as ruled at 02:07Z and 03:24Z on 2026-09-26; the record keeps
+    # the place text as part of the request (S4's choice).
+    fakes = Fakes(taxon=taxonomy())
+    book = ledger(fakes)
+
+    book.run(
+        "taxonomy_verifier",
+        DECIDED,
+        {"literal": "Epipsocus Chimaltenango"},
+        ["taxon"],
+        place_text=["Chimaltenango", "GUAT."],
+    )
+
+    assert fakes.calls == [
+        (
+            "taxon",
+            ("Epipsocus Chimaltenango",),
+            {"place_text": ("Chimaltenango", "GUAT.")},
+        )
+    ]
+    assert {json.dumps(r.arguments, sort_keys=True) for r in book.records} == {
+        json.dumps(
+            {
+                "literal": "Epipsocus Chimaltenango",
+                "place_text": ["Chimaltenango", "GUAT."],
+            },
+            sort_keys=True,
+        )
+    }
+
+
+def test_the_taxonomy_tool_sends_no_word_of_the_readings_place_text(tmp_path):
+    # End to end on the real tool: a city and a province the reading holds
+    # stand in the literal's authorship, and no request carries them.
+    sent = []
+
+    def endpoint(request):
+        sent.append(str(request.url))
+        if request.url.path.endswith("/metadata"):
+            return httpx.Response(200, json={"alias": "fixture-index"})
+        return httpx.Response(200, json={"diagnostics": {"matchType": "NONE"}})
+
+    tools = Tools(
+        verify_taxon=partial(
+            verify_taxon,
+            blobs=LocalBlobs(tmp_path),
+            client=httpx.Client(transport=httpx.MockTransport(endpoint)),
+            sleep=lambda s: None,
+        ),
+        geocode=None,
+        parse_date=None,
+        check_catalog_number=None,
+    )
+    book = ToolLedger(tools, asset_id="asset-1")
+
+    book.run(
+        "taxonomy_verifier",
+        DECIDED,
+        {"literal": "Epipsocus Davao, Mindanao 1946"},
+        ["taxon"],
+        place_text=["Davao City", "Mindanao"],
+    )
+
+    assert sent
+    assert not [url for url in sent if "davao" in url.lower()]
+    assert not [url for url in sent if "mindanao" in url.lower()]
+
+
+@pytest.mark.parametrize(
+    "reading,field_keys",
+    [(Reading("r1", "o-x", "not_a_role", DECIDED.text), ["taxon"]), (DECIDED, [None])],
+    ids=["bad-role", "none-field-key"],
+)
+def test_a_record_that_cannot_be_built_keeps_no_evidence(reading, field_keys):
+    book = ledger(Fakes(taxon=taxonomy()))
+
+    with pytest.raises(ValueError):
+        book.run("taxonomy_verifier", reading, {"literal": "Epipsocus"}, field_keys)
+
+    assert (book.evidence, book.records) == ([], [])
+
+
+@pytest.mark.parametrize("extra", ["deep", "surrogate"])
+def test_arguments_the_record_could_not_store_are_refused(extra):
+    value = "x" + chr(0xD800)
+    if extra == "deep":
+        value = {}
+        for _ in range(40):
+            value = {"nested": value}
+    arguments = {"literal": "FMNH INS 0123456", "extra": value}
+    book = ledger(Fakes(catalog=validator("catalog_number_validator", S.SUCCESS)))
+
+    with pytest.raises(ValueError, match="arguments_not_storable"):
+        book.run("catalog_number_validator", DECIDED, arguments, ["fmnh_ins_number"])
+
+    assert (book.evidence, book.records) == ([], [])
+
+
+def test_a_request_with_other_place_text_is_made_anew_with_its_own_key():
+    fakes = Fakes(taxon=taxonomy())
+    book = ledger(fakes)
+
+    for place_text in ((), ("Davao",)):
+        book.run(
+            "taxonomy_verifier",
+            DECIDED,
+            {"literal": "Epipsocus Davao"},
+            ["taxon"],
+            place_text=place_text,
+        )
+
+    assert [kwargs["place_text"] for _, _, kwargs in fakes.calls] == [(), ("Davao",)]
+    keys = [r.call_key for r in book.records]
+    assert len(keys) == len(set(keys))
+
+
+def test_a_bare_text_is_refused_as_place_text():
+    fakes = Fakes(taxon=taxonomy())
+    book = ledger(fakes)
+
+    with pytest.raises(TypeError):
+        book.run(
+            "taxonomy_verifier",
+            DECIDED,
+            {"literal": "Epipsocus"},
+            ["taxon"],
+            place_text="Davao",
+        )
+
+    assert fakes.calls == []
+
+
+def test_a_field_call_hands_its_readings_place_text_to_the_tool():
+    fakes = Fakes(taxon=taxonomy())
+    book = ledger(fakes)
+
+    call = book.field_call(
+        "taxon", "taxonomy_verifier", taxon_arguments, lambda r: ["Davao"]
+    )
+    call("Epipsocus Davao", DECIDED)
+
+    assert [kwargs["place_text"] for _, _, kwargs in fakes.calls] == [("Davao",)]
+
+
+def test_only_gbifs_final_attempt_keeps_the_candidates():
+    book = ledger(Fakes(taxon=taxonomy(gbif_attempts=(S.RATE_LIMITED, S.SUCCESS))))
+
+    book.run("taxonomy_verifier", DECIDED, {"literal": "Epipsocus"}, ["taxon"])
+
+    limited, answered = (r.result for r in book.records if r.source == "gbif")
+    assert "candidates" not in limited and answered["candidates"]
+
+
+def test_only_googles_final_attempt_keeps_the_place_ids():
+    answer = geography({"city": S.SUCCESS})
+    timed_out = SourceCall(
+        source=GOOGLE, query={"address": "x"}, retrieved_at="t", outcome=S.TIMEOUT
+    )
+    final = answer.sub_calls[0].model_copy(update={"attempt": 2})
+    answer = answer.model_copy(update={"sub_calls": [timed_out, final]})
+    book = ledger(Fakes(place=answer))
+
+    book.run(
+        "geography_lookup", DECIDED, {"literals": [["city", "Chimaltenango"]]}, ["city"]
+    )
+
+    first, last = (r.result for r in book.records)
+    assert "place_ids" not in first and last["place_ids"] == ["ChIJ-chimaltenango"]
+
+
+def test_a_tool_that_repeats_a_source_attempt_is_refused_whole():
+    plain = taxonomy()
+    repeated = plain.result.model_copy(
+        update={"sub_calls": [*plain.result.sub_calls, source_call("col")]}
+    )
+    book = ledger(Fakes(taxon=Verification(repeated, plain.gbif)))
+
+    with pytest.raises(ValueError, match="duplicate_call_key"):
+        book.run("taxonomy_verifier", DECIDED, {"literal": "Epipsocus"}, ["taxon"])
+
+    assert (book.evidence, book.records) == ([], [])
+
+
+def test_a_same_run_retry_keeps_the_earlier_records_and_numbers_on():
+    first = ledger(Fakes(taxon=taxonomy()))
+    first.run("taxonomy_verifier", DECIDED, {"literal": "Epipsocus"}, ["taxon"])
+
+    again = ToolLedger(
+        Fakes(taxon=taxonomy()).tools(), asset_id="asset-1", prior=first.records
+    )
+    again.run("taxonomy_verifier", DECIDED, {"literal": "Epipsocus"}, ["taxon"])
+
+    keys = [r.call_key for r in again.records]
+    assert again.records[:3] == first.records
+    assert len(keys) == len(set(keys)) == 6
+    assert [r.attempt for r in again.records[3:]] == [2, 2, 2]
+
+
+def test_a_google_call_that_got_no_response_has_no_evidence():
+    timed_out = SourceCall(
+        source=GOOGLE, query={"address": "x"}, retrieved_at="t", outcome=S.TIMEOUT
+    )
+    answer = ToolResult(
+        tool="geography_lookup",
+        tool_version="google-geocoding-v1",
+        outcome=S.TIMEOUT,
+        field_outcomes={"city": S.TIMEOUT},
+        sub_calls=[timed_out],
+    )
+    book = ledger(Fakes(place=answer))
+
+    book.run(
+        "geography_lookup", DECIDED, {"literals": [["city", "Chimaltenango"]]}, ["city"]
+    )
+
+    (record,) = book.records
+    assert (record.outcome, record.evidence_id, book.evidence) == (S.TIMEOUT, None, [])
+
+
+class Stored:
+    """An in-memory blob store: each stored body under its reference."""
+
+    def __init__(self):
+        self.bodies = {}
+
+    def put(self, data: bytes) -> str:
+        ref = f"blob-{len(self.bodies) + 1}"
+        self.bodies[ref] = data
+        return ref
+
+
+def test_a_validators_evidence_stores_its_verdict_as_a_record():
+    verdict = validator(
+        "catalog_number_validator", S.SUCCESS, parsed={"catalog_number": "0123456"}
+    )
+    blobs = Stored()
+    book = ToolLedger(Fakes(catalog=verdict).tools(), asset_id="asset-1", blobs=blobs)
+
+    book.run(
+        "catalog_number_validator",
+        DECIDED,
+        {"literal": "FMNH INS 0123456"},
+        ["fmnh_ins_number"],
+    )
+
+    (item,) = book.evidence
+    stored = blobs.bodies[item.raw_ref]
+    assert item.digest == hashlib.sha256(stored).hexdigest()
+    assert json.loads(stored) == {
+        "tool": "catalog_number_validator",
+        "literal": "FMNH INS 0123456",
+        "outcome": "success",
+        "parsed": {"catalog_number": "0123456"},
+        "warnings": [],
+    }

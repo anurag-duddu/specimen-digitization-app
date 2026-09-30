@@ -1,5 +1,9 @@
 """The LLM first pass in the workflow (stage 6): docs/execution/golive/HARNESS.md section 4."""
 
+import json
+from types import SimpleNamespace
+
+import pytest
 from test_application import client, intake
 
 from specimen_digitization.application.api import (
@@ -7,7 +11,18 @@ from specimen_digitization.application.api import (
     SYNTHETIC_ORG,
     SYNTHETIC_TEXT,
 )
-from specimen_digitization.application.domain import Principal, Run, Scope
+from specimen_digitization.application.domain import (
+    Principal,
+    Run,
+    Scope,
+    StageCostReservations,
+)
+from specimen_digitization.application import model_runtime
+from specimen_digitization.application.first_pass import synthetic_decision
+from specimen_digitization.application.integrity import (
+    EvidenceIntegrityError,
+    verify_evidence,
+)
 from specimen_digitization.application.storage import (
     LocalBlobs,
     SQLiteRepository,
@@ -17,7 +32,8 @@ from specimen_digitization.application.workflow import SyntheticAdapters, Workfl
 
 
 class ChoosingAdapters(SyntheticAdapters):
-    """Synthetic readers that disagree, and a first pass that picks a reading."""
+    """Synthetic readers that disagree, and a first pass that picks a reading the
+    image supports at every difference (G19), or none."""
 
     def __init__(self, blobs, pick):
         super().__init__(blobs, SYNTHETIC_TEXT, "taxon: different")
@@ -26,12 +42,21 @@ class ChoosingAdapters(SyntheticAdapters):
     def first_pass(self, specimen, region, readings):
         self.first_passes.append(region.id)
         decision = super().first_pass(specimen, region, readings)
+        chosen = self.pick(readings)
+        if chosen is None:
+            return decision
         return decision.model_copy(
-            update={"selected_observation_id": self.pick(readings)}
+            update={
+                "selected_observation_id": chosen,
+                "differences": [
+                    d.model_copy(update={"verdict": chosen})
+                    for d in decision.differences
+                ],
+            }
         )
 
 
-def drain(tmp_path, adapters):
+def start(tmp_path, adapters):
     row = intake(client(tmp_path))
     repo = SQLiteRepository(tmp_path / "state.sqlite3")
     scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
@@ -39,7 +64,12 @@ def drain(tmp_path, adapters):
     specimen = repo.get(scope, row["specimen_id"])
     specimen.run = Run(profile=specimen.run.profile)
     repo.save(principal, specimen, specimen.version, "new-run", digest({"new": True}))
-    return Workflow(repo, adapters.blobs, adapters).drain(principal, specimen.id).run
+    return Workflow(repo, adapters.blobs, adapters), principal, specimen.id
+
+
+def drain(tmp_path, adapters):
+    workflow, principal, specimen_id = start(tmp_path, adapters)
+    return workflow.drain(principal, specimen_id).run
 
 
 def test_differing_readings_get_a_first_pass_before_adjudication(tmp_path):
@@ -80,14 +110,116 @@ def test_no_selection_hands_every_reading_to_the_harness_as_raw(tmp_path):
     }
 
 
-def test_a_decision_naming_an_unknown_reading_blocks_the_run(tmp_path):
-    adapters = ChoosingAdapters(LocalBlobs(tmp_path / "blobs"), lambda r: "unknown")
+class TamperingAdapters(ChoosingAdapters):
+    """A first pass whose decision breaks its contract in one way."""
+
+    def __init__(self, blobs, tamper):
+        super().__init__(blobs, lambda r: None)
+        self.tamper = tamper
+
+    def first_pass(self, specimen, region, readings):
+        decision = super().first_pass(specimen, region, readings)
+        return self.tamper(decision, [o.id for o in readings])
+
+
+def differences(decision, **update):
+    return [d.model_copy(update=update) for d in decision.differences]
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        lambda d, ids: d.model_copy(update={"selected_observation_id": "unknown"}),
+        lambda d, ids: d.model_copy(
+            update={"differences": differences(d, verdict="unknown")}
+        ),
+        lambda d, ids: d.model_copy(update={"selected_observation_id": ids[1]}),
+        lambda d, ids: d.model_copy(
+            update={"differences": differences(d, material=False)}
+        ),
+        lambda d, ids: d.model_copy(update={"region_id": "region-2"}),
+    ],
+    ids=[
+        "a pick naming no reading",
+        "a verdict naming no reading",
+        "a pick over an open material difference",
+        "material flags the spans contradict",
+        "another region",
+    ],
+)
+def test_a_decision_breaking_its_contract_blocks_the_run(tmp_path, tamper):
+    adapters = TamperingAdapters(LocalBlobs(tmp_path / "blobs"), tamper)
 
     run = drain(tmp_path, adapters)
 
     assert run.stage == "processing_blocked"
     assert run.blocker == "first_pass_contract_invalid"
     assert not run.first_pass_decisions and not run.transcripts
+
+
+def test_a_first_pass_failing_before_it_returns_leaves_its_outcome_unknown(tmp_path):
+    # Item 4 of the steward's review of #97: `first_pass:` is an external step, so
+    # a failure before the call returns may follow an accepted, billable call.
+    adapters = ChoosingAdapters(LocalBlobs(tmp_path / "blobs"), lambda r: None)
+
+    def fail(specimen, region, readings):
+        raise RuntimeError("connection reset after the request was sent")
+
+    adapters.first_pass = fail
+
+    run = drain(tmp_path, adapters)
+
+    assert run.stage == "processing_blocked"
+    assert run.blocker == "external_outcome_unknown"
+    assert not run.first_pass_decisions
+
+
+def test_a_billed_first_pass_reserves_before_its_call_which_is_no_reading(tmp_path):
+    # Item 4 of the steward's review of #97: the step reserves its stage cost and
+    # tokens and records its intent before the call, and the call's Observation is
+    # the decision's, never one of the run's readings.
+    adapters = ChoosingAdapters(LocalBlobs(tmp_path / "blobs"), lambda r: None)
+    workflow, principal, specimen_id = start(tmp_path, adapters)
+    repo = workflow.repository
+    while not Workflow.next_step(repo.get(principal.scope, specimen_id).run).startswith(
+        "first_pass:"
+    ):
+        workflow.step(principal, specimen_id)
+    specimen = repo.get(principal.scope, specimen_id)
+    profile = specimen.run.profile
+    specimen.run.profile = profile.model_copy(
+        update={
+            "synthetic": False,
+            "execution": profile.execution.model_copy(
+                update={
+                    "approved_cost_limit_micros": 10_000,
+                    "stage_cost_reservations": StageCostReservations(
+                        version="stage-cost-reservations-v1",
+                        cost_micros={"first_pass": 900},
+                    ),
+                }
+            ),
+        }
+    )
+    repo.save(principal, specimen, specimen.version, "billed", digest({"billed": 1}))
+    seen = []
+
+    def first_pass(item, region, readings):
+        retained = repo.get(principal.scope, item.id).run
+        usage = retained.usage
+        seen.append(
+            (retained.blocker, usage.reserved_cost_micros, usage.reserved_tokens)
+        )
+        return synthetic_decision(adapters.blobs, region, readings)
+
+    adapters.first_pass = first_pass
+
+    run = workflow.step(principal, specimen_id).run
+
+    assert seen == [("external_outcome_unknown", 900, 16000)]
+    (decision,) = run.first_pass_decisions
+    assert decision.call.id not in {o.id for o in run.observations}
+    assert [o.route_id for o in run.observations] == list(run.profile.routes)
 
 
 def test_identical_readings_skip_the_first_pass_and_are_recorded_as_before(tmp_path):
@@ -107,3 +239,173 @@ def test_identical_readings_skip_the_first_pass_and_are_recorded_as_before(tmp_p
         (second.id, "raw_reading"),
     ]
     assert transcript.first_pass_call is None and transcript.reason is None
+
+
+def forge_call(specimen, blobs, **update):
+    """The same forged call on the transcript and on the run's decision, so only
+    the call's own check can refuse it."""
+    run = specimen.run
+    (transcript,) = run.transcripts
+    if "input_crop_ref" in update:
+        update["input_crop_ref"] = blobs.put(update["input_crop_ref"])
+    call = transcript.first_pass_call.model_copy(update=update)
+    run.transcripts = [transcript.model_copy(update={"first_pass_call": call})]
+    run.first_pass_decisions = [
+        d.model_copy(update={"call": call}) for d in run.first_pass_decisions
+    ]
+
+
+def forge_transcript(specimen, **update):
+    (transcript,) = specimen.run.transcripts
+    specimen.run.transcripts = [transcript.model_copy(update=update)]
+
+
+def other_reading(specimen):
+    (transcript,) = specimen.run.transcripts
+    readings = [
+        o for o in specimen.run.observations if o.region_id == transcript.region_id
+    ]
+    return next(o for o in readings if o.id != transcript.selected_observation_id)
+
+
+def switch_pick(specimen, *, with_verdicts, in_decision):
+    """Pick the other reading, verbatim; its verdicts and the run's decision
+    follow only when asked, so each check can be met alone."""
+    run = specimen.run
+    (transcript,) = run.transcripts
+    other = other_reading(specimen)
+    differences = [
+        d.model_copy(update={"verdict": other.id}) if with_verdicts else d
+        for d in transcript.differences
+    ]
+    pick = {"selected_observation_id": other.id}
+    run.transcripts = [
+        transcript.model_copy(
+            update={**pick, "text": other.literal_text, "differences": differences}
+        )
+    ]
+    if in_decision:
+        run.first_pass_decisions = [
+            d.model_copy(update={**pick, "differences": differences})
+            for d in run.first_pass_decisions
+        ]
+
+
+def foreign_pick(specimen):
+    """A pick naming another region's reading with the same text."""
+    run = specimen.run
+    (transcript,) = run.transcripts
+    region = run.regions[0].model_copy(update={"id": "region-2"})
+    reading = next(o for o in run.observations if o.region_id == transcript.region_id)
+    foreign = reading.model_copy(update={"id": "foreign", "region_id": "region-2"})
+    run.regions.append(region)
+    run.observations.append(foreign)
+    forge_transcript(specimen, selected_observation_id="foreign")
+
+
+@pytest.mark.parametrize(
+    "pick,tamper",
+    [
+        (1, lambda s, b: forge_call(s, b, raw_sha256="0" * 64)),
+        (1, lambda s, b: forge_call(s, b, input_sha256="0" * 64)),
+        (1, lambda s, b: forge_call(s, b, region_id="region-2")),
+        (1, lambda s, b: forge_call(s, b, input_crop_ref=b"another crop")),
+        (1, lambda s, b: forge_transcript(s, text=other_reading(s).literal_text)),
+        (
+            None,
+            lambda s, b: forge_transcript(s, text=s.run.observations[1].literal_text),
+        ),
+        (1, lambda s, b: forge_transcript(s, decision_kind=None)),
+        (1, lambda s, b: forge_transcript(s, first_pass_call=None)),
+        (1, lambda s, b: switch_pick(s, with_verdicts=True, in_decision=False)),
+        (1, lambda s, b: switch_pick(s, with_verdicts=False, in_decision=True)),
+        (
+            "identical",
+            lambda s, b: forge_transcript(
+                s, decision_kind=None, selected_observation_id=None, text="forged"
+            ),
+        ),
+        ("identical", lambda s, b: foreign_pick(s)),
+    ],
+    ids=[
+        "the call's responses",
+        "the call's input digest",
+        "the call's region",
+        "the bytes at the call's crop reference",
+        "text of the reading not picked",
+        "a null pick with resolved text",
+        "a first-pass record relabelled",
+        "a first-pass record without its call",
+        "a pick other than the decision's",
+        "a pick its material verdicts do not support",
+        "text that is no reading's",
+        "a pick from another region",
+    ],
+)
+def test_finalize_binds_each_machine_transcript_to_its_readings_and_decision(
+    tmp_path, pick, tamper
+):
+    # The steward's reviews of #98: finalize checks the first-pass call and a
+    # machine pick against the run's decision before the queue decision relies
+    # on them. Each case breaks one check and meets every other.
+    blobs = LocalBlobs(tmp_path / "blobs")
+    if pick == "identical":
+        adapters = SyntheticAdapters(blobs, SYNTHETIC_TEXT)
+    else:
+        adapters = ChoosingAdapters(
+            blobs, lambda r: None if pick is None else r[pick].id
+        )
+    workflow, principal, specimen_id = start(tmp_path, adapters)
+    specimen = workflow.drain(principal, specimen_id)
+    verify_evidence(specimen, blobs)
+
+    tamper(specimen, blobs)
+
+    with pytest.raises(EvidenceIntegrityError):
+        verify_evidence(specimen, blobs)
+
+
+def test_a_reviewer_changed_transcript_keeps_the_machine_pick_on_record(tmp_path):
+    # A reviewer's transcription decision sets its own text and actor; the pick
+    # the first pass made stays on the record as history.
+    adapters = ChoosingAdapters(LocalBlobs(tmp_path / "blobs"), lambda r: r[1].id)
+    workflow, principal, specimen_id = start(tmp_path, adapters)
+    specimen = workflow.drain(principal, specimen_id)
+    changed = specimen.run.transcripts[0].model_copy(
+        update={"text": None, "resolved": False, "actor": "synthetic-reviewer"}
+    )
+
+    specimen.run.transcripts = [changed]
+
+    verify_evidence(specimen, adapters.blobs)
+
+
+def test_the_extraction_call_gets_the_decided_text_alone(monkeypatch, tmp_path):
+    # A resolved transcript goes to extraction with its text as its only
+    # alternative, and without its handoffs, differences or first-pass call.
+    adapters = ChoosingAdapters(LocalBlobs(tmp_path / "blobs"), lambda r: r[1].id)
+    workflow, principal, specimen_id = start(tmp_path, adapters)
+    specimen = workflow.drain(principal, specimen_id)
+    fields = {k: v.model_dump(mode="json") for k, v in specimen.run.fields.items()}
+    body = {"fields": fields, "evidence": [], "tokens": 0}
+    result = SimpleNamespace(
+        status="completed",
+        cleanup_complete=True,
+        value=json.dumps({"status": "completed", "value": body}).encode(),
+    )
+    sent = {}
+
+    def isolated(function, payload, *args, **kwargs):
+        sent.update(payload)
+        return result
+
+    monkeypatch.setattr(model_runtime, "run_isolated", isolated)
+
+    model_runtime.invoke_model(
+        SimpleNamespace(blobs=adapters.blobs, model_effect=None), specimen, "extract"
+    )
+
+    (transcript,) = sent["transcripts"]
+    assert transcript["text"] == specimen.run.transcripts[0].text
+    assert transcript["alternatives"] == [transcript["text"]]
+    assert not {"handoffs", "differences", "first_pass_call"} & set(transcript)

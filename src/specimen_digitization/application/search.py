@@ -26,6 +26,7 @@ class SearchFilters(BaseModel):
     uploader_id: str | None = Field(default=None, min_length=1, max_length=200)
     state: (
         Literal[
+            "pending",
             "running",
             "completed",
             "processing_blocked",
@@ -38,6 +39,7 @@ class SearchFilters(BaseModel):
     stage: (
         Literal[
             "ingested",
+            "pending",
             "classify",
             "quality_check",
             "segment",
@@ -200,7 +202,8 @@ def sqlite_search(
         "sensitive": "json_extract(payload,'$.asset.sensitive')",
         "reason_codes": "json_extract(payload,'$.run.reasons')",
         "risk": "CASE WHEN json_type(payload,'$.run.review_risk.composite') IN ('integer','real') AND json_extract(payload,'$.run.review_risk.composite') BETWEEN 0 AND 100 THEN json_extract(payload,'$.run.review_risk.composite') END",
-        "status": "CASE WHEN json_extract(payload,'$.run.disposition') IS NOT NULL THEN 'completed' WHEN state IN ('processing_blocked','retry_scheduled','paused','cancelled') THEN state ELSE 'running' END",
+        # Mirrors lane.run_status; the SQLite state column holds the raw stage.
+        "status": "CASE WHEN json_extract(payload,'$.run.disposition') IS NOT NULL THEN 'completed' WHEN state IN ('processing_blocked','retry_scheduled','paused','cancelled','pending') THEN state ELSE 'running' END",
     }
     clauses = ["org=?", "collection=?", "created_at<=?"]
     values = [scope.organization_id, scope.collection_id, cutoff]

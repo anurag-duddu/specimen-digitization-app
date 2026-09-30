@@ -410,6 +410,24 @@ def test_a_single_reading_without_a_year_is_ambiguous(
                 ("IV 1948", INSECTS),
             )
         ),
+        # Roman month and a two-digit year after an apostrophe, under the
+        # century rule: pilot 327's date, read by G24 and G29 (PLAN.md:82, :87).
+        *(
+            (
+                literal,
+                INSECTS,
+                reading(
+                    "1946-11", 1946, 11, None, "month", "month-year", [ROMAN, CENTURY]
+                ),
+            )
+            for literal in (
+                "XI.'46",
+                "XI." + chr(0x2019) + "46",
+                "XI. '46",
+                "XI '46",
+                "XI-" + chr(0x2018) + "46",
+            )
+        ),
         # Month name, day, year.
         *(
             (
@@ -541,9 +559,18 @@ def test_a_year_outside_1750_to_the_current_year_is_no_date(
 # "." or "-"; "12 x 46" may be a measurement.
 @pytest.mark.parametrize(
     "literal",
-    ["46", "Mossy forest", "iv-23-48", "iv-1948", "12 x 46", "12 vi 1946"],
+    [
+        "46",
+        "Mossy forest",
+        "iv-23-48",
+        "iv-1948",
+        "12 x 46",
+        "12 vi 1946",
+        # U+0130 matches I only under Unicode case rules: no numeral.
+        "12." + chr(0x130) + ".46",
+    ],
 )
-def test_a_literal_no_approved_notation_fits_is_no_date(literal):
+def test_a_literal_no_listed_notation_fits_is_no_date(literal):
     result = date_parser(literal, source_text=literal, date_rules=INSECTS)
     assert result.outcome == LookupStatus.NO_MATCH
     assert result.warnings == [] and result.parsed is None

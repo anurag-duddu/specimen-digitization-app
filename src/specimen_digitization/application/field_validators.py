@@ -27,6 +27,7 @@ MONTH_NAMES = {
     n: i for i, full in enumerate(MONTHS, 1) for n in (full[:3], full[:4], full)
 }
 ROMAN = ("I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII")
+ROMAN_MONTHS = {numeral: month for month, numeral in enumerate(ROMAN, 1)}
 EARLIEST_YEAR = 1750  # HAR-006: a plausible year is from 1750 to the current one.
 APOSTROPHES = "'’‘"  # A two-digit year's mark, straight or curly.
 _YEAR = rf"(?P<y>[{APOSTROPHES}]?[0-9]{{2}}|[0-9]{{4}})"
@@ -40,13 +41,15 @@ _DAY, _NAME = "(?P<d>[0-9]{1,2})", r"(?P<name>[a-z]+)\.?"
 # or "-" (12.x.46): with spaces, 12 x 46 may be a measurement.
 _ROMAN = "(?P<roman>" + "|".join(reversed(ROMAN)) + ")"
 _UPPER_ROMAN = "(?-i:" + _ROMAN + ")"
-# The notations G24 and G29 approve, and no other; "numeric" reads both orders.
+# The notations S4 reads under G24 and G29. The list is S4's, not a closed one:
+# the owner's G29 answer has the harness work out all possible cases. "numeric"
+# reads both orders.
 NOTATIONS = [
     (order, re.compile(pattern, re.IGNORECASE))
     for order, pattern in (
         ("month-day-year", _UPPER_ROMAN + _SEP + _DAY + _AGAIN + _YEAR),
         ("month-day", _UPPER_ROMAN + _SEP + _NUMBER),
-        ("month-year", _UPPER_ROMAN + "(?:" + _DOT + r"|\s+)(?P<y>[0-9]{4})"),
+        ("month-year", _UPPER_ROMAN + "(?:" + _DOT + r"|\s+)" + _MARKED_YEAR),
         ("day-month-year", _DAY + _GAP + _UPPER_ROMAN + _GAP + _YEAR),
         ("day-month-year", _DAY + _DOT + _ROMAN + _DOT + _YEAR),
         ("numeric", "(?P<a>[0-9]{1,2})" + _SEP + "(?P<b>[0-9]{1,2})" + _AGAIN + _YEAR),
@@ -102,7 +105,9 @@ def date_parser(
     if roman and not roman_months:
         warnings = ["roman_numeral_months_not_enabled"]
         return _date_result(outcome=LookupStatus.NO_MATCH, warnings=warnings)
-    month = ROMAN.index(roman.upper()) + 1 if roman else MONTH_NAMES.get(name)
+    # A letter that matches a numeral only under Unicode case rules (U+0130)
+    # is none, so the literal is no date.
+    month = ROMAN_MONTHS.get(roman.upper()) if roman else MONTH_NAMES.get(name)
     if order is None or (month is None and order not in ("numeric", "year")):
         return _date_result(outcome=LookupStatus.NO_MATCH)
     roman_rule = [f"{version}:roman_numeral_months=true"] if roman else []
