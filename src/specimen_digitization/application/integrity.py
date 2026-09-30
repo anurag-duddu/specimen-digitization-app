@@ -14,6 +14,11 @@ class EvidenceIntegrityError(RuntimeError):
     """Retained evidence cannot currently substantiate the stored graph."""
 
 
+# Google evidence: its stored record keeps exactly these (G26, rule 1.6).
+GOOGLE = "google-maps-geocoding"
+GOOGLE_KEPT = frozenset({"place_id", "outcome", "response_sha256"})
+
+
 def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
     """Check bytes and graph associations; missing storage is an operational block."""
 
@@ -117,6 +122,9 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                     require(observation.input_asset_id == asset.id)
                 if observation.input_crop_ref is not None:
                     read(observation.input_crop_ref, observation.input_sha256)
+            from .first_pass import g19_pick
+
+            decisions = {d.region_id: d for d in run.first_pass_decisions}
             for transcript in run.transcripts:
                 require(transcript.region_id in regions)
                 require(bool(transcript.observation_ids))
@@ -127,6 +135,49 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                         for ident in transcript.observation_ids
                     )
                 )
+                call = transcript.first_pass_call
+                if call is not None:
+                    # The first pass's own call: its responses, its region and
+                    # its input, the crop the readers saw (HARNESS.md section 4).
+                    require(call.region_id == transcript.region_id)
+                    read(call.raw_ref, call.raw_sha256)
+                    require(
+                        call.input_sha256
+                        == (
+                            asset.sha256
+                            if run.profile.synthetic
+                            else input_hashes[call.region_id]
+                        )
+                    )
+                    if call.input_asset_id is not None:
+                        require(call.input_asset_id == asset.id)
+                    if call.input_crop_ref is not None:
+                        read(call.input_crop_ref, call.input_sha256)
+                if transcript.actor is None:
+                    # A machine record, one no reviewer's decision has changed,
+                    # holds its region's readings and decision (HARNESS.md 4).
+                    literals = {
+                        observations[ident].literal_text
+                        for ident in transcript.observation_ids
+                    }
+                    require(transcript.text is None or transcript.text in literals)
+                    selected = transcript.selected_observation_id
+                    decision = decisions.get(transcript.region_id)
+                    if decision is not None:
+                        require(transcript.decision_kind == "first_pass")
+                    if transcript.decision_kind == "first_pass":
+                        require(decision is not None)
+                        require(transcript.first_pass_call == decision.call)
+                        require(selected == decision.selected_observation_id)
+                        require(g19_pick(selected, transcript.differences) == selected)
+                    if transcript.decision_kind in {"identical_readings", "first_pass"}:
+                        if selected is None:
+                            require(transcript.text is None)
+                        else:
+                            require(selected in transcript.observation_ids)
+                            require(
+                                transcript.text == observations[selected].literal_text
+                            )
             for evidence in run.evidence:
                 if evidence.asset_id is not None:
                     require(evidence.asset_id == asset.id)
@@ -144,7 +195,18 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                     require(bool(evidence.observation_ids))
                 if evidence.raw_ref or evidence.digest:
                     require(bool(evidence.raw_ref) and bool(evidence.digest))
-                    read(evidence.raw_ref, evidence.digest)
+                    if evidence.source == GOOGLE:
+                        # The stored record holds only what G26 lets us keep, and
+                        # the digest is Google's full response's (DATA_CONTRACT.md
+                        # 79-81), so the record must name that digest.
+                        try:
+                            kept = json.loads(read(evidence.raw_ref))
+                        except ValueError:  # Not a record: corrupt evidence.
+                            kept = None
+                        require(isinstance(kept, dict) and set(kept) == GOOGLE_KEPT)
+                        require(kept["response_sha256"] == evidence.digest)
+                    else:
+                        read(evidence.raw_ref, evidence.digest)
             for lookup in run.lookups:
                 if (
                     lookup.raw_ref

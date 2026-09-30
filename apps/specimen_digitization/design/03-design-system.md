@@ -427,6 +427,9 @@ screen reader from `Semantics(label:)` alone.
 | Deferred | `Symbols.pause_circle` | 1 | `Deferred` | `disposition.deferred` |
 | Processing | `Symbols.autorenew` | 0 | `Processing` | `state.processing` |
 | Processing blocked | `Symbols.block` | 0 | `Processing blocked` | `state.blocked` |
+| Retry scheduled | registry `time` (09 section 7) | 0 | `Retry scheduled` | `state.blocked` |
+| Paused | registry `blocked` (09 section 7) | 0 | `Paused` | `state.blocked` |
+| Cancelled | registry `stop` (09 section 7) | 0 | `Cancelled` | `state.blocked` |
 | State unknown | `Symbols.help` | 0 | `State unknown` | `slate` |
 | Model reading | `Symbols.memory` | 0 | `Model A` / `Model B` | `evidence.model` |
 | Human decision | `Symbols.person` | 1 | `Reviewer` plus name | `evidence.human` |
@@ -438,6 +441,12 @@ screen reader from `Semantics(label:)` alone.
 | Added in diff | `Symbols.add` | 0 | announced as `added: <text>` | `diff.added` |
 | Changed in diff | `Symbols.change_circle` | 0 | announced as `differs: <a> versus <b>` | `diff.changed` |
 | Unchanged in diff | none | n/a | no announcement | `diff.unchanged` |
+
+The three stopped run states (PRD 10.1) were added by the go-live UI
+workstream on 2026-09-23 and confirmed by the coordinator under G5
+(`docs/execution/golive/UI.md` T1.2): the PRD's words on the operational
+triple, with registry glyphs that already existed. Their semantic label names
+the run, not the queue ("Run: paused").
 
 The abstention marks use the same rule:
 

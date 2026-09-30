@@ -26,7 +26,7 @@ Triggers: a message "PR #N ready" from a workstream session; a new push to an
 open go-live PR; and a fallback poll every 15 minutes:
 
 ```bash
-gh pr list --label golive --state open --json number,title,headRefName,headRefOid,isDraft,mergeable,updatedAt
+gh pr list --label golive --state open --json number,title,headRefName,headRefOid,isDraft,mergeable,updatedAt,autoMergeRequest
 ```
 
 Keep a ledger at `~/specimen-golive/status/S1-steward-ledger.md` (one line per
@@ -35,7 +35,8 @@ event: time, PR, head SHA, action, result) and your 30-line status file at
 
 For each head SHA you have not reviewed:
 
-1. **Preflight, yourself.** `gh pr view N --json files,additions,deletions,body,labels,commits`.
+1. **Preflight, yourself.** `gh pr view N --json files,additions,deletions,body,labels,commits,autoMergeRequest`
+   (auto-merge must be off).
    Check: title prefix and `golive` label; body sections Spec, Tests (red and
    green commits), Gates run locally, Risk, Depends on; a
    `docs/SESSION_LEARNINGS.md` closeout entry; size under about 600 changed
@@ -72,11 +73,11 @@ For each head SHA you have not reviewed:
      with `SendMessage`, first line "PR #N needs changes: <summary>". Wait for
      "PR #N ready" again, then review the new head with a new swarm.
    - Only should-fix and nits: post them as a comment and continue.
-   - Never push code to another session's branch. You may run
-     `gh pr update-branch N` to bring a PR up to date with `main`; do it only
-     for the pull request that is next to merge, since the new head needs a
-     fresh swarm (G18). Then tell the owning session to pull before its next
-     push.
+   - Never push code to another session's branch. When a pull request is next
+     to merge and behind `main`, tell its owning session "your PR is next"; it
+     merges `origin/main` locally and pushes, because GitHub's server-side merge
+     (including `gh pr update-branch`) ignores the `merge=union` rule for
+     `docs/SESSION_LEARNINGS.md`. The new head gets a fresh swarm (G18).
 4. **CI.** Watch with a Monitor or a background
    `gh pr checks N --watch --interval 60 > <log>`. On a failure, save
    `gh run view <id> --log-failed` to a file and read at most 60 lines. An
@@ -85,10 +86,12 @@ For each head SHA you have not reviewed:
    the owning session with the excerpt.
 5. **Merge** when all of these hold: required checks green on the current head;
    the swarm for that head approved with no open blocking finding; the branch
-   is up to date with `main`; dependencies merged; `~/specimen-golive/MERGE_ORDER.md`
-   does not hold it. Then `gh pr merge N --merge` (a merge commit keeps the red
+   is up to date with `main`; dependencies merged; a change to a file another
+   session owns carries that session's sign-off comment (PLAN section 6);
+   `~/specimen-golive/MERGE_ORDER.md` does not hold it. Then `gh pr merge N --merge` (a merge commit keeps the red
    and green commits visible). Merge one PR at a time. Auto-merge stays off
-   (G17): if you find it enabled on a go-live pull request, tell the
+   (G17), and the repository's "Allow auto-merge" is off (G21, done 2026-09-23).
+   If you find auto-merge enabled on a go-live pull request, report it to the
    coordinator and leave the setting alone.
 6. **After each merge**, watch the push-to-`main` runs for the merge commit:
    CI/CD (Hosting deploy and public marker check) and Runtime candidate CI, and,
@@ -98,8 +101,9 @@ For each head SHA you have not reviewed:
    the merge commit, then the smoke check `DEPLOYMENT.md` names. For runtime
    deploys use the readiness checks the release workstream documents. If
    `main` goes red, tell the owning session and the coordinator; if it stays
-   red for 30 minutes with no fix in sight, open a revert PR (one new reviewer
-   is enough for a pure revert).
+   red for 30 minutes with no fix in sight, open a revert PR. It gets the full
+   four-reviewer swarm like any other head (G18), because a revert also deploys
+   (G11).
 
 Until the release workstream's auto-on-merge PRs merge, the protected data and
 runtime workflows fail closed at admission on every push. That is expected;

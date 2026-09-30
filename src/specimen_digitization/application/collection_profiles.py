@@ -105,7 +105,12 @@ class CollectionProfile(FrozenRecord):
 
     @property
     def digest(self) -> str:
-        return sha256(self.model_dump_json().encode()).hexdigest()
+        # Canonical JSON, like every pinned digest (storage.digest): a snapshot
+        # comes back from Data Connect with its keys sorted, and the digest a
+        # run pinned must survive that.
+        from .storage import digest
+
+        return digest(self.model_dump(mode="json"))
 
     @model_validator(mode="after")
     def validate_fields(self):

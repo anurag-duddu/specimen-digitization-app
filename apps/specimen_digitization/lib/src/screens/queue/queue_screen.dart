@@ -841,7 +841,10 @@ class _QueueListRow extends StatelessWidget {
       id: specimen.id,
       title: specimen.title,
       reason: queueReason(specimen),
-      status: SpecimenStatus.fromWire(specimen.disposition ?? specimen.state),
+      status: SpecimenStatus.ofRecord(
+        disposition: specimen.disposition,
+        state: specimen.state,
+      ),
       riskComposite: specimen.data['risk'] as num?,
       // The search endpoint answers a bare composite and leaves the
       // contributing signals on the record. The compact meter never draws
@@ -1263,7 +1266,9 @@ class _ActiveFilterChips extends StatelessWidget {
                   for (final MapEntry<String, String> entry in filters.entries)
                     UiChip(
                       key: ValueKey<String>('filter-chip-${entry.key}'),
-                      label: '${searchFieldLabel(entry.key)}: ${entry.value}',
+                      label:
+                          '${searchFieldLabel(entry.key)}: '
+                          '${searchValueLabel(entry.key, entry.value)}',
                       variant: UiChipVariant.input,
                       onRemove: () =>
                           unawaited(controller.removeFilter(entry.key)),

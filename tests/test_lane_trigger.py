@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 
+import json
 import pytest
 from fastapi.testclient import TestClient
 
@@ -17,6 +18,8 @@ from specimen_digitization.application.collection_profiles import (
     CollectionProfileRegistry,
     ProcessingPolicy,
     ProfileMapping,
+    insects_registry,
+    resolve_profile_rules,
 )
 from specimen_digitization.application.domain import (
     MANDATORY,
@@ -494,3 +497,34 @@ def test_a_viewer_cannot_start_processing(tmp_path):
     accepted = process(operator, specimen_id, "operator-process")
     assert accepted.status_code == 202, accepted.text
     assert dispatcher.calls == calls + 1
+
+
+def stored_by_data_connect(value):
+    """A JSON value as Data Connect gives it back: every object's keys sorted, as
+    PostgreSQL's jsonb stores them (the acceptance lab's run 20260928T053804Z)."""
+    return json.loads(json.dumps(value, sort_keys=True))
+
+
+def test_a_profile_digest_does_not_depend_on_how_storage_orders_keys():
+    profile = registry().profiles[0]
+    reloaded = CollectionProfile.model_validate(
+        stored_by_data_connect(profile.model_dump(mode="json"))
+    )
+    assert reloaded == profile
+    assert reloaded.digest == profile.digest
+
+
+def test_the_rules_a_run_pinned_survive_storage_order():
+    # pinned_risk_resolution recomputes them from the stored snapshot before
+    # segment; a mismatch blocks every run (segmentation_profile_rules_unresolved).
+    base = insects_registry(synthetic=True).profiles[0].model_dump(mode="json")
+    allowance = ProcessingPolicy(run_cost_limit_micros=250_000, stage_cost_micros=STAGE_COSTS)
+    profile = CollectionProfile.model_validate(
+        {**base, "processing": allowance.model_dump(mode="json")}
+    )
+    pinned = resolve_profile_rules(profile, (profile.scoring_policy_ref,))
+    reloaded = CollectionProfile.model_validate(
+        stored_by_data_connect(profile.model_dump(mode="json"))
+    )
+    recomputed = resolve_profile_rules(reloaded, (reloaded.scoring_policy_ref,))
+    assert recomputed.model_dump(mode="json") == pinned.model_dump(mode="json")
