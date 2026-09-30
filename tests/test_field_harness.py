@@ -572,6 +572,141 @@ def test_a_value_the_model_asserts_without_a_record_does_not_count():
     )
 
 
+def _assigned_elevation_quantity(literal, key, labels):
+    readings = [
+        Reading(f"r{i}", f"unit-{i}", "decided_transcript", literal)
+        for i in range(1, labels + 1)
+    ]
+    blobs = Blobs()
+    outcome, _ = harness(
+        answer(**{f"{i}A": {key: literal} for i in range(1, labels + 1)}),
+        readings=readings,
+        plan=ELEVATIONS,
+        blobs=blobs,
+    )
+    assert outcome.failure is None and outcome.blocker is None
+    source = outcome.fields[key]
+    assert source.state == V.SUPPORTED
+    assert source.literal == (literal if labels == 1 else None)
+    if labels > 1:
+        assert source.verbatim_by_observation == {
+            reading.observation_id: literal for reading in readings
+        }
+    assert {
+        observation
+        for evidence in outcome.evidence
+        if evidence.kind == "literal" and evidence.id in source.evidence_ids
+        for observation in evidence.observation_ids
+    } == {reading.observation_id for reading in readings}
+    return outcome, blobs
+
+
+@pytest.mark.parametrize("labels", [1, 2])
+@pytest.mark.parametrize("literal,key", [
+    ("10 m", "elevation_from_ft"),
+    ("−.5 metres", "elevation_to_ft"),
+    ("1,200 meter", "elevation_from_ft"),
+    ("10 m.", "elevation_to_ft"),
+    ("10 METERS", "elevation_from_ft"),
+    ("10 ft", "elevation_from_m"),
+    ("-10 feet", "elevation_to_m"),
+    ("10 foot", "elevation_from_m"),
+    ("1,200 ft.", "elevation_to_m"),
+    ("10′", "elevation_from_m"),
+    ("−.5’", "elevation_to_m"),
+    ("10'", "elevation_from_m"),
+])
+def test_a_contradictory_stated_unit_gains_no_derived_authority(literal, key, labels):
+    outcome, _ = _assigned_elevation_quantity(literal, key, labels)
+
+    assert not any(value.layer == "derived" for value in outcome.fields.values())
+    assert not any(e.kind == "derivation" for e in outcome.evidence)
+    assert all(
+        value == FieldValue() for field, value in outcome.fields.items() if field != key
+    )
+
+
+@pytest.mark.parametrize("labels", [1, 2])
+@pytest.mark.parametrize("literal,key,copied,converted", [
+    ("10 ft", "elevation_from_ft", "10", "3.05"),
+    ("10 FEET", "elevation_to_ft", "10", "3.05"),
+    ("10 foot", "elevation_from_ft", "10", "3.05"),
+    ("1,200 ft.", "elevation_to_ft", "1200", "365.76"),
+    ("−.5′", "elevation_from_ft", "-0.5", "-0.15"),
+    ("10’", "elevation_to_ft", "10", "3.05"),
+    ("10'", "elevation_from_ft", "10", "3.05"),
+    ("10 m", "elevation_from_m", "10", "32.81"),
+    ("10 METRES", "elevation_to_m", "10", "32.81"),
+    ("−.5 metre", "elevation_to_m", "-0.5", "-1.64"),
+    ("1,200 meter", "elevation_from_m", "1200", "3937.01"),
+    ("10 m.", "elevation_to_m", "10", "32.81"),
+    ("10", "elevation_from_ft", "10", "3.05"),
+])
+def test_compatible_units_and_bare_numbers_keep_exact_values_and_grounding(
+    literal, key, copied, converted, labels
+):
+    outcome, blobs = _assigned_elevation_quantity(literal, key, labels)
+
+    unit = "ft" if key.endswith("_ft") else "m"
+    other = "m" if unit == "ft" else "ft"
+    expected = {
+        f"elevation_from_{unit}": copied,
+        f"elevation_to_{unit}": copied,
+        f"elevation_from_{other}": converted,
+        f"elevation_to_{other}": converted,
+    }
+    expected.pop(key)
+    derived = {field: value for field, value in outcome.fields.items() if field != key}
+    assert {field: value.parsed for field, value in derived.items()} == expected
+    for value in derived.values():
+        assert value.state == V.SUPPORTED and value.layer == "derived"
+        assert value.derived_from == [key]
+        assert set(outcome.fields[key].evidence_ids) <= set(value.evidence_ids)
+        rule = next(
+            evidence for evidence in outcome.evidence
+            if evidence.kind == "derivation" and evidence.id in value.evidence_ids
+        )
+        raw = blobs.puts[int(rule.raw_ref.removeprefix("blob-")) - 1]
+        assert hashlib.sha256(raw).hexdigest() == rule.digest
+        record = json.loads(raw)["derivation"]
+        assert record["inputs"] == {key: literal}
+        assert record["authority"] == {
+            "name": "apply_derivations", "record_id": None,
+            "version": "derivation-rules-v1", "retrieved_at": None, "license": None,
+        }
+
+
+@pytest.mark.parametrize("labels", [1, 2])
+@pytest.mark.parametrize("unit,low,high", [("ft", "3.05", "6.1"), ("m", "32.81", "65.62")])
+def test_bare_numeric_range_endpoints_keep_their_fields_unit(unit, low, high, labels):
+    literal = f"10-20 {unit}"
+    readings = [
+        Reading(f"r{i}", f"range-{i}", "decided_transcript", literal)
+        for i in range(1, labels + 1)
+    ]
+    outcome, _ = harness(
+        answer(**{
+            f"{i}A": {f"elevation_from_{unit}": "10", f"elevation_to_{unit}": f"20 {unit}"}
+            for i in range(1, labels + 1)
+        }),
+        readings=readings,
+        plan=ELEVATIONS,
+    )
+
+    assert outcome.failure is None and outcome.blocker is None
+    other = "m" if unit == "ft" else "ft"
+    assert {field: value.parsed for field, value in outcome.fields.items() if value.layer == "derived"} == {
+        f"elevation_from_{other}": low, f"elevation_to_{other}": high,
+    }
+    for key, text in ((f"elevation_from_{unit}", "10"), (f"elevation_to_{unit}", f"20 {unit}")):
+        source = outcome.fields[key]
+        assert source.literal == (text if labels == 1 else None)
+        if labels > 1:
+            assert source.verbatim_by_observation == {
+                reading.observation_id: text for reading in readings
+            }
+
+
 def test_a_geography_results_derivation_fills_a_field_the_label_leaves_out():
     # G37: S8's tool derives the county by containment from the settled city.
     class Deriving(Fakes):
