@@ -53,16 +53,28 @@ Processing starts on intake and on request (PLAN 4.1 row 1, G2). Outside
 synthetic mode, five things make a request:
 
 1. Upload completion. Every accepted upload becomes a processing job (`PRD.md`
-   9.1 step 6), and the uploader is the requesting actor. A duplicate upload
-   requests nothing.
+   9.1 step 6), and the uploader is the requesting actor. Uploading already
+   requires the operator membership (`CONTRACTS.md` 48-49), so a viewer never
+   starts processing this way. A duplicate upload requests nothing.
 2. Import from a source. Adding a source photograph to the queue is intake, so
-   each specimen an import creates is queued the same way, and the worker is
-   started once per import. This supersedes, for this program, the rule that an
-   import dispatches nothing (`CONTRACTS.md` 654-662), which rested on the budget
-   G9 has since set.
-3. `POST /specimens/{specimen_id}/process`, with an `Idempotency-Key`. It keeps
-   the endpoint's existing authorization: any member who can see the specimen.
-   The response is `202` with the specimen summary plus `dispatch` (see below).
+   each eligible specimen an import creates is queued the same way. The worker
+   is requested once if at least one newly retained run is pending. This also
+   applies if a later object fails immutable-source verification: the import
+   keeps its error and earlier retained pending work still gets one start.
+   Duplicate-only imports, failures before creation and all-blocked intake start
+   no worker. This supersedes, for this program, the rule that an import dispatches
+   nothing (`CONTRACTS.md` 654-662), which rested on the budget G9 has since set.
+3. `POST /specimens/{specimen_id}/process`, with an `Idempotency-Key`. Starting
+   processing is paid work, so it requires the membership that uploads and run
+   actions require (`CONTRACTS.md` 48-49 and 63: the `write` check in `api.py`,
+   which admits operator, reviewer, manager and admin; the coordinator's
+   confirmation of 04:09Z on 2026-09-29 reads the ruling's "operator or admin"
+   as that tier), never a viewer's. A
+   viewer can see the specimen and its thread but cannot start or re-run a run:
+   the refusal is `403`, before anything is queued or a worker started (the
+   coordinator's ruling of 03:57Z on 2026-09-29, which corrects the brief's "any
+   member who can see the record"). The response is `202` with the specimen
+   summary plus `dispatch` (see below).
    Synthetic mode keeps its existing behaviour: it drains the specimen inside the
    request and returns the workspace.
 4. The run actions `retry`, `resume` and `reprocess` (`POST /runs/{id}/actions`).
@@ -84,7 +96,8 @@ processed by uploading or importing it into a batch declared non-sensitive.
 If intake cannot queue a specimen because its collection has no resolvable
 allowance, the specimen is still created. It is created `processing_blocked`
 with the blocker `collection_processing_unconfigured`, and a `retry` queues it
-once the allowance is published. A request that cannot queue a run is refused
+once the allowance is published. Blocked intake starts no worker. A request that
+cannot queue a run is refused
 with `409` `collection_processing_unconfigured`, and nothing is written.
 
 What `POST /specimens/{id}/process` does depends on the current run:
@@ -160,6 +173,12 @@ The release plane injects the value from Secret Manager, because it names privat
 collection identifiers. The routes, their roles and the integrity rules are
 unchanged (`CONTRACTS.md` 482-685).
 
+Both new API variables fail closed at start, in `RuntimeConfig`:
+
+- `SPECIMEN_WORKER_JOB` must name a job in the configured project.
+- Every source must be a valid `RegisteredSource` with no extra keys, in the
+  approved bucket (`SPECIMEN_GCS_BUCKET`), and registered once.
+
 A first capture of `microscopic-slides/` digests about 1,000 objects and took
 256 s when measured (`SESSION_LEARNINGS.md`, 2026-09-14 entry). Until capture moves
 to the worker plane, `CONTRACTS.md` 540-547 makes it an operator call with a long
@@ -176,3 +195,6 @@ deadline, so the API's request timeout is 600 s.
 - Runtime configuration parsing for both new variables, and the production
   wiring of the registry, reader and dispatcher.
 - Synthetic-mode tests stay green unchanged.
+- A viewer's `/process` is refused with `403`, with no run queued and no
+  worker started, and a viewer cannot open a batch; the same request from the
+  operator tier is accepted.

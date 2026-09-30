@@ -4,7 +4,21 @@ import argparse
 import os
 from pathlib import Path
 from .api import local_app, create_app
+from .lane_dispatch import dispatcher_from_value
 from .production import GcsBlobs, ProductionAdapters, SqlConnectRepository
+from .source_reader import GcsSourceReader
+from .source_registry import SourceRegistry
+
+
+def lane_wiring(config):
+    """The processing lane's production inputs (LANE.md T1); empty when unconfigured."""
+    return {
+        "source_registry": SourceRegistry(config.sources),
+        "source_reader": GcsSourceReader(project=config.project)
+        if config.sources
+        else None,
+        "worker_dispatcher": dispatcher_from_value(config.worker_job),
+    }
 
 
 def production_app(config=None):
@@ -50,6 +64,7 @@ def production_app(config=None):
         identity_verifier=firebase_verifier(firebase_app, config.app_ids, check_app),
         memberships=repository.memberships,
         origins=list(config.origins),
+        **lane_wiring(config),
     )
     install_health(
         app,
