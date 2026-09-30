@@ -326,6 +326,70 @@ def test_a_failed_service_check_restores_previous_traffic_and_removes_the_candid
     assert not any(target.get("tag") for target in google.state[NAMES["api"]]["trafficStatuses"])
 
 
+@pytest.mark.parametrize("accepted", [False, True], ids=["request-refused", "accepted-response-lost"])
+def test_unknown_candidate_submission_restores_previous_traffic(tmp_path, monkeypatch, ready, accepted):
+    existing = [previous(role) for role in NAMES]
+    # A refused submission leaves the original service unchanged, including its ready template.
+    existing[-1].update(template={"revision": "specimen-api-old"}, reconciling=False,
+                        terminalCondition={"state": "CONDITION_SUCCEEDED"})
+    google = FakeGoogle(existing=existing)
+    request = google.request
+
+    def unknown_submission(api, method, resource, **kwargs):
+        if method == "PATCH" and resource == NAMES["api"] and "template" in (kwargs.get("body") or {}):
+            if accepted:
+                request(api, method, resource, **kwargs)
+            raise ConnectionError("synthetic candidate submission acknowledgement unavailable")
+        return request(api, method, resource, **kwargs)
+
+    monkeypatch.setattr(google, "request", unknown_submission)
+    with pytest.raises(ConnectionError, match="candidate submission acknowledgement unavailable"):
+        deploy(tmp_path, monkeypatch, google)
+    receipt = json.loads((tmp_path / "runtime-receipt.json").read_text())
+    assert receipt["promoted"] is False and "api" not in receipt["deployed"]
+    assert receipt["api_rollback"] == {"revision": "specimen-api-old", "status": "restored"}
+    assert google.calls[-4:] == ["GET specimen-api", "PATCH specimen-api traffic", "wait 900", "GET specimen-api"]
+    assert google.bodies[-1] == {"name": NAMES["api"], "etag": "etag-3" if accepted else "api-old",
+                                "traffic": [{"type": REVISION, "revision": "specimen-api-old", "percent": 100}]}
+    assert M.serving_revision(google.state[NAMES["api"]]) == "specimen-api-old"
+    assert not any(target.get("tag") for target in google.state[NAMES["api"]]["trafficStatuses"])
+
+
+@pytest.mark.parametrize("failure", ["request refused", "response lost", "wrong observed traffic", "observation unavailable"])
+def test_unknown_candidate_submission_records_unreconciled_cleanup(tmp_path, monkeypatch, ready, failure):
+    google = FakeGoogle(existing=[previous(role) for role in NAMES])
+    request = google.request
+    restoring = False
+
+    def uncertain(api, method, resource, **kwargs):
+        nonlocal restoring
+        body = kwargs.get("body") or {}
+        if method == "PATCH" and resource == NAMES["api"] and "template" in body:
+            request(api, method, resource, **kwargs)
+            raise ConnectionError("synthetic candidate submission acknowledgement unavailable")
+        restore = method == "PATCH" and kwargs.get("params", {}).get("updateMask") == "traffic"
+        if restore:
+            restoring = True
+            if failure == "request refused":
+                raise ConnectionError("synthetic cleanup request refused")
+        if restoring and method == "GET" and resource == NAMES["api"] and failure == "observation unavailable":
+            raise ConnectionError("synthetic cleanup observation unavailable")
+        result = request(api, method, resource, **kwargs)
+        if restore:
+            if failure == "response lost":
+                raise ConnectionError("synthetic cleanup acknowledgement unavailable")
+            if failure == "wrong observed traffic":
+                google.state[NAMES["api"]]["trafficStatuses"] = [{"type": REVISION, "revision": NEW["api"], "percent": 100}]
+        return result
+
+    monkeypatch.setattr(google, "request", uncertain)
+    receipt, error, seen = deploy(tmp_path, monkeypatch, google)
+    assert str(error) == "the API candidate failed a later check and its tag could not be removed; reconcile"
+    assert seen["probed"] == [] and receipt["promoted"] is False
+    assert receipt["api_rollback"] == {"revision": "specimen-api-old", "status": "unreconciled"}
+    assert "api" not in receipt["deployed"] and restoring
+
+
 @pytest.mark.parametrize("failure", ["request refused", "response lost", "wrong observed traffic"])
 def test_failed_service_check_records_unreconciled_rollback_when_restoration_is_not_confirmed(
     tmp_path, monkeypatch, ready, failure,
@@ -415,6 +479,7 @@ def test_a_present_unlabelled_resource_is_refused_before_its_deploy_caller_mutat
     assert google.calls == ["login", "GET " + NAMES[role].rsplit("/", 1)[1]]
     assert google.bodies == [] and google.state == before and seen["compared"] == []
     assert receipt["deployed"] == {} and receipt["promoted"] is False
+    assert "api_rollback" not in receipt
 
 
 def test_a_newer_deployed_commit_stops_the_release_before_any_change(tmp_path, monkeypatch, ready):
