@@ -19,6 +19,7 @@ from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.tool_manager import ToolManager
 from pydantic_ai.usage import UsageLimits
 
+from .derivations import Found, apply_derivations, elevation_derivations
 from .domain import Evidence, FieldValue, LookupStatus, Record
 from .field_resolution import (
     Called,
@@ -28,7 +29,7 @@ from .field_resolution import (
     choose_reading,
     date_order_evidence,
 )
-from .harness_ledger import ToolLedger, called
+from .harness_ledger import ToolLedger, called, served
 from .lookup import PLACE_FIELDS
 from .reliability import AdapterFailure, run_agent_bounded
 
@@ -263,6 +264,7 @@ def _resolve(
     dates = _date_calls(plan, literals, years, by_id, ledger)
     localities = {k for k, tool in plan.tools.items() if tool == GEOGRAPHY}
     budget = budget or Budget()
+    derivations: list = []  # Those in the geography results (S8's tool, G37).
     fields: dict[str, FieldValue] = {}
     for key in plan.fields:
         found = literals.get(key)
@@ -279,12 +281,35 @@ def _resolve(
             fields[key] = resolver.transcribed(key, per_reading)
         else:
             call = _field_call(
-                key, tool, literals, years, dates, ledger, localities, budget
+                key,
+                tool,
+                literals,
+                years,
+                dates,
+                ledger,
+                localities,
+                budget,
+                derivations,
             )
             fields[key] = resolver.settle(key, per_reading, call)
+    # G37: what the label leaves out, filled from settled fields with evidence:
+    # the elevation rules of G41 and the geography results' derivations.
+    unique = {(f.derivation.model_dump_json(), f.call_evidence): f for f in derivations}
+    derived, filled_evidence = apply_derivations(
+        fields,
+        [*elevation_derivations(fields), *unique.values()],
+        asset_id=asset_id,
+        blobs=blobs,
+    )
+    fields.update(derived)
     return HarnessOutcome(
         fields=fields,
-        evidence=[*resolver.evidence, *ledger.evidence, *dates.evidence],
+        evidence=[
+            *resolver.evidence,
+            *ledger.evidence,
+            *dates.evidence,
+            *filled_evidence,
+        ],
         findings=resolver.findings,
         tool_calls=ledger.records,
         lookups=ledger.lookups,
@@ -336,7 +361,15 @@ def _date_calls(plan, literals, years, by_id, ledger) -> _Dates:
 
 
 def _field_call(
-    key, tool, literals, years, dates: _Dates, ledger: ToolLedger, localities, budget
+    key,
+    tool,
+    literals,
+    years,
+    dates: _Dates,
+    ledger: ToolLedger,
+    localities,
+    budget,
+    derivations: list,
 ) -> FieldCall:
     if tool == GEOGRAPHY:
 
@@ -349,13 +382,41 @@ def _field_call(
             }
             return geography_arguments(own)
 
-        settle = ledger.field_call(key, tool, geography)
-
         def bounded(literal: str, reading: Reading) -> Called:
-            if not budget.geocode(reading, geography(literal, reading)):
+            arguments = geography(literal, reading)
+            if not budget.geocode(reading, arguments):
                 # A request past the run's cap is refused: an operational block.
                 return Called(LookupStatus.POLICY, tool)
-            return settle(literal, reading)
+            result, evidence = ledger.run(
+                tool, reading, arguments, served(tool, arguments, key)
+            )
+            settled = called(key, literal, result, evidence)
+            # This result's evidence IDs name only final source attempts. A
+            # failed response stays recorded, but cannot support a derivation.
+            outcomes = {
+                record.evidence_id: record.outcome
+                for record in ledger.records
+                if record.tool == tool and record.evidence_id in evidence.values()
+            }
+            successful = {
+                source: evidence_id
+                for source, evidence_id in evidence.items()
+                if outcomes.get(evidence_id) == LookupStatus.SUCCESS
+            }
+            recorded_sources = {call.source for call in result.sub_calls}
+            for derivation in result.derivations:
+                authority = derivation.authority.name
+                if authority in recorded_sources:
+                    if authority not in successful:
+                        continue  # Another source's success cannot stand in.
+                elif settled.outcome != LookupStatus.SUCCESS:
+                    continue
+                # No inferred source aliases. When the authority has no own
+                # recorded source, the successful field and producing call
+                # establish the tool's lineage without inventing a request.
+                if successful:
+                    derivations.append(Found(derivation, tuple(successful.values())))
+            return settled
 
         return bounded
     if tool == "taxonomy_verifier":
