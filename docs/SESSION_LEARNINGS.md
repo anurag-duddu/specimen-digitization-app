@@ -12892,3 +12892,9 @@ because the hooks runner hands a native asset hook only `PATH`.
   - S7's #83, merged as d663a0c before this pull request, makes `scripts/lab/lab_checks.py` fail a run whose records carry the removed adapter's identity (`gbif_gadm`, or a `gbif-gadm` version), the coordinator's lab item (coordinator.md:434).
   - PLAN.md's ownership list and the S4 brief still name `geography.py` (the coordinator's next plan pull request).
   - S8's research probe and `docs/GBIF.md` still mention GADM; S8's open #217 drops the probe's call.
+
+## 2026-09-29 — Codex mechanical preparation of in-turn PR #100
+
+- Root assigned `/root/data_thread` as preparer only, never an independent reviewer of this head. Separate clean clone `recovery/codex-runtime-deploy-pr100`, branch `golive/release-runtime-deploy`, preserved original head f3aac012de93a7f16754bbb1199721bc7104e0b7. Current main is d210e6ecdfd0da46d3b6e5190bf66e3892330a6b, with protected Hosting and marker smoke independently verified by steward. This entry precedes the required local merge; no rebase, force push or main write.
+- Read current applicable AGENTS, full DEPLOYMENT (current blob matches the fully read exact #138 document) and PLAN component-gate rules. The branch is brought up to date mechanically. Model checkpoint and readiness marker uploads are historically complete, but their runtime settings are still PENDING until the separate settings PR; #100 is inert until #101 and settings. It is not live readiness.
+- Validation at this pre-merge checkpoint: Not confirmed; required Python/catalog gates will run sequentially, load below 12, after the processing integration gate. Root authorizes only this in-turn branch push after green. No cloud, IAM, paid call or inherited checkout mutation. Existing S5 refs, unpublished candidates and clean real-domain red checkpoint remain preserved.
