@@ -989,8 +989,8 @@ the dataset), the settled input fields with their values, and its checks.
 - S8's geographic tool emits the derivations that need outside data in the
   `geography_lookup` result (`ToolResult.derivations`): containment for county
   and city, the elevation model where the label states no elevation, and
-  gazetteer names. The harness applies whatever a run's geography results
-  carry. The Google tool carries none, so until S8's tool lands those fields go
+  gazetteer names. The harness applies qualified derivations in a run's geography
+  results. The Google tool carries none, so until S8's tool lands those fields go
   to review, which G37 allows.
 - The harness emits G41's elevation rules (`application/derivations.py`). The
   owner chose "The label's own number fills both From and To, and the metre
@@ -1014,11 +1014,22 @@ the dataset), the settled input fields with their values, and its checks.
 
 **Applying derivations** (`apply_derivations`), whoever emitted them:
 - A field the label states is never replaced; its verbatim stays as written.
-- A derivation applies only when each input field is settled to the value the
-  derivation names: a derived value's own value, otherwise the field's
+- A derivation needs nonempty inputs, and applies only when each input field is
+  settled to the value the derivation names: a derived value's own value, otherwise the field's
   authority id, else its parsed, normalized or literal value. So a derivation
   from a lookup that did not settle never applies. A value derived earlier in
   the same list counts as an input, so S8's feet follow its metres.
+- External derivations need successful producing-call evidence from the result
+  that returned them. Only final successful source attempts `support` a derived
+  value; failed attempts and responses remain in the ledger and evidence history.
+  When the authority's exact name is a recorded source ID, that source's final
+  attempt must succeed and have evidence. No authority/source aliases are inferred.
+  When it has no recorded source, the current field must succeed and the result
+  must have successful producing-call evidence. A failed unrelated field or source
+  does not erase a successful recorded producer. Only bare, internally generated
+  G41 rules with authority `apply_derivations`, version `derivation-rules-v1` and
+  method `stated_elevation` or `unit_conversion` need no outside tool call; an
+  externally returned `Found` needs producing-call evidence even with those names.
 - Two derivations of one field that disagree fill it with neither, and it waits
   for review.
 - A filled value is `supported`, with layer `derived`, `parsed` the value,

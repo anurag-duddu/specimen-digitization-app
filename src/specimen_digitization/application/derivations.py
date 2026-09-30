@@ -56,7 +56,8 @@ ELEVATION_QUANTITY = re.compile(
 class Found:
     """A derivation and the evidence of the tool call that returned it; each
     derived value names its tool call (#124, PLAN 4.8). The harness's own rules
-    have no tool call."""
+    have no tool call and are passed as bare, internally generated Derivations.
+    An external Found always needs its producing-call evidence."""
 
     derivation: Derivation
     call_evidence: tuple[str, ...] = ()
@@ -141,7 +142,19 @@ def apply_derivations(
     """Field values for the derivations of fields the label leaves out whose
     inputs are settled to the values they name (G37); two derivations of one
     field that disagree fill it with neither, and it waits for review."""
-    found = [d if isinstance(d, Found) else Found(d) for d in derivations]
+    found: list[Found] = []
+    for derivation in derivations:
+        item = derivation if isinstance(derivation, Found) else Found(derivation)
+        local_rule = (
+            not isinstance(derivation, Found)
+            and item.derivation.authority.name == "apply_derivations"
+            and item.derivation.authority.version == RULES_VERSION
+            and item.derivation.method in {"unit_conversion", "stated_elevation"}
+        )
+        # Empty inputs cannot establish lineage. Unqualified external values
+        # cannot fill a field or conflict with a qualified derivation of it.
+        if item.derivation.inputs and (item.call_evidence or local_rule):
+            found.append(item)
     values: dict[str, set[str]] = {}
     for item in found:
         values.setdefault(item.derivation.field_key, set()).add(item.derivation.value)

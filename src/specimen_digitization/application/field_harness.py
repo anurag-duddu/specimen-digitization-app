@@ -390,10 +390,33 @@ def _field_call(
             result, evidence = ledger.run(
                 tool, reading, arguments, served(tool, arguments, key)
             )
-            # Each derivation names the call that returned it (#124, 4.8).
-            calls = tuple(evidence.values())
-            derivations.extend(Found(d, calls) for d in result.derivations)
-            return called(key, literal, result, evidence)
+            settled = called(key, literal, result, evidence)
+            # This result's evidence IDs name only final source attempts. A
+            # failed response stays recorded, but cannot support a derivation.
+            outcomes = {
+                record.evidence_id: record.outcome
+                for record in ledger.records
+                if record.tool == tool and record.evidence_id in evidence.values()
+            }
+            successful = {
+                source: evidence_id
+                for source, evidence_id in evidence.items()
+                if outcomes.get(evidence_id) == LookupStatus.SUCCESS
+            }
+            recorded_sources = {call.source for call in result.sub_calls}
+            for derivation in result.derivations:
+                authority = derivation.authority.name
+                if authority in recorded_sources:
+                    if authority not in successful:
+                        continue  # Another source's success cannot stand in.
+                elif settled.outcome != LookupStatus.SUCCESS:
+                    continue
+                # No inferred source aliases. When the authority has no own
+                # recorded source, the successful field and producing call
+                # establish the tool's lineage without inventing a request.
+                if successful:
+                    derivations.append(Found(derivation, tuple(successful.values())))
+            return settled
 
         return bounded
     if tool == "taxonomy_verifier":
