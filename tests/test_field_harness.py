@@ -831,6 +831,75 @@ def test_geography_derivation_requires_nonempty_matching_settled_inputs(inputs, 
         assert county.evidence_relations[call.evidence_id] == "supports"
 
 
+@pytest.mark.parametrize("version,accepted", [
+    (None, False), ("", False), (" \t ", False),
+    ("synthetic-open-v1", True), (" synthetic-open-v1 ", True),
+])
+def test_geography_authority_needs_a_nonblank_version_with_a_successful_producer(
+    version, accepted
+):
+    derived = _county_derivation({"city": "place-local"}, authority="geoBoundaries")
+    derived = derived.model_copy(update={
+        "authority": SourceRef(name="geoBoundaries", record_id="synthetic-unit", version=version),
+    })
+    result = _county_result(
+        derived, [_geography_source(GOOGLE), _geography_source("geoBoundaries")],
+    )
+
+    outcome, blobs, _ = _county_harness(result)
+
+    assert outcome.blocker is None
+    assert outcome.fields["city"].authority_id == "place-local"
+    assert outcome.fields["country"].state == V.SUPPORTED
+    assert {call.source for call in outcome.tool_calls} == {GOOGLE, "geoBoundaries"}
+    assert all(call.outcome == S.SUCCESS and call.evidence_id for call in outcome.tool_calls)
+    assert result.derivations[0].authority.version == version
+    county = outcome.fields["county"]
+    assert (county.layer == "derived") == accepted
+    if accepted:
+        assert county.state == V.SUPPORTED and county.parsed == "Synthetic County"
+        record = _county_record(outcome, blobs)
+        assert record["derivation"]["authority"]["version"] == version
+        assert record["derivation"]["inputs"] == {"city": "place-local"}
+        assert set(record["call_evidence_ids"]) == {
+            call.evidence_id for call in outcome.tool_calls
+        }
+    else:
+        assert not any(e.kind == "derivation" for e in outcome.evidence)
+
+
+@pytest.mark.parametrize("version", [None, "", " \t "])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_unversioned_geography_cannot_conflict_with_a_qualified_county(version, reverse):
+    invalid = _county_derivation(
+        {"city": "place-local"}, authority="geoBoundaries", value="Wrong County",
+    ).model_copy(update={
+        "authority": SourceRef(name="geoBoundaries", version=version),
+    })
+    qualified = _county_derivation(
+        {"city": "place-local"}, authority="geoBoundaries", value="Right County",
+    )
+    items = [invalid, qualified]
+    result = _county_result(
+        qualified, [_geography_source(GOOGLE), _geography_source("geoBoundaries")],
+    ).model_copy(update={"derivations": list(reversed(items)) if reverse else items})
+
+    outcome, blobs, _ = _county_harness(result)
+
+    assert outcome.blocker is None
+    assert outcome.fields["city"].authority_id == "place-local"
+    assert all(call.outcome == S.SUCCESS and call.evidence_id for call in outcome.tool_calls)
+    county = outcome.fields["county"]
+    assert county.state == V.SUPPORTED and county.parsed == "Right County"
+    record = _county_record(outcome, blobs)
+    assert record["derivation"]["value"] == "Right County"
+    assert record["derivation"]["authority"]["version"] == "v1"
+    assert set(record["call_evidence_ids"]) == {
+        call.evidence_id for call in outcome.tool_calls
+    }
+    assert {item.value for item in result.derivations} == {"Wrong County", "Right County"}
+
+
 @pytest.mark.parametrize("raw_ref", [None, "failed-source-record"])
 @pytest.mark.parametrize("authority", ["gadm", GOOGLE])
 def test_policy_failed_producer_cannot_derive_from_an_independently_settled_country(

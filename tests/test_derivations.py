@@ -208,6 +208,56 @@ def test_a_derivation_without_producer_evidence_cannot_conflict_with_a_qualified
     assert filled["county"].parsed == "Right"
 
 
+@pytest.mark.parametrize("version,accepted", [
+    (None, False), ("", False), (" \t ", False), ("4.1", True), (" 4.1 ", True),
+])
+def test_external_derivation_authority_needs_a_nonblank_version(version, accepted):
+    external = derivation("county", "Synthetic County", {"city": "place-1"})
+    external = external.model_copy(update={
+        "authority": SourceRef(name="gadm", record_id="ADM2-1", version=version),
+    })
+
+    filled, evidence, blobs = apply(FIELDS, [Found(external, ("e-call",))])
+
+    assert external.authority.version == version  # Optional DTO remains readable.
+    if not accepted:
+        assert filled == {} and evidence == [] and blobs.puts == {}
+    else:
+        assert filled["county"].parsed == "Synthetic County"
+        assert filled["county"].state == V.SUPPORTED
+        (rule,) = evidence
+        record = json.loads(blobs.puts[rule.raw_ref])
+        assert record["derivation"]["authority"]["version"] == version
+        assert record["derivation"]["inputs"] == {"city": "place-1"}
+        assert record["call_evidence_ids"] == ["e-call"]
+
+
+@pytest.mark.parametrize("version", [None, "", " \t "])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_an_unversioned_authority_cannot_conflict_with_a_qualified_derivation(
+    version, reverse
+):
+    invalid = derivation("county", "Wrong", {"city": "place-1"})
+    invalid = invalid.model_copy(update={
+        "authority": SourceRef(name="gadm", version=version),
+    })
+    items = [
+        Found(invalid, ("e-unversioned-call",)),
+        Found(derivation("county", "Right", {"city": "place-1"}), ("e-call",)),
+    ]
+
+    filled, evidence, blobs = apply(FIELDS, list(reversed(items)) if reverse else items)
+
+    county = filled["county"]
+    assert county.state == V.SUPPORTED and county.parsed == "Right"
+    assert "e-unversioned-call" not in county.evidence_ids
+    (rule,) = evidence
+    record = json.loads(blobs.puts[rule.raw_ref])
+    assert record["derivation"]["value"] == "Right"
+    assert record["derivation"]["authority"]["version"] == "4.1"
+    assert record["call_evidence_ids"] == ["e-call"]
+
+
 def test_a_settled_value_is_the_authority_id_or_the_value_the_field_holds():
     assert settled_value(CITY) == "place-1"
     assert (

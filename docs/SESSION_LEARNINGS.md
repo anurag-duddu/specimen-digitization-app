@@ -13636,3 +13636,8 @@ Preparedminimal derivations.py fullsinglequantity recognition: retainNUMBER rang
 
 - Root upheld independent actuala084/source8918 proof: None/empty/whitespace authorityversion3RED, concreteversion1PASS with nonempty settledcity/exact finalSUCCESS geoBoundaries producer. Original4rawrecords/scripts/log/receipts remain immutable. Root adjudication79a6e94e.
 - Before tracked tests/fix, allrefs/before-authority-version ref and five scoped source/docs paths privately preserved. Preparation limited to nonblank authorityversion admission before conflicts/filling; genericSourceRef optional DTO, producerledger/history and G41/unit/factor semantics remain unchanged. No setup/import/tests/hooks/full/push/effects authorized here.
+
+
+### 2026-09-30 — PR144 authority-version test-only checkpoint
+
+- Added22 nominal cases: direct and actualFunctionModel/resolver/derive refusals for None/empty/whitespace; concrete version/nonempty settledcity/exactSUCCESS producer positives; invalid-vs-qualified conflicting county in both orders. Concrete raw version text remains unchanged, optionalDTO remains constructible, and producer records remain SUCCESS. Tests PREPARED UNEXECUTED; no source fix yet. Existing quantity/unit/provenance controls retained unchanged.
