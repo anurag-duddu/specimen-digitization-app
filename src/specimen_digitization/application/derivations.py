@@ -151,6 +151,9 @@ def apply_derivations(
     found: list[Found] = []
     for derivation in derivations:
         item = derivation if isinstance(derivation, Found) else Found(derivation)
+        version = item.derivation.authority.version
+        if version is None or not version.strip():
+            continue  # An unpinned authority cannot fill or create a conflict.
         local_rule = (
             not isinstance(derivation, Found)
             and item.derivation.authority.name == "apply_derivations"

@@ -13641,3 +13641,9 @@ Preparedminimal derivations.py fullsinglequantity recognition: retainNUMBER rang
 ### 2026-09-30 — PR144 authority-version test-only checkpoint
 
 - Added22 nominal cases: direct and actualFunctionModel/resolver/derive refusals for None/empty/whitespace; concrete version/nonempty settledcity/exactSUCCESS producer positives; invalid-vs-qualified conflicting county in both orders. Concrete raw version text remains unchanged, optionalDTO remains constructible, and producer records remain SUCCESS. Tests PREPARED UNEXECUTED; no source fix yet. Existing quantity/unit/provenance controls retained unchanged.
+
+
+### 2026-09-30 — PR144 authority-version source fix prepared, unexecuted
+
+- Test-onlyd2cab936 preserved before a three-line admission guard rejects None/empty/whitespace authority.version before conflict collection or filling. GenericSourceRef optionalDTO and concrete version text are unchanged; no inferred version from other source/tool metadata. LocalG41 exactversion/quantity/unit/factor behavior untouched. NarrowHARNESS contract clarified.
+- All22 new cases and existing356 nominal focused/retained controls remain PREPARED UNEXECUTED for this source. Priorfb334/47/hooks are historical source qualification, not evidence for the new guard. No setup/import/SDK/tests/hooks/full/push/effects. Root owns next explicit admission.

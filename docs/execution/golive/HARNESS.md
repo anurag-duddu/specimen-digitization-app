@@ -1019,6 +1019,10 @@ the dataset), the settled input fields with their values, and its checks.
 
 **Applying derivations** (`apply_derivations`), whoever emitted them:
 - A field the label states is never replaced; its verbatim stays as written.
+- An external derivation's authority needs a concrete, nonblank version before
+  it can fill a field or conflict with a qualified derivation. Missing, empty
+  or whitespace-only versions remain readable in the optional `SourceRef` DTO,
+  but are not inferred from a tool version, a timestamp or another source.
 - A derivation needs nonempty inputs, and applies only when each input field is
   settled to the value the derivation names: a derived value's own value, otherwise the field's
   authority id, else its parsed, normalized or literal value. So a derivation
