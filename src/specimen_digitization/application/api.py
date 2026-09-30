@@ -1068,27 +1068,35 @@ def create_app(
         source = sources.get(body.source_id, {p.scope.collection_id})
         inventory, entries = load(repository, p.scope, source, blobs)
         sensitivity_access(user, p, inventory.sensitive)
-        # Importing is intake: outside synthetic mode each new specimen is queued.
-        result = import_objects(
-            principal=p,
-            user=user,
-            source=source,
-            entries=entries,
-            selections=body.objects,
-            reader=source_reader,
-            repository=repository,
-            blobs=blobs,
-            batch_id=batch_id,
-            sensitive=body.sensitive,
-            synthetic=mode == "synthetic",
-            duplicate_of=lambda checksum: duplicate_source(p, user, checksum),
-            on_intake=None
-            if mode == "synthetic"
-            else lambda specimen: queue_on_intake(specimen, registry, user),
-        )
-        if mode != "synthetic" and result["imported"]:
-            start_worker()
-        return result
+        # Only retained pending intake needs a worker, even on a partial import.
+        pending_intake = False
+
+        def retained_intake(specimen):
+            nonlocal pending_intake
+            pending_intake = pending_intake or specimen.run.stage == "pending"
+
+        try:
+            return import_objects(
+                principal=p,
+                user=user,
+                source=source,
+                entries=entries,
+                selections=body.objects,
+                reader=source_reader,
+                repository=repository,
+                blobs=blobs,
+                batch_id=batch_id,
+                sensitive=body.sensitive,
+                synthetic=mode == "synthetic",
+                duplicate_of=lambda checksum: duplicate_source(p, user, checksum),
+                on_intake=None
+                if mode == "synthetic"
+                else lambda specimen: queue_on_intake(specimen, registry, user),
+                on_created=None if mode == "synthetic" else retained_intake,
+            )
+        finally:
+            if pending_intake:
+                start_worker()
 
     @app.get(prefix + "/uploads/{upload_id}")
     def upload(organization_id: str, upload_id: str, user=Depends(identity)):

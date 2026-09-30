@@ -57,10 +57,13 @@ synthetic mode, five things make a request:
    requires the operator membership (`CONTRACTS.md` 48-49), so a viewer never
    starts processing this way. A duplicate upload requests nothing.
 2. Import from a source. Adding a source photograph to the queue is intake, so
-   each specimen an import creates is queued the same way, and the worker is
-   started once per import. This supersedes, for this program, the rule that an
-   import dispatches nothing (`CONTRACTS.md` 654-662), which rested on the budget
-   G9 has since set.
+   each eligible specimen an import creates is queued the same way. The worker
+   is requested once if at least one newly retained run is pending. This also
+   applies if a later object fails immutable-source verification: the import
+   keeps its error and earlier retained pending work still gets one start.
+   Duplicate-only imports, failures before creation and all-blocked intake start
+   no worker. This supersedes, for this program, the rule that an import dispatches
+   nothing (`CONTRACTS.md` 654-662), which rested on the budget G9 has since set.
 3. `POST /specimens/{specimen_id}/process`, with an `Idempotency-Key`. Starting
    processing is paid work, so it requires the membership that uploads and run
    actions require (`CONTRACTS.md` 48-49 and 63: the `write` check in `api.py`,
@@ -93,7 +96,8 @@ processed by uploading or importing it into a batch declared non-sensitive.
 If intake cannot queue a specimen because its collection has no resolvable
 allowance, the specimen is still created. It is created `processing_blocked`
 with the blocker `collection_processing_unconfigured`, and a `retry` queues it
-once the allowance is published. A request that cannot queue a run is refused
+once the allowance is published. Blocked intake starts no worker. A request that
+cannot queue a run is refused
 with `409` `collection_processing_unconfigured`, and nothing is written.
 
 What `POST /specimens/{id}/process` does depends on the current run:

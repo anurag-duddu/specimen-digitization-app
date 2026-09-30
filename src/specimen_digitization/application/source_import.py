@@ -11,6 +11,10 @@ This module dispatches nothing itself. Outside synthetic mode the caller passes
 `on_intake`, which queues each new specimen within its collection's allowance
 before it is created: adding a source photograph is intake, and intake
 processes (docs/execution/golive/LANE.md, T1).
+
+An optional `on_created` callback observes a successfully retained specimen after
+creation. It lets the caller track pending work across a later import failure
+without changing the public import result or treating duplicates as new intake.
 """
 
 from __future__ import annotations
@@ -144,6 +148,7 @@ def import_objects(
     synthetic,
     duplicate_of,
     on_intake=None,
+    on_created=None,
 ):
     """Two passes: prove every generation first, then create."""
     resolved = verify_selection(source, entries, selections)
@@ -194,6 +199,7 @@ def import_objects(
                 synthetic=synthetic,
                 duplicate_of=duplicate_of,
                 on_intake=on_intake,
+                on_created=on_created,
             )
         except SourceObjectChanged as exc:
             # A change racing the import. Name what already exists; conceal nothing.
@@ -245,6 +251,7 @@ def create_from_object(
     synthetic,
     duplicate_of,
     on_intake=None,
+    on_created=None,
 ):
     data = reader.read(
         source.bucket, source_object.object_name, source_object.generation
@@ -323,4 +330,6 @@ def create_from_object(
         if not existing:
             raise
         return outcome_row(source_object, DUPLICATE, existing, checksum)
+    if on_created is not None:
+        on_created(specimen)
     return outcome_row(source_object, IMPORTED, specimen.id, checksum)
