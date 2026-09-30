@@ -160,8 +160,13 @@ def lane_settings(env, project, bucket):
         raise ValueError("SPECIMEN_SOURCE_REGISTRY_JSON must be a JSON list") from exc
     if not isinstance(items, list):
         raise ValueError("SPECIMEN_SOURCE_REGISTRY_JSON must be a JSON list")
-    # A validation error names the field, never the private value.
-    sources = tuple(RegisteredSource.model_validate(item) for item in items)
+    # Private registry values must not enter an unhandled startup traceback.
+    try:
+        sources = tuple(RegisteredSource.model_validate(item) for item in items)
+    except ValueError:
+        raise ValueError(
+            "SPECIMEN_SOURCE_REGISTRY_JSON contains invalid registered sources"
+        ) from None
     if any(source.bucket != bucket for source in sources):
         raise ValueError("Every source must be in the approved bucket")
     SourceRegistry(sources)  # Each source and each collection prefix once.
