@@ -1,6 +1,7 @@
 """Starting the worker and importing from Storage in production (LANE.md, T1)."""
 
 import json
+import traceback
 from types import SimpleNamespace
 
 import pytest
@@ -72,6 +73,37 @@ def test_lane_configuration_parses_the_job_and_the_sources():
 def test_lane_configuration_denials(key, value):
     with pytest.raises(ValueError):
         lane_config(**{key: value})
+
+
+@pytest.mark.parametrize("invalid_field", ["source_id", "prefix", "private_note"])
+def test_runtime_startup_conceals_invalid_private_registry_values(
+    monkeypatch, invalid_field
+):
+    import firebase_admin
+
+    canary = "private-source-value-for-test"
+    source = dict(SOURCE, **{invalid_field: canary})
+    for key, value in dict(
+        config_env(), SPECIMEN_SOURCE_REGISTRY_JSON=json.dumps([source])
+    ).items():
+        monkeypatch.setenv(key, value)
+
+    def no_native_startup(*args, **kwargs):
+        pytest.fail("Invalid registry configuration must refuse before native startup")
+
+    monkeypatch.setattr(firebase_admin, "get_app", no_native_startup)
+    monkeypatch.setattr(firebase_admin, "initialize_app", no_native_startup)
+    monkeypatch.setattr(cli, "GcsBlobs", no_native_startup)
+    monkeypatch.setattr(cli, "SqlConnectRepository", no_native_startup)
+    with pytest.raises(ValueError) as error:
+        cli.production_app()
+
+    rendered = "".join(traceback.format_exception(error.value))
+    assert str(error.value) == (
+        "SPECIMEN_SOURCE_REGISTRY_JSON contains invalid registered sources"
+    )
+    assert canary not in rendered
+    assert error.value.__suppress_context__
 
 
 def test_lane_wiring_builds_the_registry_reader_and_dispatcher(monkeypatch):
