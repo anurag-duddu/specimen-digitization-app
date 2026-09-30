@@ -13630,3 +13630,9 @@ Preparedminimal derivations.py fullsinglequantity recognition: retainNUMBER rang
 - Test-onlyf04324expected contradictory-unit FAIL/30positivePASS0.94s; fb933334focusPASS1warning13.58s and retained42+unit5=47PASS0.54s. Minimal suffix compatibility guard preserves raw literals, numeric range endpoints, exact factor/G41version and historicalDTO/schema.
 - Original baseline runner exit74/false receipt preserved: optional pytest description delimiter assumption caused parser failure. Root accepted actual24expected nodes/counts/source unchanged; new immutable parser-only runner/diff, no RED repetition. Correctness/unit probes copy only one source/fixture binding with original assertions/hashes retained.
 - Pinned3.12.3/uv0.12.5, own borrowed frozenenv/no setup, SDK disable absent/Logfire send false.1854nonENV sourcefingerprint8918dc7e unchanged; noGit during gates. CPU slot RELEASED09:49:43Z; no hooks/full/build/native/paid/cloud/push/merge. Published1cab CHANGES hold and fresh final qualification/reviews remain. Evidence recovery/pr144-unit-red-green-receipt.md +JSON.
+
+
+### 2026-09-30 — PR144 authority-version preservation before source preparation
+
+- Root upheld independent actuala084/source8918 proof: None/empty/whitespace authorityversion3RED, concreteversion1PASS with nonempty settledcity/exact finalSUCCESS geoBoundaries producer. Original4rawrecords/scripts/log/receipts remain immutable. Root adjudication79a6e94e.
+- Before tracked tests/fix, allrefs/before-authority-version ref and five scoped source/docs paths privately preserved. Preparation limited to nonblank authorityversion admission before conflicts/filling; genericSourceRef optional DTO, producerledger/history and G41/unit/factor semantics remain unchanged. No setup/import/tests/hooks/full/push/effects authorized here.
