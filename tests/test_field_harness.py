@@ -4,6 +4,7 @@ import json
 import time
 from functools import partial
 
+import httpx
 import pytest
 from pydantic_ai.exceptions import ModelHTTPError
 from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
@@ -22,6 +23,7 @@ from specimen_digitization.application.field_harness import (
     build_request,
     labelled,
     output_problems,
+    resolve,
     run_harness,
 )
 from specimen_digitization.application.field_resolution import Reading
@@ -37,7 +39,8 @@ from specimen_digitization.application.harness_tools import (
     ToolResult,
 )
 from specimen_digitization.application.reliability import AdapterFailure
-from specimen_digitization.application.taxonomy_tool import Verification
+from specimen_digitization.application.storage import LocalBlobs
+from specimen_digitization.application.taxonomy_tool import Verification, verify_taxon
 
 DATE_RULES = {
     "version": "date-rules-v1",
@@ -118,7 +121,7 @@ class Fakes:
     def __init__(self):
         self.calls = []
 
-    def verify_taxon(self, literal):
+    def verify_taxon(self, literal, place_text=()):
         self.calls.append(("taxon", literal))
         taxon = TaxonCandidate(
             source="gbif",
@@ -435,7 +438,7 @@ def test_two_identical_calls_in_one_response_make_one_request():
     # otherwise. The harness runs them one at a time, so the ledger's record of
     # the first answers the second, and the caps count exactly.
     class Slow(Fakes):
-        def verify_taxon(self, literal):
+        def verify_taxon(self, literal, place_text=()):
             time.sleep(0.05)  # Both calls would be in flight together.
             return super().verify_taxon(literal)
 
@@ -486,3 +489,92 @@ def test_a_tool_call_outside_the_profiles_fields_is_returned_for_a_retry():
     ]
     assert retry == ["collectors is not a locality field"]
     assert outcome.fields["city"].state == V.SUPPORTED
+
+
+@pytest.mark.parametrize("broken", ["raises", "answers-nothing"])
+def test_a_tool_that_breaks_during_the_run_is_a_harness_failure(broken):
+    class Broken(Fakes):
+        def verify_taxon(self, literal, place_text=()):
+            # It raises, or answers nothing (None).
+            if broken == "raises":
+                raise ValueError("a bug in the tool")
+
+    check = [("verify_taxon", {"reading": "2A", "literal": "Epipsocus"})]
+
+    outcome, _ = harness(check, FULL, fakes=Broken())
+
+    assert outcome.failure == "harness_tool_failed"
+    assert all(value == FieldValue() for value in outcome.fields.values())
+
+
+def test_a_resolution_that_raises_is_a_harness_failure_that_keeps_nothing():
+    # An answer the validator never saw: reading 1A has no "Guatemala", so
+    # the resolver refuses it (literal_not_in_source) before any call.
+    fakes = Fakes()
+    ledger = ToolLedger(fakes.tools(), asset_id="asset-1")
+    output = HarnessOutput.model_validate(answer(**{"1A": {"country": "Guatemala"}}))
+
+    outcome = resolve(PLAN, labelled(READINGS), output, ledger, "asset-1", Blobs())
+
+    assert outcome.failure == "harness_resolution_failed"
+    assert all(value == FieldValue() for value in outcome.fields.values())
+    assert (outcome.evidence, outcome.findings, outcome.blocker) == ([], [], None)
+    assert fakes.calls == []
+
+
+def test_a_provider_failure_while_resolving_stays_an_operational_block():
+    class Down(Fakes):
+        def verify_taxon(self, literal, place_text=()):
+            raise AdapterFailure("gbif_unavailable", S.PROVIDER)
+
+    ledger = ToolLedger(Down().tools(), asset_id="asset-1")
+    output = HarnessOutput.model_validate(answer(**{"2A": {"taxon": "Epipsocus"}}))
+
+    with pytest.raises(AdapterFailure):
+        resolve(PLAN, labelled(READINGS), output, ledger, "asset-1", Blobs())
+
+
+def test_the_final_taxonomy_call_sends_no_word_of_its_readings_place_literals(tmp_path):
+    # #134's verdict (precondition D): the literal the coordinator's 02:07Z
+    # ruling of 2026-09-26 pins, on the real taxonomy tool.
+    text = "Davao, Mindanao\nEpipsocus Davao, Mindanao 1946"
+    reading = Reading("r1", "o-muse", "decided_transcript", text)
+    sent = []
+
+    def endpoint(request):
+        sent.append(str(request.url))
+        if request.url.path.endswith("/metadata"):
+            return httpx.Response(200, json={"alias": "fixture-index"})
+        return httpx.Response(200, json={"diagnostics": {"matchType": "NONE"}})
+
+    tools = Tools(
+        verify_taxon=partial(
+            verify_taxon,
+            blobs=LocalBlobs(tmp_path),
+            client=httpx.Client(transport=httpx.MockTransport(endpoint)),
+            sleep=lambda s: None,
+        ),
+        geocode=Fakes().geocode,
+        parse_date=partial(date_parser, date_rules=DATE_RULES),
+        check_catalog_number=catalog_number_validator,
+    )
+    output = HarnessOutput.model_validate(
+        answer(
+            **{
+                "1A": {
+                    "taxon": "Epipsocus Davao, Mindanao 1946",
+                    "city": "Davao",
+                    "precise_location": "Davao, Mindanao",
+                }
+            }
+        )
+    )
+
+    resolve(
+        PLAN, labelled([reading]), output, ToolLedger(tools, asset_id="a"), "a", Blobs()
+    )
+
+    assert sent
+    assert not [
+        url for url in sent if "davao" in url.lower() or "mindanao" in url.lower()
+    ]

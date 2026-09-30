@@ -29,6 +29,7 @@ from .field_resolution import (
     date_order_evidence,
 )
 from .harness_ledger import ToolLedger, called
+from .lookup import PLACE_FIELDS
 from .reliability import AdapterFailure, run_agent_bounded
 
 # G30: every request reserves its worst case, so a run is bounded by these caps
@@ -213,10 +214,38 @@ def run_harness(
         if exc.status != LookupStatus.MALFORMED:
             raise  # Provider failures stay operational (QUE-005).
         failure = "harness_malformed_output"
+    except Exception:  # noqa: BLE001 - a tool that breaks is the harness's (G6).
+        failure = "harness_tool_failed"
     return resolve(plan, names, output, ledger, asset_id, blobs, failure, usage, budget)
 
 
 def resolve(
+    plan, names, output, ledger, asset_id, blobs, failure=None, usage=None, budget=None
+) -> HarnessOutcome:
+    """Every field decided from recorded outcomes (section 9). A resolution
+    that raises on its inputs is a harness failure (G6): it decides no field
+    and keeps nothing it built, only the ledger's records of the calls it
+    made. A provider failure stays operational (QUE-005)."""
+    try:
+        return _resolve(
+            plan, names, output, ledger, asset_id, blobs, failure, usage, budget
+        )
+    except AdapterFailure:
+        raise
+    except Exception:  # noqa: BLE001 - any other raise is the harness's own.
+        return HarnessOutcome(
+            fields={key: FieldValue() for key in plan.fields},
+            evidence=list(ledger.evidence),
+            findings=[],
+            tool_calls=ledger.records,
+            lookups=ledger.lookups,
+            blocker=None,
+            failure="harness_resolution_failed",
+            usage=usage,
+        )
+
+
+def _resolve(
     plan, names, output, ledger, asset_id, blobs, failure=None, usage=None, budget=None
 ) -> HarnessOutcome:
     """Every field decided from recorded outcomes (section 9). Tool calls the
@@ -329,6 +358,21 @@ def _field_call(
             return settle(literal, reading)
 
         return bounded
+    if tool == "taxonomy_verifier":
+
+        def place_text(reading: Reading) -> list[str]:
+            # The reading's place-field literals, none of which the tool sends
+            # (PLAN 4.8; the coordinator's rulings of 02:07Z and 03:24Z on
+            # 2026-09-26).
+            return [
+                found[reading.observation_id]
+                for field_key, found in literals.items()
+                if field_key in PLACE_FIELDS and reading.observation_id in found
+            ]
+
+        return ledger.field_call(
+            key, tool, lambda literal, reading: {"literal": literal}, place_text
+        )
     if tool != "date_parser":
         return ledger.field_call(
             key, tool, lambda literal, reading: {"literal": literal}

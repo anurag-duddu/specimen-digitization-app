@@ -58,3 +58,25 @@ def test_reject_every_missing_guard(plane):
 def test_runtime_identity_cannot_be_used_for_data():
     with pytest.raises(ValueError):
         MODULE.validate_context(valid_context("runtime"), "data", SHA)
+
+
+@pytest.mark.parametrize("plane", ["runtime-build", "runtime"])
+def test_gate_context_drops_only_the_retired_authorized_sha(plane):
+    env = valid_context(plane)
+    del env["RELEASE_AUTHORIZED_SHA"]
+    MODULE.validate_context(env, plane, SHA, envelope=False)
+    MODULE.validate_context({**env, "RELEASE_AUTHORIZED_SHA": "b" * 40}, plane, SHA, envelope=False)
+    for field in env:
+        for broken in ({key: value for key, value in env.items() if key != field}, {**env, field: "tampered"}):
+            with pytest.raises(ValueError, match=field):
+                MODULE.validate_context(broken, plane, SHA, envelope=False)
+
+
+@pytest.mark.parametrize("envelope", [True, None, 0, "false"])
+def test_only_an_explicit_gate_context_skips_the_authorized_sha(envelope):
+    env = valid_context("runtime")
+    del env["RELEASE_AUTHORIZED_SHA"]
+    with pytest.raises(ValueError, match="RELEASE_AUTHORIZED_SHA"):
+        MODULE.validate_context(env, "runtime", SHA)
+    with pytest.raises(ValueError, match="RELEASE_AUTHORIZED_SHA"):
+        MODULE.validate_context(env, "runtime", SHA, envelope=envelope)

@@ -24,17 +24,23 @@ PHASES = {
     "date_parser": "validate",
     "catalog_number_validator": "validate",
 }
-# Tool warnings that become findings when a call settles a field (G23).
-FINDING_PREFIXES = ("taxonomy_source_disagreement:", "taxonomy_support_unavailable:")
+# Tool warnings that become findings when a call settles a field (G23), and
+# a name read only in part (#109), whose code names no source.
+FINDING_PREFIXES = (
+    "taxonomy_source_disagreement:",
+    "taxonomy_support_unavailable:",
+    "taxonomy_name_partly_read",
+)
 GOOGLE = "google-maps-geocoding"
 
 
 @dataclass(frozen=True)
 class Tools:
     """The tool implementations, injected so that tests use fakes. Each takes
-    the literal and the text of the reading it was copied from."""
+    the literal and the text of the reading it was copied from; the taxonomy
+    tool takes the reading's place text instead, to send none of it."""
 
-    verify_taxon: Callable[[str], object]  # -> taxonomy_tool.Verification
+    verify_taxon: Callable[..., object]  # (literal, *, place_text) -> Verification
     geocode: Callable[[GeographyQuery], ToolResult]
     parse_date: Callable[..., ToolResult]  # (literal, *, source_text, year_literal)
     check_catalog_number: Callable[..., ToolResult]  # (literal, *, source_text)
@@ -58,11 +64,27 @@ def call_key(record: dict) -> str:
 
 
 class ToolLedger:
-    def __init__(self, tools: Tools, *, asset_id: str, clock=now) -> None:
+    def __init__(
+        self,
+        tools: Tools,
+        *,
+        asset_id: str,
+        clock=now,
+        prior: Sequence[ToolCallRecord] = (),
+        blobs=None,
+    ) -> None:
         self.tools = tools
+        # Where a validator's verdict record is stored; the parse step passes
+        # its blob store so that every evidence item has its stored record.
+        self.blobs = blobs
         self.asset_id = asset_id
         self.clock = clock
-        self.records: list[ToolCallRecord] = []
+        # A same-run retry starts from the run's earlier records: they stay,
+        # and a repeated request numbers its attempts on, so no key repeats.
+        self.records: list[ToolCallRecord] = list(prior)
+        self._keys = {record.call_key for record in prior}
+        self._attempts: dict[str, int] = {}
+        self._count(prior)
         self.evidence: list[Evidence] = []
         self.lookups: list[Lookup] = []  # GBIF's, for the policy's taxonomy gate
         self._done: dict[str, tuple[ToolResult, dict[str, str]]] = {}
@@ -73,24 +95,40 @@ class ToolLedger:
         reading: Reading,
         arguments: dict,
         field_keys: Sequence[str],
+        place_text: Sequence[str] = (),
     ) -> tuple[ToolResult, dict[str, str]]:
         """Run one request, or return its recorded result: the tool's result
-        and the evidence id of each source's final call."""
+        and the evidence id of each source's final call. A taxonomy request's
+        `place_text` (the reading's place text) goes to the tool, which sends
+        none of it (PLAN 4.8; the coordinator's rulings of 02:07Z and 03:24Z
+        on 2026-09-26), and into the request's recorded arguments."""
         if tool not in PHASES:
             raise ValueError(f"tool_not_allowed:{tool}")
+        if isinstance(place_text, str):
+            raise TypeError("place_text is a sequence of texts, not one text")
+        if place_text:
+            # Part of the request, S4's choice: another place text is another
+            # request, with its own record and call key.
+            arguments = {**arguments, "place_text": sorted(set(place_text))}
+        if not _storable(arguments):
+            raise ValueError("arguments_not_storable")
         key = json.dumps([tool, reading.observation_id, arguments], sort_keys=True)
         if key not in self._done:
             started = self.clock()
-            result = self._dispatch(tool, reading, arguments)
+            result = self._dispatch(tool, reading, arguments, place_text)
             evidence = self._record(
                 tool, reading, arguments, field_keys, result, started
             )
             self._done[key] = (result, evidence)
         return self._done[key]
 
-    def _dispatch(self, tool: str, reading: Reading, arguments: dict) -> ToolResult:
+    def _dispatch(
+        self, tool: str, reading: Reading, arguments: dict, place_text: Sequence[str]
+    ) -> ToolResult:
         if tool == "taxonomy_verifier":
-            verification = self.tools.verify_taxon(arguments["literal"])
+            verification = self.tools.verify_taxon(
+                arguments["literal"], place_text=tuple(place_text)
+            )
             self.lookups.append(verification.gbif)
             return verification.result
         if tool == "geography_lookup":
@@ -120,18 +158,24 @@ class ToolLedger:
         self, tool, reading, arguments, field_keys, result, started
     ) -> dict[str, str]:
         """One record per source-call attempt (a validator's call is its own
-        single attempt) and one evidence item per source's final call."""
+        single attempt) and one evidence item per source's final call, each
+        appended only once all of them are built."""
         completed = self.clock()
         attempts = list(result.sub_calls) or [None]
         finals = {c.source: c for c in result.sub_calls}  # The last attempt wins.
         evidence: dict[str, str] = {}
+        items: list[Evidence] = []
+        records: list[ToolCallRecord] = []
         for attempt in attempts:
             source = attempt.source if attempt is not None else None
             final = attempt is None or finals[source] is attempt
             evidence_id = None
-            if final:
-                item = self._evidence(tool, reading, result, attempt)
-                self.evidence.append(item)
+            # A Google call that got no response has no evidence; its record
+            # keeps the outcome (the data contract's rule 1.6).
+            answered = source != GOOGLE or attempt.raw_ref is not None
+            if final and answered:
+                item = self._evidence(tool, reading, result, attempt, arguments)
+                items.append(item)
                 evidence_id = evidence[source or tool] = item.id
             fields = {
                 "phase": PHASES[tool],
@@ -146,27 +190,55 @@ class ToolLedger:
                 "attempt": attempt.attempt if attempt is not None else 1,
                 "arguments": arguments,
             }
-            self.records.append(
+            fields["attempt"] += self._attempts.get(_base(call_key(fields)), 0)
+            records.append(
                 ToolCallRecord(
                     call_key=call_key(fields),
                     tool_version=result.tool_version,
                     field_keys=list(field_keys),
                     outcome=attempt.outcome if attempt is not None else result.outcome,
-                    result=_bounded(tool, result, attempt),
+                    result=_bounded(tool, result, attempt, final),
                     evidence_id=evidence_id,
                     started_at=started,
                     completed_at=completed,
                     **fields,
                 )
             )
+        keys = [record.call_key for record in records]
+        if len(set(keys)) != len(keys) or not self._keys.isdisjoint(keys):
+            raise ValueError("duplicate_call_key")
+        self.evidence.extend(items)
+        self.records.extend(records)
+        self._keys.update(keys)
+        self._count(records)
         return evidence
 
+    def _count(self, records: Sequence[ToolCallRecord]) -> None:
+        """The highest attempt recorded for each request and source."""
+        for record in records:
+            base = _base(record.call_key)
+            self._attempts[base] = max(self._attempts.get(base, 0), record.attempt)
+
     def _evidence(
-        self, tool, reading, result: ToolResult, attempt: SourceCall | None
+        self, tool, reading, result: ToolResult, attempt: SourceCall | None, arguments
     ) -> Evidence:
-        """No Google text ever reaches evidence: only its place ID (G26)."""
+        """No Google text ever reaches evidence: only its place ID (G26). A
+        validator's evidence stores its verdict as a record, as literal
+        evidence does."""
         outcome = attempt.outcome if attempt is not None else result.outcome
         source = attempt.source if attempt is not None else tool
+        raw_ref = attempt.raw_ref if attempt is not None else None
+        digest = attempt.response_sha256 if attempt is not None else None
+        if attempt is None and self.blobs is not None:
+            verdict = {
+                "tool": tool,
+                "literal": arguments.get("literal"),
+                "outcome": outcome.value,
+                "parsed": result.parsed,
+                "warnings": list(result.warnings),
+            }
+            record = json.dumps(verdict, sort_keys=True).encode()
+            raw_ref, digest = self.blobs.put(record), hashlib.sha256(record).hexdigest()
         return Evidence(
             kind="lookup" if attempt is not None else "validation",
             asset_id=self.asset_id,
@@ -175,23 +247,59 @@ class ToolLedger:
             source=source,
             locator=_locator(source, outcome, result, reading, attempt),
             excerpt=f"{source} {outcome.value}",
-            raw_ref=attempt.raw_ref if attempt is not None else None,
-            digest=attempt.response_sha256 if attempt is not None else None,
+            raw_ref=raw_ref,
+            digest=digest,
         )
 
     def field_call(
-        self, field_key: str, tool: str, arguments_for: Callable[[str, Reading], dict]
+        self,
+        field_key: str,
+        tool: str,
+        arguments_for: Callable[[str, Reading], dict],
+        place_text_for: Callable[[Reading], Sequence[str]] | None = None,
     ) -> FieldCall:
-        """The FieldCall the resolver uses for one field on one tool."""
+        """The FieldCall the resolver uses for one field on one tool, with each
+        reading's place text for a taxonomy request (PLAN 4.8)."""
 
         def call(literal: str, reading: Reading) -> Called:
             arguments = arguments_for(literal, reading)
+            place_text = place_text_for(reading) if place_text_for else ()
             result, evidence = self.run(
-                tool, reading, arguments, served(tool, arguments, field_key)
+                tool,
+                reading,
+                arguments,
+                served(tool, arguments, field_key),
+                place_text,
             )
             return called(field_key, literal, result, evidence)
 
         return call
+
+
+def _base(key: str) -> str:
+    """A call key without its attempt: one request and source."""
+    return key.rsplit(":", 1)[0]
+
+
+def _storable(value: object, depth: int = 0) -> bool:
+    """JSON a record can store: at most 32 levels deep, of objects with text
+    keys, lists, numbers, booleans, None and text that is valid Unicode."""
+    if depth > 32:
+        return False
+    if isinstance(value, dict):
+        return all(
+            isinstance(k, str) and _storable(k, depth + 1) and _storable(v, depth + 1)
+            for k, v in value.items()
+        )
+    if isinstance(value, list | tuple):
+        return all(_storable(v, depth + 1) for v in value)
+    if isinstance(value, str):
+        try:
+            value.encode("utf-8")
+        except UnicodeEncodeError:
+            return False
+        return True
+    return value is None or isinstance(value, bool | int | float)
 
 
 def served(tool: str, arguments: dict, field_key: str) -> list[str]:
@@ -212,7 +320,8 @@ def called(
         raise ValueError(f"field_not_reported:{field_key}")
     outcome = result.field_outcomes.get(field_key, result.outcome)
     warnings = {
-        code: tuple(filter(None, [evidence.get(code.split(":", 1)[1])]))
+        # A code without a source cites the tool's own record.
+        code: tuple(filter(None, [evidence.get(code.partition(":")[2] or result.tool)]))
         for code in result.warnings
         if code.startswith(FINDING_PREFIXES)
     }
@@ -291,15 +400,20 @@ def _locator(
     return f"name/{attempt.query.get('name') or attempt.query.get('q')}"
 
 
-def _bounded(tool: str, result: ToolResult, attempt: SourceCall | None) -> dict:
-    """What a record keeps of the result: bounded, and for Google place IDs
-    only (#88, section 6)."""
+def _bounded(
+    tool: str, result: ToolResult, attempt: SourceCall | None, final: bool = True
+) -> dict:
+    """What a record keeps of the result: bounded, for Google place IDs only
+    (#88, section 6), and what a source answered only on its final attempt,
+    the one that answered it."""
     kept: dict = {}
     if attempt is not None:
         if attempt.sanitized_error:
             kept["error"] = attempt.sanitized_error
         if attempt.retry_after_seconds is not None:
             kept["retry_after"] = attempt.retry_after_seconds
+        if not final:
+            return kept
         if attempt.source == GOOGLE:
             kept["place_ids"] = sorted(
                 {p.source_record_id for p in result.places if p.source_record_id}
