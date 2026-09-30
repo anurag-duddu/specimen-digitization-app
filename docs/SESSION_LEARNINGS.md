@@ -13616,3 +13616,10 @@ Preparedminimal derivations.py fullsinglequantity recognition: retainNUMBER rang
 
 - New actual FunctionModel→resolver→derive unit-compatibility assertions are committed before the code fix:24 opposite-unit cases,26 compatible/bare-number controls, and four mixed bare/stated range-endpoint controls, across single and agreeing labels. Words, case, dotted abbreviations, foot primes, signs, grouping and leading decimals preserve raw text, each reader's grounding, exact values and G41 authority/raw digest. These54 cases are PREPARED UNEXECUTED.
 - Product source remains accepted `fd2601` in this test-only checkpoint. The independent steward's five-case actual caller retains2 executed failures/3 passes0.43s atfd; this new checkpoint is not a claimed RED or GREEN result. No setup/test collection/tests/hooks/formatter/full/paid/native/cloud/push/merge ran.
+
+
+### 2026-09-30 — processing_harness PR144 unit seam patch prepared
+
+- Test-only `f043f1d5` precedes this minimal suffix compatibility patch and is preserved as `refs/recovery/pr144-unit-red-prepared`. Its54 actual-caller cases are PREPARED UNEXECUTED with assertions unchanged. Accepted historicalfd280/42 and stewardfd2RED/3PASS proofs remain preserved separately.
+- The complete-quantity regex now captures its recognized suffix. `elevation_derivations` passes the assignedm/ft field unit into `stated_number`; a recognized suffix canonicalizes tom orft and must agree before entering known values. A mismatch supplies no derived authority; bare quantities continue to use the field unit. No stated field remap, verbatim overwrite, new source/architecture, DTO/schema, conversion factor/rounding or G41 authority/rule-version change.
+- Source-only preparation; no setup/collection/tests/hooks/formatter/full/build/native/paid/cloud/push/merge. Required next admission is actual frozen unit test-only RED→new GREEN, affected focused matrix/retained42/unit5, then applicable configured hooks and separate app/scripts full gates under PLAN's immediate load<12. Root owns scheduling/publication approval; no qualification inference from the prior source.

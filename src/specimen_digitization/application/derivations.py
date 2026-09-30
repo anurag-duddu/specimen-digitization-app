@@ -47,7 +47,7 @@ NUMBER = re.compile(
 # sign, uncertainty marker or malformed number. Unit words remain label text.
 ELEVATION_QUANTITY = re.compile(
     rf"\s*(?P<number>{NUMBER.pattern})\s*"
-    r"(?:ft\.?|feet|foot|m\.?|met(?:er|re)s?\.?|['′’])?\s*",
+    r"(?P<unit>ft\.?|feet|foot|m\.?|met(?:er|re)s?\.?|['′’])?\s*",
     re.IGNORECASE,
 )
 
@@ -74,8 +74,9 @@ def settled_value(value: FieldValue | None) -> str | None:
     return value.authority_id or value.parsed or value.normalized or value.literal
 
 
-def stated_number(value: FieldValue | None) -> Decimal | None:
-    """The one stated number, including agreed labels with no root verbatim."""
+def stated_number(value: FieldValue | None, *, unit: str | None = None) -> Decimal | None:
+    """One stated number, with a recognized suffix compatible with its field.
+    A bare number uses the field's unit; agreed labels retain no root verbatim."""
     if value is None or value.state != ValueState.SUPPORTED:
         return None
     text = value.literal or (
@@ -86,6 +87,10 @@ def stated_number(value: FieldValue | None) -> Decimal | None:
     quantity = ELEVATION_QUANTITY.fullmatch(text)
     if quantity is None:
         return None
+    if unit is not None and (suffix := quantity["unit"]) is not None:
+        stated_unit = "m" if suffix.casefold().startswith("m") else "ft"
+        if stated_unit != unit:
+            return None  # Preserve the label; the field cannot relabel its unit.
     return Decimal(quantity["number"].replace(",", "").replace("−", "-"))
 
 
@@ -96,7 +101,8 @@ def elevation_derivations(fields: Mapping[str, FieldValue]) -> list[Derivation]:
         return []  # An elevation the readings disagree on goes to review first.
     known: dict[str, tuple[Decimal, str, list[str]]] = {}  # value, root, rules
     for key in keys:
-        if (number := stated_number(fields.get(key))) is not None:
+        unit = "m" if key.endswith("_m") else "ft"
+        if (number := stated_number(fields.get(key), unit=unit)) is not None:
             known[key] = (number, key, [])
     for low, high in UNITS.values():  # A single stated value is both ends.
         for have, missing in ((low, high), (high, low)):

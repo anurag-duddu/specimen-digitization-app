@@ -1008,6 +1008,11 @@ the dataset), the settled input fields with their values, and its checks.
     a number separates range endpoints. Ambiguous signs, uncertainty markers
     and unmatched fragments supply no derivation. Nothing is derived while
     any stated elevation is unsettled;
+  - a recognized unit suffix must match the field's unit before that quantity
+    supplies a derivation. Metre words/`m` and foot words/`ft`/foot primes keep
+    their stated unit. A contradictory suffix supplies no derived authority,
+    and never remaps the stated field or overwrites its verbatim. A bare
+    number, including a separately assigned range endpoint, uses its field's unit;
   - their authority is `apply_derivations` at the rules' version
     (`derivation-rules-v1`), so a G41 value names its stated field, its rule
     and `apply_derivations` (#124).
