@@ -103,7 +103,7 @@ def registry(*, processing=True):
     )
 
 
-def lane_client(root, *, dispatcher=None, profiles=None):
+def lane_client(root, *, dispatcher=None, profiles=None, role="reviewer"):
     blobs = LocalBlobs(root / "blobs")
     app = create_app(
         mode="emulator",
@@ -115,7 +115,7 @@ def lane_client(root, *, dispatcher=None, profiles=None):
             {
                 "organization_id": SYNTHETIC_ORG,
                 "collection_id": SYNTHETIC_COLLECTION,
-                "role": "reviewer",
+                "role": role,
                 "can_view_sensitive": True,
             }
         ],
@@ -465,6 +465,38 @@ def asset():
 
 def specimen_with(run):
     return Specimen(scope=SCOPE, run=run, asset=asset())
+
+
+def test_a_viewer_cannot_start_processing(tmp_path):
+    # Starting processing is paid work: the operator membership that uploads and
+    # run actions require, never a viewer's (the coordinator, 2026-09-29 03:57Z).
+    dispatcher = RecordingDispatcher()
+    operator = lane_client(tmp_path, dispatcher=dispatcher)
+    specimen_id = intake(operator)["specimen_id"]
+    force_stage(tmp_path, specimen_id, "ingested")  # Not yet requested.
+    before, calls = stored(tmp_path, specimen_id).run, dispatcher.calls
+    viewer = lane_client(tmp_path, dispatcher=dispatcher, role="viewer")
+
+    refused = process(viewer, specimen_id, "viewer-process")
+
+    assert refused.status_code == 403, refused.text
+    assert dispatcher.calls == calls  # No worker started: no paid call.
+    assert stored(tmp_path, specimen_id).run == before  # Nothing queued.
+    # Intake needs the same membership (CONTRACTS.md 48-49).
+    batch = viewer.post(
+        PREFIX + "/batches",
+        headers=dict(HEADERS, **{"Idempotency-Key": "viewer-batch"}),
+        json={
+            "collection_id": SYNTHETIC_COLLECTION,
+            "display_name": "Viewer",
+            "sensitive": False,
+        },
+    )
+    assert batch.status_code == 403, batch.text
+    # The same request from the operator tier starts it.
+    accepted = process(operator, specimen_id, "operator-process")
+    assert accepted.status_code == 202, accepted.text
+    assert dispatcher.calls == calls + 1
 
 
 def stored_by_data_connect(value):

@@ -7,10 +7,14 @@ live object must still be on that generation when it is read, and the bytes must
 digest to the value the server itself recorded at capture. The snapshot is the
 one declaration a client can neither supply nor alter.
 
-Importing is not running. This module dispatches no processing in any mode:
-running a selection is workstream C of SOURCE_BROWSE_AND_RUN.md and is blocked
-on an ongoing budget. Dispatching N specimens as a side effect of importing them
-would be that workstream, arriving without the allowance meant to bound it.
+This module dispatches nothing itself. Outside synthetic mode the caller passes
+`on_intake`, which queues each new specimen within its collection's allowance
+before it is created: adding a source photograph is intake, and intake
+processes (docs/execution/golive/LANE.md, T1).
+
+An optional `on_created` callback observes a successfully retained specimen after
+creation. It lets the caller track pending work across a later import failure
+without changing the public import result or treating duplicates as new intake.
 """
 
 from __future__ import annotations
@@ -143,6 +147,8 @@ def import_objects(
     sensitive,
     synthetic,
     duplicate_of,
+    on_intake=None,
+    on_created=None,
 ):
     """Two passes: prove every generation first, then create."""
     resolved = verify_selection(source, entries, selections)
@@ -192,6 +198,8 @@ def import_objects(
                 sensitive=sensitive,
                 synthetic=synthetic,
                 duplicate_of=duplicate_of,
+                on_intake=on_intake,
+                on_created=on_created,
             )
         except SourceObjectChanged as exc:
             # A change racing the import. Name what already exists; conceal nothing.
@@ -242,6 +250,8 @@ def create_from_object(
     sensitive,
     synthetic,
     duplicate_of,
+    on_intake=None,
+    on_created=None,
 ):
     data = reader.read(
         source.bucket, source_object.object_name, source_object.generation
@@ -311,6 +321,9 @@ def create_from_object(
     request_digest = hashlib.sha256(
         f"{key}:{batch_id}:{checksum}:{sensitive}".encode()
     ).hexdigest()
+    if on_intake is not None:
+        on_intake(specimen)
+    creation_run_id = specimen.run.id
     try:
         specimen = repository.create(principal, specimen, key, request_digest)
     except Conflict:
@@ -318,4 +331,10 @@ def create_from_object(
         if not existing:
             raise
         return outcome_row(source_object, DUPLICATE, existing, checksum)
+    # A same-actor race can replay the prior receipt instead of raising Conflict.
+    # Its retained run has the original creation UUID, not this attempt's UUID.
+    if specimen.run.id != creation_run_id:
+        return outcome_row(source_object, DUPLICATE, specimen.id, checksum)
+    if on_created is not None:
+        on_created(specimen)
     return outcome_row(source_object, IMPORTED, specimen.id, checksum)

@@ -1059,30 +1059,44 @@ def create_app(
         from .source_import import import_objects
         from .source_inventory import load
 
-        registry = configured_sources()
+        sources = configured_sources()
         p, batch = find_document(user, organization_id, "batch", batch_id)
         principal(user, organization_id, p.scope.collection_id, write=True)
         key(idempotency_key)
         if body.sensitive != batch.get("sensitive", True):
             raise ValueError("Item sensitivity must match its retained batch")
-        source = registry.get(body.source_id, {p.scope.collection_id})
+        source = sources.get(body.source_id, {p.scope.collection_id})
         inventory, entries = load(repository, p.scope, source, blobs)
         sensitivity_access(user, p, inventory.sensitive)
-        # No dispatch: importing a selection and running one are separate decisions.
-        return import_objects(
-            principal=p,
-            user=user,
-            source=source,
-            entries=entries,
-            selections=body.objects,
-            reader=source_reader,
-            repository=repository,
-            blobs=blobs,
-            batch_id=batch_id,
-            sensitive=body.sensitive,
-            synthetic=mode == "synthetic",
-            duplicate_of=lambda checksum: duplicate_source(p, user, checksum),
-        )
+        # Only retained pending intake needs a worker, even on a partial import.
+        pending_intake = False
+
+        def retained_intake(specimen):
+            nonlocal pending_intake
+            pending_intake = pending_intake or specimen.run.stage == "pending"
+
+        try:
+            return import_objects(
+                principal=p,
+                user=user,
+                source=source,
+                entries=entries,
+                selections=body.objects,
+                reader=source_reader,
+                repository=repository,
+                blobs=blobs,
+                batch_id=batch_id,
+                sensitive=body.sensitive,
+                synthetic=mode == "synthetic",
+                duplicate_of=lambda checksum: duplicate_source(p, user, checksum),
+                on_intake=None
+                if mode == "synthetic"
+                else lambda specimen: queue_on_intake(specimen, registry, user),
+                on_created=None if mode == "synthetic" else retained_intake,
+            )
+        finally:
+            if pending_intake:
+                start_worker()
 
     @app.get(prefix + "/uploads/{upload_id}")
     def upload(organization_id: str, upload_id: str, user=Depends(identity)):
@@ -2419,6 +2433,10 @@ def create_app(
         idempotency_key: str = Header(default=""),
     ):
         p, s = find(user, organization_id, specimen_id)
+        # Starting processing is paid work: the operator membership that uploads
+        # and run actions require (CONTRACTS.md 48-49, 63), never a viewer's
+        # (the coordinator's ruling of 03:57Z on 2026-09-29).
+        principal(user, organization_id, p.scope.collection_id, write=True)
         if "evidence_pilot" in s.run.dependencies:
             raise Conflict("Evidence pilot permits retained-evidence corrections only")
         if mode == "synthetic":
