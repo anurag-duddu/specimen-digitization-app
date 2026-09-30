@@ -37,7 +37,11 @@ RULES = {
     "feet_to_metres": "1 ft = 0.3048 m, exact",
     "metres_to_feet": "1 m = 1/0.3048 ft, exact",
 }
-NUMBER = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?")
+# A sign can start a quantity, but a hyphen attached to a preceding number
+# separates range endpoints. Keep both numbers so a range is never one value.
+NUMBER = re.compile(
+    r"(?:(?<![\d.])[+-])?(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
+)
 
 
 @dataclass(frozen=True)
@@ -62,10 +66,15 @@ def settled_value(value: FieldValue | None) -> str | None:
 
 
 def stated_number(value: FieldValue | None) -> Decimal | None:
-    """The one number a settled elevation's literal states, else None."""
-    if value is None or value.state != ValueState.SUPPORTED or not value.literal:
+    """The one stated number, including agreed labels with no root verbatim."""
+    if value is None or value.state != ValueState.SUPPORTED:
         return None
-    numbers = NUMBER.findall(value.literal)
+    text = value.literal or (
+        value.normalized if value.verbatim_by_observation else None
+    )
+    if not text:
+        return None
+    numbers = NUMBER.findall(text)
     return Decimal(numbers[0].replace(",", "")) if len(numbers) == 1 else None
 
 
@@ -104,7 +113,7 @@ def elevation_derivations(fields: Mapping[str, FieldValue]) -> list[Derivation]:
             else "unit_conversion",
             # The rule's owner: a G41 value names apply_derivations (#124).
             authority=SourceRef(name="apply_derivations", version=RULES_VERSION),
-            inputs={root: fields[root].literal},
+            inputs={root: settled_value(fields[root])},
             evidence=[Check(name=r, result="supports", detail=RULES[r]) for r in rules],
         )
         for key, (value, root, rules) in known.items()
