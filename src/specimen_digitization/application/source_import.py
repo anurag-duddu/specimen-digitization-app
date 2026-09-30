@@ -323,6 +323,7 @@ def create_from_object(
     ).hexdigest()
     if on_intake is not None:
         on_intake(specimen)
+    creation_run_id = specimen.run.id
     try:
         specimen = repository.create(principal, specimen, key, request_digest)
     except Conflict:
@@ -330,6 +331,10 @@ def create_from_object(
         if not existing:
             raise
         return outcome_row(source_object, DUPLICATE, existing, checksum)
+    # A same-actor race can replay the prior receipt instead of raising Conflict.
+    # Its retained run has the original creation UUID, not this attempt's UUID.
+    if specimen.run.id != creation_run_id:
+        return outcome_row(source_object, DUPLICATE, specimen.id, checksum)
     if on_created is not None:
         on_created(specimen)
     return outcome_row(source_object, IMPORTED, specimen.id, checksum)

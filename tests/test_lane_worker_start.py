@@ -1,7 +1,9 @@
 """Starting the worker and importing from Storage in production (LANE.md, T1)."""
 
 import json
+import threading
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
@@ -361,3 +363,85 @@ def test_partial_source_import_starts_only_retained_pending_work(
             )
         assert len(due_ids(tmp_path)) == expected_calls
         assert dispatcher.calls == expected_calls
+
+
+def test_concurrent_source_import_replay_requests_one_worker(tmp_path):
+    barrier = threading.Barrier(2)
+
+    class RacedRepository(SQLiteRepository):
+        armed = False
+        prechecks = []
+
+        def find_checksum(self, scope, checksum, include_sensitive=False):
+            matches = super().find_checksum(scope, checksum, include_sensitive)
+            if self.armed and not matches:
+                self.prechecks.append(len(matches))
+                barrier.wait(timeout=10)
+            return matches
+
+    objects = tmp_path / "objects"
+    source_fixtures.write_object(
+        objects,
+        f"{source_fixtures.OBJECT_PREFIX}subject.jpg",
+        source_fixtures.jpeg_bytes(),
+        source_fixtures.FIRST_GENERATION,
+    )
+    repository = RacedRepository(tmp_path / "state.sqlite3")
+    dispatcher = RecordingDispatcher()
+    blobs = LocalBlobs(tmp_path / "blobs")
+    app = create_app(
+        mode="emulator",
+        repository=repository,
+        blobs=blobs,
+        adapters=SyntheticAdapters(blobs, SYNTHETIC_TEXT),
+        identity_verifier=lambda token, check: "lane-reviewer",
+        memberships=lambda user: [
+            {
+                "organization_id": SYNTHETIC_ORG,
+                "collection_id": SYNTHETIC_COLLECTION,
+                "role": "reviewer",
+                "can_view_sensitive": True,
+            }
+        ],
+        profile_registry=registry(),
+        worker_dispatcher=dispatcher,
+        source_registry=SourceRegistry([source_fixtures.registered()]),
+        source_reader=LocalSourceReader(objects),
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        source_fixtures.capture(client)
+        rows = source_fixtures.listed(client)["items"]
+        batch = source_fixtures.open_batch(client, sensitive=False)
+        repository.armed = True
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [
+                pool.submit(
+                    source_fixtures.import_objects,
+                    client, batch, rows, sensitive=False,
+                )
+                for _ in range(2)
+            ]
+            responses = [future.result(timeout=15) for future in futures]
+        repository.armed = False
+        assert repository.prechecks == [0, 0]
+        assert [response.status_code for response in responses] == [200, 200]
+        assert len(repository.list(SCOPE)) == 1
+        assert len(due_ids(tmp_path)) == 1
+        with repository.connect() as db:
+            receipts = db.execute(
+                "SELECT count(*) FROM receipts WHERE key LIKE 'source:%'"
+            ).fetchone()[0]
+        assert receipts == 1
+        assert dispatcher.calls == 1
+        assert sorted(
+            (response.json()["imported"], response.json()["duplicates"])
+            for response in responses
+        ) == [(0, 1), (1, 0)]
+
+        again = source_fixtures.import_objects(
+            client, batch, rows, sensitive=False
+        )
+        assert again.status_code == 200, again.text
+        assert again.json()["imported"] == 0
+        assert again.json()["duplicates"] == 1
+        assert dispatcher.calls == 1
