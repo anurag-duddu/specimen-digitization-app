@@ -7,6 +7,7 @@ import pytest
 from specimen_digitization.application.derivations import (
     Found,
     NUMBER,
+    RULES_VERSION,
     apply_derivations,
     elevation_derivations,
     settled_value,
@@ -114,18 +115,21 @@ def test_a_derivation_whose_inputs_are_not_settled_to_its_values_does_not_apply(
     )  # A request that didn't settle.
     unsettled = derivation("county", "X", {"province_state": "Y"})
 
-    assert apply(FIELDS, [other_place])[0] == {}
-    assert apply(FIELDS, [unsettled])[0] == {}
+    assert apply(FIELDS, [Found(other_place, ("e-call",))])[0] == {}
+    assert apply(FIELDS, [Found(unsettled, ("e-call",))])[0] == {}
 
 
 def test_a_stated_field_is_never_replaced_and_disagreeing_derivations_fill_nothing():
     stated = FIELDS | {"county": FieldValue(state=V.SUPPORTED, literal="Chimaltenango")}
     twice = [
-        derivation("county", "A", {"city": "place-1"}),
-        derivation("county", "B", {"city": "place-1"}),
+        Found(derivation("county", "A", {"city": "place-1"}), ("e-call-a",)),
+        Found(derivation("county", "B", {"city": "place-1"}), ("e-call-b",)),
     ]
 
-    assert apply(stated, [derivation("county", "Z", {"city": "place-1"})])[0] == {}
+    stated_attempt = Found(
+        derivation("county", "Z", {"city": "place-1"}), ("e-call",)
+    )
+    assert apply(stated, [stated_attempt])[0] == {}
     assert apply(FIELDS, twice)[0] == {}
 
 
@@ -143,16 +147,65 @@ def test_a_value_derived_earlier_may_be_an_input():
         "4580.05",
         {"elevation_from_m": "1396"},
         method="unit_conversion",
-        name="field_harness",
-        record_id=None,
+        name="copernicus-glo-30",
+        record_id="N14W091",
     )
 
-    filled, _, _ = apply(FIELDS, [metres, feet])
+    # S8's model and conversion share their recorded producing call. These
+    # are external derivations, not G41's rules for a label-stated elevation.
+    filled, _, _ = apply(
+        FIELDS, [Found(metres, ("e-model-call",)), Found(feet, ("e-model-call",))]
+    )
 
     assert {k: v.parsed for k, v in filled.items()} == {
         "elevation_from_m": "1396",
         "elevation_from_ft": "4580.05",
     }
+
+
+def test_a_derivation_requires_nonempty_inputs_even_with_a_producing_call():
+    filled, evidence, blobs = apply(
+        FIELDS, [Found(derivation("county", "X", {}), ("e-call",))]
+    )
+
+    assert filled == {} and evidence == [] and blobs.puts == {}
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_external_derivations_require_producing_call_evidence(wrapped):
+    external = derivation("county", "X", {"city": "place-1"})
+
+    filled, evidence, blobs = apply(FIELDS, [Found(external) if wrapped else external])
+
+    assert filled == {} and evidence == [] and blobs.puts == {}
+
+
+@pytest.mark.parametrize("name,version,method,wrapped", [
+    ("field_harness", RULES_VERSION, "unit_conversion", False),
+    ("apply_derivations", "other-rules", "unit_conversion", False),
+    ("apply_derivations", RULES_VERSION, "containment", False),
+    ("apply_derivations", RULES_VERSION, "unit_conversion", True),
+])
+def test_the_local_no_call_exception_is_only_a_bare_pinned_g41_rule(
+    name, version, method, wrapped
+):
+    external = derivation("county", "X", {"city": "place-1"}, method=method)
+    external = external.model_copy(update={
+        "authority": SourceRef(name=name, version=version),
+    })
+
+    assert apply(FIELDS, [Found(external) if wrapped else external])[0] == {}
+
+
+def test_a_derivation_without_producer_evidence_cannot_conflict_with_a_qualified_one():
+    unqualified = Found(derivation("county", "Wrong", {"city": "place-1"}))
+    qualified = Found(
+        derivation("county", "Right", {"city": "place-1"}), ("e-call",)
+    )
+
+    filled, _, _ = apply(FIELDS, [unqualified, qualified])
+
+    assert filled["county"].parsed == "Right"
 
 
 def test_a_settled_value_is_the_authority_id_or_the_value_the_field_holds():

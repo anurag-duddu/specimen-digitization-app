@@ -607,6 +607,265 @@ def test_a_geography_results_derivation_fills_a_field_the_label_leaves_out():
     assert county.evidence_relations[call.evidence_id] == "supports"
 
 
+def _county_derivation(inputs, *, authority="gadm", value="Synthetic County"):
+    return Derivation(
+        field_key="county",
+        value=value,
+        method="containment",
+        authority=SourceRef(name=authority, record_id="synthetic-unit", version="v1"),
+        inputs=inputs,
+        evidence=[Check(name="containment", result="supports")],
+    )
+
+
+def _geography_source(source, status=S.SUCCESS, *, attempt=1, raw_ref="source-record"):
+    return SourceCall(
+        source=source,
+        query={"address": "synthetic locality"},
+        retrieved_at="t",
+        outcome=status,
+        attempt=attempt,
+        raw_ref=raw_ref,
+    )
+
+
+def _county_result(derivation, sources, *, field_status=S.SUCCESS, status=S.SUCCESS):
+    return ToolResult(
+        tool="geography_lookup",
+        tool_version="v1",
+        outcome=status,
+        field_outcomes={"city": field_status},
+        places=[PlaceCandidate(
+            field_key="city", source=GOOGLE, source_record_id="place-local",
+        )] if field_status == S.SUCCESS else [],
+        sub_calls=sources,
+        derivations=[derivation],
+    )
+
+
+def _county_harness(result, *, readings=None, literals=None):
+    class Deriving(Fakes):
+        def geocode(self, query):
+            self.calls.append(("geocode", query))
+            return result(query) if callable(result) else result
+
+    readings = readings or [Reading(
+        "r1", "o-local", "decided_transcript", "Chimaltenango; Guatemala",
+    )]
+    literals = literals or {"1A": {"city": "Chimaltenango", "country": "Guatemala"}}
+    plan = FieldPlan(
+        mandatory=("city", "country", "county"),
+        tools={"city": "geography_lookup", "county": "geography_lookup"},
+    )
+    blobs = Blobs()
+    outcome, fakes = harness(
+        answer(**literals), fakes=Deriving(), readings=readings, plan=plan, blobs=blobs,
+    )
+    assert outcome.failure is None
+    return outcome, blobs, fakes
+
+
+def _county_record(outcome, blobs):
+    county = outcome.fields["county"]
+    rule = next(
+        e for e in outcome.evidence
+        if e.kind == "derivation" and e.id in county.evidence_ids
+    )
+    raw = blobs.puts[int(rule.raw_ref.removeprefix("blob-")) - 1]
+    assert hashlib.sha256(raw).hexdigest() == rule.digest
+    return json.loads(raw)
+
+
+@pytest.mark.parametrize("inputs,expected", [
+    ({"city": "place-local"}, True),
+    ({"city": "stale-place"}, False),
+    ({}, False),
+])
+def test_geography_derivation_requires_nonempty_matching_settled_inputs(inputs, expected):
+    result = _county_result(_county_derivation(inputs), [_geography_source(GOOGLE)])
+
+    outcome, blobs, _ = _county_harness(result)
+
+    assert outcome.blocker is None
+    county = outcome.fields["county"]
+    assert (county.layer == "derived") == expected
+    if expected:
+        assert county.state == V.SUPPORTED and county.derived_from == ["city"]
+        (call,) = outcome.tool_calls
+        assert _county_record(outcome, blobs)["call_evidence_ids"] == [call.evidence_id]
+        assert county.evidence_relations[call.evidence_id] == "supports"
+
+
+@pytest.mark.parametrize("raw_ref", [None, "failed-source-record"])
+@pytest.mark.parametrize("authority", ["gadm", GOOGLE])
+def test_policy_failed_producer_cannot_derive_from_an_independently_settled_country(
+    raw_ref, authority
+):
+    result = _county_result(
+        _county_derivation({"country": "Guatemala"}, authority=authority),
+        [_geography_source(GOOGLE, S.POLICY, raw_ref=raw_ref)],
+        field_status=S.POLICY,
+        status=S.POLICY,
+    )
+
+    outcome, _, _ = _county_harness(result)
+
+    assert outcome.fields["country"].state == V.SUPPORTED
+    assert outcome.blocker == "harness_geography_lookup_policy_blocked"
+    assert outcome.fields["county"].layer != "derived"
+    (call,) = outcome.tool_calls
+    assert call.outcome == S.POLICY
+    assert (call.evidence_id is None) == (raw_ref is None)
+    assert not any(e.kind == "derivation" for e in outcome.evidence)
+
+
+@pytest.mark.parametrize("authority_status,expected", [(S.SUCCESS, True), (S.POLICY, False)])
+def test_recorded_authority_source_cannot_borrow_another_sources_success(
+    authority_status, expected
+):
+    result = _county_result(
+        _county_derivation({"city": "place-local"}),
+        [_geography_source(GOOGLE), _geography_source("gadm", authority_status)],
+    )
+
+    outcome, blobs, _ = _county_harness(result)
+
+    assert outcome.blocker is None
+    county = outcome.fields["county"]
+    assert (county.layer == "derived") == expected
+    assert len(outcome.tool_calls) == 2
+    if expected:
+        assert set(_county_record(outcome, blobs)["call_evidence_ids"]) == {
+            call.evidence_id for call in outcome.tool_calls
+        }
+    else:
+        assert not any(e.kind == "derivation" for e in outcome.evidence)
+
+
+@pytest.mark.parametrize("authority,expected", [("open-boundaries", True), ("gadm", False)])
+def test_successful_recorded_open_producer_survives_an_unrelated_failed_field(
+    authority, expected
+):
+    result = _county_result(
+        _county_derivation({"country": "Guatemala"}, authority=authority),
+        [_geography_source(GOOGLE, S.POLICY), _geography_source("open-boundaries")],
+        field_status=S.POLICY,
+        status=S.POLICY,
+    )
+
+    outcome, blobs, _ = _county_harness(result)
+
+    assert outcome.blocker == "harness_geography_lookup_policy_blocked"
+    assert outcome.fields["country"].state == V.SUPPORTED
+    county = outcome.fields["county"]
+    assert (county.layer == "derived") == expected
+    if expected:
+        failed, successful = outcome.tool_calls
+        assert _county_record(outcome, blobs)["call_evidence_ids"] == [successful.evidence_id]
+        assert county.evidence_relations[successful.evidence_id] == "supports"
+        assert failed.evidence_id not in county.evidence_ids
+
+
+def test_partial_geography_keeps_all_successful_producers_and_no_failed_supports():
+    result = _county_result(
+        _county_derivation({"city": "place-local"}),
+        [_geography_source(GOOGLE), _geography_source("gadm"),
+         _geography_source("failed-secondary", S.PROVIDER)],
+        status=S.PROVIDER,
+    )
+
+    outcome, blobs, _ = _county_harness(result)
+
+    assert outcome.blocker is None
+    county = outcome.fields["county"]
+    assert county.state == V.SUPPORTED and county.layer == "derived"
+    successful = {call.evidence_id for call in outcome.tool_calls if call.outcome == S.SUCCESS}
+    (failed,) = [call for call in outcome.tool_calls if call.outcome == S.PROVIDER]
+    assert set(_county_record(outcome, blobs)["call_evidence_ids"]) == successful
+    assert all(county.evidence_relations[eid] == "supports" for eid in successful)
+    assert failed.evidence_id not in county.evidence_ids
+    assert any(e.id == failed.evidence_id for e in outcome.evidence)
+
+
+@pytest.mark.parametrize("statuses,expected", [
+    ((S.PROVIDER, S.SUCCESS), True),
+    ((S.SUCCESS, S.POLICY), False),
+])
+def test_authority_eligibility_uses_its_final_attempt_and_preserves_retry_history(statuses, expected):
+    result = _county_result(
+        _county_derivation({"city": "place-local"}),
+        [_geography_source(GOOGLE), *[
+            _geography_source("gadm", status, attempt=index)
+            for index, status in enumerate(statuses, 1)
+        ]],
+    )
+
+    outcome, blobs, _ = _county_harness(result)
+
+    county = outcome.fields["county"]
+    assert (county.layer == "derived") == expected
+    google, first, final = outcome.tool_calls
+    assert first.outcome == statuses[0] and first.evidence_id is None
+    assert final.outcome == statuses[1] and final.evidence_id is not None
+    if expected:
+        assert set(_county_record(outcome, blobs)["call_evidence_ids"]) == {
+            google.evidence_id, final.evidence_id,
+        }
+        assert first.evidence_id not in county.evidence_ids
+
+
+def test_success_without_a_producing_evidence_record_cannot_derive():
+    result = _county_result(
+        _county_derivation({"country": "Guatemala"}, authority=GOOGLE),
+        [_geography_source(GOOGLE, raw_ref=None)],
+        field_status=S.POLICY,
+        status=S.POLICY,
+    )
+
+    outcome, _, _ = _county_harness(result)
+
+    assert outcome.blocker == "harness_geography_lookup_policy_blocked"
+    assert outcome.tool_calls[0].outcome == S.SUCCESS
+    assert outcome.tool_calls[0].evidence_id is None
+    assert outcome.fields["county"].layer != "derived"
+
+
+def test_failed_first_reading_cannot_poison_a_successful_derivation_fallback():
+    def geography(query):
+        city = next(item.literal for item in query.literals if item.field_key == "city")
+        successful = city == "Right City"
+        status = S.SUCCESS if successful else S.NO_MATCH
+        return _county_result(
+            _county_derivation(
+                {"city": "place-local"}, value="Right County" if successful else "Wrong County",
+            ),
+            [_geography_source(GOOGLE, status)],
+            field_status=status,
+            status=status,
+        )
+
+    readings = [
+        Reading("r1", "o-chosen", "decided_transcript", "Wrong City; Guatemala"),
+        Reading("r1", "o-raw", "raw_reading", "Right City; Guatemala"),
+    ]
+    outcome, blobs, fakes = _county_harness(geography, readings=readings, literals={
+        "1A": {"city": "Wrong City", "country": "Guatemala"},
+        "1B": {"city": "Right City", "country": "Guatemala"},
+    })
+
+    assert outcome.blocker is None and len(fakes.calls) == 2
+    city = outcome.fields["city"]
+    assert city.state == V.SUPPORTED and city.literal == "Wrong City"
+    county = outcome.fields["county"]
+    assert county.state == V.SUPPORTED and county.parsed == "Right County"
+    failed, successful = outcome.tool_calls
+    assert (failed.outcome, successful.outcome) == (S.NO_MATCH, S.SUCCESS)
+    assert successful.observation_id == "o-raw"
+    assert _county_record(outcome, blobs)["call_evidence_ids"] == [successful.evidence_id]
+    assert failed.evidence_id not in county.evidence_ids
+    assert county.evidence_relations[successful.evidence_id] == "supports"
+
+
 def test_agreeing_labels_derive_elevations_without_choosing_a_verbatim():
     readings = [
         Reading("r1", "o-first", "decided_transcript", "6400 ft"),
