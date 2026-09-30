@@ -2,11 +2,15 @@
 
 import json
 
+import pytest
+
 from specimen_digitization.application.derivations import (
     Found,
+    NUMBER,
     apply_derivations,
     elevation_derivations,
     settled_value,
+    stated_number,
 )
 from specimen_digitization.application.domain import FieldValue
 from specimen_digitization.application.domain import ValueState as V
@@ -257,3 +261,20 @@ def test_nothing_is_derived_from_an_unsettled_or_unreadable_elevation():
     assert derive(EMPTY | {"elevation_from_m": conflict})[0] == {}
     assert derive(EMPTY | {"elevation_from_m": stated("1200-1500 m")})[0] == {}
     assert derive(EMPTY)[0] == {}
+
+
+@pytest.mark.parametrize("text", [
+    "10-20 ft", "10.5-20.25 ft", "10 -20 ft", "+10-+20 ft", "-20--10 ft",
+])
+def test_a_range_literal_is_not_a_single_signed_quantity(text):
+    assert stated_number(stated(text)) is None
+    assert derive(EMPTY | {"elevation_from_ft": stated(text)})[0] == {}
+
+
+@pytest.mark.parametrize("text, tokens", [
+    ("10-20 ft", ["10", "20"]),
+    ("10.5-20.25 ft", ["10.5", "20.25"]),
+    ("1,200-1,500 ft", ["1,200", "1,500"]),
+])
+def test_a_hyphen_after_a_number_is_a_range_separator(text, tokens):
+    assert NUMBER.findall(text) == tokens

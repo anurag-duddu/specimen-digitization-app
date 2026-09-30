@@ -1,5 +1,6 @@
 """The stage 7 field harness (HARNESS.md section 11)."""
 
+import hashlib
 import json
 import time
 from functools import partial
@@ -218,7 +219,7 @@ class Blobs:
         return f"blob-{len(self.puts)}"
 
 
-def harness(*turns, seen=None, fakes=None, readings=READINGS, plan=PLAN):
+def harness(*turns, seen=None, fakes=None, readings=READINGS, plan=PLAN, blobs=None):
     fakes = fakes or Fakes()
     ledger = ToolLedger(fakes.tools(), asset_id="asset-1")
     outcome = run_harness(
@@ -229,7 +230,7 @@ def harness(*turns, seen=None, fakes=None, readings=READINGS, plan=PLAN):
         notes={"o-qwen": "misread Werner"},
         ledger=ledger,
         asset_id="asset-1",
-        blobs=Blobs(),
+        blobs=blobs if blobs is not None else Blobs(),
         timeout_seconds=30,
     )
     return outcome, fakes
@@ -601,3 +602,108 @@ def test_a_geography_results_derivation_fills_a_field_the_label_leaves_out():
     # It names the geography call that returned it (#124, PLAN 4.8).
     (call,) = [r for r in outcome.tool_calls if r.tool == "geography_lookup"]
     assert county.evidence_relations[call.evidence_id] == "supports"
+
+
+def test_agreeing_labels_derive_elevations_without_choosing_a_verbatim():
+    readings = [
+        Reading("r1", "o-first", "decided_transcript", "6400 ft"),
+        Reading("r2", "o-second", "decided_transcript", "6400 ft"),
+    ]
+    blobs = Blobs()
+    outcome, _ = harness(
+        answer(**{
+            "1A": {"elevation_from_ft": "6400 ft"},
+            "2A": {"elevation_from_ft": "6400 ft"},
+        }),
+        readings=readings,
+        plan=ELEVATIONS,
+        blobs=blobs,
+    )
+
+    assert outcome.failure is None and outcome.blocker is None
+    stated = outcome.fields["elevation_from_ft"]
+    assert (stated.state, stated.layer, stated.literal) == (
+        V.SUPPORTED, "settled", None,
+    )
+    assert stated.normalized == "6400 ft"
+    assert stated.verbatim_by_observation == {
+        "o-first": "6400 ft", "o-second": "6400 ft",
+    }
+    assert stated.settled_observation_ids == ["o-first", "o-second"]
+    assert stated.source_observation_id is None
+    literals = [e for e in outcome.evidence if e.id in stated.evidence_ids]
+    assert {tuple(e.observation_ids) for e in literals} == {
+        ("o-first",), ("o-second",),
+    }
+    for key, expected in {
+        "elevation_to_ft": "6400",
+        "elevation_from_m": "1950.72",
+        "elevation_to_m": "1950.72",
+    }.items():
+        derived = outcome.fields[key]
+        assert (derived.state, derived.layer, derived.parsed, derived.literal) == (
+            V.SUPPORTED, "derived", expected, None,
+        )
+        assert derived.derived_from == ["elevation_from_ft"]
+        assert all(derived.evidence_relations[e.id] == "supports" for e in literals)
+        (rule,) = [e for e in outcome.evidence if e.id in derived.evidence_ids
+                   and e.kind == "derivation"]
+        assert derived.evidence_relations[rule.id] == "decides"
+        raw = blobs.puts[int(rule.raw_ref.removeprefix("blob-")) - 1]
+        assert hashlib.sha256(raw).hexdigest() == rule.digest
+        record = json.loads(raw)["derivation"]
+        assert record["inputs"] == {"elevation_from_ft": "6400 ft"}
+        assert record["authority"]["version"] == "derivation-rules-v1"
+
+
+@pytest.mark.parametrize("literal, feet, metres", [
+    ("-10 ft", "-10", "-3.05"),
+    ("-10.5 ft", "-10.5", "-3.2"),
+    ("-1,234.5 ft", "-1234.5", "-376.28"),
+    ("+10 ft", "10", "3.05"),
+    ("0 ft", "0", "0"),
+    ("1,234.5 ft", "1234.5", "376.28"),
+])
+def test_signed_elevations_keep_the_literal_and_derived_value(literal, feet, metres):
+    blobs = Blobs()
+    outcome, _ = harness(
+        answer(**{"1A": {"elevation_from_ft": literal}}),
+        readings=[Reading("r1", "o-number", "decided_transcript", literal)],
+        plan=ELEVATIONS,
+        blobs=blobs,
+    )
+
+    assert outcome.failure is None and outcome.blocker is None
+    assert outcome.fields["elevation_from_ft"].literal == literal
+    assert {key: value.parsed for key, value in outcome.fields.items()
+            if key != "elevation_from_ft"} == {
+        "elevation_to_ft": feet,
+        "elevation_from_m": metres,
+        "elevation_to_m": metres,
+    }
+    for key in ("elevation_from_m", "elevation_to_m"):
+        derived = outcome.fields[key]
+        (rule,) = [e for e in outcome.evidence if e.id in derived.evidence_ids
+                   and e.kind == "derivation"]
+        record = json.loads(blobs.puts[int(rule.raw_ref.removeprefix("blob-")) - 1])
+        assert record["derivation"]["inputs"] == {"elevation_from_ft": literal}
+
+
+@pytest.mark.parametrize("text, start, end, low, high", [
+    ("10-20 ft", "10", "20 ft", "3.05", "6.1"),
+    ("10.5-20.25 ft", "10.5", "20.25 ft", "3.2", "6.17"),
+    ("+10-+20 ft", "+10", "+20 ft", "3.05", "6.1"),
+    ("-20--10 ft", "-20", "-10 ft", "-6.1", "-3.05"),
+])
+def test_stated_range_endpoints_keep_their_signs(text, start, end, low, high):
+    outcome, _ = harness(
+        answer(**{"1A": {"elevation_from_ft": start, "elevation_to_ft": end}}),
+        readings=[Reading("r1", "o-range", "decided_transcript", text)],
+        plan=ELEVATIONS,
+    )
+
+    assert outcome.failure is None and outcome.blocker is None
+    assert outcome.fields["elevation_from_ft"].literal == start
+    assert outcome.fields["elevation_to_ft"].literal == end
+    assert outcome.fields["elevation_from_m"].parsed == low
+    assert outcome.fields["elevation_to_m"].parsed == high
