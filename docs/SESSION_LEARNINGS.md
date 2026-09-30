@@ -13346,3 +13346,13 @@ because the hooks runner hands a native asset hook only `PATH`.
     - Both fixtures set `dependencies` directly, and they left out a key the workflow always writes.
     - Drive the real step order at least once.
 - Remaining follow-ups: the verdict's nine, in S5's post-chain pull request.
+
+
+## 2026-09-29 21:08 CDT — Codex recovery, PR #100 mechanical preparation
+
+- Task/role: root-assigned in-turn preparation of PR #100 only, not a review of this candidate. Branch `golive/release-runtime-deploy`; isolated clone `~/specimen-golive/recovery/codex-runtime-deploy-pr100`. Original remote `f3aac012de93a7f16754bbb1199721bc7104e0b7`; current main `d210e6ecdfd0da46d3b6e5190bf66e3892330a6b`; clean local merge `c101f49a68f9f60b0efee511d8a035f6a19c4d89`. The pre-merge closeout is `5a44affd`. No rebase/server update, source rewrite, inherited worktree mutation, or pruning.
+- Validation actually run: Python3.12.3 with uv0.12.5 frozen sync; all-files pre-commit passed. Full `tests/`: **4,699 passed, 32 skipped, 7 warnings**,444.60s. Full `scripts/`: **1,915 passed, 51 skipped, 2 warnings**,51.40s. UI string baseline check passed. Gates ran one at a time after the processing owner released its slot, at starting one-minute loads4.39 and10.84<12; no Git during gates. Logs and preparation receipt are in `~/specimen-golive/recovery/pr100-*.log` and `pr100-preparation.md`.
+- Catalog equivalence: PLAN7.4 requires component gates rather than the whole `verify.sh`; Python/pre-commit/UI-string components passed. Flutter code did not change, so its gates are left to exact-head CI. No deployment or live runtime/data acceptance is claimed.
+- Owner checkpoint qualification: readiness-marker and SAM-checkpoint uploads are already recorded complete; source settings remain `PENDING` until a separately reviewed settings PR after S3 #129 pins the known artifacts and the worker/SAM arguments. This implementation stays inert until #101 wiring and those settings. It does not authorize a workstation deployment, IAM action, paid execution, or an unverified current readiness claim.
+- Handoff: root authorized a normal push of this branch after green; four fresh reviews belong to root, processing owner, steward, and the external #226 owner. The preparer supplies no review. Exact final commit/CI evidence will be recorded in the preparation receipt. Required checks, protected workflows, independent live acceptance, and future S5 integration remain follow-ups.
+- Preserved S5: unpublished RunFailure recovery at `7da3ae1021a3485157815ebc37b86b5b637a7ce4`; separate real-domain RED checkpoint `3479aba89b5813846117bd42d5a3edaecb367c5a` above root lab `852becacc0a54a71cf6d27ca34e1ed5f44562051`. No S5 push or chain turn was started.
