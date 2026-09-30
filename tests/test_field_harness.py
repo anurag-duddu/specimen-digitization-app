@@ -692,6 +692,96 @@ def test_signed_elevations_keep_the_literal_and_derived_value(literal, feet, met
         assert record["derivation"]["inputs"] == {"elevation_from_ft": literal}
 
 
+@pytest.mark.parametrize("labels", [1, 2])
+@pytest.mark.parametrize("literal, feet, metres", [
+    ("−10 ft", "-10", "-3.05"),
+    (".5 ft", "0.5", "0.15"),
+    ("-.5 ft", "-0.5", "-0.15"),
+    ("+.5 ft", "0.5", "0.15"),
+    ("−.5 ft", "-0.5", "-0.15"),
+    ("−1,234.5 ft.", "-1234.5", "-376.28"),
+])
+def test_complete_elevation_quantities_keep_sign_magnitude_and_grounding(
+    literal, feet, metres, labels
+):
+    readings = [
+        Reading(f"r{index}", f"o-quantity-{index}", "decided_transcript", literal)
+        for index in range(1, labels + 1)
+    ]
+    blobs = Blobs()
+    outcome, _ = harness(
+        answer(**{
+            f"{index}A": {"elevation_from_ft": literal}
+            for index in range(1, labels + 1)
+        }),
+        readings=readings,
+        plan=ELEVATIONS,
+        blobs=blobs,
+    )
+
+    assert outcome.failure is None and outcome.blocker is None
+    stated = outcome.fields["elevation_from_ft"]
+    assert stated.literal == (literal if labels == 1 else None)
+    if labels == 2:
+        assert stated.verbatim_by_observation == {
+            reading.observation_id: literal for reading in readings
+        }
+    literals = [e for e in outcome.evidence if e.id in stated.evidence_ids]
+    assert {tuple(e.observation_ids) for e in literals} == {
+        (reading.observation_id,) for reading in readings
+    }
+    assert {key: value.parsed for key, value in outcome.fields.items()
+            if value.layer == "derived"} == {
+        "elevation_to_ft": feet,
+        "elevation_from_m": metres,
+        "elevation_to_m": metres,
+    }
+    for value in outcome.fields.values():
+        if value.layer != "derived":
+            continue
+        assert value.derived_from == ["elevation_from_ft"]
+        assert all(value.evidence_relations[e.id] == "supports" for e in literals)
+        (rule,) = [e for e in outcome.evidence if e.id in value.evidence_ids
+                   and e.kind == "derivation"]
+        raw = blobs.puts[int(rule.raw_ref.removeprefix("blob-")) - 1]
+        assert hashlib.sha256(raw).hexdigest() == rule.digest
+        assert json.loads(raw)["derivation"]["inputs"] == {
+            "elevation_from_ft": literal,
+        }
+
+
+@pytest.mark.parametrize("labels", [1, 2])
+@pytest.mark.parametrize("literal", [
+    "±10 ft", "±.5 ft", "+/-10 ft", "~10 ft", "10? ft", ">10 ft",
+    "10e3 ft", "10.5.3 ft", "10-20 ft", "10–20 ft", "1,23 ft", "--10 ft",
+])
+def test_ambiguous_or_partial_elevation_quantities_gain_no_derived_authority(
+    literal, labels
+):
+    readings = [
+        Reading(f"r{index}", f"o-quantity-{index}", "decided_transcript", literal)
+        for index in range(1, labels + 1)
+    ]
+    outcome, _ = harness(
+        answer(**{
+            f"{index}A": {"elevation_from_ft": literal}
+            for index in range(1, labels + 1)
+        }),
+        readings=readings,
+        plan=ELEVATIONS,
+    )
+
+    assert outcome.failure is None and outcome.blocker is None
+    stated = outcome.fields["elevation_from_ft"]
+    assert stated.literal == (literal if labels == 1 else None)
+    if labels == 2:
+        assert stated.verbatim_by_observation == {
+            reading.observation_id: literal for reading in readings
+        }
+    assert all(value.layer != "derived" for value in outcome.fields.values())
+    assert not any(e.kind == "derivation" for e in outcome.evidence)
+
+
 @pytest.mark.parametrize("text, start, end, low, high", [
     ("10-20 ft", "10", "20 ft", "3.05", "6.1"),
     ("10.5-20.25 ft", "10.5", "20.25 ft", "3.2", "6.17"),
