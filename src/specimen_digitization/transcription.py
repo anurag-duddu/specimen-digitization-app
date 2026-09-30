@@ -7,6 +7,7 @@ from typing import Literal
 import logfire
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_ai import Agent, BinaryContent
+from pydantic_ai.usage import UsageLimits
 
 from .application.reading_declarations import DeclarationCandidates
 from .model_gateway import HuggingFaceModelGateway, ModelGatewayConfigurationError
@@ -20,6 +21,10 @@ from .prompts import (
 from .tracing import SpecimenTraceContext
 
 SupportedImageMediaType = Literal["image/jpeg", "image/png"]
+# A reading's limits: the answer and one output retry, and a stop once the run
+# passes 16,000 tokens in all. The reader call and the paid smoke test both run
+# under them through run_agent_bounded (HARNESS.md section 5).
+READING_USAGE_LIMITS = UsageLimits(request_limit=2, total_tokens_limit=16000)
 
 
 class LiteralTranscription(DeclarationCandidates):

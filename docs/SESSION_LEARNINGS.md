@@ -13366,6 +13366,90 @@ because the hooks runner hands a native asset hook only `PATH`.
     - Drive the real step order at least once.
 - Remaining follow-ups: the verdict's nine, in S5's post-chain pull request.
 
+### 2026-09-29 — Post-merge review of #107: the preflight's tool check, typed route blocks and the smoke's caps
+
+- Task: the owner asked for a code review against main. The branch matched main,
+  so the owner picked a post-merge review of #107 (merged as `569c336`), then
+  asked for its findings 1 to 5 to be fixed. The review ran in a Claude Code
+  cloud session with the built-in code-review skill; every finding was checked
+  against the code before it was reported.
+- Branch/worktree: `claude/bold-darwin-nxp6t1`, from main `c0fc8f2`, in a cloud
+  container. Pull request: #225 (draft).
+- Commits:
+  - `2843b64`: spec and failing tests (red).
+  - `1c48eb3`: the fixes (green).
+  - `14093aa`: this entry.
+  - The next commit: the pull request's number and the whole-tree run.
+- Outcome:
+  - (1) The preflight gated a route on the catalog's `supports_structured_output`
+    only. Pydantic AI 2.40's Hugging Face model never sends `response_format`: it
+    returns typed output through a tool call, so a provider without tool calling
+    passed the preflight and would fail the first real call. `validate_route` now
+    also requires `supports_tools` to be true, and reports it as `tools`.
+  - (2) A reader retired or renamed while a run pinned to it was in flight made
+    `gateway.route()` raise `ModelGatewayConfigurationError` in the model child.
+    The worker swallowed it as `worker_failed`, so the run was parked as
+    `external_outcome_unknown` with its lease and reservation held, though
+    nothing was sent. The reader call now blocks as
+    `pinned_model_route_unavailable` and extraction as
+    `pinned_model_route_changed_requires_new_run`.
+  - (3) A profile naming a route outside the reader set failed the pin step on
+    a bare `KeyError`, recorded as `stage_failed_inspect_private_worker_logs`. It
+    now blocks as `pinned_model_route_unavailable`.
+  - (4) `HUGGINGFACE_MODEL_ROUTING.md` and `DEPLOYMENT.md` still described an
+    image-only smoke. Both now describe the text-only route, and the command
+    line refuses a missing, unwanted or non-PNG/JPEG `--image` before any
+    network call instead of raising after the free checks.
+  - (5) The smoke hand-copied a reading's caps with a fixed `max_tokens` and no
+    time limit. It now runs through `run_agent_bounded` under
+    `READING_USAGE_LIMITS`, which the reader call uses too, with the default
+    reader time limit; a retry is capped at what remains of 16,000 tokens.
+- Validation actually run:
+  - Red `2843b64`: in the three touched suites, 24 failed and 15 passed, each
+    failure for its intended reason.
+  - Green `1c48eb3`: the three touched suites, 39 passed; with
+    `test_first_pass.py` and `test_model_gateway.py`, 95 passed.
+  - The whole tree (`pytest -q`, as CI runs it), on `1c48eb3`'s code before
+    its formatting-only edit to two test files, whose suites passed again at
+    `1c48eb3`: 6531 passed, 77 skipped, 14 failed. The 14 fail the same way on
+    main `c0fc8f2` in the same container. Its egress proxy sets `SSL_CERT_FILE`
+    and `HTTPS_PROXY`, which `worker_trace_setup.py`'s identity check refuses (6
+    tests) and the bounded trace transport refuses as
+    `trace_tls_override_forbidden` (8 tests).
+  - `pre-commit` (4.5.1) on the changed files: every hook passed.
+  - Not run: `scripts/ci/verify.sh` as a whole. The container has uv 0.8.17
+    (the script pins 0.12.5) and no Flutter, Dart or Firebase CLI; no Dart
+    changed.
+  - Not confirmed: the live catalog's `supports_tools` for the four routes. The
+    container's egress proxy blocks `router.huggingface.co`; the field name is
+    the one Hugging Face's Hub API documentation gives.
+- Durable learnings:
+  - (1) With Pydantic AI's Hugging Face model, `supports_tools` is the catalog
+    flag the runtime depends on. `supports_structured_output` gates nothing it
+    sends, and Hugging Face's own example lists a provider with tools but
+    without structured output.
+  - (2) In a model child, any exception other than `OperationalBlock` or
+    `AdapterFailure` becomes `external_outcome_unknown`, which holds the lease
+    and the reservation. A failure knowable before the request should raise a
+    typed block.
+  - (3) Guard a gateway lookup by catching `ModelGatewayConfigurationError`,
+    not by reading `gateway.routes`: several tests replace the gateway with a
+    fake that has only `route()` and `model_for()`.
+  - (4) In a Claude Code cloud container, 14 trace tests fail by design, because
+    the egress proxy sets TLS and proxy variables the trace code refuses.
+    Before reading them as a regression, run them in a worktree of main with
+    `PYTHONPATH` set to that worktree's `src`: the editable install otherwise
+    imports the branch's code.
+- Remaining follow-ups:
+  - Run the non-paid `specimen-huggingface-preflight` where the router is
+    reachable and confirm all four routes report `supports_tools: true`.
+  - The review's optional findings, left out: a gateway scoped to one role,
+    the classifier calling `serves_with_images`, and one `pin()` for the
+    model-id-and-provider pin.
+  - `first_pass.py` and `harness.py` keep their own copies of a reading's
+    limits (HARNESS.md section 3 budgets the first pass "like a reading"); left
+    to the harness lane, whose open pull requests touch both files.
+
 ## 2026-09-29 — CODEX-RECOVERY PR89 preparation checkpoint
 
 Root task01a0efd9-3858-70b2-b734-3cab8b895a81, independent clone codex-lane-start-pr89, branch codex/recovery-lane-worker-start-20260929. Preserved original published PR89 golive/lane-worker-start26543d4a0926209f32e86bc7f5743b068434a2ff. Local merge of main d210e6ec conflicts only at adjacent appended tests/test_lane_trigger.py tests; resolution retains BOTH the viewer paid-start authorization regression and current-main canonical profile/key-order regressions, with no implementation change. All merged app/UI/source changes are inherited current main, not root frontend ownership. Primary and old stacks remain untouched.

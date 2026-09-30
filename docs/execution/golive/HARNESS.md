@@ -200,25 +200,38 @@ and first-pass call keeps its provider responses, and in them the response's
 is on the record without a new field. Pydantic AI 2.40 does not keep
 `system_fingerprint`, and no field is added for it (the coordinator's ruling at
 19:29Z, coordinator.md:458). The preflight checks each route is live with the
-capabilities it needs.
+capabilities it needs: its input modalities, structured output and tool calling.
+Pydantic AI 2.40's Hugging Face model sends no `response_format` and returns
+typed output through a tool call, so a route whose provider does not report
+`supports_tools` as true is not ready (the post-merge review of #107).
 
 **Each route in its role** (the steward's review of #107). A reader is pinned
-from the initial reader set only, as on main, so a profile that names the
-first-pass or the harness route as a reader fails the pin step. A reader call
-blocks as `pinned_model_route_unavailable` unless its route is a
+from the initial reader set only, as on main, so a profile that names any other
+route as a reader, the first-pass or the harness route included, blocks the pin
+step as `pinned_model_route_unavailable`. A reader call blocks as
+`pinned_model_route_unavailable` unless its route is registered as a
 `handwriting_transcriber` with image input; `transcribe_label_image`, which has
 no caller, raises `ModelGatewayConfigurationError` on any other route. The
 first-pass route is pinned only when it is registered as
 `transcription_first_pass` with image input, and the first-pass call checks the
 same before its request: any other route, the harness's text-only one or a
-reader's included, blocks the step as `pinned_model_route_unavailable`.
+reader's included, blocks the step as `pinned_model_route_unavailable`. A reader
+retired or renamed while a run pinned to it is in flight blocks before any
+request, not as an unknown outcome: the reader call as
+`pinned_model_route_unavailable`, extraction as
+`pinned_model_route_changed_requires_new_run` (the post-merge review of #107).
 
 **The paid smoke test** (`specimen-huggingface-preflight --live-route`) runs one
-synthetic prompt under a reading's caps: 4,096 output tokens a response, two
-requests (the answer and one output retry), and a stop once the run passes
-16,000 tokens in all (Pydantic AI checks the total after each response). A route
-that takes images needs the `--image` fixture and is sent it; a text-only route
-is sent a synthetic sentence, never an image, and refuses `--image`.
+synthetic prompt through the reader call's bounded run, under a reading's caps,
+which the smoke and the reader call take from one definition
+(`READING_USAGE_LIMITS`): two requests (the answer and one output retry), each
+response capped at 4,096 output tokens or at what remains of the run's 16,000,
+whichever is less, a stop once the run passes 16,000 tokens in all (Pydantic AI
+checks the total after each response), and the default execution policy's
+reader time limit (120 s). A route that takes images needs the `--image` fixture
+and is sent it; a text-only route is sent a synthetic sentence, never an image,
+and refuses `--image`. The command line refuses a missing, unwanted or
+non-PNG/JPEG `--image` before any network call (the post-merge review of #107).
 
 **How they were chosen.** The ten pilot slides, cropped by hand to their left
 label, were read by both readers (19 of 20 readings; 9 labels disagree). Each

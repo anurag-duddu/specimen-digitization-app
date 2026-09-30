@@ -27,10 +27,11 @@ reviewed routes, and every run records that resolution.
 | `handwriting-qwen` | `Qwen/Qwen3-VL-30B-A3B-Instruct` | `novita` | Independent literal handwriting transcription |
 | `handwriting-muse` | `meta-models/Muse-Glimmer-30B` | `deepinfra` | Independent literal handwriting transcription |
 
-Both routes require text and image input and structured-output support. They
-use different model families and infrastructure providers. They are candidates,
-not approved production models, until the representative Field Museum
-handwriting benchmark and data-policy review pass.
+Both routes require text and image input, structured-output support and tool
+calling, which Pydantic AI uses to return typed output. They use different
+model families and infrastructure providers. They are candidates, not approved
+production models, until the representative Field Museum handwriting benchmark
+and data-policy review pass.
 
 ## First-pass and harness routes
 
@@ -113,9 +114,11 @@ uv run --env-file .env specimen-huggingface-preflight
 
 It verifies authentication and required permission names without displaying
 identity or token material, validates each route against the live router model
-catalog, and confirms access to the pinned SAM 3 `config.json`.
+catalog (a live provider with the route's input modalities, structured output
+and tool calling), and confirms access to the pinned SAM 3 `config.json`.
 
-An explicit live smoke uses only an approved synthetic or public image:
+An explicit live smoke sends a route that takes images only an approved
+synthetic or public image:
 
 ```bash
 uv run --env-file .env specimen-huggingface-preflight \
@@ -124,8 +127,18 @@ uv run --env-file .env specimen-huggingface-preflight \
   --image apps/specimen_digitization/web/icons/Icon-192.png
 ```
 
-The smoke validates image input and typed Pydantic output. The optional
-`--approved-content` flag records prompt/output text in the Logfire trace while
-still excluding binary image bytes. It does not establish transcription quality.
-Quality approval requires a versioned, representative, expert-reviewed
-handwriting set and field-level error analysis.
+A text-only route, such as `harness-deepseek`, is sent a fixed public sentence
+instead and refuses `--image`; the command refuses a missing, unwanted or
+non-PNG/JPEG `--image` before any network call:
+
+```bash
+uv run --env-file .env specimen-huggingface-preflight \
+  --live-route harness-deepseek
+```
+
+The smoke validates the route's input and typed Pydantic output under a
+reading's token, request and time caps (`docs/execution/golive/HARNESS.md`
+section 5). The optional `--approved-content` flag records prompt/output text in
+the Logfire trace while still excluding binary image bytes. It does not
+establish transcription quality. Quality approval requires a versioned,
+representative, expert-reviewed handwriting set and field-level error analysis.
