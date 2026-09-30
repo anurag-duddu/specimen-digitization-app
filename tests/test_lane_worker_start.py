@@ -15,14 +15,17 @@ from specimen_digitization.application.api import (
     create_app,
 )
 from specimen_digitization.application.lane_dispatch import CloudRunJobDispatcher
-from specimen_digitization.application.source_reader import LocalSourceReader
+from specimen_digitization.application.source_reader import (
+    LocalSourceReader,
+    SourceObjectChanged,
+)
 from specimen_digitization.application.source_registry import SourceRegistry
 from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository
 from specimen_digitization.application.workflow import SyntheticAdapters
 
 import source_fixtures
 from test_api_runtime import config_env
-from test_lane_trigger import RecordingDispatcher, due_ids, registry, stored
+from test_lane_trigger import SCOPE, RecordingDispatcher, due_ids, registry, stored
 
 JOB = "projects/specimen-digitization/locations/us-east4/jobs/specimen-worker"
 SOURCE = {
@@ -224,3 +227,137 @@ def test_source_import_is_intake_and_queues_each_new_specimen(tmp_path):
     again = source_fixtures.import_objects(c, batch, rows, sensitive=False)
     assert again.json()["duplicates"] == 2
     assert dispatcher.calls == 1
+
+
+@pytest.mark.parametrize(
+    "sensitive,processing,blocker",
+    [
+        (True, True, "sensitive_record_not_processed"),
+        (False, False, "collection_processing_unconfigured"),
+    ],
+)
+def test_blocked_source_intake_retains_record_without_starting_worker(
+    tmp_path, sensitive, processing, blocker
+):
+    objects = tmp_path / "objects"
+    source_fixtures.write_object(
+        objects,
+        f"{source_fixtures.OBJECT_PREFIX}subject.jpg",
+        source_fixtures.jpeg_bytes(),
+        source_fixtures.FIRST_GENERATION,
+    )
+    dispatcher = RecordingDispatcher()
+    blobs = LocalBlobs(tmp_path / "blobs")
+    app = create_app(
+        mode="emulator",
+        repository=SQLiteRepository(tmp_path / "state.sqlite3"),
+        blobs=blobs,
+        adapters=SyntheticAdapters(blobs, SYNTHETIC_TEXT),
+        identity_verifier=lambda token, check: "lane-reviewer",
+        memberships=lambda user: [
+            {
+                "organization_id": SYNTHETIC_ORG,
+                "collection_id": SYNTHETIC_COLLECTION,
+                "role": "reviewer",
+                "can_view_sensitive": True,
+            }
+        ],
+        profile_registry=registry(processing=processing),
+        worker_dispatcher=dispatcher,
+        source_registry=SourceRegistry([source_fixtures.registered()]),
+        source_reader=LocalSourceReader(objects),
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        source_fixtures.capture(client)
+        rows = source_fixtures.listed(client)["items"]
+        batch = source_fixtures.open_batch(client, sensitive=sensitive)
+        imported = source_fixtures.import_objects(
+            client, batch, rows, sensitive=sensitive
+        )
+        assert imported.status_code == 200, imported.text
+        assert imported.json()["imported"] == 1
+        ident = imported.json()["items"][0]["specimen_id"]
+        run = stored(tmp_path, ident).run
+        assert run.stage == "processing_blocked"
+        assert run.blocker == blocker
+        assert due_ids(tmp_path) == []
+        assert dispatcher.calls == 0
+
+        again = source_fixtures.import_objects(
+            client, batch, rows, sensitive=sensitive
+        )
+        assert again.status_code == 200, again.text
+        assert again.json()["imported"] == 0
+        assert again.json()["duplicates"] == 1
+        assert dispatcher.calls == 0
+
+
+@pytest.mark.parametrize(
+    "sensitive,processing,fail_index,expected_calls",
+    [
+        (False, True, 1, 1),
+        (True, True, 1, 0),
+        (False, False, 1, 0),
+        (False, True, 0, 0),
+    ],
+)
+def test_partial_source_import_starts_only_retained_pending_work(
+    tmp_path, sensitive, processing, fail_index, expected_calls
+):
+    class RacedReader(LocalSourceReader):
+        fail_on = None
+
+        def read(self, bucket, object_name, generation):
+            if object_name == self.fail_on:
+                raise SourceObjectChanged("Synthetic generation race")
+            return super().read(bucket, object_name, generation)
+
+    objects = tmp_path / "objects"
+    for index, colour in enumerate(("white", "black")):
+        source_fixtures.write_object(
+            objects,
+            f"{source_fixtures.OBJECT_PREFIX}subject_{index}.jpg",
+            source_fixtures.jpeg_bytes(colour),
+            source_fixtures.FIRST_GENERATION,
+        )
+    reader = RacedReader(objects)
+    dispatcher = RecordingDispatcher()
+    repository = SQLiteRepository(tmp_path / "state.sqlite3")
+    blobs = LocalBlobs(tmp_path / "blobs")
+    app = create_app(
+        mode="emulator",
+        repository=repository,
+        blobs=blobs,
+        adapters=SyntheticAdapters(blobs, SYNTHETIC_TEXT),
+        identity_verifier=lambda token, check: "lane-reviewer",
+        memberships=lambda user: [
+            {
+                "organization_id": SYNTHETIC_ORG,
+                "collection_id": SYNTHETIC_COLLECTION,
+                "role": "reviewer",
+                "can_view_sensitive": True,
+            }
+        ],
+        profile_registry=registry(processing=processing),
+        worker_dispatcher=dispatcher,
+        source_registry=SourceRegistry([source_fixtures.registered()]),
+        source_reader=reader,
+    )
+    with TestClient(app, raise_server_exceptions=False) as client:
+        source_fixtures.capture(client)
+        rows = source_fixtures.listed(client)["items"]
+        batch = source_fixtures.open_batch(client, sensitive=sensitive)
+        reader.fail_on = rows[fail_index]["object_name"]
+        response = source_fixtures.import_objects(
+            client, batch, rows, sensitive=sensitive
+        )
+        assert response.status_code == 422, response.text
+        assert response.json()["error"]["code"] == "source_object_changed"
+        retained = repository.list(SCOPE)
+        assert len(retained) == fail_index
+        for specimen in retained:
+            assert specimen.run.stage == (
+                "pending" if processing and not sensitive else "processing_blocked"
+            )
+        assert len(due_ids(tmp_path)) == expected_calls
+        assert dispatcher.calls == expected_calls
