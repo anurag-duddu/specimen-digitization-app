@@ -40,7 +40,15 @@ RULES = {
 # A sign can start a quantity, but a hyphen attached to a preceding number
 # separates range endpoints. Keep both numbers so a range is never one value.
 NUMBER = re.compile(
-    r"(?:(?<![\d.])[+-])?(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
+    r"(?:(?<![\d.])[+−-])?"
+    r"(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+)"
+)
+# Read a complete quantity, never a numeric fragment left after an unrecognized
+# sign, uncertainty marker or malformed number. Unit words remain label text.
+ELEVATION_QUANTITY = re.compile(
+    rf"\s*(?P<number>{NUMBER.pattern})\s*"
+    r"(?:ft\.?|feet|foot|m\.?|met(?:er|re)s?\.?|['′’])?\s*",
+    re.IGNORECASE,
 )
 
 
@@ -74,8 +82,10 @@ def stated_number(value: FieldValue | None) -> Decimal | None:
     )
     if not text:
         return None
-    numbers = NUMBER.findall(text)
-    return Decimal(numbers[0].replace(",", "")) if len(numbers) == 1 else None
+    quantity = ELEVATION_QUANTITY.fullmatch(text)
+    if quantity is None:
+        return None
+    return Decimal(quantity["number"].replace(",", "").replace("−", "-"))
 
 
 def elevation_derivations(fields: Mapping[str, FieldValue]) -> list[Derivation]:

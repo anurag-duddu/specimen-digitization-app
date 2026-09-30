@@ -1003,9 +1003,11 @@ the dataset), the settled input fields with their values, and its checks.
   - converted values are kept to hundredths, and copied values stay as stated;
   - a stated elevation must settle to exactly one number: its literal, or the
     agreed settled text when several labels retain separate verbatims (G32).
-    Unary `+` and `-` signs are retained numerically; a hyphen after a number
-    separates range endpoints. Nothing is derived while any stated elevation
-    is unsettled;
+    A complete single quantity is required: unary `+`, `-` and Unicode `−`
+    signs and leading decimals retain their magnitude and sign. A hyphen after
+    a number separates range endpoints. Ambiguous signs, uncertainty markers
+    and unmatched fragments supply no derivation. Nothing is derived while
+    any stated elevation is unsettled;
   - their authority is `apply_derivations` at the rules' version
     (`derivation-rules-v1`), so a G41 value names its stated field, its rule
     and `apply_derivations` (#124).
