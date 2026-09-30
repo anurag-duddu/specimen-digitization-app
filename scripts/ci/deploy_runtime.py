@@ -738,12 +738,15 @@ def released_bodies(images, source_sha, run_id, attempt, roles):
 
 
 def rollback_guard(existing, source_sha, *, compare=None):
-    """Never replace a newer deployed commit: a labelled resource's commit must be this one or an ancestor."""
-    deployed = ((existing or {}).get("labels") or {}).get("source-sha")
-    if deployed is None or deployed == source_sha:
+    """An existing resource must prove its deployed commit is this one or an ancestor; absence permits creation."""
+    if existing is None:
         return
+    deployed = (existing.get("labels") or {}).get("source-sha")
+    require(deployed is not None, "deployed source label required; reconcile the existing resource")
     # Only full commit ids reach the GitHub API path.
     require(isinstance(deployed, str) and SHA.fullmatch(deployed) and SHA.fullmatch(source_sha), "invalid deployed source label")
+    if deployed == source_sha:
+        return
     compared = (compare or gh_json)(f"repos/{REPOSITORY}/compare/{deployed}...{source_sha}")
     require(isinstance(compared, dict) and compared.get("status") in {"ahead", "identical"}, "a newer commit is already deployed")
 
@@ -838,7 +841,7 @@ def route_all_traffic(google, api, revision, failure):
 
 def promote_api(google, api, body, source_sha, receipt):
     """Readiness on the candidate URL, then all traffic to the new revision, then readiness on the service URL.
-    `promoted` means the new revision passed readiness and serves all traffic, so a failed second check keeps it."""
+    `promoted` is true only after both checks pass; the caller retains the previous revision for rollback."""
     revision = body["template"]["revision"]
     if not any(target.get("tag") == "candidate" for target in body["traffic"]):
         verify_public_api(api.get("uri"), source_sha)
@@ -849,8 +852,8 @@ def promote_api(google, api, body, source_sha, receipt):
                             if target.get("tag") == "candidate"
                             and (target.get("revision") or "").split("/")[-1] == revision), None), source_sha)
     api = route_all_traffic(google, api, revision, "API promotion did not reconcile")
-    receipt["promoted"] = True
     verify_public_api(api.get("uri"), source_sha)
+    receipt["promoted"] = True
 
 
 def remove_candidate(google, name, previous):
@@ -899,10 +902,12 @@ def deploy_released(path: Path, receipts: Path, output: Path):
         if "api" in roles:
             promote_api(google, observed["api"], bodies["api"], sha, receipt)
     except BaseException:
-        # Any failure after the tag was accepted and before promotion removed it: no tag URL may keep reaching a
-        # revision that has not passed every check. A first release has no serving revision and so no tag.
+        # Retain the previous revision through the service-URL probe, including after traffic moves.
+        # A first release has no serving revision and so no tag or prior revision to restore.
         if tagged is not None and not receipt["promoted"]:
+            receipt["api_rollback"] = {"revision": tagged, "status": "unreconciled"}
             remove_candidate(google, bodies["api"]["name"], tagged)
+            receipt["api_rollback"]["status"] = "restored"
         raise
     finally:
         output.write_text(json.dumps(receipt, sort_keys=True) + "\n")
