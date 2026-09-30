@@ -776,7 +776,7 @@ def released_image(receipts, record, role):
     return receipt["reference"]
 
 
-def submit_released(google, body, role, source_sha):
+def submit_released(google, body, role, source_sha, *, before_candidate=None):
     """Create or replace one role and return the accepted operation. SAM 3 serves its latest ready revision; an
     API revision that already serves keeps all traffic while the new one waits at 0% as `candidate`."""
     existing = google.request("run", "GET", body["name"], missing=True)
@@ -791,6 +791,9 @@ def submit_released(google, body, role, source_sha):
         return google.request("run", "POST", parent, body=body, params={"jobId" if role == "worker" else "serviceId": name})
     if existing.get("etag"):
         body["etag"] = existing["etag"]
+    if role == "api" and serving is not None and before_candidate is not None:
+        # Record the cleanup obligation after provenance checks, before a PATCH can lose its acknowledgement.
+        before_candidate(serving)
     return google.request("run", "PATCH", body["name"], body=body)
 
 
@@ -878,7 +881,12 @@ def deploy_released(path: Path, receipts: Path, output: Path):
                "deployed": {}, "pending": missing, "promoted": False, "worker_executed": False}
     for role in (role for role, names in missing.items() if names):
         print(f"Runtime role {role} is not deployed; pending committed settings: {', '.join(missing[role])}.")
-    tagged = None  # The previous API revision, once a PATCH that tags the candidate has been accepted.
+    tagged = None  # The previous API revision, retained before dispatching the candidate PATCH.
+
+    def retain_previous(previous):
+        nonlocal tagged
+        tagged = previous
+
     try:
         if not roles:
             return
@@ -887,9 +895,7 @@ def deploy_released(path: Path, receipts: Path, output: Path):
         bodies = released_bodies(images, sha, run_id, attempt, roles)
         observed = {}
         for role in roles:
-            operation = submit_released(google, bodies[role], role, sha)
-            if role == "api" and bodies["api"]["traffic"][-1].get("tag") == "candidate":
-                tagged = bodies["api"]["traffic"][0]["revision"]
+            operation = submit_released(google, bodies[role], role, sha, before_candidate=retain_previous)
             observed[role] = observe_released(google, bodies[role], role, operation)
             receipt["deployed"][role] = {"name": observed[role]["name"], "image": images[role], **(
                 {"generation": observed[role].get("generation"), "etag": observed[role].get("etag")} if role == "worker"
