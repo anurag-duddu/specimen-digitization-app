@@ -12226,6 +12226,33 @@ because the hooks runner hands a native asset hook only `PATH`.
 - Failed approaches: none.
 - Remaining follow-ups: in T2b, the publication supervisor must check the context without the retired variable, and its `--admit` step must accept a gate record without a plan. In T2c, the admission job's timeout must exceed the 3,300-second CI wait. If CI is re-run with "Re-run failed jobs" rather than "Re-run all jobs", the gate may fail closed; this is unverified.
 
+### 2026-09-23 — Go-live release workstream (S2), T2b: the runtime deploy from a gate record with pinned settings
+
+- Task: the S2 session, brief item T2, step two (`docs/execution/golive/RELEASE.md` section 3.2).
+- Branch/worktree: `golive/release-runtime-deploy`, stacked on #91's branch. An Opus subagent implemented it test-first in an isolated worktree, in six commits over three review rounds with this session.
+- Outcome:
+  - `scripts/ci/runtime_settings.py` commits every non-secret runtime value. That includes pinned secret versions (HF v2; Logfire, Maps, source registry, collection bindings and worker actor uid v1) and the public 50-byte readiness marker's name. A pending value keeps its role undeployed.
+  - `deploy_runtime.py --deploy` with a gate record deploys SAM 3, then the worker job definition (never run), then the API. The API is deployed as a 0% candidate, checked for readiness on the candidate URL, and then promoted.
+  - IAM is read, never written, and every missing invoker binding is named at once.
+  - The rollback guard refuses to replace a newer deployed commit.
+  - A candidate that fails any later check loses its tag, and the previous revision keeps all traffic.
+  - The receipt holds names and digests only.
+  - The publication supervisor accepts a gate record without the retired variable.
+  - The envelope path is untouched until T2d.
+- Commits/PRs: red `e584fec`; green `29c1b35`; pins and lab guard `3e6d5ad`; tag removal `7b11efd`; SAM 300 s and worker checkpoint digest `f4ab83a`; any-failure tag removal `84c3c1e`; this closeout.
+- Validation actually run:
+  - Red: the new module failed at collection, and the publication test failed on the retired variable.
+  - Green: 205 targeted tests passed on the integrated head. `scripts/` passed 1,685 with 50 skipped at `3e6d5ad`; the later commits were run targeted only, because the 1-minute load was 17-41.
+  - `test_deployment_policy` passed, and pre-commit passed at every commit.
+- Durable learnings:
+  - After a failed candidate, `latestReadyRevision` points at the failed revision. The revision to keep is the one `trafficStatuses` shows serving all traffic.
+  - Tag URLs inherit `allUsers`, so a candidate that never passed readiness must lose its tag on every failure path, not only a readiness failure.
+  - Committing pinned secret versions and marker generations turns every credential change into a reviewed pull request, and the release needs no permission to discover them.
+- Failed approaches: none.
+- Remaining follow-ups:
+  - Pending settings: the readiness generation once the owner uploads the marker, the SAM checkpoint digest once uploaded, S3's per-run SAM server settings, and the worker's drain arguments.
+  - Unverified until the first live deploy: that Cloud Run echoes templates exactly, and that `urls` includes the deterministic SAM URL.
+  - Re-run all jobs after a failure, because the receipts are per attempt.
 ### 2026-09-23 — Go-live release workstream (S2), T3a: the additive-only gate for Data Connect changes
 
 - Task: the S2 session, brief item T3, step one (`docs/execution/golive/RELEASE.md` section 4.1), with the coordinator's D1 to D3 recorded in the T3 spec.
@@ -13238,6 +13265,12 @@ because the hooks runner hands a native asset hook only `PATH`.
   - S7's #83, merged as d663a0c before this pull request, makes `scripts/lab/lab_checks.py` fail a run whose records carry the removed adapter's identity (`gbif_gadm`, or a `gbif-gadm` version), the coordinator's lab item (coordinator.md:434).
   - PLAN.md's ownership list and the S4 brief still name `geography.py` (the coordinator's next plan pull request).
   - S8's research probe and `docs/GBIF.md` still mention GADM; S8's open #217 drops the probe's call.
+
+## 2026-09-29 — Codex mechanical preparation of in-turn PR #100
+
+- Root assigned `/root/data_thread` as preparer only, never an independent reviewer of this head. Separate clean clone `recovery/codex-runtime-deploy-pr100`, branch `golive/release-runtime-deploy`, preserved original head f3aac012de93a7f16754bbb1199721bc7104e0b7. Current main is d210e6ecdfd0da46d3b6e5190bf66e3892330a6b, with protected Hosting and marker smoke independently verified by steward. This entry precedes the required local merge; no rebase, force push or main write.
+- Read current applicable AGENTS, full DEPLOYMENT (current blob matches the fully read exact #138 document) and PLAN component-gate rules. The branch is brought up to date mechanically. Model checkpoint and readiness marker uploads are historically complete, but their runtime settings are still PENDING until the separate settings PR; #100 is inert until #101 and settings. It is not live readiness.
+- Validation at this pre-merge checkpoint: Not confirmed; required Python/catalog gates will run sequentially, load below 12, after the processing integration gate. Root authorizes only this in-turn branch push after green. No cloud, IAM, paid call or inherited checkout mutation. Existing S5 refs, unpublished candidates and clean real-domain red checkpoint remain preserved.
 ### 2026-09-28 — Go-live projection writer (S5 T2a, #146): ready for its turn after #99
 
 - Task: the steward's routing on 2026-09-28.
@@ -13313,3 +13346,40 @@ because the hooks runner hands a native asset hook only `PATH`.
     - Both fixtures set `dependencies` directly, and they left out a key the workflow always writes.
     - Drive the real step order at least once.
 - Remaining follow-ups: the verdict's nine, in S5's post-chain pull request.
+
+
+## 2026-09-29 21:08 CDT — Codex recovery, PR #100 mechanical preparation
+
+- Task/role: root-assigned in-turn preparation of PR #100 only, not a review of this candidate. Branch `golive/release-runtime-deploy`; isolated clone `~/specimen-golive/recovery/codex-runtime-deploy-pr100`. Original remote `f3aac012de93a7f16754bbb1199721bc7104e0b7`; current main `d210e6ecdfd0da46d3b6e5190bf66e3892330a6b`; clean local merge `c101f49a68f9f60b0efee511d8a035f6a19c4d89`. The pre-merge closeout is `5a44affd`. No rebase/server update, source rewrite, inherited worktree mutation, or pruning.
+- Validation actually run: Python3.12.3 with uv0.12.5 frozen sync; all-files pre-commit passed. Full `tests/`: **4,699 passed, 32 skipped, 7 warnings**,444.60s. Full `scripts/`: **1,915 passed, 51 skipped, 2 warnings**,51.40s. UI string baseline check passed. Gates ran one at a time after the processing owner released its slot, at starting one-minute loads4.39 and10.84<12; no Git during gates. Logs and preparation receipt are in `~/specimen-golive/recovery/pr100-*.log` and `pr100-preparation.md`.
+- Catalog equivalence: PLAN7.4 requires component gates rather than the whole `verify.sh`; Python/pre-commit/UI-string components passed. Flutter code did not change, so its gates are left to exact-head CI. No deployment or live runtime/data acceptance is claimed.
+- Owner checkpoint qualification: readiness-marker and SAM-checkpoint uploads are already recorded complete; source settings remain `PENDING` until a separately reviewed settings PR after S3 #129 pins the known artifacts and the worker/SAM arguments. This implementation stays inert until #101 wiring and those settings. It does not authorize a workstation deployment, IAM action, paid execution, or an unverified current readiness claim.
+- Handoff: root authorized a normal push of this branch after green; four fresh reviews belong to root, processing owner, steward, and the external #226 owner. The preparer supplies no review. Exact final commit/CI evidence will be recorded in the preparation receipt. Required checks, protected workflows, independent live acceptance, and future S5 integration remain follow-ups.
+- Preserved S5: unpublished RunFailure recovery at `7da3ae1021a3485157815ebc37b86b5b637a7ce4`; separate real-domain RED checkpoint `3479aba89b5813846117bd42d5a3edaecb367c5a` above root lab `852becacc0a54a71cf6d27ca34e1ed5f44562051`. No S5 push or chain turn was started.
+
+
+## 2026-09-29 21:21 CDT — PR #100 upheld security corrections, focused green
+
+- Correction to the PR #100 preparation entry above: root upheld the fresh security review on published `d2d8ad62c3b31b4959745d26826f9a6fa480e1c8`, withdrew its approval, and assigned this owner the minimal conformance fixes. RELEASE3.2 requires provenance for an existing resource and restoration of prior API traffic after any later failed check. No spec or gate was loosened.
+- RED `62338c6019db5f6db54071ab254922b39f82cfaf`: actual released-deploy caller tests reproduced **9 failed,27 passed**,1.85s. Tests exercise each unlabelled role without mutation, failed service-URL probe after promotion, refused/lost-response restoration, and mismatched observed traffic. Absent resources still create through existing first-release tests.
+- Green implementation requires an existing resource's full source label before mutation, delays `promoted` until the final service probe passes, and keeps the previous revision until rollback can restore100%traffic with no candidate tag. A failed or unconfirmed restoration records `api_rollback.status=unreconciled`; confirmation records `restored`. Receipts contain only public revision names and fixed status words.
+- Actual focused green: **157 passed,2 skipped**,2.68s across existing released-deploy,release-gate and publication-deadline files. A prior command incorrectly referenced nonexistent `test_runtime_activation.py` and ran zero tests; the failed invocation is retained as `pr100-conformance-green.log`, not counted as validation. The corrected run is `pr100-conformance-green-actual.log`.
+- Separate isolated clone/branch retained; full serial component gates and final hooks are pending, coordinated with the processing owner's full-suite slot. No push yet for the corrections; four fresh reviews will be required on the revised published exact head. This implementation owner provides no review. No cloud/IAM/deploy/paid calls or inherited checkout changes.
+
+
+## 2026-09-29 21:35 CDT — PR #100 conformance candidate component gates and read-only frontend handoff
+
+- Green code checkpoint `1a7b11473ae8cd4df69dc04a9d07eeee9303baa3` above RED62338c60. Full Python3.12.3 `tests/`: **4,699 passed,32 skipped,7 warnings**,445.74s; full `scripts/`: **1,921 passed,51 skipped,2 warnings**,47.33s; UI strings201files/zero violations/warnings; all-files hooks passed. Final hooks follow this docs-only closeout. Exact logs are `~/specimen-golive/recovery/pr100-conformance-*.log`. No Flutter source change; component equivalence remains PLAN7.4, not whole verify.sh.
+- Load correction: a first full launch unexpectedly printed13.51 and was stopped promptly (exit2,115passed1skip,14.33s); it is NOT a gate result. The retained aborted log is named explicitly. The successful application and scripts gates used hard admission guards and start loads8.29 and3.71<12; no Git during either. The processing owner released its slot first.
+- Root authorized normal branch push after green. Published corrected final head and its new CI IDs will be in `recovery/pr100-preparation.md`; old d2d8ad62 approvals are withdrawn and fresh four-reviewer evidence is required. This owner implements and supplies no review. No main push,force push,merge,cloud/IAM/deploy/paid action or inherited checkout change.
+- Parallel read-only task: latest frontend owner manifest/HANDOFF preserved privately (mode600), with no primary edits/restarts/whole dirty copy. `recovery/frontend-backend-contract-matrix.md` inventories actual interfaces against clean backend852becac and main d210. Actual offline synthetic API probe verified blocked/dispositionnull/RunFailure, unknown-outcome retry withheld, retained history200 and unavailable restore404. Dirty primary already has a separately unowned/unpublished restore implementation; native email-link return, G2 intake copy, latest-design SQL thread/trace/failure adaptation, and authorized native-nav test reconciliation remain explicit integration work. Old224 loading fixes are not blindly applied: latest source already dedupes requests. Native CUA verified the requested Anurag(infinative.com) Chrome profile with no UI actions. No synthetic build is claimed as live acceptance.
+
+
+## 2026-09-29 22:04 CDT — PR #100 lost candidate acknowledgement conformance
+
+- Correction to the prior PR #100 closeout: root upheld fresh independent reviews on `1ad81559999dd274923803507e7b94d49251454d` under RELEASE3.2 lines267–273. A full candidate PATCH could be accepted while its acknowledgement failed; the old caller recorded the prior revision only after the call returned, leaving its tag and omitting rollback evidence. The old head's reviews are superseded. No spec or gate was loosened.
+- RED `83937b65`: actual deploy-caller regressions reproduced **6 failed,3 passed**,0.43s; all three provenance-refusal controls passed. Green `00b86fd7d000ad15c388db45faa8db3236f3e9f5` records the previous serving revision after the provenance guard and before dispatching candidate PATCH. An unknown submission now reaches the existing fresh GET/etag traffic-only cleanup. No guard failure causes mutation or a rollback receipt.
+- Actual focused green: **163 passed,2 skipped**,1.21s. New controls cover refused submission, accepted submission with lost response, refused cleanup, lost cleanup response, wrong observed traffic and unavailable cleanup observation. Only matching confirmed traffic marks rollback restored; all unconfirmed cleanup stays unreconciled. Tests fake all network/attestation/readiness effects; no cloud or paid request.
+- Component gates on Python3.12.3/uv0.12.5: frozen sync passed; initial all-files hooks passed; full `tests/` **4,699 passed,32 skipped,7 warnings**,454.16s; full `scripts/` **1,927 passed,51 skipped,2 warnings**,47.15s; UI string check201files,zero violations/warnings. The first full-suite admission refused load27.06 with exit12 and started no tests. Successful gates ran serially with hard start guards8.68/4.38<12; no Git during either. PLAN7.4 component equivalence applies; no Flutter change or whole verify.sh invocation. Final hooks follow this locked docs-only closeout.
+- Handoff: root authorized a normal branch push only after green. Final published exact head and CI IDs will be in `recovery/pr100-preparation.md` with hashed `pr100-lost-candidate-*` evidence. All four independent reviews must be fresh; this preparer supplies no review. Runtime settings remain PENDING and inert until #101 wiring plus separately reviewed settings after S3 #129; historical owner uploads do not establish current readiness.
+- Preserved: all S5 unpublished checkpoints, frontend ownership artifacts and inherited dirty worktrees remain unchanged. No main push,force,merge,deployment,IAM change,paid execution or pruning. Live runtime/data behavior remains Not confirmed; root/steward own further release and acceptance.
