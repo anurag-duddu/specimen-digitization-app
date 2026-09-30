@@ -13647,3 +13647,10 @@ Preparedminimal derivations.py fullsinglequantity recognition: retainNUMBER rang
 
 - Test-onlyd2cab936 preserved before a three-line admission guard rejects None/empty/whitespace authority.version before conflict collection or filling. GenericSourceRef optionalDTO and concrete version text are unchanged; no inferred version from other source/tool metadata. LocalG41 exactversion/quantity/unit/factor behavior untouched. NarrowHARNESS contract clarified.
 - All22 new cases and existing356 nominal focused/retained controls remain PREPARED UNEXECUTED for this source. Priorfb334/47/hooks are historical source qualification, not evidence for the new guard. No setup/import/SDK/tests/hooks/full/push/effects. Root owns next explicit admission.
+
+
+### 2026-09-30 — PR144 authority-version actual bounded RED/GREEN
+
+- Test-onlyd2cab936 actual18expectedFAIL/4PASS0.65s; testedcb17f80b356focusPASS1warning13.70s and retained42roles+5unit+4version=51PASS0.56s. Exact root-grantedrunner971f (cleanup718e UNRUN), immutableclones/source9b2e7950 unchanged1854nonENVpaths, pinned3.12.3/uv0.12.5/frozenownenv no setup.
+- NoGit during children; SDKdisableabsent/Logfirefalse. Original12review artifact hashes unchanged; copiedversionprobe onlySOURCE+freshrawsuffix, unchanged assertions/newpinnedraw. Tiny targeted loads telemetryonly; no full started. CPU RELEASED10:54:40Z.
+- Guard/HARNESS/22testdelta remains minimal; genericoptionalDTO, producerhistory/G41factor/unit/schema unchanged. No hooks/full/build/native/paid/cloud/push/merge; published1cab CHANGES and canonical/freshreview qualification held. Durable evidence recovery/pr144-authority-version-red-green-receipt.md +JSON.
