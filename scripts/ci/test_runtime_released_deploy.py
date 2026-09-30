@@ -313,11 +313,50 @@ def test_an_api_candidate_that_fails_any_later_check_loses_its_tag(tmp_path, mon
                                                                    "percent": 100}]
 
 
-def test_a_failed_check_on_the_service_url_fails_the_run_and_the_receipt_says_traffic_moved(tmp_path, monkeypatch, ready):
+def test_a_failed_service_check_restores_previous_traffic_and_removes_the_candidate_tag(tmp_path, monkeypatch, ready):
     google = FakeGoogle(existing=[previous(role) for role in NAMES])
     receipt, error, seen = deploy(tmp_path, monkeypatch, google, failing=SERVICE)
     assert isinstance(error, ValueError) and seen["probed"] == [CANDIDATE, SERVICE]
-    assert "PATCH specimen-api traffic" in google.calls and receipt["promoted"] is True
+    assert google.calls.count("PATCH specimen-api traffic") == 2 and receipt["promoted"] is False
+    assert receipt["api_rollback"] == {"revision": "specimen-api-old", "status": "restored"}
+    assert google.bodies[-2]["traffic"] == [{"type": REVISION, "revision": NEW["api"], "percent": 100}]
+    assert google.bodies[-1] == {"name": NAMES["api"], "etag": "etag-4",
+                                "traffic": [{"type": REVISION, "revision": "specimen-api-old", "percent": 100}]}
+    assert M.serving_revision(google.state[NAMES["api"]]) == "specimen-api-old"
+    assert not any(target.get("tag") for target in google.state[NAMES["api"]]["trafficStatuses"])
+
+
+@pytest.mark.parametrize("failure", ["request refused", "response lost", "wrong observed traffic"])
+def test_failed_service_check_records_unreconciled_rollback_when_restoration_is_not_confirmed(
+    tmp_path, monkeypatch, ready, failure,
+):
+    google = FakeGoogle(existing=[previous(role) for role in NAMES])
+    request = google.request
+
+    def fail_restoration(api, method, resource, **kwargs):
+        body = kwargs.get("body") or {}
+        restore = method == "PATCH" and kwargs.get("params", {}).get("updateMask") == "traffic" \
+            and body["traffic"][0]["revision"] == "specimen-api-old"
+        if restore and failure == "request refused":
+            raise ConnectionError("synthetic restoration transport failure")
+        result = request(api, method, resource, **kwargs)
+        if restore:
+            if failure == "response lost":
+                raise ConnectionError("synthetic lost restoration response")
+            google.state[NAMES["api"]]["trafficStatuses"] = [
+                {"type": REVISION, "revision": NEW["api"], "percent": 100},
+            ]
+        return result
+
+    monkeypatch.setattr(google, "request", fail_restoration)
+    receipt, error, seen = deploy(tmp_path, monkeypatch, google, failing=SERVICE)
+    assert str(error) == "the API candidate failed a later check and its tag could not be removed; reconcile"
+    assert seen["probed"] == [CANDIDATE, SERVICE] and receipt["promoted"] is False
+    assert receipt["api_rollback"] == {"revision": "specimen-api-old", "status": "unreconciled"}
+    # A missing acknowledgement does not prove whether the previous revision was restored.
+    assert M.serving_revision(google.state[NAMES["api"]]) == (
+        "specimen-api-old" if failure == "response lost" else NEW["api"]
+    )
 
 
 @pytest.mark.parametrize("sam,api,actions", [
@@ -348,17 +387,34 @@ def test_the_rollback_guard_replaces_only_an_older_deployed_commit(status):
 
 
 @pytest.mark.parametrize("existing,refused", [
-    (None, False), ({}, False), ({"labels": {}}, False), ({"labels": {"source-sha": SHA}}, False),
+    (None, False), ({}, True), ({"labels": {}}, True), ({"labels": {"source-sha": SHA}}, False),
     ({"labels": {"source-sha": "main"}}, True), ({"labels": {"source-sha": OLD + "/../../x"}}, True),
     ({"labels": {"source-sha": OLD.upper()}}, True),
 ])
-def test_no_label_or_this_commit_needs_no_compare_and_a_malformed_label_is_refused(existing, refused):
+def test_only_absent_or_this_commit_needs_no_compare_and_unknown_provenance_is_refused(existing, refused):
     compare = lambda path: pytest.fail("no comparison is needed or safe")  # noqa: E731
     if refused:
         with pytest.raises(ValueError):
             M.rollback_guard(existing, SHA, compare=compare)
     else:
         M.rollback_guard(existing, SHA, compare=compare)
+
+
+@pytest.mark.parametrize("role", ["sam", "worker", "api"])
+def test_a_present_unlabelled_resource_is_refused_before_its_deploy_caller_mutates_anything(
+    tmp_path, monkeypatch, ready, role,
+):
+    existing = previous(role)
+    del existing["labels"]
+    google = FakeGoogle(existing=[existing])
+    before = copy.deepcopy(google.state)
+    pending = S.pending
+    monkeypatch.setattr(S, "pending", lambda selected: pending(selected) if selected == role else ["held for this regression"])
+    receipt, error, seen = deploy(tmp_path, monkeypatch, google)
+    assert isinstance(error, ValueError) and "deployed source label required" in str(error)
+    assert google.calls == ["login", "GET " + NAMES[role].rsplit("/", 1)[1]]
+    assert google.bodies == [] and google.state == before and seen["compared"] == []
+    assert receipt["deployed"] == {} and receipt["promoted"] is False
 
 
 def test_a_newer_deployed_commit_stops_the_release_before_any_change(tmp_path, monkeypatch, ready):
