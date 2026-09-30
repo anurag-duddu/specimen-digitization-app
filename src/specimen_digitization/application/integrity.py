@@ -14,6 +14,11 @@ class EvidenceIntegrityError(RuntimeError):
     """Retained evidence cannot currently substantiate the stored graph."""
 
 
+# Google evidence: its stored record keeps exactly these (G26, rule 1.6).
+GOOGLE = "google-maps-geocoding"
+GOOGLE_KEPT = frozenset({"place_id", "outcome", "response_sha256"})
+
+
 def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
     """Check bytes and graph associations; missing storage is an operational block."""
 
@@ -190,7 +195,18 @@ def verify_evidence(specimen: Specimen, blobs: BlobStore) -> None:
                     require(bool(evidence.observation_ids))
                 if evidence.raw_ref or evidence.digest:
                     require(bool(evidence.raw_ref) and bool(evidence.digest))
-                    read(evidence.raw_ref, evidence.digest)
+                    if evidence.source == GOOGLE:
+                        # The stored record holds only what G26 lets us keep, and
+                        # the digest is Google's full response's (DATA_CONTRACT.md
+                        # 79-81), so the record must name that digest.
+                        try:
+                            kept = json.loads(read(evidence.raw_ref))
+                        except ValueError:  # Not a record: corrupt evidence.
+                            kept = None
+                        require(isinstance(kept, dict) and set(kept) == GOOGLE_KEPT)
+                        require(kept["response_sha256"] == evidence.digest)
+                    else:
+                        read(evidence.raw_ref, evidence.digest)
             for lookup in run.lookups:
                 if (
                     lookup.raw_ref

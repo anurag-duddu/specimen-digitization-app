@@ -1,0 +1,695 @@
+"""The harness's tool ledger (HARNESS.md section 10)."""
+
+import hashlib
+import json
+from functools import partial
+
+import httpx
+import pytest
+
+from specimen_digitization.application.domain import Lookup
+from specimen_digitization.application.domain import LookupStatus as S
+from specimen_digitization.application.field_resolution import Reading
+from specimen_digitization.application.harness_ledger import (
+    ToolLedger,
+    Tools,
+    call_key,
+)
+from specimen_digitization.application.harness_tools import (
+    PlaceCandidate,
+    SourceCall,
+    TaxonCandidate,
+    ToolResult,
+)
+from specimen_digitization.application.storage import LocalBlobs
+from specimen_digitization.application.taxonomy_tool import Verification, verify_taxon
+
+DECIDED = Reading(
+    "r1",
+    "o-muse",
+    "decided_transcript",
+    "Chimaltenango, GUAT.\nEpipsocus sp.\n12-VI-1946\nFMNH INS 0123456",
+)
+RAW = Reading("r1", "o-qwen", "raw_reading", "Chimaltenago, GUAT.\nEpipocous sp.")
+GOOGLE = "google-maps-geocoding"
+
+
+def source_call(source, outcome=S.SUCCESS, attempt=1, **extra):
+    return SourceCall(
+        source=source,
+        query={"name": "Epipsocus"},
+        retrieved_at="2026-09-23T00:00:00Z",
+        outcome=outcome,
+        attempt=attempt,
+        **extra,
+    )
+
+
+GBIF_TAXON = TaxonCandidate(
+    source="gbif",
+    usage_key="8MQRG",
+    name="Epipsocus Hagen, 1866",
+    rank="GENUS",
+    status="ACCEPTED",
+)
+
+
+def taxonomy(outcome=S.SUCCESS, *, warnings=(), gbif_attempts=(S.SUCCESS,)):
+    calls = [source_call("gbif", o, attempt=i + 1) for i, o in enumerate(gbif_attempts)]
+    calls += [source_call("gnv"), source_call("col")]
+    result = ToolResult(
+        tool="taxonomy_verifier",
+        tool_version="taxonomy-verifier-v1",
+        outcome=outcome,
+        taxa=[GBIF_TAXON] if outcome == S.SUCCESS else [],
+        sub_calls=calls,
+        warnings=list(warnings),
+    )
+    return Verification(
+        result,
+        Lookup(
+            provider="gbif",
+            adapter_version="species-match-v2.1",
+            query={"scientificName": "Epipsocus"},
+            status=outcome,
+        ),
+    )
+
+
+def geography(field_outcomes, place_id="ChIJ-chimaltenango"):
+    places = [
+        PlaceCandidate(field_key=k, source=GOOGLE, source_record_id=place_id)
+        for k, v in field_outcomes.items()
+        if v == S.SUCCESS
+    ]
+    return ToolResult(
+        tool="geography_lookup",
+        tool_version="google-geocoding-v1",
+        outcome=S.SUCCESS,
+        field_outcomes=field_outcomes,
+        places=places,
+        sub_calls=[
+            SourceCall(
+                source=GOOGLE,
+                query={"address": "x"},
+                retrieved_at="t",
+                outcome=S.SUCCESS,
+                raw_ref="blob-1",
+                response_sha256="f" * 64,
+            )
+        ],
+    )
+
+
+def validator(tool, outcome, parsed=None, warnings=()):
+    return ToolResult(
+        tool=tool,
+        tool_version=f"{tool}-v1",
+        outcome=outcome,
+        parsed=parsed,
+        warnings=list(warnings),
+    )
+
+
+class Fakes:
+    """Each tool answers with a preset result and counts its calls."""
+
+    def __init__(self, taxon=None, place=None, date=None, catalog=None):
+        self.answers = {
+            "taxon": taxon,
+            "place": place,
+            "date": date,
+            "catalog": catalog,
+        }
+        self.calls = []
+
+    def tools(self):
+        def answer(kind):
+            def run(*args, **kwargs):
+                self.calls.append((kind, args, kwargs))
+                return self.answers[kind]
+
+            return run
+
+        return Tools(
+            verify_taxon=answer("taxon"),
+            geocode=answer("place"),
+            parse_date=answer("date"),
+            check_catalog_number=answer("catalog"),
+        )
+
+
+def ledger(fakes):
+    ticks = iter(f"2026-09-23T00:00:{n:02d}Z" for n in range(60))
+    return ToolLedger(fakes.tools(), asset_id="asset-1", clock=lambda: next(ticks))
+
+
+def taxon_arguments(literal, reading):
+    return {"literal": literal}
+
+
+def test_the_call_key_is_the_one_agreed_with_s5():
+    fields = {
+        "phase": "lookup",
+        "tool": "taxonomy_verifier",
+        "source": "gbif",
+        "input_source": "raw_reading",
+        "region_id": "r1",
+        "observation_id": "o-qwen",
+        "attempt": 2,
+        "arguments": {"literal": "Epipsocus"},
+    }
+    digest = hashlib.sha256(
+        json.dumps({"literal": "Epipsocus"}, separators=(",", ":")).encode()
+    ).hexdigest()[:16]
+
+    assert (
+        call_key(fields)
+        == f"lookup:taxonomy_verifier:gbif:raw_reading:r1:o-qwen:{digest}:2"
+    )
+    missing = call_key(
+        {**fields, "source": None, "region_id": None, "observation_id": None}
+    )
+    assert missing == f"lookup:taxonomy_verifier:-:raw_reading:-:-:{digest}:2"
+
+
+def test_every_source_attempt_is_recorded_and_only_final_calls_carry_evidence():
+    fakes = Fakes(taxon=taxonomy(gbif_attempts=(S.RATE_LIMITED, S.SUCCESS)))
+    book = ledger(fakes)
+
+    book.run("taxonomy_verifier", DECIDED, {"literal": "Epipsocus"}, ["taxon"])
+
+    assert [(r.source, r.attempt, r.outcome) for r in book.records] == [
+        ("gbif", 1, S.RATE_LIMITED),
+        ("gbif", 2, S.SUCCESS),
+        ("gnv", 1, S.SUCCESS),
+        ("col", 1, S.SUCCESS),
+    ]
+    assert [r.evidence_id is not None for r in book.records] == [
+        False,
+        True,
+        True,
+        True,
+    ]
+    assert len({r.call_key for r in book.records}) == 4
+    first = book.records[0]
+    assert (first.phase, first.tool, first.input_source, first.region_id) == (
+        "lookup",
+        "taxonomy_verifier",
+        "decided_transcript",
+        "r1",
+    )
+    assert (
+        first.observation_id is None
+    )  # A call on the decided transcript names no reading.
+    assert first.field_keys == ["taxon"] and first.arguments == {"literal": "Epipsocus"}
+    assert [e.source for e in book.evidence] == ["gbif", "gnv", "col"]
+    assert book.evidence[0].locator == "usage/8MQRG"
+    assert [lookup.status for lookup in book.lookups] == [S.SUCCESS]
+
+
+def test_a_request_runs_once_and_its_records_are_not_repeated():
+    fakes = Fakes(taxon=taxonomy())
+    book = ledger(fakes)
+
+    first = book.run("taxonomy_verifier", RAW, {"literal": "Epipocous"}, ["taxon"])
+    again = book.run("taxonomy_verifier", RAW, {"literal": "Epipocous"}, ["taxon"])
+
+    assert first is again and len(fakes.calls) == 1 and len(book.records) == 3
+    assert {r.observation_id for r in book.records} == {"o-qwen"}
+
+
+def test_a_tool_the_profile_does_not_allow_never_runs():
+    with pytest.raises(ValueError, match="tool_not_allowed:bugguide"):
+        ledger(Fakes()).run("bugguide", DECIDED, {"literal": "x"}, ["taxon"])
+
+
+def test_gbif_decides_and_supporting_sources_support_unless_they_disagree():
+    warning = "taxonomy_source_disagreement:col"
+    book = ledger(Fakes(taxon=taxonomy(warnings=[warning])))
+
+    called = book.field_call("taxon", "taxonomy_verifier", taxon_arguments)(
+        "Epipsocus", DECIDED
+    )
+
+    gbif, gnv, col = (e.id for e in book.evidence)
+    assert (called.outcome, called.authority_id, called.normalized) == (
+        S.SUCCESS,
+        "8MQRG",
+        "Epipsocus Hagen, 1866",
+    )
+    assert called.evidence == {
+        gbif: "decides",
+        gnv: "supports",
+    }  # COL disagreed: not linked.
+    assert called.warnings == {warning: (col,)}
+
+
+def test_a_failed_lookup_settles_nothing_and_passes_its_outcome_on():
+    book = ledger(Fakes(taxon=taxonomy(S.AMBIGUOUS, gbif_attempts=(S.AMBIGUOUS,))))
+
+    called = book.field_call("taxon", "taxonomy_verifier", taxon_arguments)(
+        "Epipsocus", DECIDED
+    )
+
+    assert (called.outcome, called.authority_id, called.evidence) == (
+        S.AMBIGUOUS,
+        None,
+        {},
+    )
+    assert book.evidence[0].locator is None  # Nothing to locate (#88, 4.4).
+
+
+def test_one_geography_call_serves_every_locality_field_of_its_reading():
+    outcomes = {"city": S.SUCCESS, "country": S.NO_MATCH}
+    fakes = Fakes(place=geography(outcomes))
+    book = ledger(fakes)
+    literals = [["city", "Chimaltenango"], ["country", "GUAT."]]
+
+    def arguments(literal, reading):
+        return {"literals": literals}
+
+    city = book.field_call("city", "geography_lookup", arguments)(
+        "Chimaltenango", DECIDED
+    )
+    country = book.field_call("country", "geography_lookup", arguments)(
+        "GUAT.", DECIDED
+    )
+
+    assert len(fakes.calls) == 1 and len(book.records) == 1
+    (record,) = book.records
+    assert record.field_keys == ["city", "country"] and record.source == GOOGLE
+    assert record.result == {
+        "place_ids": ["ChIJ-chimaltenango"]
+    }  # Place IDs only (G26).
+    (evidence,) = book.evidence
+    assert (evidence.locator, evidence.raw_ref, evidence.excerpt) == (
+        "place/ChIJ-chimaltenango",
+        "blob-1",
+        f"{GOOGLE} success",
+    )
+    assert (city.outcome, city.authority_id, city.normalized) == (
+        S.SUCCESS,
+        "ChIJ-chimaltenango",
+        "Chimaltenango",
+    )
+    assert city.evidence == {
+        evidence.id: "supports"
+    }  # Google never decides (rule 1.6).
+    assert (country.outcome, country.authority_id) == (S.NO_MATCH, None)
+    query = fakes.calls[0][1][0]
+    assert [
+        (item.field_key, item.literal, item.source_observation_id)
+        for item in query.literals
+    ] == [
+        ("city", "Chimaltenango", "o-muse"),
+        ("country", "GUAT.", "o-muse"),
+    ]
+
+
+def test_validators_are_one_attempt_with_no_source_and_keep_their_verdict():
+    reading = {
+        "iso": "1946-06-12",
+        "precision": "day",
+        "century_rule": None,
+        "order": "day-romanmonth-year",
+        "year": 1946,
+        "month": 6,
+        "day": 12,
+        "rules": [],
+    }
+    date = validator(
+        "date_parser", S.SUCCESS, {"readings": [reading], "year_literal": None}
+    )
+    catalog = validator(
+        "catalog_number_validator", S.SUCCESS, {"catalog_number": "0123456"}
+    )
+    fakes = Fakes(date=date, catalog=catalog)
+    book = ledger(fakes)
+
+    day = book.field_call(
+        "date_visited_from",
+        "date_parser",
+        lambda literal, reading: {"literal": literal},
+    )("12-VI-1946", DECIDED)
+    number = book.field_call(
+        "fmnh_ins_number",
+        "catalog_number_validator",
+        lambda literal, reading: {"literal": literal},
+    )("FMNH INS 0123456", DECIDED)
+
+    assert [(r.phase, r.source, r.attempt) for r in book.records] == [
+        ("validate", None, 1),
+        ("validate", None, 1),
+    ]
+    assert book.records[0].result == {
+        "parsed": {"readings": [reading], "year_literal": None},
+        "warnings": [],
+    }
+    assert [(e.kind, e.locator) for e in book.evidence] == [
+        ("validation", "region:r1"),
+        ("validation", "region:r1"),
+    ]
+    assert (day.parsed, day.precision, day.century_rule) == ("1946-06-12", "day", None)
+    assert number.parsed == "0123456"
+    assert fakes.calls[0][2] == {"source_text": DECIDED.text, "year_literal": None}
+
+
+def test_an_operational_outcome_passes_through_for_the_resolver_to_block_on():
+    fakes = Fakes(
+        place=ToolResult(
+            tool="geography_lookup",
+            tool_version="v1",
+            outcome=S.RATE_LIMITED,
+            field_outcomes={"city": S.RATE_LIMITED},
+        )
+    )
+    book = ledger(fakes)
+
+    called = book.field_call(
+        "city",
+        "geography_lookup",
+        lambda literal, reading: {"literals": [["city", literal]]},
+    )("Chimaltenango", DECIDED)
+
+    assert called.outcome == S.RATE_LIMITED and called.authority_id is None
+
+
+def test_the_precise_location_is_never_settled_by_a_geography_result():
+    book = ledger(Fakes(place=geography({"city": S.SUCCESS})))
+    literals = [["precise_location", "Chimaltenango"], ["city", "Chimaltenango"]]
+    call = book.field_call(
+        "precise_location",
+        "geography_lookup",
+        lambda literal, reading: {"literals": literals},
+    )
+
+    with pytest.raises(ValueError, match="field_not_reported:precise_location"):
+        call("Chimaltenango", DECIDED)
+
+
+def test_a_near_spelling_settles_the_place_id_alone_with_a_finding():
+    near = geography({"province_state": S.SUCCESS, "country": S.SUCCESS})
+    near = near.model_copy(update={"warnings": ["near_spelling:province_state"]})
+    book = ledger(Fakes(place=near))
+    literals = [["province_state", "Chimaltenago"], ["country", "GUAT."]]
+
+    def arguments(literal, reading):
+        return {"literals": literals}
+
+    province = book.field_call("province_state", "geography_lookup", arguments)(
+        "Chimaltenago", DECIDED
+    )
+    country = book.field_call("country", "geography_lookup", arguments)(
+        "GUAT.", DECIDED
+    )
+
+    (evidence,) = book.evidence
+    assert (province.authority_id, province.normalized) == ("ChIJ-chimaltenango", None)
+    assert province.warnings == {"near_spelling:province_state": (evidence.id,)}
+    assert (country.normalized, country.warnings) == ("GUAT.", {})
+
+
+def test_a_partly_read_name_keeps_its_warning_with_the_tools_own_record():
+    # The code names no source (#109), so it cites the taxonomy tool's record.
+    withheld = Verification(
+        ToolResult(
+            tool="taxonomy_verifier",
+            tool_version="taxonomy-verifier-v1",
+            outcome=S.AMBIGUOUS,
+            warnings=["taxonomy_name_partly_read"],
+        ),
+        Lookup(
+            provider="gbif",
+            adapter_version="species-match-v2.3",
+            query={},
+            status=S.AMBIGUOUS,
+        ),
+    )
+    book = ledger(Fakes(taxon=withheld))
+
+    called = book.field_call("taxon", "taxonomy_verifier", taxon_arguments)(
+        "? Epipsocus", DECIDED
+    )
+
+    (record,) = book.evidence
+    assert called.outcome == S.AMBIGUOUS
+    assert called.warnings == {"taxonomy_name_partly_read": (record.id,)}
+
+
+def test_a_taxonomy_request_hands_its_readings_place_text_to_the_tool():
+    # PLAN 4.8 as ruled at 02:07Z and 03:24Z on 2026-09-26; the record keeps
+    # the place text as part of the request (S4's choice).
+    fakes = Fakes(taxon=taxonomy())
+    book = ledger(fakes)
+
+    book.run(
+        "taxonomy_verifier",
+        DECIDED,
+        {"literal": "Epipsocus Chimaltenango"},
+        ["taxon"],
+        place_text=["Chimaltenango", "GUAT."],
+    )
+
+    assert fakes.calls == [
+        (
+            "taxon",
+            ("Epipsocus Chimaltenango",),
+            {"place_text": ("Chimaltenango", "GUAT.")},
+        )
+    ]
+    assert {json.dumps(r.arguments, sort_keys=True) for r in book.records} == {
+        json.dumps(
+            {
+                "literal": "Epipsocus Chimaltenango",
+                "place_text": ["Chimaltenango", "GUAT."],
+            },
+            sort_keys=True,
+        )
+    }
+
+
+def test_the_taxonomy_tool_sends_no_word_of_the_readings_place_text(tmp_path):
+    # End to end on the real tool: a city and a province the reading holds
+    # stand in the literal's authorship, and no request carries them.
+    sent = []
+
+    def endpoint(request):
+        sent.append(str(request.url))
+        if request.url.path.endswith("/metadata"):
+            return httpx.Response(200, json={"alias": "fixture-index"})
+        return httpx.Response(200, json={"diagnostics": {"matchType": "NONE"}})
+
+    tools = Tools(
+        verify_taxon=partial(
+            verify_taxon,
+            blobs=LocalBlobs(tmp_path),
+            client=httpx.Client(transport=httpx.MockTransport(endpoint)),
+            sleep=lambda s: None,
+        ),
+        geocode=None,
+        parse_date=None,
+        check_catalog_number=None,
+    )
+    book = ToolLedger(tools, asset_id="asset-1")
+
+    book.run(
+        "taxonomy_verifier",
+        DECIDED,
+        {"literal": "Epipsocus Davao, Mindanao 1946"},
+        ["taxon"],
+        place_text=["Davao City", "Mindanao"],
+    )
+
+    assert sent
+    assert not [url for url in sent if "davao" in url.lower()]
+    assert not [url for url in sent if "mindanao" in url.lower()]
+
+
+@pytest.mark.parametrize(
+    "reading,field_keys",
+    [(Reading("r1", "o-x", "not_a_role", DECIDED.text), ["taxon"]), (DECIDED, [None])],
+    ids=["bad-role", "none-field-key"],
+)
+def test_a_record_that_cannot_be_built_keeps_no_evidence(reading, field_keys):
+    book = ledger(Fakes(taxon=taxonomy()))
+
+    with pytest.raises(ValueError):
+        book.run("taxonomy_verifier", reading, {"literal": "Epipsocus"}, field_keys)
+
+    assert (book.evidence, book.records) == ([], [])
+
+
+@pytest.mark.parametrize("extra", ["deep", "surrogate"])
+def test_arguments_the_record_could_not_store_are_refused(extra):
+    value = "x" + chr(0xD800)
+    if extra == "deep":
+        value = {}
+        for _ in range(40):
+            value = {"nested": value}
+    arguments = {"literal": "FMNH INS 0123456", "extra": value}
+    book = ledger(Fakes(catalog=validator("catalog_number_validator", S.SUCCESS)))
+
+    with pytest.raises(ValueError, match="arguments_not_storable"):
+        book.run("catalog_number_validator", DECIDED, arguments, ["fmnh_ins_number"])
+
+    assert (book.evidence, book.records) == ([], [])
+
+
+def test_a_request_with_other_place_text_is_made_anew_with_its_own_key():
+    fakes = Fakes(taxon=taxonomy())
+    book = ledger(fakes)
+
+    for place_text in ((), ("Davao",)):
+        book.run(
+            "taxonomy_verifier",
+            DECIDED,
+            {"literal": "Epipsocus Davao"},
+            ["taxon"],
+            place_text=place_text,
+        )
+
+    assert [kwargs["place_text"] for _, _, kwargs in fakes.calls] == [(), ("Davao",)]
+    keys = [r.call_key for r in book.records]
+    assert len(keys) == len(set(keys))
+
+
+def test_a_bare_text_is_refused_as_place_text():
+    fakes = Fakes(taxon=taxonomy())
+    book = ledger(fakes)
+
+    with pytest.raises(TypeError):
+        book.run(
+            "taxonomy_verifier",
+            DECIDED,
+            {"literal": "Epipsocus"},
+            ["taxon"],
+            place_text="Davao",
+        )
+
+    assert fakes.calls == []
+
+
+def test_a_field_call_hands_its_readings_place_text_to_the_tool():
+    fakes = Fakes(taxon=taxonomy())
+    book = ledger(fakes)
+
+    call = book.field_call(
+        "taxon", "taxonomy_verifier", taxon_arguments, lambda r: ["Davao"]
+    )
+    call("Epipsocus Davao", DECIDED)
+
+    assert [kwargs["place_text"] for _, _, kwargs in fakes.calls] == [("Davao",)]
+
+
+def test_only_gbifs_final_attempt_keeps_the_candidates():
+    book = ledger(Fakes(taxon=taxonomy(gbif_attempts=(S.RATE_LIMITED, S.SUCCESS))))
+
+    book.run("taxonomy_verifier", DECIDED, {"literal": "Epipsocus"}, ["taxon"])
+
+    limited, answered = (r.result for r in book.records if r.source == "gbif")
+    assert "candidates" not in limited and answered["candidates"]
+
+
+def test_only_googles_final_attempt_keeps_the_place_ids():
+    answer = geography({"city": S.SUCCESS})
+    timed_out = SourceCall(
+        source=GOOGLE, query={"address": "x"}, retrieved_at="t", outcome=S.TIMEOUT
+    )
+    final = answer.sub_calls[0].model_copy(update={"attempt": 2})
+    answer = answer.model_copy(update={"sub_calls": [timed_out, final]})
+    book = ledger(Fakes(place=answer))
+
+    book.run(
+        "geography_lookup", DECIDED, {"literals": [["city", "Chimaltenango"]]}, ["city"]
+    )
+
+    first, last = (r.result for r in book.records)
+    assert "place_ids" not in first and last["place_ids"] == ["ChIJ-chimaltenango"]
+
+
+def test_a_tool_that_repeats_a_source_attempt_is_refused_whole():
+    plain = taxonomy()
+    repeated = plain.result.model_copy(
+        update={"sub_calls": [*plain.result.sub_calls, source_call("col")]}
+    )
+    book = ledger(Fakes(taxon=Verification(repeated, plain.gbif)))
+
+    with pytest.raises(ValueError, match="duplicate_call_key"):
+        book.run("taxonomy_verifier", DECIDED, {"literal": "Epipsocus"}, ["taxon"])
+
+    assert (book.evidence, book.records) == ([], [])
+
+
+def test_a_same_run_retry_keeps_the_earlier_records_and_numbers_on():
+    first = ledger(Fakes(taxon=taxonomy()))
+    first.run("taxonomy_verifier", DECIDED, {"literal": "Epipsocus"}, ["taxon"])
+
+    again = ToolLedger(
+        Fakes(taxon=taxonomy()).tools(), asset_id="asset-1", prior=first.records
+    )
+    again.run("taxonomy_verifier", DECIDED, {"literal": "Epipsocus"}, ["taxon"])
+
+    keys = [r.call_key for r in again.records]
+    assert again.records[:3] == first.records
+    assert len(keys) == len(set(keys)) == 6
+    assert [r.attempt for r in again.records[3:]] == [2, 2, 2]
+
+
+def test_a_google_call_that_got_no_response_has_no_evidence():
+    timed_out = SourceCall(
+        source=GOOGLE, query={"address": "x"}, retrieved_at="t", outcome=S.TIMEOUT
+    )
+    answer = ToolResult(
+        tool="geography_lookup",
+        tool_version="google-geocoding-v1",
+        outcome=S.TIMEOUT,
+        field_outcomes={"city": S.TIMEOUT},
+        sub_calls=[timed_out],
+    )
+    book = ledger(Fakes(place=answer))
+
+    book.run(
+        "geography_lookup", DECIDED, {"literals": [["city", "Chimaltenango"]]}, ["city"]
+    )
+
+    (record,) = book.records
+    assert (record.outcome, record.evidence_id, book.evidence) == (S.TIMEOUT, None, [])
+
+
+class Stored:
+    """An in-memory blob store: each stored body under its reference."""
+
+    def __init__(self):
+        self.bodies = {}
+
+    def put(self, data: bytes) -> str:
+        ref = f"blob-{len(self.bodies) + 1}"
+        self.bodies[ref] = data
+        return ref
+
+
+def test_a_validators_evidence_stores_its_verdict_as_a_record():
+    verdict = validator(
+        "catalog_number_validator", S.SUCCESS, parsed={"catalog_number": "0123456"}
+    )
+    blobs = Stored()
+    book = ToolLedger(Fakes(catalog=verdict).tools(), asset_id="asset-1", blobs=blobs)
+
+    book.run(
+        "catalog_number_validator",
+        DECIDED,
+        {"literal": "FMNH INS 0123456"},
+        ["fmnh_ins_number"],
+    )
+
+    (item,) = book.evidence
+    stored = blobs.bodies[item.raw_ref]
+    assert item.digest == hashlib.sha256(stored).hexdigest()
+    assert json.loads(stored) == {
+        "tool": "catalog_number_validator",
+        "literal": "FMNH INS 0123456",
+        "outcome": "success",
+        "parsed": {"catalog_number": "0123456"},
+        "warnings": [],
+    }

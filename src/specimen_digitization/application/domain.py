@@ -231,7 +231,8 @@ class Evidence(Record):
     region_id: str | None = None
     observation_ids: list[str] = Field(default_factory=list)
     source: str
-    locator: str
+    # A lookup that found no single match has nothing to locate (#88, 4.4).
+    locator: str | None
     excerpt: str
     raw_ref: str | None = None
     digest: str | None = None
@@ -247,6 +248,62 @@ class FieldValue(Record):
     authority_identity: dict | None = None
     evidence_ids: list[str] = Field(default_factory=list)
     reason: str = "No supported source value"
+    # Where the verbatim came from and what settled the value (G20, G27, G28;
+    # data contract section 4.3). A field the first pass picked no reading for
+    # keeps each reader's literal in `verbatim_by_observation` and none in
+    # `literal`.
+    input_source: Literal["decided_transcript", "raw_reading"] | None = None
+    source_region_id: str | None = None
+    source_observation_id: str | None = None
+    verbatim_by_observation: dict[str, str] = Field(default_factory=dict)
+    # Each verbatim's own input source: a field on two labels (G32) can mix a
+    # decided transcript with raw readings.
+    input_source_by_observation: dict[
+        str, Literal["decided_transcript", "raw_reading"]
+    ] = Field(default_factory=dict)
+    # The readings whose verbatim settled the value; set exactly when
+    # verbatim_by_observation is (agreed with S5 for G32).
+    settled_observation_ids: list[str] = Field(default_factory=list)
+    evidence_relations: dict[str, Literal["decides", "supports", "contradicts"]] = (
+        Field(default_factory=dict)
+    )
+    precision: Literal["day", "month", "year"] | None = None
+    century_rule: str | None = None
+
+
+class ToolCallRecord(Record):
+    """One attempt of one harness tool request, as the data contract reads it
+    (#88, section 4.3; HAR-010): the call key agreed with S5, what was asked,
+    of which reading, and the outcome."""
+
+    call_key: str
+    phase: Literal["lookup", "validate"]
+    tool: str
+    tool_version: str
+    source: str | None
+    field_keys: list[str]
+    input_source: Literal["decided_transcript", "raw_reading"]
+    region_id: str | None = None
+    observation_id: str | None = None
+    attempt: int = Field(ge=1)
+    arguments: dict
+    outcome: LookupStatus
+    result: dict | None = None
+    evidence_id: str | None = None
+    started_at: str
+    completed_at: str
+
+
+class RunFinding(Record):
+    """A warning or note that never routes the record by itself (G23, G27):
+    unlike a reason, it does not send the record to review."""
+
+    rule_id: str
+    rule_version: str
+    severity: Literal["warning", "info"]
+    field_key: str | None = None
+    reason_code: str
+    evidence_ids: list[str] = Field(default_factory=list)
 
 
 class Lookup(Record):
@@ -272,8 +329,8 @@ class StageCostReservations(Record):
     """
 
     version: Literal["stage-cost-reservations-v1"]
-    cost_micros: dict[str, Annotated[int, Field(strict=True, gt=0, le=2**53 - 1)]] = Field(
-        min_length=1, max_length=64
+    cost_micros: dict[str, Annotated[int, Field(strict=True, gt=0, le=2**53 - 1)]] = (
+        Field(min_length=1, max_length=64)
     )
 
     @field_validator("cost_micros", mode="before")
@@ -282,7 +339,9 @@ class StageCostReservations(Record):
         # SQL Connect's protobuf Struct stores JSON numbers as doubles. Only an
         # integrity-checked snapshot reader may normalize exact safe integers;
         # launch/config input remains strict and never accepts float or text.
-        if (info.context or {}).get("persisted_snapshot") is True and isinstance(value, dict):
+        if (info.context or {}).get("persisted_snapshot") is True and isinstance(
+            value, dict
+        ):
             return {
                 key: int(amount)
                 if type(amount) is float and amount.is_integer() and 0 < amount < 2**53
@@ -424,6 +483,8 @@ class Run(Record):
     human_approved: bool = False
     disposition: Disposition | None = None
     reasons: list[str] = Field(default_factory=list)
+    findings: list[RunFinding] = Field(default_factory=list)
+    tool_calls: list[ToolCallRecord] = Field(default_factory=list)
     blocker: str | None = None
     attempts: dict[str, int] = Field(default_factory=dict)
     capability_reason: str | None = None
@@ -432,6 +493,8 @@ class Run(Record):
     dead_letter: bool = False
     lease_until: str | None = None
     created_at: str = Field(default_factory=now)
+    # When processing was requested (LANE.md T1). Omitted until then.
+    queued_at: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class AuditEvent(Record):
