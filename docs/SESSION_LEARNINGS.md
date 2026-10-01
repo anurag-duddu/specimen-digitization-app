@@ -13754,3 +13754,14 @@ Canonical scripts suite before this repair passed2581 with15 skips in108.44s. Fi
 ### 2026-10-01 ROOT initializer privilege GREEN source
 
 RED commit447d742 contains the actual retained-ten-minute/late-cleanup regression controls. This GREEN source restores the guarded production repair already qualified268PASS. Original privilege duration is600 seconds; the protected admission gate remains3600 and owned disposal remains180 independently. Signed future/negative/outside-gate or longer intents cannot dispatch initialization; longer original intent cannot authorize disposal. Current full verification and new exact-head reviews remain pending. No native/cloud/paid effect.
+
+
+### 2026-10-01T23:05:38.679892+00:00 — complete backend execution and worker ownership recovery
+
+Task parallel-live-20261001, branch codex/parallel-live-integration-20261001. Corrected initializer source GREEN commit5dd798; RED447d742. Full backend execution was allowed through the documented sequential loaded-workstation path requested by the owner; no arbitrary420-second termination or required-check change. Actual Py3.12 tests/ completed13failed6284passed45skipped2errors in552.61s; no full-pass claim. Failures resolve to stale G3 fixture scopes/capture policy, one drain fixture omitted check_config, and genuine reusable worker actor-token leakage.
+
+Three guarded G3 fixture payloads preserve names/decorators/raises/privacy/watchdog/timeouts; actual62PASS14.80s. Initializer literal source fixture trueRED10fails42pass, guarded producer+root correction of the exact historical digest explanation then168PASS6.96s. Raw origins remain byte-identical and ineligible; every original test unchanged. Historical public-source digest admission to the no-credential explanation is exact, not acceptance input.
+
+Actual worker test-only RED39failed83passed1skipped40.42s; actual production successor GREEN122passed1skipped35.80s. Five original actor establishment points now restore owned tokens on success/error/SystemExit; existing callbacks, deadline/budget guards and original host assertions remain. New30 ownership controls cover unbound and nondefault callers. One earlier nonexistent test filename invocation ran no tests and is not RED evidence; corrected inventory-backed invocation above is the retained trueRED. This entry and tests precede the worker GREEN source commit.
+
+The exact5dd backend review passed finite source54paths, release review rejected stale initializer test pins; both are historical and do not qualify the next head. Every newer head requires fresh G18 review. No PR/protected deployment/native production IDs or paid effect; worker remains HOLD.

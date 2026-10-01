@@ -154,6 +154,7 @@ def test_the_drain_runs_the_lane_worker_with_the_published_registries(
 
     class Repository:
         def __init__(self, **endpoint):
+            assert actor.get() == "worker"
             seen["repository"] = self
 
         def memberships(self, uid):
@@ -168,6 +169,7 @@ def test_the_drain_runs_the_lane_worker_with_the_published_registries(
             seen["worker"] = dict(options, user_id=user_id, workflow=workflow)
 
         def run(self, stop):
+            assert actor.get() == "worker"
             seen["stop"] = stop
             return {"status": "drained", "processed": []}
 
@@ -188,7 +190,7 @@ def test_the_drain_runs_the_lane_worker_with_the_published_registries(
     cli(drain_env, "--mode", "production", "--drain")
 
     assert json.loads(capsys.readouterr().out) == {"status": "drained", "processed": []}
-    assert actor.get() == "worker"
+    assert actor.get() is None
     options = seen["worker"]
     assert options["user_id"] == "worker"
     assert 600 < options["deadline_seconds"] <= 3600  # Same original clock, including setup.

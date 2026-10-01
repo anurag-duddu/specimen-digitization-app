@@ -26,9 +26,17 @@ from specimen_digitization.application.sam3_server import (
 from specimen_digitization.application.storage import LocalBlobs
 from specimen_digitization.hub_models import SAM3_MODEL
 
-from test_lane_sam_server import RunEngine, TOKEN, image_bytes, post, run_request, served
+from test_lane_sam_server import (
+    RunEngine,
+    TOKEN,
+    image_bytes,
+    post,
+    run_request,
+    sam_trace_configuration,
+    served,
+)
 
-__all__ = ["served"]  # The shared fixture, imported for pytest.
+__all__ = ["sam_trace_configuration", "served"]  # Shared fixtures imported for pytest.
 
 
 def test_a_served_response_passes_the_worker_binding(served):

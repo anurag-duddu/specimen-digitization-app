@@ -80,10 +80,32 @@ CURRENT_DATA_SOURCE_FILES = {'dataconnect/connector/artifacts.gql': '4d4da17483f
  'storage.rules': '8d8bf2202a428894aaa46278bfc68c33dce0fd405e547b952a408e930d380893'}
 
 
+# The frozen initialization origins remain evidence of their reviewed bytes.
+# Only synthetic load() copies receive these literal current source pins.
+RETIRED_INITIALIZATION_TEMPLATE_SHA256 = {
+    'data-initialization-inventory.plan.template.json': '389f82d69d46bede7689cfa4b22fd5f020bef41ba309dcce80be1cc9f8f09639',
+    'data-initialize-missing.plan.template.json': 'b18bf7bf21fc0737ff705e4beb4e586aac80ab0ff50f6c53bc9c6591061fc1ff',
+}
+CURRENT_INITIALIZATION_FILES = {
+    'scripts/ci/release_initialize.py': '48a217d0f6101d5d950ea20d081bd7b1ce468cd8647ed9b7e3978b2d9ee787f9',
+    'scripts/ci/release_initialize.mjs': '64e9512840a66687158c1d1b3e477a720385a68f8334e02e3a5a845296eb076f',
+    'scripts/ci/initialize_database.sql': 'a48409621264c6918b9f2bddb01366df022a01d4d149aca5768a8fc3f0d2a52b',
+    'scripts/ci/initialize_catalog.sql': 'd7262f8fc62d823e0a27ad602035c4cd144b003cfb7efadfadc506c03e5083dd',
+    'scripts/ci/initialize_postconditions.sql': '8a57dbd6ab3cd999c63371d76d96a420743e167fa1ce820ae378d2387e122c2d',
+    'scripts/ci/release_catalog_envelope.py': '59bb843ee485eedd1b0e627886c468349a6be76d00049031619ba025af9b3c1d',
+}
+RETIRED_INITIALIZER_SOURCE_FILES = {
+    # Exact pre-repair public source digest retained by both frozen origins.
+    'scripts/ci/release_initialize.py': 'af118d73ce6a7a6cfc9e49cd44f3287534cc8e711a078ce390097c1272fd1b79',
+}
+
+
 def load_raw(name):
     raw = (TEMPLATES / name).read_bytes()
     if name in RETIRED_DATA_TEMPLATE_SHA256:
         assert hashlib.sha256(raw).hexdigest() == RETIRED_DATA_TEMPLATE_SHA256[name]
+    if name in RETIRED_INITIALIZATION_TEMPLATE_SHA256:
+        assert hashlib.sha256(raw).hexdigest() == RETIRED_INITIALIZATION_TEMPLATE_SHA256[name]
     return json.loads(raw)
 
 
@@ -91,6 +113,10 @@ def load(name):
     value = load_raw(name)
     if name in RETIRED_DATA_TEMPLATE_SHA256:
         value["source_files"] = dict(CURRENT_DATA_SOURCE_FILES)
+    if name == "data-initialization-inventory.plan.template.json":
+        value["initialization_files"] = dict(CURRENT_INITIALIZATION_FILES)
+    elif name == "data-initialize-missing.plan.template.json":
+        value["initialization"]["files"] = dict(CURRENT_INITIALIZATION_FILES)
     return value
 
 
@@ -579,6 +605,7 @@ def allowed_digests():
             # Historical public source hashes are explained by exact pinned raw origins.
             | {value for name in RETIRED_DATA_TEMPLATE_SHA256
                for value in load_raw(name)["source_files"].values()}
+            | set(RETIRED_INITIALIZER_SOURCE_FILES.values())
             | set(release_initialize.fingerprints().values())
             # The bootstrap template pins the reviewed collection tree's digest.
             | {hashlib.sha256(reviewed_tree()).hexdigest()}
@@ -671,3 +698,26 @@ def test_retired_raw_data_templates_are_refused_by_current_source_guards(name):
     packet = {"source_sha": SOURCE_SHA} if name == "data-bootstrap.plan.template.json" else recovery_packet()
     with pytest.raises(ValueError, match="source fingerprints changed|compatible current data source required"):
         data.validate_plan(value, packet, now=NOW)
+
+
+@pytest.mark.parametrize("name", sorted(RETIRED_INITIALIZATION_TEMPLATE_SHA256))
+def test_raw_initialization_pins_are_refused_by_current_source_guards(name):
+    """Raw initialization pins remain ineligible through the real source validators."""
+    if name == "data-initialization-inventory.plan.template.json":
+        value = fill(load_raw(name), common_dummies())
+        with pytest.raises(ValueError, match="catalog source changed"):
+            data.validate_plan(value, {"source_sha": SOURCE_SHA})
+    else:
+        value = initialize_missing_plan()
+        value["initialization"]["files"] = load_raw(name)["initialization"]["files"]
+        with pytest.raises(ValueError, match="initialization source bytes changed"):
+            data.validate_plan(value, recovery_packet(), now=NOW)
+
+
+def test_frozen_initializer_source_digests_explain_raw_origins_without_becoming_current():
+    for name in RETIRED_INITIALIZATION_TEMPLATE_SHA256:
+        raw = load_raw(name)
+        pins = raw["initialization_files"] if "initialization_files" in raw else raw["initialization"]["files"]
+        for path, digest in RETIRED_INITIALIZER_SOURCE_FILES.items():
+            assert pins[path] == digest
+            assert CURRENT_INITIALIZATION_FILES[path] != digest

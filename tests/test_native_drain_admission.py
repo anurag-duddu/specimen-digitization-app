@@ -138,13 +138,24 @@ def test_missing_legacy_ledger_is_not_created_or_zeroed():
 
 
 def test_cli_deadline_starts_before_configuration(monkeypatch):
+    from specimen_digitization import observability
     from specimen_digitization.application import worker
     from specimen_digitization.application.worker_deadline import current_deadline
     seen = []
+    owned_deadline = []
+    flushed = []
     def execute(args, deadline):
         assert current_deadline() is deadline
         assert 0 < deadline.remaining() <= 601
+        owned_deadline.append(deadline)
         seen.append("configured_inside_original_deadline")
+    def flush(*, shutdown):
+        assert shutdown is True
+        assert current_deadline() is owned_deadline[0]
+        flushed.append("same_original_deadline")
+        return {"configured": False, "complete": True}
     monkeypatch.setattr(worker, "_execute_drain", execute)
-    worker._run_drain(SimpleNamespace(max_seconds=601))
+    monkeypatch.setattr(observability, "flush_production_observability", flush)
+    worker._run_drain(SimpleNamespace(max_seconds=601, check_config=False))
     assert seen == ["configured_inside_original_deadline"]
+    assert flushed == ["same_original_deadline"]
