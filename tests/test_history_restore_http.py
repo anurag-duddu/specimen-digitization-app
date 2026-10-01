@@ -10,7 +10,7 @@ from specimen_digitization.application.storage import SQLiteRepository, LocalBlo
 from specimen_digitization.application.workflow import SyntheticAdapters
 
 
-def fixture(tmp_path, *, initial_actual_cost=None):
+def fixture(tmp_path, *, initial_actual_cost=None, prices=None):
     scope = Scope(organization_id=SYNTHETIC_ORG,collection_id=SYNTHETIC_COLLECTION)
     principal = Principal(user_id="A",scope=scope,role="reviewer")
     repository = SQLiteRepository(tmp_path/"state.sqlite3")
@@ -19,6 +19,9 @@ def fixture(tmp_path, *, initial_actual_cost=None):
         filename="fixture.png",media_type="image/png",size_bytes=1,width=1,height=1,uploader="A"),
         run=Run(stage="finalized",disposition=Disposition.REVIEW))
     specimen.run.usage.actual_cost_micros = initial_actual_cost
+    if prices is not None:
+        specimen.run.profile.execution.price_list = prices
+        specimen.run.profile.execution.request_cost_reservation_micros = 900
     first = repository.create(principal,specimen,"create",digest({"create":1}))
     edited = first.model_copy(deep=True)
     edited.run.fields["country"] = FieldValue(literal="Kenya",parsed="Kenya")
@@ -213,13 +216,12 @@ def test_inline_history_cache_cannot_override_latest_immutable_accounting(tmp_pa
 def test_restore_retains_reserved_calls_and_allowance_before_later_measured_usage(tmp_path, historical_run):
     from specimen_digitization.application.lane_costs import record_reserved, record_tool_usage
 
-    http, repo, principal, first, second = fixture(tmp_path, initial_actual_cost=17)
-    latest = second.model_copy(deep=True)
-    latest.run.profile.execution.price_list = {
+    prices = {
         "version": "restore-offline-prices-1", "as_of": "2026-10-01",
         "tools": {"geography_lookup": 7},
     }
-    latest.run.profile.execution.request_cost_reservation_micros = 900
+    http, repo, principal, first, second = fixture(tmp_path, initial_actual_cost=17, prices=prices)
+    latest = second.model_copy(deep=True)
     latest.run.program_allowance = {"reserved_total_micros": 900, "revision": 2}
     record_reserved(latest.run, "parse", "tool", outcome="completed", tool_id="geography_lookup")
     authoritative = repo.save(principal, latest, second.version, "reserved-call", digest({"reserved-call": 1}))
