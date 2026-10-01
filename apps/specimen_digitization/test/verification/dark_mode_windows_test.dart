@@ -34,6 +34,8 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../golden/golden_harness.dart';
 import 'fit_matrix_test.dart' show chooseSegment;
 import 'verification_harness.dart';
+import '../ui_finders.dart';
+import 'package:specimen_digitization/src/widgets/environment_banner.dart';
 
 /// The screens the dark pass sweeps, and how to open each one.
 ///
@@ -54,15 +56,15 @@ final Map<String, Future<void> Function(WidgetTester, Size)> darkScreens =
         brightness: Brightness.dark,
         location: goldenQueueLocation,
       ),
-      'filters': (WidgetTester tester, Size size) async {
+      'status filters': (WidgetTester tester, Size size) async {
         await pumpMeasuredApp(
           tester,
           window: size,
           brightness: Brightness.dark,
           location: goldenQueueLocation,
+          repository: GoldenQueueRepository(goldenQueue(0)),
         );
-        await tester.tap(find.text('Filters'));
-        await tester.pumpAndSettle();
+        await chooseDeferredQueue(tester);
       },
       'intake': (WidgetTester tester, Size size) => pumpMeasuredApp(
         tester,
@@ -102,58 +104,8 @@ final Map<String, Future<void> Function(WidgetTester, Size)> darkScreens =
       ),
     };
 
-/// Cells where `textContrastGuideline` reports a failure that the pixels do
-/// not support.
-///
-/// The guideline takes the most frequent colour on each side of a luminance
-/// threshold across a node's whole rectangle. Where a node's rectangle is much
-/// wider than its glyphs, or where the ground under it is a gradient, both
-/// frequencies land on the background and the ratio it prints is between two
-/// shades of the same thing. Each entry names the run that was actually drawn
-/// and what it measures, read off the checked-in dark golden with
-/// [measurePair]'s method. A cell that starts passing fails this test, so the
-/// list can only shrink on purpose.
-const Map<String, String> guidelineArtefacts = <String, String>{
-  'queue at large-1440x900':
-      'the top bar title node is the whole bar (11 section 3.3 gives the '
-      'title an Expanded), so the histogram reports two shades of the sky. '
-      'The glyphs are ink #f2f2ef over the bar and measure 11.22:1',
-  'intake at large-1440x900': 'the same top bar title node',
-  'sources at large-1440x900': 'the same top bar title node',
-  'source at large-1440x900': 'the same top bar title node',
-  // The decision bar's count, on the record cells whose count node the
-  // histogram cannot read. 13 section 3.3 makes the count the bar's
-  // `Expanded` child, because the decision is what the reviewer came to make
-  // and the count is what gives way, so "1 of 1" is a node the width of the
-  // bar holding thirty dp of glyphs and the histogram reports two shades of
-  // the pane. The glyphs are ink.secondary #b9bcc3 on the action bar's pane
-  // #16171a and measure 8.98:1. From `expanded` up the decision bar sits in
-  // the top bar (13 section 4.1, polish 3): at 1180 by 820 the node's
-  // histogram then separates the glyphs from the bar and the guideline passes
-  // the three cells, so their entries are gone; at 1440 by 900 the node is
-  // 690 dp wide over the bar and still reads two shades of it.
-  'record readings at medium-768x1024': 'the decision bar count node',
-  'record readings at large-1440x900': 'the decision bar count node',
-  'record fields at medium-768x1024': 'the decision bar count node',
-  'record fields at large-1440x900': 'the decision bar count node',
-  'record history at medium-768x1024': 'the decision bar count node',
-  'record history at large-1440x900': 'the decision bar count node',
-};
-
-/// Cells where the guideline reports a failure and the pixels agree.
-///
-/// A gate in the shape of `knownWorkbenchOverflows`: a cell that starts
-/// passing fails this test too, so a fix has to take its entry out in the same
-/// change. Every entry is written up in `design/12-verification-report-v2.md`
-/// with its owner.
-const Map<String, String> knownDarkContrastDefects = <String, String>{
-  'queue at compact-390x844':
-      'V2-2. The queue freshness line is ink.tertiary over the sun field, '
-      'which measures 3.87:1 where the table only ever checked it over the '
-      'three opaque surfaces',
-  'queue at medium-768x1024': 'V2-2, 4.04:1',
-  'queue at expanded-1180x820': 'V2-2, 4.05:1',
-};
+// The former sky/count-node exceptions describe the previous presentation.
+// Every current routed cell must pass the unmodified contrast guideline.
 
 /// The WCAG 2.2 AA floor for body text.
 const double bandPairFloor = 4.5;
@@ -263,32 +215,44 @@ void main() {
           );
         });
 
-        testWidgets('the band on the queue at $window in $mode', (
-          WidgetTester tester,
-        ) async {
-          await pumpMeasuredApp(
-            tester,
-            window: size,
-            brightness: brightness,
-            location: goldenQueueLocation,
-          );
-          final ({double ratio, int ground, int run}) pair = await measurePair(
-            tester,
-            tester.getRect(find.byType(UiBanner)),
-          );
-          debugPrint(
-            'BANDROW|queue|$window|$mode|fill=${hexOf(pair.ground)}'
-            '|run=${hexOf(pair.run)}|ratio=${pair.ratio.toStringAsFixed(2)}',
-          );
-          expect(
-            pair.ratio,
-            greaterThanOrEqualTo(bandPairFloor),
-            reason:
-                'inside the scaffold the band is painted over the sky rather '
-                'than under it, so it keeps the pair the tokens declare: '
-                '9.31:1 in light and 8.21:1 in dark',
-          );
-        });
+        testWidgets(
+          'the environment explanation on the queue at $window in $mode',
+          (WidgetTester tester) async {
+            await pumpMeasuredApp(
+              tester,
+              window: size,
+              brightness: brightness,
+              location: goldenQueueLocation,
+            );
+            final compactControl = uiIconButton('Test environment');
+            final contextControl = compactControl.evaluate().isNotEmpty
+                ? compactControl
+                : find.byWidgetPredicate(
+                    (widget) =>
+                        widget is UiButton &&
+                        widget.semanticsLabel ==
+                            EnvironmentBanner.headlineFor('synthetic'),
+                  );
+            expect(contextControl.hitTestable(), findsOneWidget);
+            await tester.tap(contextControl);
+            await tester.pumpAndSettle();
+            final explanation = find.textContaining(EnvironmentBanner.detail);
+            expect(explanation.hitTestable(), findsOneWidget);
+            final ({double ratio, int ground, int run}) pair =
+                await measurePair(tester, tester.getRect(explanation));
+            debugPrint(
+              'BANDROW|queue|$window|$mode|fill=${hexOf(pair.ground)}'
+              '|run=${hexOf(pair.run)}|ratio=${pair.ratio.toStringAsFixed(2)}',
+            );
+            expect(
+              pair.ratio,
+              greaterThanOrEqualTo(bandPairFloor),
+              reason:
+                  'the environment explanation reached from the current contextual '
+                  'control must retain AA body-text contrast in rendered pixels',
+            );
+          },
+        );
       });
     });
   });
@@ -302,77 +266,58 @@ void main() {
         testWidgets('$screen at $window in dark', (WidgetTester tester) async {
           final SemanticsHandle handle = tester.ensureSemantics();
           captureLayoutErrors();
-          await open(tester, size);
-          final String variant = navigationVariant(tester);
-          final bool scrolls = anyScrollableHasExtent(tester);
-          final ({int panes, int modal}) glass = glassPanes();
-          final int accent = await accentRegions(tester);
-          final String contrast = await measureContrast(tester);
-          final bool overflowed = stopAndReportOverflow(tester);
-          reportCell(
-            screen: screen,
-            window: window,
-            scale: 1.0,
-            mode: 'dark',
-            variant: variant,
-            scrolls: scrolls,
-            overflowed: overflowed,
-            accent: accent,
-            panes: glass.panes,
-          );
-          debugPrint(
-            'DARKROW|$screen|$window|contrast=$contrast'
-            '|modal=${glass.modal}',
-          );
-          handle.dispose();
+          try {
+            await open(tester, size);
+            final String variant = navigationVariant(tester);
+            final bool scrolls = anyScrollableHasExtent(tester);
+            final ({int panes, int modal}) glass = glassPanes();
+            final int accent = await accentRegions(tester);
+            final String contrast = await measureContrast(tester);
+            final bool overflowed = stopAndReportOverflow(tester);
+            reportCell(
+              screen: screen,
+              window: window,
+              scale: 1.0,
+              mode: 'dark',
+              variant: variant,
+              scrolls: scrolls,
+              overflowed: overflowed,
+              accent: accent,
+              panes: glass.panes,
+            );
+            debugPrint(
+              'DARKROW|$screen|$window|contrast=$contrast'
+              '|modal=${glass.modal}',
+            );
 
-          expect(
-            overflowed,
-            isFalse,
-            reason: '$screen laid out past a $window window in dark',
-          );
-          expect(
-            glass.panes,
-            lessThanOrEqualTo(UiGlass.maxPanesPerWindow),
-            reason:
-                'there are ${glass.panes} frosted panes on $screen at '
-                '$window and the budget is ${UiGlass.maxPanesPerWindow} '
-                '(09 section 3.3). Every pane is a save layer.',
-          );
-          expect(
-            glass.modal,
-            lessThanOrEqualTo(UiGlass.maxModalPanes),
-            reason: 'two modals at once is a question nobody can answer',
-          );
-          final String key = '$screen at $window';
-          if (guidelineArtefacts.containsKey(key)) {
             expect(
-              contrast,
-              isNot('pass'),
-              reason:
-                  '$key is recorded as an instrument artefact and the '
-                  'guideline now passes it. Take the entry out in the same '
-                  'change: ${guidelineArtefacts[key]}',
+              overflowed,
+              isFalse,
+              reason: '$screen laid out past a $window window in dark',
             );
-          } else if (knownDarkContrastDefects.containsKey(key)) {
             expect(
-              contrast,
-              isNot('pass'),
+              glass.panes,
+              lessThanOrEqualTo(UiGlass.maxPanesPerWindow),
               reason:
-                  '$key is a recorded defect and it now passes. If that is '
-                  'the fix, take it out of knownDarkContrastDefects in the '
-                  'same change: ${knownDarkContrastDefects[key]}',
+                  'there are ${glass.panes} frosted panes on $screen at '
+                  '$window and the budget is ${UiGlass.maxPanesPerWindow} '
+                  '(09 section 3.3). Every pane is a save layer.',
             );
-          } else {
+            expect(
+              glass.modal,
+              lessThanOrEqualTo(UiGlass.maxModalPanes),
+              reason: 'two modals at once is a question nobody can answer',
+            );
             expect(
               contrast,
               'pass',
               reason:
-                  '$screen at $window in dark failed the WCAG AA text '
-                  'contrast guideline. The token table is not the whole of '
-                  'contrast: a pair is only as good as the ground it landed '
-                  'on.',
+                  '$screen at $window failed the rendered WCAG AA text '
+                  'contrast guideline. A token pair alone is not a pixel result.',
             );
+          } finally {
+            stopCapturingLayoutErrors();
+            handle.dispose();
           }
         });
       });

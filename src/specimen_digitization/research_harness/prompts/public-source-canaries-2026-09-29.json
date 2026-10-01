@@ -1,0 +1,66 @@
+{
+  "version": "public-source-schema-canaries-v1",
+  "checked_at": "2026-09-29-America-Chicago",
+  "method": "TLS-verified /usr/bin/curl GET; 15-second timeout; 150000-byte cap; no redirect following",
+  "scope": "Free public scientific-name or publication-schema qualification only; no pilot specimen joins, private records, images, credentials, writes or paid calls",
+  "production_ready": false,
+  "not_gold": "API samples verify interfaces only; they are not independently adjudicated specimen gold or source-policy approval",
+  "results": [
+    {
+      "source_id": "gbif",
+      "url": "https://api.gbif.org/v2/species/match?scientificName=Chironomus&taxonRank=GENUS&kingdom=Animalia&class=Insecta&checklistKey=7ddf754f-d193-4cc9-b351-99906754a03b&verbose=true",
+      "curl_exit": 0,
+      "bytes": 66376,
+      "response_digest": "383db529132a56ed1c468bc79888695c295a7c5c860ba1ea1d8e169900d1076f",
+      "schema_keys": ["usage", "classification", "diagnostics", "synonym"],
+      "status": "schema_only",
+      "limit": "Pinned checklist and response schema verified; exact match-index/release pin and full terms/canary approval still required"
+    },
+    {
+      "source_id": "global_names_verifier",
+      "url": "https://verifier.globalnames.org/api/v1/verifications/Chironomus",
+      "curl_exit": 0,
+      "bytes": 5537,
+      "response_digest": "1cb0ee017458c0e7e783cdc739ceea2709b6acb4d4419444cbb45117d0ac488f",
+      "schema_keys": ["metadata", "names"],
+      "best_result_schema": ["dataSourceId", "dataSourceTitleShort", "recordId", "entryDate", "matchedName", "currentRecordId", "currentName", "matchType", "classificationRanks"],
+      "status": "schema_only",
+      "limit": "Name/source attribution schema verified; underlying dataset/version/rights qualification remains required"
+    },
+    {
+      "source_id": "catalogue_of_life",
+      "url": "https://api.checklistbank.org/dataset/3LR/nameusage/search?q=Chironomus&limit=1",
+      "curl_exit": 0,
+      "bytes": 2586,
+      "response_digest": "f50d08be4126bb38fc50d95164e31299bd5cde41933427a88add7a5826da1caf",
+      "schema_keys": ["offset", "limit", "total", "result", "empty", "last"],
+      "resolved_dataset_key": "316321",
+      "status": "schema_only",
+      "limit": "Alias 3LR resolved to numeric dataset 316321 at this observation. Runtime requires an immutable integer release key, never a mutable alias"
+    },
+    {
+      "source_id": "field_museum_ipt",
+      "url": "https://fmipt.fieldmuseum.org/ipt/eml.do?r=fmnh_insects&v=12.64",
+      "curl_exit": 0,
+      "bytes": 8309,
+      "response_digest": "4d934dbde664b8a3a8a64cc976db1726e9b4915c0eae422832c3fb57c0622618",
+      "response_format": "html",
+      "status": "schema_only",
+      "limit": "Current response was an HTML resource page rather than qualified EML XML. No per-record IPT endpoint or target cohort join is proven"
+    },
+    {
+      "source_id": "field_museum_emudata",
+      "url": "https://emudata.fieldmuseum.org/",
+      "observed_html_title": "302 Found",
+      "status": "inaccessible",
+      "limit": "No redirect/challenge bypass or permitted-profile browser qualification. No current record or Parties endpoint established"
+    }
+  ],
+  "retained_gaps": [
+    "BugGuide, Mapcarta and GEOlocate browser/hosted method terms and access qualification",
+    "Google licensed credentials, restricted-body retention and current program HOLD",
+    "Independent specimen gold and exact pilot joins",
+    "Current source release/index pins, license attribution and approval receipts",
+    "Current local Python CA trust differs from TLS-verified system curl; no insecure TLS fallback was used"
+  ]
+}

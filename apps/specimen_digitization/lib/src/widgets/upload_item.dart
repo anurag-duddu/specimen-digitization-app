@@ -35,8 +35,8 @@ enum UploadState {
   /// Bytes are moving. Carries a determinate fraction.
   uploading('Uploading'),
 
-  /// The server took it.
-  accepted('Accepted'),
+  /// The server stored it. This does not mean processing has started.
+  accepted('Uploaded'),
 
   /// The collection already holds these pixels.
   duplicate('Already in collection'),
@@ -130,6 +130,7 @@ class UploadItem extends StatelessWidget {
     this.onRemove,
     this.removeBlockedReason,
     this.details,
+    this.concise = false,
   });
 
   /// The file name, as the operator's machine spells it.
@@ -171,6 +172,9 @@ class UploadItem extends StatelessWidget {
   /// state, so a manifest row is one component rather than a component in a
   /// column of loose widgets.
   final Widget? details;
+
+  /// Keeps the transfer state primary when measurements live in a disclosure.
+  final bool concise;
 
   /// The remove control's name, fixed so the tests and the copy cannot drift.
   static const String removeLabel = 'Remove from this batch';
@@ -240,7 +244,8 @@ class UploadItem extends StatelessWidget {
       width: pixelWidth,
       height: pixelHeight,
     );
-    final bool beside = !available.isFinite || available >= _stateBesideNameMin;
+    final bool beside =
+        !concise && (!available.isFinite || available >= _stateBesideNameMin);
     final Widget chip = StatusChip.presented(
       state.presentation(context, progress: progress),
       dense: true,
@@ -252,11 +257,14 @@ class UploadItem extends StatelessWidget {
     // file for a reader working through a batch of two hundred.
     final Widget row = Semantics(
       container: true,
-      label: _semanticsLabel(line),
+      label: concise
+          ? <String>[name, state.semanticsLabel, ?reason].join(', ')
+          : _semanticsLabel(line),
       excludeSemantics: true,
       child: UiListRow(
+        size: concise ? UiSize.sm : UiSize.md,
         title: name,
-        subtitle: line,
+        subtitle: concise ? state.label : line,
         leading: SpecimenThumbnail(bytes: thumbnail),
         trailing: beside
             ? ConstrainedBox(
@@ -296,7 +304,7 @@ class UploadItem extends StatelessWidget {
         // A narrow row keeps the file name and its measurements readable and
         // moves the state to a line of its own. The words are already on the
         // row's node, so the line says nothing a reader has not heard.
-        if (!beside)
+        if (!beside && !concise)
           ExcludeSemantics(
             child: Padding(
               padding: EdgeInsetsDirectional.only(
@@ -307,6 +315,17 @@ class UploadItem extends StatelessWidget {
                 alignment: AlignmentDirectional.centerStart,
                 child: chip,
               ),
+            ),
+          ),
+        if (concise && state == UploadState.uploading)
+          Padding(
+            padding: EdgeInsetsDirectional.only(
+              start: _textInset(ui),
+              bottom: ui.space.s2,
+            ),
+            child: UiProgress.bar(
+              value: progress,
+              semanticsLabel: 'Uploading $name',
             ),
           ),
         if (reason != null)

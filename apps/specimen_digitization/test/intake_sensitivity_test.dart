@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/api_repository.dart';
 import 'package:specimen_digitization/src/intake.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
@@ -194,10 +195,7 @@ void main() {
     });
     addTearDown(repo.close);
     await mount(tester, repo, onComplete: () => accepted++);
-    expect(
-      find.descendant(of: sensitivityControl, matching: find.text('Sensitive')),
-      findsOneWidget,
-    );
+    expect(tester.widget<UiCheckbox>(sensitivityControl).value, isTrue);
     await selectSensitivity(tester, 'Not sensitive');
     await choose(tester);
     await submit(tester);

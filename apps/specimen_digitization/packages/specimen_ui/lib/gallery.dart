@@ -6,3 +6,5 @@
 library;
 
 export 'src/gallery/gallery_shell.dart';
+
+export 'src/gallery/pages/control_states_page.dart';

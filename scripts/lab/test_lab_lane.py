@@ -43,6 +43,45 @@ def drive(tmp_path, adapters, subject, segmentation):
         return actions, lane.collect(specimen_id)
 
 
+def test_collect_restores_the_exact_caller_actor_after_success(tmp_path):
+    actor = lab_lane.actor_uid
+    original = actor.get()
+    caller = "preexisting-lab-caller"
+    token = actor.set(caller)
+    try:
+        _, evidence = drive(tmp_path, SyntheticAdapters, "subject_105526321", "sam3")
+        assert evidence["snapshot"]["run"]["stage"] == "finalized"
+        assert actor.get() == caller
+    finally:
+        actor.reset(token)
+    assert actor.get() == original
+
+
+def test_collect_restores_the_exact_caller_actor_after_repository_failure(tmp_path):
+    actor = lab_lane.actor_uid
+    original = actor.get()
+    caller = "preexisting-lab-caller"
+
+    class FailingRepository:
+        def get(self, scope, specimen_id):
+            assert actor.get() == lab_lane.READER
+            raise RuntimeError("synthetic repository read failure")
+
+    lane = lab_lane.AppLane(
+        tmp_path / "state", adapters_factory=lambda blobs: SyntheticAdapters(blobs, SYNTHETIC_TEXT),
+        persistence="sqlite", segmentation="sam3", subject="subject_105526321",
+    )
+    lane.repository = FailingRepository()
+    token = actor.set(caller)
+    try:
+        with pytest.raises(RuntimeError, match="synthetic repository read failure"):
+            lane.collect("synthetic-specimen")
+        assert actor.get() == caller
+    finally:
+        actor.reset(token)
+    assert actor.get() == original
+
+
 def test_the_lane_ingests_processes_and_collects_through_the_app(tmp_path):
     actions, evidence = drive(tmp_path, SyntheticAdapters, "subject_105526321", "sam3")
     run = evidence["snapshot"]["run"]

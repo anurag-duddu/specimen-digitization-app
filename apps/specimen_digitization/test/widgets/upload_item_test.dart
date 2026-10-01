@@ -143,7 +143,7 @@ void main() {
     // The row is one merged node, so the state is a clause in the row's own
     // phrase rather than a second stop for a reader working through a batch.
     expect(
-      find.bySemanticsLabel(RegExp('IMG_4821.jpg, Upload: accepted, 4.2 MB')),
+      find.bySemanticsLabel(RegExp('IMG_4821.jpg, Upload: uploaded, 4.2 MB')),
       findsOneWidget,
     );
     handle.dispose();

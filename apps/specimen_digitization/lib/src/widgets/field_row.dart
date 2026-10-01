@@ -11,8 +11,6 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'specimen_status.dart';
-import 'status_chip.dart';
-import 'term_text.dart';
 
 /// The three layers of one field value, in reading order.
 enum FieldLayer {
@@ -38,6 +36,7 @@ class FieldRow extends StatelessWidget {
     required this.name,
     required this.state,
     this.required = false,
+    this.showRequirementMarker = true,
     this.asWritten,
     this.readAs,
     this.standardized,
@@ -46,6 +45,7 @@ class FieldRow extends StatelessWidget {
     this.editSemanticsLabel,
     this.editBlockedReason,
     this.findings,
+    this.sourceLabel,
   });
 
   /// The disclosure the three layers sit behind (10 section 5).
@@ -64,6 +64,10 @@ class FieldRow extends StatelessWidget {
 
   /// True when the record cannot be cleared without this field.
   final bool required;
+
+  /// False when a surrounding Required or Optional group already names it.
+  /// The disclosure still announces the requirement to assistive technology.
+  final bool showRequirementMarker;
 
   /// The verbatim transcription. Null renders the field's abstention.
   final String? asWritten;
@@ -98,6 +102,9 @@ class FieldRow extends StatelessWidget {
   /// Validation findings for this field, rendered under the layers.
   final Widget? findings;
 
+  /// Evidence linkage, shown with the expanded values.
+  final String? sourceLabel;
+
   String? _valueOf(FieldLayer layer) => switch (layer) {
     FieldLayer.asWritten => asWritten,
     FieldLayer.readAs => readAs,
@@ -105,83 +112,50 @@ class FieldRow extends StatelessWidget {
   };
 
   /// The word shown in place of a missing layer.
-  String get _abstention => state.isRecordStatus ? 'Not recorded' : state.label;
+  String get _abstention => state == SpecimenStatus.unknown
+      ? state.label
+      : state.isRecordStatus
+      ? 'Not recorded'
+      : state.label;
 
   /// The row's own title, with the required marker a reviewer reads.
-  String get _title => required ? '$name (required)' : name;
-
-  /// Everything the row says, in one phrase.
-  ///
-  /// Written out rather than left to Flutter's merge. Each layer label is now
-  /// its own definition link (pass criterion 10.2), and a node with an action
-  /// of its own is not merged into its parent, so a row that relied on the
-  /// merge would have stopped telling a screen reader what its three layers
-  /// hold. This states it directly, so the row's spoken summary cannot be
-  /// changed by how its children are built.
-  String get _spoken => <String>[
-    required ? '$name, required' : name,
-    for (final FieldLayer layer in FieldLayer.values)
-      '${layer.label}: ${_valueOf(layer) ?? _abstention}',
-  ].map(_withoutTrailingStop).join('. ');
-
-  /// Everything the row says, with its state at the end.
-  ///
-  /// One node rather than two: the row is the control a reader lands on, and
-  /// a container above it repeating the name announces the field twice.
-  String get _rowSpoken => '$_spoken. ${state.semanticsLabel}';
-
-  /// A value that already ends in a full stop does not get a second one.
-  /// "U.S.A." is a real transcription, and "U.S.A.." is not a sentence.
-  static String _withoutTrailingStop(String part) =>
-      part.endsWith('.') ? part.substring(0, part.length - 1) : part;
+  String get _title =>
+      required && showRequirementMarker ? '$name (required)' : name;
 
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final bool compact = WindowClass.of(context).isCompact;
-    final Widget chip = StatusChip(state, dense: true);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        // The status chip is the row's trailing from medium up. On a
-        // compact window it moves to a line of its own beneath the row,
-        // because a trailing the row cannot measure is bounded to what is
-        // left after the title's minimum, and at 360 dp that is not enough
-        // for "Processing blocked" (11 section 3.3, the open row variant).
-        //
-        // The field's own name leads the row's label. Without it twenty rows
-        // announce as "Field: supported" and a screen reader user cannot tell
-        // which field they are standing on.
-        UiListRow(
+        _FieldDisclosure(
           title: _title,
-          semanticsLabel: _rowSpoken,
-          trailing: compact ? null : chip,
-          disabledReason: editBlockedReason,
-          onPressed: onEdit == null
+          requirement: showRequirementMarker
               ? null
-              : () => onEdit!(FieldLayer.asWritten),
-        ),
-        if (compact)
-          Padding(
-            padding: EdgeInsetsDirectional.only(bottom: ui.space.s1),
-            child: Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: chip,
-            ),
-          ),
-        UiDisclosure(
-          title: layersTitle,
-          summary:
-              '${FieldLayer.asWritten.label}: '
-              '${asWritten ?? _abstention}',
-          semanticsLabel: '$layersTitle, $name',
-          initiallyExpanded: !compact,
+              : required
+              ? 'required'
+              : 'optional',
+          summary: asWritten == null || state == SpecimenStatus.supported
+              ? asWritten ?? _abstention
+              : '$asWritten · ${state.label}',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
+              if (sourceLabel != null)
+                Padding(
+                  padding: EdgeInsets.only(bottom: ui.space.s2),
+                  child: Text(
+                    sourceLabel!,
+                    style: ui.type.bodySmall.copyWith(
+                      color: ui.color.inkSecondary,
+                    ),
+                  ),
+                ),
+              if (editBlockedReason != null)
+                Text(editBlockedReason!, style: ui.type.bodySmall),
               for (final FieldLayer layer in FieldLayer.values)
                 _Layer(
                   layer: layer,
@@ -222,6 +196,42 @@ class FieldRow extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Keeps the collapsed value available to screen readers without repeating
+/// it in the expanded header, while retaining the field's requirement.
+class _FieldDisclosure extends StatefulWidget {
+  const _FieldDisclosure({
+    required this.title,
+    required this.summary,
+    required this.requirement,
+    required this.child,
+  });
+
+  final String title;
+  final String summary;
+  final String? requirement;
+  final Widget child;
+
+  @override
+  State<_FieldDisclosure> createState() => _FieldDisclosureState();
+}
+
+class _FieldDisclosureState extends State<_FieldDisclosure> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) => UiDisclosure(
+    title: widget.title,
+    summary: widget.summary,
+    hideSummaryWhenExpanded: true,
+    semanticsLabel: widget.requirement == null
+        ? null
+        : '${widget.title}, ${widget.requirement}'
+              '${_expanded ? '' : '. ${widget.summary}'}',
+    onExpansionChanged: (expanded) => setState(() => _expanded = expanded),
+    child: widget.child,
+  );
 }
 
 /// One named slot: its label, its value or an abstention, and its edit action.
@@ -265,7 +275,7 @@ class _Layer extends StatelessWidget {
                 // "As written", "Read as" and "Standardized" are the three
                 // words this product asks a reviewer to keep apart, so each
                 // one carries its own definition (pass criterion 10.2).
-                TermText(
+                Text(
                   layer.label,
                   style: ui.type.labelSmall.copyWith(
                     color: ui.color.inkSecondary,
@@ -328,7 +338,7 @@ class _Abstention extends StatelessWidget {
         // beside its glyph is four pixels wider than a field row on a phone
         // (finding V-1, pass criterion 8.5).
         Flexible(
-          child: TermText(
+          child: Text(
             word,
             style: ui.type.body.copyWith(color: ui.color.inkSecondary),
           ),

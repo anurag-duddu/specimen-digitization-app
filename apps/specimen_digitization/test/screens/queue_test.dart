@@ -1,6 +1,6 @@
 // The queue (screen blueprints, section 3).
 //
-// Empty and loading states, active filter chips, and the keyboard map.
+// Empty and loading states, queue choices, and the keyboard map.
 
 import 'dart:async';
 
@@ -14,15 +14,24 @@ import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
 import 'package:specimen_digitization/src/screens/queue/workbench_screen.dart';
 import 'package:specimen_digitization/src/search_filters.dart';
+import 'package:specimen_digitization/src/widgets/specimen_status.dart';
+import 'package:specimen_digitization/src/widgets/status_chip.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 
-import '../widget_test.dart' show TestRepository, TestSession;
+import '../widget_test.dart' show TestRepository, TestSession, fixture;
+import '../ui_finders.dart';
+import '../widgets/harness.dart' show pumpComponent;
 
 /// A collection that answers whatever the test set on it.
 class ScriptedRepository extends TestRepository {
   List<Specimen> results = <Specimen>[];
   Completer<void>? gate;
   final List<Map<String, String>> requests = <Map<String, String>>[];
+
+  @override
+  Future<Specimen> specimen(CollectionScope scope, String id) async => Specimen(
+    {...fixture.data, ...results.firstWhere((record) => record.id == id).data},
+  );
 
   @override
   Future<SpecimenPage> specimenPage(
@@ -62,39 +71,113 @@ String locationOf(WidgetTester tester) => GoRouter.of(
 ).routerDelegate.currentConfiguration.uri.toString();
 
 void main() {
-  testWidgets('an empty collection names the absence and offers intake', (
+  group('queue status controls', () {
+    testWidgets('supported status controls retain their backend meanings', (
+      tester,
+    ) async {
+      final ScriptedRepository repository = ScriptedRepository();
+      await pumpQueue(tester, repository);
+      expect(repository.requests.last['disposition'], 'needs_human_review');
+      for (final entry in {
+        'needs_human_review': 'Needs a human',
+        'deferred': 'Deferred',
+        'cleared': 'Cleared',
+      }.entries) {
+        await pickSpecimenQueue(tester, entry.value);
+        expect(repository.requests.last['disposition'], entry.key);
+        expect(repository.requests.last.containsKey('state'), isFalse);
+        expect(find.text(entry.value), findsOneWidget);
+      }
+      await tester.pumpWidget(const SizedBox());
+    });
+
+    testWidgets('status views can be selected with the keyboard', (
+      tester,
+    ) async {
+      final ScriptedRepository repository = ScriptedRepository();
+      await pumpQueue(tester, repository);
+      final semantics = tester.ensureSemantics();
+      final target = find.byKey(
+        const ValueKey('queue-filter-needs_human_review'),
+      );
+      tester.widget<Pressable>(target).focusNode!.requestFocus();
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(repository.requests.last['disposition'], 'deferred');
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(repository.requests.last['disposition'], 'cleared');
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('Cleared')),
+        containsSemantics(isChecked: true, isInMutuallyExclusiveGroup: true),
+      );
+      semantics.dispose();
+      await tester.pumpWidget(const SizedBox());
+    });
+  });
+
+  testWidgets('empty review views show only a concise absence message', (
     tester,
   ) async {
     await pumpQueue(tester, ScriptedRepository());
-    expect(find.text('No specimens yet'), findsOneWidget);
-    expect(find.text('Add photographs'), findsOneWidget);
-    // 13 section 4.2: the header states the count as a numeral with its unit
-    // and what the loaded page is made of under it. The whole sentence is
-    // still what the live region announces, which is the line a screen reader
-    // hears when the count moves.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('RECORDS'), findsOneWidget);
-    expect(find.text('0 need review, 0 blocked.'), findsOneWidget);
-    expect(
-      tester.getSemantics(find.text('0 need review, 0 blocked.')).label,
-      '0 records loaded. 0 need review, 0 blocked.',
-    );
+    final pane = find.byType(QueuePane);
+    for (final view in {
+      'Needs a human': 'No specimens need a human',
+      'Deferred': 'No deferred specimens',
+      'Cleared': 'No cleared specimens',
+    }.entries) {
+      await pickSpecimenQueue(tester, view.key);
+      expect(find.text(view.value), findsOneWidget);
+      expect(
+        find.descendant(of: pane, matching: find.byType(UiEmptyState)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(of: pane, matching: find.byType(UiButton)),
+        findsNothing,
+      );
+      expect(find.text('Add specimens or choose another view.'), findsNothing);
+      expect(find.text('0 records loaded'), findsNothing);
+    }
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('a search with no match names the filters, not the collection', (
+  testWidgets('an unfiltered empty collection retains its add action', (
     tester,
   ) async {
-    final ScriptedRepository repository = ScriptedRepository();
-    await pumpQueue(tester, repository);
-    await tester.enterText(find.byType(UiSearchField), 'SD-does-not-exist');
-    await tester.pump(const Duration(milliseconds: 400));
+    await pumpQueue(tester, ScriptedRepository());
+    final controller = WorkspaceScope.read(
+      tester.element(find.byType(QueuePane)),
+    );
+    await controller.selectDisposition('');
     await tester.pumpAndSettle();
-    expect(find.text('No records match these filters'), findsOneWidget);
-    expect(find.text('Clear all'), findsWidgets);
-    expect(repository.requests.last['specimen_id'], 'SD-does-not-exist');
+    expect(find.text('No specimens yet'), findsOneWidget);
+    expect(find.text('Add specimens'), findsOneWidget);
+    expect(find.text('Reset search'), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
+
+  testWidgets(
+    'a search with no match names the absence without technical filters',
+    (tester) async {
+      final ScriptedRepository repository = ScriptedRepository();
+      await pumpQueue(tester, repository);
+      await tester.enterText(find.byType(UiSearchField), 'SD-does-not-exist');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(find.text('No matching records'), findsOneWidget);
+      expect(find.text('Reset search'), findsWidgets);
+      expect(repository.requests.last['specimen_id'], 'SD-does-not-exist');
+      await tester.tap(find.text('Reset search'));
+      await tester.pumpAndSettle();
+      expect(find.text('No specimens need a human'), findsOneWidget);
+      expect(find.text('Reset search'), findsNothing);
+      expect(repository.requests.last.containsKey('specimen_id'), isFalse);
+      expect(repository.requests.last['disposition'], 'needs_human_review');
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('the first load shows placeholder rows, not a spinner', (
     tester,
@@ -121,35 +204,21 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('an active filter is a chip, and removing the chip refilters', (
+  testWidgets('existing filter API remains compatible without a Queue form', (
     tester,
   ) async {
-    final ScriptedRepository repository = ScriptedRepository();
+    final repository = ScriptedRepository();
     await pumpQueue(tester, repository);
-    await tester.tap(find.text('Filters'));
-    await tester.pumpAndSettle();
-    await tester.enterText(
-      find.descendant(
-        of: find.byWidgetPredicate(
-          (Widget widget) =>
-              widget is UiField && widget.label == 'Upload batch',
-        ),
-        matching: find.byType(EditableText),
-      ),
-      'batch-7',
+    final controller = WorkspaceScope.read(
+      tester.element(find.byType(QueuePane)),
     );
-    await tester.tap(find.text('Apply'));
+    await controller.applyFilters({'batch_id': 'batch-7'});
     await tester.pumpAndSettle();
-
-    expect(find.text('Upload batch: batch-7'), findsOneWidget);
-    // The count is on the badge beside the button, so the button keeps one
-    // name and a reader hears the count once.
-    expect(find.bySemanticsLabel('1 filter active'), findsOneWidget);
     expect(repository.requests.last['batch_id'], 'batch-7');
-
-    await tester.tap(find.bySemanticsLabel('Remove the Upload batch filter'));
-    await tester.pumpAndSettle();
+    expect(find.byType(SearchFilters), findsNothing);
     expect(find.text('Upload batch: batch-7'), findsNothing);
+    await controller.clearFilters();
+    await tester.pumpAndSettle();
     expect(repository.requests.last.containsKey('batch_id'), isFalse);
     await tester.pumpWidget(const SizedBox());
   });
@@ -169,7 +238,7 @@ void main() {
         }),
       ];
     await pumpQueue(tester, repository);
-    expect(find.text('First record'), findsOneWidget);
+    expect(find.text('SD-1'), findsOneWidget);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
     await tester.pump();
@@ -184,37 +253,53 @@ void main() {
     await tester.pumpWidget(const SizedBox());
   });
 
-  // PLAN section 3, "Client": a record with no disposition is drawn from the
-  // `status` the search endpoint sends, and a record that sends nothing is a
-  // record state the client cannot name, never the field state "Unknown".
-  testWidgets('a row with no disposition shows the operational state', (
+  testWidgets('record status presentation retains operational states', (
     tester,
   ) async {
-    final ScriptedRepository repository = ScriptedRepository()
-      ..results = <Specimen>[
-        const Specimen({
-          'specimen_id': 'SD-1',
-          'filename': 'Waiting record',
-          'status': 'retry_scheduled',
-          'disposition': null,
-        }),
-        const Specimen({
-          'specimen_id': 'SD-2',
-          'filename': 'Paused record',
-          'status': 'paused',
-          'disposition': null,
-        }),
-        const Specimen({'specimen_id': 'SD-3', 'filename': 'Silent record'}),
-      ];
-    await pumpQueue(tester, repository);
-    expect(find.text('Retry scheduled'), findsOneWidget);
-    expect(find.text('Paused'), findsOneWidget);
-    expect(find.text('State unknown'), findsOneWidget);
-    expect(
-      find.text('Unknown'),
-      findsNothing,
-      reason: 'a field state is never drawn as a record state',
-    );
+    // Lean specimen rows omit status chips. Keep the record-to-presentation
+    // contract here without restoring repeated labels to every queue row.
+    const records = <Specimen>[
+      Specimen({'specimen_id': 'SD-1', 'status': 'retry_scheduled'}),
+      Specimen({'specimen_id': 'SD-2', 'status': 'paused'}),
+      Specimen({'specimen_id': 'SD-3'}),
+    ];
+    final semantics = tester.ensureSemantics();
+    try {
+      await pumpComponent(
+        tester,
+        Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final record in records)
+              StatusChip(
+                SpecimenStatus.ofRecord(
+                  disposition: record.disposition,
+                  state: record.state,
+                ),
+              ),
+          ],
+        ),
+      );
+      for (final label in ['Retry scheduled', 'Paused', 'State unknown']) {
+        expect(find.text(label), findsOneWidget);
+      }
+      // Only glossary terms advertise a definition. These two operational
+      // states remain plain status announcements; State unknown has a term.
+      for (final label in [
+        'Run: retry scheduled',
+        'Run: paused',
+        'Queue: state unknown, term, double tap for definition',
+      ]) {
+        expect(find.bySemanticsLabel(label), findsOneWidget);
+      }
+      expect(find.text('Unknown'), findsNothing);
+      expect(
+        find.bySemanticsLabel(RegExp(r'^Field: unknown(?:,|$)')),
+        findsNothing,
+      );
+    } finally {
+      semantics.dispose();
+    }
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -223,19 +308,19 @@ void main() {
     await tester.sendKeyEvent(LogicalKeyboardKey.slash);
     await tester.pump();
     final FocusNode? focused = FocusManager.instance.primaryFocus;
-    expect(focused?.debugLabel, 'Queue search');
+    expect(focused?.debugLabel, 'Specimen search');
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('F opens the filter sheet', (tester) async {
+  testWidgets('F does not open an obsolete filter workflow', (tester) async {
     await pumpQueue(tester, ScriptedRepository());
     await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
     await tester.pumpAndSettle();
-    expect(find.text('Filter the queue'), findsOneWidget);
+    expect(find.byType(SearchFilters), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('a queue row fits the 360 dp list pane', (tester) async {
+  testWidgets('a queue row fits the 320 dp list pane', (tester) async {
     final ScriptedRepository repository = ScriptedRepository()
       ..results = <Specimen>[
         const Specimen({
@@ -253,15 +338,29 @@ void main() {
       SpecimenDigitizationApp(session: session, repository: repository),
     );
     await tester.pumpAndSettle();
+    final pane = find.byType(QueuePane);
+    final row = find.descendant(
+      of: find.byKey(const ValueKey<String>('queue-row-SD-1')),
+      matching: find.byType(UiListRow),
+    );
+    expect(row.hitTestable(), findsOneWidget);
+    final Rect paneBounds = tester.getRect(pane);
+    final Rect rowBounds = tester.getRect(row);
+    final Rect searchBounds = tester.getRect(find.byType(UiSearchField));
+    final Rect idBounds = tester.getRect(find.text('SD-1'));
+    expect(paneBounds.width, closeTo(320, 0.01));
+    expect(rowBounds.width, closeTo(paneBounds.width - 32, 0.01));
+    expect(rowBounds.left, closeTo(searchBounds.left, 0.01));
+    expect(rowBounds.right, closeTo(searchBounds.right, 0.01));
+    expect(rowBounds.left, greaterThanOrEqualTo(paneBounds.left));
+    expect(rowBounds.right, lessThanOrEqualTo(paneBounds.right));
+    expect(idBounds.left, greaterThanOrEqualTo(rowBounds.left));
+    expect(idBounds.right, lessThanOrEqualTo(rowBounds.right));
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
 
-  // The queue at compact (13 section 4.2). A phone has room for a header, a
-  // search row and the rows: six disposition chips above the list are the
-  // region that pushed the first row to 763 of 844 at 200 percent text, so
-  // they are in the filter sheet there, with the chosen one on a chip that
-  // survives the sheet closing (pass criterion 6.4).
+  // Search, supported views and selection remain reachable on phones.
   group('at compact', () {
     Future<TestSession> pumpPhone(
       WidgetTester tester,
@@ -279,58 +378,45 @@ void main() {
       return session;
     }
 
-    testWidgets('the dispositions are in the sheet, not above the list', (
+    testWidgets('primary views remain reachable above the compact list', (
       tester,
     ) async {
       final ScriptedRepository repository = ScriptedRepository();
       await pumpPhone(tester, repository);
 
       expect(
-        find.text('Needs review'),
-        findsNothing,
-        reason: 'the six chips are not a region of the page on a phone',
-      );
-
-      await tester.tap(find.text('Filters'));
-      await tester.pumpAndSettle();
-      expect(find.text(searchFiltersTitle), findsOneWidget);
-      expect(
-        find.text(queueDispositionLabel),
-        findsWidgets,
-        reason: 'the sheet is where a phone chooses the disposition',
-      );
-      await tester.pumpWidget(const SizedBox());
-    });
-
-    testWidgets('a chosen disposition stays visible once the sheet closes', (
-      tester,
-    ) async {
-      final ScriptedRepository repository = ScriptedRepository();
-      await pumpPhone(tester, repository);
-      final WorkspaceController controller = WorkspaceScope.read(
-        tester.element(find.byType(QueuePane)),
-      );
-      await controller.selectDisposition('cleared');
-      // Single frames, not a settle: the header ages its own freshness line
-      // once a second for as long as there is an answer to age, so a queue
-      // that has been answered never reaches a still frame.
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-
-      expect(
-        find.text('$queueDispositionLabel: Cleared'),
+        find.byKey(const ValueKey('queue-filter-cleared')).hitTestable(),
         findsOneWidget,
-        reason:
-            'a filter must never be invisible once the sheet closes (audit, '
-            'pass criterion 6.4)',
       );
-      expect(
-        repository.requests.last['disposition'],
-        'cleared',
-        reason: 'the chip is the filter the server was asked for',
-      );
+      await pickSpecimenQueue(tester, 'Cleared');
+      expect(repository.requests.last['disposition'], 'cleared');
       await tester.pumpWidget(const SizedBox());
     });
+
+    testWidgets(
+      'a chosen disposition shows its label in the state navigation',
+      (tester) async {
+        final ScriptedRepository repository = ScriptedRepository();
+        await pumpPhone(tester, repository);
+        final WorkspaceController controller = WorkspaceScope.read(
+          tester.element(find.byType(QueuePane)),
+        );
+        await controller.selectDisposition('cleared');
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Cleared'),
+          findsOneWidget,
+          reason: 'the current supported view remains named',
+        );
+        expect(
+          repository.requests.last['disposition'],
+          'cleared',
+          reason: 'the selected queue is the filter the server was asked for',
+        );
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
   });
 
   group('the search row', () {
@@ -353,7 +439,7 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    /// The search row inside the bar that sticks, wherever the route is.
+    /// Detect any sticky ancestor, including one retained offstage.
     Finder stuckSearch() => find.ancestor(
       of: find.byType(UiSearchField, skipOffstage: false),
       matching: find.byType(UiStickyBar, skipOffstage: false),
@@ -368,63 +454,55 @@ void main() {
         }),
     ];
 
-    testWidgets('sticks at medium at every text scale, at its own height', (
+    Future<void> expectSearchToScroll(WidgetTester tester) async {
+      final list = find.byKey(const PageStorageKey<String>('queue-list'));
+      // The sliver remains laid out after scrolling out of view, but the
+      // default finder skips its offstage subtree. Include it for geometry.
+      final search = find.byType(UiSearchField, skipOffstage: false);
+      expect(search.hitTestable(), findsOneWidget);
+      final scroll = tester.state<ScrollableState>(
+        find.descendant(of: list, matching: find.byType(Scrollable)).first,
+      );
+      expect(scroll.position.maxScrollExtent, greaterThan(200));
+      final double beforeOffset = scroll.position.pixels;
+      final double beforeTop = tester.getTopLeft(search).dy;
+      await tester.drag(list, const Offset(0, -200));
+      await tester.pumpAndSettle();
+      final double moved = scroll.position.pixels - beforeOffset;
+      expect(moved, greaterThan(100));
+      expect(
+        tester.getTopLeft(search).dy,
+        closeTo(beforeTop - moved, 0.5),
+        reason: 'search moves with the list rather than pinning above it',
+      );
+      expect(search.hitTestable(), findsNothing);
+      expect(stuckSearch(), findsNothing);
+      expect(tester.takeException(), isNull);
+    }
+
+    testWidgets('medium search scrolls with content at every text scale', (
       tester,
     ) async {
-      // 13 sections 3.5 and 4.2, and the arithmetic on `searchRowSticks`: a
-      // portrait tablet pins 124 dp at default type and 137.75 at 200 percent
-      // of the 245.76 its 24 percent allows, so the row fits at every size.
-      for (final double scale in <double>[1.0, 1.3, 2.0]) {
+      for (final scale in [1.0, 1.3, 2.0]) {
         await pumpAt(
           tester,
           ScriptedRepository()..results = page(30),
           const Size(768, 1024),
           textScale: scale,
         );
-        expect(stuckSearch(), findsOneWidget, reason: 'at x$scale');
-        // The extent is the row's own height and nothing around it: a sticky
-        // bar shorter than its row clips the field, and one taller spends
-        // budget on air.
-        final UiStickyBar bar = tester.widget<UiStickyBar>(stuckSearch());
-        expect(
-          bar.extent,
-          closeTo(tester.getSize(find.byType(UiSearchField)).height, 0.5),
-          reason: 'the extent is the row at x$scale',
-        );
-        // Scrolled to the end, the row is still on screen, at the top of
-        // the list, which is what stuck means.
-        final ScrollableState state = tester.state<ScrollableState>(
-          find
-              .descendant(
-                of: find.byType(CustomScrollView).first,
-                matching: find.byType(Scrollable),
-              )
-              .first,
-        );
-        state.position.jumpTo(state.position.maxScrollExtent);
-        await tester.pumpAndSettle();
-        expect(
-          tester.getRect(find.byType(UiSearchField)).top,
-          closeTo(tester.getRect(find.byType(CustomScrollView).first).top, 0.5),
-          reason: 'the row is stuck under the header at x$scale',
-        );
+        await expectSearchToScroll(tester);
         await tester.pumpWidget(const SizedBox());
       }
     });
 
     testWidgets('scrolls at compact and from expanded up', (tester) async {
-      // Compact is slot A3's decision: 185.75 of 236.3 already pinned at 200
-      // percent on a phone, and the row is 69.75. Expanded and large are 20
-      // percent of a landscape window, 191.5 of 164 and 191 of 180 at 200
-      // percent with the row stuck, and a variant is chosen per class.
       for (final Size window in <Size>[
         const Size(390, 844),
         const Size(1180, 820),
         const Size(1440, 900),
       ]) {
-        await pumpAt(tester, ScriptedRepository()..results = page(3), window);
-        expect(find.byType(UiSearchField), findsOneWidget, reason: '$window');
-        expect(stuckSearch(), findsNothing, reason: '$window');
+        await pumpAt(tester, ScriptedRepository()..results = page(30), window);
+        await expectSearchToScroll(tester);
         await tester.pumpWidget(const SizedBox());
       }
     });
@@ -435,17 +513,17 @@ void main() {
         ScriptedRepository()..results = page(1),
         const Size(768, 1024),
       );
-      expect(stuckSearch(), findsOneWidget);
-      await tester.tap(find.text('Record 1'));
+      expect(stuckSearch(), findsNothing);
+      await tester.tap(find.text('SD-1'));
       await tester.pumpAndSettle();
       expect(find.byType(WorkbenchScreen), findsOneWidget);
       // The queue stays mounted beneath the record, and a region a covered
       // screen pins is height the reader never sees and height the record's
       // own chrome budget would be charged for.
       expect(
-        stuckSearch(),
+        find.byType(UiSearchField).hitTestable(),
         findsNothing,
-        reason: 'a covered screen holds no viewport height',
+        reason: 'the preserved queue is offstage and consumes no visible space',
       );
       await tester.pumpWidget(const SizedBox());
     });

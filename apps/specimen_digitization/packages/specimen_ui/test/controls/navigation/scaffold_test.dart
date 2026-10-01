@@ -538,7 +538,7 @@ void main() {
     expect(overlayTaps, 1);
   });
 
-  testWidgets('a full page holds the glass budget', (
+  testWidgets('a full page keeps its chrome matte', (
     WidgetTester tester,
   ) async {
     const Size window = Size(1000, 900);
@@ -557,13 +557,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.drag(find.byType(ListView), const Offset(0, -200));
     await tester.pumpAndSettle();
-    expect(
-      glassPaneCount(),
-      2,
-      reason:
-          'an action bar and a pill are two panes at a class whose budget is '
-          'three; the scrolled top bar draws its fill solid at every class',
-    );
+    expect(glassPaneCount(), 0);
+    expect(find.byType(GlassSurface), findsWidgets);
     expectGlassBudget(tester, window: 'a scrolled page with every slot');
   });
 
@@ -1209,8 +1204,8 @@ void main() {
     expect(find.text('Clear record'), findsOneWidget);
   });
 
-  group('the compact window spends one frosted pane (13 section 2.2)', () {
-    testWidgets('the action bar has it and everything else draws solid', (
+  group('responsive chrome keeps the default matte surfaces', () {
+    testWidgets('compact action and navigation surfaces stay matte', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
@@ -1230,22 +1225,14 @@ void main() {
       await tester.drag(find.byType(ListView), const Offset(0, -200));
       await tester.pumpAndSettle();
 
-      // Scrolled under, which is when the top bar used to add a second pane
-      // that the budget never saw because it counted at rest.
       expect(
         UiScaffold.of(tester.element(find.byType(ListView))).scrolledUnder,
         isTrue,
       );
-      expect(
-        glassPaneCount(),
-        1,
-        reason:
-            'a phone draws the one pane the frame gives its floating '
-            'chrome and nothing else',
-      );
+      expect(glassPaneCount(), 0);
     });
 
-    testWidgets('a window with no action bar spends it on the navigation', (
+    testWidgets('navigation stays matte without an action bar', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
@@ -1263,9 +1250,7 @@ void main() {
       await tester.drag(find.byType(ListView), const Offset(0, -200));
       await tester.pumpAndSettle();
 
-      // A pill is the only thing floating over the page on a list screen, so
-      // it keeps its capsule rather than losing it to a bar that is not there.
-      expect(glassPaneCount(), 1);
+      expect(glassPaneCount(), 0);
     });
 
     testWidgets('a collapsed header inside the frame draws solid at compact', (
@@ -1302,20 +1287,13 @@ void main() {
       controller.jumpTo(controller.position.maxScrollExtent);
       await tester.pumpAndSettle();
 
-      // The header still draws the pane 13 section 3.1 gives it; at compact
-      // the frame turns the blur off inside itself, so the band is the solid
-      // form of the same surface rather than a second save layer.
       expect(find.byType(GlassSurface), findsWidgets);
-      expect(glassPaneCount(), 1);
+      expect(glassPaneCount(), 0);
     });
 
-    testWidgets('a medium window spends two panes: the floated chrome and a '
-        'collapsed header', (WidgetTester tester) async {
-      // The record at medium (13 section 2.2, polish 3): the scrolled top bar,
-      // the frame's action bar and the collapsed header's chrome all blurred,
-      // three where the class allows two. The bar gives its pane up at every
-      // class; the pane the frame floats and the pane over the photograph are
-      // the two.
+    testWidgets('medium action and collapsed-header surfaces stay matte', (
+      WidgetTester tester,
+    ) async {
       const Size window = Size(768, 1024);
       final ScrollController controller = ScrollController();
       addTearDown(controller.dispose);
@@ -1367,17 +1345,11 @@ void main() {
         findsOneWidget,
         reason: 'the bar is filled',
       );
-      expect(
-        glassPaneCount(),
-        2,
-        reason:
-            'the action bar and the collapsed header\'s chrome blur; the '
-            'filled top bar draws solid',
-      );
+      expect(glassPaneCount(), 0);
       expectGlassBudget(tester, maxPanes: 2, window: 'the record at medium');
     });
 
-    testWidgets('a medium window keeps the panes it had', (
+    testWidgets('a medium window keeps all chrome without adding blur', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
@@ -1396,18 +1368,12 @@ void main() {
       await tester.drag(find.byType(ListView), const Offset(0, -200));
       await tester.pumpAndSettle();
 
-      expect(
-        glassPaneCount(),
-        greaterThan(1),
-        reason:
-            'the rule is the compact budget of 09 section 3.3, not a ban '
-            'on frosted glass',
-      );
+      expect(glassPaneCount(), 0);
     });
   });
 
-  group('the frame under a modal (13 section 2.2; 09 section 3.3)', () {
-    testWidgets('a sheet over a compact frame leaves one pane, the sheet\'s', (
+  group('matte frame and modal surfaces', () {
+    testWidgets('a sheet over a compact frame retains its modal surface', (
       WidgetTester tester,
     ) async {
       late BuildContext inside;
@@ -1431,7 +1397,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.drag(find.byType(ListView), const Offset(0, -200));
       await tester.pumpAndSettle();
-      expect(glassPaneCount(), 1, reason: 'the action bar, before the sheet');
+      expect(glassPaneCount(), 0);
 
       unawaited(
         UiSheet.show<void>(
@@ -1442,18 +1408,29 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The sheet's pane over the frame's used to be two on a phone whose
-      // budget is one: the pill or the action bar kept blurring under the
-      // scrim. A pane under a scrim is a save layer nobody sees.
       expect(find.text('Reason'), findsOneWidget);
-      expect(glassPaneCount(), 1);
-      expect(modalGlassPaneCount(), 1, reason: 'and the one pane is the sheet');
+      expect(glassPaneCount(), 0);
+      expect(modalGlassPaneCount(), 0);
+      expect(
+        find.byWidgetPredicate(
+          (Widget widget) =>
+              widget is GlassSurface && widget.level == GlassLevel.modal,
+        ),
+        findsOneWidget,
+      );
 
       Navigator.of(inside, rootNavigator: true).pop();
       await tester.pumpAndSettle();
       expect(find.text('Reason'), findsNothing);
-      expect(glassPaneCount(), 1, reason: 'the frame has its pane back');
+      expect(glassPaneCount(), 0);
       expect(modalGlassPaneCount(), 0);
+      expect(
+        find.byWidgetPredicate(
+          (Widget widget) =>
+              widget is GlassSurface && widget.level == GlassLevel.modal,
+        ),
+        findsNothing,
+      );
     });
 
     testWidgets('a dialog over a medium frame does the same', (
@@ -1501,7 +1478,7 @@ void main() {
       await tester.pumpAndSettle();
       controller.jumpTo(controller.position.maxScrollExtent);
       await tester.pumpAndSettle();
-      expect(glassPaneCount(), 2, reason: 'the two panes medium spends');
+      expect(glassPaneCount(), 0);
 
       unawaited(
         UiDialog.show<void>(
@@ -1511,15 +1488,22 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(glassPaneCount(), 1);
-      expect(modalGlassPaneCount(), 1);
+      expect(glassPaneCount(), 0);
+      expect(modalGlassPaneCount(), 0);
+      expect(
+        find.byWidgetPredicate(
+          (Widget widget) =>
+              widget is GlassSurface && widget.level == GlassLevel.modal,
+        ),
+        findsOneWidget,
+      );
 
       Navigator.of(inside, rootNavigator: true).pop();
       await tester.pumpAndSettle();
-      expect(glassPaneCount(), 2);
+      expect(glassPaneCount(), 0);
     });
 
-    testWidgets('the frame gives its panes up once the entrance has finished', (
+    testWidgets('the frame and sheet remain matte throughout the entrance', (
       WidgetTester tester,
     ) async {
       late BuildContext inside;
@@ -1547,15 +1531,12 @@ void main() {
           body: (BuildContext context) => const Text('Reason'),
         ),
       );
-      // The first frame of the entrance: the scrim is still fading in, and
-      // the frame's pane is still frosted under it rather than switching in
-      // plain sight.
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 16));
-      expect(glassPaneCount(), 2);
+      expect(glassPaneCount(), 0);
 
       await tester.pumpAndSettle();
-      expect(glassPaneCount(), 1, reason: 'solid once the scrim is drawn');
+      expect(glassPaneCount(), 0);
     });
 
     testWidgets('a modal shown from outside a frame changes nothing', (
@@ -1581,7 +1562,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Reason'), findsOneWidget);
-      expect(glassPaneCount(), 1);
+      expect(glassPaneCount(), 0);
       expect(tester.takeException(), isNull);
     });
   });

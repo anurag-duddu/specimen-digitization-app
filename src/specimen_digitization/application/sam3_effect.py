@@ -213,10 +213,199 @@ def sam3_request(payload):
 
 
 def sam3_exchange(payload, bearer):
-    import httpx
-
     if not validate_expected_binding(payload):
         raise ValueError("SAM expected binding missing or invalid")
+    return _exchange(payload, bearer, validate_sam3_response)
+
+
+def validate_sam3_run_response(value, payload):
+    """Bind a per-run response to the worker's own request and pins (LANE.md T3)."""
+    from .domain import Region
+
+    try:
+        request, pins = payload["request"], payload["pins"]
+        lab = pins.get("lab", False)
+        if not isinstance(value, dict):
+            return "invalid_response_shape"
+        if (
+            value.get("model_id"),
+            value.get("model_revision"),
+            value.get("implementation"),
+        ) != (SAM3_MODEL.repo_id, SAM3_MODEL.revision, SAM3_IMPLEMENTATION) or request[
+            "model_revision"
+        ] != SAM3_MODEL.revision:
+            return "unpinned_response"
+        if value.get("request_sha256") != canonical_sha256(request) or value.get(
+            "run_id"
+        ) != request["run_id"]:
+            return "request_binding_mismatch"
+        source = value.get("source")
+        if (
+            not isinstance(source, dict)
+            or set(source) != {"blob_ref", "sha256", "size_bytes"}
+            or (source["blob_ref"], source["sha256"])
+            != (request["blob_ref"], request["sha256"])
+            or type(source["size_bytes"]) is not int
+            or not 0 < source["size_bytes"] <= 25_000_000
+        ):
+            return "source_binding_mismatch"
+        files = value.get("checkpoint_files")
+        if not isinstance(files, dict) or not 1 <= len(files) <= 64:
+            return "invalid_checkpoint_provenance"
+        for name, sha in files.items():
+            if (
+                not re.fullmatch(
+                    r"[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.(safetensors|json|txt)", name
+                )
+                or not isinstance(sha, str)
+                or not SHA256.fullmatch(sha)
+            ):
+                return "invalid_checkpoint_provenance"
+        if value.get("checkpoint_sha256") != canonical_sha256(files):
+            return "checkpoint_digest_mismatch"
+        if value["checkpoint_sha256"] != pins["checkpoint_sha256"]:
+            return "checkpoint_binding_mismatch"
+        from .collection_profiles import Sam3Parameters
+
+        applied = Sam3Parameters.model_validate(request["parameters"]).applied()
+        if value.get("parameters") != applied:
+            return "parameters_binding_mismatch"
+        if (value.get("threshold"), value.get("mask_threshold")) != (
+            applied["label_threshold"],
+            applied["mask_threshold"],
+        ):
+            return "unpinned_segmentation_thresholds"
+        found = value.get("detections")
+        if not isinstance(found, dict) or set(found) != {"label"}:
+            return "invalid_detection"
+        label = found["label"]
+        if not valid_detections(label, applied, request):
+            return "invalid_detection"
+        cross = value.get("cross_check")
+        if applied["cross_check_concept"] is None:
+            if cross is not None:
+                return "parameters_binding_mismatch"
+        elif (
+            not isinstance(cross, dict)
+            or set(cross) != {"concept", "detections"}
+            or cross["concept"] != applied["cross_check_concept"]
+        ):
+            return "parameters_binding_mismatch"
+        elif not valid_detections(cross["detections"], applied, request):
+            return "invalid_detection"
+        regions, masks = value.get("regions"), value.get("masks")
+        if (
+            not isinstance(regions, list)
+            or not isinstance(masks, list)
+            or not len(regions) <= 64
+            or len(regions) != len(masks)
+        ):
+            return "invalid_region_provenance"
+        # Regions are the label detections at or above the threshold, in order.
+        expected = [d for d in label if d["score"] >= applied["label_threshold"]]
+        if len(expected) != len(regions) or any(
+            not isinstance(region, dict)
+            or not isinstance(mask, dict)
+            or mask.get("score") != detection["score"]
+            or [region.get(key) for key in ("x", "y", "width", "height")]
+            != detection["box"]
+            for region, mask, detection in zip(regions, masks, expected)
+        ):
+            return "region_detection_mismatch"
+        total_bytes = 0
+        for index, (raw_region, mask) in enumerate(zip(regions, masks, strict=True)):
+            if not isinstance(raw_region, dict) or not isinstance(mask, dict):
+                return "invalid_region_provenance"
+            if any(
+                type(raw_region.get(key)) is not int
+                for key in ("x", "y", "width", "height", "order")
+            ):
+                return "invalid_region_geometry"
+            region = Region.model_validate(raw_region)
+            if (
+                region.id
+                != str(uuid5(NAMESPACE_URL, f"sam3-run/{request['run_id']}/{index}"))
+                or region.order != index
+                or region.method != "sam3"
+                or region.version != request["model_revision"]
+                or region.asset_id != request["asset_id"]
+                or region.x + region.width > request["width"]
+                or region.y + region.height > request["height"]
+                or region.rotation_quarter_turns != 0
+                or region.crop_ref is not None
+            ):
+                return "invalid_region_provenance"
+            sha, ref = mask.get("sha256"), mask.get("ref")
+            if not isinstance(sha, str) or not SHA256.fullmatch(sha):
+                return "invalid_mask_provenance"
+            # The lab's LocalBlobs name a mask by digest; Cloud Storage adds a generation.
+            reference = re.escape(sha) + ("" if lab else r":[1-9][0-9]*")
+            if (
+                not isinstance(ref, str)
+                or not re.fullmatch(reference, ref)
+                or region.mask_ref != ref
+                or mask.get("encoding") != "binary-png-original-pixels"
+            ):
+                return "mask_binding_mismatch"
+            size, score = mask.get("size_bytes"), mask.get("score")
+            if (
+                type(size) is not int
+                or not 0 < size <= 2_000_000
+                or type(score) not in (int, float)
+                or not math.isfinite(score)
+                or not 0 <= score <= 1
+            ):
+                return "invalid_mask_provenance"
+            total_bytes += size
+        return "valid" if total_bytes <= 16_000_000 else "mask_byte_limit"
+    except (KeyError, ValueError, TypeError, OverflowError):
+        return "invalid_response_provenance"
+
+
+def valid_detections(found, applied, request):
+    """Boxes inside the image, scores between the floor and 1, best first."""
+    if not isinstance(found, list) or len(found) > applied["max_detections"]:
+        return False
+    scores = []
+    for detection in found:
+        if not isinstance(detection, dict) or set(detection) != {"box", "score"}:
+            return False
+        box, score = detection["box"], detection["score"]
+        if (
+            not isinstance(box, list)
+            or len(box) != 4
+            or any(type(value) is not int for value in box)
+            or box[0] < 0
+            or box[1] < 0
+            or box[2] <= 0
+            or box[3] <= 0
+            or box[0] + box[2] > request["width"]
+            or box[1] + box[3] > request["height"]
+            or type(score) not in (int, float)
+            or not math.isfinite(score)
+            or not applied["record_floor"] <= score <= 1
+        ):
+            return False
+        scores.append(score)
+    return scores == sorted(scores, reverse=True)
+
+
+def sam3_run_request(payload):
+    """Per run: the worker's identity token, or the lab's shared secret."""
+    bearer = payload.get("lab_token")
+    if not bearer:
+        from google.auth.transport.requests import Request
+        from google.oauth2.id_token import fetch_id_token
+
+        bearer = fetch_id_token(Request(), payload["endpoint"])
+    return _exchange(payload, bearer, validate_sam3_run_response)
+
+
+def _exchange(payload, bearer, validate):
+    import httpx
+    from ..observability import _model_trace_carrier
+    trace_headers = _model_trace_carrier(payload.get("telemetry", {}))
+
     with httpx.Client(
         timeout=payload["timeout_seconds"], follow_redirects=False
     ) as client:
@@ -226,6 +415,7 @@ def sam3_exchange(payload, bearer):
             headers={
                 "Authorization": "Bearer " + bearer,
                 "Idempotency-Key": payload["request"]["run_id"] + ":segment",
+                **trace_headers,
             },
             json=payload["request"],
         ) as response:
@@ -239,7 +429,7 @@ def sam3_exchange(payload, bearer):
             if response.status_code == 200:
                 try:
                     value = json.loads(raw, object_pairs_hook=_unique_object)
-                    validation = validate_sam3_response(value, payload)
+                    validation = validate(value, payload)
                 except (ValueError, TypeError):
                     validation = "invalid_response_json"
             return json.dumps(

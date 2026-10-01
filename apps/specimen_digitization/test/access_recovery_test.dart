@@ -39,7 +39,7 @@ void main() {
       SpecimenDigitizationApp(session: session, repository: repo),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Queue'), findsWidgets);
+    expect(find.byType(AppShell), findsOneWidget);
     // Child panels may catch their own exception; this independent boundary
     // must still remove all collection context and editing surfaces.
     repo.controller.add(
@@ -64,9 +64,11 @@ void main() {
         SpecimenDigitizationApp(session: session, repository: repo),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Queue'), findsWidgets);
+      expect(find.byType(AppShell), findsOneWidget);
       repo.revoked = true;
-      await tester.tap(uiIconButton('Refresh collection'));
+      await tester.tap(uiMenuTrigger(RegExp('^Account menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Refresh collection'));
       await tester.pumpAndSettle();
       expect(find.byType(AppShell), findsNothing);
       expect(
@@ -76,7 +78,7 @@ void main() {
       repo.revoked = false;
       await tester.tap(find.text('Check access again'));
       await tester.pumpAndSettle();
-      expect(find.text('Queue'), findsWidgets);
+      expect(find.byType(AppShell), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     },
   );

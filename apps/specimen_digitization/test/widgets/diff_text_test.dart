@@ -407,7 +407,7 @@ void main() {
       ),
     );
     expect(
-      find.textContaining('Too long to mark position by position'),
+      find.textContaining('Long text: inline differences unavailable.'),
       findsOneWidget,
     );
     final Text body = tester.widget<Text>(

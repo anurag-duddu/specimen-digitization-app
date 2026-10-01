@@ -104,10 +104,15 @@ class ManifestEntry {
       state == UploadState.accepted || state == UploadState.duplicate;
 
   /// True for a row a batch should try to send.
-  bool get sendable => file != null && !settled && state != UploadState.skipped;
+  bool get sendable =>
+      file != null &&
+      !settled &&
+      !checking &&
+      state != UploadState.uploading &&
+      state != UploadState.skipped;
 
   /// True while the row may still be taken out of the batch.
-  bool get removable => !settled && !checking;
+  bool get removable => !settled && !checking && state != UploadState.uploading;
 
   /// Records a transfer fraction, never below the highest already seen.
   void observeProgress(double fraction) {
@@ -119,7 +124,7 @@ class ManifestEntry {
 /// The manifest header's aggregate line (screen blueprints, section 5;
 /// heuristics audit, H1.5 and pass criterion 1.5).
 ///
-/// Reads "8 of 12 accepted, 1 skipped". Counts that are zero are left out,
+/// Reads "8 of 12 uploaded, 1 skipped". Counts that are zero are left out,
 /// because a zero is noise in a line an operator reads at a glance.
 /// True when every file in the batch reached a state the server holds.
 ///
@@ -134,9 +139,8 @@ bool batchComplete(Iterable<ManifestEntry> entries) {
 String batchCompleteLine(Iterable<ManifestEntry> entries) {
   final int count = entries.length;
   return count == 1
-      ? 'This batch is complete. The drawer can move on.'
-      : 'All $count photographs are in the collection. The drawer can move '
-            'on.';
+      ? 'Batch admission finished for 1 photograph. Check the queue for processing status.'
+      : 'Batch admission finished for $count photographs. Check the queue for processing status.';
 }
 
 String batchProgressLine(Iterable<ManifestEntry> entries) {
@@ -145,7 +149,7 @@ String batchProgressLine(Iterable<ManifestEntry> entries) {
   int count(UploadState state) =>
       all.where((ManifestEntry e) => e.state == state).length;
   final StringBuffer line = StringBuffer(
-    '${count(UploadState.accepted)} of ${all.length} accepted',
+    '${count(UploadState.accepted)} of ${all.length} uploaded',
   );
   final int skipped = count(UploadState.skipped);
   final int duplicate = count(UploadState.duplicate);

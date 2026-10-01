@@ -108,6 +108,7 @@ class FakeSourceRepository implements SourceRepository {
 
   /// Every import request, as the objects it named.
   final List<List<String>> imports = <List<String>>[];
+  final List<bool> importSensitivities = <bool>[];
 
   /// Every idempotency key an import carried.
   final List<String> importKeys = <String>[];
@@ -179,6 +180,7 @@ class FakeSourceRepository implements SourceRepository {
     imports.add(
       selection.map((SourceObject object) => object.objectName).toList(),
     );
+    importSensitivities.add(sensitive);
     importKeys.add(key);
     final ApiFailure? failure = importFailure;
     if (failure != null && imports.length > importsBeforeFailure) {

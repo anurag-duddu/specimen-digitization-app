@@ -1,0 +1,336 @@
+{
+  "package": "app_links",
+  "version": "7.0.0",
+  "archive_url": "https://pub.dev/api/archives/app_links-7.0.0.tar.gz",
+  "archive_sha256": "3462d9defc61565fde4944858b59bec5be2b9d5b05f20aed190adb3ad08a7abc",
+  "files": [
+    {
+      "path": "windows/include/app_links/app_links_plugin_c_api.h",
+      "upstream_sha256": "a8a68ecbf413a4615eb119faf8b4c81c63de73fc92fd953519d21b707785c531",
+      "local_sha256": "d74f40bf1fb1f51150a1703be9663d7997644113ff50e36f5e5bb6da28daa042",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "a8a68ecbf413a4615eb119faf8b4c81c63de73fc92fd953519d21b707785c531",
+        "crlf_pairs_replaced": 26,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "windows/CMakeLists.txt",
+      "upstream_sha256": "eea889323927c47b1ce5bd734a1dc19e7b77a809a10b6f9d519b5c65cbe39602",
+      "local_sha256": "db35f55f52f03a93bb280db5d91a936fafe7da898c59d5407d0088268f39d1fb",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "eea889323927c47b1ce5bd734a1dc19e7b77a809a10b6f9d519b5c65cbe39602",
+        "crlf_pairs_replaced": 53,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "windows/app_links_plugin_c_api.cpp",
+      "upstream_sha256": "d780899c6e462f5c219818f5c6a6080ab93deac894aea1365845c4d03a5745b4",
+      "local_sha256": "6213add6af7a5ed0d2da800f3bce8c1627dcc467b425a6cd27bde9d19e2943ad",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "d780899c6e462f5c219818f5c6a6080ab93deac894aea1365845c4d03a5745b4",
+        "crlf_pairs_replaced": 26,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "windows/app_links_plugin.h",
+      "upstream_sha256": "5387eda03da23ff27406789df3a00394709409e0be5f557ae22bfce5ef08dac2",
+      "local_sha256": "1f4561d88de962772d2ad30beda80d9f27d8b2b27d6ed9f732ebce1a21e204ff",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "5387eda03da23ff27406789df3a00394709409e0be5f557ae22bfce5ef08dac2",
+        "crlf_pairs_replaced": 64,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": true
+      }
+    },
+    {
+      "path": "windows/app_links_plugin.cpp",
+      "upstream_sha256": "cb6b23ffe20d0dc2a79acc8190b87c31c8775ff6ae41e01532183418f8e7ac71",
+      "local_sha256": "7690760b3798efa781e5f5bfa5d8520fdaaa67b5237ac25d3d71ef3a379c6374",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "cb6b23ffe20d0dc2a79acc8190b87c31c8775ff6ae41e01532183418f8e7ac71",
+        "crlf_pairs_replaced": 173,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "README.md",
+      "upstream_sha256": "1d7b1d205ef55717846f7ce504e0cfaca3e296df947528643d8ce01b17ce49e3",
+      "local_sha256": "0dae4075cce194f21306768919fc31d50c303d80c449ef74c3eb1909965fb322",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "1d7b1d205ef55717846f7ce504e0cfaca3e296df947528643d8ce01b17ce49e3",
+        "crlf_pairs_replaced": 42,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "pubspec.yaml",
+      "upstream_sha256": "22e35a495ddd052aa444efe5aa3d8909128f8b621e8cf88534420ffdffc8303a",
+      "local_sha256": "36c9e44f6575dca2f93d901737176f42c10f0fbd3d5a54a6e27d3879dc64b896",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "2604604277b924d3eabf8819f22e92b01ba2b75531dd8ada1a296f1afb267f22",
+        "crlf_pairs_replaced": 34,
+        "trailing_whitespace_bytes_removed": 2,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "macos/app_links.podspec",
+      "upstream_sha256": "0fc0415e28b7285e1c3c75c9188dd2b8553545df0f5c663c555d9880d7c32ae6",
+      "local_sha256": "e67f5f5d4a49dc985d4bd5fd0f0ce965d0ddc6a34fa01ed7cd79835fa569bd26",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "0fc0415e28b7285e1c3c75c9188dd2b8553545df0f5c663c555d9880d7c32ae6",
+        "crlf_pairs_replaced": 24,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "macos/app_links/Sources/app_links/PrivacyInfo.xcprivacy",
+      "upstream_sha256": "df01bf8f311b7b350d01d55afe5059ead9ba2b0069c5421e69d9b405f7cabea2",
+      "local_sha256": "955ba882e1d9df32c81cf9af40f015f61909b4d703c2e4abe7ab726da7545101",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "df01bf8f311b7b350d01d55afe5059ead9ba2b0069c5421e69d9b405f7cabea2",
+        "crlf_pairs_replaced": 14,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "macos/app_links/Sources/app_links/AppLinksMacosPlugin.swift",
+      "upstream_sha256": "35ea1a7754fec2d7a813b754c1814a08fce823cba425383f9eeccbafe9056701",
+      "local_sha256": "cf34115f311f3c97795f39203f4d6d1719b6d2cbea54432acafe0fb232d62bd3",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "35ea1a7754fec2d7a813b754c1814a08fce823cba425383f9eeccbafe9056701",
+        "crlf_pairs_replaced": 117,
+        "trailing_whitespace_bytes_removed": 30,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "macos/app_links/Package.swift",
+      "upstream_sha256": "7c280dc6c470706c67d5365a2b860ad15381ef75592e63f136cb75a90e7e3614",
+      "local_sha256": "8955628805b124a2d68654cd1fcc64829d6c9f66f643a491ad0b31b10706831e",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "7c280dc6c470706c67d5365a2b860ad15381ef75592e63f136cb75a90e7e3614",
+        "crlf_pairs_replaced": 26,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": true
+      }
+    },
+    {
+      "path": "LICENSE",
+      "upstream_sha256": "1eb85fc97224598dad1852b5d6483bbcf0aa8608790dcc657a5a2a761ae9c8c6",
+      "local_sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "1eb85fc97224598dad1852b5d6483bbcf0aa8608790dcc657a5a2a761ae9c8c6",
+        "crlf_pairs_replaced": 201,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "lib/src/app_links.dart",
+      "upstream_sha256": "c3a81c86fa41130dd0554a9f96e83ce0c64936d4e7b745a3da1ebe1f54807e3e",
+      "local_sha256": "ff5021b5150b979f122410fb37d245d4d8be87bf634c08e88af04e3d97933f9a",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "c3a81c86fa41130dd0554a9f96e83ce0c64936d4e7b745a3da1ebe1f54807e3e",
+        "crlf_pairs_replaced": 87,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "lib/app_links.dart",
+      "upstream_sha256": "42f510bf3d6007fa3120a537a42324052e85189d472f7e8278124ea5b6543c9d",
+      "local_sha256": "e0951743e5ed43647369d2fb58fb2c4c6d0ec3564ed04674c877449887d84424",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "42f510bf3d6007fa3120a537a42324052e85189d472f7e8278124ea5b6543c9d",
+        "crlf_pairs_replaced": 1,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "ios/app_links.podspec",
+      "upstream_sha256": "b93c19242f32712c0556bfe55e488ce2a4b21d234ff120823173b7c858b3e22e",
+      "local_sha256": "7961b34b4ea0468be10a71908852e0818cfa991e067cf474bf07b6a6a6ff5773",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "b93c19242f32712c0556bfe55e488ce2a4b21d234ff120823173b7c858b3e22e",
+        "crlf_pairs_replaced": 25,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "ios/app_links/Sources/app_links/PrivacyInfo.xcprivacy",
+      "upstream_sha256": "df01bf8f311b7b350d01d55afe5059ead9ba2b0069c5421e69d9b405f7cabea2",
+      "local_sha256": "955ba882e1d9df32c81cf9af40f015f61909b4d703c2e4abe7ab726da7545101",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "df01bf8f311b7b350d01d55afe5059ead9ba2b0069c5421e69d9b405f7cabea2",
+        "crlf_pairs_replaced": 14,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "ios/app_links/Sources/app_links/AppLinksIosPlugin.swift",
+      "upstream_sha256": "5ab123ede1b2241552f014870568da47f05ffc1b629bd2747935cb5360f86dad",
+      "local_sha256": "f70c7f2db7dbe80ce04ccb5adee1fe519823b5f3156d43548ba47648fad14b29",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "5ab123ede1b2241552f014870568da47f05ffc1b629bd2747935cb5360f86dad",
+        "crlf_pairs_replaced": 268,
+        "trailing_whitespace_bytes_removed": 76,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "ios/app_links/Package.swift",
+      "upstream_sha256": "fe30049e6e8af74a9c8b39f7fd30884904c8bd462687a0f1e13f9d9102ff8249",
+      "local_sha256": "bcf1c63d7ad719d92c72ef8c2190748a57e239f152eda28a46ca2c5b44560f8b",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "fe30049e6e8af74a9c8b39f7fd30884904c8bd462687a0f1e13f9d9102ff8249",
+        "crlf_pairs_replaced": 26,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": true
+      }
+    },
+    {
+      "path": "CHANGELOG.md",
+      "upstream_sha256": "eff8a1d492ab50f49c71305e26588fb6c82e8dd3ca8bf4a35c4d7e14c978219b",
+      "local_sha256": "9065e21f6892dbfd2f0d41c3d2a4edf888e6572187b9f4485b9398d43529974b",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "eff8a1d492ab50f49c71305e26588fb6c82e8dd3ca8bf4a35c4d7e14c978219b",
+        "crlf_pairs_replaced": 201,
+        "trailing_whitespace_bytes_removed": 6,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "android/src/main/java/com/llfbandit/app_links/AppLinksPlugin.java",
+      "upstream_sha256": "281d4c9cf50393514f3c0bbbaa8feaa0774c92879cead109b7bff400c738fdd6",
+      "local_sha256": "90810fadfb982118015c45b74c75a3f4d4725e4ee0018e9af1660908b80d984a",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "654543cee72372a2ed1d59d6460849e4099bd1877c5293024834094275207f6d",
+        "crlf_pairs_replaced": 188,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "android/src/main/java/com/llfbandit/app_links/AppLinksHelper.java",
+      "upstream_sha256": "7e9b8224f0d1e9566019db8881d0286e0f50a138c58a6719664c933322272065",
+      "local_sha256": "109a4ff516b392df21a438737e4d63db716156cca4b9e697fe392f5075d03d66",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "79c1dbf9f76611888d07b3626fe5d41ef82409031bdc1b2c24d2ab42ea6eb58f",
+        "crlf_pairs_replaced": 42,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "android/src/main/AndroidManifest.xml",
+      "upstream_sha256": "c57ac3fe14ce89ea1a4ad5095da76bad7f117bcd37bce156d768b63e44939213",
+      "local_sha256": "05fed04650879166aa0256e09ecb5ea512282a18dd15f25e5640e659e2e24173",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "c57ac3fe14ce89ea1a4ad5095da76bad7f117bcd37bce156d768b63e44939213",
+        "crlf_pairs_replaced": 3,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "android/settings.gradle",
+      "upstream_sha256": "7582591bd2b7d168a8687dca73773d09a369d65aacc1675c1d9bac1029cc7a64",
+      "local_sha256": "cfac483d1509b5af5afb2816304be805b0eabcbc30a0c17db4380b9b74ac576d",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "7582591bd2b7d168a8687dca73773d09a369d65aacc1675c1d9bac1029cc7a64",
+        "crlf_pairs_replaced": 1,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": false
+      }
+    },
+    {
+      "path": "android/build.gradle",
+      "upstream_sha256": "cf74b6d9a729dbad13d1acbd87332cad6262b1b5a587060e9dfbfadda69978e0",
+      "local_sha256": "8af0a42336df241509b4b34112a300845cae91916b613e2b3fd22ad3d1a131bb",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "cf74b6d9a729dbad13d1acbd87332cad6262b1b5a587060e9dfbfadda69978e0",
+        "crlf_pairs_replaced": 41,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": true
+      }
+    },
+    {
+      "path": "analysis_options.yaml",
+      "upstream_sha256": "b54fa3ed9049ae433848f06a394078849ae5412fb043be44dbb1b53dc06a6121",
+      "local_sha256": "7efa54e6d70600008bc67f4bc327a78b40f405a2e97f24df3b5f7abf3ec48c72",
+      "modified": true,
+      "local_normalization": {
+        "before_local_sha256": "b54fa3ed9049ae433848f06a394078849ae5412fb043be44dbb1b53dc06a6121",
+        "crlf_pairs_replaced": 4,
+        "trailing_whitespace_bytes_removed": 0,
+        "final_lf_added": true
+      }
+    }
+  ],
+  "local_normalization": {
+    "recorded_on": "2026-10-01",
+    "basis": "Qualified staged bytes before the canonical pre-commit hook compared with actual working-tree bytes after the hook.",
+    "before_manifest_sha256": "cb37a0f2de64a7ff48a401e02accd9a5613bd2f09e4d58da55a11d13004959c1",
+    "hooks": {
+      "repository": "https://github.com/pre-commit/pre-commit-hooks",
+      "revision": "v6.0.0",
+      "ids": [
+        "end-of-file-fixer",
+        "mixed-line-ending --fix=lf",
+        "trailing-whitespace"
+      ],
+      "configuration_sha256": "d595d4c1f80e73952b78b2211187f191b5c6aa82877ac5ace6c10e58e50209d7"
+    },
+    "exact_transform": "Replace CRLF with LF, remove trailing ASCII space/tab from each line, and ensure one terminal LF. No other byte changes.",
+    "summary": {
+      "files": 25,
+      "crlf_pairs_replaced": 1701,
+      "trailing_whitespace_bytes_removed": 114,
+      "trailing_whitespace_lines": 35,
+      "final_lf_added": 5,
+      "excess_final_lf_removed": 0
+    },
+    "scope": "Formatting only; runtime logic, URI handling, local raw-URL logging removal, mobile-only plugin metadata, and privacy declarations are unchanged.",
+    "presentation_note": "Three two-space Markdown hard breaks in CHANGELOG.md (lines 79, 80, 88) were removed; prose is unchanged.",
+    "custody_note": "Archive URL, version, archive_sha256 and every upstream_sha256 retain their original values. This record supersedes only the original-line-ending and byte-identical-local-file statements at the earlier PROVENANCE.md checkpoint; license text remains unchanged.",
+    "runtime_qualification": "This source-custody reconciliation does not establish native authentication or device behavior."
+  }
+}

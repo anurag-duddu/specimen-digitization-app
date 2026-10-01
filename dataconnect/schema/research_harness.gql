@@ -1,0 +1,15 @@
+# Application lifecycle journal. No competing scientific field values.
+# One bounded organization/program aggregate binds the existing ProgramLedger.
+# No cascade foreign key: research and financial audit history must be retained.
+type ResearchHarnessState @table(key: ["organizationId", "programKey"]) {
+  organizationId: UUID!
+  programKey: String!
+  revision: Int!
+  contractVersion: String!
+  state: Any!
+  # Exact JSON preserves integer/float and Unicode pin serialization. Any is the
+  # server policy projection; the application validates both representations.
+  stateJson: String
+  observedAt: Timestamp! @default(expr: "request.time")
+  updatedAt: Timestamp! @default(expr: "request.time")
+}

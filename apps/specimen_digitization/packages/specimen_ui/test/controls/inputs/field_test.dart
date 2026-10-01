@@ -43,82 +43,65 @@ void main() {
     );
   });
 
-  testWidgets('the edge holds and the ring is the whole focus treatment', (
-    WidgetTester tester,
-  ) async {
-    final FocusNode node = FocusNode();
-    addTearDown(node.dispose);
-    await tester.pumpWidget(
-      uiHarness(
-        child: SizedBox(
-          width: 320,
-          child: UiField(label: _label, focusNode: node),
+  testWidgets(
+    'focus strengthens the existing edge without adding another ring',
+    (WidgetTester tester) async {
+      final FocusNode node = FocusNode();
+      addTearDown(node.dispose);
+      await tester.pumpWidget(
+        uiHarness(
+          child: SizedBox(
+            width: 320,
+            child: UiField(label: _label, focusNode: node),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    final UiThemeData ui = uiOf(tester);
+      );
+      await tester.pumpAndSettle();
+      final UiThemeData ui = uiOf(tester);
 
-    expect(fieldSide(tester).color, ui.color.boundary);
-    expect(fieldSide(tester).width, ui.shape.stroke.boundary);
-    expect(visibleRings(tester), 0);
+      expect(fieldSide(tester).color, ui.color.boundary);
+      expect(fieldSide(tester).width, ui.shape.stroke.boundary);
+      expect(visibleRings(tester), 0);
 
-    node.requestFocus();
-    await tester.pumpAndSettle();
-    expect(
-      fieldSide(tester).color,
-      ui.color.boundary,
-      reason:
-          'the edge does not change colour on focus (09 section 3.6, fit '
-          'amendment)',
-    );
-    expect(
-      fieldSide(tester).width,
-      ui.shape.stroke.boundary,
-      reason:
-          'the edge used to thicken to 2 dp and then take a ring as well, '
-          'which is two of the three edges a focused field drew',
-    );
-    expect(
-      visibleRings(tester),
-      1,
-      reason: 'the ring is the whole of it, and there is one',
-    );
+      node.requestFocus();
+      await tester.pumpAndSettle();
+      expect(fieldSide(tester).color, ui.color.ink);
+      expect(fieldSide(tester).width, 2);
+      expect(visibleEdges(tester), 1);
+      expect(visibleRings(tester), 0);
 
-    node.unfocus();
-    await tester.pumpAndSettle();
-    expect(fieldSide(tester).color, ui.color.boundary);
-    expect(visibleRings(tester), 0);
-  });
+      node.unfocus();
+      await tester.pumpAndSettle();
+      expect(fieldSide(tester).color, ui.color.boundary);
+      expect(visibleRings(tester), 0);
+    },
+  );
 
-  testWidgets('a pointer tap rings the field, as the keyboard does', (
-    WidgetTester tester,
-  ) async {
-    FocusManager.instance.highlightStrategy =
-        FocusHighlightStrategy.alwaysTouch;
-    addTearDown(
-      () => FocusManager.instance.highlightStrategy =
-          FocusHighlightStrategy.automatic,
-    );
-    await tester.pumpWidget(
-      uiHarness(
-        child: const SizedBox(width: 320, child: UiField(label: _label)),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(visibleRings(tester), 0);
+  testWidgets(
+    'a pointer tap gives the field the same focused edge as the keyboard',
+    (WidgetTester tester) async {
+      FocusManager.instance.highlightStrategy =
+          FocusHighlightStrategy.alwaysTouch;
+      addTearDown(
+        () => FocusManager.instance.highlightStrategy =
+            FocusHighlightStrategy.automatic,
+      );
+      await tester.pumpWidget(
+        uiHarness(
+          child: const SizedBox(width: 320, child: UiField(label: _label)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(visibleRings(tester), 0);
 
-    await tester.tap(find.byType(FieldCore));
-    await tester.pumpAndSettle();
-    expect(
-      visibleRings(tester),
-      1,
-      reason:
-          'a reviewer who clicked into a field is owed the same "you are '
-          'here" the keyboard gives: a caret does not say which of several '
-          'fields holds it (09 section 3.6, fit amendment)',
-    );
-  });
+      await tester.tap(find.byType(FieldCore));
+      await tester.pumpAndSettle();
+      expect(visibleRings(tester), 0);
+      expect(visibleEdges(tester), 1);
+      expect(fieldSide(tester).width, 2);
+      expect(fieldSide(tester).color, uiOf(tester).color.ink);
+    },
+  );
 
   testWidgets('the box height derives from the text, not from a constant', (
     WidgetTester tester,

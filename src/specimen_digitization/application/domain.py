@@ -401,6 +401,16 @@ class ExecutionPolicy(Record):
         default=None, exclude_if=lambda value: value is None
     )
 
+    # The program's allowance and the collection holding its ledger (LANE.md T2b).
+    program_allowance_micros: int | None = Field(
+        default=None, gt=0, exclude_if=lambda value: value is None
+    )
+    program_ledger_collection: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    # The pinned prices the run's paid calls are costed at (LANE.md T2c).
+    price_list: dict | None = Field(default=None, exclude_if=lambda value: value is None)
+
     @model_validator(mode="after")
     def timeout_fits_lease(self):
         if (
@@ -485,6 +495,11 @@ class Run(Record):
     lookups: list[Lookup] = Field(default_factory=list)
     coverage_confirmed: bool = False
     human_approved: bool = False
+    # A restore withdraws clearance while retaining existing human field locks.
+    # Omit the false default so historical immutable snapshot digests stay exact.
+    history_restore_human_locks: bool = Field(
+        default=False, strict=True, exclude_if=lambda value: value is False
+    )
     disposition: Disposition | None = None
     reasons: list[str] = Field(default_factory=list)
     findings: list[RunFinding] = Field(default_factory=list)
@@ -500,6 +515,21 @@ class Run(Record):
     # When processing was requested (LANE.md T1). Omitted until then.
     queued_at: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
+    # G15's label-coverage evidence, in S5's shape (LANE.md T3). Omitted until checked.
+    coverage_check: dict | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    # Each field's group from the bound profile (LANE.md T4). Omitted until bound.
+    field_groups: dict[str, Literal["mandatory", "optional"]] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
+    # The program's position after this run's latest reservation (LANE.md T2b).
+    program_allowance: dict | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    # One entry per paid call, with its usage and cost (LANE.md T2c).
+    paid_calls: list[dict] = Field(default_factory=list, exclude_if=lambda value: not value)
+
 
 class AuditEvent(Record):
     id: str = Field(default_factory=uid)
@@ -509,6 +539,9 @@ class AuditEvent(Record):
     before: dict = Field(default_factory=dict)
     after: dict = Field(default_factory=dict)
     created_at: str = Field(default_factory=now)
+    # Set only by a verified repository save; legacy immutable events stay unset.
+    base_revision: int | None = Field(default=None, ge=1, exclude_if=lambda value: value is None)
+    resulting_revision: int | None = Field(default=None, ge=2, exclude_if=lambda value: value is None)
 
 
 class Specimen(Record):

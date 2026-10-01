@@ -1,6 +1,12 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'email_link_source.dart';
 
 const staffEmailMessage = 'Use your fieldmuseum.org email address.';
 const emailLinkReturnUrl = 'https://specimen-digitization.web.app/';
@@ -92,18 +98,40 @@ class PreferencesEmailLinkStorage implements EmailLinkStorage {
   }
 }
 
+class _IncomingEmailLink {
+  _IncomingEmailLink(
+    this.value,
+    this.digest,
+    VoidCallback acknowledge,
+    Object deliveryIdentity,
+  ) {
+    acknowledgements[deliveryIdentity] = acknowledge;
+  }
+  final String value;
+  final String digest;
+  final Map<Object, VoidCallback> acknowledgements =
+      Map<Object, VoidCallback>.identity();
+  bool retryable = false;
+}
+
 /// Stores the requested address and cooldown only. Action codes stay in memory
 /// and the active address bar until completion/cancel; never in preferences.
 class MagicLinkController extends ChangeNotifier {
   MagicLinkController({
     required this.access,
     required this.browser,
+    this.linkSource,
     EmailLinkStorage? storage,
     DateTime Function()? now,
   }) : storage = storage ?? PreferencesEmailLinkStorage(),
        now = now ?? DateTime.now;
   final EmailLinkAccess access;
   final EmailLinkBrowser browser;
+
+  /// Optional cold/warm delivery source, owned by the application. The
+  /// controller owns only its subscription. Without it, the existing browser
+  /// snapshot remains the input.
+  final EmailLinkSource? linkSource;
   final EmailLinkStorage storage;
   final DateTime Function() now;
   bool initialized = false, busy = false, sent = false;
@@ -111,7 +139,15 @@ class MagicLinkController extends ChangeNotifier {
   bool _initializing = false;
   String email = '';
   String? message;
-  String? _link;
+  _IncomingEmailLink? _link;
+  _IncomingEmailLink? _inFlight;
+  StreamSubscription<EmailLinkDelivery>? _linkSubscription;
+  // A canceled or transiently failed link can be explicitly delivered again.
+  // Retain only hashes of links confirmed consumed or terminally rejected.
+  final Set<String> _consumedLinks = <String>{};
+  // Snapshot/stream notification copies are the same delivery, even after
+  // cancellation. Expando does not keep old delivery objects or URIs alive.
+  final Expando<bool> _receivedDeliveries = Expando<bool>();
   DateTime? _retryAt;
   bool get handlingLink => _link != null;
   int get cooldownSeconds {
@@ -140,6 +176,21 @@ class MagicLinkController extends ChangeNotifier {
   Future<void> initialize() async {
     if (initialized || _initializing || _disposed) return;
     _initializing = true;
+    final source = linkSource;
+    if (source != null) {
+      _linkSubscription = source.links.listen(
+        _receiveDelivery,
+        onError: (Object _) {
+          // Platform errors can contain the action URL. Never expose them.
+          if (!_disposed && _link == null) {
+            message = 'The sign-in link could not be opened. Try again.';
+            _changed();
+          }
+        },
+      );
+      final pending = source.pending;
+      if (pending != null) _receiveDelivery(pending);
+    }
     try {
       final saved = await storage.read();
       if (_disposed) return;
@@ -156,7 +207,34 @@ class MagicLinkController extends ChangeNotifier {
       /* Local storage is optional. */
     }
     if (_disposed) return;
-    final uri = browser.initialUri;
+    if (source == null) _ingestLink(browser.initialUri, browser.clearLink);
+    initialized = true;
+    _changed();
+    if (_link != null && email.isNotEmpty) await complete(email);
+  }
+
+  void _receiveDelivery(EmailLinkDelivery delivery) {
+    if (_disposed) return;
+    final source = linkSource;
+    if (source == null) return;
+    if (_receivedDeliveries[delivery] == true) return;
+    _receivedDeliveries[delivery] = true;
+    final accepted = _ingestLink(
+      delivery.uri,
+      () => source.acknowledge(delivery),
+      deliveryIdentity: delivery,
+    );
+    _changed();
+    if (accepted && initialized && !busy && email.isNotEmpty) {
+      unawaited(complete(email));
+    }
+  }
+
+  bool _ingestLink(
+    Uri uri,
+    VoidCallback acknowledge, {
+    Object? deliveryIdentity,
+  }) {
     // Percent escapes can parse as a Uri yet fail UTF-8 query decoding.
     // Keep shape parsing inside the same recoverable invalid-link boundary.
     try {
@@ -179,27 +257,74 @@ class MagicLinkController extends ChangeNotifier {
             uri.toString().length <= 8192 &&
             parameters.values.every((values) => values.length == 1);
         if (validShape && access.isSignInWithEmailLink(uri.toString())) {
-          _link = uri.toString();
+          final value = uri.toString();
+          final digest = crypto.sha256.convert(utf8.encode(value)).toString();
+          if (_consumedLinks.contains(digest)) {
+            _acknowledge(acknowledge);
+            return false;
+          }
+          final active = _inFlight?.digest == digest
+              ? _inFlight
+              : _link?.digest == digest
+              ? _link
+              : null;
+          if (active != null && !active.retryable) {
+            active.acknowledgements[deliveryIdentity ?? Object()] = acknowledge;
+            return false;
+          }
+          final superseded = _link;
+          if (superseded != null && !identical(superseded, _inFlight)) {
+            _acknowledgeLink(superseded);
+          }
+          _link = _IncomingEmailLink(
+            value,
+            digest,
+            acknowledge,
+            deliveryIdentity ?? Object(),
+          );
+          message = null;
+          return true;
         } else {
-          _clearLink();
-          message = 'This sign-in link cannot be used. Request a new link.';
+          _rejectLink(acknowledge);
         }
+      } else if (linkSource != null) {
+        // Unrelated native events are not retained and do not cancel a
+        // previously accepted sign-in link.
+        _acknowledge(acknowledge);
       }
     } catch (_) {
-      _clearLink();
-      message = 'This sign-in link cannot be used. Request a new link.';
+      _rejectLink(acknowledge);
     }
-    initialized = true;
-    _changed();
-    if (_link != null && email.isNotEmpty) await complete(email);
+    return false;
   }
 
-  void _clearLink() {
-    _link = null;
+  void _acknowledge(VoidCallback acknowledge) {
     try {
-      browser.clearLink();
+      acknowledge();
     } catch (_) {
       /* Never log a URL-bearing error. */
+    }
+  }
+
+  void _rejectLink(VoidCallback acknowledge) {
+    _acknowledge(acknowledge);
+    if (_link == null) {
+      message = 'This sign-in link cannot be used. Request a new link.';
+    }
+  }
+
+  void _clearLink([_IncomingEmailLink? expected]) {
+    final target = expected ?? _link;
+    if (target == null) return;
+    _acknowledgeLink(target);
+    if (identical(_link, target)) _link = null;
+  }
+
+  void _acknowledgeLink(_IncomingEmailLink target) {
+    final acknowledgements = target.acknowledgements.values.toList();
+    target.acknowledgements.clear();
+    for (final acknowledge in acknowledgements) {
+      _acknowledge(acknowledge);
     }
   }
 
@@ -212,6 +337,7 @@ class MagicLinkController extends ChangeNotifier {
       return;
     }
     email = normalized;
+    final previousLink = _link;
     busy = true;
     message = null;
     _retryAt = now().add(emailLinkCooldown);
@@ -230,11 +356,14 @@ class MagicLinkController extends ChangeNotifier {
     } finally {
       busy = false;
       _changed();
+      if (!_disposed && _link != null && !identical(_link, previousLink)) {
+        unawaited(complete(email));
+      }
     }
   }
 
   Future<void> complete(String rawEmail) async {
-    if (busy || _link == null || _disposed) return;
+    if (busy || !initialized || _link == null || _disposed) return;
     final normalized = normalizedStaffEmail(rawEmail);
     if (normalized == null) {
       message = staffEmailMessage;
@@ -242,19 +371,33 @@ class MagicLinkController extends ChangeNotifier {
       return;
     }
     email = normalized;
+    final target = _link!;
+    target.retryable = false;
+    _inFlight = target;
     busy = true;
     message = null;
     _changed();
     try {
-      await access.completeEmailLink(email, _link!);
+      await access.completeEmailLink(normalized, target.value);
       // Firebase can emit userChanges before this Future resolves. Terminal
       // cleanup must survive disposal; only UI notifications depend on life.
-      _clearLink();
-      sent = false;
-      await _remember(clearEmail: true);
-      email = '';
+      _consumedLinks.add(target.digest);
+      _clearLink(target);
+      if (_link == null) {
+        sent = false;
+        await _remember(clearEmail: true);
+        if (_link == null) {
+          email = '';
+        } else {
+          // A newer delivery arrived while the old storage clear was pending.
+          // Keep its confirmation address and restore that remembered state.
+          await _remember();
+        }
+      }
     } catch (error) {
-      if (!_disposed) message = emailLinkError(error);
+      if (!_disposed && identical(_link, target)) {
+        message = emailLinkError(error);
+      }
       if (error is FirebaseAuthException &&
           [
             'expired-action-code',
@@ -262,28 +405,47 @@ class MagicLinkController extends ChangeNotifier {
             'invalid-credential',
             'user-disabled',
           ].contains(error.code)) {
-        _clearLink();
-        sent = false;
+        _consumedLinks.add(target.digest);
+        _clearLink(target);
+        if (_link == null) sent = false;
+      } else {
+        // Keep the current link for the explicit retry button. Release injected
+        // deliveries so a new user-initiated delivery can also retry; preserve
+        // a browser URL so refreshing still permits retry after network errors.
+        // No retry is scheduled merely because this request failed.
+        target.retryable = true;
+        if (linkSource != null) _acknowledgeLink(target);
       }
+    } finally {
+      if (identical(_inFlight, target)) _inFlight = null;
+      busy = false;
+      _changed();
+      if (!_disposed && _link != null && !identical(_link, target)) {
+        unawaited(complete(email));
+      }
+    }
+  }
+
+  Future<void> changeEmail() async {
+    if (busy || !initialized || _disposed) return;
+    busy = true;
+    if (_link != null) _clearLink();
+    email = '';
+    sent = false;
+    message = null;
+    _changed();
+    try {
+      await _remember(clearEmail: true);
     } finally {
       busy = false;
       _changed();
     }
   }
 
-  Future<void> changeEmail() async {
-    if (busy || _disposed) return;
-    if (_link != null) _clearLink();
-    email = '';
-    sent = false;
-    message = null;
-    await _remember(clearEmail: true);
-    _changed();
-  }
-
   @override
   void dispose() {
     _disposed = true;
+    unawaited(_linkSubscription?.cancel());
     super.dispose();
   }
 }

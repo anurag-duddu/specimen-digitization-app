@@ -144,6 +144,7 @@ def test_lane_wiring_without_configuration_is_today_s_behaviour(monkeypatch):
 
 
 def test_production_app_passes_the_lane_wiring(monkeypatch):
+    from fastapi import FastAPI
     import firebase_admin
 
     from specimen_digitization.application import runtime_auth, runtime_health
@@ -171,10 +172,12 @@ def test_production_app_passes_the_lane_wiring(monkeypatch):
         lambda **_: SimpleNamespace(memberships=lambda user: []),
     )
     monkeypatch.setattr(cli, "ProductionAdapters", lambda blobs: object())
+    app = FastAPI()
     monkeypatch.setattr(
-        cli, "create_app", lambda **kwargs: captured.update(kwargs) or object()
+        cli, "create_app", lambda **kwargs: captured.update(kwargs) or app
     )
-    cli.production_app(config)
+    assert cli.production_app(config) is app
+    assert len(app.user_middleware) == 1
     assert captured["mode"] == "production"
     assert isinstance(captured["worker_dispatcher"], CloudRunJobDispatcher)
     assert not captured["source_registry"]

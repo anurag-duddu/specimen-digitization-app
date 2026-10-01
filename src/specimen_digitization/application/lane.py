@@ -27,6 +27,14 @@ class LaneConflict(Conflict):
         self.code = code
 
 
+# `run_status` in SQL, for SQLite, whose state column holds the raw stage.
+SQLITE_STATUS = (
+    "CASE WHEN json_extract(payload,'$.run.disposition') IS NOT NULL THEN 'completed' "
+    "WHEN state IN ('processing_blocked','retry_scheduled','paused','cancelled','pending') "
+    "THEN state ELSE 'running' END"
+)
+
+
 def run_status(run: Run) -> str:
     """The wire status of a run: `summary().status` and the SQL listing `state`."""
     if run.disposition:
@@ -77,10 +85,36 @@ def queue(specimen: Specimen, registry, actor: str) -> None:
                 else "no_allowance"
             ),
         )
+    limits = {
+        name: getattr(policy, name)
+        for name in (
+            "max_tokens",
+            "max_external_calls",
+            "external_timeout_seconds",
+            "reader_timeout_seconds",
+            "lease_seconds",
+        )
+        if getattr(policy, name) is not None
+    }
+    # The program's allowance (T2b), cleared when the profile carries none.
+    allowance, ledger = policy.program_allowance, None
+    if allowance is not None:
+        ledgers = registry.bound_collections(allowance.ledger_collection)
+        if len(ledgers) != 1:
+            raise LaneConflict(
+                "program_allowance_unavailable",
+                "The program allowance's ledger collection must be bound to one collection",
+            )
+        ledger = ledgers[0]
+    limits["program_allowance_micros"] = allowance and allowance.allowance_micros
+    limits["program_ledger_collection"] = ledger
+    # The prices the run's calls are costed at (T2c), cleared when there are none.
+    limits["price_list"] = policy.price_list and policy.price_list.model_dump(mode="json")
     run.profile.execution = run.profile.execution.model_copy(
         update={
             "approved_cost_limit_micros": policy.run_cost_limit_micros,
             "stage_cost_reservations": policy.stage_cost_micros,
+            **limits,
         }
     )
     if run.classification_selection is None:

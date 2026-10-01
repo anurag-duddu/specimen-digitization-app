@@ -25,6 +25,27 @@ import 'package:specimen_digitization/src/widgets/not_calibrated_chip.dart';
 import 'widget_test.dart' show TestRepository;
 import 'widgets/harness.dart';
 
+class CaptureIntakeRepository extends TestRepository {
+  final List<IntakeFile> captured = <IntakeFile>[];
+
+  @override
+  Future<Json> createIntake(
+    CollectionScope scope,
+    IntakeFile file,
+    String key,
+  ) async {
+    captured.add(file);
+    return <String, dynamic>{
+      'upload_id': 'capture-upload',
+      'state': 'uploading',
+    };
+  }
+
+  @override
+  Future<Json> resumeIntake(CollectionScope scope, String id) async =>
+      <String, dynamic>{'upload_id': id, 'state': 'uploading'};
+}
+
 /// A camera that answers from memory. Records what the screen asked it to do.
 class FakeCaptureCamera implements CaptureCamera {
   FakeCaptureCamera({this.unavailable, this.locksFocus = true});
@@ -359,7 +380,7 @@ void main() {
       findsOneWidget,
       reason: 'the reason is a plain sentence, never a code',
     );
-    await tester.tap(find.text('Use the device camera instead'));
+    await tester.tap(find.text('Use device camera'));
     await tester.pumpAndSettle();
     expect(result!.needsFallback, isTrue);
     expect(result!.unavailable, CaptureUnavailable.permission);
@@ -372,19 +393,21 @@ void main() {
       tester.view.devicePixelRatio = 1;
       tester.view.physicalSize = const Size(1100, 2400);
       addTearDown(tester.view.reset);
+      final repository = CaptureIntakeRepository();
+      var completed = 0;
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.light(),
           home: Scaffold(
             body: IntakeScreen(
-              repository: TestRepository(),
+              repository: repository,
               scope: const CollectionScope(
                 organizationId: 'org',
                 collectionId: 'insects',
                 name: 'Synthetic insects',
               ),
               userId: 'owner',
-              onComplete: () {},
+              onComplete: () => completed++,
               openCapture: (BuildContext _) async => CaptureResult(
                 files: <XFile>[
                   XFile.fromData(
@@ -422,7 +445,12 @@ void main() {
 
       expect(find.byType(IntakeManifestRow), findsOneWidget);
       expect(find.text('from-camera.png'), findsOneWidget);
-      expect(find.text('0 of 1 accepted'), findsOneWidget);
+      // Accepting a camera photograph releases it to continuous intake.
+      expect(repository.captured, hasLength(1));
+      expect(repository.captured.single.method, 'camera');
+      expect(repository.captured.single.sensitive, isTrue);
+      expect(completed, 1);
+      expect(find.text('Uploaded'), findsOneWidget);
     },
   );
 

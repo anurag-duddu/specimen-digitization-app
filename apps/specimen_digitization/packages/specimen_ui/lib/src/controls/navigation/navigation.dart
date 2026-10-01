@@ -18,3 +18,4 @@ export 'scaffold.dart';
 export 'sidebar.dart';
 export 'sticky_bar.dart';
 export 'top_bar.dart';
+export 'workspace_header.dart';

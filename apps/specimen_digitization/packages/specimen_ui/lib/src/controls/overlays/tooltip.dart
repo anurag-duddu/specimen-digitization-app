@@ -90,7 +90,8 @@ class UiTooltip extends StatefulWidget {
     this.placement = PopoverPlacement.above,
     this.enabled = true,
     this.style,
-  }) : builder = null;
+  }) : builder = null,
+       reason = null;
 
   /// Carries a disabled control's reason.
   ///
@@ -102,6 +103,7 @@ class UiTooltip extends StatefulWidget {
   const UiTooltip.reason({
     super.key,
     required this.builder,
+    this.reason,
     this.placement = PopoverPlacement.above,
     this.enabled = true,
     this.style,
@@ -112,6 +114,10 @@ class UiTooltip extends StatefulWidget {
   /// (02 section 4.12). Null in the [UiTooltip.reason] form, which takes its
   /// message from the control.
   final String? message;
+
+  /// The current disabled reason, so an open explanation follows state changes.
+  /// Omit for a carrier whose reason is known only when the control reports it.
+  final String? reason;
 
   /// The control being described.
   final Widget? child;
@@ -140,7 +146,19 @@ class _UiTooltipState extends State<UiTooltip> {
   bool _fromTouch = false;
 
   /// The phrase on screen right now.
-  String? get _message => widget.message ?? _reported;
+  String? get _message => widget.message ?? widget.reason ?? _reported;
+
+  @override
+  void didUpdateWidget(UiTooltip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reason != widget.reason) _reported = null;
+    if (!widget.enabled || (_message ?? '').isEmpty) {
+      _cancel();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && (!widget.enabled || (_message ?? '').isEmpty)) _hide();
+      });
+    }
+  }
 
   @override
   void dispose() {

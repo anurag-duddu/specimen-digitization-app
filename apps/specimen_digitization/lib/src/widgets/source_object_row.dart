@@ -24,8 +24,6 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../sources.dart';
-import 'specimen_status.dart';
-import 'status_chip.dart';
 import 'thumbnail.dart';
 import 'upload_item.dart';
 
@@ -126,28 +124,26 @@ String sourceMeasurements({required String mediaType, int? sizeBytes}) {
 
 /// One row in a source listing.
 class SourceObjectRow extends StatelessWidget {
-  const SourceObjectRow({super.key, required this.object, this.onOpen});
+  const SourceObjectRow({
+    super.key,
+    required this.object,
+    this.onOpen,
+    this.showState = true,
+  });
 
   /// The inventory row this draws.
   final SourceObject object;
+
+  /// False when the selected filter already names the ordinary row state.
+  final bool showState;
 
   /// Opens the specimen this object became. Null for an object that is not in
   /// the queue, because there is nothing behind it to open.
   final VoidCallback? onOpen;
 
-  /// Below this content width the chip drops under the name, so it never
-  /// competes with the identifier for a narrow window.
-  ///
-  /// A within-row content decision rather than a window size class: the same
-  /// row is drawn beside a checkbox column and without one (05 section 1).
-  static const double _chipBesideNameMin = 420;
-
-  /// The share of a wide row the chip may take before its own label is cut.
-  static const double _chipWidthShare = 0.4;
-
   String _semanticsLabel() => <String>[
     object.displayName,
-    object.state.semanticsLabel,
+    if (showState) object.state.semanticsLabel,
     sourceMeasurements(
       mediaType: object.mediaType,
       sizeBytes: object.sizeBytes,
@@ -161,42 +157,22 @@ class SourceObjectRow extends StatelessWidget {
   );
 
   Widget _row(BuildContext context, double available) {
-    final UiThemeData ui = context.ui;
-    final String line = sourceMeasurements(
-      mediaType: object.mediaType,
-      sizeBytes: object.sizeBytes,
-    );
-    final bool beside = !available.isFinite || available >= _chipBesideNameMin;
-    final Widget chip = StatusChip.presented(
-      object.state.presentation(context),
-      dense: true,
-    );
-
-    // One node per row. A reader paging a thousand objects hears one stop per
-    // object, not four, so the label carries every fact the slots draw.
-    final Widget row = UiListRow(
+    final details = [
+      if (showState) object.state.label,
+      sourceMeasurements(
+        mediaType: object.mediaType,
+        sizeBytes: object.sizeBytes,
+      ),
+    ];
+    final row = UiListRow(
+      size: UiSize.sm,
       title: object.displayName,
-      subtitle: line,
+      subtitle: details.join(' · '),
       semanticsLabel: _semanticsLabel(),
       leading: const SpecimenThumbnail(),
       onPressed: onOpen,
-      trailing: beside
-          ? ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: available.isFinite
-                    ? available * _chipWidthShare
-                    : double.infinity,
-              ),
-              child: chip,
-            )
-          : null,
     );
-
-    // A row with nothing behind it announces no button. `UiListRow` is a
-    // `Pressable` whatever it was given, so a row with no callback would
-    // otherwise read as a button the server had withdrawn, which is a
-    // different fact from a photograph that is simply not a record yet.
-    final Widget body = onOpen == null
+    return onOpen == null
         ? Semantics(
             container: true,
             label: _semanticsLabel(),
@@ -204,51 +180,5 @@ class SourceObjectRow extends StatelessWidget {
             child: row,
           )
         : row;
-
-    if (beside) return body;
-
-    // A narrow row keeps the identifier and the measurements readable and
-    // moves the state to a line of its own. The word is already on the row's
-    // node, so the line says nothing a reader has not heard.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        body,
-        ExcludeSemantics(
-          child: Padding(
-            padding: EdgeInsetsDirectional.only(
-              start:
-                  ui.shape.stroke.bar +
-                  ui.space.s3 +
-                  UiListRowStyle.leadingExtent +
-                  ui.space.s3,
-              end: ui.space.s3,
-              bottom: ui.space.s2,
-            ),
-            child: Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: chip,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// The presentation for one row state, resolved against the token layer.
-extension on SourceObjectState {
-  StatusPresentation presentation(BuildContext context) {
-    final UiStatusTriple triple = tripleIn(context.ui);
-    return StatusPresentation(
-      content: triple.content,
-      fill: triple.fill,
-      onFill: triple.onFill,
-      icon: iconSpec.resolve(),
-      label: label,
-      semanticsLabel: semanticsLabel,
-      spec: iconSpec,
-    );
   }
 }

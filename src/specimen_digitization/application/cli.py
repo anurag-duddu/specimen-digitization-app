@@ -12,7 +12,12 @@ from .source_registry import SourceRegistry
 
 def lane_wiring(config):
     """The processing lane's production inputs (LANE.md T1); empty when unconfigured."""
+    from .collection_profiles import published_registry
+    from .profile_runtime import published_risk_registry
+
     return {
+        "profile_registry": published_registry(dict(config.collection_bindings)),
+        "risk_registry": published_risk_registry(),
         "source_registry": SourceRegistry(config.sources),
         "source_reader": GcsSourceReader(project=config.project)
         if config.sources
@@ -64,6 +69,7 @@ def production_app(config=None):
         identity_verifier=firebase_verifier(firebase_app, config.app_ids, check_app),
         memberships=repository.memberships,
         origins=list(config.origins),
+        research_version="v2",
         **lane_wiring(config),
     )
     install_health(
@@ -72,6 +78,8 @@ def production_app(config=None):
         provenance=provenance,
         readiness=DependencyReadiness(cloud_probe(repository, blobs, config)),
     )
+    from ..observability import install_api_trace_spans
+    install_api_trace_spans(app)
     return app
 
 
@@ -95,15 +103,11 @@ def main():
             parser.error("Production port must come from PORT")
     from ..observability import configure_observability, CaptureMode
 
-    # The API never sends telemetry anywhere. Its deployed environment carries
-    # no Logfire credential, and leaving this unset would let the SDK's own
-    # default try to reach Logfire — and create a project — while the service is
-    # starting. Only the worker sends, through the approved bounded transport
-    # (docs/execution/APPROVED_LOGFIRE_TRACING.md); the API and SAM never do.
-    configure_observability(
-        send_to_logfire=False,
-        capture_mode=CaptureMode.METADATA,
-    )
+    if args.mode == "production":
+        from ..observability import configure_production_observability
+        configure_production_observability("specimen-api")
+    else:
+        configure_observability(send_to_logfire=False, capture_mode=CaptureMode.METADATA)
     if args.mode == "synthetic":
         token = os.getenv("SPECIMEN_SYNTHETIC_TOKEN")
         if not token:
@@ -121,7 +125,12 @@ def main():
         host, port = "0.0.0.0", config.port
     from .runtime_server import serve
 
-    serve(app, host=host, port=port)
+    try:
+        serve(app, host=host, port=port)
+    finally:
+        if args.mode == "production":
+            from ..observability import flush_production_observability
+            flush_production_observability(shutdown=True)
 
 
 if __name__ == "__main__":

@@ -8,12 +8,12 @@ import 'package:flutter/widgets.dart';
 
 import '../../foundation/density.dart';
 import '../../foundation/icons.dart';
-import '../../foundation/motion.dart';
 import '../../foundation/theme.dart';
 import '../../foundation/type.dart';
 import '../../primitives/fit.dart';
 import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
+import '../../primitives/squircle.dart';
 import '../inputs/select.dart';
 import '../overlays/tooltip.dart';
 import 'button.dart';
@@ -76,7 +76,7 @@ class UiSegmentedStyle {
   /// The track's edge, by state.
   final WidgetStateProperty<BorderSide> trackSide;
 
-  /// The gliding thumb's fill, by state.
+  /// The selected slot's fill, by state.
   final WidgetStateProperty<Color> thumb;
 
   /// The label colour on the thumb.
@@ -139,10 +139,13 @@ class UiSegmentedStyle {
         ? ui.color.disabledContent
         : ui.color.ink;
 
-    final double trackHeight = UiType.heightAroundAt(
-      UiButtonStyle.restingHeightOf(ui, size),
-      ui.type.label,
-      textScaler,
+    final double trackHeight = math.max(
+      UiDensity.hitBox,
+      UiType.heightAroundAt(
+        UiButtonStyle.restingHeightOf(ui, size),
+        ui.type.label,
+        textScaler,
+      ),
     );
     return UiSegmentedStyle(
       track: WidgetStateProperty.resolveWith(trackFill),
@@ -165,7 +168,7 @@ class UiSegmentedStyle {
       labelStyle: ui.type.label,
       trackHeight: trackHeight,
       outerHeight: math.max(trackHeight, UiDensity.hitBox),
-      inset: ui.space.s1,
+      inset: 0,
       segmentPadding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s3),
       minSegmentWidth: UiDensity.hitBox,
       glyphSize: ui.space.iconInline,
@@ -173,13 +176,13 @@ class UiSegmentedStyle {
   }
 }
 
-/// One capsule track with 2 to 5 equal segments and a thumb that glides.
+/// Two to five fixed value slots inside one soft-corner boundary.
 ///
 /// Retires `SegmentedButton`.
 ///
-/// Arrow keys move focus and `Enter` selects, which is the WAI-ARIA manual
-/// activation pattern: a reviewer arrowing past a segment does not switch the
-/// pane under them on the way through.
+/// Value choices report radio semantics. One option is in the Tab order;
+/// arrows move focus and Enter or Space commits the choice. Destinations use
+/// `UiTabs` instead.
 ///
 /// **Fit** (11 section 3.3). Its intrinsic width is the number of segments
 /// times the widest label plus a segment's padding, plus the track's insets;
@@ -239,10 +242,12 @@ class UiSegmented<T> extends StatefulWidget {
 
 class _UiSegmentedState<T> extends State<UiSegmented<T>> {
   List<FocusNode> _nodes = <FocusNode>[];
+  int _tabStop = 0;
 
   @override
   void initState() {
     super.initState();
+    _tabStop = _chosen;
     _syncNodes();
   }
 
@@ -264,11 +269,15 @@ class _UiSegmentedState<T> extends State<UiSegmented<T>> {
     for (final FocusNode node in _nodes) {
       node.dispose();
     }
-    _nodes = List<FocusNode>.generate(
-      widget.segments.length,
-      (int index) => FocusNode(debugLabel: widget.segments[index].label),
-      growable: false,
-    );
+    _nodes = List<FocusNode>.generate(widget.segments.length, (int index) {
+      final node = FocusNode(debugLabel: widget.segments[index].label);
+      node.addListener(() {
+        if (node.hasFocus && _tabStop != index && mounted) {
+          setState(() => _tabStop = index);
+        }
+      });
+      return node;
+    }, growable: false);
   }
 
   int get _chosen {
@@ -301,6 +310,9 @@ class _UiSegmentedState<T> extends State<UiSegmented<T>> {
       'a segmented control carries 2 to 5 segments (10 section 4.1). Fewer is '
       'a toggle and more is a select.',
     );
+    for (int i = 0; i < _nodes.length; i++) {
+      _nodes[i].skipTraversal = i != _tabStop;
+    }
     final UiThemeData ui = context.ui;
     final UiSegmentedStyle style = UiSegmentedStyle.resolve(
       ui,
@@ -428,65 +440,39 @@ class _UiSegmentedState<T> extends State<UiSegmented<T>> {
           child: SizedBox(
             width: width,
             height: style.outerHeight,
-            child: Stack(
-              alignment: Alignment.center,
-              children: <Widget>[
-                Positioned.fill(
-                  child: Center(
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: style.trackHeight,
-                      child: DecoratedBox(
-                        decoration: ShapeDecoration(
-                          shape: StadiumBorder(
-                            side: style.trackSide.resolve(states),
-                          ),
-                          color: style.track.resolve(states),
-                        ),
-                        child: Padding(
-                          padding: EdgeInsetsDirectional.all(style.inset),
-                          child: _Thumb(
-                            colour: style.thumb.resolve(states),
-                            count: count,
-                            index: chosen,
-                            motion: ui.motion,
-                          ),
+            child: ClipPath(
+              clipper: ShapeBorderClipper(
+                shape: Squircle.border(ui.shape.inner),
+              ),
+              child: DecoratedBox(
+                position: DecorationPosition.foreground,
+                decoration: ShapeDecoration(
+                  shape: Squircle.border(
+                    ui.shape.inner,
+                    side: style.trackSide.resolve(states),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    for (int i = 0; i < count; i++)
+                      Expanded(
+                        child: _Segment<T>(
+                          segment: widget.segments[i],
+                          style: style,
+                          focusNode: _nodes[i],
+                          selected: i == chosen,
+                          glyphOnly: glyphsOnly,
+                          disabledReason: widget.disabledReason,
+                          onPressed: enabled
+                              ? () =>
+                                    widget.onChanged!(widget.segments[i].value)
+                              : null,
                         ),
                       ),
-                    ),
-                  ),
+                  ],
                 ),
-                // The same inset the thumb sits at, so a label's centre and
-                // the thumb's centre are the same point in every segment.
-                // Without it the thumb, which is inset, and the segment,
-                // which is not, disagree by the inset at both ends.
-                Padding(
-                  padding: EdgeInsetsDirectional.symmetric(
-                    horizontal: style.inset,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: <Widget>[
-                      for (int i = 0; i < count; i++)
-                        Expanded(
-                          child: _Segment<T>(
-                            segment: widget.segments[i],
-                            style: style,
-                            focusNode: _nodes[i],
-                            selected: i == chosen,
-                            glyphOnly: glyphsOnly,
-                            disabledReason: widget.disabledReason,
-                            onPressed: enabled
-                                ? () => widget.onChanged!(
-                                    widget.segments[i].value,
-                                  )
-                                : null,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -518,47 +504,6 @@ class _MoveSegmentIntent extends Intent {
   final bool horizontal;
 }
 
-/// The ink capsule that slides behind the labels.
-///
-/// Signature motion 1 (09 section 8): `medium`, the emphasized curve. Under
-/// reduced motion the duration is zero, so the thumb appears at the new
-/// segment rather than travelling to it.
-class _Thumb extends StatelessWidget {
-  const _Thumb({
-    required this.colour,
-    required this.count,
-    required this.index,
-    required this.motion,
-  });
-
-  final Color colour;
-  final int count;
-  final int index;
-  final MotionTokens motion;
-
-  @override
-  Widget build(BuildContext context) => AnimatedAlign(
-    // Directional, so the thumb starts at the reading start in both
-    // directions rather than always on the left.
-    alignment: AlignmentDirectional(
-      count <= 1 ? 0 : (2 * index / (count - 1)) - 1,
-      0,
-    ),
-    duration: motion.navigationGlide,
-    curve: MotionTokens.emphasizedCurve,
-    child: FractionallySizedBox(
-      widthFactor: 1 / count,
-      heightFactor: 1,
-      child: DecoratedBox(
-        decoration: ShapeDecoration(
-          shape: const StadiumBorder(),
-          color: colour,
-        ),
-      ),
-    ),
-  );
-}
-
 /// One label and its target.
 class _Segment<T> extends StatelessWidget {
   const _Segment({
@@ -586,9 +531,10 @@ class _Segment<T> extends StatelessWidget {
       semanticsLabel: segment.spokenLabel,
       onPressed: onPressed,
       disabledReason: disabledReason,
-      role: PressableRole.tab,
+      role: PressableRole.radio,
       selected: selected,
-      capsule: true,
+      radius: ui.shape.none,
+      insetFocusRing: true,
       focusNode: focusNode,
       stateLayerColour: style.overlay.resolve(<WidgetState>{
         if (selected) WidgetState.selected,
@@ -601,35 +547,38 @@ class _Segment<T> extends StatelessWidget {
         final Color colour = selected
             ? style.selectedLabel.resolve(states)
             : style.label.resolve(states);
-        return AnimatedDefaultTextStyle(
-          duration: ui.motion.navigationGlide,
-          curve: MotionTokens.emphasizedCurve,
-          style: style.labelStyle.copyWith(color: colour),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: style.minSegmentWidth),
-            child: Padding(
-              padding: style.segmentPadding,
-              child: Center(
-                child: glyphOnly
-                    ? UiIcon(
-                        segment.icon!,
-                        size: UiIconSize.inline,
-                        color: colour,
-                      )
-                    : UiLabel(
-                        segment.label,
-                        textAlign: TextAlign.center,
-                        // Per segment rather than per track: only the word
-                        // that actually ran out of room carries a pane, and a
-                        // tooltip that repeats a label already on screen is
-                        // noise under the pointer (11 section 3.3, rule 4).
-                        tooltip:
-                            (
-                              BuildContext context,
-                              String message,
-                              Widget label,
-                            ) => UiTooltip(message: message, child: label),
-                      ),
+        return ColoredBox(
+          color: selected
+              ? style.thumb.resolve(states)
+              : style.track.resolve(states),
+          child: DefaultTextStyle(
+            style: style.labelStyle.copyWith(color: colour),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: style.minSegmentWidth),
+              child: Padding(
+                padding: style.segmentPadding,
+                child: Center(
+                  child: glyphOnly
+                      ? UiIcon(
+                          segment.icon!,
+                          size: UiIconSize.inline,
+                          color: colour,
+                        )
+                      : UiLabel(
+                          segment.label,
+                          textAlign: TextAlign.center,
+                          // Per segment rather than per track: only the word
+                          // that actually ran out of room carries a pane, and a
+                          // tooltip that repeats a label already on screen is
+                          // noise under the pointer (11 section 3.3, rule 4).
+                          tooltip:
+                              (
+                                BuildContext context,
+                                String message,
+                                Widget label,
+                              ) => UiTooltip(message: message, child: label),
+                        ),
+                ),
               ),
             ),
           ),

@@ -7,7 +7,7 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/icons.dart';
 import 'field.dart';
 
-/// A capsule [UiField] that filters a list.
+/// A soft-corner [UiField] that filters a list.
 ///
 /// The search glyph leads, a clear control appears once there is something to
 /// clear, `Escape` clears and then unfocuses, and `Enter` submits. The label
@@ -27,6 +27,7 @@ class UiSearchField extends StatefulWidget {
     this.helpText,
     this.onChanged,
     this.onSubmitted,
+    this.onEscape,
     this.enabled = true,
     this.autofocus = false,
     this.showLabel = false,
@@ -46,7 +47,7 @@ class UiSearchField extends StatefulWidget {
   /// The node that owns focus for this field.
   final FocusNode? focusNode;
 
-  /// Placeholder text inside the capsule.
+  /// Placeholder text inside the field.
   final String? hintText;
 
   /// One line under the field saying what it searches.
@@ -58,13 +59,17 @@ class UiSearchField extends StatefulWidget {
   /// Called when the reviewer presses `Enter`.
   final ValueChanged<String>? onSubmitted;
 
+  /// Overrides Escape for a containing modal while preserving the query.
+  /// Without an override, Escape clears the query and then unfocuses.
+  final VoidCallback? onEscape;
+
   /// False for a field the reviewer cannot use.
   final bool enabled;
 
   /// True to take focus when first built.
   final bool autofocus;
 
-  /// True to draw the label above the capsule as well as carry it in
+  /// True to draw the label above the field as well as carry it in
   /// semantics.
   final bool showLabel;
 
@@ -102,6 +107,11 @@ class _UiSearchFieldState extends State<UiSearchField> {
         event.logicalKey != LogicalKeyboardKey.escape) {
       return KeyEventResult.ignored;
     }
+    final VoidCallback? onEscape = widget.onEscape;
+    if (onEscape != null) {
+      onEscape();
+      return KeyEventResult.handled;
+    }
     if (_controller.text.isNotEmpty) {
       _controller.clear();
       widget.onChanged?.call('');
@@ -122,7 +132,7 @@ class _UiSearchFieldState extends State<UiSearchField> {
       label: widget.label,
       controller: _controller,
       focusNode: _node,
-      shape: UiFieldShape.capsule,
+      shape: UiFieldShape.box,
       showLabel: widget.showLabel,
       leading: UiIcons.search,
       hintText: widget.hintText,

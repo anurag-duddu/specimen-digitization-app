@@ -286,13 +286,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Fields'));
+    await tester.tap(find.text('Specimen data'));
     await tester.pumpAndSettle();
     for (int i = 0; i < 5; i++) {
-      await scrollAndTap(
-        tester,
-        uiIconButton(RegExp(r'^Edit as written')).at(i),
-      );
+      await openFieldEditor(tester, i);
       await tester.tap(find.text('Keep this correction'));
       await tester.pumpAndSettle();
     }
@@ -376,6 +373,10 @@ void main() {
         location: goldenQueueLocation,
         repository: GoldenQueueRepository(goldenQueue(6)),
       );
+      await tester.tap(uiMenuTrigger('Specimen list actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Select specimens'));
+      await tester.pumpAndSettle();
       expect(
         find.descendant(
           of: find.byType(SelectableRow),
@@ -403,6 +404,10 @@ void main() {
         location: goldenQueueLocation,
         repository: GoldenQueueRepository(goldenQueue(6)),
       );
+      await tester.tap(uiMenuTrigger('Specimen list actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Select specimens'));
+      await tester.pumpAndSettle();
       await tester.tap(
         find
             .descendant(

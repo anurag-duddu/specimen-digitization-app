@@ -195,24 +195,27 @@ class AppLane:
         return {"action": lab_checks.SUBSTITUTE, "reason": reason, "boxes": boxes}
 
     def collect(self, specimen_id):
-        actor_uid.set(READER)
-        scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
-        specimen = self.repository.get(scope, specimen_id)
-        artifacts = {}
-        for run in [*specimen.previous_runs, specimen.run]:
-            for o in run.observations:
-                artifacts[f"responses/{o.id}.json"] = self.blobs.get(o.raw_ref)
-                if o.input_crop_ref:
-                    artifacts.setdefault(f"crops/{o.region_id}.png", self.blobs.get(o.input_crop_ref))
-            for r in run.regions:
-                if r.crop_ref:
-                    artifacts.setdefault(f"crops/{r.id}.png", self.blobs.get(r.crop_ref))
-            artifacts.update(receipt_blobs(run, self.blobs))
-            if run.segmentation.get("blob_ref"):
-                artifacts[f"segmentation/{run.id}.json"] = self.blobs.get(run.segmentation["blob_ref"])
-        return {"snapshot": specimen.model_dump(mode="json"), "workspace": self.workspace(specimen_id),
-                "artifacts": artifacts, "rows": self.emulator.dump() if self.emulator else {},
-                "actions": []}
+        actor_token = actor_uid.set(READER)
+        try:
+            scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+            specimen = self.repository.get(scope, specimen_id)
+            artifacts = {}
+            for run in [*specimen.previous_runs, specimen.run]:
+                for o in run.observations:
+                    artifacts[f"responses/{o.id}.json"] = self.blobs.get(o.raw_ref)
+                    if o.input_crop_ref:
+                        artifacts.setdefault(f"crops/{o.region_id}.png", self.blobs.get(o.input_crop_ref))
+                for r in run.regions:
+                    if r.crop_ref:
+                        artifacts.setdefault(f"crops/{r.id}.png", self.blobs.get(r.crop_ref))
+                artifacts.update(receipt_blobs(run, self.blobs))
+                if run.segmentation.get("blob_ref"):
+                    artifacts[f"segmentation/{run.id}.json"] = self.blobs.get(run.segmentation["blob_ref"])
+            return {"snapshot": specimen.model_dump(mode="json"), "workspace": self.workspace(specimen_id),
+                    "artifacts": artifacts, "rows": self.emulator.dump() if self.emulator else {},
+                    "actions": []}
+        finally:
+            actor_uid.reset(actor_token)
 
 
 def receipt_blobs(run, blobs):

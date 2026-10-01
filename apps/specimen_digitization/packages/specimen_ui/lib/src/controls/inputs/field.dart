@@ -10,7 +10,6 @@ import '../../foundation/theme.dart';
 import '../../foundation/type.dart';
 import '../../primitives/announcer.dart';
 import '../../primitives/field_core.dart';
-import '../../primitives/focus_ring.dart';
 import '../../primitives/pressable.dart';
 import '../../primitives/squircle.dart';
 
@@ -57,11 +56,8 @@ class UiInputStyle {
   /// The fill behind the text. It does not change on focus (10 section 4.2).
   final WidgetStateProperty<Color> fill;
 
-  /// The one edge: `boundary` at `stroke.boundary`,
-  /// `status.blocked.content` on error, `disabled.outline` when disabled.
-  ///
-  /// Its width never changes. Focus is the ring and nothing else
-  /// (09 section 3.6, fit amendment).
+  /// The one boundary: neutral at rest, stronger during focus, status toned
+  /// on error, and muted when disabled. Focus adds no detached ring.
   final WidgetStateProperty<BorderSide> side;
 
   /// The label above the field.
@@ -117,13 +113,23 @@ class UiInputStyle {
         color = ui.color.disabledOutline;
       } else if (states.contains(WidgetState.error)) {
         color = ui.color.status.blocked.content;
+      } else if (states.contains(WidgetState.focused)) {
+        color = ui.color.focusRing;
+      } else if (states.contains(WidgetState.hovered)) {
+        color = ui.color.inkSecondary;
       } else {
         color = ui.color.boundary;
       }
-      // One edge, and it never moves. A focused field used to thicken this to
-      // `stroke.emphasis` and then draw a ring around it as well, which read
-      // as two outlines and shifted the text inside by a pixel (11 section 0).
-      return BorderSide(color: color, width: ui.shape.stroke.boundary);
+      // One painted edge replaces itself on focus. DecoratedBox reserves no
+      // border padding, so neither the field nor its text changes position.
+      return BorderSide(
+        color: color,
+        width:
+            states.contains(WidgetState.focused) &&
+                !states.contains(WidgetState.disabled)
+            ? ui.shape.stroke.focus
+            : ui.shape.stroke.boundary,
+      );
     }
 
     Color footerColor(Set<WidgetState> states) {
@@ -306,7 +312,7 @@ class UiFieldBox extends StatelessWidget {
     // caller publishes is the 48 dp hit box and the trailing action below is
     // outside it.
     content = semantics?.call(content) ?? content;
-    if (trailing == null) return content;
+    // Keep the editor at the same element path when a clear action appears.
     // The trailing action is positioned rather than laid out in the row, so
     // it can be 48 dp tall inside a 40 dp field in pointer density: the 8 dp
     // the box pads its own hit box with is exactly the room it needs.
@@ -314,63 +320,59 @@ class UiFieldBox extends StatelessWidget {
       alignment: AlignmentDirectional.center,
       children: <Widget>[
         content,
-        Positioned.directional(
-          textDirection: Directionality.of(context),
-          end: ui.space.s1,
-          top: 0,
-          bottom: 0,
-          child: Center(child: trailing),
-        ),
+        if (trailing != null)
+          Positioned.directional(
+            textDirection: Directionality.of(context),
+            end: ui.space.s1,
+            top: 0,
+            bottom: 0,
+            child: Center(child: trailing),
+          ),
       ],
     );
   }
 
   Widget _box(UiThemeData ui) {
-    final BorderSide side = style.side.resolve(states);
+    final Set<WidgetState> effective = <WidgetState>{
+      ...states,
+      if (focusRing) WidgetState.focused,
+    };
+    final BorderSide side = style.side.resolve(effective);
     final ShapeBorder shape = style.capsule
         ? StadiumBorder(side: side)
         : Squircle.border(style.radius, side: side);
-    return FocusRing(
-      visible: focusRing,
-      radius: style.radius,
-      // The ring takes the box's own shape, so the two run concentric at
-      // every corner instead of meeting and parting along one (11 section 4).
-      shape: style.capsule
-          ? FocusRingShape.stadium
-          : FocusRingShape.superellipse,
-      child: DecoratedBox(
-        decoration: ShapeDecoration(
-          shape: shape,
-          color: style.fill.resolve(states),
-        ),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: style.minHeight),
-          child: Padding(
-            // A paragraph's glyphs sit on the first line rather than in the
-            // middle of the text, so its row aligns to the top and the
-            // padding puts that first line where a single line would be.
-            padding: multiline
-                ? style.padding.add(
-                    EdgeInsetsDirectional.symmetric(vertical: ui.space.s3),
-                  )
-                : style.padding,
-            child: Row(
-              crossAxisAlignment: multiline
-                  ? CrossAxisAlignment.start
-                  : CrossAxisAlignment.center,
-              children: <Widget>[
-                if (leading != null) ...<Widget>[
-                  UiIcon(
-                    leading!,
-                    size: UiIconSize.inline,
-                    color: style.glyph.resolve(states),
-                  ),
-                  SizedBox(width: ui.space.s2),
-                ],
-                Expanded(child: child),
-                if (trailing != null) const SizedBox(width: UiDensity.hitBox),
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        shape: shape,
+        color: style.fill.resolve(effective),
+      ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: style.minHeight),
+        child: Padding(
+          // A paragraph's glyphs sit on the first line rather than in the
+          // middle of the text, so its row aligns to the top and the
+          // padding puts that first line where a single line would be.
+          padding: multiline
+              ? style.padding.add(
+                  EdgeInsetsDirectional.symmetric(vertical: ui.space.s3),
+                )
+              : style.padding,
+          child: Row(
+            crossAxisAlignment: multiline
+                ? CrossAxisAlignment.start
+                : CrossAxisAlignment.center,
+            children: <Widget>[
+              if (leading != null) ...<Widget>[
+                UiIcon(
+                  leading!,
+                  size: UiIconSize.inline,
+                  color: style.glyph.resolve(states),
+                ),
+                SizedBox(width: ui.space.s2),
               ],
-            ),
+              Expanded(child: child),
+              if (trailing != null) const SizedBox(width: UiDensity.hitBox),
+            ],
           ),
         ),
       ),
@@ -382,7 +384,7 @@ class UiFieldBox extends StatelessWidget {
 ///
 /// The label sits above in `type.label`; the field is a `radius.field`
 /// superellipse of `paper` with one `boundary` edge that turns
-/// `status.blocked.content` on error and never changes width; help or error
+/// `status.blocked.content` on error and strengthens on focus; help or error
 /// text sits below in `body.small`. There is no floating label and no notch.
 ///
 /// Focus is the ring and nothing else, drawn on the box's own shape, and a
@@ -542,6 +544,7 @@ class _UiFieldState extends State<UiField> {
   TextEditingController? _internalController;
   FocusNode? _internalNode;
   bool _focused = false;
+  bool _hovered = false;
 
   TextEditingController get _controller =>
       widget.controller ?? (_internalController ??= TextEditingController());
@@ -597,6 +600,7 @@ class _UiFieldState extends State<UiField> {
   }
 
   void _clear() {
+    if (!widget.enabled || widget.readOnly) return;
     _controller.clear();
     widget.onChanged?.call('');
     widget.onClear?.call();
@@ -604,7 +608,8 @@ class _UiFieldState extends State<UiField> {
 
   Set<WidgetState> get _states => <WidgetState>{
     if (!widget.enabled) WidgetState.disabled,
-    if (_focused) WidgetState.focused,
+    if (_focused && widget.enabled) WidgetState.focused,
+    if (_hovered && widget.enabled) WidgetState.hovered,
     if (widget.errorText != null) WidgetState.error,
   };
 
@@ -621,7 +626,7 @@ class _UiFieldState extends State<UiField> {
     final Set<WidgetState> states = _states;
     final String? footer = widget.errorText ?? widget.helpText;
 
-    return UiFieldFrame(
+    final Widget frame = UiFieldFrame(
       style: style,
       states: states,
       label: widget.showLabel ? widget.label : null,
@@ -641,6 +646,11 @@ class _UiFieldState extends State<UiField> {
         semantics: (Widget box) => _announce(box, footer),
         child: _buildCore(style),
       ),
+    );
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = widget.enabled),
+      onExit: (_) => setState(() => _hovered = false),
+      child: frame,
     );
   }
 
@@ -694,7 +704,9 @@ class _UiFieldState extends State<UiField> {
 
   Widget? _buildTrailing() {
     if (widget.trailing != null) return widget.trailing;
-    if (widget.clearLabel == null || !widget.enabled) return null;
+    if (widget.clearLabel == null || !widget.enabled || widget.readOnly) {
+      return null;
+    }
     if (_controller.text.isEmpty) return null;
     return _ClearAction(label: widget.clearLabel!, onPressed: _clear);
   }

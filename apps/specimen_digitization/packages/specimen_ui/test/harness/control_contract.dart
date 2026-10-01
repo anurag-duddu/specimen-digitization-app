@@ -355,13 +355,9 @@ Future<void> expectControlContract(
       );
     }
 
-    // Clause 4, as 09 section 3.6 amends it for a field. Every control draws
-    // the ring under keyboard focus; what a pointer does then depends on what
-    // the control is. A command shows nothing, because the press itself is the
-    // feedback. A text editing field shows the ring for any focus, because a
-    // focused field is being edited and a caret alone does not say which of
-    // several fields that is, so [ControlActivation.textEditing] takes the
-    // mirror assertion here as it does for the activation keys.
+    // Clause 4: keyboard focus must be visible. Commands use FocusRing;
+    // fields replace their one boundary with the focused 2 dp ink edge.
+    // Text editing fields retain that treatment after a pointer tap.
     await tester.pumpWidget(uiHarness(child: Builder(builder: build)));
     await tester.pumpAndSettle();
     FocusManager.instance.highlightStrategy =
@@ -369,9 +365,9 @@ Future<void> expectControlContract(
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pumpAndSettle();
     expect(
-      _focusRings(tester),
+      _focusIndicators(tester),
       greaterThan(0),
-      reason: 'no focus ring under FocusHighlightMode.traditional',
+      reason: 'no focus indicator under FocusHighlightMode.traditional',
     );
 
     FocusManager.instance.highlightStrategy =
@@ -398,17 +394,18 @@ Future<void> expectControlContract(
         FocusManager.instance.primaryFocus?.unfocus();
         await tester.pumpAndSettle();
         expect(
-          _focusRings(tester),
+          _focusIndicators(tester),
           0,
-          reason: '"$semanticsLabel" draws a ring while nothing is focused',
+          reason:
+              '"$semanticsLabel" draws a focus indicator while nothing is focused',
         );
         await tester.tap(control);
         await tester.pumpAndSettle();
         expect(
-          _focusRings(tester),
+          _focusIndicators(tester),
           greaterThan(0),
           reason:
-              'a pointer tap focused "$semanticsLabel" and drew no ring. A '
+              'a pointer tap focused "$semanticsLabel" and drew no focus indicator. A '
               'field being edited says so, whatever put the caret in it '
               '(09 section 3.6, fit amendment).',
         );
@@ -676,6 +673,32 @@ int _focusRings(WidgetTester tester) => tester
     .widgetList<FocusRing>(find.byType(FocusRing))
     .where((FocusRing ring) => ring.visible)
     .length;
+
+/// Visible rings plus the explicitly focused field boundary, verified from
+/// the painted decoration rather than merely from the style declaration.
+int _focusIndicators(WidgetTester tester) {
+  int count = _focusRings(tester);
+  for (final Element element in tester.elementList(find.byType(UiFieldBox))) {
+    final UiFieldBox field = element.widget as UiFieldBox;
+    if ((!field.states.contains(WidgetState.focused) && !field.focusRing) ||
+        field.states.contains(WidgetState.disabled)) {
+      continue;
+    }
+    final Finder box = find.byWidget(field);
+    final ShapeDecoration painted = tester
+        .widgetList<DecoratedBox>(
+          find.descendant(of: box, matching: find.byType(DecoratedBox)),
+        )
+        .map((DecoratedBox widget) => widget.decoration)
+        .whereType<ShapeDecoration>()
+        .first;
+    final BorderSide side = (painted.shape as OutlinedBorder).side;
+    expect(side.width, 2, reason: 'a focused field has one 2 dp edge');
+    expect(side.color, element.ui.color.ink);
+    count++;
+  }
+  return count;
+}
 
 /// Asserts the window under [tester] is inside the glass budget.
 ///

@@ -3,9 +3,8 @@
 //
 // The confirmation is the point of this screen, so it has the most tests. It
 // has to name the exact count before anything is sent, it has to say what the
-// gesture costs, and what it says about cost has to be true: adding creates
-// records and runs nothing, so it says that rather than naming a price or an
-// allowance that no endpoint reports yet.
+// gesture costs, and what it says about cost has to be true for this screen's
+// sensitive import, without naming a price no endpoint reports.
 
 // `material.dart` here is the harness, not the component: `productThemes` is
 // a map of `ThemeData`, which is the carrier `MaterialApp` still expects.
@@ -104,12 +103,10 @@ void main() {
         const SourceImportConfirmation(count: 1000, alreadyInQueue: 0),
       );
 
-      // Adding creates records and dispatches nothing, in any mode. That is
-      // what it costs, so that is what it says. It must not name a price or
-      // an allowance, because no endpoint reports either yet and a
-      // confirmation that invented one would look authoritative.
+      // This screen marks the imported records sensitive. The confirmation
+      // states that consequence without inventing a price or allowance.
       expect(
-        find.text('No model runs and no allowance is used.'),
+        find.text('No model run is requested for these sensitive records.'),
         findsOneWidget,
       );
       expect(find.textContaining('cents'), findsNothing);
@@ -117,7 +114,7 @@ void main() {
       expect(find.textContaining('remaining'), findsNothing);
     });
 
-    testWidgets('does not word itself as though it starts processing', (
+    testWidgets('states that this sensitive import is held', (
       WidgetTester tester,
     ) async {
       await pumpComponent(
@@ -125,11 +122,11 @@ void main() {
         const SourceImportConfirmation(count: 10, alreadyInQueue: 0),
       );
 
-      expect(find.textContaining('Processing'), findsNothing);
-      expect(find.textContaining('processing'), findsNothing);
       expect(find.textContaining('Run '), findsNothing);
       expect(
-        find.text('These become records in the queue, ready to review.'),
+        find.text(
+          'These become sensitive records in the queue and are held from processing.',
+        ),
         findsOneWidget,
       );
     });

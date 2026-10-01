@@ -16,6 +16,7 @@ export 'src/foundation/fields.dart';
 export 'src/foundation/fonts.dart';
 export 'src/foundation/glass.dart';
 export 'src/foundation/icons.dart';
+export 'src/foundation/layout.dart';
 export 'src/foundation/motion.dart';
 export 'src/foundation/palette.dart';
 export 'src/foundation/shape.dart';

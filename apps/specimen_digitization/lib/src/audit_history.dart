@@ -1,16 +1,9 @@
-/// Decision history and the version browser (screen blueprints, 6.5).
-///
-/// The timeline says who did what, in plain words, with their reason, the
-/// version it landed on and how long ago. The version browser lists a version
-/// with its date, its actor and a one line summary rather than a number and a
-/// hash. Raw JSON is one disclosure per event and nothing else.
-///
-/// Historical snapshots are read-only and never replace the active review
-/// model.
+/// Retained versions form an append-only timeline. A restore creates a version.
 library;
 
+import 'dart:convert';
 import 'package:flutter/widgets.dart';
-import 'package:specimen_ui/specimen_ui.dart';
+import 'package:specimen_ui/specimen_ui.dart' hide FieldLayer;
 
 import 'large_record.dart';
 import 'models.dart';
@@ -18,16 +11,22 @@ import 'screens/workbench/moments.dart';
 import 'vocabulary.dart';
 import 'widgets/widgets.dart';
 
-/// One audit event, in the words a reviewer uses.
-///
-/// `"Corrected locality"` rather than `field_correction`, and never a raw
-/// enum in the first sentence (audit finding H8.1).
 String auditActionLabel(Json event) {
-  final String action = textOf(event['action'], 'change');
-  final String target = textOf(event['target_id'], '');
-  final String named = vocabularyLabel(action);
-  if (target.isEmpty || target == 'Not recorded') return named;
-  return '$named: ${vocabularyLabel(target)}';
+  final action = textOf(event['action'], 'change');
+  final named = switch (action) {
+    'review_restore_version' =>
+      'Restored version ${event['source_revision'] ?? (event['after'] as Map?)?['source_revision'] ?? ''}',
+    'review_reset_initial' => 'Reset to initial version',
+    'initial_record' => 'Initial record',
+    'ingest' => 'Added photograph',
+    'transcribe' => 'Transcribed labels',
+    'review_field' => 'Edited specimen data',
+    'review_transcription' => 'Edited label transcription',
+    'review_approve' => 'Approved review',
+    _ => vocabularyLabel(action),
+  };
+  final target = textOf(event['target_id'], '');
+  return target.isEmpty ? named : '$named: ${vocabularyLabel(target)}';
 }
 
 class AuditHistoryPanel extends StatefulWidget {
@@ -37,8 +36,16 @@ class AuditHistoryPanel extends StatefulWidget {
     this.loadPage,
     this.loadRevision,
     this.loadArtifact,
+    this.onRestore,
+    this.mutationDisabledReason,
+    this.embedded = false,
+    this.active = true,
   });
   final Specimen specimen;
+  final bool embedded;
+
+  /// A retained hidden panel can finish loading without moving another view.
+  final bool active;
   final Future<Json> Function(Specimen, ArtifactRequest)? loadArtifact;
   final Future<HistoryPage> Function(int afterRevision, int throughRevision)?
   loadPage;
@@ -48,48 +55,92 @@ class AuditHistoryPanel extends StatefulWidget {
     String? runSha256,
   )?
   loadRevision;
+  final Future<void> Function(
+    int sourceRevision,
+    bool resetToInitial,
+    String reason,
+  )?
+  onRestore;
+  final String? mutationDisabledReason;
+
   @override
   State<AuditHistoryPanel> createState() => _AuditHistoryPanelState();
 }
 
 class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
-  final List<Json> _revisions = <Json>[];
+  final List<Json> _revisions = [];
+  final GlobalKey _previewKey = GlobalKey(
+    debugLabel: 'history-version-preview',
+  );
   int? _cursor;
   bool _started = false;
   bool _loadingPage = false;
   bool _loadingRecord = false;
+  bool _mutating = false;
+  bool _submitting = false;
+  bool _resetPreview = false;
   String? _pageError;
   String? _recordError;
   Specimen? _historical;
   int? _requestedRevision;
   int _generation = 0;
+  int _pageGeneration = 0;
   String? _runId;
   String? _runSha256;
 
-  String _message(Object e) => e is ApiFailure
-      ? e.message
-      : 'History could not be loaded. Check your connection and retry.';
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _more();
+    });
+  }
+
+  @override
+  void didUpdateWidget(AuditHistoryPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.specimen.id != widget.specimen.id ||
+        oldWidget.specimen.revision != widget.specimen.revision) {
+      ++_generation;
+      ++_pageGeneration;
+      _revisions.clear();
+      _cursor = null;
+      _started = _loadingPage = _loadingRecord = _resetPreview = false;
+      _historical = null;
+      _recordError = _pageError = null;
+      _requestedRevision = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _more();
+      });
+    }
+  }
+
+  String _message(Object e) =>
+      e is ApiFailure ? e.message : 'History could not be loaded. Retry.';
+  TextStyle get _line =>
+      context.ui.type.bodySmall.copyWith(color: context.ui.color.inkSecondary);
 
   Future<void> _more() async {
     if (_loadingPage || widget.loadPage == null) return;
+    final through = _started ? (_cursor ?? 0) : widget.specimen.revision;
+    if (through < 1) return;
+    final after = through > 10 ? through - 10 : 0;
+    final generation = ++_pageGeneration;
     setState(() {
       _loadingPage = true;
       _pageError = null;
     });
     try {
-      final HistoryPage page = await widget.loadPage!(
-        _cursor ?? 0,
-        widget.specimen.revision,
-      );
-      if (!mounted) return;
+      final page = await widget.loadPage!(after, through);
+      if (!mounted || generation != _pageGeneration) return;
       setState(() {
-        _revisions.addAll(page.items);
-        _cursor = page.nextCursor;
+        _revisions.addAll(page.items.reversed);
+        _cursor = after == 0 ? null : after;
         _started = true;
         _loadingPage = false;
       });
     } catch (e) {
-      if (mounted) {
+      if (mounted && generation == _pageGeneration) {
         setState(() {
           _loadingPage = false;
           _pageError = _message(e);
@@ -98,13 +149,19 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
     }
   }
 
-  Future<void> _open(int revision, {String? runId, String? runSha256}) async {
+  Future<void> _open(
+    int revision, {
+    String? runId,
+    String? runSha256,
+    bool reset = false,
+  }) async {
     if (widget.loadRevision == null ||
         revision < 1 ||
-        revision > widget.specimen.revision) {
+        revision > widget.specimen.revision ||
+        _mutating) {
       return;
     }
-    final int generation = ++_generation;
+    final generation = ++_generation;
     setState(() {
       _requestedRevision = revision;
       _runId = runId;
@@ -112,19 +169,27 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
       _historical = null;
       _recordError = null;
       _loadingRecord = true;
+      _resetPreview = reset;
     });
     try {
-      final Specimen record = await widget.loadRevision!(
-        revision,
-        runId,
-        runSha256,
-      );
-      if (mounted && generation == _generation) {
-        setState(() {
-          _historical = record;
-          _loadingRecord = false;
-        });
+      final record = await widget.loadRevision!(revision, runId, runSha256);
+      if (!mounted || generation != _generation) return;
+      if (record.id != widget.specimen.id || record.revision != revision) {
+        throw const ApiFailure('The requested version could not be verified.');
       }
+      setState(() {
+        _historical = record;
+        _loadingRecord = false;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final preview = _previewKey.currentContext;
+        if (mounted &&
+            widget.active &&
+            generation == _generation &&
+            preview != null) {
+          Scrollable.ensureVisible(preview, alignment: 0);
+        }
+      });
     } catch (e) {
       if (mounted && generation == _generation) {
         setState(() {
@@ -135,391 +200,467 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
     }
   }
 
-  /// One decision, as a timeline entry.
-  Widget _event(Json event, int sequence) {
-    final UiThemeData ui = context.ui;
-    final Object? before = event['before'];
-    final int? reference =
-        before is Map &&
-            before['specimen_id'] == widget.specimen.id &&
-            before['revision'] is int
-        ? before['revision'] as int
-        : null;
-    final String reason = textOf(event['reason'], '');
-    final String actor = textOf(
-      event['actor_id'],
-      textOf(event['actor'], 'Not recorded'),
-    );
-
-    final bool machine = event['actor_id'] == null;
-    return Semantics(
-      container: true,
-      child: Padding(
-        padding: EdgeInsetsDirectional.only(bottom: ui.space.s3),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Padding(
-              padding: EdgeInsetsDirectional.only(top: ui.space.s1),
-              child: UiIcon(
-                // Slate for a machine event and green for a reviewer's, which
-                // is the evidence family 09 section 3.5 gives each: the
-                // glyph already said which, and now the colour agrees.
-                machine ? UiIcons.processing : UiIcons.reviewer,
-                size: UiIconSize.inline,
-                color: machine
-                    ? ui.color.status.model.content
-                    : ui.color.status.human.content,
-              ),
-            ),
-            SizedBox(width: ui.space.s2),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    '$sequence · ${auditActionLabel(event)}',
-                    style: ui.type.label,
-                  ),
-                  Text(
-                    '$actor · ${citedInstant(event['created_at'])}',
-                    style: ui.type.bodySmall.copyWith(
-                      color: ui.color.inkSecondary,
-                    ),
-                  ),
-                  if (reason.isNotEmpty && reason != 'Not recorded')
-                    Text('Reason: $reason', style: ui.type.body),
-                  if (event['revision'] != null)
-                    Text(
-                      'Version ${event['revision']}',
-                      style: ui.type.mono.identifier.copyWith(
-                        color: ui.color.inkSecondary,
-                      ),
-                    ),
-                  if (reference != null &&
-                      reference > 0 &&
-                      reference <= widget.specimen.revision)
-                    Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: UiButton(
-                        label: 'Open version $reference',
-                        variant: UiButtonVariant.ghost,
-                        leading: UiIcons.history,
-                        disabledReason: widget.loadRevision == null
-                            ? unavailableReason
-                            : null,
-                        onPressed: widget.loadRevision == null
-                            ? null
-                            : () => _open(
-                                reference,
-                                runId: textOf((before! as Map)['run_id']),
-                                runSha256: textOf(
-                                  (before as Map)['run_sha256'],
-                                ),
-                              ),
-                      ),
-                    ),
-                  EvidenceDrawer(
-                    payload: event,
-                    section: auditActionLabel(event),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+  Future<void> _restore(Specimen record) async {
+    if (_mutating ||
+        widget.onRestore == null ||
+        widget.mutationDisabledReason != null) {
+      return;
+    }
+    final generation = _generation;
+    final reset = _resetPreview;
+    setState(() {
+      _mutating = true;
+      _recordError = null;
+    });
+    try {
+      final reason = await showReasonSheet(
+        context,
+        title: reset
+            ? 'Reset specimen to its initial version?'
+            : 'Restore version ${record.revision}?',
+        action: reset ? 'Reset specimen' : 'Restore version',
+        consequence:
+            'Replace the current label and specimen data with version ${record.revision}. Approval and authority matches will need review; processing stays paused.',
+        retained: 'The photograph and every saved version remain in history.',
+        reversal:
+            'This creates a new version. You can restore another saved version later.',
+      );
+      if (reason == null ||
+          !mounted ||
+          generation != _generation ||
+          widget.mutationDisabledReason != null) {
+        return;
+      }
+      setState(() {
+        _submitting = true;
+      });
+      await widget.onRestore!(record.revision, reset, reason);
+    } catch (e) {
+      if (mounted && generation == _generation) {
+        setState(() {
+          _recordError = e is ApiFailure
+              ? e.message
+              : 'This version could not be restored. Retry.';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _mutating = false;
+          _submitting = false;
+        });
+      }
+    }
   }
 
   Widget _card(String title, List<Widget> children) {
-    final UiThemeData ui = context.ui;
+    final ui = context.ui;
+    final section = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Semantics(header: true, child: Text(title, style: ui.type.title)),
+        SizedBox(height: ui.space.s2),
+        ...children,
+      ],
+    );
     return Padding(
-      padding: EdgeInsetsDirectional.only(bottom: ui.space.s4),
-      child: Surface(
-        radius: ui.shape.tile,
-        hairline: true,
-        padding: EdgeInsetsDirectional.all(ui.space.s4),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Semantics(
-              container: true,
-              header: true,
-              child: Text(title, style: ui.type.title),
+      padding: EdgeInsets.only(bottom: ui.space.s4),
+      child: widget.embedded
+          ? section
+          : Surface(
+              radius: ui.shape.tile,
+              hairline: true,
+              padding: EdgeInsets.all(ui.space.s3),
+              child: section,
             ),
-            SizedBox(height: ui.space.s2),
-            ...children,
+    );
+  }
+
+  Widget _event(Json event) {
+    final before = event['before'];
+    final revision =
+        before is Map && before['specimen_id'] == widget.specimen.id
+        ? before['revision']
+        : null;
+    return Padding(
+      padding: EdgeInsets.only(bottom: context.ui.space.s2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(auditActionLabel(event), style: context.ui.type.label),
+          Text(
+            '${textOf(event['actor_id'], textOf(event['actor'], 'Unknown actor'))} · ${citedInstant(event['created_at'])}',
+            style: _line,
+          ),
+          if (textOf(event['reason'], '').isNotEmpty)
+            Text(textOf(event['reason']), style: context.ui.type.body),
+          if (revision is int &&
+              revision > 0 &&
+              revision <= widget.specimen.revision)
+            UiButton(
+              label: 'Open version $revision',
+              variant: UiButtonVariant.ghost,
+              onPressed: widget.loadRevision == null || _mutating
+                  ? null
+                  : () => _open(
+                      revision,
+                      runId: before['run_sha256'] is String
+                          ? before['run_id'] as String?
+                          : null,
+                      runSha256: before['run_sha256'] as String?,
+                    ),
+            ),
+          EvidenceDrawer(payload: event, section: auditActionLabel(event)),
+        ],
+      ),
+    );
+  }
+
+  String? _value(dynamic value) {
+    final text = textOf(value, '');
+    return text.isEmpty ? null : text;
+  }
+
+  String? _fieldLayer(Json? field, FieldLayer layer) => _value(switch (layer) {
+    FieldLayer.asWritten =>
+      field?['literal_value'] ?? field?['literal'] ?? field?['value'],
+    FieldLayer.readAs => field?['parsed_value'] ?? field?['parsed'],
+    // resolved_value is a display fallback across layers, not standardized data.
+    FieldLayer.standardized => field?['normalized'],
+  });
+
+  String? _status(Json? record) {
+    final state = _value(record?['value_state'] ?? record?['state']);
+    return state == null ? null : vocabularyLabel(state);
+  }
+
+  String? _resolution(Json? transcript) => switch (transcript?['resolved']) {
+    true => 'Resolved',
+    false => 'Unresolved',
+    _ => null,
+  };
+
+  void _addDifference(
+    List<Widget> lines,
+    String label,
+    String? current,
+    String? past, {
+    required bool currentPresent,
+    required bool pastPresent,
+  }) {
+    if (current == past) return;
+    final from = current ?? (currentPresent ? 'Not recorded' : 'Not present');
+    final to = past ?? (pastPresent ? 'Not recorded' : 'Not present');
+    lines.add(
+      Padding(
+        padding: EdgeInsets.only(top: context.ui.space.s2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: _line),
+            Text('$from → $to', style: context.ui.type.body),
           ],
         ),
       ),
     );
   }
 
-  Widget _historicalRecord(
+  Widget _differenceGroup(String title, List<Widget> lines) => Padding(
+    padding: EdgeInsets.only(bottom: context.ui.space.s2),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: context.ui.type.label),
+        ...lines,
+      ],
+    ),
+  );
+
+  List<Widget> _differences(Specimen record) {
+    final current = {
+      for (final f in widget.specimen.fields) textOf(f['field_key']): f,
+    };
+    final past = {for (final f in record.fields) textOf(f['field_key']): f};
+    final keys = {...current.keys, ...past.keys}.toList()..sort();
+    final changes = <Widget>[];
+    for (final key in keys) {
+      final before = current[key];
+      final after = past[key];
+      final lines = <Widget>[];
+      if (before == null || after == null) {
+        lines.add(
+          Text(before == null ? 'Field added' : 'Field removed', style: _line),
+        );
+      }
+      for (final layer in FieldLayer.values) {
+        _addDifference(
+          lines,
+          layer.label,
+          _fieldLayer(before, layer),
+          _fieldLayer(after, layer),
+          currentPresent: before != null,
+          pastPresent: after != null,
+        );
+      }
+      _addDifference(
+        lines,
+        'Status',
+        _status(before),
+        _status(after),
+        currentPresent: before != null,
+        pastPresent: after != null,
+      );
+      if (lines.isEmpty) continue;
+      changes.add(
+        _differenceGroup(
+          textOf(
+            after?['display_name'],
+            textOf(before?['display_name'], vocabularyLabel(key)),
+          ),
+          lines,
+        ),
+      );
+    }
+    final currentTranscripts = {
+      for (final transcript in objects(widget.specimen.data['transcriptions']))
+        textOf(transcript['region_id']): transcript,
+    };
+    final pastTranscripts = {
+      for (final transcript in objects(record.data['transcriptions']))
+        textOf(transcript['region_id']): transcript,
+    };
+    for (final id in {...currentTranscripts.keys, ...pastTranscripts.keys}) {
+      final before = currentTranscripts[id];
+      final after = pastTranscripts[id];
+      final lines = <Widget>[];
+      _addDifference(
+        lines,
+        'Transcription',
+        _value(before?['verbatim_text'] ?? before?['text']),
+        _value(after?['verbatim_text'] ?? after?['text']),
+        currentPresent: before != null,
+        pastPresent: after != null,
+      );
+      _addDifference(
+        lines,
+        'Status',
+        _status(before),
+        _status(after),
+        currentPresent: before != null,
+        pastPresent: after != null,
+      );
+      _addDifference(
+        lines,
+        'Resolution',
+        _resolution(before),
+        _resolution(after),
+        currentPresent: before != null,
+        pastPresent: after != null,
+      );
+      if (lines.isEmpty && (before == null || after == null)) {
+        lines.add(
+          Text(
+            before == null ? 'Transcription added' : 'Transcription removed',
+            style: _line,
+          ),
+        );
+      }
+      if (lines.isEmpty) continue;
+      var index = record.regions.indexWhere(
+        (r) => (r['region_id'] ?? r['id']) == id,
+      );
+      if (index < 0) {
+        index = widget.specimen.regions.indexWhere(
+          (r) => (r['region_id'] ?? r['id']) == id,
+        );
+      }
+      changes.add(
+        _differenceGroup(index < 0 ? 'Label $id' : 'Label ${index + 1}', lines),
+      );
+    }
+    if (jsonEncode(record.regions) != jsonEncode(widget.specimen.regions)) {
+      changes.insert(
+        0,
+        Text(
+          record.regions.length != widget.specimen.regions.length
+              ? '${widget.specimen.regions.length} labels → ${record.regions.length} labels'
+              : 'Label regions changed',
+          style: context.ui.type.body,
+        ),
+      );
+    }
+    return changes.isEmpty
+        ? [Text('No label or field changes in this comparison.', style: _line)]
+        : changes;
+  }
+
+  Widget _preview(
     Specimen record,
-  ) => _card('Version ${record.revision} · read only', <Widget>[
+  ) => _card(_resetPreview ? 'Initial version · 1' : 'Version ${record.revision}', [
     Text(
-      'This is a past version. It is read only.',
-      style: context.ui.type.body,
-    ),
-    SizedBox(height: context.ui.space.s1),
-    Text(
-      'Your current review is on version ${widget.specimen.revision}. '
-      'This version: ${SpecimenStatus.ofRecord(disposition: record.disposition, state: record.state).label}.',
+      'Status: ${SpecimenStatus.ofRecord(disposition: record.disposition, state: record.state).label}',
       style: _line,
     ),
     Text(
-      'Profile ${record.profile} · Record '
-      '${textOf(record.data['record_version_id'])}',
+      'Changes from current version ${widget.specimen.revision}',
       style: _line,
     ),
-    if (record.data['history_through_revision'] != null)
-      Text(
-        'Earlier history through version '
-        '${record.data['history_through_revision']} is in the version '
-        'browser below.',
-        style: _line,
-      ),
+    SizedBox(height: context.ui.space.s2),
+    ..._differences(record),
     if (record.data['artifact_receipt'] is Map)
       LargeRecordEvidence(
-        key: ValueKey<String>('historical:${record.id}:${record.revision}'),
+        key: ValueKey('historical:${record.id}:${record.revision}'),
         specimen: record,
         load: widget.loadArtifact == null
             ? null
-            : (ArtifactRequest request) =>
-                  widget.loadArtifact!(record, request),
-      )
-    else ...<Widget>[
-      EvidenceDrawer(
-        title: 'Source asset and pinned run evidence',
-        payload: <String, dynamic>{
-          'asset': record.data['asset'],
-          'run': record.data['run'],
-        },
+            : (request) => widget.loadArtifact!(record, request),
       ),
-      EvidenceDrawer(
-        title: 'Independent readings and transcriptions',
-        payload: <String, dynamic>{
-          'observations': record.observations,
-          'transcriptions': record.data['transcriptions'],
-        },
+    if (record.revision != widget.specimen.revision || _resetPreview) ...[
+      SizedBox(height: context.ui.space.s2),
+      Text(
+        _resetPreview
+            ? 'Version 1 is the initial retained record. It may precede label processing.'
+            : 'Restores label and specimen data. Approval and authority matches need review; processing stays paused.',
+        style: _line,
       ),
-      EvidenceDrawer(
-        title: 'Fields, authority evidence and validation',
-        payload: <String, dynamic>{
-          'fields': record.fields,
-          'evidence': record.evidence,
-          'validations': record.findings,
-        },
-      ),
-      EvidenceDrawer(
-        title: 'Complete retained workspace',
-        payload: record.data,
+      Align(
+        alignment: AlignmentDirectional.centerStart,
+        child: UiButton(
+          label: _resetPreview
+              ? 'Reset to initial version'
+              : 'Restore this version',
+          loading: _submitting,
+          disabledReason:
+              widget.mutationDisabledReason ??
+              'Version restoration is not available on this connection.',
+          onPressed:
+              widget.onRestore == null ||
+                  widget.mutationDisabledReason != null ||
+                  _mutating
+              ? null
+              : () => _restore(record),
+        ),
       ),
     ],
-    SizedBox(height: context.ui.space.s3),
-    Text(
-      'Audit events · version ${record.revision}',
-      style: context.ui.type.label,
-    ),
-    if (record.audit.isEmpty)
-      Text(
-        'No events in this version. Open earlier versions to see more '
-        'history.',
-        style: context.ui.type.body,
-      ),
-    ...record.audit.indexed.map(
-      ((int, Json) entry) => _event(
-        entry.$2,
-        (record.data['audit_offset'] as int? ?? 0) + entry.$1 + 1,
-      ),
-    ),
+    if (record.audit.isNotEmpty) ...[
+      SizedBox(height: context.ui.space.s3),
+      Text('Changes saved in this version', style: context.ui.type.label),
+      ...record.audit.reversed.take(1).map(_event),
+    ],
+    EvidenceDrawer(title: 'Retained version data', payload: record.data),
     Align(
       alignment: AlignmentDirectional.centerStart,
       child: UiButton(
-        label: closeVersionLabel,
+        label: 'Close past version',
         variant: UiButtonVariant.ghost,
-        leading: UiIcons.close,
-        onPressed: () => setState(() {
-          _historical = null;
-          _requestedRevision = null;
-          ++_generation;
-        }),
+        onPressed: _mutating
+            ? null
+            : () => setState(() {
+                _historical = null;
+                _requestedRevision = null;
+                ++_generation;
+              }),
       ),
     ),
   ]);
 
-  /// One line saying what a version changed, built from the event the server
-  /// already returned rather than from the hash.
-  String _revisionSummary(Json item) {
-    final String actor = textOf(
-      item['actor_id'],
-      textOf(item['actor'], 'Not recorded'),
-    );
-    final String action = item['action'] == null
-        ? 'Saved'
-        : auditActionLabel(item);
-    return '$action · $actor';
-  }
-
-  /// The style every secondary line in this panel is set in.
-  TextStyle get _line =>
-      context.ui.type.bodySmall.copyWith(color: context.ui.color.inkSecondary);
-
-  /// The controls this panel names, fixed so the panel and its tests agree.
-  static const String closeVersionLabel = 'Close past version';
-  static const String retryVersionLabel = 'Retry loading version';
-  static const String browseLabel = 'Browse record versions';
-  static const String loadMoreLabel = 'Load more versions';
-  static const String loadingLabel = 'Loading versions';
-  static const String retryPageLabel = 'Retry history page';
-  static const String openVersionLabel = 'Open';
-
-  /// Why a control is unavailable on a connection that cannot reach history.
-  static const String unavailableReason =
-      'Past versions cannot be loaded on this connection.';
-
   @override
   Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final MotionTokens motion = ui.motion;
+    final ui = context.ui;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        _card('Current decision history', <Widget>[
-          Text(
-            'Current review version ${widget.specimen.revision}',
-            style: _line,
+      children: [
+        _card('History', [
+          Wrap(
+            spacing: ui.space.s2,
+            runSpacing: ui.space.s1,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text('Current version ${widget.specimen.revision}', style: _line),
+              UiButton(
+                label: 'Start over',
+                variant: UiButtonVariant.ghost,
+                disabledReason:
+                    widget.mutationDisabledReason ??
+                    'Version restoration is not available on this connection.',
+                onPressed:
+                    widget.loadRevision == null ||
+                        widget.onRestore == null ||
+                        _mutating ||
+                        widget.mutationDisabledReason != null
+                    ? null
+                    : () => _open(1, reset: true),
+              ),
+            ],
           ),
-          if (widget.specimen.data['history_through_revision'] != null)
+          if (widget.loadPage == null)
+            ...widget.specimen.audit.reversed.map(_event),
+          for (final item in _revisions)
+            UiListRow(
+              title:
+                  'Version ${item['revision']}${item['revision'] == widget.specimen.revision ? ' · current' : ''}',
+              subtitle:
+                  '${auditActionLabel(item)} · ${textOf(item['actor_id'], textOf(item['actor'], 'Unknown actor'))}\n${citedInstant(item['created_at'])}',
+              trailing: const UiRowTrailing(label: 'View', icon: UiIcons.next),
+              disabledReason:
+                  'Past versions cannot be loaded on this connection.',
+              onPressed: widget.loadRevision == null || _mutating
+                  ? null
+                  : () => _open(item['revision'] as int),
+            ),
+          if (_pageError != null) Text(_pageError!, style: ui.type.body),
+          if (_loadingPage) Text('Loading versions', style: _line),
+          if (!_loadingPage &&
+              widget.loadPage != null &&
+              (!_started || _cursor != null))
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: UiButton(
+                label: _pageError != null
+                    ? 'Retry history page'
+                    : 'Load earlier versions',
+                variant: UiButtonVariant.ghost,
+                onPressed: _more,
+              ),
+            ),
+          if (widget.loadPage == null && widget.specimen.audit.isEmpty)
             Text(
-              'Earlier audit and run evidence through version '
-              '${widget.specimen.data['history_through_revision']} is kept in '
-              'record history. Browse versions below for the complete earlier '
-              'record.',
+              'Past versions cannot be loaded on this connection.',
               style: _line,
             ),
-          SizedBox(height: ui.space.s2),
-          if (widget.specimen.audit.isEmpty)
-            Text(
-              'No audit events in the current snapshot.',
-              style: ui.type.body,
-            ),
-          ...widget.specimen.audit.indexed.map(
-            ((int, Json) entry) => _event(
-              entry.$2,
-              (widget.specimen.data['audit_offset'] as int? ?? 0) +
-                  entry.$1 +
-                  1,
-            ),
-          ),
         ]),
         if (_loadingRecord)
           Semantics(
             liveRegion: true,
-            child: Padding(
-              padding: EdgeInsetsDirectional.all(ui.space.s4),
-              child: Text(
-                'Loading version $_requestedRevision',
-                style: ui.type.body,
-              ),
-            ),
+            child: Text('Loading version $_requestedRevision', style: _line),
           ),
         if (_recordError != null)
-          _card('Past version unavailable', <Widget>[
+          _card('Version unavailable', [
             Semantics(
               liveRegion: true,
               child: Text(_recordError!, style: ui.type.body),
             ),
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: UiButton(
-                label: retryVersionLabel,
-                variant: UiButtonVariant.ghost,
-                leading: UiIcons.retry,
-                disabledReason: unavailableReason,
-                onPressed: _requestedRevision == null
-                    ? null
-                    : () => _open(
-                        _requestedRevision!,
-                        runId: _runId,
-                        runSha256: _runSha256,
-                      ),
-              ),
-            ),
-          ]),
-        // Moving back through time is not a peer relationship, so the panel
-        // cross-fades rather than sliding (motion catalog row 57).
-        AnimatedSwitcher(
-          duration: motion.standard,
-          switchInCurve: MotionTokens.standardCurve,
-          child: _historical == null
-              ? const SizedBox(width: double.infinity)
-              : KeyedSubtree(
-                  key: ValueKey<int>(_historical!.revision),
-                  child: _historicalRecord(_historical!),
+            if (_historical == null)
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: UiButton(
+                  label: 'Retry loading version',
+                  variant: UiButtonVariant.ghost,
+                  onPressed: _requestedRevision == null
+                      ? null
+                      : () => _open(
+                          _requestedRevision!,
+                          runId: _runId,
+                          runSha256: _runSha256,
+                          reset: _resetPreview,
+                        ),
                 ),
-        ),
-        _card('Record versions', <Widget>[
-          Text(
-            'History goes up to your current review version '
-            '${widget.specimen.revision}. Opening a version rechecks your '
-            'access.',
-            style: _line,
-          ),
-          SizedBox(height: ui.space.s2),
-          if (widget.loadPage == null || widget.loadRevision == null)
-            Text(unavailableReason, style: ui.type.body),
-          ..._revisions.map(
-            (Json item) => UiListRow(
-              title: 'Version ${item['revision']}',
-              subtitle: <String>[
-                citedInstant(item['created_at']),
-                _revisionSummary(item),
-              ].join(' · '),
-              trailing: const UiRowTrailing(
-                label: openVersionLabel,
-                icon: UiIcons.next,
               ),
-              disabledReason: unavailableReason,
-              onPressed: widget.loadRevision == null
-                  ? null
-                  : () => _open(item['revision'] as int),
-            ),
-          ),
-          if (_pageError != null)
-            Semantics(
-              liveRegion: true,
-              child: Text(_pageError!, style: ui.type.body),
-            ),
-          if (_started && _cursor == null)
-            Text(
-              'All versions through this snapshot are listed.',
-              style: _line,
-            ),
-          if (!_started || _cursor != null)
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: UiButton(
-                label: _loadingPage
-                    ? loadingLabel
-                    : _pageError != null
-                    ? retryPageLabel
-                    : _started
-                    ? loadMoreLabel
-                    : browseLabel,
-                variant: UiButtonVariant.secondary,
-                leading: UiIcons.history,
-                loading: _loadingPage,
-                disabledReason: unavailableReason,
-                onPressed: widget.loadPage == null ? null : _more,
-              ),
-            ),
-        ]),
+          ]),
+        if (_historical != null)
+          KeyedSubtree(key: _previewKey, child: _preview(_historical!)),
       ],
     );
   }

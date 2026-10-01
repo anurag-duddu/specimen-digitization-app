@@ -10,17 +10,10 @@
 /// is stated once, in words, before anything is sent. That is true here even
 /// though adding costs nothing: the number is the point, not the price.
 ///
-/// **What it says about spending is what is true, and no more.** Importing
-/// creates records and dispatches no processing, in any mode, so this
-/// confirmation says no model runs rather than naming a cost. Running a
-/// selection is a separate decision with a separate surface, and it does not
-/// exist yet: the estimate-and-reserve endpoint it needs is workstream C of
-/// `docs/execution/SOURCE_BROWSE_AND_RUN.md`, which is blocked on an ongoing
-/// budget the owner has not set. Until that endpoint exists there is no
-/// estimate to show and no allowance to count down, and a confirmation that
-/// named either would be inventing both. The north star's rule for exactly
-/// this case: where a design calls for data the API does not return yet, the
-/// interface shows an honest absence rather than a placeholder.
+/// This screen imports records as sensitive, so they are held from processing.
+/// The repository API also permits non-sensitive imports, which may queue when
+/// the collection is configured. This confirmation describes this screen's
+/// request, without estimating a cost the API has not returned.
 library;
 
 import 'package:flutter/widgets.dart';
@@ -79,14 +72,11 @@ class SourceImportConfirmation extends StatelessWidget {
 
   /// What adding does, in one sentence.
   static const String consequence =
-      'These become records in the queue, ready to review.';
+      'These become sensitive records in the queue and are held from processing.';
 
-  /// What adding does not do.
-  ///
-  /// The one sentence a reviewer needs before a gesture that could have picked
-  /// a thousand objects: nothing is spent, because nothing is run. Reading is
-  /// a separate decision on a separate surface.
-  static const String spend = 'No model runs and no allowance is used.';
+  /// The processing consequence of this screen's sensitive import.
+  static const String spend =
+      'No model run is requested for these sensitive records.';
 
   /// The way out.
   static const String cancelLabel = 'Cancel';

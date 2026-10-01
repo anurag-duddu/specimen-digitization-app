@@ -125,7 +125,7 @@ void main() {
     expect(selected, <int>[1]);
   });
 
-  testWidgets('it is 280 dp wide and carries one flat pane', (
+  testWidgets('it is 280 dp wide and carries one matte flat surface', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
@@ -134,7 +134,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.getSize(find.byType(UiSidebar)).width, 280);
     expect(UiSidebar.widthOf(tester.element(find.byType(UiSidebar))), 280);
-    expect(glassPaneCount(), 1);
+    expect(glassPaneCount(), 0);
+    expect(
+      find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is GlassSurface && widget.level == GlassLevel.flat,
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('the current row carries the bar, the fill and the fill glyph', (

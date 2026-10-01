@@ -110,6 +110,18 @@ Specimen goldenSpecimen() {
         'rotation_quarter_turns': 0,
       },
     ],
+    'transcriptions': <Json>[
+      <String, dynamic>{
+        'region_id': 'r1',
+        'verbatim_text': 'Chicago 1912',
+        'value_state': 'supported',
+      },
+      <String, dynamic>{
+        'region_id': 'r2',
+        'verbatim_text': null,
+        'value_state': 'unresolved',
+      },
+    ],
     'observations': <Json>[
       <String, dynamic>{
         'observation_id': 'o1',

@@ -9,7 +9,9 @@
 
 import 'dart:ui' as ui;
 
+import 'package:flutter/cupertino.dart' as cupertino;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' as material;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +22,7 @@ import 'package:specimen_ui/testing.dart';
 
 import '../golden/golden_harness.dart';
 import '../widget_test.dart' show TestSession;
+import '../ui_finders.dart';
 
 /// The boundary a verification capture is taken from.
 const Key verificationBoundary = ValueKey<String>('verification-boundary');
@@ -53,6 +56,7 @@ List<String> _captured = <String>[];
 
 /// The handler in place before the collector was installed.
 FlutterExceptionHandler? _previous;
+bool _collecting = false;
 
 /// Starts collecting this test's layout errors.
 ///
@@ -62,16 +66,19 @@ FlutterExceptionHandler? _previous;
 /// frame.
 void captureLayoutErrors() {
   _previous = FlutterError.onError;
+  _collecting = true;
   _captured = <String>[];
   FlutterError.onError = (FlutterErrorDetails details) =>
       _captured.add(details.exceptionAsString());
-  addTearDown(_stopCapturing);
+  addTearDown(stopCapturingLayoutErrors);
 }
 
-void _stopCapturing() {
-  if (_previous == null) return;
+/// Restores the handler even when opening a measured screen fails.
+void stopCapturingLayoutErrors() {
+  if (!_collecting) return;
   FlutterError.onError = _previous;
   _previous = null;
+  _collecting = false;
 }
 
 /// Puts the framework's handler back and says whether anything overflowed.
@@ -79,7 +86,7 @@ void _stopCapturing() {
 /// Anything that is not an overflow fails the test here, so a capture is
 /// never taken from a broken frame.
 bool stopAndReportOverflow(WidgetTester tester) {
-  _stopCapturing();
+  stopCapturingLayoutErrors();
   final List<String> errors = _captured;
   final Iterable<String> other = errors.where(
     (String error) => !error.contains('overflowed by'),
@@ -99,13 +106,22 @@ List<String> get capturedErrors => List<String>.unmodifiable(_captured);
 // Arrangement
 // ---------------------------------------------------------------------------
 
-/// Which navigation arrangement the shell chose (05 section 2; shell.dart).
-///
-/// One per window class: a floating pill below 600, a collapsed rail to 839,
-/// an extended rail to 1199, and a sidebar at 1200 and above. A screen drawn
-/// outside the collection shell reports `none`, which is itself the intended
-/// arrangement for the entry screens and for a surface the app pushes whole.
+/// Which navigation arrangement is actually mounted in the current shell.
+/// Compact screens use native bottom navigation; wider screens use the global
+/// rail and optional specimen sidebar. Legacy primitives remain recognizable
+/// for isolated gallery captures. Screens outside the shell report `none`.
 String navigationVariant(WidgetTester tester) {
+  if (find.byType(cupertino.CupertinoTabBar).evaluate().isNotEmpty) {
+    return 'cupertino tabs';
+  }
+  if (find.byType(material.NavigationBar).evaluate().isNotEmpty) {
+    return 'material navigation bar';
+  }
+  if (find.byKey(const ValueKey('global-rail')).evaluate().isNotEmpty) {
+    return find.byKey(const ValueKey('global-sidebar')).evaluate().isNotEmpty
+        ? 'global rail and specimens'
+        : 'global rail';
+  }
   if (find.byType(UiSidebar).evaluate().isNotEmpty) return 'sidebar';
   final Iterable<UiRail> rails = tester.widgetList<UiRail>(find.byType(UiRail));
   if (rails.isNotEmpty) {
@@ -193,7 +209,10 @@ Future<void> pumpMeasuredApp(
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
 
   final TestSession session = TestSession(signedIn: signedIn);
-  addTearDown(session.controller.close);
+  addTearDown(() async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    await session.controller.close();
+  });
   await tester.pumpWidget(
     RepaintBoundary(
       key: verificationBoundary,
@@ -207,6 +226,16 @@ Future<void> pumpMeasuredApp(
   );
   await tester.pumpAndSettle();
   await settleImages(tester);
+}
+
+/// Selects the current inline Deferred filter and verifies the actual state.
+Future<void> chooseDeferredQueue(WidgetTester tester) async {
+  await pickSpecimenQueue(tester, 'Deferred');
+  for (final status in ['needs_human_review', 'deferred', 'cleared']) {
+    final control = find.byKey(ValueKey('queue-filter-$status'));
+    expect(control.hitTestable(), findsOneWidget);
+    expect(tester.widget<Pressable>(control).selected, status == 'deferred');
+  }
 }
 
 /// The pixels currently under [verificationBoundary].

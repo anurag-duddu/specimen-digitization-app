@@ -37,10 +37,12 @@ void main() {
         token: () async => 'test-only',
         client: MockClient((request) async {
           if (request.url.path.endsWith('/batches')) {
+            expect((jsonDecode(request.body) as Json)['sensitive'], isTrue);
             return http.Response('{"batch_id":"b"}', 200);
           }
           if (request.url.path.endsWith('/items')) {
             final body = jsonDecode(request.body) as Json;
+            expect(body['sensitive'], isTrue);
             expect(body.containsKey('width'), false);
             expect(body.containsKey('height'), false);
             return http.Response(
@@ -102,12 +104,12 @@ void main() {
       final handles = objects(jsonDecode(stored));
       expect(handles.single['upload_id'], 'u');
       expect(handles.single.keys, unorderedEquals(['digest', 'upload_id']));
-      // Scoped to the row: the header counts accepted photographs under the
+      // Scoped to the row: the header counts uploaded photographs under the
       // same word.
       expect(
         find.descendant(
           of: find.byType(IntakeManifestRow),
-          matching: find.text('Accepted'),
+          matching: find.text('Uploaded'),
         ),
         findsNothing,
       );

@@ -54,14 +54,14 @@ class UiShape {
   /// The standard set. Identical in both modes.
   static const UiShape standard = UiShape(stroke: UiStroke());
 
-  /// Sheets, dialogs, large panes, the photograph matte.
-  double get sheet => 28;
+  /// Sheets and dialogs. Broad surfaces use a restrained overlay contour.
+  double get sheet => 16;
 
-  /// Data tiles, cards, tile groups, popovers, toasts.
-  double get tile => 20;
+  /// Panels, cards, tile groups, popovers and toasts.
+  double get tile => 8;
 
   /// Text fields, selects, text areas.
-  double get field => 14;
+  double get field => 8;
 
   /// Nested elements: thumbnails inside rows, key caps, swatches.
   double get inner => 8;
@@ -69,8 +69,8 @@ class UiShape {
   /// Diff spans, table cells, region overlays, the environment banner.
   double get none => 0;
 
-  /// Buttons, toggles, chips, the navigation and its discs, search fields,
-  /// badges. Drawn as a `StadiumBorder`, never as a large radius.
+  /// Intrinsically rounded forms such as switches and radio tracks.
+  /// Commands, fields and value choices use their role radius instead.
   OutlinedBorder get capsule => const StadiumBorder();
 
   /// Every radius, by the name 09 gives it. The gallery page walks this.
@@ -95,7 +95,7 @@ class UiShape {
   /// floored at [inner].
   ///
   /// Optical nesting, stated as a constraint rather than a suggestion. A tile
-  /// at 20 with 12 dp of padding gives its children 8.
+  /// never rounds its children beyond the minimum control contour.
   double nested(double parentRadius, double inset) {
     final double value = parentRadius - inset;
     return value < inner ? inner : value;

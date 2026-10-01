@@ -185,15 +185,9 @@ class Workflow:
             or step in {"parse", "segment", "classify"}
         )
         reservation_tokens = 16000 if billable and not run.profile.synthetic else 0
-        cost = (
-            0
-            if run.profile.synthetic or not billable
-            else (
-                policy.stage_cost_reservations.for_step(step)
-                if policy.stage_cost_reservations is not None
-                else policy.request_cost_reservation_micros
-            )
-        )
+        from .lane_reservations import step_reservation
+
+        cost = 0 if run.profile.synthetic or not billable else step_reservation(run, step)
         issue = None
         if run.usage.steps >= policy.max_steps:
             issue = "step_budget_exhausted"
@@ -265,6 +259,24 @@ class Workflow:
                     digest(run.circuit),
                 )
             permit = admission.token
+        if billable and not run.profile.synthetic:
+            from .lane_allowance import reserve_step
+
+            # The program's allowance (LANE.md T2b), once the circuit admits the call.
+            allowance_issue = reserve_step(
+                self.repository, principal, specimen, step, cost, self.clock
+            )
+            if allowance_issue:
+                run.blocker = allowance_issue
+                run.stage = "processing_blocked"
+                run.disposition = None
+                return self.repository.save(
+                    principal,
+                    specimen,
+                    revision,
+                    f"allowance:{revision}",
+                    digest({"allowance": allowance_issue}),
+                )
         run.usage.steps += 1
         if external:
             run.usage.external_calls += external_weight
@@ -295,6 +307,7 @@ class Workflow:
         # Set once the step's model or lookup call has returned: a later failure
         # is deterministic and its outcome known (issue #80, HARNESS.md 2).
         effect_settled = False
+        observed = len(run.observations)
         try:
             if step == "pin_dependencies":
                 run.dependencies = (
@@ -352,6 +365,9 @@ class Workflow:
                     ):
                         raise OperationalBlock("segmentation_geometry_invalid")
                 run.coverage_confirmed = run.profile.synthetic
+                if not run.profile.synthetic:
+                    from .label_coverage import check_run
+                    check_run(specimen)
             elif step.startswith("transcribe:"):
                 _, region_id, route = step.split(":", 2)
                 region = next(r for r in run.regions if r.id == region_id)
@@ -656,6 +672,20 @@ class Workflow:
             sum(o.input_tokens + o.output_tokens for o in run.observations)
             - previous_tokens,
         )
+        if billable and not run.profile.synthetic:
+            from .lane_costs import record_step
+
+            # Each paid call's cost, and the program ledger settled (LANE.md T2c).
+            record_step(
+                self.repository,
+                principal,
+                specimen,
+                step,
+                run.observations[observed:],
+                elapsed,
+                cost,
+                self.clock,
+            )
         if external and run.blocker != "external_outcome_unknown":
             run.lease_until = None
             run.usage.reserved_active_seconds = max(

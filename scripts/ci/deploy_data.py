@@ -13,11 +13,14 @@ import subprocess
 import tempfile
 import time
 
-from release_admission import (admit, digest, exact_keys, integer, materialize_inputs,
+from release_admission import (admit, digest, exact_keys, gh_json, integer, materialize_inputs,
                                private_bytes, read_bound_plan, require, strict_json)
 from release_context import PROJECT, REPOSITORY
 from release_google import Google, cleanup_packet, cleanup_permit
-from release_diagnostics import public_failure, stage
+from release_diagnostics import HTTPFailure, public_failure, stage
+import release_gate
+import schema_gate
+import release_source_asset_unique
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFIX = f"projects/{PROJECT}/locations/us-east4/services/specimen-digitization-service"
@@ -25,6 +28,33 @@ SOURCE = "specimen-digitization-instance"
 CLONE = "specimen-digitization-restore-20260908-r1"
 DATABASE = "specimen-digitization-database"
 RULE_RELEASE = f"projects/{PROJECT}/releases/firebase.storage/{PROJECT}.firebasestorage.app"
+SCHEMA_NAME, CONNECTOR_NAME = f"{PREFIX}/schemas/main", f"{PREFIX}/connectors/specimen-server"
+RULESET = re.compile(rf"projects/{re.escape(PROJECT)}/rulesets/[A-Za-z0-9_-]{{1,100}}")
+# An etag is an opaque public revision: printable, without whitespace, bounded.
+REVISION = re.compile(r"[\x21-\x7e]{1,500}")
+# An extension name the first initialization may print: a bare identifier, never a workflow command or a value.
+EXTENSION = re.compile(r"[a-z][a-z0-9_-]{0,62}")
+COUNTS = ("relations", "views", "routines", "types")
+APPLICATION_ROLES = {role: f"firebase{role}_{DATABASE}_public" for role in ("owner", "writer", "reader")}
+OWNER = APPLICATION_ROLES["owner"]
+# RELEASE.md 4.4: the schema label that records the commit the plane last applied, each apply's backup's lifetime, and
+# how far Cloud SQL's readback of that expiry may differ from the request.
+LABEL, BACKUP_SECONDS, EXPIRY_SLACK_SECONDS = "source-sha", 7 * 86400, 60
+ACTOR = f"specimen-data-release@{PROJECT}.iam.gserviceaccount.com"
+# The first apply's restore check (D1): the gate record's time a claim needs left, and the time kept for the clone's deletion.
+CLAIM_SECONDS, DISPOSAL_SECONDS = 1800, 600
+# RELEASE.md 4.3 step 3 reads a diff statement as tokens: ASCII space, a quoted identifier, a string, a word, a number,
+# punctuation, an operator run or any other character. A backslash or an "other" token refuses it, so no escape string
+# or dollar quote can move a statement boundary. release_sql.mjs reads each statement the same way before it runs.
+SQL_TOKEN = re.compile(r"""(?P<space>[ \t\n\r\f\v]+)|(?P<ident>"(?:[^"]|"")+")|(?P<string>'(?:[^']|'')*')"""
+                       r"|(?P<word>[A-Za-z_][A-Za-z0-9_]*)|(?P<number>[0-9]+(?:\.[0-9]+)?)|(?P<punct>[(),.;\[\]])"
+                       r"|(?P<operator>[-+*/<>=~!@#%^&|`?:]+)|(?P<other>[\s\S])")
+# A diff statement is named by its longest leading keywords in this list, else "other"; never by its own text.
+KINDS = frozenset(("CREATE TABLE", "CREATE VIEW", "CREATE INDEX", "CREATE UNIQUE INDEX", "ALTER TABLE", "CREATE EXTENSION",
+    "CREATE SCHEMA", "CREATE OR REPLACE", "CREATE MATERIALIZED VIEW", "CREATE FUNCTION", "CREATE TRIGGER", "CREATE TYPE",
+    "CREATE SEQUENCE", "CREATE ROLE", "CREATE", "ALTER", "DROP TABLE", "DROP INDEX", "DROP VIEW", "DROP SCHEMA",
+    "DROP EXTENSION", "DROP", "TRUNCATE", "GRANT", "REVOKE", "DO", "COMMENT", "INSERT", "UPDATE", "DELETE", "SELECT", "SET",
+    "RESET", "COPY", "CALL", "VACUUM", "ANALYZE", "REINDEX", "LOCK", "REFRESH"))
 # Empty-scope creation modes. Each requires the reviewed evidence recipient and
 # publishes its own signed receipt; the legacy first-admin mode does neither.
 FIRST_SCOPE_MODES = {"first-scope-owner-bootstrap/v1", "first-scope-hierarchy-bootstrap/v1"}
@@ -37,6 +67,10 @@ INDEX_SPECS = {
     "snapshot_search_batch": ("specimen_snapshot", ["organization_id", "collection_id", "snapshot #>> '{batch_id}'::text[]", "specimen_id", "revision"], []),
     "specimen_scope_checksum": ("specimen", ["organization_id", "collection_id", "source_checksum"], []),
 }
+# RELEASE.md 4.5: the owner's data-production secrets for the bootstrap run, which the workflow sets on the release step
+# alone. That step reads them exactly once, before any child process starts, and removes all three from its environment
+# together, so neither gh nor the Node SQL connector inherits them; the values stay in memory.
+BOOTSTRAP_SECRETS = ("DATA_BOOTSTRAP_ARTIFACT_B64", "DATA_BOOTSTRAP_APPROVED_SHA256", "DATA_WORKER_ACTOR_UID")
 CATALOG_BOOLEANS = {"expected_database", "expected_actor", "application_database_exists", "application_catalog_observed",
     "owner_exists", "reader_exists", "writer_exists",
     "expected_roles_without_global_privileges", "owner_public_schema", "owner_only_approved_tables_in_database",
@@ -176,17 +210,25 @@ def validate_plan(plan, packet, *, now=None):
     return plan
 
 
+def committed_source(folder):
+    """One folder's committed *.gql files as a Data Connect source, exactly as a release sends them."""
+    return {"files": [{"path": name, "content": text} for name, text in schema_gate.read_tree(ROOT / folder).items()]}
+
+
+def committed_rules():
+    """The committed Storage rules as a ruleset source, exactly as a release publishes them."""
+    return {"files": [{"name": "storage.rules", "content": (ROOT / "storage.rules").read_text()}]}
+
+
 def data_bodies(plan):
-    def source(folder):
-        return {"files": [{"path": path.name, "content": path.read_text()} for path in sorted((ROOT / folder).glob("*.gql"))]}
     postgres = {"database": DATABASE, "cloudSql": {
         "instance": f"projects/{PROJECT}/locations/us-east4/instances/{SOURCE}"}}
     if plan["schema_mode"] == "initialize_empty":
         postgres["schemaMigration"] = "MIGRATE_COMPATIBLE"
     else:
         postgres["schemaValidation"] = "COMPATIBLE"
-    schema = {"name": f"{PREFIX}/schemas/main", "source": source("dataconnect/schema"), "datasources": [{"postgresql": postgres}]}
-    connector = {"name": f"{PREFIX}/connectors/specimen-server", "source": source("dataconnect/connector")}
+    schema = {"name": f"{PREFIX}/schemas/main", "source": committed_source("dataconnect/schema"), "datasources": [{"postgresql": postgres}]}
+    connector = {"name": f"{PREFIX}/connectors/specimen-server", "source": committed_source("dataconnect/connector")}
     if plan["schema_etag"]:
         schema["etag"] = plan["schema_etag"]
     if plan["connector_etag"]:
@@ -505,16 +547,7 @@ def apply_compatible(google, plan, path, output, before):
         native(path.parent, SOURCE, "post", files=plan["initialization"]["files"], deadline=google.packet["expires_at_unix"])
     if plan["schema_mode"] == "validate_existing":
         require(before["rows"] == after["rows"] and before["sequences"] == after["sequences"], "data or sequence values changed during compatible publication")
-    release = google.request("rules", "GET", RULE_RELEASE, missing=True)
-    require((release.get("rulesetName") if release else None) == plan["storage_release_etag"], "Storage release changed")
-    rules = google.request("rules", "POST", f"projects/{PROJECT}/rulesets", body={"source": {"files": [{"name": "storage.rules", "content": (ROOT / "storage.rules").read_text()}]}})
-    body = {"name": RULE_RELEASE, "rulesetName": rules["name"]}
-    if release:
-        google.request("rules", "PATCH", RULE_RELEASE, body={"release": body}, params={"updateMask": "ruleset_name"})
-    else:
-        google.request("rules", "POST", f"projects/{PROJECT}/releases", body=body)
-    reread = google.request("rules", "GET", RULE_RELEASE)
-    require(reread.get("rulesetName") == rules["name"], "Storage publication mismatch")
+    ruleset = publish_rules(google, plan["storage_release_etag"])
     observations = {role: google.request("data", "GET", body["name"]) for role, body in (("schema", schema), ("connector", connector))}
     for value in observations.values():
         require(value.get("reconciling", False) is False and value.get("etag"), "data did not finish reconciling")
@@ -539,7 +572,23 @@ def apply_compatible(google, plan, path, output, before):
                                  **({"bootstrap_receipt": bootstrap_receipt} if bootstrap_receipt
                                     and bootstrap_receipt.get("version") in FIRST_SCOPE_RECEIPTS else {}),
                                  **{role: {"name": value["name"], "etag": value["etag"]} for role, value in observations.items()},
-                                 "storage_ruleset": rules["name"], "release_accepted": False}, sort_keys=True) + "\n")
+                                 "storage_ruleset": ruleset, "release_accepted": False}, sort_keys=True) + "\n")
+
+
+def publish_rules(google, expected):
+    """Release the committed Storage rules as a new ruleset over the expected live ruleset (None: no release yet)."""
+    release = google.request("rules", "GET", RULE_RELEASE, missing=True)
+    require((release.get("rulesetName") if release else None) == expected, "Storage release changed")
+    rules = google.request("rules", "POST", f"projects/{PROJECT}/rulesets", body={"source": committed_rules()})
+    require(isinstance(rules, dict) and isinstance(rules.get("name"), str) and RULESET.fullmatch(rules["name"]), "invalid new ruleset")
+    body = {"name": RULE_RELEASE, "rulesetName": rules["name"]}
+    if release:
+        google.request("rules", "PATCH", RULE_RELEASE, body={"release": body}, params={"updateMask": "ruleset_name"})
+    else:
+        google.request("rules", "POST", f"projects/{PROJECT}/releases", body=body)
+    reread = google.request("rules", "GET", RULE_RELEASE)
+    require(reread.get("rulesetName") == rules["name"], "Storage publication mismatch")
+    return rules["name"]
 
 
 def complete_initialization(path, receipt_path, output):
@@ -621,6 +670,840 @@ def verify_or_bootstrap(google, plan, output):
     output.write_text(json.dumps(receipt, sort_keys=True) + "\n")
 
 
+def files_by(source, key):
+    """A source's files as {name: content} under the given name key; anything else fails closed."""
+    entries = source.get("files") if isinstance(source, dict) else None
+    require(isinstance(entries, list) and all(isinstance(entry, dict) and isinstance(entry.get(key), str)
+                                              and isinstance(entry.get("content"), str) for entry in entries),
+            "invalid source files")
+    files = {entry[key]: entry["content"] for entry in entries}
+    require(len(files) == len(entries), "duplicate source file")
+    return files
+
+
+def revision(resource):
+    value = resource.get("etag") if isinstance(resource, dict) else None
+    require(isinstance(value, str) and REVISION.fullmatch(value), "live resource lacks a public revision")
+    return value
+
+
+def live_rules(google):
+    """The live Storage rules release's ruleset name and source files; no release reads as (None, None)."""
+    release = google.request("rules", "GET", RULE_RELEASE, missing=True)
+    if release is None:
+        return None, None
+    name = release.get("rulesetName") if isinstance(release, dict) else None
+    require(isinstance(name, str) and RULESET.fullmatch(name), "invalid live Storage rules release")
+    ruleset = google.request("rules", "GET", name)
+    return name, files_by(ruleset.get("source") if isinstance(ruleset, dict) else None, "name")
+
+
+def take_bootstrap_secrets():
+    """The bootstrap secrets, read exactly once and gone from os.environ together, before any child process can inherit
+    them; an unset one, which GitHub renders as "", reads as ""."""
+    return {name: os.environ.pop(name, "") for name in BOOTSTRAP_SECRETS}
+
+
+def blocked(reason):
+    """Print a fixed, value-free reason, since the command line's exit hides exception text, and return it."""
+    print(f"Data release blocked: {reason}.")
+    return ValueError(reason)
+
+
+def require_database(google):
+    """The SQL instance runs and the application database exists; both are read, never changed."""
+    instance = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}")
+    if not (isinstance(instance, dict) and instance.get("name") == SOURCE and instance.get("project") == PROJECT
+            and instance.get("region") == "us-east4" and instance.get("state") == "RUNNABLE"):
+        raise blocked("the SQL instance is not runnable")
+    database = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}/databases/{DATABASE}", missing=True)
+    if not (isinstance(database, dict) and database.get("name") == DATABASE and database.get("instance") == SOURCE
+            and database.get("project") == PROJECT):
+        raise blocked("the application database is missing")
+
+
+def first_catalog(directory, source_sha):
+    """The application database's summary, read through the Node connector as the release identity (4.3 step 1)."""
+    target = directory / "first-catalog.json"
+    result = subprocess.run(["node", "scripts/ci/release_sql.mjs", "summary", SOURCE, str(target)], cwd=ROOT,
+                            env=dict(os.environ, RELEASE_GATE_SHA=source_sha), capture_output=True, timeout=60)
+    if result.returncode != 0:
+        raise blocked("the application database's catalog could not be read")
+    return strict_json(private_bytes(target))
+
+
+def run_artifacts(record, prefix):
+    """This run's unexpired <prefix>-<commit>-<attempt> artifacts from every attempt so far, by attempt (actions: read)."""
+    listing = gh_json(f"repos/{REPOSITORY}/actions/runs/{record['release_run_id']}/artifacts?per_page=100")
+    items = listing.get("artifacts") if isinstance(listing, dict) else None
+    require(isinstance(items, list) and listing.get("total_count") == len(items), "incomplete run artifact listing")
+    found = {}
+    for item in items:
+        match = re.fullmatch(rf"{prefix}-{record['source_sha']}-([1-9][0-9]{{0,5}})", str(release_gate.field(item, "name")))
+        if match and release_gate.field(item, "expired") is False and release_gate.field(item, "workflow_run", "id") == record["release_run_id"]:
+            attempt = int(match.group(1))
+            require(attempt not in found and attempt <= record["release_run_attempt"], "ambiguous run artifact")
+            found[attempt] = item
+    return found
+
+
+def first_step(record, directory):
+    """RELEASE.md 4.3 step 1: initialize a new, empty database; migrate after this run's own earlier initializer; else stop."""
+    summary = first_catalog(directory, record["source_sha"])
+    names = summary.get("extensions") if isinstance(summary, dict) else None
+    roles = summary.get("roles") if isinstance(summary, dict) else None
+    if not (isinstance(summary, dict) and set(summary) == {*COUNTS, "expected_database", "expected_actor", "extensions", "roles"}
+            and summary["expected_database"] is True and summary["expected_actor"] is True
+            and all(type(summary[key]) is int and 0 <= summary[key] <= 10**9 for key in COUNTS)
+            and isinstance(names, list) and len(names) <= 100
+            and all(isinstance(name, str) and EXTENSION.fullmatch(name) and name != "plpgsql" for name in names)
+            and len(set(names)) == len(names) and isinstance(roles, list)
+            and all(name in APPLICATION_ROLES.values() for name in roles) and len(set(roles)) == len(roles)):
+        raise blocked("the application database's catalog summary is malformed")
+    present = {role: name in roles for role, name in APPLICATION_ROLES.items()}
+    print("Application database: " + ", ".join(f"{summary[key]} {key}" for key in COUNTS)
+          + f", {len(names)} extension(s) besides plpgsql ({', '.join(names) or 'none'}); Data Connect roles: "
+          + ", ".join(f"{role} {'present' if value else 'absent'}" for role, value in present.items()) + ".")
+    if not any(present.values()) and not names and not any(summary[key] for key in COUNTS):
+        return "initialize"
+    if all(present.values()) and any(attempt < record["release_run_attempt"] for attempt in run_artifacts(record, "data-initializer")):
+        return "migrate"
+    raise blocked("the application database is neither empty nor initialized by this run; adopting it needs a ruling")
+
+
+def deploy_released_data(path, output, secrets=None):
+    """Release the data plane from a gate record (G11, RELEASE.md 4.2 and 4.4): read live state, then choose the phase.
+
+    initialize: the placeholder schema and no connector; the initialization jobs (T3c) continue. verify: the
+    live schema, connector and Storage rules equal the merged files, the schema is persistent and both are
+    reconciled, and the catalog and the supplemental index inventory check out read-only. apply: anything else the
+    additive-only gate admits, a missing or changed supplemental index too (apply_released). Every other combination
+    asks to reconcile. After a successful verify or apply comes the owner's bootstrap, when its artifact is set
+    (bootstrap_released). Once a data gate record is admitted, every exit writes the receipt, which holds the phase and
+    public facts only, each as last observed, and reports any encrypted bootstrap evidence for the workflow to attest.
+    secrets: the bootstrap secrets main() took before admission; none is left in the environment from here on either way.
+    """
+    taken = take_bootstrap_secrets()
+    secrets = taken if secrets is None else secrets
+    targets = os.environ.get("GITHUB_OUTPUT")
+    require(targets and output is not None, "GitHub step output and receipt path required")
+    google = Google(path, "data")
+    record = google.packet
+    require(release_gate.is_gate_record(record) and record.get("plane") == "data", "a data gate record is required")
+    facts = dict.fromkeys(("phase", "schema_etag", "schema_update_time", "connector_etag", "storage_ruleset",
+                           "source_sha_label", "backup_id", "first_restore", "tables", "views", "bootstrap",
+                           "worker_membership"))
+
+    def choose(phase):
+        facts["phase"] = phase
+        print(f"Data release phase: {phase}.")
+
+    def publish():
+        with open(targets, "a", encoding="utf-8") as handle:
+            handle.write(f"phase={facts['phase']}\n")
+
+    try:
+        schema = google.request("data", "GET", SCHEMA_NAME)
+        etag, updated = revision(schema), schema.get("updateTime")
+        stamp(updated)
+        facts.update(schema_etag=etag, schema_update_time=updated, source_sha_label=schema_label(schema))
+        connector = google.request("data", "GET", CONNECTOR_NAME, missing=True)
+        if connector is not None:
+            facts["connector_etag"] = revision(connector)
+        facts["storage_ruleset"], rules = live_rules(google)
+        require_database(google)
+        live_schema, live_connector = schema_gate.live_sources(schema, connector)
+        if schema.get("reconciling", False) is not False:
+            raise blocked("the live schema is still reconciling; reconcile it, then re-run this release")
+        if not live_schema and connector is None:
+            choose("initialize")
+            publish()
+            if secrets.get("DATA_BOOTSTRAP_ARTIFACT_B64"):
+                # RELEASE.md 4.5: the bootstrap needs the initialized plane; this release never decodes, prints or writes it.
+                facts["bootstrap"] = "deferred"
+                print("A bootstrap artifact is present; the bootstrap waits for the initialized plane, so this release "
+                      "leaves it unread.")
+            step = first_step(record, path.parent)
+            print(f"First initialization step: {step}.")
+            with open(targets, "a", encoding="utf-8") as handle:
+                handle.write(f"init_step={step}\n")
+            return
+        if not live_schema or connector is None:
+            raise blocked("the live schema and connector disagree; reconcile them, then re-run this release")
+        merged = (*(files_by(committed_source(folder), "path") for folder in ("dataconnect/schema", "dataconnect/connector")),
+                  files_by(committed_rules(), "name"))
+        if (live_schema, live_connector, rules) == merged:
+            choose("verify")
+            verify_persistent_schema(schema)
+            if connector.get("reconciling", False) is not False:
+                raise blocked("the live connector is still reconciling; reconcile it, then re-run this release")
+            if verified(record, path.parent, merged[0], facts):
+                publish()
+                bootstrap_released(google, path.parent, facts, secrets)
+                return
+            print("A supplemental index is missing or changed.")
+        choose("apply")
+        publish()
+        unique_swap = release_source_asset_unique.swap_required(live_schema, merged[0], live_connector, merged[1])
+        if unique_swap:
+            release_source_asset_unique.verify_readback(
+                gate_sql("source-asset-unique", path.parent, record["source_sha"], deadline=record["expires_at_unix"]),
+                record["source_sha"])
+        refusals = schema_gate.check_additive(live_schema, merged[0], live_connector, merged[1],
+                                               unique_read_back=unique_swap)
+        if refusals:
+            # Each line names a table, field or operation and the rule, never a value (RELEASE.md 4.1).
+            print("\n".join(f"Refused: {line}" for line in refusals))
+            raise blocked(f"the additive-only gate refused {len(refusals)} change(s)")
+        apply_released(google, path.parent, schema, connector, facts["storage_ruleset"], merged, facts, unique_swap=unique_swap)
+        bootstrap_released(google, path.parent, facts, secrets)
+    finally:
+        if any(path.parent.glob("*.encrypted.json")):
+            # The bootstrap's encrypted records, a failed write's included; the raw ones beside them never leave the runner.
+            with open(targets, "a", encoding="utf-8") as handle:
+                handle.write("evidence=present\n")
+        output.write_text(json.dumps({"version": "data-released/v1", "source_sha": record["source_sha"],
+                                      "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"],
+                                      **facts}, sort_keys=True) + "\n")
+
+
+class _Refused(ValueError):
+    """A diff statement's fixed refusal reason."""
+
+
+def migration_statement(sql, relaxed):
+    """One diff statement's (kind, refusal); no refusal only for one statement of an allowed kind (RELEASE.md 4.3 step 3).
+    Both are fixed text, never the statement's. relaxed: the (table, column) pairs whose NOT NULL may drop."""
+    tokens = [(m.lastgroup, m.group()) for m in SQL_TOKEN.finditer(sql if isinstance(sql, str) else "") if m.lastgroup != "space"]
+    words = []
+    for token, text in tokens[:3]:
+        if token != "word":
+            break
+        words.append(text.upper())
+    kind = next((" ".join(words[:n]) for n in (3, 2, 1) if " ".join(words[:n]) in KINDS), "other")
+    if not isinstance(sql, str) or not 0 < len(sql) <= 65536 or "\\" in sql or any(k == "other" for k, _ in tokens):
+        return kind, "an unsupported character"
+    if any(k == "operator" and ("--" in text or "/*" in text or "*/" in text) for k, text in tokens):
+        return kind, "a comment"
+    tokens = tokens[:-1] if tokens[-1:] == [("punct", ";")] else tokens
+    if ("punct", ";") in tokens:
+        return kind, "more than one statement"
+    depth = 0
+    for token in tokens:
+        depth += {("punct", "("): 1, ("punct", ")"): -1}.get(token, 0)
+        if depth < 0:
+            break
+    if depth:
+        return kind, "unbalanced parentheses"
+    try:
+        return kind, None if _allowed(tokens, relaxed) else "not an allowed kind"
+    except _Refused as refusal:
+        return kind, str(refusal)
+
+
+def _allowed(t, relaxed):
+    """The allowed kinds over one statement's tokens: create table or view, create [unique] index, and alter table
+    actions that add a column, add a unique or foreign key constraint, or drop NOT NULL on a relaxed column."""
+    def word(at, *words):
+        return at + len(words) if all(at + i < len(t) and t[at + i][0] == "word" and t[at + i][1].upper() == value
+                                      for i, value in enumerate(words)) else None
+
+    def name(at):
+        kind, text = t[at] if at < len(t) else ("end", "")
+        if kind not in ("word", "ident"):
+            raise _Refused("not an allowed kind")
+        return (text.lower() if kind == "word" else text[1:-1].replace('""', '"')), at + 1
+
+    def table(at):
+        value, at = name(at)
+        if t[at:at + 1] == [("punct", ".")]:
+            if value != "public":
+                raise _Refused("outside the public schema")
+            value, at = name(at + 1)
+        return value, at
+
+    def close(at):
+        depth = 0
+        for index in range(at, len(t)):
+            depth += {("punct", "("): 1, ("punct", ")"): -1}.get(t[index], 0)
+            if not depth:
+                return index
+        return -1
+
+    if (at := word(0, "CREATE", "TABLE")) is not None:
+        _, at = table(word(at, "IF", "NOT", "EXISTS") or at)
+        return t[at:at + 1] == [("punct", "(")] and close(at) == len(t) - 1
+    if (at := word(0, "CREATE", "VIEW")) is not None:
+        _, at = table(at)
+        at = close(at) + 1 if t[at:at + 1] == [("punct", "(")] else at
+        return word(at, "AS") is not None and any(word(at + 1, key) is not None for key in ("SELECT", "WITH", "VALUES"))
+    if (at := word(0, "CREATE", "INDEX") or word(0, "CREATE", "UNIQUE", "INDEX")) is not None:
+        at = word(at, "IF", "NOT", "EXISTS") or at
+        if word(at, "CONCURRENTLY") is not None or (at := word(name(at)[1], "ON")) is None:
+            return False
+        _, at = table(at)
+        return t[at:at + 1] == [("punct", "(")] or word(at, "USING") is not None
+    if (at := word(0, "ALTER", "TABLE")) is None:
+        return False
+    relation, at = table(at)
+    starts, depth = [at], 0
+    for index in range(at, len(t)):
+        depth += {("punct", "("): 1, ("punct", ")"): -1}.get(t[index], 0)
+        if t[index] == ("punct", ",") and not depth:
+            starts.append(index + 1)
+    for start, end in zip(starts, [index - 1 for index in starts[1:]] + [len(t)]):
+        if (at := word(start, "ADD", "COLUMN")) is not None:
+            allowed = name(word(at, "IF", "NOT", "EXISTS") or at)[1] < end
+        elif (at := word(start, "ADD", "CONSTRAINT")) is not None:
+            at = name(at)[1]
+            allowed = word(at, "UNIQUE") is not None or word(at, "FOREIGN", "KEY") is not None
+        elif (at := word(start, "ALTER", "COLUMN")) is not None:
+            column, at = name(at)
+            allowed = word(at, "DROP", "NOT", "NULL") == end
+            if allowed and (relation, column) not in relaxed:
+                raise _Refused("DROP NOT NULL outside the schema gate's named relaxations")
+        else:
+            allowed = False
+        if not allowed:
+            return False
+    return True
+
+
+def relaxations():
+    """The schema gate's NOT NULL relaxations, {(Type, field): reason}. Every migration caller reads them here, so
+    rebasing onto the gate's reading of the data contract (schema_gate.read_relaxations()) changes this line alone."""
+    return schema_gate.read_relaxations()
+
+
+def migration_plan(google, body, relaxed):
+    """RELEASE.md 4.3 step 3: the statements of Data Connect's SQL diff, from a validate-only COMPATIBLE update of the
+    merged schema; none when the database is already compatible. It reads the shape firebase-tools 15.8.0 reads
+    (lib/dataconnect/errors.js 10-41, schemaMigration.js 56-81): a 400 whose error.details hold one
+    IncompatibleSqlSchemaError, {diffs: [{sql, description, destructive}], destructive}, and a PreconditionFailure whose
+    violations are INCOMPATIBLE_SCHEMA. INACCESSIBLE_SCHEMA lists the whole expected schema, not a diff. Unless every
+    statement is allowed none runs, and the log names each refused one by its kind alone. relaxed: the merged
+    schema's (table, column) pairs whose NOT NULL may drop, the same set the plan hands release_sql.mjs."""
+    try:
+        google.request("data", "PATCH", SCHEMA_NAME, body=body, params={"allowMissing": "true", "validateOnly": "true"}, diff=True)
+        return []
+    except HTTPFailure as failure:
+        answer = getattr(failure, "body", None)
+        if failure.http_status != 400 or answer is None:
+            raise
+    details = answer.get("error", {}).get("details") if isinstance(answer, dict) and isinstance(answer.get("error"), dict) else []
+    details = [detail for detail in details if isinstance(detail, dict)] if isinstance(details, list) else []
+    found = [detail for detail in details if "IncompatibleSqlSchemaError" in str(detail.get("@type"))]
+    violations = [violation.get("type") if isinstance(violation, dict) else None
+                  for detail in details if "google.rpc.PreconditionFailure" in str(detail.get("@type"))
+                  for violation in (detail.get("violations") if isinstance(detail.get("violations"), list) else [None])]
+    if len(found) != 1 or set(violations) != {"INCOMPATIBLE_SCHEMA"}:
+        raise blocked("Data Connect did not answer with a SQL diff for this database")
+    diffs = found[0].get("diffs")
+    if not (set(found[0]) <= {"@type", "diffs", "destructive"} and type(found[0].get("destructive", False)) is bool
+            and isinstance(diffs, list) and 0 < len(diffs) <= 1000 and all(
+                isinstance(diff, dict) and set(diff) <= {"sql", "description", "destructive"} and isinstance(diff.get("sql"), str)
+                and isinstance(diff.get("description", ""), str) and type(diff.get("destructive", False)) is bool for diff in diffs)):
+        raise blocked("Data Connect's SQL diff is malformed")
+    if found[0].get("destructive", False):
+        raise blocked("Data Connect marked the SQL diff destructive")
+    kinds, refusals = {}, []
+    for at, diff in enumerate(diffs, 1):
+        kind, reason = migration_statement(diff["sql"], relaxed)
+        reason = "marked destructive" if diff.get("destructive", False) else reason
+        kinds[kind] = kinds.get(kind, 0) + 1
+        if reason:
+            refusals.append(f"Refused: diff statement {at} of {len(diffs)} ({kind}): {reason}.")
+    if refusals:
+        print("\n".join(refusals))
+        raise blocked(f"the migration refused {len(refusals)} of {len(diffs)} statement(s)")
+    print("Migration: " + ", ".join(f"{count} {kind}" for kind, count in sorted(kinds.items())) + ".")
+    return [diff["sql"] for diff in diffs]
+
+
+def initializer_receipt(record):
+    """This run's one attested data-initializer receipt, verified as disposal verifies the intent (RELEASE.md 4.3)."""
+    from deploy_runtime import checked, verified_receipt_bytes
+    receipts = run_artifacts(record, "data-initializer")
+    if len(receipts) != 1:
+        raise blocked("this run's attested initializer receipt is missing or ambiguous")
+    (attempt,) = receipts
+    with tempfile.TemporaryDirectory() as folder:
+        checked(["gh", "run", "download", str(record["release_run_id"]), "--repo", REPOSITORY,
+                 "--name", f"data-initializer-{record['source_sha']}-{attempt}", "--dir", folder])
+        path = Path(folder) / "data-initializer.json"
+        receipt = strict_json(verified_receipt_bytes(path, hashlib.sha256(path.read_bytes()).hexdigest(),
+                                                     record["source_sha"], "data-release.yml"))
+    expected = {"version": "data-initializer/v1", "source_sha": record["source_sha"], "run_id": record["release_run_id"],
+                "run_attempt": attempt, "instance": SOURCE, "database": DATABASE}
+    if not (isinstance(receipt, dict) and set(receipt) == {*expected, "postconditions_sha256"}
+            and all(receipt[key] == value for key, value in expected.items())
+            and isinstance(receipt["postconditions_sha256"], str) and re.fullmatch(r"[0-9a-f]{64}", receipt["postconditions_sha256"])):
+        raise blocked("this run's initializer receipt does not match its artifact")
+    return receipt
+
+
+def gate_sql(mode, directory, source_sha, *inputs, instance=SOURCE, deadline=None):
+    """One release_sql.mjs mode as specimen-data-release for the admitted gate record's commit, on the source unless the
+    mode reads the restored clone; None when it fails or outlasts five minutes or the deadline (RELEASE.md 4.4)."""
+    target = directory / f"{instance}-{mode}.json"
+    seconds = 300 if deadline is None else min(300, deadline - time.time())
+    if seconds < 1:
+        return None
+    try:
+        result = subprocess.run(["node", "scripts/ci/release_sql.mjs", mode, instance, str(target), *map(str, inputs)],
+                                cwd=ROOT, env=dict(os.environ, RELEASE_GATE_SHA=source_sha), capture_output=True,
+                                timeout=seconds)
+    except subprocess.TimeoutExpired:
+        return None
+    return strict_json(private_bytes(target)) if result.returncode == 0 else None
+
+
+def run_migration(directory, source_sha, statements, relaxed, deadline=None):
+    """RELEASE.md 4.3 step 3's transaction: Node re-checks every statement against the same relaxed pairs, as sorted
+    table.column names, then runs them in one transaction as the owner role; anything but its commit stops the release."""
+    plan = directory / "migration.json"
+    with os.fdopen(os.open(plan, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600), "w") as handle:
+        json.dump({"version": "data-migration/v1", "source_sha": source_sha, "statements": statements,
+                   "relaxed": sorted(f"{table}.{column}" for table, column in relaxed)}, handle)
+    if gate_sql("migrate", directory, source_sha, plan, deadline=deadline) != {
+            "version": "data-migration/v1", "statements": len(statements), "committed": True}:
+        raise blocked("the migration transaction failed and rolled back; re-run once the database is idle")
+
+
+def migrate_initialized(google, directory, output):
+    """RELEASE.md 4.3 steps 3 to 5 on the gate path, as specimen-data-release. After this run's attested initializer, its
+    exact postconditions and its principal's absence: Data Connect's diff runs client-side as the owner role in one
+    transaction, then the schema (COMPATIBLE, on the live etag), the supplemental indexes, the connector and the Storage
+    rules are released, and the catalog is checked. Every exit writes the data-initialized/v1 receipt, public facts only."""
+    import release_initialize as initializer
+    record = google.packet
+    require(google.plane == "data" and release_gate.is_gate_record(record), "a data gate record is required")
+    facts = dict.fromkeys(("schema_etag", "schema_update_time", "connector_etag", "storage_ruleset", "tables", "views"))
+    try:
+        require_database(google)
+        receipt = initializer_receipt(record)
+        # Read-only, as the catalog check at the end reads them. The initializer's own post mode would also refuse any
+        # other client session, which a re-run after the schema apply meets once Data Connect serves the schema.
+        initialized = gate_sql("migrated", directory, record["source_sha"])
+        if not isinstance(initialized, dict):
+            raise blocked("the initialized catalog could not be read")
+        if initializer.sha(initialized.get("postconditions")) != receipt["postconditions_sha256"]:
+            raise blocked("the database's postconditions changed since this run's initializer")
+        if initializer.own_principal(google) is not None:
+            raise blocked("the initializer's SQL principal still exists; dispose of it, then re-run")
+        merged = [files_by(committed_source(folder), "path") for folder in ("dataconnect/schema", "dataconnect/connector")]
+        tables, views, relaxed = schema_gate.declared_sql(merged[0], relaxations())
+        schema, connector = google.request("data", "GET", SCHEMA_NAME), google.request("data", "GET", CONNECTOR_NAME, missing=True)
+        live = schema_gate.live_sources(schema, connector)
+        if schema.get("reconciling", False) is not False or live[0] not in ({}, merged[0]) or connector and live[1] != merged[1]:
+            raise blocked("the live schema or connector is neither the placeholder nor the merged files; reconcile them")
+        ruleset = (google.request("rules", "GET", RULE_RELEASE, missing=True) or {}).get("rulesetName")
+        body, connector_body = data_bodies({"schema_mode": "validate_existing", "schema_etag": revision(schema),
+                                            "connector_etag": connector and revision(connector)})
+        statements = migration_plan(google, body, relaxed)
+        if statements:
+            run_migration(directory, record["source_sha"], statements, relaxed)
+        google.wait("data", google.request("data", "PATCH", SCHEMA_NAME, body=body, params={"allowMissing": "true"}))
+        inventory = gate_sql("indexes", directory, record["source_sha"])
+        if inventory is None:
+            raise blocked("the supplemental indexes could not be created as the owner role")
+        verify_indexes(inventory)
+        google.request("data", "PATCH", CONNECTOR_NAME, body=connector_body, params={"allowMissing": "true", "validateOnly": "true"})
+        google.wait("data", google.request("data", "PATCH", CONNECTOR_NAME, body=connector_body, params={"allowMissing": "true"}))
+        facts["storage_ruleset"] = publish_rules(google, ruleset)
+        schema, connector = (google.request("data", "GET", name) for name in (SCHEMA_NAME, CONNECTOR_NAME))
+        if schema.get("reconciling", False) is not False or connector.get("reconciling", False) is not False:
+            raise blocked("the schema or connector is still reconciling; re-run this job")
+        verify_persistent_schema(schema)
+        require(schema_gate.live_sources(schema, connector) == tuple(merged), "released data sources differ from the merged files")
+        stamp(schema.get("updateTime"))
+        facts.update(schema_etag=revision(schema), schema_update_time=schema["updateTime"], connector_etag=revision(connector))
+        catalog = gate_sql("migrated", directory, record["source_sha"])
+        if not (isinstance(catalog, dict) and catalog.get("expected_database") is True and catalog.get("expected_actor") is True
+                and all(isinstance(catalog.get(key), list) for key in ("tables", "views", "owners", "extensions"))):
+            raise blocked("the migrated catalog could not be read")
+        if sorted(catalog["tables"]) != sorted(f"public.{name}" for name in tables):
+            raise blocked("the catalog's tables differ from the merged schema's")
+        if sorted(catalog["views"]) != sorted(f"public.{name}" for name in views):
+            raise blocked("the catalog's views differ from the merged schema's")
+        if catalog["owners"] != [OWNER]:
+            raise blocked("a relation is not owned by the owner role")
+        if catalog["extensions"] != ["plpgsql", "uuid-ossp"]:
+            raise blocked("the extensions are not exactly plpgsql and uuid-ossp")
+        if initializer.sha(catalog.get("postconditions")) != receipt["postconditions_sha256"]:
+            raise blocked("the database's postconditions changed since this run's initializer")
+        facts.update(tables=len(tables), views=len(views))
+    finally:
+        output.write_text(json.dumps({"version": "data-initialized/v1", "phase": "initialize", "source_sha": record["source_sha"],
+                                      "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"],
+                                      **facts}, sort_keys=True) + "\n")
+
+
+def schema_label(schema):
+    """The live schema's source-sha label, the commit the plane last applied (RELEASE.md 4.4 item 2), or None: only a full
+    commit id ever reaches a receipt."""
+    value = release_gate.field(schema, "labels", LABEL)
+    return value if release_gate.is_sha(value) else None
+
+
+def rollback_guard(schema, merged):
+    """#100's runtime rollback guard for the data plane: the merged commit must be the labelled one or a descendant of it,
+    as GitHub's compare API reports. Returns the label; None, no label, is the first apply after T3c."""
+    labels = schema.get("labels", {})
+    if not (isinstance(labels, dict) and all(isinstance(key, str) and isinstance(value, str) for key, value in labels.items())
+            and (LABEL not in labels or schema_label(schema))):
+        raise blocked("the live schema's labels are malformed")
+    applied = schema_label(schema)
+    if applied not in (None, merged):
+        compared = gh_json(f"repos/{REPOSITORY}/compare/{applied}...{merged}")
+        if not (isinstance(compared, dict) and compared.get("status") in {"ahead", "identical"}):
+            raise blocked("the live schema came from a newer commit; this release would roll it back")
+    return applied
+
+
+def sql_operation(operation, kind, target):
+    """Whether a Cloud SQL operation is this release identity's `kind` on the `target` instance."""
+    return isinstance(operation, dict) and all(operation.get(key) == value for key, value in {
+        "kind": "sql#operation", "operationType": kind, "targetId": target, "targetProject": PROJECT, "user": ACTOR}.items())
+
+
+def take_backup(google, directory, source):
+    """RELEASE.md 4.4 item 1: this attempt's one on-demand backup of the source instance, the apply's first effect. It
+    expires 7 days after it is sent and must reach SUCCESSFUL holding at most the source disk's bytes. A write-once
+    intent precedes its one POST, and no backup is ever adopted: a re-run takes its own. Returns its backup run id."""
+    from release_backup import backup_name, save, timestamp, utc
+    record, disk = google.packet, release_gate.field(source, "settings", "dataDiskSizeGb")
+    if not (isinstance(disk, str) and re.fullmatch(r"[1-9][0-9]{0,5}", disk)):
+        raise blocked("the SQL instance's disk size is unreadable")
+    submitted = int(time.time())
+    body = {"instance": SOURCE, "location": "us-east4", "expiryTime": utc(submitted + BACKUP_SECONDS), "description":
+            f"specimen-data-release-{record['source_sha']}-{record['release_run_id']}-{record['release_run_attempt']}"}
+    intent = directory / "release-backup.json"
+    try:
+        save(intent, {"outcome": "unknown", "submitted_at_unix": submitted, "request": body}, create=True)
+    except FileExistsError:
+        raise blocked("this attempt already sent its backup; re-run the job") from None
+    google._gate_effect = "backup"
+    try:
+        operation = google.request("sql", "POST", f"projects/{PROJECT}/backups", body=body)
+    finally:
+        google._gate_effect = None
+    if not sql_operation(operation, "BACKUP_VOLUME", SOURCE):
+        raise blocked("the backup operation is not this release's")
+    context = wait_sql(google, operation, maximum_seconds=900).get("backupContext", {})
+    backup_id = context.get("backupId")
+    require(isinstance(backup_id, str) and re.fullmatch(r"[1-9][0-9]{0,19}", backup_id), "the backup names no backup run")
+    run = f"projects/{PROJECT}/instances/{SOURCE}/backupRuns/{backup_id}"
+    backup, native = google.request("sql", "GET", backup_name(context.get("name"))), google.request("sql", "GET", run)
+    shared = {"type": "ON_DEMAND", "instance": SOURCE, "description": body["description"], "location": "us-east4"}
+    if not (backup.get("state") == native.get("status") == "SUCCESSFUL" and backup.get("backupRun") == run
+            and native.get("id") == backup_id and all(backup.get(key) == native.get(key) == value
+                                                      for key, value in shared.items())):
+        raise blocked("this attempt's backup did not reach SUCCESSFUL")
+    if abs(timestamp(backup.get("expiryTime")) - (submitted + BACKUP_SECONDS)) > EXPIRY_SLACK_SECONDS:
+        raise blocked("the backup does not expire 7 days after it was taken")
+    size = backup.get("maxChargeableBytes")
+    if not (isinstance(size, str) and re.fullmatch(r"0|[1-9][0-9]{0,19}", size) and native.get("maxChargeableBytes") == size
+            and int(size) <= int(disk) * 1024**3):
+        raise blocked("the backup's bytes exceed the source disk's")
+    save(intent, {"outcome": "successful", "submitted_at_unix": submitted, "request": body, "backup_id": backup_id})
+    return backup_id
+
+
+def check_catalog(catalog, tables, views, *, where="the catalog", schema="the merged schema"):
+    """RELEASE.md 4.4 item 5 and Verify, read-only through release_sql.mjs migrated (restored for the clone): the
+    initializer's postconditions hold with the public schema owned by the owner role, exactly the declared tables and
+    persisted views, one owner of every relation, and the extensions plpgsql and uuid-ossp. where and schema name the
+    database read and the schema that declares them, in fixed text."""
+    if not (isinstance(catalog, dict) and catalog.get("expected_database") is True and catalog.get("expected_actor") is True
+            and isinstance(catalog.get("postconditions"), dict)
+            and all(isinstance(catalog.get(key), list) for key in ("tables", "views", "owners", "extensions"))):
+        raise blocked(f"{where} could not be read")
+    if catalog["postconditions"].get("schema_owner") != OWNER:
+        raise blocked(f"{where}'s public schema is not owned by the owner role")
+    if sorted(catalog["tables"]) != sorted(f"public.{name}" for name in tables):
+        raise blocked(f"{where}'s tables differ from {schema}'s")
+    if sorted(catalog["views"]) != sorted(f"public.{name}" for name in views):
+        raise blocked(f"{where}'s views differ from {schema}'s")
+    if catalog["owners"] != [OWNER]:
+        raise blocked(f"{where}'s relations are not all owned by the owner role")
+    if catalog["extensions"] != ["plpgsql", "uuid-ossp"]:
+        raise blocked(f"{where}'s extensions are not exactly plpgsql and uuid-ossp")
+
+
+def indexes_match(inventory):
+    """Whether an index inventory holds every reviewed supplemental index, valid and exactly as defined."""
+    try:
+        verify_indexes(inventory)
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return False
+    return True
+
+
+def verified(record, directory, merged_schema, facts):
+    """RELEASE.md 4.4, Verify, as specimen-data-release and read-only: the catalog as the apply checks it, then the
+    supplemental index inventory. False when an index is missing or changed, which makes the phase apply."""
+    tables, views, _ = schema_gate.declared_sql(merged_schema, relaxations())
+    check_catalog(gate_sql("migrated", directory, record["source_sha"], deadline=record["expires_at_unix"]), tables, views)
+    facts.update(tables=len(tables), views=len(views))
+    inventory = gate_sql("indexed", directory, record["source_sha"], deadline=record["expires_at_unix"])
+    if inventory is None:
+        raise blocked("the supplemental index inventory could not be read")
+    return indexes_match(inventory)
+
+
+def clone_recipe(google, source):
+    """The first apply's clone (D1), read before any effect: the envelope's recipe (clone_body) at its smallest tier,
+    db-f1-micro, on the source's region, database version and disk, without backups or point-in-time recovery, labelled
+    with this run and attempt. The fixed clone must not exist."""
+    record, disk = google.packet, release_gate.field(source, "settings", "dataDiskSizeGb")
+    try:
+        require(isinstance(source.get("databaseVersion"), str) and isinstance(disk, str)
+                and re.fullmatch(r"[1-9][0-9]{0,5}", disk), "unreadable source recipe")
+        body = clone_body(source, {"tier": "db-f1-micro", "source_version": source["databaseVersion"],
+                                   "source_edition": "ENTERPRISE", "source_disk_gb": int(disk)}, record["release_run_id"],
+                          run_attempt=record["release_run_attempt"], source_sha=record["source_sha"])
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise blocked("the SQL instance does not fit the restore clone's recipe") from None
+    try:
+        existing = google.request("sql", "GET", f"projects/{PROJECT}/instances/{CLONE}", missing=True)
+    except HTTPFailure:
+        # Only the time-bounded clone roles read the clone (RELEASE.md 1): the owner opens them for this run.
+        raise blocked("the restore clone cannot be read; the first apply needs the owner's window open") from None
+    if existing is not None:
+        raise blocked("the restore clone already exists; the coordinator decides")
+    return body
+
+
+def claim_first_restore(google, directory, backup_id):
+    """RELEASE.md 4.4 item 1: claim the single-use restore allowance of CLONE_ALLOWANCE.md at its fixed key, create-only
+    (ifGenerationMatch=0). The claim binds the gate record's commit, this run and attempt, this attempt's backup, the
+    clone, the source and a window from now to the gate record's deadline, at most two hours. Any claim already there
+    stops the apply, for the coordinator: deleting a claim never refunds it."""
+    import release_clone
+    record, now = google.packet, int(time.time())
+    require(record["issued_at_unix"] <= now and record["expires_at_unix"] - now <= 7200, "claim window beyond two hours")
+    if record["expires_at_unix"] - now <= CLAIM_SECONDS:
+        raise blocked("too little of the gate record's hour remains for the restore check; re-run the job")
+    payload = release_clone.canonical({"version": "clone-allowance-claim/v2", "source_sha": record["source_sha"],
+                                       "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"],
+                                       "backup_id": backup_id, "clone": CLONE, "source": SOURCE, "issued_at_unix": now,
+                                       "expires_at_unix": record["expires_at_unix"]})
+    try:
+        claimed = google.claim_restore(payload, directory)
+        release_clone.validate_response(claimed, payload)
+    except HTTPFailure as failure:
+        if failure.http_status == 412:
+            raise blocked("the first production restore is already claimed; the coordinator decides") from None
+        raise blocked("the restore claim failed or its outcome is unknown; the coordinator decides") from None
+    except (ValueError, OSError):
+        raise blocked("the restore claim failed or its outcome is unknown; the coordinator decides") from None
+    google._gate_claim = claimed["generation"]
+
+
+def send_effect(google, directory, name, send, refused):
+    """One recovery effect of this attempt: its write-once intent (release_initialize.once), then the one request the gate
+    transport admits for it. A refused request, or one whose outcome is unknown, stops with the fixed reason `refused`."""
+    from release_initialize import once
+    google._gate_effect = name
+    try:
+        return once(directory, f"release-{name}", send)
+    except (ValueError, OSError):
+        raise blocked(refused) from None
+    finally:
+        google._gate_effect = None
+
+
+def finished(google, operation, kind, target):
+    """Whether this release's Cloud SQL operation completed, waiting at most until DISPOSAL_SECONDS before the gate
+    record's deadline, so that the clone's deletion can still be admitted."""
+    try:
+        return sql_operation(operation, kind, target) and bool(wait_sql(
+            google, operation, maximum_seconds=google.packet["expires_at_unix"] - DISPOSAL_SECONDS - time.time()))
+    except (ValueError, OSError):
+        return False
+
+
+def owned(clone, body, created):
+    """Whether the clone is the one this attempt created: its name, exactly this attempt's labels, and the createTime this
+    attempt observed after creating it."""
+    return (isinstance(clone, dict) and clone.get("name") == CLONE and isinstance(created, str)
+            and clone.get("createTime") == created
+            and release_gate.field(clone, "settings", "userLabels") == body["settings"]["userLabels"])
+
+
+def created_clone(google, operation, body):
+    """The clone this attempt's create operation made, proved by its labels and a createTime inside the gate record's
+    window; returns that createTime, which its deletion checks again."""
+    if not finished(google, operation, "CREATE", CLONE):
+        raise blocked("the restore clone's creation did not complete in time; the coordinator deletes the clone if it exists")
+    clone = google.request("sql", "GET", f"projects/{PROJECT}/instances/{CLONE}", missing=True)
+    created = clone.get("createTime") if isinstance(clone, dict) else None
+    try:
+        inside = google.packet["issued_at_unix"] <= stamp(created) <= time.time() + 60
+    except ValueError:
+        inside = False
+    if not (owned(clone, body, created) and inside):
+        raise blocked("the restore clone is not provably this run's; the coordinator deletes it")
+    return created
+
+
+def delete_clone(google, directory, body, created):
+    """Delete the clone only as this attempt's (owned), after a write-once intent; its wait may use the rest of the gate
+    record's window, which DISPOSAL_SECONDS kept for it. A clone already gone needs nothing."""
+    from release_initialize import once
+    clone = google.request("sql", "GET", f"projects/{PROJECT}/instances/{CLONE}", missing=True)
+    if clone is None:
+        return
+    if not owned(clone, body, created):
+        raise blocked("the restore clone is not provably this run's; the coordinator deletes it")
+    try:
+        operation = once(directory, "release-clone-delete", lambda: google.request(
+            "sql", "DELETE", f"projects/{PROJECT}/instances/{CLONE}"))
+        deleted = sql_operation(operation, "DELETE", CLONE) and bool(wait_sql(
+            google, operation, maximum_seconds=google.packet["expires_at_unix"] - time.time()))
+    except (ValueError, OSError):
+        deleted = False
+    if not deleted or google.request("sql", "GET", f"projects/{PROJECT}/instances/{CLONE}", missing=True) is not None:
+        raise blocked("the restore clone's deletion was not confirmed; the coordinator deletes it")
+
+
+def restore_check(google, directory, body, backup_id, live_schema, facts):
+    """RELEASE.md 4.4 item 1 (D1), the first apply's restore check, after its backup: the claim, then the fixed clone,
+    this attempt's backup restored into it, its catalog checked read-only as the source's is, against the live schema the
+    backup holds, and the clone deleted as this attempt's, whatever the check found."""
+    record = google.packet
+    claim_first_restore(google, directory, backup_id)
+    facts["first_restore"], created = "claimed", None
+    try:
+        operation = send_effect(google, directory, "clone-create", lambda: google.request(
+            "sql", "POST", f"projects/{PROJECT}/instances", body=body),
+            "the restore clone could not be created; the coordinator decides")
+        created = created_clone(google, operation, body)
+        operation = send_effect(google, directory, "clone-restore", lambda: google.request(
+            "sql", "POST", f"projects/{PROJECT}/instances/{CLONE}/restoreBackup",
+            body={"restoreBackupContext": {"backupRunId": backup_id, "instanceId": SOURCE, "project": PROJECT}}),
+            "the backup could not be restored into the clone")
+        if not finished(google, operation, "RESTORE_VOLUME", CLONE):
+            raise blocked("the backup was not restored into the clone in time")
+        tables, views, _ = schema_gate.declared_sql(live_schema, relaxations())
+        check_catalog(gate_sql("restored", directory, record["source_sha"], instance=CLONE,
+                               deadline=record["expires_at_unix"] - DISPOSAL_SECONDS),
+                      tables, views, where="the restored clone", schema="the live schema")
+    finally:
+        if created is not None:
+            delete_clone(google, directory, body, created)
+    facts["first_restore"] = "checked"
+
+
+def earlier_first_restore(record):
+    """The coordinator's ruling of 2026-09-24 on a re-run after a spent claim (RELEASE.md 4.4 item 1). The claim stays
+    unreadable to the data identity (CLONE_ALLOWANCE.md), so the evidence is this run's earlier attempts' attested
+    data-released/v1 receipts for this commit: "checked" when one of them checked the clone, which is D1's one restore
+    proof; "claimed" when one spent the claim without that check; None otherwise. An unattested or mismatched receipt
+    proves nothing."""
+    from deploy_runtime import checked, verified_receipt_bytes
+    found = None
+    for attempt in sorted(run_artifacts(record, "data-receipt")):
+        if attempt >= record["release_run_attempt"]:
+            continue
+        with tempfile.TemporaryDirectory() as folder:
+            try:
+                checked(["gh", "run", "download", str(record["release_run_id"]), "--repo", REPOSITORY,
+                         "--name", f"data-receipt-{record['source_sha']}-{attempt}", "--dir", folder])
+                path = Path(folder) / "data-receipt.json"
+                receipt = strict_json(verified_receipt_bytes(path, hashlib.sha256(path.read_bytes()).hexdigest(),
+                                                             record["source_sha"], "data-release.yml"))
+            except (ValueError, OSError, subprocess.TimeoutExpired):
+                continue
+        if not (isinstance(receipt, dict) and receipt.get("version") == "data-released/v1"
+                and receipt.get("source_sha") == record["source_sha"] and receipt.get("run_id") == record["release_run_id"]
+                and receipt.get("run_attempt") == attempt):
+            continue
+        if receipt.get("first_restore") == "checked":
+            return "checked"
+        if receipt.get("first_restore") == "claimed":
+            found = "claimed"
+    return found
+
+
+def apply_released(google, directory, schema, connector, ruleset, merged, facts, *, unique_swap=False):
+    """RELEASE.md 4.4 while the runtime runs, after the additive-only gate. The rollback guard, point-in-time recovery
+    and, for the first apply, the clone's recipe and absence stop with a fixed reason before any effect. Then this
+    attempt's backup; the first apply's restore check (D1); Data Connect's diff run client-side as the owner role; the
+    schema COMPATIBLE on the live etag carrying the merged commit as its source-sha label; the supplemental indexes, the
+    connector and the Storage rules. The released files must equal the merged ones and the catalog the merged schema.
+    merged: the merged schema, connector and Storage rules files; facts: the receipt's, updated as they are observed."""
+    record = google.packet
+    sha, deadline = record["source_sha"], record["expires_at_unix"]
+    first = rollback_guard(schema, sha) is None
+    source = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}")
+    if release_gate.field(source, "settings", "backupConfiguration", "pointInTimeRecoveryEnabled") is not True:
+        raise blocked("point-in-time recovery is off on the SQL instance")
+    earlier = earlier_first_restore(record) if first else None
+    if earlier == "claimed":
+        raise blocked("an earlier attempt spent the first production restore's claim without checking the clone; "
+                      "the coordinator decides")
+    clone = clone_recipe(google, source) if first and earlier is None else None
+    facts["backup_id"] = take_backup(google, directory, source)
+    if clone is not None:
+        restore_check(google, directory, clone, facts["backup_id"], schema_gate.live_sources(schema, connector)[0], facts)
+    elif earlier == "checked":
+        facts["first_restore"] = "proven"
+        print("An earlier attempt of this run claimed and checked the first restore; this attempt applies without a "
+              "second clone.")
+    tables, views, relaxed = schema_gate.declared_sql(merged[0], relaxations())
+    body, connector_body = data_bodies({"schema_mode": "validate_existing", "schema_etag": revision(schema),
+                                        "connector_etag": revision(connector)})
+    body["labels"] = {**schema.get("labels", {}), LABEL: sha}
+    if unique_swap:
+        # After backup/first restore, before the diff. The same native session
+        # rereads the wider valid unique before the one fixed committed drop.
+        release_source_asset_unique.verify_drop(
+            gate_sql("source-asset-drop", directory, sha, deadline=deadline), sha)
+    statements = migration_plan(google, body, relaxed)
+    if statements:
+        run_migration(directory, sha, statements, relaxed, deadline)
+    google.wait("data", google.request("data", "PATCH", SCHEMA_NAME, body=body, params={"allowMissing": "true"}))
+    inventory = gate_sql("indexes", directory, sha, deadline=deadline)
+    if inventory is None or not indexes_match(inventory):
+        # CREATE INDEX CONCURRENTLY IF NOT EXISTS never repairs an invalid or changed index of the same name.
+        raise blocked("the supplemental indexes could not be created as the owner role or differ from their definitions")
+    google.request("data", "PATCH", CONNECTOR_NAME, body=connector_body, params={"allowMissing": "true", "validateOnly": "true"})
+    google.wait("data", google.request("data", "PATCH", CONNECTOR_NAME, body=connector_body, params={"allowMissing": "true"}))
+    facts["storage_ruleset"] = publish_rules(google, ruleset)
+    schema, connector = (google.request("data", "GET", name) for name in (SCHEMA_NAME, CONNECTOR_NAME))
+    if schema.get("reconciling", False) is not False or connector.get("reconciling", False) is not False:
+        raise blocked("the schema or connector is still reconciling; re-run this release")
+    verify_persistent_schema(schema)
+    if (*schema_gate.live_sources(schema, connector), live_rules(google)[1]) != tuple(merged) or schema_label(schema) != sha:
+        raise blocked("the released schema, connector or Storage rules differ from the merged files")
+    stamp(schema.get("updateTime"))
+    facts.update(schema_etag=revision(schema), schema_update_time=schema["updateTime"], connector_etag=revision(connector),
+                 source_sha_label=sha)
+    check_catalog(gate_sql("migrated", directory, sha, deadline=deadline), tables, views)
+    facts.update(tables=len(tables), views=len(views))
+
+
+def bootstrap_released(google, directory, facts, secrets):
+    """RELEASE.md 4.5 (T3e), after a successful verify or apply: release_bootstrap checks the owner's approved hierarchy
+    artifact and reads the organization's and the worker's rows first; its refusals print here, as fixed text. Its one
+    backup before the first write is 4.4 item 1's, with point-in-time recovery on, unless this run's apply took one."""
+    import release_bootstrap
+
+    def backup():
+        if facts["backup_id"] is not None:
+            return
+        source = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}")
+        if release_gate.field(source, "settings", "backupConfiguration", "pointInTimeRecoveryEnabled") is not True:
+            raise blocked("point-in-time recovery is off on the SQL instance")
+        facts["backup_id"] = take_backup(google, directory, source)
+    try:
+        release_bootstrap.run(google, facts, secrets, backup=backup)
+    except release_bootstrap.Refused as refusal:
+        raise blocked(str(refusal)) from None
+
+
 @stage("data.receipt")
 def emit_result_digest(path):
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as handle:
@@ -628,6 +1511,8 @@ def emit_result_digest(path):
 
 
 def main():
+    # RELEASE.md 4.5: before admission, whose GitHub reads run gh, and before any other child process.
+    secrets = take_bootstrap_secrets()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--packet", type=Path, required=True)
     action = parser.add_mutually_exclusive_group(required=True)
@@ -642,6 +1527,7 @@ def main():
     action.add_argument("--initialize", action="store_true")
     action.add_argument("--complete-initialization", action="store_true")
     action.add_argument("--dispose-initializer", action="store_true")
+    action.add_argument("--migrate", action="store_true")
     parser.add_argument("--receipt", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -658,9 +1544,8 @@ def main():
         if args.cleanup:
             cleanup_rehearsal(Google(args.packet, "data", cleanup=True), args.packet.parent)
             return
-        if args.dispose_initializer:
+        if args.dispose_initializer and args.receipt is not None:
             from release_initialize import verified_disposal_inputs, dispose_initializer_target
-            require(args.receipt is not None, "signed recovery and creation journals required")
             google = Google(args.packet, "data", cleanup=True)
             recovery, journals = verified_disposal_inputs(google.packet, args.receipt, args.packet.parent)
             failures = []
@@ -674,6 +1559,29 @@ def main():
         plane = "data-initialization" if args.prepare_initialization or args.initialize or args.prepare_initializer_intents else "data"
         with stage("data.admission"):
             packet = admit(args.packet, plane)
+            gate = release_gate.is_gate_record(packet)
+            # G11: a gate record replaces the envelope, its plan, --prepare-inputs and --receipt; release_gate.py
+            # writes it, and only the release, initialize, dispose-initializer and migrate jobs read it (RELEASE.md 4.3).
+            require(gate or not args.dispose_initializer, "signed recovery and creation journals required")
+            require(gate or not args.migrate, "only a gate record migrates")
+            require(not gate or args.receipt is None and (args.prepare_initializer_intents or args.dispose_initializer
+                    or (args.deploy or args.initialize or args.migrate) and args.output is not None),
+                    "a gate record releases only through its jobs")
+        if gate:
+            import release_initialize as initializer
+            if args.deploy:
+                deploy_released_data(args.packet, args.output, secrets=secrets)
+            elif args.initialize:
+                initializer.initialize_existing(Google(args.packet, plane), args.packet.parent, args.output)
+            elif args.prepare_initializer_intents:
+                initializer.prepare_owned_initializer(Google(args.packet, plane), args.packet.parent)
+            elif args.migrate:
+                migrate_initialized(Google(args.packet, plane), args.packet.parent, args.output)
+            else:
+                initializer.dispose_owned_initializer(Google(args.packet, plane), args.packet.parent)
+            if args.deploy or args.initialize or args.migrate:
+                emit_result_digest(args.output)
+            return
         with stage("data.plan"):
             plan = validate_plan(read_bound_plan(args.packet.parent / "plan.json", packet), packet)
         if args.prepare_clone_intent:

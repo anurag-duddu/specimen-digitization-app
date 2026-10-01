@@ -10,7 +10,9 @@ import 'package:specimen_ui/specimen_ui.dart';
 /// every entry screen) loses its contrast to a field it never asked for.
 void main() {
   test('the field painter paints nothing outside its own bounds', () async {
-    final UiThemeData tokens = UiThemeData.light();
+    final UiThemeData tokens = UiThemeData.light().copyWith(
+      field: UiFields.light.withDecorativeFields(true),
+    );
     final ui.PictureRecorder recorder = ui.PictureRecorder();
     final Canvas canvas = Canvas(recorder);
     const Size size = Size(100, 100);

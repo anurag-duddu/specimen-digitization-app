@@ -8,22 +8,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
+import 'package:specimen_digitization/src/workbench.dart'
+    show evidenceScrollKey;
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'ui_finders.dart';
 
-/// The widths that select each of the three workbench regimes
-/// (responsive and platform adaptation, 3.5).
+/// Representative widths for the constraint-based review layouts.
 const Size compactWindow = Size(390, 844);
 
-/// A tablet in portrait: one column, the decision bar in the frame's action
-/// bar, the search row stuck on the queue.
+/// A portrait tablet whose actual local constraints choose the review layout.
 const Size mediumWindow = Size(768, 1024);
 
 /// A tablet in landscape: two panes.
 const Size expandedWindow = Size(1000, 800);
 
-/// A desktop window: three panes, History persistent.
+/// A desktop window: dominant source and one bounded review inspector.
 const Size largeWindow = Size(1440, 1000);
 
 /// Fixes the window size for one test and restores it afterwards.
@@ -82,18 +82,32 @@ Widget scrollingHost(Widget child, {ThemeData? theme}) => MaterialApp(
 Finder scrollableIn(Finder of) =>
     find.descendant(of: of, matching: find.byType(Scrollable)).first;
 
-/// Scrolls [target] into view inside the evidence pane and taps it.
+/// Reveals the control in its own scrollable, then taps its actual hit target.
 Future<void> scrollAndTap(
   WidgetTester tester,
   Finder target, {
   Finder? scrollable,
 }) async {
-  await tester.scrollUntilVisible(
-    target,
-    200,
-    scrollable: scrollable ?? find.byType(Scrollable).first,
-  );
+  if (target.evaluate().isEmpty) {
+    final Finder evidenceScroll = find.descendant(
+      of: find.byKey(evidenceScrollKey),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      target,
+      200,
+      scrollable:
+          scrollable ??
+          (evidenceScroll.evaluate().isNotEmpty
+              ? evidenceScroll.first
+              : find.byType(Scrollable).first),
+      maxScrolls: 24,
+    );
+  }
+  expect(target, findsOneWidget);
+  await tester.ensureVisible(target);
   await tester.pumpAndSettle();
+  expect(target.hitTestable(), findsOneWidget);
   await tester.tap(target);
   await tester.pumpAndSettle();
 }
@@ -106,23 +120,35 @@ Future<void> scrollAndTap(
 UiButton buttonWithLabel(WidgetTester tester, String label) =>
     tester.widget<UiButton>(find.widgetWithText(UiButton, label).first);
 
-/// Whether the control labelled [label] can be used.
-///
-/// Reads a `UiButton` or, for a control on a screen another slot has not
-/// migrated yet, the Material button it still is. One helper, so a test that
-/// spans two slots does not have to know which wave a control is in.
+/// Whether a real button, icon or declared menu command can be activated.
+/// Missing controls throw: their absence must not masquerade as disabled.
 bool controlEnabled(WidgetTester tester, String label) {
   final Finder ui = find.widgetWithText(UiButton, label);
   if (ui.evaluate().isNotEmpty) {
-    return tester.widget<UiButton>(ui.first).onPressed != null;
+    expect(ui, findsOneWidget);
+    return tester.widget<UiButton>(ui).onPressed != null;
   }
-  final Finder material = find
-      .ancestor(
-        of: find.text(label),
-        matching: find.byWidgetPredicate((Widget w) => w is ButtonStyleButton),
-      )
-      .first;
-  return tester.widget<ButtonStyleButton>(material).onPressed != null;
+  final Finder icon = uiIconButton(label);
+  if (icon.evaluate().isNotEmpty) {
+    expect(icon, findsOneWidget);
+    return tester.widget<UiIconButton>(icon).onPressed != null;
+  }
+  for (final UiMenuTrigger menu in tester.widgetList<UiMenuTrigger>(
+    find.byType(UiMenuTrigger),
+  )) {
+    for (final UiMenuItem item in menu.items) {
+      if (item.label == label) return item.onSelected != null;
+    }
+  }
+  final Finder material = find.ancestor(
+    of: find.text(label),
+    matching: find.byWidgetPredicate((Widget w) => w is ButtonStyleButton),
+  );
+  if (material.evaluate().isNotEmpty) {
+    expect(material, findsOneWidget);
+    return tester.widget<ButtonStyleButton>(material).onPressed != null;
+  }
+  throw StateError('no control named "$label"');
 }
 
 /// Why the control labelled [label] cannot be used, as it publishes it.
@@ -175,13 +201,30 @@ RecordCommand recordCommand(WidgetTester tester, String label) {
 /// Refresh is the one disc the record's bar keeps; every other command is a
 /// row of its overflow menu (13 section 4.1), reached through the trigger.
 Future<void> openRecordCommand(WidgetTester tester, String label) async {
+  final RecordCommand command = recordCommand(tester, label);
+  expect(command.onPressed, isNotNull, reason: command.disabledReason);
   final Finder disc = uiIconButton(label);
   if (disc.evaluate().isNotEmpty) {
+    await tester.ensureVisible(disc);
+    await tester.pumpAndSettle();
+    expect(disc.hitTestable(), findsOneWidget);
     await tester.tap(disc);
   } else {
-    await tester.tap(uiMenuTrigger(UiTopBarStyle.overflowLabel));
+    final Finder trigger = find.descendant(
+      of: find.byType(UiTopBar),
+      matching: uiMenuTrigger(UiTopBarStyle.overflowLabel),
+    );
+    expect(trigger, findsOneWidget);
+    await tester.tap(trigger);
     await tester.pumpAndSettle();
-    await tester.tap(find.text(label).last);
+    final Finder row = find.byWidgetPredicate(
+      (Widget widget) => widget is Pressable && widget.semanticsLabel == label,
+    );
+    expect(row, findsOneWidget);
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    expect(row.hitTestable(), findsOneWidget);
+    await tester.tap(row);
   }
   await tester.pumpAndSettle();
 }

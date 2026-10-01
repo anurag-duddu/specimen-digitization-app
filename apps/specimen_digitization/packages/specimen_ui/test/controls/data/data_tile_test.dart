@@ -1,5 +1,5 @@
 // `UiDataTile` is not interactive, so the control contract does not apply. Its
-// obligations are elsewhere: one sentence in the semantics tree, a tint that
+// obligations are elsewhere: one sentence in the semantics tree, a surface that
 // never varies with the value, a numeral whose width holds, and a tick that
 // keeps its cross fade under reduced motion while losing its slide.
 
@@ -142,9 +142,10 @@ void main() {
       reason: '11 section 3.3: down to display.medium and no further',
     );
 
-    // Wide enough for `display.large`, then narrow enough that it is not.
+    // The compact display role still fits at 240; only the narrower tile
+    // should step down. Exercise both sides of that responsive transition.
     final List<double> drawn = <double>[];
-    for (final double width in <double>[600, 240]) {
+    for (final double width in <double>[600, 240, 180]) {
       await tester.pumpWidget(
         uiHarness(
           size: Size(width, 600),
@@ -176,11 +177,11 @@ void main() {
             '02 section 4.14',
       );
     }
-    expect(
-      drawn.last,
-      lessThan(drawn.first),
-      reason: 'the narrow tile is set a role smaller than the wide one',
-    );
+    expect(drawn, <double?>[
+      ui.type.displayLarge.fontSize,
+      ui.type.displayLarge.fontSize,
+      ui.type.displayMedium.fontSize,
+    ], reason: 'the tile keeps the widest display role that fits');
   });
 
   testWidgets('the last resort scales the numeral and its unit together', (
@@ -239,22 +240,43 @@ void main() {
     );
   });
 
-  testWidgets('the tint is the same whatever the value says', (
+  testWidgets('the painted surface is neutral whatever the value says', (
     WidgetTester tester,
   ) async {
-    final List<BackdropFilter> panes = <BackdropFilter>[];
-    for (final String value in <String>['3', '128', 'Not measured']) {
-      await tester.pumpWidget(uiHarness(child: _tile(value: value)));
-      await tester.pumpAndSettle();
-      panes.add(tester.widget<BackdropFilter>(find.byType(BackdropFilter)));
+    for (final Brightness brightness in Brightness.values) {
+      final UiThemeData ui = brightness == Brightness.dark
+          ? UiThemeData.dark()
+          : UiThemeData.light();
+      final List<Color> fills = <Color>[];
+      for (final String value in <String>['3', '128', 'Not measured']) {
+        await tester.pumpWidget(
+          uiHarness(
+            brightness: brightness,
+            child: _tile(value: value),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.byType(BackdropFilter), findsNothing);
+        final Iterable<Decoration> decorations = tester
+            .widgetList<DecoratedBox>(
+              find.descendant(
+                of: find.byType(GlassSurface),
+                matching: find.byType(DecoratedBox),
+              ),
+            )
+            .map((DecoratedBox box) => box.decoration);
+        final Color fill = decorations.whereType<BoxDecoration>().single.color!;
+        fills.add(fill);
+        expect(fill, ui.color.paper);
+        expect(fill.a, 1);
+        expect(decorations.whereType<ShapeDecoration>().single.shadows, isNull);
+      }
+      expect(
+        fills.toSet(),
+        hasLength(1),
+        reason: 'counts and unavailable measurements use the same paper fill',
+      );
     }
-    expect(
-      panes.map((BackdropFilter pane) => pane.filter.toString()).toSet(),
-      hasLength(1),
-      reason:
-          'a record count tile is not redder when the count is higher '
-          '(09 section 3.2)',
-    );
     final UiThemeData ui = UiThemeData.light();
     expect(UiDataTileStyle.resolve(ui).radius, ui.shape.tile);
     expect(
@@ -263,12 +285,14 @@ void main() {
     );
   });
 
-  testWidgets('the tile is one pane, and only one', (
+  testWidgets('the default tile paints one surface without backdrop blur', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(uiHarness(child: _tile()));
     await tester.pumpAndSettle();
-    expect(glassPaneCount(), 1);
+    expect(find.byType(GlassSurface), findsOneWidget);
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(glassPaneCount(), 0);
     expect(modalGlassPaneCount(), 0);
   });
 

@@ -48,46 +48,30 @@ abstract final class AppTheme {
   );
 }
 
-/// The page transitions the motion document specifies (section 6.1).
+/// Navigation replaces content in place on every platform.
 ///
-/// The mobile entries restate Flutter's own defaults so a future SDK change is
-/// a visible diff; the desktop and web entries move off the zoom transition
-/// onto the Material 3 forward transition.
+/// A brief fade preserves spatial context; reduced motion reveals the page
+/// immediately. Touch sheets keep their separate, directional presentation.
 const PageTransitionsTheme specimenPageTransitions = PageTransitionsTheme(
   builders: <TargetPlatform, PageTransitionsBuilder>{
-    TargetPlatform.android: ReducedMotionPageTransitions(
-      PredictiveBackPageTransitionsBuilder(),
-    ),
-    TargetPlatform.iOS: ReducedMotionPageTransitions(
-      CupertinoPageTransitionsBuilder(),
-    ),
-    TargetPlatform.macOS: ReducedMotionPageTransitions(
-      CupertinoPageTransitionsBuilder(),
-    ),
-    TargetPlatform.windows: ReducedMotionPageTransitions(
-      FadeForwardsPageTransitionsBuilder(),
-    ),
-    TargetPlatform.linux: ReducedMotionPageTransitions(
-      FadeForwardsPageTransitionsBuilder(),
-    ),
-    TargetPlatform.fuchsia: ReducedMotionPageTransitions(
-      FadeForwardsPageTransitionsBuilder(),
-    ),
+    TargetPlatform.android: InPlacePageTransitions(),
+    TargetPlatform.iOS: InPlacePageTransitions(),
+    TargetPlatform.macOS: InPlacePageTransitions(),
+    TargetPlatform.windows: InPlacePageTransitions(),
+    TargetPlatform.linux: InPlacePageTransitions(),
+    TargetPlatform.fuchsia: InPlacePageTransitions(),
   },
 );
 
-/// A platform's page transition, collapsed under reduced motion.
-///
-/// 04 section 2.5 has every transition collapse when the platform or the
-/// reviewer asks for less motion; the Cupertino slide alone travelled the
-/// full 450 ms on iOS (verification report v2, V2-6). The route appears in
-/// place instead, and the platform's own builder runs otherwise.
-class ReducedMotionPageTransitions extends PageTransitionsBuilder {
-  /// Wraps [inner], the platform's own builder.
-  const ReducedMotionPageTransitions(this.inner);
+/// A stationary route fade with a short, token-owned duration.
+class InPlacePageTransitions extends PageTransitionsBuilder {
+  const InPlacePageTransitions();
 
-  /// The platform's builder, which runs whenever motion is not reduced.
-  final PageTransitionsBuilder inner;
+  @override
+  Duration get transitionDuration => MotionTokens.quickRaw;
+
+  @override
+  Duration get reverseTransitionDuration => MotionTokens.quickRaw;
 
   @override
   Widget buildTransitions<T>(
@@ -98,12 +82,9 @@ class ReducedMotionPageTransitions extends PageTransitionsBuilder {
     Widget child,
   ) {
     if (MotionTokens.of(context).reduced) return child;
-    return inner.buildTransitions<T>(
-      route,
-      context,
-      animation,
-      secondaryAnimation,
-      child,
+    return FadeTransition(
+      opacity: animation.drive(CurveTween(curve: MotionTokens.standardCurve)),
+      child: child,
     );
   }
 }

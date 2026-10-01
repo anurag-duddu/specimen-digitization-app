@@ -64,6 +64,7 @@ class Pressable extends StatefulWidget {
     this.capsule = false,
     this.scaleOnPress = false,
     this.selected = false,
+    this.busy = false,
     this.checked,
     this.role = PressableRole.button,
     this.semanticsValue,
@@ -74,6 +75,7 @@ class Pressable extends StatefulWidget {
     this.excludeFromSemantics = false,
     this.stateLayerColour,
     this.focusRing = true,
+    this.insetFocusRing = false,
   });
 
   /// Paints the control from its current states.
@@ -124,6 +126,11 @@ class Pressable extends StatefulWidget {
   /// True when the control is selected.
   final bool selected;
 
+  /// Keeps the focus location during a pending operation, while the absent
+  /// action still prevents duplicate activation. The consumer supplies busy
+  /// paint and a descriptive [semanticsValue].
+  final bool busy;
+
   /// The checkbox or toggle value, where the role has one. Null is mixed.
   final bool? checked;
 
@@ -158,15 +165,13 @@ class Pressable extends StatefulWidget {
 
   /// False where the control paints the ring on its own shape.
   ///
-  /// The ring this primitive draws hugs the 48 dp hit box, which is the right
-  /// box for a control whose visual fills it. A field shaped trigger draws a
-  /// 40 dp edge inside that box in pointer density, and a ring around the hit
-  /// box would sit 4 dp away from the edge at the sides and 8 at the top. The
-  /// control passes false and rings its own edge instead, which is the one
-  /// ring 11 section 4 allows it. `WidgetState.focused` still reaches the
-  /// builder, and still only under `FocusHighlightMode.traditional`, so the
-  /// control draws the same ring on the same condition.
+  /// The default ring follows the visual before its target is padded to 48 dp.
+  /// Inputs can replace their own boundary instead. `WidgetState.focused`
+  /// still reaches the builder under `FocusHighlightMode.traditional`.
   final bool focusRing;
+
+  /// Keeps the ring inside a clipped tab or segmented slot.
+  final bool insetFocusRing;
 
   /// True when the control responds to input.
   bool get enabled => onPressed != null || onLongPress != null;
@@ -178,6 +183,7 @@ class Pressable extends StatefulWidget {
 class _PressableState extends State<Pressable> {
   WidgetStatesController? _internalStates;
   bool _showFocusRing = false;
+  LogicalKeyboardKey? _pressedKey;
 
   WidgetStatesController get _states =>
       widget.statesController ?? (_internalStates ??= WidgetStatesController());
@@ -219,6 +225,7 @@ class _PressableState extends State<Pressable> {
       ..update(WidgetState.disabled, !enabled)
       ..update(WidgetState.selected, widget.selected);
     if (enabled) return;
+    _pressedKey = null;
     // Disabled is exclusive of hover and press, and it is cleared here rather
     // than left to the detector. A control turned off under the pointer keeps
     // its hover until `FocusableActionDetector` clears it in a post frame
@@ -262,6 +269,44 @@ class _PressableState extends State<Pressable> {
 
   void _setPressed(bool value) =>
       _states.update(WidgetState.pressed, value && widget.enabled);
+
+  void _focusChanged(bool focused) {
+    if (!focused) {
+      _pressedKey = null;
+      _setPressed(false);
+    } else if (!widget.enabled) {
+      _reportReason();
+    }
+  }
+
+  KeyEventResult _keyEvent(FocusNode node, KeyEvent event) {
+    final LogicalKeyboardKey key = event.logicalKey;
+    if (key == LogicalKeyboardKey.escape && _pressedKey != null) {
+      _pressedKey = null;
+      _setPressed(false);
+      return KeyEventResult.handled;
+    }
+    if (key != LogicalKeyboardKey.space &&
+        key != LogicalKeyboardKey.enter &&
+        key != LogicalKeyboardKey.numpadEnter) {
+      return KeyEventResult.ignored;
+    }
+    if (event is KeyDownEvent) {
+      _pressedKey = key;
+      if (widget.enabled) {
+        _setPressed(true);
+      } else {
+        _reportReason();
+      }
+    } else if (event is KeyUpEvent && _pressedKey == key) {
+      _pressedKey = null;
+      _setPressed(false);
+      _activate();
+    }
+    // Key repeats are consumed without a second action. Losing focus,
+    // becoming disabled or Escape cancels an unfinished keyboard press.
+    return KeyEventResult.handled;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -310,25 +355,25 @@ class _PressableState extends State<Pressable> {
       );
     }
 
-    final double hit = widget.minHitBox ?? UiDensity.hitBox;
-    Widget core = ConstrainedBox(
-      constraints: BoxConstraints(minWidth: hit, minHeight: hit),
-      // Shrink wrapped, so the hit box pads the visual rather than stretching
-      // it: in pointer density the extra 8 dp is transparent slop.
-      child: Center(widthFactor: 1, heightFactor: 1, child: visual),
-    );
-
-    core = FocusRing(
+    // Ring the painted contour before adding transparent interaction slop.
+    visual = FocusRing(
       visible: _showFocusRing && widget.focusRing,
+      inset: widget.insetFocusRing,
+      color: widget.insetFocusRing ? widget.stateLayerColour : null,
       radius: widget.radius ?? ui.shape.inner,
       shape: widget.capsule
           ? FocusRingShape.stadium
           : FocusRingShape.superellipse,
-      child: core,
+      child: visual,
+    );
+    final double hit = widget.minHitBox ?? UiDensity.hitBox;
+    Widget core = ConstrainedBox(
+      constraints: BoxConstraints(minWidth: hit, minHeight: hit),
+      child: Center(widthFactor: 1, heightFactor: 1, child: visual),
     );
 
     core = FocusableActionDetector(
-      enabled: enabled,
+      enabled: enabled || widget.disabledReason != null || widget.busy,
       focusNode: widget.focusNode,
       autofocus: widget.autofocus,
       mouseCursor: enabled
@@ -336,7 +381,7 @@ class _PressableState extends State<Pressable> {
           : SystemMouseCursors.basic,
       onShowHoverHighlight: _setHovered,
       onShowFocusHighlight: _setFocusRing,
-      shortcuts: _activationShortcuts,
+      onFocusChange: _focusChanged,
       actions: <Type, Action<Intent>>{
         ActivateIntent: CallbackAction<ActivateIntent>(
           onInvoke: (ActivateIntent intent) {
@@ -361,6 +406,14 @@ class _PressableState extends State<Pressable> {
         onLongPress: enabled ? widget.onLongPress : _reportReason,
         child: core,
       ),
+    );
+
+    core = Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      includeSemantics: false,
+      onKeyEvent: _keyEvent,
+      child: core,
     );
 
     if (!enabled && widget.disabledReason != null) {
@@ -398,13 +451,17 @@ class _PressableState extends State<Pressable> {
       button: widget.role == PressableRole.button,
       link: widget.role == PressableRole.link,
       toggled: widget.role == PressableRole.toggle ? widget.checked : null,
-      checked: widget.role == PressableRole.checkbox ? widget.checked : null,
+      checked: switch (widget.role) {
+        PressableRole.checkbox => widget.checked,
+        PressableRole.radio => widget.selected,
+        _ => null,
+      },
       inMutuallyExclusiveGroup: widget.role == PressableRole.radio
           ? true
           : null,
       selected: _selectedFlag,
       role: widget.role == PressableRole.tab ? SemanticsRole.tab : null,
-      focusable: enabled,
+      focusable: enabled || widget.disabledReason != null || widget.busy,
       onTap: enabled ? _activate : null,
       onLongPress: enabled ? widget.onLongPress : null,
       child: core,
@@ -420,13 +477,4 @@ class _PressableState extends State<Pressable> {
 
   /// The 0.98 the contract names.
   static const double _pressedScale = 0.98;
-
-  /// Space and Enter activate. Stated rather than inherited, because the
-  /// default map depends on the platform and clause 3 does not.
-  static const Map<ShortcutActivator, Intent> _activationShortcuts =
-      <ShortcutActivator, Intent>{
-        SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
-        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
-        SingleActivator(LogicalKeyboardKey.numpadEnter): ActivateIntent(),
-      };
 }

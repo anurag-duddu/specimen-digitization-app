@@ -90,7 +90,7 @@ class RepositoryCircuitStore:
                 self.scope,
                 "worker_cursor",
                 key,
-                {"circuit_state": state},
+                {"sensitive": False, "circuit_state": state},
                 expected,
             )
         except Conflict as exc:

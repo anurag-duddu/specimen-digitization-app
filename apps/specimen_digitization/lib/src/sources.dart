@@ -329,8 +329,8 @@ abstract interface class SourceRepository {
 
   /// Imports up to [sourceImportBatchSize] objects into a new batch.
   ///
-  /// Creates specimens. Starts no processing, in any mode: importing a
-  /// selection and running one are separate decisions.
+  /// Creates specimens. Eligible non-sensitive records may queue for
+  /// processing; a queued run does not prove that a worker has completed it.
   Future<SourceImportResult> importFromSource(
     CollectionScope scope,
     String sourceId,

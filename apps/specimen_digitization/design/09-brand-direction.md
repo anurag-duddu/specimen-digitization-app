@@ -9,6 +9,13 @@ the eight principles in section 1, spacing in 5.1, sizing in 5.2, touch
 targets in 5.5, density in 5.6, the atomic inventory in 7, and the testing
 approach in 8. The v1 tables stay in 03 as the record of what shipped.
 
+Runtime amendment, 2026-09-23: [14-enterprise-surface-alignment.md](14-enterprise-surface-alignment.md)
+supersedes this document's atmospheric field, default glass, elevation and
+shell-atmosphere rules. The field and glass recipes below remain the explicit
+opt-in primitives and historical record; they are no longer runtime defaults.
+Geist, Phosphor, shape, semantic status colour, density and accessibility rules
+remain in force.
+
 The component library that renders this direction is specified in
 [10-component-library.md](10-component-library.md). The build plan is in
 [../../../docs/execution/FRONT_END_REFACTOR.md](../../../docs/execution/FRONT_END_REFACTOR.md).

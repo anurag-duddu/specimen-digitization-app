@@ -16,6 +16,7 @@
 //
 // It is a gate as well as an instrument: an overflow anywhere fails it.
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,7 +24,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
 import 'package:specimen_digitization/src/screens/workbench/workbench_layout.dart';
-import 'package:specimen_digitization/src/workbench.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../golden/golden_harness.dart';
@@ -36,6 +36,29 @@ const List<double> matrixScales = <double>[1.0, 1.3, 2.0];
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
+  test('the collector restores nullable handlers after an opening failure', () {
+    final saved = FlutterError.onError;
+    try {
+      for (final FlutterExceptionHandler? original in [null, saved]) {
+        FlutterError.onError = original;
+        final failure = StateError('deliberate screen-opening failure');
+        Object? caught;
+        captureLayoutErrors();
+        try {
+          throw failure;
+        } catch (error) {
+          caught = error;
+        } finally {
+          stopCapturingLayoutErrors();
+        }
+        expect(caught, same(failure));
+        expect(FlutterError.onError, same(original));
+      }
+    } finally {
+      FlutterError.onError = saved;
+    }
+  });
+
   for (final MatrixScreen screen in matrixScreens) {
     group(screen.name, () {
       goldenWindows.forEach((String window, Size size) {
@@ -44,27 +67,31 @@ void main() {
             WidgetTester tester,
           ) async {
             captureLayoutErrors();
-            await screen.open(tester, size, scale, Brightness.light);
-            final String variant = navigationVariant(tester);
-            final bool scrolls = anyScrollableHasExtent(tester);
-            final bool overflowed = stopAndReportOverflow(tester);
-            reportCell(
-              screen: screen.name,
-              window: window,
-              scale: scale,
-              mode: 'light',
-              variant: variant,
-              scrolls: scrolls,
-              overflowed: overflowed,
-            );
-            expect(
-              overflowed,
-              isFalse,
-              reason:
-                  '${screen.name} laid out past a $window window at text '
-                  'scale $scale. Content a reviewer cannot see is pass '
-                  'criterion 8.5 failing.',
-            );
+            try {
+              await screen.open(tester, size, scale, Brightness.light);
+              final String variant = navigationVariant(tester);
+              final bool scrolls = anyScrollableHasExtent(tester);
+              final bool overflowed = stopAndReportOverflow(tester);
+              reportCell(
+                screen: screen.name,
+                window: window,
+                scale: scale,
+                mode: 'light',
+                variant: variant,
+                scrolls: scrolls,
+                overflowed: overflowed,
+              );
+              expect(
+                overflowed,
+                isFalse,
+                reason:
+                    '${screen.name} laid out past a $window window at text '
+                    'scale $scale. Content a reviewer cannot see is pass '
+                    'criterion 8.5 failing.',
+              );
+            } finally {
+              stopCapturingLayoutErrors();
+            }
           });
         }
       });
@@ -114,7 +141,7 @@ final List<MatrixScreen> matrixScreens = <MatrixScreen>[
       location: goldenQueueLocation,
     );
   }),
-  MatrixScreen('filters', (
+  MatrixScreen('status filters', (
     WidgetTester tester,
     Size size,
     double scale,
@@ -126,10 +153,9 @@ final List<MatrixScreen> matrixScreens = <MatrixScreen>[
       brightness: brightness,
       textScale: scale,
       location: goldenQueueLocation,
+      repository: GoldenQueueRepository(goldenQueue(0)),
     );
-    await tester.tap(find.text('Filters'));
-    await tester.pumpAndSettle();
-    expect(find.text('Filter the queue'), findsOneWidget);
+    await chooseDeferredQueue(tester);
   }),
   MatrixScreen('intake', (
     WidgetTester tester,
@@ -226,27 +252,34 @@ Future<void> chooseSegment(
   WidgetTester tester,
   WorkbenchSegment segment,
 ) async {
-  final Finder tab = find.descendant(
-    of: uiTabs(evidenceTabsLabel),
-    matching: find.text(segment.label),
-  );
-  if (tab.evaluate().isNotEmpty) {
-    await tester.sendKeyEvent(switch (segment) {
-      WorkbenchSegment.readings => LogicalKeyboardKey.keyR,
-      WorkbenchSegment.fields => LogicalKeyboardKey.keyF,
-      WorkbenchSegment.history => LogicalKeyboardKey.keyH,
-    });
-    await tester.pumpAndSettle();
-    await settleImages(tester);
-  }
+  final Finder tabs = uiTabs('Record view');
+  expect(tabs, findsOneWidget);
+  await tester.sendKeyEvent(switch (segment) {
+    WorkbenchSegment.readings => LogicalKeyboardKey.keyR,
+    WorkbenchSegment.fields => LogicalKeyboardKey.keyF,
+    WorkbenchSegment.history => LogicalKeyboardKey.keyH,
+  });
+  await tester.pumpAndSettle();
+  await settleImages(tester);
+  expect(tester.widget<UiTabs>(tabs).selected.value, segment.index);
   for (final ScrollableState scroll in tester.stateList<ScrollableState>(
     find.byType(Scrollable),
   )) {
-    if (scroll.position.hasPixels && scroll.position.pixels != 0) {
+    if (axisDirectionToAxis(scroll.position.axisDirection) == Axis.vertical &&
+        scroll.position.hasPixels &&
+        scroll.position.pixels != 0) {
       scroll.position.jumpTo(0);
     }
   }
   await tester.pumpAndSettle();
+  expect(
+    uiRecordView(switch (segment) {
+      WorkbenchSegment.readings => 'Label review',
+      WorkbenchSegment.fields => 'Structured specimen data',
+      WorkbenchSegment.history => 'Review history',
+    }).hitTestable(),
+    findsOneWidget,
+  );
 }
 
 /// Opens the region editor in the container the window class gives it.

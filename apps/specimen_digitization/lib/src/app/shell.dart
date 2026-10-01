@@ -1,25 +1,14 @@
-/// The adaptive collection shell (05 section 2; 07 sections 1.2, 1.3 and 11;
-/// 13 sections 2.3 and 3.4).
-///
-/// One navigation control per window class: a floating pill below 600, a
-/// collapsed rail to 839, an extended rail to 1199, and a sidebar at 1200 and
-/// above. The collection switcher and the account menu move with it, and the
-/// mark leads the rail and the sidebar.
-///
-/// The frame is built once and the router swaps the body inside it, so what
-/// the chrome says is decided here, by route: which sky paints, whether the
-/// navigation is drawn, whether the bar carries the collection switcher or the
-/// screen's own name and the way out, and which form the environment band
-/// takes. 13 section 3.4 asks the scaffold to read the route; the shell is
-/// where this application reads it. A screen that knows better than the route
-/// names the frame through `UiScaffoldSlots`, the one hook for the bar, its
-/// title and its start slot, the action bar, the navigation and the band's
-/// form (13 section 3.4, polish 3); the shell holds no hook of its own.
+/// Adaptive collection navigation: native phone tabs and a spacious sidebar.
 library;
 
 import 'dart:async';
+import 'dart:math' as math;
 
+import 'package:flutter/cupertino.dart' as cupertino;
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' as material;
 import 'package:flutter/widgets.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
@@ -32,7 +21,24 @@ import 'routes.dart';
 
 /// The navigation frame every collection screen is drawn inside.
 class AppShell extends StatefulWidget {
-  const AppShell({super.key, required this.destination, required this.child});
+  const AppShell({
+    super.key,
+    required this.destination,
+    required this.child,
+    this.specimens,
+    this.specimensFocus,
+    this.specimensActions,
+    this.onSelectDestination,
+  });
+
+  /// The retained specimen list, full width on its route and inside the sidebar
+  /// while a record is open. Its GlobalKey preserves search, selection and scroll.
+  final Widget? specimens;
+  final FocusNode? specimensFocus;
+  final Widget? specimensActions;
+
+  /// Restores the destination's retained branch after the leave guard passes.
+  final ValueChanged<WorkspaceDestination>? onSelectDestination;
 
   /// The destination the current route belongs to.
   final WorkspaceDestination destination;
@@ -40,10 +46,10 @@ class AppShell extends StatefulWidget {
   /// The routed screen.
   final Widget child;
 
-  /// The widest the top bar's collection switcher may grow.
+  /// The widest the sidebar's collection switcher may grow.
   static const double switcherMaxWidth = 280;
 
-  /// What the switcher is called, in the bar and to a screen reader.
+  /// What the collection switcher is called to a screen reader.
   static const String switcherLabel = 'Authorized collection';
 
   /// What the account control is called.
@@ -55,11 +61,8 @@ class AppShell extends StatefulWidget {
   /// What the reload control is called.
   static const String reloadLabel = 'Refresh collection';
 
-  /// What the way out of a record is called, in the bar's leading slot.
-  ///
-  /// 13 section 2.3 gives the way out to the top bar, so this is the only
-  /// back action a record needs and the row under the bar goes.
-  static const String backLabel = 'Back to queue';
+  /// Accessible label for returning from a record to the specimen list.
+  static const String backLabel = 'Back to specimens';
 
   /// The two destinations, in the order they are read.
   ///
@@ -67,7 +70,7 @@ class AppShell extends StatefulWidget {
   /// it is not a third destination even though the registry has a glyph for
   /// it.
   static const List<UiNavDestination> destinations = <UiNavDestination>[
-    UiNavDestination(label: 'Queue', icon: UiIcons.queue),
+    UiNavDestination(label: 'Specimens', icon: UiIcons.queue),
     UiNavDestination(label: 'Intake', icon: UiIcons.intake),
   ];
 
@@ -92,28 +95,11 @@ class AppShell extends StatefulWidget {
   /// True where [location] is inside a record.
   static bool insideRecord(Uri location) => recordIn(location) != null;
 
-  /// True where the bar carries the account menu, which is every window
-  /// narrower than large: at large the sidebar's footer carries the account
-  /// and signing out, so the bar carries help on its own (07 section 10).
-  ///
-  /// One rule for the shell's own bars and for the bar a record publishes
-  /// (13 section 4.1, polish 3), so the menu sits in the same slot on every
-  /// screen of the collection and a reviewer learns where it is once.
-  static bool accountInBar(WindowClass window) =>
-      !window.isAtLeast(WindowClass.large);
+  /// Account actions live in the global rail, outside list toolbars.
+  static bool accountInBar(WindowClass window) => false;
 
-  /// True where the bar a record publishes carries the account menu: the
-  /// windows [accountInBar] names, less compact.
-  ///
-  /// At 390 by 844 the record's identifier has 134 dp beside back and three
-  /// discs and ellipsises at 200 percent text, and the identifier is the one
-  /// fact that bar exists to state (13 section 4.1). A screen over its width
-  /// gives a disc up rather than cutting its fact, and the account is the one
-  /// disc 4.1 did not list: the way out is back, and the queue's bar carries
-  /// the account at every width below large. From medium up the record's bar
-  /// has the width and carries the same menu in the same slot.
-  static bool accountOnRecordBar(WindowClass window) =>
-      accountInBar(window) && !window.isCompact;
+  /// Record toolbars also use the shared account control in the global rail.
+  static bool accountOnRecordBar(WindowClass window) => false;
 
   /// Which sky the location paints (09 section 3.2).
   ///
@@ -127,263 +113,659 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
+/// Controls the same sidebar from page-level toolbars without adding another
+/// navigation surface. The collection shell supplies this to all routed pages.
+class AppSidebarScope extends InheritedWidget {
+  const AppSidebarScope({
+    super.key,
+    required this.expanded,
+    required this.overlay,
+    required this.docked,
+    this.mobileNavigation = false,
+    this.mobileSpecimens,
+    required this.toggle,
+    required this.close,
+    required super.child,
+  });
+  final bool expanded;
+  final bool overlay;
+  final bool docked;
+  final bool mobileNavigation;
+
+  /// The same list panel the desktop sidebar carries. On a phone it belongs
+  /// to the Queue route below a record, so native Back reveals real content.
+  final Widget? mobileSpecimens;
+  final VoidCallback toggle;
+  final VoidCallback close;
+  static AppSidebarScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<AppSidebarScope>();
+  @override
+  bool updateShouldNotify(AppSidebarScope oldWidget) =>
+      expanded != oldWidget.expanded ||
+      overlay != oldWidget.overlay ||
+      docked != oldWidget.docked ||
+      mobileNavigation != oldWidget.mobileNavigation ||
+      mobileSpecimens != oldWidget.mobileSpecimens;
+}
+
 class _AppShellState extends State<AppShell> {
-  /// Goes to [next], or back to the destination's own root when the reviewer
-  /// is already inside it.
-  ///
-  /// Pressing Intake while browsing a registered source used to do nothing,
-  /// because the source route belongs to the Intake destination and the
-  /// navigation only moved between destinations. That left the sources list
-  /// with no way back but the system gesture, which is half of finding V2-4.
-  void _select(BuildContext context, WorkspaceDestination next) {
-    final WorkspaceController controller = WorkspaceScope.read(context);
-    final String? key = controller.defaultRouteKey;
+  bool? _desktopExpanded;
+  bool _mobileNavigation = false;
+  bool _docked = false;
+  bool _expanded = false;
+  Size? _visibleSpecimensSize;
+  final FocusNode _toggleFocus = FocusNode(
+    debugLabel: 'Open workspace sidebar',
+  );
+  final FocusScopeNode _sidebarFocus = FocusScopeNode(
+    debugLabel: 'Workspace sidebar',
+    traversalEdgeBehavior: TraversalEdgeBehavior.parentScope,
+  );
+  FocusNode? _returnFocus;
+  bool _selecting = false;
+
+  @override
+  void dispose() {
+    _toggleFocus.dispose();
+    _sidebarFocus.dispose();
+    super.dispose();
+  }
+
+  void _toggle() => _expanded ? _close() : _open();
+
+  void _open() {
+    _returnFocus = FocusManager.instance.primaryFocus;
+    setState(() {
+      _desktopExpanded = true;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_expanded) return;
+      if (AppShell.insideRecord(GoRouterState.of(context).uri)) {
+        widget.specimensFocus?.requestFocus();
+      } else {
+        _sidebarFocus.requestFocus();
+      }
+    });
+  }
+
+  void _close() {
+    final previous = _returnFocus;
+    _returnFocus = null;
+    setState(() {
+      _desktopExpanded = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _expanded) return;
+      if (previous?.context != null && previous!.canRequestFocus) {
+        previous.requestFocus();
+      } else {
+        _toggleFocus.requestFocus();
+      }
+    });
+  }
+
+  Future<void> _select(WorkspaceDestination next) async {
+    if (_selecting) return;
+    final controller = WorkspaceScope.read(context);
+    final key = controller.defaultRouteKey;
+    final userId = controller.session.userId;
     if (key == null) return;
-    final String root = next == WorkspaceDestination.queue
+    final root = next == WorkspaceDestination.queue
         ? AppRoutes.queueOf(key)
         : AppRoutes.intakeOf(key);
     if (GoRouterState.of(context).uri.path == root) return;
-    context.go(root);
+    _selecting = true;
+    try {
+      if (!await controller.mayLeaveReview() ||
+          !mounted ||
+          !controller.session.signedIn ||
+          controller.session.userId != userId ||
+          controller.defaultRouteKey != key) {
+        return;
+      }
+      final select = widget.onSelectDestination;
+      if (select != null) {
+        select(next);
+      } else {
+        context.go(root);
+      }
+    } finally {
+      _selecting = false;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final WorkspaceController controller = WorkspaceScope.of(context);
-    final WindowClass window = WindowClass.of(context);
-    final Uri location = GoRouterState.of(context).uri;
-    final bool sidebar = window.isAtLeast(WindowClass.large);
-    final bool rail = !sidebar && window.isAtLeast(WindowClass.medium);
-    final bool extended = rail && window.isAtLeast(WindowClass.expanded);
-    // 13 section 2.3: the pill hides on a screen that is inside a record,
-    // where the way out is the top bar's back. The frame owns this by route,
-    // and a record that asks for it again through the scaffold's own slot
-    // asks for what it already has.
-    //
-    // The pill, and only the pill. A rail and a sidebar are columns beside
-    // the body rather than chrome over it: they spend width, the budget in
-    // 13 section 2.3 is a share of the height, and a desktop with its
-    // navigation taken away inside a record has no navigation at all.
-    final bool inRecord = AppShell.insideRecord(location);
-    final bool busy =
+    final controller = WorkspaceScope.of(context);
+    final location = GoRouterState.of(context).uri;
+    final record = AppShell.insideRecord(location);
+    final listRoute =
+        widget.destination == WorkspaceDestination.queue && !record;
+    final busy =
         controller.loading ||
         controller.recordLoading ||
         controller.mutating ||
         controller.loadingMore;
-
-    final Widget navigation = sidebar
-        ? UiSidebar(
-            destinations: AppShell.destinations,
-            currentIndex: widget.destination.index,
-            onSelect: (int index) =>
-                _select(context, WorkspaceDestination.values[index]),
-            header: _SidebarHeader(controller: controller),
-            footer: _SidebarFooter(controller: controller),
-          )
-        : rail
-        ? UiRail(
-            destinations: AppShell.destinations,
-            currentIndex: widget.destination.index,
-            extended: extended,
-            onSelect: (int index) =>
-                _select(context, WorkspaceDestination.values[index]),
-            // The bar's title already says the product's name, so the mark
-            // beside it is decoration: a screen reader that reads both hears
-            // it twice on the way into the navigation.
-            leading: const ExcludeSemantics(
-              child: UiMark(label: AppShell.markLabel),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final ui = context.ui;
+        final scale = (MediaQuery.textScalerOf(context).scale(16) / 16).clamp(
+          1.0,
+          2.0,
+        );
+        _mobileNavigation =
+            constraints.maxWidth < 768 * scale || constraints.maxHeight < 600;
+        final navVisible =
+            _mobileNavigation && MediaQuery.viewInsetsOf(context).bottom == 0;
+        _docked = !_mobileNavigation;
+        _expanded =
+            listRoute ||
+            (_docked &&
+                (_desktopExpanded ?? constraints.maxWidth >= 1100 * scale));
+        final railWidth = ui.space.s16 + MediaQuery.paddingOf(context).left;
+        final sidebarWidth = math.min(
+          (320 * scale / 8).ceil() * 8.0,
+          math.max(0.0, constraints.maxWidth - railWidth - ui.space.s4),
+        );
+        final contentInset = _docked
+            ? railWidth + (_expanded ? sidebarWidth : 0)
+            : 0.0;
+        final sidebar = _sidebar(
+          context,
+          controller,
+          canClose: !listRoute && !_mobileNavigation,
+          busy: busy,
+        );
+        return AppSidebarScope(
+          expanded: _expanded,
+          overlay: false,
+          docked: _docked,
+          mobileNavigation: _mobileNavigation,
+          mobileSpecimens: _mobileNavigation ? sidebar : null,
+          toggle: _toggle,
+          close: _close,
+          child: QueueWorkspaceScope(
+            expanded: _expanded,
+            showQueue: record && !_mobileNavigation ? _toggle : null,
+            hideQueue: () {},
+            child: CallbackShortcuts(
+              bindings: <ShortcutActivator, VoidCallback>{
+                if (_expanded && !listRoute && !_mobileNavigation)
+                  const SingleActivator(LogicalKeyboardKey.escape): _close,
+              },
+              child: ColoredBox(
+                color: ui.color.ground,
+                child: Column(
+                  children: <Widget>[
+                    Expanded(
+                      child: MediaQuery.removePadding(
+                        context: context,
+                        removeBottom: navVisible,
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: <Widget>[
+                            PositionedDirectional(
+                              start: contentInset,
+                              end: 0,
+                              top: 0,
+                              bottom: 0,
+                              child: MediaQuery.removePadding(
+                                context: context,
+                                removeLeft: _docked,
+                                child: UiScaffold(
+                                  sky: AppShell.skyOf(location),
+                                  header:
+                                      _mobileNavigation &&
+                                          widget.destination ==
+                                              WorkspaceDestination.intake
+                                      ? _mobileHeader(context, controller)
+                                      : null,
+                                  banner: _mobileNavigation && listRoute
+                                      ? null
+                                      : _Chrome(
+                                          controller: controller,
+                                          busy: busy,
+                                          window: WindowClass.of(context),
+                                        ),
+                                  body: Semantics(
+                                    container: true,
+                                    explicitChildNodes: true,
+                                    child: widget.child,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (_docked)
+                              PositionedDirectional(
+                                start: railWidth,
+                                top: 0,
+                                bottom: 0,
+                                width: sidebarWidth,
+                                child: Offstage(
+                                  offstage: !_expanded,
+                                  child: ExcludeFocus(
+                                    excluding: !_expanded,
+                                    child: ExcludeSemantics(
+                                      excluding: !_expanded,
+                                      child: FocusScope(
+                                        node: _sidebarFocus,
+                                        child: sidebar,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            if (_docked)
+                              PositionedDirectional(
+                                start: 0,
+                                top: 0,
+                                bottom: 0,
+                                width: railWidth,
+                                child: _rail(context, controller),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (navVisible) _mobileNav(context),
+                  ],
+                ),
+              ),
             ),
-          )
-        : UiPillNav(
-            destinations: AppShell.destinations,
-            currentIndex: widget.destination.index,
-            onSelect: (int index) =>
-                _select(context, WorkspaceDestination.values[index]),
-          );
+          ),
+        );
+      },
+    );
+  }
 
-    return UiScaffold(
-      // The queue, intake and sources routes are the home sky; the record
-      // route is the work sky (09 section 3.2). The pane that draws the
-      // photograph publishes the matte's clear band through
-      // `UiScaffoldExclusion.of(context)?.publish(rect)`, which the frame
-      // clips its fields out of.
-      sky: AppShell.skyOf(location),
-      // What the route says the bar carries. A screen that names itself or
-      // its way out publishes through `UiScaffoldSlots`, and the frame draws
-      // what it asked for over this (13 section 3.4).
-      topBar: _TopBar(
-        controller: controller,
-        window: window,
-        sidebar: sidebar,
-        location: location,
+  Widget _mobileHeader(BuildContext context, WorkspaceController controller) =>
+      SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: EdgeInsets.all(context.ui.space.s2),
+          child: Row(
+            children: <Widget>[
+              Expanded(
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: _CollectionSwitcher(
+                    controller: controller,
+                    sheet: true,
+                  ),
+                ),
+              ),
+              if (EnvironmentBanner.showsBand(controller.environment))
+                _EnvironmentContext(controller: controller, compact: true),
+              ShellAccountMenu(controller: controller),
+            ],
+          ),
+        ),
+      );
+
+  Widget _mobileNav(BuildContext context) {
+    final ui = context.ui;
+    final selected = widget.destination.index;
+    Widget icon(int index) => UiIcon(
+      AppShell.destinations[index].icon,
+      key: ValueKey<String>(
+        'mobile-nav-${AppShell.destinations[index].label.toLowerCase()}',
       ),
-      banner: _Chrome(controller: controller, busy: busy, window: window),
-      nav: navigation,
-      navVisible: !(inRecord && !sidebar && !rail),
-      // The routed screen is a nested `Navigator`, and a route's modal
-      // barrier blocks the semantics of everything painted before it inside
-      // the same semantics boundary. The shell's own chrome, the environment
-      // band and this navigation, is painted first, so without a boundary of
-      // its own the screen erased all of it: a reviewer working through a
-      // browser's accessibility tree found a queue with no navigation and no
-      // way into a record.
-      body: Semantics(
-        container: true,
-        explicitChildNodes: true,
-        child: widget.child,
+      current: index == selected,
+      color: index == selected ? ui.color.ink : ui.color.inkSecondary,
+    );
+    void select(int index) => _select(WorkspaceDestination.values[index]);
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      return cupertino.CupertinoTabBar(
+        key: const ValueKey<String>('mobile-navigation'),
+        currentIndex: selected,
+        onTap: select,
+        backgroundColor: ui.color.paper,
+        activeColor: ui.color.ink,
+        inactiveColor: ui.color.inkSecondary,
+        height: math.max(56, 32 + MediaQuery.textScalerOf(context).scale(16)),
+        items: <cupertino.BottomNavigationBarItem>[
+          for (var i = 0; i < AppShell.destinations.length; i++)
+            cupertino.BottomNavigationBarItem(
+              icon: icon(i),
+              label: AppShell.destinations[i].label,
+            ),
+        ],
+      );
+    }
+    return material.NavigationBarTheme(
+      data: material.NavigationBarThemeData(
+        labelTextStyle: WidgetStatePropertyAll(
+          ui.type.label.copyWith(color: ui.color.ink),
+        ),
+      ),
+      child: material.NavigationBar(
+        key: const ValueKey<String>('mobile-navigation'),
+        animationDuration: ui.motion.navigationGlide,
+        selectedIndex: selected,
+        onDestinationSelected: select,
+        backgroundColor: ui.color.paper,
+        indicatorColor: ui.color.ink.withValues(alpha: .08),
+        surfaceTintColor: GroundPalette.transparent,
+        elevation: 0,
+        destinations: <Widget>[
+          for (var i = 0; i < AppShell.destinations.length; i++)
+            material.NavigationDestination(
+              icon: icon(i),
+              label: AppShell.destinations[i].label,
+            ),
+        ],
       ),
     );
   }
+
+  Widget _toggleButton() => UiIconButton(
+    icon: UiIcons.sidebar,
+    semanticsLabel: 'Open sidebar',
+    focusNode: _toggleFocus,
+    onPressed: () {
+      _toggleFocus.requestFocus();
+      FocusManager.instance.applyFocusChangesIfNeeded();
+      _open();
+    },
+  );
+
+  Widget _sidebar(
+    BuildContext context,
+    WorkspaceController controller, {
+    required bool canClose,
+    required bool busy,
+  }) {
+    final ui = context.ui;
+    return DecoratedBox(
+      key: ValueKey<String>(
+        _mobileNavigation ? 'mobile-specimens' : 'global-sidebar',
+      ),
+      decoration: BoxDecoration(
+        color: ui.color.paper,
+        border: _mobileNavigation
+            ? null
+            : BorderDirectional(end: BorderSide(color: ui.color.boundary)),
+      ),
+      child: SafeArea(
+        left: _mobileNavigation,
+        right: _mobileNavigation,
+        child: Padding(
+          padding: EdgeInsets.only(
+            bottom: _mobileNavigation
+                ? MediaQuery.viewInsetsOf(context).bottom
+                : 0,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              Padding(
+                padding: EdgeInsets.all(ui.space.s2),
+                child: Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: Align(
+                        key: const ValueKey<String>(
+                          'global-sidebar-collection',
+                        ),
+                        alignment: AlignmentDirectional.centerStart,
+                        child: _CollectionSwitcher(
+                          controller: controller,
+                          sheet: !_docked,
+                        ),
+                      ),
+                    ),
+                    ?widget.specimensActions,
+                    if (_mobileNavigation &&
+                        EnvironmentBanner.showsBand(controller.environment))
+                      _EnvironmentContext(
+                        controller: controller,
+                        compact: true,
+                      ),
+                    if (_mobileNavigation)
+                      ShellAccountMenu(controller: controller),
+                    if (canClose)
+                      UiIconButton(
+                        icon: UiIcons.sidebar,
+                        semanticsLabel: 'Close sidebar',
+                        onPressed: _close,
+                      ),
+                  ],
+                ),
+              ),
+              if (_mobileNavigation)
+                _Chrome(
+                  controller: controller,
+                  busy: busy,
+                  window: WindowClass.of(context),
+                ),
+              Expanded(
+                child: widget.specimens != null
+                    ? LayoutBuilder(
+                        builder: (context, constraints) {
+                          if (_expanded) {
+                            _visibleSpecimensSize = constraints.biggest;
+                          }
+                          final retained = _expanded
+                              ? null
+                              : _visibleSpecimensSize;
+                          return OverflowBox(
+                            alignment: AlignmentDirectional.topStart,
+                            minWidth: retained?.width,
+                            maxWidth: retained?.width,
+                            minHeight: retained?.height,
+                            maxHeight: retained?.height,
+                            child: widget.specimens,
+                          );
+                        },
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _rail(BuildContext context, WorkspaceController controller) =>
+      DecoratedBox(
+        key: const ValueKey<String>('global-rail'),
+        decoration: BoxDecoration(color: context.ui.color.ground),
+        child: SafeArea(
+          right: false,
+          child: LayoutBuilder(
+            builder: (context, constraints) => SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: IntrinsicHeight(
+                  child: Padding(
+                    padding: EdgeInsets.all(context.ui.space.s2),
+                    child: Column(
+                      children: <Widget>[
+                        ShellSidebarNavigation(
+                          destination: widget.destination,
+                          onSelect: _select,
+                          compact: true,
+                        ),
+                        if (!_expanded) _toggleButton(),
+                        const Spacer(),
+                        if (EnvironmentBanner.showsBand(controller.environment))
+                          _EnvironmentContext(
+                            controller: controller,
+                            compact: true,
+                          ),
+                        ShellAccountMenu(controller: controller),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
-/// The bar across the top of every collection screen (13 sections 2.3 and 4).
-///
-/// Two arrangements, chosen by route. On a list screen the bar carries the
-/// mark, the collection switcher and the commands. Inside a record it carries
-/// the way out and the record's own name instead: a reviewer in a record is
-/// not choosing a collection, and the switcher there would offer to leave the
-/// thing they are reading without saying so.
-///
-/// The record publishes a bar of its own into the frame through
-/// `UiScaffoldSlots.setTopBar`, with its commands and, from `expanded` up, its
-/// decision (13 section 4.1), and the frame draws that over this one. What
-/// this builds inside a record is what the frame shows until the record has
-/// loaded, and it agrees with the record's bar on everything the two share.
-/// A screen that names the bar or its start slot alone, through `setTitle` or
-/// `setLeading`, reaches this bar through `UiTopBarAsk`, which `UiTopBar`
-/// reads itself (13 section 3.4, polish 3); the shell holds no hook for it.
-class _TopBar extends StatelessWidget {
-  const _TopBar({
-    required this.controller,
-    required this.window,
-    required this.sidebar,
-    required this.location,
+/// Global destinations use one icon-and-label row, with a compact icon form.
+class ShellSidebarNavigation extends StatefulWidget {
+  const ShellSidebarNavigation({
+    super.key,
+    required this.destination,
+    required this.onSelect,
+    this.compact = false,
   });
+  final WorkspaceDestination destination;
+  final ValueChanged<WorkspaceDestination> onSelect;
+  final bool compact;
+  @override
+  State<ShellSidebarNavigation> createState() => _ShellSidebarNavigationState();
+}
 
-  final WorkspaceController controller;
-  final WindowClass window;
-  final bool sidebar;
-  final Uri location;
+/// Compatibility name for integration harnesses that locate the global navigation.
+typedef ShellTopNavigation = ShellSidebarNavigation;
+
+class _ShellSidebarNavigationState extends State<ShellSidebarNavigation> {
+  final _nodes = <FocusNode>[
+    FocusNode(debugLabel: 'Specimens navigation'),
+    FocusNode(debugLabel: 'Intake navigation'),
+  ];
+  @override
+  void dispose() {
+    for (final node in _nodes) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  void _move(int delta) {
+    final index = _nodes.indexWhere((node) => node.hasFocus);
+    _nodes[(index + delta) % _nodes.length].requestFocus();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final String? record = AppShell.recordIn(location);
-    final bool inRecord = record != null;
-    final bool switchable = controller.scopes.isNotEmpty;
-    // The switcher is reachable at every window class (07 section 1.2): in
-    // the bar's centre from medium up, in the bar's own title row on compact,
-    // and in the sidebar's header at large. Not inside a record, where the
-    // bar's one job is to say which record this is and how to leave it.
-    final bool inBar = !sidebar && switchable && !inRecord;
-    // What the bar names on this route, in the centre slot rather than the
-    // title slot (13 section 4.1): the centre takes a widget, so a record
-    // names itself in `mono.identifier`, which is the role 13 section 4.1
-    // gives a specimen id and which the title slot cannot draw.
-    final Widget? named = inRecord
-        ? _BarName(text: record, style: context.ui.type.mono.identifier)
-        : null;
-    final String? title = named != null || window.isCompact
-        ? null
-        : AppShell.markLabel;
-
-    // The frame draws the bar solid at every class, so it spends no pane
-    // (13 section 2.2, polish 3): nothing wraps it here.
-    return UiTopBar(
-      // The rail and the sidebar carry the mark, so the bar carries it only
-      // on a compact window, where there is neither. Inside a record the
-      // slot is the way out, which is what 13 section 2.3 puts there.
-      leading: inRecord
-          ? UiIconButton(
-              icon: UiIcons.back,
-              semanticsLabel: AppShell.backLabel,
-              tooltip: AppShell.backLabel,
-              onPressed: () => _leaveRecord(context),
-            )
-          : window.isCompact
-          ? const UiMark(label: AppShell.markLabel)
-          : null,
-      title: title,
-      center: inBar
-          ? ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: AppShell.switcherMaxWidth,
-              ),
-              child: _CollectionSwitcher(controller: controller),
-            )
-          : named,
-      // Declared commands rather than discs: a `UiTopBarAction` carries the
-      // label, the glyph and the reason a menu row needs, so the bar can put
-      // the ones past the second into its overflow menu on a window too
-      // narrow to draw them beside the title. The account menu is a trigger
-      // of its own and stays a widget, which the bar reads as "keep them all
-      // drawn"; it is the last action wherever it appears, so nothing
-      // collapses today and the bar is ready for the third.
-      actions: <Widget>[
-        UiTopBarAction(
-          icon: UiIcons.reload,
-          label: AppShell.reloadLabel,
-          onPressed: controller.loading
-              ? null
-              : () => unawaited(
-                  controller.scope == null
-                      ? controller.checkAccess()
-                      : controller.refresh(),
+    final ui = context.ui;
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.arrowDown): () => _move(1),
+        const SingleActivator(LogicalKeyboardKey.arrowUp): () => _move(-1),
+      },
+      child: Semantics(
+        container: true,
+        explicitChildNodes: true,
+        label: 'Workspace navigation',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            for (int i = 0; i < AppShell.destinations.length; i++)
+              Padding(
+                padding: EdgeInsets.only(bottom: ui.space.s2),
+                child: UiTooltip(
+                  message:
+                      'Open ${AppShell.destinations[i].label.toLowerCase()}',
+                  child: Pressable(
+                    semanticsLabel: AppShell.destinations[i].label,
+                    role: PressableRole.tab,
+                    selected: i == widget.destination.index,
+                    focusNode: _nodes[i],
+                    radius: ui.shape.tile,
+                    onPressed: () =>
+                        widget.onSelect(WorkspaceDestination.values[i]),
+                    builder: (context, states) => DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: i == widget.destination.index
+                            ? ui.color.ink.withValues(alpha: .06)
+                            : GroundPalette.transparent,
+                        borderRadius: BorderRadius.circular(ui.shape.tile),
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.all(ui.space.s2),
+                        child: Row(
+                          mainAxisAlignment: widget.compact
+                              ? MainAxisAlignment.center
+                              : MainAxisAlignment.start,
+                          children: <Widget>[
+                            UiIcon(
+                              AppShell.destinations[i].icon,
+                              current: i == widget.destination.index,
+                            ),
+                            if (!widget.compact) ...<Widget>[
+                              SizedBox(width: ui.space.s4),
+                              Expanded(
+                                child: Text(
+                                  AppShell.destinations[i].label,
+                                  style: ui.type.label,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-          disabledReason: controller.loading
-              ? 'The collection is loading. This is available once it lands.'
-              : null,
+              ),
+          ],
         ),
-        // Below large the account menu closes the bar, inside a record as
-        // well (13 section 4.1, polish 3): the record's own bar carries the
-        // same menu in the same slot, and `Popover` fits its pane inside the
-        // window at every width now (10 section 3), so a menu opened from the
-        // last slot of a bar opens inside it. At large the sidebar's footer
-        // carries the account and signing out, and the bar carries help on
-        // its own.
-        if (AppShell.accountInBar(window))
-          ShellAccountMenu(controller: controller)
-        else
-          UiTopBarAction(
-            icon: UiIcons.help,
-            label: AppShell.helpLabel,
-            onPressed: () => context.push(AppRoutes.help),
-          ),
-      ],
-    );
-  }
-
-  /// Leaves the record for the queue it was opened from.
-  void _leaveRecord(BuildContext context) {
-    final String? key = AppRoutes.collectionKeyIn(location);
-    context.go(
-      key == null
-          ? AppRoutes.queueOf(controller.defaultRouteKey ?? '')
-          : AppRoutes.queueOf(key),
+      ),
     );
   }
 }
 
-/// What the bar names, in the slot that takes a role rather than a string.
-///
-/// One line, ellipsised, with the whole of it on the semantics node and in a
-/// tooltip when it does not fit, which is what `UiLabel` is for.
-class _BarName extends StatelessWidget {
-  const _BarName({required this.text, required this.style});
-
-  /// The name.
-  final String text;
-
-  /// The role it is set in: `mono.identifier` for a record, `title` for a
-  /// screen that published its own name.
-  final TextStyle style;
-
+/// Account access is owned by the sidebar. Kept as a component for hosts that
+/// display an isolated record outside the application shell.
+class RecordAccountActions extends StatelessWidget {
+  const RecordAccountActions({super.key, required this.controller});
+  final WorkspaceController controller;
   @override
   Widget build(BuildContext context) =>
-      UiLabel(text, style: style.copyWith(color: context.ui.color.ink));
+      ShellAccountMenu(controller: controller);
 }
 
-/// Everything that sits between the top bar and the screen: the environment
-/// band, the repository's blockers, the screen level error and the progress
-/// strip.
+class _EnvironmentContext extends StatelessWidget {
+  const _EnvironmentContext({required this.controller, this.compact = false});
+  final bool compact;
+  final WorkspaceController controller;
+  @override
+  Widget build(BuildContext context) {
+    final bool pilot = EnvironmentBanner.isPilot(controller.environment);
+    final String headline = pilot
+        ? EnvironmentBanner.pilotHeadlineFor(pilotScopeDefine)
+        : EnvironmentBanner.headlineFor(controller.environment);
+    void showEnvironment() => unawaited(
+      showProductModal<void>(
+        context: context,
+        title: pilot
+            ? 'Pilot scope'
+            : EnvironmentBanner.nameFor(controller.environment),
+        body: (context) => Text(
+          '$headline ${EnvironmentBanner.detailFor(controller.environment, contactSentence: AdministratorContact.of(controller.scope).sentence)}',
+        ),
+        secondaryAction: (context) => UiButton(
+          label: 'Close',
+          variant: UiButtonVariant.ghost,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+    );
+    if (compact) {
+      return UiIconButton(
+        icon: UiIcons.info,
+        semanticsLabel: pilot ? 'Pilot environment' : 'Test environment',
+        onPressed: showEnvironment,
+      );
+    }
+    return UiButton(
+      label: pilot ? 'Pilot' : 'Test',
+      semanticsLabel: headline,
+      variant: UiButtonVariant.ghost,
+      onPressed: showEnvironment,
+    );
+  }
+}
+
+/// Repository blockers, screen errors and active progress above the content.
 class _Chrome extends StatelessWidget {
   const _Chrome({
     required this.controller,
@@ -399,29 +781,6 @@ class _Chrome extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     mainAxisSize: MainAxisSize.min,
     children: <Widget>[
-      // 13 section 2.3: at compact the band is one `label` line on its tint,
-      // 32 dp inside a 48 dp hit box, with the sentence, the contact and the
-      // recovery behind a tap. The ask is published around this banner alone:
-      // the blocker notice and the screen level error below it carry their own
-      // recovery, and a band whose recovery is behind a tap is a band a
-      // reviewer has to open before they can act.
-      //
-      // A route that asked the frame for a form comes first (13 section 3.4):
-      // the record asks for the strip at every window, because its decision
-      // bar and the band together are what its chrome budget is spent on. The
-      // window decides only where no route asked.
-      UiBandForm(
-        form:
-            UiBandForm.of(context) ??
-            (window.isCompact ? UiBannerForm.strip : UiBannerForm.full),
-        child: EnvironmentBanner(
-          environment: controller.environment,
-          // The open collection names its own administrator, which is a
-          // better answer than the build time default meant to cover every
-          // collection at once (07 section 10).
-          contactSentence: AdministratorContact.of(controller.scope).sentence,
-        ),
-      ),
       _BlockerNotice(blockers: controller.repository.blockers),
       _ErrorBanner(error: controller.error, onDismiss: controller.clearError),
       _ProgressStrip(busy: busy),
@@ -431,11 +790,12 @@ class _Chrome extends StatelessWidget {
 
 /// The collection switcher.
 ///
-/// A `UiSelect` at every window class: 07 section 1.2 asks for the switcher to
-/// be reachable everywhere, and one control reached the same way in the bar,
-/// in the bar's title and in the sidebar's header is one thing to learn.
+/// A dropdown where there is room, and a touch sheet in narrow windows.
+/// Both are sourced exclusively from the session's authorized scopes.
 class _CollectionSwitcher extends StatelessWidget {
-  const _CollectionSwitcher({required this.controller});
+  const _CollectionSwitcher({required this.controller, required this.sheet});
+
+  final bool sheet;
 
   final WorkspaceController controller;
 
@@ -448,36 +808,88 @@ class _CollectionSwitcher extends StatelessWidget {
   Widget build(BuildContext context) {
     final String? blocked = _blockedReason;
     final String name = controller.scope?.name ?? 'No collection chosen';
-    return UiSelect<String>(
-      label: AppShell.switcherLabel,
-      showLabel: false,
+    if (sheet) {
+      return UiButton(
+        key: const ValueKey<String>('collection-sheet-trigger'),
+        label: name,
+        variant: UiButtonVariant.ghost,
+        trailing: UiIcons.expand,
+        semanticsLabel: '${AppShell.switcherLabel}, $name. Switch collection',
+        disabledReason: blocked,
+        onPressed: blocked != null ? null : () => unawaited(_choose(context)),
+      );
+    }
+    return UiMenuTrigger(
+      label: name,
+      icon: UiIcons.expand,
       semanticsLabel: '${AppShell.switcherLabel}, $name. Switch collection',
-      placeholder: 'No collection chosen',
-      value: controller.scope?.key,
-      options: <UiSelectOption<String>>[
+      menuLabel: 'Choose a collection',
+      items: <UiMenuItem>[
         for (final CollectionScope scope in controller.scopes)
-          UiSelectOption<String>(
-            value: scope.key,
+          UiMenuItem(
             label: scope.name,
-            leading: UiIcons.collection,
+            icon: UiIcons.collection,
+            disabledReason: blocked,
+            onSelected: blocked != null
+                ? null
+                : () async {
+                    if (await controller.mayLeaveReview() && context.mounted) {
+                      context.go(
+                        AppRoutes.queueOf(encodeCollectionKey(scope.key)),
+                      );
+                    }
+                  },
           ),
       ],
-      disabledReason: blocked,
-      onChanged: blocked != null
-          ? null
-          : (String key) =>
-                context.go(AppRoutes.queueOf(encodeCollectionKey(key))),
     );
+  }
+
+  Future<void> _choose(BuildContext context) async {
+    final String? selected = await UiSheet.show<String>(
+      context: context,
+      title: 'Choose a collection',
+      secondaryAction: (BuildContext sheetContext) => UiButton(
+        label: 'Cancel',
+        variant: UiButtonVariant.ghost,
+        onPressed: () => Navigator.of(sheetContext).pop(),
+      ),
+      body: (BuildContext sheetContext) => AnimatedBuilder(
+        animation: controller,
+        builder: (BuildContext context, Widget? child) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            for (final CollectionScope scope in controller.scopes)
+              UiListRow(
+                title: scope.name,
+                subtitle: scope.key == controller.scope?.key
+                    ? 'Current collection'
+                    : null,
+                leading: const UiIcon(UiIcons.collection),
+                onPressed: controller.mutating
+                    ? null
+                    : () => Navigator.of(sheetContext).pop(scope.key),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (!context.mounted ||
+        selected == null ||
+        controller.mutating ||
+        !controller.scopes.any(
+          (CollectionScope scope) => scope.key == selected,
+        )) {
+      return;
+    }
+    if (!await controller.mayLeaveReview() || !context.mounted) return;
+    context.go(AppRoutes.queueOf(encodeCollectionKey(selected)));
   }
 }
 
 /// The account menu: the signed-in name, help, and signing out.
 ///
-/// The shell's, and drawn at the end of every bar the shell owns below large
-/// (`AppShell.accountInBar`). Public because the record publishes a bar of its
-/// own into the frame and 13 section 4.1 (polish 3) puts the same menu on it
-/// in the same slot, so a reviewer inside a record can read which account
-/// they are using and sign out without leaving it (05 section 2).
+/// Shared with the record's published bar so account access remains available
+/// after removing the sidebar. Compact records reach it via Back to queue.
 class ShellAccountMenu extends StatelessWidget {
   /// The menu for the account [controller] holds.
   const ShellAccountMenu({super.key, required this.controller});
@@ -498,6 +910,22 @@ class ShellAccountMenu extends StatelessWidget {
         // (05 section 2).
         UiMenuItem(label: name, onSelected: null),
         UiMenuItem(
+          label: AppShell.reloadLabel,
+          icon: UiIcons.reload,
+          disabledReason: controller.loading
+              ? 'The collection is loading.'
+              : null,
+          onSelected: controller.loading
+              ? null
+              : () async {
+                  if (await controller.mayLeaveReview()) {
+                    await (controller.scope == null
+                        ? controller.checkAccess()
+                        : controller.refresh());
+                  }
+                },
+        ),
+        UiMenuItem(
           label: AppShell.helpLabel,
           icon: UiIcons.help,
           onSelected: () => context.push(AppRoutes.help),
@@ -505,77 +933,9 @@ class ShellAccountMenu extends StatelessWidget {
         UiMenuItem(
           label: 'Sign out',
           icon: UiIcons.signOut,
-          onSelected: () => unawaited(controller.signOut()),
-        ),
-      ],
-    );
-  }
-}
-
-/// The sidebar's header: the mark, the product name and the switcher.
-class _SidebarHeader extends StatelessWidget {
-  const _SidebarHeader({required this.controller});
-
-  final WorkspaceController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Row(
-          children: <Widget>[
-            const ExcludeSemantics(child: UiMark(label: AppShell.markLabel)),
-            SizedBox(width: ui.space.s2),
-            Expanded(
-              child: Text(
-                AppShell.markLabel,
-                style: ui.type.title.copyWith(color: ui.color.ink),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        if (controller.scopes.isNotEmpty) ...<Widget>[
-          SizedBox(height: ui.space.s4),
-          _CollectionSwitcher(controller: controller),
-        ],
-      ],
-    );
-  }
-}
-
-/// The sidebar's footer: who is signed in, and the way out.
-class _SidebarFooter extends StatelessWidget {
-  const _SidebarFooter({required this.controller});
-
-  final WorkspaceController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Text(
-          controller.session.displayName,
-          style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        SizedBox(height: ui.space.s2),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: UiButton(
-            label: 'Sign out',
-            variant: UiButtonVariant.ghost,
-            leading: UiIcons.signOut,
-            onPressed: () => unawaited(controller.signOut()),
-          ),
+          onSelected: () async {
+            if (await controller.mayLeaveReview()) await controller.signOut();
+          },
         ),
       ],
     );
@@ -677,9 +1037,11 @@ class _ProgressStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
-    child: SizedBox(
-      height: context.ui.space.s1,
-      child: busy ? const UiProgress.bar(semanticsLabel: label) : null,
-    ),
+    child: busy
+        ? SizedBox(
+            height: context.ui.space.s1,
+            child: const UiProgress.bar(semanticsLabel: label),
+          )
+        : const SizedBox.shrink(),
   );
 }

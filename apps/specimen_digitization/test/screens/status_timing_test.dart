@@ -25,6 +25,7 @@ import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/workbench/decision_bar.dart';
 import 'package:specimen_digitization/src/screens/workbench/status_strip.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
+import 'package:specimen_digitization/src/workbench.dart';
 
 import '../golden/golden_harness.dart';
 import '../ui_finders.dart';
@@ -54,6 +55,15 @@ class GatedRepository extends GoldenQueueRepository {
 
   /// Every change the repository was asked to record, in order.
   final List<Json> changes = <Json>[];
+
+  /// Confirms that reopening loads from the repository, not the old widget.
+  int specimenReads = 0;
+
+  @override
+  Future<Specimen> specimen(CollectionScope scope, String id) async {
+    specimenReads++;
+    return super.specimen(scope, id);
+  }
 
   @override
   Future<SpecimenPage> specimenPage(
@@ -85,24 +95,43 @@ class GatedRepository extends GoldenQueueRepository {
     reviewKeys.add(key);
     changes.add(change);
     if (reviewGate != null) await reviewGate!.future;
-    return Specimen(<String, dynamic>{
+    final Specimen saved = Specimen(<String, dynamic>{
       ...specimen.data,
       'revision': (specimen.revision) + 1,
     });
+    // This in-memory timing fixture retains the acknowledgment for a fresh
+    // workspace read. It does not stand in for backend persistence tests.
+    final int index = records.indexWhere((record) => record.id == saved.id);
+    records[index] = saved;
+    return saved;
   }
 }
 
-/// The status strip's version, which is where a landed decision shows.
-///
-/// The version is one of the strip's provenance slots, a `TermText` whose
-/// term is the glossary word and whose trailing is the number (13 section
-/// 3.2, polish 3), so the finder reads the slot rather than a run of text.
-Finder versionLine(int revision) => find.byWidgetPredicate(
-  (Widget widget) =>
-      widget is TermText &&
-      widget.term == WorkbenchStatusStrip.versionTerm &&
-      widget.trailing == ' $revision',
-);
+Specimen visibleRecord(WidgetTester tester) =>
+    tester.widget<ReviewWorkbench>(find.byType(ReviewWorkbench)).specimen;
+
+/// Rebuilds the routed workspace after the timing assertion and checks that
+/// it reads the retained revision without presenting the old save moment.
+Future<void> expectReopenedRevision(
+  WidgetTester tester,
+  GatedRepository repository,
+  int revision,
+) async {
+  final int readsBefore = repository.specimenReads;
+  await tester.pumpWidget(const SizedBox());
+  await pumpGoldenApp(
+    tester,
+    window: const Size(1180, 1400),
+    brightness: Brightness.light,
+    location: goldenSpecimenLocationOf('fixture-001'),
+    repository: repository,
+  );
+  expect(repository.specimenReads, greaterThan(readsBefore));
+  expect(visibleRecord(tester).id, 'fixture-001');
+  expect(visibleRecord(tester).revision, revision);
+  expect(find.text('Saved'), findsNothing);
+  expect(find.byType(ConflictBanner), findsNothing);
+}
 
 /// The progress affordance every one of these controls swaps in.
 ///
@@ -148,7 +177,7 @@ void main() {
     repository.pageGate!.complete();
     await tester.pump(resultBudget);
     expect(
-      find.text('Second page beetle'),
+      find.text('fixture-page-2'),
       findsOneWidget,
       reason:
           'the appended rows were not on screen a second after the '
@@ -170,15 +199,12 @@ void main() {
       repository: repository,
     );
 
-    await tester.tap(find.text('Fields'));
+    await tester.tap(uiRecordView('Structured specimen data'));
     await tester.pumpAndSettle();
     // Collectors, because it is the field the fixture reports as Unknown:
     // the correction form needs no authority match to keep, which keeps this
     // test about the timing rather than about the form.
-    final Finder edit = uiIconButton('Edit as written for Collectors');
-    await tester.ensureVisible(edit);
-    await tester.tap(edit);
-    await tester.pumpAndSettle();
+    await openFieldEditor(tester, 1);
     await tester.tap(find.text('Keep this correction'));
     await tester.pumpAndSettle();
     expect(find.textContaining('1 pending change'), findsWidgets);
@@ -209,19 +235,32 @@ void main() {
       findsWidgets,
       reason: 'the save reported nothing 200 ms after the press',
     );
+    expect(visibleRecord(tester).revision, 17);
+    expect(find.text('Saved'), findsNothing);
+    expect(repository.changes.single['kind'], 'field_correction');
+    expect(repository.changes.single['target_id'], 'collectors');
+    expect(repository.reviewKeys.single, isNotEmpty);
 
     repository.reviewGate!.complete();
     await tester.pump(resultBudget);
     await tester.pump();
     expect(
-      versionLine(18),
+      find.text('Saved'),
       findsOneWidget,
       reason:
-          'the new version was not on screen a second after the save landed',
+          'the save acknowledgement was not on screen a second after the save landed',
     );
     expect(workingIndicator, findsNothing);
+    expect(visibleRecord(tester).revision, 18);
+    expect(
+      tester
+          .widget<WorkbenchStatusStrip>(find.byType(WorkbenchStatusStrip))
+          .pending,
+      isEmpty,
+    );
     // The reviewer's own save is not another reviewer's version.
     expect(find.byType(ConflictBanner), findsNothing);
+    await expectReopenedRevision(tester, repository, 18);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -263,17 +302,24 @@ void main() {
       findsWidgets,
       reason: 'approve reported nothing 200 ms after the press',
     );
+    expect(visibleRecord(tester).revision, 17);
+    expect(find.text('Saved'), findsNothing);
+    expect(repository.changes.single['kind'], 'approve');
+    expect(repository.reviewKeys.single, isNotEmpty);
 
     repository.reviewGate!.complete();
     await tester.pump(resultBudget);
     await tester.pump();
     expect(
-      versionLine(18),
+      find.text('Saved'),
       findsOneWidget,
-      reason: 'the new version was not on screen a second after approve landed',
+      reason:
+          'the save acknowledgement was not on screen a second after approve landed',
     );
     expect(workingIndicator, findsNothing);
+    expect(visibleRecord(tester).revision, 18);
     expect(find.byType(ConflictBanner), findsNothing);
+    await expectReopenedRevision(tester, repository, 18);
     await tester.pumpWidget(const SizedBox());
   });
 }

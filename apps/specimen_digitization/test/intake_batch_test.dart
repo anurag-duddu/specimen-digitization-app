@@ -1,5 +1,4 @@
-// Batch behaviour on the intake screen: Stop, the per-batch confirmation
-// reset, and the rows this client refuses.
+// Batch behaviour: explicit Upload, Stop, and rows this client refuses.
 //
 // Heuristics audit H1.5, H1.6, H3.6, H3.7, H5.3 and H9.4; pass criteria 1.5,
 // 1.6, 3.6, 3.7, 5.3 and 9.3.
@@ -126,8 +125,8 @@ void main() {
       ],
     );
     await chooseFiles(tester);
-    expect(find.text('0 of 3 accepted'), findsOneWidget);
-    await confirmBatch(tester);
+    expect(find.text('0 of 3 uploaded'), findsOneWidget);
+    expect(repository.created, isEmpty);
 
     await tester.ensureVisible(uploadButton);
     await tester.pumpAndSettle();
@@ -156,7 +155,7 @@ void main() {
     // The file already sending finished. The two that had not started are
     // named, not left in an unlabelled state (pass criterion 3.6).
     expect(repository.created, <String>['one.png']);
-    expect(find.text('1 of 3 accepted'), findsOneWidget);
+    expect(find.text('1 of 3 uploaded'), findsOneWidget);
     expect(
       find.text('Stopped before this file started. Upload again to continue.'),
       findsNWidgets(2),
@@ -181,7 +180,7 @@ void main() {
     );
     await chooseFiles(tester);
 
-    expect(find.text('0 of 3 accepted, 2 skipped'), findsOneWidget);
+    expect(find.text('0 of 3 uploaded, 2 skipped'), findsOneWidget);
     expect(find.text('Skipped'), findsNWidgets(2));
     expect(find.text('empty.png'), findsOneWidget);
     expect(find.text('notes.txt'), findsOneWidget);
@@ -197,29 +196,28 @@ void main() {
     expect(find.byType(IntakeManifestRow), findsNWidgets(3));
   });
 
-  testWidgets('the per-batch confirmation clears whenever a file is added', (
+  testWidgets('adding files waits for the explicit Upload action', (
     WidgetTester tester,
   ) async {
     var call = 0;
+    final repository = HeldUploadRepository();
+    repository.release.complete();
     await pumpIntake(
       tester,
-      repository: TestRepository(),
+      repository: repository,
       pickImages: (bool _) async => <XFile>[
         fixture('take-$call.png', source: call++),
       ],
     );
     await chooseFiles(tester);
-    await confirmBatch(tester);
-    expect(batchConfirmed(tester), isTrue);
+    expect(repository.created, isEmpty);
     expect(buttonEnabled(tester, uploadButton), isTrue);
-
     await chooseFiles(tester);
-    expect(
-      batchConfirmed(tester),
-      isFalse,
-      reason: 'one tick must never authorise a file chosen after it',
-    );
-    expect(buttonEnabled(tester, uploadButton), isFalse);
+    expect(repository.created, isEmpty);
+    expect(find.text('Upload 2 photographs'), findsOneWidget);
+    expect(confirmCheckbox, findsNothing);
+    await submitBatch(tester);
+    expect(repository.created, <String>['take-0.png', 'take-1.png']);
   });
 
   testWidgets('the upload button names the count it authorises', (
@@ -233,8 +231,7 @@ void main() {
         fixture('file-$call.png', source: call++),
       ],
     );
-    await tester.ensureVisible(uploadButton);
-    expect(find.text('Upload 0 photographs'), findsOneWidget);
+    expect(uploadButton, findsNothing);
     await chooseFiles(tester);
     expect(find.text('Upload 1 photograph'), findsOneWidget);
     await chooseFiles(tester);
@@ -260,6 +257,7 @@ void main() {
     await tester.tap(remove);
     await tester.pumpAndSettle();
     expect(find.byType(IntakeManifestRow), findsNothing);
-    expect(find.text('No files selected yet'), findsOneWidget);
+    expect(uploadButton, findsNothing);
+    expect(chooseFilesButton, findsOneWidget);
   });
 }

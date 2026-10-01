@@ -24,14 +24,9 @@ const Map<String, Widget> _leadingStates = <String, Widget>{
   'disabled': UiButton(label: 'Select', size: UiSize.sm),
 };
 
-/// Whether the trailing still carries its word at [width].
-///
-/// The row's chrome is its padding, the leading bar, the 40 dp leading slot
-/// and two gaps; below the width at which the title would fall under
-/// `space.labelMin`, the trailing drops to its glyph. 480 and 360 are above
-/// that line and 280 and 200 are below it, which is the whole of the row's
-/// compact variant stated as a table.
-Matcher matcher(double width) => width >= 360 ? findsOneWidget : findsNothing;
+/// Without a leading slot, the status words fit at 280 dp. At 200 dp the
+/// title keeps its minimum width and the status retains its icon.
+Matcher matcher(double width) => width >= 280 ? findsOneWidget : findsNothing;
 
 void main() {
   setUp(() {

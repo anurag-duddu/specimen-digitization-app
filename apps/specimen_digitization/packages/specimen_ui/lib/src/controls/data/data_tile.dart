@@ -115,20 +115,14 @@ class UiDataTileStyle {
 
 /// What a tile is drawn on.
 enum UiDataTileSurface {
-  /// `glass.flat`, which is the tile of 09 section 3.3 and the default.
+  /// The standard opaque surface recipe, retaining its legacy API name.
   glass,
 
   /// A solid `paper` pane with a hairline edge.
-  ///
-  /// For the two places a frosted pane cannot go. Inside a scrolling list's
-  /// item, where 09 section 3.3 forbids glass outright because a blurred pane
-  /// per row multiplies save layers by the row count; and in a row of tiles
-  /// wide enough to spend the whole four pane glass budget on one header, of
-  /// which a manifest's three counts are the product's own example.
   paper,
 }
 
-/// A numeral under its label, on one frosted pane.
+/// A numeral under its label, on a neutral surface.
 ///
 /// Retires the ad hoc numeral containers the application grew.
 ///
@@ -180,7 +174,7 @@ class UiDataTile extends StatelessWidget {
   /// responsible for keeping to one (09 section 4.2).
   final bool hero;
 
-  /// What the tile is drawn on. Frosted unless the caller cannot afford it.
+  /// Which neutral surface recipe the tile uses.
   final UiDataTileSurface surface;
 
   /// Overrides the sentence a screen reader reads.

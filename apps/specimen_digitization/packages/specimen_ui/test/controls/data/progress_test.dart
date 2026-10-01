@@ -283,45 +283,46 @@ void main() {
     expect(tester.binding.transientCallbackCount, 0);
   });
 
-  test('the cycle turns, and pulses in place instead under reduced motion', () {
-    const double floor = 0.08;
-    const List<double> samples = <double>[0, 0.25, 0.5, 0.75];
-    final List<UiProgressPhase> turning = <UiProgressPhase>[
-      for (final double t in samples)
-        UiProgressPhase.at(t, reduced: false, pulseFloor: floor),
-    ];
-    expect(
-      turning.map((UiProgressPhase p) => p.turn),
-      samples,
-      reason: 'it turns once per cycle',
-    );
-    expect(
-      turning.every((UiProgressPhase p) => p.opacity == 1),
-      isTrue,
-      reason: 'a turning indicator does not also fade',
-    );
+  test(
+    'the cycle turns normally and stays fully visible under reduced motion',
+    () {
+      const double floor = 0.08;
+      const List<double> samples = <double>[0, 0.25, 0.5, 0.75];
+      final List<UiProgressPhase> turning = <UiProgressPhase>[
+        for (final double t in samples)
+          UiProgressPhase.at(t, reduced: false, pulseFloor: floor),
+      ];
+      expect(
+        turning.map((UiProgressPhase p) => p.turn),
+        samples,
+        reason: 'it turns once per cycle',
+      );
+      expect(
+        turning.every((UiProgressPhase p) => p.opacity == 1),
+        isTrue,
+        reason: 'a turning indicator does not also fade',
+      );
 
-    final List<UiProgressPhase> pulsing = <UiProgressPhase>[
-      for (final double t in samples)
-        UiProgressPhase.at(t, reduced: true, pulseFloor: floor),
-    ];
-    expect(
-      pulsing.every((UiProgressPhase p) => p.turn == 0),
-      isTrue,
-      reason: 'under reduced motion the arc holds still',
-    );
-    expect(pulsing[0].opacity, closeTo(floor, 0.0001));
-    expect(pulsing[1].opacity, closeTo(floor + (1 - floor) * 0.5, 0.0001));
-    expect(pulsing[2].opacity, 1, reason: 'the pulse peaks mid cycle');
-    expect(
-      pulsing[3].opacity,
-      closeTo(pulsing[1].opacity, 0.0001),
-      reason: 'a triangle wave, so it fades back rather than snapping',
-    );
-  });
+      final List<UiProgressPhase> pulsing = <UiProgressPhase>[
+        for (final double t in samples)
+          UiProgressPhase.at(t, reduced: true, pulseFloor: floor),
+      ];
+      expect(
+        pulsing.every((UiProgressPhase p) => p.turn == 0),
+        isTrue,
+        reason: 'under reduced motion the arc holds still',
+      );
+      expect(
+        pulsing.every((UiProgressPhase phase) => phase.opacity == 1),
+        isTrue,
+        reason: 'reduced motion keeps the status visible without fading',
+      );
+    },
+  );
 
-  testWidgets('an indeterminate indicator keeps a ticker in both motion '
-      'modes, because the movement is essential', (WidgetTester tester) async {
+  testWidgets('indeterminate progress only animates when motion is enabled', (
+    WidgetTester tester,
+  ) async {
     for (final bool reduced in <bool>[false, true]) {
       await tester.pumpWidget(
         uiHarness(
@@ -332,19 +333,15 @@ void main() {
       await tester.pump();
       expect(
         tester.binding.transientCallbackCount,
-        greaterThan(0),
-        reason:
-            'a spinner saying the server has not answered is essential '
-            'movement (04 section 2.5); under reduced motion it runs as a '
-            'pulse rather than as a turn',
+        reduced ? 0 : greaterThan(0),
+        reason: 'reduced motion must leave no progress ticker running',
       );
-      // The painter is rebuilt frame by frame, so something visibly changes
-      // over a quarter of a cycle in both modes.
+      expect(find.bySemanticsLabel('Waiting on the server'), findsOneWidget);
       final CustomPainter first = _painterOf(tester);
       await tester.pump(
         UiProgressStyle.resolve(UiThemeData.light()).cycle ~/ 4,
       );
-      expect(_painterOf(tester).shouldRepaint(first), isTrue);
+      expect(_painterOf(tester).shouldRepaint(first), !reduced);
       await tester.pumpWidget(uiHarness(child: const SizedBox.shrink()));
     }
   });

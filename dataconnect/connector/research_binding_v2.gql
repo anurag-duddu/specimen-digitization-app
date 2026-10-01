@@ -1,0 +1,184 @@
+# SOURCE ONLY; one native V2 registered pointer, no V1 migration/offset inference.
+# Service-only. Python binds actorUid to verified_actor_uid; NO_ACCESS alone
+# does not protect against a compromised backend credential. IAM is a release gate.
+# All Native SQL names follow the pinned schema's documented snake_case mapping.
+# Any result is strictly validated by native_canonical.py. Compilation is UNRUN.
+query GetCanonicalResearchBindingV2($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) { active }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) { active role canViewSensitive }
+  specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) { sensitive }
+  binding: _selectFirst(sql: """
+    SELECT jsonb_build_object(
+      'organization_id', s.organization_id, 'collection_id', s.collection_id,
+      'specimen_id', s.id, 'record_revision', s.revision,
+      'record_version_id', rv.id,
+      'canonical_run_id', run.id,
+      'host_record_version_id', b.current_host_record_version_id,
+      'snapshot_sha256', snap.sha256, 'sensitive', s.sensitive
+    ) AS canonical,
+    (SELECT count(*) FROM public.canonical_research_binding_v2 counted WHERE counted.organization_id=s.organization_id
+      AND counted.collection_id=s.collection_id AND counted.specimen_id=s.id AND counted.active) AS active_registration_count,
+    CASE WHEN b.binding_id IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(jsonb_build_object(
+      'binding_id', b.binding_id, 'registration_revision', b.registration_revision, 'active', b.active,
+      'base_canonical', jsonb_build_object('record_revision', b.base_canonical_revision,
+        'record_version_id', b.base_record_version_id, 'canonical_run_id', b.canonical_run_id,
+        'host_record_version_id', b.base_host_record_version_id, 'snapshot_sha256', b.base_snapshot_sha256),
+      'current_canonical', jsonb_build_object('record_revision', b.current_canonical_revision,
+        'record_version_id', b.current_record_version_id, 'canonical_run_id', b.canonical_run_id,
+        'host_record_version_id', b.current_host_record_version_id, 'snapshot_sha256', b.current_snapshot_sha256),
+      'job_id', b.job_id, 'job_key', b.job_key, 'generation', b.generation,
+      'input_digest', b.input_digest, 'profile_digest', b.profile_digest,
+      'runtime_binding_digest', b.runtime_binding_digest, 'canonical_profile_digest', b.canonical_profile_digest,
+      'source_sha256', b.source_sha256, 'semantic_mapping_digest', b.semantic_mapping_digest,
+      'policy_digest', b.policy_digest, 'program_key', b.program_key,
+      'field_mapping', b.semantic_mapping->'field_mapping', 'semantic_mapping', b.semantic_mapping,
+      'human_locks', (SELECT jsonb_object_agg(b.semantic_mapping->'field_mapping'->>k, COALESCE((v->>'locked')::boolean, true)
+          OR COALESCE((snap.snapshot->'run'->>'human_approved')::boolean, false)
+           OR COALESCE(snap.snapshot->'run'->'history_restore_human_locks' = 'true'::jsonb, false))
+        FROM jsonb_each(h.state->'jobs'->b.job_key->'fields') AS f(k,v)),
+      'job', h.state->'jobs'->b.job_key,
+      'research_policy_origin', b.semantic_mapping->>'research_policy_origin',
+      'journal_budget_policy_digest', b.semantic_mapping->>'journal_budget_policy_digest',
+      'journal_budget_policy_origin', 'verified_owner_registration_not_SQL_recomputed',
+      'read_bundle', jsonb_build_object('state_revision',h.revision,
+        'server_time',extract(epoch FROM statement_timestamp()),'job_key',b.job_key,
+        'job',h.state->'jobs'->b.job_key,'halted',(h.state->>'halted')::boolean,
+        'paused',(h.state->'jobs'->b.job_key->>'paused')::boolean,
+        'effects',(SELECT COALESCE(jsonb_object_agg(e.key,e.value),'{}'::jsonb)
+          FROM jsonb_each(h.state->'effects') e WHERE e.value->>'job_key'=b.job_key
+          AND e.value->'scope'->>'organization_id'=b.organization_id::text
+          AND e.value->'scope'->>'collection_id'=b.collection_id::text
+          AND e.value->'scope'->>'specimen_id'=b.specimen_id::text AND e.value->'scope'->>'job_id'=b.job_id),
+        'outbox',(SELECT COALESCE(jsonb_object_agg(e.key,e.value),'{}'::jsonb)
+          FROM jsonb_each(h.state->'outbox') e WHERE e.value->>'kind'='research_field_retry'
+          AND e.value->'command'->'scope'->>'organization_id'=b.organization_id::text
+          AND e.value->'command'->'scope'->>'collection_id'=b.collection_id::text
+          AND e.value->'command'->'scope'->>'specimen_id'=b.specimen_id::text AND e.value->'command'->'scope'->>'job_id'=b.job_id),
+        'hold_reasons',to_jsonb(array_remove(ARRAY[
+          CASE WHEN authority.id IS NULL OR NOT authority.authority_complete OR NOT authority.old_engine_quiescent
+            OR authority.valid_until<=statement_timestamp() OR legacy.revision IS DISTINCT FROM authority.legacy_document_revision
+            OR legacy.payload IS DISTINCT FROM authority.legacy_payload
+            OR authority.ledger_digest IS DISTINCT FROM h.state->'budget_policy'->>'external_ledger_digest'
+            OR authority.import_digest IS DISTINCT FROM h.state->'budget_policy'->>'import_digest'
+            OR authority.proof_digest IS DISTINCT FROM h.state->'budget_policy'->>'import_proof_digest'
+            THEN 'legacy_live_import_not_confirmed' END,
+          CASE WHEN (h.state->>'halted')::boolean THEN 'program_halted' END,
+          CASE WHEN (h.state->'jobs'->b.job_key->>'paused')::boolean THEN 'job_paused' END,
+          CASE WHEN EXISTS (SELECT 1 FROM jsonb_each(h.state->'effects') e WHERE e.value->>'job_key'=b.job_key
+            AND e.value->>'status' IN ('sending','held_unknown')) THEN 'unknown_effect' END,
+          CASE WHEN authority.id IS NULL OR authority.ceiling_micro_usd<=0 OR authority.ceiling_micro_usd>12000000
+            OR (h.state->'budget_totals'->>'settled_micro_usd')::bigint
+              +(h.state->'budget_totals'->>'held_micro_usd')::bigint+authority.lag_reserve_micro_usd
+              +authority.shared_reserve_micro_usd>authority.ceiling_micro_usd THEN 'budget_unavailable' END
+        ],NULL))),
+      'publication_transition', NULL
+    )) END AS registrations,
+    jsonb_build_object('snapshot', snap.snapshot, 'sha256', snap.sha256,
+      'revision', snap.revision, 'contractVersion', snap.contract_version) AS snapshot,
+    jsonb_build_object('contract_version',b.publication_version,'authority_digest',b.authority_digest,
+      'import_proof_id',b.import_proof_id,'import_proof_digest',b.import_proof_digest,
+      'head_receipt_id',b.current_receipt_id,'head_chain_digest',b.current_chain_digest,
+      'causal_chain',(SELECT CASE WHEN count(*)<=20 THEN COALESCE(jsonb_agg(p.causal_proof ORDER BY p.used_canonical_revision),'[]'::jsonb) ELSE NULL END
+        FROM public.research_publication_receipt_v2 p WHERE p.organization_id=b.organization_id
+          AND p.collection_id=b.collection_id AND p.specimen_id=b.specimen_id AND p.binding_id=b.binding_id),
+      'causal_count',(SELECT count(*) FROM public.research_publication_receipt_v2 p
+        WHERE p.organization_id=b.organization_id AND p.collection_id=b.collection_id
+          AND p.specimen_id=b.specimen_id AND p.binding_id=b.binding_id)) AS causal,
+    (SELECT COALESCE(jsonb_agg(jsonb_build_object('id',f.id,'recordVersionId',f.record_version_id,
+      'candidateId',f.candidate_id,'fieldKey',f.field_key,'state',f.state,'fieldGroup',f.field_group) ORDER BY f.field_key),'[]'::jsonb)
+      FROM public.resolved_field f WHERE f.organization_id=s.organization_id AND f.collection_id=s.collection_id
+      AND f.record_version_id=b.current_record_version_id) AS projection
+    FROM public.specimen s
+    JOIN public.specimen_snapshot snap ON snap.organization_id=s.organization_id
+      AND snap.collection_id=s.collection_id AND snap.specimen_id=s.id AND snap.revision=s.revision
+    JOIN public.organization_member om ON om.organization_id=s.organization_id AND om.uid=$4 AND om.active
+    JOIN public.collection_member cm ON cm.organization_id=s.organization_id AND cm.collection_id=s.collection_id
+      AND cm.uid=$4 AND cm.active AND (NOT s.sensitive OR cm.can_view_sensitive)
+    LEFT JOIN public.canonical_research_binding_v2 b ON b.organization_id=s.organization_id
+      AND b.collection_id=s.collection_id AND b.specimen_id=s.id AND b.active
+    LEFT JOIN public.record_version rv ON rv.organization_id=b.organization_id AND rv.collection_id=b.collection_id
+      AND rv.id=b.current_record_version_id AND rv.run_id=b.canonical_run_id
+    LEFT JOIN public.pipeline_run run ON run.organization_id=b.organization_id AND run.collection_id=b.collection_id
+      AND run.id=b.canonical_run_id AND run.id=s.active_run_id AND run.specimen_id=s.id
+    LEFT JOIN public.research_harness_state h ON h.organization_id=b.organization_id AND h.program_key=b.program_key
+    LEFT JOIN public.research_ledger_import_proof_v1 authority ON authority.organization_id=h.organization_id
+      AND authority.program_key=h.program_key AND authority.id::text=h.state->'budget_policy'->>'import_receipt_id'
+    LEFT JOIN public.auxiliary_document legacy ON legacy.organization_id=authority.organization_id
+      AND legacy.collection_id=authority.legacy_collection_id AND legacy.id=authority.legacy_document_id
+      AND legacy.kind=authority.legacy_document_kind AND authority.legacy_document_kind='worker_cursor'
+    LEFT JOIN public.research_publication_receipt_v2 p ON p.organization_id=b.organization_id
+      AND p.collection_id=b.collection_id AND p.id=b.current_receipt_id AND p.specimen_id=b.specimen_id
+    WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
+      AND (b.binding_id IS NULL OR (rv.id IS NOT NULL AND run.id IS NOT NULL
+        AND b.current_canonical_revision=s.revision AND b.current_snapshot_sha256=snap.sha256))
+    """, params: [$organizationId, $collectionId, $specimenId, $actorUid])
+}
+
+# Registration is insert-only V2. Updating a mapping/generation needs a separately
+# reviewed replacement contract; no upsert/latest selection or caller budget.
+mutation RegisterCanonicalResearchBindingV2($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $registrationJson: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['manager', 'admin']") { active role canViewSensitive }
+  }
+  registered: _execute(sql: """
+    WITH args AS (SELECT $5::jsonb AS r), admitted AS (
+      SELECT s.*, r, h.state->'jobs'->(r->>'job_key') AS job
+      FROM public.specimen s JOIN args ON true
+      JOIN public.specimen_snapshot snap ON snap.organization_id=s.organization_id AND snap.collection_id=s.collection_id
+        AND snap.specimen_id=s.id AND snap.revision=s.revision
+      JOIN public.record_version rv ON rv.organization_id=s.organization_id AND rv.collection_id=s.collection_id
+        AND rv.id=(r->'base_canonical'->>'record_version_id')::uuid AND rv.run_id=s.active_run_id
+      JOIN public.pipeline_run run ON run.organization_id=s.organization_id AND run.collection_id=s.collection_id
+        AND run.id=s.active_run_id AND run.specimen_id=s.id
+      JOIN public.profile_version profile ON profile.organization_id=run.organization_id AND profile.collection_id=run.collection_id
+        AND profile.id=run.profile_version_id
+      JOIN public.research_harness_state h ON h.organization_id=s.organization_id AND h.program_key=r->>'program_key'
+      JOIN public.organization_member om ON om.organization_id=s.organization_id AND om.uid=$4 AND om.active
+      JOIN public.collection_member cm ON cm.organization_id=s.organization_id AND cm.collection_id=s.collection_id
+        AND cm.uid=$4 AND cm.active AND cm.role IN ('manager','admin') AND (NOT s.sensitive OR cm.can_view_sensitive)
+      WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3 AND s.revision>=1
+        AND r->>'publication_version'='research-publication/v2'
+        AND r->>'authority_digest'<>'' AND r->>'current_chain_digest'<>''
+        AND EXISTS (SELECT 1 FROM public.research_ledger_import_proof_v1 proof WHERE proof.organization_id=$1
+          AND proof.program_key=r->>'program_key' AND proof.id=(r->>'import_proof_id')::uuid
+          AND proof.proof_digest=r->>'import_proof_digest' AND proof.authority_complete
+          AND proof.old_engine_quiescent AND proof.valid_until>statement_timestamp()
+          AND proof.id::text=h.state->'budget_policy'->>'import_receipt_id'
+          AND proof.proof_digest=h.state->'budget_policy'->>'import_proof_digest')
+        AND s.revision=(r->'base_canonical'->>'record_revision')::integer
+        AND s.active_run_id=(r->'base_canonical'->>'canonical_run_id')::uuid
+        AND snap.sha256=r->'base_canonical'->>'snapshot_sha256'
+        AND r->'base_canonical'=r->'current_canonical'
+        AND r->'publication_transition'='null'::jsonb
+        AND run.input_sha256=r->>'source_sha256' AND s.source_checksum=run.input_sha256
+        AND profile.config_sha256=r->>'canonical_profile_digest'
+        AND h.state->'jobs'->(r->>'job_key')->'identity'=jsonb_build_object(
+          'organization_id',$1::text,'collection_id',$2::text,'specimen_id',$3::text,'job_id',r->>'job_id')
+        AND h.revision=(r->>'state_revision')::integer AND h.state->'budget_policy'=r->'journal_budget_policy'
+        AND (h.state->'jobs'->(r->>'job_key')->>'record_revision')::integer=s.revision
+        AND (h.state->'jobs'->(r->>'job_key')->>'generation')::integer=(r->>'generation')::integer
+        AND h.state->'jobs'->(r->>'job_key')->'pins'->>'input_digest'=r->>'input_digest'
+        AND h.state->'jobs'->(r->>'job_key')->>'binding_digest'=r->>'runtime_binding_digest'
+        AND (SELECT count(*) FROM jsonb_object_keys(r->'semantic_mapping'->'field_mapping'))=20
+        AND (SELECT count(DISTINCT field_key) FROM public.resolved_field WHERE organization_id=$1
+          AND collection_id=$2 AND record_version_id=rv.id)=20
+        AND (SELECT count(*) FROM public.resolved_field WHERE organization_id=$1
+          AND collection_id=$2 AND record_version_id=rv.id)=20
+      FOR UPDATE OF s, h
+    )
+    INSERT INTO public.canonical_research_binding_v2 (
+      organization_id,collection_id,specimen_id,binding_id,registration_revision,active,
+      base_canonical_revision,base_record_version_id,base_snapshot_sha256,base_host_record_version_id,canonical_run_id,
+      current_canonical_revision,current_record_version_id,current_snapshot_sha256,current_host_record_version_id,current_receipt_id,
+      job_id,job_key,generation,input_digest,profile_digest,runtime_binding_digest,canonical_profile_digest,source_sha256,
+      semantic_mapping_digest,policy_digest,program_key,semantic_mapping,authority_digest,import_proof_id,import_proof_digest,current_chain_digest,publication_version,registered_by,registered_at
+    ) SELECT $1,$2,$3,(r->>'binding_id')::uuid,1,true,
+      revision,(r->'base_canonical'->>'record_version_id')::uuid,r->'base_canonical'->>'snapshot_sha256',r->'base_canonical'->>'host_record_version_id',active_run_id,
+      revision,(r->'base_canonical'->>'record_version_id')::uuid,r->'base_canonical'->>'snapshot_sha256',r->'base_canonical'->>'host_record_version_id',NULL,
+      r->>'job_id',r->>'job_key',(r->>'generation')::integer,r->>'input_digest',r->>'profile_digest',r->>'runtime_binding_digest',r->>'canonical_profile_digest',r->>'source_sha256',
+      r->>'semantic_mapping_digest',r->>'policy_digest',r->>'program_key',r->'semantic_mapping',r->>'authority_digest',
+      (r->>'import_proof_id')::uuid,r->>'import_proof_digest',r->>'current_chain_digest','research-publication/v2',$4,statement_timestamp()
+    FROM admitted
+    """, params: [$organizationId, $collectionId, $specimenId, $actorUid, $registrationJson]) @check(expr: "this == 1", message: "research registration unavailable")
+}

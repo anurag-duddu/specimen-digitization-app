@@ -34,6 +34,7 @@ class IntakeManifest extends StatefulWidget {
     required this.onStop,
     required this.onRemove,
     required this.onServerCheck,
+    this.onRetry,
     this.padding,
     this.scrollable = true,
   });
@@ -55,6 +56,9 @@ class IntakeManifest extends StatefulWidget {
 
   /// Sends one row to the server's decode check.
   final void Function(ManifestEntry) onServerCheck;
+
+  /// Retries one failed or interrupted transfer without resending the batch.
+  final void Function(ManifestEntry)? onRetry;
 
   /// Outer padding, so the compact and two column layouts can differ.
   final EdgeInsetsGeometry? padding;
@@ -137,6 +141,9 @@ class _IntakeManifestState extends State<IntakeManifest> {
               busy: widget.busy,
               onRemove: () => widget.onRemove(entry),
               onServerCheck: () => widget.onServerCheck(entry),
+              onRetry: widget.onRetry == null
+                  ? null
+                  : () => widget.onRetry!(entry),
             ),
           ),
         ),
@@ -181,78 +188,25 @@ class _ManifestHeader extends StatelessWidget {
   static const String stoppingLine =
       'Stopping. The file already sending finishes first.';
 
-  int _count(UploadState state) =>
-      entries.where((ManifestEntry e) => e.state == state).length;
-
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    return Surface(
-      radius: ui.shape.tile,
-      padding: EdgeInsetsDirectional.all(ui.space.s6),
+    final String summary = batchComplete(entries) && !busy
+        ? batchCompleteLine(entries)
+        : batchProgressLine(entries);
+    return Padding(
+      padding: EdgeInsetsDirectional.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Semantics(
-            header: true,
-            child: Text(
-              IntakeManifest.title,
-              style: ui.type.titleLarge.copyWith(color: ui.color.ink),
-            ),
-          ),
-          SizedBox(height: ui.space.s4),
-          // One node for the whole account: the three numerals are the
-          // headline and the sentence under them names every outcome the
-          // batch reached, including the ones with no tile of their own. A
-          // reader hears "8 of 12 accepted, 1 skipped" once when it changes
-          // rather than three tiles and then the sentence again.
+          // One account of the batch, visually and in announcements.
           Semantics(
             container: true,
             liveRegion: true,
-            label: batchProgressLine(entries),
-            excludeSemantics: true,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                // A batch with nothing in it has nothing to count, and three
-                // zeroes over a sentence that says the same is the interface
-                // stating an absence three times.
-                if (entries.isNotEmpty) ...<Widget>[
-                  // Paper, not glass: 09 section 3.3 forbids a frosted pane
-                  // inside a scrolling list, and this header is inside the
-                  // list it heads. Three frosted tiles would also spend the
-                  // whole four pane budget on one row of chrome.
-                  Wrap(
-                    spacing: ui.space.s3,
-                    runSpacing: ui.space.s3,
-                    children: <Widget>[
-                      UiDataTile(
-                        label: 'Accepted',
-                        value: '${_count(UploadState.accepted)}',
-                        footer: 'of ${entries.length}',
-                        surface: UiDataTileSurface.paper,
-                      ),
-                      UiDataTile(
-                        label: 'Already in collection',
-                        value: '${_count(UploadState.duplicate)}',
-                        surface: UiDataTileSurface.paper,
-                      ),
-                      UiDataTile(
-                        label: 'Failed',
-                        value: '${_count(UploadState.failed)}',
-                        surface: UiDataTileSurface.paper,
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: ui.space.s2),
-                ],
-                Text(
-                  batchProgressLine(entries),
-                  style: ui.type.body.copyWith(color: ui.color.inkSecondary),
-                ),
-              ],
+            child: Text(
+              summary,
+              style: ui.type.body.copyWith(color: ui.color.inkSecondary),
             ),
           ),
           if (busy) ...<Widget>[
@@ -283,42 +237,6 @@ class _ManifestHeader extends StatelessWidget {
               ),
             ),
           ],
-          // The one summary line the whole batch earns, arriving with height
-          // and opacity beside the one light impact (motion catalog, row 67).
-          MotionReveal(
-            visible: batchComplete(entries) && !busy,
-            child: Padding(
-              padding: EdgeInsetsDirectional.only(top: ui.space.s4),
-              child: Semantics(
-                container: true,
-                liveRegion: true,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    UiIcon(
-                      UiIcons.cleared,
-                      size: UiIconSize.inline,
-                      color: ui.color.status.cleared.content,
-                    ),
-                    SizedBox(width: ui.space.s2),
-                    Flexible(
-                      child: Text(
-                        batchCompleteLine(entries),
-                        style: ui.type.body.copyWith(color: ui.color.ink),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          SizedBox(height: ui.space.s3),
-          const CaveatText(
-            label: 'After a restart, select the same files again to resume.',
-            why:
-                'Checksums match your files to the uploads already on the '
-                'server. Records that were accepted are not created twice.',
-          ),
         ],
       ),
     );
@@ -354,8 +272,8 @@ class _ArrivingCardState extends State<_ArrivingCard> {
       MotionReveal(visible: _revealed, child: widget.child);
 }
 
-/// One manifest row: the shared `UploadItem`, the local measurements, and the
-/// server check that reports into this same row.
+/// One manifest row: transfer state and server-check outcomes stay visible;
+/// file metadata and descriptive measurements are available on request.
 class IntakeManifestRow extends StatelessWidget {
   const IntakeManifestRow({
     super.key,
@@ -363,6 +281,7 @@ class IntakeManifestRow extends StatelessWidget {
     required this.busy,
     required this.onRemove,
     required this.onServerCheck,
+    this.onRetry,
   });
 
   /// The row's data.
@@ -376,6 +295,7 @@ class IntakeManifestRow extends StatelessWidget {
 
   /// Asks the server to try decoding this file.
   final VoidCallback onServerCheck;
+  final VoidCallback? onRetry;
 
   /// States whose reason is a failure a screen reader should hear at once.
   static bool announces(UploadState state) =>
@@ -397,6 +317,7 @@ class IntakeManifestRow extends StatelessWidget {
       curve: MotionTokens.progressCurve,
       builder: (BuildContext context, double value, Widget? _) => UploadItem(
         name: entry.label,
+        concise: true,
         state: entry.displayState,
         thumbnail: entry.file?.bytes,
         sizeBytes: entry.file?.bytes.length,
@@ -404,7 +325,7 @@ class IntakeManifestRow extends StatelessWidget {
         pixelHeight: entry.file?.height,
         progress: value,
         reason: entry.why == null ? entry.reason : null,
-        onRemove: entry.removable && !busy ? onRemove : null,
+        onRemove: entry.removable ? onRemove : null,
         removeBlockedReason: entry.removable
             ? null
             : 'The server has taken this file, so it cannot be removed from '
@@ -416,65 +337,100 @@ class IntakeManifestRow extends StatelessWidget {
       ),
     );
 
-    return Surface(
-      radius: ui.shape.tile,
-      padding: EdgeInsetsDirectional.all(ui.space.s4),
+    return Padding(
+      padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
+          const UiHairline(),
+          SizedBox(height: ui.space.s2),
           Semantics(liveRegion: announces(entry.state), child: item),
+          if ((entry.state == UploadState.failed ||
+                  entry.state == UploadState.interrupted) &&
+              entry.file != null &&
+              onRetry != null)
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: UiButton(
+                label: 'Retry this file',
+                variant: UiButtonVariant.secondary,
+                onPressed: busy ? null : onRetry,
+              ),
+            ),
           if (entry.why != null)
             CaveatText(label: entry.reason ?? '', why: entry.why!),
-          Text(
-            entry.session != null
-                ? 'Existing upload, classification unchanged'
-                : entry.file?.sensitive == false
-                ? 'Not sensitive'
-                : 'Sensitive',
-            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+          UiDisclosure(
+            title: 'File details',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                Text(
+                  entry.session != null
+                      ? 'Existing upload, classification unchanged'
+                      : entry.file?.sensitive == false
+                      ? 'Not sensitive'
+                      : 'Sensitive',
+                  style: ui.type.bodySmall.copyWith(
+                    color: ui.color.inkSecondary,
+                  ),
+                ),
+                if (entry.file != null)
+                  Text(
+                    UploadItem.measurements(
+                      sizeBytes: entry.file!.bytes.length,
+                      width: entry.file!.width,
+                      height: entry.file!.height,
+                    ),
+                    style: ui.type.bodySmall,
+                  ),
+                _ChecksumLine(digest: entry.digest),
+                if (entry.file != null) ...<Widget>[
+                  SizedBox(height: ui.space.s3),
+                  CaptureQualitySummary(quality: entry.quality),
+                  if (entry.preflight == null &&
+                      entry.preflightError == null &&
+                      !entry.checking)
+                    _checkButton(context),
+                  if (entry.quality != null)
+                    const CaveatText(
+                      label:
+                          'Thumbnail measurements do not assess readability.',
+                      why:
+                          'Check focus, glare and whether every label is in frame.',
+                    ),
+                  const CaveatText(
+                    label: 'The server check creates nothing.',
+                    why:
+                        'Nothing is created and no outside service is called. '
+                        'Local measurements stay on this device until you choose an action.',
+                  ),
+                ],
+                if (entry.preflight != null)
+                  EvidenceDrawer(
+                    title: 'Server codec support and check evidence',
+                    payload: entry.preflight,
+                  ),
+              ],
+            ),
           ),
-          SizedBox(height: ui.space.s2),
-          _ChecksumLine(digest: entry.digest),
         ],
       ),
     );
   }
 
-  /// The local measurements, the server check result, and the two caveats
-  /// that keep either from reading as a verdict. Rendered inside the
-  /// component through its `details` slot.
+  /// The server-check action, result and actionable failures stay beside the
+  /// file they concern. Descriptive diagnostics live in File details.
   Widget? _details(BuildContext context, UiThemeData ui) {
     if (entry.file == null) return null;
     final Json? preflight = entry.preflight;
+    if (preflight == null && entry.preflightError == null && !entry.checking) {
+      return null;
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        CaptureQualitySummary(quality: entry.quality),
-        SizedBox(height: ui.space.s3),
-        const CaveatText(
-          label: 'Focus, glare and label coverage are not measured.',
-          why:
-              'These three values describe exposure and detail in a '
-              'thumbnail. Compare the photograph with the specimen '
-              'yourself before you confirm this batch.',
-        ),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: UiButton(
-            label: entry.checking ? 'Checking' : serverCheckLabel,
-            variant: UiButtonVariant.secondary,
-            leading: UiIcons.sourceImport,
-            onPressed: entry.checking || busy ? null : onServerCheck,
-          ),
-        ),
-        const CaveatText(
-          label: 'The server check creates nothing.',
-          why:
-              'Nothing is created and no outside service is called. '
-              'Your local measurements stay on this device until you '
-              'choose an action.',
-        ),
+        _checkButton(context),
         if (entry.preflightError != null)
           Semantics(
             container: true,
@@ -515,8 +471,7 @@ class IntakeManifestRow extends StatelessWidget {
           ],
           Text(
             'Server check: '
-            '${vocabularyLabel(textOf(preflight['status']))}. '
-            'Check quality yourself as well.',
+            '${vocabularyLabel(textOf(preflight['status']))}.',
             style: ui.type.body.copyWith(color: ui.color.ink),
           ),
           for (final dynamic issue
@@ -525,18 +480,20 @@ class IntakeManifestRow extends StatelessWidget {
               vocabularyLabel(issue.toString()),
               style: ui.type.body.copyWith(color: ui.color.ink),
             ),
-          Text(
-            'Not measured: ${preflight['unmeasured'] ?? 'Not recorded'}',
-            style: ui.type.body.copyWith(color: ui.color.ink),
-          ),
-          EvidenceDrawer(
-            title: 'Server codec support and check evidence',
-            payload: preflight,
-          ),
         ],
       ],
     );
   }
+
+  Widget _checkButton(BuildContext context) => Align(
+    alignment: AlignmentDirectional.centerStart,
+    child: UiButton(
+      label: entry.checking ? 'Checking' : serverCheckLabel,
+      variant: UiButtonVariant.secondary,
+      leading: UiIcons.sourceImport,
+      onPressed: entry.checking || busy ? null : onServerCheck,
+    ),
+  );
 }
 
 /// The file's checksum, truncated with a copy control (02 section 4.14).

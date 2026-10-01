@@ -1,0 +1,24 @@
+# this does not replace the original ledger or create another spending account.
+type ResearchLedgerImportProofV1 @table(key: ["organizationId", "programKey", "id"]) {
+  organizationId: UUID!
+  programKey: String!
+  id: UUID!
+  legacyCollectionId: UUID!
+  legacyDocumentId: UUID!
+  legacyDocumentRevision: Int!
+  legacyDocumentKind: String!
+  legacyPayload: Any!
+  legacyPayloadDigest: String!
+  ledgerDigest: String!
+  importDigest: String!
+  proofDigest: String!
+  settledMicroUsd: Int64!
+  heldMicroUsd: Int64!
+  lagReserveMicroUsd: Int64!
+  sharedReserveMicroUsd: Int64!
+  ceilingMicroUsd: Int64!
+  authorityComplete: Boolean!
+  oldEngineQuiescent: Boolean!
+  verifiedAt: Timestamp!
+  validUntil: Timestamp!
+}

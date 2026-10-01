@@ -63,6 +63,7 @@ def test_route_validation_requires_image_and_structured_output() -> None:
                 {
                     "provider": route.provider,
                     "status": "live",
+                    "supports_tools": True,
                     "supports_structured_output": True,
                 }
             ],

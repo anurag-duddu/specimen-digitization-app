@@ -98,7 +98,7 @@ def validate_route(
         and not missing_modalities
         and (
             not route.requires_structured_output
-            or provider.get("supports_structured_output") is True
+            or provider.get("supports_tools") is True
         )
     )
     return {
@@ -111,6 +111,8 @@ def validate_route(
         "structured_output": (
             provider.get("supports_structured_output") if provider else False
         ),
+        "structured_output_mode": route.structured_output_mode,
+        "tool_output": provider.get("supports_tools") if provider else False,
     }
 
 

@@ -78,7 +78,7 @@ void main() {
     }
   });
 
-  testWidgets('it is transparent at rest and glass once scrolled under', (
+  testWidgets('it is transparent at rest and matte once scrolled under', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
@@ -92,7 +92,7 @@ void main() {
       uiHarness(child: _bar(title: 'Queue', scrolledUnder: true)),
     );
     await tester.pumpAndSettle();
-    expect(glassPaneCount(), 1);
+    expect(glassPaneCount(), 0);
     expect(
       tester.widget<GlassSurface>(find.byType(GlassSurface)).level,
       GlassLevel.flat,

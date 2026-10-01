@@ -5,6 +5,8 @@
 /// trap focus, and both collapse their entrance under reduced motion.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
@@ -299,22 +301,35 @@ class _ModalFrame extends StatelessWidget {
 
   /// The scrim, the focus trap and the pane.
   Widget _frame(BuildContext context, UiThemeData ui, VoidCallback close) {
+    final MediaQueryData media = MediaQuery.of(context);
+    // The root overlay is not resized by a page's scaffold. Reserve the
+    // obscured edges here, counting overlapping safe area and IME only once.
+    final EdgeInsets avoided = EdgeInsets.fromLTRB(
+      math.max(media.viewPadding.left, media.viewInsets.left),
+      math.max(media.viewPadding.top, media.viewInsets.top),
+      math.max(media.viewPadding.right, media.viewInsets.right),
+      math.max(media.viewPadding.bottom, media.viewInsets.bottom),
+    );
     // The pane is a route on the root navigator, so it is published wherever
     // that navigator's overlay sits rather than under whatever wrapped the
     // control that opened it. Publishing the style here makes the frame
     // correct in any host, including a bare `WidgetsApp` and a host that
     // resets the style below `UiTheme` (11 section 5).
-    final Widget pane = DefaultTextStyle(
-      style: ui.defaultTextStyle,
-      child: GlassSurface(
-        level: GlassLevel.modal,
-        radius: ui.shape.sheet,
-        // A sheet meets the bottom of the window, so only its top corners
-        // turn (10 section 4.3). A dialog floats, so all four do.
-        corners: sheet
-            ? BorderRadius.vertical(top: Radius.circular(ui.shape.sheet))
-            : null,
-        child: builder(context),
+    final Widget pane = Builder(
+      // Invoke the caller below the inset-consuming MediaQuery too: a form
+      // that reads its builder context must not reserve the IME again.
+      builder: (BuildContext paneContext) => DefaultTextStyle(
+        style: ui.defaultTextStyle,
+        child: GlassSurface(
+          level: GlassLevel.modal,
+          radius: ui.shape.sheet,
+          // A sheet meets the bottom of the available area, so only its top
+          // corners turn (10 section 4.3). A dialog floats, so all four do.
+          corners: sheet
+              ? BorderRadius.vertical(top: Radius.circular(ui.shape.sheet))
+              : null,
+          child: builder(paneContext),
+        ),
       ),
     );
     return PopScope(
@@ -328,29 +343,37 @@ class _ModalFrame extends StatelessWidget {
             ),
           ),
           Positioned.fill(
-            child: SafeArea(
-              child: Align(
-                alignment: sheet ? Alignment.bottomCenter : Alignment.center,
-                child: Padding(
-                  padding: EdgeInsets.all(sheet ? 0 : ui.space.s4),
-                  child: ConstrainedBox(
-                    // A sheet fills the window's width; a dialog shrink wraps
-                    // up to 560. `minWidth: infinity` is the idiom for "as
-                    // wide as the parent allows", because `ConstrainedBox`
-                    // enforces against the incoming constraints.
-                    constraints: BoxConstraints(
-                      minWidth: sheet ? double.infinity : 0,
-                      maxWidth: sheet ? double.infinity : ui.space.dialogMax,
-                    ),
-                    child: FocusScope(
-                      autofocus: true,
-                      child: Semantics(
-                        container: true,
-                        scopesRoute: true,
-                        explicitChildNodes: true,
-                        namesRoute: true,
-                        label: semanticsLabel,
-                        child: pane,
+            child: Padding(
+              padding: avoided,
+              child: MediaQuery(
+                data: media.copyWith(
+                  padding: EdgeInsets.zero,
+                  viewPadding: EdgeInsets.zero,
+                  viewInsets: EdgeInsets.zero,
+                ),
+                child: Align(
+                  alignment: sheet ? Alignment.bottomCenter : Alignment.center,
+                  child: Padding(
+                    padding: EdgeInsets.all(sheet ? 0 : ui.space.s4),
+                    child: ConstrainedBox(
+                      // A sheet fills the window's width; a dialog shrink wraps
+                      // up to 560. `minWidth: infinity` is the idiom for "as
+                      // wide as the parent allows", because `ConstrainedBox`
+                      // enforces against the incoming constraints.
+                      constraints: BoxConstraints(
+                        minWidth: sheet ? double.infinity : 0,
+                        maxWidth: sheet ? double.infinity : ui.space.dialogMax,
+                      ),
+                      child: FocusScope(
+                        autofocus: true,
+                        child: Semantics(
+                          container: true,
+                          scopesRoute: true,
+                          explicitChildNodes: true,
+                          namesRoute: true,
+                          label: semanticsLabel,
+                          child: pane,
+                        ),
                       ),
                     ),
                   ),

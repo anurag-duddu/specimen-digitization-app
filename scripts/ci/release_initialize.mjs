@@ -13,10 +13,15 @@ assert.equal(env.GITHUB_EVENT_NAME,'push');
 assert.equal(env.GITHUB_REF,'refs/heads/main');
 assert.equal(env.GITHUB_REF_PROTECTED,'true');
 assert.equal(env.GITHUB_WORKFLOW_REF,`${env.GITHUB_REPOSITORY}/.github/workflows/data-release.yml@refs/heads/main`);
-assert.equal(env.RELEASE_AUTHORIZED_SHA,env.GITHUB_SHA);
+// The envelope's owner-set commit or, never with it, the commit of the gate record Python admitted (G11).
+assert.ok((env.RELEASE_AUTHORIZED_SHA===undefined)!==(env.RELEASE_GATE_SHA===undefined));
+assert.equal(env.RELEASE_AUTHORIZED_SHA??env.RELEASE_GATE_SHA,env.GITHUB_SHA);
+const gate=env.RELEASE_GATE_SHA!==undefined;
 const [mode,instance,output]=process.argv.slice(2);
 assert.ok(['inspect','absence','capability','initialize','clean','post','disposal-check','disposal-absent'].includes(mode));
 assert.ok(['specimen-digitization-instance','specimen-digitization-restore-20260908-r1'].includes(instance));
+// The gate path has no clone and no catalog envelope: it initializes, re-checks and disposes on the source only.
+assert.ok(!gate || (instance==='specimen-digitization-instance' && ['initialize','post','disposal-check','disposal-absent'].includes(mode)));
 const initializer=env.DEPLOYMENT_ENVIRONMENT==='data-initialization-production';
 assert.equal(env.DEPLOYMENT_ENVIRONMENT,initializer?'data-initialization-production':'data-production');
 assert.ok(initializer || ['inspect','absence','post','disposal-check','disposal-absent'].includes(mode));
@@ -110,7 +115,7 @@ try {
     const results=await client.query(buffers['scripts/ci/initialize_postconditions.sql']);
     const post=results.filter(r=>r.command==='SELECT').at(-1).rows[0].postconditions;
     assert.equal(post.database_owner,'cloudsqlsuperuser');
-    if(mode==='initialize' && instance==='specimen-digitization-instance') {
+    if(mode==='initialize' && instance==='specimen-digitization-instance' && !gate) {
       const expected=JSON.parse(env.INITIALIZATION_EXPECTED_POST);
       const comparable=value=>Object.fromEntries(Object.entries(value).filter(([key])=>key!=='database_oid'));
       assert.deepEqual(comparable(post),comparable(expected),'source database properties/privileges differ from clone qualification');

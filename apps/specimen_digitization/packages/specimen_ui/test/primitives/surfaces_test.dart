@@ -8,6 +8,31 @@ import 'package:specimen_ui/testing.dart';
 
 import '../harness/control_contract.dart';
 
+// Custom recipes remain supported, while shipped themes stay matte.
+UiGlass _customGlass() {
+  UiGlassStyle recipe(GlassLevel level, double sigma) => UiGlassStyle(
+    level: level,
+    sigma: sigma,
+    fill: const Color(0x88ffffff),
+    highlight: const Color(0x00ffffff),
+    stroke: const Color(0xff888888),
+    shadow: null,
+    opaqueFallback: const Color(0xffffffff),
+  );
+  return UiGlass(
+    flat: recipe(GlassLevel.flat, 8),
+    floating: recipe(GlassLevel.floating, 16),
+    modal: recipe(GlassLevel.modal, 24),
+  );
+}
+
+Widget _decorativeField(SkyPreset preset) => Builder(
+  builder: (context) => UiTheme(
+    data: context.ui.copyWith(field: UiFields.light.withDecorativeFields(true)),
+    child: FieldLayer(preset: preset),
+  ),
+);
+
 void main() {
   group('Surface', () {
     testWidgets('paints the role it was asked for', (
@@ -84,13 +109,44 @@ void main() {
   });
 
   group('GlassSurface', () {
-    testWidgets('blurs at the level it was given', (WidgetTester tester) async {
+    testWidgets('standard recipes stay matte at every persisted quality', (
+      tester,
+    ) async {
+      for (final quality in GlassQuality.values) {
+        for (final level in GlassLevel.values) {
+          await tester.pumpWidget(
+            uiHarness(
+              child: UiTheme(
+                data: UiThemeData.light(quality: quality),
+                child: GlassSurface(
+                  level: level,
+                  child: const SizedBox(width: 200, height: 100),
+                ),
+              ),
+            ),
+          );
+          expect(glassPaneCount(), 0);
+          expect(find.byType(GlassSurface), findsOneWidget);
+          expect(UiGlass.light[level].fill.a, 1);
+          expect(UiGlass.light[level].shadow, isNull);
+        }
+      }
+    });
+
+    testWidgets('an explicit custom recipe blurs at the level it was given', (
+      WidgetTester tester,
+    ) async {
       for (final GlassLevel level in GlassLevel.values) {
         await tester.pumpWidget(
           uiHarness(
-            child: GlassSurface(
-              level: level,
-              child: const SizedBox(width: 200, height: 100),
+            child: UiTheme(
+              data: UiThemeData.light(
+                quality: GlassQuality.full,
+              ).copyWith(glass: _customGlass()),
+              child: GlassSurface(
+                level: level,
+                child: const SizedBox(width: 200, height: 100),
+              ),
             ),
           ),
         );
@@ -100,7 +156,7 @@ void main() {
         );
         expect(
           filter.filter.toString(),
-          contains(UiGlass.light[level].sigma.toStringAsFixed(1)),
+          contains(_customGlass()[level].sigma.toStringAsFixed(1)),
           reason: '${level.name} should blur at its own sigma',
         );
       }
@@ -185,11 +241,22 @@ void main() {
   });
 
   group('FieldLayer', () {
+    testWidgets('runtime themes leave every preset neutral by default', (
+      tester,
+    ) async {
+      for (final preset in SkyPreset.values) {
+        await tester.pumpWidget(uiHarness(child: FieldLayer(preset: preset)));
+        expect(find.byType(CustomPaint), findsNothing);
+        expect(UiThemeData.light().field.sky(preset), isEmpty);
+        expect(UiThemeData.dark().field.sky(preset), isEmpty);
+      }
+    });
+
     testWidgets('paints one preset and nothing else', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(
-        uiHarness(child: const FieldLayer(preset: SkyPreset.home)),
+        uiHarness(child: _decorativeField(SkyPreset.home)),
       );
       expect(find.byType(CustomPaint), findsWidgets);
       expect(
@@ -211,14 +278,14 @@ void main() {
         await tester.pumpWidget(
           uiHarness(
             disableAnimations: reduced,
-            child: const FieldLayer(preset: SkyPreset.home),
+            child: _decorativeField(SkyPreset.home),
           ),
         );
         await tester.pumpAndSettle();
         await tester.pumpWidget(
           uiHarness(
             disableAnimations: reduced,
-            child: const FieldLayer(preset: SkyPreset.work),
+            child: _decorativeField(SkyPreset.work),
           ),
         );
         await tester.pump();

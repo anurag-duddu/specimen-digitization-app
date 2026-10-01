@@ -13,6 +13,7 @@ import '../../foundation/type.dart';
 import '../../primitives/fit.dart';
 import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
+import '../../primitives/squircle.dart';
 import '../overlays/tooltip.dart';
 import 'button.dart';
 
@@ -44,6 +45,7 @@ class UiChipStyle {
     required this.gap,
     required this.removeTarget,
     required this.leadingSize,
+    required this.radius,
   });
 
   /// The fill, by state.
@@ -74,6 +76,9 @@ class UiChipStyle {
   /// The leading widget slot's box: `inline`, so an avatar or a swatch is the
   /// size of the glyph it stands in for.
   final double leadingSize;
+
+  /// The soft corner shared by small controls.
+  final double radius;
 
   /// The style for [variant] in [ui], tinted by [status] where the chip names
   /// one, at [textScaler].
@@ -137,6 +142,7 @@ class UiChipStyle {
       gap: ui.space.s2,
       removeTarget: UiDensity.hitBox,
       leadingSize: ui.space.iconInline,
+      radius: ui.shape.inner,
     );
   }
 }
@@ -287,7 +293,7 @@ class UiChip extends StatelessWidget {
   /// The capsule and its contents, painted from [states].
   Widget _body(UiChipStyle style, Set<WidgetState> states) => DecoratedBox(
     decoration: ShapeDecoration(
-      shape: StadiumBorder(side: style.side.resolve(states)),
+      shape: Squircle.border(style.radius, side: style.side.resolve(states)),
       color: style.background.resolve(states),
     ),
     child: ConstrainedBox(
@@ -342,7 +348,7 @@ class UiChip extends StatelessWidget {
     role: PressableRole.toggle,
     checked: selected,
     selected: selected,
-    capsule: true,
+    radius: style.radius,
     scaleOnPress: true,
     builder: (BuildContext context, Set<WidgetState> states) =>
         _body(style, states),
@@ -394,7 +400,7 @@ class UiChip extends StatelessWidget {
               Pressable(
                 semanticsLabel: removeSemanticsLabel ?? 'Remove $label',
                 onPressed: onRemove,
-                capsule: true,
+                radius: style.radius,
                 minHitBox: style.removeTarget,
                 builder: (BuildContext context, Set<WidgetState> states) =>
                     UiIcon(

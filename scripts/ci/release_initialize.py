@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import tempfile
 import time
 
 from release_admission import digest, exact_keys, integer, private_bytes, require, strict_json
@@ -202,7 +203,7 @@ def qualify_then_source(initialize, cleanup, source_recheck):
 
 @stage("catalog.native-preflight")
 def native(directory, instance, mode, *, files, deadline, expected_catalog=None, expected_postconditions=None,
-           recipient=None, provenance=None):
+           recipient=None, provenance=None, gate_sha=None):
     require(instance in (SOURCE, CLONE) and mode in {"inspect", "absence", "capability", "initialize", "clean", "post",
             "disposal-check", "disposal-absent"}, "unnamed native operation")
     require(files == fingerprints(), "consumed native source differs from reviewed bytes")
@@ -211,6 +212,8 @@ def native(directory, instance, mode, *, files, deadline, expected_catalog=None,
     env.pop("INITIALIZATION_EXPECTED_POST", None)
     if expected_postconditions is not None:
         env["INITIALIZATION_EXPECTED_POST"] = json.dumps(expected_postconditions)
+    if gate_sha is not None:
+        env["RELEASE_GATE_SHA"] = gate_sha  # Only an admitted gate record's commit stands in for the envelope's.
     private_catalog = mode in {"inspect", "absence", "capability"}
     if private_catalog:
         validate_catalog_recipient(recipient)
@@ -343,10 +346,11 @@ def operation_proof(operation, instance, kind, recovery):
     return operation
 
 
-def validate_request(api, method, resource, body, params):
-    """The initializer transport cannot mutate IAM, backup, capacity or app data."""
+def validate_request(api, method, resource, body, params, *, gate=False):
+    """The initializer transport cannot mutate IAM, backup, capacity or app data; on the gate path it has no clone
+    and never creates a database (RELEASE.md 4.3)."""
     require(api == "sql", "initializer has no other Google API effects")
-    for instance in (SOURCE, CLONE):
+    for instance in (SOURCE,) if gate else (SOURCE, CLONE):
         prefix = f"projects/{PROJECT}/instances/{instance}"
         if method == "GET" and resource in (prefix, prefix + "/users", prefix + "/databases", prefix + "/databases/" + DATABASE):
             require(body is None and (params is None or resource.endswith('/users') and set(params) <= {"pageToken"}), "unexpected initializer read parameters")
@@ -356,7 +360,7 @@ def validate_request(api, method, resource, body, params):
             if (method, resource, body, params) == (m, r, args.get("body"), args.get("params")):
                 return
         if method == "POST" and resource == prefix + "/databases":
-            require(body == {"project": PROJECT, "instance": instance, "name": DATABASE} and params is None,
+            require(not gate and body == {"project": PROJECT, "instance": instance, "name": DATABASE} and params is None,
                     "only the fixed absent application database may be created")
             return
     import re
@@ -633,14 +637,16 @@ def prove_current_initializer_ownership(google, instance, journal, recovery, cre
     require(original_seen == 1 and time.time() < deadline, "current ownership continuity unconfirmed")
 
 
-def dispose_initializer_target(google, instance, recovery, journals, directory):
+def dispose_initializer_target(google, instance, recovery, journals, directory, *, intent_packet=None):
     """Only ordinary data identity: reconcile a signed intent, revoke, then dispose.
 
     A new bounded disposal clock cannot qualify initialization or extend its
     privilege window. Uncertain ownership is never converted into permission.
     """
     import deploy_data as data
+    import release_gate
     require(google.plane == "data" and instance in (SOURCE, CLONE), "ordinary named disposal only")
+    gate_sha = google.packet["source_sha"] if release_gate.is_gate_record(google.packet) else None
     started, deadline = time.time(), time.time() + 180
     state = {"version": "initializer-disposal/v1", "source_sha": google.packet["source_sha"],
         "run_id": google.packet["release_run_id"], "run_attempt": google.packet["release_run_attempt"],
@@ -656,7 +662,7 @@ def dispose_initializer_target(google, instance, recovery, journals, directory):
         require(time.time() < deadline, "disposal observation exceeded its own fixed deadline")
         return matching[0] if matching else None
     def check(mode):
-        return native(directory, instance, mode, files=fingerprints(), deadline=deadline)
+        return native(directory, instance, mode, files=fingerprints(), deadline=deadline, gate_sha=gate_sha)
     def poll(operation):
         import re
         identity = {key: operation.get(key) for key in ("name", "targetId", "targetProject", "operationType", "user", "insertTime")}
@@ -673,7 +679,7 @@ def dispose_initializer_target(google, instance, recovery, journals, directory):
         if user is None:
             check("disposal-absent")
         else:
-            journal = validate_creation_intent(journals.get(instance, {}), instance, google.packet, recovery)
+            journal = validate_creation_intent(journals.get(instance, {}), instance, intent_packet or google.packet, recovery)
             require(user.get("type") == "CLOUD_IAM_SERVICE_ACCOUNT", "SQL principal type differs from owned intent")
             operations = data.list_sql(google, f"projects/{PROJECT}/operations", instance=instance, maxResults=100)
             candidates = []
@@ -717,3 +723,96 @@ def dispose_initializer_target(google, instance, recovery, journals, directory):
         state["observed_at_unix"] = int(time.time())
         state["privilege_deadline_exceeded"] = time.time() >= recovery["privilege_deadline_unix"]
         path.write_text(json.dumps(state, sort_keys=True)); path.chmod(0o600)
+
+
+# The gate path (G11, RELEASE.md 4.3 step 2): the existing, empty database on the source instance only.
+def owned_window(journal):
+    """The privilege window a gate-path intent binds, where the envelope's intent bound its recovery receipt."""
+    return {"parity_at_unix": journal.get("absence_at_unix"), "privilege_deadline_unix": journal.get("privilege_deadline_unix")}
+
+
+def gate_initializer(google):
+    import release_gate
+    require(google.plane == "data-initialization" and release_gate.is_gate_record(google.packet)
+            and google.packet["identity"] == release_gate.identity("data-initialization"),
+            "only the gate's one-time initializer identity initializes")
+    return google.packet
+
+
+def own_principal(google):
+    import deploy_data as data
+    matching = [row for row in data.list_sql(google, f"projects/{PROJECT}/instances/{SOURCE}/users")
+                if row.get("name") == INITIALIZER_SQL]
+    require(len(matching) <= 1, "ambiguous initializer SQL principal")
+    return matching[0] if matching else None
+
+
+def prepare_owned_initializer(google, directory):
+    """Observe the absent principal and the existing database, then write the intent the workflow signs and publishes."""
+    import deploy_data as data
+    record = gate_initializer(google)
+    require_protected_initializer_environment(None)
+    deadline = google.sql_read_deadline = record["expires_at_unix"]
+    require(time.time() + 600 < deadline, "insufficient initialization window")
+    require(own_principal(google) is None, "preexisting initializer SQL principal must never be adopted")
+    data.require_database(google)
+    now = int(time.time())
+    journal = {"version": "initializer-create-intent/v1", "operation": "initializer-create-" + SOURCE,
+               "outcome": "prepared", "source_sha": record["source_sha"], "run_id": record["release_run_id"],
+               "run_attempt": record["release_run_attempt"], "initial_absence_observed": True,
+               "absence_at_unix": now, "not_before_unix": now, "privilege_deadline_unix": deadline}
+    journal["recovery_sha256"] = sha(owned_window(journal))
+    descriptor = os.open(directory / f"initializer-create-{SOURCE}.json", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "w") as handle:
+        json.dump(journal, handle, sort_keys=True); handle.flush(); os.fsync(handle.fileno())
+
+
+def initialize_existing(google, directory, output):
+    """Create the owned principal once within the published intent's window (the gate record's deadline), then run the
+    fixed SQL and its postconditions in one transaction on the existing database, which is never created."""
+    import deploy_data as data
+    record = gate_initializer(google)
+    journal = strict_json(private_bytes(directory / f"initializer-create-{SOURCE}.json"))
+    window = owned_window(journal)
+    validate_creation_intent(journal, SOURCE, record, window)
+    deadline = google.initialization_deadline = google.sql_read_deadline = window["privilege_deadline_unix"]
+    require(deadline == record["expires_at_unix"] and journal["not_before_unix"] <= time.time() < deadline - 120,
+            "published create window not open or insufficient")
+    require(own_principal(google) is None, "preexisting initializer SQL principal must never be adopted")
+    data.require_database(google)
+    method, resource, arguments = user_request(SOURCE, "create")
+    operation = once(directory, "initializer-create-effect-" + SOURCE, lambda: google.request("sql", method, resource, **arguments),
+                     context={"published_intent_sha256": sha(journal)})
+    operation_proof(operation, SOURCE, "CREATE_USER", window)
+    data.wait_sql(google, operation, maximum_seconds=max(1, deadline - time.time() - 60))
+    user = observe(lambda: own_principal(google), lambda value: value is not None, deadline)
+    require(user.get("type") == "CLOUD_IAM_SERVICE_ACCOUNT" and user.get("databaseRoles") == ["cloudsqlsuperuser"],
+            "native initializer identity or assigned role differs")
+    result = once(directory, "roles-create-" + SOURCE, lambda: native(directory, SOURCE, "initialize", files=fingerprints(),
+                                                                       deadline=deadline, gate_sha=record["source_sha"]))
+    output.write_text(json.dumps({"version": "data-initializer/v1", "source_sha": record["source_sha"],
+        "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"], "instance": SOURCE,
+        "database": DATABASE, "postconditions_sha256": sha(result["postconditions"])}, sort_keys=True) + "\n")
+
+
+def dispose_owned_initializer(google, directory):
+    """Dispose of the principal only as this run's: the latest intent it published, from any attempt, reconciled as before."""
+    import deploy_data as data
+    import release_gate
+    from deploy_runtime import checked, verified_receipt_bytes
+    record = google.packet
+    require(google.plane == "data" and release_gate.is_gate_record(record), "ordinary gate disposal only")
+    intents, journals, packet = data.run_artifacts(record, "initializer-intent"), {}, record
+    window = {"parity_at_unix": record["issued_at_unix"], "privilege_deadline_unix": record["expires_at_unix"]}
+    if intents:
+        # A principal present now is newer than that attempt's observed absence; a later attempt that saw it refused.
+        attempt = max(intents)
+        with tempfile.TemporaryDirectory() as folder:
+            checked(["gh", "run", "download", str(record["release_run_id"]), "--repo", REPOSITORY,
+                     "--name", f"initializer-intent-{record['source_sha']}-{attempt}", "--dir", folder])
+            path = Path(folder) / f"initializer-create-{SOURCE}.json"
+            journals[SOURCE] = strict_json(verified_receipt_bytes(path, hashlib.sha256(path.read_bytes()).hexdigest(),
+                                                                  record["source_sha"], "data-release.yml"))
+        packet, window = {**record, "release_run_attempt": attempt}, owned_window(journals[SOURCE])
+        validate_creation_intent(journals[SOURCE], SOURCE, packet, window)
+    return dispose_initializer_target(google, SOURCE, window, journals, directory, intent_packet=packet)

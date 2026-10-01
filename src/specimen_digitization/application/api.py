@@ -1,6 +1,7 @@
 """Authenticated version-one API shared by Flutter and local end-to-end tests."""
 
 from __future__ import annotations
+import asyncio
 import hashlib
 import hmac
 import io
@@ -56,7 +57,7 @@ from .lane import (
 from .lane_dispatch import UNCONFIGURED
 from .policy import finalize
 from .reliability import has_active_lease
-from .production import actor_uid
+from .production import actor_uid, verified_actor_context
 from .storage import (
     Conflict,
     LocalBlobs,
@@ -129,6 +130,14 @@ class DecisionInput(RevisionInput):
     before: dict = Field(default_factory=dict)
     after: dict = Field(default_factory=dict)
     evidence_ids: list[str] = Field(default_factory=list)
+
+
+class RestoreVersionInput(Record):
+    expected_revision: int = Field(strict=True, ge=1)
+    base_record_version_id: str = Field(min_length=1, max_length=200)
+    source_revision: int = Field(strict=True, ge=1)
+    reset_to_initial: bool = Field(strict=True)
+    reason: str = Field(min_length=1, max_length=4000)
 
 
 class BatchDecisionInput(Record):
@@ -340,6 +349,7 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
                 "taxonomy_resolution",
                 "authority_resolution",
                 "capability_defer",
+                "restore_version",
             ]
             if role in {"reviewer", "manager", "admin"}
             else []
@@ -349,8 +359,10 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
     if run.blocker == "external_outcome_unknown":
         result["available_actions"] = [
             action for action in result["available_actions"]
-            if action not in {"retry", "resume", "reprocess"}
+            if action not in {"retry", "resume", "reprocess", "restore_version"}
         ]
+    if has_active_lease(run):
+        result["available_actions"] = [action for action in result["available_actions"] if action != "restore_version"]
     if "evidence_pilot" in run.dependencies:
         result["available_actions"] = (
             ["field", "transcription", "reading_metadata", "coverage"]
@@ -434,6 +446,9 @@ def create_app(
     source_registry=None,
     source_reader=None,
     worker_dispatcher=None,
+    research_binding_repository=None,
+    research_store_factory=None,
+    research_version="v1",
 ) -> FastAPI:
     if mode not in {"synthetic", "emulator", "production"}:
         raise ValueError("Explicit application mode required")
@@ -1365,6 +1380,55 @@ def create_app(
             raise Conflict("Historical run digest mismatch")
         return render_workspace(retained, p)
 
+    @app.post(prefix + "/specimens/{specimen_id}/history:restore")
+    def restore_version(
+        organization_id: str,
+        specimen_id: str,
+        body: RestoreVersionInput,
+        user=Depends(identity),
+        idempotency_key: str = Header(default=""),
+    ):
+        from .history_restore import restored_specimen
+
+        p, current = history_access(user, organization_id, specimen_id)
+        principal(user, organization_id, p.scope.collection_id, review=True)
+        key(idempotency_key)
+        if (not body.reason.strip() or body.source_revision > body.expected_revision
+            or body.reset_to_initial and body.source_revision != 1):
+            raise ValueError("Choose a retained version and enter a reason")
+        # Read the immutable requested base, not the possibly advanced current
+        # run. The canonical repository checks the same-key receipt before CAS,
+        # so a lost acknowledgement replays even when a later revision exists.
+        base = repository.version(p.scope,specimen_id,body.expected_revision)
+        sensitivity_access(user,p,base.asset.sensitive)
+        if body.base_record_version_id != f"{base.run.id}:{base.version}":
+            raise Conflict("Wrong base record version")
+        if ("evidence_pilot" in base.run.dependencies
+            or "evidence_pilot" in current.run.dependencies):
+            raise Conflict("Evidence pilot permits retained-evidence corrections only")
+        if has_active_lease(base.run) or base.run.blocker == "external_outcome_unknown":
+            raise Conflict("External outcome must be reconciled before restore")
+        source = repository.version(p.scope,specimen_id,body.source_revision)
+        sensitivity_access(user,p,source.asset.sensitive)
+        source_info = repository.version_info(p.scope,specimen_id,body.source_revision)
+        base_info = repository.version_info(p.scope,specimen_id,body.expected_revision)
+        accounting = base if source.run.id == base.run.id else repository.latest_run_version(
+            p.scope,specimen_id,source.run.id,body.expected_revision
+        )
+        sensitivity_access(user,p,accounting.asset.sensitive)
+        restored = restored_specimen(base,source,accounting=accounting)
+        restored.audit.append(AuditEvent(actor=user,action="review_restore_version",reason=body.reason.strip(),
+            before={"revision":base.version,"run_id":base.run.id,"run_sha256":base_info["run_sha256"]},
+            after={"source_revision":source.version,"source_record_version_id":f"{source.run.id}:{source.version}",
+                "source_run_sha256":source_info["run_sha256"],"reset_to_initial":body.reset_to_initial,
+                "run_id":restored.run.id,"human_approved":False}))
+        saved = save_recoverably(repository,p,restored,body.expected_revision,
+            "history-restore:"+idempotency_key,digest(body.model_dump()))
+        # No scheduler/dispatcher here. Only the ordinary canonical writer owns
+        # the new revision; old leases/clearance and native research locks are
+        # not activated or cleared by selecting a historical snapshot.
+        return render_workspace(saved,p,mutation_committed=True)
+
     @app.get(prefix + "/specimens/{specimen_id}/active-graph")
     def active_graph_output(
         organization_id: str,
@@ -2249,6 +2313,8 @@ def create_app(
             classification=old.classification,
             classification_raw_sha256=old.classification_raw_sha256,
             classification_selection=old.classification_selection,
+            fields={name: FieldValue() for name in (old.field_groups or old.fields)},
+            field_groups=old.field_groups,
             regions=body.regions,
             coverage_confirmed=True,
             completed_steps=["classify", "segment"],
@@ -2459,6 +2525,82 @@ def create_app(
         response.status_code = 202
         return dict(summary(s, p.role), dispatch=start_worker().model_dump())
 
+    # Research uses the same verifier and current membership source as the
+    # host, with an async lifetime so ContextVar state reaches every await and
+    # asyncio.to_thread read, and is reset on cancellation/error as well.
+    async def research_principal(
+        organization_id: str, collection_id: str,
+        authorization: str = Header(default=""),
+        x_firebase_appcheck: str = Header(default=""),
+    ):
+        if not authorization.startswith("Bearer "):
+            raise HTTPException(401, "research_access_required")
+        bearer = authorization[7:]
+        if mode == "synthetic":
+            if not hmac.compare_digest(bearer, token or ""):
+                raise HTTPException(401, "research_access_required")
+            user = "synthetic-reviewer"
+        else:
+            if identity_verifier is None:
+                raise OperationalBlock("firebase_identity_verifier_not_configured")
+            user = await asyncio.to_thread(identity_verifier, bearer, x_firebase_appcheck)
+        with verified_actor_context(user):
+            rows = await asyncio.to_thread(member_rows, user)
+            matching = [row for row in rows if
+                        row.get("organization_id") == organization_id and
+                        row.get("collection_id") == collection_id]
+            if len(matching) != 1 or matching[0].get("role") not in {
+                "viewer", "operator", "reviewer", "manager", "admin",
+            }:
+                raise PermissionError("research_access_denied")
+            yield Principal(
+                user_id=user,
+                scope=Scope(organization_id=organization_id, collection_id=collection_id),
+                role=matching[0]["role"],
+            )
+
+    from ..research_harness.api import (
+        create_research_discovery_router, create_research_router,
+    )
+    from ..research_harness.discovery import DiscoveredResearchService, ResearchDiscovery
+
+    binding_repository = research_binding_repository
+    if binding_repository is None and callable(getattr(repository, "current_research_binding", None)):
+        binding_repository = repository
+    store_factory = research_store_factory
+    if store_factory is None and binding_repository is repository:
+        store_factory = getattr(repository, "research_store", None)
+    async def research_access(principal, sensitive):
+        # Re-read membership after discovery, including classification and role
+        # changes. A previously verified Principal is not a permanent grant.
+        rows = await asyncio.to_thread(member_rows, principal.user_id)
+        matching = [row for row in rows if
+                    row.get("organization_id") == principal.scope.organization_id and
+                    row.get("collection_id") == principal.scope.collection_id]
+        if (len(matching) != 1 or matching[0].get("role") != principal.role
+            or (sensitive is not False and matching[0].get("can_view_sensitive") is not True)):
+            raise PermissionError("research_access_denied")
+
+    if research_version == "v2":
+        from ..research_harness.discovery_v2 import ResearchDiscoveryV2, ResearchDiscoveryResultV2
+        discovery = ResearchDiscoveryV2(repository, verify_access=research_access,
+            worker_dispatcher=worker_dispatcher)
+        discovery_result_model = ResearchDiscoveryResultV2
+    elif research_version == "v1":
+        from ..research_harness.discovery import ResearchDiscoveryResult
+        discovery = ResearchDiscovery(binding_repository, store_factory=store_factory,
+                                      verify_access=research_access)
+        discovery_result_model = ResearchDiscoveryResult
+    else:
+        raise ValueError("explicit_research_publication_version_required")
+    app.include_router(create_research_discovery_router(
+        discovery, verified_principal_dependency=research_principal,
+        result_model=discovery_result_model,
+    ))
+    app.include_router(create_research_router(
+        DiscoveredResearchService(discovery), verified_principal_dependency=research_principal,
+    ))
+    app.state.research_discovery = discovery
     app.state.workflow = workflow
     return app
 

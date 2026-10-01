@@ -53,13 +53,13 @@ class UiThemeData {
   /// Radii, strokes and the superellipse helpers.
   final UiShape shape;
 
-  /// The 4 px grid and the fixed sizes.
+  /// Eight-point structural spacing and the optical half step.
   final UiSpace space;
 
   /// Durations and curves, with reduced motion folded in.
   final MotionTokens motion;
 
-  /// How much blur this device can afford.
+  /// A persisted appearance preference. Standard surface recipes remain flat.
   final GlassQuality quality;
 
   /// The resolved density. [UiTheme.of] replaces this with the live value.
@@ -74,15 +74,18 @@ class UiThemeData {
   /// Building a theme is also where the font licence is declared, so an
   /// application cannot ship the faces without their SIL Open Font License
   /// text in its about dialog.
+  /// The legacy [decorativeFields] argument is accepted for compatibility;
+  /// product themes always omit decorative fields.
   factory UiThemeData.light({
-    GlassQuality quality = GlassQuality.full,
+    GlassQuality quality = GlassQuality.off,
+    bool decorativeFields = false,
     UiDensity density = UiDensity.touch,
     MotionTokens motion = const MotionTokens(),
   }) {
     UiFonts.registerLicense();
     return UiThemeData(
       color: UiColor.light,
-      field: UiFields.light,
+      field: UiFields.light.withDecorativeFields(false),
       glass: UiGlass.light,
       type: UiType.standard,
       shape: UiShape.standard,
@@ -93,16 +96,17 @@ class UiThemeData {
     );
   }
 
-  /// The dark theme.
+  /// The dark theme, with the same flat surface contract as [UiThemeData.light].
   factory UiThemeData.dark({
-    GlassQuality quality = GlassQuality.full,
+    GlassQuality quality = GlassQuality.off,
+    bool decorativeFields = false,
     UiDensity density = UiDensity.touch,
     MotionTokens motion = const MotionTokens(),
   }) {
     UiFonts.registerLicense();
     return UiThemeData(
       color: UiColor.dark,
-      field: UiFields.dark,
+      field: UiFields.dark.withDecorativeFields(false),
       glass: UiGlass.dark,
       type: UiType.standard,
       shape: UiShape.standard,

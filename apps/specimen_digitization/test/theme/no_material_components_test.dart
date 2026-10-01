@@ -82,18 +82,30 @@ final RegExp _constructors = RegExp(
 /// Empty since the cleanup slot, which took the last entry: the transparent
 /// `Scaffold` in `app_router.dart` that stood over the collection subtree
 /// while its screens still needed a `Material` ancestor and a messenger. The
-/// gate now allows nothing, so any of the 42 widgets above, anywhere under
-/// `lib/`, fails it.
+/// gate forbids the retired widgets under `lib/`, with only the explicitly
+/// requested native phone NavigationBar site described below.
 ///
 /// `lib/src/theme/` was out of scope while it was the adapter layer that
 /// configured those widgets. It is scanned now: the six adapter files are
 /// gone and the bridge that is left builds no component at all.
 const Map<String, int> componentBacklog = <String, int>{};
 
+// The 2026-09-29 native phone-navigation requirement permits one platform
+// NavigationBar in the shell. Other retired components and other sites retain
+// the existing ban; this is a named native control, not a component backlog.
+const String nativeNavigationPath = 'lib/src/app/shell.dart';
+final RegExp _nativeNavigation = RegExp(r'\bmaterial\.NavigationBar\(');
+
 /// Counts the retired widgets in [source], ignoring line comments so a
 /// comment naming a widget does not read as a use of it.
-int countIn(String source) {
-  final String code = source.replaceAll(RegExp(r'//.*'), '');
+int countIn(String source, {String? path}) {
+  String code = source.replaceAll(RegExp(r'//.*'), '');
+  if (path == nativeNavigationPath) {
+    final RegExpMatch? native = _nativeNavigation.firstMatch(code);
+    if (native != null) {
+      code = code.replaceRange(native.start, native.end, '');
+    }
+  }
   return _constructors.allMatches(code).length +
       _extraTerms.allMatches(code).length;
 }
@@ -105,13 +117,39 @@ Map<String, int> measure() {
   final Map<String, int> found = <String, int>{};
   for (final FileSystemEntity entity in root.listSync(recursive: true)) {
     if (entity is! File || !entity.path.endsWith('.dart')) continue;
-    final int count = countIn(entity.readAsStringSync());
+    final int count = countIn(entity.readAsStringSync(), path: entity.path);
     if (count > 0) found[entity.path] = count;
   }
   return found;
 }
 
 void main() {
+  test(
+    'native navigation permission is limited to one qualified shell site',
+    () {
+      expect(
+        countIn('material.NavigationBar()', path: nativeNavigationPath),
+        0,
+      );
+      expect(
+        countIn(
+          'material.NavigationBar(); material.NavigationBar()',
+          path: nativeNavigationPath,
+        ),
+        1,
+      );
+      expect(countIn('NavigationBar()', path: nativeNavigationPath), 1);
+      expect(countIn('material.NavigationBar()', path: 'lib/other.dart'), 1);
+      expect(
+        countIn(
+          'material.NavigationBar(); material.TextButton()',
+          path: nativeNavigationPath,
+        ),
+        1,
+      );
+    },
+  );
+
   test('no file gained a Material component', () {
     final Map<String, int> found = measure();
 

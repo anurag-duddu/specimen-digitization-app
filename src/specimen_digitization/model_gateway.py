@@ -11,6 +11,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
+from typing import Literal
 
 from huggingface_hub import AsyncInferenceClient, ChatCompletionInputToolCall
 from pydantic import SecretStr
@@ -33,8 +34,11 @@ class HuggingFaceInferenceRoute:
     provider: str
     required_input_modalities: tuple[str, ...] = ("text", "image")
     requires_structured_output: bool = True
+    structured_output_mode: Literal["tool"] = "tool"
 
     def __post_init__(self) -> None:
+        if self.structured_output_mode != "tool":
+            raise ValueError("Hugging Face routes use schema-validated tool output.")
         disallowed_provider_policies = {"", "auto", "fastest", "cheapest", "preferred"}
         if self.provider.strip().lower() in disallowed_provider_policies:
             raise ValueError(
@@ -177,4 +181,14 @@ class HuggingFaceModelGateway:
         provider = HuggingFaceProvider(
             hf_client=client, api_key=self._token.get_secret_value()
         )
-        return ArgumentPreservingHuggingFaceModel(route.model_id, provider=provider)
+        # The HF adapter sends a function schema, not native response_format.
+        # Keep the transport explicit even if a future provider profile changes.
+        return ArgumentPreservingHuggingFaceModel(
+            route.model_id,
+            provider=provider,
+            profile={
+                "supports_tools": True,
+                "supports_json_schema_output": False,
+                "default_structured_output_mode": route.structured_output_mode,
+            },
+        )

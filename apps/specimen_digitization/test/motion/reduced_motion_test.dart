@@ -204,7 +204,7 @@ void main() {
         (on ? UploadState.accepted : UploadState.ready).presentation(context),
       ),
     );
-    expect(find.text('Accepted'), findsOneWidget);
+    expect(find.text('Uploaded'), findsOneWidget);
     expect(find.text('Ready'), findsNothing);
     expectNoRunningAnimations(tester);
   });
@@ -257,7 +257,9 @@ void main() {
     );
     await tester.pump();
     final double before = viewerScale(tester);
-    await tester.tap(find.text('Label 2'));
+    tester
+        .widget<WorkbenchSourcePane>(find.byType(WorkbenchSourcePane))
+        .onSelectRegion('r2');
     // Two frames: one for the selection, one for the post-frame that frames
     // the region. Neither advances the clock, so a value still on its way here
     // would mean the emphasized token was not collapsed.
@@ -283,7 +285,7 @@ void main() {
       ),
     );
     await tester.pump();
-    await tester.tap(find.text('Fields'));
+    await tester.tap(find.text('Specimen data'));
     await tester.pump();
     // A slide would put a `SlideTransition` under the switcher. Under reduced
     // motion the panel cross-fades in place, which is what Apple's

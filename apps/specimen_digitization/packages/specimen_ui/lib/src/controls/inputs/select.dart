@@ -192,6 +192,10 @@ class UiSelect<T> extends StatefulWidget {
 class _UiSelectState<T> extends State<UiSelect<T>> {
   final PopoverController _popover = PopoverController();
   final TextEditingController _filter = TextEditingController();
+  final FocusNode _triggerFocus = FocusNode(debugLabel: 'UiSelect trigger');
+  final FocusNode _firstOptionFocus = FocusNode(
+    debugLabel: 'UiSelect first option',
+  );
   final FocusNode _filterFocus = FocusNode(debugLabel: 'UiSelect filter');
   double _triggerWidth = 0;
 
@@ -207,6 +211,8 @@ class _UiSelectState<T> extends State<UiSelect<T>> {
       ..removeListener(_popoverChanged)
       ..dispose();
     _filter.dispose();
+    _triggerFocus.dispose();
+    _firstOptionFocus.dispose();
     _filterFocus.dispose();
     super.dispose();
   }
@@ -243,7 +249,17 @@ class _UiSelectState<T> extends State<UiSelect<T>> {
     if (!_enabled) return;
     final RenderObject? box = context.findRenderObject();
     if (box is RenderBox && box.hasSize) _triggerWidth = box.size.width;
+    // Pointer and semantic activation must give the popover the same return
+    // target as keyboard activation, even when a nearby editor held focus.
+    _triggerFocus.requestFocus();
+    FocusManager.instance.applyFocusChangesIfNeeded();
     _popover.open();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_popover.isOpen) return;
+      // Scope autofocus alone can leave arrow keys navigating the page below
+      // the menu. Enter a concrete menu control once it has been mounted.
+      (_hasFilter ? _filterFocus : _firstOptionFocus).requestFocus();
+    });
   }
 
   void _toggle() => _popover.isOpen ? _popover.close() : _open();
@@ -339,6 +355,7 @@ class _UiSelectState<T> extends State<UiSelect<T>> {
       enabled: _enabled,
       onTap: _enabled ? _toggle : null,
       child: Pressable(
+        focusNode: _triggerFocus,
         excludeFromSemantics: true,
         semanticsLabel: widget.semanticsLabel ?? widget.label,
         onPressed: _enabled ? _toggle : null,
@@ -416,12 +433,12 @@ class _UiSelectState<T> extends State<UiSelect<T>> {
                   : ListView.builder(
                       shrinkWrap: true,
                       padding: EdgeInsetsDirectional.symmetric(
-                        vertical: ui.space.s1,
+                        vertical: ui.space.s2,
                       ),
                       itemCount: visible.length,
                       itemBuilder: (BuildContext context, int index) {
                         final UiSelectOption<T> option = visible[index];
-                        return _option(ui, option);
+                        return _option(ui, option, first: index == 0);
                       },
                     ),
             ),
@@ -439,11 +456,16 @@ class _UiSelectState<T> extends State<UiSelect<T>> {
   /// reader hears a button that is selected rather than a checkbox: picking an
   /// option closes the list and moves the trigger's value, which is not what
   /// ticking a box does.
-  Widget _option(UiThemeData ui, UiSelectOption<T> option) {
+  Widget _option(
+    UiThemeData ui,
+    UiSelectOption<T> option, {
+    required bool first,
+  }) {
     final bool selected = option.value == widget.value;
     final IconSpec? leading = option.leading;
     return UiListRow(
       title: option.label,
+      focusNode: first ? _firstOptionFocus : null,
       size: UiSize.sm,
       selected: selected,
       onPressed: () => _pick(option),

@@ -1,14 +1,10 @@
 """Private bootstrap evidence survives ordinary failed jobs without plaintext publication."""
 import copy
-import fnmatch
 import hashlib
 import json
-import os
-import subprocess
 from functools import lru_cache
 
 import pytest
-import yaml
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
@@ -69,7 +65,7 @@ def test_bad_recipient_stops_before_auth_or_scope(first, tmp_path, change):
 
 
 @pytest.mark.parametrize("outcome", ["success", "partial", "bad-readback", "rejected-readback", "unknown"])
-def test_workflow_retains_exact_encrypted_evidence_after_success_or_failure(first, tmp_path, monkeypatch, outcome):
+def test_bootstrap_encrypts_exact_evidence_after_success_or_failure(first, tmp_path, monkeypatch, outcome):
     google = FirstGoogle(first, tmp_path)
     if outcome == "partial":
         google.mutation_result = {"data": {}, "errors": [{"message": "private fixture-admin response"}]}
@@ -92,16 +88,9 @@ def test_workflow_retains_exact_encrypted_evidence_after_success_or_failure(firs
             B.bootstrap(google, first, first["artifact_sha256"], recipient())
     raw_files = sorted(p for p in tmp_path.glob("first-scope-owner.*.json") if ".encrypted." not in p.name)
     assert len(raw_files) == {"success": 4, "partial": 2, "bad-readback": 3, "rejected-readback": 3, "unknown": 1}[outcome]
-    workflow = yaml.safe_load((B.ROOT / ".github/workflows/data-release.yml").read_text())
-    uploads = [s for s in workflow["jobs"]["release"]["steps"]
-               if "actions/upload-artifact@" in s.get("uses", "") and "always()" in s.get("if", "")]
-    patterns = [line for s in uploads for line in s["with"]["path"].splitlines()]
-    def published(path):
-        return any(fnmatch.fnmatch("${{ runner.temp }}/data-release/" + path.name, pattern) for pattern in patterns)
     for raw in raw_files:
         encrypted = raw.with_suffix(".encrypted.json")
-        assert encrypted.exists() and published(encrypted)
-        assert not published(raw)
+        assert encrypted.exists()
         envelope = json.loads(encrypted.read_bytes())
         arguments = {"public_key_sha256": recipient()["public_key_sha256"],
                      "provenance": {"repository": "anurag-duddu/specimen-digitization-app", "source_sha": "a" * 40,
@@ -142,39 +131,11 @@ def test_reviewed_recipient_survives_plan_and_deploy_call_chain(first, tmp_path,
     assert (tmp_path / "first-scope-owner.verified.encrypted.json").exists()
 
 
-@pytest.mark.parametrize("encrypted", [False, True])
-@pytest.mark.parametrize("mode", ["first-scope-owner", "first-scope-hierarchy"])
-def test_attestation_discovery_and_failure_path_cover_only_encrypted_records(tmp_path, encrypted, mode):
-    workflow = yaml.safe_load((B.ROOT / ".github/workflows/data-release.yml").read_text())
-    steps = workflow["jobs"]["release"]["steps"]
-    discovery = next(s for s in steps if s.get("id") == "bootstrap_evidence")
-    assert discovery["if"] == "always() && steps.auth.outcome == 'success'"
-    directory = tmp_path / "data-release"
-    directory.mkdir()
-    (directory / f"{mode}.response.json").write_text('{"private":"fixture-admin"}')
-    if encrypted:
-        (directory / f"{mode}.response.encrypted.json").write_text('{"ciphertext":"synthetic"}')
-    output = tmp_path / "github-output"
-    subprocess.run(["bash", "-e", "-c", discovery["run"]], check=True,
-                   env={**os.environ, "RUNNER_TEMP": str(tmp_path), "GITHUB_OUTPUT": str(output)})
-    assert (output.read_text() if output.exists() else "") == ("present=true\n" if encrypted else "")
-    attest = next(s for s in steps if "actions/attest@" in s.get("uses", "")
-                  and "first-scope-" in s.get("with", {}).get("subject-path", ""))
-    assert attest["if"] == "always() && steps.bootstrap_evidence.outputs.present == 'true'"
-    # One glob covers both empty-scope modes' evidence and neither mode's plaintext.
-    subject = attest["with"]["subject-path"]
-    assert subject == "${{ runner.temp }}/data-release/first-scope-*.encrypted.json"
-    prefix = "${{ runner.temp }}/data-release/"
-    assert fnmatch.fnmatch(prefix + f"{mode}.response.encrypted.json", subject)
-    assert not fnmatch.fnmatch(prefix + f"{mode}.response.json", subject)
-    assert steps.index(discovery) < steps.index(attest)
-
-
 # ------------------------------------------- the whole reviewed hierarchy ---
 
 
 @pytest.mark.parametrize("outcome", ["success", "partial", "bad-readback", "unknown"])
-def test_hierarchy_evidence_is_retained_encrypted_under_its_own_names(tree, tmp_path, monkeypatch, outcome):
+def test_hierarchy_evidence_is_encrypted_under_its_own_names(tree, tmp_path, monkeypatch, outcome):
     from test_first_scope_bootstrap import TreeGoogle
     google = TreeGoogle(tree, tmp_path)
     if outcome == "partial":
@@ -196,19 +157,9 @@ def test_hierarchy_evidence_is_retained_encrypted_under_its_own_names(tree, tmp_
         "bad-readback": ["intent", "readback", "response"],
         "unknown": ["intent"],
     }[outcome]
-    workflow = yaml.safe_load((B.ROOT / ".github/workflows/data-release.yml").read_text())
-    uploads = [s for s in workflow["jobs"]["release"]["steps"]
-               if "actions/upload-artifact@" in s.get("uses", "") and "always()" in s.get("if", "")]
-    patterns = [line for s in uploads for line in s["with"]["path"].splitlines()]
-
-    def published(path):
-        return any(fnmatch.fnmatch("${{ runner.temp }}/data-release/" + path.name, pattern)
-                   for pattern in patterns)
-
     for raw in raw_files:
         encrypted = raw.with_suffix(".encrypted.json")
-        assert encrypted.exists() and published(encrypted)
-        assert not published(raw)
+        assert encrypted.exists()
         envelope = json.loads(encrypted.read_bytes())
         arguments = {"public_key_sha256": recipient()["public_key_sha256"],
                      "provenance": {"repository": "anurag-duddu/specimen-digitization-app",

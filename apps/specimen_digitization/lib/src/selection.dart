@@ -30,10 +30,12 @@ import 'package:flutter/foundation.dart';
 /// count that includes records the reviewer can no longer see is a count no
 /// confirmation should be built on.
 class PagedSelection<T extends Object> extends ChangeNotifier {
-  PagedSelection({required this.identify});
+  PagedSelection({required this.identify, this.limit});
 
   /// The stable identifier of one item.
   final String Function(T item) identify;
+  final int? limit;
+  bool get atLimit => limit != null && count >= limit!;
 
   final Set<String> _selected = <String>{};
   List<T> _loaded = <T>[];
@@ -111,7 +113,7 @@ class PagedSelection<T extends Object> extends ChangeNotifier {
   void toggle(T item) {
     final String id = identify(item);
     _active = true;
-    if (!_selected.remove(id)) _selected.add(id);
+    if (!_selected.remove(id) && !atLimit) _selected.add(id);
     _anchor = _selected.contains(id) ? id : null;
     notifyListeners();
   }
@@ -119,6 +121,7 @@ class PagedSelection<T extends Object> extends ChangeNotifier {
   /// Picks one item without unpicking it if it is already picked.
   void select(T item) {
     final String id = identify(item);
+    if (atLimit && !_selected.contains(id)) return;
     _active = true;
     _anchor = id;
     if (_selected.add(id)) notifyListeners();
@@ -145,7 +148,9 @@ class PagedSelection<T extends Object> extends ChangeNotifier {
     _active = true;
     final int start = from < to ? from : to;
     final int end = from < to ? to : from;
-    _selected.addAll(order.sublist(start, end + 1));
+    for (final id in order.sublist(start, end + 1)) {
+      if (!atLimit) _selected.add(id);
+    }
     _anchor = id;
     notifyListeners();
   }
@@ -156,7 +161,7 @@ class PagedSelection<T extends Object> extends ChangeNotifier {
     _active = true;
     _selected
       ..clear()
-      ..addAll(_loaded.map(identify));
+      ..addAll(_loaded.map(identify).take(limit ?? _loaded.length));
     _anchor = null;
     notifyListeners();
   }
@@ -167,6 +172,16 @@ class PagedSelection<T extends Object> extends ChangeNotifier {
     _selected.clear();
     _anchor = null;
     _active = false;
+    notifyListeners();
+  }
+
+  /// Removes only confirmed successes, preserving failed or unattempted work.
+  void removeIds(Iterable<String> ids) {
+    final before = _selected.length;
+    _selected.removeAll(ids);
+    if (before == _selected.length) return;
+    if (_selected.isEmpty) _active = false;
+    if (!_selected.contains(_anchor)) _anchor = null;
     notifyListeners();
   }
 

@@ -1,29 +1,16 @@
-/// Glass levels and the quality setting (09 section 3.3).
+/// Surface levels and legacy appearance preferences.
 ///
-/// Glass is a container, not a texture: a pane the user reads as one thing.
-/// The budget the gate enforces is at most four panes per window and at most
-/// one modal, and repeated items are never glass.
+/// Standard recipes are opaque, neutral and shadowless at every level.
+/// Quality values remain readable for persisted preferences and custom recipes.
 library;
 
 import 'package:flutter/widgets.dart';
 
 import 'palette.dart';
 
-/// How much blur the device can afford.
+/// A retained preference for custom surface recipes.
 ///
-/// The default per platform is a measurement, recorded in the verification
-/// report, not a preference. It was taken on 2026-09-17 and it is
-/// [full] on every platform. See "Glass: the measurement, and why the default
-/// does not move" in `design/12-verification-report-v2.md`: at the budget
-/// maximum of four panes over a ground that changes every frame, the web
-/// spent no measurable time on the blur (0 of 699 frames over 16.7 ms), the
-/// iPad simulator spent 2.31 ms of raster against 0.52 ms with the blur off,
-/// and the Android emulator's own rasterizer dominated its frame at every
-/// setting. [reduced] recovered nothing on either surface that could measure
-/// it, because the cost is the save layer and the blur pass rather than the
-/// radius, so a device that cannot afford [full] wants [off] rather than the
-/// setting in between. The numbers come from a browser, a simulator and an
-/// emulator; hardware would be better and is what would change the answer.
+/// [UiGlass.light] and [UiGlass.dark] stay flat in every mode.
 enum GlassQuality {
   /// Every sigma as specified.
   full,
@@ -31,7 +18,7 @@ enum GlassQuality {
   /// Every sigma halved.
   reduced,
 
-  /// No blur at all: the pane is `paper` at 92 percent.
+  /// No blur at all: the pane is opaque `paper` with a hairline edge.
   off,
 }
 
@@ -80,7 +67,7 @@ class UiGlassStyle {
   /// The drop shadow, or null at [GlassLevel.flat].
   final BoxShadow? shadow;
 
-  /// What replaces the blur under [GlassQuality.off]: `paper` at 92 percent.
+  /// What replaces the blur under [GlassQuality.off]: opaque `paper`.
   final Color opaqueFallback;
 
   /// The sigma this level paints at under [quality]. Zero means no blur.
@@ -120,140 +107,35 @@ class UiGlass {
   /// At most this many of them are modal.
   static const int maxModalPanes = 1;
 
-  /// The light column of 09 section 3.3.
-  static final UiGlass light = UiGlass(
-    flat: UiGlassStyle(
-      level: GlassLevel.flat,
-      sigma: GlassPalette.flatSigma,
-      fill: GlassPalette.fillLight.withValues(
-        alpha: GlassPalette.flatFillOpacityLight,
-      ),
-      highlight: GlassPalette.highlight.withValues(
-        alpha: GlassPalette.highlightOpacityLight,
-      ),
-      stroke: GroundPalette.inkLight.withValues(
-        alpha: GlassPalette.strokeOpacityLight,
-      ),
-      shadow: null,
-      opaqueFallback: GroundPalette.paperLight.withValues(
-        alpha: GlassPalette.opaqueFallbackOpacity,
-      ),
-    ),
-    floating: UiGlassStyle(
-      level: GlassLevel.floating,
-      sigma: GlassPalette.floatingSigma,
-      fill: GlassPalette.fillLight.withValues(
-        alpha: GlassPalette.floatingFillOpacityLight,
-      ),
-      highlight: GlassPalette.highlight.withValues(
-        alpha: GlassPalette.highlightOpacityLight,
-      ),
-      stroke: GroundPalette.inkLight.withValues(
-        alpha: GlassPalette.strokeOpacityLight,
-      ),
-      shadow: BoxShadow(
-        color: GroundPalette.inkLight.withValues(
-          alpha: GlassPalette.floatingShadowOpacityLight,
-        ),
-        blurRadius: GlassPalette.floatingShadowBlur,
-        offset: const Offset(0, GlassPalette.floatingShadowOffsetY),
-      ),
-      opaqueFallback: GroundPalette.paperLight.withValues(
-        alpha: GlassPalette.opaqueFallbackOpacity,
-      ),
-    ),
-    modal: UiGlassStyle(
-      level: GlassLevel.modal,
-      sigma: GlassPalette.modalSigma,
-      fill: GlassPalette.fillLight.withValues(
-        alpha: GlassPalette.modalFillOpacityLight,
-      ),
-      highlight: GlassPalette.highlight.withValues(
-        alpha: GlassPalette.highlightOpacityLight,
-      ),
-      stroke: GroundPalette.inkLight.withValues(
-        alpha: GlassPalette.strokeOpacityLight,
-      ),
-      shadow: BoxShadow(
-        color: GroundPalette.inkLight.withValues(
-          alpha: GlassPalette.modalShadowOpacityLight,
-        ),
-        blurRadius: GlassPalette.modalShadowBlur,
-        offset: const Offset(0, GlassPalette.modalShadowOffsetY),
-      ),
-      opaqueFallback: GroundPalette.paperLight.withValues(
-        alpha: GlassPalette.opaqueFallbackOpacity,
-      ),
-    ),
+  /// Neutral, opaque surfaces in light mode. Legacy quality settings do not
+  /// reintroduce blur, highlights or shadows.
+  static final UiGlass light = _flatSet(
+    GroundPalette.paperLight,
+    GroundPalette.hairlineLight,
   );
 
-  /// The dark column. The pane is lifted by its highlight rather than by
-  /// white.
-  static final UiGlass dark = UiGlass(
-    flat: UiGlassStyle(
-      level: GlassLevel.flat,
-      sigma: GlassPalette.flatSigma,
-      fill: GlassPalette.fillDark.withValues(
-        alpha: GlassPalette.flatFillOpacityDark,
-      ),
-      highlight: GlassPalette.highlight.withValues(
-        alpha: GlassPalette.highlightOpacityDark,
-      ),
-      stroke: GroundPalette.white.withValues(
-        alpha: GlassPalette.strokeOpacityDark,
-      ),
-      shadow: null,
-      opaqueFallback: GroundPalette.paperDark.withValues(
-        alpha: GlassPalette.opaqueFallbackOpacity,
-      ),
-    ),
-    floating: UiGlassStyle(
-      level: GlassLevel.floating,
-      sigma: GlassPalette.floatingSigma,
-      fill: GlassPalette.fillDark.withValues(
-        alpha: GlassPalette.floatingFillOpacityDark,
-      ),
-      highlight: GlassPalette.highlight.withValues(
-        alpha: GlassPalette.highlightOpacityDark,
-      ),
-      stroke: GroundPalette.white.withValues(
-        alpha: GlassPalette.strokeOpacityDark,
-      ),
-      shadow: BoxShadow(
-        color: GlassPalette.shadowDark.withValues(
-          alpha: GlassPalette.floatingShadowOpacityDark,
-        ),
-        blurRadius: GlassPalette.floatingShadowBlur,
-        offset: const Offset(0, GlassPalette.floatingShadowOffsetY),
-      ),
-      opaqueFallback: GroundPalette.paperDark.withValues(
-        alpha: GlassPalette.opaqueFallbackOpacity,
-      ),
-    ),
-    modal: UiGlassStyle(
-      level: GlassLevel.modal,
-      sigma: GlassPalette.modalSigma,
-      fill: GlassPalette.fillDark.withValues(
-        alpha: GlassPalette.modalFillOpacityDark,
-      ),
-      highlight: GlassPalette.highlight.withValues(
-        alpha: GlassPalette.highlightOpacityDark,
-      ),
-      stroke: GroundPalette.white.withValues(
-        alpha: GlassPalette.strokeOpacityDark,
-      ),
-      shadow: BoxShadow(
-        color: GlassPalette.shadowDark.withValues(
-          alpha: GlassPalette.modalShadowOpacityDark,
-        ),
-        blurRadius: GlassPalette.modalShadowBlur,
-        offset: const Offset(0, GlassPalette.modalShadowOffsetY),
-      ),
-      opaqueFallback: GroundPalette.paperDark.withValues(
-        alpha: GlassPalette.opaqueFallbackOpacity,
-      ),
-    ),
+  /// The same hierarchy in dark mode, without a coloured cast.
+  static final UiGlass dark = _flatSet(
+    GroundPalette.paperDark,
+    GroundPalette.hairlineDark,
   );
+
+  static UiGlass _flatSet(Color paper, Color edge) {
+    UiGlassStyle style(GlassLevel level) => UiGlassStyle(
+      level: level,
+      sigma: 0,
+      fill: paper,
+      highlight: GroundPalette.transparent,
+      stroke: edge,
+      shadow: null,
+      opaqueFallback: paper,
+    );
+    return UiGlass(
+      flat: style(GlassLevel.flat),
+      floating: style(GlassLevel.floating),
+      modal: style(GlassLevel.modal),
+    );
+  }
 
   /// The style for [level].
   UiGlassStyle operator [](GlassLevel level) => switch (level) {

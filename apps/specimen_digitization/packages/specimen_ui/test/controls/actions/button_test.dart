@@ -429,24 +429,26 @@ void main() {
     expect(working.foreground.resolve(off), ui.color.paper);
   });
 
-  testWidgets('the ring keeps turning under reduced motion, because an '
-      'indeterminate indicator is information', (WidgetTester tester) async {
-    await tester.pumpWidget(
-      uiHarness(
-        disableAnimations: true,
-        child: const UiButton(label: 'Saving', loading: true),
-      ),
-    );
-    await tester.pump();
-    expect(
-      tester.binding.transientCallbackCount,
-      greaterThan(0),
-      reason:
-          '04 section 2.5 keeps indeterminate progress moving; 10 section 4.5 '
-          'turns it into an opacity pulse rather than stopping it',
-    );
-    await tester.pumpWidget(uiHarness(child: const SizedBox.shrink()));
-  });
+  testWidgets(
+    'loading remains announced without motion when animation is reduced',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        uiHarness(
+          disableAnimations: true,
+          child: const UiButton(label: 'Saving', loading: true),
+        ),
+      );
+      await tester.pump();
+      expect(
+        tester.binding.transientCallbackCount,
+        0,
+        reason: 'reduced motion keeps the loading indicator still',
+      );
+      expect(find.byType(UiProgress), findsOneWidget);
+      expect(find.bySemanticsLabel('Saving'), findsOneWidget);
+      await tester.pumpWidget(uiHarness(child: const SizedBox.shrink()));
+    },
+  );
 
   testWidgets('it builds right to left and at 200 percent text', (
     WidgetTester tester,

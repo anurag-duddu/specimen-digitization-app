@@ -10,8 +10,8 @@
 // or intake, which is what the report has to show.
 //
 // So this target composes the shipped `SpecimenDigitizationApp` with the same
-// fixture the size class goldens are built from: one record with a
-// photograph, two label regions, two readings that disagree, fields in four
+// explicitly synthetic fixtures: records with a
+// photograph, three label regions, three actual synthetic readers, fields in four
 // states, an outstanding finding and a decision history. Nothing here is a
 // screen, a widget or a token. Every pixel a capture shows is the product's.
 //
@@ -32,8 +32,11 @@ import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/auth.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/review_context.dart';
 import 'package:specimen_digitization/src/sources.dart';
 import 'package:specimen_digitization/src/workspace.dart';
+
+import 'ingestion_repository_fixture.dart';
 
 /// Where the window opens. `--dart-define=CAPTURE_LOCATION=...`, defaulting to
 /// the queue, so one run can be pointed at a screen the navigation does not
@@ -97,24 +100,12 @@ class _CaptureSession implements SessionAccess {
 
 /// The photograph every capture of the record shows.
 ///
-/// Set once by [main] before the first frame.
-late final Uint8List _label;
+/// Rebuilt by [main] so each native integration case can start a fresh fixture.
+late Uint8List _label;
 
 /// The label's pixel size. The fixture's, so the regions below land where the
 /// size class goldens put them.
 const Size _labelSize = Size(1000, 520);
-
-/// The seven lines the checked-in fixture carries.
-const List<String> _labelLines = <String>[
-  'SYNTHETIC TEST LABEL, NOT MUSEUM DATA',
-  '',
-  'FMNH-INS 1001',
-  'Danaus plexippus',
-  'Chicago, Illinois',
-  'Synthetic teaching garden',
-  '2020-06-01',
-  'Independent readings: 1912 / 1917',
-];
 
 /// Paints the label and encodes it as a PNG.
 Future<Uint8List> _drawLabel() async {
@@ -123,34 +114,42 @@ Future<Uint8List> _drawLabel() async {
   const Color paper = Color(0xFFF6F1E1);
   const Color ink = Color(0xFF1B1A16);
   canvas.drawRect(Offset.zero & _labelSize, Paint()..color = paper);
-  canvas.drawRect(
-    const Rect.fromLTWH(24, 24, 952, 472),
-    Paint()
-      ..color = ink
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3,
-  );
-  double y = 60;
-  for (int i = 0; i < _labelLines.length; i++) {
-    final String line = _labelLines[i];
-    if (line.isEmpty) {
-      y += 24;
-      continue;
-    }
-    final ui.ParagraphBuilder builder =
-        ui.ParagraphBuilder(
-            ui.ParagraphStyle(
-              fontSize: i == 0 ? 30 : 34,
-              textAlign: TextAlign.left,
-            ),
-          )
-          ..pushStyle(ui.TextStyle(color: ink))
-          ..addText(line);
-    final ui.Paragraph paragraph = builder.build()
-      ..layout(const ui.ParagraphConstraints(width: 880));
-    canvas.drawParagraph(paragraph, Offset(70, y));
-    y += paragraph.height + 12;
+  void text(String value, Offset position, double width, double size) {
+    final builder = ui.ParagraphBuilder(ui.ParagraphStyle(fontSize: size))
+      ..pushStyle(ui.TextStyle(color: ink))
+      ..addText(value);
+    final paragraph = builder.build()
+      ..layout(ui.ParagraphConstraints(width: width));
+    canvas.drawParagraph(paragraph, position);
   }
+
+  text(
+    'SYNTHETIC TEST LABELS · NOT MUSEUM DATA',
+    const Offset(40, 24),
+    920,
+    28,
+  );
+  for (final rect in <Rect>[
+    const Rect.fromLTRB(40, 90, 650, 275),
+    const Rect.fromLTRB(40, 300, 650, 475),
+    const Rect.fromLTRB(700, 90, 960, 475),
+  ]) {
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..color = ink
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+  }
+  text(
+    'Chicago 1912\nIllinois, U.S.A.\nSynthetic teaching garden',
+    const Offset(62, 112),
+    570,
+    34,
+  );
+  text('Museum 25\nSynthetic collection note', const Offset(62, 325), 570, 34);
+  text('Damaged\nlabel\n\nNo model\nresult', const Offset(723, 112), 218, 31);
   final ui.Image image = await recorder.endRecording().toImage(
     _labelSize.width.round(),
     _labelSize.height.round(),
@@ -164,17 +163,21 @@ Future<Uint8List> _drawLabel() async {
 
 /// One record with everything the review screen has to draw.
 ///
-/// The same shape as `test/golden/golden_harness.dart`'s `goldenSpecimen`, so
-/// a device capture and a size class golden are of the same record.
+/// Browser fixtures exercise actual reader identity, missing results and
+/// acknowledged in-memory correction. Real API persistence has a separate test.
 Specimen _record() => Specimen(<String, dynamic>{
   'specimen_id': 'fixture-001',
   'display_name': 'Pinned beetle, Chicago 1912',
   'revision': 17,
+  'active_run_id': 'synthetic-run',
+  'latest_record_version_id': 'synthetic-run:17',
+  'record_version_id': 'synthetic-run:17',
   'operational_state': 'completed',
   'disposition': 'needs_human_review',
   'reason_codes': const <String>['human_approval_required'],
   'profile_version': 'insects-v3',
   'available_actions': const <String>[
+    'restore_version',
     'field',
     'transcription',
     'coverage',
@@ -204,29 +207,98 @@ Specimen _record() => Specimen(<String, dynamic>{
   'regions': const <Json>[
     <String, dynamic>{
       'region_id': 'r1',
-      'bbox': <int>[100, 52, 400, 212],
+      'bbox': <int>[40, 90, 650, 275],
       'order': 0,
       'rotation_quarter_turns': 0,
     },
     <String, dynamic>{
       'region_id': 'r2',
-      'bbox': <int>[420, 52, 700, 212],
+      'bbox': <int>[40, 300, 650, 475],
       'order': 1,
       'rotation_quarter_turns': 0,
     },
+    {
+      'region_id': 'r3',
+      'bbox': <int>[700, 90, 960, 475],
+      'order': 2,
+      'rotation_quarter_turns': 0,
+    },
+  ],
+  'transcriptions': const <Json>[
+    {
+      'region_id': 'r1',
+      'text': null,
+      'state': 'unresolved',
+      'resolved': false,
+      'observation_ids': ['o1', 'o2', 'o3'],
+    },
+    {
+      'region_id': 'r2',
+      'text': null,
+      'state': 'unresolved',
+      'resolved': false,
+      'observation_ids': ['o4', 'o5'],
+    },
   ],
   'observations': const <Json>[
-    <String, dynamic>{
-      'observation_id': 'o1',
-      'model_id': 'Reading A',
-      'region_id': 'r1',
-      'literal_text': 'Chicago 1912',
-    },
-    <String, dynamic>{
-      'observation_id': 'o2',
-      'model_id': 'Reading B',
+    {
+      'id': 'o2',
+      'model_id': 'Synthetic beta reader',
+      'route_id': 'beta',
+      'provider': 'Local synthetic fixture',
       'region_id': 'r1',
       'literal_text': 'Chicago 1917',
+      'prompt_version': 'synthetic-v1',
+    },
+    {
+      'id': 'o5',
+      'model_id': 'Synthetic beta reader',
+      'route_id': 'beta',
+      'provider': 'Local synthetic fixture',
+      'region_id': 'r2',
+      'literal_text': 'Museum 25',
+      'prompt_version': 'synthetic-v1',
+    },
+    {
+      'id': 'o3',
+      'model_id': 'Synthetic gamma reader',
+      'route_id': 'gamma',
+      'provider': 'Local synthetic fixture',
+      'region_id': 'r1',
+      'literal_text': 'Chicago 1912',
+      'prompt_version': 'synthetic-v1',
+    },
+    {
+      'id': 'o1',
+      'model_id': 'Synthetic alpha reader',
+      'route_id': 'alpha',
+      'provider': 'Local synthetic fixture',
+      'region_id': 'r1',
+      'literal_text': 'Chicago 1912',
+      'prompt_version': 'synthetic-v1',
+    },
+    {
+      'id': 'o4',
+      'model_id': 'Synthetic alpha reader',
+      'route_id': 'alpha',
+      'provider': 'Local synthetic fixture',
+      'region_id': 'r2',
+      'literal_text': 'Museum 25',
+      'prompt_version': 'synthetic-v1',
+    },
+  ],
+  'evidence': const <Json>[
+    {
+      'evidence_id': 'e1',
+      'region_id': 'r1',
+      'kind': 'literal_text',
+      'excerpt': 'Chicago',
+    },
+    {
+      'evidence_id': 'e2',
+      'region_id': 'r2',
+      'kind': 'literal_text',
+      'excerpt': 'Museum 25',
     },
   ],
   'disagreements': const <Json>[
@@ -244,7 +316,8 @@ Specimen _record() => Specimen(<String, dynamic>{
       'state': 'supported',
       'literal_value': 'U.S.A.',
       'parsed_value': 'United States',
-      'normalized_value': 'United States of America',
+      'normalized': 'United States of America',
+      'evidence_ids': <String>['e1', 'e2'],
     },
     <String, dynamic>{
       'field_key': 'collectors',
@@ -289,19 +362,64 @@ Specimen _record() => Specimen(<String, dynamic>{
   ],
 });
 
-/// The four records the queue lists.
+/// Varied, clearly synthetic rows exercise state views and loaded pagination.
 List<Specimen> _queue() => <Specimen>[
-  for (int i = 1; i <= 4; i++)
+  for (int i = 1; i <= 8; i++)
     Specimen(<String, dynamic>{
       ..._record().data,
       'specimen_id': 'fixture-00$i',
-      'display_name': 'Pinned beetle $i, Chicago 1912',
+      'display_name': 'Synthetic label study $i',
+      if (i == 3) ...{
+        'operational_state': 'running',
+        'disposition': null,
+        'available_actions': <String>[],
+      },
+      if (i == 4) ...{
+        'operational_state': 'processing_blocked',
+        'disposition': null,
+        'available_actions': ['retry'],
+      },
+      if (i == 5) ...{
+        'disposition': 'cleared',
+        'available_actions': <String>[],
+      },
+      if (i == 6) ...{
+        'disposition': 'needs_human_review',
+        'available_actions': <String>[],
+      },
     }),
 ];
 
 /// The collection API, answering from the fixture rather than from a server.
-class _CaptureRepository implements SpecimenRepository, SourceRepository {
+class _CaptureRepository
+    implements SpecimenRepository, SourceRepository, SpecimenHistoryRepository {
   final List<Specimen> _records = _queue();
+  final PreviewRepository _intake = PreviewRepository();
+  final Map<String, Map<int, Specimen>> _versions = {};
+  final Map<String, Specimen> _requests = {};
+  final Map<String, String> _restorePayloads = {};
+
+  _CaptureRepository() {
+    for (final record in _records) {
+      _versions[record.id] = {
+        1: Specimen({
+          ...record.data,
+          'revision': 1,
+          'record_version_id': 'synthetic-run:1',
+          'latest_record_version_id': 'synthetic-run:1',
+          'audit_events': <Json>[
+            {
+              'action': 'initial_record',
+              'actor_id': 'fixture-user',
+              'created_at': '2026-09-07T10:00:00Z',
+              'reason': 'Initial synthetic specimen data',
+            },
+          ],
+        }),
+        record.revision: record,
+      };
+    }
+  }
 
   @override
   String get mode => 'synthetic';
@@ -327,19 +445,55 @@ class _CaptureRepository implements SpecimenRepository, SourceRepository {
     CollectionScope scope, {
     String query = '',
     String status = '',
-  }) async => _records;
+  }) async => (await specimenPage(
+    scope,
+    filters: {
+      if (query.isNotEmpty) 'specimen_id': query,
+      if (status.isNotEmpty) 'disposition': status,
+    },
+  )).items;
 
   @override
   Future<SpecimenPage> specimenPage(
     CollectionScope scope, {
     Map<String, String> filters = const <String, String>{},
     String? cursor,
-  }) async => SpecimenPage(_records);
+  }) async {
+    final matches = _records
+        .where(
+          (record) =>
+              (filters['specimen_id'] == null ||
+                  record.id == filters['specimen_id']) &&
+              (filters['disposition'] == null ||
+                  record.disposition == filters['disposition']) &&
+              (filters['state'] == null || record.state == filters['state']),
+        )
+        .toList();
+    final offset = int.tryParse(cursor ?? '') ?? 0;
+    final page = matches.skip(offset).take(4).toList();
+    return SpecimenPage(
+      page,
+      nextCursor: offset + page.length < matches.length
+          ? '${offset + page.length}'
+          : null,
+    );
+  }
 
   @override
-  Future<Specimen> specimen(CollectionScope scope, String id) async =>
-      _records.where((Specimen record) => record.id == id).firstOrNull ??
-      _records.first;
+  Future<Specimen> specimen(CollectionScope scope, String id) async {
+    // Opt-in browser inspection of the real loading layout. The default fixture
+    // remains immediate; this affects no production repository or live request.
+    final delay = int.tryParse(Uri.base.queryParameters['detailDelayMs'] ?? '');
+    if (delay != null && delay > 0) {
+      await Future<void>.delayed(Duration(milliseconds: delay.clamp(0, 10000)));
+    }
+    return _records.where((Specimen record) => record.id == id).firstOrNull ??
+        (throw const ApiFailure(
+          'Synthetic record not found',
+          code: 'not_found',
+          status: 404,
+        ));
+  }
 
   @override
   Future<Json> artifact(
@@ -355,19 +509,17 @@ class _CaptureRepository implements SpecimenRepository, SourceRepository {
     required int throughRevision,
     int afterRevision = 0,
   }) async => HistoryPage(
-    items: const <Json>[
-      <String, dynamic>{
-        'revision': 17,
-        'action': 'transcribe',
-        'actor_id': 'system',
-        'created_at': '2026-09-07T10:04:00Z',
-      },
-      <String, dynamic>{
-        'revision': 16,
-        'action': 'intake',
-        'actor_id': 'operator-1',
-        'created_at': '2026-09-07T10:00:00Z',
-      },
+    items: [
+      for (final record in (_versions[id]?.values ?? <Specimen>[]).where(
+        (r) => r.revision <= throughRevision && r.revision > afterRevision,
+      ))
+        {
+          'revision': record.revision,
+          'run_id': 'synthetic-run',
+          ...record.audit.lastOrNull ??
+              <String, dynamic>{'action': 'initial_record'},
+          'actor_id': 'fixture-user',
+        },
     ],
     throughRevision: throughRevision,
   );
@@ -379,22 +531,158 @@ class _CaptureRepository implements SpecimenRepository, SourceRepository {
     int revision, {
     String? runId,
     String? runSha256,
-  }) async => _records.first;
+  }) async =>
+      _versions[id]?[revision] ??
+      (throw const ApiFailure(
+        'Synthetic version not found',
+        code: 'not_found',
+        status: 404,
+      ));
 
   @override
-  Future<Json> preflight(CollectionScope scope, IntakeFile file) async =>
-      const <String, dynamic>{};
+  Future<Specimen> restoreVersion(
+    CollectionScope scope,
+    Specimen specimen, {
+    required int sourceRevision,
+    required bool resetToInitial,
+    required String reason,
+    required String idempotencyKey,
+  }) async {
+    final payload =
+        '${scope.key}:${specimen.id}:${specimen.revision}:$sourceRevision:$resetToInitial:$reason';
+    if (_requests.containsKey(idempotencyKey)) {
+      if (_restorePayloads[idempotencyKey] != payload) {
+        throw const ApiFailure(
+          'Idempotency key belongs to another request.',
+          code: 'conflict',
+          status: 409,
+        );
+      }
+      return _requests[idempotencyKey]!;
+    }
+    final current = await this.specimen(scope, specimen.id);
+    if (current.revision != specimen.revision) {
+      throw const ApiFailure(
+        'This record changed. Refresh before restoring.',
+        code: 'conflict',
+        status: 409,
+      );
+    }
+    if (reason.trim().isEmpty || (resetToInitial && sourceRevision != 1)) {
+      throw const ApiFailure(
+        'A reason and a valid retained version are required.',
+        code: 'validation',
+        status: 422,
+      );
+    }
+    final source = await historicalSpecimen(scope, current.id, sourceRevision);
+    final sourceEvidence = objects(source.data['evidence']);
+    final authorityEvidenceIds = sourceEvidence
+        .map(objectOf)
+        .where((entry) => entry['kind'] == 'authority_selection')
+        .map((entry) => entry['id'] ?? entry['evidence_id'])
+        .toSet();
+    final fields = [
+      for (final field in source.fields)
+        {
+          ...field,
+          if (field['authority_id'] != null ||
+              field['authority_identity'] != null ||
+              (field['evidence_ids'] as List? ?? const []).any(
+                authorityEvidenceIds.contains,
+              )) ...{
+            'normalized': null,
+            'normalized_value': null,
+            'resolved_value': null,
+          },
+          'authority_id': null,
+          'authority_identity': null,
+          'evidence_ids': (field['evidence_ids'] as List? ?? const [])
+              .where((id) => !authorityEvidenceIds.contains(id))
+              .toList(),
+        },
+    ];
+    final revision = current.revision + 1;
+    final runId = 'synthetic-restore-$revision';
+    final event = <String, dynamic>{
+      'action': resetToInitial
+          ? 'review_reset_initial'
+          : 'review_restore_version',
+      'actor_id': 'fixture-user',
+      'source_revision': sourceRevision,
+      'before': {
+        'specimen_id': current.id,
+        'revision': current.revision,
+        'run_id': current.data['active_run_id'],
+      },
+      'after': {'source_revision': sourceRevision},
+      'reason': reason,
+      'created_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    final restored = Specimen({
+      ...source.data,
+      'revision': revision,
+      'active_run_id': runId,
+      'record_version_id': '$runId:$revision',
+      'latest_record_version_id': '$runId:$revision',
+      'assets': current.assets,
+      'human_approved': false,
+      'disposition': null,
+      'status': 'paused',
+      'operational_state': 'paused',
+      'blocker': 'history_restored_review_required',
+      'run': {
+        ...objectOf(source.data['run']),
+        'id': runId,
+        'stage': 'paused',
+        'human_approved': false,
+        'disposition': null,
+        'phase_results': <String, dynamic>{},
+        'review_risk': null,
+        'authority_results': <dynamic>[],
+        'lookups': <dynamic>[],
+        'status': 'paused',
+        'blocker': 'history_restored_review_required',
+      },
+      'fields': fields,
+      'authority_results': <dynamic>[],
+      'authority_unresolved': <String, dynamic>{},
+      'evidence': sourceEvidence
+          .where((entry) => objectOf(entry)['kind'] != 'authority_selection')
+          .toList(),
+      'available_actions': [
+        'restore_version',
+        'transcription',
+        'reading_metadata',
+        'field',
+        'regions',
+        'coverage',
+        'retry',
+      ],
+      'audit_events': [...current.audit, event],
+    });
+    _records[_records.indexWhere((record) => record.id == current.id)] =
+        restored;
+    _versions[current.id]![revision] = restored;
+    _requests[idempotencyKey] = restored;
+    _restorePayloads[idempotencyKey] = payload;
+    return restored;
+  }
+
+  @override
+  Future<Json> preflight(CollectionScope scope, IntakeFile file) =>
+      _intake.preflight(scope, file);
 
   @override
   Future<Json> createIntake(
     CollectionScope scope,
     IntakeFile file,
     String key,
-  ) async => const <String, dynamic>{};
+  ) => _intake.createIntake(scope, file, key);
 
   @override
-  Future<Json> resumeIntake(CollectionScope scope, String id) async =>
-      const <String, dynamic>{};
+  Future<Json> resumeIntake(CollectionScope scope, String id) =>
+      _intake.resumeIntake(scope, id);
 
   @override
   Future<void> upload(
@@ -402,14 +690,11 @@ class _CaptureRepository implements SpecimenRepository, SourceRepository {
     Json session,
     IntakeFile file,
     void Function(double) progress,
-  ) async {}
+  ) => _intake.upload(scope, session, file, progress);
 
   @override
-  Future<Json> completeIntake(
-    CollectionScope scope,
-    String id,
-    String key,
-  ) async => const <String, dynamic>{};
+  Future<Json> completeIntake(CollectionScope scope, String id, String key) =>
+      _intake.completeIntake(scope, id, key);
 
   @override
   Future<Specimen> review(
@@ -417,10 +702,143 @@ class _CaptureRepository implements SpecimenRepository, SourceRepository {
     Specimen specimen,
     Json change,
     String key,
-  ) async => Specimen(<String, dynamic>{
-    ...specimen.data,
-    'revision': specimen.revision + 1,
-  });
+  ) async {
+    if (_requests.containsKey(key)) return _requests[key]!;
+    final current = await this.specimen(scope, specimen.id);
+    if (current.revision != specimen.revision) {
+      throw const ApiFailure(
+        'This record changed. Refresh before saving.',
+        code: 'conflict',
+        status: 409,
+      );
+    }
+    if (textOf(change['reason'], '').trim().isEmpty) {
+      throw const ApiFailure(
+        'A reason is required',
+        code: 'validation',
+        status: 422,
+      );
+    }
+    final kind = change['kind'];
+    final permission = kind == 'transcription_adjudication'
+        ? 'transcription'
+        : kind == 'field_correction'
+        ? 'field'
+        : kind;
+    if (!(current.data['available_actions'] as List).contains(permission)) {
+      throw const ApiFailure(
+        'This action is unavailable for this synthetic record',
+        code: 'forbidden',
+        status: 403,
+      );
+    }
+    final data = <String, dynamic>{...current.data};
+    if (kind == 'transcription_adjudication') {
+      final transcripts = objects(current.data['transcriptions']);
+      final index = transcripts.indexWhere(
+        (t) => t['region_id'] == change['target_id'],
+      );
+      if (index < 0) {
+        throw const ApiFailure(
+          'No existing transcription for this label',
+          code: 'validation',
+          status: 422,
+        );
+      }
+      final state = change['state'];
+      if (state == 'supported' && textOf(change['value'], '').trim().isEmpty) {
+        throw const ApiFailure(
+          'Accepted text is required',
+          code: 'validation',
+          status: 422,
+        );
+      }
+      transcripts[index] = {
+        ...transcripts[index],
+        'text': state == 'supported' ? change['value'] : null,
+        'state': state,
+        'value_state': state,
+        'resolved': state == 'supported',
+        'reason': change['reason'],
+        'actor': 'fixture-user',
+      };
+      data['transcriptions'] = transcripts;
+      data['disposition'] = 'needs_human_review';
+      data['human_approved'] = false;
+    } else if (kind == 'field_correction') {
+      final ids = (change['evidence_ids'] as List? ?? []).cast<String>();
+      final retained = current.evidence.map((e) => e['evidence_id']).toSet();
+      if (ids.any((id) => !retained.contains(id))) {
+        throw const ApiFailure(
+          'Unknown retained evidence',
+          code: 'validation',
+          status: 422,
+        );
+      }
+      final fields = current.fields;
+      final index = fields.indexWhere(
+        (f) => f['field_key'] == change['target_id'],
+      );
+      if (index < 0) {
+        throw const ApiFailure(
+          'Unknown record field',
+          code: 'validation',
+          status: 422,
+        );
+      }
+      fields[index] = {
+        ...fields[index],
+        'literal_value': change['value'],
+        'state': change['state'],
+        'parsed_value': change['parsed'],
+        'normalized': change['normalized'],
+        'authority_id': change['authority_id'],
+        'evidence_ids': ids,
+        'reason': change['reason'],
+      };
+      data['fields'] = fields;
+      data['disposition'] = 'needs_human_review';
+    } else if (kind == 'coverage') {
+      data['run'] = {
+        ...objectOf(current.data['run']),
+        'coverage_confirmed': true,
+      };
+    } else if (kind == 'regions') {
+      data['regions'] = change['regions'];
+    } else if (kind == 'approve') {
+      throw const ApiFailure(
+        'Required field and label checks remain unresolved',
+        code: 'conflict',
+        status: 409,
+      );
+    } else {
+      throw const ApiFailure(
+        'This action is not implemented in the synthetic capture',
+        code: 'unavailable',
+        status: 422,
+      );
+    }
+    final revision = current.revision + 1;
+    data.addAll({
+      'revision': revision,
+      'latest_record_version_id': 'synthetic-run:$revision',
+      'record_version_id': 'synthetic-run:$revision',
+      'audit_events': [
+        ...current.audit,
+        {
+          'action': kind,
+          'actor_id': 'fixture-user',
+          'reason': change['reason'],
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        },
+      ],
+    });
+    final saved = Specimen(data);
+    _records[_records.indexWhere((r) => r.id == specimen.id)] = saved;
+    _versions[specimen.id]![revision] = saved;
+    _requests[key] = saved;
+    return saved;
+  }
 
   @override
   Future<Specimen> retry(
@@ -437,14 +855,33 @@ class _CaptureRepository implements SpecimenRepository, SourceRepository {
     BulkDecisionKind kind,
     String reason,
     String key,
-  ) async => BulkDecisionReport(<BulkDecisionResult>[
-    for (final Specimen specimen in specimens)
-      BulkDecisionResult(
-        specimenId: specimen.id,
-        outcome: BulkOutcome.applied,
-        revision: specimen.revision + 1,
-      ),
-  ]);
+  ) async {
+    final results = <BulkDecisionResult>[];
+    for (final record in specimens) {
+      try {
+        final saved = await review(scope, record, {
+          'kind': kind.wire,
+          'reason': reason,
+        }, '$key:${record.id}');
+        results.add(
+          BulkDecisionResult(
+            specimenId: record.id,
+            outcome: BulkOutcome.applied,
+            revision: saved.revision,
+          ),
+        );
+      } on ApiFailure catch (error) {
+        results.add(
+          BulkDecisionResult(
+            specimenId: record.id,
+            outcome: BulkOutcome.refused,
+            message: error.message,
+          ),
+        );
+      }
+    }
+    return BulkDecisionReport(results);
+  }
 
   @override
   Future<List<RegisteredSource>> sources(CollectionScope scope) async =>

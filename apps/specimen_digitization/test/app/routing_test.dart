@@ -22,7 +22,7 @@ import '../ui_finders.dart';
 const String fixtureCollection = 'org/insects';
 
 /// The window every routing test runs in: one pane, so a record is a push.
-const Size routingWindow = Size(800, 1400);
+const Size routingWindow = Size(390, 844);
 
 String locationOf(WidgetTester tester) => GoRouter.of(
   tester.element(find.byType(Navigator).first),
@@ -116,11 +116,11 @@ void main() {
   ) async {
     await pumpApp(tester);
     await tester.scrollUntilVisible(
-      find.text('Synthetic insect label'),
+      find.text('fixture-001'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('Synthetic insect label'));
+    await tester.tap(find.text('fixture-001'));
     await tester.pumpAndSettle();
     expect(find.byType(WorkbenchScreen), findsOneWidget);
     expect(locationOf(tester), endsWith('/queue/fixture-001'));

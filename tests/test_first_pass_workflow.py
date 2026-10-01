@@ -175,24 +175,47 @@ def test_a_first_pass_failing_before_it_returns_leaves_its_outcome_unknown(tmp_p
 
 
 def test_a_billed_first_pass_reserves_before_its_call_which_is_no_reading(tmp_path):
+    from specimen_digitization.application.collection_profiles import PriceList
+    from specimen_digitization.application.lane_allowance import ProgramLedger
+    from test_lane_costs import seed_synthetic_ledger
+
     # Item 4 of the steward's review of #97: the step reserves its stage cost and
     # tokens and records its intent before the call, and the call's Observation is
     # the decision's, never one of the run's readings.
     adapters = ChoosingAdapters(LocalBlobs(tmp_path / "blobs"), lambda r: None)
     workflow, principal, specimen_id = start(tmp_path, adapters)
     repo = workflow.repository
+    seed_synthetic_ledger(repo, reserved_total_micros=0)
     while not Workflow.next_step(repo.get(principal.scope, specimen_id).run).startswith(
         "first_pass:"
     ):
         workflow.step(principal, specimen_id)
     specimen = repo.get(principal.scope, specimen_id)
     profile = specimen.run.profile
+    # Offline fixture prices: two worst-case requests reserve 42 micro-dollars,
+    # below the existing 900 stage floor. These are not live provider prices.
+    prices = PriceList(
+        version="synthetic-first-pass-prices-v1",
+        as_of="2026-10-01",
+        sources=("https://prices.example.test/first-pass-fixture",),
+        models={
+            "synthetic-first-pass": {
+                "input_micros_per_million": 1_000,
+                "output_micros_per_million": 1_000,
+                "context_tokens": 16_384,
+            }
+        },
+    )
     specimen.run.profile = profile.model_copy(
         update={
             "synthetic": False,
+            "first_pass_route": "synthetic-first-pass",
             "execution": profile.execution.model_copy(
                 update={
                     "approved_cost_limit_micros": 10_000,
+                    "program_allowance_micros": 5_000_000,
+                    "program_ledger_collection": principal.scope.collection_id,
+                    "price_list": prices.model_dump(mode="json"),
                     "stage_cost_reservations": StageCostReservations(
                         version="stage-cost-reservations-v1",
                         cost_micros={"first_pass": 900},
@@ -207,6 +230,7 @@ def test_a_billed_first_pass_reserves_before_its_call_which_is_no_reading(tmp_pa
     def first_pass(item, region, readings):
         retained = repo.get(principal.scope, item.id).run
         usage = retained.usage
+        assert ProgramLedger(repo, principal.scope).read()["reserved_total_micros"] == 900
         seen.append(
             (retained.blocker, usage.reserved_cost_micros, usage.reserved_tokens)
         )

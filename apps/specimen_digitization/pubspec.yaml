@@ -45,9 +45,13 @@ dependencies:
   firebase_auth: ^6.6.1
   http: ^1.6.0
   crypto: ^3.0.7
+  desktop_drop: ^0.8.4
   file_selector: ^1.1.0
   image_picker: ^1.2.3
   shared_preferences: ^2.5.5
+  # Local 7.0.0 removes raw Android intent/URL logging; see its PROVENANCE.md.
+  app_links:
+    path: third_party/app_links
   firebase_app_check: ^0.4.7
   camera: ^0.11.0
 
@@ -87,6 +91,8 @@ dev_dependencies:
   # 3.38.5 and 2.4.7 is the last one that does. Same reason as go_router
   # above. Revisit with the SDK, not on its own.
   flutter_native_splash: 2.4.7
+  integration_test:
+    sdk: flutter
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

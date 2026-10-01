@@ -179,15 +179,22 @@ class Google:
             require(project.get("name") == f"projects/{self.packet['identity']['project_number']}"
                     and project.get("projectId") == PROJECT and project.get("state") == "ACTIVE", "observed project identity mismatch")
 
-    def request(self, api: str, method: str, resource: str, *, body=None, params=None, missing=False):
+    def request(self, api: str, method: str, resource: str, *, body=None, params=None, missing=False, diff=False):
         require(api in ORIGINS and method in {"GET", "POST", "PATCH", "DELETE", "PUT"}, "unsupported Google request")
+        # Only Data Connect's validate-only schema update keeps a 400's body, the SQL diff (RELEASE.md 4.3); never printed.
+        require(not diff or api == "data" and method == "PATCH" and (params or {}).get("validateOnly") == "true",
+                "only a validate-only schema update keeps its error body")
         require(method != "PUT" or self.plane == "data-initialization", "PUT is reserved for fixed initializer role replacement")
         if self.plane == "data-initialization":
             from release_initialize import validate_request
-            validate_request(api, method, resource, body, params)
+            import release_gate
+            validate_request(api, method, resource, body, params, gate=release_gate.is_gate_record(self.packet))
         aliases = {PROJECT, self.packet["identity"]["project_number"]}
         require(any(resource.startswith(f"projects/{value}/") or resource == f"projects/{value}" for value in aliases), "foreign Google resource")
         require(not any(value in resource for value in ("?", "#", "..", "%", "\\")), "invalid Google resource")
+        # Of the SQL instances, only the fixed restore clone is ever deleted (RELEASE.md 4.4 item 1).
+        require(api != "sql" or method != "DELETE" or re.fullmatch(
+            r"projects/[^/]+/instances/specimen-digitization-restore-20260908-r1", resource), "only the restore clone is deleted")
         recovery_deadline = None
         if method != "GET":
             self.packet = admit(self.path, self.plane)
@@ -231,7 +238,9 @@ class Google:
             if missing and response.status_code == 404:
                 return None
             if not 200 <= response.status_code < 300:
-                raise HTTPFailure(response.status_code)
+                failure = HTTPFailure(response.status_code)
+                failure.body = response.json() if diff and response.status_code == 400 else None
+                raise failure
             return response.json()
 
     def claim_restore(self, payload, directory):
@@ -240,12 +249,15 @@ class Google:
         require(self.plane == "data" and directory == self.path.parent
                 and os.environ.get("RELEASE_SERVICE_ACCOUNT") == ACTOR, "only ordinary recovery can claim")
         require(admit(self.path, "data") == self.packet, "claim admission changed")
+        import release_gate
+        # A gate record's claim is bounded by its own window (RELEASE.md 4.4), an envelope's by its recovery deadline.
+        deadline = strict_json(payload)["expires_at_unix" if release_gate.is_gate_record(self.packet)
+                                        else "recovery_expires_at_unix"]
         body, content_type = multipart(payload)
         retain(directory / "clone-allowance-request.body", body)
         retain(directory / "clone-allowance-request.json", canonical({"method": "POST", "url": URL,
             "params": PARAMS, "content_type": content_type, "body_sha256": sha(body)}))
-        remaining = min(self.packet["expires_at_unix"],
-                        strict_json(payload)["recovery_expires_at_unix"]) - time.time()
+        remaining = min(self.packet["expires_at_unix"], deadline) - time.time()
         require(remaining > 1800, "insufficient original claim authority")
         response = None
         raw = bytearray()
@@ -274,7 +286,7 @@ class Google:
         require(complete, "incomplete claim response")
         if response.status_code != 200:
             raise HTTPFailure(response.status_code)
-        require(time.time() < strict_json(payload)["recovery_expires_at_unix"], "claim response arrived too late")
+        require(time.time() < deadline, "claim response arrived too late")
         return strict_json(bytes(raw))
 
     def wait(self, api: str, operation: dict, *, maximum_seconds=600):
@@ -304,7 +316,11 @@ class Google:
     def dispose_initializer(self, instance, action):
         from release_initialize import user_request
         require(self.plane == "data" and action in {"revoke", "delete"}, "ordinary disposal cannot create or grant roles")
-        cleanup_packet(self.path, dict(os.environ))
+        import release_gate
+        if release_gate.is_gate_record(self.packet):
+            self.packet = admit(self.path, self.plane)  # G11: the job's own gate record, re-admitted; no envelope permit.
+        else:
+            cleanup_packet(self.path, dict(os.environ))
         method, resource, args = user_request(instance, action)
         remaining = getattr(self, "sql_read_deadline", 0) - time.time()
         require(remaining > 0, "ordinary disposal deadline reached")

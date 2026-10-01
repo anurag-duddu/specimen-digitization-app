@@ -1,295 +1,187 @@
-/// The capture card and the pre-upload checks (07 section 5; 13 section 4.4).
-///
-/// Two panes, one job each: how photographs arrive and how sensitive they
-/// are, then what an operator looks at before a batch leaves the device. They
-/// were one card, which laid out 1018 dp tall inside an 844 dp window and put
-/// the manifest a viewport and a half below the fold (13 section 2.5). The
-/// batch's own name and purpose are the page's header above them, and the
-/// upload action is the screen's decision, which 13 section 3.3 puts in the
-/// frame's action bar.
+/// Device-appropriate ways to add specimen photographs to intake.
 library;
 
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
-import '../../widgets/caveat_text.dart';
+/// The screen's own name.
+const String intakeTitle = 'Add specimens';
 
-/// The five checks an operator makes before a batch leaves the device
-/// (heuristics audit, H10.5).
-const List<String> preUploadChecklist = <String>[
-  'Sharp focus',
-  'Smallest text readable',
-  'Even exposure',
-  'No glare',
-  'Every label inside the frame',
-];
+/// What the screen is for, including the possible next step after admission.
+const String intakePurpose =
+    'Add one photograph per specimen. Eligible uploads may queue for processing.';
 
-/// The one confirmation this screen asks for, per batch.
-///
-/// The checkbox resets whenever a file is added, so a tick never authorises
-/// photographs the operator had not selected when they ticked it
-/// (heuristics audit, H5.3).
-const String batchConfirmationLabel = 'I checked framing and readability';
-
-/// The screen's own name, which the page draws above the capture card.
-///
-/// It was the card's title. A heading over a pane that is the only pane on
-/// the screen is the screen's heading (02 section 4.1), and 13 section 4.4
-/// gives intake a batch header of its own.
-const String intakeTitle = 'Add photographs';
-
-/// What the screen is for, in one line under its name.
-const String intakePurpose = 'One photograph per specimen.';
-
-/// Where photographs come from and how they are classified.
-class IntakeCaptureCard extends StatelessWidget {
+/// The capture surface adapts its source choices to the current platform.
+class IntakeCaptureCard extends StatefulWidget {
   const IntakeCaptureCard({
     super.key,
-    required this.sensitive,
-    required this.onSensitivityChanged,
+    required this.web,
     required this.onChooseFiles,
     required this.onTakePhotograph,
+    required this.onDropFiles,
     required this.cameraAvailable,
+    this.onBrowseSources,
+    this.minDropHeight = 0,
+    this.dragActive = false,
   });
 
-  /// The classification that will be applied to photographs added next.
-  final bool sensitive;
+  /// Whether this is the browser client.
+  final bool web;
 
-  /// Called when the operator changes that classification.
-  final ValueChanged<bool>? onSensitivityChanged;
-
-  /// Opens the file picker. Null while the screen is busy.
+  /// Opens the system file picker. Null while a picker is already open.
   final VoidCallback? onChooseFiles;
 
-  /// Opens the capture route. Null while the screen is busy.
+  /// Opens capture. On mobile web this uses the browser camera picker.
   final VoidCallback? onTakePhotograph;
 
-  /// False on web and desktop, where this client has no camera to offer. The
-  /// control is not rendered at all rather than rendered dead.
+  /// Adds operating-system files dropped onto the web surface.
+  final ValueChanged<List<XFile>>? onDropFiles;
+
+  /// Whether the native app can offer camera capture.
   final bool cameraAvailable;
 
-  /// The screen's own name, kept here so a call site that had the card's
-  /// title keeps compiling and reads the one spelling.
-  static const String title = intakeTitle;
+  /// Opens registered storage, alongside the local file choices.
+  final VoidCallback? onBrowseSources;
 
-  /// What a build with no camera says instead of a control it cannot offer.
-  static const String noCameraHelp =
-      'Camera capture runs in the Android and iOS apps. Here, choose a file.';
+  /// The available content height allocated to the web drop surface.
+  final double minDropHeight;
+
+  /// True while the page-level drop target is receiving a drag.
+  final bool dragActive;
+
+  static const String title = intakeTitle;
+  static const String dropTitle = 'Drop specimen photos anywhere';
+  static const String dropActive = 'Release to add specimen photos';
+  static const String cameraTitle = 'Camera';
+  static const String bulkTitle = 'Files';
+
+  @override
+  State<IntakeCaptureCard> createState() => _IntakeCaptureCardState();
+}
+
+class _IntakeCaptureCardState extends State<IntakeCaptureCard> {
+  bool _dragging = false;
 
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    return Surface(
-      radius: ui.shape.tile,
-      padding: EdgeInsetsDirectional.all(ui.space.s6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          UiButtonRow(
-            primary: UiButton(
-              key: const ValueKey<String>('intake-choose-files'),
-              label: 'Choose files',
-              leading: UiIcons.uploadFile,
-              onPressed: onChooseFiles,
-            ),
-            secondary: cameraAvailable
-                ? UiButton(
-                    key: const ValueKey<String>('intake-take-photograph'),
-                    label: 'Take photograph',
-                    variant: UiButtonVariant.secondary,
-                    leading: UiIcons.camera,
-                    onPressed: onTakePhotograph,
-                  )
-                : null,
-          ),
-          if (!cameraAvailable) ...<Widget>[
-            SizedBox(height: ui.space.s3),
-            Text(
-              noCameraHelp,
-              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-            ),
-          ],
-          SizedBox(height: ui.space.s6),
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: UiSegmented<bool>(
-              key: const ValueKey<String>('intake-sensitivity'),
-              // The name the select rung offers the options under, on a
-              // column too narrow for the track (11 section 3.3). The track
-              // itself never draws it; the line below the control does.
-              label: 'Sensitivity',
-              value: sensitive,
-              onChanged: onSensitivityChanged,
-              segments: const <UiSegment<bool>>[
-                UiSegment<bool>(
-                  value: true,
-                  label: 'Sensitive',
-                  icon: UiIcons.locked,
-                ),
-                UiSegment<bool>(
-                  value: false,
-                  label: 'Not sensitive',
-                  icon: UiIcons.unlocked,
+    final Widget files = Surface(
+      radius: ui.shape.inner,
+      hairline: true,
+      role: SurfaceRole.ground,
+      padding: EdgeInsetsDirectional.all(ui.space.s4),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minHeight: widget.minDropHeight),
+        child: _fileContent(context),
+      ),
+    );
+    final Widget bulk = !widget.web || widget.onDropFiles == null
+        ? files
+        : DropTarget(
+            key: const ValueKey<String>('intake-file-drop-target'),
+            enable: widget.onDropFiles != null,
+            onDragEntered: (_) => setState(() => _dragging = true),
+            onDragExited: (_) => setState(() => _dragging = false),
+            onDragDone: (DropDoneDetails details) {
+              setState(() => _dragging = false);
+              widget.onDropFiles?.call(
+                details.files.whereType<DropItemFile>().cast<XFile>().toList(),
+              );
+            },
+            child: files,
+          );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (widget.cameraAvailable) ...<Widget>[
+          Surface(
+            radius: ui.shape.inner,
+            hairline: true,
+            role: SurfaceRole.ground,
+            padding: EdgeInsetsDirectional.all(ui.space.s4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(IntakeCaptureCard.cameraTitle, style: ui.type.label),
+                SizedBox(height: ui.space.s2),
+                UiButton(
+                  key: const ValueKey<String>('intake-take-photograph'),
+                  label: 'Take photos',
+                  leading: UiIcons.camera,
+                  onPressed: widget.onTakePhotograph,
                 ),
               ],
             ),
           ),
           SizedBox(height: ui.space.s2),
-          Text(
-            'Applies to photographs you add next.',
-            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-          ),
         ],
-      ),
+        bulk,
+      ],
     );
   }
-}
 
-/// What an operator looks at before a batch leaves the device, and the one
-/// confirmation that releases it (13 section 4.4).
-///
-/// The two caveats are here rather than beside the controls they qualify:
-/// they are what a reviewer has to know before a batch goes, which is what
-/// this section is, and the capture card is the part of the form a phone has
-/// to show above the fold.
-class IntakeChecks extends StatelessWidget {
-  const IntakeChecks({
-    super.key,
-    required this.confirmed,
-    required this.onConfirmedChanged,
-    this.upload,
-  });
-
-  /// Whether this batch has been confirmed.
-  final bool confirmed;
-
-  /// Called when the confirmation is ticked or cleared.
-  final ValueChanged<bool>? onConfirmedChanged;
-
-  /// The upload action, for a screen with no frame to put it in.
-  ///
-  /// Null inside the application, where 13 section 3.3 puts the decision in
-  /// the scaffold's action bar. A component test, and any host with no
-  /// `UiScaffold` above this screen, draws it here instead, so the one
-  /// control that releases a batch is never unreachable.
-  final Widget? upload;
-
-  /// What the checklist is called.
-  static const String checklistTitle = 'Before you upload, check:';
-
-  /// What the one confirmation says under itself.
-  static const String confirmationHelp =
-      'Clears whenever you add a photograph.';
-
-  /// What the server does after the batch leaves, said once beside the
-  /// confirmation that sends it.
-  static const String serverChecks = 'The server runs its own checks.';
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _fileContent(BuildContext context) {
     final UiThemeData ui = context.ui;
-    return Surface(
-      radius: ui.shape.tile,
-      padding: EdgeInsetsDirectional.all(ui.space.s6),
+    final bool dragging = widget.dragActive || _dragging;
+    return Semantics(
+      container: true,
+      label: dragging ? IntakeCaptureCard.dropActive : null,
+      liveRegion: dragging,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          const CaveatText(
-            label: 'Sensitivity cannot be changed after an upload starts.',
-            why:
-                'Choose Not sensitive only if these photographs and their '
-                'labels are suitable for ordinary collection access. A '
-                'photograph already sent keeps the classification its '
-                'upload was created with.',
-          ),
-          SizedBox(height: ui.space.s4),
-          const CaveatText(
-            label:
-                'HEIC, TIFF and DNG may not preview on this device. You can '
-                'still upload them.',
-            why:
-                'Previews depend on this device. The server verifies the '
-                'bytes, format and dimensions of the file when the upload '
-                'completes. If the server cannot decode it, your upload is '
-                'kept so you can retry.',
-          ),
-          SizedBox(height: ui.space.s4),
-          Semantics(
-            header: true,
-            child: Text(
-              checklistTitle,
-              style: ui.type.label.copyWith(color: ui.color.inkSecondary),
-            ),
-          ),
-          for (final String check in preUploadChecklist)
-            _ChecklistItem(check: check),
-          SizedBox(height: ui.space.s2),
-          // One confirmation for the whole batch, not one per line: a tick
-          // that authorises a batch has to be a single deliberate act
-          // (heuristics audit, H5.3).
-          Align(
-            alignment: AlignmentDirectional.centerStart,
-            child: UiCheckbox(
-              key: const ValueKey<String>('intake-confirm'),
-              label: batchConfirmationLabel,
-              value: confirmed,
-              onChanged: onConfirmedChanged,
-            ),
-          ),
-          SizedBox(height: ui.space.s1),
-          Text(
-            confirmationHelp,
-            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-          ),
-          if (upload != null) ...<Widget>[
-            SizedBox(height: ui.space.s4),
-            upload!,
+          if (!widget.web) ...<Widget>[
+            Text(IntakeCaptureCard.bulkTitle, style: ui.type.label),
+            SizedBox(height: ui.space.s2),
           ],
-          SizedBox(height: ui.space.s2),
-          Text(
-            serverChecks,
-            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-          ),
+          if (widget.web) ...<Widget>[
+            Text(
+              dragging
+                  ? IntakeCaptureCard.dropActive
+                  : IntakeCaptureCard.dropTitle,
+              style: ui.type.body.copyWith(color: ui.color.ink),
+            ),
+            SizedBox(height: ui.space.s2),
+          ],
+          _actions(context),
         ],
       ),
     );
   }
+
+  Widget _actions(BuildContext context) => Wrap(
+    spacing: context.ui.space.s2,
+    runSpacing: context.ui.space.s2,
+    children: [
+      UiButton(
+        key: const ValueKey<String>('intake-choose-files'),
+        label: 'Choose files',
+        leading: UiIcons.uploadFile,
+        onPressed: widget.onChooseFiles,
+        disabledReason: widget.onChooseFiles == null
+            ? 'The file picker is already open.'
+            : null,
+      ),
+      if (widget.onBrowseSources != null)
+        UiButton(
+          label: 'Add from storage',
+          variant: UiButtonVariant.secondary,
+          leading: UiIcons.sources,
+          onPressed: widget.onBrowseSources,
+        ),
+    ],
+  );
 }
 
-/// The upload button's word, which names the count it authorises
-/// (pass criterion 5.2).
+/// The upload button names the count it will admit.
 String intakeUploadLabel({required bool uploading, required int pending}) {
   if (uploading) return 'Uploading';
   if (pending == 1) return 'Upload 1 photograph';
   return 'Upload $pending photographs';
-}
-
-/// One line of the pre-upload checklist.
-///
-/// A row rather than a control: the five checks are what an operator looks
-/// at, and the one thing on this card that can be ticked is the batch
-/// confirmation below them. The row publishes its own words and none of
-/// `UiListRow`'s press semantics, because there is nothing here to press.
-class _ChecklistItem extends StatelessWidget {
-  const _ChecklistItem({required this.check});
-
-  final String check;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    container: true,
-    label: check,
-    excludeSemantics: true,
-    child: UiListRow(
-      size: UiSize.sm,
-      title: check,
-      leading: UiIcon(
-        UiIcons.unselected,
-        size: UiIconSize.inline,
-        color: context.ui.color.inkSecondary,
-      ),
-    ),
-  );
 }

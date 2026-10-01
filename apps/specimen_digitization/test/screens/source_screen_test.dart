@@ -1,7 +1,7 @@
 // The browse and select surface over one source
 // (`lib/src/screens/sources/source_screen.dart`).
 //
-// The behaviours a reviewer depends on: the count is always visible, a select
+// The behaviours a reviewer depends on: the count is available in details, a select
 // all is offered only when the reach can be named, adding asks first, and a
 // selection larger than the server's bound still reports one honest result.
 
@@ -57,6 +57,8 @@ void main() {
     await pumpBrowse(tester, FakeSourceRepository());
 
     expect(find.text('microscopic-slides'), findsOneWidget);
+    await tester.tap(uiButton('Source details'));
+    await tester.pumpAndSettle();
     // Absolute, not relative: relative time is allowed only in the queue
     // list, and when a snapshot was taken decides whether an import will
     // still bind, so it is a citable value rather than a sense of recency.
@@ -78,8 +80,10 @@ void main() {
 
     // Section 4.14: thousands separators on every count over 999. This is
     // the first screen in the client to render one.
-    expect(find.textContaining('1,000 photographs'), findsOneWidget);
     expect(find.text('Select all 1,000'), findsOneWidget);
+    await tester.tap(uiButton('Source details'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('1,000 photographs'), findsOneWidget);
   });
 
   testWidgets('draws a placeholder rather than fetching originals', (
@@ -101,12 +105,12 @@ void main() {
       await tester.tap(checkboxFor('subject_105526321.jpg'));
       await tester.pumpAndSettle();
 
-      expect(find.text('1 photograph selected'), findsOneWidget);
+      expect(uiButton('Add 1'), findsOneWidget);
 
       await tester.tap(checkboxFor('subject_105526322.jpg'));
       await tester.pumpAndSettle();
 
-      expect(find.text('2 photographs selected'), findsOneWidget);
+      expect(uiButton('Add 2'), findsOneWidget);
     });
 
     testWidgets('counts photographs, never records', (
@@ -210,7 +214,7 @@ void main() {
 
       // Every selected photograph is loaded, because an import names a
       // generation that only a listing row carries.
-      expect(find.text('20 photographs selected'), findsOneWidget);
+      expect(uiButton('Add 20'), findsOneWidget);
       expect(repository.listCursors, hasLength(4));
     });
 
@@ -246,7 +250,7 @@ void main() {
 
       await tester.tap(checkboxFor('subject_105526321.jpg'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Add to queue'));
+      await tester.tap(uiButton('Add 1'));
       await tester.pumpAndSettle();
 
       expect(find.text('Add 1 photograph to the queue?'), findsOneWidget);
@@ -262,7 +266,7 @@ void main() {
 
       await tester.tap(checkboxFor('subject_105526321.jpg'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Add to queue'));
+      await tester.tap(uiButton('Add 1'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
@@ -270,7 +274,7 @@ void main() {
       expect(repository.imports, isEmpty);
       // The selection survives, because the reviewer's work is still on
       // screen and they may have meant to change it.
-      expect(find.text('1 photograph selected'), findsOneWidget);
+      expect(uiButton('Add 1'), findsOneWidget);
     });
 
     testWidgets('adds and says so when everything landed', (
@@ -281,7 +285,7 @@ void main() {
 
       await tester.tap(checkboxFor('subject_105526321.jpg'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Add to queue'));
+      await tester.tap(uiButton('Add 1'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Add 1 photograph'));
       await tester.pumpAndSettle();
@@ -305,7 +309,7 @@ void main() {
 
       await tester.tap(find.text('Select all 2'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Add to queue'));
+      await tester.tap(uiButton('Add 2'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Add 2 photographs'));
       await tester.pumpAndSettle();
@@ -325,7 +329,7 @@ void main() {
 
       await tester.tap(find.text('Select all 60'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Add to queue'));
+      await tester.tap(uiButton('Add 60'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Add 60 photographs'));
       await tester.pumpAndSettle();

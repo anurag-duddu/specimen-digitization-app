@@ -28,7 +28,7 @@ class WorkbenchFields extends StatefulWidget {
     required this.anchors,
     required this.pending,
     required this.onPendingChanged,
-    required this.onFocusRegion,
+    this.onFocusRegion,
     this.fieldBlockedReason,
   });
 
@@ -44,7 +44,7 @@ class WorkbenchFields extends StatefulWidget {
   final ValueChanged<List<PendingFieldChange>> onPendingChanged;
 
   /// Points the source pane at the region the field was read from.
-  final ValueChanged<String?> onFocusRegion;
+  final ValueChanged<String?>? onFocusRegion;
 
   /// Why correcting a field is unavailable, or null when it is not.
   final String? fieldBlockedReason;
@@ -61,9 +61,9 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
       .where((PendingFieldChange p) => p.fieldKey == key)
       .firstOrNull;
 
-  /// The region a field was read from, taken from the evidence the field
-  /// cites. Nothing is guessed: a field with no evidence has no region.
-  String? _regionFor(Json field) {
+  /// A specimen value may cite several labels, or no retained label.
+  Set<String> _regionsFor(Json field) {
+    final Set<String> regions = <String>{};
     final List<Object?> ids =
         (field['evidence_ids'] as List?) ?? const <Object?>[];
     for (final Object? id in ids) {
@@ -71,13 +71,33 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
           .where((Json e) => e['evidence_id'] == id || e['id'] == id)
           .firstOrNull;
       final Object? region = item?['region_id'];
-      if (region is String && region.isNotEmpty) return region;
+      if (region is String &&
+          widget.specimen.regions.any((Json r) => r['region_id'] == region)) {
+        regions.add(region);
+      }
     }
-    return null;
+    return regions;
+  }
+
+  String? _regionFor(Json field) {
+    final Set<String> regions = _regionsFor(field);
+    return regions.length == 1 ? regions.single : null;
+  }
+
+  String _sourcesFor(Json field) {
+    final Set<String> regions = _regionsFor(field);
+    if (regions.isEmpty) {
+      return 'No label source recorded';
+    }
+    final List<String> labels = <String>[
+      for (final (int index, Json region) in widget.specimen.regions.indexed)
+        if (regions.contains(region['region_id'])) 'Label ${index + 1}',
+    ];
+    return 'Sources: ${labels.join(', ')}';
   }
 
   void _startEdit(Json field, FieldLayer layer) {
-    widget.onFocusRegion(_regionFor(field));
+    widget.onFocusRegion?.call(_regionFor(field));
     setState(() {
       _editing = field['field_key'].toString();
       _layer = layer;
@@ -104,38 +124,54 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
 
   @override
   Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
     final List<Json> fields = widget.specimen.fields;
+    final requiredFields = fields
+        .where((field) => field['required'] == true)
+        .toList(growable: false);
+    final optionalFields = fields
+        .where((field) => field['required'] != true)
+        .toList(growable: false);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        Semantics(
-          container: true,
-          header: true,
-          child: Text('Record fields', style: ui.type.title),
-        ),
-        // Its own node: a sentence that merges upward becomes the tab
-        // panel's label, and a panel named after its own help text is not a
-        // panel a reader can place.
-        Semantics(
-          container: true,
-          child: Text(
-            'As written, read as and standardized are recorded separately.',
-            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-          ),
-        ),
-        SizedBox(height: ui.space.s2),
         if (fields.isEmpty)
           const CaveatText(
             label: 'No fields recorded yet.',
             why: 'Required field checks have not run for this record.',
           ),
-        for (final Json field in fields) _field(context, field),
+        if (requiredFields.isNotEmpty)
+          _group(context, 'Required', requiredFields),
+        if (requiredFields.isNotEmpty && optionalFields.isNotEmpty)
+          SizedBox(height: context.ui.space.s4),
+        if (optionalFields.isNotEmpty)
+          _group(context, 'Optional', optionalFields),
       ],
     );
   }
+
+  Widget _group(BuildContext context, String title, List<Json> fields) =>
+      Column(
+        key: ValueKey<String>('field-group:$title'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Padding(
+            padding: EdgeInsetsDirectional.fromSTEB(
+              context.ui.space.s3,
+              0,
+              context.ui.space.s3,
+              context.ui.space.s2,
+            ),
+            child: Semantics(
+              header: true,
+              child: Text(title, style: context.ui.type.label),
+            ),
+          ),
+          for (final field in fields) _field(context, field),
+        ],
+      );
 
   Widget _field(BuildContext context, Json field) {
     final String key = field['field_key'].toString();
@@ -150,6 +186,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
 
     final Widget content = _editing == key
         ? _FieldEditor(
+            key: ValueKey<String>('field-editor:${widget.specimen.id}:$key'),
             field: field,
             layer: _layer,
             pending: pending,
@@ -212,9 +249,11 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
             ),
           ),
         FieldRow(
+          sourceLabel: _sourcesFor(field),
           name: textOf(field['display_name'], key),
           state: state,
           required: field['required'] == true,
+          showRequirementMarker: false,
           asWritten: _layerValue(field, pending, FieldLayer.asWritten),
           readAs: _layerValue(field, pending, FieldLayer.readAs),
           standardized: _layerValue(field, pending, FieldLayer.standardized),
@@ -335,6 +374,7 @@ class _Finding extends StatelessWidget {
 /// The in-place editor one layer opens into.
 class _FieldEditor extends StatefulWidget {
   const _FieldEditor({
+    super.key,
     required this.field,
     required this.layer,
     required this.pending,
@@ -374,13 +414,16 @@ class _FieldEditorState extends State<_FieldEditor> {
   );
   late String _state =
       widget.pending?.state ?? textOf(widget.field['state'], 'unknown');
-  late Set<String> _evidence = <String>{
-    ...?widget.pending?.evidenceIds,
-    if (widget.pending == null)
-      ...((widget.field['evidence_ids'] as List? ?? <Object?>[]).map(
-        (Object? e) => e.toString(),
-      )),
-  };
+  late Set<String> _evidence =
+      <String>{
+        ...?widget.pending?.evidenceIds,
+        if (widget.pending == null)
+          ...((widget.field['evidence_ids'] as List? ?? <Object?>[]).map(
+            (Object? e) => e.toString(),
+          )),
+      }.intersection(
+        widget.choices.map((EvidenceChoice choice) => choice.id).toSet(),
+      );
 
   @override
   void dispose() {
@@ -413,10 +456,6 @@ class _FieldEditorState extends State<_FieldEditor> {
       baseLiteral: widget.field['literal_value'] as String?,
     ),
   );
-
-  /// The editor's own heading, and the one sentence under it.
-  static const String subtitle =
-      'The photograph stays on screen while you type.';
 
   /// What the commit control is called, and why it is disabled.
   static const String keepLabel = 'Keep this correction';
@@ -454,10 +493,6 @@ class _FieldEditorState extends State<_FieldEditor> {
             container: true,
             header: true,
             child: Text('Correct $name', style: ui.type.label),
-          ),
-          Text(
-            subtitle,
-            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
           ),
           SizedBox(height: ui.space.s3),
           UiSelect<String>(
@@ -516,11 +551,8 @@ class _FieldEditorState extends State<_FieldEditor> {
             ),
           ] else
             const CaveatText(
-              label: 'Absence is recorded as a state, never as a value.',
-              why:
-                  'Nothing is written into the value slots for this state, '
-                  'and the record stays blocked from clearance until the '
-                  'checks that need it pass.',
+              label: 'No value will be saved for this state.',
+              why: 'Required checks still apply.',
             ),
           SizedBox(height: ui.space.s4),
           UiButtonRow(

@@ -6,7 +6,6 @@
 library;
 
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -15,68 +14,54 @@ import 'package:go_router/go_router.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../app/routes.dart';
+import '../../app/shell.dart';
 import '../../models.dart';
 import '../../reason_codes.dart';
-import '../../saved_filters.dart';
-import '../../search_filters.dart';
 import '../../selection.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import '../../workspace.dart';
 
 /// The width of the list pane in the list detail layout (05 section 3.2).
-const double queueListPaneWidth = 360;
-
-/// True where the queue's search row sticks under the header rather than
-/// scrolling with the page (13 sections 2.3, 3.5 and 4.2).
-///
-/// At medium only, and the arithmetic decides it. A stuck row is pinned
-/// chrome, and a row holding a text control is 48 dp at default type and
-/// 69.75 at 200 percent. At 390 by 844 the frame already pins 172 dp at
-/// default type and 185.75 at 200 percent (top bar, one line band, pill) of
-/// the 236.3 the phone's 28 percent allows, so the row fits at default type
-/// and not at 200 percent, and 13 section 2.3 says a screen over the budget
-/// gives a region up rather than shrinking it: the row a reviewer uses once
-/// scrolls on a phone (slot A3's decision). At 768 by 1024 the frame pins 124
-/// dp at default type and 137.75 at 200 percent (top bar, full band, no pill)
-/// of the 245.76 that 24 percent allows, so the row fits at every size:
-/// 172 and 207.5, 0.168 and 0.203. From `expanded` up the budget is 20
-/// percent of a landscape window: at 1180 by 820 the frame pins 116 dp at
-/// default type and 129.75 at 200 percent of 164, and the row at 200 percent
-/// is 61.75, which is 191.5 and 0.234; at 1440 by 900 it is 191 of 180 and
-/// 0.212. A variant is chosen per class and not per text size, so those two
-/// classes scroll the row.
-bool searchRowSticks(WindowClass window) => window == WindowClass.medium;
+const double queueListPaneWidth = 320;
 
 /// How many placeholder rows stand in for the first page.
 const int queueSkeletonRows = 5;
 
-/// What the disposition filter is called where it is named rather than drawn
-/// as its six options: in the filter sheet, and on the chip that keeps it
-/// visible once the sheet closes.
-///
-/// The same word the sheet's own first group carries, so one filter is not
-/// two names.
-const String queueDispositionLabel = 'Status';
-
-/// One line of plain language saying why a record is in the queue.
+/// The first specific issue that distinguishes this record in its queue.
+/// Shared review state and unavailable telemetry do not add an action.
 String queueReason(Specimen specimen) {
   final Json data = specimen.data;
-  final Object? blocker = data['blocker'];
-  if (blocker is String && blocker.isNotEmpty) {
-    return 'Blocked: ${vocabularyLabel(blocker)}';
+  const sharedStates = <String>{
+    'human_approval_required',
+    'human_review_required',
+    'needs_human_review',
+    'deferred',
+    'running',
+    'processing_blocked',
+    'cleared',
+    'unmeasured',
+    'uncalibrated',
+    'not_measured',
+    'not_calibrated',
+    'risk_unmeasured',
+    'risk_uncalibrated',
+    'risk_not_measured',
+    'risk_not_calibrated',
+  };
+  for (final Object? value in <Object?>[
+    for (final Json finding in specimen.findings) finding['message'],
+    data['blocker'],
+    ...data['reason_codes'] as List? ?? const <Object?>[],
+  ]) {
+    if (value is! String || value.trim().isEmpty) continue;
+    final String normalized = value.trim().toLowerCase().replaceAll(' ', '_');
+    if (sharedStates.contains(normalized)) {
+      continue;
+    }
+    return vocabularyLabel(value.trim());
   }
-  final Object? reasons = data['reason_codes'];
-  if (reasons is List && reasons.isNotEmpty) {
-    return reasons
-        .map((Object? code) => vocabularyLabel(code.toString()))
-        .join(', ');
-  }
-  final Object? stage = data['stage'];
-  if (stage is String && stage.isNotEmpty) {
-    return 'Step ${vocabularyLabel(stage)}';
-  }
-  return 'No findings recorded';
+  return '';
 }
 
 /// When a record last changed, as a moment, or null when the server did not
@@ -97,26 +82,129 @@ class QueueScreen extends StatelessWidget {
   const QueueScreen({super.key});
 
   @override
-  Widget build(BuildContext context) =>
-      WindowClass.of(context).isAtLeast(WindowClass.large)
-      ? const _NoRecordSelected()
-      : const QueuePane();
+  Widget build(BuildContext context) {
+    final shell = AppSidebarScope.maybeOf(context);
+    return shell?.mobileSpecimens ?? const _NoRecordSelected();
+  }
 }
 
 class _NoRecordSelected extends StatelessWidget {
   const _NoRecordSelected();
 
   @override
-  Widget build(BuildContext context) => const UiEmptyState(
-    icon: UiIcons.record,
-    title: 'No record open',
-    body: 'Choose a record in the queue to review it here.',
+  Widget build(BuildContext context) => ColoredBox(
+    color: context.ui.color.ground,
+    child: const Center(
+      child: UiEmptyState(
+        icon: UiIcons.record,
+        title: 'No record open',
+        body: 'Choose a specimen to review.',
+      ),
+    ),
   );
 }
 
-/// The queue itself: header, controls, active filters and rows.
+/// Commands routed from the common workspace shortcut scope to the queue.
+class QueueKeyboardController extends ChangeNotifier {
+  _QueuePaneState? _owner;
+  bool _notificationScheduled = false;
+  bool _disposed = false;
+
+  bool get canBrowse => _owner?._listening?.scope != null;
+  bool get canSelect => _owner?._listening?.items.isNotEmpty ?? false;
+  bool get selecting => _owner?._selection.active ?? false;
+
+  void showView(String value) =>
+      unawaited(_owner?._listening?.selectDisposition(value));
+
+  void move(int delta) => _owner?._move(delta);
+  void open() => _owner?._openSelected();
+  void clear() => _owner?._selection.clear();
+  void toggleSelection() {
+    final selection = _owner?._selection;
+    if (selection == null) return;
+    selection.active ? selection.clear() : selection.begin();
+  }
+
+  // The queue may mount or reconcile during layout. Publish the header
+  // affordance after that frame so its sibling never rebuilds during build.
+  void _notifyChanged() {
+    if (_disposed || _notificationScheduled) return;
+    _notificationScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _notificationScheduled = false;
+      if (!_disposed) notifyListeners();
+    });
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+}
+
+/// Read views and selection actions beside the collection switcher.
+class QueueListActions extends StatelessWidget {
+  const QueueListActions({required this.controller, super.key});
+  final QueueKeyboardController controller;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: controller,
+    builder: (context, child) => !controller.canBrowse
+        ? const SizedBox.shrink()
+        : controller.selecting
+        ? UiIconButton(
+            key: const ValueKey<String>('queue-select-records'),
+            icon: UiIcons.check,
+            semanticsLabel: 'Done selecting',
+            tooltip: 'Done selecting',
+            onPressed: controller.toggleSelection,
+          )
+        : UiMenuTrigger(
+            key: const ValueKey<String>('queue-select-records'),
+            icon: UiIcons.more,
+            semanticsLabel: 'Specimen list actions',
+            items: <UiMenuItem>[
+              UiMenuItem(
+                label: 'All specimens',
+                icon: UiIcons.queue,
+                onSelected: () => controller.showView(''),
+              ),
+              UiMenuItem(
+                label: 'Blocked',
+                icon: UiIcons.blocked,
+                onSelected: () => controller.showView('processing_blocked'),
+              ),
+              UiMenuItem(
+                label: 'Select specimens',
+                icon: UiIcons.selectAll,
+                onSelected: controller.canSelect
+                    ? controller.toggleSelection
+                    : null,
+                disabledReason: 'No specimens in this view.',
+              ),
+            ],
+          ),
+  );
+}
+
+/// The queue itself: search, review views and selectable records.
 class QueuePane extends StatefulWidget {
-  const QueuePane({super.key});
+  const QueuePane({
+    this.searchFocusNode,
+    this.controller,
+    this.onDismiss,
+    super.key,
+  });
+
+  /// An optional caller-owned node for search shortcuts above both panes.
+  final FocusNode? searchFocusNode;
+  final QueueKeyboardController? controller;
+
+  /// Dismisses a summoned queue on Escape. An ordinary queue clears selection.
+  final VoidCallback? onDismiss;
 
   @override
   State<QueuePane> createState() => _QueuePaneState();
@@ -124,7 +212,8 @@ class QueuePane extends StatefulWidget {
 
 class _QueuePaneState extends State<QueuePane> {
   final TextEditingController _search = TextEditingController();
-  final FocusNode _searchFocus = FocusNode(debugLabel: 'Queue search');
+  final FocusNode _ownedSearchFocus = FocusNode(debugLabel: 'Queue search');
+  FocusNode get _searchFocus => widget.searchFocusNode ?? _ownedSearchFocus;
   int? _cursor;
 
   /// The records this reviewer has picked out of the loaded page.
@@ -134,6 +223,7 @@ class _QueuePaneState extends State<QueuePane> {
   /// the same honesty about what a select all could not see.
   final PagedSelection<Specimen> _selection = PagedSelection<Specimen>(
     identify: (Specimen specimen) => specimen.id,
+    limit: bulkDecisionLimit,
   );
 
   /// True while this pane is holding the list still for a live selection.
@@ -157,21 +247,10 @@ class _QueuePaneState extends State<QueuePane> {
   /// from the same object it was added to.
   WorkspaceController? _listening;
 
-  /// The frame's slots, so the bulk bar goes where 13 section 2.3 puts a
-  /// screen's decisions: the scaffold's action bar, above the navigation.
-  UiScaffoldSlots? _slots;
-
-  /// The bulk bar itself, built once.
-  ///
-  /// One instance, published and withdrawn rather than rebuilt: the slot
-  /// compares what it is given, and a fresh widget every build would tell the
-  /// frame its action bar had changed on every frame the frame itself caused.
-  /// The bar listens to the selection and to the collection, so it keeps
-  /// itself in step without being republished.
-  late final Widget _bulkBar = _QueueSelectionBar(
-    selection: _selection,
-    onDecide: (BulkDecisionKind kind) => unawaited(_decideOnSelection(kind)),
-  );
+  BulkSelectionEligibility? _eligibility;
+  int _eligibilityGeneration = 0;
+  String _eligibilityKey = '';
+  bool _checkingDecision = false;
 
   /// This reviewer's own recent reasons, offered as chips in the
   /// confirmation exactly as the workbench offers them.
@@ -181,14 +260,27 @@ class _QueuePaneState extends State<QueuePane> {
   @override
   void initState() {
     super.initState();
+    widget.controller?._owner = this;
+    widget.controller?._notifyChanged();
     _selection.addListener(_onSelectionChanged);
+  }
+
+  @override
+  void didUpdateWidget(QueuePane oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      if (oldWidget.controller?._owner == this) {
+        oldWidget.controller?._owner = null;
+        oldWidget.controller?._notifyChanged();
+      }
+      widget.controller?._owner = this;
+      widget.controller?._notifyChanged();
+    }
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _slots = UiScaffoldSlots.of(context);
-    _publishBulkBar();
     final WorkspaceController controller = _controller;
     if (!identical(_listening, controller)) {
       _listening?.removeListener(_syncSelection);
@@ -206,13 +298,16 @@ class _QueuePaneState extends State<QueuePane> {
 
   @override
   void dispose() {
-    _slots?.release(this);
+    if (widget.controller?._owner == this) {
+      widget.controller?._owner = null;
+      widget.controller?._notifyChanged();
+    }
     _listening?.removeListener(_syncSelection);
     _selection.removeListener(_onSelectionChanged);
     if (_holdingForSelection) _listening?.releaseList();
     _selection.dispose();
     _search.dispose();
-    _searchFocus.dispose();
+    _ownedSearchFocus.dispose();
     for (final FocusNode node in _rowFocus.values) {
       node.dispose();
     }
@@ -235,6 +330,8 @@ class _QueuePaneState extends State<QueuePane> {
       controller.items,
       moreToLoad: controller.nextCursor != null,
     );
+    _refreshEligibility();
+    widget.controller?._notifyChanged();
   }
 
   /// A selection that is live holds the list still.
@@ -248,26 +345,28 @@ class _QueuePaneState extends State<QueuePane> {
       _holdingForSelection = hold;
       hold ? _controller.holdList() : _controller.releaseList();
     }
-    _publishBulkBar();
+    _refreshEligibility();
+    widget.controller?._notifyChanged();
     if (mounted) setState(() {});
   }
 
-  /// Puts the bulk bar in the frame's action bar while there is a selection,
-  /// and gives the slot back when there is not.
-  ///
-  /// The record is a route pushed over this one, so this pane stays mounted
-  /// beneath it; [_current] keeps a selection's bar from following the
-  /// reviewer into a record that has its own decision to take.
-  void _publishBulkBar() => _slots?.setActionBar(
-    _selection.isEmpty || !_current ? null : _bulkBar,
-    owner: this,
-  );
-
-  /// True while this pane is the route on top.
-  ///
-  /// `ModalRoute.of` depends on the scope that carries `isCurrent`, so the
-  /// pane is rebuilt when a route is pushed over it or popped back off.
-  bool _current = true;
+  void _refreshEligibility({bool force = false}) {
+    final chosen = _selection.items;
+    final key =
+        '${_controller.scope?.key}:${chosen.map((s) => '${s.id}@${s.recordVersionId}').join(',')}';
+    if (!force && key == _eligibilityKey) return;
+    _eligibilityKey = key;
+    final generation = ++_eligibilityGeneration;
+    _eligibility = null;
+    if (chosen.isEmpty) return;
+    unawaited(
+      _controller.inspectSelection(chosen).then((evidence) {
+        if (mounted && generation == _eligibilityGeneration) {
+          setState(() => _eligibility = evidence);
+        }
+      }),
+    );
+  }
 
   /// Asks for one reason, then takes [kind] across the whole selection.
   ///
@@ -279,11 +378,28 @@ class _QueuePaneState extends State<QueuePane> {
   Future<void> _decideOnSelection(BulkDecisionKind kind) async {
     final WorkspaceController controller = _controller;
     final List<Specimen> chosen = _selection.items;
+    final scope = controller.scope;
     if (chosen.isEmpty || controller.mutating) return;
-    final Map<String, String> names = <String, String>{
-      for (final Specimen specimen in chosen) specimen.id: specimen.title,
+    if (_checkingDecision) return;
+    setState(() => _checkingDecision = true);
+    final evidence = await controller.inspectSelection(chosen);
+    if (!mounted) return;
+    if (!identical(scope, controller.scope) ||
+        !_selection.ids.containsAll(chosen.map((s) => s.id))) {
+      setState(() => _checkingDecision = false);
+      return;
+    }
+    setState(() {
+      _checkingDecision = false;
+      _eligibility = evidence;
+    });
+    final eligible = evidence.eligibleFor(kind);
+    if (eligible.isEmpty) return;
+    final Map<String, String> names = {
+      for (final specimen in chosen) specimen.id: specimen.title,
     };
-    final int count = chosen.length;
+    final int count = eligible.length;
+    final int excluded = chosen.length - count;
     controller.holdList();
     final String? reason;
     try {
@@ -291,26 +407,51 @@ class _QueuePaneState extends State<QueuePane> {
         context,
         title: kind.title(count),
         action: kind.action(count),
-        consequence: kind.consequence(count),
+        consequence:
+            '${kind.consequence(count)}${excluded == 0 ? '' : ' $excluded of ${chosen.length} selected records are not eligible and will remain selected.'}',
         retained: kind.retained,
         recentReasons: _recentReasons,
       );
     } finally {
       controller.releaseList();
     }
-    if (reason == null || !mounted) return;
-    final BulkDecisionReport? report = await controller.reviewSelection(
-      chosen,
+    if (reason == null ||
+        !mounted ||
+        !identical(scope, controller.scope) ||
+        !_selection.ids.containsAll(chosen.map((s) => s.id))) {
+      return;
+    }
+    final BulkDecisionReport? result = await controller.reviewSelection(
+      eligible,
       kind,
       reason,
     );
     if (!mounted) return;
     // A call that did not complete leaves the selection alone: the reviewer's
     // work is still on screen, and the controller's banner says what happened.
-    if (report == null) return;
+    if (result == null) return;
+    final eligibleIds = eligible.map((s) => s.id).toSet();
+    final report = BulkDecisionReport([
+      ...result.results,
+      for (final specimen in chosen)
+        if (!eligibleIds.contains(specimen.id))
+          BulkDecisionResult(
+            specimenId: specimen.id,
+            outcome: BulkOutcome.skipped,
+            message:
+                evidence.reasonFor(specimen.id, kind) ??
+                'Not included in this confirmation.',
+          ),
+    ]);
     unawaited(_rememberReason(reason));
-    _selection.clear();
-    await controller.refresh();
+    _selection.removeIds(
+      report.results.where((row) => row.changed).map((row) => row.specimenId),
+    );
+    if (_selection.isEmpty) {
+      await controller.refresh();
+    } else {
+      _refreshEligibility(force: true);
+    }
     if (!mounted) return;
     if (report.complete) {
       _toast(kind.done(report.applied));
@@ -363,53 +504,18 @@ class _QueuePaneState extends State<QueuePane> {
     final List<Specimen> items = _controller.items;
     final int? cursor = _cursor;
     if (items.isEmpty || cursor == null) return;
-    _open(items[cursor.clamp(0, items.length - 1)]);
+    unawaited(_open(items[cursor.clamp(0, items.length - 1)]));
   }
 
-  void _open(Specimen specimen) {
+  Future<void> _open(Specimen specimen) async {
     final WorkspaceController controller = _controller;
     final CollectionScope? scope = controller.scope;
     if (scope == null) return;
+    if (!await controller.mayLeaveReview() || !mounted) return;
+    QueueWorkspaceScope.maybeOf(context)?.hideQueue();
     context.go(
       AppRoutes.specimenOf(encodeCollectionKey(scope.key), specimen.id),
     );
-  }
-
-  Future<void> _openFilters() async {
-    final WorkspaceController controller = _controller;
-    final CollectionScope? scope = controller.scope;
-    // On a phone the six dispositions are not a row of chips above the list,
-    // so the sheet is where they are chosen and this is what carries them
-    // there and back.
-    final bool compact = WindowClass.of(context).isCompact;
-    controller.holdList();
-    try {
-      String? chosen;
-      final Map<String, String>? values = await SearchFilters.show(
-        context,
-        initial: controller.filters,
-        configuration: scope?.configuration ?? const <String, dynamic>{},
-        savedFilters: scope == null ? null : SavedFilterStore(scope.key),
-        dispositions: compact ? queueDispositions : null,
-        dispositionLabel: queueDispositionLabel,
-        disposition: controller.disposition,
-        onDisposition: (String value) => chosen = value,
-      );
-      if (values == null || !mounted) return;
-      // One request per thing that actually changed. Applying a sheet that
-      // moved nothing used to ask the server again; a sheet that moved both
-      // the disposition and a filter asks twice, which is the honest cost of
-      // two controller fields that each reload
-      // (`test/app/request_budget_test.dart` holds the ordinary path).
-      final bool moved = !mapEquals(values, controller.filters);
-      if (chosen != null && chosen != controller.disposition) {
-        await controller.selectDisposition(chosen!);
-        if (!moved || !mounted) return;
-      }
-      if (moved) await controller.applyFilters(values);
-    } finally {
-      controller.releaseList();
-    }
   }
 
   @override
@@ -417,11 +523,6 @@ class _QueuePaneState extends State<QueuePane> {
     final WorkspaceController controller = WorkspaceScope.of(context);
     if (_search.text != controller.query && !_searchFocus.hasFocus) {
       _search.text = controller.query;
-    }
-    final bool current = ModalRoute.of(context)?.isCurrent ?? true;
-    if (current != _current) {
-      _current = current;
-      _publishBulkBar();
     }
 
     return Shortcuts(
@@ -432,7 +533,6 @@ class _QueuePaneState extends State<QueuePane> {
         SingleActivator(LogicalKeyboardKey.arrowUp): _MoveSelectionIntent(-1),
         SingleActivator(LogicalKeyboardKey.enter): _OpenSelectionIntent(),
         SingleActivator(LogicalKeyboardKey.slash): _FocusSearchIntent(),
-        SingleActivator(LogicalKeyboardKey.keyF): _OpenFiltersIntent(),
         SingleActivator(LogicalKeyboardKey.escape): _ClearSelectionIntent(),
       },
       child: Actions(
@@ -458,19 +558,17 @@ class _QueuePaneState extends State<QueuePane> {
               return null;
             },
           ),
-          _OpenFiltersIntent: CallbackAction<_OpenFiltersIntent>(
-            onInvoke: (_) {
-              if (_searchFocus.hasFocus) return null;
-              unawaited(_openFilters());
-              return null;
-            },
-          ),
-          // The way out of a selection without reaching for a control. Not
-          // suppressed while the search field has focus, because leaving a
-          // selection is what a reviewer means by Escape wherever they are.
+          // Escape dismisses a summoned queue or clears an ordinary queue's
+          // selection, including while search owns the caret. Descendant
+          // menus and dialogs retain their own Escape handling first.
           _ClearSelectionIntent: CallbackAction<_ClearSelectionIntent>(
             onInvoke: (_) {
-              _selection.clear();
+              final dismiss = widget.onDismiss;
+              if (dismiss != null) {
+                dismiss();
+              } else {
+                _selection.clear();
+              }
               return null;
             },
           ),
@@ -484,7 +582,31 @@ class _QueuePaneState extends State<QueuePane> {
           child: _ToastLayer(
             child: KeyedSubtree(
               key: _toastScope,
-              child: _body(context, controller),
+              child: ColoredBox(
+                color: context.ui.color.paper,
+                child: Column(
+                  children: [
+                    Expanded(flex: 3, child: _body(context, controller)),
+                    if (_selection.isNotEmpty)
+                      Flexible(
+                        flex: 2,
+                        fit: FlexFit.loose,
+                        child: SingleChildScrollView(
+                          child: _QueueSelectionBar(
+                            selection: _selection,
+                            eligibility: _eligibility,
+                            checking: _checkingDecision,
+                            onRetry: () => setState(
+                              () => _refreshEligibility(force: true),
+                            ),
+                            onDecide: (kind) =>
+                                unawaited(_decideOnSelection(kind)),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -492,7 +614,23 @@ class _QueuePaneState extends State<QueuePane> {
     );
   }
 
-  Widget _body(BuildContext context, WorkspaceController controller) {
+  Widget _body(BuildContext context, WorkspaceController controller) =>
+      LayoutBuilder(
+        builder: (context, constraints) => _list(
+          context,
+          controller,
+          UiLayoutMetrics.fromConstraints(
+            constraints,
+            textScaler: MediaQuery.textScalerOf(context),
+          ),
+        ),
+      );
+
+  Widget _list(
+    BuildContext context,
+    WorkspaceController controller,
+    UiLayoutMetrics layout,
+  ) {
     final UiThemeData ui = context.ui;
     final List<Specimen> items = controller.items;
     // Placeholders until the server has answered at least once, never a claim
@@ -501,8 +639,7 @@ class _QueuePaneState extends State<QueuePane> {
     // records (finding V-5); a list that has never been answered says only
     // that it is loading.
     final bool first = items.isEmpty && !controller.listAnswered;
-    final bool compact = WindowClass.of(context).isCompact;
-    final double gutter = compact ? ui.space.s4 : ui.space.s6;
+    final double gutter = layout.gutter;
     final EdgeInsetsGeometry sides = EdgeInsetsDirectional.symmetric(
       horizontal: gutter,
     );
@@ -520,46 +657,29 @@ class _QueuePaneState extends State<QueuePane> {
         SliverPadding(
           padding: EdgeInsetsDirectional.fromSTEB(
             gutter,
-            ui.space.s4,
+            ui.space.s2,
             gutter,
-            ui.space.s4,
+            ui.space.s2,
           ),
           sliver: SliverToBoxAdapter(
-            child: _QueueHeader(controller: controller),
-          ),
-        ),
-        _searchBar(context, controller, sides, compact: compact),
-        // Six dispositions one tap away wherever there is room for them. On a
-        // phone they are in the filter sheet instead, with the chosen one on
-        // an active filter chip: 13 section 4.2 gives the queue at compact a
-        // header, a search row and the rows, and two controls that both filter
-        // the queue are two regions doing one job (13 section 2.4).
-        if (!compact)
-          SliverPadding(
-            padding: EdgeInsetsDirectional.fromSTEB(
-              gutter,
-              ui.space.s4,
-              gutter,
-              0,
-            ),
-            sliver: SliverToBoxAdapter(
-              child: _DispositionChips(controller: controller),
-            ),
-          ),
-        SliverPadding(
-          padding: sides,
-          sliver: SliverToBoxAdapter(
-            child: _ActiveFilterChips(
-              controller: controller,
-              // The disposition is only a chip where it is not already a row
-              // of chips above: a filter must never be invisible once the
-              // sheet closes (audit, pass criterion 6.4).
-              withDisposition: compact,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _SearchRow(
+                  controller: _search,
+                  focusNode: _searchFocus,
+                  onChanged: controller.search,
+                  onEscape: widget.onDismiss,
+                ),
+                SizedBox(height: ui.space.s2),
+                _StatusControls(controller: controller),
+              ],
             ),
           ),
         ),
         SliverPadding(
-          padding: EdgeInsetsDirectional.only(top: ui.space.s4),
+          padding: EdgeInsetsDirectional.zero,
           sliver: first
               ? _skeleton(ui, controller, sides)
               : items.isEmpty
@@ -569,7 +689,7 @@ class _QueuePaneState extends State<QueuePane> {
                     child: _empty(context, controller),
                   ),
                 )
-              : _rows(context, controller, items, sides),
+              : _rows(context, controller, items, sides, layout),
         ),
         if (controller.nextCursor != null)
           SliverPadding(
@@ -603,77 +723,12 @@ class _QueuePaneState extends State<QueuePane> {
         : list;
   }
 
-  /// The search row, stuck under the header where the chrome budget holds it
-  /// (13 sections 3.5 and 4.2).
-  ///
-  /// `UiStickyBar` pins the row once the page has scrolled it up to the
-  /// header, and it is pinned chrome while it is stuck, so [searchRowSticks]
-  /// weighs the window class. It sticks only while this pane is the route on
-  /// top: the record is pushed over the queue and the queue stays mounted
-  /// beneath it, and a region a covered screen pins is height the reader
-  /// never sees and height the record's own budget would be charged for, the
-  /// same reason [_current] keeps a selection's bar out of the record. The
-  /// bar's extent is the row's own height and nothing around it: the field is
-  /// the taller of its two controls, and its box is `UiInputStyle`'s at the
-  /// live text scale, floored at the hit box a pointer density field keeps
-  /// (11 section 2.2). The gutter is inside the bar, so the ground it draws
-  /// reaches the window's edges.
-  Widget _searchBar(
-    BuildContext context,
-    WorkspaceController controller,
-    EdgeInsetsGeometry sides, {
-    required bool compact,
-  }) {
-    final UiThemeData ui = context.ui;
-    final Widget row = Padding(
-      padding: sides,
-      child: _SearchRow(
-        controller: _search,
-        focusNode: _searchFocus,
-        onChanged: controller.search,
-        filterCount: _activeFilterCount(controller, compact: compact),
-        onFilters: () => unawaited(_openFilters()),
-      ),
-    );
-    if (!_current || !searchRowSticks(WindowClass.of(context))) {
-      return SliverToBoxAdapter(child: row);
-    }
-    return UiStickyBar(
-      extent: math.max(
-        UiDensity.hitBox,
-        UiInputStyle.resolve(
-          ui,
-          UiFieldShape.capsule,
-          textScaler: MediaQuery.textScalerOf(context),
-        ).minHeight,
-      ),
-      child: row,
-    );
-  }
-
-  /// What the filter control's badge counts.
-  ///
-  /// The sheet's own filters, and the disposition as well on the window where
-  /// the disposition is only in the sheet.
-  int _activeFilterCount(
-    WorkspaceController controller, {
-    required bool compact,
-  }) =>
-      controller.activeFilterCount +
-      (compact && controller.disposition.isNotEmpty ? 1 : 0);
-
   /// The search field's one label, so the control, its hint and the tests
   /// cannot word it three ways.
   static const String searchLabel = 'Search by specimen ID';
 
-  /// What the field matches, as the placeholder and as the semantics hint.
-  ///
-  /// It used to be a drawn footer saying "Exact match. Use Filters for
-  /// anything else." The filter control now sits beside the field, which says
-  /// the second half better than a sentence does (13 section 2.4), and a
-  /// footer that wraps to three lines at 200 percent text is a third of a
-  /// phone spent on a hint.
-  static const String searchHint = 'Specimen ID, exact match';
+  /// Search matches the exact specimen identifier the API accepts.
+  static const String searchHint = 'Specimen ID';
 
   /// True on the two platforms whose pull gesture is the app's to own.
   bool get _pullToRefresh =>
@@ -711,30 +766,48 @@ class _QueuePaneState extends State<QueuePane> {
     ),
   );
 
-  Widget _empty(BuildContext context, WorkspaceController controller) =>
-      controller.unfiltered
-      ? UiEmptyState(
-          icon: UiIcons.queue,
-          title: 'No specimens yet',
-          body: 'Upload a photograph to create the first record.',
-          action: UiButton(
-            label: 'Add photographs',
-            onPressed: () {
-              final CollectionScope? scope = controller.scope;
-              if (scope == null) return;
-              context.go(AppRoutes.intakeOf(encodeCollectionKey(scope.key)));
-            },
+  Widget _empty(BuildContext context, WorkspaceController controller) {
+    if (controller.unfiltered) {
+      return UiEmptyState(
+        icon: UiIcons.queue,
+        title: 'No specimens yet',
+        body: 'Add specimens to this collection.',
+        action: UiButton(
+          label: 'Add specimens',
+          onPressed: () {
+            final CollectionScope? scope = controller.scope;
+            if (scope == null) return;
+            context.go(AppRoutes.intakeOf(encodeCollectionKey(scope.key)));
+          },
+        ),
+      );
+    }
+    if (controller.query.trim().isEmpty && controller.activeFilterCount == 0) {
+      return Padding(
+        padding: EdgeInsets.symmetric(vertical: context.ui.space.s4),
+        child: Text(
+          switch (controller.disposition) {
+            'needs_human_review' => 'No specimens need a human',
+            'deferred' => 'No deferred specimens',
+            'cleared' => 'No cleared specimens',
+            _ => 'No specimens in this view',
+          },
+          style: context.ui.type.bodySmall.copyWith(
+            color: context.ui.color.inkSecondary,
           ),
-        )
-      : UiEmptyState(
-          icon: UiIcons.noResults,
-          title: 'No records match these filters',
-          body: 'Clear the search and filters to see the whole queue.',
-          action: UiButton(
-            label: 'Clear all',
-            onPressed: () => unawaited(controller.clearFilters()),
-          ),
-        );
+        ),
+      );
+    }
+    return UiEmptyState(
+      icon: UiIcons.noResults,
+      title: 'No matching records',
+      body: 'Try another specimen ID.',
+      action: UiButton(
+        label: 'Reset search',
+        onPressed: () => unawaited(controller.clearFilters()),
+      ),
+    );
+  }
 
   /// The rows, under one node that holds the list still while a row has
   /// keyboard focus (07 section 3).
@@ -749,15 +822,14 @@ class _QueuePaneState extends State<QueuePane> {
     WorkspaceController controller,
     List<Specimen> items,
     EdgeInsetsGeometry sides,
+    UiLayoutMetrics layout,
   ) {
     // A window wide enough for a checkbox column keeps one open, so a
     // reviewer on a pointer never has to discover a gesture. A narrow one
     // reveals it on a long press and hides it again when the selection
     // empties (07 section 3, "Multi-select"). The window decides, never the
     // platform.
-    final bool column =
-        WindowClass.of(context).isAtLeast(WindowClass.medium) ||
-        _selection.active;
+    final bool column = _selection.active;
     return SliverPadding(
       padding: sides,
       // One node around the whole list, which holds the poll still while a
@@ -779,10 +851,13 @@ class _QueuePaneState extends State<QueuePane> {
               child: _QueueListRow(
                 specimen: items[index],
                 selected: _selection.isSelected(items[index]),
+                disabledReason: controller.mutating || _checkingDecision
+                    ? 'Wait for the current selection check or decision to finish.'
+                    : _selection.atLimit && !_selection.isSelected(items[index])
+                    ? 'Select at most $bulkDecisionLimit records for one decision.'
+                    : null,
                 showCheckbox: column,
-                cursor:
-                    index == _cursor ||
-                    items[index].id == controller.selectedId,
+                cursor: items[index].id == controller.selectedId,
                 focusNode: _rowFocusNode(items[index].id),
                 onToggle: () => _selection.toggle(items[index]),
                 onExtend: () => _selection.selectRange(items[index]),
@@ -791,7 +866,7 @@ class _QueuePaneState extends State<QueuePane> {
                     : () => _selection.select(items[index]),
                 onOpen: () {
                   setState(() => _cursor = index);
-                  _open(items[index]);
+                  unawaited(_open(items[index]));
                 },
               ),
             ),
@@ -810,6 +885,7 @@ class _QueueListRow extends StatelessWidget {
   const _QueueListRow({
     required this.specimen,
     required this.selected,
+    required this.disabledReason,
     required this.showCheckbox,
     required this.cursor,
     required this.focusNode,
@@ -821,6 +897,7 @@ class _QueueListRow extends StatelessWidget {
 
   final Specimen specimen;
   final bool selected;
+  final String? disabledReason;
   final bool showCheckbox;
   final bool cursor;
   final FocusNode focusNode;
@@ -832,20 +909,26 @@ class _QueueListRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SelectableRow(
     selected: selected,
-    label: specimen.title,
+    enabled: disabledReason == null,
+    disabledReason: disabledReason,
+    label: specimen.id,
     showCheckbox: showCheckbox,
     onToggle: onToggle,
     onExtend: onExtend,
     onLongPress: onLongPress,
     child: QueueRow(
       id: specimen.id,
-      title: specimen.title,
+      title: specimen.id,
+      concise: true,
+      showStatus: false,
       reason: queueReason(specimen),
       status: SpecimenStatus.ofRecord(
         disposition: specimen.disposition,
         state: specimen.state,
       ),
-      riskComposite: specimen.data['risk'] as num?,
+      riskComposite: specimen.data['risk'] is num
+          ? specimen.data['risk'] as num
+          : null,
       // The search endpoint answers a bare composite and leaves the
       // contributing signals on the record. The compact meter never draws
       // them, so the row says nothing rather than naming a signal the list
@@ -860,52 +943,92 @@ class _QueueListRow extends StatelessWidget {
   );
 }
 
-/// The bulk bar, in the frame's action bar (13 sections 2.3 and 3.3).
-///
-/// It used to float over the list on a pane of its own, which is a second
-/// frosted pane on a phone where the budget is one and a bar the list's own
-/// column had to leave room for. The scaffold floats one thing, and this is
-/// what a list screen gives it while there is a selection to act on.
-///
-/// It reads the selection and the collection itself rather than being handed
-/// their values, so the pane it is published into stays in step without the
-/// screen republishing it every frame.
+/// Bulk actions belong to the visible queue, including in list-detail layouts.
 class _QueueSelectionBar extends StatelessWidget {
-  const _QueueSelectionBar({required this.selection, required this.onDecide});
-
-  /// What the reviewer has picked out of the loaded page.
+  const _QueueSelectionBar({
+    required this.selection,
+    required this.eligibility,
+    required this.checking,
+    required this.onDecide,
+    required this.onRetry,
+  });
   final PagedSelection<Specimen> selection;
-
-  /// Takes one bulk decision across the whole selection.
+  final BulkSelectionEligibility? eligibility;
+  final bool checking;
   final void Function(BulkDecisionKind kind) onDecide;
+  final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) => ListenableBuilder(
-    listenable: selection,
-    builder: (BuildContext context, Widget? child) {
-      final WorkspaceController controller = WorkspaceScope.of(context);
-      return SelectionBar(
-        // The scaffold's action bar is already the pane, and a pane inside a
-        // pane is the depth 13 section 2.2 counts.
-        pane: false,
-        count: selection.count,
-        loadedCount: selection.loadedCount,
-        moreToLoad: selection.moreToLoad,
-        allLoadedSelected: selection.allLoadedSelected,
-        onSelectAllLoaded: selection.selectAllLoaded,
-        onClear: selection.clear,
-        busy: controller.mutating,
-        actions: <SelectionAction>[
-          for (final BulkDecisionKind kind in BulkDecisionKind.values)
-            (
-              label: kind.label,
-              icon: kind.icon,
-              onPressed: () => onDecide(kind),
+  Widget build(BuildContext context) {
+    final controller = WorkspaceScope.of(context);
+    final ui = context.ui;
+    final pending = eligibility == null || checking;
+    final counts = {
+      for (final kind in BulkDecisionKind.values)
+        kind: eligibility?.eligibleFor(kind).length ?? 0,
+    };
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: ui.color.paper,
+        border: Border(top: BorderSide(color: ui.color.hairline)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(ui.space.s4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              pending
+                  ? 'Checking current permissions...'
+                  : '${counts[BulkDecisionKind.approve]} eligible for approval, ${counts[BulkDecisionKind.confirmCoverage]} for coverage.',
+              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
             ),
-        ],
-      );
-    },
-  );
+            SizedBox(height: ui.space.s2),
+            SelectionBar(
+              pane: false,
+              count: selection.count,
+              loadedCount: selection.loadedCount,
+              moreToLoad: selection.moreToLoad,
+              allLoadedSelected: selection.allLoadedSelected,
+              selectionLimit: bulkDecisionLimit,
+              onSelectAllLoaded: selection.selectAllLoaded,
+              onClear: selection.clear,
+              busy: controller.mutating || checking,
+              actionReasons: {
+                for (final kind in BulkDecisionKind.values)
+                  kind.label: pending
+                      ? 'Wait for current permissions to be checked.'
+                      : 'None of the selected records currently permit this action. Check permissions again or review each record.',
+              },
+              actions: [
+                for (final kind in BulkDecisionKind.values)
+                  (
+                    label: kind.label,
+                    icon: kind.icon,
+                    onPressed: pending || counts[kind] == 0
+                        ? null
+                        : () => onDecide(kind),
+                  ),
+              ],
+            ),
+            if (selection.atLimit)
+              Text(
+                'Limit of $bulkDecisionLimit records reached. Clear some selections to choose others.',
+                style: ui.type.bodySmall,
+              ),
+            if (!pending &&
+                counts.values.any((count) => count < selection.count))
+              UiButton(
+                label: 'Check permissions again',
+                variant: UiButtonVariant.ghost,
+                onPressed: controller.mutating ? null : onRetry,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Installs a toast layer only where there is not one already.
@@ -924,367 +1047,185 @@ class _ToastLayer extends StatelessWidget {
       UiToastHost.maybeOf(context) == null ? UiToastHost(child: child) : child;
 }
 
-/// The title, the live summary line and when the list was last answered.
-class _QueueHeader extends StatefulWidget {
-  const _QueueHeader({required this.controller});
-
+/// Three review views, with the active name and an icon for each view.
+class _StatusControls extends StatefulWidget {
+  const _StatusControls({required this.controller});
   final WorkspaceController controller;
 
   @override
-  State<_QueueHeader> createState() => _QueueHeaderState();
+  State<_StatusControls> createState() => _StatusControlsState();
 }
 
-class _QueueHeaderState extends State<_QueueHeader> {
-  Timer? _tick;
-
-  @override
-  void initState() {
-    super.initState();
-    // One tick a second, and only while there is an answer to age. Nothing
-    // animates: a counted number is a fact, not a transition
-    // (motion catalog, row 6).
-    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted && widget.controller.updatedAt != null) setState(() {});
-    });
-  }
+class _StatusControlsState extends State<_StatusControls> {
+  static const views = <({String value, String label, IconSpec icon})>[
+    (
+      value: 'needs_human_review',
+      label: 'Needs a human',
+      icon: UiIcons.needsReview,
+    ),
+    (value: 'deferred', label: 'Deferred', icon: UiIcons.deferred),
+    (value: 'cleared', label: 'Cleared', icon: UiIcons.cleared),
+  ];
+  final _focusNodes = <FocusNode>[
+    for (final view in views) FocusNode(debugLabel: view.label),
+  ];
 
   @override
   void dispose() {
-    _tick?.cancel();
+    for (final node in _focusNodes) {
+      node.dispose();
+    }
     super.dispose();
   }
 
-  /// The summary never implies a total the server did not send: the API
-  /// answers a page, so the line says what is loaded (audit, 1.1).
-  String _summary() {
-    final WorkspaceController controller = widget.controller;
-    final int count = controller.items.length;
-    final String loaded = count == 1
-        ? '1 record loaded'
-        : '$count records loaded';
-    return '$loaded. ${_breakdown()}';
+  void _select(int index) {
+    _focusNodes[index].requestFocus();
+    unawaited(widget.controller.selectDisposition(views[index].value));
   }
 
-  /// What the loaded page is made of, as the line under the numeral.
-  String _breakdown() {
-    final WorkspaceController controller = widget.controller;
-    // One record needs review; two need it. The count is read aloud as part
-    // of a live region, so the verb has to agree with it.
-    final int review = controller.needsReview;
-    final String needs = review == 1 ? '1 needs review' : '$review need review';
-    return '$needs, ${controller.blocked} blocked.';
-  }
-
-  /// The unit beside the numeral (09 section 4.2, the `unit` role).
-  String _unit() => widget.controller.items.length == 1 ? 'RECORD' : 'RECORDS';
-
-  String? _updated() {
-    final DateTime? moment = widget.controller.updatedAt;
-    if (moment == null) return null;
-    final Duration age = DateTime.now().difference(moment);
-    if (age.inMinutes < 1) return 'Updated ${age.inSeconds.clamp(0, 59)} s ago';
-    if (age.inHours < 1) return 'Updated ${age.inMinutes} min ago';
-    return 'Updated ${age.inHours} h ago';
+  KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    final index = _focusNodes.indexWhere((node) => node.hasFocus);
+    if (index < 0) return KeyEventResult.ignored;
+    final key = event.logicalKey;
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    final int next;
+    if (key == LogicalKeyboardKey.arrowRight) {
+      next = (index + (rtl ? -1 : 1)) % views.length;
+    } else if (key == LogicalKeyboardKey.arrowLeft) {
+      next = (index + (rtl ? 1 : -1)) % views.length;
+    } else if (key == LogicalKeyboardKey.arrowDown) {
+      next = (index + 1) % views.length;
+    } else if (key == LogicalKeyboardKey.arrowUp) {
+      next = (index - 1) % views.length;
+    } else if (key == LogicalKeyboardKey.home) {
+      next = 0;
+    } else if (key == LogicalKeyboardKey.end) {
+      next = views.length - 1;
+    } else {
+      return KeyEventResult.ignored;
+    }
+    _select(next);
+    return KeyEventResult.handled;
   }
 
   @override
   Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final String? updated = _updated();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: <Widget>[
+    final ui = context.ui;
+    final active = views.indexWhere(
+      (view) => view.value == widget.controller.disposition,
+    );
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: _handleKey,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (active < 0) ...[
             Expanded(
-              child: Semantics(
-                // Its own node, so the screen's name is not read as one
-                // phrase with the count beside it.
-                container: true,
-                header: true,
-                child: Text(
-                  'Queue',
-                  style: ui.type.headline.copyWith(color: ui.color.ink),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: UiDensity.hitBox),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  heightFactor: 1,
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      widget.controller.disposition.isEmpty
+                          ? 'All specimens'
+                          : queueDispositions[widget.controller.disposition] ??
+                                'Specimens',
+                      style: ui.type.label,
+                    ),
+                  ),
                 ),
               ),
             ),
             SizedBox(width: ui.space.s2),
-            // The count as a numeral with its unit (13 section 4.2). 09
-            // section 4.2 names `display.medium` for exactly this number and
-            // `unit` for the upper case word beside it. The whole sentence
-            // stays on the live region below, so a reader hears what is
-            // loaded and what it is made of rather than a bare numeral.
-            _CountNumeral(count: widget.controller.items.length, unit: _unit()),
           ],
-        ),
-        SizedBox(height: ui.space.s1),
-        Announcer(
-          child: Semantics(
-            label: _summary(),
-            excludeSemantics: true,
-            child: Text(
-              _breakdown(),
-              style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-            ),
-          ),
-        ),
-        if (updated != null) ...<Widget>[
-          SizedBox(height: ui.space.s1),
-          // Outside the live region on purpose: this line changes every
-          // second, and a live region that carries it announces the queue
-          // once a second rather than when the count moves.
-          Semantics(
-            container: true,
-            child: Text(
-              updated,
-              style: ui.type.bodySmall.copyWith(color: ui.color.inkTertiary),
-            ),
-          ),
+          for (var index = 0; index < views.length; index++) ...[
+            if (index > 0) SizedBox(width: ui.space.s2),
+            if (active == index)
+              Expanded(child: _filter(context, index))
+            else
+              SizedBox(width: UiDensity.hitBox, child: _filter(context, index)),
+          ],
         ],
-      ],
+      ),
     );
   }
-}
 
-/// The loaded count, as a numeral with its unit (09 section 4.2).
-///
-/// Tabular figures, so a digit that changes is visible by position, and the
-/// pair is one semantics node under the header's own live region rather than
-/// two fragments a reader hears as "four" and then "records".
-class _CountNumeral extends StatelessWidget {
-  const _CountNumeral({required this.count, required this.unit});
-
-  final int count;
-  final String unit;
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    return ExcludeSemantics(
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
-        children: <Widget>[
-          Text(
-            '$count',
-            style: ui.type.displayMedium.copyWith(color: ui.color.ink),
-            maxLines: 1,
+  Widget _filter(BuildContext context, int index) {
+    final ui = context.ui;
+    final view = views[index];
+    final selected = view.value == widget.controller.disposition;
+    return UiTooltip(
+      message: view.label,
+      child: Pressable(
+        key: ValueKey<String>('queue-filter-${view.value}'),
+        semanticsLabel: view.label,
+        role: PressableRole.radio,
+        selected: selected,
+        focusNode: _focusNodes[index],
+        onPressed: () => _select(index),
+        builder: (context, states) => DecoratedBox(
+          decoration: ShapeDecoration(
+            shape: Squircle.border(ui.shape.inner),
+            color: selected
+                ? ui.color.ground
+                : ui.color.paper.withValues(alpha: 0),
           ),
-          SizedBox(width: ui.space.s2),
-          Text(
-            unit,
-            style: ui.type.unit.copyWith(color: ui.color.inkTertiary),
-            maxLines: 1,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: UiDensity.hitBox),
+            child: Padding(
+              padding: EdgeInsets.all(ui.space.s2),
+              child: Row(
+                mainAxisAlignment: selected
+                    ? MainAxisAlignment.start
+                    : MainAxisAlignment.center,
+                children: [
+                  UiIcon(view.icon, size: UiIconSize.inline),
+                  if (selected) ...[
+                    SizedBox(width: ui.space.s2),
+                    Expanded(child: Text(view.label, style: ui.type.label)),
+                  ],
+                ],
+              ),
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-/// The disposition filter.
-///
-/// Six options, which is one more than a `UiSegmented` track takes, so they
-/// are filter chips that wrap. A `UiCapsuleToggle` in single mode was the
-/// other candidate and was declined: it clears when its chosen option is
-/// chosen again, and this filter already has a cleared state of its own
-/// called "All", so the control and the product would have had two spellings
-/// for one thing. Wrapping also keeps every option reachable, where the
-/// horizontal scroll this replaces hid two of the six on a phone.
-class _DispositionChips extends StatelessWidget {
-  const _DispositionChips({required this.controller});
-
-  final WorkspaceController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    return Wrap(
-      spacing: ui.space.s2,
-      runSpacing: ui.space.s2,
-      children: <Widget>[
-        for (final MapEntry<String, String> entry in queueDispositions.entries)
-          UiChip(
-            key: ValueKey<String>('disposition-${entry.key}'),
-            label: entry.value,
-            variant: UiChipVariant.filter,
-            selected: controller.disposition == entry.key,
-            // Choosing the chosen one again is not a clear: "All" is where
-            // this filter goes when it is cleared, and it is one of the six.
-            onPressed: controller.disposition == entry.key
-                ? () {}
-                : () => unawaited(controller.selectDisposition(entry.key)),
-          ),
-      ],
-    );
-  }
-}
-
-/// The search field with the filter control beside it (13 section 4.2).
-///
-/// One region, one job: narrow the list. It scrolls with the header rather
-/// than sticking under the top bar, which is what 13 section 4.2 asks for and
-/// what 13 section 2.3 refuses: at 390 by 844 and 200 percent text the queue
-/// already pins 185.75 dp of top bar, band and navigation against a budget of
-/// 236.3, and a row holding a text control is 69.75 dp of the 50.6 that
-/// leaves. Section 2.3 says a screen over the budget gives a region up rather
-/// than shrinking one below its density height, and the row a reviewer uses
-/// once is the one to give up. The finding is recorded against 13 section 4.2
-/// rather than worked around.
+/// Exact specimen-ID search, with no secondary filter workflow.
 class _SearchRow extends StatelessWidget {
   const _SearchRow({
     required this.controller,
     required this.focusNode,
     required this.onChanged,
-    required this.filterCount,
-    required this.onFilters,
+    this.onEscape,
   });
 
   final TextEditingController controller;
   final FocusNode focusNode;
   final ValueChanged<String> onChanged;
-  final int filterCount;
-  final VoidCallback onFilters;
+  final VoidCallback? onEscape;
 
   @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: <Widget>[
-        Expanded(
-          child: UiSearchField(
-            label: _QueuePaneState.searchLabel,
-            hintText: _QueuePaneState.searchHint,
-            clearLabel: 'Clear the search',
-            controller: controller,
-            focusNode: focusNode,
-            onChanged: onChanged,
-          ),
-        ),
-        SizedBox(width: ui.space.s2),
-        _FiltersControl(count: filterCount, onPressed: onFilters),
-      ],
-    );
-  }
-}
-
-/// The control that opens the filter sheet, with the active count beside it.
-///
-/// The count lives on the badge rather than in the button's label, so the
-/// button keeps one name at every state and a reader hears the count once.
-class _FiltersControl extends StatelessWidget {
-  const _FiltersControl({required this.count, required this.onPressed});
-
-  final int count;
-  final VoidCallback onPressed;
-
-  /// The button's one label.
-  static const String label = 'Filters';
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        UiButton(
-          label: label,
-          variant: UiButtonVariant.secondary,
-          leading: UiIcons.filter,
-          onPressed: onPressed,
-        ),
-        if (count > 0) ...<Widget>[
-          SizedBox(width: ui.space.s2),
-          UiBadge(count, semanticsLabel: activeLabel(count)),
-        ],
-      ],
-    );
-  }
-
-  /// What the badge reads as. Counted, because one filter is not two.
-  static String activeLabel(int count) =>
-      count == 1 ? '1 filter active' : '$count filters active';
-}
-
-/// One removable chip per active filter, so a filter is never invisible once
-/// the sheet closes (audit, pass criterion 6.4).
-class _ActiveFilterChips extends StatelessWidget {
-  const _ActiveFilterChips({
-    required this.controller,
-    this.withDisposition = false,
-  });
-
-  final WorkspaceController controller;
-
-  /// True where the disposition is only in the sheet, so this row is the one
-  /// place it is visible once the sheet closes.
-  final bool withDisposition;
-
-  /// What the chosen disposition is called, or null where every record shows.
-  String? get _disposition {
-    if (!withDisposition) return null;
-    final String chosen = controller.disposition;
-    if (chosen.isEmpty) return null;
-    return queueDispositions[chosen];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final Map<String, String> filters = controller.filters;
-    final String? disposition = _disposition;
-    final bool any = filters.isNotEmpty || disposition != null;
-    // Adding and removing a filter changes the height of the row above the
-    // list, so the chips arrive and leave through the shared reveal rather
-    // than snapping the rows down (motion catalog, rows 10 and 23).
-    return MotionReveal(
-      visible: any,
-      child: !any
-          ? const SizedBox(width: double.infinity)
-          : Padding(
-              padding: EdgeInsetsDirectional.only(top: ui.space.s2),
-              child: Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: ui.space.s2,
-                runSpacing: ui.space.s1,
-                children: <Widget>[
-                  if (disposition != null)
-                    UiChip(
-                      key: const ValueKey<String>('filter-chip-disposition'),
-                      label: '$queueDispositionLabel: $disposition',
-                      variant: UiChipVariant.input,
-                      onRemove: () =>
-                          unawaited(controller.selectDisposition('')),
-                      removeSemanticsLabel: 'Remove the disposition filter',
-                    ),
-                  for (final MapEntry<String, String> entry in filters.entries)
-                    UiChip(
-                      key: ValueKey<String>('filter-chip-${entry.key}'),
-                      label:
-                          '${searchFieldLabel(entry.key)}: '
-                          '${searchValueLabel(entry.key, entry.value)}',
-                      variant: UiChipVariant.input,
-                      onRemove: () =>
-                          unawaited(controller.removeFilter(entry.key)),
-                      removeSemanticsLabel:
-                          'Remove the ${searchFieldLabel(entry.key)} filter',
-                    ),
-                  UiButton(
-                    label: 'Clear all',
-                    variant: UiButtonVariant.ghost,
-                    onPressed: () => unawaited(controller.clearFilters()),
-                  ),
-                ],
-              ),
-            ),
-    );
-  }
+  Widget build(BuildContext context) => UiSearchField(
+    label: _QueuePaneState.searchLabel,
+    hintText: _QueuePaneState.searchHint,
+    clearLabel: 'Clear the search',
+    controller: controller,
+    focusNode: focusNode,
+    onChanged: onChanged,
+    onEscape: onEscape,
+  );
 }
 
 /// The load more control (motion catalog, row 27).
@@ -1436,10 +1377,6 @@ class _OpenSelectionIntent extends Intent {
 
 class _FocusSearchIntent extends Intent {
   const _FocusSearchIntent();
-}
-
-class _OpenFiltersIntent extends Intent {
-  const _OpenFiltersIntent();
 }
 
 class _ClearSelectionIntent extends Intent {

@@ -1,9 +1,8 @@
-// `UiSegmented` carries signature motion 1, the glide, and the WAI-ARIA
-// manual activation pattern: arrows move, Enter selects, and arrowing past a
-// segment does not switch the pane under the reviewer on the way through.
+// Value choices use radio semantics and manual keyboard activation.
+// Arrows move focus; Enter commits without changing neighboring geometry.
 
 import 'dart:math' as math;
-import 'dart:ui' show SemanticsFlags, Tristate;
+import 'dart:ui' show CheckedState, SemanticsFlags, Tristate;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -109,9 +108,20 @@ class _HostState extends State<_Host> {
   );
 }
 
-/// Where the gliding thumb is now.
-double _thumbCentre(WidgetTester tester) =>
-    tester.getCenter(find.byType(FractionallySizedBox)).dx;
+/// The selected slot's painted fill, independent of semantic state.
+Color _segmentFill(WidgetTester tester, String label) => tester
+    .widget<ColoredBox>(
+      find
+          .descendant(
+            of: find.byWidgetPredicate(
+              (Widget widget) =>
+                  widget is Pressable && widget.semanticsLabel == label,
+            ),
+            matching: find.byType(ColoredBox),
+          )
+          .first,
+    )
+    .color;
 
 void main() {
   setUp(() {
@@ -159,7 +169,7 @@ void main() {
     );
   });
 
-  testWidgets('each segment is a tab, and only the chosen one is selected', (
+  testWidgets('each segment is a radio choice with one checked option', (
     WidgetTester tester,
   ) async {
     final SemanticsHandle handle = tester.ensureSemantics();
@@ -170,7 +180,9 @@ void main() {
     final SemanticsData chosen = tester
         .getSemantics(find.bySemanticsLabel('Fields'))
         .getSemanticsData();
-    expect(chosen.role, SemanticsRole.tab);
+    expect(chosen.role, SemanticsRole.none);
+    expect(chosen.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+    expect(chosen.flagsCollection.isChecked, CheckedState.isTrue);
     expect(chosen.flagsCollection.isSelected, Tristate.isTrue);
     expect(
       tester
@@ -199,7 +211,7 @@ void main() {
     }
   });
 
-  testWidgets('the track draws at the density height inside a 48 dp row', (
+  testWidgets('the track keeps every choice at least 48 dp high', (
     WidgetTester tester,
   ) async {
     for (final UiDensityMode density in UiDensityMode.values) {
@@ -211,7 +223,10 @@ void main() {
         UiThemeData.light(density: UiDensity.of(density)),
         UiSize.md,
       );
-      expect(style.trackHeight, UiDensity.of(density).controlHeight);
+      expect(
+        style.trackHeight,
+        math.max(UiDensity.hitBox, UiDensity.of(density).controlHeight),
+      );
       expect(style.outerHeight, greaterThanOrEqualTo(UiDensity.hitBox));
       expect(
         tester.getSize(find.byType(UiSegmented<_Pane>)).height,
@@ -220,39 +235,28 @@ void main() {
     }
   });
 
-  testWidgets('tapping a segment chooses it and the thumb glides there', (
+  testWidgets('tapping a choice updates its fill without moving the slots', (
     WidgetTester tester,
   ) async {
     final List<_Pane> reported = <_Pane>[];
     await tester.pumpWidget(uiHarness(child: _Host(onChanged: reported.add)));
     await tester.pumpAndSettle();
-    final double start = _thumbCentre(tester);
+    final Rect readings = tester.getRect(find.bySemanticsLabel('Readings'));
+    final Rect history = tester.getRect(find.bySemanticsLabel('History'));
+    final UiThemeData ui = tester.element(find.byType(_Host)).ui;
+    expect(_segmentFill(tester, 'Readings'), ui.color.ink);
+    expect(_segmentFill(tester, 'History'), ui.color.paper);
 
     await tester.tap(find.bySemanticsLabel('History'));
-    await tester.pump();
-    expect(reported, <_Pane>[_Pane.history]);
-    final double midway = _thumbCentre(tester);
-    expect(
-      midway,
-      closeTo(start, 1),
-      reason: 'the glide has not started travelling on the first frame',
-    );
-
-    await tester.pump(MotionTokens.mediumRaw ~/ 2);
-    expect(
-      _thumbCentre(tester),
-      greaterThan(start),
-      reason: 'the thumb is between the two segments partway through',
-    );
-
     await tester.pumpAndSettle();
-    expect(
-      _thumbCentre(tester),
-      closeTo(tester.getCenter(find.bySemanticsLabel('History')).dx, 2),
-    );
+    expect(reported, <_Pane>[_Pane.history]);
+    expect(_segmentFill(tester, 'Readings'), ui.color.paper);
+    expect(_segmentFill(tester, 'History'), ui.color.ink);
+    expect(tester.getRect(find.bySemanticsLabel('Readings')), readings);
+    expect(tester.getRect(find.bySemanticsLabel('History')), history);
   });
 
-  testWidgets('under reduced motion the thumb appears at the new segment', (
+  testWidgets('reduced motion commits a choice with no animation', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
@@ -261,10 +265,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.bySemanticsLabel('History'));
     await tester.pump();
-    expect(
-      _thumbCentre(tester),
-      closeTo(tester.getCenter(find.bySemanticsLabel('History')).dx, 2),
-    );
+    final UiThemeData ui = tester.element(find.byType(_Host)).ui;
+    expect(_segmentFill(tester, 'History'), ui.color.ink);
+    expect(_segmentFill(tester, 'Readings'), ui.color.paper);
     expect(tester.binding.transientCallbackCount, 0);
   });
 
@@ -295,7 +298,7 @@ void main() {
     expect(reported, <_Pane>[_Pane.history]);
   });
 
-  testWidgets('the thumb starts at the reading start under RTL', (
+  testWidgets('the selected choice stays at the reading start under RTL', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
@@ -303,8 +306,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      _thumbCentre(tester),
-      closeTo(tester.getCenter(find.bySemanticsLabel('Readings')).dx, 2),
+      _segmentFill(tester, 'Readings'),
+      tester.element(find.byType(_Host)).ui.color.ink,
     );
     expect(
       tester.getCenter(find.bySemanticsLabel('Readings')).dx,

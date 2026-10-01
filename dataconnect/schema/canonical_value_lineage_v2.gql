@@ -1,0 +1,166 @@
+# SOURCE ONLY: additive canonical-value-lineage/v2; compiler/native UNRUN.
+# Install only alongside the independently qualified sole native V2 transaction.
+# Existing FieldCandidate/RecordVersion/ordinary projection are unchanged.
+# Scoped references prevent cross-collection joins. Native V2 must additionally
+# prove candidate/run/specimen/field identity, exact row hashes and ancestry.
+type CanonicalValueLineageV2 @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(fields: ["organizationId", "collectionId"], constraintName: "cvlv2_scope")
+  id: UUID!
+  contractVersion: String!
+  specimenId: UUID!
+  specimen: Specimen! @ref(fields: ["organizationId", "collectionId", "specimenId"], constraintName: "cvlv2_specimen")
+  runId: UUID!
+  run: PipelineRun! @ref(fields: ["organizationId", "collectionId", "runId"], constraintName: "cvlv2_run")
+  candidateId: UUID!
+  candidate: FieldCandidate! @ref(fields: ["organizationId", "collectionId", "candidateId"], constraintName: "cvlv2_candidate")
+  recordVersionId: UUID!
+  recordVersion: RecordVersion! @ref(fields: ["organizationId", "collectionId", "recordVersionId"], constraintName: "cvlv2_record")
+  predecessorId: UUID!
+  predecessor: RecordVersion! @ref(fields: ["organizationId", "collectionId", "predecessorId"], constraintName: "cvlv2_predecessor")
+  priorRevision: Int!
+  resultRevision: Int!
+  priorNativeSnapshotDigest: String!
+  priorGraphSnapshotDigest: String!
+  priorActiveGraphDigest: String
+  fieldKey: String!
+  researchFieldKey: String!
+  layer: String!
+  resolutionDigest: String!
+  typedCheckpointDigest: String!
+  nativeCheckpointId: String!
+  nativeCheckpointDigest: String!
+  originalRequestDigest: String!
+  originalScope: Any!
+  # Complete original typed DerivationRecord, never just a derivation marker.
+  derivation: Any
+  derivationDigest: String
+  # Original scientific input fingerprint, distinct from dependency resolution.
+  scientificSourceDigest: String
+  precision: String
+  centuryRule: String
+  readingSources: Any!
+  # Recomputed original fragment/target assembly proof, or explicit absent literal.
+  literalGrounding: Any!
+  selectedObservationId: UUID
+  selectedObservation: ModelObservation @ref(fields: ["organizationId", "collectionId", "selectedObservationId"], constraintName: "cvlv2_observation")
+  selectedTranscriptionId: UUID
+  selectedTranscription: TranscriptionVersion @ref(fields: ["organizationId", "collectionId", "selectedTranscriptionId"], constraintName: "cvlv2_transcription")
+  settledObservationIds: [UUID!]!
+  evidenceIds: [UUID!]!
+  evidenceRelations: Any!
+  consumedDependencies: Any!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type CanonicalValueDependencyV2 @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(fields: ["organizationId", "collectionId"], constraintName: "cvdv2_scope")
+  id: UUID!
+  lineageId: UUID!
+  lineage: CanonicalValueLineageV2! @ref(fields: ["organizationId", "collectionId", "lineageId"], constraintName: "cvdv2_lineage")
+  ordinal: Int!
+  researchFieldKey: String!
+  canonicalFieldKey: String!
+  sourceRevision: Int!
+  dependencyResolutionDigest: String!
+  sourceCheckpointId: String!
+  sourceCheckpointDigest: String!
+  sourceTypedCheckpointDigest: String!
+  sourceRunId: UUID!
+  sourceRun: PipelineRun! @ref(fields: ["organizationId", "collectionId", "sourceRunId"], constraintName: "cvdv2_run")
+  sourceCandidateId: UUID!
+  sourceCandidate: FieldCandidate! @ref(fields: ["organizationId", "collectionId", "sourceCandidateId"], constraintName: "cvdv2_candidate")
+  sourceRecordVersionId: UUID!
+  sourceRecordVersion: RecordVersion! @ref(fields: ["organizationId", "collectionId", "sourceRecordVersionId"], constraintName: "cvdv2_record")
+  sourceCandidateDigest: String!
+  sourceRecordDigest: String!
+  sourcePublicationLineageDigest: String!
+  # Actual complete scoped ResolvedField rows of the source RecordVersion.
+  sourceRecordFieldsDigest: String!
+  sourceRecordFields: Any!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# A factual association retained from the exact original typed scientific record.
+# Nullable originalRelation is not replaced with invented supports/decides.
+type CanonicalValueEvidenceV2 @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(fields: ["organizationId", "collectionId"], constraintName: "cvev2_scope")
+  id: UUID!
+  lineageId: UUID!
+  lineage: CanonicalValueLineageV2! @ref(fields: ["organizationId", "collectionId", "lineageId"], constraintName: "cvev2_lineage")
+  evidenceId: UUID!
+  evidence: EvidenceItem! @ref(fields: ["organizationId", "collectionId", "evidenceId"], constraintName: "cvev2_evidence")
+  researchEvidenceId: String!
+  associationKind: String!
+  originalRelation: String
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+
+# Exact request/capture/input shape; empty and mixed inputs are representable.
+# Sole native V2 must re-read/reverify all native joins/body policies atomically.
+type ToolInputLineageV2 @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(fields: ["organizationId", "collectionId"], constraintName: "tilv2_scope")
+  id: UUID!
+  contractVersion: String!
+  specimenId: UUID!
+  specimen: Specimen! @ref(fields: ["organizationId", "collectionId", "specimenId"], constraintName: "tilv2_specimen")
+  runId: UUID!
+  run: PipelineRun! @ref(fields: ["organizationId", "collectionId", "runId"], constraintName: "tilv2_run")
+  evidenceId: UUID!
+  evidence: EvidenceItem! @ref(fields: ["organizationId", "collectionId", "evidenceId"], constraintName: "tilv2_evidence")
+  nativeCheckpointId: String!
+  nativeCheckpointDigest: String!
+  originalRequestDigest: String!
+  originalScope: Any!
+  originalRequest: Any!
+  queryDigest: String!
+  query: Any!
+  effectId: String!
+  attemptId: String!
+  receiptDigest: String!
+  receiptBindingDigest: String!
+  sourcePolicyDigest: String!
+  capturePolicyDigest: String!
+  sourceRegistryDigest: String!
+  canonicalMappingDigest: String!
+  sourceCaptureProof: Any!
+  fragments: Any!
+  fragmentDigests: [String!]!
+  observationIds: [UUID!]!
+  regionIds: [UUID!]!
+  inputSources: [String!]!
+  nativeInputs: Any!
+  # Actual private native transcription/decision/member proof, empty for raw routes.
+  nativeTranscriptionProofs: Any!
+  selectedObservationId: UUID
+  selectedObservation: ModelObservation @ref(fields: ["organizationId", "collectionId", "selectedObservationId"], constraintName: "tilv2_observation")
+  legacyProducerDigest: String
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type CapturedToolExecutionV2 @table(key: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  collection: Collection! @ref(fields: ["organizationId", "collectionId"], constraintName: "ctev2_scope")
+  id: UUID!
+  contractVersion: String!
+  lineageId: UUID!
+  lineage: ToolInputLineageV2! @ref(fields: ["organizationId", "collectionId", "lineageId"], constraintName: "ctev2_lineage")
+  runId: UUID!
+  run: PipelineRun! @ref(fields: ["organizationId", "collectionId", "runId"], constraintName: "ctev2_run")
+  evidenceId: UUID!
+  evidence: EvidenceItem! @ref(fields: ["organizationId", "collectionId", "evidenceId"], constraintName: "ctev2_evidence")
+  execution: Any!
+  executionDigest: String!
+  effectId: String!
+  attemptId: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}

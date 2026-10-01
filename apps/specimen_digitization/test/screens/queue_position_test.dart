@@ -6,6 +6,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:specimen_ui/specimen_ui.dart' show UiListRow;
 import 'package:specimen_digitization/src/administrator_contact.dart';
 import 'package:specimen_digitization/src/app/help_screen.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
@@ -20,48 +21,86 @@ import '../ui_finders.dart';
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
-  testWidgets('the queue keeps its scroll offset across a record', (
+  testWidgets('the queue keeps its view across record exit and reopen', (
     WidgetTester tester,
   ) async {
-    // A phone, where the list is unmounted while the record is open, so the
-    // offset has to be stored rather than merely left alone.
+    // On phones the full-width list is retained offstage during review.
     await pumpGoldenApp(
       tester,
       window: const Size(390, 844),
       brightness: Brightness.light,
       location: goldenQueueLocation,
-      repository: GoldenQueueRepository(goldenQueue(12)),
+      repository: GoldenQueueRepository(goldenQueue(40)),
     );
-
-    final Finder list = find.byKey(const PageStorageKey<String>('queue-list'));
-    expect(list, findsOneWidget);
-    final ScrollableState scroll = tester.state<ScrollableState>(
+    await pickSpecimenQueue(tester, 'Cleared');
+    final controller = WorkspaceScope.read(
+      tester.element(find.byType(QueuePane)),
+    );
+    final list = find.byKey(const PageStorageKey<String>('queue-list'));
+    ScrollableState listState() => tester.state<ScrollableState>(
       find.descendant(of: list, matching: find.byType(Scrollable)).first,
     );
-    scroll.position.jumpTo(320);
+    expect(list, findsOneWidget);
+    final ScrollableState scroll = listState();
+    expect(scroll.position.maxScrollExtent, greaterThan(240));
+    await tester.drag(list, const Offset(0, -240));
     await tester.pumpAndSettle();
-    expect(scroll.position.pixels, 320);
+    final double offset = scroll.position.pixels;
+    expect(offset, greaterThan(100));
 
-    await tester.tap(find.text('Pinned beetle 3'));
-    await tester.pumpAndSettle();
-    expect(find.byType(QueuePane), findsNothing);
-
-    await tester.tap(uiIconButton(backToQueueLabel));
-    await tester.pumpAndSettle();
-
-    final ScrollableState returned = tester.state<ScrollableState>(
-      find
-          .descendant(
-            of: find.byKey(const PageStorageKey<String>('queue-list')),
-            matching: find.byType(Scrollable),
-          )
-          .first,
+    final visibleRows = find
+        .descendant(of: list, matching: find.byType(UiListRow))
+        .hitTestable();
+    expect(visibleRows, findsWidgets);
+    final String selectedId = tester.widget<UiListRow>(visibleRows.first).title;
+    Finder selectedRow() => find.descendant(
+      of: list,
+      matching: find.byWidgetPredicate(
+        (widget) => widget is UiListRow && widget.title == selectedId,
+      ),
     );
+
+    await tester.tap(selectedRow().hitTestable());
+    await tester.pumpAndSettle();
     expect(
-      returned.position.pixels,
-      closeTo(320, 1),
-      reason: 'the queue came back at the top rather than where it was left',
+      tester.widget<ReviewWorkbench>(find.byType(ReviewWorkbench)).specimen.id,
+      selectedId,
     );
+    expect(controller.selectedId, selectedId);
+    expect(find.byType(QueuePane), findsNothing);
+    expect(scroll.position.pixels, offset);
+
+    final back = uiIconButton(backToQueueLabel).hitTestable();
+    expect(back, findsOneWidget);
+    await tester.tap(back);
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewWorkbench), findsNothing);
+    expect(listState(), same(scroll));
+    expect(listState().position.pixels, offset);
+    expect(controller.disposition, 'cleared');
+    expect(controller.selectedId, isNull);
+    expect(selectedRow().hitTestable(), findsOneWidget);
+
+    // Reopen without ensureVisible: scrolling to repair a hidden row here
+    // would conceal a lost offset. The second exit exercises native Back.
+    await tester.tap(selectedRow().hitTestable());
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<ReviewWorkbench>(find.byType(ReviewWorkbench)).specimen.id,
+      selectedId,
+    );
+    expect(controller.selectedId, selectedId);
+    expect(find.byType(QueuePane), findsNothing);
+    expect(scroll.position.pixels, offset);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewWorkbench), findsNothing);
+    expect(listState(), same(scroll));
+    expect(listState().position.pixels, offset);
+    expect(controller.disposition, 'cleared');
+    expect(controller.selectedId, isNull);
+    expect(selectedRow().hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
 

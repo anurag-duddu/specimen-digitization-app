@@ -495,16 +495,13 @@ class UiColor {
 
   /// Opacity of the selection behind the characters a reviewer has
   /// highlighted inside a field (11 section 4).
-  double get selectionOpacity => 0.35;
+  double get selectionOpacity => 0.18;
 
   /// Behind the characters a reviewer has selected inside a field.
   ///
-  /// [accent] at [selectionOpacity]. The accent is the product's one
-  /// non-status colour, so a selection reads as this system rather than as
-  /// the platform's blue, and at this opacity [ink] on the composite clears
-  /// 4.5:1 over every opaque surface in both modes, which the composite
-  /// contrast gate holds.
-  Color get selection => accent.withValues(alpha: selectionOpacity);
+  /// A neutral ink tint at [selectionOpacity], distinct in either mode while
+  /// retaining readable text and reserving colour for evidence and status.
+  Color get selection => ink.withValues(alpha: selectionOpacity);
 
   /// The hover or press overlay over any surface.
   ///

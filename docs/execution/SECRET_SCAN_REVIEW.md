@@ -316,3 +316,81 @@ source files. The two identifiers for the digests these files replaced,
 `65b1d497136fde826ef46828b394f64693f3bb0d` and
 `95a923f3e2d110d938ebf698add693fb40277963`, matched nothing any more and were
 removed. The templates stay fully scanned by both tools.
+
+
+## October 1 integration source and synthetic metadata
+
+Independently reviewed172 new exact detect-secrets1.5 findings across18 paths;
+plus one exact public dataset UUID line in the offline synthetic publisher fixture.
+The audited source inventory SHA256 is4dd67932c98f676a12f2abe4a50e69ba7d2d6e26593ab8f03e8e3b12c0f1732f.
+Original146 findings matched actual scanner path/type/line/value SHA1; the scanner
+union was146new+59alreadyknown. Vendored normalization adds26 independently
+verified current hash fingerprints, retaining all original upstream/archive hashes.
+Root independently checked every proposal against the pinned actual scanner report.
+Each baseline addition is exact path/type/hash with is_secret:false; all previous
+entries, default plugins, filters, thresholds and generated metadata remain.
+The temporary scan output self-exclusion was not copied into this baseline.
+
+These are public source/fixture SHA digests, upstream archive and normalized local
+file hashes, two intentionally rejected Basic Auth URL examples, and two exact
+negative/privacy canaries. Their source context was inspected separately.
+The dataset UUID7931dcab-94f1-46ce-8092-56e4335423de is a public search join
+identifier reused by MUSEUM_DATASET. The publisher truth is explicitly synthetic
+and is served by _PublisherTransport through FixtureSourceTransport offline.
+It is not authentication authority; its JSON bytes were preserved.
+
+The Gitleaks exception matches only this exact fixture path AND complete UUID
+field line. Baseline metadata exceptions match only the exact reviewed SHA1
+identifier lines AND .secrets.baseline, under the existing generic-api-key rule.
+There is no whole-source-path exclusion, new filter, detector disablement or
+threshold change. New credential values remain subject to both scanners.
+
+Audited additions per exact path:
+
+- apps/specimen_digitization/test/research/research_models_test.dart: 1.
+- apps/specimen_digitization/third_party/app_links/UPSTREAM_FILES.json: 54.
+- infra/release/data-apply.plan.template.json: 9.
+- infra/release/data-bootstrap.plan.template.json: 9.
+- infra/release/data-initialization-inventory.plan.template.json: 4.
+- infra/release/data-initialize-missing.plan.template.json: 13.
+- scripts/ci/test_legacy_import_proof_schema.py: 2.
+- scripts/ci/test_release_plan_templates.py: 31.
+- src/specimen_digitization/application/profiles/published.json: 1.
+- src/specimen_digitization/research_harness/accepted_output.py: 1.
+- src/specimen_digitization/research_harness/native_canonical.py: 4.
+- src/specimen_digitization/research_harness/prompts/public-source-canaries-2026-09-29.json: 4.
+- tests/fixtures/research_harness/acceptance/exact-head-local-receipt.json: 28.
+- tests/fixtures/research_harness/http/failed-thread.json: 4.
+- tests/fixtures/research_harness/http/queued-thread.json: 4.
+- tests/test_research_harness_acceptance.py: 1.
+- tests/test_research_harness_domain.py: 1.
+- tests/test_research_harness_thread.py: 1.
+
+This scanner audit does not qualify paid execution, native authentication, model
+outputs, historical source claims or protected production deployment.
+
+
+## 2026-10-01 canonical hook metadata and rejection controls
+
+The pinned detect-secrets hook adds its default baseline self-filter and updates
+its generated timestamp when saving canonical output. This supersedes the
+initial composition claim of unchanged generated metadata and filters: the
+only added filter is is_baseline_file for .secrets.baseline. Product source
+filters, detector plugins and thresholds remain unchanged. Canonical scans
+removed obsolete unlabeled template digest findings and updated line numbers;
+all 172 reviewed additions and their labels remain intact.
+
+Independent source inspection confirmed that concurrent pre-commit filename
+chunks each overwrite the whole baseline without a lock. A single invocation
+of the same pinned detector consolidated the canonical trim; the unchanged
+pre-commit configuration is still the final gate. Earlier repeated EXIT3
+updates did not report new secret findings.
+
+In an isolated temporary Git repository, the exact reviewed gold fixture,
+vendored manifest, baseline and Gitleaks configuration passed both pinned
+scanners. New random synthetic credential fields in either fixture were
+rejected by both, and restored files passed again: eight actual checks.
+The Gitleaks pre-commit cache is pinned to v8.30.1; its locally built binary
+reports the upstream build-placeholder version, so source pin and binary
+digest are retained in the private receipt rather than inventing a version.
+No real credentials or canary values are retained in product source.

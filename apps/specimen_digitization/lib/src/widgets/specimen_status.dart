@@ -73,7 +73,7 @@ class StatusPresentation {
 
 /// The dispositions, operational states and field states this client renders.
 ///
-/// The first nine values are record-level; the last seven are the field states
+/// Values through [unknown] are record-level; the last seven are field states
 /// the server publishes in `knownFieldStates`.
 enum SpecimenStatus {
   /// A reviewer affirmed the record.
@@ -95,7 +95,8 @@ enum SpecimenStatus {
   /// so it takes the blocked triple (PRD 10.1, QUE-005).
   retryScheduled('state.blocked'),
 
-  /// An operator paused processing. Operational, not a queue (PRD 10.1).
+  /// Processing is paused, including after restoring a historical version.
+  /// Operational, not a reviewer's deferred disposition (PRD 10.1).
   paused('state.blocked'),
 
   /// An operator cancelled processing. Operational, not a queue (PRD 10.1).
@@ -131,7 +132,7 @@ enum SpecimenStatus {
   /// The product token triple this status draws from.
   final String tokenKey;
 
-  /// True for the nine record-level values.
+  /// True for a record's disposition or operational state.
   bool get isRecordStatus => index <= SpecimenStatus.unknown.index;
 
   /// The server strings this client maps, by status.
@@ -168,7 +169,9 @@ enum SpecimenStatus {
   /// as a visible "State unknown" chip rather than as a blank. An unmapped
   /// server value is a fact about the record, so it is shown, not swallowed.
   static SpecimenStatus fromWire(String? wire) {
-    if (wire == null) return SpecimenStatus.unknown;
+    if (wire == null) {
+      return SpecimenStatus.unknown;
+    }
     return wireValues[wire.trim()] ?? SpecimenStatus.unknown;
   }
 

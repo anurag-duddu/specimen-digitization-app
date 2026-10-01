@@ -1,6 +1,7 @@
 """The reviewable release templates must still satisfy the real plan validators.
 
-Every template in `infra/release/` is loaded, its `<OWNER:...>` placeholders are
+Raw retired origins are pinned and denied by current guards; separately reviewed
+synthetic copies bind literal current source hashes. Each template is loaded, its `<OWNER:...>` placeholders are
 replaced with syntactically valid dummies, and the result is handed to the same
 validation functions the protected workflows call. A template whose keys drift
 away from a validator's exact key set fails here, before a release run pays for
@@ -44,8 +45,53 @@ PLAN_TEMPLATES = (
 ALL_TEMPLATES = PLAN_TEMPLATES + ("evidence-digests.template.json",)
 
 
+# Frozen raw legacy origins remain unchanged and are refused by the current validator.
+# Only synthetic test copies receive this reviewed, literal current source set.
+RETIRED_DATA_TEMPLATE_SHA256 = {'data-apply.plan.template.json': '53bb8be429c7d4e562d0519a78b8d7da53ffcd544ae8acaf57cc36443ebf5ef1',
+ 'data-bootstrap.plan.template.json': '5ab1ded821d4afc9a7d3a529d27e46d242b9d16e0e5301b615a03435eea449da',
+ 'data-initialize-missing.plan.template.json': 'b18bf7bf21fc0737ff705e4beb4e586aac80ab0ff50f6c53bc9c6591061fc1ff'}
+CURRENT_DATA_SOURCE_FILES = {'dataconnect/connector/artifacts.gql': '4d4da17483f84409419323b44441dfde83719c337d48386e2bc451fb7dee3040',
+ 'dataconnect/connector/auxiliary.gql': '859dec52ba7f4212da4728ab77634766115914a4c66d10df92d662be9c825114',
+ 'dataconnect/connector/checksum.gql': '4717f7368643b67d1ac4300ed3a02b1679580e7ba63cb81c6f0eb080bc271633',
+ 'dataconnect/connector/connector.yaml': '112dd6af54062562a6c76b7034b46a54635e13fdcc6b5441e738a3f0e3596ebe',
+ 'dataconnect/connector/history_restore.gql': 'b10726add6208ac4ff5484788404150d6751133a70f8a00ddfa528972dcaa365',
+ 'dataconnect/connector/operations.gql': '65ac18159fbed968f058e86df1f7e62b6a6274da40e7a8639ac78efb1d221264',
+ 'dataconnect/connector/paging.gql': 'e1b9a90c5989cb602aaccddd2f19994b73aa0965cc5b28bea5282d59ced5b4bb',
+ 'dataconnect/connector/projection.gql': '00f887b0e9064f94418d7426e414106ba81362d0e992b7bfd066545ec7817da9',
+ 'dataconnect/connector/readiness.gql': 'ae5f7aedbb5c971894fd3a7e2726406bc2463b781a79d833deea5891ac56bfd9',
+ 'dataconnect/connector/research_binding_v2.gql': '42fb9f0b04d19a6bf24dfce6c93f6ad81cc2da4854bb9afef5c9ac04abab7505',
+ 'dataconnect/connector/research_harness.gql': 'e55b3694001f138029457d28f422e242da2dfe0f51af9631edb5c1d10b34e79f',
+ 'dataconnect/connector/research_materialization_inputs_v2.gql': 'fcd991a489dadaa7e5ce512daa6bf0dd518bdc53ae1c23444c223e2c29a777ee',
+ 'dataconnect/connector/research_publication_v2.gql': '6ad9839de972b81a17f59fb348b83e094f039d39e1b3dc3f51d0ec626801372e',
+ 'dataconnect/connector/scheduling.gql': 'c12e53ae48fa342deaa2479c4aeca0298b1caf7e2288550d81ec9796f38c51ef',
+ 'dataconnect/connector/search.gql': '4d344d2acfcc0566719268acff25472975c6136977aa31fde2c8ada29983d681',
+ 'dataconnect/connector/sensitivity.gql': '521774b8dcef9e0c0c1c43481ae19ad808aafbe08b32c3111e2287313cf1db1f',
+ 'dataconnect/dataconnect.yaml': '8355ece3fb4b1bebf920c05f2cb358229877cca9d0a0abc6e8cdc0da2756423a',
+ 'dataconnect/schema/canonical_value_lineage_v2.gql': '7725944af2cdb89289f1876ddd9607ef3edc286302c8af4bc3bfb821ee4b1a78',
+ 'dataconnect/schema/legacy_import_proof_v1.gql': '753b929178c0b630abbd9f76e01d350f5bcecaa3fcab426774d815c76812b4d5',
+ 'dataconnect/schema/research_harness.gql': '2195ac06e3584e2b35a324d184a34df221fc0c1374740aabba6b9b87e82b9507',
+ 'dataconnect/schema/research_publication_v2.gql': 'f5c279f7088cda20d29aa46a0d7f80f85a44fd52dd7cd319f44b97b4ed588766',
+ 'dataconnect/schema/schema.gql': '26d291d0d229dc4da957477e431e25e0afbb34f5fcb5e9463b389b34f114ca2c',
+ 'dataconnect/schema/search.gql': 'a7ff0616ed6045d958f7a35eccffbe51671d395fa43a695ccdca7892e724b32a',
+ 'dataconnect/sql/checksum-audit.sql': '4ba591e82873c5d829c07267447e792b01f32675575fa00bb2b0b3657c27301c',
+ 'dataconnect/sql/drop-specimen-unique-1.sql': 'c4fcf4484d43f1021952bc4abfb88307a3af4da66f879996e06043835f9ffb65',
+ 'dataconnect/sql/paging-indexes.sql': '1fd9ab5a7d9048fc19c6edbaa0bc5081eca632f7b7961e06c5e7e7f714d85480',
+ 'dataconnect/sql/search-indexes.sql': '4d9366222bc073273b2d5f9b3706c429bf5ddd15497229fdc994246110f0e88d',
+ 'storage.rules': '8d8bf2202a428894aaa46278bfc68c33dce0fd405e547b952a408e930d380893'}
+
+
+def load_raw(name):
+    raw = (TEMPLATES / name).read_bytes()
+    if name in RETIRED_DATA_TEMPLATE_SHA256:
+        assert hashlib.sha256(raw).hexdigest() == RETIRED_DATA_TEMPLATE_SHA256[name]
+    return json.loads(raw)
+
+
 def load(name):
-    return json.loads((TEMPLATES / name).read_text())
+    value = load_raw(name)
+    if name in RETIRED_DATA_TEMPLATE_SHA256:
+        value["source_files"] = dict(CURRENT_DATA_SOURCE_FILES)
+    return value
 
 
 def placeholders(value):
@@ -215,6 +261,8 @@ def test_templates_are_objects_whose_placeholders_all_have_the_exact_shape(name)
 
 
 def test_committed_fingerprints_and_fixed_identities_have_not_drifted():
+    """Pinned raw origins stay immutable; fixture copies bind this exact reviewed current SDL."""
+    assert data.source_fingerprints() == CURRENT_DATA_SOURCE_FILES
     inventory = load("data-initialization-inventory.plan.template.json")
     initialize = load("data-initialize-missing.plan.template.json")
     apply_plan = load("data-apply.plan.template.json")
@@ -527,7 +575,10 @@ def test_an_incomplete_evidence_file_is_reported_as_a_named_gap():
 
 
 def allowed_digests():
-    return (set(data.source_fingerprints().values())
+    return (set(CURRENT_DATA_SOURCE_FILES.values())
+            # Historical public source hashes are explained by exact pinned raw origins.
+            | {value for name in RETIRED_DATA_TEMPLATE_SHA256
+               for value in load_raw(name)["source_files"].values()}
             | set(release_initialize.fingerprints().values())
             # The bootstrap template pins the reviewed collection tree's digest.
             | {hashlib.sha256(reviewed_tree()).hexdigest()}
@@ -605,3 +656,18 @@ def test_a_drifting_activation_key_set_fails_closed(monkeypatch):
     plan["activation"]["unreviewed_extra_key"] = True
     with pytest.raises(ValueError, match="activation"):
         runtime.validate_plan(plan, packet, now=NOW)
+
+
+@pytest.mark.parametrize("name", sorted(RETIRED_DATA_TEMPLATE_SHA256))
+def test_retired_raw_data_templates_are_refused_by_current_source_guards(name):
+    """No historical template is silently qualified for an active G11 release."""
+    builders = {
+        "data-initialize-missing.plan.template.json": initialize_missing_plan,
+        "data-apply.plan.template.json": apply_plan,
+        "data-bootstrap.plan.template.json": lambda: bootstrap_plan()[0],
+    }
+    value = builders[name]()
+    value["source_files"] = load_raw(name)["source_files"]
+    packet = {"source_sha": SOURCE_SHA} if name == "data-bootstrap.plan.template.json" else recovery_packet()
+    with pytest.raises(ValueError, match="source fingerprints changed|compatible current data source required"):
+        data.validate_plan(value, packet, now=NOW)

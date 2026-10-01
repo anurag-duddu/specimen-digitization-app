@@ -230,13 +230,20 @@ void main() {
     }
   });
 
-  testWidgets('the menu pane is the window only frosted pane', (
+  testWidgets('the menu draws one matte floating surface', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(uiHarness(child: const _MenuHost()));
     await tester.tap(find.text('Record actions'));
     await tester.pumpAndSettle();
-    expect(glassPaneCount(), 1);
+    expect(glassPaneCount(), 0);
+    expect(
+      find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is GlassSurface && widget.level == GlassLevel.floating,
+      ),
+      findsOneWidget,
+    );
     expectGlassBudget(tester);
   });
 

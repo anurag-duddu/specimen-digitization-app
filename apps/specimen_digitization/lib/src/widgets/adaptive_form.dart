@@ -71,12 +71,9 @@ Future<T?> showAdaptiveForm<T>(
 /// A titled modal: a sheet on a compact window and a dialog on a wider one,
 /// whose [body] owns its own scroll view.
 ///
-/// This is `UiDialog.showAdaptive` with one thing changed: the sheet form does
-/// not scroll its own body. Every form in this product is long enough to
-/// scroll and the dialog form has no scroll view of its own, so the body
-/// carries one; letting the sheet add a second would hand the inner one an
-/// unbounded main axis. The package API that would retire this is a
-/// `scrollBody` parameter on `UiDialog.showAdaptive`.
+/// The body owns scrolling in both forms. Adding a modal scroll view would
+/// give that inner view an unbounded main axis and can clip its final action
+/// in a short dialog.
 Future<T?> showAdaptiveModal<T>(
   BuildContext context, {
   required String title,
@@ -106,6 +103,7 @@ Future<T?> showAdaptiveModal<T>(
         semanticsLabel: semanticsLabel ?? title,
         dismissLabel: modalDismissLabel,
         dismissible: dismissible,
+        scrollBody: false,
       );
 
 /// The pane a form is drawn in: its width on a wide window, and its clearance

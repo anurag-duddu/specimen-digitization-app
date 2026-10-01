@@ -113,7 +113,7 @@ void main() {
       expect(style.fontVariations!.single.axis, 'wght');
       expect(style.fontWeight, isNotNull);
     }
-    expect(UiType.standard.displayHero.fontVariations!.single.value, 200);
+    expect(UiType.standard.displayHero.fontVariations!.single.value, 500);
     expect(UiType.standard.body.fontVariations!.single.value, 400);
     expect(UiType.standard.label.fontVariations!.single.value, 500);
   });

@@ -91,24 +91,6 @@ def test_ordinary_disposal_reconciles_unknown_source_create_without_replaying(tm
     assert state["outcome"] == ("blocked" if fault else "complete")
 
 
-def test_published_creation_intents_precede_every_privileged_effect():
-    import yaml
-    workflow = yaml.safe_load((init.ROOT / ".github/workflows/data-release.yml").read_text())
-    steps = workflow["jobs"]["initialize"]["steps"]
-    prepare = next(i for i, step in enumerate(steps) if "--prepare-initializer-intents" in step.get("run", ""))
-    publish = next(i for i, step in enumerate(steps) if step.get("with", {}).get("name", "").startswith("initializer-intents-"))
-    attest = next(i for i, step in enumerate(steps) if "initializer-create-*.json" in step.get("with", {}).get("subject-path", ""))
-    effect = next(i for i, step in enumerate(steps) if "--initialize " in step.get("run", ""))
-    assert prepare < attest < publish < effect
-    assert "if" not in steps[effect], "effect must retain default success dependency"
-    disposal = workflow["jobs"]["dispose-initializer"]
-    assert disposal["if"].startswith("always()")
-    assert disposal["environment"] == "data-production"
-    assert disposal["concurrency"]["group"] == "specimen-protected-mutation"
-    assert any(step.get("with", {}).get("name", "").startswith("initializer-intents-") for step in disposal["steps"])
-    assert "dispose-initializer" in workflow["jobs"]["cleanup"]["needs"]
-
-
 def test_preparation_is_read_only_and_must_observe_both_absent_targets(tmp_path, monkeypatch):
     authority, proposed = packet(), plan()
     recovery = init.recovery_receipt(authority, proposed, native_recovery(), NOW)

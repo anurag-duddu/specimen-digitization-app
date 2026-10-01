@@ -81,9 +81,9 @@ def _values(document, key):
 def test_no_release_step_runs_the_drop_before_the_live_read_back():
     """Only S2's T3d, after its own live read-back, may run the drop (PLAN 4.4 in #124).
 
-    Today's release executes the two index files alone, and asserts each statement is a
-    CREATE INDEX CONCURRENTLY IF NOT EXISTS; a restore re-applies the same two; the data plan
-    templates only fingerprint the drop. So nothing in the release path names it.
+    The index loop still executes only its two CREATE-only files. The separately named
+    source-asset-drop mode rereads the wider unique before its one fixed statement.
+    The ordinary caller runs that mode after backup/restore and before the SQL diff.
     """
     release_sql = (ROOT / "scripts/ci/release_sql.mjs").read_text()
     executed = re.search(r"for \(const file of \[([^\]]*)\]\)", release_sql).group(1)
@@ -100,6 +100,16 @@ def test_no_release_step_runs_the_drop_before_the_live_read_back():
         and path.suffix in TEXT
         and "__pycache__" not in path.parts
         and path.resolve() != here
+        # Actual pytest modules are control sources, never release entrypoints.
+        and not (path.parent == here.parent and path.suffix == ".py" and path.name.startswith("test_"))
         and "drop-specimen-unique-1" in path.read_text(errors="ignore")
     )
-    assert naming == []
+    assert naming == ["scripts/ci/release_sql.mjs"]
+    assert "assert.equal((await client.query(SOURCE_ASSET_UNIQUE)).rows[0]?.count, 1);" in release_sql
+    drop = release_sql.index("const source = readFileSync('dataconnect/sql/drop-specimen-unique-1.sql'")
+    assert release_sql.index("await client.query(SOURCE_ASSET_UNIQUE)") < drop
+    assert "assert.equal(sql, 'DROP INDEX CONCURRENTLY IF EXISTS public.specimen_unique_1;');" in release_sql
+    deploy = (ROOT / "scripts/ci/deploy_data.py").read_text()
+    apply = deploy[deploy.index("def apply_released("):deploy.index("def bootstrap_released(")]
+    assert apply.index("take_backup(") < apply.index('gate_sql("source-asset-drop"') < apply.index("migration_plan(")
+    assert "verify_drop(" in apply

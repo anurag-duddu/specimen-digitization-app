@@ -46,15 +46,6 @@ void main() {
     matchRoot: true,
   );
 
-  /// One option of the region list, which is a capsule toggle in single mode.
-  Finder regionOption(String label) => find.byWidgetPredicate(
-    (w) =>
-        w is Pressable &&
-        w.role == PressableRole.toggle &&
-        w.semanticsLabel == label,
-    description: 'region option "$label"',
-  );
-
   Widget pane(Specimen specimen, {Key? key}) => workbenchHost(
     ReviewWorkbench(
       key: key,
@@ -132,8 +123,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(regionOption('Label 1'));
-        await tester.pumpAndSettle();
+        await pickUiSelect(tester, 'Label', 'Label 1');
         final rotated = tester.widget<RotatedBox>(
           find.byType(RotatedBox).first,
         );
@@ -168,12 +158,14 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // The first label is initially selected. Explicitly choose the whole
+    // specimen before checking that a label selection frames its region.
+    await pickUiSelect(tester, 'Label', 'All labels');
     final viewer = tester.widget<InteractiveViewer>(
       find.byType(InteractiveViewer),
     );
     expect(viewer.transformationController!.value, Matrix4.identity());
-    await tester.tap(regionOption('Label 1'));
-    await tester.pumpAndSettle();
+    await pickUiSelect(tester, 'Label', 'Label 1');
     // One image, magnified: the whole photograph is still the widget on
     // screen, so the reviewer keeps their place on the specimen.
     expect(
@@ -212,12 +204,16 @@ void main() {
     );
     await tester.pumpWidget(view('run1', 'region1'));
     await tester.pumpAndSettle();
-    await tester.tap(regionOption('Label 1'));
-    await tester.pumpAndSettle();
-    expect(tester.widget<Pressable>(regionOption('Label 1')).selected, isTrue);
+    await pickUiSelect(tester, 'Label', 'Label 1');
+    expect(tester.widget<UiSelect<String>>(uiSelect('Label')).value, 'region1');
     await tester.pumpWidget(view('run2', 'region2'));
     await tester.pumpAndSettle();
-    expect(tester.widget<Pressable>(regionOption('Label 1')).selected, isFalse);
+    // The new run selects its first valid label instead of retaining the old id.
+    expect(tester.widget<UiSelect<String>>(uiSelect('Label')).value, 'region2');
+    expect(
+      tester.widget<RegionOverlay>(find.byType(RegionOverlay)).selected,
+      isTrue,
+    );
     // The overlay speaks the same name the region list shows, never the raw
     // identifier (accessibility, 2.2 finding 2).
     expect(overlayNamed('Label 1'), findsOneWidget);
@@ -248,6 +244,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await pickUiSelect(tester, 'Label', 'All labels');
         for (var turn = 0; turn < 4; turn++) {
           final image = find.byWidgetPredicate(
             (w) =>
@@ -265,27 +262,28 @@ void main() {
             closeTo(turn.isEven ? 1000 / 520 : 520 / 1000, .00001),
           );
           final viewerRect = globalRect(
-            tester.renderObject<RenderBox>(find.byType(InteractiveViewer)),
+            tester.renderObject<RenderBox>(
+              find.byKey(const ValueKey<String>('source-photo-viewport')),
+            ),
           );
           expect(rect.left, greaterThanOrEqualTo(viewerRect.left - .001));
           expect(rect.right, lessThanOrEqualTo(viewerRect.right + .001));
           expect(rect.top, greaterThanOrEqualTo(viewerRect.top - .001));
           expect(rect.bottom, lessThanOrEqualTo(viewerRect.bottom + .001));
-          final overlayBox = tester.renderObject<RenderBox>(
-            overlayNamed('Label 1'),
+          final overlay = tester.widget<RegionOverlay>(
+            find.byType(RegionOverlay),
           );
-          // The hit box follows the recorded fraction, except that it never
-          // shrinks below a target a finger can hit (accessibility, 3.2).
-          const target = 48.0;
-          expect(
-            overlayBox.size.width,
-            closeTo(math.max(imageBox.size.width * .6, target), .001),
-          );
-          expect(
-            overlayBox.size.height,
-            closeTo(math.max(imageBox.size.height * .5, target), .001),
-          );
-          await tester.tap(uiIconButton('Rotate the view 90 degrees'));
+          // The drawn rectangle keeps the original pixel fractions. Its hit
+          // target also includes the number tab and a minimum touch target.
+          expect(overlay.rect.left, closeTo(imageBox.size.width * .1, .001));
+          expect(overlay.rect.top, closeTo(imageBox.size.height * .1, .001));
+          expect(overlay.rect.width, closeTo(imageBox.size.width * .6, .001));
+          expect(overlay.rect.height, closeTo(imageBox.size.height * .5, .001));
+          final hit = tester.getSize(overlayNamed('Label 1'));
+          expect(hit.width, greaterThanOrEqualTo(48 / overlay.viewerScale));
+          expect(hit.height, greaterThanOrEqualTo(48 / overlay.viewerScale));
+          await scrollAndTap(tester, uiMenuTrigger('Image tools'));
+          await tester.tap(find.text('Rotate image clockwise'));
           await tester.pumpAndSettle();
         }
         expect(tester.takeException(), isNull);
@@ -303,6 +301,12 @@ void main() {
           const Specimen({
             'specimen_id': 'readings',
             'revision': 1,
+            'regions': [
+              {
+                'region_id': 'r1',
+                'bbox': [0, 0, 1, 1],
+              },
+            ],
             'observations': [
               {
                 'model_id': 'Reader A',
