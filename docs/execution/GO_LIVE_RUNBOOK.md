@@ -119,14 +119,54 @@ Owner. Nothing else can start before this.
    Python/Google SDKs. They are separate stores. Do not make agents retry them,
    source a credential path from `.env`, or change the global Cloud SDK project:
    the preflight passes `--project=specimen-digitization` explicitly.
-   Keep `CLOUDSDK_CORE_ACCOUNT`, `CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT`,
-   and `CLOUDSDK_AUTH_ACCESS_TOKEN_FILE` unset. These explicit identity/token
-   overrides are refused before either probe; the owner's ordinary stored
-   CLI account and ADC remain in use. A `ready` result checks availability,
-   not the identity's approval or deployment authority.
+   The credential, identity, configuration and transport override keys below
+   must be **unset**, not set to empty strings. The preflight refuses either
+   case before discovery, reports only the key, and does not change the parent
+   shell. If it reports `clear_local_profile_overrides`, the owner clears the
+   named keys in this same terminal and reruns it; signing in will not clear an
+   inherited override. Also unset every `CLOUDSDK_API_ENDPOINT_OVERRIDES_*` key
+   named by the preflight. Never print values or inspect credential files.
+
+   ```bash
+   unset GOOGLE_APPLICATION_CREDENTIALS CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE \
+     CLOUDSDK_AUTH_ACCESS_TOKEN CLOUDSDK_AUTH_ACCESS_TOKEN_FILE \
+     CLOUDSDK_CORE_ACCOUNT CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT \
+     CLOUDSDK_CONFIG CLOUDSDK_ACTIVE_CONFIG_NAME \
+     CLOUDSDK_AUTH_TOKEN_HOST CLOUDSDK_AUTH_MTLS_TOKEN_HOST \
+     CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE \
+     REQUESTS_CA_BUNDLE CURL_CA_BUNDLE \
+     CLOUDSDK_AUTH_TOKEN_INTROSPECTION_ENDPOINT CLOUDSDK_CORE_UNIVERSE_DOMAIN
+   ```
+
+   Both probes use verified TLS, disable SDK file/HTTP-body logging and log
+   cleanup, retain token redaction, and force private token output even when the
+   stored profile suppresses output. These settings affect only their children.
+   The owner's ordinary stored CLI account and ADC remain in use. A `ready`
+   result checks availability under this diagnostic policy, not identity
+   approval, project authorization, safe contents of stored credentials, cost
+   admission or deployment authority.
 
 3. Run the read-only inventory and keep its log with the release evidence. It
-   lists and describes only; it creates and changes nothing.
+   lists and describes cloud metadata only; it changes no cloud resources.
+   Use the same terminal after a successful preflight and apply the identical
+   child policy below; do not run an unwrapped caller that inherits different
+   logging/display settings. Replace the output path with a new private
+   directory outside Git. `env` scopes these settings to this invocation, not
+   the owner shell; explicit inventory `--format=json` flags still take
+   precedence over the private token format. This source instruction does not
+   authorize execution or replace the inventory's own scope/admission checks.
+
+```bash
+env CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION=false \
+  CLOUDSDK_CORE_DISABLE_FILE_LOGGING=true CLOUDSDK_CORE_MAX_LOG_DAYS=0 \
+  CLOUDSDK_CORE_LOG_HTTP=false CLOUDSDK_CORE_LOG_HTTP_REDACT_TOKEN=true \
+  CLOUDSDK_CORE_LOG_HTTP_SHOW_REQUEST_BODY=false \
+  CLOUDSDK_CORE_LOG_HTTP_STREAMING_BODY=false \
+  CLOUDSDK_CORE_USER_OUTPUT_ENABLED=true \
+  CLOUDSDK_CORE_FORMAT='value[private](token)' CLOUDSDK_CORE_DRY_RUN=0 \
+  uv run python scripts/data/inventory_cloud.py \
+    --output-dir /absolute/path/to/new-private-inventory
+```
 
 Evidence to keep: the `protected: true` answer, the successful preflight
 result, and the inventory log. Local authentication permits read-only
