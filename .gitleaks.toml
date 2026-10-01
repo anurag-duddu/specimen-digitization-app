@@ -11,6 +11,8 @@ condition = "AND"
 paths = ['''(?:^|/)\.secrets\.baseline$''']
 regexTarget = "line"
 regexes = [
+  '''^\s*"hashed_secret": "a776fd65188900deb2795f111fc8821dcd4bbe1b",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "ce6ab08c626cddc6468c7fd4447f135ed86b3898",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "0179c6f7bda4c091686442fa480ad234ff9dc978",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "04186bc9dec22daf9bd93a3b90fc7122f205186e",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "08289cfddd56359f4f16d643534e8ec301e74fca",?\s*$''', # pragma: allowlist secret

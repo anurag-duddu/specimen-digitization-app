@@ -394,3 +394,16 @@ The Gitleaks pre-commit cache is pinned to v8.30.1; its locally built binary
 reports the upstream build-placeholder version, so source pin and binary
 digest are retained in the private receipt rather than inventing a version.
 No real credentials or canary values are retained in product source.
+
+
+## 2026-10-01 initializer source fingerprint follow-up
+
+Eight scanner findings in test_release_plan_templates.py were verified as six
+current public initializer source hashes, one exact frozen raw-template digest
+and one guarded pre-repair public source digest. SHA1 finding identifiers were
+recomputed from their exact source literals. Added only these exact file/hash
+rows with is_secret=false and any missing exact baseline metadata line patterns
+to the existing Gitleaks AND allowlist. No source path exclusion, detector,
+threshold or filter change. Raw templates remain unchanged and rejected as
+current initialization inputs; the no-credential test retains all original
+assertions with the old digest explicitly explained by its pinned origin.
