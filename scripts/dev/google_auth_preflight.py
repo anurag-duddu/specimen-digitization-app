@@ -19,6 +19,7 @@ from typing import Mapping
 PROJECT = "specimen-digitization"
 SCHEMA_VERSION = 1
 PROBE_TIMEOUT_SECONDS = 20
+PRIVATE_TOKEN_FORMAT = "--format=value[private](token)"
 
 # These are intentionally treated as a different local profile. A worker must
 # not silently switch from the owner's shared user ADC to a key, a short-lived
@@ -62,7 +63,9 @@ SAFE_PROBE_SETTINGS = {
     "CLOUDSDK_CORE_LOG_HTTP_SHOW_REQUEST_BODY": "false",
     "CLOUDSDK_CORE_LOG_HTTP_STREAMING_BODY": "false",
     "CLOUDSDK_CORE_USER_OUTPUT_ENABLED": "true",
-    "CLOUDSDK_CORE_FORMAT": "value[private](token)",
+    # core/format validates only bare global names. Clear it here; the token
+    # projection belongs on an explicit command flag, not on this property.
+    "CLOUDSDK_CORE_FORMAT": "",
     "CLOUDSDK_CORE_DRY_RUN": "0",
 }
 PROJECT_OVERRIDE_KEYS = (
@@ -215,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     cli_ready = probe(
-        ["gcloud", "auth", "print-access-token", f"--project={PROJECT}", "--quiet"], env
+        ["gcloud", "auth", "print-access-token", f"--project={PROJECT}", "--quiet", PRIVATE_TOKEN_FORMAT], env
     )
     adc_ready = probe(
         [
@@ -225,6 +228,7 @@ def main(argv: list[str] | None = None) -> int:
             "print-access-token",
             f"--project={PROJECT}",
             "--quiet",
+            PRIVATE_TOKEN_FORMAT,
         ],
         env,
     )

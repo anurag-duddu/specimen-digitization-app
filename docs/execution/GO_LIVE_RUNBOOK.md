@@ -152,9 +152,12 @@ Owner. Nothing else can start before this.
    child policy below; do not run an unwrapped caller that inherits different
    logging/display settings. Replace the output path with a new private
    directory outside Git. `env` scopes these settings to this invocation, not
-   the owner shell; explicit inventory `--format=json` flags still take
-   precedence over the private token format. This source instruction does not
-   authorize execution or replace the inventory's own scope/admission checks.
+   the owner shell. The empty global format resets inherited/stored display
+   overrides; inventory retains its own JSON metadata flags and normal token
+   format with SDK file logging disabled. Preflight additionally uses explicit
+   private token command flags, because projections are not valid global
+   `core/format` values. This source instruction does not authorize execution
+   or replace the inventory's own scope/admission checks.
 
 ```bash
 env CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION=false \
@@ -163,7 +166,7 @@ env CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION=false \
   CLOUDSDK_CORE_LOG_HTTP_SHOW_REQUEST_BODY=false \
   CLOUDSDK_CORE_LOG_HTTP_STREAMING_BODY=false \
   CLOUDSDK_CORE_USER_OUTPUT_ENABLED=true \
-  CLOUDSDK_CORE_FORMAT='value[private](token)' CLOUDSDK_CORE_DRY_RUN=0 \
+  CLOUDSDK_CORE_FORMAT='' CLOUDSDK_CORE_DRY_RUN=0 \
   uv run python scripts/data/inventory_cloud.py \
     --output-dir /absolute/path/to/new-private-inventory
 ```
