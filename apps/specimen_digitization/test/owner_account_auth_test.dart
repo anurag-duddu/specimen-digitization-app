@@ -44,7 +44,9 @@ class OwnerUserFixture implements User {
   }
 
   @override
-  Future<void> sendEmailVerification() async {
+  Future<void> sendEmailVerification([
+    ActionCodeSettings? actionCodeSettings,
+  ]) async {
     verificationCalls++;
   }
 
