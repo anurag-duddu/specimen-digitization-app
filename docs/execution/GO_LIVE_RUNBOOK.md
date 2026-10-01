@@ -99,21 +99,38 @@ Owner. Nothing else can start before this.
 
    The answer must be `true`.
 
-2. Sign in to Google Cloud on the workstation that will run the read-only
-   inventory, and point it at the right project:
+2. In the one owner-controlled terminal that will run a read-only inventory,
+   first run the local credential preflight:
+
+   ```bash
+   python3 scripts/dev/google_auth_preflight.py
+   ```
+
+   It never opens a browser, prints a token, changes a Cloud SDK setting, or
+   deploys. If it reports `owner_sign_in_required`, only the project owner
+   completes both browser sign-ins below, then reruns the preflight:
 
    ```bash
    gcloud auth login
+   gcloud auth application-default login
    ```
 
-   ```bash
-   gcloud config set project specimen-digitization
-   ```
+   The first command authorizes the Cloud CLI; the second authorizes local
+   Python/Google SDKs. They are separate stores. Do not make agents retry them,
+   source a credential path from `.env`, or change the global Cloud SDK project:
+   the preflight passes `--project=specimen-digitization` explicitly.
+   Keep `CLOUDSDK_CORE_ACCOUNT`, `CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT`,
+   and `CLOUDSDK_AUTH_ACCESS_TOKEN_FILE` unset. These explicit identity/token
+   overrides are refused before either probe; the owner's ordinary stored
+   CLI account and ADC remain in use. A `ready` result checks availability,
+   not the identity's approval or deployment authority.
 
 3. Run the read-only inventory and keep its log with the release evidence. It
    lists and describes only; it creates and changes nothing.
 
-Evidence to keep: the `protected: true` answer, the inventory log.
+Evidence to keep: the `protected: true` answer, the successful preflight
+result, and the inventory log. Local authentication permits read-only
+inventory only; it neither authorizes nor performs a deployment.
 
 ## Phase 1. The readiness pull request
 
