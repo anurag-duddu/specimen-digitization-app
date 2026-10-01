@@ -36,6 +36,8 @@ IDENTITY_OVERRIDE_KEYS = (
 CONFIG_OVERRIDE_KEYS = (
     "CLOUDSDK_CONFIG",
     "CLOUDSDK_ACTIVE_CONFIG_NAME",
+    "CLOUDSDK_AUTH_TOKEN_HOST",
+    "CLOUDSDK_AUTH_MTLS_TOKEN_HOST",
 )
 PROJECT_OVERRIDE_KEYS = (
     "GOOGLE_CLOUD_PROJECT",
@@ -71,6 +73,10 @@ def environment_reasons(env: Mapping[str, str]) -> list[str]:
 def no_prompt_environment(env: Mapping[str, str]) -> dict[str, str]:
     """Make the child probes noninteractive without changing the parent shell."""
     child = dict(env)
+    # Cloud SDK treats an empty override as explicit, not as a stored default.
+    for key in CREDENTIAL_OVERRIDE_KEYS + IDENTITY_OVERRIDE_KEYS + CONFIG_OVERRIDE_KEYS:
+        if child.get(key) == "":
+            child.pop(key)
     child["CLOUDSDK_CORE_DISABLE_PROMPTS"] = "true"
     child["CLOUDSDK_CORE_SHOULD_PROMPT_TO_ENABLE_API"] = "false"
     return child
