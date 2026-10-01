@@ -13765,3 +13765,8 @@ Three guarded G3 fixture payloads preserve names/decorators/raises/privacy/watch
 Actual worker test-only RED39failed83passed1skipped40.42s; actual production successor GREEN122passed1skipped35.80s. Five original actor establishment points now restore owned tokens on success/error/SystemExit; existing callbacks, deadline/budget guards and original host assertions remain. New30 ownership controls cover unbound and nondefault callers. One earlier nonexistent test filename invocation ran no tests and is not RED evidence; corrected inventory-backed invocation above is the retained trueRED. This entry and tests precede the worker GREEN source commit.
 
 The exact5dd backend review passed finite source54paths, release review rejected stale initializer test pins; both are historical and do not qualify the next head. Every newer head requires fresh G18 review. No PR/protected deployment/native production IDs or paid effect; worker remains HOLD.
+
+
+### 2026-10-01 ROOT worker actor-token GREEN source
+
+RED commit2c3f41 contains the real39-failure worker/caller isolation regression and current offline fixture qualification. This GREEN source retains all five original binding locations, wraps their bodies in exact-token finally cleanup, and introduces no actor blanket reset. Actual122PASS1SKIP includes all30 new ownership controls, prior worker/cohort/deadline tests and unchanged host actor assertions. First-release worker remains paidHOLD. Full serial suites, exact-head G18/steward review and protected release still pending; no native or paid effects claimed.
