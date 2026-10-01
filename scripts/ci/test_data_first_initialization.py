@@ -154,12 +154,63 @@ def test_the_initializer_creates_its_own_principal_once_then_initializes_the_exi
     assert jobs.initialize(cloud) == {"version": "data-initializer/v1", "source_sha": SHA, "run_id": 456, "run_attempt": 1,
         "instance": I.SOURCE, "database": I.DATABASE, "postconditions_sha256": I.sha({"owner": "x"})}
     assert cloud.principal == {"name": I.INITIALIZER_SQL, "type": "CLOUD_IAM_SERVICE_ACCOUNT", "databaseRoles": ["cloudsqlsuperuser"]}
-    # One POST, the envelope's CREATE_USER; one transaction on the source, bound to the commit and the gate record's deadline.
+    # One POST and one transaction, inside the original ten-minute privilege window.
     assert [call for call in cloud.calls if call[0] != "GET"] == [("POST", "users")]
-    assert jobs.native == [("initialize", I.SOURCE, SHA, cloud.packet["expires_at_unix"])]
+    assert jobs.native == [("initialize", I.SOURCE, SHA, NOW + 600)]
+    assert cloud.packet["expires_at_unix"] - cloud.packet["issued_at_unix"] == 3600
     with pytest.raises(ValueError, match="never be adopted"):
         I.initialize_existing(cloud, jobs.directory / "initialize", jobs.directory / "again.json")
     assert [call for call in cloud.calls if call[0] != "GET"] == [("POST", "users")] and len(jobs.native) == 1
+
+
+@pytest.mark.parametrize("fault", ["gate-hour", "negative-absence", "before-gate", "future-absence", "expired"])
+def test_owned_initializer_rejects_unbounded_or_stale_intents_before_effects(jobs, fault):
+    cloud = Cloud("data-initialization", attempt=1)
+    I.prepare_owned_initializer(cloud, jobs.directory / "initialize")
+    path = jobs.directory / "initialize" / INTENT
+    intent = json.loads(path.read_text())
+    if fault == "gate-hour":
+        intent["privilege_deadline_unix"] = cloud.packet["expires_at_unix"]
+    elif fault in ("negative-absence", "before-gate", "future-absence"):
+        absence = {"negative-absence": -1, "before-gate": cloud.packet["issued_at_unix"] - 1,
+                   "future-absence": NOW + 1}[fault]
+        intent.update(absence_at_unix=absence, not_before_unix=absence, privilege_deadline_unix=absence + 600)
+    else:
+        jobs.clock[0] = NOW + 601
+    intent["recovery_sha256"] = I.sha({"parity_at_unix": intent["absence_at_unix"],
+                                     "privilege_deadline_unix": intent["privilege_deadline_unix"]})
+    path.write_text(json.dumps(intent))
+    with pytest.raises(ValueError):
+        I.initialize_existing(cloud, jobs.directory / "initialize", jobs.directory / "rejected.json")
+    assert [call for call in cloud.calls if call[0] != "GET"] == [] and jobs.native == []
+
+
+def test_late_owned_cleanup_keeps_the_original_privilege_deadline_under_a_fresh_gate(jobs):
+    initializer, cloud = Cloud("data-initialization", attempt=1), Cloud("data", attempt=2)
+    jobs.initialize(initializer)
+    late = initializer.packet["expires_at_unix"] + 10
+    jobs.clock[0] = late
+    cloud.packet = {**cloud.packet, "issued_at_unix": late, "expires_at_unix": late + 3600}
+    cloud.principal, cloud.operations = initializer.principal, list(initializer.operations)
+    state = I.dispose_owned_initializer(cloud, jobs.directory / "dispose")
+    assert state["outcome"] == "complete" and state["principal_absence_verified"] is True
+    assert state["privilege_deadline_unix"] == NOW + 600 and state["privilege_deadline_exceeded"] is True
+    assert [call for call in cloud.calls if call[0] != "GET"] == [("revoke", I.SOURCE), ("delete", I.SOURCE)]
+    assert all(deadline == late + 180 for _, _, _, deadline in jobs.native[1:])
+
+
+def test_owned_cleanup_rejects_a_signed_but_overlong_original_intent(jobs):
+    initializer, cloud = Cloud("data-initialization", attempt=1), Cloud("data", attempt=2)
+    jobs.initialize(initializer)
+    name = f"initializer-intent-{SHA}-1"
+    intent = json.loads(jobs.published[name])
+    intent["privilege_deadline_unix"] = intent["absence_at_unix"] + 601
+    intent["recovery_sha256"] = I.sha({"parity_at_unix": intent["absence_at_unix"],
+                                     "privilege_deadline_unix": intent["privilege_deadline_unix"]})
+    jobs.published[name] = json.dumps(intent).encode()
+    with pytest.raises(ValueError):
+        jobs.dispose(cloud, initializer)
+    assert cloud.principal is not None and [call for call in cloud.calls if call[0] != "GET"] == []
 
 
 @pytest.mark.parametrize("change,message", [
