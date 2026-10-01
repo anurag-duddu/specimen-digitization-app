@@ -1,6 +1,8 @@
 """Restore retained content as a new audited canonical revision, without effects."""
 from __future__ import annotations
 
+from copy import deepcopy
+
 from .domain import Disposition
 from .storage import Conflict
 
@@ -39,6 +41,8 @@ def restored_specimen(base, source, *, accounting=None):
     matching.append(source.run)
     result.run.usage = authoritative.usage.model_copy(deep=True)
     result.run.attempts = dict(authoritative.attempts)
+    result.run.paid_calls = deepcopy(authoritative.paid_calls)
+    result.run.program_allowance = deepcopy(authoritative.program_allowance)
     result.run.dead_letter = any(run.dead_letter for run in matching)
     # A restoration does not retire the previous active run or erase its actual
     # effects/costs. Exact originals also remain in repository version history.
