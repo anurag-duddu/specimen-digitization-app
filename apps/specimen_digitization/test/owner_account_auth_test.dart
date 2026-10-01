@@ -172,25 +172,34 @@ void main() {
     });
   }
 
-  test('owner link adapters normalize but do not admit other mailboxes', () async {
-    final auth = OwnerAuthFixture(OwnerUserFixture(ownerEmail));
-    final session = FirebaseSession(auth);
+  test(
+    'owner link adapters normalize but do not admit other mailboxes',
+    () async {
+      final auth = OwnerAuthFixture(OwnerUserFixture(ownerEmail));
+      final session = FirebaseSession(auth);
 
-    await session.sendSignInLink('ANURAG@INFINATIVE.COM');
-    await session.completeEmailLink('AnUrAg@InFiNaTiVe.CoM', ownerLinkFixture);
-    expect(auth.sentEmail, ownerEmail);
-    expect(auth.completedEmail, ownerEmail);
-    expect(auth.completedLink, ownerLinkFixture);
-    for (final email in ['other@infinative.com', 'anurag+review@infinative.com']) {
-      await expectLater(session.sendSignInLink(email), throwsFormatException);
-      await expectLater(
-        session.completeEmailLink(email, ownerLinkFixture),
-        throwsFormatException,
+      await session.sendSignInLink('ANURAG@INFINATIVE.COM');
+      await session.completeEmailLink(
+        'AnUrAg@InFiNaTiVe.CoM',
+        ownerLinkFixture,
       );
-    }
-    expect(auth.sendCalls, 1);
-    expect(auth.completeCalls, 1);
-  });
+      expect(auth.sentEmail, ownerEmail);
+      expect(auth.completedEmail, ownerEmail);
+      expect(auth.completedLink, ownerLinkFixture);
+      for (final email in [
+        'other@infinative.com',
+        'anurag+review@infinative.com',
+      ]) {
+        await expectLater(session.sendSignInLink(email), throwsFormatException);
+        await expectLater(
+          session.completeEmailLink(email, ownerLinkFixture),
+          throwsFormatException,
+        );
+      }
+      expect(auth.sendCalls, 1);
+      expect(auth.completeCalls, 1);
+    },
+  );
 
   test('unverified owner remains gated before token access', () async {
     final user = OwnerUserFixture(ownerEmail, emailVerified: false);
@@ -203,28 +212,35 @@ void main() {
     await expectLater(
       session.token(),
       throwsA(
-        isA<ApiFailure>().having((error) => error.code, 'code', 'email_unverified'),
+        isA<ApiFailure>().having(
+          (error) => error.code,
+          'code',
+          'email_unverified',
+        ),
       ),
     );
     expect(user.tokenCalls, 0);
   });
 
-  test('owner verification still waits for a successful token refresh', () async {
-    final user = OwnerUserFixture(ownerEmail, emailVerified: false)
-      ..verifyOnReload = true
-      ..failForcedRefresh = true;
-    final session = FirebaseSession(OwnerAuthFixture(user));
-    final notifier = AppSessionNotifier(session: session);
-    addTearDown(notifier.dispose);
+  test(
+    'owner verification still waits for a successful token refresh',
+    () async {
+      final user = OwnerUserFixture(ownerEmail, emailVerified: false)
+        ..verifyOnReload = true
+        ..failForcedRefresh = true;
+      final session = FirebaseSession(OwnerAuthFixture(user));
+      final notifier = AppSessionNotifier(session: session);
+      addTearDown(notifier.dispose);
 
-    await expectLater(notifier.refreshVerification(), throwsStateError);
-    expect(session.emailVerified, true);
-    expect(notifier.verified, false);
-    user.failForcedRefresh = false;
-    await notifier.refreshVerification();
-    expect(notifier.verified, true);
-    expect(user.tokenCalls, 2);
-  });
+      await expectLater(notifier.refreshVerification(), throwsStateError);
+      expect(session.emailVerified, true);
+      expect(notifier.verified, false);
+      user.failForcedRefresh = false;
+      await notifier.refreshVerification();
+      expect(notifier.verified, true);
+      expect(user.tokenCalls, 2);
+    },
+  );
 
   for (final (email, verified, expectedRoute) in [
     (ownerEmail, true, AppRoutes.setup),
@@ -249,7 +265,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(router.routerDelegate.currentConfiguration.uri.path, expectedRoute);
+      expect(
+        router.routerDelegate.currentConfiguration.uri.path,
+        expectedRoute,
+      );
       if (expectedRoute == AppRoutes.setup) {
         // Email admission does not provide a collection/controller.
         expect(find.text('Collection connection required'), findsOneWidget);

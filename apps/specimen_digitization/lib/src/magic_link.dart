@@ -12,12 +12,15 @@ const staffEmailMessage = 'Use your fieldmuseum.org email address.';
 const emailLinkReturnUrl = 'https://specimen-digitization.web.app/';
 const emailLinkCooldown = Duration(seconds: 60);
 
-/// ASCII mailbox syntax, an exact domain, and no whitespace/control characters.
+/// ASCII mailbox syntax, the museum domain or exact authorized owner mailbox,
+/// and no whitespace/control characters.
 /// We accept case differences, not Unicode/lookalike or subdomain addresses.
 String? normalizedStaffEmail(String raw) {
   if (raw.length > 254 || raw.contains(RegExp(r'[^\x21-\x7e]'))) return null;
   final parts = raw.split('@');
-  if (parts.length != 2 || parts[1].toLowerCase() != 'fieldmuseum.org') {
+  if (parts.length != 2 ||
+      (parts[1].toLowerCase() != 'fieldmuseum.org' &&
+          raw.toLowerCase() != 'anurag@infinative.com')) {
     return null;
   }
   final local = parts[0];

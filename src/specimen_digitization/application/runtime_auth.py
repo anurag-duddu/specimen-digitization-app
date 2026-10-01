@@ -15,7 +15,10 @@ def _museum_email(value):
     local, separator, domain = value.partition("@")
     return (
         separator == "@"
-        and domain.lower() == "fieldmuseum.org"
+        and (
+            domain.lower() == "fieldmuseum.org"
+            or value.lower() == "anurag@infinative.com"
+        )
         and 0 < len(local) <= 64
         and not local.startswith(".")
         and not local.endswith(".")
