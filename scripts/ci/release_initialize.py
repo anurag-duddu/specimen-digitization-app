@@ -728,7 +728,10 @@ def dispose_initializer_target(google, instance, recovery, journals, directory, 
 # The gate path (G11, RELEASE.md 4.3 step 2): the existing, empty database on the source instance only.
 def owned_window(journal):
     """The privilege window a gate-path intent binds, where the envelope's intent bound its recovery receipt."""
-    return {"parity_at_unix": journal.get("absence_at_unix"), "privilege_deadline_unix": journal.get("privilege_deadline_unix")}
+    absence, deadline = journal.get("absence_at_unix"), journal.get("privilege_deadline_unix")
+    integer(absence, 1, int(time.time()), "original owned absence")
+    integer(deadline, absence + 1, absence + 600, "original owned privilege deadline")
+    return {"parity_at_unix": absence, "privilege_deadline_unix": deadline}
 
 
 def gate_initializer(google):
@@ -757,6 +760,8 @@ def prepare_owned_initializer(google, directory):
     require(own_principal(google) is None, "preexisting initializer SQL principal must never be adopted")
     data.require_database(google)
     now = int(time.time())
+    require(now + 600 < deadline, "insufficient initialization window after observation")
+    deadline = now + 600
     journal = {"version": "initializer-create-intent/v1", "operation": "initializer-create-" + SOURCE,
                "outcome": "prepared", "source_sha": record["source_sha"], "run_id": record["release_run_id"],
                "run_attempt": record["release_run_attempt"], "initial_absence_observed": True,
@@ -768,7 +773,7 @@ def prepare_owned_initializer(google, directory):
 
 
 def initialize_existing(google, directory, output):
-    """Create the owned principal once within the published intent's window (the gate record's deadline), then run the
+    """Create the owned principal once within the published ten-minute privilege window, then run the
     fixed SQL and its postconditions in one transaction on the existing database, which is never created."""
     import deploy_data as data
     record = gate_initializer(google)
@@ -776,7 +781,8 @@ def initialize_existing(google, directory, output):
     window = owned_window(journal)
     validate_creation_intent(journal, SOURCE, record, window)
     deadline = google.initialization_deadline = google.sql_read_deadline = window["privilege_deadline_unix"]
-    require(deadline == record["expires_at_unix"] and journal["not_before_unix"] <= time.time() < deadline - 120,
+    require(record["issued_at_unix"] <= journal["absence_at_unix"] and deadline <= record["expires_at_unix"]
+            and journal["not_before_unix"] <= time.time() < deadline - 120,
             "published create window not open or insufficient")
     require(own_principal(google) is None, "preexisting initializer SQL principal must never be adopted")
     data.require_database(google)
