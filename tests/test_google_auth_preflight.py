@@ -23,7 +23,7 @@ SAFE_PROBE_SETTINGS = {
     "CLOUDSDK_CORE_LOG_HTTP_SHOW_REQUEST_BODY": "false",
     "CLOUDSDK_CORE_LOG_HTTP_STREAMING_BODY": "false",
     "CLOUDSDK_CORE_USER_OUTPUT_ENABLED": "true",
-    "CLOUDSDK_CORE_FORMAT": "value[private](token)",
+    "CLOUDSDK_CORE_FORMAT": "",
     "CLOUDSDK_CORE_DRY_RUN": "0",
 }
 TRANSPORT_PROFILE_KEYS = (
@@ -137,8 +137,8 @@ def test_success_is_sanitized_noninteractive_and_runs_only_the_two_probes(tmp_pa
         "status": "ready",
     }
     assert calls.read_text(encoding="utf-8").splitlines() == [
-        "auth print-access-token --project=specimen-digitization --quiet",
-        "auth application-default print-access-token --project=specimen-digitization --quiet",
+        "auth print-access-token --project=specimen-digitization --quiet --format=value[private](token)",
+        "auth application-default print-access-token --project=specimen-digitization --quiet --format=value[private](token)",
     ]
     assert flags.read_text(encoding="utf-8").splitlines() == ["true|false", "true|false"]
     assert list(home.iterdir()) == []
@@ -424,6 +424,27 @@ def test_child_policy_defensively_overrides_tls_without_mutating_parent():
     assert {key: child.get(key) for key in SAFE_PROBE_SETTINGS} == SAFE_PROBE_SETTINGS
     assert parent["CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION"] == "true"
     assert parent["CLOUDSDK_CORE_LOG_HTTP"] == "PRIVATE_UNSAFE_SETTING"
+
+
+def test_private_token_projection_is_a_flag_not_an_invalid_global_sdk_format(monkeypatch, capsys):
+    module = load_module()
+    monkeypatch.setattr(module.os, "environ", {"PATH": "/synthetic/gcloud"})
+    monkeypatch.setattr(module.shutil, "which", lambda *_a, **_k: "/synthetic/gcloud")
+    calls = []
+
+    def fake_sdk(arguments, **kwargs):
+        calls.append((arguments, kwargs["env"]))
+        return subprocess.CompletedProcess(arguments, 0, b"PRIVATE_ACCESS_TOKEN", b"")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_sdk)
+    assert module.main([]) == 0
+    capsys.readouterr()
+    assert len(calls) == 2
+    for arguments, child in calls:
+        # SDK582 core/format only accepts empty or bare global format names,
+        # not a projection; a command --format flag supports private tokens.
+        assert child["CLOUDSDK_CORE_FORMAT"] == ""
+        assert "--format=value[private](token)" in arguments
 
 
 @pytest.mark.parametrize("blank", [False, True])
