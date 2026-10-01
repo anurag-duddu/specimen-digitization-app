@@ -177,6 +177,8 @@ def test_missing_gcloud_stops_without_falling_back_to_a_real_binary(tmp_path):
         ("CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT", "identity_override:CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT"),
         ("CLOUDSDK_CONFIG", "cloudsdk_config_override:CLOUDSDK_CONFIG"),
         ("CLOUDSDK_ACTIVE_CONFIG_NAME", "cloudsdk_config_override:CLOUDSDK_ACTIVE_CONFIG_NAME"),
+        ("CLOUDSDK_AUTH_TOKEN_HOST", "cloudsdk_config_override:CLOUDSDK_AUTH_TOKEN_HOST"),
+        ("CLOUDSDK_AUTH_MTLS_TOKEN_HOST", "cloudsdk_config_override:CLOUDSDK_AUTH_MTLS_TOKEN_HOST"),
     ],
 )
 def test_nonempty_profile_overrides_are_blocked_without_reading_or_printing_them(tmp_path, key, reason):
@@ -200,6 +202,8 @@ def test_nonempty_profile_overrides_are_blocked_without_reading_or_printing_them
     "CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT",
     "CLOUDSDK_CONFIG",
     "CLOUDSDK_ACTIVE_CONFIG_NAME",
+    "CLOUDSDK_AUTH_TOKEN_HOST",
+    "CLOUDSDK_AUTH_MTLS_TOKEN_HOST",
 ])
 def test_blank_profile_overrides_are_harmless(tmp_path, key):
     result, calls, _flags, _home = run_preflight(tmp_path, **{key: ""})
@@ -207,6 +211,11 @@ def test_blank_profile_overrides_are_harmless(tmp_path, key):
     assert result.returncode == 0
     assert payload(result)["status"] == "ready"
     assert calls.exists()
+    parent = {key: "", "PATH": "/synthetic/normal-profile", "LANG": "C"}
+    child = load_module().no_prompt_environment(parent)
+    assert key not in child
+    assert child["PATH"] == parent["PATH"] and child["LANG"] == parent["LANG"]
+    assert parent == {key: "", "PATH": "/synthetic/normal-profile", "LANG": "C"}
 
 
 @pytest.mark.parametrize("key", ["GOOGLE_CLOUD_PROJECT", "GCLOUD_PROJECT", "CLOUDSDK_CORE_PROJECT"])
@@ -260,13 +269,15 @@ def load_module():
     "CLOUDSDK_CORE_ACCOUNT",
     "CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT",
     "CLOUDSDK_AUTH_ACCESS_TOKEN_FILE",
+    "CLOUDSDK_AUTH_TOKEN_HOST",
+    "CLOUDSDK_AUTH_MTLS_TOKEN_HOST",
 ])
-def test_identity_or_token_file_override_stops_before_discovery(monkeypatch, capsys, key):
+def test_profile_override_stops_before_discovery(monkeypatch, capsys, key):
     module = load_module()
     monkeypatch.setattr(module.os, "environ", {key: "PRIVATE_OVERRIDE_VALUE"})
 
     def forbidden(*_args, **_kwargs):
-        pytest.fail("an explicit identity/token override must stop before gcloud discovery or probes")
+        pytest.fail("an explicit profile override must stop before gcloud discovery or probes")
 
     monkeypatch.setattr(module.shutil, "which", forbidden)
     monkeypatch.setattr(module.subprocess, "run", forbidden)
