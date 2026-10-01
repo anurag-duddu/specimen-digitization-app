@@ -207,3 +207,58 @@ def test_inline_history_cache_cannot_override_latest_immutable_accounting(tmp_pa
     assert repo.version(p.scope,first.id,1) == first
     assert repo.version(p.scope,first.id,2) == second
     assert work_available_at(restored) is None
+
+
+@pytest.mark.parametrize("historical_run", [False, True])
+def test_restore_retains_reserved_calls_and_allowance_before_later_measured_usage(tmp_path, historical_run):
+    from specimen_digitization.application.lane_costs import record_reserved, record_tool_usage
+
+    http, repo, principal, first, second = fixture(tmp_path, initial_actual_cost=17)
+    latest = second.model_copy(deep=True)
+    latest.run.profile.execution.price_list = {
+        "version": "restore-offline-prices-1", "as_of": "2026-10-01",
+        "tools": {"geography_lookup": 7},
+    }
+    latest.run.profile.execution.request_cost_reservation_micros = 900
+    latest.run.program_allowance = {"reserved_total_micros": 900, "revision": 2}
+    record_reserved(latest.run, "parse", "tool", outcome="completed", tool_id="geography_lookup")
+    authoritative = repo.save(principal, latest, second.version, "reserved-call", digest({"reserved-call": 1}))
+    current = authoritative
+    if historical_run:
+        next_run = authoritative.model_copy(deep=True)
+        next_run.run = Run(stage="finalized", disposition=Disposition.REVIEW)
+        next_run.run.reasons = ["retained-content:" + "x" * (129 * 1024)]
+        next_run.previous_runs = [authoritative.run.model_copy(deep=True)]
+        current = repo.save(principal, next_run, authoritative.version, "next-run", digest({"next-run": 1}))
+        assert current.previous_runs == []
+    response = submit(http, current)
+    assert response.status_code == 200, response.text
+    restored = repo.get(principal.scope, first.id)
+    assert restored.run.paid_calls == authoritative.run.paid_calls
+    assert restored.run.program_allowance == authoritative.run.program_allowance
+    assert restored.run.usage.actual_cost_micros is None
+    # The next measured receipt must leave the earlier unmeasured liability held.
+    record_tool_usage(restored.run, "parse", "geography_lookup", requests=1)
+    assert restored.run.paid_calls[-1]["cost_micros"] == 7
+    assert restored.run.paid_calls[0]["cost_basis"] == "reserved"
+    assert restored.run.usage.actual_cost_micros is None
+    saved = repo.save(principal, restored, restored.version, "later-known-call", digest({"later-known-call": 1}))
+    assert saved.run.usage.actual_cost_micros is None
+    assert saved.run.program_allowance == authoritative.run.program_allowance
+    assert repo.version(principal.scope, first.id, authoritative.version) == authoritative
+    assert repo.version(principal.scope, first.id, 1) == first
+
+
+def test_restore_copies_nested_authoritative_accounting_without_aliases(tmp_path):
+    from specimen_digitization.application.history_restore import restored_specimen
+
+    _, _, _, first, latest = fixture(tmp_path)
+    latest.run.paid_calls = [{"cost_basis": "reserved", "usage": {"observed": None}}]
+    latest.run.program_allowance = {"position": {"reserved_total_micros": 900}}
+    restored = restored_specimen(latest, first)
+    assert restored.run.paid_calls == latest.run.paid_calls
+    assert restored.run.program_allowance == latest.run.program_allowance
+    restored.run.paid_calls[0]["usage"]["observed"] = 1
+    restored.run.program_allowance["position"]["reserved_total_micros"] = 0
+    assert latest.run.paid_calls[0]["usage"]["observed"] is None
+    assert latest.run.program_allowance["position"]["reserved_total_micros"] == 900
