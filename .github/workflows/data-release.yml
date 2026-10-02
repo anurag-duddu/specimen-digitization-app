@@ -205,9 +205,23 @@ jobs:
           if-no-files-found: error
           retention-days: 30
       - name: Create the owned principal, then initialize the existing database in one transaction
+        id: initialize
         env:
           RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
         run: uv run python scripts/ci/deploy_data.py --initialize --packet "$RUNNER_TEMP/data-release/packet.json" --output "$RUNNER_TEMP/data-initializer.json"
+      - name: Attest encrypted initializer failure evidence
+        if: failure() && steps.initialize.outputs.failure_evidence == 'present'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: ${{ runner.temp }}/data-release/initializer-failure.encrypted.json
+      - name: Retain encrypted initializer failure evidence
+        if: failure() && steps.initialize.outputs.failure_evidence == 'present'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: encrypted-initializer-failure-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/data-release/initializer-failure.encrypted.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Attest the initializer receipt
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
