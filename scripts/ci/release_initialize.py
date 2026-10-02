@@ -245,7 +245,9 @@ def native(directory, instance, mode, *, files, deadline, expected_catalog=None,
         raise node_failure(getattr(result, "stderr", None))
     with stage("catalog.native-result"):
         require(raw is not None, "native initialization did not retain evidence")
+        require(time.time() < deadline, "native evidence preparation exceeded its fixed deadline")
         value = strict_json(raw)
+        require(time.time() < deadline, "native result parsing exceeded its fixed deadline")
         require(value.get("instance") == instance and value.get("mode") == mode and value.get("files") == files,
                 "native initialization result provenance mismatch")
         if expected_catalog is not None:
@@ -253,6 +255,7 @@ def native(directory, instance, mode, *, files, deadline, expected_catalog=None,
         if private_catalog:
             require(value.get("qualified") is True, "native catalog not qualified")
             value["catalog_evidence"] = evidence
+        require(time.time() < deadline, "native result acceptance exceeded its fixed deadline")
         return value
 
 
@@ -333,6 +336,7 @@ def observe(read, matches, deadline):
         value = read()
         require(time.time() < stop, "native observation arrived after the original deadline")
         if matches(value):
+            require(time.time() < stop, "native observation validation exceeded the original deadline")
             return value
         require(time.time() + 2 < stop, "native propagation not observed; retained operation must be reconciled")
         time.sleep(2)
@@ -719,6 +723,7 @@ def dispose_initializer_target(google, instance, recovery, journals, directory, 
                 else:
                     observe(users, lambda value: value is None, deadline)
                     check("disposal-absent")
+        require(time.time() < deadline, "disposal acceptance exceeded its own fixed deadline")
         state.update(outcome="complete", principal_absence_verified=True)
         return state
     except BaseException as error:
@@ -802,9 +807,11 @@ def initialize_existing(google, directory, output):
             "native initializer identity or assigned role differs")
     result = once(directory, "roles-create-" + SOURCE, lambda: native(directory, SOURCE, "initialize", files=fingerprints(),
                                                                        deadline=deadline, gate_sha=record["source_sha"]))
-    output.write_text(json.dumps({"version": "data-initializer/v1", "source_sha": record["source_sha"],
+    receipt = json.dumps({"version": "data-initializer/v1", "source_sha": record["source_sha"],
         "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"], "instance": SOURCE,
-        "database": DATABASE, "postconditions_sha256": sha(result["postconditions"])}, sort_keys=True) + "\n")
+        "database": DATABASE, "postconditions_sha256": sha(result["postconditions"])}, sort_keys=True) + "\n"
+    require(time.time() < deadline, "initializer receipt acceptance exceeded its original deadline")
+    output.write_text(receipt)
 
 
 def dispose_owned_initializer(google, directory):

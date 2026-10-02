@@ -740,7 +740,13 @@ def first_catalog(directory, source_sha, *, deadline=None):
         require(time.time() < deadline, "protected catalog summary completed after its deadline")
     if result.returncode != 0:
         raise blocked("the application database's catalog could not be read")
-    return strict_json(private_bytes(target))
+    raw = private_bytes(target)
+    if deadline is not None:
+        require(time.time() < deadline, "protected catalog reading exceeded its original deadline")
+    summary = strict_json(raw)
+    if deadline is not None:
+        require(time.time() < deadline, "protected catalog parsing exceeded its original deadline")
+    return summary
 
 
 def run_artifacts(record, prefix):
@@ -777,10 +783,14 @@ def first_step(record, directory):
           + f", {len(names)} extension(s) besides plpgsql ({', '.join(names) or 'none'}); Data Connect roles: "
           + ", ".join(f"{role} {'present' if value else 'absent'}" for role, value in present.items()) + ".")
     if not any(present.values()) and not names and not any(summary[key] for key in COUNTS):
-        return "initialize"
-    if all(present.values()) and any(attempt < record["release_run_attempt"] for attempt in run_artifacts(record, "data-initializer")):
-        return "migrate"
-    raise blocked("the application database is neither empty nor initialized by this run; adopting it needs a ruling")
+        step = "initialize"
+    elif all(present.values()) and any(attempt < record["release_run_attempt"] for attempt in run_artifacts(record, "data-initializer")):
+        step = "migrate"
+    else:
+        raise blocked("the application database is neither empty nor initialized by this run; adopting it needs a ruling")
+    if bounded:
+        require(time.time() < bounded["deadline"], "protected phase acceptance exceeded its original deadline")
+    return step
 
 
 def deploy_released_data(path, output, secrets=None):
@@ -848,6 +858,8 @@ def deploy_released_data(path, output, secrets=None):
             step = first_step(record, path.parent)
             print(f"First initialization step: {step}.")
             with open(targets, "a", encoding="utf-8") as handle:
+                if window:
+                    require(time.time() < record["expires_at_unix"], "protected phase output exceeded its original deadline")
                 handle.write(f"init_step={step}\n")
             return
         if not live_schema or connector is None:
@@ -905,6 +917,7 @@ def require_prior_initialization(google, directory, prior):
     check_catalog(observed, tables, views)
     require(completed["tables"] == len(tables) and completed["views"] == len(views),
             "A migration receipt differs from the reviewed catalog")
+    require(time.time() < record["expires_at_unix"], "prior initialization acceptance exceeded its original deadline")
 
 
 class _Refused(ValueError):
@@ -1182,6 +1195,8 @@ def migrate_initialized(google, directory, output):
             raise blocked("the extensions are not exactly plpgsql and uuid-ossp")
         if initializer.sha(catalog.get("postconditions")) != receipt["postconditions_sha256"]:
             raise blocked("the database's postconditions changed since this run's initializer")
+        if bounded:
+            require(time.time() < bounded["deadline"], "migrated catalog acceptance exceeded its original deadline")
         facts.update(tables=len(tables), views=len(views))
     finally:
         output.write_text(json.dumps({"version": "data-initialized/v1", "phase": "initialize", "source_sha": record["source_sha"],

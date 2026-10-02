@@ -305,6 +305,7 @@ def test_native_initializer_absence_and_a_postconditions_are_rechecked_before_b(
     monkeypatch.setattr(D, "relaxations", lambda: set())
     google = G.Google.__new__(G.Google)
     google.packet = record()
+    monkeypatch.setattr(D.time, "time", lambda: google.packet["issued_at_unix"])
     D.require_prior_initialization(google, tmp_path, prior)
     assert calls[0][0][0] == "migrated" and calls[0][1] == {"deadline": google.packet["expires_at_unix"]}
     monkeypatch.setattr(I, "own_principal", lambda google: {"name": "private-user-canary"})
@@ -780,3 +781,256 @@ def test_unknown_migration_terminal_state_never_claims_rollback_or_recommends_re
     assert len(calls) == 1 and calls[0][1]["deadline"] == C + 5001
     assert "terminal state is unproved" in str(failure.value)
     assert "rolled back" not in str(failure.value) and "re-run" not in str(failure.value)
+
+
+# Exercise final acceptance in the actual consumers, not a replacement parser.
+from test_data_first_initialization import Cloud, Plane, jobs, migration
+from test_initialization_catalog_privacy import catalog_keys
+
+
+@pytest.mark.parametrize("phase", ["parse", "provenance"])
+@pytest.mark.parametrize("late_by", [-0.001, 0, 0.001])
+def test_native_result_acceptance_keeps_original_deadline_after_parse_and_provenance(
+        tmp_path, monkeypatch, phase, late_by):
+    clock, calls = [99], []
+    files = I.fingerprints()
+    raw = json.dumps({"instance": I.SOURCE, "mode": "disposal-absent", "files": files}).encode()
+    target = tmp_path / (I.SOURCE + "-disposal-absent.json")
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        target.write_bytes(raw)
+        target.chmod(0o600)
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+    parse = I.strict_json
+    class TimedProvenance(dict):
+        def get(self, key, *args):
+            value = super().get(key, *args)
+            if key == "files":
+                clock[0] = 100 + late_by
+            return value
+    def parsed(value):
+        result = parse(value)
+        if phase == "parse":
+            clock[0] = 100 + late_by
+        return TimedProvenance(result) if phase == "provenance" else result
+    monkeypatch.setattr(I.time, "time", lambda: clock[0])
+    monkeypatch.setattr(I.subprocess, "run", run)
+    monkeypatch.setattr(I, "strict_json", parsed)
+    if late_by < 0:
+        assert I.native(tmp_path, I.SOURCE, "disposal-absent", files=files, deadline=100)["files"] == files
+    else:
+        with pytest.raises(DiagnosticError, match="catalog.native-result"):
+            I.native(tmp_path, I.SOURCE, "disposal-absent", files=files, deadline=100)
+    assert len(calls) == 1 and calls[0][1]["env"]["INITIALIZATION_DEADLINE"] == "100"
+    assert target.read_bytes() == raw
+
+
+@pytest.mark.parametrize("late_by", [0, 0.001])
+def test_private_native_encryption_crossing_deadline_retains_only_encrypted_evidence(
+        tmp_path, monkeypatch, catalog_keys, late_by):
+    import release_catalog_envelope as envelope
+    recipient, private = catalog_keys
+    clock, calls = [99], []
+    provenance = {"repository": R.REPOSITORY, "source_sha": SHA, "run_id": RUN, "run_attempt": 1}
+    raw = json.dumps({"instance": I.SOURCE, "mode": "inspect", "files": I.fingerprints(),
+                      "catalog": {"private": BOOTSTRAP_CANARY}, "qualified": True}).encode()
+    def run(command, **kwargs):
+        calls.append(command)
+        Path(command[-1]).write_bytes(raw)
+        Path(command[-1]).chmod(0o600)
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+    encrypt = envelope.encrypt_catalog
+    def encrypted(*args, **kwargs):
+        result = encrypt(*args, **kwargs)
+        clock[0] = 100 + late_by
+        return result
+    monkeypatch.setattr(I.time, "time", lambda: clock[0])
+    monkeypatch.setattr(I.subprocess, "run", run)
+    monkeypatch.setattr(envelope, "encrypt_catalog", encrypted)
+    with pytest.raises(DiagnosticError, match="catalog.native-result"):
+        I.native(tmp_path, I.SOURCE, "inspect", files=I.fingerprints(), deadline=100,
+                 recipient=recipient, provenance=provenance)
+    target = tmp_path / (I.SOURCE + "-inspect.encrypted.json")
+    assert len(calls) == 1 and target.exists()
+    assert not (tmp_path / (I.SOURCE + "-inspect.json")).exists()
+    assert BOOTSTRAP_CANARY.encode() not in target.read_bytes()
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    assert envelope.decrypt_catalog(json.loads(target.read_bytes()), private,
+        public_key_sha256=recipient["public_key_sha256"], provenance=provenance) == raw
+
+
+@pytest.mark.parametrize("late_by", [-0.001, 0, 0.001])
+def test_disposal_completion_rejects_final_absence_acceptance_at_original_deadline(tmp_path, monkeypatch, late_by):
+    clock, calls = [99], []
+    class Google:
+        plane = "data"
+        packet = {**record(), "expires_at_unix": 100}
+        sql_read_deadline = 77
+        def request(self, api, method, resource, **kwargs):
+            calls.append((api, method, resource))
+            assert method == "GET" and resource.endswith("/users")
+            return {"items": []}
+    def absent(directory, instance, mode, **kwargs):
+        calls.append((instance, mode, kwargs["deadline"]))
+        assert mode == "disposal-absent" and kwargs["deadline"] == 100
+        clock[0] = 100 + late_by
+        return {"verified": True}
+    google = Google()
+    monkeypatch.setattr(I.time, "time", lambda: clock[0])
+    monkeypatch.setattr(I, "native", absent)
+    if late_by < 0:
+        assert I.dispose_initializer_target(google, I.SOURCE, {"privilege_deadline_unix": 98}, {}, tmp_path)["outcome"] == "complete"
+    else:
+        with pytest.raises(ValueError, match="disposal.*deadline"):
+            I.dispose_initializer_target(google, I.SOURCE, {"privilege_deadline_unix": 98}, {}, tmp_path)
+    saved = json.loads((tmp_path / ("initializer-disposal-" + I.SOURCE + ".json")).read_bytes())
+    assert (saved["outcome"], saved["principal_absence_verified"]) == (("complete", True) if late_by < 0 else ("blocked", False))
+    assert saved["release_accepted"] is False and google.sql_read_deadline == 77 and len(calls) == 2
+
+
+@pytest.mark.parametrize("phase", ["private_bytes", "strict_json"])
+@pytest.mark.parametrize("late_by", [-0.001, 0, 0.001])
+def test_first_catalog_acceptance_rejects_read_or_parse_crossing_original_deadline(tmp_path, monkeypatch, phase, late_by):
+    clock = [99]
+    summary, calls = summary_cli(monkeypatch, clock)
+    original = getattr(D, phase)
+    def delayed(*args, **kwargs):
+        result = original(*args, **kwargs)
+        clock[0] = 100 + late_by
+        return result
+    monkeypatch.setattr(D, phase, delayed)
+    if late_by < 0:
+        assert D.first_catalog(tmp_path, SHA, deadline=100) == summary
+    else:
+        with pytest.raises(ValueError, match="catalog.*deadline"):
+            D.first_catalog(tmp_path, SHA, deadline=100)
+    assert len(calls) == 1 and calls[0][1]["timeout"] == 1
+    assert json.loads((tmp_path / "first-catalog.json").read_bytes()) == summary
+
+
+@pytest.mark.parametrize("decision", ["initialize", "migrate"])
+@pytest.mark.parametrize("late_by", [-0.001, 0, 0.001])
+def test_first_step_final_phase_decision_keeps_original_expiry(tmp_path, monkeypatch, decision, late_by):
+    clock = [99]
+    summary, calls = summary_cli(monkeypatch, clock)
+    monkeypatch.setenv(R.MODE, "true")
+    value = {**record(attempt=2), "expires_at_unix": 100}
+    if decision == "migrate":
+        summary["roles"] = list(D.APPLICATION_ROLES.values())
+        def artifacts(*args):
+            clock[0] = 100 + late_by
+            return {1: {"id": 1}}
+        monkeypatch.setattr(D, "run_artifacts", artifacts)
+    else:
+        monkeypatch.setattr(D, "print", lambda *args: clock.__setitem__(0, 100 + late_by), raising=False)
+    if late_by < 0:
+        assert D.first_step(value, tmp_path) == decision
+    else:
+        with pytest.raises(ValueError, match="phase.*deadline"):
+            D.first_step(value, tmp_path)
+    assert len(calls) == 1 and value["expires_at_unix"] == 100
+
+
+@pytest.mark.parametrize("late_by", [-0.001, 0, 0.001])
+def test_observe_final_predicate_acceptance_keeps_original_stop(monkeypatch, late_by):
+    clock, reads = [99], []
+    def read():
+        reads.append(clock[0])
+        return {"absent": True}
+    def match(value):
+        assert value == {"absent": True}
+        clock[0] = 100 + late_by
+        return True
+    monkeypatch.setattr(I.time, "time", lambda: clock[0])
+    if late_by < 0:
+        assert I.observe(read, match, 100) == {"absent": True}
+    else:
+        with pytest.raises(ValueError, match="observation.*deadline"):
+            I.observe(read, match, 100)
+    assert reads == [99]
+
+
+@pytest.mark.parametrize("late_by", [0, 0.001])
+def test_initializer_postconditions_hash_cannot_publish_late_acceptance(jobs, monkeypatch, late_by):
+    original = I.sha
+    def hashed(value):
+        result = original(value)
+        if value == {"owner": "x"}:
+            jobs.clock[0] += 600 + late_by
+        return result
+    monkeypatch.setattr(I, "sha", hashed)
+    cloud = Cloud("data-initialization", attempt=1)
+    with pytest.raises(ValueError, match="initializer.*deadline"):
+        jobs.initialize(cloud)
+    assert not (jobs.directory / "data-initializer.json").exists()
+    assert [call for call in cloud.calls if call[0] != "GET"] == [("POST", "users")]
+    assert len(jobs.native) == 1 and (jobs.directory / "initialize" / ("roles-create-" + I.SOURCE + ".json")).exists()
+
+
+@pytest.mark.parametrize("late_by", [0, 0.001])
+def test_b_prior_postcondition_validation_cannot_accept_after_original_expiry(tmp_path, monkeypatch, late_by):
+    clock = [99]
+    observed = {"expected_database": True, "expected_actor": True, "tables": ["public.specimen"], "views": [],
+                "owners": [D.OWNER], "extensions": ["plpgsql", "uuid-ossp"], "postconditions": {"schema_owner": D.OWNER}}
+    prior = (receipts()["data-initializer"], receipts()["data-initialized"])
+    prior[0]["postconditions_sha256"] = I.sha(observed["postconditions"])
+    monkeypatch.setattr(D.time, "time", lambda: clock[0])
+    monkeypatch.setattr(I, "own_principal", lambda google: None)
+    calls = []
+    monkeypatch.setattr(D, "gate_sql", lambda *args, **kwargs: calls.append(kwargs["deadline"]) or observed)
+    monkeypatch.setattr(D, "committed_source", lambda folder: {"files": [{"path": "schema.gql", "content": "type Specimen @table { id: UUID! }"}]})
+    monkeypatch.setattr(D.schema_gate, "declared_sql", lambda *args: ({"specimen"}, set(), set()))
+    monkeypatch.setattr(D, "relaxations", lambda: set())
+    check = D.check_catalog
+    def checked(*args):
+        check(*args)
+        clock[0] = 100 + late_by
+    monkeypatch.setattr(D, "check_catalog", checked)
+    google = G.Google.__new__(G.Google)
+    google.packet = {**record(), "expires_at_unix": 100}
+    with pytest.raises(ValueError, match="prior.*deadline"):
+        D.require_prior_initialization(google, tmp_path, prior)
+    assert calls == [100]
+
+
+@pytest.mark.parametrize("late_by", [0, 0.001])
+def test_a_final_catalog_validation_keeps_counts_unaccepted_after_expiry(migration, monkeypatch, late_by):
+    clock = [C + 1000]
+    monkeypatch.setattr(D.time, "time", lambda: clock[0])
+    monkeypatch.setenv(R.MODE, "true")
+    plane = Plane(migration.events, None)
+    original = I.sha
+    def hashed(value):
+        result = original(value)
+        if migration.events.count("migrated") == 2:
+            clock[0] = plane.packet["expires_at_unix"] + late_by
+        return result
+    monkeypatch.setattr(I, "sha", hashed)
+    saved = migration.migrate(plane)
+    assert plane.error is not None and "catalog" in plane.error and "deadline" in plane.error
+    assert saved["tables"] is None and saved["views"] is None
+    assert migration.events.count("migrated") == 2 and (D.ROOT / "scripts/ci/release_sql.mjs").exists()
+
+
+@pytest.mark.parametrize("late_by", [0, 0.001])
+def test_final_init_step_output_is_not_published_after_original_expiry(tmp_path, monkeypatch, late_by):
+    import test_data_released_deploy as fixture
+    output, steps = fixture.tree(tmp_path, monkeypatch)
+    directory = tmp_path / "release"
+    directory.mkdir()
+    clock = [99]
+    value = {**record(attempt=1), "expires_at_unix": 100}
+    google = fixture.FakeGoogle(fixture.state(connector=None), value)
+    monkeypatch.setattr(D.time, "time", lambda: clock[0])
+    monkeypatch.setenv(R.MODE, "true")
+    monkeypatch.setattr(D, "Google", lambda *args: google)
+    monkeypatch.setattr(R, "observe", lambda *args: {"attempt": 1})
+    def step(*args):
+        clock[0] = 100 + late_by
+        return "initialize"
+    monkeypatch.setattr(D, "first_step", step)
+    with pytest.raises(ValueError, match="phase.*deadline"):
+        D.deploy_released_data(directory / "packet.json", output, secrets={"DATA_BOOTSTRAP_ARTIFACT_B64": BOOTSTRAP_CANARY})
+    assert "init_step=" not in steps.read_text()
+    assert json.loads(output.read_bytes())["bootstrap"] == "deferred"
+    assert all(method == "GET" for _, method, _ in google.calls)
