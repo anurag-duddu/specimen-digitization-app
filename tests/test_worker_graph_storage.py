@@ -11,7 +11,7 @@ from specimen_digitization.application import worker
 from specimen_digitization.application.active_graph import pack
 from specimen_digitization.application.collection_profiles import insects_registry, SegmentationSettings
 from specimen_digitization.application.domain import Asset, Observation, Principal, Profile, Region, Run, Scope, Specimen
-from specimen_digitization.application.production import SqlConnectRepository, actor_uid
+from specimen_digitization.application.production import SqlConnectRepository, actor_uid, verified_actor_context
 from specimen_digitization.application.storage import Conflict, LocalBlobs, digest
 from specimen_digitization.application.worker_launch import PilotLaunch
 
@@ -167,27 +167,31 @@ def test_production_worker_assembly_reads_saves_and_reopens_complete_graphs(
     args = SimpleNamespace(mode="production", evidence_only=evidence_only,
                            evidence_profile="unused", source_manifest="unused",
                            check_config=False, once=True)
+    prior_actor = actor_uid.get()
     with pytest.raises(SystemExit) as stopped:
         worker._run(args)
     assert stopped.value.code == 2  # Correctly reports review, never clearance.
+    assert actor_uid.get() == prior_actor
     summary = json.loads(capsys.readouterr().out)
     assert summary["status"] == "evidence_review_required"
     assert summary["counts"] == {"review_required": 10}
     repository = repositories[0]
     assert repository.graph_blobs is blobs
-    for original in records:
-        restored = repository.get(launch.scope, original.id)
-        assert restored.run == original.run
-        assert len(restored.run.regions) == 64
-        assert len(restored.run.observations) == 128
-    principal = Principal(user_id="graph-fixture", scope=launch.scope, role="reviewer")
-    current = repository.get(launch.scope, records[0].id)
-    current.run.reasons.append("Retained local checkpoint")
-    saved = repository.save(principal, current, 1, "checkpoint", digest("checkpoint"))
-    fresh = transport.repository(graph_blobs=blobs)
-    assert fresh.get(launch.scope, current.id).run == saved.run
-    assert fresh.version(launch.scope, current.id, 1).run == records[0].run
-    assert len(saved.run.regions) == 64 and len(saved.run.observations) == 128
+    with verified_actor_context("graph-fixture"):
+        for original in records:
+            restored = repository.get(launch.scope, original.id)
+            assert restored.run == original.run
+            assert len(restored.run.regions) == 64
+            assert len(restored.run.observations) == 128
+        principal = Principal(user_id="graph-fixture", scope=launch.scope, role="reviewer")
+        current = repository.get(launch.scope, records[0].id)
+        current.run.reasons.append("Retained local checkpoint")
+        saved = repository.save(principal, current, 1, "checkpoint", digest("checkpoint"))
+        fresh = transport.repository(graph_blobs=blobs)
+        assert fresh.get(launch.scope, current.id).run == saved.run
+        assert fresh.version(launch.scope, current.id, 1).run == records[0].run
+        assert len(saved.run.regions) == 64 and len(saved.run.observations) == 128
+    assert actor_uid.get() == prior_actor
 
 
 def test_provided_sql_session_operates_without_ambient_adc(monkeypatch):
