@@ -683,3 +683,100 @@ def test_unset_recovery_first_step_keeps_the_existing_two_argument_catalog_shape
     monkeypatch.setattr(D, "first_catalog", ordinary)
     assert D.first_step(record(attempt=1), tmp_path) == "initialize"
     assert calls == [(tmp_path, SHA)]
+
+
+@pytest.mark.parametrize("phase", ["child", "private-read", "parse"])
+@pytest.mark.parametrize("late_by", [0, 0.001])
+def test_gate_sql_never_adopts_a_result_finishing_at_or_after_its_original_deadline(
+        tmp_path, monkeypatch, phase, late_by):
+    clock, calls, consumed = [C + 5000], [], []
+    deadline = clock[0] + 2
+    raw = b'{"committed":true}'
+    target = tmp_path / f"{D.SOURCE}-migrate.json"
+    real_read, real_parse = D.private_bytes, D.strict_json
+    monkeypatch.setattr(D.time, "time", lambda: clock[0])
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        target.write_bytes(raw)
+        target.chmod(0o600)
+        if phase == "child":
+            clock[0] = deadline + late_by
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+
+    def read(path):
+        consumed.append("private-read")
+        result = real_read(path)
+        if phase == "private-read":
+            clock[0] = deadline + late_by
+        return result
+
+    def parse(value):
+        consumed.append("parse")
+        result = real_parse(value)
+        if phase == "parse":
+            clock[0] = deadline + late_by
+        return result
+
+    monkeypatch.setattr(D.subprocess, "run", run)
+    monkeypatch.setattr(D, "private_bytes", read)
+    monkeypatch.setattr(D, "strict_json", parse)
+    assert D.gate_sql("migrate", tmp_path, SHA, deadline=deadline) is None
+    assert len(calls) == 1 and calls[0][1]["timeout"] == 2
+    assert consumed == {"child": [], "private-read": ["private-read"], "parse": ["private-read", "parse"]}[phase]
+    assert target.read_bytes() == raw  # Retained evidence never proves server rollback or permits replay.
+
+
+@pytest.mark.parametrize("remaining,expected", [(0.25, 0.25), (2, 2), (600, 300), (None, 300)])
+def test_gate_sql_timely_result_uses_the_remaining_original_budget_without_a_one_second_floor(
+        tmp_path, monkeypatch, remaining, expected):
+    clock, calls = [C + 5000], []
+    monkeypatch.setattr(D.time, "time", lambda: clock[0])
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        path = Path(command[4])
+        path.write_text('{"observed":true}')
+        path.chmod(0o600)
+        return subprocess.CompletedProcess(command, 0, b"", b"")
+    monkeypatch.setattr(D.subprocess, "run", run)
+    deadline = None if remaining is None else clock[0] + remaining
+    assert D.gate_sql("migrated", tmp_path, SHA, deadline=deadline) == {"observed": True}
+    assert len(calls) == 1 and calls[0][1]["timeout"] == expected
+    assert calls[0][0][:4] == ["node", "scripts/ci/release_sql.mjs", "migrated", D.SOURCE]
+    assert calls[0][1]["env"]["RELEASE_GATE_SHA"] == SHA and calls[0][1]["cwd"] == D.ROOT
+
+
+@pytest.mark.parametrize("remaining", [0, -0.001])
+def test_gate_sql_expired_original_budget_never_launches_a_child(tmp_path, monkeypatch, remaining):
+    monkeypatch.setattr(D.time, "time", lambda: C + 5000)
+    monkeypatch.setattr(D.subprocess, "run", lambda *args, **kwargs: pytest.fail("expired SQL never launches"))
+    assert D.gate_sql("indexes", tmp_path, SHA, deadline=C + 5000 + remaining) is None
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_gate_sql_real_parent_timeout_retains_unknown_output_without_a_second_invocation(tmp_path, monkeypatch):
+    actual_run, calls = subprocess.run, []
+    target = tmp_path / f"{D.SOURCE}-migrate.json"
+    target.write_bytes(b'{"committed":true}')
+    target.chmod(0o600)
+    monkeypatch.setattr(D.time, "time", lambda: C + 5000.99)
+    monkeypatch.setattr(D, "private_bytes", lambda *args: pytest.fail("unknown SQL output is never adopted"))
+
+    def blocked_runtime(command, **kwargs):
+        calls.append((command, kwargs))
+        return actual_run([sys.executable, "-c", "import time; time.sleep(10)"], **kwargs)
+    monkeypatch.setattr(D.subprocess, "run", blocked_runtime)
+    assert D.gate_sql("migrate", tmp_path, SHA, deadline=C + 5001) is None
+    assert len(calls) == 1 and 0 < calls[0][1]["timeout"] < 0.02
+    assert target.read_bytes() == b'{"committed":true}'
+
+
+def test_unknown_migration_terminal_state_never_claims_rollback_or_recommends_replay(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(D, "gate_sql", lambda *args, **kwargs: calls.append((args, kwargs)))
+    with pytest.raises(ValueError) as failure:
+        D.run_migration(tmp_path, SHA, [], set(), deadline=C + 5001)
+    assert len(calls) == 1 and calls[0][1]["deadline"] == C + 5001
+    assert "terminal state is unproved" in str(failure.value)
+    assert "rolled back" not in str(failure.value) and "re-run" not in str(failure.value)

@@ -1084,10 +1084,13 @@ def initializer_receipt(record):
 
 def gate_sql(mode, directory, source_sha, *inputs, instance=SOURCE, deadline=None):
     """One release_sql.mjs mode as specimen-data-release for the admitted gate record's commit, on the source unless the
-    mode reads the restored clone; None when it fails or outlasts five minutes or the deadline (RELEASE.md 4.4)."""
+    mode reads the restored clone; None when it fails or outlasts five minutes or the deadline (RELEASE.md 4.4).
+    Unknown terminal state retains private evidence and never authorizes replay."""
     target = directory / f"{instance}-{mode}.json"
-    seconds = 300 if deadline is None else min(300, deadline - time.time())
-    if seconds < 1:
+    started = time.time()
+    expires = started + 300 if deadline is None else min(started + 300, deadline)
+    seconds = expires - started
+    if seconds <= 0:
         return None
     try:
         result = subprocess.run(["node", "scripts/ci/release_sql.mjs", mode, instance, str(target), *map(str, inputs)],
@@ -1095,7 +1098,13 @@ def gate_sql(mode, directory, source_sha, *inputs, instance=SOURCE, deadline=Non
                                 timeout=seconds)
     except subprocess.TimeoutExpired:
         return None
-    return strict_json(private_bytes(target)) if result.returncode == 0 else None
+    if result.returncode != 0 or time.time() >= expires:
+        return None
+    raw = private_bytes(target)
+    if time.time() >= expires:
+        return None
+    observed = strict_json(raw)
+    return observed if time.time() < expires else None
 
 
 def run_migration(directory, source_sha, statements, relaxed, deadline=None):
@@ -1107,7 +1116,7 @@ def run_migration(directory, source_sha, statements, relaxed, deadline=None):
                    "relaxed": sorted(f"{table}.{column}" for table, column in relaxed)}, handle)
     if gate_sql("migrate", directory, source_sha, plan, deadline=deadline) != {
             "version": "data-migration/v1", "statements": len(statements), "committed": True}:
-        raise blocked("the migration transaction failed and rolled back; re-run once the database is idle")
+        raise blocked("the migration terminal state is unproved; retain private evidence and reconcile before any replay")
 
 
 def migrate_initialized(google, directory, output):
