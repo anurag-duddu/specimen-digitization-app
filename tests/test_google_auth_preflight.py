@@ -25,6 +25,19 @@ SAFE_PROBE_SETTINGS = {
     "CLOUDSDK_CORE_USER_OUTPUT_ENABLED": "true",
     "CLOUDSDK_CORE_FORMAT": "",
     "CLOUDSDK_CORE_DRY_RUN": "0",
+    "CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE": "false",
+    "CLOUDSDK_CONTEXT_AWARE_ALWAYS_USE_MTLS_ENDPOINT": "false",
+    "CLOUDSDK_CONTEXT_AWARE_USE_ECP_HTTP_PROXY": "false",
+    "CLOUDSDK_CONTEXT_AWARE_USE_MTLS_FOR_GRPC": "false",
+    "GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES": "0",
+    "GOOGLE_API_USE_CLIENT_CERTIFICATE": "false",
+    "GOOGLE_API_USE_MTLS_ENDPOINT": "never",
+}
+SUPPORTED_PARENT_SETTINGS = {
+    **SAFE_PROBE_SETTINGS,
+    "CLOUDSDK_CORE_PROJECT": "specimen-digitization",
+    "CLOUDSDK_CORE_DISABLE_PROMPTS": "true",
+    "CLOUDSDK_CORE_SHOULD_PROMPT_TO_ENABLE_API": "false",
 }
 TRANSPORT_PROFILE_KEYS = (
     "CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION",
@@ -320,13 +333,7 @@ def test_profile_override_stops_before_discovery(monkeypatch, capsys, key):
 
 def test_timeout_is_sanitized_and_never_retried(monkeypatch, capsys):
     module = load_module()
-    for key in (
-        *module.CREDENTIAL_OVERRIDE_KEYS,
-        *module.IDENTITY_OVERRIDE_KEYS,
-        *module.CONFIG_OVERRIDE_KEYS,
-        *module.PROJECT_OVERRIDE_KEYS,
-    ):
-        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(module.os, "environ", {"PATH": "/synthetic/gcloud"})
     monkeypatch.setattr(module.shutil, "which", lambda *_args, **_kwargs: "/synthetic/gcloud")
     calls = []
 
@@ -404,8 +411,16 @@ def test_probe_policy_prevents_synthetic_sdk_logging_and_false_login(monkeypatch
         return subprocess.CompletedProcess(arguments, 0, b"" if suppressed else b"PRIVATE_ACCESS_TOKEN", b"PRIVATE_ERROR")
 
     monkeypatch.setattr(module.subprocess, "run", fake_sdk)
-    assert module.main([]) == 0
+    code = module.main([])
     output = capsys.readouterr()
+    if inherited:
+        assert code == 2
+        assert json.loads(output.out)["next_action"] == "clear_local_profile_overrides"
+        assert not calls and not sdk_log.exists()
+        assert parent == frozen_parent
+        assert "PRIVATE_" not in output.out + output.err
+        return
+    assert code == 0
     assert json.loads(output.out)["next_action"] == "none"
     assert len(calls) == 2
     assert not sdk_log.exists()
@@ -476,7 +491,7 @@ def test_preflight_to_documented_inventory_uses_the_same_effective_policy(monkey
         block = re.search(r"```bash\n(env CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION=false.*?)\n```", runbook, re.S)
         assert block, "runbook must retain the scoped safe-policy inventory command"
         words = shlex.split(block.group(1).replace("\\\n", " "))
-        caller_settings = dict(word.split("=", 1) for word in words[1:] if word.startswith("CLOUDSDK_") and "=" in word)
+        caller_settings = dict(word.split("=", 1) for word in words[1:] if "=" in word and word.split("=", 1)[0].isupper())
         assert caller_settings == SAFE_PROBE_SETTINGS
         assert "scripts/data/inventory_cloud.py" in words
         # Execute only the unchanged caller's actual run_gcloud function AST.
@@ -491,3 +506,157 @@ def test_preflight_to_documented_inventory_uses_the_same_effective_policy(monkey
             assert {key: child.get(key) for key in SAFE_PROBE_SETTINGS} == SAFE_PROBE_SETTINGS
             assert child["CLOUDSDK_CORE_DISABLE_PROMPTS"] == "true"
     assert parent == frozen_parent
+
+
+@pytest.mark.parametrize("key", [
+    "CLOUDSDK_AUTH_AUTH_HOST", "CLOUDSDK_AUTH_LOGIN_CONFIG_FILE",
+    "CLOUDSDK_AUTH_CLIENT_ID", "CLOUDSDK_AUTH_CLIENT_SECRET",
+    "CLOUDSDK_AUTH_AUTHORIZATION_TOKEN_FILE", "CLOUDSDK_AUTH_AUTHORITY_SELECTOR",
+    "CLOUDSDK_AUTH_DISABLE_CREDENTIALS", "CLOUDSDK_AUTH_FUTURE_PROFILE",
+    "CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE",
+    "CLOUDSDK_CONTEXT_AWARE_AUTO_DISCOVERY_FILE_PATH",
+    "CLOUDSDK_CONTEXT_AWARE_CERTIFICATE_CONFIG_FILE_PATH",
+    "CLOUDSDK_CONTEXT_AWARE_ALWAYS_USE_MTLS_ENDPOINT",
+    "CLOUDSDK_CONTEXT_AWARE_USE_ECP_HTTP_PROXY",
+    "CLOUDSDK_CONTEXT_AWARE_USE_MTLS_FOR_GRPC", "CLOUDSDK_CONTEXT_AWARE_FUTURE_PROFILE",
+    "CLOUDSDK_CORE_VERBOSITY", "CLOUDSDK_CORE_UNKNOWN_PROFILE",
+    "CLOUDSDK_PYTHON", "CLOUDSDK_PYTHON_ARGS", "CLOUDSDK_PYTHON_SITEPACKAGES",
+    "CLOUDSDK_ROOT_DIR", "CLOUDSDK_UNKNOWN_NAMESPACE",
+    "GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES", "GOOGLE_EXTERNAL_ACCOUNT_FUTURE_PROFILE",
+    "GOOGLE_API_USE_CLIENT_CERTIFICATE", "GOOGLE_API_USE_MTLS_ENDPOINT",
+    "GCE_METADATA_HOST", "GCE_METADATA_ROOT", "GCE_METADATA_IP", "GCE_METADATA_FUTURE",
+])
+@pytest.mark.parametrize("value", ["", "PRIVATE_OVERRIDE_VALUE"])
+def test_credential_control_namespaces_refuse_unknown_or_unsafe_defined_values(monkeypatch, capsys, key, value):
+    module = load_module()
+    parent = {"PATH": "/synthetic/gcloud", key: value}
+    monkeypatch.setattr(module.os, "environ", parent)
+    monkeypatch.setattr(module.shutil, "which", lambda *_a, **_k: pytest.fail("discovery forbidden"))
+    monkeypatch.setattr(module.subprocess, "run", lambda *_a, **_k: pytest.fail("SDK/provider effects forbidden"))
+    assert module.main([]) == 2
+    result = capsys.readouterr()
+    body = json.loads(result.out)
+    assert body["next_action"] == "clear_local_profile_overrides"
+    assert body["checks"]["environment"] == "blocked" and body["checks"]["gcloud"] == "not_run"
+    assert any(reason.endswith(":" + key) for reason in body["blocking_reasons"])
+    assert "PRIVATE_OVERRIDE_VALUE" not in result.out + result.err
+    assert parent == {"PATH": "/synthetic/gcloud", key: value}
+
+
+@pytest.mark.parametrize("key,value", SUPPORTED_PARENT_SETTINGS.items())
+def test_only_evidenced_benign_property_values_are_supported(key, value):
+    module = load_module()
+    parent = {key: value, "PATH": "/synthetic/gcloud", "LANG": "C"}
+    assert module.environment_reasons(parent) == []
+    child = module.no_prompt_environment(parent)
+    assert child[key] == value and child["LANG"] == "C"
+    assert parent == {key: value, "PATH": "/synthetic/gcloud", "LANG": "C"}
+
+
+@pytest.mark.parametrize("key", ["CLOUDSDK_AUTH_AUTH_HOST", "CLOUDSDK_AUTH_LOGIN_CONFIG_FILE"])
+@pytest.mark.parametrize("value", ["", "PRIVATE_OVERRIDE_VALUE"])
+def test_login_profile_override_never_recommends_same_shell_owner_login(monkeypatch, capsys, key, value):
+    module = load_module()
+    monkeypatch.setattr(module.os, "environ", {"PATH": "/synthetic/gcloud", key: value})
+    calls = []
+    monkeypatch.setattr(module.shutil, "which", lambda *_a, **_k: calls.append("discovery") or "/synthetic/gcloud")
+    monkeypatch.setattr(module.subprocess, "run", lambda arguments, **_k: calls.append("failed probe") or subprocess.CompletedProcess(arguments, 1, b"", b"PRIVATE_ERROR"))
+    assert module.main([]) == 2
+    body = json.loads(capsys.readouterr().out)
+    assert body["next_action"] == "clear_local_profile_overrides"
+    assert calls == []
+
+
+# Frozen SDK582 _ConfigImpl.Load body, Copyright 2019 Google Inc.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this excerpt except in compliance with the License.
+# You may obtain a copy of the License at
+# https://www.apache.org/licenses/LICENSE-2.0
+# Unless required by applicable law or agreed to in writing, distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied. See the License for permissions and limitations.
+# Source: googlecloudsdk/core/context_aware.py:_ConfigImpl.Load; author receipt
+# binds its public source checksum and verifies AST body identity.
+# The classmethod decorator is removed for isolated AST execution only.
+SDK_CONTEXT_LOAD = '''
+def Load(cls):
+    """Loads the context aware config."""
+    if not properties.VALUES.context_aware.use_client_certificate.GetBool():
+        return None
+    certificate_config_file_path = _GetCertificateConfigFile()
+    if certificate_config_file_path:
+        log.debug('enterprise certificate is used for mTLS')
+        return _EnterpriseCertConfigImpl(certificate_config_file_path)
+    log.debug('on disk certificate is used for mTLS')
+    config_path = _AutoDiscoveryFilePath()
+    cert_bytes, key_bytes = SSLCredentials(config_path)
+    encrypted_cert_path, password = EncryptedSSLCredentials(config_path)
+    return _OnDiskCertConfigImpl(
+        config_path, cert_bytes, key_bytes, encrypted_cert_path, password
+    )
+'''
+
+
+def test_adc_session_context_consumer_cannot_provision_stored_certificate_profile(monkeypatch, capsys):
+    module = load_module()
+    parent = {"PATH": "/synthetic/gcloud"}
+    monkeypatch.setattr(module.os, "environ", parent)
+    monkeypatch.setattr(module.shutil, "which", lambda *_a, **_k: "/synthetic/gcloud")
+    effects, calls = [], []
+
+    def fake_sdk(arguments, **kwargs):
+        calls.append(arguments)
+        # Stored setting is deliberately true: each actual SDK Load body must
+        # take its early false branch under the diagnostic child property.
+        active = kwargs["env"].get("CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE", "true") == "true"
+        def plain(path):
+            effects.append(("provider Popen", path))
+            return b"SYNTHETIC_CERT", b"SYNTHETIC_KEY"
+        def encrypted(path):
+            effects.extend([("provider Popen", path), ("certificate write", path)])
+            return "/synthetic/caa_cert.pem", b"SYNTHETIC_PASSPHRASE"
+        namespace = {
+            "properties": SimpleNamespace(VALUES=SimpleNamespace(context_aware=SimpleNamespace(use_client_certificate=SimpleNamespace(GetBool=lambda: active)))),
+            "_GetCertificateConfigFile": lambda: None,
+            "_AutoDiscoveryFilePath": lambda: "/synthetic/stored-profile.json",
+            "SSLCredentials": plain, "EncryptedSSLCredentials": encrypted,
+            "_OnDiskCertConfigImpl": lambda *_a: object(),
+            "log": SimpleNamespace(debug=lambda *_a: None),
+        }
+        exec(compile(ast.parse(SDK_CONTEXT_LOAD), "<SDK582 ConfigImpl.Load>", "exec"), namespace)
+        namespace["Load"](object())
+        return subprocess.CompletedProcess(arguments, 0, b"SYNTHETIC_TOKEN", b"")
+
+    monkeypatch.setattr(module.subprocess, "run", fake_sdk)
+    assert module.main([]) == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "ready"
+    assert len(calls) == 2 and effects == []
+    assert parent == {"PATH": "/synthetic/gcloud"}
+
+
+def test_defensive_child_copy_removes_unapproved_control_namespaces():
+    parent = {"PATH": "/synthetic/gcloud", "LANG": "C", **{
+        key: "PRIVATE_OVERRIDE_VALUE" for key in (
+            "CLOUDSDK_AUTH_AUTH_HOST", "CLOUDSDK_CONTEXT_AWARE_AUTO_DISCOVERY_FILE_PATH",
+            "CLOUDSDK_UNKNOWN_NAMESPACE", "GOOGLE_EXTERNAL_ACCOUNT_FUTURE_PROFILE",
+            "GOOGLE_API_USE_FUTURE_PROFILE", "GCE_METADATA_FUTURE",
+        )
+    }}
+    child = load_module().no_prompt_environment(parent)
+    assert all(key in SUPPORTED_PARENT_SETTINGS for key in child if key.startswith(("CLOUDSDK_", "GOOGLE_EXTERNAL_ACCOUNT_", "GOOGLE_API_USE_", "GCE_METADATA_")))
+    assert child["PATH"] == parent["PATH"] and child["LANG"] == "C"
+    assert parent["CLOUDSDK_AUTH_AUTH_HOST"] == "PRIVATE_OVERRIDE_VALUE"
+
+
+def test_documented_owner_login_commands_share_the_restricted_child_policy():
+    text = (ROOT / "docs/execution/GO_LIVE_RUNBOOK.md").read_text(encoding="utf-8")
+    blocks = re.findall(r"```bash\n(env CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION=false.*?)\n```", text, re.S)
+    login_commands = []
+    for block in blocks:
+        words = shlex.split(block.replace("\\\n", " "))
+        if "gcloud" not in words:
+            continue
+        settings = dict(word.split("=", 1) for word in words[1:] if "=" in word and word.split("=", 1)[0].isupper())
+        assert settings == SAFE_PROBE_SETTINGS
+        login_commands.append(words[words.index("gcloud"):])
+    assert login_commands == [["gcloud", "auth", "login"], ["gcloud", "auth", "application-default", "login"]]
