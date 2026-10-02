@@ -25,6 +25,7 @@ def catalog_keys():
 def test_private_catalog_canary_never_reaches_public_outputs(tmp_path, monkeypatch, catalog_keys, returncode):
     recipient, private = catalog_keys
     authority = packet()
+    monkeypatch.setattr(init.time, "time", lambda: authority["issued_at_unix"])
     plan = {"version": "data-initialization-inventory/v1", "source_sha": SHA,
             "database_etag": "expected", "initialization_files": init.fingerprints(),
             "catalog_recipient": recipient}

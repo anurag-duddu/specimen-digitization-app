@@ -13861,3 +13861,13 @@ Root canonical backend suite passed 6,380 tests with 45 optional skips (exit 0,
 560.15 seconds). Together, both Python suites passed 9,139 tests with 106 skips.
 These are local controls, not live SQL, model or authenticated app acceptance.
 The frontend source is unchanged; CI still runs all five required checks.
+
+## 2026-10-02 Root PR #229 disposal caller correction
+
+Task CODEX-RECOVERY, branch codex/recovery-window-20261002, integration worktree. Two genuinely fresh G18 reviewers of d789e7c found a concrete unchanged caller defect: Python serialized a fractional disposal deadline to the strict integer JavaScript consumer, and the native subprocess clock did not intersect the original admitted gate expiry. Their old-head HOLD receipts are retained and do not count as favorable reviews of a successor.
+
+Actual new regressions first failed 7/7 on unchanged production. Root now captures one start, floors the finite disposal end to an integer and intersects the original gate expiry; observations refuse expired gates, native launches require positive remaining time without a one-second floor, and late results cannot become accepted evidence. The strict JavaScript consumer and owned cleanup lineage remain unchanged. An actual Python-to-JavaScript path with offline SQL/connector doubles now passes. Focused disposal/initializer/data/recovery/diagnostic checks: 390 passed, exit0. Existing test names, decorators and assertions are retained; original Node fixture setup is shared. Canonical gates and a fresh four-reviewer swarm on the eventual qualified successor remain pending; no new activation clock/native mutation/deployment or live acceptance is claimed.
+
+### 2026-10-02 — Root corrected recovery candidate canonical qualification
+
+The corrected caller and assertion-preserving fixture updates passed the actual sequential locked Python gates: scripts 2767 passed/61 skipped (65.50s), backend 6380 passed/45 skipped (564.97s), both exit0; total9147 passed/106 skipped. Initial genuine RED7 and broader13-failure runs remain retained, followed by focused390 and fixture136 passes. Supplemental independent source review approves the bounded correction and exact reversals; it is not a substitute for four fresh G18 current-head reviewers. Final all-file hooks, corrected-head PR CI and the fresh swarm remain required before the approved one-time activation. Candidate source/runtime/private controls remain distinct from live deployment, native SQL terminal/ownership evidence, paid worker/SAM and signed-in original-ten acceptance.

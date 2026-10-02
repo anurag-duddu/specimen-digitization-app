@@ -207,6 +207,7 @@ def native(directory, instance, mode, *, files, deadline, expected_catalog=None,
     require(instance in (SOURCE, CLONE) and mode in {"inspect", "absence", "capability", "initialize", "clean", "post",
             "disposal-check", "disposal-absent"}, "unnamed native operation")
     require(files == fingerprints(), "consumed native source differs from reviewed bytes")
+    integer(deadline, 1, 2**53 - 1, "native execution deadline")
     target = directory / f"{instance}-{mode}.json"
     env = dict(os.environ, INITIALIZATION_FILES=json.dumps(files), INITIALIZATION_DEADLINE=str(deadline))
     env.pop("INITIALIZATION_EXPECTED_POST", None)
@@ -220,9 +221,12 @@ def native(directory, instance, mode, *, files, deadline, expected_catalog=None,
     evidence = None
     try:
         with stage("catalog.native-execute"):
+            remaining = deadline - time.time()
+            require(remaining > 0, "native execution deadline expired before launch")
             result = subprocess.run(["node", "scripts/ci/release_initialize.mjs", mode, instance, str(target)],
-                                    cwd=ROOT, env=env, capture_output=True, timeout=max(1, min(90, deadline - time.time())))
+                                    cwd=ROOT, env=env, capture_output=True, timeout=min(90, remaining))
             raw = private_bytes(target) if target.exists() else None
+            require(time.time() < deadline, "native execution completed after its fixed deadline")
     finally:
         # Native checks can leave observations before they fail. Encrypt those
         # exact bytes too; upload selectors never include this plaintext path.
@@ -647,7 +651,8 @@ def dispose_initializer_target(google, instance, recovery, journals, directory, 
     import release_gate
     require(google.plane == "data" and instance in (SOURCE, CLONE), "ordinary named disposal only")
     gate_sha = google.packet["source_sha"] if release_gate.is_gate_record(google.packet) else None
-    started, deadline = time.time(), time.time() + 180
+    started = time.time()
+    deadline = min(int(started + 180), google.packet["expires_at_unix"])
     state = {"version": "initializer-disposal/v1", "source_sha": google.packet["source_sha"],
         "run_id": google.packet["release_run_id"], "run_attempt": google.packet["release_run_attempt"],
         "instance": instance, "privilege_deadline_unix": recovery["privilege_deadline_unix"],
@@ -675,6 +680,7 @@ def dispose_initializer_target(google, instance, recovery, journals, directory, 
         require(time.time() < deadline and "error" not in operation, "disposal operation failed or arrived late")
         return operation
     try:
+        require(started < deadline, "disposal gate expired before observation")
         user = users()
         if user is None:
             check("disposal-absent")
