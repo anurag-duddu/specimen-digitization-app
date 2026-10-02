@@ -21,6 +21,7 @@ STAGES = NODE_STAGES | SQL_READ_STAGES | frozenset({
     "catalog.recipient", "catalog.metadata-request", "catalog.metadata-identity",
     "catalog.native-preflight", "catalog.native-execute", "catalog.native-result",
     "catalog.encryption", "catalog.receipt",
+    "google.sql-initializer-user-create", "google.sql-initializer-operation-poll",
 })
 # Relevant PostgreSQL conditions only; arbitrary five-character codes can carry data.
 SQLSTATES = frozenset({"08001", "08003", "08004", "08006", "08P01", "28000", "28P01",
@@ -55,6 +56,16 @@ def public_failure(error):
     if type(state) is str and state in SQLSTATES:
         fields.append("sqlstate=" + state)
     return "Data release blocked [" + "; ".join(fields) + "]."
+
+
+@contextmanager
+def http_stage(name):
+    """Label only a native HTTP refusal; preserve existing non-HTTP exceptions."""
+    allowed = {"google.sql-initializer-user-create", "google.sql-initializer-operation-poll"}
+    try:
+        yield
+    except HTTPFailure as error:
+        raise DiagnosticError(name if name in allowed else "data.execute", http_status=error.http_status) from None
 
 
 @contextmanager

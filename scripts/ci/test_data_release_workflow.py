@@ -33,6 +33,8 @@ NODE_ENV = {"RELEASE_NODE_ROOT": "${{ runner.temp }}/firebase-release"}
 BOOTSTRAP = ("DATA_BOOTSTRAP_ARTIFACT_B64", "DATA_BOOTSTRAP_APPROVED_SHA256", "DATA_WORKER_ACTOR_UID")
 DEPLOY_ENV = {**NODE_ENV, **{name: "${{ secrets.%s }}" % name for name in BOOTSTRAP}}
 EVIDENCE = "${{ runner.temp }}/data-release/*.encrypted.json"
+INITIALIZER_FAILURE = "${{ runner.temp }}/data-release/initializer-failure.encrypted.json"
+INITIALIZER_FAILURE_IF = "failure() && steps.initialize.outputs.failure_evidence == 'present'"
 
 
 def steps(job):
@@ -118,6 +120,7 @@ def test_each_job_runs_exactly_its_reviewed_steps_in_order():
     assert shape("initialize") == [*setup, *NODE, f"{GATE}-initialization --output {PACKET}", "google-github-actions/auth",
                                    data % "prepare-initializer-intents", "actions/attest", "actions/upload-artifact",
                                    data % "initialize" + ' --output "$RUNNER_TEMP/data-initializer.json"',
+                                   "actions/attest", "actions/upload-artifact",
                                    "actions/attest", "actions/upload-artifact"]
     assert shape("dispose-initializer") == [*setup, *NODE, READMIT, "google-github-actions/auth", data % "dispose-initializer"]
     assert shape("migrate") == [*setup, *NODE, READMIT, "google-github-actions/auth",
@@ -129,13 +132,15 @@ def test_each_job_runs_exactly_its_reviewed_steps_in_order():
 def test_the_intent_and_the_receipt_carry_this_attempt_and_the_receipt_is_signed_on_success_only():
     """Step one's re-run check reads data-initializer-<commit>-<attempt>; disposal reads the latest intent."""
     signed, published, receipt, retained = (step for step in steps("initialize") if "uses" in step
-                                            and step["uses"].startswith(("actions/attest@", "actions/upload-artifact@")))
+                                            and step["uses"].startswith(("actions/attest@", "actions/upload-artifact@"))
+                                            and INITIALIZER_FAILURE not in step["with"].values())
     assert signed["with"] == {"subject-path": INTENT} and receipt["with"] == {"subject-path": "${{ runner.temp }}/data-initializer.json"}
     for artifact, prefix, path in ((published, "initializer-intent", INTENT),
                                    (retained, "data-initializer", "${{ runner.temp }}/data-initializer.json")):
         assert artifact["with"] == {"name": prefix + "-${{ github.sha }}-${{ github.run_attempt }}", "path": path,
                                     "if-no-files-found": "error", "retention-days": "30"}
-    assert not any("if" in step for step in steps("initialize"))
+    assert not any("if" in step for step in steps("initialize")
+                   if INITIALIZER_FAILURE not in step.get("with", {}).values())
     for job in CREDENTIALED:
         native = [step for step in steps(job) if "deploy_data.py" in step.get("run", "") and "--prepare-" not in step["run"]]
         assert len(native) == 1 and native[0]["env"] == (DEPLOY_ENV if job == "release" else NODE_ENV)
@@ -288,7 +293,24 @@ def test_the_encrypted_bootstrap_evidence_is_attested_and_retained_whenever_the_
     # The raw records beside them never match an upload path: from the packet's directory, only encrypted copies and the
     # initializer's signed intent leave the runner.
     uploaded = [step["with"]["path"] for name in JOBS for step in steps(name) if uses("actions/upload-artifact")(step)]
-    assert sorted(path for path in uploaded if "data-release/" in path) == sorted([INTENT, EVIDENCE])
+    assert sorted(path for path in uploaded if "data-release/" in path) == sorted([INTENT, EVIDENCE, INITIALIZER_FAILURE])
+
+
+def test_initializer_failure_retains_only_the_exact_encrypted_artifact_after_the_native_step():
+    native = index("initialize", lambda step: step.get("id") == "initialize")
+    attest = index("initialize", lambda step: uses("actions/attest")(step)
+                   and step["with"]["subject-path"] == INITIALIZER_FAILURE)
+    upload = index("initialize", lambda step: uses("actions/upload-artifact")(step)
+                   and step["with"]["path"] == INITIALIZER_FAILURE)
+    receipt = index("initialize", lambda step: uses("actions/attest")(step)
+                    and step["with"]["subject-path"] == "${{ runner.temp }}/data-initializer.json")
+    assert native < attest < upload < receipt
+    assert steps("initialize")[attest]["with"] == {"subject-path": INITIALIZER_FAILURE}
+    assert [step.get("if") for step in steps("initialize") if "if" in step] == [
+        INITIALIZER_FAILURE_IF, INITIALIZER_FAILURE_IF]
+    assert steps("initialize")[upload]["with"] == {
+        "name": "encrypted-initializer-failure-${{ github.sha }}-${{ github.run_attempt }}",
+        "path": INITIALIZER_FAILURE, "if-no-files-found": "error", "retention-days": "30"}
 
 
 def test_the_deployment_contract_describes_the_bootstrap_the_release_job_runs():

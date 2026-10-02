@@ -11,7 +11,7 @@ import time
 
 from release_admission import digest, exact_keys, integer, private_bytes, require, strict_json
 from release_context import PROJECT, REPOSITORY
-from release_diagnostics import node_failure, stage
+from release_diagnostics import http_stage, node_failure, stage
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = "specimen-digitization-instance"
@@ -784,6 +784,12 @@ def prepare_owned_initializer(google, directory):
 
 
 def initialize_existing(google, directory, output):
+    from release_initializer_evidence import preserve_failure
+    with preserve_failure(google, directory):
+        _initialize_existing(google, directory, output)
+
+
+def _initialize_existing(google, directory, output):
     """Create the owned principal once within the published ten-minute privilege window, then run the
     fixed SQL and its postconditions in one transaction on the existing database, which is never created."""
     import deploy_data as data
@@ -798,10 +804,12 @@ def initialize_existing(google, directory, output):
     require(own_principal(google) is None, "preexisting initializer SQL principal must never be adopted")
     data.require_database(google)
     method, resource, arguments = user_request(SOURCE, "create")
-    operation = once(directory, "initializer-create-effect-" + SOURCE, lambda: google.request("sql", method, resource, **arguments),
-                     context={"published_intent_sha256": sha(journal)})
+    with http_stage("google.sql-initializer-user-create"):
+        operation = once(directory, "initializer-create-effect-" + SOURCE, lambda: google.request("sql", method, resource, **arguments),
+                         context={"published_intent_sha256": sha(journal)})
     operation_proof(operation, SOURCE, "CREATE_USER", window)
-    data.wait_sql(google, operation, maximum_seconds=max(1, deadline - time.time() - 60))
+    with http_stage("google.sql-initializer-operation-poll"):
+        data.wait_sql(google, operation, maximum_seconds=max(1, deadline - time.time() - 60))
     user = observe(lambda: own_principal(google), lambda value: value is not None, deadline)
     require(user.get("type") == "CLOUD_IAM_SERVICE_ACCOUNT" and user.get("databaseRoles") == ["cloudsqlsuperuser"],
             "native initializer identity or assigned role differs")

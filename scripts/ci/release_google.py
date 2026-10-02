@@ -279,6 +279,13 @@ class Google:
                 failure = HTTPFailure(response.status_code, read_stage=_sql_metadata_read_stage(
                     self.plane, api, method, resource, body, params, aliases))
                 failure.body = response.json() if diff and response.status_code == 400 else None
+                retain = getattr(self, "initializer_failure_evidence", None)
+                if self.plane == "data-initialization" and api == "sql" and retain is not None:
+                    try:
+                        retain(method, resource, response.status_code, response.content)
+                    except Exception:
+                        # Failed evidence retention never masks the native refusal or authorizes a retry.
+                        pass
                 raise failure
             return response.json()
 
