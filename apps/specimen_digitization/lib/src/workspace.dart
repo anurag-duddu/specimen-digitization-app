@@ -8,6 +8,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
@@ -80,6 +81,28 @@ const Set<String> queueDispositionValues = <String>{
   'needs_human_review',
   'deferred',
 };
+
+/// A page belongs to the account, collection and filters that requested it.
+class _QueueRead {
+  _QueueRead({
+    required this.scope,
+    required this.generation,
+    required this.userId,
+    required Map<String, String> filters,
+  }) : filters = Map<String, String>.unmodifiable(filters);
+
+  final CollectionScope scope;
+  final int generation;
+  final String userId;
+  final Map<String, String> filters;
+}
+
+class _DeferredPage {
+  const _DeferredPage(this.read, this.page);
+
+  final _QueueRead read;
+  final SpecimenPage page;
+}
 
 /// Everything the collection screens read and act on.
 ///
@@ -159,7 +182,7 @@ class WorkspaceController extends ChangeNotifier {
   /// Counts the record loads: `openSpecimen` and the save that follows one.
   int _recordGeneration = 0;
   int _holds = 0;
-  SpecimenPage? _deferredPage;
+  _DeferredPage? _deferredPage;
 
   StreamSubscription<ApiFailure>? _accessSubscription;
   Timer? _poll;
@@ -373,6 +396,7 @@ class WorkspaceController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _deferredPage = null;
     final previousUser = _startedUserId;
     if (previousUser != null) forgetIntakeTransfers(repository, previousUser);
     _accessSubscription?.cancel();
@@ -391,14 +415,16 @@ class WorkspaceController extends ChangeNotifier {
   /// poll never moves what the reviewer is looking at (blueprints, section 3).
   void holdList() => _holds++;
 
-  /// Releases one hold and applies whatever the poll answered meanwhile.
+  /// Releases one hold and applies a poll answer still owned by this view.
   void releaseList() {
     if (_holds > 0) _holds--;
-    final SpecimenPage? deferred = _deferredPage;
+    final _DeferredPage? deferred = _deferredPage;
     if (_holds == 0 && deferred != null) {
       _deferredPage = null;
-      _applyPage(deferred);
-      _notify();
+      if (_ownsQueueRead(deferred.read)) {
+        _applyPage(deferred.page);
+        _notify();
+      }
     }
   }
 
@@ -407,6 +433,7 @@ class WorkspaceController extends ChangeNotifier {
 
   /// Loads the collection list, or reloads it after a denial.
   Future<void> checkAccess() async {
+    _deferredPage = null;
     _loading = true;
     _error = null;
     _scopesVerified = false;
@@ -451,6 +478,8 @@ class WorkspaceController extends ChangeNotifier {
     if (match == null) return false;
     if (identical(match, _scope) || match.key == _scope?.key) return true;
     _scope = match;
+    _listGeneration++;
+    _deferredPage = null;
     reviewExitGuard = null;
     recordRouteOwner = null;
     _items = <Specimen>[];
@@ -478,7 +507,13 @@ class WorkspaceController extends ChangeNotifier {
   Future<void> refresh({bool quiet = false}) async {
     final CollectionScope? scope = _scope;
     if (scope == null) return;
-    final int generation = ++_listGeneration;
+    final _QueueRead read = _QueueRead(
+      scope: scope,
+      generation: ++_listGeneration,
+      userId: session.userId,
+      filters: activeFilters,
+    );
+    _deferredPage = null;
     final int openRecord = _recordGeneration;
     final String? openId = _selectedId;
     final Specimen? recordAtStart = _selected;
@@ -494,13 +529,9 @@ class WorkspaceController extends ChangeNotifier {
     try {
       final SpecimenPage page = await repository.specimenPage(
         scope,
-        filters: activeFilters,
+        filters: read.filters,
       );
-      if (_disposed ||
-          generation != _listGeneration ||
-          !identical(scope, _scope)) {
-        return;
-      }
+      if (!_ownsQueueRead(read)) return;
       // A route opened while the list was loading owns its own detail request.
       // Check that ownership before dispatch, rather than fetching and merely
       // rejecting the duplicate response afterwards.
@@ -511,11 +542,7 @@ class WorkspaceController extends ChangeNotifier {
               !identical(recordAtStart, _selected)
           ? null
           : await repository.specimen(scope, openId);
-      if (_disposed ||
-          generation != _listGeneration ||
-          !identical(scope, _scope)) {
-        return;
-      }
+      if (!_ownsQueueRead(read)) return;
       // The open record is the record load's to own. A refresh only carries
       // it along when nothing opened or closed a record meanwhile.
       // An acknowledged save (including a partial batch) replaces the record
@@ -527,7 +554,7 @@ class WorkspaceController extends ChangeNotifier {
       if (quiet && _holds > 0) {
         // A row has focus or a sheet is open. Keep the answer until it does
         // not, rather than moving the list under the reviewer.
-        _deferredPage = page;
+        _deferredPage = _DeferredPage(read, page);
         if (ownsRecord) _selected = selected ?? _selected;
         _loading = false;
         _notify();
@@ -543,16 +570,21 @@ class WorkspaceController extends ChangeNotifier {
       if (!quiet) _error = null;
       _notify();
     } catch (error) {
-      if (_disposed ||
-          generation != _listGeneration ||
-          !identical(scope, _scope)) {
-        return;
-      }
+      if (!_ownsQueueRead(read)) return;
       _loading = false;
       _recordFailure(error);
       _notify();
     }
   }
+
+  bool _ownsQueueRead(_QueueRead read) =>
+      !_disposed &&
+      _scopesVerified &&
+      session.signedIn &&
+      session.userId == read.userId &&
+      identical(read.scope, _scope) &&
+      read.generation == _listGeneration &&
+      mapEquals(read.filters, activeFilters);
 
   void _applyPage(SpecimenPage page) {
     _items = page.items;
@@ -565,17 +597,22 @@ class WorkspaceController extends ChangeNotifier {
     final CollectionScope? scope = _scope;
     final String? cursor = _nextCursor;
     if (scope == null || cursor == null || _loadingMore || _loading) return;
-    final int generation = _listGeneration;
+    final _QueueRead read = _QueueRead(
+      scope: scope,
+      generation: _listGeneration,
+      userId: session.userId,
+      filters: activeFilters,
+    );
     _loadingMore = true;
     _error = null;
     _notify();
     try {
       final SpecimenPage page = await repository.specimenPage(
         scope,
-        filters: activeFilters,
+        filters: read.filters,
         cursor: cursor,
       );
-      if (_disposed || generation != _listGeneration) return;
+      if (!_ownsQueueRead(read)) return;
       if (_seenCursors.contains(cursor) ||
           page.nextCursor == cursor ||
           (page.nextCursor != null && _seenCursors.contains(page.nextCursor))) {
@@ -596,11 +633,11 @@ class WorkspaceController extends ChangeNotifier {
       _nextCursor = page.nextCursor;
       _updatedAt = DateTime.now();
     } catch (error) {
-      if (_disposed || generation != _listGeneration) return;
+      if (!_ownsQueueRead(read)) return;
       _nextCursor = null;
       _recordFailure(error);
     } finally {
-      if (!_disposed && generation == _listGeneration) {
+      if (_ownsQueueRead(read)) {
         _loadingMore = false;
         _notify();
       }
@@ -1134,6 +1171,7 @@ class WorkspaceController extends ChangeNotifier {
     final bool denied =
         failure != null && (failure.status == 401 || failure.status == 403);
     if (denied) {
+      _deferredPage = null;
       // Do not retain an editable workspace after current access is denied.
       _scopesVerified = false;
       _scopes = <CollectionScope>[];

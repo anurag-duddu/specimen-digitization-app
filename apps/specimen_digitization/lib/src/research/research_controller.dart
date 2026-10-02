@@ -24,7 +24,9 @@ class ResearchController extends ChangeNotifier {
        _scope = scope,
        _recordRevision = recordRevision,
        _readOnly = readOnly {
-    if (recordRevision < 0) throw ArgumentError('Invalid record revision.');
+    if (recordRevision < 0) {
+      throw ArgumentError('Record revision must be zero or greater.');
+    }
     _accessSubscription = accessFailures?.listen((failure) {
       if (failure.status == 401 || failure.status == 403) {
         _deny(
@@ -78,7 +80,9 @@ class ResearchController extends ChangeNotifier {
     bool readOnly = false,
   }) {
     if (_disposed) return;
-    if (recordRevision < 0) throw ArgumentError('Invalid record revision.');
+    if (recordRevision < 0) {
+      throw ArgumentError('Record revision must be zero or greater.');
+    }
     if (_scope.matches(scope) &&
         _recordRevision == recordRevision &&
         _readOnly == readOnly) {
