@@ -5,86 +5,67 @@
 /// else reads a role. Nothing here imports Flutter beyond `Color`, so the
 /// primitives stay usable from a pure Dart test.
 ///
-/// Values are transcribed from `design/09-brand-direction.md` sections 3.1 to
-/// 3.5 and, for the status triples, carried unchanged from the v1 table in
-/// `design/03-design-system.md` section 3.4. Six roles differ from the value
-/// printed in 09; each one carries the measurement that moved it.
+/// Neutral roles follow the adaptive reset. Status triples retain their
+/// existing meanings; contrast tests cover text and actionable boundaries.
 library;
 
 // This file is a value table, not an API: each constant's meaning is its
 // group's comment plus the role that reads it in `color.dart`. A doc comment
 // per constant would restate the identifier and nothing else, so the rule is
-// switched off here and only here. Every constant whose value differs from
-// the one printed in 09 carries the measurement that moved it.
+// switched off here and only here.
 // ignore_for_file: public_member_api_docs
 
 import 'dart:ui' show Color;
 
 /// Ground, ink and the neutral edges (09 section 3.1).
 abstract final class GroundPalette {
-  /// The window background. One unit of warmth.
-  static const Color groundLight = Color(0xFFF6F6F4);
-  static const Color groundDark = Color(0xFF0E0F11);
+  /// Neutral backgrounds keep evidence and status colour meaningful.
+  static const Color groundLight = Color(0xFFFAFAFA);
+  static const Color groundDark = Color(0xFF111111);
 
   /// Solid surface where glass is not warranted: list bodies, tables, fields.
   static const Color paperLight = Color(0xFFFFFFFF);
-  static const Color paperDark = Color(0xFF17181B);
+  static const Color paperDark = Color(0xFF181818);
 
   /// The letterbox behind a photograph. Lowest surface in light, highest in
   /// dark, so label paper reads as paper in both.
   static const Color matteLight = Color(0xFFFFFFFF);
-  static const Color matteDark = Color(0xFF1E2024);
+  static const Color matteDark = Color(0xFF202020);
 
   /// Primary text, glyphs, the filled navigation disc, primary buttons.
-  static const Color inkLight = Color(0xFF111214);
-  static const Color inkDark = Color(0xFFF2F2EF);
+  static const Color inkLight = Color(0xFF171717);
+  static const Color inkDark = Color(0xFFF5F5F5);
 
   /// Supporting text, labels above fields, timestamps.
-  static const Color inkSecondaryLight = Color(0xFF4B4F57);
-  static const Color inkSecondaryDark = Color(0xFFB9BCC3);
+  static const Color inkSecondaryLight = Color(0xFF4D4D4D);
+  static const Color inkSecondaryDark = Color(0xFFBDBDBD);
 
-  /// Units, hints, placeholder text.
-  ///
-  /// 09 prints `#6B6F78` and `#878B93`. Both clear 4.5:1 on `paper`, and both
-  /// fail it on light glass over the violet, rose and ember fields (4.19:1 at
-  /// worst in light, 3.88:1 in dark), which 09 section 3.7 requires. Each is
-  /// moved along its own hue until the worst composite clears 4.5:1 with a two
-  /// percent margin: 4.65:1 in light, 4.63:1 in dark.
-  static const Color inkTertiaryLight = Color(0xFF646870);
-  static const Color inkTertiaryDark = Color(0xFF9599A0);
+  /// Units, hints and placeholder text, above 4.5:1 on neutral surfaces.
+  static const Color inkTertiaryLight = Color(0xFF666666);
+  static const Color inkTertiaryDark = Color(0xFFA0A0A0);
 
   /// Decorative separation. 1 dp. Never a boundary, so it stays under 3:1.
-  static const Color hairlineLight = Color(0xFFE4E5E1);
-  static const Color hairlineDark = Color(0xFF25272B);
+  static const Color hairlineLight = Color(0xFFE0E0E0);
+  static const Color hairlineDark = Color(0xFF303030);
 
-  /// Any edge a user must be able to find: field edges, unfilled checkboxes.
-  ///
-  /// 09 prints `#C6C8C3` and `#3B3E44` and requires 3:1. Measured, those are
-  /// 1.40:1 and 1.24:1 at worst, which is a hairline by another name: no value
-  /// that light can carry a 3:1 edge on `paper`. Both are moved along their
-  /// own hue to the lightest value that clears 3:1 on every surface in 09
-  /// section 3.7, which is what separates this role from [hairlineLight].
-  static const Color boundaryLight = Color(0xFF82867B);
-  static const Color boundaryDark = Color(0xFF747A86);
+  /// Actionable boundaries, above 3:1 on their neutral surfaces.
+  static const Color boundaryLight = Color(0xFF808080);
+  static const Color boundaryDark = Color(0xFF808080);
 
   /// Text and glyphs of a disabled control. A disabled control in this product
   /// states a server reason and has to stay readable (03 section 3.6).
-  static const Color disabledContentLight = Color(0xFF62666E);
-  static const Color disabledContentDark = Color(0xFFA6AAB1);
+  static const Color disabledContentLight = Color(0xFF666666);
+  static const Color disabledContentDark = Color(0xFFA8A8A8);
 
-  /// Edge of a disabled control.
-  ///
-  /// 09 prints `#8E9299` and `#6A6E76`; both miss the 3:1 floor on the darker
-  /// field composites (2.60:1 and 2.59:1 at worst) and are moved along their
-  /// hue until they clear it.
-  static const Color disabledOutlineLight = Color(0xFF81858D);
-  static const Color disabledOutlineDark = Color(0xFF757A82);
+  /// Edge of a disabled control, still discernible on a neutral surface.
+  static const Color disabledOutlineLight = Color(0xFF808080);
+  static const Color disabledOutlineDark = Color(0xFF808080);
 
   /// Opacity of the fill behind a disabled control, over [inkLight].
   static const double disabledFillOpacityLight = 0.06;
   static const double disabledFillOpacityDark = 0.08;
 
-  /// Behind modal glass. Lower than v1 because the pane itself already blurs.
+  /// Behind opaque modal surfaces.
   static const Color scrim = Color(0xFF000000);
   static const double scrimOpacityLight = 0.32;
   static const double scrimOpacityDark = 0.56;
@@ -172,18 +153,18 @@ abstract final class GlassPalette {
 
   /// Shadows exist at the floating and modal levels only.
   static const Color shadowDark = Color(0xFF000000);
-  static const double floatingShadowOpacityLight = 0.10;
-  static const double floatingShadowOpacityDark = 0.45;
-  static const double floatingShadowBlur = 24;
-  static const double floatingShadowOffsetY = 8;
+  static const double floatingShadowOpacityLight = 0.08;
+  static const double floatingShadowOpacityDark = 0.24;
+  static const double floatingShadowBlur = 16;
+  static const double floatingShadowOffsetY = 4;
 
-  static const double modalShadowOpacityLight = 0.14;
-  static const double modalShadowOpacityDark = 0.55;
-  static const double modalShadowBlur = 32;
-  static const double modalShadowOffsetY = 12;
+  static const double modalShadowOpacityLight = 0.12;
+  static const double modalShadowOpacityDark = 0.32;
+  static const double modalShadowBlur = 24;
+  static const double modalShadowOffsetY = 8;
 
   /// What `GlassQuality.off` puts in place of the blur.
-  static const double opaqueFallbackOpacity = 0.92;
+  static const double opaqueFallbackOpacity = 1;
 }
 
 /// The seven hue primitives that carry every status token, plus the fixed

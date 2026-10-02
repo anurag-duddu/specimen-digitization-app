@@ -1,8 +1,10 @@
-/// Light fields and sky presets (09 section 3.2).
+/// Optional decorative fields and sky presets (09 section 3.2; 14 section 2).
 ///
 /// A field is a radial gradient from a centre colour at a centre alpha to
 /// fully transparent at its radius. Fields are painted once, behind
-/// everything, by `FieldLayer`. Nothing else in the product paints a gradient.
+/// everything, by `FieldLayer`. The product theme disables their placements
+/// by default; a gallery or a deliberately approved surface can opt in.
+/// Nothing else in the product paints a gradient.
 library;
 
 import 'package:flutter/widgets.dart';
@@ -113,6 +115,7 @@ class UiFields {
     required this.rose,
     required this.mint,
     required this.ember,
+    this.decorativeFields = true,
   });
 
   /// Acid yellow.
@@ -129,6 +132,24 @@ class UiFields {
 
   /// Warm amber.
   final UiFieldStyle ember;
+
+  /// Whether [sky] returns the optional decorative placements.
+  ///
+  /// Runtime themes leave this false. Keeping the colour table and painter
+  /// available lets the component gallery document the former treatment and
+  /// gives a future approved hierarchy an explicit opt-in rather than a new
+  /// ad hoc gradient.
+  final bool decorativeFields;
+
+  /// A copy that either exposes or suppresses decorative placements.
+  UiFields withDecorativeFields(bool visible) => UiFields(
+    sun: sun,
+    violet: violet,
+    rose: rose,
+    mint: mint,
+    ember: ember,
+    decorativeFields: visible,
+  );
 
   /// The light column of 09 section 3.2.
   static const UiFields light = UiFields(
@@ -195,11 +216,13 @@ class UiFields {
 
   /// The placements of [preset]. Identical in both modes; only the colours
   /// and alphas differ.
-  List<UiFieldPlacement> sky(SkyPreset preset) => switch (preset) {
-    SkyPreset.home => _home,
-    SkyPreset.work => _work,
-    SkyPreset.none => const <UiFieldPlacement>[],
-  };
+  List<UiFieldPlacement> sky(SkyPreset preset) => !decorativeFields
+      ? const <UiFieldPlacement>[]
+      : switch (preset) {
+          SkyPreset.home => _home,
+          SkyPreset.work => _work,
+          SkyPreset.none => const <UiFieldPlacement>[],
+        };
 
   static const List<UiFieldPlacement> _home = <UiFieldPlacement>[
     UiFieldPlacement(field: UiFieldName.sun, x: 0.18, y: 0.06, radius: 0.55),

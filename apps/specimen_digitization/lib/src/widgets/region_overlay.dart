@@ -8,6 +8,8 @@
 /// is the same "Label N" the region list shows, never the raw region id.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
@@ -53,74 +55,95 @@ class RegionOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    // The selected region is the one accent on this screen: 09 section 3.4
-    // names "the active region marker over the photograph" as an accent use,
-    // and the same section's wave 1 amendment gives the accent a 1 dp `ink`
-    // casing wherever it is the only thing saying where a value is. The
-    // painter already casings both sides of the stroke, which is what carries
-    // it over a pale label as well as a dark pin.
+    // Pair the selected accent with its contrasting ink, independently of the
+    // surrounding app brightness. General dark-theme ink is pale and would
+    // disappear on both the accent number tab and a pale specimen label.
+    // The contrasting casing on both sides keeps the outline legible over
+    // pale paper while the accent itself stays visible over dark image pixels.
     final Color stroke = selected
         ? ui.color.accent
         : ui.color.status.regionOverlayStroke;
     final Color casing = selected
-        ? ui.color.ink
+        ? ui.color.onAccent
         : ui.color.status.regionOverlayCasing;
     final double minTarget = ui.space.targetMin / viewerScale;
     final double hitWidth = rect.width < minTarget ? minTarget : rect.width;
     final double hitHeight = rect.height < minTarget ? minTarget : rect.height;
     final Offset center = rect.center;
-    final double tabGap = (ui.space.iconInline + ui.space.s1) / viewerScale;
+    final numberSize = measureLabel(context, '$index', ui.type.labelSmall);
+    final tabWidth = (numberSize.width + 2 * ui.space.s1) / viewerScale;
+    final tabHeight = numberSize.height / viewerScale;
 
-    return Stack(
-      clipBehavior: Clip.none,
-      children: <Widget>[
-        Positioned.fill(
-          child: IgnorePointer(
-            child: CustomPaint(
-              painter: RegionBoxPainter(
-                rect: rect,
-                stroke: stroke,
-                casing: casing,
-                strokeWidth:
-                    (selected
-                        ? ui.shape.stroke.bar
-                        : ui.shape.stroke.emphasis) /
-                    viewerScale,
-                casingWidth: ui.shape.stroke.hairline / viewerScale,
-              ),
-            ),
-          ),
-        ),
-        // The numbered tab sits outside the box, above its leading corner, so
-        // it never covers the pixels the reviewer is reading.
-        Positioned(
-          left: rect.left,
-          top: rect.top - tabGap,
-          child: IgnorePointer(
-            // The tab is type, so it is counter-scaled rather than redrawn:
-            // a legible number at 1x is an unreadable slab at 12x.
-            child: Transform.scale(
-              scale: 1 / viewerScale,
-              alignment: AlignmentDirectional.bottomStart,
-              child: _NumberTab(index: index, fill: stroke, content: casing),
-            ),
-          ),
-        ),
-        Positioned(
-          left: center.dx - hitWidth / 2,
-          top: center.dy - hitHeight / 2,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double tabLeft = rect.left.clamp(
+          0.0,
+          math.max(0.0, constraints.maxWidth - tabWidth),
+        );
+        final double tabTop = (rect.top - tabHeight - ui.space.s1 / viewerScale)
+            .clamp(0.0, math.max(0.0, constraints.maxHeight - tabHeight));
+        // The number is part of the same label action even when it sits above
+        // the region. Include its measured, counter-scaled painted bounds in
+        // the existing body target without moving the region or adding a
+        // second focus/semantics stop.
+        final Rect hitRect = Rect.fromCenter(
+          center: center,
           width: hitWidth,
           height: hitHeight,
-          child: Pressable(
-            semanticsLabel: label,
-            selected: selected,
-            onPressed: onTap,
-            radius: ui.shape.inner,
-            builder: (BuildContext context, Set<WidgetState> states) =>
-                const SizedBox.expand(),
-          ),
-        ),
-      ],
+        ).expandToInclude(Rect.fromLTWH(tabLeft, tabTop, tabWidth, tabHeight));
+        return Stack(
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: RegionBoxPainter(
+                    rect: rect,
+                    stroke: stroke,
+                    casing: casing,
+                    strokeWidth:
+                        (selected
+                            ? ui.shape.stroke.bar
+                            : ui.shape.stroke.emphasis) /
+                        viewerScale,
+                    casingWidth: ui.shape.stroke.hairline / viewerScale,
+                  ),
+                ),
+              ),
+            ),
+            // Prefer the area above the box. At an image edge, keep the complete
+            // number within the photograph without moving its region.
+            Positioned(
+              left: tabLeft,
+              top: tabTop,
+              child: IgnorePointer(
+                // The tab is type, so it is counter-scaled rather than redrawn:
+                // a legible number at 1x is an unreadable slab at 12x.
+                child: Transform.scale(
+                  scale: 1 / viewerScale,
+                  alignment: Alignment.topLeft,
+                  child: _NumberTab(
+                    index: index,
+                    fill: stroke,
+                    content: casing,
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fromRect(
+              rect: hitRect,
+              child: Pressable(
+                semanticsLabel: label,
+                selected: selected,
+                onPressed: onTap,
+                radius: ui.shape.inner,
+                builder: (BuildContext context, Set<WidgetState> states) =>
+                    const SizedBox.expand(),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

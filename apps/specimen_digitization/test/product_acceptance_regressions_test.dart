@@ -119,9 +119,9 @@ Future<void> openReview(
 }
 
 Future<void> stageCountry(WidgetTester tester) async {
-  await tester.tap(find.text('Fields'));
+  await tester.tap(find.text('Specimen data'));
   await tester.pumpAndSettle();
-  await scrollAndTap(tester, uiIconButton(RegExp(r'^Edit as written')).first);
+  await openFieldEditor(tester, 0);
   await scrollAndTap(tester, find.text('Keep this correction'));
   expect(
     tester.widget<WorkbenchFields>(find.byType(WorkbenchFields)).pending,
@@ -288,8 +288,15 @@ void main() {
       ..failOnRequest = 2;
     await openReview(tester, session, repository);
     await stageCountry(tester);
-    await scrollAndTap(tester, uiIconButton(RegExp(r'^Edit as written')).last);
+    await openFieldEditor(tester, 1);
     await scrollAndTap(tester, find.text('Keep this correction'));
+    expect(
+      tester
+          .widget<WorkbenchFields>(find.byType(WorkbenchFields))
+          .pending
+          .map((change) => change.fieldKey),
+      <String>['country', 'collector'],
+    );
     await confirmReason(tester, 'Save 2 pending changes');
     final pending = tester
         .widget<WorkbenchFields>(find.byType(WorkbenchFields))

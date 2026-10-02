@@ -7,9 +7,8 @@
 // question: what the same page does when the window is a phone, or when the
 // reviewer has asked for text at twice the size.
 //
-// One test per page rather than one per golden. A page is built twenty four
-// times either way, but a single `WidgetTester` amortises the harness, and a
-// failure still names the file it could not match.
+// One test per golden: a missing or failing baseline cannot prevent the
+// remaining combinations from rendering or checking their layout budgets.
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -110,6 +109,9 @@ const Map<String, int> overflowBacklog = <String, int>{};
 /// What the matrix actually saw, filled in as the pages are captured.
 final Map<String, int> observedOverflows = <String, int>{};
 
+/// Every matrix combination that rendered and checked its glass budget.
+final Set<String> renderedWindows = <String>{};
+
 /// The file the framework names as the widget at fault in a report.
 final RegExp _atFault = RegExp(r'packages/specimen_ui/lib/src/([\w/]+\.dart)');
 
@@ -196,20 +198,17 @@ void main() {
   });
 
   for (final GalleryPage page in galleryPages) {
-    testWidgets('${page.id}, four classes by three scales by two modes', (
-      WidgetTester tester,
-    ) async {
-      addTearDown(tester.view.reset);
-      for (final MapEntry<String, double> windowClass
-          in matrixClasses.entries) {
-        for (final MapEntry<String, double> scale in matrixScales.entries) {
-          for (final Brightness mode in Brightness.values) {
-            final String name = matrixGoldenName(
-              page.id,
-              windowClass: windowClass.key,
-              scale: scale.key,
-              mode: mode,
-            );
+    for (final MapEntry<String, double> windowClass in matrixClasses.entries) {
+      for (final MapEntry<String, double> scale in matrixScales.entries) {
+        for (final Brightness mode in Brightness.values) {
+          final String name = matrixGoldenName(
+            page.id,
+            windowClass: windowClass.key,
+            scale: scale.key,
+            mode: mode,
+          );
+          testWidgets(name, (WidgetTester tester) async {
+            addTearDown(tester.view.reset);
             await _tallyOverflowsDuring(
               () => _pumpMatrix(
                 tester,
@@ -219,23 +218,37 @@ void main() {
                 mode: mode,
               ),
             );
-            // The gallery is one window like any other and the budget holds at
-            // every class. A page that states a larger number is a specimen
-            // sheet saying so out loud (10 section 6).
+            // Every independent capture retains the same layout budget.
             expectGlassBudget(
               tester,
               maxPanes: page.maxGlassPanes,
               window: name,
             );
+            renderedWindows.add(name);
             await expectLater(
               find.byType(UiGallery),
               matchesGoldenFile('goldens/matrix/$name'),
             );
-          }
+          });
         }
       }
-    });
+    }
   }
+
+  test('every page renders all 24 matrix combinations', () {
+    expect(renderedWindows, <String>{
+      for (final page in galleryPages)
+        for (final windowClass in matrixClasses.keys)
+          for (final scale in matrixScales.keys)
+            for (final mode in Brightness.values)
+              matrixGoldenName(
+                page.id,
+                windowClass: windowClass,
+                scale: scale,
+                mode: mode,
+              ),
+    });
+  });
 
   // Last, because it reads what every test above recorded. Tests in one file
   // run in the order they are declared.

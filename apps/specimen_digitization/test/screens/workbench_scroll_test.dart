@@ -18,8 +18,11 @@ import 'package:specimen_digitization/src/workbench.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../app/routing_test.dart' show pumpApp;
+import '../composition/composition_harness.dart'
+    show nativeNavigation, contentAboveNativeNavigation;
 import '../workbench_harness.dart';
 import '../ui_finders.dart';
+import '../reading_region_comparison_test.dart' show selectLabel;
 
 void main() {
   final Uint8List labelBytes = File(
@@ -68,9 +71,9 @@ void main() {
     'validation_findings': const <Json>[],
   });
 
-  Widget host() => workbenchHost(
+  Widget host({Specimen? specimen}) => workbenchHost(
     ReviewWorkbench(
-      specimen: record(),
+      specimen: specimen ?? record(),
       onChange: (Json _) async => true,
       onRetry: (String _) async {},
       onRefresh: () {},
@@ -92,6 +95,7 @@ void main() {
     useWindow(tester, compactWindow);
     await tester.pumpWidget(host());
     await tester.pumpAndSettle();
+    await selectLabel(tester, 1);
 
     final ScrollableState state = tester.state<ScrollableState>(
       evidenceScrollable(),
@@ -103,13 +107,15 @@ void main() {
           'the evidence pane had nothing to scroll, so the drag below '
           'would prove nothing',
     );
+    state.position.jumpTo(0);
+    await tester.pumpAndSettle();
     expect(state.position.pixels, 0);
 
     await tester.drag(evidenceScrollable(), const Offset(0, -200));
     await tester.pumpAndSettle();
     expect(
       state.position.pixels,
-      greaterThan(0),
+      greaterThan(state.position.maxScrollExtent.clamp(0, 100) / 2),
       reason: 'a swipe on the evidence pane moved nothing',
     );
   });
@@ -143,6 +149,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await selectLabel(tester, 1);
       final ScrollableState state = tester.state<ScrollableState>(
         evidenceScrollable(),
       );
@@ -151,49 +158,68 @@ void main() {
       // from the inside, so this is the assertion that matters.
       expect(state.position.viewportDimension, greaterThan(0));
       expect(state.position.maxScrollExtent, greaterThan(0));
+      state.position.jumpTo(0);
+      await tester.pumpAndSettle();
       await tester.drag(evidenceScrollable(), const Offset(0, -160));
       await tester.pumpAndSettle();
-      expect(state.position.pixels, greaterThan(0));
+      expect(
+        state.position.pixels,
+        greaterThan(state.position.maxScrollExtent.clamp(0, 80) / 2),
+      );
       expect(tester.takeException(), isNull);
     },
   );
 
-  testWidgets('the source header pins two fifths of the viewport', (
+  testWidgets('the fitted mobile photo scrolls away without changing height', (
     WidgetTester tester,
   ) async {
-    // 13 sections 3.1 and 4.1: the header is a `UiCollapsingHeader` between
-    // 55 and 40 percent of the viewport, and the floor is what the reviewer
-    // is left with once they have scrolled to the evidence. The arithmetic
-    // that used to compute a band out of what the other rows left is the
-    // scroll position now, so this asserts the two fractions rather than a
-    // function.
     useWindow(tester, compactWindow);
-    await tester.pumpWidget(host());
+    // Keep enough content below the photograph to prove page scrolling
+    // after Reset hands fitted-image drags back to the page.
+    await tester.pumpWidget(
+      host(
+        specimen: Specimen({
+          ...record().data,
+          'regions': [
+            for (var index = 1; index <= 16; index++)
+              {
+                'region_id': 'r$index',
+                'bbox': [100, 52, 400, 212],
+              },
+          ],
+        }),
+      ),
+    );
     await tester.pumpAndSettle();
-
-    final UiCollapsingHeader header = tester.widget<UiCollapsingHeader>(
-      find.byType(UiCollapsingHeader),
+    expect(find.byType(UiCollapsingHeader), findsNothing);
+    final state = tester.state<ScrollableState>(evidenceScrollable());
+    await selectLabel(tester, 1);
+    state.position.jumpTo(0);
+    await tester.pumpAndSettle();
+    // Label selection enters image inspection; Reset returns drag ownership
+    // to the page without changing the photograph's allocated height.
+    await tester.tap(uiButton('Reset view'));
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsNothing);
+    expect(uiButton('Reset view'), findsNothing);
+    expect(tester.state<ScrollableState>(evidenceScrollable()), same(state));
+    expect(state.position.maxScrollExtent, greaterThan(100));
+    final before = tester.getRect(find.byType(SourceMatte));
+    await tester.drag(
+      find.byKey(const ValueKey('source-photo-viewport')),
+      const Offset(15, -180),
     );
-    expect(header.maxFraction, sourceHeaderMaxFraction);
-    expect(header.minFraction, sourceHeaderMinFraction);
-
-    final ScrollableState state = tester.state<ScrollableState>(
-      evidenceScrollable(),
-    );
-    final double before = tester.getSize(find.byType(SourceMatte)).height;
+    await tester.pumpAndSettle();
+    final after = tester.getRect(find.byType(SourceMatte));
+    expect(state.position.pixels, greaterThan(100));
+    expect(after.width, closeTo(before.width, .01));
+    expect(after.height, closeTo(before.height, .01));
+    expect(after.top, lessThan(before.top));
     state.position.jumpTo(state.position.maxScrollExtent);
     await tester.pumpAndSettle();
-    final double after = tester.getSize(find.byType(SourceMatte)).height;
-
     expect(
-      after,
-      lessThan(before),
-      reason: 'the header did not give any height back as the page scrolled',
-    );
-    expect(
-      after,
-      greaterThan(0),
-      reason: 'the photograph left the screen, which is what pinning prevents',
+      find.byKey(const ValueKey('source-photo-viewport')).hitTestable(),
+      findsNothing,
     );
     await tester.pumpWidget(const SizedBox());
   });
@@ -218,17 +244,19 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        errors.where((String e) => e.contains('overflowed by')),
+        errors,
         isEmpty,
-        reason: 'the record laid out past the window it was given',
+        reason: 'enlarged-text review must not report layout or runtime errors',
       );
       expect(
-        find.byType(InteractiveViewer),
+        find.byKey(const ValueKey('source-photo-viewport')),
         findsOneWidget,
         reason: 'the photograph is not on the screen',
       );
       expect(
-        tester.getSize(find.byType(InteractiveViewer)).height,
+        tester
+            .getSize(find.byKey(const ValueKey('source-photo-viewport')))
+            .height,
         greaterThanOrEqualTo(sourceImageMinHeight - 0.5),
       );
       // The evidence pane is still reachable, which is what the whole-record
@@ -238,38 +266,49 @@ void main() {
     },
   );
 
-  testWidgets('the photograph gives height back and takes it again', (
-    WidgetTester tester,
-  ) async {
-    // 13 section 3.1 retires the two collapse controls of 13 section 0: a
-    // heading with its own chevron three rows above a disclosure with
-    // another. The header collapses under the reviewer's finger instead, and
-    // comes back the same way, so there is no state to get out of step with
-    // the scroll.
-    useWindow(tester, compactWindow);
-    await tester.pumpWidget(host());
-    await tester.pumpAndSettle();
-    expect(find.byType(InteractiveViewer), findsOneWidget);
-    expect(uiIconButton('Collapse the photograph'), findsNothing);
+  testWidgets(
+    'the photograph and inspection action return when the page scrolls back',
+    (WidgetTester tester) async {
+      useWindow(tester, compactWindow);
+      await tester.pumpWidget(host());
+      await tester.pumpAndSettle();
+      await selectLabel(tester, 1);
+      final ScrollableState state = tester.state<ScrollableState>(
+        evidenceScrollable(),
+      );
+      expect(state.position.maxScrollExtent, greaterThan(0));
+      state.position.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('source-photo-viewport')),
+        findsOneWidget,
+      );
+      expect(uiIconButton('Collapse the photograph'), findsNothing);
 
-    final ScrollableState state = tester.state<ScrollableState>(
-      evidenceScrollable(),
-    );
-    state.position.jumpTo(state.position.maxScrollExtent);
-    await tester.pumpAndSettle();
-    expect(
-      find.byType(InteractiveViewer),
-      findsOneWidget,
-      reason: 'the photograph never scrolls away',
-    );
-    // The way to every pixel is still one control away.
-    expect(uiIconButton('Open the photograph full screen'), findsOneWidget);
+      state.position.jumpTo(state.position.maxScrollExtent);
+      await tester.pumpAndSettle();
+      expect(
+        state.position.pixels,
+        closeTo(state.position.maxScrollExtent, .5),
+      );
+      expect(
+        find.byKey(const ValueKey('source-photo-viewport')).hitTestable(),
+        findsNothing,
+      );
+      expect(uiIconButton('Open photograph').hitTestable(), findsNothing);
 
-    state.position.jumpTo(0);
-    await tester.pumpAndSettle();
-    expect(find.byType(InteractiveViewer), findsOneWidget);
-    await tester.pumpWidget(const SizedBox());
-  });
+      state.position.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(state.position.pixels, 0);
+      expect(tester.state<ScrollableState>(evidenceScrollable()), same(state));
+      expect(
+        find.byKey(const ValueKey('source-photo-viewport')).hitTestable(),
+        findsOneWidget,
+      );
+      expect(uiIconButton('Open photograph').hitTestable(), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('the decision bar never covers the end of the evidence', (
     WidgetTester tester,
@@ -277,18 +316,19 @@ void main() {
     useWindow(tester, compactWindow);
     await tester.pumpWidget(host());
     await tester.pumpAndSettle();
+    await selectLabel(tester, 1);
 
     final ScrollableState state = tester.state<ScrollableState>(
       evidenceScrollable(),
     );
+    expect(state.position.maxScrollExtent, greaterThan(0));
     state.position.jumpTo(state.position.maxScrollExtent);
     await tester.pumpAndSettle();
 
-    // The frame floats the bar over the body rather than reserving room in
-    // it, so what keeps the last row reachable is the inset the scroll pads
-    // its end by (10 section 4.4).
+    // The review column now reserves a decision row below the scrolling
+    // evidence. Its measured viewport must clear the actual row.
     final Rect bar = tester.getRect(find.byType(WorkbenchDecisionBar));
-    final Rect evidence = tester.getRect(find.byType(UiTabView));
+    final Rect evidence = tester.getRect(find.byKey(evidenceScrollKey));
     expect(
       evidence.bottom,
       lessThanOrEqualTo(bar.top + 0.5),
@@ -302,33 +342,52 @@ void main() {
 /// The shell, the route and the back control all sit above the workbench and
 /// any one of them can take the height the evidence pane needs.
 void routedScrolling() {
-  testWidgets('the routed workbench scrolls on a phone', (
-    WidgetTester tester,
-  ) async {
-    await pumpApp(tester, window: const Size(390, 844));
-    await tester.scrollUntilVisible(
-      find.text('Synthetic insect label'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.text('Synthetic insect label'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'the routed workbench scrolls on a phone',
+    (WidgetTester tester) async {
+      await pumpApp(tester, window: const Size(390, 844));
+      await tester.scrollUntilVisible(
+        find.text('fixture-001'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('fixture-001'));
+      await tester.pumpAndSettle();
 
-    final Finder pane = find
-        .descendant(
-          of: find.byKey(evidenceScrollKey),
-          matching: find.byType(Scrollable),
-        )
-        .first;
-    final ScrollableState state = tester.state<ScrollableState>(pane);
-    expect(state.position.maxScrollExtent, greaterThan(0));
-    await tester.drag(pane, const Offset(0, -200));
-    await tester.pumpAndSettle();
-    expect(
-      state.position.pixels,
-      greaterThan(0),
-      reason: 'a swipe on the routed evidence pane moved nothing',
-    );
-    await tester.pumpWidget(const SizedBox());
-  });
+      expect(nativeNavigation(), findsOneWidget);
+      final Rect navigation = tester.getRect(nativeNavigation());
+      final Rect content = contentAboveNativeNavigation(tester);
+
+      final Finder pane = find
+          .descendant(
+            of: find.byKey(evidenceScrollKey),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      final ScrollableState state = tester.state<ScrollableState>(pane);
+      expect(state.position.maxScrollExtent, greaterThan(0));
+      state.position.jumpTo(0);
+      await tester.pumpAndSettle();
+      expect(state.position.pixels, 0);
+      await tester.drag(pane, const Offset(0, -200));
+      await tester.pumpAndSettle();
+      expect(
+        state.position.pixels,
+        greaterThan(state.position.maxScrollExtent.clamp(0, 100) / 2),
+        reason: 'a swipe on the routed evidence pane moved nothing',
+      );
+      final Rect decision = tester.getRect(find.byType(WorkbenchDecisionBar));
+      final Rect viewport = tester.getRect(find.byKey(evidenceScrollKey));
+      expect(viewport.height, greaterThan(0));
+      expect(viewport.bottom, lessThanOrEqualTo(decision.top + .5));
+      expect(decision.bottom, lessThanOrEqualTo(content.bottom + .5));
+      expect(content.bottom, navigation.top);
+      expect(tester.getRect(nativeNavigation()), navigation);
+      await tester.pumpWidget(const SizedBox());
+    },
+    variant: TargetPlatformVariant({
+      TargetPlatform.iOS,
+      TargetPlatform.android,
+    }),
+  );
 }

@@ -1,7 +1,9 @@
 """Explicit production adapters: ADC SQL Connect/GCS and approved HF routes."""
 
 from __future__ import annotations
+from ..observability import model_trace_context
 import contextvars
+from contextlib import contextmanager
 import hashlib
 from .active_graph import original_run_digest, unpack
 import json
@@ -37,6 +39,10 @@ from .storage import (
     digest,
     check_snapshot,
     work_available_at,
+    stamp_review_events,
+    ReviewSnapshot,
+    ReviewProofReader,
+    verify_review_decision_row,
 )
 from .workflow import OperationalBlock, crop_bytes
 from .reliability import run_agent_bounded
@@ -45,9 +51,24 @@ from pydantic_ai.usage import UsageLimits
 from .worker_deadline import deadline_call, guarded
 
 actor_uid = contextvars.ContextVar("verified_actor_uid", default=None)
+
+
+@contextmanager
+def verified_actor_context(user_id: str):
+    """Bind one verified actor across await/to_thread, always reset its token."""
+    if not isinstance(user_id, str) or not user_id:
+        raise PermissionError("Verified actor context required")
+    token = actor_uid.set(user_id)
+    try:
+        yield
+    finally:
+        actor_uid.reset(token)
+
 LOGGER = logging.getLogger(__name__)
 # Specimens whose written projection rows this process remembers (DATA_CONTRACT.md 11).
 PROJECTED_SPECIMENS = 256
+# Roles whose saves also write review decisions; additive V2 admits no other.
+REVIEW_ROLES = {"reviewer", "manager", "admin"}
 
 
 class ProjectionRejected(RuntimeError):
@@ -160,6 +181,31 @@ class SqlConnectRepository:
             "collectionId": scope.collection_id,
             "actorUid": uid,
         }
+
+    def current_research_binding(self, scope, specimen_id):
+        """Read the owner-installed coherent native pointer/registration operation."""
+        from ..research_harness.canonical_binding import (
+            BindingUnavailable, CanonicalBindingSnapshot,
+        )
+        from pydantic import ValidationError
+
+        variables = dict(self.variables(scope), specimenId=specimen_id)
+        try:
+            data = self.execute("GetCanonicalResearchBindingV1", variables)
+        except PermissionError:
+            raise
+        except (OperationalBlock, Conflict) as error:
+            raise BindingUnavailable("canonical_binding_unavailable") from error
+        try:
+            return CanonicalBindingSnapshot.from_native_response(data)
+        except (ValidationError, TypeError, ValueError) as error:
+            raise BindingUnavailable("canonical_binding_unavailable") from error
+
+    def research_store(self, binding):
+        """Bind the existing program journal without creating or initializing it."""
+        from ..research_harness.discovery import ScopedCanonicalReadStore
+
+        return ScopedCanonicalReadStore(binding, verified_actor=actor_uid.get())
 
     def memberships(self, uid):
         result = self.execute("Memberships", {"actorUid": uid})
@@ -320,6 +366,48 @@ class SqlConnectRepository:
             raise Missing(ident)
         return self._snapshot(row)
 
+    def latest_run_version(self, scope, ident, run_id, through_revision):
+        if type(through_revision) is not int or through_revision < 1:
+            raise ValueError("Invalid historical run bound")
+        row = self.execute(
+            "GetLatestRetainedRunSnapshot",
+            dict(self.variables(scope),id=ident,runId=str(UUID(run_id)),
+                 throughRevision=through_revision),
+        ).get("retained")
+        if not row:
+            raise Missing(ident)
+        result = self._snapshot(row)
+        if (result.id != ident or result.scope != scope or result.run.id != run_id
+            or not 1 <= result.version <= through_revision):
+            raise Conflict("Historical run identity mismatch")
+        return result
+
+    def oldest_due(self, scope, cutoff, limit=1):
+        """Due, non-sensitive work, oldest request first (LANE.md T2, G13)."""
+        if not 1 <= limit <= 100:
+            raise ValueError("Invalid page size")
+        rows = self.execute(
+            "ListDueWorkV2",
+            dict(
+                self.variables(scope),
+                cutoff=cutoff,
+                afterAt="1970-01-01T00:00:00Z",
+                afterId="",
+                limit=limit,
+                includeSensitive=False,
+            ),
+        ).get("items", [])
+        return [
+            WorkItem(
+                specimen_id=str(UUID(row["id"])),
+                revision=row["revision"],
+                state=row["state"],
+                work_available_at=row["workAvailableAt"],
+                created_at=row["createdAt"],
+            )
+            for row in rows
+        ]
+
     def due_page(self, scope, cutoff, after_id=None, limit=50):
         if not 1 <= limit <= 100:
             raise ValueError("Invalid page size")
@@ -415,6 +503,68 @@ class SqlConnectRepository:
     def save(self, principal, specimen, expected_revision, key, digest):
         return self._commit(principal, specimen, expected_revision, key, digest)
 
+    def _review_proofs(self, scope, specimen):
+        """Prove original events under the current verified reviewer's authority."""
+        if not specimen.audit_offset and not any(
+            event.action.startswith("review_") for event in specimen.audit
+        ):
+            return [], None
+        base = self.variables(scope)
+
+        def snapshot(revision):
+            row = self.execute(
+                "GetSnapshot", dict(base, id=specimen.id, revision=revision)
+            ).get("specimenSnapshot")
+            if not row or row.get("revision") != revision:
+                raise ValueError("review_decision_provenance_invalid")
+            parsed = self._snapshot(row)  # Includes canonical/legacy digest and graph checks.
+            return ReviewSnapshot(row["snapshot"], row["sha256"], parsed)
+
+        def save_audits(previous, resulting, event, prior, target):
+            response = self.execute(
+                "GetReviewSaveProofV1",
+                dict(
+                    base, specimenId=specimen.id, decisionId=event["id"],
+                    decisionActorUid=event["actor"], baseRevision=previous,
+                    resultingRevision=resulting,
+                ),
+            )
+            for name, expected in (("prior", prior), ("target", target)):
+                row = response.get(name)
+                if (
+                    not row or row.get("sha256") != expected.sha256
+                    or row.get("revision") != expected.specimen.version
+                    or self._snapshot(row) != expected.specimen
+                ):
+                    raise ValueError("review_decision_provenance_invalid")
+            return response
+
+        reader = ReviewProofReader(specimen, snapshot, save_audits)
+        proofs = reader.prove()
+        by_id = {proof.event.id: proof for proof in proofs}
+
+        def recheck_conflict(variables):
+            proof = by_id.get(variables.get("id"))
+            if proof is None:
+                raise ValueError("review_decision_provenance_invalid")
+            # Verify the attempted envelope against the same authoritative proof.
+            verify_review_decision_row(proof, {
+                **variables, "actorUid": variables.get("decisionActorUid"),
+            }, required=True)
+            # This fresh observation deliberately bypasses the pre-insert query's
+            # cached result. It consumes another read slot and requires a row.
+            response = reader._read(
+                ("decision_after_pk_conflict", proof.event.id),
+                lambda: self.execute("GetReviewSaveProofV1", dict(
+                    base, specimenId=specimen.id, decisionId=proof.event.id,
+                    decisionActorUid=proof.event.actor, baseRevision=proof.base_revision,
+                    resultingRevision=proof.resulting_revision,
+                )),
+            )
+            verify_review_decision_row(proof, response.get("decision"), required=True)
+
+        return proofs, recheck_conflict
+
     def _commit(self, principal, specimen, expected, key, request_digest):
         if principal.scope != specimen.scope or principal.user_id != actor_uid.get():
             raise PermissionError("Verified actor/scope mismatch")
@@ -432,17 +582,16 @@ class SqlConnectRepository:
             )["specimenSnapshot"]
             committed = self._snapshot(row)
             # A replayed save still catches up rows a lost pass did not write.
-            self.write_projection(principal.scope, committed)
+            self.write_projection(principal.scope, committed, principal.role in REVIEW_ROLES)
             return committed
         specimen = specimen.model_copy(deep=True)
         specimen.version = expected + 1
-        if expected and not specimen.asset.sensitive:
-            if self.version(principal.scope, specimen.id, expected).asset.sensitive:
-                raise Conflict("Sensitive history cannot be downgraded")
-        if expected and len(specimen.model_dump_json().encode()) > 128 * 1024:
-            specimen = compact_history(
-                specimen, self.version(principal.scope, specimen.id, expected)
-            )
+        previous = self.version(principal.scope, specimen.id, expected) if expected else None
+        if previous and previous.asset.sensitive and not specimen.asset.sensitive:
+            raise Conflict("Sensitive history cannot be downgraded")
+        stamp_review_events(principal, specimen, previous, expected)
+        if previous:
+            specimen = compact_history(specimen, previous)
         from .active_graph import pack
 
         payload = pack(specimen, self.graph_blobs)
@@ -474,10 +623,10 @@ class SqlConnectRepository:
             variables,
             mutation=True,
         )
-        self.write_projection(principal.scope, specimen)
+        self.write_projection(principal.scope, specimen, principal.role in REVIEW_ROLES)
         return specimen
 
-    def write_projection(self, scope, specimen) -> ProjectionResult:
+    def write_projection(self, scope, specimen, reviewer=False) -> ProjectionResult:
         """Write the normalized rows this revision supports (DATA_CONTRACT.md 11).
 
         Never raises: the snapshot is already committed, and the next save resumes
@@ -486,14 +635,18 @@ class SqlConnectRepository:
         """
         try:
             base = self.variables(scope)
+            review_proofs, review_conflict_check = self._review_proofs(scope, specimen) if reviewer else (None, None)
             written = self._projected.setdefault(specimen.id, set())
             self._projected.move_to_end(specimen.id)
             while len(self._projected) > PROJECTED_SPECIMENS:
                 self._projected.popitem(last=False)
             pending = [
                 w
-                for w in writes(specimen, self.locate, self._sized, base["actorUid"])
-                if w.key not in written
+                for w in writes(
+                    specimen, self.locate, self._sized, base["actorUid"], reviewer,
+                    review_proofs=review_proofs,
+                )
+                if w.operation == "AppendReviewDecisionV2" or w.key not in written
             ]
         except Exception as error:
             LOGGER.warning(
@@ -502,7 +655,11 @@ class SqlConnectRepository:
             return ProjectionResult(False, "not_computed")
         for write in pending:
             try:
-                self._insert(write.operation, {**base, **write.variables})
+                variables = {**base, **write.variables}
+                if write.operation == "AppendReviewDecisionV2":
+                    self._insert(write.operation, variables, review_conflict_check=review_conflict_check)
+                else:
+                    self._insert(write.operation, variables)
             except Exception as error:
                 # Later rows may reference this one, so the pass stops here.
                 LOGGER.warning(
@@ -513,11 +670,12 @@ class SqlConnectRepository:
                     error,
                 )
                 return ProjectionResult(False, write.operation)
-            written.add(write.key)
+            if write.operation != "AppendReviewDecisionV2":
+                written.add(write.key)
         return ProjectionResult(True)
 
     @guarded
-    def _insert(self, operation, variables):
+    def _insert(self, operation, variables, *, review_conflict_check=None):
         response = deadline_call(
             self.session.post,
             self.url + ":impersonateMutation",
@@ -537,6 +695,10 @@ class SqlConnectRepository:
         if (first.get("extensions") or {}).get("code") == "ALREADY_EXISTS" and (
             "_pkey" in message
         ):
+            if operation == "AppendReviewDecisionV2":
+                if review_conflict_check is None:
+                    raise ValueError("review_decision_provenance_invalid")
+                review_conflict_check(variables)
             return
         raise ProjectionRejected(message[:200])
 
@@ -765,10 +927,7 @@ class ProductionAdapters:
             "adapter_version": "production-v2",
             "sam3_expected_sha256": digest(getattr(self, "sam3_expected", {})),
             "classifier": self.classifier.pin(run) if self.classifier else None,
-            "segmentation": {
-                "endpoint": os.getenv("SPECIMEN_SAM3_ENDPOINT"),
-                "revision": os.getenv("SPECIMEN_SAM3_REVISION"),
-            },
+            "segmentation": segmentation_pins(),
             "policy": run.profile.execution.model_dump(mode="json"),
         }
 
@@ -780,10 +939,7 @@ class ProductionAdapters:
         # A deployment-specific SAM3 endpoint must implement the reviewed adapter.
         # No rectangle substitution, no hidden Hub download or paid execution.
         endpoint = os.getenv("SPECIMEN_SAM3_ENDPOINT")
-        if specimen.run.dependencies.get("segmentation") != {
-            "endpoint": endpoint,
-            "revision": os.getenv("SPECIMEN_SAM3_REVISION"),
-        }:
+        if specimen.run.dependencies.get("segmentation") != segmentation_pins():
             raise OperationalBlock(
                 "segmentation_configuration_changed_requires_new_run"
             )
@@ -791,8 +947,18 @@ class ProductionAdapters:
             raise OperationalBlock(
                 "sam3_serving_contract_not_configured_use_reviewed_regions"
             )
+        lab = (
+            os.getenv("SPECIMEN_SAM3_LAB") == "true"
+            and os.getenv("APP_ENV") != "production"
+        )
+        lab_token = os.getenv("SPECIMEN_SAM3_LAB_TOKEN") if lab else None
+        if lab and not lab_token:
+            raise OperationalBlock("sam3_lab_token_required")
         return Sam3Service(
-            endpoint, self.blobs, expected=self.sam3_expected.get(specimen.id)
+            endpoint,
+            self.blobs,
+            expected=self.sam3_expected.get(specimen.id),
+            lab_token=lab_token,
         ).segment(specimen)
 
     def transcribe(self, specimen, region, route):
@@ -916,6 +1082,21 @@ class ProductionAdapters:
         return self.taxonomy.lookup(name)
 
 
+def cross_check_override(*, lab):
+    """The lab may name another cross-check concept, for calibration only."""
+    return os.getenv("SPECIMEN_SAM3_LAB_CROSS_CHECK_CONCEPT") or None if lab else None
+
+
+def segmentation_pins():
+    """The SAM 3 service a run is pinned to, and the checkpoint it must serve."""
+    pins = {
+        "endpoint": os.getenv("SPECIMEN_SAM3_ENDPOINT"),
+        "revision": os.getenv("SPECIMEN_SAM3_REVISION"),
+    }
+    checkpoint = os.getenv("SPECIMEN_SAM3_CHECKPOINT_SHA256")
+    return dict(pins, checkpoint_sha256=checkpoint) if checkpoint else pins
+
+
 class Sam3Service:
     """Pinned remote SAM3 activity contract. Service must return original pixel regions.
 
@@ -923,27 +1104,37 @@ class Sam3Service:
     service is provisioned by the application or substituted by a fixture.
     """
 
-    def __init__(self, endpoint: str, blobs, effect=None, *, expected=None):
+    def __init__(
+        self, endpoint: str, blobs, effect=None, *, expected=None, lab_token=None
+    ):
         from urllib.parse import urlparse
 
         parsed = urlparse(endpoint)
-        if (
-            parsed.scheme != "https"
-            or not parsed.hostname
-            or not parsed.hostname.endswith(".run.app")
-            or parsed.username
-            or parsed.query
-            or parsed.fragment
-        ):
+        if lab_token is not None:
+            # The lab (LANE.md T3): the service on host loopback, never elsewhere.
+            approved = (
+                parsed.scheme == "http"
+                and parsed.hostname == "127.0.0.1"
+                and parsed.port is not None
+                and parsed.path in {"", "/"}
+            )
+        else:
+            approved = (
+                parsed.scheme == "https"
+                and bool(parsed.hostname)
+                and parsed.hostname.endswith(".run.app")
+            )
+        if not approved or parsed.username or parsed.query or parsed.fragment:
             raise ValueError(
                 "SAM3 endpoint must be an approved HTTPS Cloud Run service"
             )
         self.endpoint = endpoint.rstrip("/")
         self.blobs = blobs
         self.expected = expected
-        from .sam3_effect import sam3_request
+        self.lab_token = lab_token
+        from .sam3_effect import sam3_request, sam3_run_request
 
-        self.effect = effect or sam3_request
+        self.effect = effect or (sam3_request if expected else sam3_run_request)
 
     def segment(self, specimen):
         from .collection_profiles import SegmentationSettings
@@ -957,7 +1148,117 @@ class Sam3Service:
             )
         except (KeyError, ValueError) as exc:
             raise OperationalBlock("segmentation_settings_unresolved") from exc
+        if not self.expected:
+            return self.segment_per_run(specimen)
         return self._segment_with_settings(specimen, settings)
+
+    def segment_per_run(self, specimen):
+        """One claimed inference per run; failures retry safely (LANE.md T3)."""
+        import base64
+        from . import bounded_effect
+        from .collection_profiles import SegmentationSettings
+        from .domain import LookupStatus, Region
+        from .reliability import AdapterFailure
+        from .sam3_effect import canonical_sha256
+        from ..hub_models import SAM3_MODEL
+
+        try:
+            settings = SegmentationSettings.model_validate(
+                specimen.run.profile_rules["segmentation_settings"]
+            )
+        except (KeyError, ValueError) as exc:
+            raise OperationalBlock("segmentation_settings_unresolved") from exc
+        if settings.model_revision != SAM3_MODEL.revision:
+            raise OperationalBlock("segmentation_model_revision_unsupported")
+        checkpoint = specimen.run.dependencies.get("segmentation", {}).get(
+            "checkpoint_sha256"
+        )
+        if not checkpoint:
+            raise OperationalBlock("sam3_checkpoint_pin_required")
+        parameters = settings.parameters.model_dump()
+        override = cross_check_override(lab=self.lab_token is not None)
+        if override:
+            parameters["cross_check_concept"] = override
+        request = {
+            "run_id": specimen.run.id,
+            "specimen_id": specimen.id,
+            "organization_id": specimen.scope.organization_id,
+            "collection_id": specimen.scope.collection_id,
+            "asset_id": specimen.asset.id,
+            "blob_ref": specimen.asset.blob_ref,
+            "sha256": specimen.asset.sha256,
+            "width": specimen.asset.width,
+            "height": specimen.asset.height,
+            "model_id": settings.model_id,
+            "model_revision": settings.model_revision,
+            "prompt": settings.prompt,
+            "parameters": parameters,
+            "adapter_version": settings.adapter_version,
+            "settings_version": settings.version,
+        }
+        timeout = specimen.run.profile.execution.effect_timeout_for_step("segment")
+        result = bounded_effect.run_isolated(
+            self.effect,
+            {
+                "endpoint": self.endpoint,
+                "telemetry": model_trace_context(specimen.id, specimen.run.id),
+                "request": request,
+                "pins": {
+                    "checkpoint_sha256": checkpoint,
+                    "lab": self.lab_token is not None,
+                },
+                "lab_token": self.lab_token,
+                "timeout_seconds": timeout,
+                "max_response_bytes": 1024 * 1024,
+            },
+            timeout,
+            2 * 1024 * 1024,
+        )
+        # The service's per-run claim makes a repeat safe: it returns a finished
+        # inference instead of running it again, so these failures retry (G6).
+        if result.status == "deadline_exceeded":
+            raise AdapterFailure("sam3_timeout", LookupStatus.TIMEOUT)
+        if result.status == "worker_failed":
+            raise AdapterFailure("sam3_unavailable", LookupStatus.PROVIDER)
+        if result.status != "completed":
+            raise OperationalBlock("sam3_" + result.reason)
+        envelope = json.loads(result.value)
+        raw = base64.b64decode(envelope["body_base64"], validate=True)
+        status = envelope["http_status"]
+        if status != 200:
+            try:
+                detail = json.loads(raw).get("detail")
+            except (ValueError, AttributeError):
+                detail = None
+            if status == 429 or (status == 409 and detail == "sam3_busy"):
+                raise AdapterFailure("sam3_busy", LookupStatus.RATE_LIMITED)
+            if status >= 500:
+                raise AdapterFailure("sam3_unavailable", LookupStatus.PROVIDER)
+            raise OperationalBlock(f"sam3_http_{status}")
+        specimen.run.segmentation = {
+            "blob_ref": self.blobs.put(raw),
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "model_id": settings.model_id,
+            "model_revision": settings.model_revision,
+            "checkpoint_sha256": checkpoint,
+            "input_sha256": specimen.asset.sha256,
+            "http_status": status,
+            "validation": envelope["validation"],
+            "settings": settings.model_dump(mode="json"),
+            "request_sha256": canonical_sha256(request),
+            "elapsed_seconds": result.elapsed_seconds,
+        }
+        if envelope["validation"] != "valid":
+            raise OperationalBlock("sam3_" + envelope["validation"])
+        response = json.loads(raw)
+        # The evidence the lab calibrates from and the coverage check reads.
+        specimen.run.segmentation.update(
+            parameters=response["parameters"],
+            region_scores=[mask["score"] for mask in response["masks"]],
+            label_detections=response["detections"]["label"],
+            cross_check=response["cross_check"],
+        )
+        return [Region.model_validate(item) for item in response["regions"]]
 
     def _segment_with_settings(self, specimen, settings):
         # Private transport shared with the explicitly guarded evidence pilot.
@@ -998,6 +1299,7 @@ class Sam3Service:
             self.effect,
             {
                 "endpoint": self.endpoint,
+                "telemetry": model_trace_context(specimen.id, specimen.run.id),
                 "request": request,
                 "expected": self.expected,
                 "timeout_seconds": specimen.run.profile.execution.external_timeout_seconds,

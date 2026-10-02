@@ -8,13 +8,17 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:flutter/widgets.dart';
-import 'package:specimen_ui/specimen_ui.dart';
+import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 
 import 'app/shell.dart';
 import 'auth.dart';
 import 'models.dart';
+import 'widgets/editing_safe_shortcut.dart';
 import 'screens/queue/queue_screen.dart';
+import 'screens/intake/intake_transfer_session.dart';
 
 /// How often the queue asks the server for the current page.
 const Duration queuePollInterval = Duration(seconds: 20);
@@ -78,6 +82,28 @@ const Set<String> queueDispositionValues = <String>{
   'deferred',
 };
 
+/// A page belongs to the account, collection and filters that requested it.
+class _QueueRead {
+  _QueueRead({
+    required this.scope,
+    required this.generation,
+    required this.userId,
+    required Map<String, String> filters,
+  }) : filters = Map<String, String>.unmodifiable(filters);
+
+  final CollectionScope scope;
+  final int generation;
+  final String userId;
+  final Map<String, String> filters;
+}
+
+class _DeferredPage {
+  const _DeferredPage(this.read, this.page);
+
+  final _QueueRead read;
+  final SpecimenPage page;
+}
+
 /// Everything the collection screens read and act on.
 ///
 /// A `ChangeNotifier` rather than screen state, because the router's redirect,
@@ -89,6 +115,21 @@ class WorkspaceController extends ChangeNotifier {
     required this.session,
     this.pollInterval = queuePollInterval,
   });
+
+  /// The open editor may retain a local correction that has not been saved.
+  Future<bool> Function()? reviewExitGuard;
+
+  /// The mounted record route that owns the selected detail. A disposed route
+  /// may finish after its replacement mounts; it must not close that detail.
+  Object? recordRouteOwner;
+
+  /// All explicit workspace navigation asks the active editor before leaving.
+  Future<bool> mayLeaveReview() async {
+    // Losing authorization must clear the workspace even during an old save.
+    if (!session.signedIn || _scope == null) return true;
+    if (mutating) return false;
+    return await reviewExitGuard?.call() ?? true;
+  }
 
   /// The collection API.
   final SpecimenRepository repository;
@@ -119,7 +160,7 @@ class WorkspaceController extends ChangeNotifier {
   DateTime? _updatedAt;
 
   String _query = '';
-  String _disposition = '';
+  String _disposition = 'needs_human_review';
   Map<String, String> _filters = <String, String>{};
 
   bool _loading = true;
@@ -141,7 +182,7 @@ class WorkspaceController extends ChangeNotifier {
   /// Counts the record loads: `openSpecimen` and the save that follows one.
   int _recordGeneration = 0;
   int _holds = 0;
-  SpecimenPage? _deferredPage;
+  _DeferredPage? _deferredPage;
 
   StreamSubscription<ApiFailure>? _accessSubscription;
   Timer? _poll;
@@ -278,6 +319,9 @@ class WorkspaceController extends ChangeNotifier {
     // pays for and no one reads. The listener is created here rather than in
     // the constructor so a controller that was never started never installs
     // one.
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    _foreground =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
     _lifecycle = AppLifecycleListener(
       onStateChange: (AppLifecycleState state) =>
           _foreground = state == AppLifecycleState.resumed,
@@ -297,6 +341,10 @@ class WorkspaceController extends ChangeNotifier {
   /// Invalidates requests, timers and cached permissions when an account
   /// leaves. A later verified session must load its own collection access.
   void resetSession() {
+    final previousUser = _startedUserId;
+    if (previousUser != null) forgetIntakeTransfers(repository, previousUser);
+    reviewExitGuard = null;
+    recordRouteOwner = null;
     _listGeneration++;
     _recordGeneration++;
     _mutationEpoch++;
@@ -304,6 +352,8 @@ class WorkspaceController extends ChangeNotifier {
     _startedUserId = null;
     _accessSubscription?.cancel();
     _accessSubscription = null;
+    _lifecycle?.dispose();
+    _lifecycle = null;
     _poll?.cancel();
     _poll = null;
     _search?.cancel();
@@ -319,7 +369,7 @@ class WorkspaceController extends ChangeNotifier {
     _seenCursors.clear();
     _updatedAt = null;
     _query = '';
-    _disposition = '';
+    _disposition = 'needs_human_review';
     _filters = <String, String>{};
     _holds = 0;
     _deferredPage = null;
@@ -346,6 +396,9 @@ class WorkspaceController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _deferredPage = null;
+    final previousUser = _startedUserId;
+    if (previousUser != null) forgetIntakeTransfers(repository, previousUser);
     _accessSubscription?.cancel();
     _lifecycle?.dispose();
     _poll?.cancel();
@@ -362,14 +415,16 @@ class WorkspaceController extends ChangeNotifier {
   /// poll never moves what the reviewer is looking at (blueprints, section 3).
   void holdList() => _holds++;
 
-  /// Releases one hold and applies whatever the poll answered meanwhile.
+  /// Releases one hold and applies a poll answer still owned by this view.
   void releaseList() {
     if (_holds > 0) _holds--;
-    final SpecimenPage? deferred = _deferredPage;
+    final _DeferredPage? deferred = _deferredPage;
     if (_holds == 0 && deferred != null) {
       _deferredPage = null;
-      _applyPage(deferred);
-      _notify();
+      if (_ownsQueueRead(deferred.read)) {
+        _applyPage(deferred.page);
+        _notify();
+      }
     }
   }
 
@@ -378,6 +433,7 @@ class WorkspaceController extends ChangeNotifier {
 
   /// Loads the collection list, or reloads it after a denial.
   Future<void> checkAccess() async {
+    _deferredPage = null;
     _loading = true;
     _error = null;
     _scopesVerified = false;
@@ -422,6 +478,10 @@ class WorkspaceController extends ChangeNotifier {
     if (match == null) return false;
     if (identical(match, _scope) || match.key == _scope?.key) return true;
     _scope = match;
+    _listGeneration++;
+    _deferredPage = null;
+    reviewExitGuard = null;
+    recordRouteOwner = null;
     _items = <Specimen>[];
     _selected = null;
     _selectedId = null;
@@ -447,8 +507,17 @@ class WorkspaceController extends ChangeNotifier {
   Future<void> refresh({bool quiet = false}) async {
     final CollectionScope? scope = _scope;
     if (scope == null) return;
-    final int generation = ++_listGeneration;
+    final _QueueRead read = _QueueRead(
+      scope: scope,
+      generation: ++_listGeneration,
+      userId: session.userId,
+      filters: activeFilters,
+    );
+    _deferredPage = null;
     final int openRecord = _recordGeneration;
+    final String? openId = _selectedId;
+    final Specimen? recordAtStart = _selected;
+    final bool refreshOpenRecord = !_recordLoading;
     _nextCursor = null;
     _seenCursors.clear();
     _loadingMore = false;
@@ -460,27 +529,39 @@ class WorkspaceController extends ChangeNotifier {
     try {
       final SpecimenPage page = await repository.specimenPage(
         scope,
-        filters: activeFilters,
+        filters: read.filters,
       );
-      final String? openId = _selectedId;
-      final Specimen? selected = openId == null
+      if (!_ownsQueueRead(read)) return;
+      // A route opened while the list was loading owns its own detail request.
+      // Check that ownership before dispatch, rather than fetching and merely
+      // rejecting the duplicate response afterwards.
+      final Specimen? selected =
+          openId == null ||
+              !refreshOpenRecord ||
+              openRecord != _recordGeneration ||
+              !identical(recordAtStart, _selected)
           ? null
           : await repository.specimen(scope, openId);
-      if (_disposed || generation != _listGeneration) return;
+      if (!_ownsQueueRead(read)) return;
       // The open record is the record load's to own. A refresh only carries
       // it along when nothing opened or closed a record meanwhile.
-      final bool ownsRecord = openRecord == _recordGeneration;
+      // An acknowledged save (including a partial batch) replaces the record
+      // object without navigating. A response started before that replacement
+      // no longer owns the selected detail, even if the route is unchanged.
+      final bool ownsRecord =
+          openRecord == _recordGeneration &&
+          identical(recordAtStart, _selected);
       if (quiet && _holds > 0) {
         // A row has focus or a sheet is open. Keep the answer until it does
         // not, rather than moving the list under the reviewer.
-        _deferredPage = page;
+        _deferredPage = _DeferredPage(read, page);
         if (ownsRecord) _selected = selected ?? _selected;
         _loading = false;
         _notify();
         return;
       }
       _applyPage(page);
-      if (ownsRecord) _selected = selected;
+      if (ownsRecord && selected != null) _selected = selected;
       _loading = false;
       // A quiet poll is a background process. It may not clear a message the
       // reviewer has not read: that is what the banner's own Dismiss is for
@@ -489,12 +570,21 @@ class WorkspaceController extends ChangeNotifier {
       if (!quiet) _error = null;
       _notify();
     } catch (error) {
-      if (_disposed || generation != _listGeneration) return;
+      if (!_ownsQueueRead(read)) return;
       _loading = false;
       _recordFailure(error);
       _notify();
     }
   }
+
+  bool _ownsQueueRead(_QueueRead read) =>
+      !_disposed &&
+      _scopesVerified &&
+      session.signedIn &&
+      session.userId == read.userId &&
+      identical(read.scope, _scope) &&
+      read.generation == _listGeneration &&
+      mapEquals(read.filters, activeFilters);
 
   void _applyPage(SpecimenPage page) {
     _items = page.items;
@@ -507,17 +597,22 @@ class WorkspaceController extends ChangeNotifier {
     final CollectionScope? scope = _scope;
     final String? cursor = _nextCursor;
     if (scope == null || cursor == null || _loadingMore || _loading) return;
-    final int generation = _listGeneration;
+    final _QueueRead read = _QueueRead(
+      scope: scope,
+      generation: _listGeneration,
+      userId: session.userId,
+      filters: activeFilters,
+    );
     _loadingMore = true;
     _error = null;
     _notify();
     try {
       final SpecimenPage page = await repository.specimenPage(
         scope,
-        filters: activeFilters,
+        filters: read.filters,
         cursor: cursor,
       );
-      if (_disposed || generation != _listGeneration) return;
+      if (!_ownsQueueRead(read)) return;
       if (_seenCursors.contains(cursor) ||
           page.nextCursor == cursor ||
           (page.nextCursor != null && _seenCursors.contains(page.nextCursor))) {
@@ -538,11 +633,11 @@ class WorkspaceController extends ChangeNotifier {
       _nextCursor = page.nextCursor;
       _updatedAt = DateTime.now();
     } catch (error) {
-      if (_disposed || generation != _listGeneration) return;
+      if (!_ownsQueueRead(read)) return;
       _nextCursor = null;
       _recordFailure(error);
     } finally {
-      if (!_disposed && generation == _listGeneration) {
+      if (_ownsQueueRead(read)) {
         _loadingMore = false;
         _notify();
       }
@@ -585,7 +680,7 @@ class WorkspaceController extends ChangeNotifier {
   /// Clears the search, the segment and every filter.
   Future<void> clearFilters() {
     _query = '';
-    _disposition = '';
+    _disposition = 'needs_human_review';
     _filters = <String, String>{};
     _notify();
     return refresh();
@@ -610,13 +705,16 @@ class WorkspaceController extends ChangeNotifier {
   Future<void> openSpecimen(String id) async {
     final CollectionScope? scope = _scope;
     if (scope == null) return;
-    if (_selectedId == id && _selected != null) return;
+    // A dependency notification can ask for the same route while its detail
+    // request is pending. Restarting it invalidates the first response and
+    // schedules another notification, so a slow request would never finish.
+    if (_selectedId == id && (_selected != null || _recordLoading)) return;
     _selectedId = id;
     _selected = null;
     _recordLoading = true;
     _error = null;
-    _notify();
     final int generation = ++_recordGeneration;
+    _notify();
     try {
       final Specimen item = await repository.specimen(scope, id);
       if (_disposed || generation != _recordGeneration) return;
@@ -718,6 +816,86 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
+  /// Restores a retained version as a new, independently audited revision.
+  Future<void> restoreVersion(
+    int sourceRevision,
+    bool resetToInitial,
+    String reason,
+  ) async {
+    final current = _selected;
+    final scope = _scope;
+    final history = repository;
+    if (current == null ||
+        scope == null ||
+        _mutating ||
+        history is! SpecimenHistoryRepository) {
+      throw const ApiFailure(
+        'Version restoration is unavailable.',
+        code: 'unavailable',
+      );
+    }
+    if (!scope.permissions.any(
+          (role) => const ['reviewer', 'manager', 'admin'].contains(role),
+        ) ||
+        !(current.data['available_actions'] as List? ?? const []).contains(
+          'restore_version',
+        )) {
+      throw const ApiFailure(
+        'Restoring this version requires reviewer access and an available restore action.',
+        code: 'forbidden',
+        status: 403,
+      );
+    }
+    final generation = _recordGeneration;
+    final mutationEpoch = _mutationEpoch;
+    final payload =
+        'restore:${current.id}:${current.revision}:$sourceRevision:$resetToInitial:$reason';
+    final key = _mutationKeys.putIfAbsent(
+      payload,
+      () => 'restore-${DateTime.now().microsecondsSinceEpoch}',
+    );
+    _mutating = true;
+    _error = null;
+    _notify();
+    try {
+      final result = await (history as SpecimenHistoryRepository)
+          .restoreVersion(
+            scope,
+            current,
+            sourceRevision: sourceRevision,
+            resetToInitial: resetToInitial,
+            reason: reason,
+            idempotencyKey: key,
+          );
+      if (_disposed || generation != _recordGeneration) return;
+      if (result.id != current.id || result.revision <= current.revision) {
+        throw const ApiFailure(
+          'The server has not confirmed a new restored version.',
+          code: 'unconfirmed_save',
+        );
+      }
+      // A poll or manual refresh may have started before this save. Its
+      // older response (including a held page) must not replace the new version.
+      _recordGeneration++;
+      _listGeneration++;
+      _deferredPage = null;
+      _loading = false;
+      _loadingMore = false;
+      _selected = result;
+      final index = _items.indexWhere((item) => item.id == result.id);
+      if (index >= 0) _items[index] = result;
+      _mutationKeys.remove(payload);
+    } catch (error) {
+      if (!_disposed && generation == _recordGeneration) _recordFailure(error);
+      rethrow;
+    } finally {
+      if (!_disposed && mutationEpoch == _mutationEpoch) {
+        _mutating = false;
+        _notify();
+      }
+    }
+  }
+
   /// Saves several corrections as one reviewer action under one reason.
   ///
   /// Pass criterion 7.2. The wire takes one decision per call, so this is
@@ -797,18 +975,77 @@ class WorkspaceController extends ChangeNotifier {
     }
   }
 
-  /// Takes one decision across a selection of records, in one call.
-  ///
-  /// Pass criterion 7.3, and the other half of 7.2's "one round trip": the
-  /// decisions endpoint now takes a batch, so a reviewer acting on five
-  /// records is one call rather than five. Returns the server's answer, which
-  /// always has a row for every record including the ones it refused, or null
-  /// when the call itself did not complete.
-  ///
-  /// The list is not refreshed here. The caller decides when, because the
-  /// records that changed are the ones the reviewer is looking at and moving
-  /// them out from under the confirmation they just read would be the wrong
-  /// order.
+  /// Fetches current scoped detail before exposing a bulk decision.
+  Future<BulkSelectionEligibility> inspectSelection(
+    List<Specimen> specimens,
+  ) async {
+    final scope = _scope;
+    final epoch = _mutationEpoch;
+    final userId = session.userId;
+    final records = <String, Specimen>{};
+    final unavailable = <String, String>{};
+    String? blocked;
+    if (scope == null || !_scopesVerified) {
+      blocked = 'Collection access could not be verified.';
+    } else if (!scope.permissions.any(
+      ['reviewer', 'manager', 'admin'].contains,
+    )) {
+      blocked = 'Your role on this collection does not include reviewing.';
+    } else if (specimens.length > bulkDecisionLimit) {
+      blocked = 'Select at most $bulkDecisionLimit records for one decision.';
+    }
+    bool current() =>
+        !_disposed &&
+        identical(scope, _scope) &&
+        epoch == _mutationEpoch &&
+        userId == session.userId &&
+        _scopesVerified;
+    if (blocked == null) {
+      // Bound parallel reads; a selection must not fan out 100 requests at once.
+      for (int offset = 0; offset < specimens.length; offset += 6) {
+        if (!current()) break;
+        await Future.wait(
+          specimens.skip(offset).take(6).map((specimen) async {
+            try {
+              final detail = await repository.specimen(scope!, specimen.id);
+              if (detail.id != specimen.id) {
+                unavailable[specimen.id] =
+                    'The requested record could not be verified.';
+              } else {
+                records[specimen.id] = detail;
+              }
+            } catch (error) {
+              unavailable[specimen.id] =
+                  'Current permission could not be verified. Check the connection and try again.';
+              if (current() &&
+                  error is ApiFailure &&
+                  (error.status == 401 || error.status == 403)) {
+                _recordFailure(error);
+                _notify();
+              }
+            }
+          }),
+        );
+      }
+      if (!current()) {
+        blocked = 'Collection access changed. Check access before reviewing.';
+      }
+    }
+    if (blocked != null) {
+      records.clear();
+      for (final specimen in specimens) {
+        unavailable[specimen.id] = blocked;
+      }
+    }
+    return BulkSelectionEligibility(
+      requested: List.unmodifiable(specimens),
+      records: Map.unmodifiable(records),
+      unavailable: Map.unmodifiable(unavailable),
+    );
+  }
+
+  /// Rechecks permission and the confirmed versions immediately before writing.
+  /// Every requested ID receives an outcome, including records not sent.
   Future<BulkDecisionReport?> reviewSelection(
     List<Specimen> specimens,
     BulkDecisionKind kind,
@@ -817,35 +1054,87 @@ class WorkspaceController extends ChangeNotifier {
     final CollectionScope? scope = _scope;
     if (scope == null || specimens.isEmpty || _mutating) return null;
     final int mutationEpoch = _mutationEpoch;
-    // Memoised on the selection at the versions it was taken against, exactly
-    // as a single decision is: a retry after an uncertain answer carries the
-    // key it carried the first time, so the server reconciles rather than
-    // recording every decision twice.
-    final String payload =
-        '${kind.wire}:$reason:'
-        '${specimens.map((Specimen s) => '${s.id}@${s.revision}').join(',')}';
-    final String key = _mutationKeys.putIfAbsent(
-      payload,
-      () => 'review-many-${DateTime.now().microsecondsSinceEpoch}',
-    );
     _mutating = true;
     _error = null;
     _notify();
     try {
-      final BulkDecisionReport report = await repository.reviewMany(
-        scope,
-        specimens,
-        kind,
-        reason,
-        key,
-      );
-      if (_disposed) return report;
-      // The key is released only when nothing is outstanding. While a record
-      // is unaccounted for, a retry of the same selection has to reconcile.
-      if (report.complete) _mutationKeys.remove(payload);
-      return report;
+      final evidence = await inspectSelection(specimens);
+      if (_disposed ||
+          mutationEpoch != _mutationEpoch ||
+          !identical(scope, _scope)) {
+        return null;
+      }
+      final eligible = <Specimen>[];
+      final outcomes = <String, BulkDecisionResult>{};
+      for (final specimen in specimens) {
+        final detail = evidence.records[specimen.id];
+        String? blocked = evidence.reasonFor(specimen.id, kind);
+        String code = 'not_permitted';
+        if (blocked == null &&
+            (detail!.revision != specimen.revision ||
+                detail.recordVersionId != specimen.recordVersionId)) {
+          blocked =
+              'This record changed after confirmation. Review the current version before trying again.';
+          code = 'version_changed';
+        }
+        if (blocked != null) {
+          outcomes[specimen.id] = BulkDecisionResult(
+            specimenId: specimen.id,
+            outcome: BulkOutcome.skipped,
+            code: code,
+            message: blocked,
+          );
+        } else {
+          eligible.add(detail!);
+        }
+      }
+      if (eligible.isNotEmpty) {
+        final String payload =
+            '${scope.key}:${kind.wire}:$reason:'
+            '${eligible.map((s) => '${s.id}@${s.recordVersionId}').join(',')}';
+        final key = _mutationKeys.putIfAbsent(
+          payload,
+          () => 'review-many-${DateTime.now().microsecondsSinceEpoch}',
+        );
+        final response = await repository.reviewMany(
+          scope,
+          eligible,
+          kind,
+          reason,
+          key,
+        );
+        if (_disposed ||
+            mutationEpoch != _mutationEpoch ||
+            !identical(scope, _scope)) {
+          return null;
+        }
+        for (final specimen in eligible) {
+          final matches = response.results
+              .where((row) => row.specimenId == specimen.id)
+              .toList();
+          outcomes[specimen.id] = matches.length == 1
+              ? matches.single
+              : BulkDecisionResult(
+                  specimenId: specimen.id,
+                  outcome: BulkOutcome.skipped,
+                  code: 'outcome_unconfirmed',
+                  message:
+                      'The result was not confirmed. Check the current record before trying again.',
+                );
+        }
+        if (eligible.every((s) => outcomes[s.id]!.changed)) {
+          _mutationKeys.remove(payload);
+        }
+      }
+      return BulkDecisionReport([
+        for (final specimen in specimens) outcomes[specimen.id]!,
+      ]);
     } catch (error) {
-      if (_disposed) return null;
+      if (_disposed ||
+          mutationEpoch != _mutationEpoch ||
+          !identical(scope, _scope)) {
+        return null;
+      }
       _recordFailure(error);
       return null;
     } finally {
@@ -882,6 +1171,7 @@ class WorkspaceController extends ChangeNotifier {
     final bool denied =
         failure != null && (failure.status == 401 || failure.status == 403);
     if (denied) {
+      _deferredPage = null;
       // Do not retain an editable workspace after current access is denied.
       _scopesVerified = false;
       _scopes = <CollectionScope>[];
@@ -1008,6 +1298,68 @@ class WorkspaceScope extends InheritedNotifier<WorkspaceController> {
   }
 }
 
+/// Activity and collection ownership of one retained navigation branch.
+/// A branch can remain mounted while another tab is visible.
+class WorkspaceBranchScope extends InheritedWidget {
+  const WorkspaceBranchScope({
+    super.key,
+    required this.active,
+    required this.collectionKey,
+    required super.child,
+  });
+
+  final bool active;
+  final String collectionKey;
+
+  static WorkspaceBranchScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<WorkspaceBranchScope>();
+
+  @override
+  bool updateShouldNotify(WorkspaceBranchScope oldWidget) =>
+      active != oldWidget.active || collectionKey != oldWidget.collectionKey;
+}
+
+/// Retains each tab's navigator while removing hidden branches from focus,
+/// semantics and animation. Activity is explicit because a hidden navigator's
+/// top route still reports `ModalRoute.isCurrent`.
+class WorkspaceBranchStack extends StatelessWidget {
+  const WorkspaceBranchStack({
+    super.key,
+    required this.activeIndex,
+    required this.collectionKey,
+    required this.children,
+  });
+
+  final int activeIndex;
+  final String collectionKey;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => IndexedStack(
+    index: activeIndex,
+    children: [
+      for (var i = 0; i < children.length; i++)
+        WorkspaceBranchScope(
+          active: i == activeIndex,
+          collectionKey: collectionKey,
+          child: Offstage(
+            offstage: i != activeIndex,
+            child: TickerMode(
+              enabled: i == activeIndex,
+              child: ExcludeFocus(
+                excluding: i != activeIndex,
+                child: ExcludeSemantics(
+                  excluding: i != activeIndex,
+                  child: children[i],
+                ),
+              ),
+            ),
+          ),
+        ),
+    ],
+  );
+}
+
 /// The collection shell: navigation, the environment band, the error banner
 /// and the routed screen inside them.
 ///
@@ -1018,6 +1370,7 @@ class CollectionWorkspace extends StatefulWidget {
     super.key,
     required this.routeKey,
     required this.destination,
+    this.navigationShell,
     required this.child,
   });
 
@@ -1027,6 +1380,9 @@ class CollectionWorkspace extends StatefulWidget {
   /// Which navigation destination the current route belongs to.
   final WorkspaceDestination destination;
 
+  /// The two retained tab navigators, absent only while scope access loads.
+  final StatefulNavigationShell? navigationShell;
+
   /// The routed screen.
   final Widget child;
 
@@ -1034,7 +1390,37 @@ class CollectionWorkspace extends StatefulWidget {
   State<CollectionWorkspace> createState() => _CollectionWorkspaceState();
 }
 
+/// Specimen sidebar controls shared with the active record route.
+class QueueWorkspaceScope extends InheritedWidget {
+  const QueueWorkspaceScope({
+    super.key,
+    required this.showQueue,
+    required this.hideQueue,
+    this.expanded = false,
+    required super.child,
+  });
+  final VoidCallback? showQueue;
+  final VoidCallback hideQueue;
+  final bool expanded;
+  static QueueWorkspaceScope? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<QueueWorkspaceScope>();
+  @override
+  bool updateShouldNotify(QueueWorkspaceScope oldWidget) =>
+      showQueue != oldWidget.showQueue || expanded != oldWidget.expanded;
+}
+
 class _CollectionWorkspaceState extends State<CollectionWorkspace> {
+  final GlobalKey _queueKey = GlobalKey(debugLabel: 'persistent-specimens');
+  final FocusNode _queueSearch = FocusNode(debugLabel: 'Specimen search');
+  final QueueKeyboardController _queueKeyboard = QueueKeyboardController();
+
+  @override
+  void dispose() {
+    _queueSearch.dispose();
+    _queueKeyboard.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1047,8 +1433,6 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
     if (oldWidget.routeKey != widget.routeKey) _sync();
   }
 
-  /// Opens the collection the location names, after the frame the router is
-  /// building, so selecting one never notifies during a navigation.
   void _sync() {
     if (widget.routeKey.isEmpty) return;
     scheduleMicrotask(() {
@@ -1058,24 +1442,52 @@ class _CollectionWorkspaceState extends State<CollectionWorkspace> {
 
   @override
   Widget build(BuildContext context) {
-    final bool listDetail =
-        widget.destination == WorkspaceDestination.queue &&
-        WindowClass.of(context).isAtLeast(WindowClass.large);
-
-    return AppShell(
-      destination: widget.destination,
-      child: listDetail
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                const SizedBox(width: queueListPaneWidth, child: QueuePane()),
-                // The pane divider is a hairline: decorative separation
-                // between two panes, never a boundary (09 section 3.1).
-                const UiHairline.vertical(),
-                Expanded(child: widget.child),
-              ],
-            )
-          : widget.child,
+    final queueDestination = widget.destination == WorkspaceDestination.queue;
+    final record = AppShell.insideRecord(GoRouterState.of(context).uri);
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        if (queueDestination && !record) ...<ShortcutActivator, VoidCallback>{
+          const EditingSafeActivator(LogicalKeyboardKey.slash):
+              _queueSearch.requestFocus,
+          const EditingSafeActivator(LogicalKeyboardKey.arrowDown): () =>
+              _queueKeyboard.move(1),
+          const EditingSafeActivator(LogicalKeyboardKey.keyJ): () =>
+              _queueKeyboard.move(1),
+          const EditingSafeActivator(LogicalKeyboardKey.arrowUp): () =>
+              _queueKeyboard.move(-1),
+          const EditingSafeActivator(LogicalKeyboardKey.keyK): () =>
+              _queueKeyboard.move(-1),
+          const EditingSafeActivator(LogicalKeyboardKey.enter):
+              _queueKeyboard.open,
+          const EditingSafeActivator(LogicalKeyboardKey.escape):
+              _queueKeyboard.clear,
+        },
+      },
+      child: AppShell(
+        destination: widget.destination,
+        onSelectDestination: widget.navigationShell == null
+            ? null
+            : (next) => widget.navigationShell!.goBranch(
+                next.index,
+                initialLocation: next == widget.destination,
+              ),
+        specimensFocus: _queueSearch,
+        specimensActions: QueueListActions(controller: _queueKeyboard),
+        specimens: Builder(
+          builder: (context) => QueuePane(
+            key: _queueKey,
+            searchFocusNode: _queueSearch,
+            controller: _queueKeyboard,
+            onDismiss:
+                (record || !queueDestination) &&
+                    !(AppSidebarScope.maybeOf(context)?.mobileNavigation ??
+                        false)
+                ? AppSidebarScope.maybeOf(context)?.close
+                : null,
+          ),
+        ),
+        child: widget.child,
+      ),
     );
   }
 }

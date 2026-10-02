@@ -12,6 +12,7 @@ export 'button.dart';
 export 'button_row.dart';
 export 'capsule_toggle.dart';
 export 'chip.dart';
+export 'choice_group.dart';
 export 'decision_bar.dart';
 export 'icon_button.dart';
 export 'key_cap.dart';

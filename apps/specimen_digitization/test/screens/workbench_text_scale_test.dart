@@ -79,8 +79,12 @@ void main() {
         (WidgetTester tester) async {
           await _pump(tester, window.value);
           final Finder tab = find.descendant(
-            of: uiTabs(evidenceTabsLabel),
-            matching: find.text(segment.label),
+            of: uiTabs('Record view'),
+            matching: find.text(switch (segment) {
+              WorkbenchSegment.readings => 'Labels',
+              WorkbenchSegment.fields => 'Specimen data',
+              WorkbenchSegment.history => 'History',
+            }),
           );
           expect(
             tab,
@@ -89,6 +93,7 @@ void main() {
           );
           // The capture starts after the panel is chosen, because the
           // assertion is about the panel rather than about the tap.
+          await tester.ensureVisible(tab);
           await tester.tap(tab);
           await tester.pumpAndSettle();
           _capture();

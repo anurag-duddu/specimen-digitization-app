@@ -57,6 +57,7 @@ apply_supplemental_indexes() {
   "$pg_bin/psql" -h 127.0.0.1 -p "$pg_port" -d "$database" -v ON_ERROR_STOP=1 -f dataconnect/sql/drop-specimen-unique-1.sql
 }
 start_connector
+PSQL_BIN="$pg_bin/psql" SPECIMEN_TEST_PG_PORT="$pg_port" node scripts/data/legacy-import-proof-schema-test.mjs
 node scripts/data/connector-test.mjs
 PSQL_BIN="$pg_bin/psql" SPECIMEN_TEST_PG_PORT="$pg_port" node scripts/data/projection-test.mjs
 node scripts/data/bootstrap-test.mjs

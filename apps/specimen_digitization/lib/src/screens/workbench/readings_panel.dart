@@ -1,12 +1,15 @@
 /// The readings segment (screen blueprints, 6.3).
 ///
-/// Two readings are two readings. Each is a `ReadingCard` carrying a
-/// `DiffText` against the other reading for its region, so the difference is
-/// quantified in a sentence and marked with an underline and a symbol, never
-/// with colour alone. Resolving one opens a form that keeps both readings on
-/// screen beside the field (audit finding H6.2).
+/// Readings share one label chooser and a quiet document flow. Each literal
+/// carries a `DiffText` against the first reading for its region, so the
+/// difference is quantified in a sentence and marked with an underline and
+/// a symbol, never with colour alone. Provenance remains available through
+/// an explicit disclosure. Resolving keeps both readings beside the field.
 library;
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart' show SchedulerPhase;
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
@@ -18,17 +21,57 @@ import '../../risk_assessment.dart';
 import '../../evidence_panel.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
-import 'evidence_picker.dart';
+import 'reader_identity.dart';
 
-/// The width below which two reading cards stack instead of sitting side by
-/// side. Two literals need a measure each; below this they get one.
-const double readingsSideBySideMin = 520;
+const List<String> _transcriptionStates = <String>[
+  'supported',
+  'unknown',
+  'unreadable',
+  'ambiguous',
+  'not_present',
+  'unresolved',
+];
 
 /// One model reading's place in the panel, so a region can be scrolled to.
 typedef RegionAnchors = Map<String, GlobalKey>;
 
+/// Connects record navigation to the actual retained label drafts.
+/// A deliberate discard is refused while a save is awaiting acknowledgement.
+class LabelDraftController extends ChangeNotifier {
+  _WorkbenchReadingsState? _owner;
+  bool _disposed = false;
+  bool _notificationPending = false;
+
+  bool get hasChanges => _owner?._drafts.values.any((d) => d.dirty) ?? false;
+  bool get isSaving => _owner?._drafts.values.any((d) => d.busy) ?? false;
+
+  bool discardAll() => _owner?._discardAllDrafts() ?? true;
+
+  void _changed() {
+    if (_disposed) return;
+    if (WidgetsBinding.instance.schedulerPhase !=
+        SchedulerPhase.persistentCallbacks) {
+      notifyListeners();
+      return;
+    }
+    if (_notificationPending) return;
+    _notificationPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _notificationPending = false;
+      if (!_disposed) notifyListeners();
+    });
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _owner = null;
+    super.dispose();
+  }
+}
+
 /// The readings, their comparison, and the controls that resolve them.
-class WorkbenchReadings extends StatelessWidget {
+class WorkbenchReadings extends StatefulWidget {
   const WorkbenchReadings({
     super.key,
     required this.specimen,
@@ -39,18 +82,23 @@ class WorkbenchReadings extends StatelessWidget {
     required this.transcriptionBlockedReason,
     required this.declarationsBlocked,
     this.loadArtifact,
+    this.onCommit,
+    this.onDraftChanged,
+    this.draftController,
+    this.presentationIdentity,
+    this.compact = false,
   });
 
   final Specimen specimen;
 
   /// One key per region, so the blockers list and the source pane can scroll
-  /// the reviewer to the right card.
+  /// the reviewer to the right label.
   final RegionAnchors anchors;
 
   /// The region the source pane is showing.
   final String? selectedRegionId;
 
-  /// Selects a region from a reading card.
+  /// Selects the region shared by a group of readings.
   final ValueChanged<String?> onSelectRegion;
 
   /// Sends one decision.
@@ -65,23 +113,234 @@ class WorkbenchReadings extends StatelessWidget {
   /// Loads a lazily fetched evidence payload.
   final Future<Json> Function(ArtifactRequest)? loadArtifact;
 
+  /// Acknowledgement-aware save for inline label corrections.
+  ///
+  /// The host returns true only after the decision has been accepted. An
+  /// unacknowledged draft is retained even if the request completed.
+  final Future<bool> Function(Json)? onCommit;
+
+  /// Whether any label has an unsaved correction, for the host's leave guard.
+  final ValueChanged<bool>? onDraftChanged;
+
+  /// Lets the host discard real draft state after its leave confirmation.
+  final LabelDraftController? draftController;
+
+  /// The scroll host's layout identity. Draft state survives a host change,
+  /// while its clipped render and semantics descendants are recreated.
+  final Object? presentationIdentity;
+
+  /// Omits the repeated selector caption in a short, scrollable inspector.
+  /// Control hit targets, accessible names and reading type stay unchanged.
+  final bool compact;
+
+  static const String differencesHeading = 'Comparison evidence';
+  static const String resolveLabel = 'Save label text';
+  static const String noReadingsReason = 'No model has read this specimen yet';
+
+  @override
+  State<WorkbenchReadings> createState() => _WorkbenchReadingsState();
+}
+
+class _WorkbenchReadingsState extends State<WorkbenchReadings> {
+  final Map<String, _LabelTextDraft> _drafts = <String, _LabelTextDraft>{};
+  final FocusNode _saveFocus = FocusNode(debugLabel: 'Save label text');
+  final FocusNode _presentationFocus = FocusNode(
+    debugLabel: 'Reading presentation transition',
+    skipTraversal: true,
+  );
+  bool _reportedDirty = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.draftController?._owner = this;
+  }
+
+  bool _discardAllDrafts() {
+    if (_drafts.values.any((_LabelTextDraft draft) => draft.busy)) return false;
+    setState(() {
+      for (final _LabelTextDraft draft in _drafts.values) {
+        draft.dispose();
+      }
+      _drafts.clear();
+    });
+    _reportDrafts();
+    return true;
+  }
+
+  Specimen get specimen => widget.specimen;
+  RegionAnchors get anchors => widget.anchors;
+  String? get selectedRegionId => widget.selectedRegionId;
+  ValueChanged<String?> get onSelectRegion => widget.onSelectRegion;
+  Future<void> Function(Json) get onChange => widget.onChange;
+  String? get transcriptionBlockedReason => widget.transcriptionBlockedReason;
+  bool get declarationsBlocked => widget.declarationsBlocked;
+  Future<Json> Function(ArtifactRequest)? get loadArtifact =>
+      widget.loadArtifact;
+
+  Map<String, String> get _readerNames => readerNames(specimen.observations);
+
+  String? _editBlocked(String regionId) =>
+      transcriptionBlockedReason ??
+      (_accepted(regionId).isEmpty
+          ? 'No saved transcription exists for this label. Text correction is unavailable.'
+          : null);
+
   String _literalOf(Json o) =>
       textOf(o['literal_text'], textOf(o['verbatim_text'], ''));
 
-  /// The position of the first reading recorded for each region.
-  ///
-  /// Identity is the position, not the text: two models can return the same
-  /// characters, and the first reading of a region still has nothing before
-  /// it to be compared against.
-  Map<String, int> get _referenceIndex {
-    final Map<String, int> first = <String, int>{};
-    for (final (int i, Json o) in specimen.observations.indexed) {
-      final Object? region = o['region_id'];
-      if (region is String && region.trim().isNotEmpty) {
-        first.putIfAbsent(region, () => i);
+  @override
+  void didUpdateWidget(WorkbenchReadings oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.presentationIdentity != widget.presentationIdentity) {
+      final activeDraft = _drafts.entries
+          .where(
+            (entry) =>
+                entry.value.valueFocus.hasPrimaryFocus ||
+                entry.value.reasonFocus.hasPrimaryFocus,
+          )
+          .firstOrNull;
+      final FocusNode? activeEditor = activeDraft == null
+          ? null
+          : activeDraft.value.valueFocus.hasPrimaryFocus
+          ? activeDraft.value.valueFocus
+          : activeDraft.value.reasonFocus;
+      final presentation = widget.presentationIdentity;
+      for (final draft in _drafts.values) {
+        // Preserve only the active input client. Other, potentially clipped
+        // field presentations must renew their semantics with the scroll host.
+        if (!draft.valueFocus.hasPrimaryFocus) {
+          draft.valueFieldKey = GlobalKey();
+        }
+        if (!draft.reasonFocus.hasPrimaryFocus) {
+          draft.reasonFieldKey = GlobalKey();
+        }
+      }
+      if (activeEditor != null && activeDraft != null) {
+        bool stillCurrent() =>
+            mounted &&
+            widget.presentationIdentity == presentation &&
+            activeEditor.context?.mounted == true &&
+            identical(_drafts[activeDraft.key], activeDraft.value) &&
+            !activeDraft.value.busy &&
+            !activeDraft.value.stale &&
+            _editBlocked(activeDraft.key) == null;
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!stillCurrent() || !activeEditor.hasPrimaryFocus) return;
+          final controller = activeEditor == activeDraft.value.valueFocus
+              ? activeDraft.value.value
+              : activeDraft.value.reason;
+          final editingValue = controller.value;
+          final restoreWebFocus =
+              kIsWeb && WidgetsBinding.instance.semanticsEnabled;
+          if (restoreWebFocus) {
+            // Revealing a reparented web semantics input can blur it. Park
+            // synchronously first, so that blur cannot consume its focus owner.
+            _presentationFocus.requestFocus();
+            FocusManager.instance.applyFocusChangesIfNeeded();
+          }
+          await Scrollable.ensureVisible(
+            activeEditor.context!,
+            alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+          );
+          if (!restoreWebFocus) return;
+          // A real focus transition reactivates the web input; an unchanged
+          // semantics configuration or a keyboard request alone does not.
+          await WidgetsBinding.instance.endOfFrame;
+          // The web engine defers DOM safeBlur through a Future. Let those
+          // already-queued blur events drain before restoring the input.
+          await Future<void>(() {});
+          if (!stillCurrent() || !_presentationFocus.hasPrimaryFocus) return;
+          // Blur clears composing. Restore it only when no newer text or
+          // selection arrived, and never reclaim focus from another control.
+          if (controller.value != editingValue &&
+              controller.value !=
+                  editingValue.copyWith(composing: TextRange.empty)) {
+            return;
+          }
+          controller.value = editingValue;
+          activeEditor.requestFocus();
+        });
       }
     }
-    return first;
+    if (oldWidget.draftController != widget.draftController) {
+      if (oldWidget.draftController?._owner == this) {
+        oldWidget.draftController?._owner = null;
+      }
+      widget.draftController?._owner = this;
+      widget.draftController?._changed();
+    }
+    if (oldWidget.specimen.id != specimen.id) {
+      for (final _LabelTextDraft draft in _drafts.values) {
+        draft.dispose();
+      }
+      _drafts.clear();
+      _reportDrafts();
+    } else if (oldWidget.specimen.revision != specimen.revision) {
+      for (final String id in _drafts.keys.toList()) {
+        final _LabelTextDraft draft = _drafts[id]!;
+        if (draft.busy) continue;
+        if (draft.dirty) {
+          draft.stale = true;
+        } else {
+          _drafts.remove(id)!.dispose();
+        }
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _saveFocus.dispose();
+    _presentationFocus.dispose();
+    if (widget.draftController?._owner == this) {
+      widget.draftController?._owner = null;
+    }
+    for (final _LabelTextDraft draft in _drafts.values) {
+      draft.dispose();
+    }
+    // The host resets its guard when leaving this record. Calling its
+    // setState synchronously during child disposal would be unsafe.
+    super.dispose();
+  }
+
+  void _reportDrafts() {
+    widget.draftController?._changed();
+    final bool dirty = _drafts.values.any((_LabelTextDraft d) => d.dirty);
+    if (_reportedDirty == dirty) return;
+    _reportedDirty = dirty;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        widget.onDraftChanged?.call(
+          _drafts.values.any((_LabelTextDraft d) => d.dirty),
+        );
+      }
+    });
+  }
+
+  Map<String, List<Json>> get _readingsByLabel {
+    final Map<String, List<Json>> groups = <String, List<Json>>{
+      for (final Json r in specimen.regions)
+        if (r['region_id'] is String && (r['region_id'] as String).isNotEmpty)
+          r['region_id'] as String: <Json>[],
+    };
+    for (final Json o in specimen.observations) {
+      final Object? region = o['region_id'];
+      if (region is String && groups.containsKey(region)) {
+        groups[region]!.add(o);
+      }
+    }
+    for (final List<Json> group in groups.values) {
+      group.sort((Json a, Json b) {
+        final int producer = (readerIdentity(a) ?? '~').compareTo(
+          readerIdentity(b) ?? '~',
+        );
+        return producer != 0
+            ? producer
+            : textOf(a['id'], '').compareTo(textOf(b['id'], ''));
+      });
+    }
+    return groups;
   }
 
   String _regionName(Object? regionId) {
@@ -91,179 +350,561 @@ class WorkbenchReadings extends StatelessWidget {
     return index < 0 ? 'Unassigned label' : 'Label ${index + 1}';
   }
 
-  /// The heading over the comparison and its resolution.
-  static const String differencesHeading = 'Differences and resolution';
+  Json _accepted(String regionId) =>
+      objects(
+        specimen.data['transcriptions'],
+      ).where((Json t) => t['region_id'] == regionId).firstOrNull ??
+      <String, dynamic>{};
 
-  /// The control that records which reading the source supports.
-  static const String resolveLabel = 'Resolve transcription';
-
-  /// Why that control is unavailable when there is nothing to resolve.
-  static const String noReadingsReason = 'No model has read this specimen yet';
+  _LabelTextDraft _draftFor(String regionId) =>
+      _drafts.putIfAbsent(regionId, () {
+        final Json current = _accepted(regionId);
+        return _LabelTextDraft(
+          revision: specimen.revision,
+          text: textOf(current['verbatim_text'], textOf(current['text'], '')),
+          state: textOf(
+            current['value_state'],
+            textOf(current['state'], 'unresolved'),
+          ),
+        );
+      });
 
   @override
   Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final Map<String, int> firstOfRegion = _referenceIndex;
-    final Json run = objectOf(specimen.data['run']);
-    final List<Json> observations = specimen.observations;
+    final String? selected = selectedRegionId;
+    final Map<String, List<Json>> groups = _readingsByLabel;
+    return Focus(
+      focusNode: _presentationFocus,
+      skipTraversal: true,
+      includeSemantics: false,
+      child: Column(
+        key: ValueKey<Object?>(widget.presentationIdentity),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          UiSelect<String>(
+            label: 'Label',
+            showLabel: !widget.compact,
+            semanticsLabel: 'Label to review',
+            placeholder: 'Choose a label',
+            value: selected ?? '',
+            options: <UiSelectOption<String>>[
+              const UiSelectOption<String>(value: '', label: 'All labels'),
+              for (final String regionId in groups.keys)
+                UiSelectOption<String>(
+                  value: regionId,
+                  label: _regionName(regionId),
+                ),
+            ],
+            onChanged: (String id) => onSelectRegion(id.isEmpty ? null : id),
+          ),
+          SizedBox(
+            height: widget.compact ? context.ui.space.s1 : context.ui.space.s3,
+          ),
+          if (selected == null)
+            _summary(context, groups)
+          else
+            _label(context, selected, groups[selected] ?? <Json>[]),
+        ],
+      ),
+    );
+  }
 
+  Widget _summary(BuildContext context, Map<String, List<Json>> groups) {
+    final UiThemeData ui = context.ui;
+    final List<Json> unassigned = specimen.observations.where((Json o) {
+      final Object? id = o['region_id'];
+      return id is! String || !groups.containsKey(id);
+    }).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        if (observations.isEmpty)
-          EmptyState(
-            icon: UiIcons.modelReading.defaultGlyph,
-            title: 'No readings yet',
-            body: 'No model has read this specimen. Refresh to check again.',
-          ),
-        LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints c) {
-            final bool sideBySide = c.maxWidth >= readingsSideBySideMin;
-            final double cardWidth = sideBySide
-                ? (c.maxWidth - ui.space.s4) / 2
-                : c.maxWidth;
-            return Wrap(
-              spacing: ui.space.s4,
-              runSpacing: ui.space.s4,
+        if (groups.isEmpty && unassigned.isEmpty)
+          Text('No label results yet.', style: ui.type.body),
+        for (final MapEntry<String, List<Json>> entry in groups.entries)
+          Padding(
+            key: anchors[entry.key],
+            padding: EdgeInsetsDirectional.symmetric(vertical: ui.space.s2),
+            child: Wrap(
+              key: ValueKey<Object?>(widget.presentationIdentity),
+              spacing: ui.space.s3,
+              runSpacing: ui.space.s1,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: <Widget>[
-                for (final (int i, Json o) in observations.indexed)
-                  SizedBox(
-                    width: cardWidth,
-                    child: Builder(
-                      builder: (BuildContext context) {
-                        // A reading with no region, or the first reading of
-                        // its region, has nothing to be compared against.
-                        final int? first = firstOfRegion[o['region_id']];
-                        final bool isFirst = first == null || first == i;
-                        return KeyedSubtree(
-                          key: isFirst ? _anchorFor(o['region_id']) : null,
-                          child: _card(
-                            context,
-                            o,
-                            isFirst ? null : _literalOf(observations[first]),
-                          ),
-                        );
-                      },
-                    ),
+                Text(_regionName(entry.key), style: ui.type.label),
+                Text(
+                  _comparisonState(entry.key, entry.value),
+                  style: ui.type.bodySmall.copyWith(
+                    color: ui.color.inkSecondary,
+                  ),
+                ),
+                if (_drafts[entry.key]?.dirty == true)
+                  Text('Unsaved changes', style: ui.type.labelSmall),
+              ],
+            ),
+          ),
+        if (unassigned.isNotEmpty)
+          UiDisclosure(
+            title: 'Unassigned model results',
+            child: Column(
+              children: <Widget>[
+                for (final (int index, Json observation) in unassigned.indexed)
+                  _reading(
+                    context,
+                    observation,
+                    null,
+                    'Unassigned label',
+                    index,
+                    null,
                   ),
               ],
-            );
-          },
-        ),
-        SizedBox(height: ui.space.s6),
-        _declarations(context, run),
-        SizedBox(height: ui.space.s6),
-        Semantics(
-          container: true,
-          header: true,
-          child: Text(differencesHeading, style: ui.type.title),
-        ),
-        SizedBox(height: ui.space.s2),
-        _differences(context, run),
+            ),
+          ),
       ],
     );
   }
 
-  /// The first card of a region carries that region's anchor.
-  GlobalKey? _anchorFor(Object? regionId) {
-    if (regionId is! String) return null;
-    return anchors[regionId];
+  String _comparisonState(String regionId, List<Json> readings) {
+    if (_accepted(regionId)['resolved'] == true) return 'Text accepted';
+    if (readings.isEmpty) return 'No model result';
+    final int variants = readings.map(_literalOf).toSet().length;
+    final String count =
+        '${readings.length} model ${readings.length == 1 ? 'result' : 'results'}';
+    return variants > 1 ? '$count · Differences to review' : count;
   }
 
-  Widget _card(BuildContext context, Json o, String? reference) =>
-      _reading(context, o, reference, _regionName(o['region_id']));
+  Widget _label(BuildContext context, String regionId, List<Json> readings) {
+    final UiThemeData ui = context.ui;
+    final String name = _regionName(regionId);
+    final _LabelTextDraft draft = _draftFor(regionId);
+    final Json run = objectOf(specimen.data['run']);
+    return KeyedSubtree(
+      key: anchors[regionId],
+      child: Column(
+        key: ValueKey<Object?>(widget.presentationIdentity),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          if (readings.isEmpty)
+            Text('No model result for this label.', style: ui.type.body)
+          else
+            LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                final double fontSize = ui.type.body.fontSize!;
+                final double scale =
+                    MediaQuery.textScalerOf(context).scale(fontSize) / fontSize;
+                final int columns =
+                    ((constraints.maxWidth + ui.space.s4) /
+                            (_modelColumnMinimum * scale + ui.space.s4))
+                        .floor()
+                        .clamp(1, readings.length.clamp(1, 3));
+                final double width =
+                    (constraints.maxWidth - ui.space.s4 * (columns - 1)) /
+                    columns;
+                return Wrap(
+                  spacing: ui.space.s4,
+                  runSpacing: ui.space.s4,
+                  children: <Widget>[
+                    for (final (int index, Json observation)
+                        in readings.indexed)
+                      SizedBox(
+                        width: width,
+                        child: _reading(
+                          context,
+                          observation,
+                          index == 0 ? null : _literalOf(readings.first),
+                          name,
+                          index,
+                          draft,
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          for (final MapEntry<String, String> reader in _readerNames.entries)
+            if (!readings.any((Json o) => readerIdentity(o) == reader.key))
+              Padding(
+                padding: EdgeInsetsDirectional.only(top: ui.space.s2),
+                child: Text(
+                  '${reader.value} · No result for this label',
+                  style: ui.type.bodySmall,
+                ),
+              ),
+          SizedBox(height: ui.space.s4),
+          const UiHairline(),
+          SizedBox(height: ui.space.s4),
+          _acceptedEditor(context, regionId, draft),
+          SizedBox(height: ui.space.s4),
+          UiDisclosure(
+            title: WorkbenchReadings.differencesHeading,
+            child: _differences(context, run),
+          ),
+          if (run['label_language_handling'] is Map)
+            UiDisclosure(
+              title: 'Languages and scripts',
+              child: _declarations(context, run),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// A full line of literal text remains useful before stacking at large text.
+  static const double _modelColumnMinimum = 200;
 
   Widget _reading(
     BuildContext context,
     Json o,
     String? reference,
     String regionName,
+    int index,
+    _LabelTextDraft? draft,
   ) {
-    final String literal = _literalOf(o);
-    return ReadingCard(
-      modelName: textOf(o['model_id'], 'Model'),
-      provider: textOf(o['provider'], 'Not recorded'),
-      literal: literal,
-      regionName: regionName,
-      // The first reading of a region has nothing before it to differ from.
-      reference: reference,
-      selected: selectedRegionId != null && selectedRegionId == o['region_id'],
-      executionDetails:
-          o.containsKey('latency_seconds') || o.containsKey('completion_state')
-          ? ObservationExecutionDetails(observation: o)
-          : null,
-      footerActions: Column(
+    final UiThemeData ui = context.ui;
+    final String name =
+        _readerNames[readerIdentity(o)] ?? 'Unidentified reader';
+    final List<Json> sameReader =
+        specimen.observations
+            .where(
+              (Json item) =>
+                  item['region_id'] == o['region_id'] &&
+                  readerIdentity(item) == readerIdentity(o),
+            )
+            .toList()
+          ..sort(
+            (Json a, Json b) =>
+                textOf(a['id'], '').compareTo(textOf(b['id'], '')),
+          );
+    final String resultName = sameReader.length > 1
+        ? '$name, result ${sameReader.indexWhere((Json item) => (item['id'] ?? item['observation_id']) == (o['id'] ?? o['observation_id'])) + 1}'
+        : name;
+    final String? blocked =
+        (draft == null
+            ? transcriptionBlockedReason
+            : _editBlocked(textOf(o['region_id'], ''))) ??
+        (draft?.stale == true
+            ? 'Reset this draft after the record changed'
+            : null);
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          if (o['region_id'] is String)
+          Row(
+            children: <Widget>[
+              Expanded(child: Text(name, style: ui.type.label)),
+              UiIconButton(
+                icon: UiIcons.info,
+                semanticsLabel:
+                    'How this reading was produced, $regionName, $resultName',
+                tooltip: 'Reading source',
+                onPressed: () => showProductModal<void>(
+                  context: context,
+                  title: '$regionName · $resultName',
+                  body: (context) => _readingDetails(context, o),
+                  secondaryAction: (context) => UiButton(
+                    label: 'Close',
+                    variant: UiButtonVariant.ghost,
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (sameReader.length > 1) Text(resultName, style: ui.type.bodySmall),
+          SizedBox(height: widget.compact ? ui.space.s1 : ui.space.s2),
+          DiffText(text: _literalOf(o), reference: reference),
+          if (draft != null)
             Align(
               alignment: AlignmentDirectional.centerStart,
               child: UiButton(
-                label: 'Show $regionName on the photograph',
+                label: 'Use this text',
+                semanticsLabel: 'Use text from $resultName',
                 variant: UiButtonVariant.ghost,
-                leading: UiIcons.wholeImage,
-                onPressed: () => onSelectRegion(o['region_id'] as String),
+                disabledReason: blocked,
+                onPressed: blocked != null || draft.busy
+                    ? null
+                    : () {
+                        setState(() {
+                          draft.value.text = _literalOf(o);
+                          draft.state = 'supported';
+                          draft.dirty = true;
+                          draft.error = null;
+                        });
+                        _reportDrafts();
+                      },
               ),
             ),
-          if (loadArtifact != null && o['raw_ref'] != null)
-            LazyEvidence(
-              key: ValueKey<String>(
-                'raw:${specimen.id}:${specimen.revision}:${o['id']}',
-              ),
-              label: 'Read raw reading',
-              load: () => loadArtifact!(
-                ArtifactRequest(
-                  ArtifactKind.observationRaw,
-                  textOf(o['id'], textOf(o['observation_id'])),
-                  sha256: o['raw_sha256'] as String?,
-                ),
-              ),
-              render: (Json raw) =>
-                  EvidenceDrawer(title: 'Raw reading response', payload: raw),
-            ),
-          if (loadArtifact != null &&
-              objectOf(
-                    objectOf(
-                      objectOf(specimen.data['run'])['reading_metadata'],
-                    ),
-                  )[o['id']] !=
-                  null)
-            LazyEvidence(
-              key: ValueKey<String>(
-                'metadata:${specimen.id}:${specimen.revision}:${o['id']}',
-              ),
-              label: 'Read language and script metadata',
-              load: () => loadArtifact!(
-                ArtifactRequest(ArtifactKind.readingMetadata, textOf(o['id'])),
-              ),
-              render: (Json metadata) =>
-                  ReadingMetadataView(metadata: metadata),
-            ),
-          if (loadArtifact != null && o['declaration_evidence'] is Map)
-            LazyEvidence(
-              key: ValueKey<String>(
-                'declaration:${specimen.id}:${specimen.revision}:${o['id']}',
-              ),
-              label: 'Read declaration provenance',
-              load: () => loadArtifact!(
-                ArtifactRequest(
-                  ArtifactKind.readingDeclarations,
-                  textOf(o['id']),
-                ),
-              ),
-              render: (Json value) => ReadingDeclarationView(
-                provenance: value,
-                onChange: declarationsBlocked ? null : onChange,
-              ),
-            ),
-          EvidenceDrawer(
-            title: 'Reading provenance and raw response',
-            payload: o,
-          ),
         ],
       ),
+    );
+  }
+
+  Widget _acceptedEditor(
+    BuildContext context,
+    String regionId,
+    _LabelTextDraft draft,
+  ) {
+    final UiThemeData ui = context.ui;
+    final String? blocked = _editBlocked(regionId);
+    final bool readOnly = blocked != null || draft.busy || draft.stale;
+    void changed() {
+      setState(() {
+        draft.dirty = true;
+        draft.error = null;
+      });
+      _reportDrafts();
+    }
+
+    final bool complete =
+        draft.reason.text.trim().isNotEmpty &&
+        (draft.state != 'supported' || draft.value.text.trim().isNotEmpty);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        UiTextArea(
+          key: draft.valueFieldKey,
+          label: 'Accepted label text',
+          controller: draft.value,
+          focusNode: draft.valueFocus,
+          readOnly: readOnly,
+          disabledReason: blocked,
+          autocorrect: false,
+          textCapitalization: TextCapitalization.none,
+          minLines: 2,
+          maxLines: 6,
+          onChanged: readOnly
+              ? null
+              : (_) {
+                  draft.state = 'supported';
+                  changed();
+                },
+        ),
+        if (blocked != null)
+          Text(blocked, style: ui.type.body.copyWith(color: ui.color.ink)),
+        if (draft.dirty) ...<Widget>[
+          SizedBox(height: ui.space.s2),
+          Text('Unsaved changes', style: ui.type.labelSmall),
+        ],
+        if (draft.stale) ...<Widget>[
+          SizedBox(height: ui.space.s2),
+          Text(
+            'This record changed. Your draft is kept; reset it before editing the new version.',
+            style: ui.type.body,
+          ),
+        ],
+        SizedBox(height: ui.space.s3),
+        UiSelect<String>(
+          label: 'Text status',
+          disabledReason: readOnly
+              ? (blocked ?? 'Text correction unavailable')
+              : null,
+          placeholder: 'Choose text status',
+          value: draft.state,
+          options: <UiSelectOption<String>>[
+            for (final String state in _transcriptionStates)
+              UiSelectOption<String>(
+                value: state,
+                label: vocabularyLabel(state),
+              ),
+          ],
+          onChanged: readOnly
+              ? null
+              : (String? next) {
+                  if (next != null) {
+                    draft.state = next;
+                    changed();
+                  }
+                },
+        ),
+        if (draft.dirty) ...<Widget>[
+          SizedBox(height: ui.space.s3),
+          UiTextArea(
+            key: draft.reasonFieldKey,
+            label: 'Reason for correction',
+            controller: draft.reason,
+            focusNode: draft.reasonFocus,
+            readOnly: readOnly,
+            minLines: 1,
+            maxLines: 3,
+            onChanged: readOnly ? null : (_) => changed(),
+          ),
+          if (draft.state != 'supported')
+            Text(
+              'No text will be saved for this status.',
+              style: ui.type.bodySmall,
+            ),
+        ],
+        if (draft.error != null) ...<Widget>[
+          SizedBox(height: ui.space.s2),
+          Semantics(
+            liveRegion: true,
+            child: Text(draft.error!, style: ui.type.body),
+          ),
+        ],
+        SizedBox(height: ui.space.s3),
+        Wrap(
+          spacing: ui.space.s2,
+          runSpacing: ui.space.s2,
+          children: <Widget>[
+            UiButton(
+              label: WorkbenchReadings.resolveLabel,
+              focusNode: _saveFocus,
+              disabledReason:
+                  blocked ??
+                  (draft.stale
+                      ? 'Reset this draft after the record changed'
+                      : draft.busy
+                      ? 'Saving label text'
+                      : 'Enter text and a reason'),
+              onPressed: !readOnly && draft.dirty && complete
+                  ? () => _saveDraft(regionId, draft)
+                  : null,
+            ),
+            if (draft.dirty)
+              UiButton(
+                label: draft.stale ? 'Reset draft' : 'Discard changes',
+                variant: UiButtonVariant.ghost,
+                onPressed: draft.busy
+                    ? null
+                    : () {
+                        setState(() {
+                          _drafts.remove(regionId)?.dispose();
+                        });
+                        _reportDrafts();
+                      },
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _saveDraft(String regionId, _LabelTextDraft draft) async {
+    if (draft.busy || draft.stale || _editBlocked(regionId) != null) return;
+    // Close the active editor connection before busy makes it read-only.
+    // This node belongs to the panel, so acknowledged draft disposal cannot
+    // dispose keyboard focus or leave it attached to a removed reason field.
+    _saveFocus.requestFocus();
+    FocusManager.instance.applyFocusChangesIfNeeded();
+    final Json change = <String, dynamic>{
+      'kind': 'transcription_adjudication',
+      'target_id': regionId,
+      'value': draft.state == 'supported' ? draft.value.text : null,
+      'state': draft.state,
+      'reason': draft.reason.text.trim(),
+      'evidence_ids': <String>[],
+    };
+    setState(() {
+      draft.busy = true;
+      draft.error = null;
+    });
+    _reportDrafts();
+    bool acknowledged = false;
+    try {
+      if (widget.onCommit != null) {
+        acknowledged = await widget.onCommit!(change);
+      } else {
+        await onChange(change);
+      }
+    } catch (_) {
+      // The host owns any request-level error. Keep the editable draft here.
+    }
+    if (!mounted || !identical(_drafts[regionId], draft)) return;
+    final Json accepted = _accepted(regionId);
+    final bool matchesReadback =
+        specimen.revision > draft.revision &&
+        (accepted['value_state'] ?? accepted['state']) == change['state'] &&
+        (accepted['verbatim_text'] ?? accepted['text']) == change['value'] &&
+        accepted['reason'] == change['reason'];
+    setState(() {
+      draft.busy = false;
+      if (acknowledged && matchesReadback) {
+        _drafts.remove(regionId)!.dispose();
+      } else {
+        draft.stale = draft.revision != specimen.revision;
+        draft.error = 'Save not confirmed. Your changes are kept.';
+      }
+    });
+    _reportDrafts();
+  }
+
+  Widget _readingDetails(BuildContext context, Json o) {
+    final UiThemeData ui = context.ui;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(textOf(o['model_id'], 'Model not recorded'), style: ui.type.label),
+        TermText(
+          'Provider',
+          displayText: textOf(o['provider'], 'Not recorded'),
+          style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+        ),
+        if (o.containsKey('latency_seconds') ||
+            o.containsKey('completion_state')) ...<Widget>[
+          SizedBox(height: ui.space.s2),
+          Text(ReadingCard.executionTitle, style: ui.type.label),
+          ObservationExecutionDetails(observation: o),
+        ],
+        if (loadArtifact != null && o['raw_ref'] != null)
+          LazyEvidence(
+            key: ValueKey<String>(
+              'raw:${specimen.id}:${specimen.revision}:${o['id']}',
+            ),
+            label: 'Read raw reading',
+            load: () => loadArtifact!(
+              ArtifactRequest(
+                ArtifactKind.observationRaw,
+                textOf(o['id'], textOf(o['observation_id'])),
+                sha256: o['raw_sha256'] as String?,
+              ),
+            ),
+            render: (Json raw) =>
+                EvidenceDrawer(title: 'Raw reading response', payload: raw),
+          ),
+        if (loadArtifact != null &&
+            objectOf(
+                  objectOf(objectOf(specimen.data['run'])['reading_metadata']),
+                )[o['id']] !=
+                null)
+          LazyEvidence(
+            key: ValueKey<String>(
+              'metadata:${specimen.id}:${specimen.revision}:${o['id']}',
+            ),
+            label: 'Read language and script metadata',
+            load: () => loadArtifact!(
+              ArtifactRequest(ArtifactKind.readingMetadata, textOf(o['id'])),
+            ),
+            render: (Json metadata) => ReadingMetadataView(metadata: metadata),
+          ),
+        if (loadArtifact != null && o['declaration_evidence'] is Map)
+          LazyEvidence(
+            key: ValueKey<String>(
+              'declaration:${specimen.id}:${specimen.revision}:${o['id']}',
+            ),
+            label: 'Read declaration provenance',
+            load: () => loadArtifact!(
+              ArtifactRequest(
+                ArtifactKind.readingDeclarations,
+                textOf(o['id']),
+              ),
+            ),
+            render: (Json value) => ReadingDeclarationView(
+              provenance: value,
+              onChange: declarationsBlocked ? null : onChange,
+            ),
+          ),
+        EvidenceDrawer(
+          title: 'Reading provenance and raw response',
+          payload: o,
+        ),
+      ],
     );
   }
 
@@ -271,7 +912,12 @@ class WorkbenchReadings extends StatelessWidget {
     final Object? handling = run['label_language_handling'];
     if (handling is! Map) return const SizedBox.shrink();
     return LabelLanguagePolicy(
-      handling: objectOf(handling),
+      handling: <String, dynamic>{
+        ...objectOf(handling),
+        'labels': objects(handling['labels'])
+            .where((Json label) => label['region_id'] == selectedRegionId)
+            .toList(),
+      },
       regionName: _regionName,
       onDeclare: declarationsBlocked
           ? null
@@ -293,23 +939,31 @@ class WorkbenchReadings extends StatelessWidget {
   }
 
   Widget _differences(BuildContext context, Json run) {
-    final List<Json> transcriptions = objects(specimen.data['transcriptions']);
+    final List<Json> transcriptions = objects(
+      specimen.data['transcriptions'],
+    ).where((Json t) => t['region_id'] == selectedRegionId).toList();
     // One row per region. A region with a transcription is described by it;
     // the list of differences speaks only for a region no transcription
     // covers, which is the shape older records and fixtures carry.
     final Set<Object?> described = <Object?>{
       for (final Json t in transcriptions) t['region_id'],
     };
-    final List<Json> disagreements = objects(
-      specimen.data['disagreements'],
-    ).where((Json d) => !described.contains(d['region_id'])).toList();
+    final List<Json> disagreements = objects(specimen.data['disagreements'])
+        .where(
+          (Json d) =>
+              d['region_id'] == selectedRegionId &&
+              !described.contains(d['region_id']),
+        )
+        .toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         if (loadArtifact != null)
-          for (final Json d in objects(run['disagreements']))
+          for (final Json d in objects(
+            run['disagreements'],
+          ).where((Json d) => d['region_id'] == selectedRegionId))
             LazyEvidence(
               key: ValueKey<String>(
                 'alignment:${specimen.id}:${specimen.revision}:${d['region_id']}',
@@ -353,27 +1007,6 @@ class WorkbenchReadings extends StatelessWidget {
                 ? TranscriptionComparisonSummary(transcription: t)
                 : null,
           ),
-        SizedBox(height: context.ui.space.s2),
-        Align(
-          alignment: AlignmentDirectional.centerStart,
-          // `UiButton` carries the reason itself: `Pressable` publishes it as
-          // the control's semantic hint and reports it on press, so a screen
-          // reader hears why rather than only that the control is dimmed
-          // (accessibility, section 3.2).
-          child: UiButton(
-            label: resolveLabel,
-            variant: UiButtonVariant.secondary,
-            leading: UiIcons.editReason,
-            disabledReason: specimen.observations.isEmpty
-                ? noReadingsReason
-                : transcriptionBlockedReason,
-            onPressed:
-                transcriptionBlockedReason != null ||
-                    specimen.observations.isEmpty
-                ? null
-                : () => _resolve(context),
-          ),
-        ),
       ],
     );
   }
@@ -424,28 +1057,33 @@ class WorkbenchReadings extends StatelessWidget {
               .toSet();
     return texts.join(' · ');
   }
+}
 
-  Future<void> _resolve(BuildContext context) async {
-    final String? regionId =
-        selectedRegionId ??
-        (specimen.regions.isEmpty
-            ? specimen.observations.first['region_id'] as String?
-            : specimen.regions.first['region_id'] as String?);
-    final List<Json> readings = specimen.observations
-        .where((Json o) => o['region_id'] == regionId)
-        .toList();
-    final Json? change = await showResolveTranscription(
-      context,
-      regionName: _regionName(regionId),
-      regionId: regionId,
-      readings: <({String model, String literal})>[
-        for (final Json o
-            in (readings.isEmpty ? specimen.observations : readings))
-          (model: textOf(o['model_id'], 'Model'), literal: _literalOf(o)),
-      ],
-      choices: evidenceChoices(specimen),
-    );
-    if (change != null && context.mounted) await onChange(change);
+class _LabelTextDraft {
+  _LabelTextDraft({
+    required this.revision,
+    required String text,
+    required this.state,
+  }) : value = TextEditingController(text: text);
+
+  final int revision;
+  final TextEditingController value;
+  final TextEditingController reason = TextEditingController();
+  final FocusNode valueFocus = FocusNode(debugLabel: 'Accepted label text');
+  final FocusNode reasonFocus = FocusNode(debugLabel: 'Reason for correction');
+  GlobalKey valueFieldKey = GlobalKey();
+  GlobalKey reasonFieldKey = GlobalKey();
+  String state;
+  bool dirty = false;
+  bool busy = false;
+  bool stale = false;
+  String? error;
+
+  void dispose() {
+    valueFocus.dispose();
+    reasonFocus.dispose();
+    value.dispose();
+    reason.dispose();
   }
 }
 
@@ -505,269 +1143,4 @@ class _DifferenceRow extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Resolves a transcription with both readings visible beside the field.
-///
-/// Deliberately not a plain reason sheet and deliberately not a modal that
-/// hides the pixels: the readings the reviewer is choosing between are on
-/// screen the whole time (blueprint 6.3, audit finding H6.2).
-Future<Json?> showResolveTranscription(
-  BuildContext context, {
-  required String regionName,
-  required String? regionId,
-  required List<({String model, String literal})> readings,
-  required List<EvidenceChoice> choices,
-}) => showAdaptiveModal<Json>(
-  context,
-  title: 'Resolve $regionName',
-  body: (BuildContext formContext) => _ResolveTranscriptionForm(
-    regionName: regionName,
-    regionId: regionId,
-    readings: readings,
-    choices: choices,
-  ),
-);
-
-class _ResolveTranscriptionForm extends StatefulWidget {
-  const _ResolveTranscriptionForm({
-    required this.regionName,
-    required this.regionId,
-    required this.readings,
-    required this.choices,
-  });
-
-  final String regionName;
-  final String? regionId;
-  final List<({String model, String literal})> readings;
-  final List<EvidenceChoice> choices;
-
-  @override
-  State<_ResolveTranscriptionForm> createState() =>
-      _ResolveTranscriptionFormState();
-}
-
-class _ResolveTranscriptionFormState extends State<_ResolveTranscriptionForm> {
-  late final TextEditingController _value = TextEditingController(
-    text: widget.readings.isEmpty ? '' : widget.readings.first.literal,
-  );
-  final TextEditingController _reason = TextEditingController();
-  String _state = 'supported';
-  Set<String> _evidence = <String>{};
-
-  /// The states a transcription can be recorded in. `not_applicable` is not
-  /// one of them: a label either has a reading or it does not.
-  static const List<String> states = <String>[
-    'supported',
-    'unknown',
-    'unreadable',
-    'ambiguous',
-    'not_present',
-    'unresolved',
-  ];
-
-  /// The sentence above the two readings.
-  static const String preamble =
-      'Both readings stay unchanged. Your decision is recorded beside them.';
-
-  /// The control that copies one reading into the value.
-  static const String useReadingLabel = 'Use this reading';
-
-  /// The field that names the evidence state.
-  static const String stateLabel = 'Evidence state';
-
-  /// The verbatim value, and the rule for typing into it.
-  static const String valueLabel = 'Value as written';
-  static const String valueHelp =
-      'Keep the text exactly as written. Do not add missing evidence.';
-
-  /// The commit control, and why it is disabled.
-  static const String saveLabel = 'Resolve transcription';
-  static const String saveHint = 'Choose a value, evidence and a reason';
-
-  /// The way out.
-  static const String cancelLabel = 'Cancel';
-
-  @override
-  void dispose() {
-    _value.dispose();
-    _reason.dispose();
-    super.dispose();
-  }
-
-  bool get _complete {
-    if (_reason.text.trim().isEmpty) return false;
-    if (_state != 'supported') return true;
-    return _value.text.trim().isNotEmpty && _evidence.isNotEmpty;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    return PopScope<Json?>(
-      canPop: _reason.text.trim().isEmpty,
-      onPopInvokedWithResult: (bool didPop, Json? result) {
-        if (!didPop) _confirmDismiss();
-      },
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(preamble, style: ui.type.body),
-            SizedBox(height: ui.space.s4),
-            // Both readings, on screen, beside the field.
-            LayoutBuilder(
-              builder: (BuildContext context, BoxConstraints c) {
-                final bool sideBySide = c.maxWidth >= readingsSideBySideMin;
-                return Wrap(
-                  spacing: ui.space.s4,
-                  runSpacing: ui.space.s4,
-                  children: <Widget>[
-                    for (final (int i, ({String model, String literal}) reading)
-                        in widget.readings.indexed)
-                      SizedBox(
-                        width: sideBySide
-                            ? (c.maxWidth - ui.space.s4) / 2
-                            : c.maxWidth,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Text(reading.model, style: ui.type.label),
-                            DiffText(
-                              text: reading.literal,
-                              reference: i == 0
-                                  ? null
-                                  : widget.readings.first.literal,
-                              dense: true,
-                            ),
-                            SizedBox(height: ui.space.s1),
-                            UiButton(
-                              label: useReadingLabel,
-                              variant: UiButtonVariant.secondary,
-                              semanticsLabel:
-                                  '$useReadingLabel from ${reading.model}',
-                              onPressed: () => setState(() {
-                                _state = 'supported';
-                                _value.text = reading.literal;
-                              }),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                );
-              },
-            ),
-            SizedBox(height: ui.space.s4),
-            UiSelect<String>(
-              label: stateLabel,
-              placeholder: stateLabel,
-              value: _state,
-              options: <UiSelectOption<String>>[
-                for (final String option in states)
-                  UiSelectOption<String>(
-                    value: option,
-                    label: vocabularyLabel(option),
-                  ),
-              ],
-              onChanged: (String? next) {
-                if (next != null) setState(() => _state = next);
-              },
-            ),
-            SizedBox(height: ui.space.s2),
-            if (_state != 'supported')
-              const CaveatText(
-                label:
-                    'Both readings are kept unchanged and the record stays '
-                    'blocked from clearance.',
-                why:
-                    'Absence is recorded as a state, never as a made up '
-                    'value.',
-              ),
-            if (_state == 'supported') ...<Widget>[
-              UiTextArea(
-                label: valueLabel,
-                helpText: valueHelp,
-                controller: _value,
-                minLines: _valueMinLines,
-                maxLines: _valueMaxLines,
-                onChanged: (String _) => setState(() {}),
-              ),
-              SizedBox(height: ui.space.s4),
-              EvidencePicker(
-                choices: widget.choices,
-                selected: _evidence,
-                required: true,
-                onChanged: (Set<String> next) =>
-                    setState(() => _evidence = next),
-              ),
-            ],
-            SizedBox(height: ui.space.s4),
-            UiTextArea(
-              label: 'Reason',
-              helpText: reasonHelperText,
-              controller: _reason,
-              minLines: _reasonMinLines,
-              maxLines: _reasonMaxLines,
-              onChanged: (String _) => setState(() {}),
-            ),
-            SizedBox(height: ui.space.s6),
-            UiButtonRow(
-              primary: UiButton(
-                label: saveLabel,
-                disabledReason: saveHint,
-                onPressed: _complete ? _save : null,
-              ),
-              secondary: UiButton(
-                label: cancelLabel,
-                variant: UiButtonVariant.ghost,
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _save() => Navigator.of(context).pop(<String, dynamic>{
-    'kind': 'transcription_adjudication',
-    'target_id': widget.regionId,
-    'value': _state == 'supported' ? _value.text : null,
-    'state': _state,
-    'reason': _reason.text.trim(),
-    'evidence_ids': _evidence.toList(),
-  });
-
-  Future<void> _confirmDismiss() async {
-    final NavigatorState navigator = Navigator.of(context);
-    final bool discard =
-        await UiDialog.show<bool>(
-          context: context,
-          title: 'Discard this resolution?',
-          semanticsLabel: 'Discard this resolution?',
-          dismissLabel: modalDismissLabel,
-          body: (BuildContext _) =>
-              const Text('The text you typed is not saved anywhere.'),
-          primaryAction: (BuildContext confirmContext) => UiButton(
-            label: 'Discard the resolution',
-            onPressed: () => Navigator.of(confirmContext).pop(true),
-          ),
-          secondaryAction: (BuildContext confirmContext) => UiButton(
-            label: 'Keep editing',
-            variant: UiButtonVariant.ghost,
-            onPressed: () => Navigator.of(confirmContext).pop(false),
-          ),
-        ) ??
-        false;
-    if (discard && navigator.mounted) navigator.pop();
-  }
-
-  /// How far the verbatim value and the reason grow before they scroll.
-  static const int _valueMinLines = 2;
-  static const int _valueMaxLines = 6;
-  static const int _reasonMinLines = 2;
-  static const int _reasonMaxLines = 4;
 }

@@ -1,8 +1,12 @@
 import 'dart:js_interop';
+import 'email_link_cleanup.dart';
 import 'magic_link.dart';
 
 @JS('window.history.replaceState')
 external void _replaceState(JSAny? state, String title, String url);
+
+@JS('window.history.state')
+external JSAny? get _historyState;
 
 EmailLinkBrowser createEmailLinkBrowser() => _WebEmailLinkBrowser();
 
@@ -13,7 +17,7 @@ class _WebEmailLinkBrowser implements EmailLinkBrowser {
 
   @override
   void clearLink() {
-    // A late completion may outlive its widget. Do not replace a newer URL.
-    if (Uri.base == initialUri) _replaceState(null, '', '/');
+    final location = emailLinkCleanupLocation(initialUri, Uri.base);
+    if (location != null) _replaceState(_historyState, '', location);
   }
 }

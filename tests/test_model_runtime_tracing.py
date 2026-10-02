@@ -71,7 +71,7 @@ def test_fresh_model_children_export_linked_private_spans_before_return(
     tmp_path, monkeypatch, capfire
 ):
     monkeypatch.setenv("SPECIMEN_APPROVED_INFERENCE", "true")
-    # The child must force metadata policy even if its environment asks for content.
+    # G3 approved-content selection retains the existing lineage/privacy checks.
     monkeypatch.setenv("LOGFIRE_CAPTURE_MODE", "approved-content")
     blobs = LocalBlobs(tmp_path / "blobs")
     app = create_app(
@@ -99,7 +99,7 @@ def test_fresh_model_children_export_linked_private_spans_before_return(
     records = [json.loads(p.read_text()) for p in tmp_path.glob("*.trace.json")]
     assert len(records) == 3  # Both independent readers and resolved extraction.
     for record in records:
-        assert record["configured"] == [{"specimen.telemetry.capture_mode": "metadata"}]
+        assert record["configured"] == [{"specimen.telemetry.capture_mode": "approved-content"}]
         spans = record["spans"]
         effect = next(s for s in spans if s["name"] == "Run isolated specimen model")
         assert any(

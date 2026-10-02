@@ -194,6 +194,8 @@ void main() {
           'observations': [workspace['observations'][0]],
         });
         useWindow(tester, largeWindow);
+        // Close any prior provenance modal before changing the permission case.
+        await tester.pumpWidget(const SizedBox.shrink());
         await tester.pumpWidget(
           workbenchHost(
             ReviewWorkbench(
@@ -208,13 +210,14 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await scrollAndTap(
+          tester,
+          uiIconButton(RegExp('^How this reading was produced,')),
+        );
+        await scrollAndTap(tester, find.text('Read declaration provenance'));
       }
 
       await show([], true);
-      await tester.ensureVisible(find.text('Read declaration provenance'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Read declaration provenance'));
-      await tester.pumpAndSettle();
       expect(find.text('Record declaration'), findsNothing);
       await show(List<dynamic>.from(actions), true);
       expect(find.text('Record declaration'), findsOneWidget);

@@ -10,6 +10,7 @@
 // and the keyboard: a reviewer moves between pages with the keys in either
 // arrangement, or the gallery is unreachable to half the people reviewing it.
 
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -106,11 +107,112 @@ void main() {
       );
     }
     expect(
-      tester.getTopLeft(find.byType(Surface)).dx,
+      tester
+          .getTopLeft(
+            find.ancestor(
+              of: find.text('the first body'),
+              matching: find.byType(Surface),
+            ),
+          )
+          .dx,
       220,
       reason: 'the content starts where the 220 dp sidebar ends',
     );
   });
+
+  testWidgets(
+    'sidebar keeps the complete wrapped title visible at 200 percent text',
+    (WidgetTester tester) async {
+      const Size window = Size(1000, 600);
+      const String title = 'Current control states';
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = window;
+      addTearDown(tester.view.reset);
+      final List<GalleryPage> pages = <GalleryPage>[
+        for (int i = 0; i < 14; i++)
+          GalleryPage(
+            id: 'page-$i',
+            title: 'Page $i',
+            summary: 'Gallery example',
+            builder: (BuildContext context) => const Text('Example content'),
+          ),
+        GalleryPage(
+          id: 'control-states',
+          title: title,
+          summary: 'Control states',
+          builder: (BuildContext context) =>
+              const Text('Control state examples'),
+        ),
+      ];
+      await tester.pumpWidget(
+        uiHarness(
+          size: window,
+          density: UiDensityMode.pointer,
+          textScaler: const TextScaler.linear(2),
+          child: SizedBox.fromSize(
+            size: window,
+            child: UiGallery(pages: pages),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final Finder row = find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is Pressable && widget.semanticsLabel == title,
+      );
+      expect(row, findsOneWidget);
+      expect(tester.getRect(row).top, greaterThan(window.height));
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+
+      final Rect rowBounds = tester.getRect(row);
+      final Finder scrollView = find.ancestor(
+        of: row,
+        matching: find.byType(SingleChildScrollView),
+      );
+      final Rect viewport = tester.getRect(scrollView);
+      expect(rowBounds.top, greaterThanOrEqualTo(viewport.top));
+      expect(rowBounds.bottom, lessThanOrEqualTo(viewport.bottom));
+      expect(rowBounds.left, greaterThanOrEqualTo(viewport.left));
+      expect(rowBounds.right, lessThanOrEqualTo(viewport.right));
+      expect(viewport.top, greaterThanOrEqualTo(0));
+      expect(viewport.bottom, lessThanOrEqualTo(window.height));
+
+      final Finder richText = find.descendant(
+        of: row,
+        matching: find.byType(RichText),
+      );
+      final RenderParagraph paragraph = tester.renderObject<RenderParagraph>(
+        richText,
+      );
+      expect(paragraph.text.toPlainText(), title);
+      expect(paragraph.didExceedMaxLines, isFalse);
+      final TextPainter fullText = TextPainter(
+        text: paragraph.text,
+        textDirection: paragraph.textDirection,
+        textScaler: paragraph.textScaler,
+      )..layout(maxWidth: paragraph.size.width);
+      addTearDown(fullText.dispose);
+      expect(fullText.computeLineMetrics().length, greaterThan(1));
+      final Offset textOrigin = paragraph.localToGlobal(Offset.zero);
+      final Rect completeText =
+          textOrigin & Size(paragraph.size.width, fullText.height);
+      expect(completeText.left, greaterThanOrEqualTo(rowBounds.left));
+      expect(completeText.right, lessThanOrEqualTo(rowBounds.right));
+      expect(completeText.top, greaterThanOrEqualTo(rowBounds.top));
+      expect(
+        completeText.bottom,
+        lessThanOrEqualTo(rowBounds.bottom),
+        reason: 'every wrapped line must fit inside its own navigation row',
+      );
+      expect(paragraph.size.height, greaterThanOrEqualTo(fullText.height));
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expect(tester.widget<Pressable>(row).selected, isTrue);
+      expect(find.text('Control state examples'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('the arrangement changes at the medium boundary', (
     WidgetTester tester,

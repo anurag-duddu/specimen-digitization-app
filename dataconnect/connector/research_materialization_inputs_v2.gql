@@ -1,0 +1,191 @@
+# Additive trusted-server query; entire response is strictly decoded privately.
+# Native grammar/physical names/IAM/race semantics require ROOT qualification.
+query GetCanonicalResearchMaterializationInputsV2($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $idempotencyKey: String!, $requestIdentityDigest: String!, $preparationId: UUID!) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) { active }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) { active role canViewSensitive }
+  specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) { sensitive }
+  binding: _selectFirst(sql: """
+    WITH base AS (
+    SELECT jsonb_build_object(
+      'organization_id', s.organization_id, 'collection_id', s.collection_id,
+      'specimen_id', s.id, 'record_revision', s.revision,
+      'record_version_id', rv.id,
+      'canonical_run_id', run.id,
+      'host_record_version_id', b.current_host_record_version_id,
+      'snapshot_sha256', snap.sha256, 'sensitive', s.sensitive
+    ) AS canonical,
+    (SELECT count(*) FROM public.canonical_research_binding_v2 counted WHERE counted.organization_id=s.organization_id
+      AND counted.collection_id=s.collection_id AND counted.specimen_id=s.id AND counted.active) AS active_registration_count,
+    CASE WHEN b.binding_id IS NULL THEN '[]'::jsonb ELSE jsonb_build_array(jsonb_build_object(
+      'binding_id', b.binding_id, 'registration_revision', b.registration_revision, 'active', b.active,
+      'base_canonical', jsonb_build_object('record_revision', b.base_canonical_revision,
+        'record_version_id', b.base_record_version_id, 'canonical_run_id', b.canonical_run_id,
+        'host_record_version_id', b.base_host_record_version_id, 'snapshot_sha256', b.base_snapshot_sha256),
+      'current_canonical', jsonb_build_object('record_revision', b.current_canonical_revision,
+        'record_version_id', b.current_record_version_id, 'canonical_run_id', b.canonical_run_id,
+        'host_record_version_id', b.current_host_record_version_id, 'snapshot_sha256', b.current_snapshot_sha256),
+      'job_id', b.job_id, 'job_key', b.job_key, 'generation', b.generation,
+      'input_digest', b.input_digest, 'profile_digest', b.profile_digest,
+      'runtime_binding_digest', b.runtime_binding_digest, 'canonical_profile_digest', b.canonical_profile_digest,
+      'source_sha256', b.source_sha256, 'semantic_mapping_digest', b.semantic_mapping_digest,
+      'policy_digest', b.policy_digest, 'program_key', b.program_key,
+      'field_mapping', b.semantic_mapping->'field_mapping', 'semantic_mapping', b.semantic_mapping,
+      'human_locks', (SELECT jsonb_object_agg(b.semantic_mapping->'field_mapping'->>k, COALESCE((v->>'locked')::boolean, true)
+          OR COALESCE((snap.snapshot->'run'->>'human_approved')::boolean, false)
+           OR COALESCE(snap.snapshot->'run'->'history_restore_human_locks' = 'true'::jsonb, false))
+        FROM jsonb_each(h.state->'jobs'->b.job_key->'fields') AS f(k,v)),
+      'job', h.state->'jobs'->b.job_key,
+      'research_policy_origin', b.semantic_mapping->>'research_policy_origin',
+      'journal_budget_policy_digest', b.semantic_mapping->>'journal_budget_policy_digest',
+      'journal_budget_policy_origin', 'verified_owner_registration_not_SQL_recomputed',
+      'read_bundle', jsonb_build_object('state_revision',h.revision,
+        'server_time',extract(epoch FROM statement_timestamp()),'job_key',b.job_key,
+        'job',h.state->'jobs'->b.job_key,'halted',(h.state->>'halted')::boolean,
+        'paused',(h.state->'jobs'->b.job_key->>'paused')::boolean,
+        'effects',(SELECT COALESCE(jsonb_object_agg(e.key,e.value),'{}'::jsonb)
+          FROM jsonb_each(h.state->'effects') e WHERE e.value->>'job_key'=b.job_key
+          AND e.value->'scope'->>'organization_id'=b.organization_id::text
+          AND e.value->'scope'->>'collection_id'=b.collection_id::text
+          AND e.value->'scope'->>'specimen_id'=b.specimen_id::text AND e.value->'scope'->>'job_id'=b.job_id),
+        'outbox',(SELECT COALESCE(jsonb_object_agg(e.key,e.value),'{}'::jsonb)
+          FROM jsonb_each(h.state->'outbox') e WHERE e.value->>'kind'='research_field_retry'
+          AND e.value->'command'->'scope'->>'organization_id'=b.organization_id::text
+          AND e.value->'command'->'scope'->>'collection_id'=b.collection_id::text
+          AND e.value->'command'->'scope'->>'specimen_id'=b.specimen_id::text AND e.value->'command'->'scope'->>'job_id'=b.job_id),
+        'hold_reasons',to_jsonb(array_remove(ARRAY[
+          CASE WHEN authority.id IS NULL OR NOT authority.authority_complete OR NOT authority.old_engine_quiescent
+            OR authority.valid_until<=statement_timestamp() OR legacy.revision IS DISTINCT FROM authority.legacy_document_revision
+            OR legacy.payload IS DISTINCT FROM authority.legacy_payload
+            OR authority.ledger_digest IS DISTINCT FROM h.state->'budget_policy'->>'external_ledger_digest'
+            OR authority.import_digest IS DISTINCT FROM h.state->'budget_policy'->>'import_digest'
+            OR authority.proof_digest IS DISTINCT FROM h.state->'budget_policy'->>'import_proof_digest'
+            THEN 'legacy_live_import_not_confirmed' END,
+          CASE WHEN (h.state->>'halted')::boolean THEN 'program_halted' END,
+          CASE WHEN (h.state->'jobs'->b.job_key->>'paused')::boolean THEN 'job_paused' END,
+          CASE WHEN EXISTS (SELECT 1 FROM jsonb_each(h.state->'effects') e WHERE e.value->>'job_key'=b.job_key
+            AND e.value->>'status' IN ('sending','held_unknown')) THEN 'unknown_effect' END,
+          CASE WHEN authority.id IS NULL OR authority.ceiling_micro_usd<=0 OR authority.ceiling_micro_usd>12000000
+            OR (h.state->'budget_totals'->>'settled_micro_usd')::bigint
+              +(h.state->'budget_totals'->>'held_micro_usd')::bigint+authority.lag_reserve_micro_usd
+              +authority.shared_reserve_micro_usd>authority.ceiling_micro_usd THEN 'budget_unavailable' END
+        ],NULL))),
+      'publication_transition', NULL
+    )) END AS registrations,
+    jsonb_build_object('snapshot', snap.snapshot, 'sha256', snap.sha256,
+      'revision', snap.revision, 'contractVersion', snap.contract_version) AS snapshot,
+    jsonb_build_object('contract_version',b.publication_version,'authority_digest',b.authority_digest,
+      'import_proof_id',b.import_proof_id,'import_proof_digest',b.import_proof_digest,
+      'head_receipt_id',b.current_receipt_id,'head_chain_digest',b.current_chain_digest,
+      'causal_chain',(SELECT CASE WHEN count(*)<=20 THEN COALESCE(jsonb_agg(p.causal_proof ORDER BY p.used_canonical_revision),'[]'::jsonb) ELSE NULL END
+        FROM public.research_publication_receipt_v2 p WHERE p.organization_id=b.organization_id
+          AND p.collection_id=b.collection_id AND p.specimen_id=b.specimen_id AND p.binding_id=b.binding_id),
+      'causal_count',(SELECT count(*) FROM public.research_publication_receipt_v2 p
+        WHERE p.organization_id=b.organization_id AND p.collection_id=b.collection_id
+          AND p.specimen_id=b.specimen_id AND p.binding_id=b.binding_id)) AS causal,
+    (SELECT COALESCE(jsonb_agg(jsonb_build_object('id',f.id,'recordVersionId',f.record_version_id,
+      'candidateId',f.candidate_id,'fieldKey',f.field_key,'state',f.state,'fieldGroup',f.field_group) ORDER BY f.field_key),'[]'::jsonb)
+      FROM public.resolved_field f WHERE f.organization_id=s.organization_id AND f.collection_id=s.collection_id
+      AND f.record_version_id=b.current_record_version_id) AS projection
+    FROM public.specimen s
+    JOIN public.specimen_snapshot snap ON snap.organization_id=s.organization_id
+      AND snap.collection_id=s.collection_id AND snap.specimen_id=s.id AND snap.revision=s.revision
+    JOIN public.organization_member om ON om.organization_id=s.organization_id AND om.uid=$4 AND om.active
+    JOIN public.collection_member cm ON cm.organization_id=s.organization_id AND cm.collection_id=s.collection_id
+      AND cm.uid=$4 AND cm.active AND (NOT s.sensitive OR cm.can_view_sensitive)
+    LEFT JOIN public.canonical_research_binding_v2 b ON b.organization_id=s.organization_id
+      AND b.collection_id=s.collection_id AND b.specimen_id=s.id AND b.active
+    LEFT JOIN public.record_version rv ON rv.organization_id=b.organization_id AND rv.collection_id=b.collection_id
+      AND rv.id=b.current_record_version_id AND rv.run_id=b.canonical_run_id
+    LEFT JOIN public.pipeline_run run ON run.organization_id=b.organization_id AND run.collection_id=b.collection_id
+      AND run.id=b.canonical_run_id AND run.id=s.active_run_id AND run.specimen_id=s.id
+    LEFT JOIN public.research_harness_state h ON h.organization_id=b.organization_id AND h.program_key=b.program_key
+    LEFT JOIN public.research_ledger_import_proof_v1 authority ON authority.organization_id=h.organization_id
+      AND authority.program_key=h.program_key AND authority.id::text=h.state->'budget_policy'->>'import_receipt_id'
+    LEFT JOIN public.auxiliary_document legacy ON legacy.organization_id=authority.organization_id
+      AND legacy.collection_id=authority.legacy_collection_id AND legacy.id=authority.legacy_document_id
+      AND legacy.kind=authority.legacy_document_kind AND authority.legacy_document_kind='worker_cursor'
+    LEFT JOIN public.research_publication_receipt_v2 p ON p.organization_id=b.organization_id
+      AND p.collection_id=b.collection_id AND p.id=b.current_receipt_id AND p.specimen_id=b.specimen_id
+    WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
+      AND (b.binding_id IS NULL OR (rv.id IS NOT NULL AND run.id IS NOT NULL
+        AND b.current_canonical_revision=s.revision AND b.current_snapshot_sha256=snap.sha256))
+    ), selected AS (
+      SELECT i.id AS intent_id, i.payload AS intent, prep.payload AS preparation,
+        prep.id AS preparation_id, prep.preparation_digest,
+        h.state, h.state_json, h.revision AS state_revision, h.contract_version AS state_contract,
+        b.job_key, b.job_id, b.generation
+      FROM public.research_publication_intent_v2 i
+      JOIN public.research_publication_preparation_v2 prep ON prep.organization_id=i.organization_id
+        AND prep.collection_id=i.collection_id AND prep.intent_id=i.id AND prep.id=$7
+      JOIN public.canonical_research_binding_v2 b ON b.organization_id=i.organization_id
+        AND b.collection_id=i.collection_id AND b.specimen_id=i.specimen_id AND b.active
+      JOIN public.research_harness_state h ON h.organization_id=b.organization_id AND h.program_key=b.program_key
+      WHERE i.organization_id=$1 AND i.collection_id=$2 AND i.specimen_id=$3 AND i.actor_uid=$4
+        AND i.idempotency_key=$5 AND i.request_identity_digest=$6
+    )
+    SELECT base.*,
+      jsonb_build_object(
+        'contract_version','research-native-materialization-inputs/v2',
+        'observed_at',to_char(statement_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
+        'registration',base.registrations->0,
+        'outer_intent',jsonb_build_object('original',sel.intent,
+          'preparation_count',(SELECT count(*)::int FROM public.research_publication_preparation_v2 pp
+            WHERE pp.organization_id=$1 AND pp.collection_id=$2 AND pp.intent_id=sel.intent_id),
+          'preparations',(SELECT CASE WHEN count(*)<=20 THEN jsonb_agg(pp.payload ORDER BY pp.ordinal) ELSE NULL END
+            FROM public.research_publication_preparation_v2 pp WHERE pp.organization_id=$1 AND pp.collection_id=$2 AND pp.intent_id=sel.intent_id),
+          'attempt',(SELECT jsonb_build_object('id',a.id,'preparation_id',a.preparation_id,'operation_digest',a.operation_digest,
+            'preparation_digest',a.preparation_digest,'admission_digest',a.admission_digest)
+            FROM public.research_publication_attempt_v2 a WHERE a.organization_id=$1 AND a.collection_id=$2 AND a.intent_id=sel.intent_id)),
+        'scoped_state',base.registrations->0->'read_bundle',
+        'private_state_integrity',jsonb_build_object('revision',sel.state_revision,'contract_version',sel.state_contract,
+          'state_json',sel.state_json,'state',sel.state),
+        'current_snapshot',base.snapshot,
+        'preparation_snapshot',jsonb_build_object('identity',sel.preparation->'anchor',
+          'snapshot',jsonb_build_object('snapshot',anchor.snapshot,'sha256',anchor.sha256,'revision',anchor.revision,'contractVersion',anchor.contract_version),
+          'record',jsonb_build_object('id',anchor_record.id,'runId',anchor_record.run_id,'predecessorId',anchor_record.predecessor_id)),
+        'retained_history',base.causal->'causal_chain',
+        'projection_rows',jsonb_build_object('record_versions',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'predecessorId',r.predecessor_id,'disposition',r.disposition,'policyVersion',r.policy_version,'reasonCodes',r.reason_codes,'summary',r.summary,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.record_version r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.run_id=b.canonical_run_id ORDER BY r.id LIMIT 4097) r),
+        'resolved_fields',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'recordVersionId',r.record_version_id,'candidateId',r.candidate_id,'fieldKey',r.field_key,'state',r.state,'fieldGroup',r.field_group,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.resolved_field r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.record_version_id IN (SELECT v.id FROM public.record_version v WHERE v.organization_id=s.organization_id AND v.collection_id=s.collection_id AND v.run_id=b.canonical_run_id) ORDER BY r.id LIMIT 4097) r),
+        'candidates',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'fieldKey',r.field_key,'state',r.state,'literalValue',r.literal_value,'parsedValue',r.parsed_value,'normalizedValue',r.normalized_value,'authorityId',r.authority_id,'derivation',r.derivation,'inputSource',r.input_source,'sourceTranscriptionId',r.source_transcription_id,'sourceObservationId',r.source_observation_id,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.field_candidate r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.run_id=b.canonical_run_id ORDER BY r.id LIMIT 4097) r),
+        'candidate_evidence',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'candidateId',r.candidate_id,'evidenceId',r.evidence_id,'relation',r.relation,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.candidate_evidence r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.candidate_id IN (SELECT fc.id FROM public.field_candidate fc WHERE fc.organization_id=s.organization_id AND fc.collection_id=s.collection_id AND fc.run_id=b.canonical_run_id) ORDER BY r.id LIMIT 4097) r),
+        'evidence',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'source',r.source,'sourceVersion',r.source_version,'adapterVersion',r.adapter_version,'query',r.query,'outcome',r.outcome,'locator',r.locator,'responseSha256',r.response_sha256,'capturedAt',r.captured_at,'rawAssetId',r.raw_asset_id,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.evidence_item r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.run_id=b.canonical_run_id ORDER BY r.id LIMIT 4097) r),
+        'tool_calls',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'callKey',r.call_key,'phase',r.phase,'tool',r.tool,'toolVersion',r.tool_version,'source',r.source,'fieldKeys',r.field_keys,'inputSource',r.input_source,'transcriptionVersionId',r.transcription_version_id,'observationId',r.observation_id,'attempt',r.attempt,'arguments',r.arguments,'outcome',r.outcome,'result',r.result,'evidenceId',r.evidence_id,'startedAt',r.started_at,'completedAt',r.completed_at,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.tool_call r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.run_id=b.canonical_run_id ORDER BY r.id LIMIT 4097) r),
+        'findings',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'recordVersionId',r.record_version_id,'ruleId',r.rule_id,'ruleVersion',r.rule_version,'severity',r.severity,'outcome',r.outcome,'fieldKey',r.field_key,'reasonCode',r.reason_code,'evidenceIds',r.evidence_ids,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.validation_finding r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.record_version_id IN (SELECT v.id FROM public.record_version v WHERE v.organization_id=s.organization_id AND v.collection_id=s.collection_id AND v.run_id=b.canonical_run_id) ORDER BY r.id LIMIT 4097) r)),
+        'checkpoint_inputs',jsonb_build_object(
+          'target',sel.state->'jobs'->sel.job_key->'fields'->(sel.intent->'original_prepared'->'basis'->>'field_key')->'checkpoint'->'payload',
+          'terminal_siblings',(SELECT COALESCE(jsonb_agg(f.value->'checkpoint'->'payload' ORDER BY f.key),'[]'::jsonb)
+            FROM jsonb_each(sel.state->'jobs'->sel.job_key->'fields') f WHERE f.key<>sel.intent->'original_prepared'->'basis'->>'field_key'
+              AND f.value->>'work_state' IN ('resolved','waiting_human','nonblocking_exception')
+              AND f.value->'checkpoint' IS DISTINCT FROM 'null'::jsonb)),
+        'original_request_sources',(SELECT COALESCE(jsonb_agg(jsonb_build_object('run_id',jr.key,'entry',jr.value) ORDER BY jr.key),'[]'::jsonb)
+          FROM jsonb_each(sel.state->'journal') jr WHERE jr.value->'scope'->>'organization_id'=$1::text
+            AND jr.value->'scope'->>'collection_id'=$2::text AND jr.value->'scope'->>'specimen_id'=$3::text
+            AND jr.value->'scope'->>'job_id'=sel.job_id),
+        'captured_executions',(SELECT COALESCE(jsonb_agg(jsonb_build_object('effect_id',eff.key,'effect',eff.value) ORDER BY eff.key),'[]'::jsonb)
+          FROM jsonb_each(sel.state->'effects') eff WHERE eff.value->>'job_key'=sel.job_key
+            AND eff.value->'scope'->>'organization_id'=$1::text AND eff.value->'scope'->>'collection_id'=$2::text
+            AND eff.value->'scope'->>'specimen_id'=$3::text AND eff.value->'scope'->>'job_id'=sel.job_id),
+        'native_input_rows',jsonb_build_object('observations',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'regionId',r.region_id,'rawAssetId',r.raw_asset_id,'stepKey',r.step_key,'provider',r.provider,'modelVersion',r.model_version,'promptVersion',r.prompt_version,'inputSha256',r.input_sha256,'parameters',r.parameters,'literalText',r.literal_text,'outcome',r.outcome,'independent',r.independent,'routeId',r.route_id,'unreadableSpans',r.unreadable_spans,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.model_observation r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.run_id IN (SELECT pr.id FROM public.pipeline_run pr WHERE pr.organization_id=s.organization_id AND pr.collection_id=s.collection_id AND pr.specimen_id=s.id) ORDER BY r.id LIMIT 4097) r),
+        'transcriptions',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'literalText',r.literal_text,'spans',r.spans,'alternatives',r.alternatives,'unresolved',r.unresolved,'regionId',r.region_id,'decisionKind',r.decision_kind,'selectedObservationId',r.selected_observation_id,'firstPassObservationId',r.first_pass_observation_id,'rationale',r.rationale,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.transcription_version r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.run_id IN (SELECT pr.id FROM public.pipeline_run pr WHERE pr.organization_id=s.organization_id AND pr.collection_id=s.collection_id AND pr.specimen_id=s.id) ORDER BY r.id LIMIT 4097) r),
+        'handoffs',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'transcriptionVersionId',r.transcription_version_id,'observationId',r.observation_id,'role',r.role,'handedText',r.handed_text,'note',r.note,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.harness_input r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.run_id IN (SELECT pr.id FROM public.pipeline_run pr WHERE pr.organization_id=s.organization_id AND pr.collection_id=s.collection_id AND pr.specimen_id=s.id) ORDER BY r.id LIMIT 4097) r),
+        'comparisons',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'regionId',r.region_id,'leftObservationId',r.left_observation_id,'rightObservationId',r.right_observation_id,'algorithm',r.algorithm,'ratio',r.ratio,'editDistance',r.edit_distance,'lengthBasis',r.length_basis,'status',r.status,'reasons',r.reasons,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.reading_comparison r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.run_id IN (SELECT pr.id FROM public.pipeline_run pr WHERE pr.organization_id=s.organization_id AND pr.collection_id=s.collection_id AND pr.specimen_id=s.id) ORDER BY r.id LIMIT 4097) r),
+        'assets',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'specimenId',r.specimen_id,'kind',r.kind,'parentAssetId',r.parent_asset_id,'bucket',r.bucket,'objectName',r.object_name,'generation',r.generation,'sha256',r.sha256,'mimeType',r.mime_type,'byteSize',r.byte_size::text,'width',r.width,'height',r.height,'acquisitionMethod',r.acquisition_method,'uploaderUid',r.uploader_uid,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.source_asset r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.specimen_id=s.id ORDER BY r.id LIMIT 4097) r),
+        'regions',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'domainRegionId',r.domain_region_id,'sourceAssetId',r.source_asset_id,'cropAssetId',r.crop_asset_id,'geometry',r.geometry,'ordinal',r.ordinal,'regionType',r.region_type,'segmentationVersion',r.segmentation_version,'supersedesRegionId',r.supersedes_region_id,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.label_region r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.run_id IN (SELECT pr.id FROM public.pipeline_run pr WHERE pr.organization_id=s.organization_id AND pr.collection_id=s.collection_id AND pr.specimen_id=s.id) ORDER BY r.id LIMIT 4097) r),
+        'runs',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'specimenId',r.specimen_id,'profileVersionId',r.profile_version_id,'supersedesRunId',r.supersedes_run_id,'pinnedVersions',r.pinned_versions,'inputSha256',r.input_sha256,'traceId',r.trace_id,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.pipeline_run r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.specimen_id=s.id ORDER BY r.id LIMIT 4097) r)),
+        'lineage_rows',jsonb_build_object('value_lineages',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'contractVersion',r.contract_version,'specimenId',r.specimen_id,'runId',r.run_id,'candidateId',r.candidate_id,'recordVersionId',r.record_version_id,'predecessorId',r.predecessor_id,'priorRevision',r.prior_revision,'resultRevision',r.result_revision,'priorNativeSnapshotDigest',r.prior_native_snapshot_digest,'priorGraphSnapshotDigest',r.prior_graph_snapshot_digest,'priorActiveGraphDigest',r.prior_active_graph_digest,'fieldKey',r.field_key,'researchFieldKey',r.research_field_key,'layer',r.layer,'resolutionDigest',r.resolution_digest,'typedCheckpointDigest',r.typed_checkpoint_digest,'nativeCheckpointId',r.native_checkpoint_id,'nativeCheckpointDigest',r.native_checkpoint_digest,'originalRequestDigest',r.original_request_digest,'originalScope',r.original_scope,'derivation',r.derivation,'derivationDigest',r.derivation_digest,'scientificSourceDigest',r.scientific_source_digest,'precision',r.precision,'centuryRule',r.century_rule,'readingSources',r.reading_sources,'literalGrounding',r.literal_grounding,'selectedObservationId',r.selected_observation_id,'selectedTranscriptionId',r.selected_transcription_id,'settledObservationIds',r.settled_observation_ids,'evidenceIds',r.evidence_ids,'evidenceRelations',r.evidence_relations,'consumedDependencies',r.consumed_dependencies,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.canonical_value_lineage_v2 r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.specimen_id=s.id ORDER BY r.id LIMIT 4097) r),
+        'value_dependencies',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'lineageId',r.lineage_id,'ordinal',r.ordinal,'researchFieldKey',r.research_field_key,'canonicalFieldKey',r.canonical_field_key,'sourceRevision',r.source_revision,'dependencyResolutionDigest',r.dependency_resolution_digest,'sourceCheckpointId',r.source_checkpoint_id,'sourceCheckpointDigest',r.source_checkpoint_digest,'sourceTypedCheckpointDigest',r.source_typed_checkpoint_digest,'sourceRunId',r.source_run_id,'sourceCandidateId',r.source_candidate_id,'sourceRecordVersionId',r.source_record_version_id,'sourceCandidateDigest',r.source_candidate_digest,'sourceRecordDigest',r.source_record_digest,'sourcePublicationLineageDigest',r.source_publication_lineage_digest,'sourceRecordFieldsDigest',r.source_record_fields_digest,'sourceRecordFields',r.source_record_fields,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.canonical_value_dependency_v2 r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.lineage_id IN (SELECT cl.id FROM public.canonical_value_lineage_v2 cl WHERE cl.organization_id=s.organization_id AND cl.collection_id=s.collection_id AND cl.specimen_id=s.id) ORDER BY r.id LIMIT 4097) r),
+        'value_evidence',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'lineageId',r.lineage_id,'evidenceId',r.evidence_id,'researchEvidenceId',r.research_evidence_id,'associationKind',r.association_kind,'originalRelation',r.original_relation,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.canonical_value_evidence_v2 r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.lineage_id IN (SELECT cl.id FROM public.canonical_value_lineage_v2 cl WHERE cl.organization_id=s.organization_id AND cl.collection_id=s.collection_id AND cl.specimen_id=s.id) ORDER BY r.id LIMIT 4097) r),
+        'tool_input_lineage',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'contractVersion',r.contract_version,'specimenId',r.specimen_id,'runId',r.run_id,'evidenceId',r.evidence_id,'nativeCheckpointId',r.native_checkpoint_id,'nativeCheckpointDigest',r.native_checkpoint_digest,'originalRequestDigest',r.original_request_digest,'originalScope',r.original_scope,'originalRequest',r.original_request,'queryDigest',r.query_digest,'query',r.query,'effectId',r.effect_id,'attemptId',r.attempt_id,'receiptDigest',r.receipt_digest,'receiptBindingDigest',r.receipt_binding_digest,'sourcePolicyDigest',r.source_policy_digest,'capturePolicyDigest',r.capture_policy_digest,'sourceRegistryDigest',r.source_registry_digest,'canonicalMappingDigest',r.canonical_mapping_digest,'sourceCaptureProof',r.source_capture_proof,'fragments',r.fragments,'fragmentDigests',r.fragment_digests,'observationIds',r.observation_ids,'regionIds',r.region_ids,'inputSources',r.input_sources,'nativeInputs',r.native_inputs,'nativeTranscriptionProofs',r.native_transcription_proofs,'selectedObservationId',r.selected_observation_id,'legacyProducerDigest',r.legacy_producer_digest,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.tool_input_lineage_v2 r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.specimen_id=s.id ORDER BY r.id LIMIT 4097) r),
+        'captured_tool_executions',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'contractVersion',r.contract_version,'lineageId',r.lineage_id,'runId',r.run_id,'evidenceId',r.evidence_id,'execution',r.execution,'executionDigest',r.execution_digest,'effectId',r.effect_id,'attemptId',r.attempt_id,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.captured_tool_execution_v2 r WHERE r.organization_id=s.organization_id AND r.collection_id=s.collection_id AND r.run_id=b.canonical_run_id ORDER BY r.id LIMIT 4097) r)),
+        'prepack_proof',(SELECT p.prepack_proof FROM public.research_publication_receipt_v2 p WHERE p.organization_id=$1 AND p.collection_id=$2 AND p.specimen_id=$3 AND p.id=b.current_receipt_id)
+      ) AS materialization_inputs
+    FROM base JOIN public.specimen s ON s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
+    JOIN public.canonical_research_binding_v2 b ON b.organization_id=$1 AND b.collection_id=$2 AND b.specimen_id=$3 AND b.active
+    JOIN selected sel ON sel.job_key=b.job_key
+    LEFT JOIN public.specimen_snapshot anchor ON anchor.organization_id=$1 AND anchor.collection_id=$2 AND anchor.specimen_id=$3
+      AND anchor.revision=(sel.preparation->'anchor'->>'record_revision')::int
+    LEFT JOIN public.record_version anchor_record ON anchor_record.organization_id=$1 AND anchor_record.collection_id=$2
+      AND anchor_record.id=(sel.preparation->'anchor'->>'record_version_id')::uuid
+
+    """, params: [$organizationId,$collectionId,$specimenId,$actorUid,$idempotencyKey,$requestIdentityDigest,$preparationId])
+}

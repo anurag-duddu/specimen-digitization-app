@@ -1,0 +1,22 @@
+# Service-only, fresh membership/sensitivity-scoped immutable accounting recovery.
+# This reads one retained snapshot and does not change a job, allowance or binding.
+query GetLatestRetainedRunSnapshot($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $id: UUID!, $runId: UUID!, $throughRevision: Int!) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['reviewer','manager','admin']") { active role canViewSensitive }
+  specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $id}) @check(expr: "!this.sensitive || response.collectionMember.canViewSensitive") { sensitive }
+  retained: _selectFirst(sql: """
+    SELECT snap.revision,snap.snapshot,snap.sha256,snap.contract_version AS "contractVersion"
+    FROM public.specimen_snapshot snap
+    JOIN public.specimen s ON s.organization_id=snap.organization_id
+      AND s.collection_id=snap.collection_id AND s.id=snap.specimen_id
+    JOIN public.organization_member org ON org.organization_id=$1 AND org.uid=$3 AND org.active
+    JOIN public.collection_member member ON member.organization_id=$1 AND member.collection_id=$2
+      AND member.uid=$3 AND member.active AND member.role IN ('reviewer','manager','admin')
+    WHERE snap.organization_id=$1 AND snap.collection_id=$2 AND snap.specimen_id=$4
+      AND snap.revision<=$6 AND $6>=1 AND $6<=s.revision
+      AND snap.snapshot->'run'->>'id'=$5::text
+      AND (NOT s.sensitive OR member.can_view_sensitive)
+      AND (COALESCE((snap.snapshot->'asset'->>'sensitive')::boolean,true)=false OR member.can_view_sensitive)
+    ORDER BY snap.revision DESC LIMIT 1
+    """, params: [$organizationId,$collectionId,$actorUid,$id,$runId,$throughRevision])
+}

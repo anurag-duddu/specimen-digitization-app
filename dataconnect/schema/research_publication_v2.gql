@@ -1,0 +1,149 @@
+# Additive V2 SOURCE fragment. V1/schema operations remain unchanged. Native grammar/physical mapping/IAM UNRUN.
+type CanonicalResearchBindingV2 @table(key: ["organizationId", "collectionId", "specimenId"])
+  @unique(indexName: "canonical_research_binding_id_v2", fields: ["organizationId", "collectionId", "bindingId"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  specimenId: UUID!
+  specimen: Specimen! @ref(fields: ["organizationId", "collectionId", "specimenId"], constraintName: "research_binding_specimen_v2")
+  bindingId: UUID!
+  registrationRevision: Int!
+  active: Boolean!
+  baseCanonicalRevision: Int!
+  baseRecordVersionId: UUID!
+  baseRecordVersion: RecordVersion! @ref(fields: ["organizationId", "collectionId", "baseRecordVersionId"], constraintName: "research_binding_base_record_v2")
+  baseSnapshotSha256: String!
+  baseHostRecordVersionId: String!
+  canonicalRunId: UUID!
+  run: PipelineRun! @ref(fields: ["organizationId", "collectionId", "canonicalRunId"], constraintName: "research_binding_run_v2")
+  currentCanonicalRevision: Int!
+  currentRecordVersionId: UUID!
+  currentRecordVersion: RecordVersion! @ref(fields: ["organizationId", "collectionId", "currentRecordVersionId"], constraintName: "research_binding_current_record_v2")
+  currentSnapshotSha256: String!
+  currentHostRecordVersionId: String!
+  currentReceiptId: UUID
+  # Job IDs in ResearchHarnessState are opaque Strings, not PipelineRun UUIDs.
+  jobId: String!
+  jobKey: String!
+  generation: Int!
+  inputDigest: String!
+  profileDigest: String!
+  runtimeBindingDigest: String!
+  canonicalProfileDigest: String!
+  sourceSha256: String!
+  semanticMappingDigest: String!
+  policyDigest: String!
+  programKey: String!
+  semanticMapping: Any!
+  # Immutable approved registration basis, not a caller-provided budget/capability.
+  authorityDigest: String!
+  importProofId: UUID!
+  importProofDigest: String!
+  currentChainDigest: String!
+  publicationVersion: String!
+  registeredBy: String!
+  registeredAt: Timestamp! @default(expr: "request.time")
+}
+
+# No UPDATE operation exposes these immutable retained results. RequestReceipt
+# supplies the existing actor/operation/idempotency uniqueness in the transaction.
+type ResearchPublicationReceiptV2 @table(key: ["organizationId", "collectionId", "actorUid", "idempotencyKey"])
+  @unique(indexName: "research_publication_receipt_id_v2", fields: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  actorUid: String!
+  idempotencyKey: String!
+  id: UUID!
+  specimenId: UUID!
+  specimen: Specimen! @ref(fields: ["organizationId", "collectionId", "specimenId"], constraintName: "research_publication_specimen_v2")
+  operationDigest: String!
+  publicationDigest: String!
+  preparedDigest: String!
+  intentId: UUID!
+  winningPreparationId: UUID!
+  preparation: ResearchPublicationPreparationV2! @ref(fields: ["organizationId", "collectionId", "winningPreparationId"], constraintName: "publication_preparation_v2")
+  causalProof: Any!
+  chainDigest: String!
+  intent: ResearchPublicationIntentV2! @ref(fields: ["organizationId", "collectionId", "intentId"], references: ["organizationId", "collectionId", "id"], constraintName: "research_publication_original_intent_v2")
+  bindingId: UUID!
+  jobId: String!
+  jobKey: String!
+  generation: Int!
+  inputDigest: String!
+  profileDigest: String!
+  runtimeBindingDigest: String!
+  usedCanonicalRevision: Int!
+  usedRecordVersionId: UUID!
+  usedHostRecordVersionId: String!
+  usedSnapshotSha256: String!
+  resultingCanonicalRevision: Int!
+  nativeRecordVersionId: UUID!
+  nativeRecordVersion: RecordVersion! @ref(fields: ["organizationId", "collectionId", "nativeRecordVersionId"], constraintName: "research_publication_record_v2")
+  canonicalRunId: UUID!
+  hostRecordVersionId: String!
+  snapshotSha256: String!
+  projectionDigest: String!
+  projectionCount: Int!
+  auditId: UUID!
+  audit: AuditEvent! @ref(fields: ["organizationId", "collectionId", "auditId"], constraintName: "research_publication_audit_v2")
+  outboxId: UUID!
+  outbox: OutboxEvent! @ref(fields: ["organizationId", "collectionId", "outboxId"], constraintName: "research_publication_outbox_v2")
+  policyReceiptDigest: String!
+  lineageDigest: String!
+  prepackProof: Any!
+  prepackProofDigest: String!
+  sensitive: Boolean!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+
+# These intent/preparation rows are separate from journal state and immutable.
+# No mutator/initializer for a ledger, policy, lease, jobbase or import proof exists.
+type ResearchPublicationIntentV2 @table(key: ["organizationId", "collectionId", "actorUid", "idempotencyKey"])
+  @unique(indexName: "research_intent_id_v2", fields: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  actorUid: String!
+  idempotencyKey: String!
+  id: UUID!
+  specimenId: UUID!
+  specimen: Specimen! @ref(fields: ["organizationId", "collectionId", "specimenId"], constraintName: "intent_specimen_v2")
+  operationDigest: String!
+  scientificIntentDigest: String!
+  requestIdentityDigest: String!
+  payload: Any!
+  payloadJson: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+type ResearchPublicationPreparationV2 @table(key: ["organizationId", "collectionId", "id"])
+  @unique(indexName: "research_preparation_ordinal_v2", fields: ["organizationId", "collectionId", "intentId", "ordinal"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  id: UUID!
+  intentId: UUID!
+  intent: ResearchPublicationIntentV2! @ref(fields: ["organizationId", "collectionId", "intentId"], references: ["organizationId", "collectionId", "id"], constraintName: "preparation_intent_v2")
+  ordinal: Int!
+  priorPreparationId: UUID
+  preparationDigest: String!
+  admissionDigest: String!
+  payload: Any!
+  payloadJson: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}
+
+# Native attempt marker is retained BEFORE canonical mutation. Unknown ack or
+# crash cannot refresh that preparation. Its only completion is the canonical
+# receipt in the same native transaction; no mark-refused/reset operation exists.
+type ResearchPublicationAttemptV2 @table(key: ["organizationId", "collectionId", "intentId"])
+  @unique(indexName: "research_attempt_id_v2", fields: ["organizationId", "collectionId", "id"]) {
+  organizationId: UUID!
+  collectionId: UUID!
+  intentId: UUID!
+  id: UUID!
+  preparationId: UUID!
+  preparation: ResearchPublicationPreparationV2! @ref(fields: ["organizationId", "collectionId", "preparationId"], constraintName: "attempt_preparation_v2")
+  operationDigest: String!
+  preparationDigest: String!
+  admissionDigest: String!
+  createdAt: Timestamp! @default(expr: "request.time")
+}

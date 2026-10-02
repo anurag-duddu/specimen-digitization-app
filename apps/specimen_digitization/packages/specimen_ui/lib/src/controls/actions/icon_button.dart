@@ -7,6 +7,7 @@ import '../../foundation/density.dart';
 import '../../foundation/icons.dart';
 import '../../foundation/theme.dart';
 import '../../primitives/pressable.dart';
+import '../../primitives/squircle.dart';
 import '../overlays/tooltip.dart';
 import 'button.dart';
 
@@ -53,7 +54,14 @@ class UiIconButtonStyle {
     UiIconButtonVariant variant,
   ) {
     Color fill(Set<WidgetState> states) {
-      // `ghost` has no fill in any state: a disabled ghost that grew one
+      if (states.contains(WidgetState.selected) &&
+          !states.contains(WidgetState.disabled)) {
+        return Color.alphaBlend(
+          ui.color.stateLayer(ui.color.hoverOpacity),
+          ui.color.paper,
+        );
+      }
+      // An unselected `ghost` has no fill: a disabled ghost that grew one
       // would read as a different control rather than the same one turned
       // off. The state layer and the `disabled.content` glyph carry it.
       if (variant == UiIconButtonVariant.ghost) {
@@ -70,6 +78,14 @@ class UiIconButtonStyle {
         : ui.color.ink;
 
     BorderSide? edge(Set<WidgetState> states) {
+      if (states.contains(WidgetState.selected)) {
+        return BorderSide(
+          color: states.contains(WidgetState.disabled)
+              ? ui.color.disabledContent
+              : ui.color.ink,
+          width: ui.shape.stroke.emphasis,
+        );
+      }
       if (variant != UiIconButtonVariant.secondary) return null;
       return BorderSide(
         color: states.contains(WidgetState.disabled)
@@ -88,7 +104,7 @@ class UiIconButtonStyle {
   }
 }
 
-/// A disc with one glyph in it.
+/// A soft-corner target with one glyph in it.
 ///
 /// Retires `IconButton`.
 ///
@@ -162,6 +178,7 @@ class UiIconButton extends StatelessWidget {
         tooltip: phrase,
         child: forbidden
             ? UiTooltip.reason(
+                reason: disabledReason,
                 builder: (BuildContext context, ValueChanged<String> report) =>
                     _disc(style, onDisabledReason: report),
               )
@@ -179,8 +196,7 @@ class UiIconButton extends StatelessWidget {
     onPressed: onPressed,
     disabledReason: disabledReason,
     onDisabledReason: onDisabledReason,
-    capsule: true,
-    scaleOnPress: true,
+    selected: current,
     focusNode: focusNode,
     autofocus: autofocus,
     builder: (BuildContext context, Set<WidgetState> states) {
@@ -189,7 +205,10 @@ class UiIconButton extends StatelessWidget {
         dimension: style.diameter,
         child: DecoratedBox(
           decoration: ShapeDecoration(
-            shape: CircleBorder(side: side ?? BorderSide.none),
+            shape: Squircle.border(
+              context.ui.shape.inner,
+              side: side ?? BorderSide.none,
+            ),
             color: style.background.resolve(states),
           ),
           child: Center(

@@ -434,7 +434,7 @@ void main() {
     }
   });
 
-  testWidgets('keyboard focus rings the trigger on its own edge', (
+  testWidgets('keyboard focus strengthens only the trigger edge', (
     WidgetTester tester,
   ) async {
     addTearDown(
@@ -453,15 +453,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.sendKeyEvent(LogicalKeyboardKey.tab);
       await tester.pumpAndSettle();
-      expect(visibleRings(tester), 1, reason: 'one ring in ${density.name}');
-      expect(
-        visibleRings(tester, find.byType(UiFieldBox)),
-        1,
-        reason:
-            'the ring is the box\'s own, so it runs concentric with the edge. '
-            'A ring around the hit box would miss the edge by the 4 dp of '
-            'slop in pointer density (11 section 4).',
-      );
+      expect(visibleRings(tester), 0);
+      expect(visibleEdges(tester, find.byType(UiFieldBox)), 1);
+      expect(fieldSide(tester).width, 2, reason: density.name);
+      expect(fieldSide(tester).color, uiOf(tester).color.ink);
     }
   });
 

@@ -8,9 +8,10 @@ import json
 import os
 import sqlite3
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
-from .domain import Principal, Scope, Specimen, WorkItem, WorkPage, now
+from .domain import AuditEvent, Principal, Scope, Specimen, WorkItem, WorkPage, now
 
 
 def canonical_json(value: object) -> str:
@@ -34,6 +35,234 @@ def digest(value: object) -> str:
 
 class Conflict(RuntimeError):
     pass
+
+
+REVIEW_ROLES = frozenset({"reviewer", "manager", "admin"})
+REVIEW_PROOF_READS = 50
+REVIEW_PROVENANCE_INVALID = "review_decision_provenance_invalid"
+
+
+def stamp_review_events(principal, specimen, previous, expected):
+    """Bind genuinely new human events to the verified original CAS save.
+
+    Existing event bytes and their compaction position are immutable. This is
+    shared by the local reference and the named production adapter, not an API
+    caller's declaration of authority or original revision.
+    """
+    retained = previous.audit if previous else []
+    if previous and (
+        previous.version != expected
+        or specimen.audit_offset != previous.audit_offset
+        or specimen.history_through_revision != previous.history_through_revision
+        or specimen.audit[:len(retained)] != retained
+    ):
+        raise Conflict(REVIEW_PROVENANCE_INVALID)
+    if not previous and (specimen.audit_offset or specimen.history_through_revision):
+        raise Conflict(REVIEW_PROVENANCE_INVALID)
+    ids = [event.id for event in specimen.audit]
+    if len(set(ids)) != len(ids):
+        raise Conflict(REVIEW_PROVENANCE_INVALID)
+    for event in specimen.audit[len(retained):]:
+        if not event.action.startswith("review_"):
+            continue
+        if (
+            not expected
+            or principal.role not in REVIEW_ROLES
+            or event.actor != principal.user_id
+            or (event.base_revision is not None and event.base_revision != expected)
+            or (event.resulting_revision is not None and event.resulting_revision != expected + 1)
+        ):
+            raise Conflict(REVIEW_PROVENANCE_INVALID)
+        event.base_revision = expected
+        event.resulting_revision = expected + 1
+
+
+@dataclass(frozen=True)
+class ReviewSnapshot:
+    """A digest-validated scoped row supplied by the repository itself."""
+    payload: dict
+    sha256: str
+    specimen: Specimen
+
+
+@dataclass(frozen=True)
+class ReviewDecisionProof:
+    specimen_id: str
+    event: AuditEvent
+    base_revision: int
+    resulting_revision: int
+    prior_sha256: str
+    snapshot_sha256: str
+    server_audit_id: str
+
+
+def verify_review_decision_row(proof, row, *, required=False):
+    """An actual scoped row agrees with every immutable original event value."""
+    try:
+        def same_id(left, right):
+            return isinstance(left, str) and left.replace("-", "").lower() == right.replace("-", "").lower()
+
+        def instant(value):
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                raise ValueError(REVIEW_PROVENANCE_INVALID)
+            return parsed
+
+        event = proof.event
+        original_time = instant(event.created_at)
+        if row is None and not required:
+            return
+        if not isinstance(row, dict) or (
+            not same_id(row.get("id"), event.id)
+            or not same_id(row.get("specimenId"), proof.specimen_id)
+            or row.get("actorUid") != event.actor
+            or row.get("baseRevision") != proof.base_revision
+            or row.get("resultingRevision") != proof.resulting_revision
+            or row.get("reason") != event.reason
+            or canonical_json(row.get("correction")) != canonical_json({
+                "action": event.action, "before": event.before, "after": event.after,
+            })
+            or instant(row.get("createdAt", "")) != original_time
+        ):
+            raise ValueError(REVIEW_PROVENANCE_INVALID)
+    except Exception:
+        raise ValueError(REVIEW_PROVENANCE_INVALID) from None
+
+
+class ReviewProofReader:
+    """One pass's bounded, cached authoritative history and save-audit proof.
+
+    Callback reads are scoped/authorized and validated by the native adapter.
+    The 50 distinct-read ceiling is a technical fail-closed bound, not money,
+    authority, available headroom, or a promise that legacy catch-up completed.
+    """
+
+    def __init__(self, specimen, read_snapshot, read_save_audits):
+        self.specimen = specimen
+        self.read_snapshot = read_snapshot
+        self.read_save_audits = read_save_audits
+        self.reads = {}
+        self.inventories = {}
+
+    def _read(self, key, callback):
+        if key not in self.reads:
+            if len(self.reads) >= REVIEW_PROOF_READS:
+                raise ValueError(REVIEW_PROVENANCE_INVALID)
+            self.reads[key] = callback()
+        return self.reads[key]
+
+    def _snapshot(self, revision):
+        if type(revision) is not int or not 1 <= revision <= self.specimen.version:
+            raise ValueError(REVIEW_PROVENANCE_INVALID)
+        row = self._read(("snapshot", revision), lambda: self.read_snapshot(revision))
+        payload = row.payload
+        if (
+            row.specimen.id != self.specimen.id
+            or row.specimen.scope != self.specimen.scope
+            or row.specimen.version != revision
+            or payload.get("id") != self.specimen.id
+            or payload.get("scope") != self.specimen.scope.model_dump()
+            or payload.get("version") != revision
+            or not isinstance(payload.get("audit"), list)
+        ):
+            raise ValueError(REVIEW_PROVENANCE_INVALID)
+        return row
+
+    def _inventory(self, revision):
+        if revision in self.inventories:
+            return self.inventories[revision]
+        row = self._snapshot(revision)
+        specimen = row.specimen
+        prefix = []
+        if specimen.audit_offset:
+            through = specimen.history_through_revision
+            if type(through) is not int or not 1 <= through < revision:
+                raise ValueError(REVIEW_PROVENANCE_INVALID)
+            prefix = self._inventory(through)
+            if len(prefix) != specimen.audit_offset:
+                raise ValueError(REVIEW_PROVENANCE_INVALID)
+        events = [*prefix, *row.payload["audit"]]
+        if any(not isinstance(event, dict) for event in events):
+            raise ValueError(REVIEW_PROVENANCE_INVALID)
+        ids = [event.get("id") for event in events]
+        if any(not isinstance(ident, str) or not ident for ident in ids) or len(set(ids)) != len(ids):
+            raise ValueError(REVIEW_PROVENANCE_INVALID)
+        self.inventories[revision] = events
+        return events
+
+    def _original_revision(self, event):
+        base, result = event.get("base_revision"), event.get("resulting_revision")
+        if base is not None or result is not None:
+            # Any/protobuf numeric values may be integral floats, never booleans.
+            if (
+                isinstance(base, bool) or isinstance(result, bool)
+                or not isinstance(base, (int, float)) or not isinstance(result, (int, float))
+                or base < 1 or result != base + 1 or int(base) != base
+            ):
+                raise ValueError(REVIEW_PROVENANCE_INVALID)
+            return int(result)
+        # Legacy metadata has no revision hint. Prove first appearance forward;
+        # absence only in an adjacent compacted suffix is insufficient.
+        for revision in range(1, self.specimen.version + 1):
+            if any(item["id"] == event["id"] for item in self._inventory(revision)):
+                if revision == 1:
+                    raise ValueError(REVIEW_PROVENANCE_INVALID)
+                return revision
+        raise ValueError(REVIEW_PROVENANCE_INVALID)
+
+    def _prove_event(self, event):
+        required = {"id", "actor", "action", "reason", "before", "after", "created_at"}
+        if not required <= event.keys():
+            # A model default is not original persisted event identity or time.
+            raise ValueError(REVIEW_PROVENANCE_INVALID)
+        result = self._original_revision(event)
+        target, prior = self._snapshot(result), self._snapshot(result - 1)
+        matches = [item for item in target.payload["audit"] if item.get("id") == event["id"]]
+        if (
+            len(matches) != 1 or canonical_json(matches[0]) != canonical_json(event)
+            or any(item["id"] == event["id"] for item in self._inventory(result - 1))
+        ):
+            raise ValueError(REVIEW_PROVENANCE_INVALID)
+        response = self._read(
+            ("save_proof", result, event["actor"], event["id"]),
+            lambda: self.read_save_audits(result - 1, result, event, prior, target),
+        )
+        audits = response.get("saveAudits", [])
+        if len(audits) != 1:
+            raise ValueError(REVIEW_PROVENANCE_INVALID)
+        audit = audits[0]
+        def same_id(left, right):
+            return isinstance(left, str) and left.replace("-", "").lower() == right.replace("-", "").lower()
+        if (
+            not isinstance(audit.get("id"), str)
+            or not same_id(audit.get("organizationId"), self.specimen.scope.organization_id)
+            or not same_id(audit.get("collectionId"), self.specimen.scope.collection_id)
+            or not same_id(audit.get("specimenId"), self.specimen.id)
+            or audit.get("actorUid") != event["actor"]
+            or audit.get("revision") != result
+            or audit.get("action") != "checkpoint_or_review"
+        ):
+            raise ValueError(REVIEW_PROVENANCE_INVALID)
+        proof = ReviewDecisionProof(
+            self.specimen.id, AuditEvent.model_validate(event), result - 1, result,
+            prior.sha256, target.sha256, audit["id"],
+        )
+        # A V1 PK conflict is not evidence that original metadata was projected.
+        verify_review_decision_row(proof, response.get("decision"))
+        return proof
+
+    def prove(self):
+        try:
+            original = self._snapshot(self.specimen.version)
+            if original.specimen != self.specimen:
+                raise ValueError(REVIEW_PROVENANCE_INVALID)
+            return [
+                self._prove_event(event)
+                for event in self._inventory(self.specimen.version)
+                if isinstance(event.get("action"), str) and event["action"].startswith("review_")
+            ]
+        except Exception:
+            raise ValueError(REVIEW_PROVENANCE_INVALID) from None
 
 
 class SnapshotTooLarge(ValueError):
@@ -103,10 +332,14 @@ class ProjectionResult:
 
 
 class Repository(Protocol):
+    def oldest_due(self, scope: Scope, cutoff: str, limit: int = 1) -> list[WorkItem]: ...
     def due_page(
         self, scope: Scope, cutoff: str, after_id: str | None, limit: int = 50
     ) -> WorkPage: ...
     def get(self, scope: Scope, specimen_id: str) -> Specimen: ...
+    def latest_run_version(
+        self, scope: Scope, specimen_id: str, run_id: str, through_revision: int
+    ) -> Specimen: ...
     def list(self, scope: Scope) -> list[Specimen]: ...
     def create(
         self, principal: Principal, specimen: Specimen, key: str, digest: str
@@ -338,6 +571,56 @@ class SQLiteRepository:
 
         return unpack(json.loads(row[0]), self.graph_blobs)
 
+    def latest_run_version(self, scope, ident, run_id, through_revision):
+        """Read one scoped immutable snapshot; never infer lost accounting as zero."""
+        current = self.get(scope, ident)
+        if type(through_revision) is not int or not 1 <= through_revision <= current.version:
+            raise ValueError("Invalid historical run bound")
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT payload,sha256 FROM versions WHERE org=? AND collection=? "
+                "AND id=? AND revision<=? AND json_extract(payload,'$.run.id')=? "
+                "ORDER BY revision DESC LIMIT 1",
+                (scope.organization_id,scope.collection_id,ident,through_revision,run_id),
+            ).fetchone()
+        if not row:
+            raise Missing(ident)
+        payload = json.loads(row[0])
+        if digest(payload) != row[1]:
+            raise Conflict("Historical snapshot digest mismatch")
+        result = unpack(payload,self.graph_blobs)
+        if (result.id != ident or result.scope != scope or result.run.id != run_id
+            or not 1 <= result.version <= through_revision):
+            raise Conflict("Historical run identity mismatch")
+        return result
+
+    def oldest_due(self, scope, cutoff, limit=1):
+        """Due, non-sensitive work, oldest request first (LANE.md T2, G13).
+
+        The same states as ListDueWorkV2, so a stale due time is never listed.
+        """
+        from .lane import SQLITE_STATUS
+
+        if not 1 <= limit <= 100:
+            raise ValueError("Work page limit must be 1..100")
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT id,revision,state,work_available_at,created_at FROM records WHERE org=? AND collection=? AND created_at<=? AND work_available_at<=? AND COALESCE(json_extract(payload,'$.asset.sensitive'),1)=0 AND "
+                + SQLITE_STATUS
+                + " IN ('pending','running','retry_scheduled') ORDER BY work_available_at,id LIMIT ?",
+                (scope.organization_id, scope.collection_id, cutoff, cutoff, limit),
+            ).fetchall()
+        return [
+            WorkItem(
+                specimen_id=r[0],
+                revision=r[1],
+                state=r[2],
+                work_available_at=r[3],
+                created_at=r[4],
+            )
+            for r in rows
+        ]
+
     def due_page(self, scope, cutoff, after_id=None, limit=50):
         if not 1 <= limit <= 100:
             raise ValueError("Work page limit must be 1..100")
@@ -455,7 +738,8 @@ class SQLiteRepository:
                 raise Conflict("Sensitive history cannot be downgraded")
             specimen = specimen.model_copy(deep=True)
             specimen.version = expected + 1
-            if row and len(specimen.model_dump_json().encode()) > 128 * 1024:
+            previous = None
+            if row:
                 retained = db.execute(
                     "SELECT payload,sha256 FROM versions WHERE org=? AND collection=? AND id=? AND revision=?",
                     (*identity, expected),
@@ -466,10 +750,10 @@ class SQLiteRepository:
                     or digest(json.loads(retained[0])) != retained[1]
                 ):
                     raise Conflict("History prefix snapshot integrity mismatch")
-                specimen = compact_history(
-                    specimen,
-                    unpack(json.loads(retained[0]), self.graph_blobs),
-                )
+                previous = unpack(json.loads(retained[0]), self.graph_blobs)
+            stamp_review_events(principal, specimen, previous, expected)
+            if previous:
+                specimen = compact_history(specimen, previous)
             from .active_graph import pack
 
             payload = json.dumps(

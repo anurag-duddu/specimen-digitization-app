@@ -1,3 +1,4 @@
+import 'package:specimen_digitization/src/widgets/field_row.dart';
 // Finders for the design system's controls.
 //
 // `find.byTooltip` matches Material's `Tooltip` and nothing else, and
@@ -60,8 +61,16 @@ Finder uiTooltipped(String message) => find.byWidgetPredicate(
 Finder uiDestination(String label) => find.byWidgetPredicate(
   (Widget widget) =>
       (widget is UiTooltip && widget.message == label) ||
-      (widget is UiListRow && widget.title == label),
+      (widget is UiListRow && widget.title == label) ||
+      widget.key == ValueKey<String>('mobile-nav-${label.toLowerCase()}') ||
+      (widget is Pressable && widget.semanticsLabel == label),
   description: 'navigation destination "$label"',
+);
+
+/// A persistent record view tab, by its accessibility name.
+Finder uiRecordView(String label) => find.byWidgetPredicate(
+  (Widget widget) => widget is Pressable && widget.semanticsLabel == label,
+  description: 'record view tab "$label"',
 );
 
 /// The button labelled [label].
@@ -93,8 +102,7 @@ Finder uiChip(Pattern label) => find.byWidgetPredicate(
 
 /// The select whose label is [label].
 Finder uiSelect(Pattern label) => find.byWidgetPredicate(
-  (Widget widget) =>
-      widget is UiSelect && _names(label, (widget as dynamic).label as String),
+  (Widget widget) => widget is UiSelect && _names(label, widget.label),
   description: 'UiSelect("$label")',
 );
 
@@ -125,11 +133,40 @@ Future<void> pickUiSelect(
   Pattern label,
   String option,
 ) async {
-  await tester.ensureVisible(uiSelect(label));
+  final Finder select = uiSelect(label);
+  expect(select, findsOneWidget);
+  // UiSelect also contains its field frame/label. Only the actual trigger's
+  // Pressable is a hit target; the full widget's centre can be empty space.
+  final Finder trigger = find.descendant(
+    of: select,
+    matching: find.byWidgetPredicate(
+      (Widget widget) => widget is Pressable && widget.onPressed != null,
+    ),
+  );
+  expect(trigger, findsOneWidget);
+  await tester.ensureVisible(trigger);
   await tester.pumpAndSettle();
-  await tester.tap(uiSelect(label));
+  expect(trigger.hitTestable(), findsOneWidget);
+  await tester.tap(trigger);
   await tester.pumpAndSettle();
-  await tester.tap(find.text(option).last);
+  final Finder filter = find.byWidgetPredicate(
+    (Widget widget) =>
+        widget is FieldCore && widget.semanticsLabel == 'Filter the options',
+  );
+  if (filter.evaluate().isNotEmpty) {
+    expect(filter, findsOneWidget);
+    await tester.enterText(filter, option);
+    await tester.pumpAndSettle();
+  }
+  final Finder row = find.byWidgetPredicate(
+    (Widget widget) => widget is UiListRow && widget.title == option,
+    description: 'select option "$option"',
+  );
+  expect(row, findsOneWidget);
+  await tester.ensureVisible(row);
+  await tester.pumpAndSettle();
+  expect(row.hitTestable(), findsOneWidget);
+  await tester.tap(row);
   await tester.pumpAndSettle();
 }
 
@@ -141,4 +178,69 @@ bool modalIsSheet(WidgetTester tester) {
   final Rect pane = tester.getRect(find.byType(GlassSurface).last);
   final Size window = tester.view.physicalSize / tester.view.devicePixelRatio;
   return pane.bottom >= window.height - 1 && pane.left <= 1;
+}
+
+/// Expands the requested field when necessary, then opens its real layer editor.
+/// A previously expanded row stays open; repeated corrections must not close it.
+Future<void> openFieldEditor(
+  WidgetTester tester,
+  int index, {
+  String layer = 'as written',
+}) async {
+  final Finder row = find.byType(FieldRow).at(index);
+  final Finder disclosure = find.descendant(
+    of: row,
+    matching: find.byType(UiDisclosure),
+  );
+  final Finder edit = find.descendant(
+    of: row,
+    matching: uiIconButton(RegExp('^Edit $layer')),
+  );
+  if (edit.evaluate().isEmpty) {
+    expect(disclosure, findsOneWidget);
+    await tester.ensureVisible(disclosure);
+    await tester.pumpAndSettle();
+    final Finder header = find
+        .descendant(
+          of: disclosure,
+          matching: find.byWidgetPredicate(
+            (Widget widget) => widget is Pressable && widget.onPressed != null,
+          ),
+        )
+        .first;
+    await tester.tap(header);
+    await tester.pumpAndSettle();
+  }
+  expect(edit, findsOneWidget);
+  await tester.ensureVisible(edit);
+  await tester.pumpAndSettle();
+  expect(edit.hitTestable(), findsOneWidget);
+  await tester.tap(edit);
+  await tester.pumpAndSettle();
+}
+
+/// Enters explicit selection through the specimen list's action menu.
+Future<void> enterSpecimenSelection(WidgetTester tester) async {
+  await tester.tap(uiMenuTrigger('Specimen list actions'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Select specimens'));
+  await tester.pumpAndSettle();
+}
+
+/// Chooses a core specimen view by its accessible radio control.
+Future<void> pickSpecimenQueue(WidgetTester tester, String option) async {
+  final value = switch (option) {
+    'Needs review' || 'Needs a human' => 'needs_human_review',
+    'Deferred' => 'deferred',
+    'Completed' || 'Cleared' => 'cleared',
+    _ => throw ArgumentError.value(
+      option,
+      'option',
+      'Not a core specimen view',
+    ),
+  };
+  final filter = find.byKey(ValueKey<String>('queue-filter-$value'));
+  await tester.ensureVisible(filter);
+  await tester.tap(filter);
+  await tester.pumpAndSettle();
 }

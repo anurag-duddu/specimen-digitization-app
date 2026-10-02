@@ -27,6 +27,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../../models.dart';
 import '../../selection.dart';
 import '../../sources.dart';
+import '../../workspace.dart';
 import '../../widgets/source_import_sheet.dart';
 import '../../widgets/source_object_row.dart';
 import '../../widgets/widgets.dart';
@@ -121,6 +122,7 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _slots = UiScaffoldSlots.of(context);
+    _current = _activeRoute;
     _publishDecisionBar();
   }
 
@@ -146,7 +148,11 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
     owner: this,
   );
 
-  /// True while this pane is the route on top.
+  /// A retained hidden navigator still has a current route; only the active
+  /// branch may own visible actions.
+  bool get _activeRoute =>
+      (ModalRoute.of(context)?.isCurrent ?? true) &&
+      (WorkspaceBranchScope.maybeOf(context)?.active ?? true);
   bool _current = true;
 
   /// Keeps the selection a subset of what is loaded.
@@ -251,7 +257,7 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
   Widget build(BuildContext context) {
     // `ModalRoute.of` depends on the scope that carries `isCurrent`, so this
     // pane is rebuilt when a route is pushed over it or popped back off.
-    final bool current = ModalRoute.of(context)?.isCurrent ?? true;
+    final bool current = _activeRoute;
     if (current != _current) {
       _current = current;
       _publishDecisionBar();
@@ -287,7 +293,17 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
     );
   }
 
-  Widget _pane(BuildContext context) {
+  Widget _pane(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) => _sourceList(
+      context,
+      UiLayoutMetrics.fromConstraints(
+        constraints,
+        textScaler: MediaQuery.textScalerOf(context),
+      ),
+    ),
+  );
+
+  Widget _sourceList(BuildContext context, UiLayoutMetrics layout) {
     final UiThemeData ui = context.ui;
     final SourceBrowseController controller = widget.controller;
 
@@ -301,9 +317,9 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
       slivers: <Widget>[
         SliverPadding(
           padding: EdgeInsetsDirectional.fromSTEB(
-            ui.space.s4,
-            ui.space.s4,
-            ui.space.s4,
+            layout.gutter,
+            layout.gutter,
+            layout.gutter,
             ui.space.s2,
           ),
           sliver: SliverToBoxAdapter(
@@ -311,7 +327,7 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
           ),
         ),
         SliverPadding(
-          padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s4),
+          padding: EdgeInsetsDirectional.symmetric(horizontal: layout.gutter),
           sliver: SliverToBoxAdapter(
             child: _Controls(
               controller: controller,
@@ -332,9 +348,9 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
         // many requests the server's bound takes.
         SliverPadding(
           padding: EdgeInsetsDirectional.fromSTEB(
-            ui.space.s4,
+            layout.gutter,
             ui.space.s2,
-            ui.space.s4,
+            layout.gutter,
             0,
           ),
           sliver: SliverToBoxAdapter(
@@ -347,7 +363,7 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
             ),
           ),
         ),
-        _body(context, controller),
+        _body(context, controller, layout),
         SliverToBoxAdapter(
           child: SizedBox(
             height: ui.space.s4 + UiScaffold.of(context).bottomInset,
@@ -371,12 +387,16 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
   static const String moreMatchLabel =
       'More photographs match this filter. Load more to select them.';
 
-  /// What the selection bar's one action is called.
-  static const String addToQueueLabel = 'Add to queue';
-
-  Widget _body(BuildContext context, SourceBrowseController controller) {
+  Widget _body(
+    BuildContext context,
+    SourceBrowseController controller,
+    UiLayoutMetrics layout,
+  ) {
     final UiThemeData ui = context.ui;
-    final EdgeInsetsGeometry sides = EdgeInsetsDirectional.all(ui.space.s4);
+    final EdgeInsetsGeometry sides = EdgeInsetsDirectional.symmetric(
+      horizontal: layout.gutter,
+      vertical: ui.space.s2,
+    );
     final ApiFailure? failure = controller.error;
     if (failure != null && controller.items.isEmpty) {
       return SliverPadding(
@@ -426,9 +446,7 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
     // A checkbox column stays open on a window wide enough to keep one, so a
     // reviewer on a pointer never has to discover a gesture. A narrow one
     // reveals it on a long press. The window decides, never the platform.
-    final bool column =
-        WindowClass.of(context).isAtLeast(WindowClass.medium) ||
-        _selection.active;
+    final bool column = layout.columns(maxColumns: 2) > 1 || _selection.active;
 
     return SliverPadding(
       padding: sides,
@@ -456,6 +474,11 @@ class _SourceBrowsePaneState extends State<SourceBrowsePane> {
                   onLongPress: column ? null : () => _selection.select(object),
                   child: SourceObjectRow(
                     object: object,
+                    showState:
+                        !(controller.filter == SourceFilter.inQueue &&
+                            object.state == SourceObjectState.imported) &&
+                        !(controller.filter == SourceFilter.notInQueue &&
+                            object.state == SourceObjectState.available),
                     onOpen:
                         object.specimenId == null ||
                             widget.onOpenSpecimen == null
@@ -510,8 +533,10 @@ class _SourceDecisionBar extends StatelessWidget {
         primary: UiButton(
           label: busy
               ? 'Adding ${photographsLabel(settled)}'
-              : _SourceBrowsePaneState.addToQueueLabel,
-          leading: UiIcons.addToBatch,
+              : 'Add ${groupedCount(selection.count)}',
+          semanticsLabel: busy
+              ? null
+              : 'Add ${photographsLabel(selection.count)} to the queue',
           loading: busy,
           onPressed: busy ? null : onAdd,
         ),
@@ -520,7 +545,6 @@ class _SourceDecisionBar extends StatelessWidget {
           variant: UiButtonVariant.ghost,
           onPressed: busy ? null : selection.clear,
         ),
-        count: '${photographsLabel(selection.count)} selected',
       );
     },
   );
@@ -566,25 +590,41 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: ui.space.s4,
+      runSpacing: ui.space.s2,
+      children: [
         Semantics(
-          container: true,
           header: true,
           child: Text(
             source.displayName,
             style: ui.type.headline.copyWith(color: ui.color.ink),
           ),
         ),
-        SizedBox(height: ui.space.s1),
-        Semantics(
-          container: true,
-          liveRegion: true,
-          child: Text(
-            summary(),
-            style: ui.type.body.copyWith(color: ui.color.inkSecondary),
+        UiButton(
+          label: 'Source details',
+          variant: UiButtonVariant.ghost,
+          onPressed: () => showProductModal<void>(
+            context: context,
+            title: 'Source details',
+            body: (modal) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(summary(), style: modal.ui.type.body),
+                SizedBox(height: modal.ui.space.s2),
+                Text(
+                  'gs://${source.bucket}/${source.prefix}',
+                  style: modal.ui.type.bodySmall,
+                ),
+              ],
+            ),
+            primaryAction: (modal) => UiButton(
+              label: 'Close',
+              onPressed: () => Navigator.of(modal).pop(),
+            ),
           ),
         ),
       ],

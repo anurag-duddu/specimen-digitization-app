@@ -1,6 +1,6 @@
 // UiSearchField (10 section 4.2).
 //
-// The capsule, the clear control, and the two keys the control owns: Escape
+// The rounded field, the clear control, and the two keys the control owns: Escape
 // clears and then unfocuses, Enter submits.
 
 import 'package:flutter/services.dart';
@@ -46,7 +46,7 @@ void main() {
     );
   });
 
-  testWidgets('it is a capsule with the search glyph leading', (
+  testWidgets('it is an 8 dp rounded field with the search glyph leading', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
@@ -60,7 +60,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester.widget<UiFieldBox>(find.byType(UiFieldBox)).style.capsule,
-      isTrue,
+      isFalse,
     );
     expect(
       tester.widget<UiIcon>(find.byType(UiIcon).first).spec,
@@ -168,7 +168,7 @@ void main() {
     expect(find.bySemanticsLabel(_clear), findsNothing);
   });
 
-  testWidgets('the capsule is ringed by a stadium, on any focus', (
+  testWidgets('search focus strengthens the rounded field boundary', (
     WidgetTester tester,
   ) async {
     addTearDown(
@@ -190,24 +190,16 @@ void main() {
 
     await tester.tap(find.byType(FieldCore));
     await tester.pumpAndSettle();
-    final Iterable<FocusRing> rings = tester
-        .widgetList<FocusRing>(find.byType(FocusRing))
-        .where((FocusRing ring) => ring.visible);
-    expect(
-      rings,
-      hasLength(1),
-      reason: 'a tapped search field is being typed into, and says so',
-    );
-    expect(
-      rings.single.shape,
-      FocusRingShape.stadium,
-      reason:
-          'a capsule is ringed by a stadium, so the two run concentric at '
-          'the ends of the curve (09 section 3.6, fit amendment)',
-    );
+    final UiFieldBox field = tester.widget<UiFieldBox>(find.byType(UiFieldBox));
+    expect(field.style.capsule, isFalse);
+    expect(field.style.radius, 8);
+    expect(visibleRings(tester), 0);
+    expect(visibleEdges(tester), 1);
+    expect(fieldSide(tester).width, 2);
+    expect(fieldSide(tester).color, uiOf(tester).color.ink);
   });
 
-  testWidgets('the capsule reads the error edge like any other field', (
+  testWidgets('search reads the error edge like any other field', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(

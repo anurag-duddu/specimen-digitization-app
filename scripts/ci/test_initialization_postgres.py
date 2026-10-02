@@ -1,4 +1,5 @@
 """Opt-in PostgreSQL18 semantics; this does not emulate managed Cloud SQL roles."""
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -44,6 +45,7 @@ def postgres(tmp_path):
         '''
         result=sql(setup)
         assert result.returncode == 0, result.stderr.decode()
+        sql.socket=socket_dir.name
         yield sql
     finally:
         result=command(BIN/'pg_ctl','-D',tmp_path/'cluster','-m','fast','stop')
@@ -72,6 +74,34 @@ def test_pg18_fixed_transaction_preserves_owner_and_removes_initializer_dependen
     assert result.stdout.decode().strip() == 'cloudsqlsuperuser'
     result=postgres((initialization.ROOT/'scripts/ci/initialize_postconditions.sql').read_text(),database=initialization.DATABASE)
     assert result.returncode == 0, 'ordinary postconditions still pass after exact initializer deletion'
+
+
+def summary(postgres):
+    """The release identity's value-free catalog summary (RELEASE.md 4.3 step 1), as psql prints its one row."""
+    result=postgres((initialization.ROOT/'scripts/ci/release_sql_summary.sql').read_text(),
+                    actor=initialization.MAINTENANCE,database=initialization.DATABASE)
+    assert result.returncode == 0, result.stderr.decode()
+    return next(line for line in result.stdout.decode().splitlines() if '|' in line)
+
+
+def test_pg18_transaction_adds_exactly_uuid_ossp_for_the_writer_and_the_summary_sees_both_states(postgres):
+    assert summary(postgres) == 't|t|0|0|0|0|{}|{}'
+    result=transaction(postgres)
+    assert result.returncode == 0, result.stderr.decode()
+    result=postgres("SELECT pg_get_userbyid(extowner),extnamespace::regnamespace FROM pg_extension WHERE extname='uuid-ossp';",
+                    database=initialization.DATABASE)
+    assert result.stdout.decode().strip() == 'cloudsqlsuperuser|public'
+    result=postgres('SELECT public.uuid_generate_v4() IS NOT NULL;',actor=initialization.AGENT,database=initialization.DATABASE)
+    assert result.stdout.decode().strip() == 't', result.stderr.decode()
+    roles=','.join(f'firebase{role}_{initialization.DATABASE}_public' for role in ('owner','reader','writer'))
+    assert summary(postgres) == f't|t|0|0|10|0|{{uuid-ossp}}|{{{roles}}}'
+
+
+def test_pg18_a_preexisting_uuid_ossp_is_never_adopted(postgres):
+    assert postgres('CREATE EXTENSION "uuid-ossp" SCHEMA public;',database=initialization.DATABASE).returncode == 0
+    result=transaction(postgres)
+    assert result.returncode != 0 and 'unreviewed user objects' in result.stderr.decode()
+    assert postgres("SELECT count(*) FROM pg_roles WHERE rolname LIKE 'firebase%';").stdout.decode().strip() == '0'
 
 
 @pytest.mark.parametrize('change', [
@@ -152,3 +182,102 @@ def test_pg18_indirect_runtime_privilege_path_rolls_back_initialization(postgres
     assert result.returncode != 0 and 'runtime SQL identity is outside' in result.stderr.decode()
     result=postgres("SELECT count(*) FROM pg_roles WHERE rolname LIKE 'firebase%';")
     assert result.stdout.decode().strip() == '0'
+
+
+# T3c2 (RELEASE.md 4.3 steps 3 and 5): the real release_sql.mjs and the pg module firebase-tools 15.8.0 installs, as the
+# release identity on this cluster. Only the Cloud SQL connector is replaced, by this cluster's socket.
+PG_MODULE = Path('/opt/homebrew/lib/node_modules/firebase-tools/node_modules/pg')
+OWNER = f'firebaseowner_{initialization.DATABASE}_public'
+ORGANIZATION = ('CREATE TABLE "public"."organization" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" text NOT NULL, '
+                'PRIMARY KEY ("id"))')
+MEMBER = ('CREATE TABLE "public"."organization_member" ("organization_id" uuid NOT NULL, "uid" text NOT NULL, PRIMARY KEY '
+          '("organization_id", "uid"), CONSTRAINT "organization_member_organization_id_fkey" FOREIGN KEY ("organization_id") '
+          'REFERENCES "public"."organization" ("id") ON DELETE CASCADE)')
+UNIQUE = 'CREATE UNIQUE INDEX "organization_name_uidx" ON "public"."organization" ("name")'
+
+
+def release_sql(postgres, tmp_path, mode, *statements, instance='specimen-digitization-instance'):
+    assert PG_MODULE.joinpath('package.json').is_file(), 'the pg module of firebase-tools 15.8.0 is required, not skipped'
+    modules = tmp_path / 'node_modules'
+    for name in ('firebase-tools', '@google-cloud/cloud-sql-connector'):
+        (modules / name).mkdir(parents=True, exist_ok=True)
+        (modules / name / 'package.json').write_text('{"version":"15.8.0","main":"index.js"}')
+    (modules / '@google-cloud/cloud-sql-connector/index.js').write_text("exports.AuthTypes={IAM:'IAM'};exports.IpAddressTypes="
+        "{PUBLIC:'PUBLIC'};exports.Connector=class{async getOptions(){return {host:process.env.TEST_PG_HOST,port:5669}}close(){}};")
+    if not (modules / 'pg').exists():
+        (modules / 'pg').symlink_to(PG_MODULE)
+    plan, output = tmp_path / 'migration.json', tmp_path / f'{mode}.json'
+    plan.write_text(json.dumps({'version': 'data-migration/v1', 'source_sha': 'a' * 40, 'statements': list(statements),
+                                'relaxed': []}))
+    output.unlink(missing_ok=True)
+    env = {'PATH': os.environ['PATH'], 'GITHUB_ACTIONS': 'true', 'GITHUB_REPOSITORY': 'anurag-duddu/specimen-digitization-app',
+           'GITHUB_SHA': 'a' * 40, 'RELEASE_GATE_SHA': 'a' * 40, 'GITHUB_EVENT_NAME': 'push', 'GITHUB_REF': 'refs/heads/main',
+           'GITHUB_WORKFLOW_REF': 'anurag-duddu/specimen-digitization-app/.github/workflows/data-release.yml@refs/heads/main',
+           'DEPLOYMENT_ENVIRONMENT': 'data-production', 'RELEASE_NODE_ROOT': str(tmp_path), 'TEST_PG_HOST': postgres.socket}
+    result = subprocess.run(['node', 'scripts/ci/release_sql.mjs', mode, instance, str(output), str(plan)],
+                            cwd=initialization.ROOT, env=env, capture_output=True, timeout=60)
+    return result.returncode, json.loads(output.read_text()) if output.exists() else None
+
+
+def relations(postgres):
+    result = postgres("SELECT string_agg(relname || ':' || pg_get_userbyid(relowner), ',' ORDER BY relname) FROM pg_class "
+                      "WHERE relnamespace = 'public'::regnamespace AND relkind IN ('r', 'i');", database=initialization.DATABASE)
+    assert result.returncode == 0, result.stderr.decode()
+    return result.stdout.decode().strip()
+
+
+def test_pg18_the_migration_runs_as_the_owner_and_the_writer_inserts_with_uuid_generate_v4_defaults(postgres, tmp_path):
+    assert transaction(postgres).returncode == 0
+    # Before the diff, the migrate step reads the initialized catalog back the same way (RELEASE.md 4.3, Jobs).
+    code, initialized = release_sql(postgres, tmp_path, 'migrated')
+    assert code == 0 and (initialized['tables'], initialized['views'], initialized['owners']) == ([], [], [])
+    assert release_sql(postgres, tmp_path, 'migrate', ORGANIZATION, MEMBER, UNIQUE) == (
+        0, {'version': 'data-migration/v1', 'statements': 3, 'committed': True})
+    assert relations(postgres) == ','.join(f'{name}:{OWNER}' for name in (
+        'organization', 'organization_member', 'organization_member_pkey', 'organization_name_uidx', 'organization_pkey'))
+    result = postgres("INSERT INTO public.organization (name) VALUES ('synthetic') RETURNING id IS NOT NULL;",
+                      actor=initialization.AGENT, database=initialization.DATABASE)
+    assert result.returncode == 0 and result.stdout.decode().splitlines()[0] == 't', result.stderr.decode()
+    # The catalog check reads the same database back: the initializer's postconditions hold over the new tables.
+    code, catalog = release_sql(postgres, tmp_path, 'migrated')
+    assert code == 0 and catalog['postconditions']['schema_owner'] == OWNER
+    # One object before and after the migration, so the initializer receipt's one hash covers both reads.
+    assert catalog['postconditions'] == initialized['postconditions']
+    assert {key: catalog[key] for key in ('expected_database', 'expected_actor', 'tables', 'views', 'owners', 'extensions')} == {
+        'expected_database': True, 'expected_actor': True, 'tables': ['public.organization', 'public.organization_member'],
+        'views': [], 'owners': [OWNER], 'extensions': ['plpgsql', 'uuid-ossp']}
+
+
+def test_pg18_the_index_inventory_reads_each_index_definition_read_only(postgres, tmp_path):
+    """RELEASE.md 4.4, Verify: release_sql.mjs indexed reads what verify_indexes checks, and no row."""
+    assert transaction(postgres).returncode == 0
+    assert release_sql(postgres, tmp_path, 'migrate', ORGANIZATION, UNIQUE)[0] == 0
+    code, value = release_sql(postgres, tmp_path, 'indexed')
+    assert code == 0 and value['version'] == 'native-sql-indexes/v1' and value['instance'] == 'specimen-digitization-instance'
+    assert value['indexes'] == [
+        {'name': 'organization_name_uidx', 'table_name': 'organization', 'method': 'btree', 'valid': True, 'unique': True,
+         'predicate': None, 'keys': ['name'], 'includes': [],
+         'definition': 'CREATE UNIQUE INDEX organization_name_uidx ON public.organization USING btree (name)'},
+        {'name': 'organization_pkey', 'table_name': 'organization', 'method': 'btree', 'valid': True, 'unique': True,
+         'predicate': None, 'keys': ['id'], 'includes': [],
+         'definition': 'CREATE UNIQUE INDEX organization_pkey ON public.organization USING btree (id)'}]
+
+
+def test_pg18_the_restored_clone_is_read_as_the_source_is_and_only_as_the_clone(postgres, tmp_path):
+    """RELEASE.md 4.4 item 1 (D1): release_sql.mjs restored reads the clone's catalog exactly as migrated reads the
+    source's. The connector stand-in reaches this one cluster by either name."""
+    assert transaction(postgres).returncode == 0
+    assert release_sql(postgres, tmp_path, 'migrate', ORGANIZATION)[0] == 0
+    clone = 'specimen-digitization-restore-20260908-r1'
+    code, restored = release_sql(postgres, tmp_path, 'restored', instance=clone)
+    assert code == 0 and restored == release_sql(postgres, tmp_path, 'migrated')[1]
+    assert restored['tables'] == ['public.organization'] and restored['postconditions']['schema_owner'] == OWNER
+    assert release_sql(postgres, tmp_path, 'restored') == (1, None)
+
+
+def test_pg18_one_failing_statement_rolls_the_whole_migration_back(postgres, tmp_path):
+    assert transaction(postgres).returncode == 0
+    assert release_sql(postgres, tmp_path, 'migrate', ORGANIZATION)[0] == 0
+    broken = 'CREATE TABLE "public"."broken" ("id" uuid REFERENCES "public"."missing" ("id"))'
+    assert release_sql(postgres, tmp_path, 'migrate', MEMBER, UNIQUE, broken) == (1, None)
+    assert relations(postgres) == f'organization:{OWNER},organization_pkey:{OWNER}'

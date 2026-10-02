@@ -1,29 +1,11 @@
-/// The review workbench (13 section 4.1; screen blueprints, section 6).
-///
-/// One screen, composed rather than stacked. On a phone and a tablet in
-/// portrait it is one `CustomScrollView`: the photograph is a
-/// `UiCollapsingHeader` pinned between 55 and 40 percent of the viewport, the
-/// status strip and the evidence scroll beneath it, and the segments stick
-/// under the header. From the expanded class up the two and three pane
-/// arrangements stay, each pane one scroll and none inside another.
-///
-/// The chrome is the frame's. The record names itself in the top bar, hides
-/// the navigation pill, asks for the one line environment band and fills the
-/// action bar with its decision bar, all four through `UiScaffoldSlots`, so
-/// the shell owns the top and the bottom of the window and the chrome budget
-/// with them (13 sections 2.3 and 3.4). From the expanded class up the
-/// decision sits in the top bar beside the identifier and the action bar is
-/// given back, because the bar, the band and an action bar together are more
-/// than the 20 percent those classes allow at 200 percent text
-/// (`decisionInTopBar`). What is left is the work: the
-/// photograph never scrolls away, every correction happens with the pixels on
-/// screen, and the corrections a reviewer makes on one record are saved
-/// together under one reason.
+/// Image-led review with one evidence inspector and a contextual decision.
+/// Narrow constraints retain one page scroll and a reachable bottom decision.
 library;
 
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/scheduler.dart' show SchedulerPhase;
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -83,7 +65,7 @@ const String evidenceTabsLabel = 'Evidence panels';
 const String sourceDetailsLabel = 'Source details';
 
 /// What the top bar's back control is called, wherever a record is open.
-const String backToQueueLabel = 'Back to queue';
+const String backToQueueLabel = 'Back to specimens';
 
 /// What a step along the queue says when this record is not in the loaded
 /// list at all, so there is neither a neighbour nor a reason there is none.
@@ -113,14 +95,23 @@ class ReviewWorkbench extends StatefulWidget {
     this.loadArtifact,
     this.loadHistoricalArtifact,
     this.loadHistoricalRevision,
+    this.onRestoreVersion,
     this.onNext,
     this.onPrevious,
     this.nextBlockedReason,
     this.previousBlockedReason,
     this.positionLabel,
     this.onBack,
+    this.onShowQueue,
+    this.specimensExpanded = false,
+    this.showSidebarToggle = true,
+    this.onExitGuardChanged,
+    this.onNavigationBlockedChanged,
+    this.active = true,
     this.account,
+    this.researchPanel,
   });
+  final Widget? researchPanel;
   final Specimen specimen;
   final Future<Json> Function(Specimen, ArtifactRequest)?
   loadHistoricalArtifact;
@@ -169,6 +160,12 @@ class ReviewWorkbench extends StatefulWidget {
     String? runSha256,
   )?
   loadHistoricalRevision;
+  final Future<void> Function(
+    int sourceRevision,
+    bool resetToInitial,
+    String reason,
+  )?
+  onRestoreVersion;
 
   /// Opens the next specimen in the queue.
   ///
@@ -204,6 +201,23 @@ class ReviewWorkbench extends StatefulWidget {
   /// is a component test pumping the workbench on its own.
   final VoidCallback? onBack;
 
+  /// Reveals the preserved queue over the current record at intermediate widths.
+  final VoidCallback? onShowQueue;
+  final bool specimensExpanded;
+  final bool showSidebarToggle;
+
+  /// Registers the active editor's leave guard with its workspace owner.
+  final void Function(Future<bool> Function() guard, bool active)?
+  onExitGuardChanged;
+
+  /// Whether an interactive route pop must wait for edits or a pending save.
+  /// Event-driven changes are synchronous; build-time changes publish after
+  /// the frame so the route owner can safely rebuild its PopScope.
+  final ValueChanged<bool>? onNavigationBlockedChanged;
+
+  /// A retained hidden branch keeps its draft state but does not own chrome.
+  final bool active;
+
   /// The account menu the shell puts at the end of its own bars, drawn at the
   /// end of this record's bar too (13 section 4.1, polish 3).
   ///
@@ -218,18 +232,22 @@ class ReviewWorkbench extends StatefulWidget {
 }
 
 class _ReviewWorkbenchState extends State<ReviewWorkbench> {
+  final FocusNode _showQueueFocus = FocusNode(debugLabel: 'Specimens sidebar');
+  final FocusScopeNode _workbenchFocus = FocusScopeNode(
+    debugLabel: 'workbench',
+    traversalEdgeBehavior: TraversalEdgeBehavior.parentScope,
+  );
   WorkbenchSegment _segment = WorkbenchSegment.readings;
 
   /// Which tab the strip is on, as the index into [WorkbenchSegment.values].
   ///
   /// `UiTabs` owns the selection and writes into this, so the strip and the
   /// panel below it cannot disagree. The index into the visible list is the
-  /// same number as the index into the enum, because the only list the regime
-  /// shortens drops the last entry (`WorkbenchSegment.forRegime`).
+  /// same number as the index into the enum at every pane width.
   final ValueNotifier<int> _tab = ValueNotifier<int>(0);
 
   /// How the record is arranged this frame, so a shortcut and a blocker can
-  /// tell whether History is a tab or a pane of its own.
+  /// keep the same evidence selection through a constraint change.
   WorkbenchRegime _regime = WorkbenchRegime.stacked;
 
   String? _region;
@@ -239,6 +257,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   late RecentReasonStore _reasonStore = RecentReasonStore(widget.reviewerId);
   int? _conflictVersion;
   bool _savingLocally = false;
+  int? _acknowledgedRevision;
   String? _announcement;
 
   /// What this screen has asked of the frame around it (13 section 3.4).
@@ -246,6 +265,72 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// Held rather than looked up in `dispose`, which runs after this element is
   /// detached and can no longer reach an inherited widget.
   UiScaffoldSlots? _slots;
+
+  final GlobalKey _readingsKey = GlobalKey(debugLabel: 'label-comparison');
+  final GlobalKey _historyKey = GlobalKey(
+    debugLabel: 'retained-review-history',
+  );
+  bool _historyVisited = false;
+  bool _labelDraft = false;
+  final LabelDraftController _labelDrafts = LabelDraftController();
+  late final Future<bool> Function() _exitGuard = _confirmUnsaved;
+  bool get _hasUnsaved => _labelDrafts.hasChanges || _pending.isNotEmpty;
+  bool? _reportedNavigationBlocked;
+  bool _navigationNotificationPending = false;
+
+  void _reportNavigationBlocked() {
+    if (!mounted) return;
+    if (WidgetsBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      if (_navigationNotificationPending) return;
+      _navigationNotificationPending = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _navigationNotificationPending = false;
+        _reportNavigationBlocked();
+      });
+      return;
+    }
+    final blocked =
+        widget.busy || _savingLocally || _labelDrafts.isSaving || _hasUnsaved;
+    if (_reportedNavigationBlocked == blocked) return;
+    _reportedNavigationBlocked = blocked;
+    widget.onNavigationBlockedChanged?.call(blocked);
+  }
+
+  void _setSavingLocally(bool saving) {
+    _savingLocally = saving;
+    _reportNavigationBlocked();
+  }
+
+  Future<bool> _confirmUnsaved() async {
+    if (widget.busy || _savingLocally || _labelDrafts.isSaving) return false;
+    if (!_hasUnsaved) return true;
+    final bool discard =
+        await showProductModal<bool>(
+          context: context,
+          title: 'Discard unsaved corrections?',
+          body: (context) => const Text(
+            'Your corrections have not been saved. Stay to finish them, or discard them before leaving this record.',
+          ),
+          primaryAction: (context) => UiButton(
+            label: 'Keep editing',
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          secondaryAction: (context) => UiButton(
+            label: 'Discard changes',
+            variant: UiButtonVariant.ghost,
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ) ??
+        false;
+    if (!discard || !mounted || !_labelDrafts.discardAll()) return false;
+    setState(() {
+      _labelDraft = false;
+      _pending = <PendingFieldChange>[];
+    });
+    _reportNavigationBlocked();
+    return true;
+  }
 
   final SourceViewController _view = SourceViewController();
   final ScrollController _evidenceScroll = ScrollController();
@@ -255,8 +340,19 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   @override
   void initState() {
     super.initState();
+    _region = _initialRegion(widget.specimen);
     _tab.addListener(_tabChanged);
+    _labelDrafts.addListener(_reportNavigationBlocked);
+    widget.onExitGuardChanged?.call(_exitGuard, true);
+    _reportNavigationBlocked();
     unawaited(_loadRecentReasons());
+  }
+
+  static String? _initialRegion(Specimen specimen) {
+    final regions = specimen.regions;
+    if (regions.isEmpty) return null;
+    final id = textOf(regions.first['region_id'], '');
+    return id.isEmpty ? null : id;
   }
 
   /// The tab strip moved. The panel follows it, and the reviewer feels the
@@ -290,6 +386,9 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// button is ever a silent no-op (accessibility, 3.2; pass criterion 5.6).
   String? blockedReason(String action) {
     if (widget.busy) return 'Wait for the save that is in flight to finish';
+    if (_hasUnsaved && (action == 'approve' || action == 'coverage')) {
+      return 'Save or discard your corrections first.';
+    }
     if (!widget.canReview) {
       return 'Your role on this collection does not include reviewing';
     }
@@ -338,6 +437,14 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   @override
   void didUpdateWidget(covariant ReviewWorkbench oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.active != widget.active) {
+      if (!widget.active) _slots?.release(this);
+      _published = null;
+    }
+    if (oldWidget.onNavigationBlockedChanged == null &&
+        widget.onNavigationBlockedChanged != null) {
+      _reportedNavigationBlocked = null;
+    }
     if (oldWidget.reviewerId != widget.reviewerId) {
       // A different account is a different list of recent reasons, never a
       // merge of the two (pass criterion 7.6).
@@ -353,12 +460,15 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
             !widget.specimen.regions.any(
               (Json r) => r['region_id'] == _region,
             ))) {
-      _region = null;
+      _region = _initialRegion(widget.specimen);
     }
     if (newRecord) {
+      _historyVisited = _visibleSegment == WorkbenchSegment.history;
+      _acknowledgedRevision = null;
       _pending = <PendingFieldChange>[];
       _stale = <PendingFieldChange>[];
       _conflictVersion = null;
+      _reportNavigationBlocked();
       return;
     }
     if (oldWidget.specimen.revision != widget.specimen.revision &&
@@ -366,6 +476,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       _reapplyPending();
       _conflictVersion = widget.specimen.revision;
     }
+    _reportNavigationBlocked();
   }
 
   void _reapplyPending() {
@@ -375,61 +486,46 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       _stale = split.stale;
       _conflictVersion = widget.specimen.revision;
     }
+    _reportNavigationBlocked();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _slots = UiScaffoldSlots.of(context);
-    _publish(context);
   }
 
   @override
   void dispose() {
+    _showQueueFocus.dispose();
+    _workbenchFocus.dispose();
     // Only what this screen still holds: the router builds the screen
     // arriving before it disposes the screen leaving, so clearing the slots
     // outright would take the next screen's chrome with it.
+    widget.onExitGuardChanged?.call(_exitGuard, false);
     _slots?.release(this);
     _tab
       ..removeListener(_tabChanged)
+      ..dispose();
+    _labelDrafts
+      ..removeListener(_reportNavigationBlocked)
       ..dispose();
     _view.dispose();
     _evidenceScroll.dispose();
     super.dispose();
   }
 
-  /// Asks the frame for the chrome a record needs (13 sections 2.3 and 3.4).
-  ///
-  /// Four asks. The bar across the top carries the identifier, the way out
-  /// and the record's own commands, none of which the shell that built the
-  /// frame holds; from `expanded` up it carries the decision as well
-  /// ([decisionInTopBar]). The action bar carries the decision bar at compact
-  /// and medium, so the two decisions sit on the frame's one pane rather than
-  /// on a second one over it, and is given back from `expanded` up, where the
-  /// bar, the band and an action bar together are more than the 20 percent
-  /// 13 section 2.3 allows at 200 percent text. The navigation pill is
-  /// hidden, because the way out of a record is the bar's back and three
-  /// other destinations are chrome the reviewer did not ask for. The band
-  /// drops to its one line form, which is what buys the action bar its share
-  /// of the budget on a phone.
-  ///
-  /// Called from `build`, because every one of the four reads state that
-  /// changes under the reviewer: the identifier when the record is replaced,
-  /// the two decisions when the server withdraws one, the count when the
-  /// queue moves, the window class when the frame is resized. A publish
-  /// during a build is announced after it, which is what `UiScaffoldSlots`
-  /// promises, and the frame rebuilds the chrome and not the body, so the two
-  /// settle rather than chase each other.
-  void _publish(BuildContext context) {
+  /// The frame owns navigation. Decisions stay with the review content.
+  void _publish(BuildContext context, {required bool actionBar}) {
+    if (!widget.active) return;
     final UiScaffoldSlots? slots = _slots;
     if (slots == null) return;
-    final bool decides = decisionInTopBar(WindowClass.of(context));
-    final List<Object?> now = _chromeState(decides: decides);
+    final List<Object?> now = _chromeState(actionBar: actionBar);
     if (_published != null && listEquals(_published, now)) return;
     _published = now;
     slots
-      ..setTopBar(_recordTopBar(context, decides: decides), owner: this)
-      ..setActionBar(decides ? null : _decisionBar(context), owner: this)
+      ..setTopBar(null, owner: this)
+      ..setActionBar(null, owner: this)
       ..setNavVisible(false, owner: this)
       ..setBandCompact(true, owner: this);
   }
@@ -442,8 +538,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// chasing each other one frame apart for as long as the record is open.
   /// This is every value the two bars read, compared before publishing, so a
   /// rebuild that changes none of them changes nothing in the frame.
-  List<Object?> _chromeState({required bool decides}) => <Object?>[
-    decides,
+  List<Object?> _chromeState({required bool actionBar}) => <Object?>[
+    actionBar,
     widget.specimen.id,
     widget.busy,
     _pending.length,
@@ -496,14 +592,14 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
 
   void _selectRegion(String? id) {
     setState(() {
-      _region = id;
       if (id != null) _moveSegment(WorkbenchSegment.readings);
+      _region = id;
     });
-    if (id == null) return;
-    // The readings scroll to the region the photograph just moved to.
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _scrollTo(_regionAnchors[id]),
-    );
+    if (id != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _region == id) _view.frameSelection();
+      });
+    }
   }
 
   void _scrollTo(GlobalKey? key) {
@@ -513,9 +609,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       target,
       duration: context.ui.motion.standard,
       curve: MotionTokens.standardCurve,
-      alignment: 0.1,
+      alignment: 0,
     );
-    Focus.maybeOf(target)?.requestFocus();
   }
 
   void _goToBlocker(ClearanceBlocker blocker) {
@@ -597,7 +692,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// identity or another request refreshing the record in the meantime.
   Future<bool> _send(Json change) async {
     if (_savingLocally || widget.busy) return false;
-    _savingLocally = true;
+    _setSavingLocally(true);
     bool acknowledged = false;
     try {
       acknowledged = await widget.onChange(change);
@@ -608,9 +703,10 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     } catch (_) {
       return false;
     } finally {
-      _savingLocally = false;
+      _setSavingLocally(false);
       if (mounted) {
         setState(() {
+          if (acknowledged) _acknowledgedRevision = widget.specimen.revision;
           // The fresh readback can include this acknowledged correction and
           // unrelated concurrent edits. Remove only the acknowledged field
           // before checking whether the remaining drafts are still current.
@@ -705,7 +801,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     final Map<String, PendingFieldChange> drafts = <String, PendingFieldChange>{
       for (final PendingFieldChange change in batch) change.fieldKey: change,
     };
-    _savingLocally = true;
+    _setSavingLocally(true);
     int saved = 0;
     try {
       saved = await send(
@@ -726,9 +822,10 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     } catch (_) {
       return 0;
     } finally {
-      _savingLocally = false;
+      _setSavingLocally(false);
       if (mounted) {
         setState(() {
+          if (saved > 0) _acknowledgedRevision = widget.specimen.revision;
           final Set<String> landed = <String>{
             for (final PendingFieldChange change in batch.take(saved))
               change.fieldKey,
@@ -755,7 +852,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     if (refresh && mounted) _refresh();
   }
 
-  void _refresh() {
+  void _refresh() async {
+    if (!await _confirmUnsaved() || !mounted) return;
     setState(() => _conflictVersion = null);
     widget.onRefresh();
   }
@@ -767,9 +865,9 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       context,
       title: title,
       action: action,
-      consequence:
-          'This is recorded on version ${widget.specimen.revision} with your '
-          'name. The server decides clearance.',
+      consequence: kind == 'coverage'
+          ? 'Confirm that every visible label in the photograph has been included. This records your check; it does not approve the specimen.'
+          : 'Approve the accepted label text and record details. Your decision is recorded with your name; remaining checks still apply.',
       retained: 'Every reading, finding and earlier version stays in history.',
       outstanding: <String>[
         for (final ClearanceBlocker blocker in outstanding) blocker.message,
@@ -871,98 +969,90 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     UiToasts.show(context, message: copiedMessage, icon: UiIcons.copy);
   }
 
-  /// The record's own bar across the top (13 section 4.1).
-  ///
-  /// Back, the specimen identifier in `mono.identifier`, refresh, and one
-  /// overflow trigger holding the commands that belong to the record rather
-  /// than to any one segment of it: correct label regions, correct
-  /// classification, retry, copy the identifier, source details and the
-  /// shortcut list. 13 section 4.1 gives the bar those three things and puts
-  /// the record's commands in its overflow menu, and 13 section 2.4 gives a
-  /// region one job, so the trigger is built here rather than left to the
-  /// bar's own fit ladder: that ladder draws every declared action wherever
-  /// there is width for it, which was seven discs across a 1440 dp window,
-  /// two of them sharing a glyph. The menu rows carry the same labels,
-  /// glyphs, shortcuts and reasons the discs would. Below large the shell's
-  /// [ReviewWorkbench.account] menu closes the bar, in the slot every list
-  /// screen's bar gives it, so signing out is one tap from a record as it is
-  /// from the queue (13 section 4.1, polish 3).
-  ///
-  /// From `expanded` up the bar carries the decision as well
-  /// ([decisionInTopBar]). The identifier and the decision bar share the
-  /// bar's middle: the identifier at its own width, bounded only by the
-  /// middle itself, and the decision in what is left, so the name is never
-  /// cut and the decision degrades by its own ladder, the secondary into its
-  /// menu and then the primary's ellipsis. The middle is the one slot the bar
-  /// hands a bounded width, which the decision bar needs for the count it
-  /// stretches; an action slot is laid out at its intrinsic width.
-  ///
-  /// The collection switcher is deliberately absent: a reviewer inside a
-  /// record is inside one collection, and a control that would take them to
-  /// another is the top bar doing a second job (13 sections 2.4 and 4.1).
-  Widget _recordTopBar(BuildContext context, {required bool decides}) {
-    final UiThemeData ui = context.ui;
-    // The centre slot rather than the title, because an identifier is set in
-    // `mono.identifier` and a title is set in `type.title`: two records whose
-    // identifiers differ by one character have to be told apart at a glance
-    // (blueprint 6.1).
-    final Widget identifier = UiLabel(
-      widget.specimen.id,
-      style: ui.type.mono.identifier.copyWith(color: ui.color.ink),
-    );
-    return UiTopBar(
-      leading: widget.onBack == null
-          ? null
-          : UiIconButton(
-              icon: UiIcons.back,
-              semanticsLabel: backToQueueLabel,
-              tooltip: backToQueueLabel,
-              onPressed: widget.onBack,
-            ),
-      center: decides
-          ? LayoutBuilder(
-              builder: (BuildContext context, BoxConstraints constraints) =>
-                  Row(
-                    children: <Widget>[
-                      // A row hands an inflexible child an unbounded width;
-                      // the bound is the middle itself, so the label reads
-                      // its own overflow and ellipsises only past that.
-                      ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: constraints.maxWidth,
-                        ),
-                        child: identifier,
-                      ),
-                      SizedBox(width: ui.space.s4),
-                      Expanded(child: _decisionBar(context)),
-                    ],
-                  ),
-            )
-          : identifier,
-      actions: <Widget>[
-        UiTopBarAction(
-          icon: UiIcons.reload,
-          label: refreshLabel,
-          disabledReason: widget.busy
-              ? 'Wait for the save that is in flight to finish'
-              : null,
-          onPressed: widget.busy ? null : _refresh,
-        ),
-        UiMenuTrigger(
-          semanticsLabel: UiTopBarStyle.overflowLabel,
-          icon: UiIcons.more,
-          items: <UiMenuItem>[
-            for (final UiTopBarAction command in _recordCommands(context))
-              command.menuItem,
-          ],
-        ),
-        // The account is the shell's, handed in where its rule says the bar
-        // carries it (`AppShell.accountOnRecordBar`): below large and not at
-        // compact, where the identifier is the bar's one fact.
-        ?widget.account,
-      ],
-    );
-  }
+  /// Record identity and commands; the review decision belongs to the inspector.
+  Widget _recordTopBar(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final UiThemeData ui = context.ui;
+      final metrics = UiLayoutMetrics.fromConstraints(
+        constraints,
+        textScaler: MediaQuery.textScalerOf(context),
+      );
+      final showRefresh =
+          constraints.maxWidth >=
+          measureLabel(
+                context,
+                widget.specimen.id,
+                ui.type.mono.identifier,
+              ).width +
+              6 * UiDensity.hitBox +
+              2 * metrics.gutter;
+      final refresh = UiTopBarAction(
+        icon: UiIcons.reload,
+        label: refreshLabel,
+        disabledReason: widget.busy
+            ? 'Wait for the save that is in flight to finish'
+            : null,
+        onPressed: widget.busy ? null : _refresh,
+      );
+      // The centre slot rather than the title, because an identifier is set in
+      // `mono.identifier` and a title is set in `type.title`: two records whose
+      // identifiers differ by one character have to be told apart at a glance
+      // (blueprint 6.1).
+      final Widget identifier = UiLabel(
+        widget.specimen.id,
+        style: ui.type.mono.identifier.copyWith(color: ui.color.ink),
+      );
+      return UiTopBar(
+        leading: !widget.showSidebarToggle
+            ? null
+            : widget.onShowQueue != null
+            ? widget.specimensExpanded
+                  ? null
+                  : UiIconButton(
+                      icon: UiIcons.sidebar,
+                      semanticsLabel: widget.specimensExpanded
+                          ? 'Close sidebar'
+                          : 'Open sidebar',
+                      tooltip: widget.specimensExpanded
+                          ? 'Close sidebar'
+                          : 'Open sidebar',
+                      focusNode: _showQueueFocus,
+                      onPressed: () {
+                        _showQueueFocus.requestFocus();
+                        FocusManager.instance.applyFocusChangesIfNeeded();
+                        widget.onShowQueue?.call();
+                      },
+                    )
+            : widget.onBack == null
+            ? null
+            : UiIconButton(
+                icon: UiIcons.back,
+                semanticsLabel: backToQueueLabel,
+                tooltip: backToQueueLabel,
+                onPressed: () async {
+                  if (await _confirmUnsaved() && mounted) widget.onBack?.call();
+                },
+              ),
+        center: identifier,
+        actions: <Widget>[
+          if (showRefresh) refresh,
+          UiMenuTrigger(
+            semanticsLabel: UiTopBarStyle.overflowLabel,
+            icon: UiIcons.more,
+            items: <UiMenuItem>[
+              if (!showRefresh) refresh.menuItem,
+              for (final UiTopBarAction command in _recordCommands(context))
+                command.menuItem,
+            ],
+          ),
+          // The account is the shell's, handed in where its rule says the bar
+          // carries it (`AppShell.accountOnRecordBar`): below large and not at
+          // compact, where the identifier is the bar's one fact.
+          ?widget.account,
+        ],
+      );
+    },
+  );
 
   /// The record's own commands, declared once and drawn as menu rows.
   ///
@@ -974,6 +1064,28 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// the coordinate basis of the photograph, is supporting information.
   List<UiTopBarAction> _recordCommands(BuildContext context) =>
       <UiTopBarAction>[
+        if (WindowClass.of(context).isCompact) ...<UiTopBarAction>[
+          UiTopBarAction(
+            icon: UiIcons.back,
+            label: WorkbenchDecisionBar.previousLabel,
+            disabledReason: widget.onPrevious == null
+                ? widget.previousBlockedReason ?? notInQueueMessage
+                : null,
+            onPressed: widget.onPrevious == null
+                ? null
+                : () => _step(widget.onPrevious, widget.previousBlockedReason),
+          ),
+          UiTopBarAction(
+            icon: UiIcons.next,
+            label: WorkbenchDecisionBar.nextLabel,
+            disabledReason: widget.onNext == null
+                ? widget.nextBlockedReason ?? notInQueueMessage
+                : null,
+            onPressed: widget.onNext == null
+                ? null
+                : () => _step(widget.onNext, widget.nextBlockedReason),
+          ),
+        ],
         UiTopBarAction(
           icon: UiIcons.correctRegions,
           label: SourceRegionEditControl.label,
@@ -1027,6 +1139,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     imageHeight: imageHeight,
     controller: _view,
     selectedRegionId: _region,
+    labelReviewActive: _visibleSegment == WorkbenchSegment.readings,
     onSelectRegion: _selectRegion,
     onEditRegions: !_regionsEditable || blockedReason('regions') != null
         ? null
@@ -1035,7 +1148,9 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     onExpand: () => showSourceFullScreen(
       context,
       specimen: widget.specimen,
+      viewController: _view,
       selectedRegionId: _region,
+      labelReviewActive: _visibleSegment == WorkbenchSegment.readings,
       onSelectRegion: _selectRegion,
     ),
   );
@@ -1052,10 +1167,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
 
   Widget _segmentContent(
     BuildContext context,
-    WorkbenchSegment segment,
-  ) => switch (segment) {
+    WorkbenchSegment segment, {
+    bool compact = false,
+  }) => switch (segment) {
     WorkbenchSegment.readings => WorkbenchReadings(
-      key: const ValueKey<String>('readings'),
+      key: _readingsKey,
+      presentationIdentity: _regime,
+      compact: compact,
       specimen: widget.specimen,
       anchors: <String, GlobalKey>{
         for (final Json r in widget.specimen.regions)
@@ -1067,6 +1185,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       selectedRegionId: _region,
       onSelectRegion: _selectRegion,
       onChange: _send,
+      onCommit: _send,
+      draftController: _labelDrafts,
+      onDraftChanged: (bool dirty) {
+        if (mounted && _labelDraft != dirty) {
+          setState(() => _labelDraft = dirty);
+        }
+      },
       transcriptionBlockedReason: blockedReason('transcription'),
       declarationsBlocked: blockedReason('reading_metadata') != null,
       loadArtifact: widget.loadArtifact,
@@ -1076,6 +1201,18 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
+        for (final blocker in blockersFor(widget.specimen).where(
+          (b) => b.segment == WorkbenchSegment.fields && b.fieldKey == null,
+        ))
+          Padding(
+            padding: EdgeInsets.only(bottom: context.ui.space.s2),
+            child: Text(
+              blocker.message,
+              style: context.ui.type.bodySmall.copyWith(
+                color: context.ui.color.status.needsReview.content,
+              ),
+            ),
+          ),
         WorkbenchFields(
           specimen: widget.specimen,
           anchors: <String, GlobalKey>{
@@ -1086,14 +1223,17 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               ),
           },
           pending: _pending,
-          onPendingChanged: (List<PendingFieldChange> next) =>
-              setState(() => _pending = next),
-          onFocusRegion: (String? id) {
-            if (id != null) setState(() => _region = id);
+          onPendingChanged: (List<PendingFieldChange> next) {
+            setState(() => _pending = next);
+            _reportNavigationBlocked();
           },
           fieldBlockedReason: blockedReason('field'),
         ),
         SizedBox(height: context.ui.space.s6),
+        if (widget.researchPanel != null) ...[
+          widget.researchPanel!,
+          SizedBox(height: context.ui.space.s6),
+        ],
         if (widget.loadArtifact != null)
           EvidencePanel(
             key: ValueKey<String>(
@@ -1105,7 +1245,10 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
             canReview: blockedReason('authority_resolution') == null,
           ),
         SizedBox(height: context.ui.space.s6),
-        ReviewContext(specimen: widget.specimen),
+        UiDisclosure(
+          title: 'Image and processing details',
+          child: ReviewContext(specimen: widget.specimen),
+        ),
         SizedBox(height: context.ui.space.s4),
         // The run internals, one closed disclosure, where the blocker that
         // names them sends the reviewer. An operator's concern rather than a
@@ -1119,61 +1262,139 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         ),
       ],
     ),
-    WorkbenchSegment.history => _history(const ValueKey<String>('history')),
+    WorkbenchSegment.history => _history(
+      _historyKey,
+      active: _visibleSegment == WorkbenchSegment.history,
+    ),
   };
 
-  Widget _history(Key key) => AuditHistoryPanel(
+  Widget _history(Key key, {bool active = true}) => AuditHistoryPanel(
     key: key,
+    embedded: true,
+    active: widget.active && active,
     specimen: widget.specimen,
     loadPage: widget.loadHistoryPage,
     loadRevision: widget.loadHistoricalRevision,
     loadArtifact: widget.loadHistoricalArtifact,
+    onRestore: widget.onRestoreVersion == null
+        ? null
+        : (revision, reset, reason) async {
+            if (widget.busy ||
+                _savingLocally ||
+                !widget.canReview ||
+                _hasUnsaved) {
+              throw const ApiFailure(
+                'Save or discard current edits before restoring a version.',
+                code: 'restore_unavailable',
+              );
+            }
+            final before = widget.specimen;
+            final reviewer = widget.reviewerId;
+            var acknowledged = false;
+            setState(() => _setSavingLocally(true));
+            try {
+              await widget.onRestoreVersion!(revision, reset, reason);
+              // As with a normal correction, keep this save local until its
+              // readback reaches didUpdateWidget. Otherwise our own restored
+              // revision is mistaken for another reviewer's edit.
+              if (mounted) await WidgetsBinding.instance.endOfFrame;
+              acknowledged =
+                  mounted &&
+                  widget.specimen.id == before.id &&
+                  widget.reviewerId == reviewer &&
+                  widget.specimen.revision > before.revision;
+            } finally {
+              _setSavingLocally(false);
+              if (mounted &&
+                  widget.specimen.id == before.id &&
+                  widget.reviewerId == reviewer) {
+                setState(() {
+                  if (acknowledged) {
+                    _acknowledgedRevision = widget.specimen.revision;
+                    _conflictVersion = _hasUnsaved
+                        ? widget.specimen.revision
+                        : null;
+                  } else if (widget.specimen.revision != before.revision) {
+                    // A failed restore may overlap a real incoming update.
+                    _conflictVersion = widget.specimen.revision;
+                  }
+                  _reapplyPending();
+                });
+              }
+            }
+          },
+    mutationDisabledReason: widget.busy || _savingLocally
+        ? 'Wait for the current operation to finish.'
+        : !widget.canReview
+        ? 'Reviewer access is required to restore a version.'
+        : _hasUnsaved
+        ? 'Save or discard your current edits before restoring a version.'
+        : null,
   );
 
-  /// The evidence pane of a side by side regime: one scroll, and only one.
-  ///
-  /// The decision bar is not in it. It is the frame's action bar now, which
-  /// is the one place 13 section 3.3 puts it, so the arithmetic that used to
-  /// take the bar's height out of the pane before the photograph and the
-  /// evidence split what was left is gone with it.
+  /// Flat review content with intrinsic navigation and a single scroll region.
   Widget _evidencePane(BuildContext context, WorkbenchRegime regime) {
-    final UiThemeData ui = context.ui;
-    return SingleChildScrollView(
-      key: evidenceScrollKey,
-      controller: _evidenceScroll,
-      padding: EdgeInsetsDirectional.symmetric(
-        horizontal: ui.space.s4,
-      ).add(EdgeInsets.only(bottom: UiScaffold.of(context).bottomInset)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: _evidence(context, regime),
-      ),
+    _syncTabs(regime);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final metrics = UiLayoutMetrics.fromConstraints(
+          constraints,
+          textScaler: MediaQuery.textScalerOf(context),
+        );
+        final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+        final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
+        final chromeScrolls = constraints.maxHeight - keyboard < 320 * scale;
+        final decision = Padding(
+          padding: EdgeInsets.symmetric(vertical: metrics.gap),
+          child: _decisionBar(context),
+        );
+        final content = _segmentPanel(context, regime, compact: chromeScrolls);
+        // UiScaffold keeps the body full-height and publishes keyboard
+        // geometry. Reserve it here so both the editor's scroll extent and
+        // the local decision bar end above the software keyboard.
+        return Padding(
+          padding: EdgeInsets.only(bottom: keyboard),
+          child: SizedBox(
+            key: const ValueKey<String>('review-inspector'),
+            child: chromeScrolls
+                ? SingleChildScrollView(
+                    key: evidenceScrollKey,
+                    controller: _evidenceScroll,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: <Widget>[
+                        _contextHeader(context, regime),
+                        SizedBox(height: context.ui.space.s1),
+                        content,
+                        const UiHairline(),
+                        decision,
+                      ],
+                    ),
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
+                      _contextHeader(context, regime),
+                      const UiHairline(),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          key: evidenceScrollKey,
+                          controller: _evidenceScroll,
+                          padding: EdgeInsets.symmetric(vertical: metrics.gap),
+                          child: content,
+                        ),
+                      ),
+                      const UiHairline(),
+                      decision,
+                    ],
+                  ),
+          ),
+        );
+      },
     );
   }
 
-  /// The evidence, as the rows every regime draws in the same order.
-  ///
-  /// The status strip, the segments and the chosen segment's content. A box
-  /// list rather than a sliver list, because the side by side regimes put it
-  /// in a pane's own scroll and the one scroll regime puts each row in a
-  /// sliver of its own; both read this and neither restates it.
-  List<Widget> _evidence(BuildContext context, WorkbenchRegime regime) {
-    final UiThemeData ui = context.ui;
-    _syncTabs(regime);
-    return <Widget>[
-      _statusStrip(context),
-      SizedBox(height: ui.space.s3),
-      _segments(context, regime),
-      SizedBox(height: ui.space.s4),
-      _segmentPanel(context, regime),
-    ];
-  }
-
-  /// Keeps the strip and the panel from disagreeing about which segment is on.
-  ///
-  /// A window that crosses into the three pane layout takes History out of
-  /// the strip. The strip cannot be corrected inside a build, so the frame
-  /// that crosses draws the clamped tab and the next one draws the right one.
+  /// Keeps selection shared by keyboard commands and the inspector tabs.
   void _syncTabs(WorkbenchRegime regime) {
     _regime = regime;
     final int count = WorkbenchSegment.forRegime(regime).length;
@@ -1186,6 +1407,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// Where the record stands, and what is holding a decision up.
   Widget _statusStrip(BuildContext context) => WorkbenchStatusStrip(
     specimen: widget.specimen,
+    saved: _acknowledgedRevision == widget.specimen.revision && !_hasUnsaved,
     blockers: blockersFor(widget.specimen),
     pending: _pending,
     staleChanges: _stale,
@@ -1194,46 +1416,72 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     onRefresh: _refresh,
   );
 
-  /// The evidence selector.
-  ///
-  /// `UiTabs` publishes the tab bar role and its children publish the tab
-  /// role, which is what VoiceOver and TalkBack read as "tab, 1 of 3,
-  /// selected" and what a rotor jumps between (finding V-3, accessibility
-  /// section 4.2 step 6). Below `medium` the strip scrolls with fading edges
-  /// rather than breaking its labels.
+  Widget _contextHeader(BuildContext context, WorkbenchRegime regime) {
+    final hasNotice =
+        _pending.isNotEmpty ||
+        _stale.isNotEmpty ||
+        _conflictVersion != null ||
+        _acknowledgedRevision == widget.specimen.revision;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        _segments(context, regime),
+        if (hasNotice) _statusStrip(context),
+      ],
+    );
+  }
+
+  /// One navigation pattern remains stable across all record contexts.
   Widget _segments(BuildContext context, WorkbenchRegime regime) => UiTabs(
-    semanticsLabel: evidenceTabsLabel,
+    key: const ValueKey<String>('review-context-tabs'),
     selected: _tab,
-    tabs: <UiTab>[
-      for (final WorkbenchSegment s in WorkbenchSegment.forRegime(regime))
-        UiTab(label: s.label),
+    semanticsLabel: 'Record view',
+    tabs: const <UiTab>[
+      UiTab(label: 'Labels', semanticsLabel: 'Label review'),
+      UiTab(label: 'Specimen data', semanticsLabel: 'Structured specimen data'),
+      UiTab(label: 'History', semanticsLabel: 'Review history'),
     ],
+    onSelected: (index) =>
+        setState(() => _moveSegment(WorkbenchSegment.values[index])),
   );
 
-  /// The chosen segment's content.
-  Widget _segmentPanel(BuildContext context, WorkbenchRegime regime) =>
-      UiTabView(
-        selected: _tab,
-        children: <Widget>[
-          for (final WorkbenchSegment s in WorkbenchSegment.forRegime(regime))
-            _segmentContent(context, s),
-        ],
+  /// Retain label drafts and visited history without exposing hidden controls.
+  Widget _segmentPanel(
+    BuildContext context,
+    WorkbenchRegime regime, {
+    bool compact = false,
+  }) {
+    _historyVisited |= _visibleSegment == WorkbenchSegment.history;
+    Widget retained(WorkbenchSegment segment) {
+      final visible = _visibleSegment == segment;
+      return TickerMode(
+        enabled: visible,
+        child: ExcludeFocus(
+          excluding: !visible,
+          child: ExcludeSemantics(
+            excluding: !visible,
+            child: Offstage(
+              offstage: !visible,
+              child: _segmentContent(context, segment, compact: compact),
+            ),
+          ),
+        ),
       );
+    }
 
-  /// The record's decision bar (13 section 3.3).
-  ///
-  /// In the frame's action bar at compact and medium, and in the top bar's
-  /// middle from `expanded` up ([decisionInTopBar]); the same widget either
-  /// way, so the decisions, the count and the two edge buttons read the same
-  /// wherever the window put them.
-  ///
-  /// Previous and next go through as the host gave them, and where a move is
-  /// absent the bar takes the reason instead: the host's, which says which
-  /// end of the queue this is, or [notInQueueMessage] where the host had
-  /// none. The bar draws the control disabled with the reason on its hint and
-  /// its tooltip (13 section 3.3, polish 3), which is the answer the `J` and
-  /// `K` keys give aloud and is what a control that would otherwise be a
-  /// silent no-op owes the reviewer (pass criterion 5.6, finding V-2).
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        retained(WorkbenchSegment.readings),
+        if (_historyVisited) retained(WorkbenchSegment.history),
+        if (_visibleSegment == WorkbenchSegment.fields)
+          _segmentContent(context, WorkbenchSegment.fields),
+      ],
+    );
+  }
+
+  /// One decision binding, used in the inspector or compact bottom bar.
   Widget _decisionBar(BuildContext context) => WorkbenchDecisionBar(
     busy: widget.busy,
     pendingCount: _pending.length,
@@ -1250,8 +1498,12 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     ),
     coverageBlockedReason: blockedReason('coverage'),
     approveBlockedReason: blockedReason('approve'),
-    onNext: widget.onNext,
-    onPrevious: widget.onPrevious,
+    onNext: widget.onNext == null
+        ? null
+        : () => _step(widget.onNext, widget.nextBlockedReason),
+    onPrevious: widget.onPrevious == null
+        ? null
+        : () => _step(widget.onPrevious, widget.previousBlockedReason),
     nextDisabledReason: widget.onNext == null
         ? widget.nextBlockedReason ?? notInQueueMessage
         : null,
@@ -1295,7 +1547,9 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       return SingleChildScrollView(
         key: evidenceScrollKey,
         controller: _evidenceScroll,
-        padding: EdgeInsets.all(ui.space.s4).copyWith(bottom: bottom),
+        padding: EdgeInsets.all(
+          ui.space.s4,
+        ).copyWith(bottom: _stackedTailInset(context)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
@@ -1336,13 +1590,31 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       // The frame's chrome is published from here rather than from
       // `didChangeDependencies` alone, because every part of it reads state
       // that moves under the reviewer.
-      _publish(context);
-      final WorkbenchRegime regime = WorkbenchRegime.fromWidth(
-        constraints.maxWidth,
+      final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+      final availableHeight = (constraints.maxHeight - keyboard).clamp(
+        0.0,
+        double.infinity,
+      );
+      final scale = MediaQuery.textScalerOf(context).scale(16) / 16;
+      final WorkbenchRegime regime = WorkbenchRegime.fromConstraints(
+        BoxConstraints(
+          maxWidth: constraints.maxWidth,
+          maxHeight: availableHeight,
+        ),
+        textScaler: MediaQuery.textScalerOf(context),
+      );
+      final chromeScrolls =
+          widget.specimen.data['artifact_receipt'] is! Map &&
+          regime.isStacked &&
+          availableHeight < reviewMinimumPaneHeight * scale;
+      _publish(
+        context,
+        actionBar:
+            regime.isStacked || widget.specimen.data['artifact_receipt'] is Map,
       );
       final Widget body = widget.specimen.data['artifact_receipt'] is Map
           ? _largeRecord(context, regime)
-          : _workbench(context, regime);
+          : _workbench(context, regime, chromeScrolls: chromeScrolls);
       return Shortcuts(
         shortcuts: workbenchShortcuts(),
         child: Actions(
@@ -1352,8 +1624,43 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           // (responsive 4).
           child: FocusScope(
             autofocus: true,
-            debugLabel: 'workbench',
-            child: body,
+            node: _workbenchFocus,
+            // UiScaffold publishes keyboard geometry without shrinking its
+            // body. Contract the actual stacked scroll viewport and footer so
+            // EditableText.showOnScreen can reveal the caret above the IME.
+            // A short keyboard viewport can change the composition. The
+            // retained reading/history keys and source controller carry the
+            // draft, selection and deliberate pan through that transition.
+            // The two-pane inspector consumes its inset in _evidencePane.
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: regime.isStacked
+                    ? MediaQuery.viewInsetsOf(context).bottom
+                    : 0,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  if (!chromeScrolls &&
+                      (!regime.isStacked ||
+                          !paneScrollsAtThisTextScale(
+                            MediaQuery.textScalerOf(context),
+                          )))
+                    _recordTopBar(context),
+                  Expanded(child: body),
+                  if (regime.isStacked &&
+                      !chromeScrolls &&
+                      widget.specimen.data['artifact_receipt'] is! Map)
+                    SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: EdgeInsets.all(context.ui.space.s3),
+                        child: _decisionBar(context),
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
       );
@@ -1453,7 +1760,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// A key bound to a callback that is null is exactly the silent no-op pass
   /// criterion 5.6 forbids, and it is what finding V-2 found `J` and `K`
   /// doing. At the ends of the queue the reason is announced instead.
-  void _step(VoidCallback? move, String? reason) {
+  void _step(VoidCallback? move, String? reason) async {
+    if (!await _confirmUnsaved() || !mounted) return;
     if (move != null) {
       move();
       return;
@@ -1461,50 +1769,64 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     _announce(reason ?? notInQueueMessage);
   }
 
-  Widget _workbench(BuildContext context, WorkbenchRegime regime) =>
-      regime.isStacked ? _oneScroll(context, regime) : _panes(context, regime);
+  Widget _workbench(
+    BuildContext context,
+    WorkbenchRegime regime, {
+    bool chromeScrolls = false,
+  }) => regime.isStacked
+      ? _oneScroll(context, regime, chromeScrolls: chromeScrolls)
+      : _panes(context, regime);
+
+  /// The stacked viewport already clears the keyboard. Keep any remaining
+  /// scaffold chrome/safe-area tail without reserving the IME a second time.
+  double _stackedTailInset(BuildContext context) =>
+      (UiScaffold.of(context).bottomInset -
+              MediaQuery.viewInsetsOf(context).bottom)
+          .clamp(0.0, double.infinity)
+          .toDouble();
 
   /// The record as one scroll (13 sections 2.1 and 4.1).
   ///
-  /// Four slivers and nothing nested: the source header, the status strip,
-  /// the segments, and the chosen segment's content. The header is the only
-  /// region that pins, and it pins by scroll position rather than by an
-  /// arithmetic that had to be told the height of everything else on the
-  /// screen first.
-  Widget _oneScroll(BuildContext context, WorkbenchRegime regime) {
+  /// The photograph, tools and evidence all scroll in the same ordinary page.
+  /// Detailed image gestures belong to the explicitly opened viewer.
+  Widget _oneScroll(
+    BuildContext context,
+    WorkbenchRegime regime, {
+    bool chromeScrolls = false,
+  }) {
     final UiThemeData ui = context.ui;
     _syncTabs(regime);
     final EdgeInsetsGeometry gutter = EdgeInsetsDirectional.symmetric(
       horizontal: ui.space.s4,
     );
-    final Widget scroll = CustomScrollView(
+    return CustomScrollView(
       key: evidenceScrollKey,
       controller: _evidenceScroll,
       slivers: <Widget>[
+        if (chromeScrolls ||
+            paneScrollsAtThisTextScale(MediaQuery.textScalerOf(context)))
+          SliverToBoxAdapter(child: _recordTopBar(context)),
         WorkbenchSourcePane.header(
           specimen: widget.specimen,
           controller: _view,
           selectedRegionId: _region,
+          labelReviewActive: _visibleSegment == WorkbenchSegment.readings,
           onSelectRegion: _selectRegion,
           onExpand: () => showSourceFullScreen(
             context,
             specimen: widget.specimen,
+            viewController: _view,
             selectedRegionId: _region,
+            labelReviewActive: _visibleSegment == WorkbenchSegment.readings,
             onSelectRegion: _selectRegion,
           ),
-        ),
-        SliverPadding(
-          padding: gutter.add(
-            EdgeInsets.only(top: ui.space.s3, bottom: ui.space.s3),
-          ),
-          sliver: SliverToBoxAdapter(child: _statusStrip(context)),
         ),
         _segmentBar(context, regime),
         SliverPadding(
           padding: gutter.add(
             EdgeInsets.only(
               top: ui.space.s4,
-              bottom: ui.space.s4 + UiScaffold.of(context).bottomInset,
+              bottom: ui.space.s4 + _stackedTailInset(context),
             ),
           ),
           sliver: SliverToBoxAdapter(
@@ -1518,103 +1840,67 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                 // lines, and three lines between the header and the strip is
                 // the disposition below the fold (13 section 2.5).
                 if (SourceOrientationCaveat.unverified(_asset)) ...<Widget>[
-                  const SourceOrientationCaveat.text(),
-                  SizedBox(height: ui.space.s4),
+                  const UiDisclosure(
+                    title: 'Label overlays unavailable',
+                    child: SourceOrientationCaveat.text(),
+                  ),
+                  SizedBox(height: ui.space.s2),
                 ],
                 _segmentPanel(context, regime),
               ],
             ),
           ),
         ),
+        if (chromeScrolls)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(ui.space.s3),
+              child: _decisionBar(context),
+            ),
+          ),
       ],
     );
-    if (!WindowClass.of(context).isCompact) return scroll;
-    // Previous and next are a swipe on the phone, where the decision bar
-    // draws no edge buttons, and both moves reach a screen reader as named
-    // custom actions (13 section 3.3).
-    return UiDecisionSwipe(
-      previousLabel: WorkbenchDecisionBar.previousLabel,
-      nextLabel: WorkbenchDecisionBar.nextLabel,
-      onPrevious: () => _step(widget.onPrevious, widget.previousBlockedReason),
-      onNext: () => _step(widget.onNext, widget.nextBlockedReason),
-      child: scroll,
-    );
   }
 
-  /// The segments, stuck under the header while the chrome budget holds them.
-  ///
-  /// `UiStickyBar` pins the row once it has scrolled up to the header, so the
-  /// reviewer never loses which evidence is showing (13 sections 3.5 and
-  /// 4.1). It is pinned chrome while it is stuck, which is what
-  /// [segmentsStick] weighs: above the reviewer's default type size, and
-  /// from `expanded` up at any size, the frame's own chrome has already spent
-  /// the budget of 13 section 2.3, and a screen over the budget gives a pinned
-  /// region up.
-  Widget _segmentBar(BuildContext context, WorkbenchRegime regime) {
-    final UiThemeData ui = context.ui;
-    final Widget bar = Padding(
-      padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s4),
-      child: _segments(context, regime),
-    );
-    if (!segmentsStick(
-      MediaQuery.textScalerOf(context),
-      WindowClass.of(context),
-    )) {
-      return SliverToBoxAdapter(child: bar);
-    }
-    return UiStickyBar(
-      // The control's own height and nothing around it: the bar is pinned
-      // chrome while it is stuck, and every dp of padding on it is a dp the
-      // budget of 13 section 2.3 does not have. The space above and below it
-      // belongs to the regions it separates, which is 13 section 2.6's rule
-      // that a region's own padding replaces the page's rather than adding
-      // to it. Derived from the type the row holds rather than declared
-      // (11 section 2.2).
-      extent: UiSegmentedStyle.resolve(
-        ui,
-        UiSize.lg,
+  /// Record-context navigation scrolls with the narrow review page.
+  Widget _segmentBar(BuildContext context, WorkbenchRegime regime) =>
+      SliverPadding(
+        padding: EdgeInsets.symmetric(horizontal: context.ui.space.s4),
+        sliver: SliverToBoxAdapter(child: _contextHeader(context, regime)),
+      );
+
+  /// Columns share the available width while keeping text at a readable measure.
+  Widget _panes(BuildContext context, WorkbenchRegime regime) => LayoutBuilder(
+    builder: (context, constraints) {
+      final metrics = UiLayoutMetrics.fromConstraints(
+        constraints,
         textScaler: MediaQuery.textScalerOf(context),
-      ).outerHeight,
-      child: bar,
-    );
-  }
-
-  /// The record beside itself: source, evidence, and history where the window
-  /// is wide enough to hold all three (05 section 3.5).
-  ///
-  /// Each pane is one scroll and no pane is inside another. The decision bar
-  /// is the frame's action bar here too, so every pane clears it.
-  Widget _panes(BuildContext context, WorkbenchRegime regime) {
-    final UiThemeData ui = context.ui;
-    return Padding(
-      padding: EdgeInsets.all(ui.space.s4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Expanded(flex: regime.sourceFlex, child: _sourcePane(context)),
-          SizedBox(width: ui.space.s4),
-          Expanded(
-            flex: regime.evidenceFlex,
-            child: _evidencePane(context, regime),
-          ),
-          if (regime == WorkbenchRegime.threePane) ...<Widget>[
-            SizedBox(width: ui.space.s4),
+      );
+      final available = metrics.contentWidth - metrics.gap;
+      final inspectorWidth = (available * .45).clamp(
+        metrics.minColumnWidth,
+        metrics.readableMax,
+      );
+      final short =
+          constraints.maxHeight <
+          400 * MediaQuery.textScalerOf(context).scale(16) / 16;
+      return Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: metrics.gutter,
+          vertical: short ? context.ui.space.s1 : metrics.gutter,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Expanded(child: _sourcePane(context)),
+            SizedBox(width: metrics.gap),
             SizedBox(
-              width: historyPaneWidth,
-              child: Semantics(
-                container: true,
-                label: 'History',
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.only(
-                    bottom: UiScaffold.of(context).bottomInset,
-                  ),
-                  child: _history(const ValueKey<String>('history-pane')),
-                ),
-              ),
+              width: inspectorWidth,
+              child: _evidencePane(context, regime),
             ),
           ],
-        ],
-      ),
-    );
-  }
+        ),
+      );
+    },
+  );
 }

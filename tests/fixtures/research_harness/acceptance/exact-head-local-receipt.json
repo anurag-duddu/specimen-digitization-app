@@ -1,0 +1,88 @@
+{
+  "before": {
+    "head": "4e8b2ec3f7b4424f41ff0861268cdf28e6aad090",
+    "status": "",
+    "module_sha256": "b85d3fc071c44452f16d4adc3e67d4957e44d69a07ea69e4b0d59225f9c530bc",
+    "files": {
+      "src/specimen_digitization/research_harness/__init__.py": "ee165541d2a82277f9a2a290b6a886677df3fc8b5ced4c159c5ffcb5acde2ad6",
+      "src/specimen_digitization/research_harness/agents.py": "3d9d2508a1e761f306ae2357d4d6471563912643008036cd3b024b5cc8a475a5",
+      "src/specimen_digitization/research_harness/compatibility.py": "b43ce4a0e7d11a2315f5e18ac6ef702587c9de93bbde74f1c8bcf941f4577728",
+      "src/specimen_digitization/research_harness/contracts.py": "b69442212f8849cb171d511c936773861ff0b9a48bb9cd6fb99cd4f99613c57a",
+      "src/specimen_digitization/research_harness/engine.py": "9be0168a3930564c30291d648f34309e69419a08e7b949703d20a18530905305",
+      "src/specimen_digitization/research_harness/evidence.py": "217d3dd472e6eddcd02f2cf9cb2d6588bd59fb7c30788e96e8993dc1cc71ba0f",
+      "src/specimen_digitization/research_harness/gateway.py": "b06e477bf7897bc077b2162e99a7aa534dfcac7adbc632d1527f41d372af0a9e",
+      "src/specimen_digitization/research_harness/journal.py": "1482f7ac56c44cfbc360e7b5014b512da2b56af743c2122fc37e2d2958d7ba98",
+      "src/specimen_digitization/research_harness/package_qualification.py": "79610b86e62ef07a1229f0061005ad73c742f722aea5db6a1aa4101859c14305",
+      "src/specimen_digitization/research_harness/persistence.py": "a3d66a4f6f1c71e84d685798b1fea0c109554e99655b1bf32b2da213750d90b3",
+      "src/specimen_digitization/research_harness/prompts/__init__.py": "abc63a982c0cc4cf7e35ebb6da3ba32680919300615e4ba496ecc0dfd946013b",
+      "src/specimen_digitization/research_harness/runtime.py": "a75b6dbd719e474bef15952f0191daaa7e5fd05f9b05c4f801d8e9733c3ac3b3",
+      "src/specimen_digitization/research_harness/sources.py": "cdbf93a60aa154effa5bb15a434fbd5dd58a24fbcf580d2ca8d549f254ca10fc",
+      "src/specimen_digitization/research_harness/telemetry.py": "76548a7b5c661acaa97c6badcd46fdddfe8e230effc9e6e6d0dc41c6c4d4e8b2",
+      "src/specimen_digitization/research_harness/thread_view.py": "19c520b9a962730f26371a62f1d2a7f1d24968d21db548d9801cc8034856f66c",
+      "src/specimen_digitization/research_harness/prompts/common-v1.txt": "bafa2b52bc8088de23ef78d4403f98edf9f1c7ccd4aaa7d15d0caaed1f21c367",
+      "src/specimen_digitization/research_harness/prompts/specimen_collection-v1.txt": "3c8fb750b35374bb1173b843ff5c4155febd6d880b9859d7a79904e28756c187",
+      "src/specimen_digitization/research_harness/prompts/specimen_geography-v1.txt": "6a7ccad2a8c2d28b13aa7196574f15f273e0ca62b0cd3917e2484ec22cf21a09",
+      "src/specimen_digitization/research_harness/prompts/specimen_measurement-v1.txt": "8fea86f2905c36379f77600eea3d39ba78507196e2a38c4e8deba0325df68bff",
+      "src/specimen_digitization/research_harness/prompts/specimen_parties-v1.txt": "e50cd25a19d1b3be0ad06e9c09e7cbfb0900e70dce9d1b74d7c8ae01751ea642",
+      "src/specimen_digitization/research_harness/prompts/specimen_taxonomy-v1.txt": "be7c4b194f55b9cd456f64294bc6b6d26dd30e41934e6ec62170417bc1addb42",
+      "src/specimen_digitization/research_harness/prompts/specimen_temporal-v1.txt": "a755e25fedd87ff7e959ed20f152de90bf81e74d0735dc7c4c384381a43f7744"
+    },
+    "acceptance_input_sha256": {
+      "tests/test_research_harness_acceptance.py": "f3b529efa05e072517d7991802938a34da2de17b1b77fb6ab429b02c9b4988f3",
+      "tests/fixtures/research_harness/acceptance/gold.json": "2c1f4564981676193b808e7da590c31c79ec885746ae10faee843e78ad9b31b1"
+    }
+  },
+  "after": {
+    "head": "4e8b2ec3f7b4424f41ff0861268cdf28e6aad090",
+    "status": "",
+    "module_sha256": "b85d3fc071c44452f16d4adc3e67d4957e44d69a07ea69e4b0d59225f9c530bc",
+    "files": {
+      "src/specimen_digitization/research_harness/__init__.py": "ee165541d2a82277f9a2a290b6a886677df3fc8b5ced4c159c5ffcb5acde2ad6",
+      "src/specimen_digitization/research_harness/agents.py": "3d9d2508a1e761f306ae2357d4d6471563912643008036cd3b024b5cc8a475a5",
+      "src/specimen_digitization/research_harness/compatibility.py": "b43ce4a0e7d11a2315f5e18ac6ef702587c9de93bbde74f1c8bcf941f4577728",
+      "src/specimen_digitization/research_harness/contracts.py": "b69442212f8849cb171d511c936773861ff0b9a48bb9cd6fb99cd4f99613c57a",
+      "src/specimen_digitization/research_harness/engine.py": "9be0168a3930564c30291d648f34309e69419a08e7b949703d20a18530905305",
+      "src/specimen_digitization/research_harness/evidence.py": "217d3dd472e6eddcd02f2cf9cb2d6588bd59fb7c30788e96e8993dc1cc71ba0f",
+      "src/specimen_digitization/research_harness/gateway.py": "b06e477bf7897bc077b2162e99a7aa534dfcac7adbc632d1527f41d372af0a9e",
+      "src/specimen_digitization/research_harness/journal.py": "1482f7ac56c44cfbc360e7b5014b512da2b56af743c2122fc37e2d2958d7ba98",
+      "src/specimen_digitization/research_harness/package_qualification.py": "79610b86e62ef07a1229f0061005ad73c742f722aea5db6a1aa4101859c14305",
+      "src/specimen_digitization/research_harness/persistence.py": "a3d66a4f6f1c71e84d685798b1fea0c109554e99655b1bf32b2da213750d90b3",
+      "src/specimen_digitization/research_harness/prompts/__init__.py": "abc63a982c0cc4cf7e35ebb6da3ba32680919300615e4ba496ecc0dfd946013b",
+      "src/specimen_digitization/research_harness/runtime.py": "a75b6dbd719e474bef15952f0191daaa7e5fd05f9b05c4f801d8e9733c3ac3b3",
+      "src/specimen_digitization/research_harness/sources.py": "cdbf93a60aa154effa5bb15a434fbd5dd58a24fbcf580d2ca8d549f254ca10fc",
+      "src/specimen_digitization/research_harness/telemetry.py": "76548a7b5c661acaa97c6badcd46fdddfe8e230effc9e6e6d0dc41c6c4d4e8b2",
+      "src/specimen_digitization/research_harness/thread_view.py": "19c520b9a962730f26371a62f1d2a7f1d24968d21db548d9801cc8034856f66c",
+      "src/specimen_digitization/research_harness/prompts/common-v1.txt": "bafa2b52bc8088de23ef78d4403f98edf9f1c7ccd4aaa7d15d0caaed1f21c367",
+      "src/specimen_digitization/research_harness/prompts/specimen_collection-v1.txt": "3c8fb750b35374bb1173b843ff5c4155febd6d880b9859d7a79904e28756c187",
+      "src/specimen_digitization/research_harness/prompts/specimen_geography-v1.txt": "6a7ccad2a8c2d28b13aa7196574f15f273e0ca62b0cd3917e2484ec22cf21a09",
+      "src/specimen_digitization/research_harness/prompts/specimen_measurement-v1.txt": "8fea86f2905c36379f77600eea3d39ba78507196e2a38c4e8deba0325df68bff",
+      "src/specimen_digitization/research_harness/prompts/specimen_parties-v1.txt": "e50cd25a19d1b3be0ad06e9c09e7cbfb0900e70dce9d1b74d7c8ae01751ea642",
+      "src/specimen_digitization/research_harness/prompts/specimen_taxonomy-v1.txt": "be7c4b194f55b9cd456f64294bc6b6d26dd30e41934e6ec62170417bc1addb42",
+      "src/specimen_digitization/research_harness/prompts/specimen_temporal-v1.txt": "a755e25fedd87ff7e959ed20f152de90bf81e74d0735dc7c4c384381a43f7744"
+    },
+    "acceptance_input_sha256": {
+      "tests/test_research_harness_acceptance.py": "f3b529efa05e072517d7991802938a34da2de17b1b77fb6ab429b02c9b4988f3",
+      "tests/fixtures/research_harness/acceptance/gold.json": "2c1f4564981676193b808e7da590c31c79ec885746ae10faee843e78ad9b31b1"
+    }
+  },
+  "exit_code": 0,
+  "stable": true,
+  "test_output": "........................................                                 [100%]\n=============================== warnings summary ===============================\ntests/test_research_harness_acceptance.py::test_human_correction_preserves_and_reopens_unaffected_completed_checkpoint\n  /Users/anuragduddu/specimen-golive/harness-build/codex-harness-e2e/src/specimen_digitization/research_harness/telemetry.py:118: LogfireNotConfiguredWarning: No logs or spans will be created until `logfire.configure()` has been called. Set the environment variable LOGFIRE_IGNORE_NO_CONFIG=1 or add ignore_no_config=true in pyproject.toml to suppress this warning.\n    with logfire.span(span_name, **attributes) as span:\n\n-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html\n40 passed, 1 warning in 8.26s\n",
+  "packages": {
+    "pydantic-ai-slim": "2.51.0",
+    "pydantic-evals": "2.51.0",
+    "pydantic-graph": "2.51.0",
+    "pydantic-ai-harness": "0.36.0",
+    "logfire": "5.0.0"
+  },
+  "python_version": "3.12.3 (v3.12.3:f6650f9ad7, Apr  9 2024, 08:18:47) [Clang 13.0.0 (clang-1300.0.29.30)]",
+  "command": "PYTHONPATH=/Users/anuragduddu/specimen-golive/harness-build/codex-harness-e2e/src LOGFIRE_SEND_TO_LOGFIRE=false /Users/anuragduddu/specimen-golive/harness-build/codex-harness-e2e/.venv/bin/python -m pytest tests/test_research_harness_acceptance.py -q --tb=short",
+  "evidence_class": "local synthetic only; no canonical/native/API/UI/live acceptance",
+  "capture_method": "Automated before/after source and input manifests around the exact pytest invocation.",
+  "prior_qualified_proof": {
+    "head": "44533218d6549588540ba1e55fb1a6fcae732607",
+    "python_version": "3.12.3 (v3.12.3:f6650f9ad7, Apr  9 2024, 08:18:47) [Clang 13.0.0 (clang-1300.0.29.30)]",
+    "module_sha256": "9cce040e41f0463d224e4a5c0f3faa37efe8ff50db58e2ebd873fee85ef25f93",
+    "test_output": "38 passed, 1 LogfireNotConfiguredWarning in non-tracing setup, 8.99s; dedicated actual-exporter readback passed.\n"
+  }
+}

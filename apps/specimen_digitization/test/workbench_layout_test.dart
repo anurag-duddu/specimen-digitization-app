@@ -1,9 +1,8 @@
-// The workbench at each of the three layout regimes, and the behaviour the
-// blueprint names for each: a pinned photograph, a decision bar that never
-// scrolls, a blockers list that leads to the control that resolves it, and a
-// keyboard a reviewer can work the whole record from.
-//
-// Layout is asserted from the window width, never from a platform.
+// The qualified workbench uses one page on narrow constraints and a dominant
+// canvas beside one inspector when readable columns and height permit it.
+// History stays in the shared tab strip; decisions remain reachable locally.
+// Policy, blocker navigation, reading semantics, keyboard and conflict controls
+// below the layout group retain their behavior with actual control interactions.
 
 import 'dart:io';
 
@@ -22,22 +21,23 @@ import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_digitization/src/workbench.dart';
 
 import 'workbench_harness.dart';
+import 'reading_region_comparison_test.dart' show selectLabel;
 import 'ui_finders.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/screens/workbench/decision_bar.dart';
 
-/// The source pane's region chip named [name].
-///
-/// The pane draws its region list as a `UiCapsuleToggle`, whose one control
-/// per option is a `Pressable` in the toggle role, so the chip is reached by
-/// the name it publishes rather than by a Material type
-/// (the source pane slot proved this form in `test/source_geometry_test.dart`).
-Finder regionChip(String name) => find.byWidgetPredicate(
-  (Widget widget) =>
-      widget is Pressable &&
-      widget.role == PressableRole.toggle &&
-      widget.semanticsLabel == name,
-  description: 'region chip "$name"',
+/// The actual source overlay action, scoped by region identity.
+Finder regionOverlay(int index) => find.byWidgetPredicate(
+  (Widget widget) => widget is RegionOverlay && widget.index == index,
+  description: 'saved label overlay $index',
+);
+
+Finder regionOverlayControl(int index) => find.descendant(
+  of: regionOverlay(index),
+  matching: find.byWidgetPredicate(
+    (Widget widget) =>
+        widget is Pressable && widget.semanticsLabel == 'Label $index',
+  ),
 );
 
 void main() {
@@ -116,108 +116,148 @@ void main() {
   );
 
   group('layout regimes', () {
-    test('the regime comes from the width alone', () {
+    test('readable local columns choose stacked or two-pane review', () {
       expect(WorkbenchRegime.fromWidth(599), WorkbenchRegime.stacked);
-      expect(WorkbenchRegime.fromWidth(839), WorkbenchRegime.stacked);
+      expect(WorkbenchRegime.fromWidth(767), WorkbenchRegime.stacked);
+      expect(WorkbenchRegime.fromWidth(768), WorkbenchRegime.twoPane);
       expect(WorkbenchRegime.fromWidth(840), WorkbenchRegime.twoPane);
-      expect(WorkbenchRegime.fromWidth(1199), WorkbenchRegime.twoPane);
-      expect(WorkbenchRegime.fromWidth(1200), WorkbenchRegime.threePane);
-      expect(
-        WorkbenchSegment.forRegime(WorkbenchRegime.twoPane),
-        WorkbenchSegment.values,
-      );
-      expect(
-        WorkbenchSegment.forRegime(WorkbenchRegime.threePane),
-        <WorkbenchSegment>[WorkbenchSegment.readings, WorkbenchSegment.fields],
-      );
+      expect(WorkbenchRegime.fromWidth(1200), WorkbenchRegime.twoPane);
+      for (final regime in WorkbenchRegime.values) {
+        expect(WorkbenchSegment.forRegime(regime), WorkbenchSegment.values);
+      }
     });
 
-    testWidgets('below 840 the photograph is a pinned header', (tester) async {
+    test(
+      'height and enlarged text can return a wide allocation to one scroll',
+      () {
+        expect(
+          WorkbenchRegime.fromConstraints(
+            const BoxConstraints(maxWidth: 1000, maxHeight: 600),
+          ),
+          WorkbenchRegime.twoPane,
+        );
+        expect(
+          WorkbenchRegime.fromConstraints(
+            const BoxConstraints(maxWidth: 1000, maxHeight: 200),
+          ),
+          WorkbenchRegime.stacked,
+        );
+        expect(
+          WorkbenchRegime.fromConstraints(
+            const BoxConstraints(maxWidth: 1000, maxHeight: 600),
+            textScaler: const TextScaler.linear(2),
+          ),
+          WorkbenchRegime.stacked,
+        );
+      },
+    );
+
+    testWidgets('compact photograph leaves with the page instead of pinning', (
+      tester,
+    ) async {
       useWindow(tester, compactWindow);
       await tester.pumpWidget(host(record()));
       await tester.pumpAndSettle();
-
-      // History is a segment at this width, not a pane.
       expect(find.text('History'), findsOneWidget);
       expect(find.byType(AuditHistoryPanel), findsNothing);
-
-      // The photograph keeps at least the blueprint's share of the viewport.
-      final pane = tester.getSize(find.byType(InteractiveViewer));
-      expect(
-        pane.height,
-        greaterThanOrEqualTo(
-          compactWindow.height * sourceHeaderMinFraction * 0.6,
-        ),
-      );
-
-      // It does not scroll away with the evidence: the header gives height
-      // back to its floor and stays there (13 section 3.1).
-      final before = tester.getTopLeft(find.byType(InteractiveViewer));
+      final Finder photo = find.byType(InteractiveViewer);
+      final Rect before = tester.getRect(photo);
+      expect(before.height, greaterThanOrEqualTo(sourceImageMinHeight));
+      expect(before.width, lessThanOrEqualTo(compactWindow.width));
       await tester.drag(find.byKey(evidenceScrollKey), const Offset(0, -200));
       await tester.pumpAndSettle();
-      expect(tester.getTopLeft(find.byType(InteractiveViewer)), before);
+      expect(tester.getTopLeft(photo).dy, lessThan(before.top));
       expect(find.byType(InteractiveViewer), findsOneWidget);
-      expect(
-        tester.getSize(find.byType(InteractiveViewer)).height,
-        greaterThan(0),
-      );
+      expect(tester.takeException(), isNull);
     });
 
-    testWidgets('840 to 1199 is two panes with History as a segment', (
+    testWidgets('landscape puts the photograph beside one review inspector', (
       tester,
     ) async {
       useWindow(tester, expandedWindow);
       await tester.pumpWidget(host(record()));
       await tester.pumpAndSettle();
+      final Rect source = tester.getRect(find.byType(InteractiveViewer));
+      final Rect inspector = tester.getRect(
+        find.byKey(const ValueKey<String>('review-inspector')),
+      );
+      expect(source.right, lessThanOrEqualTo(inspector.left));
+      expect(source.width, greaterThan(0));
+      expect(inspector.width, greaterThan(0));
       expect(find.text('History'), findsOneWidget);
       expect(find.byType(AuditHistoryPanel), findsNothing);
-      // The photograph and the evidence share the width.
-      final source = tester.getRect(find.byType(InteractiveViewer));
-      expect(source.right, lessThan(expandedWindow.width * 0.6));
+      expect(tester.takeException(), isNull);
     });
 
-    testWidgets('1200 and above gives History a pane of its own', (
-      tester,
-    ) async {
-      useWindow(tester, largeWindow);
-      await tester.pumpWidget(host(record()));
-      await tester.pumpAndSettle();
-      expect(find.byType(AuditHistoryPanel), findsOneWidget);
-      // History has left the selector.
-      expect(
-        find.descendant(
-          of: uiTabs(evidenceTabsLabel),
-          matching: find.text('History'),
-        ),
-        findsNothing,
-      );
-      expect(
-        tester.getSize(find.byType(AuditHistoryPanel)).width,
-        closeTo(historyPaneWidth, 1),
-      );
-    });
-
-    test('the decision sits in the top bar from expanded up', () {
-      // 13 section 4.1, the expanded and large table: at 200 percent text
-      // the bar, the one line band and an action bar are 184.85 dp against
-      // the 164 an 820 dp window allows, so those classes give the action bar
-      // up and the decision moves into the bar the record already publishes.
-      expect(decisionInTopBar(WindowClass.compact), isFalse);
-      expect(decisionInTopBar(WindowClass.medium), isFalse);
-      for (final WindowClass window in WindowClass.values) {
-        expect(
-          decisionInTopBar(window),
-          window.isAtLeast(WindowClass.expanded),
-          reason: '$window',
+    testWidgets(
+      'wide History stays a tab and restores Labels without moving source',
+      (tester) async {
+        useWindow(tester, largeWindow);
+        await tester.pumpWidget(host(record()));
+        await tester.pumpAndSettle();
+        final Finder tabs = find.byKey(
+          const ValueKey<String>('review-context-tabs'),
         );
-      }
-    });
+        final Finder historyTab = find.descendant(
+          of: tabs,
+          matching: find.text('History'),
+        );
+        final Finder labelsTab = find.descendant(
+          of: tabs,
+          matching: find.text('Labels'),
+        );
+        expect(historyTab, findsOneWidget);
+        expect(find.byType(AuditHistoryPanel), findsNothing);
+        final Rect source = tester.getRect(find.byType(InteractiveViewer));
+        await tester.tap(historyTab);
+        await tester.pumpAndSettle();
+        expect(find.byType(AuditHistoryPanel), findsOneWidget);
+        expect(tester.getRect(find.byType(InteractiveViewer)), source);
+        await tester.tap(labelsTab);
+        await tester.pumpAndSettle();
+        expect(find.byType(AuditHistoryPanel), findsNothing);
+        expect(
+          find.byType(AuditHistoryPanel, skipOffstage: false),
+          findsOneWidget,
+          reason:
+              'visited history is retained without exposing hidden controls',
+        );
+        expect(tester.getRect(find.byType(InteractiveViewer)), source);
+        expect(tester.takeException(), isNull);
+      },
+    );
 
-    test('the segments stick at default type at every window class', () {
-      // A2's rule by text size, and the window weighed as 22d5110 asked: the
-      // classes that used to spend their budget on the action bar hold the
-      // segments once the decision is in the bar (148 of the 180 a 900 dp
-      // window allows at 1440 by 900 in the stacked regime).
+    testWidgets(
+      'wide inspector scrolls evidence while keeping its decision reachable',
+      (tester) async {
+        useWindow(tester, largeWindow);
+        final crowded = record(
+          extraFindings: List<Json>.generate(
+            20,
+            (index) => <String, dynamic>{
+              'field_key': 'country',
+              'message': 'Synthetic retained finding $index',
+              'severity': 'hard',
+              'rule_id': 'synthetic-$index',
+            },
+          ),
+        );
+        await tester.pumpWidget(host(crowded));
+        await tester.pumpAndSettle();
+        final Finder bar = find.byType(WorkbenchDecisionBar);
+        final Rect before = tester.getRect(bar);
+        await tester.tap(find.text('Specimen data'));
+        await tester.pumpAndSettle();
+        await tester.drag(find.byKey(evidenceScrollKey), const Offset(0, -250));
+        await tester.pumpAndSettle();
+        expect(tester.getRect(bar), before);
+        expect(bar.hitTestable(), findsOneWidget);
+        expect(controlEnabled(tester, 'Confirm label coverage'), isTrue);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    test('the segments stick only at default type at every window class', () {
       for (final WindowClass window in WindowClass.values) {
         expect(segmentsStick(TextScaler.noScaling, window), isTrue);
         expect(segmentsStick(const TextScaler.linear(1.3), window), isFalse);
@@ -226,104 +266,64 @@ void main() {
     });
 
     testWidgets(
-      'the decision bar is the frame action bar at compact and medium',
+      'compact decisions stay below the page and clear its viewport',
       (tester) async {
-        for (final window in [compactWindow, mediumWindow]) {
+        useWindow(tester, compactWindow);
+        await tester.pumpWidget(host(record()));
+        await tester.pumpAndSettle();
+        final Finder bar = find.byType(WorkbenchDecisionBar);
+        final Rect before = tester.getRect(bar);
+        final Rect scroll = tester.getRect(find.byKey(evidenceScrollKey));
+        expect(scroll.bottom, lessThanOrEqualTo(before.top));
+        expect(before.bottom, lessThanOrEqualTo(compactWindow.height));
+        expect(before.bottom, greaterThan(compactWindow.height - 48));
+        await tester.drag(find.byKey(evidenceScrollKey), const Offset(0, -200));
+        await tester.pumpAndSettle();
+        expect(tester.getRect(bar), before);
+        expect(bar.hitTestable(), findsOneWidget);
+        expect(controlEnabled(tester, 'Confirm label coverage'), isTrue);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
+      'wide decisions belong to the inspector and leave the top bar free',
+      (tester) async {
+        for (final window in <Size>[
+          mediumWindow,
+          expandedWindow,
+          largeWindow,
+        ]) {
           useWindow(tester, window);
           await tester.pumpWidget(host(record()));
           await tester.pumpAndSettle();
-          // 13 section 3.3: the bar sits in `UiScaffold.actionBar`, which the
-          // screen fills through the frame's own slot, so the shell owns the
-          // bottom of the window and the chrome budget with it.
-          final bar = tester.getRect(find.byType(WorkbenchDecisionBar));
-          expect(
-            bar.bottom,
-            closeTo(window.height, 32),
-            reason:
-                'the decision bar is not at the foot of the window at '
-                '$window',
+          final Finder bar = find.byType(WorkbenchDecisionBar);
+          final Rect decision = tester.getRect(bar);
+          final Rect inspector = tester.getRect(
+            find.byKey(const ValueKey<String>('review-inspector')),
           );
+          final Rect top = tester.getRect(find.byType(UiTopBar));
+          expect(decision.left, greaterThanOrEqualTo(inspector.left));
+          expect(decision.right, lessThanOrEqualTo(inspector.right));
+          expect(decision.top, greaterThanOrEqualTo(top.bottom));
+          expect(decision.bottom, lessThanOrEqualTo(inspector.bottom));
           expect(
-            find.ancestor(
-              of: find.byType(WorkbenchDecisionBar),
-              matching: find.byWidgetPredicate(
-                (Widget widget) =>
-                    widget is PinnedChrome &&
-                    widget.region == UiPinnedRegion.actionBar,
-              ),
-            ),
-            findsOneWidget,
-            reason: 'the frame does not count the bar as its action bar',
+            find.ancestor(of: bar, matching: find.byType(UiTopBar)),
+            findsNothing,
           );
-          // The evidence ends clear of it, which is what the frame's own
-          // bottom inset buys (10 section 4.4).
+          expect(find.text('layout-001'), findsOneWidget);
+          expect(controlEnabled(tester, 'Confirm label coverage'), isTrue);
           expect(
             UiScaffold.of(
               tester.element(find.byType(ReviewWorkbench)),
             ).bottomInset,
-            greaterThanOrEqualTo(bar.height),
+            0,
+            reason: 'the frame reserves no duplicate action-bar region',
           );
+          expect(tester.takeException(), isNull);
         }
       },
     );
-
-    testWidgets('from expanded up the decision bar is in the top bar', (
-      tester,
-    ) async {
-      for (final window in [expandedWindow, largeWindow]) {
-        useWindow(tester, window);
-        await tester.pumpWidget(host(record()));
-        await tester.pumpAndSettle();
-        // 13 section 4.1, the expanded and large table. The same widget as
-        // below medium, inside the bar the record publishes, so the frame
-        // counts it as the top bar and floats nothing over the evidence.
-        final Rect bar = tester.getRect(find.byType(WorkbenchDecisionBar));
-        final Rect top = tester.getRect(find.byType(UiTopBar));
-        expect(
-          bar.top,
-          greaterThanOrEqualTo(top.top - 0.5),
-          reason: 'the decision bar is not inside the top bar at $window',
-        );
-        expect(bar.bottom, lessThanOrEqualTo(top.bottom + 0.5));
-        expect(
-          find.ancestor(
-            of: find.byType(WorkbenchDecisionBar),
-            matching: find.byWidgetPredicate(
-              (Widget widget) =>
-                  widget is PinnedChrome &&
-                  widget.region == UiPinnedRegion.topBar,
-            ),
-          ),
-          findsOneWidget,
-          reason: 'the frame does not count the bar as its top bar',
-        );
-        expect(
-          find.byWidgetPredicate(
-            (Widget widget) =>
-                widget is PinnedChrome &&
-                widget.region == UiPinnedRegion.actionBar,
-          ),
-          findsNothing,
-          reason: 'the action bar was not given back at $window',
-        );
-        // The identifier keeps its own width beside the decision: the name
-        // is never cut, the decision degrades by its own ladder.
-        expect(find.text('layout-001'), findsOneWidget);
-        expect(
-          tester.getRect(find.text('layout-001')).right,
-          lessThanOrEqualTo(bar.left + 0.5),
-        );
-        // Both decisions are reachable from the bar at this width.
-        expect(controlEnabled(tester, 'Confirm label coverage'), isTrue);
-        expect(
-          UiScaffold.of(
-            tester.element(find.byType(ReviewWorkbench)),
-          ).bottomInset,
-          0,
-          reason: 'the frame floats nothing inside a record at $window',
-        );
-      }
-    });
   });
 
   group('the blockers summary', () {
@@ -350,21 +350,46 @@ void main() {
       expect(blockersSummary(4), '4 things block clearance');
     });
 
-    testWidgets('each entry moves to the control that resolves it', (
-      tester,
-    ) async {
-      useWindow(tester, largeWindow);
-      await tester.pumpWidget(host(record()));
-      await tester.pumpAndSettle();
-      expect(find.text('1 thing blocks clearance'), findsOneWidget);
-      await tester.tap(find.text('1 thing blocks clearance'));
-      await tester.pumpAndSettle();
-      expect(find.text('A supported country is required'), findsWidgets);
-      await tester.tap(find.text('Go to').first);
-      await tester.pumpAndSettle();
-      // The fields segment is now showing, with the field on screen.
-      expect(find.text('Country (required)'), findsOneWidget);
-    });
+    testWidgets(
+      'a blocked field exposes its finding beside its correction control',
+      (tester) async {
+        useWindow(tester, largeWindow);
+        await tester.pumpWidget(host(record()));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Specimen data'));
+        await tester.pumpAndSettle();
+        final Finder finding = find.text('A supported country is required');
+        await tester.ensureVisible(finding);
+        await tester.pumpAndSettle();
+        expect(finding, findsOneWidget);
+        expect(find.text('Required'), findsOneWidget);
+        expect(find.text('Country'), findsOneWidget);
+        final Finder disclosure = find.descendant(
+          of: find.byType(FieldRow).first,
+          matching: find.byType(UiDisclosure),
+        );
+        final Finder header = find.descendant(
+          of: disclosure,
+          matching: find.byWidgetPredicate(
+            (Widget widget) => widget is Pressable && widget.onPressed != null,
+          ),
+        );
+        expect(header, findsOneWidget);
+        await tester.ensureVisible(header);
+        await tester.tap(header);
+        await tester.pumpAndSettle();
+        final Finder edit = uiIconButton('Edit as written for Country');
+        expect(edit, findsOneWidget);
+        expect(tester.widget<UiIconButton>(edit).onPressed, isNotNull);
+        // Check the genuine correction control while its route is visible.
+        // Opening its dialog puts that underlying route offstage.
+        await scrollAndTap(tester, edit);
+        expect(find.text('Correct Country'), findsOneWidget);
+        expect(uiSelect('Evidence state'), findsOneWidget);
+        expect(find.text('Keep this correction'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 
   group('the reading diff', () {
@@ -397,40 +422,78 @@ void main() {
   });
 
   group('region selection', () {
-    testWidgets('the chip and the overlay carry the same name and state', (
-      tester,
-    ) async {
-      useWindow(tester, largeWindow);
-      final semantics = tester.ensureSemantics();
-      await tester.pumpWidget(host(record()));
-      await tester.pumpAndSettle();
-      for (final name in ['Label 1', 'Label 2']) {
-        expect(regionChip(name), findsOneWidget);
-        expect(find.bySemanticsLabel(name), findsWidgets);
-      }
-      await tester.tap(regionChip('Label 2'));
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .getSemantics(find.bySemanticsLabel('Label 2').first)
-            .getSemanticsData()
-            .flagsCollection
-            .isSelected,
-        Tristate.isTrue,
-      );
-      semantics.dispose();
-    });
+    testWidgets(
+      'the label selector and source overlay carry the same saved selection',
+      (tester) async {
+        useWindow(tester, largeWindow);
+        final semantics = tester.ensureSemantics();
+        try {
+          await tester.pumpWidget(host(record()));
+          await tester.pumpAndSettle();
+          final UiSelect<String> selector = tester.widget<UiSelect<String>>(
+            uiSelect('Label'),
+          );
+          expect(
+            selector.options.map((option) => option.label),
+            containsAll(<String>['Label 1', 'Label 2']),
+          );
+          for (final int index in <int>[1, 2]) {
+            expect(regionOverlay(index), findsOneWidget);
+            expect(regionOverlayControl(index), findsOneWidget);
+            expect(find.bySemanticsLabel('Label $index'), findsWidgets);
+          }
+          await selectLabel(tester, 2);
+          expect(
+            tester.widget<UiSelect<String>>(uiSelect('Label')).value,
+            'r2',
+          );
+          expect(
+            tester.widget<RegionOverlay>(regionOverlay(2)).selected,
+            isTrue,
+          );
+          expect(
+            tester.widget<RegionOverlay>(regionOverlay(1)).selected,
+            isFalse,
+          );
+          expect(
+            tester
+                .getSemantics(regionOverlayControl(2))
+                .getSemanticsData()
+                .flagsCollection
+                .isSelected,
+            Tristate.isTrue,
+          );
+          expect(tester.takeException(), isNull);
+        } finally {
+          semantics.dispose();
+        }
+      },
+    );
 
-    testWidgets('a digit selects the nth region from the keyboard', (
-      tester,
-    ) async {
-      useWindow(tester, largeWindow);
-      await tester.pumpWidget(host(record()));
-      await tester.pumpAndSettle();
-      await tester.sendKeyEvent(LogicalKeyboardKey.digit2);
-      await tester.pumpAndSettle();
-      expect(tester.widget<Pressable>(regionChip('Label 2')).selected, isTrue);
-    });
+    testWidgets(
+      'a digit selects the same saved label in selector and photograph',
+      (tester) async {
+        useWindow(tester, largeWindow);
+        await tester.pumpWidget(host(record()));
+        await tester.pumpAndSettle();
+        final Finder canvas = find.byKey(
+          const ValueKey<String>('source-photo-viewport'),
+        );
+        await tester.ensureVisible(canvas);
+        await tester.pumpAndSettle();
+        expect(canvas.hitTestable(), findsOneWidget);
+        await tester.tap(canvas);
+        await tester.pumpAndSettle();
+        await tester.sendKeyEvent(LogicalKeyboardKey.digit2);
+        await tester.pumpAndSettle();
+        expect(tester.widget<UiSelect<String>>(uiSelect('Label')).value, 'r2');
+        expect(tester.widget<RegionOverlay>(regionOverlay(2)).selected, isTrue);
+        expect(
+          tester.widget<RegionOverlay>(regionOverlay(1)).selected,
+          isFalse,
+        );
+      },
+    );
 
     testWidgets('J and K move between specimens only when the host offers it', (
       tester,
@@ -563,10 +626,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(ConflictBanner), findsOneWidget);
       expect(
-        find.text(
-          'Version 22 was saved by another reviewer. Refresh and '
-          'compare.',
-        ),
+        find.text('A newer version (22) is available. Refresh and compare.'),
         findsOneWidget,
       );
       expect(find.text('Refresh and compare'), findsOneWidget);

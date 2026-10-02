@@ -1,27 +1,8 @@
-/// The decision bar (13 sections 2.3, 3.3 and 4.1).
-///
-/// The decisions the reviewer came to make, in the frame's own action bar
-/// slot at compact and medium and in the top bar's middle from `expanded` up.
-/// `UiDecisionBar` is the pattern: one row of `density.controlHeight`, the
-/// primary, the secondary beside it or in the bar's own overflow when the
-/// line does not hold both, any tertiary action before the secondary and the
-/// first into that overflow, the count of where the reviewer is, and previous
-/// and next as edge buttons from `medium` up. At compact those two are the
-/// swipe `UiDecisionSwipe` puts over the evidence.
-///
-/// Neither decision is ever a silent no-op: where the server does not permit
-/// one, the button carries the reason on its own semantics node rather than a
-/// bare disabled state (06 section 3.2; pass criterion 5.6). The two queue
-/// steps are the same: at the end of the queue the control is drawn disabled
-/// with the reason on its hint and its tooltip, the same sentence the `J` and
-/// `K` keys say aloud, rather than being drawn as a control that does nothing
-/// (13 section 3.3, polish 3).
-///
-/// This widget is the record's own binding of the pattern. It carries no
-/// surface of its own: the scaffold's action bar is the pane, the padding and
-/// the one frosted surface a compact window may spend (13 section 2.2), and a
-/// pane inside that pane is the "glass decision bar over a glass pill" 13
-/// section 0 reads as a defect.
+/// One contextual review decision, with secondary actions in the shared bar.
+/// The inspector owns the bar at wide constraints; the frame places it under
+/// the thumb on compact layouts. Pending changes take priority, then an
+/// available coverage prerequisite, then approval. Permissions and disabled
+/// reasons are identical in the visible control and its overflow menu.
 library;
 
 import 'package:flutter/widgets.dart';
@@ -120,16 +101,24 @@ class WorkbenchDecisionBar extends StatelessWidget {
     // the first to leave the line for the bar's own menu; with none, the two
     // are the two decisions 13 section 3.3 describes (07 section 6.1).
     final bool pending = pendingCount > 0;
+    final bool needsCoverage =
+        !pending &&
+        approveBlockedReason != null &&
+        coverageBlockedReason == null;
     final UiButton approve = UiButton(
       label: approveLabel,
-      variant: pending ? UiButtonVariant.secondary : UiButtonVariant.primary,
+      variant: pending || needsCoverage
+          ? UiButtonVariant.secondary
+          : UiButtonVariant.primary,
       loading: busy,
       disabledReason: approveBlockedReason,
       onPressed: approveBlockedReason == null ? onApprove : null,
     );
     final UiButton coverage = UiButton(
       label: coverageLabel,
-      variant: UiButtonVariant.secondary,
+      variant: needsCoverage
+          ? UiButtonVariant.primary
+          : UiButtonVariant.secondary,
       loading: busy,
       disabledReason: coverageBlockedReason,
       onPressed: coverageBlockedReason == null ? onConfirmCoverage : null,
@@ -142,8 +131,10 @@ class WorkbenchDecisionBar extends StatelessWidget {
               loading: busy,
               onPressed: onSavePending,
             )
+          : needsCoverage
+          ? coverage
           : approve,
-      secondary: pending ? approve : coverage,
+      secondary: pending || needsCoverage ? approve : coverage,
       tertiary: pending ? <UiButton>[coverage] : const <UiButton>[],
       count: positionLabel,
       onPrevious: onPrevious,

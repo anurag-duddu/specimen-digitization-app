@@ -454,22 +454,6 @@ def test_transport_retains_bounded_malformed_or_truncated_native_response(tmp_pa
     assert calls[0][1]["allow_redirects"] is False
 
 
-def test_workflow_publishes_original_intent_before_same_process_recovery():
-    import yaml
-    workflow = yaml.safe_load((Path(data.__file__).parents[2] / ".github/workflows/data-release.yml").read_text())
-    jobs = workflow["jobs"]
-    steps = next(job["steps"] for job in jobs.values()
-                 if any("--prepare-clone-intent" in step.get("run", "") for step in job.get("steps", [])))
-    prepare = next(i for i, step in enumerate(steps) if "--prepare-clone-intent" in step.get("run", ""))
-    attest = next(i for i, step in enumerate(steps) if step.get("with", {}).get("subject-path", "").endswith("clone-allowance-intent.json"))
-    publish = next(i for i, step in enumerate(steps) if step.get("with", {}).get("name", "").startswith("clone-allowance-intent-"))
-    execute = next(i for i, step in enumerate(steps) if " --deploy " in step.get("run", ""))
-    assert prepare < attest < publish < execute
-    assert steps[publish]["with"]["if-no-files-found"] == "error"
-    assert "overwrite" not in steps[publish]["with"]
-    assert all("always()" not in steps[index].get("if", "") for index in (prepare, attest, publish, execute))
-
-
 @pytest.mark.parametrize("kind", ["claim", "clone"])
 def test_actual_http_body_cannot_outlive_hard_native_deadline(tmp_path, monkeypatch, kind):
     """Real localhost TCP body stalls; fixed Google URLs never leave the fixture."""

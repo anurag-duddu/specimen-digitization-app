@@ -95,13 +95,14 @@ void main() {
       );
     });
 
-    testWidgets('the pane is one floating glass pane, inside budget', (
+    testWidgets('the pane has a floating surface without a blur layer', (
       WidgetTester tester,
     ) async {
       await tester.pumpWidget(uiHarness(child: const _PopoverHost()));
       await tester.tap(find.text('Collection'));
       await tester.pumpAndSettle();
-      expect(glassPaneCount(), 1);
+      expect(glassPaneCount(), 0);
+      expect(find.byType(GlassSurface), findsOneWidget);
       expectGlassBudget(tester);
     });
 
@@ -349,7 +350,7 @@ void main() {
       }
     });
 
-    testWidgets('a modal carries one glass pane and a scrim', (
+    testWidgets('a modal carries one matte surface and a scrim', (
       WidgetTester tester,
     ) async {
       late BuildContext hostContext;
@@ -374,8 +375,13 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(Scrim), findsOneWidget);
-      expect(glassPaneCount(), 1);
-      expect(modalGlassPaneCount(), 1);
+      expect(glassPaneCount(), 0);
+      expect(find.byType(GlassSurface), findsOneWidget);
+      expect(modalGlassPaneCount(), 0);
+      expect(
+        tester.widget<GlassSurface>(find.byType(GlassSurface)).level,
+        GlassLevel.modal,
+      );
       expectGlassBudget(tester);
     });
 

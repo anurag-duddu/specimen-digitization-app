@@ -20,7 +20,11 @@ import 'vocabulary.dart';
 const Duration apiRequestTimeout = Duration(seconds: 30);
 
 class ApiSpecimenRepository
-    implements SpecimenRepository, SourceRepository, AccessFailureSource {
+    implements
+        SpecimenRepository,
+        SpecimenHistoryRepository,
+        SourceRepository,
+        AccessFailureSource {
   ApiSpecimenRepository({
     required this.baseUrl,
     required this.token,
@@ -789,6 +793,59 @@ class ApiSpecimenRepository
   }
 
   @override
+  Future<Specimen> restoreVersion(
+    CollectionScope scope,
+    Specimen specimen, {
+    required int sourceRevision,
+    required bool resetToInitial,
+    required String reason,
+    required String idempotencyKey,
+  }) async {
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
+    if (sourceRevision < 1 ||
+        sourceRevision > specimen.revision ||
+        (resetToInitial && sourceRevision != 1) ||
+        reason.trim().isEmpty) {
+      throw const ApiFailure(
+        'Choose a retained version and enter a reason.',
+        code: 'invalid_restore',
+      );
+    }
+    try {
+      final result = await request(
+        'POST',
+        '${_root(scope)}/specimens/${Uri.encodeComponent(specimen.id)}/history:restore',
+        body: {
+          'expected_revision': specimen.revision,
+          'base_record_version_id': specimen.recordVersionId,
+          'source_revision': sourceRevision,
+          'reset_to_initial': resetToInitial,
+          'reason': reason.trim(),
+        },
+        key: idempotencyKey,
+      );
+      _checkAccess(epoch, userId);
+      if (result['specimen_id'] != specimen.id ||
+          result['revision'] != specimen.revision + 1) {
+        throw const ApiFailure(
+          'The restored version could not be verified.',
+          code: 'invalid_restore_response',
+        );
+      }
+      return _workspace(result, scope);
+    } on ApiFailure catch (error) {
+      if (!error.artifactRequired ||
+          error.details['mutation_committed'] != true ||
+          error.details['revision'] != specimen.revision + 1) {
+        rethrow;
+      }
+      _checkAccess(epoch, userId);
+      return _artifactSummary(scope, specimen.id, error);
+    }
+  }
+
+  @override
   Future<Specimen> historicalSpecimen(
     CollectionScope scope,
     String id,
@@ -957,6 +1014,9 @@ class ApiSpecimenRepository
             'source': l['provider'],
             'outcome': l['status'],
             'evidence_id': l['id'],
+            // A lookup run is available to inspect, but its ID is not a
+            // retained Evidence ID accepted by field correction.
+            'field_citation_supported': false,
           },
         ),
       ],
@@ -1236,7 +1296,11 @@ class ApiSpecimenRepository
                   'field_key': change['target_id'],
                 }
               : {'confirmed': true},
-          'evidence_ids': change['evidence_ids'] ?? [],
+          // Transcription decisions preserve the transcript's observation
+          // provenance. The endpoint does not retain new evidence citations.
+          'evidence_ids': kind == 'transcription_adjudication'
+              ? <String>[]
+              : change['evidence_ids'] ?? [],
         },
       },
     );

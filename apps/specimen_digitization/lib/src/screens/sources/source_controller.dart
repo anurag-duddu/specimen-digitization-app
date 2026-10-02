@@ -298,7 +298,13 @@ class SourceBrowseController extends ChangeNotifier {
       );
       try {
         progress = progress.add(
-          await repository.importFromSource(scope, sourceId, chunk, key),
+          await repository.importFromSource(
+            scope,
+            sourceId,
+            chunk,
+            key,
+            sensitive: true,
+          ),
         );
       } on ApiFailure catch (failure) {
         return progress.stoppedBy(_stopReason(failure));

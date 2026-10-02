@@ -1,6 +1,11 @@
-"""Approved installation uses synthetic credentials and no network transport."""
+"""Legacy bounded helper qualification; standing G3 rejects this retired mode.
 
+The legacy child's actual SDK coverage remains local and metadata-only.
+"""
+
+import json
 import os
+from pathlib import Path
 import time
 from unittest.mock import Mock
 
@@ -13,9 +18,30 @@ from specimen_digitization.bounded_telemetry import Ledger
 APPROVAL = "06af8483b7b190a5b0f2549475681a60483f2aff98a714472baad28376703b48"  # pragma: allowlist secret (approval digest)
 
 
+def configure_legacy_metadata(*, send_to_logfire=None, capture_mode=None):
+    """Call the retained legacy unit helper, not standing production admission."""
+    return M._configure_bounded(
+        M.ObservabilitySettings.from_environment(capture_mode=capture_mode),
+        send_to_logfire=send_to_logfire,
+    )
+
+
+def legacy_traced_child(payload):
+    from bounded_trace_fixture import traced_child
+    from specimen_digitization import observability
+
+    observability.__file__ = str(Path(os.environ["SPECIMEN_TEST_TRACE_BUILD_DIRECTORY"]) / "observability.py")
+    return traced_child(payload)
+
+
 @pytest.fixture
 def approved(tmp_path, monkeypatch):
     tmp_path.chmod(0o700)
+    package = tmp_path / "built-package"
+    package.mkdir()
+    (package / "_build.json").write_text(json.dumps({"source_sha": "a" * 40}))
+    monkeypatch.setattr(M, "__file__", str(package / "observability.py"))
+    monkeypatch.setenv("SPECIMEN_TEST_TRACE_BUILD_DIRECTORY", str(package))
     ledger = Ledger.create(tmp_path / "trace-budget.sqlite3", deadline=time.monotonic() + 60, scope="a" * 64)
     values = {
         "SPECIMEN_TRACE_EXPORT_MODE": "bounded-v1",
@@ -46,18 +72,19 @@ def approved(tmp_path, monkeypatch):
 
 def test_approved_installation_uses_only_custom_processor_and_neutral_sdk_credentials(approved):
     ledger, configure, instrument = approved
-    assert M.configure_observability().environment == "production"
+    assert configure_legacy_metadata().environment == "production"
     options = configure.call_args.kwargs
     assert options["send_to_logfire"] is False
     assert options["token"] != "synthetic-writer"  # pragma: allowlist secret (synthetic test token)
     assert options["api_key"] != "synthetic-writer"  # pragma: allowlist secret (synthetic test token)
     assert options["console"] is False and options["metrics"] is False
+    assert options["service_version"] == "a" * 40
     assert options["variables"] is not None
     assert len(options["additional_span_processors"]) == 1
     assert options["additional_span_processors"][0].ledger.path == ledger.path
     assert instrument.call_args.kwargs["include_content"] is False
     assert instrument.call_args.kwargs["include_binary_content"] is False
-    M.configure_observability()
+    configure_legacy_metadata()
     assert configure.call_count == 1
 
 
@@ -88,7 +115,7 @@ def test_invalid_installation_fails_before_token_or_sdk_work(approved, monkeypat
         return getenv(key, *args)
     monkeypatch.setattr(M.os, "getenv", checked_getenv)
     with pytest.raises(M.ObservabilityConfigurationError):
-        M.configure_observability()
+        configure_legacy_metadata()
     assert configure.call_count == 0
 
 
@@ -96,31 +123,30 @@ def test_no_original_supervisor_deadline_rejects_installation(approved, monkeypa
     _, configure, _ = approved
     monkeypatch.setattr(bounded_effect, "current_effect_deadline", lambda: None)
     with pytest.raises(M.ObservabilityConfigurationError):
-        M.configure_observability()
+        configure_legacy_metadata()
     assert configure.call_count == 0
 
 
 def test_explicit_send_or_content_override_cannot_enable_sdk_export(approved):
     _, configure, _ = approved
     with pytest.raises(M.ObservabilityConfigurationError):
-        M.configure_observability(send_to_logfire=True)
+        configure_legacy_metadata(send_to_logfire=True)
     with pytest.raises(M.ObservabilityConfigurationError):
-        M.configure_observability(capture_mode=M.CaptureMode.APPROVED_CONTENT)
+        configure_legacy_metadata(capture_mode=M.CaptureMode.APPROVED_CONTENT)
     assert configure.call_count == 0
 
 
 def test_flush_is_synchronous_sticky_and_checks_original_clock(approved, monkeypatch):
-    M.configure_observability()
+    configure_legacy_metadata()
     assert M.flush_bounded_observability() == {"configured": True, "complete": True}
     monkeypatch.setattr(bounded_effect, "current_effect_deadline", lambda: time.monotonic() - 1)
     assert M.flush_bounded_observability() == {"configured": True, "complete": False}
 
 
 def test_actual_sdk_in_isolated_model_child_drains_linked_metadata_before_return(approved, tmp_path):
-    from bounded_trace_fixture import traced_child
     from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
     ledger, _, _ = approved
-    result = bounded_effect.run_isolated(traced_child, {
+    result = bounded_effect.run_isolated(legacy_traced_child, {
         "wire": str(tmp_path / "wire.bin"), "model_done": str(tmp_path / "model.txt"),
     }, 10, 1024, trace_required=True)
     assert result.status == "completed" and result.value == b"known model result"
@@ -138,3 +164,16 @@ def test_actual_sdk_in_isolated_model_child_drains_linked_metadata_before_return
     assert attributes["specimen.id"] == "synthetic-specimen"
     assert attributes["specimen.region.id"] == "synthetic-region"
     assert attributes["specimen.route.id"] == "reader-a"
+
+
+def test_standing_g3_refuses_the_retired_bounded_helper_environment(approved, monkeypatch):
+    _, configure, instrument = approved
+    for name, value in {
+        "LOGFIRE_CAPTURE_MODE": "approved-content", "LOGFIRE_SEND_TO_LOGFIRE": "true",
+        "LOGFIRE_DISTRIBUTED_TRACING": "true",
+    }.items():
+        monkeypatch.setenv(name, value)
+    with pytest.raises(M.ObservabilityConfigurationError, match="production_trace_standing_configuration_invalid"):
+        M.configure_production_observability("specimen-worker")
+    configure.assert_not_called()
+    instrument.assert_not_called()

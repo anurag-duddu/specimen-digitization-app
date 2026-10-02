@@ -240,6 +240,12 @@ class CaptureQualitySummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData tokens = context.ui;
+    if (quality == null) {
+      return Text(
+        'Image measurements unavailable on this device.',
+        style: tokens.type.body.copyWith(color: tokens.color.inkSecondary),
+      );
+    }
     final List<String> values = valuesOf(quality);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -253,7 +259,7 @@ class CaptureQualitySummary extends StatelessWidget {
             for (int i = 0; i < labels.length; i++)
               Semantics(
                 container: true,
-                label: '${labels[i]}: ${values[i]}, not calibrated',
+                label: '${labels[i]}: ${values[i]}',
                 excludeSemantics: true,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

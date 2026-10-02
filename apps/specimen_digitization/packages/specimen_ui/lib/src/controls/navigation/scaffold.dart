@@ -429,6 +429,7 @@ class UiScaffold extends StatefulWidget {
     super.key,
     this.body,
     this.topBar,
+    this.header,
     this.banner,
     this.actionBar,
     this.nav,
@@ -441,6 +442,9 @@ class UiScaffold extends StatefulWidget {
 
   /// The page itself.
   final Widget? body;
+
+  /// Persistent workspace navigation, independent of routed page commands.
+  final Widget? header;
 
   /// The bar across the top. A `UiTopBar` on every page that has one.
   ///
@@ -845,14 +849,30 @@ class _UiScaffoldState extends State<UiScaffold> {
     }
     // Never a pane, at any class: see the policy above. The title and the
     // leading a screen asked for ride down to the bar in the slot.
-    final Widget? topBar = bar == null
+    final Widget? localBar = bar == null
+        ? null
+        : UiTopBarAsk(
+            title: _slots.title,
+            leading: _slots.leading,
+            child: solid(bar),
+          );
+    final Widget? topBar = widget.header == null && localBar == null
         ? null
         : PinnedChrome(
             region: UiPinnedRegion.topBar,
-            child: UiTopBarAsk(
-              title: _slots.title,
-              leading: _slots.leading,
-              child: solid(bar),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                if (widget.header case final Widget header) solid(header),
+                if (localBar != null)
+                  widget.header == null
+                      ? localBar
+                      : MediaQuery.removePadding(
+                          context: context,
+                          removeTop: true,
+                          child: localBar,
+                        ),
+              ],
             ),
           );
 

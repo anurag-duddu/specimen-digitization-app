@@ -38,14 +38,21 @@ import 'capture_camera.dart';
 /// What the capture route hands back to the intake screen.
 @immutable
 class CaptureResult {
-  const CaptureResult({this.files = const <XFile>[], this.unavailable});
+  const CaptureResult({
+    this.files = const <XFile>[],
+    this.unavailable,
+    this.streamed = false,
+  });
 
   /// Photographs the operator accepted, in capture order. May be empty.
   final List<XFile> files;
 
-  /// Set when the in-app camera could not be used at all, so the caller can
-  /// fall back to the device camera app with a plain explanation.
+  /// Set when the operator explicitly chooses the device camera after the
+  /// in-app camera becomes unavailable. Back and Cancel leave this unset.
   final CaptureUnavailable? unavailable;
+
+  /// Each accepted file was handed to intake while the viewfinder stayed open.
+  final bool streamed;
 
   /// True when the caller should fall back rather than report an empty batch.
   bool get needsFallback => unavailable != null;
@@ -53,18 +60,24 @@ class CaptureResult {
 
 /// The viewfinder, review step and batch counter.
 class CaptureScreen extends StatefulWidget {
-  const CaptureScreen({super.key, required this.camera});
+  const CaptureScreen({super.key, required this.camera, this.onAccepted});
 
   /// Builds the camera. Injected so a widget test runs against a fake, since
   /// neither the emulator nor CI has a camera.
   final CaptureCameraFactory camera;
 
+  /// Called for each accepted image without waiting for the whole batch.
+  final ValueChanged<XFile>? onAccepted;
+
   /// The route the intake screen pushes.
-  static Route<CaptureResult> route(CaptureCameraFactory camera) =>
-      MaterialPageRoute<CaptureResult>(
-        builder: (BuildContext context) => CaptureScreen(camera: camera),
-        fullscreenDialog: true,
-      );
+  static Route<CaptureResult> route(
+    CaptureCameraFactory camera, {
+    ValueChanged<XFile>? onAccepted,
+  }) => MaterialPageRoute<CaptureResult>(
+    builder: (BuildContext context) =>
+        CaptureScreen(camera: camera, onAccepted: onAccepted),
+    fullscreenDialog: true,
+  );
 
   /// Fraction of the shorter viewfinder edge the specimen guide leaves clear.
   static const double specimenInset = 0.08;
@@ -204,18 +217,28 @@ class _CaptureScreenState extends State<CaptureScreen> {
       _review = null;
       _reviewBytes = null;
     });
+    widget.onAccepted?.call(file);
   }
 
   void _finish() {
     if (!mounted) return;
-    Navigator.of(
-      context,
-    ).pop(CaptureResult(files: List<XFile>.unmodifiable(_accepted)));
+    Navigator.of(context).pop(
+      CaptureResult(
+        files: List<XFile>.unmodifiable(_accepted),
+        streamed: widget.onAccepted != null,
+      ),
+    );
   }
 
   void _fallback() {
     if (!mounted) return;
-    Navigator.of(context).pop(CaptureResult(unavailable: _unavailable));
+    Navigator.of(context).pop(
+      CaptureResult(
+        files: List<XFile>.unmodifiable(_accepted),
+        unavailable: _unavailable,
+        streamed: widget.onAccepted != null,
+      ),
+    );
   }
 
   @override
@@ -237,8 +260,9 @@ class _CaptureScreenState extends State<CaptureScreen> {
     onPopInvokedWithResult: (bool didPop, CaptureResult? _) {
       if (didPop) return;
       // A back gesture keeps what was already accepted. Nothing the
-      // operator confirmed is thrown away by leaving.
-      _unavailable == null ? _finish() : _fallback();
+      // operator confirmed is thrown away by leaving. Only the explicit
+      // fallback action may open another camera.
+      _finish();
     },
     // No sky and no navigation: the preview is the evidence and it fills the
     // window (07 section 5).
@@ -265,7 +289,7 @@ class _CaptureScreenState extends State<CaptureScreen> {
   Widget _unavailableBody() {
     final UiThemeData ui = context.ui;
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: EdgeInsetsDirectional.all(ui.space.s6),
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: ui.space.readingMax),
@@ -284,8 +308,13 @@ class _CaptureScreenState extends State<CaptureScreen> {
               SizedBox(height: ui.space.s6),
               UiButtonRow(
                 primary: UiButton(
-                  label: 'Use the device camera instead',
+                  label: 'Use device camera',
                   onPressed: _fallback,
+                ),
+                secondary: UiButton(
+                  label: 'Cancel',
+                  variant: UiButtonVariant.secondary,
+                  onPressed: _finish,
                 ),
               ),
             ],

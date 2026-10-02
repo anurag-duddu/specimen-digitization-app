@@ -69,7 +69,9 @@ class GlassSurface extends StatelessWidget {
     assert(_assertNotRepeatedInList(context), '');
     final UiThemeData theme = context.ui;
     final UiGlassStyle style = theme.glass[level];
-    final double corner = radius ?? theme.shape.tile;
+    final double corner =
+        radius ??
+        (level == GlassLevel.flat ? theme.shape.none : theme.shape.tile);
     final double sigma = style.sigmaFor(theme.quality);
     final BorderSide side = BorderSide(
       color: style.stroke,
@@ -82,6 +84,7 @@ class GlassSurface extends StatelessWidget {
     Widget content = child;
     if (padding != null) content = Padding(padding: padding!, child: content);
 
+    final bool frosted = sigma > 0;
     Widget pane = Stack(
       fit: StackFit.passthrough,
       children: <Widget>[
@@ -94,17 +97,18 @@ class GlassSurface extends StatelessWidget {
             ),
           ),
         ),
-        Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          child: IgnorePointer(
-            child: _TopHighlight(
-              color: style.highlight,
-              thickness: theme.shape.stroke.hairline,
+        if (frosted)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: IgnorePointer(
+              child: _TopHighlight(
+                color: style.highlight,
+                thickness: theme.shape.stroke.hairline,
+              ),
             ),
           ),
-        ),
         content,
       ],
     );
@@ -133,7 +137,9 @@ class GlassSurface extends StatelessWidget {
     return DecoratedBox(
       decoration: ShapeDecoration(
         shape: shape,
-        shadows: style.shadow == null ? null : <BoxShadow>[style.shadow!],
+        shadows: !frosted || style.shadow == null
+            ? null
+            : <BoxShadow>[style.shadow!],
       ),
       child: pane,
     );

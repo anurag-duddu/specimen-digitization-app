@@ -112,7 +112,7 @@ void main() {
     WidgetTester tester,
   ) async {
     int deferred = 0;
-    await _pump(tester, _bar(onSecondary: () => deferred++), width: 280);
+    await _pump(tester, _bar(onSecondary: () => deferred++), width: 240);
 
     expect(find.text(_defer), findsNothing);
     final Finder trigger = find.bySemanticsLabel(
@@ -214,7 +214,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(corrected, 1, reason: 'a decision is moved, never dropped');
 
-    await _pump(tester, _bar(withTertiary: true), width: 280);
+    await _pump(tester, _bar(withTertiary: true), width: 240);
     expect(find.text(_defer), findsNothing);
     expect(find.text(_correct), findsNothing);
     await tester.tap(find.bySemanticsLabel(UiDecisionBar.defaultOverflowLabel));

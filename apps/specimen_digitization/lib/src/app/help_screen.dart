@@ -26,26 +26,16 @@ import '../workspace.dart';
 /// guessing which button the sentence meant. `test/screens/help_test.dart`
 /// holds the naming: each quoted control has to exist in the product.
 const List<String> reviewWalkthrough = <String>[
-  "Open a record from the queue: tap its row, or press Enter on it. The "
-      "photograph is the evidence; everything else is a claim about it.",
-  "Read the two readings side by side under 'Readings'. Where they differ, "
-      "the difference is counted rather than hinted at.",
-  "Correct what is wrong under 'Fields': tap a layer, then 'Keep this "
-      "correction'. Corrections collect rather than sending one at a time.",
-  "Open the blockers line at the top of the record. Every entry in that list "
-      "goes to the control that resolves it.",
-  "Finish on the decision bar: save the pending changes, which names the "
-      "exact count, then 'Approve record' or 'Confirm label coverage'. Each "
-      "asks for a reason, and none can be taken back.",
+  "Open a specimen from the sidebar. Use its toggle to expand or collapse the list.",
+  "Choose a label in 'Label review' to compare each model's exact transcription with the photograph.",
+  "Open 'Specimen data' for required and optional structured fields. Edit a value, then choose 'Keep this correction'.",
+  "Resolve findings beside the label or field they concern. Save corrections with a reason, then 'Confirm label coverage' or 'Approve record' when available.",
+  "Use History to inspect earlier versions, restore one, or start over from the initial version. Each restoration creates another history entry.",
 ];
 
-/// The controls [reviewWalkthrough] names, in the words the product uses.
-///
-/// Listed once so the walkthrough and the screens cannot drift: a control
-/// renamed without this list being renamed fails the help test.
 const List<String> walkthroughControls = <String>[
-  'Readings',
-  'Fields',
+  'Label review',
+  'Specimen data',
   'Keep this correction',
   'Approve record',
   'Confirm label coverage',
@@ -68,7 +58,6 @@ const Map<String, String> queueShortcuts = <String, String>{
   'K or up arrow': 'Previous record',
   'Enter': 'Open the selected record',
   '/': 'Focus the search field',
-  'F': 'Open filters',
 };
 
 /// The help sheet as a route page: a scrim, and a pane that is a sheet on a
@@ -79,7 +68,7 @@ Page<void> helpPage(BuildContext context) {
     opaque: false,
     barrierDismissible: true,
     barrierColor: context.ui.color.scrim,
-    transitionDuration: motion.standard,
+    transitionDuration: motion.quick,
     reverseTransitionDuration: motion.quick,
     child: const HelpScreen(),
     transitionsBuilder:

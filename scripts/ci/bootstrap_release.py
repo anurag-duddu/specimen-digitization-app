@@ -375,6 +375,21 @@ def apply_first_scope_hierarchy(google, payload, expected_sha256, evidence_recip
     return receipt
 
 
+def fresh_administrator(google, identity):
+    """Read the approved administrator's account again, read-only, just before the write: exactly one account with the
+    prepared UID and email, verified, enabled and in no tenant."""
+    result = google.request("identity", "POST", f"projects/{PROJECT}/accounts:lookup",
+                            body={"email": [identity["email"]]})
+    users = result.get("users") if isinstance(result, dict) else None
+    require(isinstance(users, list) and len(users) == 1 and isinstance(users[0], dict), "unique approved Auth identity required")
+    user = users[0]
+    # As in Firebase Admin UserRecord.disabled, an omitted proto boolean means
+    # false. Reject non-boolean supplied values instead of SDK truthiness coercion.
+    require(user.get("localId") == identity["uid"] and user.get("email") == identity["email"]
+            and user.get("emailVerified") is True and user.get("disabled", False) is False
+            and not user.get("tenantId"), "fresh Auth identity differs, is unverified or disabled")
+
+
 def bootstrap(google, prepared_payload, expected_sha256, evidence_recipient=None):
     """Recheck identity, execute exact transaction once, then verify membership.
 
@@ -393,16 +408,7 @@ def bootstrap(google, prepared_payload, expected_sha256, evidence_recipient=None
     else:
         require(evidence_recipient is None, "legacy bootstrap does not accept an evidence recipient")
     identity, variables = payload["auth_record"], payload["request"]["variables"]
-    result = google.request("identity", "POST", f"projects/{PROJECT}/accounts:lookup",
-                            body={"email": [identity["email"]]})
-    users = result.get("users") if isinstance(result, dict) else None
-    require(isinstance(users, list) and len(users) == 1 and isinstance(users[0], dict), "unique approved Auth identity required")
-    user = users[0]
-    # As in Firebase Admin UserRecord.disabled, an omitted proto boolean means
-    # false. Reject non-boolean supplied values instead of SDK truthiness coercion.
-    require(user.get("localId") == identity["uid"] and user.get("email") == identity["email"]
-            and user.get("emailVerified") is True and user.get("disabled", False) is False
-            and not user.get("tenantId"), "fresh Auth identity differs, is unverified or disabled")
+    fresh_administrator(google, identity)
     if version == "first-scope-hierarchy-bootstrap/v1":
         return apply_first_scope_hierarchy(google, payload, expected_sha256, evidence_recipient)
     if first_scope:

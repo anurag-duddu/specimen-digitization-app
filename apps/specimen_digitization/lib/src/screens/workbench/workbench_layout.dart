@@ -1,94 +1,89 @@
-/// The three pane regimes of the workbench
-/// (screen blueprints, 6.1; responsive and platform adaptation, 3.5).
-///
-/// The regime is read from the width the workbench is given, never from the
-/// platform and never from the window, because the workbench can be handed a
-/// detail pane that is narrower than the window it sits in.
+/// Constraint-based composition for the review workspace.
 library;
 
-import 'package:flutter/painting.dart';
+import 'package:flutter/widgets.dart';
+import 'package:specimen_ui/specimen_ui.dart' show UiLayoutMetrics;
 
 import '../../layout/window_class.dart';
 
-/// How the source pane, the evidence pane and the history pane are arranged.
+/// One scroll on narrow panes; a dominant canvas and one inspector on wide panes.
 enum WorkbenchRegime {
-  /// Below 840. One column: the source pane pinned as a collapsible header
-  /// with the evidence scrolling beneath it.
   stacked,
+  twoPane;
 
-  /// 840 to 1199. Source pane and evidence pane side by side, and History as
-  /// a third segment of the evidence selector.
-  twoPane,
+  static WorkbenchRegime fromWidth(double width) =>
+      fromConstraints(BoxConstraints(maxWidth: width));
 
-  /// 1200 and above. Source pane, evidence pane and a persistent history
-  /// pane, so a reviewer never loses their place in the evidence to check
-  /// whether a field was corrected before.
-  threePane;
-
-  /// The regime for a pane of this width.
-  static WorkbenchRegime fromWidth(double width) {
-    if (width < WindowClass.expandedMin) return WorkbenchRegime.stacked;
-    if (width < WindowClass.largeMin) return WorkbenchRegime.twoPane;
-    return WorkbenchRegime.threePane;
+  /// Side-by-side work needs readable columns and a useful vertical viewport.
+  static WorkbenchRegime fromConstraints(
+    BoxConstraints constraints, {
+    TextScaler textScaler = TextScaler.noScaling,
+  }) {
+    final metrics = UiLayoutMetrics.fromConstraints(
+      constraints,
+      textScaler: textScaler,
+    );
+    final scale = (textScaler.scale(16) / 16).clamp(1.0, double.infinity);
+    final short =
+        constraints.hasBoundedHeight && constraints.maxHeight < 400 * scale;
+    final hasColumns =
+        metrics.columns(
+          // Landscape review can use the shared readable minimum instead of
+          // spending its limited height on a photograph above the readings.
+          minWidth: short
+              ? metrics.minColumnWidth
+              : reviewColumnMinWidth * scale,
+          maxColumns: 2,
+        ) ==
+        2;
+    final hasHeight =
+        !constraints.hasBoundedHeight ||
+        constraints.maxHeight >= reviewMinimumPaneHeight * scale;
+    return hasColumns && hasHeight ? twoPane : stacked;
   }
 
-  /// True when the source pane scrolls as a pinned header rather than
-  /// standing beside the evidence.
-  bool get isStacked => this == WorkbenchRegime.stacked;
-
-  /// True when History is a segment of the evidence selector rather than a
-  /// pane of its own.
-  bool get historyIsSegment => this != WorkbenchRegime.threePane;
-
-  /// The source pane's flex in a row layout (blueprint 3.5).
-  int get sourceFlex => this == WorkbenchRegime.threePane ? 5 : 1;
-
-  /// The evidence pane's flex in a row layout.
-  int get evidenceFlex => this == WorkbenchRegime.threePane ? 4 : 1;
+  bool get isStacked => this == stacked;
 }
 
-/// The fixed width of the persistent history pane (responsive 3.5).
-const double historyPaneWidth = 320;
+/// Bounds the reading measure while leaving the photograph room to breathe.
+const double reviewInspectorMaxWidth = 650;
 
-/// The evidence segments, in the order they are shown.
+/// Minimum readable column for a photograph beside label comparison.
+/// This local content policy is scaled with text before choosing two panes.
+const double reviewColumnMinWidth = 360;
+
+/// Below this available height, one page scroll gives controls room to appear.
+const double reviewMinimumPaneHeight = 240;
+
+/// Evidence views share one location, including on the widest windows.
 enum WorkbenchSegment {
-  /// The two independent model readings and their comparison.
-  readings('Readings'),
-
-  /// The record's fields, their layers, and the authority evidence.
-  fields('Fields'),
-
-  /// The decision timeline and the version browser.
-  history('History');
+  readings('Label review'),
+  fields('Specimen data'),
+  history('Review history');
 
   const WorkbenchSegment(this.label);
-
-  /// The visible word on the selector.
   final String label;
 
-  /// The segments shown for a regime. History leaves the selector once it has
-  /// a pane of its own.
-  static List<WorkbenchSegment> forRegime(WorkbenchRegime regime) =>
-      regime.historyIsSegment
-      ? WorkbenchSegment.values
-      : <WorkbenchSegment>[WorkbenchSegment.readings, WorkbenchSegment.fields];
+  static List<WorkbenchSegment> forRegime(WorkbenchRegime regime) => values;
 }
 
-/// The share of the viewport the source header takes at rest
-/// (13 sections 3.1 and 4.1; 07 section 6.1).
+/// The general source header's expanded share, retained by the region editor.
 const double sourceHeaderMaxFraction = 0.55;
 
-/// The share it holds once the reviewer has scrolled it to its floor.
-///
-/// The header is a `UiCollapsingHeader` between the two fractions, so the
-/// arithmetic that used to compute a band out of the pane's leftovers is the
-/// scroll position now: the reviewer's finger decides how much photograph is
-/// on screen, between these two numbers, and nothing else does.
+/// The general source header's collapsed share, retained by the region editor.
 const double sourceHeaderMinFraction = 0.40;
+
+/// The review header leaves the first literal reading visible at rest.
+/// The image remains the largest single region, with controls in its band.
+const double reviewSourceHeaderMaxFraction = 0.43;
+
+/// The review header's collapsed share. The review and region editor have
+/// different reading flows, so changing this does not resize the editor.
+const double reviewSourceHeaderMinFraction = 0.28;
 
 /// The least height the photograph's own pixels are worth drawing at.
 ///
-/// The floor under the fraction on a window short enough that 40 percent of
+/// The floor under the fraction on a window short enough that the collapsed share of
 /// it is less than this, and the floor under the header's content where a
 /// large text scale has grown the chrome row riding its edge.
 const double sourceImageMinHeight = 120;
@@ -125,48 +120,9 @@ const double layoutTextScrollThreshold = 1.4;
 /// it, and the tab strip still says which evidence is showing.
 const double stickySegmentsMaxScale = 1.0;
 
-/// True where the record's decision sits in the top bar rather than in the
-/// frame's action bar (13 section 4.1, the expanded and large table).
-///
-/// From `expanded` up. 13 section 2.3 allows those classes 20 percent of the
-/// viewport, and at 200 percent text the frame's own top bar is 61.25 dp, the
-/// one line band 52 and the action bar 71.6: 184.85 of the 164 an 820 dp
-/// window allows and of the 180 a 900 dp window allows, so no arrangement
-/// that keeps all three holds the budget, and 2.3 says the screen gives a
-/// region up rather than shrinking one. The region given up is the action
-/// bar, whose job moves into the bar the record already publishes: a wide bar
-/// has the width for the two decisions, the count and the two edge buttons
-/// beside the identifier, and the bottom of the window is then the evidence
-/// down to its last row. The band stays a region of its own, because it is the
-/// one that says which data this is (07 section 1.3) and a strip the width of
-/// the window is more visible than a chip in a bar. What remains pinned is
-/// the bar and the band: 100 dp at default type and 113.25 at 200 percent,
-/// which is 0.138 of 820 and 0.126 of 900.
-///
-/// Compact and medium keep the action bar: on a phone and a portrait tablet
-/// the decision belongs under the thumb, and the 28 and 24 percent those
-/// classes allow hold it (27.0 and 22.3 percent measured).
-bool decisionInTopBar(WindowClass window) =>
-    window.isAtLeast(WindowClass.expanded);
-
-/// True while the record's segments may stick under its header.
-///
-/// Two things spend the budget the bar needs, and both are weighed: the
-/// reviewer's text size, above [stickySegmentsMaxScale], and the window class.
-/// At compact and medium the frame's bar, band and action bar leave room for
-/// the segments at default type (27.0 and 22.3 percent measured with them
-/// stuck). From `expanded` up the same three regions took the whole of the
-/// 20 percent at default type, 164 of 164 at 1180 by 820, and the segments
-/// could not stick at any size; with the decision in the top bar there
-/// ([decisionInTopBar]) the frame pins 100 dp and a 48 dp bar at pointer
-/// density brings the record at 1440 by 900, where it sits beside a queue
-/// pane and a sidebar in the stacked regime, to 148 of the 180 allowed. The
-/// clause is written against [decisionInTopBar] rather than as a constant so
-/// that a frame that puts the action bar back at a class takes the sticky
-/// segments away from it in the same change.
+/// Tabs stick only at default text size, when the compact chrome budget holds.
 bool segmentsStick(TextScaler scaler, WindowClass window) =>
-    scaler.scale(layoutTextProbe) <= layoutTextProbe * stickySegmentsMaxScale &&
-    (window.index <= WindowClass.medium.index || decisionInTopBar(window));
+    scaler.scale(layoutTextProbe) <= layoutTextProbe * stickySegmentsMaxScale;
 
 /// True when the reviewer's text is large enough that a pane has to scroll.
 bool paneScrollsAtThisTextScale(TextScaler scaler) =>

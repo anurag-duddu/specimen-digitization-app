@@ -16,14 +16,15 @@
 
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart' show CupertinoTabBar;
+import 'package:flutter/material.dart' show NavigationBar;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
 import 'package:specimen_digitization/src/screens/intake/capture_card.dart';
-import 'package:specimen_digitization/src/screens/intake/manifest_panel.dart';
+import 'package:specimen_digitization/src/screens/workbench/decision_bar.dart';
 import 'package:specimen_digitization/src/screens/workbench/source_pane.dart';
-import 'package:specimen_digitization/src/screens/workbench/status_strip.dart';
 import 'package:specimen_digitization/src/widgets/source_import_sheet.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -104,7 +105,7 @@ class CompositionScreen {
   final Finder Function()? primary;
 
   /// The share of the viewport the primary region has to show at compact,
-  /// where 13 section 4 gives one. The record's photograph is 0.40.
+  /// where the screen reserves a share independent of available page space.
   final double? primaryMinFraction;
 
   /// The region beneath the primary one, whose first row has to be visible.
@@ -236,19 +237,23 @@ final List<CompositionScreen> compositionScreens = <CompositionScreen>[
   CompositionScreen(
     name: 'record',
     pump: _routed(goldenSpecimenLocation),
-    // 13 section 4.1: the photograph at 0.40 of the viewport, with the status
-    // strip and the first reading beneath it.
+    // The photograph and the first literal reading are the compact review's
+    // initial work; transient notices are not a composition landmark.
     primary: () => find.byType(SourceMatte),
-    primaryMinFraction: 0.40,
-    next: () => find.byType(WorkbenchStatusStrip),
+    // The stable inline photograph must be fully visible, then scroll away.
+    // Its minimum is based on available page space, not pinned window share.
+    next: () => find
+        .byWidgetPredicate(
+          (widget) => widget is DiffText && widget.reference == null,
+        )
+        .first,
   ),
   CompositionScreen(
     name: 'intake',
     pump: _routed(goldenIntakeLocation),
-    // 13 section 4.4: the capture card is the form, the manifest is the
-    // region beneath it.
+    // File actions come first; classification remains visible before picking.
     primary: () => find.byType(IntakeCaptureCard),
-    next: () => find.byType(IntakeManifest),
+    next: () => find.byKey(const ValueKey<String>('intake-sensitivity')),
   ),
   CompositionScreen(
     name: 'sources',
@@ -294,11 +299,10 @@ List<Element> compositionElements() {
 /// The widgets the shell and the screens pin today, where no marker wraps
 /// them.
 ///
-/// 13 section 2.3 names the top bar, the environment band, a pinned header at
-/// its collapsed height, the decision bar and the navigation pill, and these
-/// are the widgets that draw the first, second and fifth today; the decision
-/// bar has been inside the frame's action bar marker since wave A, and a
-/// pinned header carries the pattern's own marker. A rail and a sidebar are
+/// Includes native bottom navigation and the decision bar now owned by the
+/// review content. Scrollable headers and offstage routes do not reserve
+/// visible height. Explicit sliver markers retain their declared extents.
+/// A rail and a sidebar are
 /// deliberately absent: they are laid out beside the body rather than above
 /// it, so they spend width and the budget is a share of the height.
 ///
@@ -310,12 +314,59 @@ List<Element> compositionElements() {
 /// measured the record screen at a quarter of the phone with its decision bar
 /// uncounted, and the ratchet asked for the backlog line to be deleted.
 bool isPinnedChromeWidget(Widget widget) =>
-    widget is UiTopBar || widget is UiPillNav || widget is EnvironmentBanner;
+    widget is UiTopBar ||
+    widget is UiPillNav ||
+    widget is EnvironmentBanner ||
+    widget is WorkbenchDecisionBar ||
+    widget is CupertinoTabBar ||
+    widget is NavigationBar;
 
 /// True where [element] is a pinned region: the marker, or a widget the list
 /// above names.
-bool isPinnedRegion(Element element) =>
-    element.widget is PinnedChrome || isPinnedChromeWidget(element.widget);
+bool isPinnedRegion(Element element) {
+  if (hasAncestor(element, (widget) => widget is Offstage && widget.offstage)) {
+    return false;
+  }
+  if (element.widget is PinnedChrome) return true;
+  return isPinnedChromeWidget(element.widget) &&
+      !hasAncestor(
+        element,
+        (widget) => widget is Scrollable && isVerticalScrollable(widget),
+      );
+}
+
+/// The native bar that is actually laid out, excluding retained offstage routes.
+Finder nativeNavigation() => find.byWidgetPredicate(
+  (widget) => widget is CupertinoTabBar || widget is NavigationBar,
+);
+
+/// The safe window above actual native navigation or the on-screen keyboard.
+/// Record tests additionally measure their own evidence/decision-bar boundary.
+Rect contentAboveNativeNavigation(WidgetTester tester) {
+  final ratio = tester.view.devicePixelRatio;
+  final size = tester.view.physicalSize / ratio;
+  final padding = tester.view.padding;
+  final keyboard = tester.view.viewInsets.bottom / ratio;
+  double bottom =
+      size.height - (keyboard > 0 ? keyboard : padding.bottom / ratio);
+  final bars = nativeNavigation().evaluate().toList();
+  if (bars.length > 1) {
+    throw StateError('More than one onstage native navigation bar');
+  }
+  if (bars.isNotEmpty) {
+    final rect = rectOf(bars.single);
+    if (rect == null || rect.height <= 0) {
+      throw StateError('Native navigation has no measurable viewport');
+    }
+    if (rect.top < bottom) bottom = rect.top;
+  }
+  return Rect.fromLTRB(
+    padding.left / ratio,
+    padding.top / ratio,
+    size.width - padding.right / ratio,
+    bottom,
+  );
+}
 
 /// The height the pinned region at [element] contributes.
 ///
@@ -326,6 +377,22 @@ bool isPinnedRegion(Element element) =>
 double? pinnedExtent(Element element) {
   final Widget widget = element.widget;
   if (widget is PinnedChrome && widget.extent != null) return widget.extent;
+  if (widget is WorkbenchDecisionBar) {
+    // Count the space reserved around the bar, including its SafeArea,
+    // rather than only the button's render box. Stop at the owning layout.
+    Element region = element;
+    element.visitAncestorElements((parent) {
+      final wrapper = parent.widget;
+      if (wrapper is! Padding &&
+          wrapper is! SafeArea &&
+          wrapper is! MediaQuery) {
+        return false;
+      }
+      region = parent;
+      return true;
+    });
+    return rectOf(region)?.height;
+  }
   return rectOf(element)?.height;
 }
 

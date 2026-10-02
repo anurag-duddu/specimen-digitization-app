@@ -2,7 +2,7 @@
 ///
 /// The base of menus, selects, tooltips and date inputs. It positions itself
 /// against its trigger, fits the overlay it opens in, dismisses on an outside
-/// tap and on `Escape`, and returns focus to the trigger when it closes.
+/// tap, `Escape` and platform Back, and returns focus to the trigger when it closes.
 ///
 /// **Fit.** A pane below or above its trigger hangs from the trigger's
 /// leading edge. Where that would carry it past the overlay's trailing edge,
@@ -204,21 +204,56 @@ class _PopoverState extends State<Popover> {
     // immediately after opening, while focus is still on the trigger, has to
     // close the popover: a reviewer does not know which side of the boundary
     // their focus is on.
-    return Shortcuts(
-      shortcuts: const <ShortcutActivator, Intent>{
-        SingleActivator(LogicalKeyboardKey.escape): DismissIntent(),
-      },
-      child: Actions(
-        actions: <Type, Action<Intent>>{
-          DismissIntent: CallbackAction<DismissIntent>(
-            onInvoke: (DismissIntent intent) {
-              if (widget.controller.isOpen) _close();
-              return null;
+    return ListenableBuilder(
+      listenable: widget.controller,
+      child: _buildPortal(context, ui),
+      builder: (context, child) {
+        final content = Shortcuts(
+          shortcuts: <ShortcutActivator, Intent>{
+            if (widget.controller.isOpen)
+              const SingleActivator(LogicalKeyboardKey.escape):
+                  const DismissIntent(),
+          },
+          child: Actions(
+            // A closed tooltip or menu must not shadow an ancestor's dismissal.
+            actions: <Type, Action<Intent>>{
+              if (widget.controller.isOpen)
+                DismissIntent: CallbackAction<DismissIntent>(
+                  onInvoke: (DismissIntent intent) {
+                    _close();
+                    return null;
+                  },
+                ),
             },
+            child: child!,
           ),
-        },
-        child: _buildPortal(context, ui),
-      ),
+        );
+        final dismissible = widget.interactive && widget.controller.isOpen;
+        // Router hosts can contain an in-page sidebar that also consumes Back.
+        // The open popover takes priority over that ancestor, but a dialog on
+        // a newer route must still receive the event first.
+        if (Router.maybeOf(context)?.backButtonDispatcher != null) {
+          return BackButtonListener(
+            onBackButtonPressed: () async {
+              if (!dismissible || ModalRoute.of(context)?.isCurrent == false) {
+                return false;
+              }
+              _close();
+              return true;
+            },
+            child: content,
+          );
+        }
+        // Navigator-only hosts (including the shared gallery) have no Router
+        // dispatcher. Keep their current route while closing an open menu.
+        return PopScope<Object?>(
+          canPop: !dismissible,
+          onPopInvokedWithResult: (didPop, result) {
+            if (!didPop && dismissible) _close();
+          },
+          child: content,
+        );
+      },
     );
   }
 
@@ -303,6 +338,10 @@ class _PopoverState extends State<Popover> {
       gap: widget.gap ?? ui.space.s2,
       insetStart: safe.left + ui.space.s4,
       insetEnd: safe.right + ui.space.s4,
+      insetTop: safe.top + ui.space.s4,
+      insetBottom:
+          math.max(safe.bottom, MediaQuery.viewInsetsOf(context).bottom) +
+          ui.space.s4,
       direction: Directionality.of(context),
     );
   }
@@ -364,6 +403,8 @@ class _PopoverGeometry {
     required this.gap,
     required this.insetStart,
     required this.insetEnd,
+    required this.insetTop,
+    required this.insetBottom,
     required this.direction,
   });
 
@@ -385,6 +426,15 @@ class _PopoverGeometry {
 
   /// The same, at the right edge.
   final double insetEnd;
+  final double insetTop;
+  final double insetBottom;
+
+  double get heightRoom => math.max(0, switch (placement) {
+    PopoverPlacement.above => trigger.top - gap - insetTop,
+    PopoverPlacement.below ||
+    PopoverPlacement.auto => bounds.height - insetBottom - trigger.bottom - gap,
+    _ => bounds.height - insetTop - insetBottom,
+  });
 
   /// The reading direction, which decides which edge is the leading one.
   final TextDirection direction;
@@ -411,6 +461,8 @@ class _PopoverGeometry {
       other.gap == gap &&
       other.insetStart == insetStart &&
       other.insetEnd == insetEnd &&
+      other.insetTop == insetTop &&
+      other.insetBottom == insetBottom &&
       other.direction == direction;
 
   @override
@@ -421,6 +473,8 @@ class _PopoverGeometry {
     gap,
     insetStart,
     insetEnd,
+    insetTop,
+    insetBottom,
     direction,
   );
 }
@@ -443,7 +497,7 @@ class _PopoverLayout extends SingleChildLayoutDelegate {
   BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
       BoxConstraints(
         maxWidth: math.min(geometry.room, constraints.maxWidth),
-        maxHeight: constraints.maxHeight,
+        maxHeight: math.min(geometry.heightRoom, constraints.maxHeight),
       );
 
   @override
@@ -468,7 +522,16 @@ class _PopoverLayout extends SingleChildLayoutDelegate {
         final double left = before
             ? trigger.left - gap - childSize.width
             : trigger.right + gap;
-        return Offset(left, trigger.center.dy - childSize.height / 2);
+        return Offset(
+          left,
+          (trigger.center.dy - childSize.height / 2).clamp(
+            geometry.insetTop,
+            math.max(
+              geometry.insetTop,
+              geometry.bounds.height - geometry.insetBottom - childSize.height,
+            ),
+          ),
+        );
     }
   }
 

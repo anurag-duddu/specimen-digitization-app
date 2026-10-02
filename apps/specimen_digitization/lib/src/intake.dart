@@ -1,18 +1,15 @@
 /// Intake and capture (screen blueprints, section 5).
 ///
-/// Two cards. The capture card says how photographs arrive and carries the one
-/// confirmation that releases a batch; the manifest is the complete account of
-/// what happened to every file, including the ones this client refused. Below
-/// 600dp they stack; at 600dp and above the capture card is fixed on the left
-/// and the manifest scrolls beside it, so the button an operator presses
-/// repeatedly never scrolls away from the list it fills
-/// (responsive, section 3.4).
+/// The capture surface offers page-wide browser drop/picker or native
+/// upload/camera. The manifest is the complete account of every selected
+/// file, including local refusals, below the large intake surface.
 library;
 
-import 'dart:convert';
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart';
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -27,15 +24,15 @@ import 'models.dart';
 import 'screens/intake/capture_card.dart';
 import 'screens/intake/manifest_entry.dart';
 import 'screens/intake/manifest_panel.dart';
-import 'theme/motion.dart';
-import 'vocabulary.dart';
+import 'screens/intake/intake_transfer_session.dart';
 import 'widgets/motion_reveal.dart';
 import 'widgets/upload_item.dart';
+import 'widgets/repository_url_import_gate.dart';
+import 'widgets/product_modal.dart';
+import 'sources.dart';
+import 'workspace.dart';
 
 export 'screens/intake/manifest_entry.dart' show ManifestEntry;
-
-/// Fixed width of the capture column at 600dp and above (blueprint 5).
-const double intakeCaptureColumnWidth = 420;
 
 /// Builds the production camera. A factory, not a constructor reference,
 /// because the interface hands back a future.
@@ -70,6 +67,7 @@ class IntakeScreen extends StatefulWidget {
     this.recoverCamera,
     this.openCapture,
     this.cameraFactory,
+    this.webOverride,
   });
   final SpecimenRepository repository;
   final CollectionScope scope;
@@ -96,12 +94,16 @@ class IntakeScreen extends StatefulWidget {
   /// Builds the camera the default capture route uses.
   final CaptureCameraFactory? cameraFactory;
 
+  /// Test seam for the browser presentation. Production always uses [kIsWeb].
+  final bool? webOverride;
+
   @override
   State<IntakeScreen> createState() => _IntakeScreenState();
 }
 
 class _IntakeScreenState extends State<IntakeScreen> {
-  final List<ManifestEntry> _entries = <ManifestEntry>[];
+  late IntakeTransferSession _session;
+  List<ManifestEntry> get _entries => _session.entries;
 
   /// The frame's slots, so the upload action goes where 13 section 3.3 puts a
   /// screen's decision.
@@ -109,29 +111,73 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   /// What the published action bar last said, so the frame is told once per
   /// change rather than once per frame.
-  ({bool busy, bool confirmed, int pending, bool current})? _publishedUpload;
+  ({bool busy, int pending, bool current})? _publishedUpload;
 
-  bool _busy = false;
-  bool _stopRequested = false;
-  bool _qualityConfirmed = false;
-  bool _newSensitive = true;
+  bool get _busy => _session.busy;
+  bool _sensitive = true;
+  bool get _stopRequested => _session.stopping;
+  bool _choosing = false;
+  bool _pageDragging = false;
   String? _error;
 
-  String get _storageKey =>
-      'upload-handles-v1:${widget.userId}:${widget.scope.key}';
   String get _captureOwner => '${widget.userId}:${widget.scope.key}';
   static const String _captureKey = 'pending-camera-owner-v1';
 
   /// This client offers an in-app camera only where it has one.
-  bool get _cameraAvailable =>
+  bool get _isWeb => widget.webOverride ?? kIsWeb;
+
+  bool get _nativeCameraAvailable =>
       !kIsWeb &&
+      !_isWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
+
+  bool get _cameraAvailable =>
+      _nativeCameraAvailable ||
+      (kIsWeb &&
+          _isWeb &&
+          (defaultTargetPlatform == TargetPlatform.android ||
+              defaultTargetPlatform == TargetPlatform.iOS));
 
   @override
   void initState() {
     super.initState();
-    _restore().then((_) => _recoverCamera());
+    _session = intakeTransferSession(
+      widget.repository,
+      widget.scope,
+      widget.userId,
+    );
+    _session.addListener(_sessionChanged);
+    _session.attachComplete(widget.onComplete);
+    _recoverCamera();
+  }
+
+  void _sessionChanged() {
+    if (!mounted) return;
+    setState(() => _error ??= _session.restoreError);
+  }
+
+  @override
+  void didUpdateWidget(covariant IntakeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.repository, widget.repository) ||
+        oldWidget.scope.key != widget.scope.key ||
+        oldWidget.userId != widget.userId) {
+      _session.detachComplete(oldWidget.onComplete);
+      _session.removeListener(_sessionChanged);
+      _session = intakeTransferSession(
+        widget.repository,
+        widget.scope,
+        widget.userId,
+      );
+      _session.addListener(_sessionChanged);
+      _session.attachComplete(widget.onComplete);
+      _sensitive = true;
+      _error = null;
+    } else if (oldWidget.onComplete != widget.onComplete) {
+      _session.detachComplete(oldWidget.onComplete);
+      _session.attachComplete(widget.onComplete);
+    }
   }
 
   @override
@@ -142,55 +188,10 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   @override
   void dispose() {
+    _session.detachComplete(widget.onComplete);
+    _session.removeListener(_sessionChanged);
     _slots?.release(this);
     super.dispose();
-  }
-
-  // ---------------------------------------------------------------- storage
-
-  Future<void> _restore() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    final String? saved = prefs.getString(_storageKey);
-    if (saved != null && mounted) {
-      try {
-        final Iterable<ManifestEntry> restored = objects(jsonDecode(saved)).map(
-          (Json e) => ManifestEntry.restored(
-            digest: e['digest'],
-            handle: <String, dynamic>{'upload_id': e['upload_id']},
-          ),
-        );
-        setState(() => _entries.addAll(restored));
-      } catch (_) {
-        setState(
-          () => _error =
-              'Saved uploads could not be read. Select your files again to '
-              'match them with the server.',
-        );
-      }
-    }
-  }
-
-  Future<void> _persist() async {
-    final SharedPreferences prefs = await SharedPreferences.getInstance();
-    // Persist only opaque upload handles and checksums, never image bytes,
-    // credentials or label content.
-    await prefs.setString(
-      _storageKey,
-      jsonEncode(
-        _entries
-            .where(
-              (ManifestEntry e) =>
-                  e.session?['upload_id'] != null && !e.settled,
-            )
-            .map(
-              (ManifestEntry e) => <String, dynamic>{
-                'digest': e.digest,
-                'upload_id': e.session!['upload_id'],
-              },
-            )
-            .toList(),
-      ),
-    );
   }
 
   // ------------------------------------------------------------------ input
@@ -229,9 +230,11 @@ class _IntakeScreenState extends State<IntakeScreen> {
   /// is shown as a plain sentence before the fallback runs.
   Future<List<XFile>> _capture() async {
     if (widget.pickImages != null) return widget.pickImages!(true);
-    if (_cameraAvailable) {
+    if (_nativeCameraAvailable) {
       final CaptureResult result = await _openCapture();
-      if (!result.needsFallback) return result.files;
+      if (!result.needsFallback) {
+        return result.streamed ? <XFile>[] : result.files;
+      }
       if (mounted) {
         setState(() => _error = result.unavailable!.message);
       }
@@ -241,10 +244,21 @@ class _IntakeScreenState extends State<IntakeScreen> {
 
   Future<CaptureResult> _openCapture() async {
     if (widget.openCapture != null) return widget.openCapture!(context);
-    final CaptureResult? result = await Navigator.of(
-      context,
-    ).push(CaptureScreen.route(widget.cameraFactory ?? _platformCamera));
+    final CaptureResult? result = await Navigator.of(context).push(
+      CaptureScreen.route(
+        widget.cameraFactory ?? _platformCamera,
+        onAccepted: _acceptCameraPhoto,
+      ),
+    );
     return result ?? const CaptureResult();
+  }
+
+  void _acceptCameraPhoto(XFile file) {
+    // Admission and upload run under the intake route while the viewfinder
+    // stays on top. Each accepted photograph can start before Done is tapped.
+    unawaited(
+      _acceptFiles(<XFile>[file], camera: true).then((_) => _session.start()),
+    );
   }
 
   /// The pre-existing `image_picker` path, unchanged, including the owner
@@ -270,12 +284,12 @@ class _IntakeScreenState extends State<IntakeScreen> {
     required Future<List<XFile>> Function() load,
   }) async {
     setState(() {
-      _busy = true;
-      _qualityConfirmed = false;
+      _choosing = true;
       _error = null;
     });
     try {
       await _acceptFiles(await load(), camera: camera);
+      if (camera) unawaited(_session.start());
     } catch (_) {
       if (mounted) {
         setState(
@@ -285,16 +299,54 @@ class _IntakeScreenState extends State<IntakeScreen> {
         );
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() => _choosing = false);
     }
   }
 
+  /// Routes browser drops through the same byte, type, size and checksum
+  /// admission path as the system picker.
+  Future<void> _dropFiles(List<XFile> files) {
+    if (files.isEmpty) {
+      setState(
+        () => _error =
+            'No files were added. Drop image files, not a folder or link.',
+      );
+      return Future<void>.value();
+    }
+    return _collect(camera: false, load: () async => files);
+  }
+
+  void _openLinkImport() {
+    unawaited(
+      showProductModal<void>(
+        context: context,
+        title: 'Import from link',
+        body: (BuildContext modal) => RepositoryUrlIntake(
+          scope: widget.scope,
+          userId: widget.userId,
+          repository: sourcesIn(widget.repository),
+          onBrowseSources: widget.onBrowseSources == null
+              ? null
+              : () {
+                  Navigator.of(modal).pop();
+                  widget.onBrowseSources!();
+                },
+        ),
+        secondaryAction: (BuildContext modal) => UiButton(
+          label: 'Close',
+          variant: UiButtonVariant.ghost,
+          onPressed: () => Navigator.of(modal).pop(),
+        ),
+      ),
+    );
+  }
+
   Future<void> _recoverCamera() async {
-    if ((!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ||
+    if ((!_isWeb && defaultTargetPlatform == TargetPlatform.android) ||
         widget.recoverCamera != null) {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       if (!mounted || prefs.getString(_captureKey) != _captureOwner) return;
-      setState(() => _busy = true);
+      setState(() => _choosing = true);
       try {
         final List<XFile> files;
         if (widget.recoverCamera != null) {
@@ -327,7 +379,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
         if (prefs.getString(_captureKey) == _captureOwner) {
           await prefs.remove(_captureKey);
         }
-        if (mounted) setState(() => _busy = false);
+        if (mounted) setState(() => _choosing = false);
       }
     }
   }
@@ -339,154 +391,177 @@ class _IntakeScreenState extends State<IntakeScreen> {
   /// its own reason rather than a banner the next rejection overwrites.
   Future<void> _acceptFiles(List<XFile> files, {required bool camera}) async {
     for (final XFile file in files) {
-      final int size = await file.length();
-      if (size == 0 || size > intakeMaximumBytes) {
-        _skip(
-          key: 'size:${file.name}:$size',
-          name: file.name,
-          why: size == 0
-              ? 'This file is empty, so there is nothing to upload.'
-              : 'This file is over 25 MB. Photograph it again at a smaller '
-                    'size, or choose a smaller file.',
-        );
-        continue;
-      }
-      final Uint8List bytes = await file.readAsBytes();
-      final String digest = sha256.convert(bytes).toString();
-      final String extension = file.name.split('.').last.toLowerCase();
-      final String mime = switch (extension) {
-        'jpg' || 'jpeg' => 'image/jpeg',
-        'png' => 'image/png',
-        'heic' || 'heif' => 'image/heic',
-        'tif' || 'tiff' => 'image/tiff',
-        'dng' => 'image/x-adobe-dng',
-        _ => '',
-      };
-      if (mime.isEmpty) {
-        _skip(
-          key: 'format:$digest',
-          name: file.name,
-          why:
-              'This client uploads JPEG, PNG, HEIC, TIFF and DNG. Choose one '
-              'of those formats.',
-        );
-        continue;
-      }
-      int? width;
-      int? height;
-      CaptureQuality? quality;
-      bool excessiveResolution = false;
       try {
-        final ui.ImmutableBuffer buffer =
-            await ui.ImmutableBuffer.fromUint8List(bytes);
-        final ui.Codec codec = await ui.instantiateImageCodecWithSize(
-          buffer,
-          getTargetSize: (int w, int h) {
-            width = w;
-            height = h;
-            if (w > intakeMaximumSide ||
-                h > intakeMaximumSide ||
-                w * h > intakeMaximumPixels) {
-              excessiveResolution = true;
-              throw const FormatException('Image exceeds local decode limits');
-            }
-            final double scale = w > h ? 256 / w : 256 / h;
-            return ui.TargetImageSize(
-              width: scale < 1 ? (w * scale).round().clamp(1, 256) : w,
-              height: scale < 1 ? (h * scale).round().clamp(1, 256) : h,
-            );
-          },
-        );
+        final int size = await file.length();
+        if (size == 0 || size > intakeMaximumBytes) {
+          _skip(
+            key: 'size:${file.name}:$size',
+            name: file.name,
+            why: size == 0
+                ? 'This file is empty, so there is nothing to upload.'
+                : 'This file is over 25 MB. Photograph it again at a smaller '
+                      'size, or choose a smaller file.',
+          );
+          continue;
+        }
+        final Uint8List bytes = await file.readAsBytes();
+        final String digest = sha256.convert(bytes).toString();
+        final String extension = file.name.split('.').last.toLowerCase();
+        final String mime = switch (extension) {
+          'jpg' || 'jpeg' => 'image/jpeg',
+          'png' => 'image/png',
+          'heic' || 'heif' => 'image/heic',
+          'tif' || 'tiff' => 'image/tiff',
+          'dng' => 'image/x-adobe-dng',
+          _ => '',
+        };
+        if (mime.isEmpty) {
+          _skip(
+            key: 'format:$digest',
+            name: file.name,
+            why:
+                'This client uploads JPEG, PNG, HEIC, TIFF and DNG. Choose one '
+                'of those formats.',
+          );
+          continue;
+        }
+        int? width;
+        int? height;
+        CaptureQuality? quality;
+        bool excessiveResolution = false;
         try {
-          final ui.FrameInfo frame = await codec.getNextFrame();
-          try {
-            final ByteData? pixels = await frame.image.toByteData(
-              format: ui.ImageByteFormat.rawRgba,
-            );
-            if (pixels != null) {
-              quality = CaptureQuality.measure(
-                pixels.buffer.asUint8List(),
-                frame.image.width,
-                frame.image.height,
+          final ui.ImmutableBuffer buffer =
+              await ui.ImmutableBuffer.fromUint8List(bytes);
+          final ui.Codec codec = await ui.instantiateImageCodecWithSize(
+            buffer,
+            getTargetSize: (int w, int h) {
+              width = w;
+              height = h;
+              if (w > intakeMaximumSide ||
+                  h > intakeMaximumSide ||
+                  w * h > intakeMaximumPixels) {
+                excessiveResolution = true;
+                throw const FormatException(
+                  'Image exceeds local decode limits',
+                );
+              }
+              final double scale = w > h ? 256 / w : 256 / h;
+              return ui.TargetImageSize(
+                width: scale < 1 ? (w * scale).round().clamp(1, 256) : w,
+                height: scale < 1 ? (h * scale).round().clamp(1, 256) : h,
               );
+            },
+          );
+          try {
+            final ui.FrameInfo frame = await codec.getNextFrame();
+            try {
+              final ByteData? pixels = await frame.image.toByteData(
+                format: ui.ImageByteFormat.rawRgba,
+              );
+              if (pixels != null) {
+                quality = CaptureQuality.measure(
+                  pixels.buffer.asUint8List(),
+                  frame.image.width,
+                  frame.image.height,
+                );
+              }
+            } finally {
+              frame.image.dispose();
             }
           } finally {
-            frame.image.dispose();
+            codec.dispose();
           }
-        } finally {
-          codec.dispose();
+        } catch (_) {
+          /* An unsupported decoder or unavailable measurement is not a quality pass. */
         }
+        if (excessiveResolution) {
+          _skip(
+            key: 'resolution:$digest',
+            name: file.name,
+            why:
+                'This image is over 40 megapixels or over 20,000 pixels on one '
+                'side. Upload a smaller derivative.',
+          );
+          continue;
+        }
+        final ManifestEntry? old = _entries
+            .where(
+              (ManifestEntry e) =>
+                  e.digest == digest && e.state != UploadState.skipped,
+            )
+            .firstOrNull;
+        if (old != null &&
+            (old.settled ||
+                old.checking ||
+                old.state == UploadState.uploading)) {
+          _skip(
+            key: 'selected:$digest:${_entries.length}',
+            name: file.name,
+            why: old.settled
+                ? 'This photograph was already uploaded in this intake.'
+                : 'This photograph is already in the upload queue.',
+          );
+          continue;
+        }
+        final IntakeFile input = IntakeFile(
+          name: file.name,
+          bytes: bytes,
+          mimeType: mime,
+          sha256: digest,
+          method: camera ? 'camera' : 'files',
+          // Reselecting a queued file retains its declaration, including a
+          // batch created before an item request was interrupted. A restored
+          // server handle is resumed, never recreated with this local value.
+          // New selections use the visible declaration, sensitive by default.
+          // Resumed server uploads retain their existing classification.
+          sensitive: old?.file?.sensitive ?? _sensitive,
+          width: width,
+          height: height,
+        );
+        if (!mounted) return;
+        setState(() {
+          if (old != null) {
+            old.file = input;
+            old.quality = quality;
+            if (old.state != UploadState.accepted) {
+              old.state = UploadState.ready;
+              old.reason = 'Ready to resume from the server offset.';
+              old.why = null;
+            }
+          } else {
+            _entries.add(
+              ManifestEntry(
+                digest: digest,
+                name: file.name,
+                file: input,
+                quality: quality,
+                state: UploadState.ready,
+              ),
+            );
+          }
+        });
+        _session.changed();
       } catch (_) {
-        /* An unsupported decoder or unavailable measurement is not a quality pass. */
-      }
-      if (excessiveResolution) {
         _skip(
-          key: 'resolution:$digest',
+          key: 'read:${file.name}:${_entries.length}',
           name: file.name,
           why:
-              'This image is over 40 megapixels or over 20,000 pixels on one '
-              'side. Upload a smaller derivative.',
+              'This file could not be read. Check file permission or choose the original again.',
         );
-        continue;
       }
-      final ManifestEntry? old = _entries
-          .where(
-            (ManifestEntry e) =>
-                e.digest == digest && e.state != UploadState.skipped,
-          )
-          .firstOrNull;
-      final IntakeFile input = IntakeFile(
-        name: file.name,
-        bytes: bytes,
-        mimeType: mime,
-        sha256: digest,
-        method: camera ? 'camera' : 'files',
-        // Reselecting a queued file retains its declaration, including a
-        // batch created before an item request was interrupted. A restored
-        // server handle is resumed, never recreated with this local value.
-        sensitive: old?.file?.sensitive ?? _newSensitive,
-        width: width,
-        height: height,
-      );
-      if (!mounted) return;
-      setState(() {
-        // Adding a photograph clears the batch confirmation, so a tick can
-        // never authorise a file the operator had not yet chosen (H5.3).
-        _qualityConfirmed = false;
-        if (old != null) {
-          old.file = input;
-          old.quality = quality;
-          if (old.state != UploadState.accepted) {
-            old.state = UploadState.ready;
-            old.reason = 'Ready to resume from the server offset.';
-            old.why = null;
-          }
-        } else {
-          _entries.add(
-            ManifestEntry(
-              digest: digest,
-              name: file.name,
-              file: input,
-              quality: quality,
-              state: UploadState.ready,
-            ),
-          );
-        }
-      });
     }
   }
 
   void _skip({required String key, required String name, required String why}) {
     if (!mounted) return;
     setState(() {
-      _qualityConfirmed = false;
       _entries.add(ManifestEntry.skipped(digest: key, name: name, why: why));
     });
+    _session.changed();
   }
 
   void _remove(ManifestEntry entry) {
-    setState(() => _entries.remove(entry));
-    _persist();
+    _session.remove(entry);
   }
 
   // ------------------------------------------------------------ server work
@@ -517,137 +592,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
     }
   }
 
-  Future<void> _send() async {
-    setState(() {
-      _busy = true;
-      _stopRequested = false;
-      _error = null;
-    });
-    final List<ManifestEntry> batch = _entries
-        .where((ManifestEntry e) => e.sendable)
-        .toList(growable: false);
-    int reached = 0;
-    for (final ManifestEntry entry in batch) {
-      if (!mounted) break;
-      // Stop is checked between files only: a transfer already in flight
-      // finishes rather than leaving a half-written upload behind (H3.7).
-      if (_stopRequested) break;
-      reached++;
-      try {
-        setState(() {
-          entry.checking = true;
-          entry.reason = null;
-          entry.why = null;
-        });
-        entry.session = entry.session == null
-            ? await widget.repository.createIntake(
-                widget.scope,
-                entry.file!,
-                'intake-${entry.digest}',
-              )
-            : await widget.repository.resumeIntake(
-                widget.scope,
-                entry.session!['upload_id'],
-              );
-        if (mounted) setState(() => entry.checking = false);
-        await _persist();
-        if (entry.session!['state'] == 'duplicate') {
-          if (mounted) {
-            setState(() {
-              entry.state = UploadState.duplicate;
-              entry.reason =
-                  'This photograph matches an existing record by checksum.';
-              entry.why =
-                  'No new record was created and the existing record is '
-                  'unchanged.';
-            });
-          }
-          await _persist();
-          continue;
-        }
-        if (!mounted) break;
-        setState(() => entry.state = UploadState.uploading);
-        await widget.repository.upload(
-          widget.scope,
-          entry.session!,
-          entry.file!,
-          (double progress) {
-            if (mounted) setState(() => entry.observeProgress(progress));
-          },
-        );
-        final Json fresh = await widget.repository.resumeIntake(
-          widget.scope,
-          entry.session!['upload_id'],
-        );
-        entry.session = fresh;
-        await widget.repository.completeIntake(
-          widget.scope,
-          fresh['upload_id'],
-          'complete-${entry.digest}',
-        );
-        if (mounted) {
-          setState(() {
-            entry.state = UploadState.accepted;
-            entry.reason = null;
-            entry.why = null;
-            entry.progress = 1;
-          });
-        }
-        await _persist();
-        widget.onComplete();
-      } catch (e) {
-        if (mounted) {
-          setState(() {
-            entry.checking = false;
-            if (e is ApiFailure && e.message.startsWith('image_codec_')) {
-              entry.state = UploadState.failed;
-              entry.reason =
-                  'The server cannot decode this file '
-                  '(${vocabularyLabel(e.message.substring(12))}). '
-                  'Your upload is kept.';
-              entry.why =
-                  'Ask an administrator to check the approved codec, '
-                  'collection profile and runtime.';
-            } else if (e is ApiFailure) {
-              entry.state = UploadState.failed;
-              entry.reason = e.message;
-              entry.why = null;
-            } else {
-              entry.state = UploadState.interrupted;
-              entry.reason =
-                  'Uploading again resumes from where the server stopped.';
-              entry.why = null;
-            }
-          });
-        }
-        if (e is ApiFailure && (e.status == 401 || e.status == 403)) break;
-      }
-    }
-    if (mounted && _stopRequested) {
-      setState(() {
-        for (final ManifestEntry entry in batch.skip(reached)) {
-          entry.state = UploadState.ready;
-          entry.reason =
-              'Stopped before this file started. Upload again to continue.';
-          entry.why = null;
-        }
-      });
-    }
-    final bool wholeBatchSettled =
-        batch.isNotEmpty &&
-        batch.every((ManifestEntry e) => e.settled) &&
-        !_stopRequested;
-    if (mounted) {
-      setState(() {
-        _busy = false;
-        _stopRequested = false;
-      });
-    }
-    // One haptic per batch, never one per file: a 200 image batch must not
-    // produce 200 buzzes (motion catalog, rows 66 and 67). The platform
-    // check lives inside the helper, so the rule is in one place.
-    if (wholeBatchSettled) SpecimenHaptics.batchComplete();
-  }
+  Future<void> _send() => _session.start();
 
   // ---------------------------------------------------------------- drawing
 
@@ -666,49 +611,65 @@ class _IntakeScreenState extends State<IntakeScreen> {
     onDismiss: () => setState(() => _error = null),
   );
 
-  /// The screen's own name and purpose (13 section 4.4's batch header).
-  Widget _batchHeader(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Semantics(
-          container: true,
+  Widget _batchHeader(BuildContext context) => Row(
+    children: <Widget>[
+      Expanded(
+        child: Semantics(
           header: true,
           child: Text(
             intakeTitle,
-            style: ui.type.headline.copyWith(color: ui.color.ink),
+            style: context.ui.type.headline.copyWith(
+              color: context.ui.color.ink,
+            ),
           ),
         ),
-        SizedBox(height: ui.space.s2),
-        Text(intakePurpose, style: ui.type.body.copyWith(color: ui.color.ink)),
-      ],
-    );
-  }
-
-  Widget _captureCard(BuildContext context) => IntakeCaptureCard(
-    sensitive: _newSensitive,
-    onSensitivityChanged: _busy
-        ? null
-        : (bool value) => setState(() => _newSensitive = value),
-    onChooseFiles: _busy ? null : _chooseFiles,
-    onTakePhotograph: _busy ? null : _takePhotograph,
-    cameraAvailable: _cameraAvailable,
+      ),
+      SizedBox(width: context.ui.space.s2),
+      UiIconButton(
+        key: const ValueKey<String>('intake-import-from-link'),
+        icon: UiIcons.sourceImport,
+        semanticsLabel: 'Import from link',
+        tooltip: 'Import from link',
+        variant: UiIconButtonVariant.secondary,
+        onPressed: _openLinkImport,
+      ),
+    ],
   );
 
-  /// The pre-upload checks, and the upload action where there is no frame to
-  /// put it in.
-  Widget _checks(BuildContext context) => IntakeChecks(
-    confirmed: _qualityConfirmed,
-    onConfirmedChanged: _busy
-        ? null
-        : (bool value) => setState(() => _qualityConfirmed = value),
-    // The frame carries the action while there is a batch to send. Before
-    // there is one, and in any host with no `UiScaffold` above this screen,
-    // the control stays here, so the one thing that releases a batch is never
-    // somewhere a reviewer cannot find it.
-    upload: _uploadCarriedByFrame ? null : _uploadButton(),
+  Widget _sensitivityControl(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: <Widget>[
+      UiCheckbox(
+        key: const ValueKey<String>('intake-sensitivity'),
+        label: 'Sensitive photographs',
+        semanticsLabel:
+            'Mark new photographs as sensitive. Applies to new files; existing uploads keep their classification.',
+        value: _sensitive,
+        onChanged: (bool value) => setState(() => _sensitive = value),
+      ),
+      Text(
+        'For new files',
+        style: context.ui.type.bodySmall.copyWith(
+          color: context.ui.color.inkSecondary,
+        ),
+      ),
+    ],
+  );
+
+  Widget _captureCard(
+    BuildContext context, {
+    required double minDropHeight,
+  }) => IntakeCaptureCard(
+    web: _isWeb,
+    onChooseFiles: _choosing ? null : _chooseFiles,
+    onTakePhotograph: _choosing ? null : _takePhotograph,
+    // The page owns the only drop target, including the manifest and gutters.
+    onDropFiles: null,
+    cameraAvailable: _cameraAvailable,
+    onBrowseSources: null,
+    minDropHeight: _isWeb ? minDropHeight : 0,
+    dragActive: _pageDragging,
   );
 
   /// True while the frame's action bar is the one drawing the upload action.
@@ -728,7 +689,7 @@ class _IntakeScreenState extends State<IntakeScreen> {
     // progress is on the manifest, where the denominator is.
     label: intakeUploadLabel(uploading: _busy, pending: _pendingCount),
     leading: UiIcons.cloudUpload,
-    onPressed: _busy || !_qualityConfirmed || _pendingCount == 0 ? null : _send,
+    onPressed: _busy || _pendingCount == 0 ? null : _send,
   );
 
   /// Puts the upload action in the frame's action bar (13 section 3.3).
@@ -748,9 +709,8 @@ class _IntakeScreenState extends State<IntakeScreen> {
   void _publishUpload({required bool current}) {
     final UiScaffoldSlots? slots = _slots;
     if (slots == null) return;
-    final ({bool busy, bool confirmed, int pending, bool current}) state = (
+    final ({bool busy, int pending, bool current}) state = (
       busy: _busy,
-      confirmed: _qualityConfirmed,
       pending: _pendingCount,
       current: current,
     );
@@ -772,14 +732,10 @@ class _IntakeScreenState extends State<IntakeScreen> {
     );
   }
 
-  Widget _sourcesEntry(BuildContext context) => UiButtonRow(
-    primary: UiButton(
-      label: intakeBrowseSourcesLabel,
-      variant: UiButtonVariant.secondary,
-      leading: UiIcons.sources,
-      onPressed: _busy ? null : widget.onBrowseSources,
-    ),
-  );
+  /// Hosts without the application frame keep the upload action in-page.
+  /// Production routes publish the same action through [_publishUpload].
+  Widget? _inlineUpload() =>
+      _slots == null && (_pendingCount > 0 || _busy) ? _uploadButton() : null;
 
   Widget _manifest(
     BuildContext context, {
@@ -789,9 +745,10 @@ class _IntakeScreenState extends State<IntakeScreen> {
     entries: _entries,
     busy: _busy,
     stopping: _busy && _stopRequested,
-    onStop: () => setState(() => _stopRequested = true),
+    onStop: _session.stop,
     onRemove: _remove,
     onServerCheck: _preflight,
+    onRetry: (ManifestEntry entry) => unawaited(_session.start(only: entry)),
     padding: padding,
     scrollable: scrollable,
   );
@@ -817,91 +774,98 @@ class _IntakeScreenState extends State<IntakeScreen> {
     final UiThemeData ui = context.ui;
     // `ModalRoute.of` depends on the scope that carries `isCurrent`, so this
     // screen is rebuilt when a route is pushed over it or popped back off.
-    _publishUpload(current: ModalRoute.of(context)?.isCurrent ?? true);
-    // Two declared arrangements, one per window class: a single scroll below
-    // 600 dp and two columns from 600 up, with the capture card fixed on the
-    // start edge so the control an operator presses repeatedly never scrolls
-    // away from the list it fills (05 section 3.4; 07 section 5). The window
-    // decides, never the platform.
-    final bool twoColumn =
-        const Adaptive<bool>(compact: false, medium: true).of(context) ?? false;
-    if (!twoColumn) {
-      // One scroll of sections with an `s6` gap between them (13 section
-      // 4.4). The manifest used to be a shrink wrapped list inside this one,
-      // which is the nesting 13 section 2.1 forbids, and the capture card
-      // used to carry the checks and the upload as well, which laid it out
-      // 1018 dp tall in an 844 dp window.
-      //
-      // The checks are under the manifest rather than over it, which is the
-      // one place this differs from 13 section 4.4's order. 13 section 2.5
-      // asks for the manifest's first row inside the first viewport, and at
-      // 200 percent text on a 390 by 844 phone the chrome takes 122 dp and
-      // leaves 722: the header is 137 of it and the capture card 320, so the
-      // manifest starts at 643 with the checks after it and at 964 with the
-      // checks before it. Section 2.5 is the clause the gates measure, and
-      // the checks read better where they now are anyway: the confirmation
-      // that releases a batch sits next to the control that sends it.
-      final List<Widget> sections = <Widget>[
-        _batchHeader(context),
-        _captureCard(context),
-        _manifest(context, padding: EdgeInsets.zero, scrollable: false),
-        _checks(context),
-        if (widget.onBrowseSources != null) _sourcesEntry(context),
-      ];
-      return CustomScrollView(
-        slivers: <Widget>[
-          SliverPadding(
-            padding: EdgeInsetsDirectional.all(ui.space.s4),
-            sliver: SliverList.separated(
-              itemCount: sections.length + 1,
-              itemBuilder: (BuildContext context, int index) =>
-                  index == 0 ? _errorSlot(context) : sections[index - 1],
-              separatorBuilder: (BuildContext context, int index) =>
-                  SizedBox(height: index == 0 ? 0 : ui.space.s6),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: ui.space.s4 + UiScaffold.of(context).bottomInset,
-            ),
-          ),
-        ],
-      );
-    }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: <Widget>[
-        SizedBox(
-          key: const ValueKey<String>('intake-capture-column'),
-          width: intakeCaptureColumnWidth,
-          child: SingleChildScrollView(
-            padding: EdgeInsetsDirectional.all(ui.space.s6),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                _errorSlot(context),
-                _batchHeader(context),
-                SizedBox(height: ui.space.s6),
-                _captureCard(context),
-                SizedBox(height: ui.space.s6),
-                _checks(context),
-                if (widget.onBrowseSources != null) ...<Widget>[
-                  SizedBox(height: ui.space.s6),
-                  _sourcesEntry(context),
-                ],
-                SizedBox(
-                  height: ui.space.s4 + UiScaffold.of(context).bottomInset,
+    _publishUpload(
+      current:
+          (ModalRoute.of(context)?.isCurrent ?? true) &&
+          (WorkspaceBranchScope.maybeOf(context)?.active ?? true),
+    );
+    final Widget page = ColoredBox(
+      color: ui.color.paper,
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final layout = UiLayoutMetrics.fromConstraints(
+            constraints,
+            textScaler: MediaQuery.textScalerOf(context),
+          );
+          final double textScale =
+              MediaQuery.textScalerOf(context).scale(16) / 16;
+          // Reserve scaled room for the title and classification control so
+          // both remain visible before scrolling when the window permits it.
+          final double dropHeight = constraints.hasBoundedHeight
+              ? (constraints.maxHeight -
+                        layout.gutter * 2 -
+                        ui.space.s16 * (2 + textScale) -
+                        (_cameraAvailable ? ui.space.s16 * 2 : 0))
+                    .clamp(240.0, double.infinity)
+              : 360;
+          // One scroll keeps capture, classification and file errors reachable
+          // at enlarged text sizes and short viewport heights.
+          return CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsetsDirectional.all(layout.gutter),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _errorSlot(context),
+                      _batchHeader(context),
+                      SizedBox(height: layout.gap),
+                      _captureCard(context, minDropHeight: dropHeight),
+                      SizedBox(height: layout.gap),
+                      _sensitivityControl(context),
+                      if (_entries.isNotEmpty) ...[
+                        SizedBox(height: layout.sectionGap),
+                        Align(
+                          alignment: AlignmentDirectional.topStart,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: layout.readableMax,
+                            ),
+                            child: _manifest(
+                              context,
+                              padding: EdgeInsets.zero,
+                              scrollable: false,
+                            ),
+                          ),
+                        ),
+                      ],
+                      if (_inlineUpload() case final Widget upload) ...[
+                        SizedBox(height: layout.gap),
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: upload,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ],
-            ),
+              ),
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: layout.gap + UiScaffold.of(context).bottomInset,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+    if (!_isWeb) return page;
+    return DropTarget(
+      key: const ValueKey<String>('intake-page-drop-target'),
+      onDragEntered: (_) => setState(() => _pageDragging = true),
+      onDragExited: (_) => setState(() => _pageDragging = false),
+      onDragDone: (DropDoneDetails details) {
+        setState(() => _pageDragging = false);
+        unawaited(
+          _dropFiles(
+            details.files.whereType<DropItemFile>().cast<XFile>().toList(),
           ),
-        ),
-        // Decorative separation between two panes, never a boundary
-        // (09 section 3.1).
-        const UiHairline.vertical(),
-        Expanded(child: _manifest(context)),
-      ],
+        );
+      },
+      child: page,
     );
   }
 }

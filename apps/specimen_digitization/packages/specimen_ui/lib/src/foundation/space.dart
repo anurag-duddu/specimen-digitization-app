@@ -1,7 +1,4 @@
-/// The 4 px grid and the fixed sizes (09 section 6; 03 sections 5.1 and 5.2).
-///
-/// Unchanged from v1. The grid is the one thing in the visual system the
-/// refactor did not need to move.
+/// Eight-point structural spacing with a four-point optical half step.
 library;
 
 import 'package:flutter/widgets.dart';
@@ -18,20 +15,20 @@ class UiSpace {
   /// Flush.
   double get s0 => 0;
 
-  /// Glyph to label inside a chip; gap between stacked metadata lines.
+  /// Optical spacing between a glyph and its label, or compact metadata.
   double get s1 => 4;
 
   /// Gap between related controls; chip to chip.
   double get s2 => 8;
 
-  /// Internal padding of a chip or a dense list row.
-  double get s3 => 12;
+  /// Compatibility alias for compact internal spacing, now on the 8 dp grid.
+  double get s3 => s2;
 
   /// Default padding inside a pane; compact-window screen gutter.
   double get s4 => 16;
 
-  /// Reserved for optical corrections, and the touch-density gutter.
-  double get s5 => 20;
+  /// Compatibility alias for standard padding, now on the 8 dp grid.
+  double get s5 => s4;
 
   /// Gap between panes; medium and expanded screen gutter.
   double get s6 => 24;

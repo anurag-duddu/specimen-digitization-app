@@ -82,7 +82,7 @@ void main() {
         await pumpManifest(tester, <ManifestEntry>[
           entryIn(state, reason: 'A stated reason.', progress: 0.5),
         ]);
-        // Scoped to the row: the header counts accepted, already in
+        // Scoped to the row: the header counts uploaded, already in
         // collection and failed photographs under those same words.
         expect(
           find.descendant(
@@ -224,6 +224,9 @@ void main() {
       2,
     );
     await pumpManifest(tester, <ManifestEntry>[entry]);
+    expect(find.text('Not calibrated'), findsNothing);
+    await tester.tap(find.text('File details'));
+    await tester.pumpAndSettle();
     for (final String label in CaptureQualitySummary.labels) {
       expect(find.text(label), findsOneWidget);
     }
@@ -240,28 +243,27 @@ void main() {
       entryIn(UploadState.failed, digest: 'f0'),
       entryIn(UploadState.ready, digest: 'r0'),
     ]);
-    // A field never encodes a value, so the counts are numerals under their
-    // own names (09 section 3.2; 07 section 5).
+    // Outcomes have one batch account, without duplicate count chips.
     for (final String label in <String>[
-      'Accepted',
-      'Already in collection',
-      'Failed',
+      '8 uploaded',
+      '1 already in collection',
+      '1 failed',
     ]) {
       expect(
         find.descendant(
           of: find.byType(IntakeManifest),
           matching: find.text(label),
         ),
-        findsWidgets,
+        findsNothing,
         reason: label,
       );
     }
-    expect(find.text('of 11'), findsOneWidget);
+    expect(find.byType(UiDataTile), findsNothing);
     // One node for the whole account, so a reader hears the sentence once
     // rather than three tiles and then the sentence again.
     expect(
       find.bySemanticsLabel(
-        '8 of 11 accepted, 1 already in collection, 1 failed',
+        '8 of 11 uploaded, 1 already in collection, 1 failed',
       ),
       findsOneWidget,
     );
@@ -269,14 +271,14 @@ void main() {
   });
 
   group('the batch progress line', () {
-    test('reads "8 of 12 accepted, 1 skipped"', () {
+    test('reads "8 of 12 uploaded, 1 skipped"', () {
       final List<ManifestEntry> entries = <ManifestEntry>[
         for (int i = 0; i < 8; i++)
           entryIn(UploadState.accepted, digest: 'a$i'),
         for (int i = 0; i < 3; i++) entryIn(UploadState.ready, digest: 'r$i'),
         entryIn(UploadState.skipped, digest: 's0'),
       ];
-      expect(batchProgressLine(entries), '8 of 12 accepted, 1 skipped');
+      expect(batchProgressLine(entries), '8 of 12 uploaded, 1 skipped');
     });
 
     test('names duplicates, interruptions and failures when they exist', () {
@@ -287,7 +289,7 @@ void main() {
           entryIn(UploadState.interrupted, digest: 'c'),
           entryIn(UploadState.failed, digest: 'd'),
         ]),
-        '1 of 4 accepted, 1 already in collection, 1 interrupted, 1 failed',
+        '1 of 4 uploaded, 1 already in collection, 1 interrupted, 1 failed',
       );
     });
 
@@ -296,12 +298,30 @@ void main() {
         batchProgressLine(<ManifestEntry>[
           entryIn(UploadState.accepted, digest: 'a'),
         ]),
-        '1 of 1 accepted',
+        '1 of 1 uploaded',
       );
     });
 
     test('an empty batch says so', () {
       expect(batchProgressLine(<ManifestEntry>[]), 'No files selected yet');
+    });
+  });
+
+  group('the completed upload line', () {
+    test('leaves processing status to the queue for mixed batches', () {
+      expect(
+        batchCompleteLine(<ManifestEntry>[
+          entryIn(UploadState.accepted, digest: 'a'),
+        ]),
+        'Batch admission finished for 1 photograph. Check the queue for processing status.',
+      );
+      expect(
+        batchCompleteLine(<ManifestEntry>[
+          entryIn(UploadState.accepted, digest: 'a'),
+          entryIn(UploadState.duplicate, digest: 'b'),
+        ]),
+        'Batch admission finished for 2 photographs. Check the queue for processing status.',
+      );
     });
   });
 

@@ -193,6 +193,7 @@ void main() {
         50,
         20,
       ]);
+      expect(repository.importSensitivities, <bool>[true, true, true]);
       expect(progress.imported, 120);
       expect(progress.complete, isTrue);
     });

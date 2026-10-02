@@ -44,7 +44,7 @@ void main() {
             theme: entry.value,
           );
           // Colour is never the only carrier of a state.
-          expect(find.text(row.value), findsOneWidget);
+          expect(find.textContaining(row.value), findsOneWidget);
         }
       });
     });

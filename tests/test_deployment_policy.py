@@ -122,12 +122,27 @@ def test_backend_workflows_have_main_push_and_separate_environments() -> None:
                 allowed.add('runtime-build-production')
             if plane == 'data' and name == 'initialize':
                 allowed = {'data-initialization-production'}
-                assert job['needs'] == ['admission', 'release']
-                assert "needs.admission.outputs.phase == 'data-initialize-missing/v1'" in job['if']
+                assert job['needs'] == 'release'
+                assert workflow['jobs']['release']['needs'] == 'admission'
+                assert "needs.release.outputs.init_step == 'initialize'" in job['if']
+                assert "github.event_name == 'push' && github.ref == 'refs/heads/main'" in job['if']
                 assert job['env']['RELEASE_SERVICE_ACCOUNT'] == 'specimen-data-initialize@specimen-digitization.iam.gserviceaccount.com'
                 commands = [step.get('run','') for step in job['steps']]
-                admission_index = next(i for i,cmd in enumerate(commands) if '--prepare-initialization' in cmd)
-                auth_index = next(i for i,step in enumerate(job['steps']) if step.get('id') == 'auth')
+                admission_index = next(i for i,cmd in enumerate(commands)
+                    if 'release_gate.py --plane data-initialization' in cmd)
+                auth_index = next(i for i,step in enumerate(job['steps'])
+                    if step.get('uses', '').startswith('google-github-actions/auth@'))
                 assert admission_index < auth_index
+                auth = job['steps'][auth_index]['with']
+                assert auth['service_account'] == job['env']['RELEASE_SERVICE_ACCOUNT']
+                assert auth['workload_identity_provider'] == '${{ steps.admission.outputs.provider }}'
+                intent_index = next(i for i,cmd in enumerate(commands)
+                    if 'deploy_data.py --prepare-initializer-intents' in cmd)
+                write_index = next(i for i,cmd in enumerate(commands)
+                    if 'deploy_data.py --initialize ' in cmd)
+                assert auth_index < intent_index < write_index
+                intervening = job['steps'][intent_index + 1:write_index]
+                assert any(step.get('uses', '').startswith('actions/attest@') for step in intervening)
+                assert any(step.get('uses', '').startswith('actions/upload-artifact@') for step in intervening)
             assert environment in allowed
             assert job.get('needs'), 'Cloud credentials cannot precede admission'

@@ -107,6 +107,7 @@ class SelectableRow extends StatelessWidget {
     required this.child,
     this.showCheckbox = true,
     this.enabled = true,
+    this.disabledReason,
     this.onExtend,
     this.onLongPress,
     this.longPressHint = SelectableRow.recordLongPressHint,
@@ -167,6 +168,7 @@ class SelectableRow extends StatelessWidget {
   /// A disabled row takes no long press either: a gesture that picks a record
   /// the server will refuse is worse than no gesture.
   final bool enabled;
+  final String? disabledReason;
 
   /// The row itself, which keeps its own tap, its own semantics and its own
   /// layout.
@@ -183,6 +185,7 @@ class SelectableRow extends StatelessWidget {
             label: label,
             showLabel: false,
             value: selected,
+            disabledReason: disabledReason,
             onChanged: enabled
                 ? (bool _) {
                     final bool extending =
@@ -246,6 +249,8 @@ class SelectionBar extends StatelessWidget {
     this.countLabel = recordsLabel,
     this.moreMatchLabel = SelectionBar.recordsMoreMatch,
     this.pane = true,
+    this.selectionLimit,
+    this.actionReasons = const <String, String>{},
   });
 
   /// How many records are selected.
@@ -288,6 +293,8 @@ class SelectionBar extends StatelessWidget {
 
   /// Whether the bar draws its own pane. See [pane]'s note below the labels.
   final bool pane;
+  final int? selectionLimit;
+  final Map<String, String> actionReasons;
 
   /// The two words the select all control uses, fixed so the label and the
   /// sentence under it cannot drift apart.
@@ -395,7 +402,9 @@ class SelectionBar extends StatelessWidget {
 
   List<Widget> _controls(UiThemeData ui) => <Widget>[
     UiCheckbox(
-      label: selectAllLabel,
+      label: selectionLimit != null && loadedCount > selectionLimit!
+          ? 'Select first $selectionLimit loaded'
+          : selectAllLabel,
       value: _selectAllValue,
       // Unchecking is the way out of a select all, and the ghost button
       // beside it is the way out of any selection. Both reach `onClear`,
@@ -417,7 +426,8 @@ class SelectionBar extends StatelessWidget {
         label: action.label,
         leading: IconSpec(action.icon),
         onPressed: busy ? null : action.onPressed,
-        disabledReason: busy ? _busyReason : null,
+        disabledReason: busy ? _busyReason : actionReasons[action.label],
+        variant: UiButtonVariant.secondary,
       ),
   ];
 
@@ -503,7 +513,7 @@ class BulkOutcomeReport extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    row.outcome == BulkOutcome.skipped
+                    row.outcome == BulkOutcome.skipped && row.message.isEmpty
                         ? BulkOutcomeReport.skippedReason
                         : row.message,
                     style: ui.type.bodySmall.copyWith(

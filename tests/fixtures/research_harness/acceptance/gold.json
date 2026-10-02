@@ -1,0 +1,332 @@
+{
+  "schema": "independent-synthetic-research-gold/v1",
+  "author": "independent acceptance lane 01a0f05d-3cb0-7060-92cf-6fe8b5a6030d",
+  "truth_basis": "Explicit owner rules G23/G24/G32/G41/G44 and independently authored synthetic publisher assertions; no prior model outputs or inherited disposition expectations.",
+  "evidence_class": "local synthetic only",
+  "live_cohort_unchanged": [
+    "subject_105526321",
+    "subject_105526322",
+    "subject_105526323",
+    "subject_105526324",
+    "subject_105526325",
+    "subject_105526326",
+    "subject_105526327",
+    "subject_105526328",
+    "subject_105526329",
+    "subject_105526330"
+  ],
+  "required_fields": [
+    "fmnh_ins_number",
+    "collection_code",
+    "country",
+    "province_state",
+    "county",
+    "city",
+    "precise_location",
+    "elevation_from_m",
+    "elevation_to_m",
+    "elevation_from_ft",
+    "elevation_to_ft",
+    "habitat",
+    "collection_method",
+    "date_visited_from",
+    "date_visited_to",
+    "collectors",
+    "verbatim_dts",
+    "taxon",
+    "identified_by_irn",
+    "date_identified"
+  ],
+  "measurement_cases": [
+    {
+      "id": "ELEV-AGREE-DERIVE",
+      "assertions": [
+        "100 ft",
+        "100 ft"
+      ],
+      "event_kinds": [
+        "collecting",
+        "collecting"
+      ],
+      "relation": "independent_assertions",
+      "expected": {
+        "elevation_from_ft": "100",
+        "elevation_to_ft": "100",
+        "elevation_from_m": "30.48",
+        "elevation_to_m": "30.48"
+      },
+      "state": "resolved",
+      "required_source_labels": [
+        "label-1",
+        "label-2"
+      ]
+    },
+    {
+      "id": "ELEV-SIGNED",
+      "assertions": [
+        "-25 ft"
+      ],
+      "event_kinds": [
+        "collecting"
+      ],
+      "expected": {
+        "elevation_from_ft": "-25",
+        "elevation_to_ft": "-25",
+        "elevation_from_m": "-7.62",
+        "elevation_to_m": "-7.62"
+      },
+      "state": "resolved"
+    },
+    {
+      "id": "ELEV-SIGNED-RANGE",
+      "assertions": [
+        "-25 to -5 ft"
+      ],
+      "event_kinds": [
+        "collecting"
+      ],
+      "expected": {
+        "elevation_from_ft": "-25",
+        "elevation_to_ft": "-5",
+        "elevation_from_m": "-7.62",
+        "elevation_to_m": "-1.524"
+      },
+      "state": "resolved"
+    },
+    {
+      "id": "ELEV-DECIMAL-SOURCE",
+      "assertions": [
+        "0.123 ft"
+      ],
+      "event_kinds": [
+        "collecting"
+      ],
+      "expected": {
+        "elevation_from_ft": "0.123",
+        "elevation_to_ft": "0.123",
+        "elevation_from_m": "0.0374904",
+        "elevation_to_m": "0.0374904"
+      },
+      "state": "resolved",
+      "precision": "unknown",
+      "vertical_datum": "unknown"
+    },
+    {
+      "id": "ELEV-SPLIT-LINE",
+      "assertions": [
+        "100\nft"
+      ],
+      "event_kinds": [
+        "collecting"
+      ],
+      "relation": "same_assertion_continuation",
+      "expected": {
+        "elevation_from_ft": "100",
+        "elevation_to_ft": "100",
+        "elevation_from_m": "30.48",
+        "elevation_to_m": "30.48"
+      },
+      "state": "resolved"
+    },
+    {
+      "id": "ELEV-CONFLICT-CONTROL",
+      "assertions": [
+        "100 ft",
+        "80 ft"
+      ],
+      "event_kinds": [
+        "collecting",
+        "collecting"
+      ],
+      "relation": "independent_assertions",
+      "state": "waiting_human",
+      "forbidden": [
+        "resolved",
+        "DEM substitution",
+        "averaging"
+      ]
+    },
+    {
+      "id": "ELEV-DIFFERENT-EVENT-CONTROL",
+      "assertions": [
+        "100 ft",
+        "80 ft"
+      ],
+      "event_kinds": [
+        "collecting",
+        "determination"
+      ],
+      "relation": "different_events",
+      "state": "resolved",
+      "forbidden": [
+        "invented range",
+        "event merging"
+      ],
+      "expected": {
+        "elevation_from_ft": "100",
+        "elevation_to_ft": "100",
+        "elevation_from_m": "30.48",
+        "elevation_to_m": "30.48"
+      },
+      "truth_reason": "The target elevation belongs to the explicitly supported collecting event. Preserve the separate determination assertion without using it as a collecting endpoint."
+    },
+    {
+      "id": "ELEV-UNIT-UNKNOWN",
+      "assertions": [
+        "100"
+      ],
+      "event_kinds": [
+        "collecting"
+      ],
+      "state": "waiting_human",
+      "forbidden": [
+        "unit guess",
+        "DEM substitution"
+      ]
+    },
+    {
+      "id": "ELEV-MT-LOCALITY",
+      "assertions": [
+        "Mt. Example 100"
+      ],
+      "event_kinds": [
+        "collecting"
+      ],
+      "state": "waiting_human",
+      "forbidden": [
+        "Mt interpreted as metre",
+        "unit guess"
+      ]
+    }
+  ],
+  "history_cases": [
+    {
+      "id": "HISTORY-COVERAGE-CONNECTED",
+      "status": "success",
+      "exact_join": true,
+      "date_identified": "1950-10-12",
+      "collecting_date": "1946-09-03",
+      "expected_state": "resolved",
+      "expected_value": "1950-10-12",
+      "required_event": "determination"
+    },
+    {
+      "id": "HISTORY-COVERAGE-UNCONFIGURED",
+      "status": "unqualified",
+      "exact_join": false,
+      "expected_state": "waiting_source"
+    },
+    {
+      "id": "HISTORY-COVERAGE-SCHEMA-ONLY",
+      "status": "schema_only",
+      "exact_join": false,
+      "expected_state": "waiting_source"
+    },
+    {
+      "id": "HISTORY-COVERAGE-NO-ATTEMPT",
+      "status": "not_attempted",
+      "exact_join": false,
+      "expected_state": "waiting_source"
+    },
+    {
+      "id": "HISTORY-COVERAGE-403",
+      "status": "authorization_error",
+      "exact_join": false,
+      "expected_state": "operational_failed"
+    },
+    {
+      "id": "HISTORY-COVERAGE-429",
+      "status": "rate_limited",
+      "exact_join": false,
+      "expected_state": "retry_scheduled"
+    },
+    {
+      "id": "HISTORY-COVERAGE-MALFORMED",
+      "status": "malformed_response",
+      "exact_join": false,
+      "expected_state": "operational_failed"
+    },
+    {
+      "id": "HISTORY-COVERAGE-EXHAUSTED",
+      "status": "exhausted",
+      "exact_join": true,
+      "expected_state": "waiting_human",
+      "coverage_limit": "Only the explicitly qualified synthetic publisher record and determination event were searched; no claim about private EMu absence."
+    },
+    {
+      "id": "HISTORY-COVERAGE-AMBIGUOUS-JOIN",
+      "status": "ambiguous",
+      "exact_join": false,
+      "date_identified": "1950-10-12",
+      "candidate_count": 2,
+      "expected_state": "waiting_human",
+      "forbidden": [
+        "arbitrary row selection",
+        "collector IRN as determiner",
+        "collecting-date substitution"
+      ]
+    }
+  ],
+  "synthetic_publisher": {
+    "dataset_key": "7931dcab-94f1-46ce-8092-56e4335423de",
+    "institutionCode": "FMNH",
+    "collectionCode": "Insects",
+    "catalogNumber": "0012345",
+    "occurrenceID": "urn:synthetic:independent-gold:0012345",
+    "recordedBy": "Synthetic Collector",
+    "identifiedBy": "Synthetic Determiner",
+    "eventDate": "1946-09-03",
+    "dateIdentified": "1950-10-12",
+    "scientificName": "Syntheticus",
+    "publisher_assertion_id": "synthetic-ipt-export-v1:0012345",
+    "note": "Synthetic fixture authored without reading private specimen rows or model outputs. IPT and GBIF mirror share one publisher assertion."
+  },
+  "policy_cases": {
+    "EMU-IRN-EXCEPTION": {
+      "field": "identified_by_irn",
+      "state": "nonblocking_exception",
+      "value_state": "unknown",
+      "authority_id": null
+    },
+    "DTS-MISSING-DEFINITION": {
+      "field": "verbatim_dts",
+      "literal": "D/T/S synthetic text",
+      "state": "waiting_policy"
+    },
+    "CATALOG-LEADING-ZERO": {
+      "literal": "FMNHINS 0012345",
+      "catalog_number": "0012345",
+      "forbidden_assignments": [
+        "identified_by_irn",
+        "collection_code"
+      ]
+    },
+    "NAMESPACE-COLLISION": {
+      "token": "12345",
+      "distinct_modules": [
+        "ecatalogue",
+        "emultimedia",
+        "eparties"
+      ],
+      "required_determiner_relationship": true
+    }
+  },
+  "adversarial_cases": [
+    "unapproved-host",
+    "redirect-unapproved-host",
+    "cross-specimen-receipt",
+    "cross-generation-fragment",
+    "revoked-lease",
+    "source-prompt-injection",
+    "forged-evidence-id",
+    "supported-value-without-receipt",
+    "unknown-effect-restart",
+    "capture-before-SQL-receipt",
+    "sibling-CAS-rebase",
+    "human-edit-stale-publication",
+    "metadata-trace-restricted-content",
+    "trace-ID-without-readback",
+    "late-same-generation-checkpoint",
+    "copied-request-role-ownership"
+  ]
+}

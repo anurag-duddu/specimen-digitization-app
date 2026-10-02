@@ -68,7 +68,7 @@ void main() {
     await press(tester, LogicalKeyboardKey.slash);
     expect(
       FocusManager.instance.primaryFocus?.debugLabel,
-      'Queue search',
+      'Specimen search',
       reason: 'slash focuses the queue search field',
     );
 
@@ -77,20 +77,31 @@ void main() {
     await press(tester, LogicalKeyboardKey.tab);
     expect(
       FocusManager.instance.primaryFocus?.debugLabel,
-      isNot('Queue search'),
+      isNot('Specimen search'),
       reason: 'tab moves on from the search field',
     );
 
-    // The arrow keys move the selection without opening anything.
+    // The global search and core filters precede the specimen list. Tab
+    // into the list before its scoped arrow-key handling is expected.
+    for (
+      int i = 0;
+      i < 30 &&
+          FocusManager.instance.primaryFocus?.debugLabel !=
+              'Queue row $goldenSpecimenId';
+      i++
+    ) {
+      await press(tester, LogicalKeyboardKey.tab);
+    }
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      'Queue row $goldenSpecimenId',
+    );
     await press(tester, LogicalKeyboardKey.arrowDown);
     expect(locationOf(tester), endsWith('/queue'));
-    final QueueRow selected = tester.widget<QueueRow>(
-      find.byType(QueueRow).first,
-    );
     expect(
-      selected.selected,
+      tester.widget<QueueRow>(find.byType(QueueRow).first).focusNode?.hasFocus,
       isTrue,
-      reason: 'the arrow key moved the cursor onto the first row',
+      reason: 'the arrow key moved keyboard focus onto the first row',
     );
 
     // Enter opens the selected record, and the record has its own address.
@@ -100,14 +111,26 @@ void main() {
 
     // F, H and R move between the three evidence panels.
     await press(tester, LogicalKeyboardKey.keyF);
-    expect(find.text('Record fields'), findsOneWidget);
+    expect(tester.widget<UiTabs>(uiTabs('Record view')).selected.value, 1);
+    expect(find.byType(FieldRow), findsWidgets);
     await press(tester, LogicalKeyboardKey.keyH);
-    expect(find.text('Current decision history'), findsOneWidget);
+    expect(tester.widget<UiTabs>(uiTabs('Record view')).selected.value, 2);
     await press(tester, LogicalKeyboardKey.keyR);
-    expect(find.text('Record fields'), findsNothing);
+    expect(tester.widget<UiTabs>(uiTabs('Record view')).selected.value, 0);
+    expect(find.byType(FieldRow), findsNothing);
 
-    // 1 selects the first label region, on the photograph and in the strip.
-    await press(tester, LogicalKeyboardKey.digit1);
+    // Label digits belong to the focused photograph; Tab reaches it without
+    // a pointer before the selection shortcut is sent.
+    for (
+      int i = 0;
+      i < 40 &&
+          FocusManager.instance.primaryFocus?.debugLabel != 'Source photograph';
+      i++
+    ) {
+      await press(tester, LogicalKeyboardKey.tab);
+    }
+    expect(FocusManager.instance.primaryFocus?.debugLabel, 'Source photograph');
+    await press(tester, LogicalKeyboardKey.digit2);
     final Iterable<RegionOverlay> overlays = tester.widgetList<RegionOverlay>(
       find.byType(RegionOverlay),
     );
@@ -115,8 +138,10 @@ void main() {
     expect(
       overlays.where((RegionOverlay o) => o.selected).length,
       1,
-      reason: 'exactly one region is current after pressing 1',
+      reason: 'exactly one region is current after pressing 2',
     );
+
+    expect(overlays.singleWhere((RegionOverlay o) => o.selected).index, 2);
 
     // A starts the approval, with its reason field and its consequences.
     await press(tester, LogicalKeyboardKey.keyA);
@@ -203,7 +228,16 @@ void main() {
     expect(locationOf(tester), endsWith('/fixture-002'));
     expect(find.text('2 of 3'), findsOneWidget);
 
-    await tester.tap(uiIconButton('Previous specimen'));
+    final Finder previous = uiIconButton('Previous specimen');
+    if (previous.evaluate().isNotEmpty) {
+      await tester.tap(previous);
+    } else {
+      // The specimen sidebar can reduce the detail pane after navigation.
+      // The same action remains in the responsive decision bar's menu.
+      await tester.tap(uiMenuTrigger(UiDecisionBar.defaultOverflowLabel));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Previous specimen'));
+    }
     await tester.pumpAndSettle();
     expect(locationOf(tester), endsWith('/fixture-001'));
     await tester.pumpWidget(const SizedBox());
@@ -227,10 +261,10 @@ void main() {
     for (final String action in <String>[
       'Next specimen',
       'Previous specimen',
-      'Select label region',
-      'Readings',
-      'Fields',
-      'History',
+      'Select label region when photograph is focused',
+      'Label review',
+      'Specimen data',
+      'Review history',
       'Approve record',
     ]) {
       // `findsWidgets` rather than one: the record behind the sheet carries

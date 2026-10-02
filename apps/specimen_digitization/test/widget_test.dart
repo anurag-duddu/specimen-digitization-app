@@ -1,3 +1,4 @@
+import 'reading_region_comparison_test.dart' show selectLabel;
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,6 +57,15 @@ const fixture = Specimen({
   'operational_state': 'completed',
   'disposition': 'needs_human_review',
   'profile_version': 'fixture-v1',
+  'regions': [
+    {
+      'region_id': 'r1',
+      'bbox': [0, 0, 10, 10],
+    },
+  ],
+  'transcriptions': [
+    {'region_id': 'r1', 'verbatim_text': null, 'value_state': 'unresolved'},
+  ],
   'observations': [
     {
       'observation_id': 'o1',
@@ -255,43 +265,21 @@ void main() {
     await tester.ensureVisible(uiButton('Sign in'));
     await tester.tap(uiButton('Sign in'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Test environment.'), findsOneWidget);
+    expect(uiIconButton('Test environment'), findsOneWidget);
     // The queue row sits below the fold, so scroll the queue list to it
     // rather than assuming it was laid out. Row heights move with the type
     // scale, so this must not depend on the header happening to be short.
-    await tester.scrollUntilVisible(
-      find.text('Synthetic insect label'),
-      200,
-      scrollable: find.byType(Scrollable).first,
-    );
+    await tester.ensureVisible(find.text('fixture-001'));
+    await tester.tap(find.text('fixture-001'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Synthetic insect label'));
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('Chicago 1912', findRichText: true),
-      300,
-      scrollable: find
-          .descendant(
-            of: find.byType(ReviewWorkbench),
-            matching: find.byType(Scrollable),
-          )
-          .first,
-    );
+    await selectLabel(tester, 1);
+    expect(find.text('Chicago 1912', findRichText: true), findsWidgets);
     expect(find.text('Chicago 1917', findRichText: true), findsOneWidget);
     // Settle the scroll before pressing the chrome: an unsettled ballistic
     // scroll swallows the next tap, and the account menu is a toggle, so a
     // swallowed press reads as a menu that will not open.
     await tester.pumpAndSettle();
-    // The bar inside a record carries the record: back, the identifier, the
-    // record's own commands and, below large, the same account menu the
-    // queue's bar carries (13 section 4.1, polish 3); the collection switcher
-    // is not there. The way out is the bar's back, which is what this presses
-    // so that the sign out below is the queue's, the way a reviewer finishing
-    // a session leaves.
-    await tester.tap(uiIconButton(backToQueueLabel));
-    await tester.pumpAndSettle();
-    // Signing out lives in the account menu, which is also the only place a
-    // reviewer can read which account they are using (05 section 2).
+    // Account actions remain in the global rail across collection routes.
     await tester.tap(uiMenuTrigger(RegExp('^Account menu')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Sign out'));
@@ -314,7 +302,8 @@ void main() {
         SpecimenDigitizationApp(session: session, repository: TestRepository()),
       );
       await tester.pumpAndSettle();
-      expect(find.byType(UiPillNav), findsOneWidget);
+      expect(uiDestination('Specimens'), findsOneWidget);
+      expect(uiDestination('Intake'), findsOneWidget);
 
       final semantics = tester.ensureSemantics();
       await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
@@ -342,14 +331,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Fields'));
+      await tester.tap(uiRecordView('Structured specimen data'));
       await tester.pumpAndSettle();
       // Tapping a layer turns it into an editor in place, with the
       // photograph still on screen (audit finding H6.2).
-      await scrollAndTap(
-        tester,
-        uiIconButton(RegExp(r'^Edit as written')).first,
-      );
+      await openFieldEditor(tester, 0);
       expect(find.text('Correct Country'), findsOneWidget);
       await tester.tap(find.text('Keep this correction'));
       await tester.pumpAndSettle();
@@ -413,14 +399,11 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Fields'));
+    await tester.tap(uiRecordView('Structured specimen data'));
     await tester.pumpAndSettle();
     for (var i = 0; i < 5; i++) {
       // One row per field: the nth edit control belongs to the nth field.
-      await scrollAndTap(
-        tester,
-        uiIconButton(RegExp(r'^Edit as written')).at(i),
-      );
+      await openFieldEditor(tester, i);
       await tester.tap(find.text('Keep this correction'));
       await tester.pumpAndSettle();
     }
@@ -480,10 +463,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Fields'));
+    await tester.tap(uiRecordView('Structured specimen data'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('Country (required)'),
+      find.text('Country'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
@@ -503,7 +486,7 @@ void main() {
     );
     expect(uiIconButton(RegExp(r'^Edit as written')), findsNothing);
     // The state the server sent is still shown, never swallowed.
-    expect(find.text('State unknown'), findsWidgets);
+    expect(find.text('State unknown', findRichText: true), findsWidgets);
   });
 
   testWidgets('viewer cannot invoke reviewer controls, and hears why', (
@@ -548,6 +531,14 @@ void main() {
       Json? saved;
       final specimen = Specimen({
         ...fixture.data,
+        'transcriptions': [
+          {
+            'region_id': 'r1',
+            'text': null,
+            'state': 'unresolved',
+            'resolved': false,
+          },
+        ],
         'regions': [
           {
             'region_id': 'r1',
@@ -569,23 +560,27 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await scrollAndTap(tester, find.text('Resolve transcription'));
+      await selectLabel(tester, 1);
       // Both readings are visible beside the field, not behind it.
-      expect(find.text('Synthetic reading A'), findsWidgets);
-      expect(find.text('Synthetic reading B'), findsWidgets);
-      await tester.tap(uiSelect('Evidence state'));
+      expect(find.text('VLM 1'), findsWidgets);
+      expect(find.text('Chicago 1912', findRichText: true), findsWidgets);
+      expect(find.text('VLM 2'), findsWidgets);
+      expect(find.text('Chicago 1917', findRichText: true), findsWidgets);
+      await tester.tap(uiSelect('Text status'));
       await tester.pumpAndSettle();
       expect(find.text('Not applicable'), findsNothing);
       await tester.tap(find.text('Unreadable').last);
       await tester.pumpAndSettle();
       await tester.enterText(
-        uiField('Reason'),
+        uiTextArea('Reason for correction'),
         'Source damaged; no supported reading',
       );
       await tester.pumpAndSettle();
       // The page's own trigger and the form's primary carry the same verb,
       // and the form is the one on top.
-      await tester.tap(uiButton('Resolve transcription').last);
+      await tester.ensureVisible(uiButton('Save label text').last);
+      await tester.pumpAndSettle();
+      await tester.tap(uiButton('Save label text').last);
       await tester.pumpAndSettle();
       expect(saved?['state'], 'unreadable');
       expect(saved?['value'], isNull);

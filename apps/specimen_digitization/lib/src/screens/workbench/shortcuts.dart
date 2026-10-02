@@ -16,6 +16,7 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../widgets/widgets.dart';
+import '../../widgets/editing_safe_shortcut.dart';
 
 /// Moves to the next specimen in the queue.
 class NextSpecimenIntent extends Intent {
@@ -89,57 +90,44 @@ typedef ShortcutEntry = ({String keys, String action});
 const List<ShortcutEntry> workbenchShortcutHelp = <ShortcutEntry>[
   (keys: 'J', action: 'Next specimen'),
   (keys: 'K', action: 'Previous specimen'),
-  (keys: '1 to 9', action: 'Select label region'),
-  (keys: 'R', action: 'Readings'),
-  (keys: 'F', action: 'Fields'),
-  (keys: 'H', action: 'History'),
-  (keys: 'Plus', action: 'Zoom in'),
-  (keys: 'Minus', action: 'Zoom out'),
-  (keys: '0', action: 'Fit the whole photograph'),
-  (keys: 'Shift and R', action: 'Rotate the view 90 degrees'),
+  (keys: '1 to 9', action: 'Select label region when photograph is focused'),
+  (keys: 'R', action: 'Label review'),
+  (keys: 'F', action: 'Specimen data'),
+  (keys: 'H', action: 'Review history'),
+  (keys: 'Arrow keys', action: 'Pan the focused photograph'),
+  (keys: 'Plus', action: 'Zoom the focused photograph in'),
+  (keys: 'Minus', action: 'Zoom the focused photograph out'),
+  (keys: '0', action: 'Reset the focused photograph'),
+  (keys: 'Shift and R', action: 'Rotate the focused photograph 90 degrees'),
   (keys: 'C', action: 'Confirm label coverage'),
   (keys: 'A', action: 'Approve record'),
   (keys: 'Question mark', action: 'This list'),
 ];
 
 /// The bindings themselves.
-Map<ShortcutActivator, Intent>
-workbenchShortcuts() => <ShortcutActivator, Intent>{
-  const SingleActivator(LogicalKeyboardKey.keyJ): const NextSpecimenIntent(),
-  const SingleActivator(LogicalKeyboardKey.keyK):
-      const PreviousSpecimenIntent(),
-  const SingleActivator(LogicalKeyboardKey.bracketRight):
-      const NextSpecimenIntent(),
-  const SingleActivator(LogicalKeyboardKey.bracketLeft):
-      const PreviousSpecimenIntent(),
-  for (final (int i, LogicalKeyboardKey key) in _digits.indexed)
-    SingleActivator(key): SelectRegionIntent(i + 1),
-  const SingleActivator(LogicalKeyboardKey.keyR): const ShowSegmentIntent(0),
-  const SingleActivator(LogicalKeyboardKey.keyF): const ShowSegmentIntent(1),
-  const SingleActivator(LogicalKeyboardKey.keyH): const ShowSegmentIntent(2),
-  const SingleActivator(LogicalKeyboardKey.keyR, shift: true):
-      const RotateViewIntent(),
-  const SingleActivator(LogicalKeyboardKey.equal): const ZoomInIntent(),
-  const SingleActivator(LogicalKeyboardKey.add): const ZoomInIntent(),
-  const SingleActivator(LogicalKeyboardKey.minus): const ZoomOutIntent(),
-  const SingleActivator(LogicalKeyboardKey.digit0): const FitViewIntent(),
-  const SingleActivator(LogicalKeyboardKey.keyA): const ApproveIntent(),
-  const SingleActivator(LogicalKeyboardKey.keyC): const ConfirmCoverageIntent(),
-  const SingleActivator(LogicalKeyboardKey.slash, shift: true):
-      const ShowShortcutsIntent(),
-};
-
-const List<LogicalKeyboardKey> _digits = <LogicalKeyboardKey>[
-  LogicalKeyboardKey.digit1,
-  LogicalKeyboardKey.digit2,
-  LogicalKeyboardKey.digit3,
-  LogicalKeyboardKey.digit4,
-  LogicalKeyboardKey.digit5,
-  LogicalKeyboardKey.digit6,
-  LogicalKeyboardKey.digit7,
-  LogicalKeyboardKey.digit8,
-  LogicalKeyboardKey.digit9,
-];
+Map<ShortcutActivator, Intent> workbenchShortcuts() =>
+    <ShortcutActivator, Intent>{
+      const EditingSafeActivator(LogicalKeyboardKey.keyJ):
+          const NextSpecimenIntent(),
+      const EditingSafeActivator(LogicalKeyboardKey.keyK):
+          const PreviousSpecimenIntent(),
+      const EditingSafeActivator(LogicalKeyboardKey.bracketRight):
+          const NextSpecimenIntent(),
+      const EditingSafeActivator(LogicalKeyboardKey.bracketLeft):
+          const PreviousSpecimenIntent(),
+      const EditingSafeActivator(LogicalKeyboardKey.keyR):
+          const ShowSegmentIntent(0),
+      const EditingSafeActivator(LogicalKeyboardKey.keyF):
+          const ShowSegmentIntent(1),
+      const EditingSafeActivator(LogicalKeyboardKey.keyH):
+          const ShowSegmentIntent(2),
+      const EditingSafeActivator(LogicalKeyboardKey.keyA):
+          const ApproveIntent(),
+      const EditingSafeActivator(LogicalKeyboardKey.keyC):
+          const ConfirmCoverageIntent(),
+      const EditingSafeActivator(LogicalKeyboardKey.slash, shift: true):
+          const ShowShortcutsIntent(),
+    };
 
 /// Shows the shortcut list.
 Future<void> showShortcutSheet(BuildContext context) => showAdaptiveModal<void>(

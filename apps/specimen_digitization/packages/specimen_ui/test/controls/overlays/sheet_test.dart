@@ -131,19 +131,22 @@ void main() {
     );
   });
 
-  testWidgets('it carries one modal pane and a scrim', (
+  testWidgets('it carries one matte modal surface and a scrim', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(uiHarness(child: _page()));
     await tester.tap(find.text('Open a sheet'));
     await tester.pumpAndSettle();
     expect(find.byType(Scrim), findsOneWidget);
+    expect(glassPaneCount(), 0);
     expect(
-      glassPaneCount(),
-      1,
-      reason: 'the chrome is the content of the route pane, not a second one',
+      find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is GlassSurface && widget.level == GlassLevel.modal,
+      ),
+      findsOneWidget,
     );
-    expect(modalGlassPaneCount(), 1);
+    expect(modalGlassPaneCount(), 0);
     expectGlassBudget(tester);
   });
 

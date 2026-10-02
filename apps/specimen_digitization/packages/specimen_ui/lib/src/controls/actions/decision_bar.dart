@@ -75,7 +75,9 @@ class UiDecisionBarStyle {
 /// the tertiary actions in the bar's own overflow menu with the secondary still
 /// beside the primary. Then the secondary in the menu too, carrying the same
 /// label, so nothing a reviewer could do at 1400 dp is unreachable at 360. The
-/// count is a [UiLabel] and ellipsises first. When no arrangement fits, the
+/// count is a [UiLabel]. When these arrangements do not fit, navigation then
+/// the count move into the same menu to protect the full primary label. Only
+/// when that primary and the overflow trigger alone cannot fit does the
 /// primary ellipsises (rule 4), taking three parts of the line to the count's
 /// one, and a bar carrying only a primary reaches that last resort the same
 /// way: a single long decision at 200 percent text on a phone ellipsises
@@ -274,6 +276,42 @@ class UiDecisionBar extends StatelessWidget {
                 squeeze: lastResort,
               ),
             ),
+          if (drawPrevious || drawNext)
+            FitVariant(
+              intrinsicWidth:
+                  _fixedWidth(
+                    context,
+                    paint,
+                    drawPrevious: false,
+                    drawNext: false,
+                  ) +
+                  menu,
+              builder: (context, lastResort) => _row(
+                context,
+                paint,
+                drawPrevious: false,
+                drawNext: false,
+                beside: const [],
+                inMenu: beside,
+                squeeze: lastResort,
+                navigationInMenu: true,
+              ),
+            ),
+          if (count != null)
+            FitVariant(
+              intrinsicWidth: primary.intrinsicWidth(context) + menu,
+              builder: (context, lastResort) => _row(
+                context,
+                paint,
+                drawPrevious: false,
+                drawNext: false,
+                beside: const [],
+                inMenu: beside,
+                squeeze: lastResort,
+                navigationInMenu: drawPrevious || drawNext,
+                countInMenu: true,
+              ),
+            ),
         ],
       ),
     );
@@ -308,6 +346,7 @@ class UiDecisionBar extends StatelessWidget {
     leading: action.leading,
     trailing: action.trailing,
     loading: action.loading,
+    busyLabel: action.busyLabel,
     semanticsLabel: action.semanticsLabel,
   );
 
@@ -328,8 +367,10 @@ class UiDecisionBar extends StatelessWidget {
     required List<UiButton> beside,
     required List<UiButton> inMenu,
     required bool squeeze,
+    bool navigationInMenu = false,
+    bool countInMenu = false,
   }) {
-    final String? shown = count;
+    final String? shown = countInMenu ? null : count;
     final Widget countLabel = UiLabel(
       shown ?? '',
       style: paint.count.copyWith(color: paint.countColor),
@@ -361,11 +402,29 @@ class UiDecisionBar extends StatelessWidget {
           Flexible(child: countLabel)
         else if (shown != null)
           Expanded(child: countLabel),
-        if (inMenu.isNotEmpty) ...<Widget>[
+        if (inMenu.isNotEmpty || navigationInMenu || countInMenu) ...<Widget>[
           UiMenuTrigger(
             semanticsLabel: overflowLabel,
             items: <UiMenuItem>[
+              if (countInMenu && count != null)
+                UiMenuItem(label: count!, onSelected: null),
               for (final UiButton action in inMenu) _menuItem(action),
+              if (navigationInMenu &&
+                  (onPrevious != null || previousDisabledReason != null))
+                UiMenuItem(
+                  label: previousLabel,
+                  icon: UiIcons.previous,
+                  onSelected: onPrevious,
+                  disabledReason: previousDisabledReason,
+                ),
+              if (navigationInMenu &&
+                  (onNext != null || nextDisabledReason != null))
+                UiMenuItem(
+                  label: nextLabel,
+                  icon: UiIcons.next,
+                  onSelected: onNext,
+                  disabledReason: nextDisabledReason,
+                ),
             ],
           ),
           SizedBox(width: paint.gap),

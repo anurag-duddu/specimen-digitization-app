@@ -88,7 +88,8 @@ void main() {
     );
     await tester.pumpAndSettle();
     await chooseFiles(tester);
-    expect(find.text('0 of 2 accepted'), findsOneWidget);
+    expect(find.text('0 of 2 uploaded'), findsOneWidget);
+    expect(repo.attempts, 0);
     await submitBatch(tester);
     expect(repo.attempts, 1);
   });
@@ -108,12 +109,13 @@ void main() {
         'pending-camera-owner-v1': 'owner:org/insects',
       });
       var recovered = 0;
+      final repository = PreflightRepository();
       Widget app(String user) => MaterialApp(
         theme: AppTheme.light(),
         home: Scaffold(
           body: IntakeScreen(
             key: ValueKey(user),
-            repository: TestRepository(),
+            repository: repository,
             scope: scope,
             userId: user,
             onComplete: () {},
@@ -146,11 +148,12 @@ void main() {
         find.textContaining('Recovered an interrupted photograph'),
         findsOneWidget,
       );
-      // A recovered photograph is queued, never sent: the batch confirmation
-      // was cleared by the file arriving.
+      // Recovery only queues the photograph; Upload remains an explicit action.
       await tester.ensureVisible(uploadButton);
       await tester.pumpAndSettle();
-      expect(buttonEnabled(tester, uploadButton), isFalse);
+      expect(buttonEnabled(tester, uploadButton), isTrue);
+      expect(repository.uploads, 0);
+      expect(repository.checks, 0);
       expect(
         (await SharedPreferences.getInstance()).containsKey(
           'pending-camera-owner-v1',
@@ -159,16 +162,17 @@ void main() {
       );
     },
   );
-  testWidgets('choosing another file resets the manual quality confirmation', (
+  testWidgets('choosing a file waits for Upload and keeps quality in details', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
+    final repository = PreflightRepository();
     await tester.pumpWidget(
       MaterialApp(
         theme: AppTheme.light(),
         home: Scaffold(
           body: IntakeScreen(
-            repository: TestRepository(),
+            repository: repository,
             scope: scope,
             userId: 'owner',
             onComplete: () {},
@@ -180,17 +184,22 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await confirmBatch(tester);
-    expect(batchConfirmed(tester), isTrue);
+    expect(uploadButton, findsNothing);
     await chooseFiles(tester);
-    expect(batchConfirmed(tester), isFalse);
+    expect(repository.uploads, 0);
+    expect(repository.checks, 0);
+    expect(buttonEnabled(tester, uploadButton), isTrue);
+    expect(confirmCheckbox, findsNothing);
     await tester.ensureVisible(find.text('chosen.png'));
     await tester.pumpAndSettle();
     expect(find.text('chosen.png'), findsOneWidget);
+    await tester.ensureVisible(find.text('File details'));
+    await tester.tap(find.text('File details'));
+    await tester.pumpAndSettle();
     expect(find.text('Not calibrated'), findsOneWidget);
   });
   testWidgets(
-    'server preflight requires explicit transmission and leaves quality confirmation unchecked',
+    'server preflight requires explicit transmission and never starts upload',
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       final repository = PreflightRepository();
@@ -218,6 +227,9 @@ void main() {
       await chooseFiles(tester);
       expect(repository.checks, 0);
       expect(repository.uploads, 0);
+      await tester.ensureVisible(find.text('File details'));
+      await tester.tap(find.text('File details'));
+      await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Send for server check'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Send for server check'));
@@ -247,9 +259,9 @@ void main() {
         find.textContaining('Changing the image format will not help.'),
         findsOneWidget,
       );
-      await tester.ensureVisible(confirmCheckbox);
-      await tester.pumpAndSettle();
-      expect(batchConfirmed(tester), isFalse);
+      expect(repository.uploads, 0);
+      expect(confirmCheckbox, findsNothing);
+      expect(buttonEnabled(tester, uploadButton), isTrue);
     },
   );
 }

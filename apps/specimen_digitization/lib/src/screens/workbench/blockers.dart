@@ -90,19 +90,21 @@ List<ClearanceBlocker> blockersFor(Specimen specimen) {
     );
   }
 
-  // The workspace publishes each run reason twice, in `reason_codes` and as
-  // a validation finding carrying the same code. A reason a finding already
-  // states is one blocker, not two.
-  final Set<String> stated = <String>{
-    for (final Json f in specimen.findings)
-      if (f['reason_code'] != null) f['reason_code'].toString(),
+  // Approval is the final action, not an additional issue to resolve before
+  // that same action. Specific findings already explain their generic codes;
+  // keep each field's finding while avoiding a second record-level copy.
+  final Set<String> representedCodes = <String>{
+    'human_approval_required',
+    for (final Json finding in specimen.findings)
+      if (finding['reason_code'] != null) finding['reason_code'].toString(),
   };
-  for (final Object? code
+  for (final Object? rawCode
       in specimen.data['reason_codes'] as List? ?? const <Object?>[]) {
-    if (stated.contains(code.toString())) continue;
+    final String code = rawCode.toString();
+    if (!representedCodes.add(code)) continue;
     blockers.add(
       ClearanceBlocker(
-        message: vocabularyLabel(code.toString()),
+        message: vocabularyLabel(code),
         detail: 'Recorded by the server on this version',
         segment: WorkbenchSegment.fields,
       ),

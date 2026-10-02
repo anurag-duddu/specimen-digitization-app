@@ -1,4 +1,9 @@
-"""Actual classifier child and FunctionModel, using local storage and fake TLS."""
+"""Legacy bounded classifier/FunctionModel qualification with local fake TLS.
+
+This retained metadata-only helper is not standing G3 production admission.
+Its private-label assertions remain stricter than current approved-content
+capture, whose text approval does not include binary assets or credentials.
+"""
 
 import json
 import os
@@ -27,10 +32,12 @@ def bounded_classifier_factory(payload):
     import requests
     import httpx
     from specimen_digitization import bounded_trace_transport
+    from specimen_digitization import observability
     from specimen_digitization.application.hf_collection_classifier import HFCollectionClassifier
     from test_classifier_runtime import local_classifier_factory
 
     root = Path(payload["storage"]["root"]).parent
+    observability.__file__ = str(Path(os.environ["SPECIMEN_TEST_TRACE_BUILD_DIRECTORY"]) / "observability.py")
     (root / "classifier-carrier.json").write_text(json.dumps(payload.get("telemetry", {})))
 
     def forbidden(*args, **kwargs):
@@ -71,6 +78,10 @@ def bounded_classifier_factory(payload):
 @pytest.fixture
 def approved_tracing(tmp_path, monkeypatch):
     tmp_path.chmod(0o700)
+    package = tmp_path / "built-package"
+    package.mkdir()
+    (package / "_build.json").write_text(json.dumps({"source_sha": "a" * 40}))
+    monkeypatch.setenv("SPECIMEN_TEST_TRACE_BUILD_DIRECTORY", str(package))
     values = {
         "SPECIMEN_TRACE_EXPORT_MODE": "bounded-v1",
         "SPECIMEN_TRACE_APPROVAL_SHA256": "06af8483b7b190a5b0f2549475681a60483f2aff98a714472baad28376703b48",  # pragma: allowlist secret (approval digest)

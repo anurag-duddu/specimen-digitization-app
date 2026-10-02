@@ -435,20 +435,23 @@ def test_the_policy_deliberately_names_no_script_or_style_source():
 
 def test_the_permissions_policy_denies_what_the_web_client_never_asks_for():
     """The header denies camera, microphone and geolocation, and the reason it
-    can is that the web build asks for none of them: the in-app camera is
-    behind `!kIsWeb`, so the capture button is not drawn on the web, and
-    nothing reads a microphone or a location. If a web capture flow is ever
-    added, this test is where the header has to be revisited."""
+    can is that the web build asks for none of those browser APIs. Native
+    in-app capture is behind `!kIsWeb`; mobile web may offer the system file
+    picker capture attribute, which uses no getUserMedia stream. Nothing
+    reads a microphone or a location. A browser stream must revisit this header."""
     config = MODULE.read_hosting_config(REPO_ROOT / "firebase.json")
     applied = lowercased(MODULE.headers_for(config, "/"))
     for feature in ("camera", "microphone", "geolocation"):
         assert f"{feature}=()" in applied["permissions-policy"]
 
     intake = (APP / "lib" / "src" / "intake.dart").read_text(encoding="utf-8")
-    assert re.search(r"_cameraAvailable\s*=>\s*!kIsWeb", intake), (
-        "the in-app camera is no longer web-excluded, so Permissions-Policy "
-        "camera=() would now deny something the client wants"
+    assert re.search(r"_nativeCameraAvailable\s*=>\s*!kIsWeb\s*&&\s*!_isWeb", intake), (
+        "native in-app camera must remain web-excluded"
     )
+    capture = intake.split("Future<List<XFile>> _capture() async {", 1)[1].split(
+        "Future<CaptureResult> _openCapture()", 1)[0]
+    assert capture.index("if (_nativeCameraAvailable)") < capture.index("await _openCapture()")
+    assert "return _devicePicker();" in capture
     for root in (APP / "lib", APP / "web"):
         for path in sorted(root.rglob("*")):
             if path.suffix in (".dart", ".html", ".js"):

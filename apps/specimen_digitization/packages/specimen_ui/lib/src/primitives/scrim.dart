@@ -42,6 +42,8 @@ class Scrim extends StatelessWidget {
     );
     if (onDismiss == null) return IgnorePointer(child: layer);
     return Semantics(
+      // Keep dismissal separate from the modal content beside this layer.
+      container: true,
       label: dismissLabel,
       button: true,
       onTap: onDismiss,

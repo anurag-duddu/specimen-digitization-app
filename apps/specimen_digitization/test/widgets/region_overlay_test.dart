@@ -66,13 +66,25 @@ void main() {
     expect(hit.height, greaterThanOrEqualTo(44));
   });
 
-  testWidgets('a large region keeps its own hit box', (
+  testWidgets('a large region and its number share one hit box', (
     WidgetTester tester,
   ) async {
     await pumpComponent(tester, _overlay(onTap: () {}));
-    final Size hit = tester.getSize(target);
-    expect(hit.width, 200);
-    expect(hit.height, 120);
+    final Rect hit = tester.getRect(target);
+    final Rect overlay = tester.getRect(find.byType(RegionOverlay));
+    final Rect region = const Rect.fromLTWH(
+      60,
+      60,
+      200,
+      120,
+    ).shift(overlay.topLeft);
+    final Rect number = tester.getRect(find.text('2'));
+    expect(hit.left, region.left);
+    expect(hit.right, region.right);
+    expect(hit.bottom, region.bottom);
+    expect(hit.top, number.top);
+    expect(hit.contains(number.center), isTrue);
+    expect(hit.contains(region.center), isTrue);
   });
 
   testWidgets('tapping selects the region', (WidgetTester tester) async {
@@ -149,11 +161,10 @@ void main() {
         _overlay(onTap: () {}, selected: true),
         theme: theme,
       );
-      // 09 section 3.4: the active region marker over the photograph is an
-      // accent use, and the accent carries a 1 dp ink casing wherever it is
-      // the only thing saying where a value is.
+      // Selected outlines and number tabs share the accent's contrasting
+      // foreground, including dark themes where ordinary ink is pale.
       expect(painterOf().stroke, ui.color.accent);
-      expect(painterOf().casing, ui.color.ink);
+      expect(painterOf().casing, ui.color.onAccent);
     }
   });
 

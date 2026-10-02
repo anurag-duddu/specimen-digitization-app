@@ -34,12 +34,19 @@ SECRET_VERSIONS = {
 # The API's public 50-byte readiness marker, which the owner uploads; its content is
 # "specimen-digitization runtime readiness marker v1\n".
 READINESS_OBJECT = "application/sha256/a1c115b623cdc43c1b062e5431c8ca8cb6411aa08057885e3b44a9238747818e"  # pragma: allowlist secret (public marker digest)
-READINESS_GENERATION = PENDING
+# Root authenticated generation/size/SHA read on 2026-10-01; immutable 50-byte marker above.
+READINESS_GENERATION = 1790562271708431
 # The owner uploads the SAM 3 checkpoint to application/sha256/<digest>/sam3-cache.
 SAM_CHECKPOINT_SHA256 = PENDING
 
 SQL = {"SPECIMEN_SQL_LOCATION": REGION, "SPECIMEN_SQL_SERVICE": "specimen-digitization-service",
        "SPECIMEN_SQL_CONNECTOR": "specimen-server"}
+
+# G3 standing standard SDK path. Binary content remains disabled in code.
+def tracing_env(role):
+    return {"APP_ENV": "production", "LOGFIRE_CAPTURE_MODE": "approved-content",
+            "LOGFIRE_SEND_TO_LOGFIRE": "true", "LOGFIRE_SERVICE_NAME": f"specimen-{role}",
+            "LOGFIRE_HEAD_SAMPLE_RATE": "1.0", "LOGFIRE_DISTRIBUTED_TRACING": "true"}
 
 # Each role's secret_env maps an environment variable to the Secret Manager secret it reads.
 API = {
@@ -47,7 +54,7 @@ API = {
     "cpu": "1", "memory": "1Gi", "max_instances": 2, "concurrency": 8, "timeout_seconds": 600,
     # SPECIMEN_READINESS_GENERATION joins these once READINESS_GENERATION is known.
     "env": {
-        "SPECIMEN_FIREBASE_PROJECT": PROJECT, "SPECIMEN_FIREBASE_PROJECT_NUMBER": PROJECT_NUMBER,
+        **tracing_env("api"), "SPECIMEN_FIREBASE_PROJECT": PROJECT, "SPECIMEN_FIREBASE_PROJECT_NUMBER": PROJECT_NUMBER,
         "SPECIMEN_FIREBASE_APP_IDS": "1:716045864126:web:a193fa80c7a98bcac8e2ef,1:716045864126:android:6d2aeda8bc992e16c8e2ef,"  # pragma: allowlist secret (public app ids)
                                      "1:716045864126:ios:b4ae90c54b5beccac8e2ef",
         **SQL, "SPECIMEN_GCS_BUCKET": BUCKET,
@@ -63,7 +70,7 @@ WORKER = {
     "service_account": WORKER_EMAIL, "cpu": "1", "memory": "1Gi", "timeout_seconds": 3600,
     "args": PENDING,  # The processing lane's drain argv, once its server code merges.
     # SPECIMEN_SAM3_CHECKPOINT_SHA256, the same digest SAM 3 serves, joins these once SAM_CHECKPOINT_SHA256 is known.
-    "env": {**SQL, "SPECIMEN_GCS_BUCKET": BUCKET, "SPECIMEN_SAM3_ENDPOINT": SAM_URL,
+    "env": {**tracing_env("worker"), **SQL, "SPECIMEN_GCS_BUCKET": BUCKET, "SPECIMEN_SAM3_ENDPOINT": SAM_URL,
             "SPECIMEN_SAM3_REVISION": SAM3_MODEL.revision, "SPECIMEN_APPROVED_INFERENCE": "true"},
     "secret_env": {"HF_TOKEN": "huggingface-runtime-token", "LOGFIRE_TOKEN": "specimen-worker-logfire",
                    "SPECIMEN_GOOGLE_MAPS_API_KEY": "specimen-google-maps-key",  # pragma: allowlist secret (secret name, not a value)
@@ -76,7 +83,7 @@ SAM = {
     # 300 s: two concepts per image plus a cold start; the server stops at 240 s, the worker's segment call at 270 s.
     "cpu": "4", "memory": "16Gi", "max_instances": 1, "concurrency": 1, "timeout_seconds": 300,
     # SPECIMEN_SAM3_CHECKPOINT_SHA256 and the read-only /model-cache mount follow SAM_CHECKPOINT_SHA256.
-    "env": {"HF_HOME": "/model-cache", "HF_HUB_OFFLINE": "1", "SPECIMEN_SAM3_AUDIENCE": SAM_URL,
+    "env": {**tracing_env("sam"), "HF_HOME": "/model-cache", "HF_HUB_OFFLINE": "1", "SPECIMEN_SAM3_AUDIENCE": SAM_URL,
             "SPECIMEN_SAM3_CALLER_EMAIL": WORKER_EMAIL, "SPECIMEN_SAM3_OUTPUT_BUCKET": BUCKET},
     "secret_env": {"LOGFIRE_TOKEN": "specimen-worker-logfire"},
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 import re
 import math
 import stat
@@ -223,6 +224,31 @@ def _sample_rate_from_environment() -> float:
 
 
 def _service_version() -> str:
+    if os.getenv("APP_ENV", "").strip().lower() == "production":
+        # API embeds its build record inside application; worker/SAM at package root.
+        candidates = [Path(__file__).with_name("_build.json"),
+                      Path(__file__).parent / "application" / "_build.json"]
+        values = []
+        try:
+            for path in candidates:
+                if path.exists():
+                    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                    with os.fdopen(fd, "rb") as stream:
+                        info = os.fstat(stream.fileno())
+                        if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= 4096:
+                            raise ValueError
+                        raw = stream.read(4097)
+                    if len(raw) > 4096:
+                        raise ValueError
+                    value = json.loads(raw)["source_sha"]
+                    if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{40}", value):
+                        raise ValueError
+                    values.append(value)
+            if not values or len(set(values)) != 1:
+                raise ValueError
+            return values[0]
+        except (OSError, ValueError, KeyError, TypeError):
+            raise ObservabilityConfigurationError("production_trace_build_provenance_invalid") from None
     try:
         return version("specimen-digitization")
     except PackageNotFoundError:
@@ -233,6 +259,7 @@ def configure_observability(
     *,
     send_to_logfire: bool | None = None,
     capture_mode: CaptureMode | None = None,
+    instrument_agents: bool = True,
 ) -> ObservabilitySettings:
     """Configure Logfire once before agent or provider instrumentation.
 
@@ -264,27 +291,147 @@ def configure_observability(
     }
     if send_to_logfire is not None:
         configure_options["send_to_logfire"] = send_to_logfire
-
+    if settings.environment == "production" and settings.capture_mode is CaptureMode.APPROVED_CONTENT:
+        # G3/G11 standard SDK export; no retired ledger or implicit project creation.
+        forbidden = ("LOGFIRE_BASE_URL", "LOGFIRE_ENVIRONMENT", "LOGFIRE_SERVICE_VERSION")
+        if any(os.getenv(name) for name in forbidden) or any(
+            name.startswith("OTEL_") and not (
+                name in {"OTEL_TRACES_EXPORTER", "OTEL_METRICS_EXPORTER", "OTEL_LOGS_EXPORTER"}
+                and value == "none"
+            ) for name, value in os.environ.items()
+        ):
+            raise ObservabilityConfigurationError("production_trace_ambient_export_refused")
+        token = os.getenv("LOGFIRE_TOKEN")
+        if not token or not token.isascii() or token.strip() != token:
+            raise ObservabilityConfigurationError("production_trace_writer_required")
+        from logfire.variables.config import VariablesConfig
+        configure_options.update(
+            token=token, console=False, metrics=False,
+            advanced=logfire.AdvancedOptions(base_url="https://logfire-us.pydantic.dev",
+                exception_callback=_private_exception_callback),
+            variables=logfire.LocalVariablesOptions(config=VariablesConfig(variables={}),
+                include_resource_attributes_in_context=False,
+                include_baggage_in_context=False, instrument=False),
+            add_baggage_to_attributes=False,
+            scrubbing=logfire.ScrubbingOptions(extra_patterns=[
+                r"(?:firebase|app)[._ -]?(?:user|uid)", r"user[._ -]?(?:id|email)",
+                r"authorization", r"bearer", r"credential", r"email",
+            ]),
+        )
     logfire.configure(**configure_options)
-    logfire.instrument_pydantic_ai(
-        include_content=settings.include_content,
-        include_binary_content=settings.include_binary_content,
-        include_model_request_parameters=settings.include_model_request_parameters,
-        version=5,
-    )
+    if instrument_agents:
+        logfire.instrument_pydantic_ai(
+            include_content=settings.include_content,
+            include_binary_content=settings.include_binary_content,
+            include_model_request_parameters=settings.include_model_request_parameters,
+            version=5,
+        )
     _configured_settings = settings
     return settings
 
+
+
+
+def _private_exception_callback(helper):
+    # SDK callbacks run before exception body/validation detail recording. Clear
+    # the escaped status description too: exception strings may contain tokens.
+    from opentelemetry.trace import Status, StatusCode
+    helper.no_record_exception()
+    helper.span.set_status(Status(StatusCode.ERROR))
+
+def configure_production_observability(service: str, *, instrument_agents: bool = True):
+    """Standing G3 service configuration; live cost/identity admission remains separate."""
+    if service not in {"specimen-api", "specimen-worker", "specimen-sam"}:
+        raise ObservabilityConfigurationError("production_trace_service_invalid")
+    expected = {"APP_ENV": "production", "LOGFIRE_CAPTURE_MODE": "approved-content",
+                "LOGFIRE_SEND_TO_LOGFIRE": "true", "LOGFIRE_SERVICE_NAME": service,
+                "LOGFIRE_HEAD_SAMPLE_RATE": "1.0", "LOGFIRE_DISTRIBUTED_TRACING": "true"}
+    if any(os.getenv(key) != value for key, value in expected.items()) or any(
+        key.startswith("SPECIMEN_TRACE_") for key in os.environ
+    ):
+        raise ObservabilityConfigurationError("production_trace_standing_configuration_invalid")
+    return configure_observability(send_to_logfire=True,
+        capture_mode=CaptureMode.APPROVED_CONTENT, instrument_agents=instrument_agents)
+
+
+def flush_production_observability(*, shutdown=False, maximum_millis=1000):
+    """Flush within the existing effect/task clock; grant no extra work or cleanup time."""
+    from .application.bounded_effect import current_effect_deadline
+    from .application.worker_deadline import current_deadline
+    deadlines = [value for value in [current_effect_deadline(),
+        current_deadline().deadline if current_deadline() is not None else None]
+        if value is not None]
+    deadline = min(deadlines) if deadlines else None
+    if type(maximum_millis) is not int or not 0 < maximum_millis <= 1000:
+        raise ObservabilityConfigurationError("production_trace_flush_bound_invalid")
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if not math.isfinite(remaining) or remaining <= 0:
+            return {"configured": _configured_settings is not None, "complete": False}
+        maximum_millis = min(maximum_millis, int(remaining * 1000))
+    if maximum_millis <= 0 or _configured_settings is None:
+        return {"configured": _configured_settings is not None, "complete": False}
+    try:
+        complete = (logfire.shutdown if shutdown else logfire.force_flush)(timeout_millis=maximum_millis)
+    except Exception:
+        complete = False
+    if deadline is not None and time.monotonic() >= deadline:
+        complete = False
+    return {"configured": True, "complete": complete is True}
+
+
+def install_api_trace_spans(app):
+    @app.middleware("http")
+    async def request_trace(request, call_next):
+        # HTTP input, headers, paths, exceptions and app-user identities are never exported.
+        method = request.method if request.method in {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"} else "OTHER"
+        span = logfire.span("Specimen API request", **{"http.request.method": method})
+        span.__enter__()
+        try:
+            response = await call_next(request)
+            span.set_attribute("http.response.status_code", response.status_code)
+            return response
+        except BaseException:
+            span.set_attribute("specimen.api.outcome", "failed")
+            raise
+        finally:
+            span.__exit__(None, None, None)
 
 def _model_trace_carrier(context: Mapping[str, str]) -> dict[str, str]:
     """Propagate only the W3C parent, excluding baggage and opaque tracestate."""
     parent = context.get("traceparent", "")
     if isinstance(parent, str) and re.fullmatch(
         r"00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}", parent
-    ):
+    ) and int(parent.split("-")[1], 16) != 0 and int(parent.split("-")[2], 16) != 0:
         return {"traceparent": parent}
     return {}
 
+
+
+@contextmanager
+def sam3_trace_span(request, headers):
+    # No bytes, storage credentials, caller identity, arbitrary headers or exceptions.
+    from .application.collection_profiles import Sam3Parameters
+    for identifier in (request.specimen_id, request.run_id, request.collection_id):
+        if not isinstance(identifier, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}", identifier):
+            raise ObservabilityConfigurationError("sam3_trace_identity_invalid")
+    attributes = {"specimen.id": request.specimen_id, "specimen.run.id": request.run_id,
+                  "specimen.collection.id": request.collection_id,
+                  "sam3.model": request.model_id, "sam3.revision": request.model_revision,
+                  "sam3.prompt": request.prompt,
+                  "sam3.parameters": Sam3Parameters.model_validate(request.parameters).applied()}
+    with logfire.attach_context(_model_trace_carrier({"traceparent": headers.get("traceparent", "")})):
+        span = logfire.span("SAM 3 segmentation", **attributes)
+        span.__enter__()
+        try:
+            yield span
+        except BaseException:
+            span.set_attribute("sam3.outcome", "failed")
+            raise
+        else:
+            span.set_attribute("sam3.outcome", "completed")
+        finally:
+            span.__exit__(None, None, None)
 
 def model_trace_context(specimen_id: str, run_id: str) -> dict[str, str]:
     """Carry application-owned correlation IDs, never specimen content."""
@@ -311,7 +458,10 @@ def isolated_model_span(
     """
     if operation not in {"classify", "transcribe", "first_pass", "extract"}:
         raise ValueError("Unknown trusted model operation")
-    configure_observability(capture_mode=CaptureMode.METADATA)
+    if os.getenv("APP_ENV") == "production" and os.getenv("SPECIMEN_TRACE_EXPORT_MODE") is None:
+        configure_production_observability("specimen-worker")
+    else:
+        configure_observability(capture_mode=_capture_mode_from_environment())
     attributes = {"specimen.model.operation": operation}
     for key, value in (
         ("specimen.id", context.get("specimen_id")),
@@ -339,4 +489,4 @@ def isolated_model_span(
         if os.getenv("SPECIMEN_TRACE_EXPORT_MODE") is not None:
             flush_bounded_observability()
         else:
-            logfire.shutdown(timeout_millis=1_000)
+            flush_production_observability(shutdown=True)

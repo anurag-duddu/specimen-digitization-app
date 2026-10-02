@@ -46,6 +46,10 @@ const Map<String, String> userFacingTerms = <String, String>{
   'not_applicable': 'Not applicable',
   'unresolved': 'Unresolved',
   // Review actions, named as the command the reviewer is giving.
+  'history_restored_review_required': 'Restored version needs review',
+  'review_restore_version': 'Restored version',
+  'review_reset_initial': 'Reset to initial version',
+  'initial_record': 'Initial record',
   'field_correction': 'Correct field',
   'transcription_adjudication': 'Resolve reading',
   'segmentation_correction': 'Correct label regions',

@@ -51,6 +51,8 @@ class FocusRing extends StatelessWidget {
     required this.child,
     this.radius,
     this.shape = FocusRingShape.superellipse,
+    this.inset = false,
+    this.color,
   });
 
   /// True when the ring should be painted.
@@ -67,19 +69,25 @@ class FocusRing extends StatelessWidget {
   /// The shape the component is drawn in, which is the shape of its ring.
   final FocusRingShape shape;
 
+  /// Draws inside a fixed slot whose scroll viewport clips outside paint.
+  final bool inset;
+
+  /// Overrides the ink for an inverted selected slot.
+  final Color? color;
+
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
     return CustomPaint(
       foregroundPainter: visible
           ? _FocusRingPainter(
-              color: ui.color.focusRing,
+              color: color ?? ui.color.focusRing,
               stroke: ui.shape.stroke.focus,
-              gap: ui.shape.stroke.focusGap,
+              gap: inset ? -ui.shape.stroke.focus : ui.shape.stroke.focusGap,
               shape: shape,
               radius:
                   (radius ?? ui.shape.inner) +
-                  ui.shape.stroke.focusRadiusOffset,
+                  (inset ? 0 : ui.shape.stroke.focusRadiusOffset),
             )
           : null,
       child: child,

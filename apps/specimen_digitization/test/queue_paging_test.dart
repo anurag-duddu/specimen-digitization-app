@@ -44,7 +44,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(repo.requests.length, 1);
-      expect(find.text('First page record'), findsOneWidget);
+      expect(find.text('first'), findsOneWidget);
       await tester.scrollUntilVisible(
         find.text('Load more records'),
         200,
@@ -54,21 +54,21 @@ void main() {
       await tester.pump();
       expect(repo.requests.last['cursor'], 'opaque-A');
       await tester.scrollUntilVisible(
-        find.text('Cleared'),
+        find.bySemanticsLabel('Cleared'),
         -200,
         scrollable: find.byType(Scrollable).first,
       );
-      await tester.tap(find.text('Cleared'));
+      await tester.tap(find.bySemanticsLabel('Cleared'));
       await tester.pumpAndSettle();
-      expect(find.text('Filtered record'), findsOneWidget);
+      expect(find.text('new'), findsOneWidget);
       repo.pending.complete(
         const SpecimenPage([
           Specimen({'specimen_id': 'old', 'filename': 'Stale page record'}),
         ]),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Stale page record'), findsNothing);
-      expect(find.text('Filtered record'), findsOneWidget);
+      expect(find.text('old'), findsNothing);
+      expect(find.text('new'), findsOneWidget);
       expect(repo.requests.last['cursor'], 'start');
       await tester.pumpWidget(const SizedBox());
       await session.controller.close();

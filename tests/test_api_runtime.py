@@ -245,12 +245,11 @@ def test_readiness_only_queries_and_reads_pinned_metadata():
 
 
 @pytest.mark.parametrize("mode", ["production", "synthetic"])
-def test_api_boot_never_sends_telemetry_or_creates_a_project(monkeypatch, tmp_path, mode):
-    """The deployed API carries no Logfire credential, so it must never try to send.
+def test_api_boot_selects_standing_g3_or_local_telemetry(monkeypatch, tmp_path, mode):
+    """G3 production uses the explicit approved writer; local boot disables export.
 
-    Leaving `send_to_logfire` unset hands the decision to the SDK default, which
-    reaches out and can create a project while the service is starting. Only the
-    worker sends, through its own approved bounded transport.
+    Only SDK configuration is observed here. No exporter or project-creation
+    request executes through these test doubles.
     """
     from specimen_digitization import observability
     from specimen_digitization.application import cli, runtime_server
@@ -265,21 +264,62 @@ def test_api_boot_never_sends_telemetry_or_creates_a_project(monkeypatch, tmp_pa
                 "FIRESTORE_EMULATOR_HOST", "FIREBASE_APPCHECK_DEBUG_TOKEN",
                 "SPECIMEN_SYNTHETIC_TOKEN"):
         monkeypatch.delenv(key, raising=False)
-    recorded: dict[str, object] = {}
-    monkeypatch.setattr(observability, "configure_observability", lambda **kw: recorded.update(kw))
+    for key in list(os.environ):
+        if key.startswith(("SPECIMEN_TRACE_", "OTEL_")) or key in {
+            "LOGFIRE_BASE_URL", "LOGFIRE_ENVIRONMENT", "LOGFIRE_SERVICE_VERSION"
+        }:
+            monkeypatch.delenv(key, raising=False)
+    package = tmp_path / "built-package"
+    package.mkdir()
+    source_sha = "a" * 40
+    (package / "_build.json").write_text(json.dumps({"source_sha": source_sha}))
+    monkeypatch.setattr(observability, "__file__", str(package / "observability.py"))
+    monkeypatch.setattr(observability, "_configured_settings", None)
+    monkeypatch.setattr(observability, "_bounded_runtime", None)
+    configure, instrument, shutdown = Mock(), Mock(), Mock(return_value=True)
+    monkeypatch.setattr(observability.logfire, "configure", configure)
+    monkeypatch.setattr(observability.logfire, "instrument_pydantic_ai", instrument)
+    monkeypatch.setattr(observability.logfire, "shutdown", shutdown)
     monkeypatch.setattr(cli, "production_app", lambda config: FastAPI())
     monkeypatch.setattr(cli, "local_app", lambda *a, **kw: FastAPI())
     monkeypatch.setattr(runtime_server, "serve", lambda *a, **kw: None)
     argv = ["specimen-api", "--mode", mode]
+    if mode == "production":
+        for key, value in {
+            "APP_ENV": "production", "LOGFIRE_CAPTURE_MODE": "approved-content",
+            "LOGFIRE_SEND_TO_LOGFIRE": "true", "LOGFIRE_SERVICE_NAME": "specimen-api",
+            "LOGFIRE_HEAD_SAMPLE_RATE": "1.0", "LOGFIRE_DISTRIBUTED_TRACING": "true",
+            "LOGFIRE_TOKEN": "SYNTHETIC-API-WRITER-CANARY",
+        }.items():
+            monkeypatch.setenv(key, value)
     if mode == "synthetic":
+        monkeypatch.setenv("APP_ENV", "development")
         monkeypatch.setenv("SPECIMEN_SYNTHETIC_TOKEN", "local-fixture-only")
         argv += ["--state-dir", str(tmp_path)]
     monkeypatch.setattr(sys, "argv", argv)
 
     cli.main()
 
-    assert recorded["send_to_logfire"] is False
-    assert recorded["capture_mode"].value == "metadata"
+    configure.assert_called_once()
+    options = configure.call_args.kwargs
+    assert options["send_to_logfire"] is (mode == "production")
+    assert options["inspect_arguments"] is False
+    assert instrument.call_args.kwargs["include_binary_content"] is False
+    assert instrument.call_args.kwargs["include_content"] is (mode == "production")
+    if mode == "production":
+        assert options["environment"] == "production"
+        assert options["service_name"] == "specimen-api"
+        assert options["service_version"] == source_sha
+        assert options["token"] == "SYNTHETIC-API-WRITER-CANARY"
+        assert options["advanced"].base_url == "https://logfire-us.pydantic.dev"
+        assert options["advanced"].exception_callback is observability._private_exception_callback
+        assert options["variables"].instrument is False
+        assert options["add_baggage_to_attributes"] is False
+        assert options["console"] is False and options["metrics"] is False
+        shutdown.assert_called_once_with(timeout_millis=1000)
+    else:
+        assert options["resource_attributes"]["specimen.telemetry.capture_mode"] == "metadata"
+        shutdown.assert_not_called()
 
 
 def test_real_http_subprocess_shutdown(tmp_path):

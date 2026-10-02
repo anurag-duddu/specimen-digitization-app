@@ -11,10 +11,179 @@ assert.equal(env.GITHUB_EVENT_NAME, 'push');
 assert.equal(env.GITHUB_REF, 'refs/heads/main');
 assert.equal(env.DEPLOYMENT_ENVIRONMENT, 'data-production');
 assert.equal(env.GITHUB_WORKFLOW_REF, `${env.GITHUB_REPOSITORY}/.github/workflows/data-release.yml@refs/heads/main`);
-assert.equal(env.RELEASE_AUTHORIZED_SHA, env.GITHUB_SHA);
-const [mode, instance, output] = process.argv.slice(2);
-assert.ok(['inventory', 'indexes', 'catalog'].includes(mode));
+// The envelope's owner-set commit or, never with it, the commit of the gate record Python admitted (G11).
+assert.ok((env.RELEASE_AUTHORIZED_SHA === undefined) !== (env.RELEASE_GATE_SHA === undefined));
+assert.equal(env.RELEASE_AUTHORIZED_SHA ?? env.RELEASE_GATE_SHA, env.GITHUB_SHA);
+const [mode, instance, output, input] = process.argv.slice(2);
+assert.ok(['inventory', 'indexes', 'indexed', 'catalog', 'summary', 'migrate', 'migrated', 'restored', 'source-asset-unique', 'source-asset-drop'].includes(mode));
 assert.ok(['specimen-digitization-instance', 'specimen-digitization-restore-20260908-r1'].includes(instance));
+const ACTOR = 'specimen-data-release@specimen-digitization.iam';
+const OWNER = 'firebaseowner_specimen-digitization-database_public';
+// RELEASE.md 4.3 steps 3 and 5, and 4.4's verify, serve only a gate record's commit, on the source instance.
+if (mode.startsWith('migrate') || mode === 'indexed' || mode.startsWith('source-asset-')) {
+  assert.ok(env.RELEASE_GATE_SHA !== undefined && instance === 'specimen-digitization-instance');
+}
+// RELEASE.md 4.4 item 1 (D1): the first apply's restored clone is read as migrated reads the source, for a gate record.
+if (mode === 'restored') {
+  assert.ok(env.RELEASE_GATE_SHA !== undefined && instance === 'specimen-digitization-restore-20260908-r1');
+}
+// Every index in public with what deploy_data.verify_indexes checks: its table, method, validity, keys and definition.
+const INDEXES = `SELECT c.relname AS name, t.relname AS table_name, a.amname AS method,
+    i.indisvalid AS valid, i.indisunique AS unique, pg_get_expr(i.indpred,i.indrelid) AS predicate,
+    ARRAY(SELECT pg_get_indexdef(c.oid,k,false) FROM generate_series(1,i.indnkeyatts) k ORDER BY k) AS keys,
+    ARRAY(SELECT pg_get_indexdef(c.oid,k,false) FROM generate_series(i.indnkeyatts+1,i.indnatts) k ORDER BY k) AS includes,
+    pg_get_indexdef(c.oid) AS definition FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid
+    JOIN pg_class t ON t.oid=i.indrelid JOIN pg_am a ON a.oid=c.relam
+    JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' ORDER BY c.relname`;
+// The closed SourceAsset exception, over exactly six NOT NULL columns, no
+// predicate/expression/include columns and a live ready, valid btree unique.
+// Neither the inventory nor Python can authorize an arbitrary SQL statement.
+const SOURCE_ASSET_UNIQUE = `SELECT count(*)::int AS count
+  FROM pg_index i JOIN pg_class x ON x.oid=i.indexrelid
+  JOIN pg_class t ON t.oid=i.indrelid JOIN pg_namespace n ON n.oid=t.relnamespace
+  JOIN pg_am a ON a.oid=x.relam
+  WHERE n.nspname='public' AND t.relname='source_asset'
+    AND x.relname='source_asset_specimen_object' AND a.amname='btree'
+    AND i.indisunique AND i.indisvalid AND i.indisready AND i.indislive
+    AND i.indpred IS NULL AND i.indexprs IS NULL AND i.indnatts=i.indnkeyatts
+    AND ARRAY(SELECT c.attname::text FROM unnest(i.indkey::int2[]) WITH ORDINALITY k(attnum,position)
+      JOIN pg_attribute c ON c.attrelid=t.oid AND c.attnum=k.attnum AND NOT c.attisdropped
+      ORDER BY k.position)=ARRAY['organization_id','collection_id','specimen_id','bucket','object_name','generation']
+    AND NOT EXISTS(SELECT 1 FROM unnest(i.indkey::int2[]) k(attnum)
+      JOIN pg_attribute c ON c.attrelid=t.oid AND c.attnum=k.attnum WHERE NOT c.attnotnull)`;
+// Identity of the *old* public name is independent of the replacement index.
+// A name may exist as a foreign relation, or index another table/columns. Read
+// all properties on the same connection that may execute the fixed DROP.
+const SOURCE_ASSET_OLD = `SELECT x.oid IS NOT NULL AS present,
+  CASE WHEN i.indexrelid IS NULL THEN NULL ELSE jsonb_build_object(
+    'index_schema', xn.nspname, 'table_schema', tn.nspname, 'table_name', t.relname,
+    'method', a.amname, 'unique', i.indisunique, 'valid', i.indisvalid,
+    'ready', i.indisready, 'live', i.indislive,
+    'no_expression', i.indexprs IS NULL, 'no_predicate', i.indpred IS NULL,
+    'no_includes', i.indnatts=i.indnkeyatts,
+    'keys', ARRAY(SELECT c.attname::text FROM unnest(i.indkey::int2[]) WITH ORDINALITY k(attnum,position)
+      LEFT JOIN pg_attribute c ON c.attrelid=t.oid AND c.attnum=k.attnum AND NOT c.attisdropped
+      ORDER BY k.position),
+    'not_null', NOT EXISTS(SELECT 1 FROM unnest(i.indkey::int2[]) k(attnum)
+      LEFT JOIN pg_attribute c ON c.attrelid=t.oid AND c.attnum=k.attnum AND NOT c.attisdropped
+      WHERE c.attnum IS NULL OR NOT c.attnotnull),
+    'constraint_backed', EXISTS(SELECT 1 FROM pg_constraint c WHERE c.conindid=x.oid)
+  ) END AS index
+  FROM (SELECT to_regclass('public.specimen_unique_1') AS oid) named
+  LEFT JOIN pg_class x ON x.oid=named.oid LEFT JOIN pg_namespace xn ON xn.oid=x.relnamespace
+  LEFT JOIN pg_index i ON i.indexrelid=x.oid LEFT JOIN pg_class t ON t.oid=i.indrelid
+  LEFT JOIN pg_namespace tn ON tn.oid=t.relnamespace LEFT JOIN pg_am a ON a.oid=x.relam`;
+function verifyOldSourceAsset(rows) {
+  assert.ok(Array.isArray(rows) && rows.length === 1);
+  const row = rows[0];
+  assert.deepEqual(Object.keys(row).sort(), ['index', 'present']);
+  if (row.present === false) {
+    assert.equal(row.index, null);
+    return false;
+  }
+  assert.equal(row.present, true);
+  // Generated source DDL is intentionally required, never inferred from an
+  // index's name or from the SDL field's camelCase spelling. If its reviewed
+  // source artifact has not been installed, readFileSync fails before DROP.
+  // This closed proof is not executed and grants no general migration power.
+  const ddl = readFileSync('dataconnect/sql/source-asset-old-index-qualified-ddl.sql', 'utf8');
+  assert.ok(ddl.length > 0 && ddl.length <= 65536);
+  const declaration = ddl.replace(/^\s*--.*$/gm, '').trim();
+  assert.match(declaration, /^CREATE UNIQUE INDEX "?specimen_unique_1"? ON "?public"?\."?source_asset"? USING btree \(\s*"?bucket"?\s*,\s*"?object_name"?\s*,\s*"?generation"?\s*\);$/);
+  assert.deepEqual(row.index, {index_schema: 'public', table_schema: 'public', table_name: 'source_asset',
+    method: 'btree', unique: true, valid: true, ready: true, live: true,
+    no_expression: true, no_predicate: true, no_includes: true,
+    keys: ['bucket', 'object_name', 'generation'], not_null: true, constraint_backed: false});
+  return true;
+}
+// Step 3 re-reads every statement of the plan Python wrote exactly as deploy_data.py does, before any connection,
+// against the plan's own relaxed table.column pairs, which Python derives from the schema gate.
+const TOKEN = /([ \t\n\r\f\v]+)|("(?:[^"]|"")+")|('(?:[^']|'')*')|([A-Za-z_][A-Za-z0-9_]*)|([0-9]+(?:\.[0-9]+)?)|([(),.;[\]])|([-+*/<>=~!@#%^&|`?:]+)|([\s\S])/g;
+function allowed(sql, relaxed) {
+  if (typeof sql !== 'string' || !sql.length || sql.length > 65536 || sql.includes('\\')) return false;
+  const kinds = ['space', 'ident', 'string', 'word', 'number', 'punct', 'operator', 'other'];
+  let t = [...sql.matchAll(TOKEN)].map(m => [kinds[m.slice(1).findIndex(g => g !== undefined)], m[0]]).filter(([k]) => k !== 'space');
+  if (t.some(([k, v]) => k === 'other' || k === 'operator' && /--|\/\*|\*\//.test(v))) return false;
+  const is = (at, v) => t[at]?.[0] === 'punct' && t[at][1] === v;
+  if (is(t.length - 1, ';')) t = t.slice(0, -1);
+  let depth = 0;
+  for (let at = 0; at < t.length && depth >= 0; at++) {
+    if (is(at, ';')) return false;
+    depth += is(at, '(') ? 1 : is(at, ')') ? -1 : 0;
+  }
+  if (depth) return false;
+  const word = (at, ...ws) => ws.every((w, i) => t[at + i]?.[0] === 'word' && t[at + i][1].toUpperCase() === w) ? at + ws.length : null;
+  const name = at => {
+    const [k, v] = t[at] ?? [];
+    if (k !== 'word' && k !== 'ident') throw new Error('name');
+    return [k === 'word' ? v.toLowerCase() : v.slice(1, -1).replaceAll('""', '"'), at + 1];
+  };
+  const table = at => {
+    let [value, next] = name(at);
+    if (is(next, '.')) {
+      if (value !== 'public') throw new Error('schema');
+      [value, next] = name(next + 1);
+    }
+    return [value, next];
+  };
+  const close = at => {
+    for (let i = at, d = 0; i < t.length; i++) if (!(d += is(i, '(') ? 1 : is(i, ')') ? -1 : 0)) return i;
+    return -1;
+  };
+  try {
+    let at = word(0, 'CREATE', 'TABLE');
+    if (at !== null) {
+      [, at] = table(word(at, 'IF', 'NOT', 'EXISTS') ?? at);
+      return is(at, '(') && close(at) === t.length - 1;
+    }
+    if ((at = word(0, 'CREATE', 'VIEW')) !== null) {
+      [, at] = table(at);
+      if (is(at, '(')) at = close(at) + 1;
+      return word(at, 'AS') !== null && ['SELECT', 'WITH', 'VALUES'].some(w => word(at + 1, w) !== null);
+    }
+    if ((at = word(0, 'CREATE', 'INDEX') ?? word(0, 'CREATE', 'UNIQUE', 'INDEX')) !== null) {
+      at = word(at, 'IF', 'NOT', 'EXISTS') ?? at;
+      if (word(at, 'CONCURRENTLY') !== null || (at = word(name(at)[1], 'ON')) === null) return false;
+      [, at] = table(at);
+      return is(at, '(') || word(at, 'USING') !== null;
+    }
+    if ((at = word(0, 'ALTER', 'TABLE')) === null) return false;
+    let relation;
+    [relation, at] = table(at);
+    const starts = [at];
+    for (let i = at, d = 0; i < t.length; i++) {
+      d += is(i, '(') ? 1 : is(i, ')') ? -1 : 0;
+      if (is(i, ',') && !d) starts.push(i + 1);
+    }
+    return starts.every((start, k) => {
+      const end = k + 1 < starts.length ? starts[k + 1] - 1 : t.length;
+      let a;
+      if ((a = word(start, 'ADD', 'COLUMN')) !== null) return name(word(a, 'IF', 'NOT', 'EXISTS') ?? a)[1] < end;
+      if ((a = word(start, 'ADD', 'CONSTRAINT')) !== null) {
+        a = name(a)[1];
+        return word(a, 'UNIQUE') !== null || word(a, 'FOREIGN', 'KEY') !== null;
+      }
+      if ((a = word(start, 'ALTER', 'COLUMN')) === null) return false;
+      const [column, next] = name(a);
+      return word(next, 'DROP', 'NOT', 'NULL') === end && relaxed.has(`${relation}.${column}`);
+    });
+  } catch {
+    return false;
+  }
+}
+let statements;
+if (mode === 'migrate') {
+  const plan = JSON.parse(readFileSync(input, 'utf8'));
+  assert.deepEqual(Object.keys(plan).sort(), ['relaxed', 'source_sha', 'statements', 'version']);
+  assert.ok(plan.version === 'data-migration/v1' && plan.source_sha === env.RELEASE_GATE_SHA);
+  // Sorted and duplicate-free, each one table.column pair of lower-case SQL names.
+  assert.ok(Array.isArray(plan.relaxed) && plan.relaxed.every((pair, at) => typeof pair === 'string'
+    && /^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*$/.test(pair) && (at === 0 || plan.relaxed[at - 1] < pair)));
+  const relaxed = new Set(plan.relaxed);
+  statements = plan.statements;
+  assert.ok(Array.isArray(statements) && statements.length > 0 && statements.length <= 1000
+    && statements.every(sql => allowed(sql, relaxed)));
+}
 const require = createRequire(join(resolve(env.RELEASE_NODE_ROOT), 'node_modules/firebase-tools/package.json'));
 assert.equal(require('./package.json').version, '15.8.0');
 const {Connector, AuthTypes, IpAddressTypes} = require('@google-cloud/cloud-sql-connector');
@@ -23,7 +192,7 @@ const connector = new Connector();
 const connectionOptions = {...(await connector.getOptions({
   instanceConnectionName: `specimen-digitization:us-east4:${instance}`,
   ipType: IpAddressTypes.PUBLIC, authType: AuthTypes.IAM,
-})), user: 'specimen-data-release@specimen-digitization.iam',
+})), user: ACTOR,
   max: 1, connectionTimeoutMillis: 15000,
   statement_timeout: 120000, application_name: 'protected-data-release'};
 const initialDatabase = mode === 'catalog' ? 'postgres' : 'specimen-digitization-database';
@@ -32,7 +201,13 @@ let client;
 try {
   client = await pool.connect();
   assert.equal((await client.query('SELECT current_database() AS name')).rows[0].name, initialDatabase);
-  if (mode === 'catalog') {
+  if (mode === 'summary') {
+    assert.equal(instance, 'specimen-digitization-instance');
+    const results = await client.query(readFileSync('scripts/ci/release_sql_summary.sql', 'utf8'));
+    const values = results.filter(result => result.command === 'SELECT').at(-1).rows;
+    assert.equal(values.length, 1);
+    writeFileSync(output, JSON.stringify(values[0]), {mode: 0o600});
+  } else if (mode === 'catalog') {
     assert.equal(instance, 'specimen-digitization-instance');
     async function readCatalog() {
       const results = await client.query(readFileSync('scripts/ci/release_sql_catalog.sql', 'utf8'));
@@ -56,11 +231,77 @@ try {
       assert.equal(observations.application_catalog_observed, true);
     }
     writeFileSync(output, JSON.stringify(observations), {mode: 0o600});
+  } else if (mode === 'source-asset-unique' || mode === 'source-asset-drop') {
+    assert.deepEqual((await client.query('SELECT current_database() AS database, session_user AS actor')).rows[0],
+      {database: 'specimen-digitization-database', actor: ACTOR});
+    if (mode === 'source-asset-unique') await client.query('BEGIN TRANSACTION READ ONLY');
+    else {
+      await client.query(`SET ROLE "${OWNER}"`);
+      await client.query("SET lock_timeout = '5s'");
+      await client.query("SET statement_timeout = '30s'");
+    }
+    assert.equal((await client.query(SOURCE_ASSET_UNIQUE)).rows[0]?.count, 1);
+    if (mode === 'source-asset-drop') {
+      const source = readFileSync('dataconnect/sql/drop-specimen-unique-1.sql', 'utf8');
+      const sql = source.replace(/^\s*--.*$/gm, '').trim();
+      assert.equal(sql, 'DROP INDEX CONCURRENTLY IF EXISTS public.specimen_unique_1;');
+      const oldPresent = verifyOldSourceAsset((await client.query(SOURCE_ASSET_OLD)).rows);
+      if (oldPresent) await client.query({text: sql, queryMode: 'extended'});
+      assert.equal((await client.query(SOURCE_ASSET_UNIQUE)).rows[0]?.count, 1);
+      assert.equal((await client.query("SELECT to_regclass('public.specimen_unique_1') IS NULL AS absent")).rows[0]?.absent, true);
+    } else await client.query('COMMIT');
+    writeFileSync(output, JSON.stringify({version: mode === 'source-asset-drop'
+      ? 'source-asset-unique-drop/v1' : 'source-asset-unique-readback/v1', source_sha: env.RELEASE_GATE_SHA,
+      instance, valid: true, ...(mode === 'source-asset-drop' ? {old_absent: true} : {})}), {mode: 0o600});
+  } else if (mode === 'migrate') {
+    // One transaction as the owner role (RELEASE.md 4.3 step 3). search_path is public alone, behind the implicit
+    // pg_catalog, so Data Connect's unqualified uuid_generate_v4() and names resolve to public. The extended protocol
+    // makes PostgreSQL itself refuse a second command in any statement.
+    await client.query('BEGIN');
+    try {
+      for (const setting of ["lock_timeout = '5s'", "statement_timeout = '30s'", "idle_in_transaction_session_timeout = '30s'",
+        'search_path = public', `ROLE "${OWNER}"`]) await client.query(`SET LOCAL ${setting}`);
+      assert.deepEqual((await client.query('SELECT current_database() AS database, session_user AS actor, current_user AS effective')).rows[0],
+        {database: 'specimen-digitization-database', actor: ACTOR, effective: OWNER});
+      for (const text of statements) await client.query({text, queryMode: 'extended'});
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    }
+    writeFileSync(output, JSON.stringify({version: 'data-migration/v1', statements: statements.length, committed: true}), {mode: 0o600});
+  } else if (mode === 'migrated' || mode === 'restored') {
+    // Step 5, read only: the initializer's own postconditions (the owner owns every relation in public, the writer and
+    // reader hold exactly the default privileges, and the extensions are plpgsql and uuid-ossp), then the relations.
+    await client.query('BEGIN TRANSACTION READ ONLY');
+    await client.query("SET LOCAL statement_timeout = '30s'");
+    const results = await client.query(readFileSync('scripts/ci/initialize_postconditions.sql', 'utf8'));
+    const postconditions = results.filter(result => result.command === 'SELECT').at(-1).rows[0].postconditions;
+    const catalog = (await client.query(`WITH relations AS (SELECT n.nspname || '.' || c.relname AS qualified, c.relkind,
+        pg_get_userbyid(c.relowner)::text AS owner FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE left(n.nspname, 3) <> 'pg_' AND n.nspname <> 'information_schema')
+      SELECT current_database() = 'specimen-digitization-database' AS expected_database, session_user = '${ACTOR}' AS expected_actor,
+        ARRAY(SELECT qualified FROM relations WHERE relkind IN ('r', 'p', 'f') ORDER BY 1) AS tables,
+        ARRAY(SELECT qualified FROM relations WHERE relkind IN ('v', 'm') ORDER BY 1) AS views,
+        ARRAY(SELECT DISTINCT owner FROM relations ORDER BY 1) AS owners,
+        ARRAY(SELECT extname::text FROM pg_extension ORDER BY 1) AS extensions`)).rows[0];
+    await client.query('COMMIT');
+    writeFileSync(output, JSON.stringify({...catalog, postconditions}), {mode: 0o600});
+  } else if (mode === 'indexed') {
+    // RELEASE.md 4.4, Verify: the supplemental index inventory, read only; no row is read.
+    await client.query('BEGIN TRANSACTION READ ONLY');
+    await client.query("SET LOCAL statement_timeout = '30s'");
+    const indexes = (await client.query(INDEXES)).rows;
+    await client.query('COMMIT');
+    writeFileSync(output, JSON.stringify({version: 'native-sql-indexes/v1', instance, indexes}), {mode: 0o600});
   } else {
   // The pre-existing data-release database identity must already have the exact
-  // maintenance grants. No role creation, privilege escalation or owner switching.
+  // maintenance grants. No role creation or privilege escalation.
   if (mode === 'indexes') {
     assert.equal(instance, 'specimen-digitization-instance');
+    // As the owner role (RELEASE.md 4.3 step 4). CREATE INDEX CONCURRENTLY cannot run in a transaction, so this
+    // is the session's SET ROLE; the connection ends with this mode.
+    await client.query(`SET ROLE "${OWNER}"`);
     for (const file of ['dataconnect/sql/paging-indexes.sql', 'dataconnect/sql/search-indexes.sql']) {
       const source = readFileSync(file, 'utf8').replace(/^\s*--.*$/gm, '');
       for (const sql of source.split(';').map(value => value.trim()).filter(Boolean)) {
@@ -81,13 +322,7 @@ try {
     rows.push({table: tablename, count: data.rowCount,
       sha256: createHash('sha256').update(JSON.stringify(data.rows)).digest('hex')});
   }
-  const indexes = (await client.query(`SELECT c.relname AS name, t.relname AS table_name, a.amname AS method,
-    i.indisvalid AS valid, i.indisunique AS unique, pg_get_expr(i.indpred,i.indrelid) AS predicate,
-    ARRAY(SELECT pg_get_indexdef(c.oid,k,false) FROM generate_series(1,i.indnkeyatts) k ORDER BY k) AS keys,
-    ARRAY(SELECT pg_get_indexdef(c.oid,k,false) FROM generate_series(i.indnkeyatts+1,i.indnatts) k ORDER BY k) AS includes,
-    pg_get_indexdef(c.oid) AS definition FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid
-    JOIN pg_class t ON t.oid=i.indrelid JOIN pg_am a ON a.oid=c.relam
-    JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' ORDER BY c.relname`)).rows;
+  const indexes = (await client.query(INDEXES)).rows;
   const columns = (await client.query(`SELECT table_name,column_name,ordinal_position,column_default,is_nullable,data_type,
     udt_name FROM information_schema.columns WHERE table_schema='public' ORDER BY table_name,ordinal_position`)).rows;
   const constraints = (await client.query(`SELECT c.relname AS table_name, x.conname AS name,

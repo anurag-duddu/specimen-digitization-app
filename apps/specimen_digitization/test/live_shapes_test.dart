@@ -13,21 +13,25 @@
 import 'dart:async';
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/widgets/queue_row.dart';
+import 'package:specimen_digitization/src/widgets/field_row.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 
 import 'live_shapes_harness.dart';
+import 'ui_finders.dart';
+import 'workbench_harness.dart' show scrollAndTap;
 
-/// How many rows the queue builds for a page of a thousand, today.
-///
-/// Measured on 2026-09-17 at both windows: five at the phone and six at the
-/// tablet, which is what each viewport holds plus the sliver list's own cache
-/// extent. It was a thousand. Shrink only: see the comment at the assertion
-/// that reads it.
-const int eagerQueueRows = 6;
+/// Diff text uses Text.rich; preserve the complete literal when reading the UI.
+List<String> renderedText(WidgetTester tester) => tester
+    .widgetList<Text>(find.byType(Text))
+    .map((text) => text.data ?? text.textSpan?.toPlainText() ?? '')
+    .where((value) => value.isNotEmpty)
+    .toList();
 
 void main() {
   String recordRoute(Specimen record) =>
@@ -67,11 +71,11 @@ void main() {
         repository: LiveShapeRepository(record),
         location: recordRoute(record),
       );
-      final List<String> words = visibleText(tester);
+      final List<String> words = renderedText(tester);
 
       // Both readers are named on every reading, never one merged answer.
-      expect(words.where((String w) => w == 'qwen2.5-vl-72b'), isNotEmpty);
-      expect(words.where((String w) => w == 'gemma-3-27b-it'), isNotEmpty);
+      expect(words.where((String w) => w == 'VLM 1'), isNotEmpty);
+      expect(words.where((String w) => w == 'VLM 2'), isNotEmpty);
 
       // Each disagreement is counted rather than coloured
       // (design/00-north-star.md, "never color alone").
@@ -81,11 +85,27 @@ void main() {
         reason: 'a reading that differs has to say so in words',
       );
 
-      // Twelve disagreements plus the run's own finding, stated as a number
-      // the reviewer can act on rather than as a warning glyph.
+      // The concise reader name never replaces its producer provenance.
+      for (final entry in <String, String>{
+        'VLM 1': 'gemma-3-27b-it',
+        'VLM 2': 'qwen2.5-vl-72b',
+      }.entries) {
+        await scrollAndTap(
+          tester,
+          uiIconButton('How this reading was produced, Label 1, ${entry.key}'),
+        );
+        expect(find.text(entry.value), findsOneWidget);
+        await tester.tap(uiButton('Close'));
+        await tester.pumpAndSettle();
+      }
+      await pickUiSelect(tester, 'Label', 'All labels');
+      final selector = tester.widget<UiSelect<String>>(uiSelect('Label'));
+      expect(selector.options, hasLength(13));
       expect(
-        words.where((String w) => w.contains('block clearance')),
-        isNotEmpty,
+        renderedText(
+          tester,
+        ).where((word) => word == '2 model results · Differences to review'),
+        hasLength(12),
       );
     });
   });
@@ -115,15 +135,15 @@ void main() {
       // The whole reading is on screen, not an ellipsis of it: a
       // transcription is content, and content wraps (11 section 3.3).
       expect(
-        visibleText(tester).where((String w) => w == reading),
+        renderedText(tester).where((String w) => w == reading),
         isNotEmpty,
         reason: 'the four hundred character reading is truncated or missing',
       );
 
-      // The ratio the wire measured is shown as measured, because the
-      // fixture carries an alignment status the wire actually sends.
+      // The measured comparison remains available in its evidence disclosure.
+      await scrollAndTap(tester, find.text('Comparison evidence'));
       expect(
-        visibleText(
+        renderedText(
           tester,
         ).where((String w) => w.contains('Difference fraction: 0.0325')),
         isNotEmpty,
@@ -237,19 +257,36 @@ void main() {
         repository: LiveShapeRepository(record),
         location: recordRoute(record),
       );
-      // At the phone the segments sit below the first viewport, which is
-      // the composition defect 13 section 0 names and A2 is rebuilding. A
-      // shape test scrolls to them rather than asserting the arrangement.
-      await tester.ensureVisible(find.text('Fields'));
+      // Reach the data tab and its progressive field disclosure at either
+      // window size before inspecting the rendered abstentions.
+      await tester.ensureVisible(find.text('Specimen data'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Fields'));
+      await tester.tap(find.text('Specimen data'));
       await tester.pumpAndSettle();
-      final List<String> words = visibleText(tester);
+      final row = find.byType(FieldRow).first;
+      final disclosure = find.descendant(
+        of: row,
+        matching: find.byType(UiDisclosure),
+      );
+      await scrollAndTap(
+        tester,
+        find
+            .descendant(
+              of: disclosure,
+              matching: find.byWidgetPredicate((widget) => widget is Pressable),
+            )
+            .first,
+      );
+      final List<String> words = renderedText(tester);
 
       // Unknown is a state with a name, not a blank and not a zero
       // (design/00-north-star.md, principle 2).
       expect(words.where((String w) => w == 'Unknown'), isNotEmpty);
-      expect(words.where((String w) => w == 'As written: Unknown'), isNotEmpty);
+      expect(words.where((String w) => w == 'As written'), isNotEmpty);
+      expect(
+        find.descendant(of: row, matching: find.text('Unknown')),
+        findsWidgets,
+      );
 
       // The one thing this screen must never do.
       for (final String word in words) {
@@ -264,7 +301,7 @@ void main() {
 
   group('a queue of a thousand rows', () {
     atEveryWindow(
-      'the queue counts what it loaded and builds only what it shows',
+      'the queue retains its loaded page and builds only the viewport cache',
       (WidgetTester tester, String window, Size size) async {
         final Specimen record = await liveShapeRecord(
           liveShapeWire('no-measurements.json'),
@@ -278,46 +315,42 @@ void main() {
           location: queueRoute,
         );
 
-        // The count is of what was loaded. The list endpoint answers a page and
-        // a cursor and never a total, so a queue claiming one would be claiming
-        // authority over records it has never seen.
-        // 13 section 4.2 draws it as a numeral with its unit, and the whole
-        // sentence stays on the header's live region, which is where a
-        // screen reader hears what the page is made of.
-        expect(
-          visibleText(tester).where((String w) => w == '1000'),
-          isNotEmpty,
+        // The current header is search and review filters. Check the actual
+        // loaded page without inventing a server-authoritative total count.
+        final controller = WorkspaceScope.read(
+          tester.element(find.byType(QueueRow).first),
         );
+        expect(controller.items, hasLength(1000));
         expect(
-          visibleText(tester).where((String w) => w == 'RECORDS'),
-          isNotEmpty,
-        );
-        expect(
-          tester.getSemantics(find.textContaining('need review')).label,
-          contains('1000 records loaded'),
+          controller.items.map((item) => item.id),
+          rows.map((item) => item.id),
         );
 
-        // How many of the thousand rows the queue actually built.
-        //
-        // A ratchet, the mechanism this repository already uses for its
-        // gates: the number may shrink and may never grow. It was a thousand,
-        // because the queue built its list with `ListView(children: ...)`,
-        // the eager constructor, so every row a collection held was built
-        // whether or not it was on screen. Slot A3 rebuilt the screen as the
-        // one `CustomScrollView` 13 section 4.2 asks for, with a
-        // `SliverList.builder` for the rows, and the number is now what a
-        // window shows plus the list's cache extent.
-        final int built = tester
-            .widgetList<QueueRow>(find.byType(QueueRow))
-            .length;
+        final rowFinder = find.byType(QueueRow);
+        final int built = rowFinder.evaluate().length;
         expect(built, greaterThan(0));
+        final list = find.descendant(
+          of: find.byKey(const PageStorageKey<String>('queue-list')),
+          matching: find.byType(SliverList),
+        );
+        final RenderSliverList sliver = tester.renderObject<RenderSliverList>(
+          list,
+        );
+        final double minimumHeight = rowFinder
+            .evaluate()
+            .map((element) => (element.renderObject! as RenderBox).size.height)
+            .reduce((a, b) => a < b ? a : b);
+        expect(minimumHeight, greaterThan(0));
+        final int cacheBound =
+            (sliver.constraints.remainingCacheExtent / minimumHeight).ceil() +
+            1;
         expect(
           built,
-          lessThanOrEqualTo(eagerQueueRows),
+          lessThanOrEqualTo(cacheBound),
           reason:
-              'the queue built $built of 1000 rows, up from $eagerQueueRows. '
-              'This number may only shrink',
+              'Only the viewport cache plus its partial edge row may be built.',
         );
+        expect(built, lessThan(rows.length));
 
         // It scrolls, and scrolling does not run out of rows.
         await tester.drag(find.byType(QueueRow).first, const Offset(0, -2000));

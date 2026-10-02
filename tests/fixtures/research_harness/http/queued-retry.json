@@ -1,0 +1,8 @@
+{
+  "contract_version": "research-retry-v1",
+  "command_id": "cd03eed1899e4d27626d20d6da80ffbfe2393f55597649778c7d6ed2e8bfe5ac",
+  "field_key": "taxon",
+  "generation": 1,
+  "expected_checkpoint_revision": 1,
+  "status": "queued"
+}

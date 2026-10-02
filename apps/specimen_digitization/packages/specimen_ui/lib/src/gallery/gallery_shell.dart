@@ -14,6 +14,7 @@ import 'package:flutter/widgets.dart';
 import '../../specimen_ui.dart';
 import 'pages/actions_page.dart';
 import 'pages/colour_page.dart';
+import 'pages/control_states_page.dart';
 import 'pages/composition_page.dart';
 import 'pages/data_page.dart';
 import 'pages/fields_page.dart';
@@ -129,6 +130,7 @@ const List<GalleryPage> familyPages = <GalleryPage>[
 const List<GalleryPage> galleryPages = <GalleryPage>[
   ...foundationPages,
   ...familyPages,
+  controlStatesPage,
   fitPage,
   compositionPage,
 ];
@@ -273,10 +275,7 @@ class _PageList extends StatelessWidget {
       width: 220,
       child: Padding(
         padding: EdgeInsetsDirectional.all(ui.space.s4),
-        child: GlassSurface(
-          level: GlassLevel.flat,
-          radius: ui.shape.tile,
-          padding: EdgeInsetsDirectional.all(ui.space.s2),
+        child: _GalleryNavigationSurface(
           // The pane is stretched to the window by the shell's row, so the
           // list inside it can scroll when the window is shorter than the
           // page count needs. Ten pages overflow a 600 px window otherwise.
@@ -309,6 +308,30 @@ class _PageList extends StatelessWidget {
   }
 }
 
+/// The gallery obeys the same default-versus-decorative choice as its page.
+class _GalleryNavigationSurface extends StatelessWidget {
+  const _GalleryNavigationSurface({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final ui = context.ui;
+    if (ui.field.decorativeFields) {
+      return GlassSurface(
+        level: GlassLevel.flat,
+        radius: ui.shape.tile,
+        padding: EdgeInsetsDirectional.all(ui.space.s2),
+        child: child,
+      );
+    }
+    return Surface(
+      radius: ui.shape.tile,
+      padding: EdgeInsetsDirectional.all(ui.space.s2),
+      child: child,
+    );
+  }
+}
+
 class _PageListRow extends StatelessWidget {
   const _PageListRow({
     required this.page,
@@ -329,21 +352,24 @@ class _PageListRow extends StatelessWidget {
       selected: selected,
       radius: ui.shape.inner,
       minHitBox: 0,
-      builder: (BuildContext context, Set<WidgetState> states) => SizedBox(
-        height: ui.density.rowHeight,
-        child: Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: Padding(
-            padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s3),
-            child: Text(
-              page.title,
-              style: ui.type.label.copyWith(
-                color: selected ? ui.color.ink : ui.color.inkSecondary,
+      builder: (BuildContext context, Set<WidgetState> states) =>
+          ConstrainedBox(
+            constraints: BoxConstraints(minHeight: ui.density.rowHeight),
+            child: Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: Padding(
+                padding: EdgeInsetsDirectional.symmetric(
+                  horizontal: ui.space.s3,
+                ),
+                child: Text(
+                  page.title,
+                  style: ui.type.label.copyWith(
+                    color: selected ? ui.color.ink : ui.color.inkSecondary,
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ),
     );
   }
 }

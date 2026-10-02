@@ -71,7 +71,7 @@ void main() {
     final SemanticsData data = node.getSemanticsData();
 
     // A row names the record, not just its state.
-    expect(data.label, contains('Synthetic insect label'));
+    expect(data.label, contains('fixture-001'));
     // It is a button, and it can be activated without a pointer.
     expect(data.flagsCollection.isButton, isTrue);
     expect(data.hasAction(SemanticsAction.tap), isTrue);
@@ -101,9 +101,11 @@ void main() {
     // a screen reader reads.
     final List<String> spoken = allSemanticsNames(tester);
     for (final String name in <String>[
-      'Queue',
+      'Specimens',
       'Intake',
-      'Filters',
+      'Needs a human',
+      'Deferred',
+      'Cleared',
       'Account menu',
       'Search by specimen ID',
     ]) {
@@ -158,7 +160,7 @@ void main() {
     // semantics of its own, so a finder on it walks up to the screen.
     String rowLabel(Finder row) => tester
         .getSemantics(
-          find.descendant(of: row, matching: find.byType(UiListRow)),
+          find.descendant(of: row, matching: find.byType(Pressable)).first,
         )
         .getSemanticsData()
         .label;

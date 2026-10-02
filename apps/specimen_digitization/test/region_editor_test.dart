@@ -3,7 +3,6 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
-import 'package:specimen_digitization/src/screens/workbench/workbench_layout.dart';
 import 'package:specimen_digitization/src/source_pixels.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
@@ -23,14 +22,12 @@ Finder uiTextArea(String label) => find.byWidgetPredicate(
   description: 'UiTextArea("$label")',
 );
 
-/// One option of the region list, which is a capsule toggle in single mode.
-Finder regionOption(String label) => find.byWidgetPredicate(
-  (Widget widget) =>
-      widget is Pressable &&
-      widget.role == PressableRole.toggle &&
-      widget.semanticsLabel == label,
-  description: 'region option "$label"',
-);
+/// The current label options remain available before opening the select.
+List<String> regionOptions(WidgetTester tester) => tester
+    .widget<UiSelect<int>>(uiSelect('Label'))
+    .options
+    .map((UiSelectOption<int> option) => option.label)
+    .toList();
 
 /// Presses the editor's save wherever the top bar drew it.
 ///
@@ -260,19 +257,19 @@ void main() {
     );
     await tester.tap(find.text('Edit regions'));
     await tester.pumpAndSettle();
-    expect(regionOption('Label 2'), findsOneWidget);
+    expect(regionOptions(tester), <String>['Label 1', 'Label 2']);
 
     await tester.ensureVisible(uiIconButton('Delete region'));
     await tester.tap(uiIconButton('Delete region'));
     await tester.pumpAndSettle();
-    expect(regionOption('Label 2'), findsNothing);
+    expect(regionOptions(tester), <String>['Label 1']);
 
     // A local delete is reversible without closing the editor
     // (pass criterion 3.5).
     await tester.ensureVisible(find.text('Undo delete label region'));
     await tester.tap(find.text('Undo delete label region'));
     await tester.pumpAndSettle();
-    expect(regionOption('Label 2'), findsOneWidget);
+    expect(regionOptions(tester), <String>['Label 1', 'Label 2']);
     expect(decision, isNull);
   });
 
@@ -307,13 +304,13 @@ void main() {
     await tester.ensureVisible(find.text('Merge with next'));
     await tester.tap(find.text('Merge with next'));
     await tester.pumpAndSettle();
-    expect(regionOption('Label 2'), findsNothing);
+    expect(regionOptions(tester), <String>['Label 1']);
     await tester.ensureVisible(
       find.text('Undo merge with the next label region'),
     );
     await tester.tap(find.text('Undo merge with the next label region'));
     await tester.pumpAndSettle();
-    expect(regionOption('Label 2'), findsOneWidget);
+    expect(regionOptions(tester), <String>['Label 1', 'Label 2']);
 
     await tester.ensureVisible(uiTextArea('Reason'));
     await tester.enterText(uiTextArea('Reason'), 'Kept both label regions');
@@ -460,34 +457,30 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('the photograph is the header, floored at two fifths', (
-      WidgetTester tester,
-    ) async {
-      await pumpPhoneEditor(tester);
-      // 13 section 4.3: the band is a collapsing header floored at 40
-      // percent of the viewport, which is what gives a 48 dp corner handle
-      // somewhere to go on a phone (finding V-7).
-      final UiCollapsingHeader header = tester.widget<UiCollapsingHeader>(
-        find.byType(UiCollapsingHeader),
-      );
-      expect(header.minFraction, sourceHeaderMinFraction);
-      // The band takes what the photograph needs between the floor and the
-      // 55 percent a source header starts at, so a wide label does not leave
-      // half a phone of empty ground above the form.
-      expect(
-        header.maxFraction,
-        inInclusiveRange(sourceHeaderMinFraction, sourceHeaderMaxFraction),
-      );
-
-      final Rect image = tester.getRect(find.byType(SourcePixels).first);
-      expect(image.top, greaterThanOrEqualTo(0));
-      expect(image.bottom, lessThanOrEqualTo(compactWindow.height));
-      expect(
-        image.height,
-        greaterThanOrEqualTo(2 * 48),
-        reason: 'a handle at each end of the box needs the room',
-      );
-    });
+    testWidgets(
+      'the photograph begins the shared editor scroll with room for handles',
+      (WidgetTester tester) async {
+        await pumpPhoneEditor(tester);
+        // The approved editor uses one ordinary scroll instead of a collapsing
+        // photograph header. The source remains first and usable before the form.
+        expect(find.byType(UiCollapsingHeader), findsNothing);
+        expect(
+          find.ancestor(
+            of: find.byType(SourcePixels).first,
+            matching: find.byType(CustomScrollView),
+          ),
+          findsOneWidget,
+        );
+        final Rect image = tester.getRect(find.byType(SourcePixels).first);
+        expect(image.top, greaterThanOrEqualTo(0));
+        expect(image.bottom, lessThanOrEqualTo(compactWindow.height));
+        expect(
+          image.height,
+          greaterThanOrEqualTo(2 * 48),
+          reason: 'a handle at each end of the box needs the room',
+        );
+      },
+    );
 
     testWidgets('the preview is the first thing and the form is beneath it', (
       WidgetTester tester,

@@ -1,14 +1,9 @@
 /// The region editor (13 section 4.3; 07 section 7; 05 section 3.6).
 ///
-/// Full screen on compact and medium, a 640 dp dialog otherwise. On the route
-/// it is one scroll: the photograph is a `UiCollapsingHeader` floored at 40
-/// percent of the viewport with the region strip riding its lower edge, and
-/// the coordinate form and the provenance scroll beneath it. Back, the title,
-/// save and the order controls are the top bar's, which the editor publishes
-/// into the frame itself (13 sections 3.4 and 4.3). In the dialog, which has
-/// no bar of its own, they stay in the editor's own sticky footer and the
-/// dialog lends the editor its one scroll rather than wrapping a second one
-/// around it.
+/// Full screen on compact and medium, a dialog otherwise. The aspect-correct
+/// photograph, its compact tools, label selector and form share one page scroll.
+/// The route publishes save in its top bar; the dialog keeps save and cancel
+/// below its scrolling form. Inspection gestures belong only to the photograph.
 ///
 /// The preview fills the width and every region can be dragged by its body or
 /// resized by one of four corner handles. The numeric fields stay as the precise
@@ -27,12 +22,14 @@ library;
 
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'models.dart';
-import 'screens/workbench/workbench_layout.dart';
+import 'screens/workbench/canvas_tool_layout.dart';
+import 'screens/workbench/source_geometry.dart';
 import 'source_pixels.dart';
 import 'theme/motion.dart';
 import 'vocabulary.dart';
@@ -85,7 +82,7 @@ Future<Json?> showRegionEditor(
       builder: (_) => RegionEditor(regions: regions, asset: asset),
     );
   }
-  return Navigator.of(context).push<Json>(
+  return Navigator.of(context, rootNavigator: true).push<Json>(
     uiFullScreenRoute<Json>(
       context,
       builder: (BuildContext routeContext) => UiScaffold(
@@ -116,9 +113,8 @@ class RegionEditor extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ConstrainedBox(
     constraints: const BoxConstraints(maxWidth: DialogWidths.wide),
-    // The editor carries its save in its own sticky footer beside the reason
-    // it needs (07 section 7), so the dialog's action slots stay empty and
-    // the footer is the one place a save can be pressed.
+    // The editor carries save and cancel below its scrolling form, so the
+    // dialog's action slots stay empty.
     child: UiDialog(
       title: regionEditorTitle,
       // The editor scrolls its own form above its own footer, so the dialog
@@ -145,17 +141,12 @@ class RegionEditorBody extends StatefulWidget {
 
   /// True where the editor is the body of a `UiDialog`.
   ///
-  /// A dialog has no bar across the top, so back, save and the order controls
-  /// stay in the editor's own footer there, and the photograph is a band of
-  /// the form rather than a header that pins. On a route the editor publishes
-  /// all four into the frame's bar and the photograph is the header
-  /// (13 section 4.3).
+  /// A dialog keeps save and cancel below the form. A route publishes save
+  /// in the frame's bar. Both let the photograph scroll with the form.
   final bool inDialog;
 
-  /// The shortest the photograph's band may be on a compact window
-  /// (finding V-7). Below this a corner handle has no room to be dragged and
-  /// the editor is a coordinate form with a thumbnail.
-  static const double compactPreviewMinHeight = 240;
+  /// A short pane scrolls rather than reducing its editing viewport to zero.
+  static const double compactPreviewMinHeight = 120;
 
   /// What the coordinate disclosure is called.
   static const String coordinatesTitle = 'Exact coordinates and region order';
@@ -179,6 +170,13 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
       .toList();
   int _selected = 0;
   int _coordinateVersion = 0;
+  final TransformationController _previewTransform = TransformationController();
+  bool _panPreview = false;
+  double _availableHeight = double.infinity;
+  double _inspectStartScale = 1;
+  Offset _inspectSourcePoint = Offset.zero;
+  List<num>? _dragOrigin;
+  Offset _dragDistance = Offset.zero;
   String? _error;
   final Set<String> _invalidCoordinates = <String>{};
   bool _coordinateSubmitAttempted = false;
@@ -229,6 +227,7 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
     _slots?.release(this);
     _scroll.dispose();
     _reason.dispose();
+    _previewTransform.dispose();
     super.dispose();
   }
 
@@ -330,14 +329,23 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
     final Json? selected = _current;
     if (selected == null) return;
     final List<num> bbox = selected['bbox'] as List<num>;
-    final double dx = delta.dx / box.width * _width;
-    final double dy = delta.dy / box.height * _height;
+    if (_dragOrigin == null) {
+      _remember(
+        corner == _dragBody ? 'Move label region' : 'Resize label region',
+      );
+      _dragOrigin = List<num>.from(bbox);
+      _dragDistance = Offset.zero;
+    }
+    _dragDistance += delta;
+    final List<num> original = _dragOrigin!;
+    final double dx = _dragDistance.dx / box.width * _width;
+    final double dy = _dragDistance.dy / box.height * _height;
     setState(() {
       if (corner == _dragBody) {
-        final double w = (bbox[2] - bbox[0]).toDouble();
-        final double h = (bbox[3] - bbox[1]).toDouble();
-        final double left = (bbox[0] + dx).clamp(0, _width - w);
-        final double top = (bbox[1] + dy).clamp(0, _height - h);
+        final double w = (original[2] - original[0]).toDouble();
+        final double h = (original[3] - original[1]).toDouble();
+        final double left = (original[0] + dx).clamp(0, _width - w);
+        final double top = (original[1] + dy).clamp(0, _height - h);
         bbox[0] = left.roundToDouble();
         bbox[1] = top.roundToDouble();
         bbox[2] = (left + w).roundToDouble();
@@ -345,12 +353,24 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
       } else {
         final int xIndex = corner.isEven ? 0 : 2;
         final int yIndex = corner < 2 ? 1 : 3;
-        bbox[xIndex] = (bbox[xIndex] + dx).clamp(0, _width).roundToDouble();
-        bbox[yIndex] = (bbox[yIndex] + dy).clamp(0, _height).roundToDouble();
+        bbox[xIndex] = (original[xIndex] + dx)
+            .clamp(
+              xIndex == 0 ? 0 : original[0] + 1,
+              xIndex == 0 ? original[2] - 1 : _width,
+            )
+            .roundToDouble();
+        bbox[yIndex] = (original[yIndex] + dy)
+            .clamp(
+              yIndex == 1 ? 0 : original[1] + 1,
+              yIndex == 1 ? original[3] - 1 : _height,
+            )
+            .roundToDouble();
       }
       _coordinateVersion++;
     });
   }
+
+  void _endDrag() => _dragOrigin = null;
 
   Json? get _current => _regions.isEmpty
       ? null
@@ -359,11 +379,9 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
   /// Puts the reason back on the screen, for a save that cannot proceed
   /// without it.
   ///
-  /// The routed form's save is in the bar and the reason is at the end of the
-  /// scroll, so a reviewer who presses save with an empty reason would
-  /// otherwise be told by a line they cannot see.
+  /// Save remains visible while the reason can scroll off screen, so a save
+  /// with an empty reason must reveal its explanation on either surface.
   void _revealReason() {
-    if (widget.inDialog) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final BuildContext? anchor = _reasonAnchor.currentContext;
       if (!mounted || anchor == null) return;
@@ -425,7 +443,12 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
   @override
   Widget build(BuildContext context) {
     if (!widget.inDialog) _publish();
-    return widget.inDialog ? _dialogForm(context) : _routedForm(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _availableHeight = constraints.maxHeight;
+        return widget.inDialog ? _dialogForm(context) : _routedForm(context);
+      },
+    );
   }
 
   /// The editor inside a dialog: the form above the footer that saves it.
@@ -440,17 +463,19 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
       children: <Widget>[
         Flexible(
           child: SingleChildScrollView(
-            padding: EdgeInsetsDirectional.all(ui.space.s6),
+            padding: EdgeInsetsDirectional.all(ui.space.s4),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                ..._intro(context),
-                ..._provenance(context),
-                SizedBox(height: ui.space.s3),
-                _regionStrip(context),
                 ..._emptyOrPreview(context, banded: true),
+                SizedBox(height: ui.space.s2),
+                _regionStrip(context),
+                ..._intro(context),
                 ..._form(context),
+                ..._provenance(context),
+                SizedBox(height: ui.space.s4),
+                _reasonField(context),
               ],
             ),
           ),
@@ -462,14 +487,12 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
 
   /// The editor on its own route (13 section 4.3).
   ///
-  /// The photograph is the header, floored at 40 percent of the viewport with
-  /// the region strip riding its lower edge; the form, the provenance and the
-  /// reason scroll beneath it; back, the title, save and the order controls
-  /// are the bar's.
+  /// The photograph, selector, form, provenance and reason scroll together.
+  /// Back, the title and save remain in the frame's bar.
   Widget _routedForm(BuildContext context) {
     final UiThemeData ui = context.ui;
     final EdgeInsetsGeometry gutter = EdgeInsetsDirectional.symmetric(
-      horizontal: ui.space.s6,
+      horizontal: ui.space.s4,
     );
     return CustomScrollView(
       controller: _scroll,
@@ -483,9 +506,9 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                ..._intro(context),
-                SizedBox(height: ui.space.s3),
                 _regionStrip(context),
+                SizedBox(height: ui.space.s2),
+                ..._intro(context),
                 ..._emptyOrPreview(context, banded: false),
                 ..._form(context),
                 ..._provenance(context),
@@ -502,44 +525,13 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
     );
   }
 
-  /// The photograph as the one region this route pins.
-  ///
-  /// The band and nothing else. A header with a chrome row draws `glass.flat`
-  /// behind that row once it is collapsed, which is a second frosted pane on
-  /// a window 13 section 2.2 allows one, and this editor's region list has
-  /// the whole width of the form to sit in.
-  ///
-  /// Built `primary: true`: the photograph is the thing this editor exists to
-  /// show, so the header publishes `PrimaryRegion` on it at the extent it
-  /// pins and no `PinnedChrome`, and spends nothing of the chrome budget, for
-  /// the reason `WorkbenchSourcePane` states and the pattern now carries (13
-  /// sections 2.3 and 3.1, polish 3). 13 section 5 names no fold expectation
-  /// for the editor and the fold clause runs at compact only, so the marker
-  /// states what the header is and no gate reads a number off it that it did
-  /// not read before: the editor's chrome is the frame's bar alone, as it was
-  /// with the zero extent wrapper this replaces.
-  Widget _header(BuildContext context, UiThemeData ui) {
-    // The band takes the height the photograph actually needs, between the
-    // floor 13 section 4.3 gives it and the 55 percent 13 section 3.1 starts
-    // at. The overlay maps recorded pixel coordinates onto the image, so the
-    // image keeps the asset's ratio at every width and a band taller than
-    // that is empty ground between the pixels and the form under them.
-    final Size viewport = MediaQuery.sizeOf(context);
-    final double natural =
-        (viewport.width - 2 * ui.space.s6) * _height / _width;
-    return UiCollapsingHeader(
-      primary: true,
-      maxFraction: (natural / viewport.height).clamp(
-        sourceHeaderMinFraction,
-        sourceHeaderMaxFraction,
-      ),
-      minFraction: sourceHeaderMinFraction,
-      content: Padding(
-        padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s6),
-        child: Center(child: _previewImage(context, _box)),
-      ),
-    );
-  }
+  /// The photograph and its tools scroll with the rest of the editor.
+  Widget _header(BuildContext context, UiThemeData ui) => SliverToBoxAdapter(
+    child: Padding(
+      padding: EdgeInsets.symmetric(horizontal: ui.space.s4),
+      child: _preview(context, _box),
+    ),
+  );
 
   /// The selected region's box, or an empty list where there is none.
   List<num> get _box {
@@ -552,21 +544,19 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
     Text('Add, resize, rotate, reorder or merge label regions.'),
   ];
 
-  /// The region list, which is also the header's chrome row on a route.
-  Widget _regionStrip(BuildContext context) => UiCapsuleToggle<int>(
-    selection: UiToggleSelection.single,
-    selected: <int>{_selected},
-    // Single mode clears the option already on; a region list has no "none"
-    // state, so choosing the current one again leaves the selection where it
-    // is.
-    onChanged: (Set<int> next) {
-      if (next.isEmpty) return;
+  /// One selected label, without reserving a row for every region.
+  Widget _regionStrip(BuildContext context) => UiSelect<int>(
+    label: 'Label',
+    semanticsLabel: 'Label to review',
+    placeholder: 'Choose a label',
+    value: _regions.isEmpty ? null : _selected,
+    onChanged: (int next) {
       SpecimenHaptics.selectionChanged();
-      setState(() => _selected = next.first);
+      setState(() => _selected = next);
     },
-    options: <UiToggleOption<int>>[
+    options: <UiSelectOption<int>>[
       for (final (int i, Json _) in _regions.indexed)
-        UiToggleOption<int>(value: i, label: 'Label ${i + 1}'),
+        UiSelectOption<int>(value: i, label: 'Label ${i + 1}'),
     ],
   );
 
@@ -613,10 +603,13 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
             label: rotateReadingLabel,
             variant: UiButtonVariant.ghost,
             leading: UiIcons.rotateView,
-            onPressed: () => setState(
-              () => selected['rotation_quarter_turns'] =
-                  ((selected['rotation_quarter_turns'] as int) + 1) % 4,
-            ),
+            onPressed: () {
+              _remember('Rotate label reading');
+              setState(
+                () => selected['rotation_quarter_turns'] =
+                    ((selected['rotation_quarter_turns'] as int) + 1) % 4,
+              );
+            },
           ),
         ),
         SizedBox(height: ui.space.s2),
@@ -695,11 +688,13 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
   }
 
   void _moveEarlier() => setState(() {
+    _remember('Reorder label region');
     final Json item = _regions.removeAt(_selected);
     _regions.insert(--_selected, item);
   });
 
   void _moveLater() => setState(() {
+    _remember('Reorder label region');
     final Json item = _regions.removeAt(_selected);
     _regions.insert(++_selected, item);
   });
@@ -807,65 +802,198 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
     ];
   }
 
-  /// The photograph, with every region drawn over it.
-  ///
-  /// On a compact window the band is floored at
-  /// [RegionEditorBody.compactPreviewMinHeight] so the image is the dominant
-  /// element of the sheet and a 48 dp corner handle has somewhere to go
-  /// (finding V-7). The image itself keeps the asset's own ratio at every
-  /// width, because the overlay maps recorded pixel coordinates onto it and a
-  /// stretched image would move every handle off the pixel it names.
-  Widget _preview(BuildContext context, List<num> box) {
-    final Widget image = _previewImage(context, box);
-    if (!WindowClass.of(context).isCompact) return image;
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints outer) {
-        final double natural = outer.maxWidth.isFinite
-            ? outer.maxWidth * _height / _width
-            : RegionEditorBody.compactPreviewMinHeight;
-        return SizedBox(
-          height: math.max(natural, RegionEditorBody.compactPreviewMinHeight),
-          child: Center(child: image),
-        );
-      },
+  /// An aspect-correct editing viewport within the available pane budget.
+  double _previewToolsHeight(BuildContext context, double width) =>
+      canvasToolsHeight(context, width, [
+        _panPreview ? 'Pan photograph' : 'Edit regions',
+        '${(_previewTransform.value.getMaxScaleOnAxis() * 100).round()}%',
+        null,
+      ]) +
+      UiDensity.hitBox +
+      context.ui.space.s2;
+
+  Widget _preview(BuildContext context, List<num> box) => LayoutBuilder(
+    builder: (context, constraints) {
+      final natural = constraints.maxWidth * _height / _width;
+      final height = math.min(
+        natural,
+        math.max(
+          RegionEditorBody.compactPreviewMinHeight,
+          _availableHeight - _previewToolsHeight(context, constraints.maxWidth),
+        ),
+      );
+      return _previewImage(context, box, height);
+    },
+  );
+
+  Widget _previewImage(
+    BuildContext context,
+    List<num> box,
+    double height,
+  ) => Column(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      SizedBox(
+        height: height,
+        child: Center(
+          child: AspectRatio(
+            aspectRatio: _width / _height,
+            child: LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints c) {
+                final Size size = Size(c.maxWidth, c.maxHeight);
+                final viewer = InteractiveViewer(
+                  key: _previewKey,
+                  transformationController: _previewTransform,
+                  minScale: 1,
+                  maxScale: 12,
+                  panEnabled: _panPreview,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      SourcePixels(
+                        asset: widget.asset,
+                        semanticLabel:
+                            'Unmodified source for region correction',
+                      ),
+                      for (final (int i, Json r) in _regions.indexed)
+                        _RegionBox(
+                          key: ValueKey<Object>(r['region_id'] ?? i),
+                          index: i + 1,
+                          selected: i == _selected,
+                          bbox: r['bbox'] as List<num>,
+                          imageWidth: _width,
+                          imageHeight: _height,
+                          size: size,
+                          viewerScale: _previewTransform.value
+                              .getMaxScaleOnAxis(),
+                          onSelect: () => setState(() => _selected = i),
+                          onDragEnd: _endDrag,
+                          onDragBody: i == _selected && !_panPreview
+                              ? (Offset d) => _drag(_dragBody, d, size)
+                              : null,
+                          onDragCorner: i == _selected && !_panPreview
+                              ? (int corner, Offset d) => _drag(corner, d, size)
+                              : null,
+                        ),
+                      if (box.length == 4) const SizedBox.shrink(),
+                    ],
+                  ),
+                  onInteractionUpdate: (_) => setState(() {}),
+                );
+                if (!_panPreview) return viewer;
+                return RawGestureDetector(
+                  key: const ValueKey('region-editor-inspection'),
+                  behavior: HitTestBehavior.opaque,
+                  gestures: {
+                    _InspectScaleRecognizer:
+                        GestureRecognizerFactoryWithHandlers<
+                          _InspectScaleRecognizer
+                        >(_InspectScaleRecognizer.new, (recognizer) {
+                          recognizer.onStart = (details) {
+                            _inspectStartScale = _previewTransform.value
+                                .getMaxScaleOnAxis();
+                            _inspectSourcePoint = _previewTransform.toScene(
+                              details.localFocalPoint,
+                            );
+                          };
+                          recognizer.onUpdate = (details) {
+                            final scale = (_inspectStartScale * details.scale)
+                                .clamp(1.0, 12.0);
+                            final translation =
+                                details.localFocalPoint -
+                                _inspectSourcePoint * scale;
+                            setState(
+                              () => _previewTransform.value = Matrix4.identity()
+                                ..translateByDouble(
+                                  translation.dx.clamp(
+                                    size.width * (1 - scale),
+                                    0,
+                                  ),
+                                  translation.dy.clamp(
+                                    size.height * (1 - scale),
+                                    0,
+                                  ),
+                                  0,
+                                  1,
+                                )
+                                ..scaleByDouble(scale, scale, 1, 1),
+                            );
+                          };
+                        }),
+                  },
+                  child: IgnorePointer(child: viewer),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+      Wrap(
+        spacing: context.ui.space.s2,
+        runSpacing: context.ui.space.s2,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          UiMenuTrigger(
+            label: _panPreview ? 'Pan photograph' : 'Edit regions',
+            semanticsLabel:
+                'Canvas mode: ${_panPreview ? 'Pan photograph' : 'Edit regions'}',
+            menuLabel: 'Canvas mode',
+            items: [
+              UiMenuItem(
+                label: 'Edit regions',
+                onSelected: () => setState(() => _panPreview = false),
+              ),
+              UiMenuItem(
+                label: 'Pan photograph',
+                onSelected: () => setState(() => _panPreview = true),
+              ),
+            ],
+          ),
+          UiMenuTrigger(
+            label:
+                '${(_previewTransform.value.getMaxScaleOnAxis() * 100).round()}%',
+            semanticsLabel: 'Editor zoom',
+            menuLabel: 'Editor zoom',
+            items: [
+              UiMenuItem(
+                label: 'Zoom editor in',
+                onSelected: () => _zoomPreview(1.3),
+              ),
+              UiMenuItem(
+                label: 'Zoom editor out',
+                onSelected: () => _zoomPreview(1 / 1.3),
+              ),
+            ],
+          ),
+          UiIconButton(
+            icon: UiIcons.fitToView,
+            semanticsLabel: 'Reset editor view',
+            onPressed: () =>
+                setState(() => _previewTransform.value = Matrix4.identity()),
+          ),
+        ],
+      ),
+    ],
+  );
+
+  void _zoomPreview(double factor) {
+    // Zoom around the preview's own centre. The image dimensions and saved
+    // bounds never participate in the view-only transformation.
+    final BuildContext? canvas = _previewKey.currentContext;
+    final Size? size = canvas?.size;
+    if (size == null) return;
+    setState(
+      () => _previewTransform.value = scaleAbout(
+        _previewTransform.value,
+        size,
+        factor,
+        minScale: 1,
+        maxScale: 12,
+      ),
     );
   }
 
-  Widget _previewImage(BuildContext context, List<num> box) => AspectRatio(
-    aspectRatio: _width / _height,
-    child: LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints c) {
-        final Size size = Size(c.maxWidth, c.maxHeight);
-        return Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            SourcePixels(
-              asset: widget.asset,
-              semanticLabel: 'Unmodified source for region correction',
-            ),
-            for (final (int i, Json r) in _regions.indexed)
-              _RegionBox(
-                key: ValueKey<Object>(r['region_id'] ?? i),
-                index: i + 1,
-                selected: i == _selected,
-                bbox: r['bbox'] as List<num>,
-                imageWidth: _width,
-                imageHeight: _height,
-                size: size,
-                onSelect: () => setState(() => _selected = i),
-                onDragBody: i == _selected
-                    ? (Offset d) => _drag(_dragBody, d, size)
-                    : null,
-                onDragCorner: i == _selected
-                    ? (int corner, Offset d) => _drag(corner, d, size)
-                    : null,
-              ),
-            if (box.length == 4) const SizedBox.shrink(),
-          ],
-        );
-      },
-    ),
-  );
+  final GlobalKey _previewKey = GlobalKey();
 
   Widget _coordinates(BuildContext context, Json selected, List<num> box) {
     final UiThemeData ui = context.ui;
@@ -877,6 +1005,7 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
           SizedBox(
             width: coordinateFieldWidth,
             child: _CoordinateField(
+              identity: '${selected['region_id']}-$i',
               label: label,
               value: '${box[i]}',
               // The version is what tells the field its value moved under it:
@@ -893,6 +1022,7 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
                 setState(() {
                   _coordinateSubmitAttempted = false;
                   if (n != null) {
+                    if (box[i] != n) _remember('Change label coordinate');
                     box[i] = n;
                     _invalidCoordinates.remove(coordinateKey);
                   } else {
@@ -908,9 +1038,8 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
 
   /// The reason, and the line that says why a save cannot proceed.
   ///
-  /// The same two on both surfaces, in the footer of the dialog and at the
-  /// end of the route's one scroll, because a reason is what the save is
-  /// recorded under and belongs beside the change it explains.
+  /// Both surfaces keep these at the end of the form's scroll so large text
+  /// and short windows leave room for the photograph and save controls.
   Widget _reasonField(BuildContext context) {
     final UiThemeData ui = context.ui;
     final String? error = _visibleError;
@@ -947,11 +1076,7 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
     );
   }
 
-  /// The dialog's sticky footer: the reason, and the two controls that end
-  /// the editor (07 section 7).
-  ///
-  /// The route has neither, because its bar carries the save and its scroll
-  /// carries the reason (13 section 4.3).
+  /// The dialog's save and cancel controls, below the scrolling form.
   Widget _footer(BuildContext context) {
     final UiThemeData ui = context.ui;
     return Surface(
@@ -965,8 +1090,6 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              _reasonField(context),
-              SizedBox(height: ui.space.s3),
               UiButtonRow(
                 primary: UiButton(
                   label: saveRegionsLabel,
@@ -1006,35 +1129,30 @@ class _RegionEditorBodyState extends State<RegionEditorBody> {
 /// about their width as the numbers change.
 const double coordinateFieldWidth = 140;
 
-/// A full window route built on `package:flutter/widgets.dart`.
+/// A full window surface that fades in place, preserving its source frame.
 ///
-/// `MaterialPageRoute` is the only route `PageTransitionsTheme` reaches, and
-/// it comes with `material.dart`, which no screen imports any more. The
-/// entrance is therefore the system's own: the emphasized pair `ModalRoutes`
-/// uses, which collapses to nothing under reduced motion because the duration
-/// does.
-/// Open: a `UiPageRoute` in the package, so a screen pushing a full window
-/// surface gets one entrance rather than each writing its own. Two are
-/// written today. This one, which the editor and the source pane's full
-/// window view share, and the `MaterialPageRoute` the capture route keeps
-/// because it is the only route a `PageTransitionsTheme` reaches, and with it
-/// the platform's own back gesture, which a bare `PageRouteBuilder` has no
-/// answer for.
+/// Full-screen source and region editing use the same brief entrance as
+/// navigation. A full window is not a bottom sheet and carries no rise.
 PageRoute<T> uiFullScreenRoute<T>(
   BuildContext context, {
   required WidgetBuilder builder,
 }) {
-  final MotionTokens motion = context.ui.motion;
+  final UiThemeData ui = context.ui;
+  final MotionTokens motion = ui.motion;
+  final FocusNode? trigger = FocusManager.instance.primaryFocus;
   return PageRouteBuilder<T>(
-    transitionDuration: motion.emphasized,
-    reverseTransitionDuration: motion.standard,
+    transitionDuration: motion.quick,
+    reverseTransitionDuration: motion.quick,
     fullscreenDialog: true,
     pageBuilder:
         (
           BuildContext context,
           Animation<double> animation,
           Animation<double> secondary,
-        ) => builder(context),
+        ) => UiTheme(
+          data: ui,
+          child: _FullScreenFocusReturn(trigger: trigger, builder: builder),
+        ),
     transitionsBuilder:
         (
           BuildContext context,
@@ -1042,30 +1160,40 @@ PageRoute<T> uiFullScreenRoute<T>(
           Animation<double> secondary,
           Widget child,
         ) {
-          final CurvedAnimation curved = CurvedAnimation(
-            parent: animation,
-            curve: MotionTokens.emphasizedEnterCurve,
-            reverseCurve: MotionTokens.emphasizedExitCurve,
-          );
           return FadeTransition(
-            opacity: curved,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0, fullScreenEntranceRise),
-                end: Offset.zero,
-              ).animate(curved),
-              child: child,
+            opacity: animation.drive(
+              CurveTween(curve: MotionTokens.standardCurve),
             ),
+            child: child,
           );
         },
   );
 }
 
-/// How far a full window surface rises as it arrives, as a fraction of it.
-///
-/// The same rise `ModalRoutes` gives a sheet, so the two entrances read as
-/// one system.
-const double fullScreenEntranceRise = 0.08;
+class _FullScreenFocusReturn extends StatefulWidget {
+  const _FullScreenFocusReturn({required this.trigger, required this.builder});
+  final FocusNode? trigger;
+  final WidgetBuilder builder;
+
+  @override
+  State<_FullScreenFocusReturn> createState() => _FullScreenFocusReturnState();
+}
+
+class _FullScreenFocusReturnState extends State<_FullScreenFocusReturn> {
+  @override
+  void dispose() {
+    final FocusNode? trigger = widget.trigger;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (trigger?.context != null && trigger!.canRequestFocus) {
+        trigger.requestFocus();
+      }
+    });
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context);
+}
 
 /// One coordinate, as a field the reviewer can type a whole pixel into.
 ///
@@ -1075,6 +1203,7 @@ const double fullScreenEntranceRise = 0.08;
 /// arrives as a new [version] and rewrites it.
 class _CoordinateField extends StatefulWidget {
   const _CoordinateField({
+    required this.identity,
     required this.label,
     required this.value,
     required this.version,
@@ -1083,6 +1212,7 @@ class _CoordinateField extends StatefulWidget {
   });
 
   final String label;
+  final String identity;
   final String value;
   final int version;
   final String? errorText;
@@ -1100,7 +1230,8 @@ class _CoordinateFieldState extends State<_CoordinateField> {
   @override
   void didUpdateWidget(_CoordinateField oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.version == oldWidget.version ||
+    if ((widget.version == oldWidget.version &&
+            widget.identity == oldWidget.identity) ||
         _controller.text == widget.value) {
       return;
     }
@@ -1151,7 +1282,9 @@ class _RegionBox extends StatefulWidget {
     required this.imageWidth,
     required this.imageHeight,
     required this.size,
+    required this.viewerScale,
     required this.onSelect,
+    required this.onDragEnd,
     required this.onDragBody,
     required this.onDragCorner,
   });
@@ -1162,7 +1295,9 @@ class _RegionBox extends StatefulWidget {
   final double imageWidth;
   final double imageHeight;
   final Size size;
+  final double viewerScale;
   final VoidCallback onSelect;
+  final VoidCallback onDragEnd;
   final void Function(Offset)? onDragBody;
   final void Function(int, Offset)? onDragCorner;
 
@@ -1225,6 +1360,7 @@ class _RegionBoxState extends State<_RegionBox> {
           index: index,
           rect: rect,
           selected: selected,
+          viewerScale: widget.viewerScale,
           onTap: widget.onSelect,
         ),
         if (body != null)
@@ -1232,9 +1368,9 @@ class _RegionBoxState extends State<_RegionBox> {
             rect: rect,
             child: Semantics(
               label: 'Move Label $index',
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onPanUpdate: (DragUpdateDetails d) => body(d.delta),
+              child: _RegionDragTarget(
+                onDrag: body,
+                onDragEnd: widget.onDragEnd,
                 child: const SizedBox.expand(),
               ),
             ),
@@ -1249,7 +1385,9 @@ class _RegionBoxState extends State<_RegionBox> {
               ),
               label: _cornerNames[corner],
               index: index,
+              viewerScale: widget.viewerScale,
               onDrag: (Offset d) => widget.onDragCorner!(corner, d),
+              onDragEnd: widget.onDragEnd,
             ),
       ],
     );
@@ -1273,6 +1411,8 @@ class _CornerHandle extends StatelessWidget {
     required this.label,
     required this.index,
     required this.onDrag,
+    required this.onDragEnd,
+    required this.viewerScale,
   });
 
   final int corner;
@@ -1280,12 +1420,14 @@ class _CornerHandle extends StatelessWidget {
   final String label;
   final int index;
   final ValueChanged<Offset> onDrag;
+  final VoidCallback onDragEnd;
+  final double viewerScale;
 
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final double target = ui.space.targetMin;
-    final double visual = ui.space.s3;
+    final double target = ui.space.targetMin / viewerScale;
+    final double visual = ui.space.s3 / viewerScale;
     return Positioned(
       left: centre.dx - target / 2,
       top: centre.dy - target / 2,
@@ -1293,9 +1435,9 @@ class _CornerHandle extends StatelessWidget {
       height: target,
       child: Semantics(
         label: 'Label $index $label corner',
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onPanUpdate: (DragUpdateDetails d) => onDrag(d.delta),
+        child: _RegionDragTarget(
+          onDrag: onDrag,
+          onDragEnd: onDragEnd,
           child: Center(
             child: SizedBox.square(
               dimension: visual,
@@ -1321,6 +1463,56 @@ class _CornerHandle extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A selected handle explicitly owns a drag in either axis. Accepting it on
+/// pointer-down prevents an ancestor page scroll from winning vertical edits.
+/// The gesture's local delta already accounts for the viewer transform.
+class _RegionPanRecognizer extends PanGestureRecognizer {
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    resolve(GestureDisposition.accepted);
+  }
+}
+
+/// Inspection owns only touches that begin on the photograph. Its scale
+/// recognizer accepts immediately so vertical pan cannot become a page drag;
+/// touches on the form remain ordinary page scrolling.
+class _InspectScaleRecognizer extends ScaleGestureRecognizer {
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    resolve(GestureDisposition.accepted);
+  }
+}
+
+class _RegionDragTarget extends StatelessWidget {
+  const _RegionDragTarget({
+    required this.onDrag,
+    required this.onDragEnd,
+    required this.child,
+  });
+  final ValueChanged<Offset> onDrag;
+  final VoidCallback onDragEnd;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => RawGestureDetector(
+    behavior: HitTestBehavior.opaque,
+    gestures: {
+      _RegionPanRecognizer:
+          GestureRecognizerFactoryWithHandlers<_RegionPanRecognizer>(
+            _RegionPanRecognizer.new,
+            (recognizer) {
+              recognizer.onUpdate = (details) => onDrag(details.delta);
+              recognizer.onEnd = (_) => onDragEnd();
+              recognizer.onCancel = onDragEnd;
+            },
+          ),
+    },
+    child: child,
+  );
 }
 
 /// The editor's own motion budget, named so the file reads as tokenised even

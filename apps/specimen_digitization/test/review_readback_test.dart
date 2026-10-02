@@ -48,7 +48,7 @@ class ApplyingRepository extends author.ReviewRepository {
 }
 
 Future<void> stage(WidgetTester tester, {bool two = false}) async {
-  await tester.tap(find.text('Fields'));
+  await tester.tap(find.text('Specimen data'));
   await tester.pumpAndSettle();
   tester.widget<WorkbenchFields>(find.byType(WorkbenchFields)).onPendingChanged(
     [

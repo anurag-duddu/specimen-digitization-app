@@ -13,6 +13,12 @@ inventory) and section 8 (Flutter implementation plan) of
 The build plan, ownership map and waves are in
 [../../../docs/execution/FRONT_END_REFACTOR.md](../../../docs/execution/FRONT_END_REFACTOR.md).
 
+Runtime amendment, 2026-09-23: the component contracts remain unchanged, but
+[14-enterprise-surface-alignment.md](14-enterprise-surface-alignment.md) now
+owns the default paint. `UiThemeData.light()` and `.dark()` suppress decorative
+field placements and use `GlassQuality.off`; blur and atmospheric fields are
+explicit gallery or separately reviewed opt-ins.
+
 ## 0. What makes a strong design system
 
 A design system is strong when a stranger can add a screen that looks and

@@ -71,20 +71,39 @@ void main() {
     expect(find.text(_panes[0]), findsNothing);
   });
 
-  testWidgets('the strip is a UiSegmented at lg, not a strip of its own', (
+  testWidgets('the tab strip uses stable text slots and one underline', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(uiHarness(child: const _TabsHost()));
     await tester.pumpAndSettle();
-    final UiSegmented<int> strip = tester.widget<UiSegmented<int>>(
-      find.byType(UiSegmented<int>),
+    final UiTabStyle style = UiTabStyle.resolve(
+      tester.element(find.byType(UiTabs)).ui,
     );
-    expect(strip.size, UiSize.lg);
-    expect(strip.value, 0);
-    expect(
-      strip.segments.map((UiSegment<int> segment) => segment.label),
-      <String>['Readings', 'Fields', 'History'],
+    final Finder slots = find.descendant(
+      of: find.byType(UiTabs),
+      matching: find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is Pressable && widget.role == PressableRole.tab,
+      ),
     );
+    expect(slots, findsNWidgets(_tabs.length));
+    expect(tester.getSize(slots.first).height, style.outerHeight);
+    final List<BorderSide> underlines = tester
+        .widgetList<DecoratedBox>(
+          find.descendant(
+            of: find.byType(UiTabs),
+            matching: find.byType(DecoratedBox),
+          ),
+        )
+        .where((DecoratedBox box) => box.decoration is BoxDecoration)
+        .map((DecoratedBox box) => (box.decoration as BoxDecoration).border)
+        .whereType<Border>()
+        .map((Border border) => border.bottom)
+        .where((BorderSide side) => side.color.a > 0)
+        .toList();
+    expect(underlines, <BorderSide>[
+      BorderSide(color: style.underline, width: style.underlineWidth),
+    ]);
   });
 
   testWidgets('arrows move along the strip and Enter chooses', (
@@ -259,7 +278,7 @@ void main() {
       expect(find.text(tab.label), findsOneWidget);
     }
     expect(
-      tester.getSize(find.byType(UiSegmented<int>)).width,
+      tester.getSize(find.bySemanticsLabel('Record panels')).width,
       greaterThan(200),
       reason: 'the track keeps its intrinsic width inside the scroller',
     );

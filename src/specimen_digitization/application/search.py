@@ -1,5 +1,7 @@
 """Bounded current-metadata search; cursors carry no authorization authority."""
 
+from .lane import SQLITE_STATUS
+
 import base64
 import hashlib
 import json
@@ -203,7 +205,7 @@ def sqlite_search(
         "reason_codes": "json_extract(payload,'$.run.reasons')",
         "risk": "CASE WHEN json_type(payload,'$.run.review_risk.composite') IN ('integer','real') AND json_extract(payload,'$.run.review_risk.composite') BETWEEN 0 AND 100 THEN json_extract(payload,'$.run.review_risk.composite') END",
         # Mirrors lane.run_status; the SQLite state column holds the raw stage.
-        "status": "CASE WHEN json_extract(payload,'$.run.disposition') IS NOT NULL THEN 'completed' WHEN state IN ('processing_blocked','retry_scheduled','paused','cancelled','pending') THEN state ELSE 'running' END",
+        "status": SQLITE_STATUS,
     }
     clauses = ["org=?", "collection=?", "created_at<=?"]
     values = [scope.organization_id, scope.collection_id, cutoff]

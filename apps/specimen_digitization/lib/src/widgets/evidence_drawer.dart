@@ -104,12 +104,19 @@ class EvidenceDrawer extends StatelessWidget {
       onCopied: () => _copied(context),
     );
 
+    UiButton close(BuildContext modalContext) => UiButton(
+      label: 'Close',
+      variant: UiButtonVariant.ghost,
+      onPressed: () => Navigator.of(modalContext).pop(),
+    );
+
     if (isCompactWindow(context)) {
       await UiSheet.show<void>(
         context: context,
         title: title,
         semanticsLabel: _spoken,
         dismissLabel: modalDismissLabel,
+        secondaryAction: close,
         body: (BuildContext modalContext) =>
             body(modalContext, scrollable: false),
       );
@@ -120,6 +127,7 @@ class EvidenceDrawer extends StatelessWidget {
       title: title,
       semanticsLabel: _spoken,
       dismissLabel: modalDismissLabel,
+      secondaryAction: close,
       body: (BuildContext modalContext) => body(modalContext, scrollable: true),
     );
   }

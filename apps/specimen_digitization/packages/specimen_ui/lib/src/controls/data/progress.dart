@@ -71,8 +71,7 @@ class UiProgressStyle {
   /// the same indicator under reduced motion.
   final Duration cycle;
 
-  /// The opacity an indeterminate indicator pulses down to under reduced
-  /// motion, where it fades in place instead of turning.
+  /// Retained for style compatibility; reduced motion uses full opacity.
   final double pulseFloor;
 
   /// The style in [ui], drawn in [color] where a caller paints its own
@@ -110,11 +109,8 @@ class UiProgressStyle {
 
 /// Where an indeterminate indicator is in its cycle.
 ///
-/// The reduced-motion rule for an indeterminate indicator lives here rather
-/// than inside a painter, because it is a rule rather than a drawing: the
-/// indicator turns, and under reduced motion it holds still and pulses its
-/// opacity instead. Nothing else in the product substitutes one motion for
-/// another, so the one that does says so out loud.
+/// Reduced motion holds the indicator still at full opacity. Pending state
+/// remains visible without an unnecessary repeating animation.
 @immutable
 class UiProgressPhase {
   /// Binds one frame of the cycle.
@@ -123,25 +119,20 @@ class UiProgressPhase {
   /// How far round, 0 to 1. Always 0 under reduced motion.
   final double turn;
 
-  /// How opaque, 0 to 1. Always 1 unless motion is reduced.
+  /// How opaque, 0 to 1. Full opacity in both motion modes.
   final double opacity;
 
   /// The frame at [t], a fraction of one cycle.
   ///
-  /// [pulseFloor] is the opacity the pulse falls to and comes back from; the
-  /// wave is a triangle so the indicator fades rather than snapping at the
-  /// loop point.
+  /// [pulseFloor] is retained for callers of earlier style specifications;
+  /// reduced motion no longer schedules an opacity pulse.
   factory UiProgressPhase.at(
     double t, {
     required bool reduced,
     required double pulseFloor,
   }) {
     if (!reduced) return UiProgressPhase(turn: t, opacity: 1);
-    final double triangle = 1 - (2 * t - 1).abs();
-    return UiProgressPhase(
-      turn: 0,
-      opacity: pulseFloor + (1 - pulseFloor) * triangle,
-    );
+    return const UiProgressPhase(turn: 0, opacity: 1);
   }
 }
 
@@ -162,10 +153,9 @@ class UiProgressPhase {
 ///    painted where it is, with no fill animation. Replaying history as if
 ///    it were happening now is a lie about when it happened.
 ///
-/// Determinate progress keeps its motion under reduced motion because the
-/// motion is the information. An indeterminate indicator turns, and under
-/// reduced motion pulses its opacity in place, so it still says "the server
-/// has not answered" without moving.
+/// Determinate progress reflects actual reported changes. Under reduced motion,
+/// indeterminate progress is a stationary arc with no repeating ticker. The
+/// surrounding label and semantics explain the pending operation.
 ///
 /// [semanticsLabel] is required because an indicator has no visible text of
 /// its own (10 section 11). The percentage is the semantics value; the counts
@@ -225,6 +215,7 @@ class _UiProgressState extends State<UiProgress>
     with SingleTickerProviderStateMixin {
   /// The highest fraction reported so far, or null while indeterminate.
   double? _value;
+  bool _reduced = false;
 
   late final AnimationController _turn = AnimationController(
     vsync: this,
@@ -240,6 +231,13 @@ class _UiProgressState extends State<UiProgress>
   void initState() {
     super.initState();
     _value = _clamp(widget.value);
+    _syncTicker();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reduced = context.ui.motion.reduced;
     _syncTicker();
   }
 
@@ -264,7 +262,7 @@ class _UiProgressState extends State<UiProgress>
   /// An indeterminate indicator turns; a determinate one has nothing to
   /// repeat, so it holds no ticker at all.
   void _syncTicker() {
-    if (_value == null) {
+    if (_value == null && !_reduced) {
       if (!_turn.isAnimating) _turn.repeat();
     } else if (_turn.isAnimating) {
       _turn.stop();
@@ -337,7 +335,7 @@ class _UiProgressState extends State<UiProgress>
         ),
       };
 
-  /// The unmeasured form: it turns, or pulses in place under reduced motion.
+  /// The unmeasured form: it turns, or remains still under reduced motion.
   Widget _indeterminate(UiThemeData ui, UiProgressStyle style) {
     final bool reduced = ui.motion.reduced;
     return AnimatedBuilder(

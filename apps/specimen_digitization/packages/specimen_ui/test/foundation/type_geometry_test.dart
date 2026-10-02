@@ -80,10 +80,14 @@ void main() {
       UiType.insetFor(UiDensity.touch, body),
       closeTo((48 - _bodyLineBox) / 2, 1e-9),
     );
-    // A role taller than the row sits flush rather than pulling the control
-    // shorter than the text in it. `display.large` is 50.4 against a 40 dp
-    // pointer row.
-    expect(UiType.insetFor(UiDensity.pointer, UiType.standard.displayLarge), 0);
+    // A role taller than the row sits flush instead of clipping its text.
+    // The current 32px display role is shorter than a pointer row.
+    final tall = body.copyWith(fontSize: 48, height: 1.2);
+    expect(UiType.insetFor(UiDensity.pointer, tall), 0);
+    expect(
+      UiType.insetFor(UiDensity.pointer, UiType.standard.displayLarge),
+      closeTo(3.2, 1e-9),
+    );
   });
 
   testWidgets('a control height is the density row until the text passes it', (

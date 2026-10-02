@@ -1,209 +1,156 @@
-// The record's status strip (13 sections 3.2 and 4.1).
-//
-// Three facts from medium up, each a glossary term whose definition opens on
-// the line it is read on (polish 3; pass criterion 10.2), and none on a
-// phone, where the line holds the disposition and what blocks clearance and
-// nothing else (13 section 4.1, the slot A2 amendment).
+// Review feedback keeps its minimal presentation while preserving status
+// announcements, conflict recovery and unsent corrections.
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:specimen_digitization/src/glossary.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/workbench/blockers.dart';
 import 'package:specimen_digitization/src/screens/workbench/pending_changes.dart';
 import 'package:specimen_digitization/src/screens/workbench/status_strip.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
-import 'package:specimen_ui/specimen_ui.dart';
 
 import 'harness.dart';
 
-/// A tablet in portrait, the narrowest window that carries the provenance.
 const Size medium = Size(768, 1024);
-
-/// The phone 13 section 4.1 is written for.
 const Size phone = Size(390, 844);
 
-/// A record at version 17 whose current run has reached the transcribe step,
-/// or one with no run at all.
-Specimen record({bool inRun = true}) => Specimen(<String, dynamic>{
-  'specimen_id': 'strip-001',
-  'revision': 17,
-  'disposition': 'needs_human_review',
-  if (inRun) 'active_run_id': 'run-42',
-  if (inRun) 'run': <String, dynamic>{'stage': 'transcribe'},
-});
+Specimen record({String disposition = 'needs_human_review'}) =>
+    Specimen(<String, dynamic>{
+      'specimen_id': 'strip-001',
+      'revision': 17,
+      'disposition': disposition,
+      'active_run_id': 'run-42',
+      'run': <String, dynamic>{'stage': 'transcribe'},
+    });
 
-WorkbenchStatusStrip strip(Specimen specimen) => WorkbenchStatusStrip(
+const PendingFieldChange correction = PendingFieldChange(
+  fieldKey: 'locality',
+  displayName: 'Locality',
+  state: 'supported',
+  literal: 'Chicago',
+);
+
+WorkbenchStatusStrip strip(
+  Specimen specimen, {
+  bool saved = false,
+  List<PendingFieldChange> pending = const <PendingFieldChange>[],
+  List<PendingFieldChange> staleChanges = const <PendingFieldChange>[],
+  int? conflictVersion,
+  VoidCallback? onRefresh,
+}) => WorkbenchStatusStrip(
   specimen: specimen,
+  saved: saved,
   blockers: const <ClearanceBlocker>[],
-  pending: const <PendingFieldChange>[],
+  pending: pending,
+  staleChanges: staleChanges,
+  conflictVersion: conflictVersion,
+  onRefresh: onRefresh,
   onGoToBlocker: (ClearanceBlocker _) {},
 );
 
-/// The strip's provenance slots, in reading order.
-///
-/// The disposition chip is a `TermAffordance` and not a `TermText`, so this
-/// finds the facts and nothing else.
-List<TermText> factsOf(WidgetTester tester) => tester
-    .widgetList<TermText>(
-      find.descendant(
-        of: find.byType(UiStatusStrip),
-        matching: find.byType(TermText),
-      ),
-    )
-    .toList();
-
 void main() {
-  testWidgets('from medium up the facts are glossary terms with their values', (
+  testWidgets('tablet feedback does not repeat record status and provenance', (
     WidgetTester tester,
   ) async {
     await pumpComponent(tester, strip(record()), size: medium);
-    final List<TermText> facts = factsOf(tester);
-    expect(facts.map((TermText fact) => fact.term), <String>[
-      WorkbenchStatusStrip.versionTerm,
-      WorkbenchStatusStrip.runTerm,
-      WorkbenchStatusStrip.stepTerm,
-    ]);
-    expect(facts.map((TermText fact) => fact.trailing), <String>[
-      ' 17',
-      ' run-42',
-      ' transcribe',
-    ]);
-    for (final TermText fact in facts) {
-      expect(
-        isGlossaryTerm(fact.term),
-        isTrue,
-        reason: '${fact.term} promises a definition it does not have',
-      );
-    }
-    // Spoken whole, value included, with the affordance every term in the
-    // product announces, and each on a node of its own: a paragraph merges
-    // an inline widget's semantics into its own unless the widget is a
-    // boundary, which the strip makes each fact.
-    final SemanticsHandle handle = tester.ensureSemantics();
-    for (final String spoken in <String>[
-      'Version 17',
-      'Run run-42',
-      'Step transcribe',
-    ]) {
-      expect(
-        find.bySemanticsLabel(TermText.semanticsFor(spoken)),
-        findsOneWidget,
-        reason: '$spoken is not read as one term with its value',
-      );
-    }
-    handle.dispose();
+    expect(find.byType(TermText), findsNothing);
+    expect(find.byType(StatusChip), findsNothing);
+    expect(find.text('Needs review'), findsNothing);
+    expect(find.textContaining('run-42'), findsNothing);
+    expect(find.text('Saved'), findsNothing);
   });
 
-  testWidgets('a record with no run states its version alone', (
+  testWidgets('opening a cleared record is not a saved decision', (
     WidgetTester tester,
   ) async {
-    await pumpComponent(tester, strip(record(inRun: false)), size: medium);
-    expect(factsOf(tester).map((TermText fact) => fact.term), <String>[
-      WorkbenchStatusStrip.versionTerm,
-    ]);
+    await pumpComponent(
+      tester,
+      strip(record(disposition: 'cleared')),
+      size: medium,
+    );
+    expect(find.text('Saved'), findsNothing);
   });
 
-  testWidgets('a phone states the disposition and the blockers, not the run', (
+  testWidgets('phone feedback shows unsent corrections only while present', (
     WidgetTester tester,
   ) async {
+    await pumpComponent(
+      tester,
+      strip(record(), pending: const <PendingFieldChange>[correction]),
+      size: phone,
+    );
+    expect(find.text('1 pending change'), findsOneWidget);
+    expect(find.byType(StatusChip), findsNothing);
+    expect(find.byType(TermText), findsNothing);
+
     await pumpComponent(tester, strip(record()), size: phone);
-    expect(
-      factsOf(tester),
-      isEmpty,
-      reason:
-          '13 section 4.1: on a phone the run and the version leave the line '
-          'rather than ellipsising a word to a letter',
-    );
-    expect(find.byType(StatusChip), findsOneWidget);
+    expect(find.text('1 pending change'), findsNothing);
+    expect(find.text('Saved'), findsNothing);
   });
 
-  testWidgets('a fact scales with the text once, not twice', (
+  testWidgets('phone correction feedback remains readable at 200 percent', (
     WidgetTester tester,
   ) async {
-    // The strip sets each fact as a placeholder in one paragraph, and a
-    // paragraph scales a placeholder by the text scale itself, so a fact that
-    // also read the scale drew at four times its size at 200 percent: the
-    // record's goldens at 768 by 1024 carried "Version 17" over four lines of
-    // display type. A fact at 200 percent is twice its height at default type
-    // and no more.
-    await pumpComponent(tester, strip(record()), size: medium);
-    final Finder version = find.byWidgetPredicate(
-      (Widget widget) =>
-          widget is TermText && widget.term == WorkbenchStatusStrip.versionTerm,
-    );
-    final double atDefault = tester.getRect(version).height;
-
     tester.platformDispatcher.textScaleFactorTestValue = 2;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-    await pumpComponent(tester, strip(record()), size: medium);
-    final double atDouble = tester.getRect(version).height;
-    expect(
-      atDouble,
-      closeTo(atDefault * 2, 2),
-      reason:
-          'the version fact is $atDouble dp tall at 200 percent against '
-          '$atDefault at default type; it scales once with the paragraph',
+    await pumpComponent(
+      tester,
+      strip(record(), pending: const <PendingFieldChange>[correction]),
+      size: phone,
     );
-    // And it is still one line beside the chip, not a column of its own.
-    expect(
-      atDouble,
-      lessThanOrEqualTo(tester.getRect(find.byType(StatusChip)).height + 1),
-    );
+    expect(find.text('1 pending change'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a fact opens its definition on the line it is read on', (
+  testWidgets('a phone conflict offers one working refresh action', (
+    WidgetTester tester,
+  ) async {
+    int refreshed = 0;
+    await pumpComponent(
+      tester,
+      strip(record(), conflictVersion: 18, onRefresh: () => refreshed++),
+      size: phone,
+    );
+    expect(find.text(ConflictBanner.copyFor(18)), findsOneWidget);
+    await tester.tap(find.text(ConflictBanner.action));
+    expect(refreshed, 1);
+    expect(find.byType(StatusChip), findsNothing);
+  });
+
+  testWidgets('acknowledged edits show Saved without changing disposition', (
     WidgetTester tester,
   ) async {
     await pumpComponent(tester, strip(record()), size: medium);
-    await tester.tap(
-      find.byWidgetPredicate(
-        (Widget widget) =>
-            widget is TermText &&
-            widget.term == WorkbenchStatusStrip.versionTerm,
+    expect(find.text('Saved'), findsNothing);
+    await pumpComponent(tester, strip(record(), saved: true), size: medium);
+    expect(find.text('Saved'), findsOneWidget);
+    expect(find.byType(StatusChip), findsNothing);
+    expect(find.byType(TermText), findsNothing);
+    await pumpComponent(tester, strip(record()), size: medium);
+    expect(find.text('Saved'), findsNothing);
+  });
+
+  testWidgets('a dropped correction retains its recovery explanation', (
+    WidgetTester tester,
+  ) async {
+    await pumpComponent(
+      tester,
+      strip(record(), staleChanges: const <PendingFieldChange>[correction]),
+      size: phone,
+    );
+    expect(
+      find.text(
+        '1 correction was dropped because that field changed on the server. '
+        'Make it again against the new version.',
       ),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.text(glossaryDefinition(WorkbenchStatusStrip.versionTerm)!),
       findsOneWidget,
-      reason: 'pass criterion 10.2: the definition is reachable from the term',
     );
+    expect(find.text('1 pending change'), findsNothing);
+    expect(find.text('Saved'), findsNothing);
   });
 
-  // PLAN section 3, "Client": the strip read `operational_state`, which no
-  // response carries, so every record without a disposition, the ten pilot
-  // records among them, said "State unknown". The summary sends `status`.
-  testWidgets('a record with no disposition shows the state the server sent', (
-    WidgetTester tester,
-  ) async {
-    for (final (String wire, String word) in <(String, String)>[
-      ('processing_blocked', 'Processing blocked'),
-      ('running', 'Processing'),
-      ('retry_scheduled', 'Retry scheduled'),
-      ('paused', 'Paused'),
-      ('cancelled', 'Cancelled'),
-    ]) {
-      await pumpComponent(
-        tester,
-        strip(
-          Specimen(<String, dynamic>{
-            'specimen_id': 'pilot-$wire',
-            'revision': 2,
-            'status': wire,
-            'disposition': null,
-          }),
-        ),
-        size: medium,
-      );
-      expect(find.text(word), findsOneWidget, reason: wire);
-      expect(find.text('State unknown'), findsNothing, reason: wire);
-    }
-  });
-
-  // CLAUDE.md: status changes are announced once. The strip shows the live
-  // run state, so a move the poll brings is heard, in the chip's own words
-  // and without the "Saved" that belongs to a decision.
+  // Status changes remain audible once even without a permanent status chip.
+  // A move the poll brings must not use the Saved cue for a decision.
   group('announcements', () {
     Specimen live(String status, {String? disposition}) =>
         Specimen(<String, dynamic>{

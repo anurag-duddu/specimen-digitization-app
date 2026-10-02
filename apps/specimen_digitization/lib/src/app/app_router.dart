@@ -8,11 +8,7 @@
 library;
 
 import 'package:flutter/foundation.dart';
-// Infrastructure, not anatomy: `MaterialPage` is what gives a pushed route the
-// platform's own transition (05 section 5), and 10 section 1.3 keeps the page
-// transitions for exactly that. Nothing Material is built here; the
-// `no_material_imports` gate names this file and what it is allowed to take.
-import 'package:flutter/material.dart' show MaterialPage;
+import 'package:flutter/cupertino.dart' show CupertinoRouteTransitionMixin;
 import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:specimen_ui/gallery.dart';
@@ -33,6 +29,7 @@ import '../widgets/widgets.dart';
 import '../workspace.dart';
 import 'help_screen.dart';
 import 'routes.dart';
+import 'shell.dart';
 import 'session_notifier.dart';
 import 'setup_screen.dart';
 
@@ -123,160 +120,352 @@ GoRouter buildAppRouter({
     return known ? null : home;
   }
 
-  return GoRouter(
+  RoutingConfig routes() {
+    final queueRoute = GoRoute(
+      path:
+          '${AppRoutes.collectionPrefix}/'
+          ':${AppRoutes.collectionParameter}/queue',
+      pageBuilder: (context, state) =>
+          _WorkspacePage<void>(key: state.pageKey, child: const QueueScreen()),
+      routes: <RouteBase>[
+        GoRoute(
+          path: ':${AppRoutes.specimenParameter}',
+          onExit: (context, state) =>
+              controller?.mayLeaveReview() ?? Future<bool>.value(true),
+          pageBuilder: (BuildContext context, GoRouterState state) {
+            final String id = Uri.decodeComponent(
+              state.pathParameters[AppRoutes.specimenParameter] ?? '',
+            );
+            final Widget screen = WorkbenchScreen(
+              specimenId: id,
+              collectionKey: decodeCollectionKey(
+                AppRoutes.collectionKeyIn(state.uri) ?? '',
+              ),
+            );
+            // Phone iOS uses the SDK's interactive route transition;
+            // other layouts keep the quiet in-place transition.
+            final MotionTokens motion = context.ui.motion;
+            return _WorkspacePage<void>(
+              key: state.pageKey,
+              transitionDuration: defaultTargetPlatform == TargetPlatform.iOS
+                  ? motion.navigationGlide
+                  : motion.quick,
+              reverseTransitionDuration:
+                  defaultTargetPlatform == TargetPlatform.iOS
+                  ? motion.navigationGlide
+                  : motion.quick,
+              child: screen,
+              transitionsBuilder:
+                  (
+                    BuildContext context,
+                    Animation<double> animation,
+                    Animation<double> secondary,
+                    Widget child,
+                  ) => FadeTransition(
+                    opacity: CurvedAnimation(
+                      parent: animation,
+                      curve: MotionTokens.standardCurve,
+                    ),
+                    child: child,
+                  ),
+            );
+          },
+        ),
+      ],
+    );
+    final intakeRoute = GoRoute(
+      path:
+          '${AppRoutes.collectionPrefix}/'
+          ':${AppRoutes.collectionParameter}/intake',
+      pageBuilder: (context, state) =>
+          _WorkspacePage<void>(key: state.pageKey, child: const _IntakeRoute()),
+      routes: <RouteBase>[
+        GoRoute(
+          path: 'sources',
+          pageBuilder: (BuildContext context, GoRouterState state) =>
+              _WorkspacePage<void>(
+                key: state.pageKey,
+                child: const _SourcesRoute(),
+              ),
+          routes: <RouteBase>[
+            GoRoute(
+              path: ':${AppRoutes.sourceParameter}',
+              pageBuilder: (BuildContext context, GoRouterState state) =>
+                  _WorkspacePage<void>(
+                    key: state.pageKey,
+                    child: _SourceRoute(
+                      sourceId:
+                          state.pathParameters[AppRoutes.sourceParameter] ?? '',
+                    ),
+                  ),
+            ),
+          ],
+        ),
+      ],
+    );
+    Widget frame(
+      BuildContext context,
+      GoRouterState state,
+      Widget child, {
+      StatefulNavigationShell? navigationShell,
+    }) {
+      return CollectionWorkspace(
+        key: ValueKey((session?.userId, controller?.defaultRouteKey)),
+        routeKey: AppRoutes.collectionKeyIn(state.uri) ?? '',
+        destination: state.uri.pathSegments.contains('intake')
+            ? WorkspaceDestination.intake
+            : WorkspaceDestination.queue,
+        navigationShell: navigationShell,
+        // This temporary shell can overlap its authorized replacement during
+        // route reconfiguration. It may show loading, but cannot own a record.
+        child: navigationShell == null
+            ? WorkspaceBranchScope(
+                active: false,
+                collectionKey: '',
+                child: child,
+              )
+            : child,
+      );
+    }
+
+    final routeKey = controller?.defaultRouteKey;
+    final RouteBase collection = routeKey == null
+        ? ShellRoute(
+            builder: (context, state, child) => frame(context, state, child),
+            routes: [queueRoute, intakeRoute],
+          )
+        : StatefulShellRoute(
+            builder: (context, state, navigationShell) => frame(
+              context,
+              state,
+              navigationShell,
+              navigationShell: navigationShell,
+            ),
+            navigatorContainerBuilder: (context, navigationShell, children) =>
+                WorkspaceBranchStack(
+                  activeIndex: navigationShell.currentIndex,
+                  collectionKey: decodeCollectionKey(routeKey),
+                  children: children,
+                ),
+            branches: [
+              StatefulShellBranch(
+                preload: true,
+                initialLocation: AppRoutes.queueOf(routeKey),
+                routes: [queueRoute],
+              ),
+              StatefulShellBranch(
+                initialLocation: AppRoutes.intakeOf(routeKey),
+                routes: [intakeRoute],
+              ),
+            ],
+          );
+    return RoutingConfig(
+      redirect: redirect,
+      routes: <RouteBase>[
+        GoRoute(
+          path: AppRoutes.signIn,
+          builder: (BuildContext context, GoRouterState state) =>
+              _EnvironmentFrame(
+                environment: environment,
+                child: SignInScreen(session: session!, magicLink: magicLink),
+              ),
+        ),
+        GoRoute(
+          path: AppRoutes.verify,
+          builder: (BuildContext context, GoRouterState state) =>
+              _EnvironmentFrame(
+                environment: environment,
+                child: EmailVerificationGate(
+                  session: session!,
+                  refreshVerification: sessionNotifier.refreshVerification,
+                  child: const _LeaveVerification(),
+                ),
+              ),
+        ),
+        GoRoute(
+          path: AppRoutes.setup,
+          builder: (BuildContext context, GoRouterState state) =>
+              _EnvironmentFrame(
+                environment: environment,
+                child: SetupScreen(
+                  session: session,
+                  setupMessage: setupMessage,
+                  controller: controller,
+                ),
+              ),
+        ),
+        GoRoute(
+          path: AppRoutes.help,
+          pageBuilder: (BuildContext context, GoRouterState state) =>
+              helpPage(context),
+        ),
+        if (!kReleaseMode)
+          GoRoute(
+            path: AppRoutes.gallery,
+            builder: (BuildContext context, GoRouterState state) =>
+                const UiGallery(),
+          ),
+        collection,
+      ],
+    );
+  }
+
+  final config = _WorkspaceRoutingConfig(
+    build: routes,
+    session: sessionNotifier,
+    controller: controller,
+  );
+  return _WorkspaceRouter(
+    config: config,
     initialLocation: initialLocation,
-    // Empty in the app. A test installs `TransitionDurationObserver` here,
-    // because a page transition's length is no longer a literal a test may
-    // assume: Flutter 3.38 moved the Android default to 450 ms
-    // (motion and microinteractions, 6.1 and 6.3 A).
     observers: observers,
-    refreshListenable: Listenable.merge(<Listenable?>[
+    refreshListenable: Listenable.merge([
       sessionNotifier,
       controller,
       magicLink,
     ]),
-    redirect: redirect,
-    routes: <RouteBase>[
-      GoRoute(
-        path: AppRoutes.signIn,
-        builder: (BuildContext context, GoRouterState state) =>
-            _EnvironmentFrame(
-              environment: environment,
-              child: SignInScreen(session: session!, magicLink: magicLink),
-            ),
-      ),
-      GoRoute(
-        path: AppRoutes.verify,
-        builder: (BuildContext context, GoRouterState state) =>
-            _EnvironmentFrame(
-              environment: environment,
-              child: EmailVerificationGate(
-                session: session!,
-                refreshVerification: sessionNotifier.refreshVerification,
-                child: const _LeaveVerification(),
-              ),
-            ),
-      ),
-      GoRoute(
-        path: AppRoutes.setup,
-        builder: (BuildContext context, GoRouterState state) =>
-            _EnvironmentFrame(
-              environment: environment,
-              child: SetupScreen(
-                session: session,
-                setupMessage: setupMessage,
-                controller: controller,
-              ),
-            ),
-      ),
-      GoRoute(
-        path: AppRoutes.help,
-        pageBuilder: (BuildContext context, GoRouterState state) =>
-            helpPage(context),
-      ),
-      if (!kReleaseMode)
-        GoRoute(
-          path: AppRoutes.gallery,
-          builder: (BuildContext context, GoRouterState state) =>
-              const UiGallery(),
-        ),
-      ShellRoute(
-        builder: (BuildContext context, GoRouterState state, Widget child) {
-          final String routeKey = AppRoutes.collectionKeyIn(state.uri) ?? '';
-          final bool intake = state.uri.pathSegments.contains('intake');
-          // No frame here. A transparent `Scaffold` stood over this subtree
-          // while the queue, the workbench, intake and sources still built
-          // Material components that assert on a `Material` ancestor and
-          // raised snackbars through a messenger a `Scaffold` registers.
-          // Wave 3 took the last of both, so the only frame left is the
-          // `UiScaffold` the shell builds inside `CollectionWorkspace`, which
-          // paints the ground and the sky and owns the keyboard inset.
-          return CollectionWorkspace(
-            routeKey: routeKey,
-            destination: intake
-                ? WorkspaceDestination.intake
-                : WorkspaceDestination.queue,
-            child: child,
-          );
-        },
-        routes: <RouteBase>[
-          GoRoute(
-            path:
-                '${AppRoutes.collectionPrefix}/'
-                ':${AppRoutes.collectionParameter}/queue',
-            builder: (BuildContext context, GoRouterState state) =>
-                const QueueScreen(),
-            routes: <RouteBase>[
-              GoRoute(
-                path: ':${AppRoutes.specimenParameter}',
-                pageBuilder: (BuildContext context, GoRouterState state) {
-                  final String id = Uri.decodeComponent(
-                    state.pathParameters[AppRoutes.specimenParameter] ?? '',
-                  );
-                  final Widget screen = WorkbenchScreen(specimenId: id);
-                  // At large and above the queue list is already beside this
-                  // pane, so the detail cross-fades in place (motion catalog,
-                  // row 17). Below that it is a pushed screen and keeps the
-                  // platform transition (row 18).
-                  if (!WindowClass.of(context).isAtLeast(WindowClass.large)) {
-                    return MaterialPage<void>(
-                      key: state.pageKey,
-                      child: screen,
-                    );
-                  }
-                  final MotionTokens motion = context.ui.motion;
-                  return CustomTransitionPage<void>(
-                    key: state.pageKey,
-                    transitionDuration: motion.standard,
-                    reverseTransitionDuration: motion.quick,
-                    child: screen,
-                    transitionsBuilder:
-                        (
-                          BuildContext context,
-                          Animation<double> animation,
-                          Animation<double> secondary,
-                          Widget child,
-                        ) => FadeTransition(
-                          opacity: CurvedAnimation(
-                            parent: animation,
-                            curve: MotionTokens.standardCurve,
-                          ),
-                          child: child,
-                        ),
-                  );
-                },
-              ),
-            ],
-          ),
-          GoRoute(
-            path:
-                '${AppRoutes.collectionPrefix}/'
-                ':${AppRoutes.collectionParameter}/intake',
-            builder: (BuildContext context, GoRouterState state) =>
-                const _IntakeRoute(),
-            routes: <RouteBase>[
-              GoRoute(
-                path: 'sources',
-                builder: (BuildContext context, GoRouterState state) =>
-                    const _SourcesRoute(),
-                routes: <RouteBase>[
-                  GoRoute(
-                    path: ':${AppRoutes.sourceParameter}',
-                    builder: (BuildContext context, GoRouterState state) =>
-                        _SourceRoute(
-                          sourceId:
-                              state.pathParameters[AppRoutes.sourceParameter] ??
-                              '',
-                        ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    ],
   );
+}
+
+/// Retained branch state belongs to one authorized account and collection.
+/// Rebuild only on that ownership boundary, never on ordinary record updates.
+class _WorkspaceRoutingConfig extends ValueNotifier<RoutingConfig> {
+  _WorkspaceRoutingConfig({
+    required this.build,
+    required this.session,
+    required this.controller,
+  }) : super(build()) {
+    _identity = _owner;
+    session.addListener(_refresh);
+    controller?.addListener(_refresh);
+  }
+  final RoutingConfig Function() build;
+  final AppSessionNotifier session;
+  final WorkspaceController? controller;
+  late Object _identity;
+  Object get _owner => (
+    session.session?.userId,
+    session.signedIn,
+    session.verified,
+    controller?.defaultRouteKey,
+  );
+  void _refresh() {
+    final owner = _owner;
+    if (owner == _identity) return;
+    _identity = owner;
+    value = build();
+  }
+
+  @override
+  void dispose() {
+    session.removeListener(_refresh);
+    controller?.removeListener(_refresh);
+    super.dispose();
+  }
+}
+
+class _WorkspaceRouter extends GoRouter {
+  _WorkspaceRouter({
+    required _WorkspaceRoutingConfig config,
+    required String initialLocation,
+    required List<NavigatorObserver> observers,
+    required Listenable refreshListenable,
+  }) : _ownedConfig = config,
+       super.routingConfig(
+         routingConfig: config,
+         initialLocation: initialLocation,
+         observers: observers,
+         refreshListenable: refreshListenable,
+       );
+  final _WorkspaceRoutingConfig _ownedConfig;
+  @override
+  void dispose() {
+    super.dispose();
+    _ownedConfig.dispose();
+  }
+}
+
+/// A routed content pane is part of the workspace's keyboard traversal.
+/// Its edges hand focus to the persistent sidebar; modal dialogs keep their
+/// own closed traversal loop.
+class _WorkspacePage<T> extends CustomTransitionPage<T> {
+  const _WorkspacePage({
+    required super.child,
+    super.key,
+    super.transitionDuration = Duration.zero,
+    super.reverseTransitionDuration = Duration.zero,
+    super.transitionsBuilder = _noTransition,
+  });
+
+  static Widget _noTransition(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => child;
+
+  @override
+  Route<T> createRoute(BuildContext context) => _WorkspacePageRoute<T>(this);
+}
+
+class _WorkspacePageRoute<T> extends PageRoute<T> {
+  _WorkspacePageRoute(_WorkspacePage<T> page)
+    : super(
+        settings: page,
+        traversalEdgeBehavior: TraversalEdgeBehavior.parentScope,
+      );
+  _WorkspacePage<T> get _page => settings as _WorkspacePage<T>;
+  @override
+  bool get maintainState => true;
+  @override
+  Color? get barrierColor => null;
+  @override
+  String? get barrierLabel => null;
+  @override
+  Duration get transitionDuration => _page.transitionDuration;
+  @override
+  Duration get reverseTransitionDuration => _page.reverseTransitionDuration;
+  @override
+  Widget buildPage(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+  ) => Semantics(
+    scopesRoute: true,
+    explicitChildNodes: true,
+    // Keep the presentation ancestry stable across phone/tablet changes.
+    // Replacing this wrapper would dispose the live review and its drafts.
+    child: ColoredBox(
+      color: AppSidebarScope.maybeOf(context)?.mobileNavigation == true
+          ? context.ui.color.ground
+          : context.ui.color.ground.withValues(alpha: 0),
+      child: _page.child,
+    ),
+  );
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    if (defaultTargetPlatform == TargetPlatform.iOS &&
+        AppSidebarScope.maybeOf(context)?.mobileNavigation == true) {
+      return CupertinoRouteTransitionMixin.buildPageTransitions<T>(
+        this,
+        context,
+        animation,
+        secondaryAnimation,
+        child,
+      );
+    }
+    return _page.transitionsBuilder(
+      context,
+      animation,
+      secondaryAnimation,
+      child,
+    );
+  }
 }
 
 /// The registered sources for the open collection.
@@ -325,7 +514,7 @@ class _SourceRoute extends StatefulWidget {
 
 class _SourceRouteState extends State<_SourceRoute> {
   SourceBrowseController? _controller;
-  RegisteredSource? _source;
+  Future<List<RegisteredSource>>? _sources;
   String? _key;
 
   @override
@@ -348,8 +537,8 @@ class _SourceRouteState extends State<_SourceRoute> {
         scope: scope,
         sourceId: widget.sourceId,
       );
+      _sources = repository.sources(scope);
       _key = key;
-      _source = null;
     }
     return _controller!;
   }
@@ -366,18 +555,9 @@ class _SourceRouteState extends State<_SourceRoute> {
     final SourceRepository? repository = sourcesIn(controller.repository);
     if (repository == null) return const _NoSourceSupport();
     final SourceBrowseController browse = _controllerFor(repository, scope);
-    final RegisteredSource? source = _source;
-    if (source != null) {
-      return SourceBrowsePane(
-        controller: browse,
-        source: source,
-        onOpenSpecimen: (String id) => GoRouter.of(
-          context,
-        ).go(AppRoutes.specimenOf(Uri.encodeComponent(scope.key), id)),
-      );
-    }
     return FutureBuilder<List<RegisteredSource>>(
-      future: repository.sources(scope),
+      key: ValueKey<String?>(_key),
+      future: _sources,
       builder:
           (
             BuildContext context,
@@ -399,7 +579,6 @@ class _SourceRouteState extends State<_SourceRoute> {
                 body: 'This source is not registered to the open collection.',
               );
             }
-            _source = found;
             return SourceBrowsePane(
               controller: browse,
               source: found,

@@ -98,11 +98,11 @@ void main() {
     final int afterLanding = repository.pages.length;
 
     await tester.scrollUntilVisible(
-      find.text('Synthetic insect label'),
+      find.text('fixture-001'),
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    await tester.tap(find.text('Synthetic insect label'));
+    await tester.tap(find.text('fixture-001'));
     await tester.pumpAndSettle();
 
     // The record is already in the page the queue holds. Opening it is a
@@ -170,7 +170,7 @@ void main() {
     await tester.pumpAndSettle();
     final int afterLanding = repository.pages.length;
 
-    await tester.tap(find.text('Cleared'));
+    await tester.tap(find.bySemanticsLabel('Cleared'));
     await tester.pumpAndSettle();
 
     expect(repository.pages.length, afterLanding + 1);

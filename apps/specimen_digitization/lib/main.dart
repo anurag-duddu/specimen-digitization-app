@@ -17,6 +17,8 @@ import 'src/app_check.dart';
 import 'src/auth.dart';
 import 'src/connection_config.dart';
 import 'src/email_link_browser.dart';
+import 'src/email_link_source.dart';
+import 'src/email_link_source_factory.dart';
 import 'src/magic_link.dart';
 import 'src/models.dart';
 import 'src/production_startup.dart';
@@ -27,6 +29,7 @@ import 'src/workspace.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final emailLinkBrowser = createEmailLinkBrowser();
+  final emailLinkSource = createNativeEmailLinkSource();
   SessionAccess? session;
   SpecimenRepository? repository;
   String? setupMessage;
@@ -87,6 +90,7 @@ Future<void> main() async {
       setupMessage: setupMessage,
       synthetic: localSynthetic,
       emailLinkBrowser: emailLinkBrowser,
+      emailLinkSource: emailLinkSource,
     ),
   );
 }
@@ -100,6 +104,7 @@ class SpecimenDigitizationApp extends StatefulWidget {
     this.setupMessage,
     this.synthetic = false,
     this.emailLinkBrowser,
+    this.emailLinkSource,
     this.initialLocation = AppRoutes.setup,
     this.motionPreferences,
     this.navigatorObservers = const <NavigatorObserver>[],
@@ -107,6 +112,10 @@ class SpecimenDigitizationApp extends StatefulWidget {
 
   /// A browser for the incoming email sign-in link, on web.
   final EmailLinkBrowser? emailLinkBrowser;
+
+  /// A source created before asynchronous startup can buffer incoming links.
+  /// The application owns its lifetime. No native transport is selected here.
+  final EmailLinkSource? emailLinkSource;
 
   /// The session, or null in a build with no sign-in configured.
   final SessionAccess? session;
@@ -142,12 +151,14 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
   late final AppSessionNotifier _sessionNotifier;
   WorkspaceController? _workspace;
   MagicLinkController? _magicLink;
+  late final EmailLinkSource? _emailLinkSource;
   late final GoRouter _router;
   late final MotionPreferenceController _motion;
 
   @override
   void initState() {
     super.initState();
+    _emailLinkSource = widget.emailLinkSource;
     _motion = MotionPreferenceController(
       store: widget.motionPreferences ?? const SharedMotionPreferenceStore(),
     );
@@ -159,6 +170,7 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
       _magicLink = MagicLinkController(
         access: session as EmailLinkAccess,
         browser: widget.emailLinkBrowser ?? createEmailLinkBrowser(),
+        linkSource: _emailLinkSource,
       );
       unawaited(_magicLink!.initialize());
     }
@@ -199,6 +211,7 @@ class _SpecimenDigitizationAppState extends State<SpecimenDigitizationApp> {
     _router.dispose();
     _motion.dispose();
     _magicLink?.dispose();
+    unawaited(_emailLinkSource?.close());
     _workspace?.dispose();
     super.dispose();
   }

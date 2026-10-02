@@ -1,0 +1,36 @@
+# Server service credentials only. API responses must use scoped store views;
+# never return this organization/program aggregate to collection clients.
+mutation CreateResearchHarnessStateV1($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $programKey: String!, $sensitive: Boolean!, $state: Any!, $stateJson: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (!vars.sensitive || this.canViewSensitive) && vars.programKey != '' && vars.state.contract_version == 'research-durability/v1' && vars.state.program_key == vars.programKey") { active role canViewSensitive }
+    specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) @check(expr: "this != null && this.sensitive == vars.sensitive && (!this.sensitive || response.query.collectionMember.canViewSensitive)") { sensitive }
+  }
+  researchHarnessState_insert(data: {organizationId: $organizationId, programKey: $programKey, revision: 1, contractVersion: "research-durability/v1", state: $state, stateJson: $stateJson})
+}
+
+# A harmless clock-column update supplies freshly observed database service time,
+# while the lifecycle revision remains unchanged. Lease CAS checks request.time.
+mutation ReadResearchHarnessStateV1($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $programKey: String!, $sensitive: Boolean!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && (!vars.sensitive || this.canViewSensitive)") { active role canViewSensitive }
+    specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) @check(expr: "this != null && this.sensitive == vars.sensitive && (!this.sensitive || response.query.collectionMember.canViewSensitive)") { sensitive }
+  }
+  researchHarnessState_update(key: {organizationId: $organizationId, programKey: $programKey}, data: {observedAt_expr: "request.time"})
+  read: query {
+    researchHarnessState(key: {organizationId: $organizationId, programKey: $programKey}) { revision contractVersion state stateJson observedAt }
+  }
+}
+
+# Native conditional update and checked affected-row count are the concurrency
+# gate. State and shared reservations commit together; reducers may safely rebase.
+mutation CompareResearchHarnessStateV1($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $programKey: String!, $sensitive: Boolean!, $expectedRevision: Int!, $state: Any!, $stateJson: String!, $validUntil: Timestamp, $reviewRequired: Boolean) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (vars.reviewRequired != true || this.role in ['reviewer', 'manager', 'admin']) && (!vars.sensitive || this.canViewSensitive) && (vars.validUntil == null || vars.validUntil > request.time)", message: "membership or lease denied") { active role canViewSensitive }
+    specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) @check(expr: "this != null && this.sensitive == vars.sensitive && (!this.sensitive || response.query.collectionMember.canViewSensitive)") { sensitive }
+    researchHarnessState(key: {organizationId: $organizationId, programKey: $programKey}) @check(expr: "this.revision == vars.expectedRevision && this.contractVersion == 'research-durability/v1' && vars.state.contract_version == this.contractVersion && vars.state.program_key == vars.programKey && vars.state.budget_policy == this.state.budget_policy && (!this.state.halted || vars.state.halted) && vars.state.effects.size() >= this.state.effects.size() && (vars.state.effects.size() == this.state.effects.size() || (!this.state.halted && vars.state.budget_totals.held_micro_usd + vars.state.budget_totals.settled_micro_usd <= this.state.budget_policy.ceiling_micro_usd))", message: "revision or cumulative budget conflict") { revision contractVersion state }
+  }
+  researchHarnessState_updateMany(where: {organizationId: {eq: $organizationId}, programKey: {eq: $programKey}, revision: {eq: $expectedRevision}}, data: {revision_expr: "vars.expectedRevision + 1", state: $state, stateJson: $stateJson, updatedAt_expr: "request.time"}) @check(expr: "this == 1", message: "revision conflict")
+}

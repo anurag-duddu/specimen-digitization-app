@@ -18,8 +18,8 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/region_editor.dart';
+import 'package:specimen_digitization/src/screens/sources/source_screen.dart';
 import 'package:specimen_digitization/src/screens/workbench/workbench_layout.dart';
-import 'package:specimen_digitization/src/workbench.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import 'golden_harness.dart';
@@ -64,8 +64,15 @@ FlutterExceptionHandler? _previousOnError;
 void captureLayoutErrors() {
   _previousOnError = FlutterError.onError;
   capturedLayoutErrors = <String>[];
-  FlutterError.onError = (FlutterErrorDetails details) =>
+  FlutterError.onError = (FlutterErrorDetails details) {
+    if (details.library == 'rendering library') {
       capturedLayoutErrors.add(details.exceptionAsString());
+    } else {
+      // Assertions and gesture failures must reach the test runner; swallowing
+      // them here leaves a failed golden hanging until the suite times out.
+      _previousOnError?.call(details);
+    }
+  };
   addTearDown(stopCapturingLayoutErrors);
 }
 
@@ -192,7 +199,15 @@ void main() {
           matching: find.byType(UiCheckbox),
         );
         if (rowBoxes.evaluate().isEmpty) {
-          await tester.longPress(find.text('Pinned beetle 1'));
+          await enterSpecimenSelection(tester);
+          await tester.tap(
+            find
+                .descendant(
+                  of: find.byType(SelectableRow),
+                  matching: find.byType(UiCheckbox),
+                )
+                .first,
+          );
           await tester.pumpAndSettle();
         } else {
           await tester.tap(rowBoxes.first);
@@ -221,12 +236,10 @@ void main() {
           brightness: brightness,
           location: goldenQueueLocation,
         );
-        // The filter surface is a bottom sheet on a compact window and a
-        // constrained dialog above it, which is the adaptation this golden
-        // exists to show.
-        await tester.tap(find.text('Filters'));
-        await tester.pumpAndSettle();
-        expect(find.text('Filter the queue'), findsOneWidget);
+        // Core filters live beside the search on every window. The active
+        // filter expands its name while its neighbours remain compact.
+        await pickSpecimenQueue(tester, 'Deferred');
+        expect(find.text('Deferred'), findsWidgets);
         expectGlassBudget(tester, window: window);
         await expectGolden(tester, 'filters__${window}__$theme');
       });
@@ -313,20 +326,30 @@ void main() {
             );
             // A compact window has no checkbox column until a long press
             // opens one, and the long press also selects the row it was on.
+            final Finder inventoryRows = find.descendant(
+              of: find.byType(SourceBrowsePane),
+              matching: find.byType(SelectableRow),
+            );
             final Finder boxes = find.descendant(
-              of: find.byType(SelectableRow),
+              of: inventoryRows,
               matching: find.byType(UiCheckbox),
             );
             if (boxes.evaluate().isEmpty) {
-              await tester.longPress(find.byType(SelectableRow).first);
+              await tester.longPress(inventoryRows.first);
             } else {
               await tester.tap(boxes.first);
             }
             await tester.pumpAndSettle();
-            expect(find.text('1 photograph selected'), findsOneWidget);
             final String golden =
                 'source-selection__${window}__${theme}__${scaleTag(scale)}';
             expectKnownOverflow(tester, golden);
+            expect(uiButton('Add 1'), findsOneWidget);
+            expect(
+              tester
+                  .widgetList<SelectableRow>(inventoryRows)
+                  .where((row) => row.selected),
+              hasLength(1),
+            );
             expectGlassBudget(tester, window: window);
             await expectGolden(tester, golden);
           },
@@ -356,10 +379,7 @@ void main() {
                 textScale: scale,
                 location: goldenSpecimenLocation,
               );
-              // History leaves the selector once it has a pane of its own, so
-              // on a large window the History golden is the persistent pane
-              // rather than a third segment.
-              //
+              // Every width retains the same three review tabs.
               // Chosen from the keyboard rather than by tapping. At 200
               // percent text on a phone the record scrolls as one, so the
               // selector's position depends on the scroll offset, and a
@@ -368,8 +388,12 @@ void main() {
               // without moving anything else, and it is the same binding the
               // keyboard walkthrough proves.
               final Finder tab = find.descendant(
-                of: uiTabs(evidenceTabsLabel),
-                matching: find.text(segment.label),
+                of: uiTabs('Record view'),
+                matching: uiRecordView(switch (segment) {
+                  WorkbenchSegment.readings => 'Label review',
+                  WorkbenchSegment.fields => 'Structured specimen data',
+                  WorkbenchSegment.history => 'Review history',
+                }),
               );
               if (tab.evaluate().isNotEmpty) {
                 await tester.sendKeyEvent(switch (segment) {
@@ -380,15 +404,13 @@ void main() {
                 await tester.pumpAndSettle();
                 await settleImages(tester);
                 expect(
-                  tester
-                      .widget<UiTabs>(uiTabs(evidenceTabsLabel))
-                      .selected
-                      .value,
+                  tester.widget<UiTabs>(uiTabs('Record view')).selected.value,
                   segment.index,
                   reason: 'the golden is of the wrong segment',
                 );
               }
-              // Every scroll view is returned to its top before the capture.
+              // Vertical content returns to its top before capture. Horizontal
+              // tab navigation keeps the active tab visible at large text.
               // Focus pulls a scroll view to the control it lands on, and
               // which control that is depends on timing, so without this the
               // same screen is captured scrolled on one run and not on the
@@ -398,11 +420,19 @@ void main() {
                   in tester.stateList<ScrollableState>(
                     find.byType(Scrollable),
                   )) {
-                if (scroll.position.hasPixels && scroll.position.pixels != 0) {
+                if (axisDirectionToAxis(scroll.position.axisDirection) ==
+                        Axis.vertical &&
+                    scroll.position.hasPixels &&
+                    scroll.position.pixels != 0) {
                   scroll.position.jumpTo(0);
                 }
               }
               await tester.pumpAndSettle();
+              expect(
+                tab.hitTestable(),
+                findsOneWidget,
+                reason: 'the selected review tab must remain reachable',
+              );
 
               // A golden of the record must be a golden of the record, not of
               // a modal a stray tap opened over it.

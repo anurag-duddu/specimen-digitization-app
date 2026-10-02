@@ -93,127 +93,103 @@ class _SourcesScreenState extends State<SourcesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
     final ApiFailure? failure = _error;
-    if (failure != null) {
-      return EmptyState(
-        icon: UiIcons.syncProblem.defaultGlyph,
-        title: 'Sources not loaded',
-        body: failure.message,
-        actionLabel: 'Retry',
-        onAction: () {
-          setState(() => _error = null);
-          _load();
-        },
-      );
-    }
     final List<RegisteredSource>? sources = _sources;
-    if (sources == null) {
-      return Padding(
-        padding: EdgeInsetsDirectional.all(ui.space.s4),
-        child: const Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            LoadingAnnouncement(thing: 'the registered sources'),
-            SkeletonRow(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final layout = UiLayoutMetrics.fromConstraints(
+          constraints,
+          textScaler: MediaQuery.textScalerOf(context),
+        );
+        final Widget? state = failure != null
+            ? EmptyState(
+                icon: UiIcons.syncProblem.defaultGlyph,
+                title: 'Sources not loaded',
+                body: failure.message,
+                actionLabel: 'Retry',
+                onAction: () {
+                  setState(() => _error = null);
+                  _load();
+                },
+              )
+            : sources == null
+            ? const Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  LoadingAnnouncement(thing: 'the registered sources'),
+                  SkeletonRow(),
+                ],
+              )
+            : sources.isEmpty
+            ? EmptyState(
+                icon: UiIcons.source.defaultGlyph,
+                title: 'No sources registered',
+                body: SourcesScreenCopy.noneBody,
+              )
+            : null;
+        return CustomScrollView(
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsetsDirectional.all(layout.gutter),
+              sliver: SliverToBoxAdapter(
+                child: _SourcesHeader(onUpload: widget.onUpload),
+              ),
+            ),
+            SliverPadding(
+              padding: EdgeInsetsDirectional.symmetric(
+                horizontal: layout.gutter,
+              ),
+              sliver: state != null
+                  ? SliverToBoxAdapter(child: state)
+                  : SliverList.builder(
+                      itemCount: sources!.length,
+                      itemBuilder: (context, index) => _SourceTile(
+                        source: sources[index],
+                        onOpen: () => widget.onOpen(sources[index]),
+                      ),
+                    ),
+            ),
+            SliverToBoxAdapter(
+              child: SizedBox(
+                height: layout.gap + UiScaffold.of(context).bottomInset,
+              ),
+            ),
           ],
-        ),
-      );
-    }
-    if (sources.isEmpty) {
-      return EmptyState(
-        icon: UiIcons.source.defaultGlyph,
-        title: 'No sources registered',
-        body: SourcesScreenCopy.noneBody,
-      );
-    }
-    // One scroll: the heading, the way back to uploading, the rows
-    // (13 section 4.5). The rows are a lazy sliver, so a collection with many
-    // registered sources lays out the ones on screen.
-    return CustomScrollView(
-      slivers: <Widget>[
-        SliverPadding(
-          padding: EdgeInsetsDirectional.all(ui.space.s4),
-          sliver: SliverToBoxAdapter(
-            child: _SourcesHeader(
-              count: sources.length,
-              onUpload: widget.onUpload,
-            ),
-          ),
-        ),
-        SliverPadding(
-          padding: EdgeInsetsDirectional.symmetric(horizontal: ui.space.s4),
-          sliver: SliverList.builder(
-            itemCount: sources.length,
-            itemBuilder: (BuildContext context, int index) => _SourceTile(
-              source: sources[index],
-              onOpen: () => widget.onOpen(sources[index]),
-            ),
-          ),
-        ),
-        SliverToBoxAdapter(
-          child: SizedBox(
-            height: ui.space.s4 + UiScaffold.of(context).bottomInset,
-          ),
-        ),
-      ],
+        );
+      },
     );
   }
 }
 
-/// The screen's name, what it holds, and the other way photographs arrive.
-///
-/// Finding V2-4: the registered sources list stated nothing about itself, so
-/// a reviewer landed on rows under the environment band with no heading, no
-/// count and no way back.
+/// The same title and exit remain available while the source list loads or fails.
 class _SourcesHeader extends StatelessWidget {
-  const _SourcesHeader({required this.count, required this.onUpload});
-
-  final int count;
+  const _SourcesHeader({required this.onUpload});
   final VoidCallback? onUpload;
 
-  /// What the count reads as. Counted, because one source is not two.
-  static String registeredLabel(int count) =>
-      count == 1 ? '1 source registered' : '$count sources registered';
-
   @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Semantics(
-          container: true,
-          header: true,
-          child: Text(
-            SourcesScreen.title,
-            style: ui.type.headline.copyWith(color: ui.color.ink),
-          ),
+  Widget build(BuildContext context) => Wrap(
+    alignment: WrapAlignment.spaceBetween,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    spacing: context.ui.space.s4,
+    runSpacing: context.ui.space.s2,
+    children: [
+      Semantics(
+        header: true,
+        child: Text(
+          SourcesScreen.title,
+          style: context.ui.type.headline.copyWith(color: context.ui.color.ink),
         ),
-        SizedBox(height: ui.space.s1),
-        Semantics(
-          container: true,
-          child: Text(
-            '${SourcesScreen.purpose} ${registeredLabel(count)}.',
-            style: ui.type.body.copyWith(color: ui.color.inkSecondary),
-          ),
+      ),
+      if (onUpload != null)
+        UiButton(
+          label: SourcesScreenCopy.uploadLabel,
+          variant: UiButtonVariant.secondary,
+          leading: UiIcons.uploadFile,
+          onPressed: onUpload,
         ),
-        if (onUpload != null) ...<Widget>[
-          SizedBox(height: ui.space.s4),
-          UiButtonRow(
-            primary: UiButton(
-              label: SourcesScreenCopy.uploadLabel,
-              variant: UiButtonVariant.secondary,
-              leading: UiIcons.uploadFile,
-              onPressed: onUpload,
-            ),
-          ),
-        ],
-      ],
-    );
-  }
+    ],
+  );
 }
 
 /// The strings on this screen, in one place so a test names them rather than
@@ -225,7 +201,7 @@ abstract final class SourcesScreenCopy {
   /// source and no endpoint exists that would let them (writing guidelines,
   /// rule 9: if you cannot say what to do, say who can).
   static const String noneBody =
-      'An administrator registers the storage a collection can add from.';
+      'Ask an administrator to register storage for this collection.';
 
   /// The way back to the other way photographs arrive.
   ///

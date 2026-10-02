@@ -29,7 +29,7 @@ final Finder confirmCheckbox = find.byKey(
 /// The manifest header's Stop action. Present only while a batch is running.
 final Finder stopButton = find.byKey(const ValueKey<String>('intake-stop'));
 
-/// The sensitivity segmented button.
+/// The sensitivity checkbox for new photographs.
 final Finder sensitivityControl = find.byKey(
   const ValueKey<String>('intake-sensitivity'),
 );
@@ -42,20 +42,26 @@ bool buttonEnabled(WidgetTester tester, Finder finder) =>
 bool batchConfirmed(WidgetTester tester) =>
     tester.widget<UiCheckbox>(confirmCheckbox).value ?? false;
 
-/// Picks one of the two sensitivity segments by its visible word.
-///
-/// Scoped to the control, because "Sensitive" and "Not sensitive" also appear
-/// on every manifest row.
+/// Selects the classification for new files using the actual checkbox.
+/// Existing and retried uploads keep their original classification.
 Future<void> selectSensitivity(WidgetTester tester, String label) async {
-  final Finder segment = find.descendant(
-    of: sensitivityControl,
-    matching: find.text(label),
-  );
-  expect(segment, findsOneWidget);
-  await tester.ensureVisible(segment);
+  final bool wanted = switch (label) {
+    'Sensitive' => true,
+    'Not sensitive' => false,
+    _ => throw ArgumentError.value(label, 'label', 'Unknown classification'),
+  };
+  expect(sensitivityControl, findsOneWidget);
+  await tester.ensureVisible(sensitivityControl);
   await tester.pumpAndSettle();
-  await tester.tap(segment);
-  await tester.pumpAndSettle();
+  final UiCheckbox checkbox = tester.widget<UiCheckbox>(sensitivityControl);
+  expect(checkbox.onChanged, isNotNull);
+  expect(checkbox.value, isNotNull);
+  if (checkbox.value != wanted) {
+    expect(sensitivityControl.hitTestable(), findsOneWidget);
+    await tester.tap(sensitivityControl);
+    await tester.pumpAndSettle();
+  }
+  expect(tester.widget<UiCheckbox>(sensitivityControl).value, wanted);
 }
 
 /// Presses the file picker and waits for every chosen file to be read,
@@ -99,8 +105,7 @@ Future<void> pressUpload(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// Confirms the batch and starts it.
-Future<void> submitBatch(WidgetTester tester) async {
-  await confirmBatch(tester);
-  await pressUpload(tester);
-}
+/// Starts the batch through its explicit current upload action.
+/// Removed per-batch confirmation tests still use confirmBatch and fail visibly;
+/// this action never invents a confirmation state.
+Future<void> submitBatch(WidgetTester tester) => pressUpload(tester);

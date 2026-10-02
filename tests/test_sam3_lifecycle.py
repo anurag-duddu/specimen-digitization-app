@@ -10,12 +10,71 @@ import httpx
 import pytest
 
 
+STANDING_SAM_TRACE_CONFIGURATION = r'''
+def configure_fixture_sam_trace(root):
+    """Reach the real standing G3 configuration with a strictly local SDK sink."""
+    import json
+    import os
+    from pathlib import Path
+    import logfire
+    from logfire.testing import TestExporter
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from specimen_digitization import observability
+
+    # A fresh child must not inherit the retired bounded-export configuration.
+    for key in list(os.environ):
+        if key.startswith(("SPECIMEN_TRACE_", "OTEL_")) or key in {
+            "LOGFIRE_BASE_URL", "LOGFIRE_ENVIRONMENT", "LOGFIRE_SERVICE_VERSION"
+        }:
+            os.environ.pop(key, None)
+    package = Path(root) / "built-package"
+    package.mkdir()
+    source_sha = "a" * 40  # Synthetic embedded provenance, not a deployed build.
+    (package / "_build.json").write_text(json.dumps({"source_sha": source_sha}))
+    observability.__file__ = str(package / "observability.py")
+    os.environ.update({
+        "APP_ENV": "production", "LOGFIRE_CAPTURE_MODE": "approved-content",
+        "LOGFIRE_SEND_TO_LOGFIRE": "true", "LOGFIRE_SERVICE_NAME": "specimen-sam",
+        "LOGFIRE_HEAD_SAMPLE_RATE": "1.0", "LOGFIRE_DISTRIBUTED_TRACING": "true",
+        "LOGFIRE_TOKEN": "SYNTHETIC-SAM-LIFECYCLE-WRITER-CANARY",
+        "OTEL_TRACES_EXPORTER": "none", "OTEL_METRICS_EXPORTER": "none",
+        "OTEL_LOGS_EXPORTER": "none",
+    })
+    configure = logfire.configure
+    exporter = TestExporter()
+
+    def configure_local_sink(**options):
+        assert options["send_to_logfire"] is True
+        assert options["environment"] == "production"
+        assert options["service_name"] == "specimen-sam"
+        assert options["service_version"] == source_sha
+        assert options["resource_attributes"] == {
+            "specimen.telemetry.capture_mode": "approved-content"
+        }
+        assert options["distributed_tracing"] is True
+        assert options["advanced"].base_url == "https://logfire-us.pydantic.dev"
+        assert options["advanced"].exception_callback is observability._private_exception_callback
+        assert options["inspect_arguments"] is False
+        assert options["variables"].instrument is False
+        assert options["add_baggage_to_attributes"] is False
+        assert options["console"] is False and options["metrics"] is False
+        # Adapt only the transport. Actual configuration/SDK validation and
+        # runtime.main's expiry, inference and shutdown controls still execute.
+        offline = dict(options)
+        offline.update(send_to_logfire=False, token=None,
+            additional_span_processors=[SimpleSpanProcessor(exporter)])
+        return configure(**offline)
+
+    logfire.configure = configure_local_sink
+'''
+
+
 @pytest.mark.parametrize("startup_failure", [False, True])
 def test_sam_expiry_watchdog_does_not_keep_failed_or_stopped_process_alive(
     tmp_path, startup_failure
 ):
     marker = tmp_path / "boundary-reached"
-    script = r'''
+    script = STANDING_SAM_TRACE_CONFIGURATION + r'''
 import os, sys, time
 from pathlib import Path
 from types import SimpleNamespace
@@ -35,6 +94,7 @@ os.environ.update(
     SPECIMEN_SAM3_OUTPUT_BUCKET="fixture-only",
     SPECIMEN_SAM3_CHECKPOINT_SHA256="a" * 64,
 )
+configure_fixture_sam_trace(Path(marker).parent)
 from huggingface_hub import constants
 constants.HF_HUB_OFFLINE = True
 for key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN"):
@@ -74,7 +134,7 @@ runtime.main()
 
 def test_production_sam_stops_stuck_inference_before_platform_deadline(tmp_path):
     marker = tmp_path / "inference-entered"
-    script = r'''
+    script = STANDING_SAM_TRACE_CONFIGURATION + r'''
 import os, sys, time
 from pathlib import Path
 from types import SimpleNamespace
@@ -94,6 +154,7 @@ os.environ.update(
     SPECIMEN_SAM3_OUTPUT_BUCKET="fixture-only", PORT=port,
     SPECIMEN_SAM3_CHECKPOINT_SHA256="a" * 64,
 )
+configure_fixture_sam_trace(Path(marker).parent)
 from huggingface_hub import constants
 constants.HF_HUB_OFFLINE = True
 for key in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN"):

@@ -96,7 +96,7 @@ class _InputsPageState extends State<_InputsPage> {
               const _Cell(
                 width: _wide,
                 label: 'focused',
-                note: 'the ring is the whole of it; the edge holds',
+                note: 'one stronger boundary; no nested ring',
                 child: UiField(
                   label: 'Reason for this decision',
                   hintText: 'Say what you saw on the label',

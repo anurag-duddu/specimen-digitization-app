@@ -34,7 +34,6 @@ import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import '../golden/golden_harness.dart';
 import '../ui_finders.dart';
-import 'package:specimen_digitization/src/workbench.dart';
 
 /// Where the checked-in dumps live.
 const String fixtureDirectory = 'test/accessibility/fixtures';
@@ -222,8 +221,12 @@ void main() {
           location: goldenSpecimenLocation,
         );
         final Finder tab = find.descendant(
-          of: uiTabs(evidenceTabsLabel),
-          matching: find.text(segment.label),
+          of: uiTabs('Record view'),
+          matching: uiRecordView(switch (segment) {
+            WorkbenchSegment.readings => 'Label review',
+            WorkbenchSegment.fields => 'Structured specimen data',
+            WorkbenchSegment.history => 'Review history',
+          }),
         );
         await tester.ensureVisible(tab);
         await tester.pumpAndSettle();
@@ -342,7 +345,7 @@ void main() {
         location: goldenSpecimenLocation,
       );
 
-      final Finder selector = uiTabs(evidenceTabsLabel);
+      final Finder selector = uiTabs('Record view');
       expect(selector, findsOneWidget);
       final Map<String, bool> states = <String, bool>{};
       void walk(SemanticsNode node) {
@@ -364,13 +367,20 @@ void main() {
       // Every segment answers to its visible word, and exactly one of them is
       // the current one. Without this a reviewer hears three identical
       // buttons and cannot tell which panel they are in.
-      expect(states.keys, containsAll(<String>['Readings', 'Fields']));
+      expect(
+        states.keys,
+        containsAll(<String>[
+          'Label review',
+          'Structured specimen data',
+          'Review history',
+        ]),
+      );
       expect(
         states.values.where((bool selected) => selected).length,
         1,
         reason: 'exactly one segment is current',
       );
-      expect(states['Readings'], isTrue);
+      expect(states['Label review'], isTrue);
       handle.dispose();
       await tester.pumpWidget(const SizedBox());
     });
@@ -394,14 +404,14 @@ void main() {
         });
       }
 
-      walk(tester.getSemantics(uiTabs(evidenceTabsLabel)));
+      walk(tester.getSemantics(uiTabs('Record view')));
       expect(roles, contains(SemanticsRole.tabBar));
       expect(roles, contains(SemanticsRole.tab));
       handle.dispose();
       await tester.pumpWidget(const SizedBox());
     });
 
-    testWidgets('a region overlay and its chip answer to the same name', (
+    testWidgets('the label chooser names and selects the image region', (
       WidgetTester tester,
     ) async {
       final SemanticsHandle handle = tester.ensureSemantics();
@@ -410,23 +420,30 @@ void main() {
         window: dumpWindow,
         brightness: Brightness.light,
         location: goldenSpecimenLocation,
-        // The default fixture is an original with no verified orientation,
-        // and the workbench correctly draws no overlays on one of those.
         repository: GoldenRepository.verified(),
       );
       expect(find.byType(RegionOverlay), findsWidgets);
-      final List<String> spoken = spokenNames(tester);
-      // The overlay drawn on the photograph and the chip in the strip beneath
-      // it are two ways to reach one region, so they have to be one name.
+      expect(spokenNames(tester).join(' '), contains('Label to review'));
+      // Other label regions may be outside the cropped image. The chooser is
+      // the accessible route to every label, without duplicate always-visible
+      // chips or offscreen image targets.
+      await tester.tap(uiSelect('Label'));
+      await tester.pumpAndSettle();
+      final List<String> options = spokenNames(tester);
       for (final String region in <String>['Label 1', 'Label 2']) {
-        expect(
-          spoken.where((String name) => name.contains(region)).length,
-          greaterThanOrEqualTo(2),
-          reason:
-              '$region must be reachable by the same name from the overlay '
-              'and from the chip strip',
-        );
+        expect(options.any((name) => name.contains(region)), isTrue);
       }
+      final Finder second = find.byWidgetPredicate(
+        (Widget widget) => widget is UiListRow && widget.title == 'Label 2',
+      );
+      await tester.tap(second);
+      await tester.pumpAndSettle();
+      final Iterable<RegionOverlay> overlays = tester.widgetList<RegionOverlay>(
+        find.byType(RegionOverlay),
+      );
+      expect(overlays.where((overlay) => overlay.selected), hasLength(1));
+      expect(overlays.singleWhere((overlay) => overlay.selected).index, 2);
+      expect(spokenNames(tester).join(' '), contains('Label 2'));
       handle.dispose();
       await tester.pumpWidget(const SizedBox());
     });
@@ -636,11 +653,10 @@ void main() {
           .getSemanticsData();
       expect(row.flagsCollection.isButton, isTrue);
       expect(row.hasAction(SemanticsAction.tap), isTrue);
-      expect(row.label, contains('Pinned beetle, Chicago 1912'));
-      // And the label carries the state and the reason too, so two rows in
-      // the same queue are told apart without opening either.
-      expect(row.label, contains('needs review'));
-      expect(row.label, contains('human approval required'));
+      expect(row.label, contains(goldenSpecimenId));
+      // The active queue already names the state. Each row announces its
+      // stable identity without repeating the same queue reason.
+      expect(row.label, isNot(contains('human approval required')));
       handle.dispose();
       await tester.pumpWidget(const SizedBox());
     });
@@ -668,7 +684,7 @@ void main() {
       // semantics of its own, so a finder on it walks up to the screen.
       String rowLabel(Finder row) => tester
           .getSemantics(
-            find.descendant(of: row, matching: find.byType(UiListRow)),
+            find.descendant(of: row, matching: find.byType(Pressable)).first,
           )
           .getSemanticsData()
           .label;

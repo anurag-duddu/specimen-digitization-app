@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from hashlib import sha256
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
-from .domain import MANDATORY, StageCostReservations
+from .domain import MANDATORY, ExecutionPolicy, StageCostReservations
 
 
 class FrozenRecord(BaseModel):
@@ -34,7 +37,65 @@ class PolicyReference(FrozenRecord):
 
 
 class Sam3Parameters(FrozenRecord):
-    """The current HTTP contract supports no extra parameter knobs."""
+    """What the SAM 3 service applies (LANE.md T3). Unset values keep the previous
+    contract and are omitted, so older settings keep their bytes."""
+
+    label_threshold: float | None = Field(
+        default=None, gt=0, lt=1, exclude_if=lambda value: value is None
+    )
+    mask_threshold: float | None = Field(
+        default=None, gt=0, lt=1, exclude_if=lambda value: value is None
+    )
+    # Detections are recorded down to this score, for calibration; only those at
+    # or above the label threshold become regions.
+    record_floor: float | None = Field(
+        default=None, gt=0, lt=1, exclude_if=lambda value: value is None
+    )
+    max_detections: int | None = Field(
+        default=None, ge=1, le=64, exclude_if=lambda value: value is None
+    )
+    cross_check_concept: str | None = Field(
+        default=None, min_length=1, max_length=100, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def floor_below_threshold(self):
+        if self.record_floor is not None and self.record_floor > (
+            self.label_threshold or 0.5
+        ):
+            raise ValueError("the recording floor cannot exceed the label threshold")
+        return self
+
+    def applied(self) -> dict:
+        """The values the service applies, with the previous contract's defaults."""
+        label = self.label_threshold or 0.5
+        return {
+            "label_threshold": label,
+            "mask_threshold": self.mask_threshold or 0.5,
+            "record_floor": self.record_floor or label,
+            "max_detections": self.max_detections or 64,
+            "cross_check_concept": self.cross_check_concept,
+        }
+
+
+class CoverageRule(FrozenRecord):
+    """G15's automatic label-coverage check (LANE.md T3). The values are the
+    approved starting values; the owner signs off the final ones after the lab."""
+
+    version: Literal["coverage-check-v1"] = "coverage-check-v1"
+    min_label_regions: int = Field(ge=0, le=64)
+    max_label_regions: int = Field(ge=1, le=64)
+    # Label regions overlapping at this IoU or more count as one label.
+    merge_iou: float = Field(gt=0, le=1)
+    # Cross-check detections at this score or more must lie inside the labels.
+    cross_check_threshold: float = Field(gt=0, lt=1)
+    min_inside_fraction: float = Field(gt=0, le=1)
+
+    @model_validator(mode="after")
+    def ordered_range(self):
+        if self.min_label_regions > self.max_label_regions:
+            raise ValueError("coverage range must not be empty")
+        return self
 
 
 class SegmentationSettings(FrozenRecord):
@@ -46,6 +107,76 @@ class SegmentationSettings(FrozenRecord):
     )
     prompt: str = Field(min_length=1, max_length=1000)
     parameters: Sam3Parameters = Field(default_factory=Sam3Parameters)
+    coverage: CoverageRule | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+
+class DateRules(FrozenRecord):
+    """Versioned date interpretation (G24); the date parser stamps what it applied."""
+
+    version: Literal["date-rules-v1"] = "date-rules-v1"
+    # A two-digit year reads as this century; None keeps such a year partial.
+    two_digit_year_century: int | None = Field(
+        default=None, ge=100, le=9900, multiple_of=100
+    )
+    # G29: a Roman numeral I to XII in the month position is that month.
+    roman_numeral_months: bool = False
+
+
+class ImageTokens(FrozenRecord):
+    """A route's documented image-token rule (LANE.md T2b; PLAN 4.3)."""
+
+    # One token per square this many pixels a side.
+    pixels_per_token: int = Field(ge=1, le=1024)
+    # The model's documented maximum for one image; the provider downsamples above it.
+    max_tokens: int | None = Field(default=None, ge=1)
+    # Where the rule is documented.
+    source: str = Field(min_length=1, max_length=500)
+
+
+class ModelPrice(FrozenRecord):
+    """A route's price in micro-dollars per million tokens (LANE.md T2c)."""
+
+    input_micros_per_million: int = Field(ge=0, le=10**12)
+    output_micros_per_million: int = Field(ge=0, le=10**12)
+    # The route's context length: no request's input can exceed it (PLAN 4.3).
+    context_tokens: int | None = Field(
+        default=None, ge=1, le=10**8, exclude_if=lambda value: value is None
+    )
+    # The route's documented image-token rule, when it has one.
+    image_tokens: ImageTokens | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+
+class ServicePrice(FrozenRecord):
+    """A Cloud Run service's size and rates, in micro-dollars per million units."""
+
+    vcpus: float = Field(gt=0, le=64)
+    memory_gib: float = Field(gt=0, le=512)
+    vcpu_micros_per_million_seconds: int = Field(ge=0, le=10**12)
+    gib_micros_per_million_seconds: int = Field(ge=0, le=10**12)
+    request_micros_per_million: int = Field(default=0, ge=0, le=10**12)
+
+
+class PriceList(FrozenRecord):
+    """Pinned prices for every paid call; changed only by a reviewed edit (T2c)."""
+
+    version: str = Field(min_length=1, max_length=64)
+    as_of: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    sources: tuple[str, ...] = Field(min_length=1)
+    models: dict[str, ModelPrice] = Field(default_factory=dict)
+    segmentation: ServicePrice | None = None
+    tools: dict[str, int] = Field(default_factory=dict)
+
+
+class ProgramAllowance(FrozenRecord):
+    """The program's model allowance across all runs (LANE.md T2b; G9, G30)."""
+
+    allowance_micros: int = Field(gt=0, le=2**53 - 1)
+    # The public tree key of the collection whose scope holds the ledger.
+    ledger_collection: str = Field(min_length=1, max_length=64)
 
 
 class ProcessingPolicy(FrozenRecord):
@@ -53,6 +184,38 @@ class ProcessingPolicy(FrozenRecord):
 
     run_cost_limit_micros: int = Field(gt=0, le=2**53 - 1)
     stage_cost_micros: StageCostReservations
+    # Optional overrides of the run's token and weighted-call limits (LANE.md T4).
+    max_tokens: int | None = Field(
+        default=None, ge=1, exclude_if=lambda value: value is None
+    )
+    max_external_calls: int | None = Field(
+        default=None, ge=1, le=1000, exclude_if=lambda value: value is None
+    )
+    # Segmentation's two concepts need longer than a reader (LANE.md T3).
+    external_timeout_seconds: float | None = Field(
+        default=None, gt=0, le=600, exclude_if=lambda value: value is None
+    )
+    reader_timeout_seconds: float | None = Field(
+        default=None, gt=0, exclude_if=lambda value: value is None
+    )
+    lease_seconds: float | None = Field(
+        default=None, gt=0, le=900, exclude_if=lambda value: value is None
+    )
+    program_allowance: ProgramAllowance | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    price_list: PriceList | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def timeouts_fit_the_lease(self):
+        defaults = ExecutionPolicy()
+        external = self.external_timeout_seconds or defaults.external_timeout_seconds
+        lease = self.lease_seconds or defaults.lease_seconds
+        if lease < external + 30 or (self.reader_timeout_seconds or 0) > external:
+            raise ValueError("allowance timeouts must fit the run's lease")
+        return self
 
 
 class CollectionProfile(FrozenRecord):
@@ -92,6 +255,19 @@ class CollectionProfile(FrozenRecord):
     processing: ProcessingPolicy | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # Tool ids per field, in call order; a field with none is transcribed as seen.
+    field_tools: dict[str, tuple[str, ...]] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
+    first_pass_route: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+    harness_route: str | None = Field(
+        default=None, min_length=1, exclude_if=lambda value: value is None
+    )
+    date_rules: DateRules | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_serializer(mode="wrap")
     def preserve_legacy_serialization(self, handler):
@@ -121,6 +297,19 @@ class CollectionProfile(FrozenRecord):
             raise ValueError("field groups must be nonblank and disjoint")
         if len(set(self.model_routes)) < 2:
             raise ValueError("two independent model routes required")
+        if not set(self.field_tools) <= set(fields) or any(
+            tool not in self.tools for tools in self.field_tools.values() for tool in tools
+        ):
+            raise ValueError("field tools must name profile fields and profile tools")
+        prices = self.processing.price_list if self.processing else None
+        routes = {*self.model_routes, self.first_pass_route, self.harness_route} - {None}
+        if prices and (not routes <= set(prices.models) or prices.segmentation is None):
+            raise ValueError("the price list must price every route and the segmentation")
+        crop_routes = {*self.model_routes, self.first_pass_route} - {None}
+        if prices and any(prices.models[r].context_tokens is None for r in crop_routes):
+            raise ValueError(
+                "the price list must give the context length of every route that reads crops"
+            )
         return self
 
 
@@ -190,6 +379,9 @@ class CollectionProfileRegistry(FrozenRecord):
     nodes: tuple[CollectionNode, ...]
     profiles: tuple[CollectionProfile, ...]
     mappings: tuple[ProfileMapping, ...]
+    # Deployment-private collection identifiers to node ids (LANE.md T4). Never
+    # serialized, so they reach no response, pin or run.
+    bindings: dict[str, str] = Field(default_factory=dict, exclude=True)
 
     @model_validator(mode="after")
     def validate_registry(self):
@@ -209,7 +401,22 @@ class CollectionProfileRegistry(FrozenRecord):
             raise ValueError("published profile version cannot be replaced")
         if any(p.collection_id not in nodes for p in self.profiles):
             raise ValueError("profile collection missing")
+        if any(not key or node not in nodes for key, node in self.bindings.items()):
+            raise ValueError("collection binding names an unknown collection")
+        allowances = {
+            p.processing.program_allowance
+            for p in self.profiles
+            if p.processing and p.processing.program_allowance
+        }
+        if len(allowances) > 1:
+            raise ValueError("every profile must carry the same program allowance")
+        if any(a.ledger_collection not in nodes for a in allowances):
+            raise ValueError("program allowance ledger names an unknown collection")
         return self
+
+    def bound_collections(self, node_id: str) -> list[str]:
+        """The private collection identifiers bound to a published node."""
+        return sorted(key for key, node in self.bindings.items() if node == node_id)
 
     def resolve(
         self, collection_id: str, profile_version: str | None = None
@@ -217,9 +424,15 @@ class CollectionProfileRegistry(FrozenRecord):
         def review(reason):
             return ProfileResolution(status="review", reason=reason)
 
-        if collection_id not in {n.id for n in self.nodes}:
+        nodes = {n.id: n for n in self.nodes}
+        node = nodes.get(self.bindings.get(collection_id, collection_id))
+        if node is None:
             return review("unknown_collection")
-        mappings = [m for m in self.mappings if m.collection_id == collection_id]
+        # A collection without a mapping of its own uses its nearest mapped ancestor's.
+        mappings = [m for m in self.mappings if m.collection_id == node.id]
+        while not mappings and node.parent_id is not None:
+            node = nodes[node.parent_id]
+            mappings = [m for m in self.mappings if m.collection_id == node.id]
         if len(mappings) != 1:
             return review("missing_mapping" if not mappings else "ambiguous_mapping")
         mapping = mappings[0]
@@ -230,7 +443,7 @@ class CollectionProfileRegistry(FrozenRecord):
             for p in self.profiles
             if (p.id, p.version) == (mapping.profile_id, mapping.profile_version)
         ]
-        if not profiles or profiles[0].collection_id != collection_id:
+        if not profiles or profiles[0].collection_id != mapping.collection_id:
             return review("missing_or_mismatched_profile")
         profile = profiles[0]
         if profile.state != "active":
@@ -289,4 +502,16 @@ def insects_registry(*, synthetic: bool = False) -> CollectionProfileRegistry:
                 profile_version=profile.version,
             ),
         ),
+    )
+
+
+PUBLISHED_PROFILES = Path(__file__).with_name("profiles") / "published.json"
+
+
+def published_registry(
+    bindings: Mapping[str, str] | None = None,
+) -> CollectionProfileRegistry:
+    """The published profiles (LANE.md T4) with the deployment's private bindings."""
+    return CollectionProfileRegistry.model_validate(
+        dict(json.loads(PUBLISHED_PROFILES.read_text()), bindings=dict(bindings or {}))
     )

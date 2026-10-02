@@ -187,6 +187,18 @@ class HistoryPage {
   final int? nextCursor;
 }
 
+/// Optional capability for append-only restoration of retained record versions.
+abstract interface class SpecimenHistoryRepository {
+  Future<Specimen> restoreVersion(
+    CollectionScope scope,
+    Specimen specimen, {
+    required int sourceRevision,
+    required bool resetToInitial,
+    required String reason,
+    required String idempotencyKey,
+  });
+}
+
 abstract class SpecimenRepository {
   String get mode;
   List<dynamic> get blockers;
@@ -282,6 +294,41 @@ enum BulkDecisionKind {
   /// The `kind` the decisions endpoint takes. The words a reviewer reads live
   /// with the control that shows them, in `widgets/selection_bar.dart`.
   final String wire;
+}
+
+/// The endpoint's limit for one explicitly named review selection.
+const int bulkDecisionLimit = 100;
+
+/// Scoped detail evidence for a selection, never inferred from queue rows.
+class BulkSelectionEligibility {
+  const BulkSelectionEligibility({
+    required this.requested,
+    required this.records,
+    required this.unavailable,
+  });
+
+  final List<Specimen> requested;
+  final Map<String, Specimen> records;
+  final Map<String, String> unavailable;
+
+  String? reasonFor(String id, BulkDecisionKind kind) {
+    if (unavailable.containsKey(id)) return unavailable[id];
+    final current = records[id];
+    if (current == null) return 'Current permission could not be verified.';
+    if (current.recordVersionId.isEmpty) {
+      return 'The current record version could not be verified.';
+    }
+    if (!(current.data['available_actions'] is List &&
+        (current.data['available_actions'] as List).contains(kind.wire))) {
+      return 'This action is not permitted on the current record version.';
+    }
+    return null;
+  }
+
+  List<Specimen> eligibleFor(BulkDecisionKind kind) => [
+    for (final specimen in requested)
+      if (reasonFor(specimen.id, kind) == null) records[specimen.id]!,
+  ];
 }
 
 /// What one record's decision did.

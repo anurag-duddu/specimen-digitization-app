@@ -181,13 +181,20 @@ void main() {
     expect(bottoms.first - bottoms.last, closeTo(96, 0.5));
   });
 
-  testWidgets('the capsule is the window only frosted pane', (
+  testWidgets('the toast draws one matte floating surface', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(uiHarness(child: _host()));
     UiToasts.show(hostContext, message: _first);
     await tester.pumpAndSettle();
-    expect(glassPaneCount(), 1);
+    expect(glassPaneCount(), 0);
+    expect(
+      find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is GlassSurface && widget.level == GlassLevel.floating,
+      ),
+      findsOneWidget,
+    );
     expectGlassBudget(tester);
     await tester.pump(UiToastStyle.showDuration);
     await tester.pumpAndSettle();

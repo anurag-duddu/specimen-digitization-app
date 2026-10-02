@@ -435,7 +435,7 @@ class DiffText extends StatelessWidget {
       children: <Widget>[
         // The summary is spoken as part of the text block below, so the
         // visible copy of it is not a second stop for a screen reader.
-        if (outcome.summary.isNotEmpty) ...<Widget>[
+        if (outcome.summary.isNotEmpty && !outcome.identical) ...<Widget>[
           ExcludeSemantics(
             child: Text(
               outcome.summary,
@@ -452,8 +452,7 @@ class DiffText extends StatelessWidget {
           Padding(
             padding: EdgeInsets.only(bottom: ui.space.s1),
             child: Text(
-              'Too long to mark position by position. The comparison above '
-              'still holds.',
+              'Long text: inline differences unavailable.',
               style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
             ),
           ),

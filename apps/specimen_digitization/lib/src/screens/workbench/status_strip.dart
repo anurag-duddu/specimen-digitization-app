@@ -1,28 +1,9 @@
-/// The status strip above the evidence segments (13 sections 3.2 and 4.1).
+/// Transient review feedback above the evidence segments.
 ///
-/// One line at the top of the evidence: where the record stands, what made
-/// the reading, and what is holding a decision up. `UiStatusStrip` is the
-/// pattern; this is the record's binding of it. The blockers used to be a
-/// disclosure that grew the strip to five rows on a phone and are now a
-/// summary that opens `UiBlockersSheet`, one row per blocker with the control
-/// that clears it (13 section 3.2).
-///
-/// The version, the run and the step are the strip's provenance from medium
-/// up, each the product's own glossary term with its definition one tap from
-/// the word it is read on (13 section 3.2, polish 3; pass criterion 10.2); a
-/// phone states the disposition and what blocks clearance and nothing else
-/// (13 section 4.1).
-///
-/// The strip scrolls with the evidence, so it costs the chrome budget
-/// nothing. Two things are drawn above it and only when they exist, because
-/// each is a statement about this record rather than a part of the line: the
-/// conflict banner, which says the record moved under the reviewer, and the
-/// corrections the reviewer has made and not yet sent.
-///
-/// The run internals that used to fill the record status card are an
-/// operator's concern and not a reviewer's (audit finding H8.2). They are one
-/// closed disclosure in the Fields segment, beside the review context, which
-/// is where the blocker that names them sends the reviewer.
+/// Conflicts, pending corrections and save acknowledgments appear when
+/// relevant. The strip does not repeat the record's status or provenance.
+/// Status changes still receive one accessibility announcement; an autonomous
+/// run change is distinct from the saved acknowledgment for a decision.
 library;
 
 import 'package:flutter/semantics.dart';
@@ -30,14 +11,12 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../../models.dart';
-import '../../review_context.dart';
 import '../../theme/motion.dart';
-import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import 'blockers.dart';
 import 'pending_changes.dart';
 
-/// Where the record stands, in one line.
+/// Corrections and save feedback for the current record.
 class WorkbenchStatusStrip extends StatefulWidget {
   const WorkbenchStatusStrip({
     super.key,
@@ -45,6 +24,7 @@ class WorkbenchStatusStrip extends StatefulWidget {
     required this.blockers,
     required this.pending,
     required this.onGoToBlocker,
+    this.saved = false,
     this.conflictVersion,
     this.onRefresh,
     this.staleChanges = const <PendingFieldChange>[],
@@ -52,6 +32,9 @@ class WorkbenchStatusStrip extends StatefulWidget {
 
   /// The record being reviewed.
   final Specimen specimen;
+
+  /// This exact version was acknowledged after a local save.
+  final bool saved;
 
   /// Everything outstanding, already collected.
   final List<ClearanceBlocker> blockers;
@@ -88,17 +71,12 @@ class WorkbenchStatusStrip extends StatefulWidget {
 }
 
 class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
-  /// The disposition this strip last drew, so a change can be told from a
-  /// first paint. A record opened at Cleared was not cleared just now.
-  String? _lastDisposition;
-
-  /// True once the disposition changed while this record was open, which is
-  /// the only moment in the product where a human commits an attributable,
-  /// versioned decision about a museum record (motion catalog, row 50).
+  /// True after a valid queue disposition changes while this record is open.
+  /// Opening a record at Cleared is not a new decision.
   bool _settled = false;
 
-  /// The status the chip last drew, so a change the poll brings (processing
-  /// to blocked, paused or cancelled) is heard once, like a decision is.
+  /// The last validated status, so a change the poll brings (processing to
+  /// blocked, paused or cancelled) is heard once, like a decision is.
   ///
   /// Taken in `initState`, not by a lazy initialiser: the first read would
   /// otherwise happen in `didUpdateWidget`, after `widget` is already the
@@ -113,7 +91,6 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
   @override
   void initState() {
     super.initState();
-    _lastDisposition = widget.specimen.disposition;
     _lastStatus = _statusOf(widget.specimen);
   }
 
@@ -122,30 +99,23 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
     super.didUpdateWidget(oldWidget);
     final SpecimenStatus status = _statusOf(widget.specimen);
     if (oldWidget.specimen.id != widget.specimen.id) {
-      _lastDisposition = widget.specimen.disposition;
       _lastStatus = status;
       _settled = false;
       return;
     }
     final bool statusChanged = status != _lastStatus;
     _lastStatus = status;
-    final String? next = widget.specimen.disposition;
-    if (next == _lastDisposition) {
-      // Not a decision: the run moved on its own, and the chip says so. Heard
-      // once, in the chip's own words, without the settle or the haptic that
-      // belong to a decision (02 section 4.16: a blocked run announces
-      // itself).
-      if (statusChanged) _announce(status.semanticsLabel);
+    if (!statusChanged) return;
+    if (!status.isQueue) {
+      // A run update or invalid disposition is not a saved review decision.
+      // Clear a previous decision acknowledgment and announce this state once.
+      _settled = false;
+      _announce(status.semanticsLabel);
       return;
     }
-    _lastDisposition = next;
-    if (next == null) {
-      if (statusChanged) _announce(status.semanticsLabel);
-      return;
-    }
-    setState(() => _settled = true);
-    // Three channels, because motion is never the only one: the chip, this
-    // announcement, and one medium impact on the two platforms that have
+    _settled = true;
+    // Three channels, because motion is never the only one: the saved check,
+    // this announcement, and one medium impact on the two platforms that have
     // haptics. The reviewer is looking at the screen, so the haptic is
     // redundancy rather than the message.
     _announce('Saved. ${status.semanticsLabel}');
@@ -166,13 +136,6 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final Specimen record = widget.specimen;
-    final Json run = objectOf(record.data['run']);
-    final SpecimenStatus status = _statusOf(record);
-    final String stage = vocabularyLabel(
-      textOf(run['stage'], textOf(record.data['stage'], '')),
-    );
-    final List<ClearanceBlocker> blockers = widget.blockers;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -231,93 +194,24 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
             ),
           ),
         UiStatusStrip(
-          disposition: _Disposition(status: status, settled: _settled),
-          // The provenance, on every window with a line long enough to hold
-          // it beside the two things that outrank it. A phone has 358 dp for
-          // a 130 dp chip, 160 of run and version and a 180 dp summary, and
-          // 11 section 3.3 rule 3 is that a control below its threshold drops
-          // a variant rather than ellipsising a word to a letter. What blocks
-          // clearance is stated in words at every width, because the north
-          // star says a count is never a colour or a glyph alone; the run and
-          // the version are what a reviewer reads at leisure, and they are in
-          // the Fields segment's processing disclosure either way.
-          //
-          // Each fact is a `TermText`: its first word is the product's own
-          // glossary term and opens its definition on the line it is read on,
-          // spoken whole with its value ("Version 17, term, double tap for
-          // definition") on a node of its own (13 section 3.2, polish 3).
-          provenance: WindowClass.of(context).isCompact
-              ? const <Widget>[]
-              : <Widget>[
-                  _fact(WorkbenchStatusStrip.versionTerm, '${record.revision}'),
-                  if (record.data['active_run_id'] != null)
-                    _fact(
-                      WorkbenchStatusStrip.runTerm,
-                      textOf(record.data['active_run_id']),
+          disposition: (widget.saved || _settled)
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    _SavedCheck(shown: true),
+                    SizedBox(width: ui.space.s1),
+                    ExcludeSemantics(
+                      child: Text('Saved', style: ui.type.label),
                     ),
-                  if (stage.isNotEmpty && stage != 'Not recorded')
-                    _fact(WorkbenchStatusStrip.stepTerm, stage),
-                ],
-          blockers: blockers.isEmpty
-              ? null
-              : UiBlockers(
-                  summary: blockersSummary(blockers.length),
-                  sheetTitle: blockersSheetTitle,
-                  items: <UiBlocker>[
-                    for (final ClearanceBlocker blocker in blockers)
-                      UiBlocker(
-                        label: blocker.message,
-                        detail: blocker.detail,
-                        actionLabel: goToBlockerLabel,
-                        onAction: () => widget.onGoToBlocker(blocker),
-                      ),
                   ],
-                ),
+                )
+              : null,
+          provenance: const <Widget>[],
+          blockers: null,
         ),
       ],
     );
   }
-}
-
-/// One provenance fact: the glossary [term] and its [value], as the strip's
-/// paragraph draws it.
-///
-/// One line, so a fact that does not fit leaves the paragraph whole rather
-/// than wrapping the strip to two. And built with no text scaling of its own:
-/// the strip sets each fact as a placeholder in one paragraph, and a
-/// paragraph already scales a placeholder by the text scale (`WidgetSpan`
-/// wraps each child in the SDK's auto scaling inline widget), so a `Text`
-/// inside one that also read the scale drew at four times its size at 200
-/// percent, which is "Version 17" wrapped over four lines of display type in
-/// the record's goldens at 768 by 1024 before this. The fact takes the
-/// paragraph's scale once. The pattern should do this for every slot it is
-/// given, the plain `facts` form included; recorded for `UiStatusStrip` 0.4.0.
-Widget _fact(String term, String value) => MediaQuery.withNoTextScaling(
-  child: TermText(term, trailing: ' $value', maxLines: 1),
-);
-
-/// Where the record stands, and the check that marks a decision just made.
-///
-/// The strip's disposition slot. A `Row` that is handed a bounded width by
-/// the strip, so both children are flexible: an inflexible child of a `Row`
-/// is given an unbounded main axis and a chip at 200 percent text then lays
-/// out at its intrinsic width and pushes the line over (11 section 3.3).
-class _Disposition extends StatelessWidget {
-  const _Disposition({required this.status, required this.settled});
-
-  final SpecimenStatus status;
-
-  /// True once the disposition changed while this record was open.
-  final bool settled;
-
-  @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: <Widget>[
-      Flexible(child: StatusChip(status, decisive: true)),
-      _SavedCheck(shown: settled),
-    ],
-  );
 }
 
 /// The amber count of corrections the reviewer has made but not sent.
@@ -351,7 +245,7 @@ class ConflictBanner extends StatelessWidget {
 
   /// The one sentence both the banner and the dialog use.
   static String copyFor(int version) =>
-      'Version $version was saved by another reviewer. Refresh and compare.';
+      'A newer version ($version) is available. Refresh and compare.';
 
   /// The label on the recovery action, in both surfaces.
   static const String action = 'Refresh and compare';

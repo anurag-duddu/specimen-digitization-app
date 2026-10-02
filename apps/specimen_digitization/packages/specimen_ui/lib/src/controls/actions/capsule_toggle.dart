@@ -14,6 +14,7 @@ import '../../foundation/type.dart';
 import '../../primitives/fit.dart';
 import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
+import '../../primitives/squircle.dart';
 import '../overlays/tooltip.dart';
 import 'button.dart';
 
@@ -404,14 +405,17 @@ class _ToggleOption<T> extends StatelessWidget {
       role: PressableRole.toggle,
       checked: selected,
       selected: selected,
-      capsule: true,
+      radius: ui.shape.inner,
       scaleOnPress: true,
       focusNode: focusNode,
       builder: (BuildContext context, Set<WidgetState> states) {
         final Color foreground = style.foreground.resolve(states);
         return DecoratedBox(
           decoration: ShapeDecoration(
-            shape: StadiumBorder(side: style.side.resolve(states)),
+            shape: Squircle.border(
+              ui.shape.inner,
+              side: style.side.resolve(states),
+            ),
             color: style.background.resolve(states),
           ),
           child: ConstrainedBox(

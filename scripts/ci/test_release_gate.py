@@ -21,6 +21,7 @@ REPO = {"id": 1360732425}
 COMPARE, COMMIT, PULLS = f"{BASE}/compare/{SHA}...main", f"{BASE}/commits/{SHA}", f"{BASE}/commits/{SHA}/pulls"
 PULL, HEAD_COMMIT = f"{BASE}/pulls/15", f"{BASE}/commits/{HEAD}"
 RUNS = f"{BASE}/actions/workflows/ci-cd.yml/runs?head_sha={SHA}&event=push&branch=main&per_page=20"
+DATA_RUNS = f"{BASE}/actions/workflows/data-release.yml/runs?head_sha={SHA}&event=push&branch=main&per_page=20"
 PROVIDER = "projects/716045864126/locations/global/workloadIdentityPools/github-actions/providers/"  # pragma: allowlist secret (public WIF provider path)
 
 
@@ -34,6 +35,10 @@ def run(**changes):
             "repository": dict(REPO), "head_repository": dict(REPO), **changes}
 
 
+def data_run(**changes):
+    return run(**{"id": 789, "path": ".github/workflows/data-release.yml", **changes})
+
+
 def responses(pull=15, attempt=1):
     jobs = [{"name": name, "status": "completed", "conclusion": "success", "head_sha": SHA, "run_id": 123,
              "run_attempt": attempt} for name in [*sorted(M.CHECKS), "Deploy Firebase Hosting"]]
@@ -45,6 +50,7 @@ def responses(pull=15, attempt=1):
                                  "base": {"ref": "main", "repo": dict(REPO)}, "head": {"sha": HEAD, "repo": dict(REPO)}},
         HEAD_COMMIT: {"sha": HEAD, "commit": {"tree": {"sha": TREE}}},
         RUNS: {"total_count": 1, "workflow_runs": [run(run_attempt=attempt)]},
+        DATA_RUNS: {"total_count": 1, "workflow_runs": [data_run()]},
         jobs_path(attempt): {"total_count": len(jobs), "jobs": jobs},
     }
 
@@ -77,9 +83,9 @@ class Clock:
         self.now += seconds
 
 
-def watch(github, clock=None):
+def watch(github, clock=None, *, wait_data=True):
     clock = clock or Clock()
-    return functools.partial(M.observe, gh=github, clock=clock.time, sleep=clock.sleep)
+    return functools.partial(M.observe, gh=github, clock=clock.time, sleep=clock.sleep, wait_data=wait_data)
 
 
 def gate(answers=None, wait_seconds=0, clock=None):
@@ -120,13 +126,16 @@ def store(path, value):
     return hashlib.sha256(raw).hexdigest()
 
 
-@pytest.mark.parametrize("plane,role", [("runtime-build", "runtime-build"), ("runtime", "runtime-release")])
+@pytest.mark.parametrize("plane,role", [("runtime-build", "runtime-build"), ("runtime", "runtime-release"),
+                                        ("data", "data-release"), ("data-initialization", "data-initialize")])
 def test_the_record_binds_github_facts_and_the_planes_fixed_provider(tmp_path, steps, plane, role):
     record, path, env = admitted(tmp_path, steps, plane)
     assert record == {
         "version": "protected-release-gate/v1", "plane": plane, "repository": REPOSITORY,
         "project": "specimen-digitization", "source_sha": SHA, "source_tree_sha": TREE, "pull_request": 15,
-        "ci_run_id": 123, "ci_run_attempt": 1, "release_run_id": 456, "release_run_attempt": 1,
+        "ci_run_id": 123, "ci_run_attempt": 1,
+        **({"data_run_id": 789, "data_run_attempt": 1} if plane.startswith("runtime") else {}),
+        "release_run_id": 456, "release_run_attempt": 1,
         "issued_at_unix": NOW, "expires_at_unix": NOW + 3600,
         "identity": {"project_number": "716045864126", "pool_id": "github-actions", "provider": f"{PROVIDER}specimen-{role}"}}
     raw = path.read_bytes()
@@ -172,11 +181,16 @@ def test_the_retired_owner_authorized_sha_is_neither_required_nor_consulted():
 
 
 @pytest.mark.parametrize("plane", ["data", "data-initialization"])
-def test_the_gate_admits_only_the_runtime_planes(plane):
+def test_the_gate_admits_the_fixed_data_planes_under_their_own_identity(plane):
     github = GitHub()
-    with pytest.raises(ValueError, match="runtime planes"):
-        M.admit_gate(plane, environment(plane), wait_seconds=0, now=NOW, observe=watch(github))
-    assert github.calls == []
+    record = M.admit_gate(plane, environment(plane), wait_seconds=0, now=NOW, observe=watch(github, wait_data=False))
+    assert record["plane"] == plane and record["identity"] == M.identity(plane)
+    assert record["source_sha"] == SHA and record["source_tree_sha"] == TREE
+    assert DATA_RUNS not in github.calls  # The data gate cannot wait for itself.
+    wrong = GitHub()
+    with pytest.raises(ValueError):
+        M.admit_gate(plane, environment("runtime"), wait_seconds=0, now=NOW, observe=watch(wrong))
+    assert wrong.calls == []  # A runtime identity cannot admit a data write.
 
 
 @pytest.mark.parametrize("change", [lambda c: c.update(status="behind"), lambda c: c.update(status="diverged"),
@@ -228,7 +242,7 @@ def test_an_unfinished_missing_or_ambiguous_ci_run_fails_within_the_bounded_wait
     assert clock.sleeps == sleeps
 
 
-@pytest.mark.parametrize("wait", [-1, 3301, 30.0, True, "30"])
+@pytest.mark.parametrize("wait", [-1, 5401, 30.0, True, "30"])
 def test_the_wait_is_a_bounded_integer(wait):
     github = GitHub()
     with pytest.raises(ValueError, match="wait"):
@@ -352,7 +366,7 @@ def test_admission_hands_a_gate_record_to_readmission_for_the_runtime_planes_onl
     readmit = M.readmit
     monkeypatch.setattr(M, "readmit", lambda *args, **kwargs: readmit(*args, **kwargs, observe=watch(GitHub())))
     assert admission.admit(path, "runtime", now=NOW + 60) == record
-    with pytest.raises(ValueError, match="runtime planes"):
+    with pytest.raises(ValueError, match="another plane"):
         admission.admit(path, "data", now=NOW + 60)
 
 
@@ -374,3 +388,93 @@ def test_the_command_line_blocks_without_echoing_what_failed(tmp_path, monkeypat
         M.main()
     assert "GITHUB_REF_PROTECTED" not in str(blocked.value) and SHA not in str(blocked.value)
     assert not output.exists()
+
+
+def test_the_same_commits_data_release_is_awaited_after_ci_and_must_succeed():
+    answers = responses()
+    answers[DATA_RUNS] = Replies([{"total_count": 0, "workflow_runs": []},
+                                  {"total_count": 1, "workflow_runs": [data_run(status="in_progress", conclusion=None)]},
+                                  {"total_count": 1, "workflow_runs": [data_run()]}])
+    clock = Clock()
+    facts = gate(answers, wait_seconds=600, clock=clock)
+    assert (facts["data_run_id"], facts["data_run_attempt"]) == (789, 1) and clock.sleeps == [30, 30]
+
+
+@pytest.mark.parametrize("change", [dict(conclusion="failure"), dict(conclusion="cancelled"), dict(event="workflow_dispatch"),
+                                    dict(head_branch="feature"), dict(path=".github/workflows/runtime-release.yml")])
+def test_a_failed_or_foreign_data_release_blocks_the_runtime(change):
+    answers = responses()
+    answers[DATA_RUNS] = {"total_count": 1, "workflow_runs": [data_run(**change)]}
+    with pytest.raises(ValueError):
+        gate(answers, wait_seconds=0)
+
+
+def test_an_unfinished_or_ambiguous_data_release_blocks_the_runtime():
+    unfinished = responses()
+    unfinished[DATA_RUNS] = {"total_count": 1, "workflow_runs": [data_run(status="in_progress", conclusion=None)]}
+    with pytest.raises(ValueError, match="did not finish in time"):
+        gate(unfinished, wait_seconds=90)
+    ambiguous = responses()
+    ambiguous[DATA_RUNS] = {"total_count": 2, "workflow_runs": [data_run(), data_run(id=790)]}
+    with pytest.raises(ValueError, match="ambiguous"):
+        gate(ambiguous, wait_seconds=0)
+
+
+def test_a_data_release_rerun_after_admission_fails_readmission(tmp_path, steps):
+    record, path, env = admitted(tmp_path, steps)
+    answers = responses()
+    answers[DATA_RUNS] = {"total_count": 1, "workflow_runs": [data_run(run_attempt=2)]}
+    with pytest.raises(ValueError, match="changed since admission"):
+        M.readmit(path, "runtime", env, now=NOW + 60, observe=watch(GitHub(answers)))
+
+
+@pytest.mark.parametrize("plane", ["runtime-build", "runtime", "data", "data-initialization"])
+def test_admission_hands_a_gate_record_to_readmission_for_its_own_plane_only(tmp_path, steps, monkeypatch, plane):
+    admission = importlib.import_module("release_admission")
+    record, path, env = admitted(tmp_path, steps, plane)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("RELEASE_AUTHORIZED_SHA", raising=False)
+    monkeypatch.setattr(admission, "github_snapshot", lambda packet: pytest.fail("a gate record is not an envelope"))
+    readmit, calls = M.readmit, []
+    monkeypatch.setattr(M, "readmit", lambda *args, **kwargs: calls.append(args[1]) or readmit(
+        *args, **kwargs, observe=watch(GitHub())))
+    assert admission.admit(path, plane, now=NOW + 60) == record
+    for other in sorted({*CONTEXT.PLANES, "hosting"} - {plane}):
+        with pytest.raises(ValueError, match="another plane"):
+            admission.admit(path, other, now=NOW + 60)
+    assert calls == [plane]
+
+
+
+
+@pytest.mark.parametrize("plane", ["data", "data-initialization"])
+def test_data_admission_and_readmission_never_wait_for_their_own_workflow(tmp_path, steps, monkeypatch, plane):
+    github = GitHub()
+    clock = Clock()
+    # Exercise the default observer, not the injected runtime observer seam.
+    original = M.observe
+    monkeypatch.setattr(M, "observe", functools.partial(original, gh=github, clock=clock.time, sleep=clock.sleep))
+    env = environment(plane, **steps)
+    record = M.admit_gate(plane, env, wait_seconds=0, now=NOW)
+    assert not M.DATA_RECORD_KEYS.intersection(record) and DATA_RUNS not in github.calls
+    path = tmp_path / "data" / "packet.json"
+    env["RELEASE_PACKET_SHA256"] = M.write_record(record, path, env)
+    assert M.readmit(path, plane, env, now=NOW + 1) == record
+    assert DATA_RUNS not in github.calls
+
+
+def test_runtime_cannot_use_successful_ci_without_the_same_commits_data_release():
+    original = responses()
+    github = GitHub(original)
+    observed = M.observe(SHA, wait_seconds=0, gh=github, clock=Clock().time, sleep=Clock().sleep, wait_data=False)
+    with pytest.raises(ValueError, match="data release"):
+        M.validate_facts(SHA, observed)
+
+
+@pytest.mark.parametrize("plane", ["data", "data-initialization"])
+def test_data_wait_cannot_use_the_runtime_ninety_minute_allowance(plane):
+    github = GitHub()
+    with pytest.raises(ValueError, match="wait"):
+        M.admit_gate(plane, environment(plane), wait_seconds=3301, now=NOW, observe=watch(github))
+    assert github.calls == []

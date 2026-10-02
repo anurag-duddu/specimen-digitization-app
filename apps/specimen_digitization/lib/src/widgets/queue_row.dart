@@ -86,6 +86,8 @@ class QueueRow extends StatelessWidget {
     this.selected = false,
     this.onOpen,
     this.focusNode,
+    this.concise = false,
+    this.showStatus = true,
   });
 
   /// The record's identifier. Also the row's identity for focus and scroll.
@@ -132,6 +134,12 @@ class QueueRow extends StatelessWidget {
   /// the reviewer is.
   final FocusNode? focusNode;
 
+  /// Shows identity, a contextual state and a specific issue without telemetry.
+  final bool concise;
+
+  /// False when the surrounding view already names this record's state.
+  final bool showStatus;
+
   /// The row width at which the status, the risk and the age fit beside the
   /// identifier rather than under it.
   ///
@@ -173,6 +181,31 @@ class QueueRow extends StatelessWidget {
 
   Widget _row(BuildContext context, double available) {
     final UiThemeData ui = context.ui;
+    if (concise) {
+      final showScore =
+          riskComposite != null &&
+          riskCalibrated &&
+          riskComposite!.isFinite &&
+          riskComposite! >= 0 &&
+          riskComposite! <= 100;
+      return UiListRow(
+        size: UiSize.sm,
+        title: id,
+        semanticsLabel: <String>[
+          id,
+          if (title != id) title,
+          if (showStatus) status.semanticsLabel,
+          if (showScore) 'Risk $riskComposite of 100',
+        ].join(', '),
+        selected: selected,
+        focusNode: focusNode,
+        onPressed: onOpen,
+        leading: thumbnail == null ? null : SpecimenThumbnail(bytes: thumbnail),
+        trailing: showScore
+            ? Text('$riskComposite', style: ui.type.mono.identifier)
+            : null,
+      );
+    }
     final bool beside = !available.isFinite || available >= _metaBesideTextMin;
 
     // The label carries every fact the row draws, because the row is one

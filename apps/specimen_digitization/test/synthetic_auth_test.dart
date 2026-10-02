@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:specimen_digitization/src/app/shell.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -206,20 +207,22 @@ void main() {
       repo.empty = false;
       await tester.tap(find.text('Check access again'));
       await tester.pumpAndSettle();
-      expect(find.text('Queue'), findsWidgets);
+      expect(find.byType(AppShell), findsOneWidget);
       expect(uiDestination('Intake'), findsOneWidget);
       repo.dataFailure = const ApiFailure(
         'Connection interrupted',
         code: 'network',
       );
-      await tester.tap(uiIconButton('Refresh collection'));
+      await tester.tap(uiMenuTrigger(RegExp('^Account menu')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Refresh collection'));
       await tester.pumpAndSettle();
       expect(find.textContaining('server is unavailable'), findsOneWidget);
       expect(
         find.textContaining('You have no collection assigned'),
         findsNothing,
       );
-      expect(find.textContaining('Test environment.'), findsOneWidget);
+      expect(find.bySemanticsLabel('Test environment'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       session.dispose();
     },

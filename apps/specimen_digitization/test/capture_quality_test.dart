@@ -106,14 +106,20 @@ void main() {
     expect(find.text(NotCalibratedChip.label), findsOneWidget);
   });
 
-  testWidgets('an unmeasurable image abstains in all three slots', (
+  testWidgets('an unmeasurable image gives one explicit abstention', (
     tester,
   ) async {
     await pumpComponent(tester, const CaptureQualitySummary(quality: null));
-    expect(find.text('Not measured'), findsNWidgets(3));
-    // The boundary stays even when there is nothing to qualify, because a
-    // blank slot must never read as a passing measurement.
-    expect(find.text(NotCalibratedChip.label), findsOneWidget);
+    expect(
+      find.text('Image measurements unavailable on this device.'),
+      findsOneWidget,
+    );
+    // No empty measurement slots, numeric substitutes or passing verdict.
+    for (final label in CaptureQualitySummary.labels) {
+      expect(find.text(label), findsNothing);
+    }
+    expect(find.text('0'), findsNothing);
+    expect(find.text(NotCalibratedChip.label), findsNothing);
   });
 
   test('the summary values abstain rather than defaulting to zero', () {

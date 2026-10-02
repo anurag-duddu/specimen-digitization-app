@@ -167,10 +167,9 @@ void main() {
     testWidgets('the field editor meets every guideline', (tester) async {
       final handle = tester.ensureSemantics();
       await pumpWorkbench(tester, windows['large']!);
-      await tester.tap(find.text('Fields'));
+      await tester.tap(find.text('Specimen data'));
       await tester.pumpAndSettle();
-      await tester.tap(uiIconButton(RegExp(r'^Edit as written')).first);
-      await tester.pumpAndSettle();
+      await openFieldEditor(tester, 0);
       for (final AccessibilityGuideline guideline in guidelines.values) {
         await expectGuideline(tester, guideline);
       }

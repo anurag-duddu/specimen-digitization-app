@@ -148,22 +148,26 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('a field row names its three layers as terms', (
-      WidgetTester tester,
-    ) async {
-      await pumpComponent(
-        tester,
-        const FieldRow(
-          name: 'Country',
-          state: SpecimenStatus.supported,
-          asWritten: 'U.S.A.',
-          readAs: 'United States',
-        ),
-      );
-      expect(termNamed('As written'), findsOneWidget);
-      expect(termNamed('Read as'), findsOneWidget);
-      expect(termNamed('Standardized'), findsOneWidget);
-    });
+    testWidgets(
+      'a field row reveals plain layer names without three nested links',
+      (WidgetTester tester) async {
+        await pumpComponent(
+          tester,
+          const FieldRow(
+            name: 'Country',
+            state: SpecimenStatus.supported,
+            asWritten: 'U.S.A.',
+            readAs: 'United States',
+          ),
+        );
+        await tester.tap(find.text('Country'));
+        await tester.pumpAndSettle();
+        for (final String label in ['As written', 'Read as', 'Standardized']) {
+          expect(find.text(label), findsOneWidget);
+          expect(termNamed(label), findsNothing);
+        }
+      },
+    );
 
     testWidgets('a field row still says what its layers hold', (
       WidgetTester tester,
@@ -179,24 +183,23 @@ void main() {
           readAs: 'United States',
         ),
       );
-      // A node with an action of its own is not merged into its parent, so
-      // the row states its own content rather than relying on the merge.
       expect(
-        find.bySemanticsLabel(RegExp('^Country, required')),
+        find.bySemanticsLabel(RegExp(r'^Country \(required\)\. U.S.A.')),
         findsOneWidget,
       );
-      expect(
-        find.bySemanticsLabel(RegExp('As written: U.S.A')),
-        findsOneWidget,
-      );
-      expect(
-        find.bySemanticsLabel(RegExp('Read as: United States')),
-        findsOneWidget,
-      );
-      expect(
-        find.bySemanticsLabel(RegExp('Standardized: Supported')),
-        findsOneWidget,
-      );
+      await tester.tap(find.text('Country (required)'));
+      await tester.pumpAndSettle();
+      for (final String label in [
+        'Country (required)',
+        'As written',
+        'U.S.A.',
+        'Read as',
+        'United States',
+        'Standardized',
+        'Supported',
+      ]) {
+        expect(find.bySemanticsLabel(label), findsOneWidget);
+      }
       handle.dispose();
     });
 
@@ -237,18 +240,12 @@ void main() {
       expect(termNamed('Provider'), findsOneWidget);
     });
 
-    testWidgets('the status strip states the version, the run and the step', (
+    testWidgets('routine review does not repeat internal provenance terms', (
       WidgetTester tester,
     ) async {
-      // 13 section 3.2 makes the strip one line, and `UiStatusStrip` joins
-      // its facts into a single label so the line ellipsises at its end
-      // rather than dropping a fact. A label is text and not a control, so
-      // the three words no longer carry the hairline that opens their
-      // definition, which is what this case used to assert.
-      //
-      // fe/polish-3: `UiStatusStrip` should take its facts as slots, so a
-      // product that defines its own vocabulary keeps the definition on the
-      // line it is read on (pass criterion 10.2).
+      // Routine feedback no longer repeats the internal version, run and
+      // step. The glossary affordance remains covered where a term appears;
+      // it does not require adding permanent provenance chrome to review.
       await pumpComponent(
         tester,
         WorkbenchStatusStrip(
@@ -264,9 +261,9 @@ void main() {
           onGoToBlocker: (ClearanceBlocker _) {},
         ),
       );
-      expect(find.textContaining('Version 17'), findsOneWidget);
-      expect(find.textContaining('Run run-1'), findsOneWidget);
-      expect(find.textContaining('Step finalized'), findsOneWidget);
+      expect(find.textContaining('Version 17'), findsNothing);
+      expect(find.textContaining('Run run-1'), findsNothing);
+      expect(find.textContaining('Step finalized'), findsNothing);
     });
   });
 }

@@ -157,6 +157,10 @@ def env_of(container):
 
 
 def test_committed_settings_name_each_pending_value_and_nothing_is_touched(tmp_path, monkeypatch):
+    assert S.READINESS_GENERATION == 1790562271708431
+    assert type(S.READINESS_GENERATION) is int and S.pending("api") == []
+    # Preserve the original missing-marker refusal with an explicit synthetic PENDING case.
+    monkeypatch.setattr(S, "READINESS_GENERATION", S.PENDING)
     assert S.pending("api") == ["READINESS_GENERATION"]
     assert S.pending("worker") == ['WORKER["args"]', "SAM_CHECKPOINT_SHA256"]
     assert S.pending("sam") == ["SAM_SERVER_ENV", "SAM_CHECKPOINT_SHA256"]
@@ -185,18 +189,22 @@ def test_bodies_are_built_only_from_the_committed_settings(ready):
            "SPECIMEN_SQL_CONNECTOR": "specimen-server"}
     bucket, labels = "specimen-digitization.firebasestorage.app", {"source-sha": SHA, "release-run": "456"}
     api_env, api_secrets = env_of(bodies["api"]["template"]["containers"][0])
+    tracing = {"APP_ENV": "production", "LOGFIRE_CAPTURE_MODE": "approved-content",
+               "LOGFIRE_SEND_TO_LOGFIRE": "true", "LOGFIRE_HEAD_SAMPLE_RATE": "1.0",
+               "LOGFIRE_DISTRIBUTED_TRACING": "true"}
     assert api_env == {
+        **tracing, "LOGFIRE_SERVICE_NAME": "specimen-api",
         "SPECIMEN_FIREBASE_PROJECT": "specimen-digitization", "SPECIMEN_FIREBASE_PROJECT_NUMBER": "716045864126",
         "SPECIMEN_FIREBASE_APP_IDS": "1:716045864126:web:a193fa80c7a98bcac8e2ef,1:716045864126:android:6d2aeda8bc992e16c8e2ef,"  # pragma: allowlist secret (public app ids)
                                      "1:716045864126:ios:b4ae90c54b5beccac8e2ef",
         **sql, "SPECIMEN_GCS_BUCKET": bucket,
         "SPECIMEN_CORS_ORIGINS": "https://specimen-digitization.web.app,https://specimen-digitization.firebaseapp.com",
         "SPECIMEN_READINESS_OBJECT": "application/sha256/a1c115b623cdc43c1b062e5431c8ca8cb6411aa08057885e3b44a9238747818e",  # pragma: allowlist secret (public marker digest)
-        "SPECIMEN_READINESS_GENERATION": "1790000000000001", "SPECIMEN_WORKER_JOB": NAMES["worker"]}
+        "SPECIMEN_READINESS_GENERATION": "1790562271708431", "SPECIMEN_WORKER_JOB": NAMES["worker"]}
     assert api_secrets == {"LOGFIRE_TOKEN": ("specimen-worker-logfire", "1"),
                            "SPECIMEN_SOURCE_REGISTRY_JSON": ("specimen-source-registry", "1"),
                            "SPECIMEN_COLLECTION_BINDINGS_JSON": ("specimen-collection-bindings", "1")}
-    assert RuntimeConfig.from_env(api_env).readiness_generation == 1790000000000001
+    assert RuntimeConfig.from_env(api_env).readiness_generation == 1790562271708431
     for role, cpu, memory, cap, concurrency, timeout in (("api", "1", "1Gi", 2, 8, "600s"), ("sam", "4", "16Gi", 1, 1, "300s")):
         body, template = bodies[role], bodies[role]["template"]
         assert (body["name"], body["ingress"], body["labels"]) == (NAMES[role], "INGRESS_TRAFFIC_ALL", labels)
@@ -211,6 +219,7 @@ def test_bodies_are_built_only_from_the_committed_settings(ready):
         "only-dir=application/sha256/" + "4" * 64 + "/sam3-cache"]}}]
     assert sam["containers"][0]["volumeMounts"] == [{"name": "checkpoint", "mountPath": "/model-cache"}]
     assert env_of(sam["containers"][0]) == ({
+        **tracing, "LOGFIRE_SERVICE_NAME": "specimen-sam",
         "HF_HOME": "/model-cache", "HF_HUB_OFFLINE": "1", "SPECIMEN_SAM3_CHECKPOINT_SHA256": "4" * 64,
         "SPECIMEN_SAM3_AUDIENCE": SAM_URL, "SPECIMEN_SAM3_CALLER_EMAIL": ACCOUNT.format("specimen-worker"),
         "SPECIMEN_SAM3_OUTPUT_BUCKET": bucket, "SPECIMEN_SAM3_MAX_REQUEST_BYTES": "1048576"},
@@ -224,7 +233,7 @@ def test_bodies_are_built_only_from_the_committed_settings(ready):
     assert container["args"] == ["--drain", "--max-seconds", "3300"]
     assert container["resources"] == {"limits": {"cpu": "1", "memory": "1Gi"}}
     worker_env, worker_secrets = env_of(container)
-    assert worker_env == {**sql, "SPECIMEN_GCS_BUCKET": bucket, "SPECIMEN_SAM3_ENDPOINT": SAM_URL,
+    assert worker_env == {**tracing, "LOGFIRE_SERVICE_NAME": "specimen-worker", **sql, "SPECIMEN_GCS_BUCKET": bucket, "SPECIMEN_SAM3_ENDPOINT": SAM_URL,
                           "SPECIMEN_SAM3_REVISION": SAM3_MODEL.revision, "SPECIMEN_APPROVED_INFERENCE": "true",
                           "SPECIMEN_SAM3_CHECKPOINT_SHA256": "4" * 64}
     assert worker_secrets == {"HF_TOKEN": ("huggingface-runtime-token", "2"), "LOGFIRE_TOKEN": ("specimen-worker-logfire", "1"),

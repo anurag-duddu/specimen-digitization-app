@@ -84,7 +84,13 @@ class PollingWorker:
         self.health.blocked_scopes[key] = reason
 
     def tick(self, stop=None):
-        actor_uid.set(self.user_id)
+        actor_token = actor_uid.set(self.user_id)
+        try:
+            return self._polling_tick(stop)
+        finally:
+            actor_uid.reset(actor_token)
+
+    def _polling_tick(self, stop=None):
         self.health.ticks += 1
         self.health.oldest_due_at = None
         current = self.clock()
@@ -298,7 +304,13 @@ class PilotWorker(PollingWorker):
             "counts": {},
             "specimens": {},
         }
-        actor_uid.set(self.user_id)
+        actor_token = actor_uid.set(self.user_id)
+        try:
+            return self._actor_result_summary(launch, summary)
+        finally:
+            actor_uid.reset(actor_token)
+
+    def _actor_result_summary(self, launch, summary):
         try:
             memberships = deadline_call(self.membership_loader, self.user_id)
             if not any(
@@ -350,7 +362,13 @@ class PilotWorker(PollingWorker):
 
     def tick(self, stop=None):
         self._cohort_review_complete = False
-        actor_uid.set(self.user_id)
+        actor_token = actor_uid.set(self.user_id)
+        try:
+            return self._pilot_tick(stop)
+        finally:
+            actor_uid.reset(actor_token)
+
+    def _pilot_tick(self, stop=None):
         self.health.ticks += 1
         if stop is not None and stop.is_set():
             return self.health
@@ -605,11 +623,17 @@ def main():
     parser.add_argument("--source-manifest", type=Path)
     parser.add_argument("--evidence-only", action="store_true")
     parser.add_argument("--evidence-profile", type=Path)
-    parser.add_argument("--max-seconds", type=int, default=1500)
+    parser.add_argument("--drain", action="store_true", help="Drain requested work (LANE T2)")
+    parser.add_argument("--max-seconds", type=int)
     parser.add_argument(
         "--persistence", choices=["sqlite", "sql-emulator"], default="sqlite"
     )
     args = parser.parse_args()
+    if args.drain:
+        _drain_main(parser, args)
+        return
+    if args.max_seconds is None:
+        args.max_seconds = 1500
     if not 1 <= args.max_seconds <= 1500 and not (
         args.mode == "production" and args.max_seconds == 3485 and os.getenv("SPECIMEN_WORKER_TIMING")
     ):
@@ -623,6 +647,115 @@ def main():
     except OperationalBlock as exc:
         print(json.dumps({"status": "blocked", "reason": str(exc)}))
         raise SystemExit(2) from None
+
+
+def _drain_main(parser, args):
+    """`--drain` takes none of the pilot's inputs; max-seconds is the task deadline."""
+    pilot = (args.launch_policy, args.source_manifest, args.evidence_profile)
+    if (
+        args.mode != "production"
+        or args.once
+        or args.evidence_only
+        or args.materialize_config
+        or any(pilot)
+    ):
+        parser.error("--drain runs in production mode, without --once or pilot inputs")
+    if args.max_seconds is None:
+        args.max_seconds = 3600
+    if not 600 < args.max_seconds <= 3600:
+        parser.error("--drain's max-seconds is the task deadline, 601 to 3600")
+    try:
+        _run_drain(args)
+    except OperationalBlock as exc:
+        print(json.dumps({"status": "blocked", "reason": str(exc)}))
+        raise SystemExit(2) from None
+
+
+def _run_drain(args):
+    # Begin the one non-renewable budget before configuration, auth, native
+    # reads, provider setup, fencing or finalization, not only around the loop.
+    deadline = WorkerDeadline(time.monotonic() + args.max_seconds)
+    try:
+        with deadline.scope():
+            try:
+                _execute_drain(args, deadline)
+            finally:
+                if not args.check_config:
+                    from ..observability import flush_production_observability
+                    flushed = flush_production_observability(shutdown=True)
+                    if flushed["configured"] and not flushed["complete"]:
+                        raise OperationalBlock("drain_trace_export_incomplete")
+    except WorkerDeadlineExceeded:
+        raise OperationalBlock("drain_execution_deadline_exceeded") from None
+
+
+def _execute_drain(args, deadline):
+    """The processing lane's worker (docs/execution/golive/LANE.md, T2).
+
+    It runs in the job's own process, not under the pilot's supervisor, which
+    hard-stops its worker group on SIGTERM: the drain finishes its step and
+    releases its fence instead. Each external call keeps its own bounded effect.
+    """
+    import signal
+    from uuid import uuid4
+
+    from .collection_profiles import published_registry
+    from .lane_dispatch import UNCONFIGURED, dispatcher_from_value
+    from .lane_worker import DrainWorker, drain_settings
+    from .profile_runtime import published_risk_registry
+
+    try:
+        settings = drain_settings(os.environ)
+    except ValueError as exc:
+        # The message names the setting, never its value.
+        print(json.dumps({
+            "status": "blocked", "reason": "drain_configuration_invalid", "detail": str(exc),
+        }))
+        raise SystemExit(2) from None
+    if args.check_config:
+        print(json.dumps({"status": "configured", "mode": "drain", "live_services_verified": False}))
+        return
+    from ..observability import configure_observability, CaptureMode
+
+    from ..observability import configure_production_observability
+    configure_production_observability("specimen-worker")
+    stop = threading.Event()
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(signum, lambda signum, frame: stop.set())
+    actor_token = actor_uid.set(settings.actor_uid)
+    try:
+        repository = SqlConnectRepository(**sql_endpoint_from_env())
+        blobs = GcsBlobs()
+        repository.graph_blobs = blobs
+        workflow = Workflow(
+            repository,
+            blobs,
+            ProductionAdapters(blobs),
+            profile_registry=published_registry(settings.bindings),
+            risk_registry=published_risk_registry(),
+        )
+        from .native_drain import compose_registered_native_drain
+
+        workflow = compose_registered_native_drain(workflow, repository=repository)
+        dispatcher = dispatcher_from_value(settings.worker_job)
+        # A retried task attempt is the same holder: its predecessor has exited.
+        execution = os.getenv("CLOUD_RUN_EXECUTION")
+        holder = f"{execution}/{os.getenv('CLOUD_RUN_TASK_INDEX', '0')}" if execution else str(uuid4())
+        remaining = deadline.remaining()
+        if remaining <= 600:
+            raise OperationalBlock("drain_new_run_window_closed")
+        summary = DrainWorker(
+            repository,
+            workflow,
+            settings.actor_uid,
+            repository.memberships,
+            execution_id=holder,
+            continuation=dispatcher.start if dispatcher else lambda: UNCONFIGURED,
+            deadline_seconds=remaining,
+        ).run(stop)
+        print(json.dumps(summary))
+    finally:
+        actor_uid.reset(actor_token)
 
 
 def _supervise(args):
@@ -757,90 +890,99 @@ def _run(args):
 
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda signum, frame: stop.set())
-    if args.mode == "synthetic":
-        repository = (
-            SqlConnectRepository(
-                project="demo-specimen-data", emulator_host=sql_emulator_host()
+    actor_token = None
+    try:
+        if args.mode == "synthetic":
+            repository = (
+                SqlConnectRepository(
+                    project="demo-specimen-data", emulator_host=sql_emulator_host()
+                )
+                if args.persistence == "sql-emulator"
+                else SQLiteRepository(args.state_dir / "state.sqlite3")
             )
-            if args.persistence == "sql-emulator"
-            else SQLiteRepository(args.state_dir / "state.sqlite3")
-        )
-        blobs = LocalBlobs(args.state_dir / "blobs")
-        adapters = SyntheticAdapters(blobs, SYNTHETIC_TEXT)
-        user = "synthetic-reviewer"
-        memberships = [
-            {
-                "organization_id": SYNTHETIC_ORG,
-                "collection_id": SYNTHETIC_COLLECTION,
-                "role": "reviewer",
-            }
-        ]
-        worker = PollingWorker(
-            repository,
-            Workflow(repository, blobs, adapters),
-            user,
-            lambda user: memberships,
-        )
-    else:
-        from .worker_launch import (
-            PilotAdmission,
-            verify_source_manifest,
-            sam3_expectations,
-        )
-
-        user = os.environ["SPECIMEN_WORKER_ACTOR_UID"]
-        actor_uid.set(user)
-        # The release pins the API's named SQL endpoint onto this job too, so
-        # both processes read and write one service. Absent, the defaults apply.
-        repository = SqlConnectRepository(**sql_endpoint_from_env())
-        blobs = GcsBlobs()
-        manifest = verify_source_manifest(args.source_manifest, launch)
-        adapters = ProductionAdapters(
-            blobs, sam3_expected=sam3_expectations(manifest, launch, blobs.bucket.name)
-        )
-        admission = PilotAdmission(repository, launch)
-        if args.evidence_only:
-            from .evidence_pilot import EvidencePilotWorkflow
-
-            workflow = EvidencePilotWorkflow(
-                repository, blobs, admission, evidence_profile, production=adapters
+            blobs = LocalBlobs(args.state_dir / "blobs")
+            adapters = SyntheticAdapters(blobs, SYNTHETIC_TEXT)
+            user = "synthetic-reviewer"
+            memberships = [
+                {
+                    "organization_id": SYNTHETIC_ORG,
+                    "collection_id": SYNTHETIC_COLLECTION,
+                    "role": "reviewer",
+                }
+            ]
+            worker = PollingWorker(
+                repository,
+                Workflow(repository, blobs, adapters),
+                user,
+                lambda user: memberships,
             )
         else:
-            workflow = Workflow(repository, blobs, adapters, admission=admission)
-        worker = PilotWorker(
-            repository, workflow, user, repository.memberships, admission
+            from .worker_launch import (
+                PilotAdmission,
+                verify_source_manifest,
+                sam3_expectations,
+            )
+
+            user = os.environ["SPECIMEN_WORKER_ACTOR_UID"]
+            actor_token = actor_uid.set(user)
+            # The release pins the API's named SQL endpoint onto this job too, so
+            # both processes read and write one service. Absent, the defaults apply.
+            repository = SqlConnectRepository(**sql_endpoint_from_env())
+            blobs = GcsBlobs()
+            manifest = verify_source_manifest(args.source_manifest, launch)
+            adapters = ProductionAdapters(
+                blobs, sam3_expected=sam3_expectations(manifest, launch, blobs.bucket.name)
+            )
+            admission = PilotAdmission(repository, launch)
+            if args.evidence_only:
+                from .evidence_pilot import EvidencePilotWorkflow
+
+                workflow = EvidencePilotWorkflow(
+                    repository, blobs, admission, evidence_profile, production=adapters
+                )
+            else:
+                workflow = Workflow(repository, blobs, adapters, admission=admission)
+                from ..research_harness.workflow_bridge import compose_registered_native_workflow
+
+                workflow = compose_registered_native_workflow(workflow,
+                    repository=repository, admission=admission)
+            worker = PilotWorker(
+                repository, workflow, user, repository.memberships, admission
+            )
+        if args.once:
+            if isinstance(worker, PilotWorker) and current_deadline() is not None:
+                worker.deadline = current_deadline()
+                if launch.evidence_only:
+                    worker.admission.bind_execution_window(args.max_seconds)
+                    worker.admission.remaining_execution_seconds = worker.deadline.remaining
+            deadline_call(worker.tick, stop)
+        else:
+            worker.run(stop, max_seconds=args.max_seconds)
+        if isinstance(worker, PilotWorker):
+            summary = worker.result_summary()
+            print(json.dumps(summary))
+            if summary["status"] != "completed":
+                raise SystemExit(2)
+        print(
+            json.dumps(
+                {
+                    "status": "stopped",
+                    "ticks": worker.health.ticks,
+                    "attempted": worker.health.attempted,
+                    "record_errors": worker.health.record_errors,
+                    "blockers": sorted(set(worker.health.blocked_scopes.values())),
+                }
+            )
         )
-    if args.once:
-        if isinstance(worker, PilotWorker) and current_deadline() is not None:
-            worker.deadline = current_deadline()
-            if launch.evidence_only:
-                worker.admission.bind_execution_window(args.max_seconds)
-                worker.admission.remaining_execution_seconds = worker.deadline.remaining
-        deadline_call(worker.tick, stop)
-    else:
-        worker.run(stop, max_seconds=args.max_seconds)
-    if isinstance(worker, PilotWorker):
-        summary = worker.result_summary()
-        print(json.dumps(summary))
-        if summary["status"] != "completed":
+        if (
+            worker.health.record_errors
+            or worker.health.membership_errors
+            or worker.health.blocked_scopes
+        ):
             raise SystemExit(2)
-    print(
-        json.dumps(
-            {
-                "status": "stopped",
-                "ticks": worker.health.ticks,
-                "attempted": worker.health.attempted,
-                "record_errors": worker.health.record_errors,
-                "blockers": sorted(set(worker.health.blocked_scopes.values())),
-            }
-        )
-    )
-    if (
-        worker.health.record_errors
-        or worker.health.membership_errors
-        or worker.health.blocked_scopes
-    ):
-        raise SystemExit(2)
+    finally:
+        if actor_token is not None:
+            actor_uid.reset(actor_token)
 
 
 if __name__ == "__main__":

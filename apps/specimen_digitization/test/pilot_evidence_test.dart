@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/operational_panel.dart';
 import 'package:specimen_digitization/src/workbench.dart';
+import 'package:specimen_digitization/src/screens/workbench/decision_bar.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 import 'widget_test.dart' show fixture;
 import 'workbench_harness.dart';
 
@@ -33,8 +35,18 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(controlEnabled(tester, 'Correct label regions'), isFalse);
+      final correction = tester
+          .widgetList<UiMenuTrigger>(find.byType(UiMenuTrigger))
+          .expand((menu) => menu.items)
+          .singleWhere((item) => item.label == 'Correct label regions');
+      expect(correction.onSelected, isNull);
+      expect(correction.disabledReason, isNotEmpty);
+      final decisions = tester.widget<WorkbenchDecisionBar>(
+        find.byType(WorkbenchDecisionBar),
+      );
+      expect(decisions.approveBlockedReason, isNotEmpty);
       expect(controlEnabled(tester, 'Approve record'), isFalse);
+      expect(decisions.coverageBlockedReason, isNull);
       expect(controlEnabled(tester, 'Confirm label coverage'), isTrue);
       expect(find.text('Start new run'), findsNothing);
       expect(specimen.data['disposition'], isNull);

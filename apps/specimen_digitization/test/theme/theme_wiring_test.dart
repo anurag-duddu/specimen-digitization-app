@@ -200,8 +200,8 @@ void main() {
       UiColor.light.status.cleared.content,
     );
     expect(ui.space.s4, UiSpace.standard.s4);
-    expect(ui.type.displayHero.fontSize, 64);
-    expect(ui.shape.tile, 20);
+    expect(ui.type.displayHero.fontSize, 40);
+    expect(ui.shape.tile, 8);
     expect(ui.icons.cleared.defaultGlyph, UiIcons.cleared.filled);
   });
 }

@@ -106,6 +106,7 @@ class UiDisclosure extends StatefulWidget {
     required this.title,
     required this.child,
     this.summary,
+    this.hideSummaryWhenExpanded = false,
     this.initiallyExpanded = false,
     this.onExpansionChanged,
     this.semanticsLabel,
@@ -120,6 +121,11 @@ class UiDisclosure extends StatefulWidget {
 
   /// A second line under the title, saying what is behind the row.
   final String? summary;
+
+  /// Hides the summary from the header and its default semantics while open.
+  ///
+  /// Use when the body exposes the same information as the collapsed preview.
+  final bool hideSummaryWhenExpanded;
 
   /// True to build the disclosure open.
   final bool initiallyExpanded;
@@ -141,6 +147,9 @@ class UiDisclosure extends StatefulWidget {
 class _UiDisclosureState extends State<UiDisclosure> {
   late bool _open = widget.initiallyExpanded;
 
+  String? get _visibleSummary =>
+      _open && widget.hideSummaryWhenExpanded ? null : widget.summary;
+
   void _toggle() {
     setState(() => _open = !_open);
     widget.onExpansionChanged?.call(_open);
@@ -149,7 +158,7 @@ class _UiDisclosureState extends State<UiDisclosure> {
   String get _label {
     final String? given = widget.semanticsLabel;
     if (given != null) return given;
-    final String? summary = widget.summary;
+    final String? summary = _visibleSummary;
     return summary == null ? widget.title : '${widget.title}. $summary';
   }
 
@@ -207,9 +216,9 @@ class _UiDisclosureState extends State<UiDisclosure> {
                               // the row's second line, the same object a
                               // list row's subtitle is, so it wraps to two
                               // lines before it is cut (11 section 3.3).
-                              if (widget.summary != null)
+                              if (_visibleSummary != null)
                                 Text(
-                                  widget.summary!,
+                                  _visibleSummary!,
                                   style: style.summary.copyWith(
                                     color: style.summaryColor,
                                   ),

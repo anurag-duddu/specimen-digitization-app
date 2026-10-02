@@ -57,14 +57,14 @@ class UiDensity {
     mode: UiDensityMode.touch,
     rowHeight: 56,
     controlHeight: 48,
-    gutter: 20,
-    tilePadding: 20,
+    gutter: 16,
+    tilePadding: 16,
   );
 
   /// The pointer row. 40 visual, 48 hit box.
   static const UiDensity pointer = UiDensity(
     mode: UiDensityMode.pointer,
-    rowHeight: 44,
+    rowHeight: 48,
     controlHeight: 40,
     gutter: 16,
     tilePadding: 16,

@@ -240,6 +240,9 @@ abstract final class UiIcons {
   /// The confirmation mark inside a toggle or a menu.
   static const IconSpec check = IconSpec(PhosphorIconsRegular.check);
 
+  /// Expand or collapse the specimen sidebar.
+  static const IconSpec sidebar = IconSpec(PhosphorIconsRegular.sidebarSimple);
+
   /// Edit with a reason.
   static const IconSpec editReason = IconSpec(PhosphorIconsRegular.notePencil);
 
@@ -438,6 +441,7 @@ abstract final class UiIcons {
     'rotateView': rotateView,
     'filter': filter,
     'search': search,
+    'sidebar': sidebar,
     'correctRegions': correctRegions,
     'copy': copy,
     'back': back,

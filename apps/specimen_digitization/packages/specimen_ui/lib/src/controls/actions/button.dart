@@ -1,4 +1,4 @@
-/// The capsule button (10 section 4.1, `UiButton`).
+/// The soft-corner button (10 section 4.1, `UiButton`).
 library;
 
 import 'dart:math' as math;
@@ -12,6 +12,7 @@ import '../../foundation/type.dart';
 import '../../primitives/fit.dart';
 import '../../primitives/label.dart';
 import '../../primitives/pressable.dart';
+import '../../primitives/squircle.dart';
 import '../data/progress.dart';
 import '../overlays/tooltip.dart';
 
@@ -219,15 +220,15 @@ class UiButtonStyle {
       ui.color.ground.withValues(alpha: 0);
 }
 
-/// A capsule button.
+/// A soft-corner command button.
 ///
 /// Retires `FilledButton`, `OutlinedButton`, `TextButton` and
 /// `FilledButton.tonal`.
 ///
 /// The label is a verb first, two to four words, with no trailing punctuation
-/// (02 section 4.3). While [loading] the caller moves the label to the present
-/// participle and the leading slot holds the ring, so a reviewer who looked
-/// away still reads which action is in flight.
+/// (02 section 4.3). Supply [busyLabel] for a pending action; the button reserves
+/// its label and progress geometry before work begins. Without a busy label or
+/// leading glyph, a slim local progress mark preserves the visible action.
 class UiButton extends StatelessWidget {
   /// A button labelled [label] that does [onPressed].
   const UiButton({
@@ -239,6 +240,7 @@ class UiButton extends StatelessWidget {
     this.leading,
     this.trailing,
     this.loading = false,
+    this.busyLabel,
     this.disabledReason,
     this.semanticsLabel,
     this.focusNode,
@@ -270,6 +272,14 @@ class UiButton extends StatelessWidget {
   /// The leading slot holds a 16 dp `UiProgress.ring` and the button refuses
   /// activation, so a reviewer cannot send the same decision twice.
   final bool loading;
+
+  /// The visible pending label. Keep [label] unchanged when starting work.
+  /// Supplying this reserves the wider label and a leading progress slot in
+  /// both states, so neighboring actions stay in place.
+  final String? busyLabel;
+
+  bool get _hasLeadingSlot => leading != null || busyLabel != null;
+  String get _visibleLabel => loading ? (busyLabel ?? label) : label;
 
   /// What the ring would be called if anything read it.
   ///
@@ -333,8 +343,11 @@ class UiButton extends StatelessWidget {
     final double slot = ui.space.iconInline + style.gap;
     return math.max(
       UiDensity.hitBox,
-      measureLabel(context, label, style.label).width +
-          (loading || leading != null ? slot : 0) +
+      math.max(
+            measureLabel(context, label, style.label).width,
+            measureLabel(context, busyLabel ?? label, style.label).width,
+          ) +
+          (_hasLeadingSlot ? slot : 0) +
           (trailing != null ? slot : 0) +
           style.padding.horizontal,
     );
@@ -360,7 +373,14 @@ class UiButton extends StatelessWidget {
         FitVariant(
           intrinsicWidth: _intrinsicWidth(context, ui, style),
           builder: (BuildContext context, bool lastResort) {
-            final Widget capsule = _capsule(ui, style);
+            final Widget capsule =
+                onPressed == null && !loading && disabledReason != null
+                ? UiTooltip.reason(
+                    reason: disabledReason,
+                    builder: (context, report) =>
+                        _capsule(ui, style, onDisabledReason: report),
+                  )
+                : _capsule(ui, style);
             // Outside the `Pressable` rather than around the label: the whole
             // control is what the pointer is over, and a tap has to reach the
             // button underneath rather than the tooltip on top of it.
@@ -373,13 +393,19 @@ class UiButton extends StatelessWidget {
     );
   }
 
-  Widget _capsule(UiThemeData ui, UiButtonStyle style) {
+  Widget _capsule(
+    UiThemeData ui,
+    UiButtonStyle style, {
+    ValueChanged<String>? onDisabledReason,
+  }) {
     return Pressable(
-      semanticsLabel: semanticsLabel ?? label,
+      semanticsLabel: semanticsLabel ?? _visibleLabel,
+      semanticsValue: loading ? _workingLabel : null,
       onPressed: loading ? null : onPressed,
-      disabledReason: disabledReason,
-      capsule: true,
-      scaleOnPress: true,
+      busy: loading,
+      disabledReason: loading ? null : disabledReason,
+      onDisabledReason: onDisabledReason,
+      radius: ui.shape.inner,
       focusNode: focusNode,
       autofocus: autofocus,
       statesController: statesController,
@@ -389,62 +415,82 @@ class UiButton extends StatelessWidget {
         final BorderSide? side = style.side.resolve(states);
         return DecoratedBox(
           decoration: ShapeDecoration(
-            shape: StadiumBorder(side: side ?? BorderSide.none),
+            shape: Squircle.border(
+              ui.shape.inner,
+              side: side ?? BorderSide.none,
+            ),
             color: style.background.resolve(states),
           ),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: style.minHeight),
             child: Padding(
               padding: style.padding,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
+              child: Stack(
+                alignment: Alignment.center,
                 children: <Widget>[
-                  if (loading || leading != null) ...<Widget>[
-                    _LeadingSlot(
-                      // The slot is the glyph's own box in both states, so a
-                      // button that starts loading keeps the width it had
-                      // (10 section 4.1).
-                      size: ui.space.iconInline,
-                      child: loading
-                          ? UiProgress.ring(
-                              // The button's own foreground, because `ink` is
-                              // a colour chosen against `paper` and would
-                              // disappear on a filled variant. Indeterminate,
-                              // so the ring draws no track: a track is a
-                              // scale, and a button waiting on the server has
-                              // none.
-                              semanticsLabel: _workingLabel,
-                              size: UiProgressSize.small,
-                              color: foreground,
-                            )
-                          : UiIcon(
-                              leading!,
-                              size: UiIconSize.inline,
-                              color: foreground,
-                            ),
-                    ),
-                    SizedBox(width: style.gap),
-                  ],
-                  // Loose, so the label takes its own width while there is
-                  // room and gives way only when there is not: rule 2 of 11
-                  // section 3.3 forbids squeezing a label that fits, and rule
-                  // 4 is what happens when nothing does.
-                  Flexible(
-                    child: UiLabel(
-                      label,
-                      style: style.label.copyWith(color: foreground),
-                      textAlign: TextAlign.center,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      if (_hasLeadingSlot) ...<Widget>[
+                        _LeadingSlot(
+                          size: ui.space.iconInline,
+                          child: loading
+                              ? UiProgress.ring(
+                                  semanticsLabel: _workingLabel,
+                                  size: UiProgressSize.small,
+                                  color: foreground,
+                                )
+                              : leading == null
+                              ? const SizedBox.shrink()
+                              : UiIcon(
+                                  leading!,
+                                  size: UiIconSize.inline,
+                                  color: foreground,
+                                ),
+                        ),
+                        SizedBox(width: style.gap),
+                      ],
+                      Flexible(
+                        child: SizedBox(
+                          width: math.max(
+                            measureLabel(context, label, style.label).width,
+                            measureLabel(
+                              context,
+                              busyLabel ?? label,
+                              style.label,
+                            ).width,
+                          ),
+                          child: UiLabel(
+                            _visibleLabel,
+                            style: style.label.copyWith(color: foreground),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                      if (trailing != null) ...<Widget>[
+                        SizedBox(width: style.gap),
+                        UiIcon(
+                          trailing!,
+                          size: UiIconSize.inline,
+                          color: foreground,
+                        ),
+                      ],
+                    ],
                   ),
-                  if (trailing != null) ...<Widget>[
-                    SizedBox(width: style.gap),
-                    UiIcon(
-                      trailing!,
-                      size: UiIconSize.inline,
-                      color: foreground,
+                  if (loading && !_hasLeadingSlot)
+                    Positioned(
+                      bottom: -ui.space.s1,
+                      left: 0,
+                      right: 0,
+                      child: SizedBox(
+                        height: ui.shape.stroke.emphasis,
+                        child: UiProgress.bar(
+                          semanticsLabel: _workingLabel,
+                          color: foreground,
+                        ),
+                      ),
                     ),
-                  ],
                 ],
               ),
             ),

@@ -83,6 +83,11 @@ def test_gateway_builds_model_with_pinned_provider_and_org_billing(
         "bill_to": "field-museum",
     }
     assert captured["model_name"] == "meta-models/Muse-Glimmer-30B"
+    assert captured["model"]["profile"] == {
+        "supports_tools": True,
+        "supports_json_schema_output": False,
+        "default_structured_output_mode": "tool",
+    }
     assert "hf_do_not_log" not in repr(gateway)
 
 
@@ -250,6 +255,7 @@ def test_preflight_accepts_the_new_routes_when_the_catalog_serves_them() -> None
                 {
                     "provider": "deepinfra",
                     "status": "live",
+                    "supports_tools": True,
                     "supports_structured_output": True,
                 }
             ],

@@ -1,6 +1,8 @@
 /// The overflow menu (10 section 4.3, `UiPopoverMenu`).
 library;
 
+import 'dart:async';
+
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -11,6 +13,7 @@ import '../../foundation/theme.dart';
 import '../../primitives/label.dart';
 import '../../primitives/popover.dart';
 import '../../primitives/pressable.dart';
+import '../../primitives/squircle.dart';
 
 /// One command in a [UiPopoverMenu].
 ///
@@ -249,6 +252,17 @@ class _UiPopoverMenuState extends State<UiPopoverMenu> {
       if (index < 0) index += _nodes.length;
       if (widget.items[index].enabled) {
         _nodes[index].requestFocus();
+        final target = _nodes[index].context;
+        if (target != null) {
+          unawaited(
+            Scrollable.ensureVisible(
+              target,
+              alignmentPolicy: step > 0
+                  ? ScrollPositionAlignmentPolicy.keepVisibleAtEnd
+                  : ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+            ),
+          );
+        }
         return;
       }
     }
@@ -299,7 +313,7 @@ class _UiPopoverMenuState extends State<UiPopoverMenu> {
                 minWidth: style.minWidth,
                 maxWidth: style.maxWidth,
               ),
-              child: Padding(
+              child: SingleChildScrollView(
                 padding: style.panePadding,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -342,6 +356,7 @@ class UiMenuTrigger extends StatefulWidget {
     this.label,
     this.menuLabel,
     this.placement = PopoverPlacement.auto,
+    this.onOpenChanged,
   });
 
   /// The commands the menu offers.
@@ -363,6 +378,9 @@ class UiMenuTrigger extends StatefulWidget {
 
   /// Where the menu sits relative to the trigger.
   final PopoverPlacement placement;
+
+  /// Reports explicit open/close changes, not disposal of the trigger.
+  final ValueChanged<bool>? onOpenChanged;
 
   @override
   State<UiMenuTrigger> createState() => _UiMenuTriggerState();
@@ -386,7 +404,9 @@ class _UiMenuTriggerState extends State<UiMenuTrigger> {
   }
 
   void _openChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    widget.onOpenChanged?.call(_controller.isOpen);
   }
 
   @override
@@ -400,33 +420,41 @@ class _UiMenuTriggerState extends State<UiMenuTrigger> {
       child: Pressable(
         semanticsLabel: widget.semanticsLabel,
         onPressed: _controller.toggle,
-        capsule: true,
+        radius: ui.shape.inner,
         selected: _controller.isOpen,
         builder: (BuildContext context, Set<WidgetState> states) =>
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: ui.density.controlHeight,
-                minWidth: ui.density.controlHeight,
+            DecoratedBox(
+              decoration: ShapeDecoration(
+                shape: Squircle.border(ui.shape.inner),
+                color: states.contains(WidgetState.selected)
+                    ? ui.color.stateLayer(ui.color.hoverOpacity)
+                    : ui.color.paper.withValues(alpha: 0),
               ),
-              child: Padding(
-                padding: EdgeInsetsDirectional.symmetric(
-                  horizontal: widget.label == null ? 0 : ui.space.s4,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: ui.density.controlHeight,
+                  minWidth: ui.density.controlHeight,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    UiIcon(widget.icon ?? UiIcons.more, color: ui.color.ink),
-                    if (widget.label != null) ...<Widget>[
-                      SizedBox(width: ui.space.s2),
-                      Flexible(
-                        child: UiLabel(
-                          widget.label!,
-                          style: ui.type.label.copyWith(color: ui.color.ink),
+                child: Padding(
+                  padding: EdgeInsetsDirectional.symmetric(
+                    horizontal: widget.label == null ? 0 : ui.space.s4,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      UiIcon(widget.icon ?? UiIcons.more, color: ui.color.ink),
+                      if (widget.label != null) ...<Widget>[
+                        SizedBox(width: ui.space.s2),
+                        Flexible(
+                          child: UiLabel(
+                            widget.label!,
+                            style: ui.type.label.copyWith(color: ui.color.ink),
+                          ),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),

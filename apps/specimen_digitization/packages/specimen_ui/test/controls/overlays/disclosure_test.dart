@@ -83,7 +83,67 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text(_body), findsOneWidget);
+    expect(
+      find.text(_summary),
+      findsOneWidget,
+      reason: 'summary hiding is opt-in; existing callers keep their summary',
+    );
+    expect(find.bySemanticsLabel(_label), findsOneWidget);
   });
+
+  for (final bool initiallyExpanded in <bool>[false, true]) {
+    testWidgets(
+      'opt-in summary appears once through toggles, initially open=$initiallyExpanded',
+      (WidgetTester tester) async {
+        final SemanticsHandle handle = tester.ensureSemantics();
+        try {
+          final List<bool> changes = <bool>[];
+          await tester.pumpWidget(
+            uiHarness(
+              child: UiDisclosure(
+                title: _title,
+                summary: _summary,
+                hideSummaryWhenExpanded: true,
+                initiallyExpanded: initiallyExpanded,
+                onExpansionChanged: changes.add,
+                child: const Text(_summary),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          for (final bool expanded in <bool>[
+            initiallyExpanded,
+            !initiallyExpanded,
+            initiallyExpanded,
+          ]) {
+            expect(find.text(_summary), findsOneWidget);
+            final String headerLabel = expanded ? _title : _label;
+            final SemanticsData header = tester
+                .getSemantics(find.bySemanticsLabel(headerLabel))
+                .getSemanticsData();
+            expect(
+              header.flagsCollection.isExpanded,
+              expanded ? Tristate.isTrue : Tristate.isFalse,
+            );
+            expect(
+              find.bySemanticsLabel(_summary),
+              expanded ? findsOneWidget : findsNothing,
+              reason: 'the open body owns the information, not the header',
+            );
+            await tester.tap(find.bySemanticsLabel(headerLabel));
+            await tester.pumpAndSettle();
+          }
+          expect(changes, <bool>[
+            !initiallyExpanded,
+            initiallyExpanded,
+            !initiallyExpanded,
+          ]);
+        } finally {
+          handle.dispose();
+        }
+      },
+    );
+  }
 
   testWidgets('Space and Enter toggle it', (WidgetTester tester) async {
     for (final LogicalKeyboardKey key in <LogicalKeyboardKey>[

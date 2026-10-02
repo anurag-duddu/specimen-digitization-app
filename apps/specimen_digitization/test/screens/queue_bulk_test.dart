@@ -48,6 +48,10 @@ class BulkRepository extends TestRepository {
   Object? failure;
 
   @override
+  Future<Specimen> specimen(CollectionScope scope, String id) async =>
+      records.firstWhere((record) => record.id == id);
+
+  @override
   Future<SpecimenPage> specimenPage(
     CollectionScope scope, {
     Map<String, String> filters = const <String, String>{},
@@ -139,8 +143,14 @@ final Finder rowBoxes = find.descendant(
 
 /// Picks the row whose record is named [title].
 Future<void> pick(WidgetTester tester, String title) async {
+  if (rowBoxes.evaluate().isEmpty) {
+    await tester.tap(uiMenuTrigger('Specimen list actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Select specimens'));
+    await tester.pumpAndSettle();
+  }
   final Finder row = find.ancestor(
-    of: find.text(title),
+    of: find.text('fixture-00${title.split(' ').last}'),
     matching: find.byType(SelectableRow),
   );
   await tester.tap(find.descendant(of: row, matching: find.byType(UiCheckbox)));
@@ -163,10 +173,15 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
   group('picking records', () {
-    testWidgets('a wide window keeps the checkbox column open', (
+    testWidgets('a wide window reveals checkboxes through list actions', (
       WidgetTester tester,
     ) async {
       await pumpQueue(tester, BulkRepository(queue(4)));
+      expect(rowBoxes, findsNothing);
+      await tester.tap(uiMenuTrigger('Specimen list actions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Select specimens'));
+      await tester.pumpAndSettle();
       expect(rowBoxes, findsNWidgets(4));
       expect(
         find.textContaining('selected'),
@@ -180,7 +195,7 @@ void main() {
     ) async {
       await pumpQueue(tester, BulkRepository(queue(3)), window: narrowQueue);
       expect(rowBoxes, findsNothing);
-      await tester.longPress(find.text('Pinned beetle 2'));
+      await tester.longPress(find.text('fixture-002'));
       await tester.pumpAndSettle();
       expect(rowBoxes, findsNWidgets(3));
       expect(find.text('1 record selected'), findsOneWidget);
@@ -227,7 +242,7 @@ void main() {
     ) async {
       await pumpQueue(tester, BulkRepository(queue(3)));
       await pick(tester, 'Pinned beetle 1');
-      await tester.tap(find.text('Pinned beetle 2'));
+      await tester.tap(find.text('fixture-002'));
       await tester.pumpAndSettle();
       expect(
         find.byType(QueueRow),
@@ -378,7 +393,7 @@ void main() {
       await confirm(tester, 'Approve 3 records');
 
       expect(find.text('1 of 3 records changed'), findsOneWidget);
-      expect(find.text('Pinned beetle 2'), findsWidgets);
+      expect(find.text('fixture-002'), findsWidgets);
       expect(find.text('Wrong base record version'), findsOneWidget);
       expect(find.text(BulkOutcomeReport.skippedReason), findsOneWidget);
       expect(

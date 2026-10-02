@@ -55,22 +55,25 @@ Specimen record({
   });
 }
 
-Future<void> pumpReadings(WidgetTester tester, Specimen specimen) =>
-    pumpComponent(
-      tester,
-      SingleChildScrollView(
-        child: WorkbenchReadings(
-          specimen: specimen,
-          anchors: <String, GlobalKey>{'r1': GlobalKey()},
-          selectedRegionId: null,
-          onSelectRegion: (_) {},
-          onChange: (_) async {},
-          transcriptionBlockedReason: null,
-          declarationsBlocked: true,
-        ),
+Future<void> pumpReadings(WidgetTester tester, Specimen specimen) async {
+  await pumpComponent(
+    tester,
+    SingleChildScrollView(
+      child: WorkbenchReadings(
+        specimen: specimen,
+        anchors: <String, GlobalKey>{'r1': GlobalKey()},
+        selectedRegionId: 'r1',
+        onSelectRegion: (_) {},
+        onChange: (_) async {},
+        transcriptionBlockedReason: null,
+        declarationsBlocked: true,
       ),
-      size: const Size(1000, 2400),
-    );
+    ),
+    size: const Size(1000, 2400),
+  );
+  await tester.tap(find.text(WorkbenchReadings.differencesHeading));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   testWidgets('identical readings are unresolved, never said to differ', (

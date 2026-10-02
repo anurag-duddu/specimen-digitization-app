@@ -94,7 +94,9 @@ const Map<String, _Harness> _harnesses = <String, _Harness>{
 void main() {
   _harnesses.forEach((String where, _Harness harness) {
     group('a focused field $where', () {
-      testWidgets('draws one edge and one ring', (WidgetTester tester) async {
+      testWidgets('draws one focused edge and no detached ring', (
+        WidgetTester tester,
+      ) async {
         final FocusNode node = FocusNode();
         addTearDown(node.dispose);
         for (final UiDensityMode density in UiDensityMode.values) {
@@ -132,18 +134,10 @@ void main() {
                 'Two means the outline thickened and a ring came with it, or '
                 'a decorator painted one underneath.',
           );
-          expect(
-            visibleRings(tester, field),
-            1,
-            reason: 'one ring, and it is the whole focus treatment',
-          );
-          expect(
-            ringPainters(tester, field),
-            1,
-            reason:
-                'counted from the painting side as well: one foreground '
-                'painter over the field, which is the ring',
-          );
+          expect(visibleRings(tester, field), 0);
+          expect(ringPainters(tester, field), 0);
+          expect(fieldSide(tester).width, 2);
+          expect(fieldSide(tester).color, uiOf(tester).color.ink);
 
           node.unfocus();
           await tester.pumpAndSettle();

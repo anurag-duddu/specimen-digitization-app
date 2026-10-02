@@ -42,7 +42,7 @@ class Surface extends StatelessWidget {
   /// Which solid surface to paint.
   final SurfaceRole role;
 
-  /// The corner radius. Defaults to `radius.tile`.
+  /// The corner radius. Structural panes are square unless a group opts in.
   final double? radius;
 
   /// True to draw the pane as a capsule.
@@ -71,7 +71,7 @@ class Surface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final double corner = radius ?? ui.shape.tile;
+    final double corner = radius ?? ui.shape.none;
     final BorderSide side = boundary
         ? BorderSide(color: ui.color.boundary, width: ui.shape.stroke.boundary)
         : hairline

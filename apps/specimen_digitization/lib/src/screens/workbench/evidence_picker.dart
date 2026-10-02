@@ -25,10 +25,8 @@ class EvidenceChoice {
   final String label;
 }
 
-/// Every evidence identifier on [specimen], named.
-///
-/// Regions become "Label 2", readings become "Label 2 reading (model)", and
-/// recorded evidence keeps its own source and excerpt.
+/// Only retained Evidence identifiers accepted by the field decision API.
+/// Observation and region IDs are source locators, not valid citations.
 List<EvidenceChoice> evidenceChoices(Specimen specimen) {
   final List<EvidenceChoice> choices = <EvidenceChoice>[];
   final Map<Object?, String> regionNames = <Object?, String>{
@@ -37,8 +35,10 @@ List<EvidenceChoice> evidenceChoices(Specimen specimen) {
   };
 
   for (final Json e in specimen.evidence) {
+    if (e['field_citation_supported'] == false) continue;
     final String id = textOf(e['evidence_id'], textOf(e['id'], ''));
     if (id.isEmpty || id == 'Not recorded') continue;
+    if (choices.any((EvidenceChoice c) => c.id == id)) continue;
     final String where = regionNames[e['region_id']] ?? 'Record';
     final String excerpt = textOf(e['excerpt'], '');
     choices.add(
@@ -49,26 +49,6 @@ List<EvidenceChoice> evidenceChoices(Specimen specimen) {
             : '$where: $excerpt',
       ),
     );
-  }
-
-  for (final Json o in specimen.observations) {
-    final String id = textOf(o['id'], textOf(o['observation_id'], ''));
-    if (id.isEmpty || id == 'Not recorded') continue;
-    if (choices.any((EvidenceChoice c) => c.id == id)) continue;
-    final String where = regionNames[o['region_id']] ?? 'Record';
-    choices.add(
-      EvidenceChoice(
-        id: id,
-        label: '$where reading (${textOf(o['model_id'], 'model')})',
-      ),
-    );
-  }
-
-  for (final Json r in specimen.regions) {
-    final String id = textOf(r['region_id'], '');
-    if (id.isEmpty || id == 'Not recorded') continue;
-    if (choices.any((EvidenceChoice c) => c.id == id)) continue;
-    choices.add(EvidenceChoice(id: id, label: regionNames[r['region_id']]!));
   }
 
   return choices;

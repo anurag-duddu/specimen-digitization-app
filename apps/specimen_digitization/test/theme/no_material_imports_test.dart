@@ -20,14 +20,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// The application files that may import `material.dart`, and why.
 ///
-/// All four are the bridge or the transitions 10 section 1.3 keeps as
-/// infrastructure. None of them builds a Material component; the
-/// `no_material_components` gate holds that separately, over the same tree.
+/// The bridge, transitions and explicitly requested native compact navigation.
+/// The component gate permits only the shell's one native NavigationBar;
+/// every remaining retired component stays forbidden across the same tree.
 const Map<String, String> infrastructureImporters = <String, String>{
   'lib/main.dart': 'the carrier MaterialApp, which is the bridge itself',
   'lib/src/theme/app_theme.dart': 'it builds the bridge ThemeData',
-  'lib/src/app/app_router.dart':
-      'MaterialPage, the only page a PageTransitionsTheme reaches',
+  'lib/src/app/shell.dart':
+      'the native phone NavigationBar requested on 2026-09-29',
   'lib/src/capture/capture_screen.dart':
       'MaterialPageRoute, the pushed form of the same transition',
 };
@@ -75,6 +75,21 @@ List<String> importersUnder(String root) {
 }
 
 void main() {
+  test('the shell imports only the native navigation component family', () {
+    final String source = File(
+      'lib/src/app/shell.dart',
+    ).readAsStringSync().replaceAll(_materialImport, '');
+    final Set<String> members = RegExp(
+      r'\bmaterial\.(\w+)',
+    ).allMatches(source).map((RegExpMatch match) => match.group(1)!).toSet();
+    expect(members, <String>{
+      'NavigationBar',
+      'NavigationBarTheme',
+      'NavigationBarThemeData',
+      'NavigationDestination',
+    });
+  });
+
   test('no file under lib/ gained a Material import', () {
     final List<String> found = importersUnder('lib');
     final Iterable<String> unexpected = found.where(
@@ -132,10 +147,7 @@ void main() {
     // reaches, which is the whole reason 10 section 1.3 keeps them. A bare
     // import would let the anatomy back in behind the same reason, so the two
     // route builders name what they take.
-    for (final String path in <String>[
-      'lib/src/app/app_router.dart',
-      'lib/src/capture/capture_screen.dart',
-    ]) {
+    for (final String path in <String>['lib/src/capture/capture_screen.dart']) {
       final String source = File(path).readAsStringSync();
       expect(
         RegExp(

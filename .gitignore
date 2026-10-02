@@ -129,6 +129,9 @@ data/
 scripts/data/*
 !scripts/data/*.sh
 !scripts/data/*.mjs
+# The offline hierarchy approval command is reviewed source; its private
+# artifact and approval files remain ignored by the rules above.
+!scripts/data/hierarchy_approval.py
 # The design system's data control family is source, not collection data. The
 # directory name comes from 10 section 1.2 and slot C5 owns it. Its tests live
 # under the matching path and are swallowed by the same rule, so both sides of
