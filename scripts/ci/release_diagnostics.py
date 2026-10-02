@@ -9,7 +9,12 @@ NODE_STAGES = frozenset({
     "node.catalog-validate", "node.catalog-rollback", "node.output", "node.cleanup",
     "node.disposal", "node.clean", "node.initialize", "node.postconditions",
 })
-STAGES = NODE_STAGES | frozenset({
+SQL_READ_STAGES = frozenset({
+    "google.sql-source-users-list", "google.sql-clone-users-list",
+    "google.sql-source-instance-get", "google.sql-clone-instance-get",
+    "google.sql-source-database-get", "google.sql-clone-database-get",
+})
+STAGES = NODE_STAGES | SQL_READ_STAGES | frozenset({
     "data.execute", "data.inputs", "data.admission", "data.plan", "data.receipt",
     "google.admission", "google.credentials-file", "google.credentials-validation",
     "google.credentials-load", "google.session", "google.project-request", "google.project-identity",
@@ -23,8 +28,9 @@ SQLSTATES = frozenset({"08001", "08003", "08004", "08006", "08P01", "28000", "28
 
 
 class HTTPFailure(ValueError):
-    def __init__(self, status):
+    def __init__(self, status, *, read_stage=None):
         self.http_status = status if type(status) is int and 400 <= status <= 599 else None
+        self.read_stage = read_stage if type(read_stage) is str and read_stage in SQL_READ_STAGES else None
         super().__init__("Google HTTP response rejected")
 
 
@@ -38,6 +44,9 @@ class DiagnosticError(ValueError):
 
 def public_failure(error):
     stage = error.stage if isinstance(error, DiagnosticError) and type(error.stage) is str and error.stage in STAGES else "data.execute"
+    read_stage = getattr(error, "read_stage", None) if isinstance(error, HTTPFailure) else None
+    if type(read_stage) is str and read_stage in SQL_READ_STAGES:
+        stage = read_stage
     fields = ["stage=" + stage]
     status = getattr(error, "http_status", None) if isinstance(error, (DiagnosticError, HTTPFailure)) else None
     if type(status) is int and 400 <= status <= 599:
@@ -58,6 +67,9 @@ def stage(name):
         raise
     except Exception as error:
         status = error.http_status if isinstance(error, HTTPFailure) else None
+        read_stage = getattr(error, "read_stage", None) if isinstance(error, HTTPFailure) else None
+        if name == "data.execute" and type(read_stage) is str and read_stage in SQL_READ_STAGES:
+            name = read_stage
         raise DiagnosticError(name, http_status=status) from None
 
 

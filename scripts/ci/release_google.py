@@ -25,6 +25,31 @@ ORIGINS = {"identity": "https://identitytoolkit.googleapis.com/v1/","run": "http
            "rules": "https://firebaserules.googleapis.com/v1/"}
 READABLE_RUN_IAM = frozenset(f"projects/{PROJECT}/locations/us-east4/services/{name}"
                              for name in ("specimen-sam", "specimen-api"))
+SQL_METADATA_READS = (
+    ("specimen-digitization-instance", "/users", "google.sql-source-users-list"),
+    ("specimen-digitization-restore-20260908-r1", "/users", "google.sql-clone-users-list"),
+    ("specimen-digitization-instance", "", "google.sql-source-instance-get"),
+    ("specimen-digitization-restore-20260908-r1", "", "google.sql-clone-instance-get"),
+    ("specimen-digitization-instance", "/databases/specimen-digitization-database", "google.sql-source-database-get"),
+    ("specimen-digitization-restore-20260908-r1", "/databases/specimen-digitization-database", "google.sql-clone-database-get"),
+)
+
+
+def _sql_metadata_read_stage(plane, api, method, resource, body, params, aliases):
+    """Classify only fixed data-plane reads; never retain a URL, query or body."""
+    if plane not in {"data", "data-initialization"} or api != "sql" or method != "GET" or body is not None:
+        return None
+    for instance, suffix, name in SQL_METADATA_READS:
+        if not any(resource == f"projects/{project}/instances/{instance}{suffix}" for project in aliases):
+            continue
+        if suffix == "/users":
+            if params is not None and not (type(params) is dict and set(params) <= {"pageToken"}
+                    and ("pageToken" not in params or type(params["pageToken"]) is str and 0 < len(params["pageToken"]) <= 4096)):
+                return None
+        elif params is not None and not (type(params) is dict and not params):
+            return None
+        return name
+    return None
 
 
 class _DeadlineSignal(Exception):
@@ -210,6 +235,12 @@ class Google:
             timeout = min(timeout, read_deadline - time.time())
             require(timeout > 0, "native SQL read has no remaining time")
         timing = {}
+        import release_recovery_window as recovery
+        if recovery.enabled(dict(os.environ), self.plane):
+            remaining = self.packet["expires_at_unix"] - time.time()
+            require(remaining > 0, "native recovery request has no remaining fixed authority")
+            timeout = min(timeout, remaining)
+            timing["max_allowed_time"] = min(30, remaining)
         if method != "GET":
             remaining = min(self.packet["expires_at_unix"], recovery_deadline or self.packet["expires_at_unix"]) - time.time()
             require(remaining > 0, "native mutation has no remaining authority")
@@ -229,16 +260,24 @@ class Google:
                 finally:
                     if response is not None:
                         response.close()
-        with request_deadline(timing["max_allowed_time"]) if recovery_deadline else nullcontext():
+        recovery_guard = getattr(self, "recovery_first_effect_guard", None)
+        if recovery_guard is not None:
+            timing["max_allowed_time"] = min(timing.get("max_allowed_time", 30), recovery_guard.budget(api, method, resource, params))
+            timeout = min(timeout, timing["max_allowed_time"])
+        bounded_recovery = recovery.enabled(dict(os.environ), self.plane) or recovery_guard is not None
+        with request_deadline(timing["max_allowed_time"]) if recovery_deadline or bounded_recovery else nullcontext():
             dispatch_guard = getattr(self, "worker_dispatch_guard", None)
             if method != "GET" and dispatch_guard is not None:
                 dispatch_guard(api, method, resource, body)
+            if recovery_guard is not None:
+                recovery_guard(api, method, resource, params)
             response = self.session.request(method, ORIGINS[api] + resource, json=body, params=params, timeout=timeout, **timing,
                                             allow_redirects=False)
             if missing and response.status_code == 404:
                 return None
             if not 200 <= response.status_code < 300:
-                failure = HTTPFailure(response.status_code)
+                failure = HTTPFailure(response.status_code, read_stage=_sql_metadata_read_stage(
+                    self.plane, api, method, resource, body, params, aliases))
                 failure.body = response.json() if diff and response.status_code == 400 else None
                 raise failure
             return response.json()
@@ -258,12 +297,17 @@ class Google:
         retain(directory / "clone-allowance-request.json", canonical({"method": "POST", "url": URL,
             "params": PARAMS, "content_type": content_type, "body_sha256": sha(body)}))
         remaining = min(self.packet["expires_at_unix"], deadline) - time.time()
+        recovery_guard = getattr(self, "recovery_first_effect_guard", None)
+        if recovery_guard is not None:
+            remaining = min(remaining, recovery_guard.budget("claim", "POST", URL))
         require(remaining > 1800, "insufficient original claim authority")
         response = None
         raw = bytearray()
         complete = False
         try:
             with request_deadline(min(30, remaining)):
+                if recovery_guard is not None:
+                    recovery_guard("claim", "POST", URL)
                 response = self.session.request("POST", URL, params=dict(PARAMS), data=body,
                     headers={"Content-Type": content_type, "Accept-Encoding": "identity"},
                     timeout=min(30, remaining), max_allowed_time=min(30, remaining),
@@ -323,11 +367,21 @@ class Google:
             cleanup_packet(self.path, dict(os.environ))
         method, resource, args = user_request(instance, action)
         remaining = getattr(self, "sql_read_deadline", 0) - time.time()
+        import release_recovery_window as recovery
+        bounded_recovery = recovery.enabled(dict(os.environ), self.plane)
+        if bounded_recovery:
+            remaining = min(remaining, self.packet["expires_at_unix"] - time.time())
         require(remaining > 0, "ordinary disposal deadline reached")
-        response = self.session.request(method, ORIGINS["sql"] + resource, json=args.get("body"),
-            params=args.get("params"), timeout=min(30, remaining), allow_redirects=False)
-        require(200 <= response.status_code < 300, "ordinary privilege disposal rejected; reconcile without replay")
-        return response.json()
+        seconds = min(30, remaining)
+        timing = {"max_allowed_time": seconds} if bounded_recovery else {}
+        # An observation clock alone cannot bound credential refresh or body
+        # reads. Owned disposal uses its original gate, never B's first-write
+        # cutoff; this creates no expiry exception or additional cleanup scope.
+        with request_deadline(seconds) if bounded_recovery else nullcontext():
+            response = self.session.request(method, ORIGINS["sql"] + resource, json=args.get("body"),
+                params=args.get("params"), timeout=seconds, **timing, allow_redirects=False)
+            require(200 <= response.status_code < 300, "ordinary privilege disposal rejected; reconcile without replay")
+            return response.json()
 
     def registry_login(self):
         from google.auth.transport.requests import Request

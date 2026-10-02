@@ -86,6 +86,7 @@ def test_catalog_metadata_gate_before_node(tmp_path, monkeypatch, catalog_keys, 
 ])
 def test_only_complete_allowlisted_node_error_survives_capture(tmp_path, monkeypatch, catalog_keys, stderr, expected):
     plan, client = plan_and_google(catalog_keys[0])
+    monkeypatch.setattr(init.time, 'time', lambda: client.packet['issued_at_unix'])
     monkeypatch.setattr(init.subprocess, 'run', lambda *a, **k: SimpleNamespace(returncode=1, stdout=CANARY.encode(), stderr=stderr))
     with pytest.raises(ValueError) as error:
         init.inspect_catalog(client, plan, tmp_path, tmp_path / 'out')
@@ -96,6 +97,7 @@ def test_only_complete_allowlisted_node_error_survives_capture(tmp_path, monkeyp
 @pytest.mark.parametrize('where,stage', [('execute', 'catalog.native-execute'), ('encrypt', 'catalog.encryption')])
 def test_timeout_and_encryption_failure_never_forward_captured_bytes(tmp_path, monkeypatch, catalog_keys, where, stage):
     plan, client = plan_and_google(catalog_keys[0])
+    monkeypatch.setattr(init.time, 'time', lambda: client.packet['issued_at_unix'])
     def run(args, **kwargs):
         if where == 'execute':
             raise subprocess.TimeoutExpired(CANARY, 90, output=CANARY.encode(), stderr=CANARY.encode())
@@ -278,6 +280,7 @@ def test_real_node_success_keeps_private_six_file_catalog_protocol(tmp_path, nod
 
 def test_native_failure_stage_survives_top_level_cli_with_no_public_payload(tmp_path, monkeypatch, catalog_keys):
     plan, client = plan_and_google(catalog_keys[0])
+    monkeypatch.setattr(init.time, 'time', lambda: client.packet['issued_at_unix'])
     plan['version'] = 'data-initialization-inventory/v1'
     monkeypatch.setattr(data, 'admit', lambda *a: client.packet)
     monkeypatch.setattr(data, 'read_bound_plan', lambda *a: plan)

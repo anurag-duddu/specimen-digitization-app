@@ -207,6 +207,7 @@ def native(directory, instance, mode, *, files, deadline, expected_catalog=None,
     require(instance in (SOURCE, CLONE) and mode in {"inspect", "absence", "capability", "initialize", "clean", "post",
             "disposal-check", "disposal-absent"}, "unnamed native operation")
     require(files == fingerprints(), "consumed native source differs from reviewed bytes")
+    integer(deadline, 1, 2**53 - 1, "native execution deadline")
     target = directory / f"{instance}-{mode}.json"
     env = dict(os.environ, INITIALIZATION_FILES=json.dumps(files), INITIALIZATION_DEADLINE=str(deadline))
     env.pop("INITIALIZATION_EXPECTED_POST", None)
@@ -220,9 +221,12 @@ def native(directory, instance, mode, *, files, deadline, expected_catalog=None,
     evidence = None
     try:
         with stage("catalog.native-execute"):
+            remaining = deadline - time.time()
+            require(remaining > 0, "native execution deadline expired before launch")
             result = subprocess.run(["node", "scripts/ci/release_initialize.mjs", mode, instance, str(target)],
-                                    cwd=ROOT, env=env, capture_output=True, timeout=max(1, min(90, deadline - time.time())))
+                                    cwd=ROOT, env=env, capture_output=True, timeout=min(90, remaining))
             raw = private_bytes(target) if target.exists() else None
+            require(time.time() < deadline, "native execution completed after its fixed deadline")
     finally:
         # Native checks can leave observations before they fail. Encrypt those
         # exact bytes too; upload selectors never include this plaintext path.
@@ -241,7 +245,9 @@ def native(directory, instance, mode, *, files, deadline, expected_catalog=None,
         raise node_failure(getattr(result, "stderr", None))
     with stage("catalog.native-result"):
         require(raw is not None, "native initialization did not retain evidence")
+        require(time.time() < deadline, "native evidence preparation exceeded its fixed deadline")
         value = strict_json(raw)
+        require(time.time() < deadline, "native result parsing exceeded its fixed deadline")
         require(value.get("instance") == instance and value.get("mode") == mode and value.get("files") == files,
                 "native initialization result provenance mismatch")
         if expected_catalog is not None:
@@ -249,6 +255,7 @@ def native(directory, instance, mode, *, files, deadline, expected_catalog=None,
         if private_catalog:
             require(value.get("qualified") is True, "native catalog not qualified")
             value["catalog_evidence"] = evidence
+        require(time.time() < deadline, "native result acceptance exceeded its fixed deadline")
         return value
 
 
@@ -329,6 +336,7 @@ def observe(read, matches, deadline):
         value = read()
         require(time.time() < stop, "native observation arrived after the original deadline")
         if matches(value):
+            require(time.time() < stop, "native observation validation exceeded the original deadline")
             return value
         require(time.time() + 2 < stop, "native propagation not observed; retained operation must be reconciled")
         time.sleep(2)
@@ -647,7 +655,8 @@ def dispose_initializer_target(google, instance, recovery, journals, directory, 
     import release_gate
     require(google.plane == "data" and instance in (SOURCE, CLONE), "ordinary named disposal only")
     gate_sha = google.packet["source_sha"] if release_gate.is_gate_record(google.packet) else None
-    started, deadline = time.time(), time.time() + 180
+    started = time.time()
+    deadline = min(int(started + 180), google.packet["expires_at_unix"])
     state = {"version": "initializer-disposal/v1", "source_sha": google.packet["source_sha"],
         "run_id": google.packet["release_run_id"], "run_attempt": google.packet["release_run_attempt"],
         "instance": instance, "privilege_deadline_unix": recovery["privilege_deadline_unix"],
@@ -675,6 +684,7 @@ def dispose_initializer_target(google, instance, recovery, journals, directory, 
         require(time.time() < deadline and "error" not in operation, "disposal operation failed or arrived late")
         return operation
     try:
+        require(started < deadline, "disposal gate expired before observation")
         user = users()
         if user is None:
             check("disposal-absent")
@@ -713,6 +723,7 @@ def dispose_initializer_target(google, instance, recovery, journals, directory, 
                 else:
                     observe(users, lambda value: value is None, deadline)
                     check("disposal-absent")
+        require(time.time() < deadline, "disposal acceptance exceeded its own fixed deadline")
         state.update(outcome="complete", principal_absence_verified=True)
         return state
     except BaseException as error:
@@ -796,9 +807,11 @@ def initialize_existing(google, directory, output):
             "native initializer identity or assigned role differs")
     result = once(directory, "roles-create-" + SOURCE, lambda: native(directory, SOURCE, "initialize", files=fingerprints(),
                                                                        deadline=deadline, gate_sha=record["source_sha"]))
-    output.write_text(json.dumps({"version": "data-initializer/v1", "source_sha": record["source_sha"],
+    receipt = json.dumps({"version": "data-initializer/v1", "source_sha": record["source_sha"],
         "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"], "instance": SOURCE,
-        "database": DATABASE, "postconditions_sha256": sha(result["postconditions"])}, sort_keys=True) + "\n")
+        "database": DATABASE, "postconditions_sha256": sha(result["postconditions"])}, sort_keys=True) + "\n"
+    require(time.time() < deadline, "initializer receipt acceptance exceeded its original deadline")
+    output.write_text(receipt)
 
 
 def dispose_owned_initializer(google, directory):

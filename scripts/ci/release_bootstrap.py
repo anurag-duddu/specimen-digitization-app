@@ -26,6 +26,7 @@ import binascii
 import hashlib
 import hmac
 import json
+import os
 from pathlib import Path
 import re
 from uuid import UUID
@@ -35,6 +36,7 @@ from release_admission import strict_json
 from release_catalog_envelope import validate_public_key
 from release_context import PROJECT
 from release_diagnostics import HTTPFailure
+from release_recovery_window import acceptance_deadline, require_acceptance
 
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT, APPROVED, WORKER = "DATA_BOOTSTRAP_ARTIFACT_B64", "DATA_BOOTSTRAP_APPROVED_SHA256", "DATA_WORKER_ACTOR_UID"
@@ -85,6 +87,7 @@ def run(google, facts, secrets, *, backup):
     same states for the worker's rows, from when they are found to differ or their own step starts. secrets are the
     owner's, as deploy_data took them out of the environment before any child process started. backup takes this run's
     backup before the first write, unless the apply already took one."""
+    deadline = acceptance_deadline(google.packet, dict(os.environ))
     encoded = secrets.get(ARTIFACT, "")
     if not encoded:
         print("No bootstrap artifact is set; the bootstrap is skipped.")
@@ -100,6 +103,7 @@ def run(google, facts, secrets, *, backup):
         facts["worker_membership"] = "failed"
         raise Refused("the worker's rows differ from its membership; the coordinator reconciles")
     found = scope_state(scope, payload, request if member == "identical" else None)
+    require_acceptance(deadline)
     if found == "different" or (found == "absent" and member != "absent"):
         raise Refused("the organization's rows differ from the approved artifact's; the coordinator reconciles")
     if found == "absent" or member == "absent":
@@ -114,22 +118,28 @@ def run(google, facts, secrets, *, backup):
         except (ValueError, OSError):
             raise Refused("the hierarchy's write or its readback did not verify; the coordinator reconciles from the "
                           "encrypted evidence") from None
+        require_acceptance(deadline)
         facts["bootstrap"] = "applied"
         print("Bootstrap: the organization's rows were written and read back.")
     else:
+        require_acceptance(deadline)
         facts["bootstrap"] = "verified"
         print("Bootstrap: the organization's rows already match the approved artifact; nothing is written.")
     facts["worker_membership"] = "failed"
     # The S2 plan: the account lookup comes first in every membership step, a verify's too, since the account may have
     # been enabled, or gained a way to sign in, after the membership was written.
     worker_account(google, request["variables"]["uid"])
+    require_acceptance(deadline)
     if member == "identical":
         facts["worker_membership"] = "verified"
         print("Worker membership: already present and exact; nothing is written.")
+        require_acceptance(deadline)
         return
     write_worker(google, payload, request, evidence, worker)
+    require_acceptance(deadline)
     facts["worker_membership"] = "applied"
     print("Worker membership: written and read back.")
+    require_acceptance(deadline)
 
 
 def approved(encoded, digest):
@@ -180,6 +190,7 @@ def recipient():
 
 def read_scope(google, payload):
     """The organization's rows, read first and read-only (executeGraphqlRead) as the data release."""
+    deadline = acceptance_deadline(google.packet, dict(os.environ))
     identifiers = [entry["id"] for entry in payload["hierarchy"]["collections"]]
     limit = len(identifiers) + 1
     try:
@@ -191,6 +202,7 @@ def read_scope(google, payload):
     if not (isinstance(data, dict) and set(data) == set(EMPTY)
             and all(isinstance(data[key], list) and len(data[key]) <= limit for key in SHAPES)):
         raise Refused("the organization's rows could not be read; the owner's bootstrap window must be open")
+    require_acceptance(deadline)
     return data
 
 
@@ -270,6 +282,7 @@ def worker_rows(request):
 
 def read_worker(google, request, observe=None):
     """The worker's rows in the organization, read-only (executeGraphqlRead); observe sees the raw response first."""
+    deadline = acceptance_deadline(google.packet, dict(os.environ))
     variables, limit = request["variables"], len(B._prepared.WORKER_COLLECTION_KEYS) + 1
     try:
         response = google.request("data", "POST", B.SERVICE + ":executeGraphqlRead", body={
@@ -283,6 +296,7 @@ def read_worker(google, request, observe=None):
     if not (isinstance(data, dict) and set(data) == set(NO_WORKER) and isinstance(data["members"], list)
             and len(data["members"]) <= limit):
         raise Refused("the worker's rows could not be read; the owner's bootstrap window must be open")
+    require_acceptance(deadline)
     return data
 
 
@@ -305,6 +319,7 @@ def worker_account(google, uid):
     verified museum email, so the worker's must be one nobody can sign in with: exactly one account, disabled, and
     without an email, a password, a phone number, a sign-in provider or a tenant. A wrong UID therefore never gives a
     person's account the membership, and an account enabled or given a way to sign in after the write fails the run."""
+    deadline = acceptance_deadline(google.packet, dict(os.environ))
     try:
         result = google.request("identity", "POST", f"projects/{PROJECT}/accounts:lookup", body={"localId": [uid]})
     except (ValueError, OSError):
@@ -324,12 +339,14 @@ def worker_account(google, uid):
                             ("tenantId" in user, "belongs to a tenant")):
         if refused:
             raise Refused(f"the worker's account {reason}")
+    require_acceptance(deadline)
 
 
 def write_worker(google, payload, request, evidence, before):
     """WORKER_MEMBERSHIP.md: the reviewed document for the allow-listed collections, regenerated rather than supplied, in
     one transaction; its exact inserted keys; then the worker's rows read back exactly. Each record is kept with its
     encrypted sibling, a failed write's included, as bootstrap_release keeps the hierarchy's."""
+    deadline = acceptance_deadline(google.packet, dict(os.environ))
     body = {"query": request["query"], "variables": request["variables"]}
     variables, count = body["variables"], len(B._prepared.WORKER_COLLECTION_KEYS)
     keys = {"organizationMember_insert": {"organizationId": "organizationId", "uid": "uid"},
@@ -355,10 +372,12 @@ def write_worker(google, payload, request, evidence, before):
         after = read_worker(google, request, lambda value: retain("worker-membership.readback.json", value))
         if worker_state(after, request) != "identical":
             raise ValueError("worker membership readback differs")
+        require_acceptance(deadline)
         retain("worker-membership.verified.json", {
             "version": "worker-membership-applied/v1", **provenance,
             "membership_sha256": hashlib.sha256(B.canonical(after)).hexdigest(), "membership_verified": True,
             "collections_verified": count, "role": "operator", "sensitive_access": False, "release_accepted": False})
+        require_acceptance(deadline)
     except (ValueError, OSError):
         raise Refused("the worker's membership write or its readback did not verify; the coordinator reconciles from "
                       "the encrypted evidence") from None

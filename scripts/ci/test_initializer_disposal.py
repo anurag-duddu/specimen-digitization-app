@@ -111,10 +111,7 @@ def test_preparation_is_read_only_and_must_observe_both_absent_targets(tmp_path,
         init.prepare_initializer_intents(Google(), proposed, tmp_path, recovery)
 
 
-@pytest.mark.parametrize("mode,fault", [("disposal-check", None), ("disposal-absent", None),
-    ("disposal-check", "memberships"), ("disposal-check", "dependencies"),
-    ("disposal-check", "sessions"), ("disposal-check", "privileged"), ("disposal-absent", "present")])
-def test_actual_node_disposal_requires_absence_or_narrow_dependency_free_principal(tmp_path, mode, fault):
+def node_disposal_fixture(tmp_path, mode, fault):
     import os
     from pathlib import Path
     import subprocess
@@ -162,8 +159,117 @@ async end(){trace('pool.end')}
         INITIALIZATION_DEADLINE=str(int(time.time()) + 180), INITIALIZATION_FILES=json.dumps(init.fingerprints()),
         TEST_MODE=mode, TEST_FAULT=fault or "", TEST_ACTOR=init.MAINTENANCE, TEST_TRACE=str(trace),
         TEST_CATALOG=str(catalog_path))
+    return env, trace, output
+
+
+@pytest.mark.parametrize("mode,fault", [("disposal-check", None), ("disposal-absent", None),
+    ("disposal-check", "memberships"), ("disposal-check", "dependencies"),
+    ("disposal-check", "sessions"), ("disposal-check", "privileged"), ("disposal-absent", "present")])
+def test_actual_node_disposal_requires_absence_or_narrow_dependency_free_principal(tmp_path, mode, fault):
+    import subprocess
+    env, trace, output = node_disposal_fixture(tmp_path, mode, fault)
     result = subprocess.run(["node", str(init.ROOT / "scripts/ci/release_initialize.mjs"), mode, init.SOURCE, str(output)],
         cwd=init.ROOT, env=env, capture_output=True, timeout=10)
     assert (result.returncode == 0) == (fault is None), result.stderr.decode()
     assert output.exists() == (fault is None)
     assert trace.read_text().splitlines() == ["release", "pool.end", "connector.close"]
+
+
+def test_actual_python_disposal_delivers_an_integer_gate_bounded_deadline_to_actual_node(tmp_path, monkeypatch):
+    import subprocess
+    import time
+    env, trace, output = node_disposal_fixture(tmp_path, "disposal-absent", None)
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    started = int(time.time()) + 0.5
+    authority = {**packet(), "issued_at_unix": int(started) - 5, "expires_at_unix": int(started) + 60}
+    class Google:
+        plane = "data"
+        packet = authority
+        sql_read_deadline = None
+        def request(self, api, method, resource, **kwargs):
+            assert api == "sql" and method == "GET" and resource.endswith("/users")
+            return {"items": []}
+    google, observed = Google(), []
+    original_run = subprocess.run
+    def run(*args, **kwargs):
+        observed.append((kwargs["env"]["INITIALIZATION_DEADLINE"], kwargs["timeout"]))
+        return original_run(*args, **kwargs)
+    monkeypatch.setattr(init.time, "time", lambda: started)
+    monkeypatch.setattr(init.subprocess, "run", run)
+    result = init.dispose_initializer_target(google, init.SOURCE,
+        {"privilege_deadline_unix": int(started) - 1}, {}, tmp_path)
+    assert result["outcome"] == "complete" and result["principal_absence_verified"] is True
+    assert result["release_accepted"] is False and google.sql_read_deadline is None
+    assert len(observed) == 1
+    wire, timeout = observed[0]
+    assert wire.isascii() and wire.isdigit()
+    assert int(wire) == authority["expires_at_unix"] <= started + 180
+    assert 0 < timeout <= authority["expires_at_unix"] - started
+    assert not output.exists()  # Python uses its named per-instance output.
+    assert trace.read_text().splitlines() == ["release", "pool.end", "connector.close"]
+
+
+@pytest.mark.parametrize("deadline", [100, 99, 100.5, True])
+def test_native_deadline_refuses_expired_or_noninteger_inputs_before_launch(tmp_path, monkeypatch, deadline):
+    calls = []
+    monkeypatch.setattr(init.time, "time", lambda: 100)
+    monkeypatch.setattr(init.subprocess, "run", lambda *args, **kwargs: calls.append(args))
+    with pytest.raises(ValueError):
+        init.native(tmp_path, init.SOURCE, "disposal-absent", files=init.fingerprints(), deadline=deadline)
+    assert calls == []
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_native_subsecond_remaining_time_has_no_one_second_floor(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    clock, calls = [99.75], []
+    def run(command, **kwargs):
+        calls.append(kwargs["timeout"])
+        assert 0 < kwargs["timeout"] <= 0.25
+        target = tmp_path / (init.SOURCE + "-disposal-absent.json")
+        target.write_text(json.dumps({"instance": init.SOURCE, "mode": "disposal-absent", "files": init.fingerprints()}))
+        target.chmod(0o600)
+        clock[0] = 99.9
+        return SimpleNamespace(returncode=0, stderr=b"")
+    monkeypatch.setattr(init.time, "time", lambda: clock[0])
+    monkeypatch.setattr(init.subprocess, "run", run)
+    result = init.native(tmp_path, init.SOURCE, "disposal-absent", files=init.fingerprints(), deadline=100)
+    assert result["mode"] == "disposal-absent" and calls == [0.25]
+
+
+def test_native_late_success_is_retained_without_becoming_accepted_evidence(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from release_diagnostics import DiagnosticError
+    clock, calls = [99.75], []
+    target = tmp_path / (init.SOURCE + "-disposal-absent.json")
+    def run(command, **kwargs):
+        calls.append(command)
+        target.write_text(json.dumps({"instance": init.SOURCE, "mode": "disposal-absent", "files": init.fingerprints()}))
+        target.chmod(0o600)
+        clock[0] = 100
+        return SimpleNamespace(returncode=0, stderr=b"")
+    monkeypatch.setattr(init.time, "time", lambda: clock[0])
+    monkeypatch.setattr(init.subprocess, "run", run)
+    with pytest.raises(DiagnosticError, match="catalog.native-execute"):
+        init.native(tmp_path, init.SOURCE, "disposal-absent", files=init.fingerprints(), deadline=100)
+    assert len(calls) == 1 and target.exists()
+
+
+def test_expired_disposal_gate_blocks_before_observation_and_restores_prior_deadline(tmp_path, monkeypatch):
+    calls = []
+    class Google:
+        plane = "data"
+        packet = {**packet(), "expires_at_unix": 100}
+        sql_read_deadline = 77
+        def request(self, *args, **kwargs):
+            calls.append(args)
+    google = Google()
+    monkeypatch.setattr(init.time, "time", lambda: 100.25)
+    with pytest.raises(ValueError, match="disposal gate expired"):
+        init.dispose_initializer_target(google, init.SOURCE,
+            {"privilege_deadline_unix": 99}, {}, tmp_path)
+    assert calls == [] and google.sql_read_deadline == 77
+    state = json.loads((tmp_path / ("initializer-disposal-" + init.SOURCE + ".json")).read_bytes())
+    assert state["outcome"] == "blocked" and state["principal_absence_verified"] is False
+    assert state["release_accepted"] is False

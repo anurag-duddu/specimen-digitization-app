@@ -87,7 +87,8 @@ RETIRED_INITIALIZATION_TEMPLATE_SHA256 = {
     'data-initialize-missing.plan.template.json': 'b18bf7bf21fc0737ff705e4beb4e586aac80ab0ff50f6c53bc9c6591061fc1ff',
 }
 CURRENT_INITIALIZATION_FILES = {
-    'scripts/ci/release_initialize.py': '48a217d0f6101d5d950ea20d081bd7b1ce468cd8647ed9b7e3978b2d9ee787f9',
+    'scripts/ci/release_initialize.py':
+        'sha256:da6f9a06fb30a61dc5f237b0f8c8d7d4339f45a89dcc23c3f5924ce97a45e7af'.removeprefix('sha256:'),
     'scripts/ci/release_initialize.mjs': '64e9512840a66687158c1d1b3e477a720385a68f8334e02e3a5a845296eb076f',
     'scripts/ci/initialize_database.sql': 'a48409621264c6918b9f2bddb01366df022a01d4d149aca5768a8fc3f0d2a52b',
     'scripts/ci/initialize_catalog.sql': 'd7262f8fc62d823e0a27ad602035c4cd144b003cfb7efadfadc506c03e5083dd',

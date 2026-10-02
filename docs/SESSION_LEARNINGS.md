@@ -13825,3 +13825,83 @@ PR228 draft at d967218 was opened after all canonical local gates and fourfresh 
 ### 2026-10-02 ROOT correct committed hierarchy approval custody
 
 PR #228 d967 native CI run36948453727 Python job110655775408 had22FAIL8909PASS100SKIP, all FileNotFoundError for scripts/data/hierarchy_approval.py; native raw failed log SHA3b5566fb9be7f49558f131f4276e5141f48f5126a9a880cd1ae3bf5dfb5c37f9 retained. Earlier local whole-suite execution was real but used this ignored local helper and did not prove a clean Git checkout contained all inputs; this corrects prior source-completeness qualification. Current075 is not pushed and its source reviews are historical. Recover authentic helper unchanged SHA b178365f33874550eeb7bb51b0c503801ee081cef9082e6df576bd94fd30cdb2, add only exact .gitignore exception for reviewed source. Private artifact/approval files and unrelated Python data remain ignored. All original tests/assertions retained; actual hierarchy+bootstrap136PASS3.76s0. Steward finite324-path local-versus-Git source audit found only this omitted helper, native checks only two failures (this and already fixed worker smoke); all other seven nondeploy checks success. Newhead requires fresh four source reviews and exact native CI, paidworker/SAM remain HOLD.
+
+
+## 2026-10-02 — Root recovery-window source qualification
+
+Task: approved recovery integration on `codex/recovery-window-20261002`, from
+protected main `44fc882949a9480f20e35f9193535fefef9d3e9c`.
+
+The data recovery guard now derives one conservative clock from the authenticated
+first push attempt, bounds the second attempt to the same source and successful
+first-attempt receipts, and enforces fixed deadlines at actual request and catalog
+subprocess boundaries. Bootstrap secret presence selects the stricter guard; it
+never supplies clock or workload authority. Ordinary release behavior remains.
+Safe SQL read failure labels retain status and omit response bodies.
+
+Independent reviewers read the final source and retained all prior assertions.
+Root executed 398 focused recovery and sibling tests successfully. Genuine
+controls failed before the request, disposal and catalog deadline corrections.
+The initial positive fixture shape and HTTP failure attribute defects were
+corrected without weakening assertions; their failures remain in private custody.
+Canonical Python and repository checks are pending in this entry.
+
+No new activation clock, IAM write, schema effect or connected production
+acceptance occurred during this source work. A future native first-attempt timing
+witness, signed migration lineage and fresh second-attempt absence/catalog proof
+are still required. A parent timeout cannot prove the SQL server terminated and
+never permits a blind replay. The private executor stays outside this repository.
+
+Root canonical milestone: all repository hooks passed with unchanged secret scanners;
+Python scripts suite passed 2,759 tests with 61 optional skips (exit 0). The only
+hook correction renamed a synthetic canary constant; every test assertion remains.
+Canonical backend tests proceed after this green-step commit.
+
+Root canonical backend suite passed 6,380 tests with 45 optional skips (exit 0,
+560.15 seconds). Together, both Python suites passed 9,139 tests with 106 skips.
+These are local controls, not live SQL, model or authenticated app acceptance.
+The frontend source is unchanged; CI still runs all five required checks.
+
+## 2026-10-02 Root PR #229 disposal caller correction
+
+Task CODEX-RECOVERY, branch codex/recovery-window-20261002, integration worktree. Two genuinely fresh G18 reviewers of d789e7c found a concrete unchanged caller defect: Python serialized a fractional disposal deadline to the strict integer JavaScript consumer, and the native subprocess clock did not intersect the original admitted gate expiry. Their old-head HOLD receipts are retained and do not count as favorable reviews of a successor.
+
+Actual new regressions first failed 7/7 on unchanged production. Root now captures one start, floors the finite disposal end to an integer and intersects the original gate expiry; observations refuse expired gates, native launches require positive remaining time without a one-second floor, and late results cannot become accepted evidence. The strict JavaScript consumer and owned cleanup lineage remain unchanged. An actual Python-to-JavaScript path with offline SQL/connector doubles now passes. Focused disposal/initializer/data/recovery/diagnostic checks: 390 passed, exit0. Existing test names, decorators and assertions are retained; original Node fixture setup is shared. Canonical gates and a fresh four-reviewer swarm on the eventual qualified successor remain pending; no new activation clock/native mutation/deployment or live acceptance is claimed.
+
+### 2026-10-02 — Root corrected recovery candidate canonical qualification
+
+The corrected caller and assertion-preserving fixture updates passed the actual sequential locked Python gates: scripts 2767 passed/61 skipped (65.50s), backend 6380 passed/45 skipped (564.97s), both exit0; total9147 passed/106 skipped. Initial genuine RED7 and broader13-failure runs remain retained, followed by focused390 and fixture136 passes. Supplemental independent source review approves the bounded correction and exact reversals; it is not a substitute for four fresh G18 current-head reviewers. Final all-file hooks, corrected-head PR CI and the fresh swarm remain required before the approved one-time activation. Candidate source/runtime/private controls remain distinct from live deployment, native SQL terminal/ownership evidence, paid worker/SAM and signed-in original-ten acceptance.
+
+### 2026-10-02 - CODEX-RECOVERY SQL result deadline correction
+
+The first fresh whole-head review of PR229 successor038d30c found gate_sql accepted successful SQL results after the original fixed recovery expiry. Root corrected only the SQL helper and its unknown-terminal migration diagnostic. The helper now intersects the original deadline and existing five-minute cap, refuses expired prelaunch budgets, preserves positive subsecond budgets, and checks child completion, private byte reading and JSON parsing before accepting any observation. Raw unknown output remains private evidence; no rollback, server-terminal state or replay authority is inferred. Existing source, native A witness, ownership, original expiry, phase and paid-budget controls remain unchanged.
+
+All previous test bytes remain an exact prefix, preserving93 assertions. Fourteen additive offline cases produced actual RED9FAIL5PASS then GREEN14PASS; focused483PASS and full scripts2781PASS61SKIP exited0. A supplemental independent source review checked original test custody and actual raw logs; it is not G18 or native readiness. The current full backend run ended with1FAIL6379PASS45SKIP on an unchanged30ms child-timeout test; its whole unchanged harness module then passed21 tests. The full canonical backend rerun remains pending, with failures preserved and no assertions/timeouts weakened. Normal hooks, new commit, native CI and four genuinely fresh whole-head reviews must qualify the next head before the one approved activation. T0 has not started, no new IAM/cloud/paid writes or merge occurred. Native deployment, source API checks, authenticated original-ten IDs and full pipeline acceptance are Not confirmed.
+
+### 2026-10-02 - CODEX-RECOVERY canonical SQL correction qualification
+
+Correction to the preceding pending status: the unchanged full backend rerun actually passed6380 tests with45 skips and exit0; scripts2781PASS61SKIP exit0, combined9161PASS106SKIP. The initial1FAIL6379PASS backend run and unchanged-module21PASS recheck remain retained private evidence. No harness fixture, assertion or30ms timeout was altered. Functional source guards match supplemental source approval; only required normal hook formatting/custody and committed-head/fresh-four/native CI qualification remain. This is local qualification, not native deployment or acceptance. Approved one recovery activation has not started.
+
+### 2026-10-02 - ROOT PR229 original-deadline acceptance correction
+
+Task ROOT recovery-window, codex/recovery-window-20261002, integration/repo, PR229 predecessor21182e19: both genuinely fresh first-wave source reviews sealed HOLD after all25 actual afterguards matched. Root consumed both finite seals and appended their exact fragments to the shared recovery journal; blocked opinions remain historical and no favorable approval is reused. Sole-writer correction retains the original deadlines after native evidence encryption/read/parse/provenance and before disposal completion, bounded catalog phase/output, observation predicate adoption, initializer receipt hashing, B prior proof validation and A final catalog counts. Private evidence/ordinary caller shape/owned cleanup remain; no replay/new clock/server terminal inference.
+
+Actual additive offline RED26FAIL8PASS exit1 log75c2a44b6f03712f49d18e34a1aa0d503997069dbce4a714859e186ca161c412; GREEN34PASS exit0 log5ed6b7318caf85daefc8aec261935af99bc6476e4599e448a9fe83ec85e5d518; focused446PASS exit0 log9e52052fb23832a8b00de86f270d56fb03ba0827eb948e89ff68d67050b64fb2. Positive just-before-deadline controls pass; at/after are rejected. Original test assertions/decorators remain; one positive B fixture clock is seeded from its existing record issue time and one shared current initializer checksum literal updated to actual source. An initial no-match patch and expected-eight checksum count were rejected before writes; the current fixture uses one shared literal, not eight.
+
+Canonical scripts/backend/hooks, new committed head/source custody, fresh-four G18 and exact native CI are pending. No T0/activation/IAM/SQL/cloud deployment/provider/browser/paid effects. Current production/connected native exact-ten acceptance are Not confirmed.
+
+### 2026-10-02 - ROOT PR229 acceptance correction canonical qualification
+
+Same reviewed working production/test bytes qualified actual scripts2815PASS61SKIP/exit0 (logcfb88d2d409412a4439b659da2a1ec8ee7e7ee8ca93a696389c1217a485aebec) and backend6380PASS45SKIP/exit0 (log352a22bf364b72c0b7e99550fc1ed541d6f513a889018733b37dcc0d80245b0f), total9195PASS106SKIP, sequential existing locked Python3.12.3 environment; each full gate began belowload12. No Git/source edits while either gate ran. Supplemental independent exact-delta opinion980168005201c216cce3058ba080d6fa0c70d068010ad54780a5300a497700ff sealed APPROVE_SOURCE_ONLY_BOUNDED, all25 actual before/after matched, not G18 or native readiness. Assertion domains clarify108 original AST assertions within42 test functions plus one unchanged summary_cli helper equals109 module assertions; original bytes/decorators remain. Earlier blocked-head opinions/failures are retained without favorable reuse. Hooks/commit/push/new-head four fresh reviews/current native CI remain pending at this entry. T0/activation/merge/connected native ten remain Not confirmed.
+
+### 2026-10-02 — PR229 successor: keep B final acceptance inside the original recovery expiry
+
+Root sole integrator, `codex/recovery-window-20261002`, integration/repo, successor to held e1c234f/tree2dbb. Two fresh G18 first-wave source opinions held that head: native readback could finish on time while B validation/evidence retention crossed the original expiry and still adopted favorable bootstrap/catalog facts. Their sealed opinions remain held history; they are not approvals for a successor. Root consumed the finite first-wave steward receipt8684297a and sealed fragments before correction.
+
+Capture the admitted expiry once per actual B consumer and reject at/after it following catalog/index/schema predicates; organization, disabled-worker account and membership readback validation; final favorable evidence hash/encryption/fsync; backup proof/return; checked restore after owned disposal; and final diagnostic output/digest/CLI success. Main uses its same original authenticated packet. Attempted intent/response/readback records and failed-run diagnostic receipts remain available for reconciliation; late evidence never authorizes replay or a new clock. The failure-finally path preserves the original refusal. Ordinary recovery=false shapes, fixed documents, privacy and owned cleanup remain unchanged. Corrected A/native/catalog/disposal and SQL acceptance controls are preserved.
+
+Actual offline corrected RED4:32FAIL16PASS, exit1, raw935e5241; GREEN3:54PASS, exit0, raw65400855; expanded focused3:774PASS, exit0, raw0cbea7fe. Scripts2869PASS61SKIP67.12s, actual0/startload9.9297/raw1ce19a1e; backend6380PASS45SKIP565.96s, actual0/startload8.1665/raw0ae558e0. Total9249PASS106SKIP, suites sequential under PLAN7.4. Existing50681 test bytes,60 top-level definitions/decorators and139 whole-module assertions are exact; eight new test families/helper add39 assertions/54 cases. No original assertion or scanner/check is weakened. Baseline and strict initializer JS remain unchanged from e1c.
+
+Failures retained privately: initial new apply fixture used a wrong connector constant, omitted its offline compare double and mismatched Storage rules representation; corrected before source changes. Initial GREEN42PASS6FAIL exposed main's existing local recovery variable shadowing a module alias; corrected without changing the old branch. Initial focused666PASS2FAIL exposed final diagnostic expiry masking the original phase refusal; corrected in source, preserving the old assertion. All raw logs/actual execution receipts are retained in root-b-result-acceptance-deadline-v1. No test made native/cloud/provider/paid effects.
+
+Steward supplementary opiniona1618236/seal25f55e3f is APPROVE_SOURCE_ONLY_BOUNDED, not G18: all27 working BEFORE/AFTER guards and34 artifacts verified, whole18 diff/relevant consumers inspected, no remaining bounded findings, reads quiesced. New committed head still needs four all-new current-head favorable G18 opinions and five current native successful checks. T0/activation/merge/live acceptance remain Not confirmed. Future A1 S is witnessed after genuine activationACK/T0 plus normal merge, before B. Accepted G9 USD25 and separate PROD/LAB USD5 limits remain; no retired budget or perfect all-liability prerequisite. Worker/SAM paid readiness remains separate. Hook/commit/push and future native results are recorded in their actual finite successor receipts, never predicted here.

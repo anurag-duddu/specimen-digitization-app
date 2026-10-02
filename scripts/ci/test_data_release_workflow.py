@@ -167,7 +167,8 @@ def test_the_release_deploys_through_the_approved_entrypoint_and_exposes_its_pha
     assert deploy["id"] == "deploy" and deploy["run"] == DEPLOY and "if" not in deploy
     assert deploy["env"] == DEPLOY_ENV
     assert JOBS["release"]["outputs"] == {"phase": "${{ steps.deploy.outputs.phase }}",
-                                          "init_step": "${{ steps.deploy.outputs.init_step }}"}
+                                          "init_step": "${{ steps.deploy.outputs.init_step }}",
+                                          "recovery_window": "${{ steps.admission.outputs.recovery_window }}"}
     # The pinned connector library is the only Firebase code the workflow installs; nothing deploys with a CLI.
     assert "gcloud" not in TEXT and re.sub(r"firebase-(tools@15\.8\.0|release)", "", TEXT).count("firebase") == 0
 
@@ -255,9 +256,15 @@ def test_the_bootstrap_secrets_reach_only_the_release_step_as_environment_variab
     """RELEASE.md 4.5: the owner sets them for the bootstrap run; unset, each arrives empty and the bootstrap is skipped."""
     deploy = steps("release")[index("release", lambda step: step.get("id") == "deploy")]
     assert deploy["env"] == DEPLOY_ENV and deploy["run"] == DEPLOY
-    # Each is named exactly once in the whole workflow: in that step's env, which no job-level env repeats.
-    assert re.findall(r"secrets\.(\w+)", TEXT) == list(BOOTSTRAP)
+    # The two gate steps read only artifact PRESENCE; each full secret value still reaches only deploy.
+    assert re.findall(r"secrets\.(\w+)", TEXT) == [BOOTSTRAP[0], BOOTSTRAP[0], *BOOTSTRAP]
     assert all(not any(name in json.dumps(job.get("env", {})) for name in BOOTSTRAP) for job in JOBS.values())
+    for job in JOBS:
+        gate = steps(job)[index(job, lambda step: "release_gate.py" in step.get("run", ""))]
+        expected = "${{ secrets.DATA_BOOTSTRAP_ARTIFACT_B64 != '' }}" if job in {"admission", "release"} else "${{ needs.release.outputs.recovery_window }}"
+        assert gate["env"] == {"RELEASE_RECOVERY_WINDOW": expected}
+    assert all(step.get("env", {}).get(name) == "${{ secrets.%s }}" % name
+               for name in BOOTSTRAP for job in JOBS.values() for step in job["steps"] if name in step.get("env", {}))
     # No step's command, input or condition names or prints one.
     for job in JOBS.values():
         for step in job["steps"]:

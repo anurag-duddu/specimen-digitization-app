@@ -17,6 +17,7 @@ from uuid import UUID
 
 from release_admission import digest, require
 from release_context import PROJECT, REPOSITORY
+from release_recovery_window import acceptance_deadline, require_acceptance
 
 ROOT = Path(__file__).resolve().parents[2]
 SERVICE = f"projects/{PROJECT}/locations/us-east4/services/specimen-digitization-service"
@@ -169,6 +170,7 @@ def read_first_scope(google, variables, observe=None):
 
 
 def read_first_scope_hierarchy(google, variables, identifiers, limit, observe=None):
+    deadline = acceptance_deadline(google.packet, dict(os.environ))
     response = google.request("data", "POST", SERVICE + ":executeGraphqlRead", body={
         "query": READ_FIRST_SCOPE_HIERARCHY,
         "variables": {"organizationId": variables["organizationId"], "ids": identifiers, "limit": limit},
@@ -182,6 +184,7 @@ def read_first_scope_hierarchy(google, variables, identifiers, limit, observe=No
             and all(isinstance(data[key], list) and len(data[key]) <= 2
                     for key in ("organizationMembers", "members")),
             "first-scope hierarchy observation incomplete")
+    require_acceptance(deadline)
     return data
 
 
@@ -212,15 +215,26 @@ def evidence_retainer(google, expected_sha256, evidence_recipient):
     directory = google.path.parent
     envelope_provenance = {"repository": REPOSITORY,
                           **{key: provenance[key] for key in ("source_sha", "run_id", "run_attempt")}}
+    deadline = acceptance_deadline(google.packet, dict(os.environ))
     def retain(name, value):
         from release_catalog_envelope import encrypt_catalog
+        favorable = name in {"first-scope-owner.verified.json", "first-scope-hierarchy.verified.json",
+                             "worker-membership.verified.json"}
+        if favorable:
+            require_acceptance(deadline)
         # Keep the original exclusive local fence, including on encryption failure.
         # Only its separately encrypted sibling may enter workflow artifacts.
         retain_first_scope(directory, name, value)
+        if favorable:
+            require_acceptance(deadline)
         envelope = encrypt_catalog(canonical(value) + b"\n", evidence_recipient["public_key_pem"].encode(),
                                    public_key_sha256=evidence_recipient["public_key_sha256"],
                                    provenance=envelope_provenance)
+        if favorable:
+            require_acceptance(deadline)
         retain_first_scope(directory, name.removesuffix(".json") + ".encrypted.json", envelope)
+        if favorable:
+            require_acceptance(deadline)
     return provenance, retain
 
 
@@ -293,6 +307,7 @@ def apply_first_scope_hierarchy(google, payload, expected_sha256, evidence_recip
     dispatch, each insert returns its exact pinned key, and the readback must
     show precisely the reviewed collections with their exact parents.
     """
+    deadline = acceptance_deadline(google.packet, dict(os.environ))
     variables, hierarchy = payload["request"]["variables"], payload["hierarchy"]
     collections = hierarchy["collections"]
     count = len(collections)
@@ -371,7 +386,9 @@ def apply_first_scope_hierarchy(google, payload, expected_sha256, evidence_recip
                "membership_sha256": hashlib.sha256(canonical(after)).hexdigest(),
                "scope_verified": True, "membership_verified": True, "collections_verified": count,
                "tree_sha256": hierarchy["tree_sha256"], "sensitive_access": False, "release_accepted": False}
+    require_acceptance(deadline)
     retain("first-scope-hierarchy.verified.json", receipt)
+    require_acceptance(deadline)
     return receipt
 
 

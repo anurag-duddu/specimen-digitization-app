@@ -22,6 +22,7 @@ import time
 from release_admission import gh_json, read_packet, require
 from release_context import PROJECT, REPOSITORY, validate_context
 from validate_release_packet import CHECKS, SHA, exact_keys
+import release_recovery_window as recovery
 
 RECORD_VERSION = "protected-release-gate/v1"
 PROJECT_NUMBER = "716045864126"
@@ -192,9 +193,10 @@ def admit_gate(plane: str, env: dict[str, str], *, wait_seconds: int, now: float
                            wait_data=GATE_PLANES[plane][0] == "runtime")
     # Issued after the wait, so the whole window remains for the steps that follow.
     issued = int(time.time() if now is None else now)
-    return {"version": RECORD_VERSION, "plane": plane, "repository": REPOSITORY, "project": PROJECT,
-            "source_sha": sha, **facts, "release_run_id": release_run_id, "release_run_attempt": release_run_attempt,
-            "issued_at_unix": issued, "expires_at_unix": issued + WINDOW_SECONDS, "identity": identity(plane)}
+    record = {"version": RECORD_VERSION, "plane": plane, "repository": REPOSITORY, "project": PROJECT,
+              "source_sha": sha, **facts, "release_run_id": release_run_id, "release_run_attempt": release_run_attempt,
+              "issued_at_unix": issued, "expires_at_unix": issued + WINDOW_SECONDS, "identity": identity(plane)}
+    return recovery.admit_record(record, env, now=now)
 
 
 def write_record(record: dict, path: Path, env: dict[str, str]) -> str:
@@ -205,6 +207,7 @@ def write_record(record: dict, path: Path, env: dict[str, str]) -> str:
     # Only fixed providers and hex digests reach the step files, so no line can be injected.
     require(is_gate_record(record) and provider in PROVIDERS.values() and is_sha(source),
             "only an admitted gate record is written")
+    mode = str(recovery.enabled(env, record["plane"])).lower() if recovery.MODE in env else None
     raw = json.dumps(record, sort_keys=True, separators=(",", ":")).encode() + b"\n"
     path = Path(path)
     path.parent.mkdir(mode=0o700, exist_ok=True)
@@ -214,8 +217,12 @@ def write_record(record: dict, path: Path, env: dict[str, str]) -> str:
     value = hashlib.sha256(raw).hexdigest()
     with open(targets[0], "a", encoding="utf-8") as handle:
         handle.write(f"RELEASE_PACKET_SHA256={value}\n")
+        if mode is not None:
+            handle.write(f"{recovery.MODE}={mode}\n")
     with open(targets[1], "a", encoding="utf-8") as handle:
         handle.write(f"provider={provider}\nsource_sha={source}\n")
+        if mode is not None:
+            handle.write(f"recovery_window={mode}\n")
     return value
 
 
@@ -235,6 +242,7 @@ def readmit(path: Path, plane: str, env: dict[str, str], *, now: float | None = 
             "wrong or unpinned WIF provider")
     for key, name in (("release_run_id", "GITHUB_RUN_ID"), ("release_run_attempt", "GITHUB_RUN_ATTEMPT")):
         require(positive(record[key]) and record[key] == run_number(env, name), "gate record is for another run or attempt")
+    recovery_now = now
     now = time.time() if now is None else now
     issued, expires = record["issued_at_unix"], record["expires_at_unix"]
     require(positive(issued) and positive(expires) and issued <= now < expires <= issued + WINDOW_SECONDS,
@@ -244,7 +252,7 @@ def readmit(path: Path, plane: str, env: dict[str, str], *, now: float | None = 
                            wait_data=GATE_PLANES[plane][0] == "runtime")
     require(all(type(record[key]) is type(value) and record[key] == value for key, value in facts.items()),
             "GitHub facts changed since admission")
-    return record
+    return recovery.readmit_record(record, env, now=recovery_now)
 
 
 def main() -> None:
