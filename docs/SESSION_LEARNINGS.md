@@ -13856,3 +13856,8 @@ Root canonical milestone: all repository hooks passed with unchanged secret scan
 Python scripts suite passed 2,759 tests with 61 optional skips (exit 0). The only
 hook correction renamed a synthetic canary constant; every test assertion remains.
 Canonical backend tests proceed after this green-step commit.
+
+Root canonical backend suite passed 6,380 tests with 45 optional skips (exit 0,
+560.15 seconds). Together, both Python suites passed 9,139 tests with 106 skips.
+These are local controls, not live SQL, model or authenticated app acceptance.
+The frontend source is unchanged; CI still runs all five required checks.
