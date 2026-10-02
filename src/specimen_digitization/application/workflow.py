@@ -41,7 +41,7 @@ from .integrity import EvidenceIntegrityError, verify_evidence
 from .lookup import PLACE_FIELDS, taxonomy_lookup
 from .policy import finalize
 from .storage import BlobStore, Repository, digest
-from .reliability import AdapterFailure, retry_delay
+from .reliability import AdapterFailure, ReadingStopped, retry_delay
 
 
 class OperationalBlock(RuntimeError):
@@ -371,10 +371,16 @@ class Workflow:
             elif step.startswith("transcribe:"):
                 _, region_id, route = step.split(":", 2)
                 region = next(r for r in run.regions if r.id == region_id)
-                observation = self.adapters.transcribe(specimen, region, route)
-                if observation.region_id != region.id or observation.route_id != route:
-                    raise OperationalBlock("observation_contract_invalid")
-                run.observations.append(observation)
+                try:
+                    observation = self.adapters.transcribe(specimen, region, route)
+                except ReadingStopped:
+                    # A failed reading (#153): the step completes with no
+                    # observation, and the region stays one reading short.
+                    pass
+                else:
+                    if observation.region_id != region.id or observation.route_id != route:
+                        raise OperationalBlock("observation_contract_invalid")
+                    run.observations.append(observation)
             elif step.startswith("first_pass:"):
                 region = next(r for r in run.regions if r.id == step.split(":", 1)[1])
                 readings = [o for o in run.observations if o.region_id == region.id]
