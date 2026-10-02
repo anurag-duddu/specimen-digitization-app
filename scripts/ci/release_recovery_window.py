@@ -56,6 +56,17 @@ def current_time(now=None):
     return value
 
 
+def acceptance_deadline(record, env, plane="data"):
+    """Capture the admitted expiry once; ordinary releases keep their existing acceptance."""
+    return record["expires_at_unix"] if enabled(env, plane) else None
+
+
+def require_acceptance(deadline):
+    """Reject late favorable adoption without resetting a clock or discarding attempted evidence."""
+    require(deadline is None or current_time() < deadline,
+            "protected recovery acceptance exceeded the original deadline")
+
+
 def timestamp(value):
     require(isinstance(value, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", value),
             "invalid native attempt timestamp")

@@ -812,6 +812,7 @@ def deploy_released_data(path, output, secrets=None):
     require(targets and output is not None, "GitHub step output and receipt path required")
     google = Google(path, "data")
     record = google.packet
+    acceptance = recovery.acceptance_deadline(record, dict(os.environ))
     require(release_gate.is_gate_record(record) and record.get("plane") == "data", "a data gate record is required")
     window = recovery.observe(record, dict(os.environ))
     prior = recovery.qualified_prior(record) if window and window["attempt"] == 2 else None
@@ -827,6 +828,7 @@ def deploy_released_data(path, output, secrets=None):
         with open(targets, "a", encoding="utf-8") as handle:
             handle.write(f"phase={facts['phase']}\n")
 
+    failed = False
     try:
         schema = google.request("data", "GET", SCHEMA_NAME)
         etag, updated = revision(schema), schema.get("updateTime")
@@ -874,6 +876,7 @@ def deploy_released_data(path, output, secrets=None):
             if verified(record, path.parent, merged[0], facts):
                 publish()
                 bootstrap_released(google, path.parent, facts, secrets)
+                recovery.require_acceptance(acceptance)
                 return
             print("A supplemental index is missing or changed.")
         choose("apply")
@@ -891,6 +894,10 @@ def deploy_released_data(path, output, secrets=None):
             raise blocked(f"the additive-only gate refused {len(refusals)} change(s)")
         apply_released(google, path.parent, schema, connector, facts["storage_ruleset"], merged, facts, unique_swap=unique_swap)
         bootstrap_released(google, path.parent, facts, secrets)
+        recovery.require_acceptance(acceptance)
+    except BaseException:
+        failed = True
+        raise
     finally:
         if any(path.parent.glob("*.encrypted.json")):
             # The bootstrap's encrypted records, a failed write's included; the raw ones beside them never leave the runner.
@@ -899,6 +906,9 @@ def deploy_released_data(path, output, secrets=None):
         output.write_text(json.dumps({"version": "data-released/v1", "source_sha": record["source_sha"],
                                       "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"],
                                       **facts}, sort_keys=True) + "\n")
+        # Keep diagnostic/attempted evidence on failure; completing its write is not late success.
+        if not failed:
+            recovery.require_acceptance(acceptance)
 
 
 def require_prior_initialization(google, directory, prior):
@@ -1238,6 +1248,7 @@ def take_backup(google, directory, source):
     intent precedes its one POST, and no backup is ever adopted: a re-run takes its own. Returns its backup run id."""
     from release_backup import backup_name, save, timestamp, utc
     record, disk = google.packet, release_gate.field(source, "settings", "dataDiskSizeGb")
+    deadline = recovery.acceptance_deadline(record, dict(os.environ))
     if not (isinstance(disk, str) and re.fullmatch(r"[1-9][0-9]{0,5}", disk)):
         raise blocked("the SQL instance's disk size is unreadable")
     submitted = int(time.time())
@@ -1271,7 +1282,9 @@ def take_backup(google, directory, source):
     if not (isinstance(size, str) and re.fullmatch(r"0|[1-9][0-9]{0,19}", size) and native.get("maxChargeableBytes") == size
             and int(size) <= int(disk) * 1024**3):
         raise blocked("the backup's bytes exceed the source disk's")
+    recovery.require_acceptance(deadline)
     save(intent, {"outcome": "successful", "submitted_at_unix": submitted, "request": body, "backup_id": backup_id})
+    recovery.require_acceptance(deadline)
     return backup_id
 
 
@@ -1308,13 +1321,17 @@ def indexes_match(inventory):
 def verified(record, directory, merged_schema, facts):
     """RELEASE.md 4.4, Verify, as specimen-data-release and read-only: the catalog as the apply checks it, then the
     supplemental index inventory. False when an index is missing or changed, which makes the phase apply."""
+    deadline = recovery.acceptance_deadline(record, dict(os.environ))
     tables, views, _ = schema_gate.declared_sql(merged_schema, relaxations())
     check_catalog(gate_sql("migrated", directory, record["source_sha"], deadline=record["expires_at_unix"]), tables, views)
+    recovery.require_acceptance(deadline)
     facts.update(tables=len(tables), views=len(views))
     inventory = gate_sql("indexed", directory, record["source_sha"], deadline=record["expires_at_unix"])
     if inventory is None:
         raise blocked("the supplemental index inventory could not be read")
-    return indexes_match(inventory)
+    matched = indexes_match(inventory)
+    recovery.require_acceptance(deadline)
+    return matched
 
 
 def clone_recipe(google, source):
@@ -1438,6 +1455,7 @@ def restore_check(google, directory, body, backup_id, live_schema, facts):
     this attempt's backup restored into it, its catalog checked read-only as the source's is, against the live schema the
     backup holds, and the clone deleted as this attempt's, whatever the check found."""
     record = google.packet
+    deadline = recovery.acceptance_deadline(record, dict(os.environ))
     claim_first_restore(google, directory, backup_id)
     facts["first_restore"], created = "claimed", None
     try:
@@ -1455,9 +1473,11 @@ def restore_check(google, directory, body, backup_id, live_schema, facts):
         check_catalog(gate_sql("restored", directory, record["source_sha"], instance=CLONE,
                                deadline=record["expires_at_unix"] - DISPOSAL_SECONDS),
                       tables, views, where="the restored clone", schema="the live schema")
+        recovery.require_acceptance(None if deadline is None else deadline - DISPOSAL_SECONDS)
     finally:
         if created is not None:
             delete_clone(google, directory, body, created)
+    recovery.require_acceptance(deadline)
     facts["first_restore"] = "checked"
 
 
@@ -1501,6 +1521,7 @@ def apply_released(google, directory, schema, connector, ruleset, merged, facts,
     merged: the merged schema, connector and Storage rules files; facts: the receipt's, updated as they are observed."""
     record = google.packet
     sha, deadline = record["source_sha"], record["expires_at_unix"]
+    acceptance = recovery.acceptance_deadline(record, dict(os.environ))
     first = rollback_guard(schema, sha) is None
     source = google.request("sql", "GET", f"projects/{PROJECT}/instances/{SOURCE}")
     if release_gate.field(source, "settings", "backupConfiguration", "pointInTimeRecoveryEnabled") is not True:
@@ -1534,6 +1555,7 @@ def apply_released(google, directory, schema, connector, ruleset, merged, facts,
     if inventory is None or not indexes_match(inventory):
         # CREATE INDEX CONCURRENTLY IF NOT EXISTS never repairs an invalid or changed index of the same name.
         raise blocked("the supplemental indexes could not be created as the owner role or differ from their definitions")
+    recovery.require_acceptance(acceptance)
     google.request("data", "PATCH", CONNECTOR_NAME, body=connector_body, params={"allowMissing": "true", "validateOnly": "true"})
     google.wait("data", google.request("data", "PATCH", CONNECTOR_NAME, body=connector_body, params={"allowMissing": "true"}))
     facts["storage_ruleset"] = publish_rules(google, ruleset)
@@ -1544,9 +1566,11 @@ def apply_released(google, directory, schema, connector, ruleset, merged, facts,
     if (*schema_gate.live_sources(schema, connector), live_rules(google)[1]) != tuple(merged) or schema_label(schema) != sha:
         raise blocked("the released schema, connector or Storage rules differ from the merged files")
     stamp(schema.get("updateTime"))
+    recovery.require_acceptance(acceptance)
     facts.update(schema_etag=revision(schema), schema_update_time=schema["updateTime"], connector_etag=revision(connector),
                  source_sha_label=sha)
     check_catalog(gate_sql("migrated", directory, sha, deadline=deadline), tables, views)
+    recovery.require_acceptance(acceptance)
     facts.update(tables=len(tables), views=len(views))
 
 
@@ -1570,9 +1594,12 @@ def bootstrap_released(google, directory, facts, secrets):
 
 
 @stage("data.receipt")
-def emit_result_digest(path):
+def emit_result_digest(path, *, deadline=None):
     with Path(os.environ["GITHUB_OUTPUT"]).open("a") as handle:
-        handle.write("receipt_sha256=" + hashlib.sha256(path.read_bytes()).hexdigest() + "\n")
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        recovery.require_acceptance(deadline)
+        handle.write("receipt_sha256=" + digest + "\n")
+    recovery.require_acceptance(deadline)
 
 
 def main():
@@ -1634,6 +1661,8 @@ def main():
                     "a gate record releases only through its jobs")
         if gate:
             import release_initialize as initializer
+            import release_recovery_window as recovery_window
+            deadline = recovery_window.acceptance_deadline(packet, dict(os.environ), plane)
             if args.deploy:
                 deploy_released_data(args.packet, args.output, secrets=secrets)
             elif args.initialize:
@@ -1645,7 +1674,11 @@ def main():
             else:
                 initializer.dispose_owned_initializer(Google(args.packet, plane), args.packet.parent)
             if args.deploy or args.initialize or args.migrate:
-                emit_result_digest(args.output)
+                if deadline is None:
+                    emit_result_digest(args.output)
+                else:
+                    emit_result_digest(args.output, deadline=deadline)
+            recovery_window.require_acceptance(deadline)
             return
         with stage("data.plan"):
             plan = validate_plan(read_bound_plan(args.packet.parent / "plan.json", packet), packet)

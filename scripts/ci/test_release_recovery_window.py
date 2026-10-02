@@ -1034,3 +1034,296 @@ def test_final_init_step_output_is_not_published_after_original_expiry(tmp_path,
     assert "init_step=" not in steps.read_text()
     assert json.loads(output.read_bytes())["bootstrap"] == "deferred"
     assert all(method == "GET" for _, method, _ in google.calls)
+
+
+# Actual B consumers with offline rows, native-request doubles and real private envelopes.
+import base64
+import bootstrap_release as B
+import release_bootstrap as SB
+import test_data_bootstrap as BF
+import test_data_apply as AF
+from test_data_first_initialization import inventory
+
+
+def bounded_bootstrap(tmp_path, monkeypatch, *, seeded=False):
+    payload = BF.prepare()
+    google = BF.verify_plane(tmp_path, payload)
+    google.path.parent.mkdir(mode=0o700)
+    google.packet = {**google.packet, "expires_at_unix": 100}
+    clock, backups = [99], []
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    monkeypatch.setenv(R.MODE, "true")
+    if seeded:
+        BF.seed(google, payload)
+        BF.seed_worker(google, payload)
+    raw = BF.exact(payload)
+    secrets = {SB.ARTIFACT: base64.b64encode(raw).decode(), SB.APPROVED: hashlib.sha256(raw).hexdigest(),
+               SB.WORKER: BF.WORKER_UID}
+    facts = dict.fromkeys(("bootstrap", "worker_membership"))
+    def run():
+        return SB.run(google, facts, secrets, backup=lambda: backups.append("backup"))
+    return google, clock, facts, backups, run
+
+
+@pytest.mark.parametrize("entity", ["first-scope-hierarchy", "worker-membership"])
+@pytest.mark.parametrize("seam", ["readback-fsync", "validated-hash", "favorable-encryption"])
+@pytest.mark.parametrize("late_by", [-0.001, 0, 0.001])
+def test_b_bootstrap_final_evidence_cannot_adopt_after_original_expiry(
+        tmp_path, monkeypatch, entity, seam, late_by):
+    import release_catalog_envelope as envelope
+    google, clock, facts, backups, run = bounded_bootstrap(tmp_path, monkeypatch)
+    retain, canonical, encrypt = B.retain_first_scope, B.canonical, envelope.encrypt_catalog
+    delayed = []
+    def retained(directory, name, value):
+        retain(directory, name, value)
+        if seam == "readback-fsync" and name == entity + ".readback.json":
+            delayed.append(name)
+            clock[0] = 100 + late_by
+    def serialized(value):
+        result = canonical(value)
+        # The final membership digest follows the real readback predicate; earlier raw envelopes stay timely.
+        if seam == "validated-hash" and entity == "first-scope-hierarchy" and isinstance(value, dict) and "organization" in value and google.events.count("tree") == 2:
+            delayed.append("hierarchy-hash")
+            clock[0] = 100 + late_by
+        if seam == "validated-hash" and entity == "worker-membership" and isinstance(value, dict) and "organizationMember" in value and google.events.count("worker-read") == 2:
+            delayed.append("worker-hash")
+            clock[0] = 100 + late_by
+        return result
+    def encrypted(raw, *args, **kwargs):
+        result = encrypt(raw, *args, **kwargs)
+        if seam == "favorable-encryption" and json.loads(raw).get("version") == entity + "-applied/v1":
+            delayed.append("encryption")
+            clock[0] = 100 + late_by
+        return result
+    monkeypatch.setattr(B, "retain_first_scope", retained)
+    monkeypatch.setattr(B, "canonical", serialized)
+    monkeypatch.setattr(envelope, "encrypt_catalog", encrypted)
+    if late_by < 0:
+        run()
+        assert facts == {"bootstrap": "applied", "worker_membership": "applied"}
+        assert (google.path.parent / (entity + ".verified.encrypted.json")).exists()
+    else:
+        with pytest.raises(ValueError):
+            run()
+        key = "bootstrap" if entity == "first-scope-hierarchy" else "worker_membership"
+        assert facts[key] == "failed"
+        assert not (google.path.parent / (entity + ".verified.encrypted.json")).exists()
+    assert delayed and google.packet["expires_at_unix"] == 100 and backups == ["backup"]
+    assert google.events.count("hierarchy") == 1
+    assert google.events.count("worker") == (0 if entity == "first-scope-hierarchy" and late_by >= 0 else 1)
+    for name in ("intent", "response", "readback"):
+        assert (google.path.parent / (entity + "." + name + ".encrypted.json")).exists()
+
+
+@pytest.mark.parametrize("seam", ["scope-predicate", "account-validation"])
+@pytest.mark.parametrize("late_by", [-0.001, 0, 0.001])
+def test_b_identical_bootstrap_final_predicate_and_account_cannot_accept_late(
+        tmp_path, monkeypatch, seam, late_by):
+    google, clock, facts, backups, run = bounded_bootstrap(tmp_path, monkeypatch, seeded=True)
+    name = "scope_state" if seam == "scope-predicate" else "worker_account"
+    original = getattr(SB, name)
+    def validated(*args, **kwargs):
+        result = original(*args, **kwargs)
+        clock[0] = 100 + late_by
+        return result
+    monkeypatch.setattr(SB, name, validated)
+    if late_by < 0:
+        run()
+        assert facts == {"bootstrap": "verified", "worker_membership": "verified"}
+    else:
+        with pytest.raises(ValueError):
+            run()
+        assert facts["bootstrap" if seam == "scope-predicate" else "worker_membership"] == "failed"
+    assert backups == [] and not any(name in google.events for name in ("hierarchy", "worker"))
+    assert google.packet["expires_at_unix"] == 100
+
+
+@pytest.mark.parametrize("seam", ["catalog", "indexes"])
+@pytest.mark.parametrize("late_by", [-0.001, 0, 0.001])
+def test_b_verified_final_catalog_and_index_predicates_keep_original_expiry(tmp_path, monkeypatch, seam, late_by):
+    clock, calls = [99], []
+    facts = dict.fromkeys(("tables", "views"))
+    value = {**record(), "expires_at_unix": 100}
+    monkeypatch.setenv(R.MODE, "true")
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    monkeypatch.setattr(D.schema_gate, "declared_sql", lambda *args: ({"specimen"}, set(), set()))
+    catalog = {"expected_database": True, "expected_actor": True, "postconditions": {"schema_owner": D.OWNER},
+               "tables": ["public.specimen"], "views": [], "owners": [D.OWNER], "extensions": ["plpgsql", "uuid-ossp"]}
+    def read(mode, directory, sha, *, deadline):
+        calls.append((mode, deadline))
+        return catalog if mode == "migrated" else inventory()
+    monkeypatch.setattr(D, "gate_sql", read)
+    name = "check_catalog" if seam == "catalog" else "indexes_match"
+    original = getattr(D, name)
+    def checked(*args):
+        result = original(*args)
+        clock[0] = 100 + late_by
+        return result
+    monkeypatch.setattr(D, name, checked)
+    if late_by < 0:
+        assert D.verified(value, tmp_path, "type Specimen @table { id: UUID! }", facts) is True
+        assert facts == {"tables": 1, "views": 0}
+    else:
+        with pytest.raises(ValueError, match="deadline"):
+            D.verified(value, tmp_path, "type Specimen @table { id: UUID! }", facts)
+        if seam == "catalog":
+            assert facts == {"tables": None, "views": None}
+    assert calls == ([("migrated", 100)] if seam == "catalog" and late_by >= 0 else [("migrated", 100), ("indexed", 100)])
+    assert value["expires_at_unix"] == 100
+
+
+@pytest.mark.parametrize("late_by", [-0.001, 0, 0.001])
+def test_b_apply_final_catalog_validation_keeps_counts_unaccepted(tmp_path, monkeypatch, late_by):
+    import test_data_released_deploy as fixture
+    fixture.tree(tmp_path, monkeypatch)
+    google = AF.Cloud()
+    deadline = google.packet["expires_at_unix"]
+    clock, facts = [AF.NOW], dict.fromkeys(("tables", "views"))
+    directory = tmp_path / "release"
+    directory.mkdir(mode=0o700)
+    monkeypatch.setenv(R.MODE, "true")
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    monkeypatch.setattr(D.subprocess, "run", AF.node_sql(google))
+    def compare(path):
+        assert path == f"repos/{D.REPOSITORY}/compare/{AF.OLD}...{fixture.SHA}"
+        return {"status": "ahead"}
+    monkeypatch.setattr(D, "gh_json", compare)
+    original = D.check_catalog
+    def checked(*args, **kwargs):
+        original(*args, **kwargs)
+        if google.events[-1] == "migrated":
+            clock[0] = deadline + late_by
+    monkeypatch.setattr(D, "check_catalog", checked)
+    args = (google, directory, google.live["data", fixture.SCHEMA], google.live["data", fixture.CONNECTOR],
+            fixture.RULESET, (fixture.MERGED, fixture.OPS, {"storage.rules": fixture.RULES}), facts)
+    if late_by < 0:
+        D.apply_released(*args)
+        assert facts["tables"] is not None and facts["views"] is not None
+    else:
+        with pytest.raises(ValueError, match="deadline"):
+            D.apply_released(*args)
+        assert facts["tables"] is None and facts["views"] is None
+    assert google.events.count("backup") == 1 and google.events.count("migrated") == 1
+    assert google.packet["expires_at_unix"] == deadline
+
+
+@pytest.mark.parametrize("seam", ["size-validation", "proof-fsync"])
+@pytest.mark.parametrize("late_by", [-0.001, 0, 0.001])
+def test_b_backup_final_proof_keeps_unknown_fence_and_rejects_late_return(tmp_path, monkeypatch, seam, late_by):
+    import release_backup as backup
+    google, clock = AF.Cloud(), [AF.NOW]
+    deadline = google.packet["expires_at_unix"]
+    monkeypatch.setenv(R.MODE, "true")
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    source = google.live["sql", AF.INSTANCE]
+    save = backup.save
+    class TimedSize(str):
+        def __int__(self):
+            result = int(str(self))
+            clock[0] = deadline + late_by
+            return result
+    if seam == "size-validation":
+        google.backup["maxChargeableBytes"] = TimedSize("1048576")
+    def saved(path, value, **kwargs):
+        save(path, value, **kwargs)
+        if seam == "proof-fsync" and value["outcome"] == "successful":
+            clock[0] = deadline + late_by
+    monkeypatch.setattr(backup, "save", saved)
+    if late_by < 0:
+        assert D.take_backup(google, tmp_path, source) == AF.BACKUP_ID
+    else:
+        with pytest.raises(ValueError, match="deadline"):
+            D.take_backup(google, tmp_path, source)
+    held = json.loads((tmp_path / "release-backup.json").read_bytes())
+    assert held["outcome"] == ("unknown" if seam == "size-validation" and late_by >= 0 else "successful")
+    assert google.events.count("backup") == 1 and google.packet["expires_at_unix"] == deadline
+    with pytest.raises(ValueError):
+        D.take_backup(google, tmp_path, source)
+    assert google.events.count("backup") == 1
+
+
+@pytest.mark.parametrize("late_by", [-0.001, 0, 0.001])
+def test_b_restore_checked_fact_rejects_disposal_crossing_original_expiry(tmp_path, monkeypatch, late_by):
+    google, clock, facts = AF.Cloud(), [AF.NOW], {}
+    deadline = google.packet["expires_at_unix"]
+    monkeypatch.setenv(R.MODE, "true")
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    monkeypatch.setattr(D.subprocess, "run", AF.node_sql(google))
+    body = D.clone_recipe(google, google.live["sql", AF.INSTANCE])
+    deleted = D.delete_clone
+    def disposed(*args):
+        deleted(*args)
+        clock[0] = deadline + late_by
+    monkeypatch.setattr(D, "delete_clone", disposed)
+    if late_by < 0:
+        D.restore_check(google, tmp_path, body, AF.BACKUP_ID, AF.LIVE, facts)
+        assert facts["first_restore"] == "checked"
+    else:
+        with pytest.raises(ValueError, match="deadline"):
+            D.restore_check(google, tmp_path, body, AF.BACKUP_ID, AF.LIVE, facts)
+        assert facts["first_restore"] == "claimed"
+    assert google.events.count("clone-create") == google.events.count("clone-restore") == google.events.count("clone-delete") == 1
+    assert ("sql", AF.CLONED) not in google.live and len(google.claims) == 1
+
+
+@pytest.mark.parametrize("seam", ["receipt-read", "digest-write"])
+@pytest.mark.parametrize("late_by", [-0.001, 0, 0.001])
+def test_b_cli_final_digest_and_success_retain_original_admitted_packet(tmp_path, monkeypatch, seam, late_by):
+    output, steps, packet = tmp_path / "data-released.json", tmp_path / "outputs", tmp_path / "packet.json"
+    steps.touch()
+    value, clock, admitted = {**record(), "expires_at_unix": 100}, [99], []
+    monkeypatch.setenv(R.MODE, "true")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(steps))
+    monkeypatch.setattr(time, "time", lambda: clock[0])
+    monkeypatch.setattr(sys, "argv", ["deploy_data.py", "--packet", str(packet), "--deploy", "--output", str(output)])
+    monkeypatch.setattr(D, "admit", lambda path, plane: admitted.append((path, plane)) or value)
+    def deployed(*args, **kwargs):
+        output.write_text(json.dumps(receipts()["data-receipt"]) + "\n")
+    monkeypatch.setattr(D, "deploy_released_data", deployed)
+    original_read, original_emit = Path.read_bytes, D.emit_result_digest
+    def read(path):
+        result = original_read(path)
+        if seam == "receipt-read" and path == output:
+            clock[0] = 100 + late_by
+        return result
+    def emitted(*args, **kwargs):
+        result = original_emit(*args, **kwargs)
+        if seam == "digest-write":
+            clock[0] = 100 + late_by
+        return result
+    monkeypatch.setattr(Path, "read_bytes", read)
+    monkeypatch.setattr(D, "emit_result_digest", emitted)
+    if late_by < 0:
+        D.main()
+    else:
+        with pytest.raises(SystemExit) as failure:
+            D.main()
+        assert failure.value.code != 0
+    assert admitted == [(packet, "data")] and value["expires_at_unix"] == 100 and output.exists()
+    assert ("receipt_sha256=" in steps.read_text()) == (seam == "digest-write" or late_by < 0)
+
+
+@pytest.mark.parametrize("entity", ["first-scope-hierarchy", "worker-membership"])
+@pytest.mark.parametrize("late_by", [-0.001, 0, 0.001])
+def test_b_final_favorable_evidence_fsync_retains_attempt_without_late_adoption(
+        tmp_path, monkeypatch, entity, late_by):
+    google, clock, facts, backups, run = bounded_bootstrap(tmp_path, monkeypatch)
+    retain = B.retain_first_scope
+    def retained(directory, name, value):
+        retain(directory, name, value)
+        if name == entity + ".verified.encrypted.json":
+            clock[0] = 100 + late_by
+    monkeypatch.setattr(B, "retain_first_scope", retained)
+    if late_by < 0:
+        run()
+        assert facts == {"bootstrap": "applied", "worker_membership": "applied"}
+    else:
+        with pytest.raises(ValueError):
+            run()
+        assert facts["bootstrap" if entity == "first-scope-hierarchy" else "worker_membership"] == "failed"
+    # Evidence already written is kept for reconciliation; its existence never authorizes a favorable return.
+    for name in ("intent", "response", "readback", "verified"):
+        assert (google.path.parent / (entity + "." + name + ".encrypted.json")).exists()
+    assert backups == ["backup"] and google.events.count("hierarchy") == 1
+    assert google.events.count("worker") == (0 if entity == "first-scope-hierarchy" and late_by >= 0 else 1)
+    assert google.packet["expires_at_unix"] == 100
