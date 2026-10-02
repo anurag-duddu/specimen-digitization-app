@@ -13825,3 +13825,34 @@ PR228 draft at d967218 was opened after all canonical local gates and fourfresh 
 ### 2026-10-02 ROOT correct committed hierarchy approval custody
 
 PR #228 d967 native CI run36948453727 Python job110655775408 had22FAIL8909PASS100SKIP, all FileNotFoundError for scripts/data/hierarchy_approval.py; native raw failed log SHA3b5566fb9be7f49558f131f4276e5141f48f5126a9a880cd1ae3bf5dfb5c37f9 retained. Earlier local whole-suite execution was real but used this ignored local helper and did not prove a clean Git checkout contained all inputs; this corrects prior source-completeness qualification. Current075 is not pushed and its source reviews are historical. Recover authentic helper unchanged SHA b178365f33874550eeb7bb51b0c503801ee081cef9082e6df576bd94fd30cdb2, add only exact .gitignore exception for reviewed source. Private artifact/approval files and unrelated Python data remain ignored. All original tests/assertions retained; actual hierarchy+bootstrap136PASS3.76s0. Steward finite324-path local-versus-Git source audit found only this omitted helper, native checks only two failures (this and already fixed worker smoke); all other seven nondeploy checks success. Newhead requires fresh four source reviews and exact native CI, paidworker/SAM remain HOLD.
+
+
+## 2026-10-02 — Root recovery-window source qualification
+
+Task: approved recovery integration on `codex/recovery-window-20261002`, from
+protected main `44fc882949a9480f20e35f9193535fefef9d3e9c`.
+
+The data recovery guard now derives one conservative clock from the authenticated
+first push attempt, bounds the second attempt to the same source and successful
+first-attempt receipts, and enforces fixed deadlines at actual request and catalog
+subprocess boundaries. Bootstrap secret presence selects the stricter guard; it
+never supplies clock or workload authority. Ordinary release behavior remains.
+Safe SQL read failure labels retain status and omit response bodies.
+
+Independent reviewers read the final source and retained all prior assertions.
+Root executed 398 focused recovery and sibling tests successfully. Genuine
+controls failed before the request, disposal and catalog deadline corrections.
+The initial positive fixture shape and HTTP failure attribute defects were
+corrected without weakening assertions; their failures remain in private custody.
+Canonical Python and repository checks are pending in this entry.
+
+No new activation clock, IAM write, schema effect or connected production
+acceptance occurred during this source work. A future native first-attempt timing
+witness, signed migration lineage and fresh second-attempt absence/catalog proof
+are still required. A parent timeout cannot prove the SQL server terminated and
+never permits a blind replay. The private executor stays outside this repository.
+
+Root canonical milestone: all repository hooks passed with unchanged secret scanners;
+Python scripts suite passed 2,759 tests with 61 optional skips (exit 0). The only
+hook correction renamed a synthetic canary constant; every test assertion remains.
+Canonical backend tests proceed after this green-step commit.

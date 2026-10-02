@@ -41,6 +41,9 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --frozen
       - name: Verify the protected merged commit and its five checks
+        # Boolean presence only; the private bootstrap values remain on the deploy step.
+        env:
+          RELEASE_RECOVERY_WINDOW: ${{ secrets.DATA_BOOTSTRAP_ARTIFACT_B64 != '' }}
         run: uv run python scripts/ci/release_gate.py --plane data --wait-seconds 3300 --output "$RUNNER_TEMP/data-release/packet.json"
 
   release:
@@ -55,6 +58,7 @@ jobs:
     outputs:
       phase: ${{ steps.deploy.outputs.phase }}
       init_step: ${{ steps.deploy.outputs.init_step }}
+      recovery_window: ${{ steps.admission.outputs.recovery_window }}
     # The runtime release job holds the same lock and never waits for data while holding it.
     concurrency:
       group: specimen-protected-mutation
@@ -88,6 +92,9 @@ jobs:
         run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
       - name: Re-admit the exact merged commit before data credentials
         id: admission
+        # Boolean presence only; the private bootstrap values remain on the deploy step.
+        env:
+          RELEASE_RECOVERY_WINDOW: ${{ secrets.DATA_BOOTSTRAP_ARTIFACT_B64 != '' }}
         run: uv run python scripts/ci/release_gate.py --plane data --output "$RUNNER_TEMP/data-release/packet.json"
       - name: Authenticate only the approved data identity
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -100,7 +107,7 @@ jobs:
         env:
           RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
           # RELEASE.md 4.5: the owner sets these data-production secrets for the bootstrap run and deletes them after;
-          # unset, each arrives empty and the bootstrap is skipped. Only this step reads them; nothing prints them.
+          # unset, each arrives empty and the bootstrap is skipped. Only this step reads their values; nothing prints them.
           DATA_BOOTSTRAP_ARTIFACT_B64: ${{ secrets.DATA_BOOTSTRAP_ARTIFACT_B64 }}
           DATA_BOOTSTRAP_APPROVED_SHA256: ${{ secrets.DATA_BOOTSTRAP_APPROVED_SHA256 }}
           DATA_WORKER_ACTOR_UID: ${{ secrets.DATA_WORKER_ACTOR_UID }}
@@ -174,6 +181,9 @@ jobs:
         run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
       - name: Re-admit the exact merged commit before initializer credentials
         id: admission
+        # Boolean presence only; the private bootstrap values remain on the deploy step.
+        env:
+          RELEASE_RECOVERY_WINDOW: ${{ needs.release.outputs.recovery_window }}
         run: uv run python scripts/ci/release_gate.py --plane data-initialization --output "$RUNNER_TEMP/data-release/packet.json"
       - name: Authenticate only the one-time initializer identity
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -248,6 +258,9 @@ jobs:
         run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
       - name: Re-admit the exact merged commit before data credentials
         id: admission
+        # Boolean presence only; the private bootstrap values remain on the deploy step.
+        env:
+          RELEASE_RECOVERY_WINDOW: ${{ needs.release.outputs.recovery_window }}
         run: uv run python scripts/ci/release_gate.py --plane data --output "$RUNNER_TEMP/data-release/packet.json"
       - name: Authenticate only the approved data identity
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
@@ -304,6 +317,9 @@ jobs:
         run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
       - name: Re-admit the exact merged commit before data credentials
         id: admission
+        # Boolean presence only; the private bootstrap values remain on the deploy step.
+        env:
+          RELEASE_RECOVERY_WINDOW: ${{ needs.release.outputs.recovery_window }}
         run: uv run python scripts/ci/release_gate.py --plane data --output "$RUNNER_TEMP/data-release/packet.json"
       - name: Authenticate only the approved data identity
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3

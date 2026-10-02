@@ -21,6 +21,7 @@ from release_diagnostics import HTTPFailure, public_failure, stage
 import release_gate
 import schema_gate
 import release_source_asset_unique
+import release_recovery_window as recovery
 
 ROOT = Path(__file__).resolve().parents[2]
 PREFIX = f"projects/{PROJECT}/locations/us-east4/services/specimen-digitization-service"
@@ -722,11 +723,21 @@ def require_database(google):
         raise blocked("the application database is missing")
 
 
-def first_catalog(directory, source_sha):
+def first_catalog(directory, source_sha, *, deadline=None):
     """The application database's summary, read through the Node connector as the release identity (4.3 step 1)."""
     target = directory / "first-catalog.json"
+    seconds = 60
+    if deadline is not None:
+        require(type(deadline) is int and 0 < deadline <= 2**53, "invalid protected catalog deadline")
+        remaining = deadline - time.time()
+        require(remaining > 0, "protected catalog deadline reached before launch")
+        seconds = min(seconds, remaining)
+    # The parent owns the subprocess lifetime, as gate_sql does. The native
+    # CLI has no environment-deadline consumer; do not pretend one exists.
     result = subprocess.run(["node", "scripts/ci/release_sql.mjs", "summary", SOURCE, str(target)], cwd=ROOT,
-                            env=dict(os.environ, RELEASE_GATE_SHA=source_sha), capture_output=True, timeout=60)
+                            env=dict(os.environ, RELEASE_GATE_SHA=source_sha), capture_output=True, timeout=seconds)
+    if deadline is not None:
+        require(time.time() < deadline, "protected catalog summary completed after its deadline")
     if result.returncode != 0:
         raise blocked("the application database's catalog could not be read")
     return strict_json(private_bytes(target))
@@ -749,7 +760,8 @@ def run_artifacts(record, prefix):
 
 def first_step(record, directory):
     """RELEASE.md 4.3 step 1: initialize a new, empty database; migrate after this run's own earlier initializer; else stop."""
-    summary = first_catalog(directory, record["source_sha"])
+    bounded = {"deadline": record["expires_at_unix"]} if recovery.enabled(dict(os.environ), "data") else {}
+    summary = first_catalog(directory, record["source_sha"], **bounded)
     names = summary.get("extensions") if isinstance(summary, dict) else None
     roles = summary.get("roles") if isinstance(summary, dict) else None
     if not (isinstance(summary, dict) and set(summary) == {*COUNTS, "expected_database", "expected_actor", "extensions", "roles"}
@@ -785,11 +797,14 @@ def deploy_released_data(path, output, secrets=None):
     """
     taken = take_bootstrap_secrets()
     secrets = taken if secrets is None else secrets
+    recovery.require_secret_presence(dict(os.environ), secrets)
     targets = os.environ.get("GITHUB_OUTPUT")
     require(targets and output is not None, "GitHub step output and receipt path required")
     google = Google(path, "data")
     record = google.packet
     require(release_gate.is_gate_record(record) and record.get("plane") == "data", "a data gate record is required")
+    window = recovery.observe(record, dict(os.environ))
+    prior = recovery.qualified_prior(record) if window and window["attempt"] == 2 else None
     facts = dict.fromkeys(("phase", "schema_etag", "schema_update_time", "connector_etag", "storage_ruleset",
                            "source_sha_label", "backup_id", "first_restore", "tables", "views", "bootstrap",
                            "worker_membership"))
@@ -813,6 +828,13 @@ def deploy_released_data(path, output, secrets=None):
         facts["storage_ruleset"], rules = live_rules(google)
         require_database(google)
         live_schema, live_connector = schema_gate.live_sources(schema, connector)
+        if window:
+            if window["attempt"] == 1:
+                require(not live_schema and connector is None, "A may only initialize the existing empty plane")
+            else:
+                require(live_schema and connector is not None, "B cannot repeat initialization")
+                require_prior_initialization(google, path.parent, prior)
+                google.recovery_first_effect_guard = recovery.FirstEffect(record, window)
         if schema.get("reconciling", False) is not False:
             raise blocked("the live schema is still reconciling; reconcile it, then re-run this release")
         if not live_schema and connector is None:
@@ -865,6 +887,24 @@ def deploy_released_data(path, output, secrets=None):
         output.write_text(json.dumps({"version": "data-released/v1", "source_sha": record["source_sha"],
                                       "run_id": record["release_run_id"], "run_attempt": record["release_run_attempt"],
                                       **facts}, sort_keys=True) + "\n")
+
+
+def require_prior_initialization(google, directory, prior):
+    """B rechecks A postconditions and native initializer absence before any write."""
+    import release_initialize as initializer
+    principal, completed = prior
+    record = google.packet
+    require(initializer.own_principal(google) is None, "A initializer principal is not natively absent")
+    observed = gate_sql("migrated", directory, record["source_sha"], deadline=record["expires_at_unix"])
+    require(isinstance(observed, dict) and observed.get("expected_database") is True
+            and observed.get("expected_actor") is True
+            and initializer.sha(observed.get("postconditions")) == principal["postconditions_sha256"],
+            "A initialization postconditions differ from native readback")
+    merged = files_by(committed_source("dataconnect/schema"), "path")
+    tables, views, _ = schema_gate.declared_sql(merged, relaxations())
+    check_catalog(observed, tables, views)
+    require(completed["tables"] == len(tables) and completed["views"] == len(views),
+            "A migration receipt differs from the reviewed catalog")
 
 
 class _Refused(ValueError):
@@ -1079,12 +1119,13 @@ def migrate_initialized(google, directory, output):
     record = google.packet
     require(google.plane == "data" and release_gate.is_gate_record(record), "a data gate record is required")
     facts = dict.fromkeys(("schema_etag", "schema_update_time", "connector_etag", "storage_ruleset", "tables", "views"))
+    bounded = {"deadline": record["expires_at_unix"]} if recovery.enabled(dict(os.environ), "data") else {}
     try:
         require_database(google)
         receipt = initializer_receipt(record)
         # Read-only, as the catalog check at the end reads them. The initializer's own post mode would also refuse any
         # other client session, which a re-run after the schema apply meets once Data Connect serves the schema.
-        initialized = gate_sql("migrated", directory, record["source_sha"])
+        initialized = gate_sql("migrated", directory, record["source_sha"], **bounded)
         if not isinstance(initialized, dict):
             raise blocked("the initialized catalog could not be read")
         if initializer.sha(initialized.get("postconditions")) != receipt["postconditions_sha256"]:
@@ -1102,9 +1143,9 @@ def migrate_initialized(google, directory, output):
                                             "connector_etag": connector and revision(connector)})
         statements = migration_plan(google, body, relaxed)
         if statements:
-            run_migration(directory, record["source_sha"], statements, relaxed)
+            run_migration(directory, record["source_sha"], statements, relaxed, **bounded)
         google.wait("data", google.request("data", "PATCH", SCHEMA_NAME, body=body, params={"allowMissing": "true"}))
-        inventory = gate_sql("indexes", directory, record["source_sha"])
+        inventory = gate_sql("indexes", directory, record["source_sha"], **bounded)
         if inventory is None:
             raise blocked("the supplemental indexes could not be created as the owner role")
         verify_indexes(inventory)
@@ -1118,7 +1159,7 @@ def migrate_initialized(google, directory, output):
         require(schema_gate.live_sources(schema, connector) == tuple(merged), "released data sources differ from the merged files")
         stamp(schema.get("updateTime"))
         facts.update(schema_etag=revision(schema), schema_update_time=schema["updateTime"], connector_etag=revision(connector))
-        catalog = gate_sql("migrated", directory, record["source_sha"])
+        catalog = gate_sql("migrated", directory, record["source_sha"], **bounded)
         if not (isinstance(catalog, dict) and catalog.get("expected_database") is True and catalog.get("expected_actor") is True
                 and all(isinstance(catalog.get(key), list) for key in ("tables", "views", "owners", "extensions"))):
             raise blocked("the migrated catalog could not be read")
