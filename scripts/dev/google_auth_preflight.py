@@ -51,9 +51,18 @@ TRANSPORT_OVERRIDE_KEYS = (
     "CLOUDSDK_CORE_UNIVERSE_DOMAIN",
 )
 ENDPOINT_OVERRIDE_PREFIX = "CLOUDSDK_API_ENDPOINT_OVERRIDES_"
+# Deny whole SDK/credential-control namespaces, not just today's known keys.
+# Defined blanks still select explicit SDK properties. Only the exact reviewed
+# benign property/value pairs below may survive into a diagnostic child.
+CONTROL_OVERRIDE_PREFIXES = (
+    "CLOUDSDK_",
+    "GOOGLE_EXTERNAL_ACCOUNT_",
+    "GOOGLE_API_",
+    "GCE_METADATA_",
+)
 # Environment properties precede stored SDK settings. Pin this policy in each
 # diagnostic child, including ordinary profiles with default file logging.
-# The runbook applies the identical policy to its subsequent inventory child.
+# The runbook applies the identical policy to owner login and inventory children.
 SAFE_PROBE_SETTINGS = {
     "CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION": "false",
     "CLOUDSDK_CORE_DISABLE_FILE_LOGGING": "true",
@@ -67,6 +76,21 @@ SAFE_PROBE_SETTINGS = {
     # projection belongs on an explicit command flag, not on this property.
     "CLOUDSDK_CORE_FORMAT": "",
     "CLOUDSDK_CORE_DRY_RUN": "0",
+    # Disable stored as well as inherited certificate-provider discovery. The
+    # SDK session's context-aware Load returns before provider/file effects.
+    "CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE": "false",
+    "CLOUDSDK_CONTEXT_AWARE_ALWAYS_USE_MTLS_ENDPOINT": "false",
+    "CLOUDSDK_CONTEXT_AWARE_USE_ECP_HTTP_PROXY": "false",
+    "CLOUDSDK_CONTEXT_AWARE_USE_MTLS_FOR_GRPC": "false",
+    "GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES": "0",
+    "GOOGLE_API_USE_CLIENT_CERTIFICATE": "false",
+    "GOOGLE_API_USE_MTLS_ENDPOINT": "never",
+}
+SUPPORTED_PARENT_SETTINGS = {
+    **SAFE_PROBE_SETTINGS,
+    "CLOUDSDK_CORE_PROJECT": PROJECT,
+    "CLOUDSDK_CORE_DISABLE_PROMPTS": "true",
+    "CLOUDSDK_CORE_SHOULD_PROMPT_TO_ENABLE_API": "false",
 }
 PROJECT_OVERRIDE_KEYS = (
     "GOOGLE_CLOUD_PROJECT",
@@ -75,47 +99,45 @@ PROJECT_OVERRIDE_KEYS = (
 )
 
 
-def is_set(value: str | None) -> bool:
-    """Return whether an environment setting is nonempty without exposing it."""
-    return value is not None and value != ""
-
-
 def environment_reasons(env: Mapping[str, str]) -> list[str]:
-    """Return safe reason codes without reading paths, files, or values."""
+    """Refuse unsupported profiles with key-only reasons; never read files."""
     reasons: list[str] = []
-    for key in CREDENTIAL_OVERRIDE_KEYS:
-        if key in env:
-            reasons.append(f"credential_override:{key}")
-    for key in IDENTITY_OVERRIDE_KEYS:
-        if key in env:
-            reasons.append(f"identity_override:{key}")
-    for key in CONFIG_OVERRIDE_KEYS:
-        if key in env:
-            reasons.append(f"cloudsdk_config_override:{key}")
-    for key in TRANSPORT_OVERRIDE_KEYS:
-        if key in env:
-            reasons.append(f"transport_override:{key}")
     for key in sorted(env):
-        if key.startswith(ENDPOINT_OVERRIDE_PREFIX):
-            reasons.append(f"transport_override:{key}")
-    for key in PROJECT_OVERRIDE_KEYS:
-        value = env.get(key)
-        if is_set(value) and value != PROJECT:
-            reasons.append(f"project_override_mismatch:{key}")
+        if key in SUPPORTED_PARENT_SETTINGS and env[key] == SUPPORTED_PARENT_SETTINGS[key]:
+            continue
+        if key in PROJECT_OVERRIDE_KEYS:
+            if env[key] == PROJECT:
+                continue
+            category = "project_override_mismatch"
+        elif key in CREDENTIAL_OVERRIDE_KEYS:
+            category = "credential_override"
+        elif key in IDENTITY_OVERRIDE_KEYS:
+            category = "identity_override"
+        elif key in CONFIG_OVERRIDE_KEYS:
+            category = "cloudsdk_config_override"
+        elif key in TRANSPORT_OVERRIDE_KEYS or key.startswith(ENDPOINT_OVERRIDE_PREFIX):
+            category = "transport_override"
+        elif key.startswith("CLOUDSDK_"):
+            category = "cloudsdk_profile_override"
+        elif key.startswith(CONTROL_OVERRIDE_PREFIXES):
+            category = "credential_profile_override"
+        else:
+            continue
+        reasons.append(f"{category}:{key}")
     return reasons
 
 
 def no_prompt_environment(env: Mapping[str, str]) -> dict[str, str]:
-    """Pin safe transport/log/display policy without changing the parent shell."""
+    """Copy only reviewed controls, then pin policy; never change the parent."""
     child = dict(env)
-    # Cloud SDK treats an empty override as explicit, not as a stored default.
     profile_keys = (
         CREDENTIAL_OVERRIDE_KEYS + IDENTITY_OVERRIDE_KEYS
         + CONFIG_OVERRIDE_KEYS + TRANSPORT_OVERRIDE_KEYS
     )
     for key in tuple(child):
-        if (key in profile_keys or key.startswith(ENDPOINT_OVERRIDE_PREFIX)) and child[key] == "":
-            child.pop(key)
+        if key in profile_keys or key.startswith(CONTROL_OVERRIDE_PREFIXES):
+            if key not in SUPPORTED_PARENT_SETTINGS or child[key] != SUPPORTED_PARENT_SETTINGS[key]:
+                child.pop(key)
     child.update(SAFE_PROBE_SETTINGS)
     child["CLOUDSDK_CORE_DISABLE_PROMPTS"] = "true"
     child["CLOUDSDK_CORE_SHOULD_PROMPT_TO_ENABLE_API"] = "false"

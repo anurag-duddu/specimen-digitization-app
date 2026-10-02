@@ -108,40 +108,47 @@ Owner. Nothing else can start before this.
 
    It never opens a browser, prints a token, changes a Cloud SDK setting, or
    deploys. If it reports `owner_sign_in_required`, only the project owner
-   completes both browser sign-ins below, then reruns the preflight:
-
-   ```bash
-   gcloud auth login
-   gcloud auth application-default login
-   ```
+   completes both [scoped browser sign-ins below](#owner-controlled-sign-ins),
+   then reruns the preflight. Do not run inventory until it returns `ready`.
 
    The first command authorizes the Cloud CLI; the second authorizes local
    Python/Google SDKs. They are separate stores. Do not make agents retry them,
    source a credential path from `.env`, or change the global Cloud SDK project:
    the preflight passes `--project=specimen-digitization` explicitly.
-   The credential, identity, configuration and transport override keys below
-   must be **unset**, not set to empty strings. The preflight refuses either
-   case before discovery, reports only the key, and does not change the parent
-   shell. If it reports `clear_local_profile_overrides`, the owner clears the
-   named keys in this same terminal and reruns it; signing in will not clear an
-   inherited override. Also unset every `CLOUDSDK_API_ENDPOINT_OVERRIDES_*` key
-   named by the preflight. Never print values or inspect credential files.
+   The preflight denies the entire `CLOUDSDK_*` control namespace, including
+   launcher, auth/login/client, configuration, context-aware certificate,
+   logging/display and API-endpoint controls, plus `GOOGLE_EXTERNAL_ACCOUNT_*`,
+   `GOOGLE_API_*` and `GCE_METADATA_*`. Unknown future keys also refuse.
+   Only the exact seventeen benign key/value pairs shown in each scoped command
+   below, `CLOUDSDK_CORE_PROJECT=specimen-digitization`,
+   `CLOUDSDK_CORE_DISABLE_PROMPTS=true` and
+   `CLOUDSDK_CORE_SHOULD_PROMPT_TO_ENABLE_API=false` are supported in the parent.
+   The empty `CLOUDSDK_CORE_FORMAT` is the sole supported blank SDK control:
+   the SDK validates it as a global display reset. Any other defined value,
+   including a blank login-config, auth-host, certificate/provider or launcher
+   control, refuses before binary discovery. `GOOGLE_APPLICATION_CREDENTIALS`,
+   `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE` must also be unset, not blank.
+   Project aliases must be absent or exactly `specimen-digitization`.
 
-   ```bash
-   unset GOOGLE_APPLICATION_CREDENTIALS CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE \
-     CLOUDSDK_AUTH_ACCESS_TOKEN CLOUDSDK_AUTH_ACCESS_TOKEN_FILE \
-     CLOUDSDK_CORE_ACCOUNT CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT \
-     CLOUDSDK_CONFIG CLOUDSDK_ACTIVE_CONFIG_NAME \
-     CLOUDSDK_AUTH_TOKEN_HOST CLOUDSDK_AUTH_MTLS_TOKEN_HOST \
-     CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION CLOUDSDK_CORE_CUSTOM_CA_CERTS_FILE \
-     REQUESTS_CA_BUNDLE CURL_CA_BUNDLE \
-     CLOUDSDK_AUTH_TOKEN_INTROSPECTION_ENDPOINT CLOUDSDK_CORE_UNIVERSE_DOMAIN
-   ```
+   Refusals report keys only and never change the parent shell. If the action
+   is `clear_local_profile_overrides`, the owner uses `unset` on **every named
+   key** in this terminal, then reruns preflight; an incomplete historical list
+   of keys is not sufficient. For `correct_project_override`, unset or correct
+   the named project alias. Signing in does not clear inherited selectors.
+   Never print values or inspect credential files. Do not change this terminal's
+   environment between the successful check and the scoped command; if it
+   changes, rerun preflight before login or inventory.
 
    Both probes use verified TLS, disable SDK file/HTTP-body logging and log
    cleanup, retain token redaction, and force private token output even when the
-   stored profile suppresses output. These settings affect only their children.
-   The owner's ordinary stored CLI account and ADC remain in use. A `ready`
+   stored profile suppresses output. Each child also disables context-aware
+   certificate discovery, enterprise proxy/mTLS modes and external executable
+   provider opt-in. A stored certificate-enabled setting therefore cannot turn
+   these probes into certificate-provider execution or `caa_cert.pem` writes.
+   These settings affect only the child. The owner's ordinary stored CLI
+   account and ADC remain in use. Pre-existing stored login/credential profiles
+   and their contents are unassessed; these controls do not prove them safe.
+   Normal credential refresh may update its cache. A `ready`
    result checks availability under this diagnostic policy, not identity
    approval, project authorization, safe contents of stored credentials, cost
    admission or deployment authority.
@@ -150,8 +157,8 @@ Owner. Nothing else can start before this.
    lists and describes cloud metadata only; it changes no cloud resources.
    Use the same terminal after a successful preflight and apply the identical
    child policy below; do not run an unwrapped caller that inherits different
-   logging/display settings. Replace the output path with a new private
-   directory outside Git. `env` scopes these settings to this invocation, not
+   profile, credential-provider or logging/display settings. Replace the output
+   path with a new private directory outside Git. `env` scopes these settings to this invocation, not
    the owner shell. The empty global format resets inherited/stored display
    overrides; inventory retains its own JSON metadata flags and normal token
    format with SDK file logging disabled. Preflight additionally uses explicit
@@ -167,8 +174,59 @@ env CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION=false \
   CLOUDSDK_CORE_LOG_HTTP_STREAMING_BODY=false \
   CLOUDSDK_CORE_USER_OUTPUT_ENABLED=true \
   CLOUDSDK_CORE_FORMAT='' CLOUDSDK_CORE_DRY_RUN=0 \
+  CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE=false \
+  CLOUDSDK_CONTEXT_AWARE_ALWAYS_USE_MTLS_ENDPOINT=false \
+  CLOUDSDK_CONTEXT_AWARE_USE_ECP_HTTP_PROXY=false \
+  CLOUDSDK_CONTEXT_AWARE_USE_MTLS_FOR_GRPC=false \
+  GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES=0 \
+  GOOGLE_API_USE_CLIENT_CERTIFICATE=false GOOGLE_API_USE_MTLS_ENDPOINT=never \
   uv run python scripts/data/inventory_cloud.py \
     --output-dir /absolute/path/to/new-private-inventory
+```
+
+### Owner-controlled sign-ins
+
+Only for `owner_sign_in_required` after the environment check is clear, the
+owner runs both interactive commands below in that same terminal. These are
+instructions, not agent-execution authorization. Use the identical scoped
+policy as inventory; never substitute an unwrapped same-shell login. Unknown
+or unsafe inherited controls must first be unset using the preflight's key-only
+refusal. Do not follow a stored custom login profile whose provenance is not
+already established by the owner. Rerun preflight afterward; a browser sign-in
+does not establish cloud authority or approve stored profile contents.
+
+```bash
+env CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION=false \
+  CLOUDSDK_CORE_DISABLE_FILE_LOGGING=true CLOUDSDK_CORE_MAX_LOG_DAYS=0 \
+  CLOUDSDK_CORE_LOG_HTTP=false CLOUDSDK_CORE_LOG_HTTP_REDACT_TOKEN=true \
+  CLOUDSDK_CORE_LOG_HTTP_SHOW_REQUEST_BODY=false \
+  CLOUDSDK_CORE_LOG_HTTP_STREAMING_BODY=false \
+  CLOUDSDK_CORE_USER_OUTPUT_ENABLED=true \
+  CLOUDSDK_CORE_FORMAT='' CLOUDSDK_CORE_DRY_RUN=0 \
+  CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE=false \
+  CLOUDSDK_CONTEXT_AWARE_ALWAYS_USE_MTLS_ENDPOINT=false \
+  CLOUDSDK_CONTEXT_AWARE_USE_ECP_HTTP_PROXY=false \
+  CLOUDSDK_CONTEXT_AWARE_USE_MTLS_FOR_GRPC=false \
+  GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES=0 \
+  GOOGLE_API_USE_CLIENT_CERTIFICATE=false GOOGLE_API_USE_MTLS_ENDPOINT=never \
+  gcloud auth login
+```
+
+```bash
+env CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION=false \
+  CLOUDSDK_CORE_DISABLE_FILE_LOGGING=true CLOUDSDK_CORE_MAX_LOG_DAYS=0 \
+  CLOUDSDK_CORE_LOG_HTTP=false CLOUDSDK_CORE_LOG_HTTP_REDACT_TOKEN=true \
+  CLOUDSDK_CORE_LOG_HTTP_SHOW_REQUEST_BODY=false \
+  CLOUDSDK_CORE_LOG_HTTP_STREAMING_BODY=false \
+  CLOUDSDK_CORE_USER_OUTPUT_ENABLED=true \
+  CLOUDSDK_CORE_FORMAT='' CLOUDSDK_CORE_DRY_RUN=0 \
+  CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE=false \
+  CLOUDSDK_CONTEXT_AWARE_ALWAYS_USE_MTLS_ENDPOINT=false \
+  CLOUDSDK_CONTEXT_AWARE_USE_ECP_HTTP_PROXY=false \
+  CLOUDSDK_CONTEXT_AWARE_USE_MTLS_FOR_GRPC=false \
+  GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES=0 \
+  GOOGLE_API_USE_CLIENT_CERTIFICATE=false GOOGLE_API_USE_MTLS_ENDPOINT=never \
+  gcloud auth application-default login
 ```
 
 Evidence to keep: the `protected: true` answer, the successful preflight
