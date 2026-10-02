@@ -13943,3 +13943,54 @@ The four independent source-only opinions on old0a898338 are immutable head-spec
 Actual sequential current-change gates: all-filehooksPASS receipt f8809681e1d3903237a5dec2f383a9ae5660b743d0f20f5803816485e7684232; fullscripts2877PASS61SKIP72.68s exit0 receipt45f132ef52681611312860cb76f6ab7448e1e933bb88795e1656e7ff6b627797; backend6380PASS45SKIP554.50s exit0 receipt53963d3df221fe91172b7d3dfb87809def1f1c93ccbf56d283f6deb4f98962d1. Locked Python3.12.3, no environment sync/install; the ignored existing CLI alias is unchanged. Scoped CI-env focused63PASS includes runner-cannot-decrypt negative. All18 original new-module assert ASTs match exactly2fce22a5; comparison of all2119 tracked bytes to old0a found only this test and appended SESSION differ fe5793df. Production decryption guard and all other tracked source bytes match.
 
 Normal commit/push and next protected CI/fresh4G18 are pending at this exact append. No inferred next-head approval, native activation, merge, current runtime or original-ten live acceptance.
+
+### 2026-10-02 - Claude: drain record-hold isolation, draft for Codex Runtime
+
+Task: verify the Claude growth-admission lane's finding that the drain ends its
+whole execution on a step error other than `Conflict`, and prepare a draft fix
+for Codex Runtime to adopt. Branch `claude/drain-per-record-isolation`, based on
+origin/main `9772d5d3`, in an isolated Claude agent worktree. Pull request: the
+draft "[for Codex Runtime] Isolate record-level failures in the drain"; Runtime
+decides adoption.
+
+- Finding confirmed on `9772d5d3`. `DrainWorker._step_until_stopped` caught
+  only `Conflict` (`lane_worker.py` 399-408), and `DrainWorker.run` released
+  the fence and re-raised (289-291). In the drain composition (`worker.py`
+  737-739), `NativeResearchWorkflow.step` raises a blocked native outcome as
+  `OperationalBlock(reason_code)` (`workflow_bridge.py` 52-53), so one
+  record's hold ended the execution. The held run was left at stage `plan`
+  with no blocker, which `storage.work_available_at` (301-318) treats as due.
+- Spec check: `golive/PLAN.md` 4.6 has the worker drain due work one specimen
+  at a time and exit when none is due; `NEXT_WAVE.md` 98 and 122 ask for
+  record failure isolation, with one poisoned record among healthy work as an
+  acceptance case. The documents searched (`golive/LANE.md`, `golive/PLAN.md`,
+  `RELEASE_AUTHORIZATION.md`, `NEXT_WAVE.md`, the first-ten `*abi*.md`
+  contracts and `SOURCE_OF_TRUTH_MATRIX.md`) do not say that a record hold
+  must end the execution.
+- Change: `RECORD_HOLDS` in `lane_worker.py` lists the five codes the bridge
+  raises for a blocked native outcome. When a step raises one of them, the
+  drain records it with the existing `_block` (stage `processing_blocked`, the
+  code as blocker, a `lane_block` audit event) and moves to the next due run.
+  Other `OperationalBlock` codes and other exceptions propagate as before.
+  Admission, the exact-ten gate and `workflow_bridge.py` are unchanged.
+- Validation, Python 3.12.3 through `uv run --python 3.12`, `TZ=America/Chicago`:
+  the new tests in `tests/test_lane_drain.py` gave 6 failed and 6 passed on the
+  pre-fix `lane_worker.py` (each held-record case raised the hold's
+  `OperationalBlock`; the systemic cases pass before and after), and 12 passed
+  with the fix. Nine drain-related test files: 164 passed, 3 skipped (the SQL
+  Connect emulator was not started). Full pytest suite and
+  `scripts/ci/verify.sh`: Not confirmed, not run; the load average was above
+  12 and the task limited runs to targeted files.
+- Learnings: a started run's due time is its last save on the real clock, so
+  an `oldest_due` check with a test's fake-clock cutoff leaves it out. My
+  first pre-fix probe used such a cutoff and listed nine due records, missing
+  the held one; with a real-clock cutoff it listed all ten, and the test's
+  "nothing left due" assertion uses that cutoff. By due time, a held running
+  record sorts after the records queued before its last save; the pre-fix
+  probe listed it tenth of ten, not at the head of the queue.
+- Follow-ups for Runtime, also in the pull request: a typed hold instead of
+  the code list; the non-cohort `PermissionError` and admission refusals
+  still end the execution; the operator retry of these holds is not tested;
+  the drain CLI still builds `Workflow` without admission (`worker.py`
+  730-736), so `compose_registered_native_drain` refuses before `DrainWorker`
+  runs (`native_drain.py` 66-68).
