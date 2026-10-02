@@ -16,11 +16,15 @@ from test_release_google import transport
 CANARY = b'{"error":{"code":403,"message":"private-denial-canary","details":[{"reason":"IAM_PERMISSION_DENIED"}]}}'
 
 
-def unwrap(path, key, packet):
+def unwrap(path, key, packet, monkeypatch):
     provenance = {"repository": evidence.REPOSITORY, "source_sha": packet["source_sha"],
                   "run_id": packet["release_run_id"], "run_attempt": packet["release_run_attempt"]}
-    return json.loads(decrypt_catalog(json.loads(path.read_bytes()), key[1],
-        public_key_sha256=key[0]["public_key_sha256"], provenance=provenance))
+    # Generated test keys model local coordinator verification. Preserve the
+    # runner context during retention and restore it immediately after decrypt.
+    with monkeypatch.context() as local:
+        local.delenv("GITHUB_ACTIONS", raising=False)
+        return json.loads(decrypt_catalog(json.loads(path.read_bytes()), key[1],
+            public_key_sha256=key[0]["public_key_sha256"], provenance=provenance))
 
 
 @pytest.mark.parametrize("fault,expected_stage", [
@@ -58,7 +62,7 @@ def test_initializer_distinguishes_refused_insert_from_refused_operation_poll_wi
     assert not (jobs.directory / "data-initializer.json").exists() and jobs.native == []
     target = jobs.directory / "initialize" / evidence.TARGET
     assert CANARY not in target.read_bytes() and target.stat().st_mode & 0o777 == 0o600
-    value = unwrap(target, catalog_keys, cloud.packet)
+    value = unwrap(target, catalog_keys, cloud.packet, monkeypatch)
     assert base64.b64decode(value["observations"][0]["response_b64"]) == CANARY
     journal = next(item for item in value["journals"] if item["name"].startswith("initializer-create-effect-"))
     actual = json.loads(base64.b64decode(journal["body_b64"]))
@@ -106,7 +110,7 @@ def test_actual_transport_captures_failed_response_only_inside_initializer_conte
     with pytest.raises(HTTPFailure):
         with evidence.preserve_failure(client, tmp_path):
             client.request("sql", "GET", resource)
-    value = unwrap(tmp_path / evidence.TARGET, catalog_keys, client.packet)
+    value = unwrap(tmp_path / evidence.TARGET, catalog_keys, client.packet, monkeypatch)
     actual = value["observations"][0]
     assert actual["response_bytes"] == len(raw) and actual["response_retained"] is (not large)
     assert actual["response_b64"] == (None if large else base64.b64encode(raw).decode())
