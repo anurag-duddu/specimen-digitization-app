@@ -160,6 +160,7 @@ def verify_worker_construction(args, launch):
         pass
 
     def stop_before_effect(instance, stop):
+        assert instance.workflow.native_worker.runtime_factory.blobs.bucket is blobs.bucket
         expected = instance.workflow.adapters.sam3_expected
         assert len(expected) == 10
         assert all(row["manifest_sha256"] == launch.source_manifest_sha256 for row in expected.values())
@@ -177,8 +178,16 @@ def verify_worker_construction(args, launch):
     args.check_config = False
     args.once = True
     args.max_seconds = 1
-    repository = SimpleNamespace(memberships=lambda uid: [])
-    blobs = SimpleNamespace(bucket=SimpleNamespace(name="demo-synthetic-output"))
+    class NoEffectBucket:
+        name = "demo-synthetic-output"
+
+        def blob(self, *_args, **_kwargs):
+            raise AssertionError("Constructor smoke must not access cloud objects")
+
+    # Match the actual repository's unset graph storage. Workflow must bind the
+    # same blob store before constructing the native graph factory.
+    repository = SimpleNamespace(memberships=lambda uid: [], graph_blobs=None)
+    blobs = SimpleNamespace(bucket=NoEffectBucket())
     with patch.dict(os.environ, environment), \
          patch.object(worker, "SqlConnectRepository", return_value=repository), \
          patch.object(worker, "GcsBlobs", return_value=blobs), \
