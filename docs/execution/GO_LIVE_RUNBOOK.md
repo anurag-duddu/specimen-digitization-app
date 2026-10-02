@@ -99,21 +99,139 @@ Owner. Nothing else can start before this.
 
    The answer must be `true`.
 
-2. Sign in to Google Cloud on the workstation that will run the read-only
-   inventory, and point it at the right project:
+2. In the one owner-controlled terminal that will run a read-only inventory,
+   first run the local credential preflight:
 
    ```bash
-   gcloud auth login
+   python3 scripts/dev/google_auth_preflight.py
    ```
 
-   ```bash
-   gcloud config set project specimen-digitization
-   ```
+   It never opens a browser, prints a token, changes a Cloud SDK setting, or
+   deploys. If it reports `owner_sign_in_required`, only the project owner
+   completes both [scoped browser sign-ins below](#owner-controlled-sign-ins),
+   then reruns the preflight. Do not run inventory until it returns `ready`.
+
+   The first command authorizes the Cloud CLI; the second authorizes local
+   Python/Google SDKs. They are separate stores. Do not make agents retry them,
+   source a credential path from `.env`, or change the global Cloud SDK project:
+   the preflight passes `--project=specimen-digitization` explicitly.
+   The preflight denies the entire `CLOUDSDK_*` control namespace, including
+   launcher, auth/login/client, configuration, context-aware certificate,
+   logging/display and API-endpoint controls, plus `GOOGLE_EXTERNAL_ACCOUNT_*`,
+   `GOOGLE_API_*` and `GCE_METADATA_*`. Unknown future keys also refuse.
+   Only the exact seventeen benign key/value pairs shown in each scoped command
+   below, `CLOUDSDK_CORE_PROJECT=specimen-digitization`,
+   `CLOUDSDK_CORE_DISABLE_PROMPTS=true` and
+   `CLOUDSDK_CORE_SHOULD_PROMPT_TO_ENABLE_API=false` are supported in the parent.
+   The empty `CLOUDSDK_CORE_FORMAT` is the sole supported blank SDK control:
+   the SDK validates it as a global display reset. Any other defined value,
+   including a blank login-config, auth-host, certificate/provider or launcher
+   control, refuses before binary discovery. `GOOGLE_APPLICATION_CREDENTIALS`,
+   `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE` must also be unset, not blank.
+   Project aliases must be absent or exactly `specimen-digitization`.
+
+   Refusals report keys only and never change the parent shell. If the action
+   is `clear_local_profile_overrides`, the owner uses `unset` on **every named
+   key** in this terminal, then reruns preflight; an incomplete historical list
+   of keys is not sufficient. For `correct_project_override`, unset or correct
+   the named project alias. Signing in does not clear inherited selectors.
+   Never print values or inspect credential files. Do not change this terminal's
+   environment between the successful check and the scoped command; if it
+   changes, rerun preflight before login or inventory.
+
+   Both probes use verified TLS, disable SDK file/HTTP-body logging and log
+   cleanup, retain token redaction, and force private token output even when the
+   stored profile suppresses output. Each child also disables context-aware
+   certificate discovery, enterprise proxy/mTLS modes and external executable
+   provider opt-in. A stored certificate-enabled setting therefore cannot turn
+   these probes into certificate-provider execution or `caa_cert.pem` writes.
+   These settings affect only the child. The owner's ordinary stored CLI
+   account and ADC remain in use. Pre-existing stored login/credential profiles
+   and their contents are unassessed; these controls do not prove them safe.
+   Normal credential refresh may update its cache. A `ready`
+   result checks availability under this diagnostic policy, not identity
+   approval, project authorization, safe contents of stored credentials, cost
+   admission or deployment authority.
 
 3. Run the read-only inventory and keep its log with the release evidence. It
-   lists and describes only; it creates and changes nothing.
+   lists and describes cloud metadata only; it changes no cloud resources.
+   Use the same terminal after a successful preflight and apply the identical
+   child policy below; do not run an unwrapped caller that inherits different
+   profile, credential-provider or logging/display settings. Replace the output
+   path with a new private directory outside Git. `env` scopes these settings to this invocation, not
+   the owner shell. The empty global format resets inherited/stored display
+   overrides; inventory retains its own JSON metadata flags and normal token
+   format with SDK file logging disabled. Preflight additionally uses explicit
+   private token command flags, because projections are not valid global
+   `core/format` values. This source instruction does not authorize execution
+   or replace the inventory's own scope/admission checks.
 
-Evidence to keep: the `protected: true` answer, the inventory log.
+```bash
+env CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION=false \
+  CLOUDSDK_CORE_DISABLE_FILE_LOGGING=true CLOUDSDK_CORE_MAX_LOG_DAYS=0 \
+  CLOUDSDK_CORE_LOG_HTTP=false CLOUDSDK_CORE_LOG_HTTP_REDACT_TOKEN=true \
+  CLOUDSDK_CORE_LOG_HTTP_SHOW_REQUEST_BODY=false \
+  CLOUDSDK_CORE_LOG_HTTP_STREAMING_BODY=false \
+  CLOUDSDK_CORE_USER_OUTPUT_ENABLED=true \
+  CLOUDSDK_CORE_FORMAT='' CLOUDSDK_CORE_DRY_RUN=0 \
+  CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE=false \
+  CLOUDSDK_CONTEXT_AWARE_ALWAYS_USE_MTLS_ENDPOINT=false \
+  CLOUDSDK_CONTEXT_AWARE_USE_ECP_HTTP_PROXY=false \
+  CLOUDSDK_CONTEXT_AWARE_USE_MTLS_FOR_GRPC=false \
+  GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES=0 \
+  GOOGLE_API_USE_CLIENT_CERTIFICATE=false GOOGLE_API_USE_MTLS_ENDPOINT=never \
+  uv run python scripts/data/inventory_cloud.py \
+    --output-dir /absolute/path/to/new-private-inventory
+```
+
+### Owner-controlled sign-ins
+
+Only for `owner_sign_in_required` after the environment check is clear, the
+owner runs both interactive commands below in that same terminal. These are
+instructions, not agent-execution authorization. Use the identical scoped
+policy as inventory; never substitute an unwrapped same-shell login. Unknown
+or unsafe inherited controls must first be unset using the preflight's key-only
+refusal. Do not follow a stored custom login profile whose provenance is not
+already established by the owner. Rerun preflight afterward; a browser sign-in
+does not establish cloud authority or approve stored profile contents.
+
+```bash
+env CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION=false \
+  CLOUDSDK_CORE_DISABLE_FILE_LOGGING=true CLOUDSDK_CORE_MAX_LOG_DAYS=0 \
+  CLOUDSDK_CORE_LOG_HTTP=false CLOUDSDK_CORE_LOG_HTTP_REDACT_TOKEN=true \
+  CLOUDSDK_CORE_LOG_HTTP_SHOW_REQUEST_BODY=false \
+  CLOUDSDK_CORE_LOG_HTTP_STREAMING_BODY=false \
+  CLOUDSDK_CORE_USER_OUTPUT_ENABLED=true \
+  CLOUDSDK_CORE_FORMAT='' CLOUDSDK_CORE_DRY_RUN=0 \
+  CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE=false \
+  CLOUDSDK_CONTEXT_AWARE_ALWAYS_USE_MTLS_ENDPOINT=false \
+  CLOUDSDK_CONTEXT_AWARE_USE_ECP_HTTP_PROXY=false \
+  CLOUDSDK_CONTEXT_AWARE_USE_MTLS_FOR_GRPC=false \
+  GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES=0 \
+  GOOGLE_API_USE_CLIENT_CERTIFICATE=false GOOGLE_API_USE_MTLS_ENDPOINT=never \
+  gcloud auth login
+```
+
+```bash
+env CLOUDSDK_AUTH_DISABLE_SSL_VALIDATION=false \
+  CLOUDSDK_CORE_DISABLE_FILE_LOGGING=true CLOUDSDK_CORE_MAX_LOG_DAYS=0 \
+  CLOUDSDK_CORE_LOG_HTTP=false CLOUDSDK_CORE_LOG_HTTP_REDACT_TOKEN=true \
+  CLOUDSDK_CORE_LOG_HTTP_SHOW_REQUEST_BODY=false \
+  CLOUDSDK_CORE_LOG_HTTP_STREAMING_BODY=false \
+  CLOUDSDK_CORE_USER_OUTPUT_ENABLED=true \
+  CLOUDSDK_CORE_FORMAT='' CLOUDSDK_CORE_DRY_RUN=0 \
+  CLOUDSDK_CONTEXT_AWARE_USE_CLIENT_CERTIFICATE=false \
+  CLOUDSDK_CONTEXT_AWARE_ALWAYS_USE_MTLS_ENDPOINT=false \
+  CLOUDSDK_CONTEXT_AWARE_USE_ECP_HTTP_PROXY=false \
+  CLOUDSDK_CONTEXT_AWARE_USE_MTLS_FOR_GRPC=false \
+  GOOGLE_EXTERNAL_ACCOUNT_ALLOW_EXECUTABLES=0 \
+  GOOGLE_API_USE_CLIENT_CERTIFICATE=false GOOGLE_API_USE_MTLS_ENDPOINT=never \
+  gcloud auth application-default login
+```
+
+Evidence to keep: the `protected: true` answer, the successful preflight
+result, and the inventory log. Local authentication permits read-only
+inventory only; it neither authorizes nor performs a deployment.
 
 ## Phase 1. The readiness pull request
 
