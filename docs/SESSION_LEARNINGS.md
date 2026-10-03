@@ -14170,7 +14170,7 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a0137d2b1b86ea1fe`,
   base `main` c6f3c10d, merged with origin/main db855ad6 (#242) before the push.
 - Outcome: In progress. Pull request open and ready for review; not merged. No `gcloud` or `firebase` command was run
-  and merging applies nothing: the two worker-only bindings (`objectCreator` and `objectViewer`, condition
+  and merging applies no IAM (a push to main still runs the releases): the two worker-only bindings (`objectCreator` and `objectViewer`, condition
   `specimen_research_objects` on `research-capture/`, `research-journal/` and `research-media/`) reach the project
   only when the coordinator runs `scripts/ops/iam.py` or `scripts/ops/owner_setup.sh` and reads the bucket policy back.
 - Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/250; code commit dfbe1972, merge

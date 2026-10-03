@@ -7,17 +7,17 @@ Run it before deploy.py (the SAM 3 revision cannot start without its checkpoint 
 the specimen-sam service and the specimen-worker job are skipped, and named, while those do not exist yet.
 
 Every grant is one `add-iam-policy-binding`, which changes nothing when the binding is already there, so a re-run is
-safe. None is time-limited. Three bucket grants carry a resource condition, because the bucket also holds the
-source slides and private originals: application objects only, the research harness's three prefixes (the worker
-only), and SAM 3's listing of its own checkpoint prefix. It grants no secret access: each runtime secret is already
-granted at the one version the runtime mounts (a version condition), and an unconditioned binding beside it would
-open every version.
+safe. None is time-limited. Seven bucket rows carry a resource condition, three conditions in all, because the
+bucket also holds the source slides and private originals: application objects only, the research harness's three
+prefixes (the worker only), and SAM 3's listing of its own checkpoint prefix. It grants no secret access: each
+runtime secret is already granted at the one version the runtime mounts (a version condition), and an
+unconditioned binding beside it would open every version.
 
 SAM 3's bucket listing is the one unconditioned bucket grant (see LIST_BUCKET).
   worker  specimenRuntimeConnector on the project (the connector's named operations); objectViewer and
           objectCreator on application objects, and on the research-capture/, research-journal/ and research-media/
-          objects (create and get, never list or delete); run.invoker on specimen-sam (segmentation) and on
-          specimen-worker (the drain's deadline hand-over).
+          objects (create and get; the condition has no listing clause); run.invoker on specimen-sam
+          (segmentation) and on specimen-worker (the drain's deadline hand-over).
   sam     objectViewer and objectCreator on application objects; objectViewer for listing the checkpoint prefix
           (the read-only mount); legacyBucketReader on the bucket, unconditioned, for the mount itself.
   api     run.invoker on specimen-worker: the API starts executions with jobs:run and no overrides
