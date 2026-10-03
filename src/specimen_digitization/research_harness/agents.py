@@ -189,13 +189,22 @@ class SpecialistHarness:
 
     Output remains a proposal. The application reducer and sole writer retain
     authority for canonical settlement and publication.
+
+    Specialists are independent: each has its own prompt, tools and model, and
+    several may run at once. A specialist's model effects are therefore the
+    effects of its own model only, and no specialist gets a ``delegate_task``
+    tool. ``delegation=True`` (tests of the official sub-agent capability only;
+    production never sets it) lets a specialist hand a task to another role's
+    scoped helper. A delegated request is made through the child role's model,
+    so its effects are found by looking at every model, which is exact only when
+    one specialist runs at a time; the harness refuses a second concurrent run.
     """
 
     def __init__(self, *, requests: Mapping[SpecialistRole, SpecialistRequest],
                  model_factory: Callable[[SpecialistRequest], EffectModel],
                  tool_broker: SpecialistToolBroker,
                  step_store_factory: Callable[[SpecialistRequest], StepStore],
-                 limits: HarnessLimits = HarnessLimits()):
+                 limits: HarnessLimits = HarnessLimits(), delegation: bool = False):
         qualify_packages()
         if not requests or not set(requests) <= set(SpecialistRole):
             raise ValueError("A nonempty subset of the reviewed specialist roster is required")
@@ -208,6 +217,8 @@ class SpecialistHarness:
         self.agents: dict[SpecialistRole, Agent[ResearchDeps, SpecialistOutput]] = {}
         self.helpers: dict[SpecialistRole, Agent[ResearchDeps, SpecialistOutput]] = {}
         self.delegation: dict[SpecialistRole, SubAgents] = {}
+        self.delegation_enabled = delegation
+        self._running = 0
         for role, request in self.requests.items():
             model = model_factory(request)
             if not isinstance(model, EffectModel) or model.role != role.value:
@@ -222,26 +233,31 @@ class SpecialistHarness:
                    for key in ("organization_id", "collection_id", "specimen_id", "job_id", "generation")):
                 raise ModelGatewayBlocked("model_scope_differs_from_specialist_request")
             self.models[role] = model
-            self.helpers[role] = self._make_agent(request, step_store_factory(request))
+            if delegation:
+                self.helpers[role] = self._make_agent(request, step_store_factory(request))
 
-        # Helpers use fresh histories and their own scoped tools, with no
+        # Without delegation each specialist is a plain agent: no helpers and
+        # no delegate_task tool, whatever roles share the harness. With it,
+        # helpers use fresh histories and their own scoped tools, with no
         # recursive delegation. Main agents have exactly one delegation level.
         for role, request in self.requests.items():
-            delegation = SubAgents(
-                agents=[SubAgent(child, name=child_role.value,
-                                 description=f"Scoped {child_role.value} proposal helper",
-                                 usage_limits=UsageLimits(request_limit=limits.delegated_request_limit,
-                                                          tool_calls_limit=limits.tool_calls_limit),
-                                 timeout_seconds=limits.delegate_timeout_seconds,
-                                 max_calls=limits.max_delegate_calls,
-                                 on_failure="specialist_operational_failure",
-                                 contain_errors=True)
-                        for child_role, child in self.helpers.items() if child_role != role],
-                agent_folders=None, inherit_tools=False, forward_usage=True,
-                contain_errors=True, max_depth=2, tool_retries=0,
-            )
-            self.agents[role] = self._make_agent(request, step_store_factory(request), delegation)
-            self.delegation[role] = delegation
+            subagents = None
+            if delegation:
+                subagents = SubAgents(
+                    agents=[SubAgent(child, name=child_role.value,
+                                     description=f"Scoped {child_role.value} proposal helper",
+                                     usage_limits=UsageLimits(request_limit=limits.delegated_request_limit,
+                                                              tool_calls_limit=limits.tool_calls_limit),
+                                     timeout_seconds=limits.delegate_timeout_seconds,
+                                     max_calls=limits.max_delegate_calls,
+                                     on_failure="specialist_operational_failure",
+                                     contain_errors=True)
+                            for child_role, child in self.helpers.items() if child_role != role],
+                    agent_folders=None, inherit_tools=False, forward_usage=True,
+                    contain_errors=True, max_depth=2, tool_retries=0,
+                )
+                self.delegation[role] = subagents
+            self.agents[role] = self._make_agent(request, step_store_factory(request), subagents)
 
     def _make_agent(self, request, store, delegation=None):
             role = request.role
@@ -325,21 +341,36 @@ class SpecialistHarness:
                              message_history: Sequence[ModelMessage] | None = None,
                              conversation_id: str | None = None) -> SpecialistRun:
         request = self.requests[role]
+        if self.delegation_enabled and self._running:
+            # Effects are found by counting each model's own list from the start
+            # of this run; a delegated helper writes to another role's list, so
+            # that count is exact only while no other specialist is running.
+            raise ModelGatewayBlocked("delegation_requires_one_specialist_run_at_a_time")
         deps = ResearchDeps(self.requests, self.tool_broker)
         offsets = {key: len(model.effect_ids) for key, model in self.models.items()}
         conversation_id = conversation_id or f"{request.scope.job_id}:{request.scope.generation}:{role.value}"
-        with deps.trace(request).span("specialist", role=role.value,
-                                      prompt_digest=request.prompt.digest):
-            result = await asyncio.wait_for(
-                self.agents[role].run(
-                    _research_input(request), deps=deps, message_history=message_history,
-                    conversation_id=conversation_id,
-                    usage_limits=UsageLimits(request_limit=self.limits.request_limit,
-                                             tool_calls_limit=self.limits.tool_calls_limit),
-                ), timeout=self.limits.run_timeout_seconds,
-            )
-        effects = tuple(dict.fromkeys(effect for key, model in self.models.items()
-                                      for effect in model.effect_ids[offsets[key]:]))
+        self._running += 1
+        try:
+            with deps.trace(request).span("specialist", role=role.value,
+                                          prompt_digest=request.prompt.digest):
+                result = await asyncio.wait_for(
+                    self.agents[role].run(
+                        _research_input(request), deps=deps, message_history=message_history,
+                        conversation_id=conversation_id,
+                        usage_limits=UsageLimits(request_limit=self.limits.request_limit,
+                                                 tool_calls_limit=self.limits.tool_calls_limit),
+                    ), timeout=self.limits.run_timeout_seconds,
+                )
+        finally:
+            self._running -= 1
+        # This specialist's own model made every request of this run. With
+        # delegation, a delegated request is made by the child role's model too.
+        # Another specialist running at the same time must never leak into this
+        # run's effects: publication refuses a checkpoint whose receipts name
+        # another specialist's fields (native_publication_receipt_binding_changed).
+        keys = tuple(self.models) if self.delegation_enabled else (role,)
+        effects = tuple(dict.fromkeys(effect for key in keys
+                                      for effect in self.models[key].effect_ids[offsets[key]:]))
         source_results = tuple(item for results in deps.tool_results.values() for item in results)
         return SpecialistRun(result.output.resolutions, result.run_id, result.conversation_id,
                              result.usage, effects, source_results)
