@@ -35,22 +35,39 @@ GitHub environments, or production, read `docs/DEPLOYMENT.md` completely.
 
 ## Deployment rules
 
-- Hosting production deployments MUST use `.github/workflows/ci-cd.yml` after
-  a pull request is merged to `main`. Runtime and data production deployments
-  MUST use only `.github/workflows/runtime-release.yml` and
-  `.github/workflows/data-release.yml`, respectively. They run automatically,
-  and only after a pull request is merged to `main` with the required checks
-  passed and the PR steward's approval, and only when the approved contract in
-  `docs/DEPLOYMENT.md` is met. Each plane uses a separate main-only
-  environment and keyless identity, verifies all five successful checks on the
-  exact merged commit, keeps immutable, attested provenance and verifies
-  readiness. The data plane applies schema changes only through an automated
-  additive-only gate. The Hosting identity remains isolated. For the go-live
-  program, the PR steward's review replaces the former independent review. The
-  authority is the owner's decision G11 of 2026-09-23 in
-  `docs/execution/golive/PLAN.md` section 2.1;
-  `docs/execution/RELEASE_AUTHORIZATION.md` keeps its list of what remains
-  forbidden. Missing evidence fails closed.
+- Production changes happen only through three workflows, and only after a
+  pull request is merged to `main` with the required checks passed: Hosting
+  through `.github/workflows/ci-cd.yml`, data through
+  `.github/workflows/data-release.yml`, and runtime through
+  `.github/workflows/runtime-release.yml`. The data and runtime workflows also
+  accept a manual run (`workflow_dispatch`) on `main` only; a manual run of the
+  Hosting workflow runs the checks and does not deploy. The authority is the
+  owner's standing decision G11 of 2026-09-23 in
+  `docs/execution/golive/PLAN.md` section 2.1 (data and runtime releases
+  deploy automatically on merge, like Hosting). Until the ten pilot specimens
+  are live, review before merge follows the owner's ruling G51: one
+  independent reviewer per pull request head plus green required checks, in
+  place of G18's four-reviewer swarm. `docs/DEPLOYMENT.md` says where G51 and
+  the owner's messages of 2026-10-03 are recorded, what those messages cover,
+  and describes each workflow.
+- The Hosting release deploys the tested web build. The data release
+  initializes the database where something is missing, applies additive-only
+  schema changes, publishes the schema and connector, creates the indexes in
+  the committed index files, publishes the Storage rules and inserts the
+  bootstrap rows; every step is idempotent. The runtime release builds the API
+  image, pushes it, deploys it by digest and smoke-tests it; the deploy runs
+  only after the data release succeeded on the same commit.
+- No release ceremony. Do not add receipts, evidence digests, signed intents,
+  time-limited access windows, approval packets or admission gates to a
+  release. The coordinator's record of 2026-10-03 says the owner never asked
+  for them, and repeated release attempts failed on them.
+- The data release never drops, deletes or truncates. A destructive schema
+  change stops the release and needs the owner.
+- One-time owner setup is `scripts/ops/owner_setup.sh` (standing
+  least-privilege grants and repository variables; it then starts and follows
+  the releases). The owner runs it; an agent runs it only when the owner has
+  authorized that run first-hand. Otherwise agents never run a `gcloud` or
+  `firebase` command that changes production.
 - Never run `firebase deploy`, a Hosting channel deploy, or a `gcloud ... deploy`
   command from a workstation or an agent shell.
 - Never deploy SQL Connect schemas, database migrations, Storage rules,
@@ -58,15 +75,15 @@ GitHub environments, or production, read `docs/DEPLOYMENT.md` completely.
 - Do not add AWS deployment resources or AWS credentials unless the user makes
   a new, explicit architecture decision.
 - Do not bypass, weaken, or disable required checks, branch protection, the
-  `production` GitHub environment, pinned action SHAs, or Workload Identity
+  main-only GitHub environments, pinned action SHAs, or the Workload Identity
   Federation conditions to make a release pass.
 - Use `scripts/ci/verify.sh` before pushing. Use a pull request. Wait for every
-  required check. After merge, wait for the `main` workflow and verify the
-  deployed commit through the public `deployment.json` marker and smoke test.
-- A release is not complete at commit, merge, workflow start, artifact upload,
-  Firebase CLI success, or a generic HTTP 200. Record the commit SHA, pull
-  request, green workflow run, successful deploy job, matching public
-  deployment marker, and public application smoke result.
+  required check. After merge, wait for the three `main` workflows and verify
+  the deployed commit through the public `deployment.json` marker, the API
+  `/version` source SHA and the smoke results. A merge or a started workflow is
+  not a release; the release is complete when those checks pass.
+- Retired ceremony scripts are listed in `scripts/ci/RETIRED.md`. Do not extend
+  them.
 
-If a production release is blocked, stop and report the exact gate. Do not
-substitute a hand deployment.
+If a production release is blocked, report the exact failing step and fix
+forward through a pull request. Do not substitute a hand deployment.

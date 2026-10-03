@@ -1,9 +1,13 @@
-name: Protected data release
+name: Data release
 
+# Every merge to main releases the data plane: the database's roles and tables, the Data Connect schema and
+# connector, the Storage rules and the first rows. Each step reads the live state first and changes only what
+# differs, so a commit that touches no data file changes nothing. The runtime release waits for this run.
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,309 +17,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  admission:
-    name: Admit the merged commit after its checks
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    # The gate waits up to 55 minutes for the CI/CD run, without any cloud
-    # credential. A data job never waits for a data release.
-    timeout-minutes: 60
-    environment: data-production
-    permissions:
-      contents: read
-      actions: read
-      pull-requests: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-      DEPLOYMENT_ENVIRONMENT: data-production
-      RELEASE_PROJECT: specimen-digitization
-      RELEASE_SERVICE_ACCOUNT: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-    steps:
-      - name: Check out the merged source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install pinned uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.12.5"
-          python-version: "3.12"
-      - name: Install locked dependencies
-        run: uv sync --frozen
-      - name: Verify the protected merged commit and its five checks
-        # Boolean presence only; the private bootstrap values remain on the deploy step.
-        env:
-          RELEASE_RECOVERY_WINDOW: ${{ secrets.DATA_BOOTSTRAP_ARTIFACT_B64 != '' }}
-        run: uv run python scripts/ci/release_gate.py --plane data --wait-seconds 3300 --output "$RUNNER_TEMP/data-release/packet.json"
-
   release:
-    name: Read the live data plane and release the merged files
-    needs: admission
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
-    # The gate record's hour, which the re-admission starts, bounds every wait of an apply: the backup, the migration,
-    # and the first apply's clone restore and deletion. Ten more minutes cover the setup and the receipt's upload.
-    timeout-minutes: 75
-    environment: data-production
-    outputs:
-      phase: ${{ steps.deploy.outputs.phase }}
-      init_step: ${{ steps.deploy.outputs.init_step }}
-      recovery_window: ${{ steps.admission.outputs.recovery_window }}
-    # The runtime release job holds the same lock and never waits for data while holding it.
-    concurrency:
-      group: specimen-protected-mutation
-      cancel-in-progress: false
-    permissions:
-      contents: read
-      actions: read
-      pull-requests: read
-      id-token: write
-      attestations: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      DEPLOYMENT_ENVIRONMENT: data-production
-      RELEASE_PROJECT: specimen-digitization
-      RELEASE_SERVICE_ACCOUNT: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-    steps:
-      - name: Check out the merged source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install pinned uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.12.5"
-          python-version: "3.12"
-      - name: Install locked dependencies
-        run: uv sync --frozen
-      - name: Install pinned Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "22"
-      - name: Install the pinned native IAM SQL connector
-        run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
-      - name: Re-admit the exact merged commit before data credentials
-        id: admission
-        # Boolean presence only; the private bootstrap values remain on the deploy step.
-        env:
-          RELEASE_RECOVERY_WINDOW: ${{ secrets.DATA_BOOTSTRAP_ARTIFACT_B64 != '' }}
-        run: uv run python scripts/ci/release_gate.py --plane data --output "$RUNNER_TEMP/data-release/packet.json"
-      - name: Authenticate only the approved data identity
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          project_id: specimen-digitization
-          workload_identity_provider: ${{ steps.admission.outputs.provider }}
-          service_account: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-      - name: Read the live state, choose the phase and release it
-        id: deploy
-        env:
-          RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
-          # RELEASE.md 4.5: the owner sets these data-production secrets for the bootstrap run and deletes them after;
-          # unset, each arrives empty and the bootstrap is skipped. Only this step reads their values; nothing prints them.
-          DATA_BOOTSTRAP_ARTIFACT_B64: ${{ secrets.DATA_BOOTSTRAP_ARTIFACT_B64 }}
-          DATA_BOOTSTRAP_APPROVED_SHA256: ${{ secrets.DATA_BOOTSTRAP_APPROVED_SHA256 }}
-          DATA_WORKER_ACTOR_UID: ${{ secrets.DATA_WORKER_ACTOR_UID }}
-        run: uv run python scripts/ci/deploy_data.py --deploy --packet "$RUNNER_TEMP/data-release/packet.json" --output "$RUNNER_TEMP/data-receipt.json"
-      # Every exit: a later attempt reads a failed first apply's restore check (RELEASE.md 4.4).
-      - name: Attest the data receipt
-        if: always() && steps.deploy.outcome != 'skipped'
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
-        with:
-          subject-path: ${{ runner.temp }}/data-receipt.json
-      - name: Retain the data receipt without private values
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: data-receipt-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/data-receipt.json
-          if-no-files-found: warn
-          retention-days: 30
-      # RELEASE.md 4.5: the bootstrap's records stay encrypted to the committed evidence recipient. Only the encrypted
-      # copies leave the runner, a failed write's included; the raw records beside them match no upload path.
-      - name: Attest the encrypted bootstrap evidence
-        if: always() && steps.deploy.outputs.evidence == 'present'
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
-        with:
-          subject-path: ${{ runner.temp }}/data-release/*.encrypted.json
-      - name: Retain the encrypted bootstrap evidence, never a private record in the clear
-        if: always() && steps.deploy.outputs.evidence == 'present'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: encrypted-bootstrap-evidence-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/data-release/*.encrypted.json
-          if-no-files-found: error
-          retention-days: 30
-
-  initialize:
-    name: Initialize the existing, empty database with a one-time principal
-    needs: release
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.release.outputs.init_step == 'initialize'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    environment: data-initialization-production
-    concurrency:
-      group: specimen-protected-mutation
-      cancel-in-progress: false
-    permissions:
-      contents: read
-      actions: read
-      pull-requests: read
-      id-token: write
-      attestations: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      DEPLOYMENT_ENVIRONMENT: data-initialization-production
-      RELEASE_PROJECT: specimen-digitization
-      RELEASE_SERVICE_ACCOUNT: specimen-data-initialize@specimen-digitization.iam.gserviceaccount.com
-    steps:
-      - name: Check out the merged source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install pinned uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.12.5"
-          python-version: "3.12"
-      - name: Install locked dependencies
-        run: uv sync --frozen
-      - name: Install pinned Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "22"
-      - name: Install the pinned native IAM SQL connector
-        run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
-      - name: Re-admit the exact merged commit before initializer credentials
-        id: admission
-        # Boolean presence only; the private bootstrap values remain on the deploy step.
-        env:
-          RELEASE_RECOVERY_WINDOW: ${{ needs.release.outputs.recovery_window }}
-        run: uv run python scripts/ci/release_gate.py --plane data-initialization --output "$RUNNER_TEMP/data-release/packet.json"
-      - name: Authenticate only the one-time initializer identity
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          project_id: specimen-digitization
-          workload_identity_provider: ${{ steps.admission.outputs.provider }}
-          service_account: specimen-data-initialize@specimen-digitization.iam.gserviceaccount.com
-      - name: Observe the absent principal and the existing database, then write the creation intent
-        run: uv run python scripts/ci/deploy_data.py --prepare-initializer-intents --packet "$RUNNER_TEMP/data-release/packet.json"
-      - name: Sign the creation intent before any effect
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
-        with:
-          subject-path: ${{ runner.temp }}/data-release/initializer-create-specimen-digitization-instance.json
-      - name: Publish the creation intent before any effect
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: initializer-intent-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/data-release/initializer-create-specimen-digitization-instance.json
-          if-no-files-found: error
-          retention-days: 30
-      - name: Create the owned principal, then initialize the existing database in one transaction
-        id: initialize
-        env:
-          RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
-        run: uv run python scripts/ci/deploy_data.py --initialize --packet "$RUNNER_TEMP/data-release/packet.json" --output "$RUNNER_TEMP/data-initializer.json"
-      - name: Attest encrypted initializer failure evidence
-        if: failure() && steps.initialize.outputs.failure_evidence == 'present'
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
-        with:
-          subject-path: ${{ runner.temp }}/data-release/initializer-failure.encrypted.json
-      - name: Retain encrypted initializer failure evidence
-        if: failure() && steps.initialize.outputs.failure_evidence == 'present'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: encrypted-initializer-failure-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/data-release/initializer-failure.encrypted.json
-          if-no-files-found: error
-          retention-days: 30
-      - name: Attest the initializer receipt
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
-        with:
-          subject-path: ${{ runner.temp }}/data-initializer.json
-      - name: Retain the initializer receipt without private values
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: data-initializer-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/data-initializer.json
-          if-no-files-found: error
-          retention-days: 30
-
-  dispose-initializer:
-    name: Revoke and delete only the initializer principal this run created
-    needs: [release, initialize]
-    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.initialize.result != 'skipped'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    environment: data-production
-    # No mutation lock: GitHub replaces a pending job in a concurrency group, and a cancelled disposal would leave
-    # the principal behind. It removes only this run's own principal, so it never needs to wait.
-    permissions:
-      contents: read
-      actions: read
-      pull-requests: read
-      id-token: write
-      attestations: read
-    env:
-      GH_TOKEN: ${{ github.token }}
-      DEPLOYMENT_ENVIRONMENT: data-production
-      RELEASE_PROJECT: specimen-digitization
-      RELEASE_SERVICE_ACCOUNT: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-    steps:
-      - name: Check out the merged source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install pinned uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "0.12.5"
-          python-version: "3.12"
-      - name: Install locked dependencies
-        run: uv sync --frozen
-      - name: Install pinned Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "22"
-      - name: Install the pinned native IAM SQL connector
-        run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
-      - name: Re-admit the exact merged commit before data credentials
-        id: admission
-        # Boolean presence only; the private bootstrap values remain on the deploy step.
-        env:
-          RELEASE_RECOVERY_WINDOW: ${{ needs.release.outputs.recovery_window }}
-        run: uv run python scripts/ci/release_gate.py --plane data --output "$RUNNER_TEMP/data-release/packet.json"
-      - name: Authenticate only the approved data identity
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
-        with:
-          project_id: specimen-digitization
-          workload_identity_provider: ${{ steps.admission.outputs.provider }}
-          service_account: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-      - name: Prove this run created the principal, then revoke and delete it
-        env:
-          RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
-        run: uv run python scripts/ci/deploy_data.py --dispose-initializer --packet "$RUNNER_TEMP/data-release/packet.json"
-
-  # RELEASE.md 4.3 steps 3 to 5: after this run's own initializer, Data Connect's SQL diff runs client-side as the
-  # owner role, then the merged files are released and the catalog is checked. A run over the initialize phase
-  # succeeds only here, so the runtime's wait for it (D3) never passes over an uninitialized database.
-  migrate:
-    name: Migrate the initialized database as its owner and release the merged files
-    needs: [release, initialize, dispose-initializer]
-    if: >-
-      always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.release.outputs.phase == 'initialize'
-      && (needs.dispose-initializer.result == 'success' || needs.release.outputs.init_step == 'migrate')
+    name: Release the data plane for the merged commit
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: data-production
-    concurrency:
-      group: specimen-protected-mutation
-      cancel-in-progress: false
     permissions:
       contents: read
-      actions: read
-      pull-requests: read
       id-token: write
-      attestations: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      DEPLOYMENT_ENVIRONMENT: data-production
-      RELEASE_PROJECT: specimen-digitization
-      RELEASE_SERVICE_ACCOUNT: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
     steps:
       - name: Check out the merged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install pinned uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
@@ -327,35 +42,17 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
-      - name: Install the pinned native IAM SQL connector
-        run: npm install --prefix "$RUNNER_TEMP/firebase-release" --no-audit --no-fund --ignore-scripts firebase-tools@15.8.0
-      - name: Re-admit the exact merged commit before data credentials
-        id: admission
-        # Boolean presence only; the private bootstrap values remain on the deploy step.
-        env:
-          RELEASE_RECOVERY_WINDOW: ${{ needs.release.outputs.recovery_window }}
-        run: uv run python scripts/ci/release_gate.py --plane data --output "$RUNNER_TEMP/data-release/packet.json"
-      - name: Authenticate only the approved data identity
+      - name: Install the pinned Cloud SQL connector and PostgreSQL client
+        run: npm install --prefix "$RUNNER_TEMP/release-node" --no-audit --no-fund --ignore-scripts @google-cloud/cloud-sql-connector@1.9.1 pg@8.19.0
+      - name: Authenticate as the data release identity
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
           project_id: specimen-digitization
-          workload_identity_provider: ${{ steps.admission.outputs.provider }}
+          workload_identity_provider: projects/716045864126/locations/global/workloadIdentityPools/github-actions/providers/specimen-data-release # pragma: allowlist secret
           service_account: specimen-data-release@specimen-digitization.iam.gserviceaccount.com
-      - name: Verify this run's initializer, migrate as the owner role, release the merged files and check the catalog
-        id: migrate
+      - name: Release the database, Data Connect and Storage rules
         env:
-          RELEASE_NODE_ROOT: ${{ runner.temp }}/firebase-release
-        run: uv run python scripts/ci/deploy_data.py --migrate --packet "$RUNNER_TEMP/data-release/packet.json" --output "$RUNNER_TEMP/data-initialized.json"
-      - name: Attest the initialization receipt
-        if: success() && steps.migrate.outcome == 'success'
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
-        with:
-          subject-path: ${{ runner.temp }}/data-initialized.json
-      - name: Retain the initialization receipt without private values
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: data-initialized-${{ github.sha }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/data-initialized.json
-          if-no-files-found: warn
-          retention-days: 30
+          RELEASE_NODE_MODULES: ${{ runner.temp }}/release-node/node_modules
+          # The owner's first-rows artifact, the only GitHub secret this workflow reads. scripts/ops/owner_setup.sh sets it.
+          DATA_BOOTSTRAP_ARTIFACT_B64: ${{ secrets.DATA_BOOTSTRAP_ARTIFACT_B64 }}
+        run: uv run python scripts/release/data_release.py
