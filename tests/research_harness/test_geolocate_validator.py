@@ -169,6 +169,7 @@ def test_registry_admits_only_the_glcwrap_json_endpoint_and_drops_google_maps():
     (json.dumps({**YEPOCAPA, "value": "Yepocapa", "latitude": "14.5"}), "latitude must be a number"),
     (json.dumps({**YEPOCAPA, "value": "Yepocapa"}).replace("14.5", "1e999"), "latitude must be a number"),
     (json.dumps({**YEPOCAPA, "value": "Yepocapa", "radius_km": True}), "radius_km must be a number"),
+    (json.dumps({**YEPOCAPA, "value": "Yepocapa", "latitude": 10 ** 400}), "latitude must be a number from -90 to 90"),
 ])
 def test_interpretation_contract_names_each_defect(text, message):
     with pytest.raises(ValueError, match=message):
@@ -205,6 +206,11 @@ def test_value_must_be_what_geolocate_can_confirm(field_key, interpretation, val
     # A clause holding a collector marker never leaves, even as the place itself.
     ("Yepocapa, Chimaltenango\nleg. R.D. Mitchell", FieldKey.CITY,
      {**YEPOCAPA, "locality": "Mitchell", "place": "Mitchell"}, "Mitchell", "no collector or determiner text"),
+    *((f"Mt. Apo, Davao Prov.\n{clause}", FieldKey.COUNTRY, {**YEPOCAPA, "county": "Hoogstraal"}, "Guatemala",
+       "county must be place text: no collector or determiner text")
+      for clause in ("Collectors: H. Hoogstraal", "Collected by H. Hoogstraal", "Colectores: H. Hoogstraal",
+                     "Recolector H. Hoogstraal", "Identified by H. Hoogstraal", "lg. H. Hoogstraal",
+                     "Dét. H. Hoogstraal")),
 ])
 def test_only_place_text_is_ever_sent(label, field_key, interpretation, value, message):
     async def no_effect(*_):
@@ -216,6 +222,24 @@ def test_only_place_text_is_ever_sent(label, field_key, interpretation, value, m
     # A typed refusal the historian sees, never a silent skip.
     assert result.status == LookupStatus.POLICY and result.coverage.state == SourceCoverageState.UNQUALIFIED
     assert message in result.coverage.reason
+
+
+def test_a_collectors_assembly_never_leaves_even_without_a_marker():
+    [fragment] = label_fragments("R.D. Mitchell")
+    event = EventHypothesis(id="event", scope=SCOPE, kind=EventKind.COLLECTING, fragment_ids=(fragment.id,),
+                            evidence_ids=("role-evidence",), reason="Independently annotated synthetic event",
+                            status="accepted", validator_version="gold-v1")
+    collectors = assemble_field(assembly_id="collectors", scope=SCOPE, field_key=FieldKey.COLLECTORS,
+                                fragments=[fragment], event=event)
+    request = geography_request(fragments=[fragment], events=[event], assemblies=[collectors])
+
+    async def no_effect(*_):
+        raise AssertionError("a collector's name must never open an effect or a request")
+
+    broker = SourceBroker(REGISTRY, transport=FixtureSourceTransport(no_effect), effect_dispatch=no_effect)
+    result = asyncio.run(broker.query(request, query(FieldKey.COUNTRY, {**YEPOCAPA, "state": "Mitchell"}, "Guatemala")))
+    assert result.status == LookupStatus.POLICY
+    assert result.coverage.reason == "GEOLocate state must be place text: no collector or determiner text"
 
 
 def test_the_modern_interpretation_of_a_real_label_sends_no_label_text():

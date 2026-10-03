@@ -25,7 +25,7 @@ from pydantic import Field
 
 from specimen_digitization.application.domain import LookupStatus, now
 from specimen_digitization.application.lookup import (
-    COL_XR, MONTHS, _shape_ok, cleared_synonym, row_one, scientific_name,
+    CLAUSES, COL_XR, MONTHS, _shape_ok, cleared_synonym, row_one, scientific_name,
 )
 
 from .contracts import (
@@ -244,7 +244,7 @@ def geolocate_interpretation(query_text: str, field_key: FieldKey | None = None)
             raise ValueError(f"GEOLocate {key} must be trimmed text of at most 200 characters")
     for key, (low, high) in _GEOLOCATE_BOUNDS.items():
         item = value[key]
-        if type(item) not in (int, float) or not math.isfinite(item) or not low <= item <= high:
+        if not _finite_number(item) or not low <= item <= high:
             raise ValueError(f"GEOLocate {key} must be a number from {low:g} to {high:g}")
     place = GeolocateInterpretation(
         country=value["country"], state=value.get("state", ""), county=value.get("county", ""),
@@ -263,8 +263,9 @@ def geolocate_interpretation(query_text: str, field_key: FieldKey | None = None)
     return place
 
 
-# PLAN 4.8's collector and determiner markers; a clause holding one is never place text.
-_PARTY_MARKERS = frozenset({"leg", "legit", "coll", "collector", "col", "colector", "det"})
+def _finite_number(item) -> bool:
+    # A JSON integer of any length compares exactly; converting a huge one to float overflows.
+    return type(item) is int or (type(item) is float and math.isfinite(item))
 
 
 def geolocate_place_text_defect(request: SpecialistRequest, place: GeolocateInterpretation) -> str | None:
@@ -276,11 +277,13 @@ def geolocate_place_text_defect(request: SpecialistRequest, place: GeolocateInte
     when it holds a digit, a month word, a party marker, or a word of any label clause that holds
     a marker.
     """
-    marked = set()
+    markers = {word for clause in CLAUSES for word in _fold_words(clause)}
+    marked = {word for item in request.assemblies if item.field_key == FieldKey.COLLECTORS
+              for word in _fold_words(item.interpreted_text)}
     for fragment in request.fragments:
         for clause in re.split(r"[,;]", fragment.literal):
             words = set(_fold_words(clause))
-            if words & _PARTY_MARKERS:
+            if words & markers:
                 marked |= words
     for key in ("country", "state", "county", "locality", "place"):
         words = set(_fold_words(getattr(place, key)))
@@ -288,7 +291,7 @@ def geolocate_place_text_defect(request: SpecialistRequest, place: GeolocateInte
             return f"GEOLocate {key} must be place text: no digits, dates or elevations"
         if words & MONTHS:
             return f"GEOLocate {key} must be place text: no month words"
-        if words & (_PARTY_MARKERS | marked):
+        if words & (markers | marked):
             return f"GEOLocate {key} must be place text: no collector or determiner text"
     named = set(_fold_words(" ".join((place.place, place.county, place.state, place.country))))
     assembled = {item.interpreted_text for item in request.assemblies if item.field_key == FieldKey.PRECISE_LOCATION}
@@ -327,13 +330,13 @@ def _geolocate_matches(payload, place: GeolocateInterpretation) -> tuple[str, in
         point = geometry.get("coordinates") if isinstance(geometry, dict) else None
         if (not isinstance(properties, dict) or not isinstance(geometry, dict) or geometry.get("type") != "Point"
                 or not isinstance(point, list) or len(point) != 2
-                or any(type(item) not in (int, float) or not math.isfinite(item) for item in point)
+                or any(not _finite_number(item) for item in point)
                 or type(properties.get("parsePattern")) is not str or type(properties.get("precision")) is not str
                 or type(properties.get("score")) is not int or type(properties.get("debug")) is not str):
             raise ValueError("GEOLocate feature schema mismatch")
-        longitude, latitude = (float(item) for item in point)
-        if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        if not (-180 <= point[0] <= 180 and -90 <= point[1] <= 90):
             raise ValueError("GEOLocate coordinates out of range")
+        longitude, latitude = (float(item) for item in point)
         admin = re.search(r"(?:^|\|):Adm=([^|]*)", properties["debug"])
         matches.append(_GeolocateMatch(
             latitude=latitude, longitude=longitude, name=properties["parsePattern"],
@@ -663,7 +666,7 @@ class SourceBroker:
             return self._failure(policy, query, LookupStatus.TIMEOUT)
         except httpx.HTTPError:
             return self._failure(policy, query, LookupStatus.PROVIDER)
-        except (ValueError, KeyError, TypeError):
+        except (ValueError, KeyError, TypeError, ArithmeticError):
             return self._failure(policy, query, LookupStatus.MALFORMED)
 
     async def _museum(self, policy, query):

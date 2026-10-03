@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from specimen_digitization.research_harness.contracts import (
     ALL_FIELDS, ROLE_FIELDS, CollectionProfile, FieldKey, FieldProfile, LookupStatus, ResearchScope,
     SourceCoverageState, SourceQuery, SpecialistRequest, SpecialistRole, digest,
@@ -126,9 +128,19 @@ def test_the_same_query_replays_the_capture_without_a_second_read(tmp_path):
     assert effects(rig) == before and len(before) == 1
 
 
-def test_malformed_body_is_a_typed_failure_that_holds_no_effect(tmp_path):
+def null_geometry(feature):
+    feature["geometry"] = None
+
+
+def huge_longitude(feature):
+    # A 400-digit integer overflows any float conversion; it must stay a typed failure.
+    feature["geometry"]["coordinates"][0] = 10 ** 400
+
+
+@pytest.mark.parametrize("mutate", [null_geometry, huge_longitude])
+def test_malformed_body_is_a_typed_failure_that_holds_no_effect(tmp_path, mutate):
     payload = json.loads(RECORDED_BODY)
-    payload["resultSet"]["features"][0]["geometry"] = None
+    mutate(payload["resultSet"]["features"][0])
     malformed = json.dumps(payload).encode()
     rig = make_rig(tmp_path, [malformed, RECORDED_BODY])
     failed = lookup(rig, YEPOCAPA)
@@ -142,3 +154,12 @@ def test_malformed_body_is_a_typed_failure_that_holds_no_effect(tmp_path):
     assert later.status == LookupStatus.SUCCESS and later.receipt.effect_status == "completed"
     assert rig.calls == [RECORDED_URL, RECORDED_URL]
     assert [effect["status"] for effect in effects(rig)] == ["completed", "completed"]
+
+
+def test_an_unsendable_latitude_opens_no_effect_and_sends_nothing(tmp_path):
+    # 10**309 overflows a float yet fits the 500-character query_text bound.
+    rig = make_rig(tmp_path, [RECORDED_BODY])
+    refused = lookup(rig, {**YEPOCAPA, "latitude": 10 ** 309})
+    assert refused.status == LookupStatus.POLICY and refused.coverage.state == SourceCoverageState.UNQUALIFIED
+    assert rig.calls == [] and effects(rig) == []
+    assert lookup(rig, YEPOCAPA).status == LookupStatus.SUCCESS
