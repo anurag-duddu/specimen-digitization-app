@@ -49,6 +49,14 @@ ROLE_LINES = {
         "carries none.",
 }
 
+# Lookup-citing resolutions name their assemblies and event, as Lane G's
+# geography v2 says (#240), so the lookup has a producer.
+LOOKUP_PRODUCER_RULE = (
+    "Every resolution that cites a lookup names, as the common rules ask, its accepted/rejected "
+    "assemblies (assembly_ids: the request's assemblies for that field that the interpretation read) "
+    "and event (event_id); the lookup's producer comes from them, and publication refuses a lookup "
+    "without one.")
+
 
 def added(role):
     v1 = (ROOT / f"{role.value}-v1.txt").read_bytes()
@@ -79,7 +87,7 @@ def test_each_role_resolves_to_its_v1_text_followed_by_the_relation_rule(role):
 def test_taxonomy_parties_and_collection_get_the_shared_block_and_their_role_line(role):
     rule = added(role)
     assert rule.startswith(SHARED)
-    assert flat(rule[len(SHARED):]) == ROLE_LINES[role]
+    assert flat(rule[len(SHARED):]) == ROLE_LINES[role] + " " + LOOKUP_PRODUCER_RULE
 
 
 @pytest.mark.parametrize("role", SETTLED)
