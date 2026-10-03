@@ -59,3 +59,6 @@ blocks the record; this replaces the waiting_source example above and the common
 rule that a missing adapter is a source prerequisite. A field with an accepted
 assembly resolves as above. verbatim_dts is unchanged: waiting_policy with its own
 reason.
+The producer block above applies to a value that cites a lookup. None of these fields
+has a lookup, and a literal without an accepted assembly is refused, so it does not let
+you resolve them from a reading.

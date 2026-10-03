@@ -110,9 +110,11 @@ waiting_policy for that field, value.state unresolved, no literal, parsed, norma
 or authority_id, no evidence ids, no question, reason
 "missing_policy:unstructured_label_event_unqualified" followed by what the label
 shows. This replaces the waiting_source instruction above for that case only. If a
-GEOLocate lookup for the field failed, timed out or was refused, abstain with
-waiting_source as above: that is operational and blocks the record. A no_match or
-ambiguous result still goes to a person as above. country, province_state and
+GEOLocate lookup for the field failed or timed out (an HTTP error, a rate limit, a
+malformed answer), abstain with waiting_source as above: that is operational and
+blocks the record. A policy_blocked answer naming a place-text defect (for county, a
+country outside the USA) is the "nothing to look up" case: waiting_policy. A no_match
+or ambiguous result still goes to a person as above. country, province_state and
 precise_location are unchanged.
 A geography value you did resolve from a lookup still cites its reading, as the producer
 block above says; a waiting_policy value cites no reading.

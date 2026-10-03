@@ -34,8 +34,11 @@ REASON = f'"missing_policy:{UNQUALIFIED_LABEL_POLICY}'
 # The literal fields' roles: no source is connected for them, so there is no failure to report.
 LITERAL_ROLES = (SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT, SpecialistRole.PARTIES,
     SpecialistRole.COLLECTION)
-# The roles whose v3 text has the producer block: a value they resolved from a lookup cites its reading.
-CITING_ROLES = (SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY)
+# The roles whose v3 text (#257) carries the producer block: all four that have the v2 sentence about a lookup's
+# producer. Only taxonomy and geography have a source a value can cite a lookup of.
+CITING_ROLES = (SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY, SpecialistRole.PARTIES, SpecialistRole.COLLECTION)
+LOOKUP_ROLES = (SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY)
+NO_LOOKUP_ROLES = (SpecialistRole.PARTIES, SpecialistRole.COLLECTION)
 # sha256 of each file's bytes: the v3 files as #257 added them (audit), the v4 files as added here.
 FILE_SHA256 = {
     "specimen_taxonomy-v3.txt": "8c251604bd7e625e5f2ad88f723e233c749ec26b6d3f09a9ce0677d5b9f93963",  # pragma: allowlist secret
@@ -44,21 +47,21 @@ FILE_SHA256 = {
     "specimen_measurement-v3.txt": "9fcc4eb9d206b597cfbc0e203c6d57c2c4c8e578c403c939938baeee516b5480",  # pragma: allowlist secret
     "specimen_parties-v3.txt": "752b3c106e8942840eb0e6be7540d286f8ae6724d962c018e67fa0d0cde9011f",  # pragma: allowlist secret
     "specimen_collection-v3.txt": "40d6979ed0a375987fb696afb9b20dc4e25e026f1946ec594d4292affdcd6b18",  # pragma: allowlist secret
-    "specimen_taxonomy-v4.txt": "a8ea99d6fdbfb448b0dca443ebf5f41c01a37e20f1955bb099ebf693e771d07c",  # pragma: allowlist secret
-    "specimen_geography-v4.txt": "3ffd8e07565727681f38fd08cdde29236dbdc7b156a3ea31d756b5709f80e05f",  # pragma: allowlist secret
+    "specimen_taxonomy-v4.txt": "0b504275294d858fb7a78c370d439fae9478139e5aff06a3a8103ed56722e8bb",  # pragma: allowlist secret
+    "specimen_geography-v4.txt": "26ef81b5efd5850e67ba6afe4908f18bdfaae2af12ca0762ada5dd689c039a4d",  # pragma: allowlist secret
     "specimen_temporal-v4.txt": "92a1663ce8b4df46b6d916eef2c1a368e1bcd1ca537f54caea6ac4d62c950cf9",  # pragma: allowlist secret
     "specimen_measurement-v4.txt": "2dc272a7ac098339563b81565d529c00d039fcb9c589b911006f75a8bdede63d",  # pragma: allowlist secret
-    "specimen_parties-v4.txt": "a2a53dbbce6e52503b174d15cfcff5df930accd7c43f10184feb65e4fa5b9893",  # pragma: allowlist secret
-    "specimen_collection-v4.txt": "56a93e32a7bfb2360d99abcba202d80868e27e6eee1ab93c86e43e1fb2cd32c5",  # pragma: allowlist secret
+    "specimen_parties-v4.txt": "c8d20d3a8eaa81e7cd53ca9f7c9ee81ebd01ddc933067a3d6591e6b3b9fed4be",  # pragma: allowlist secret
+    "specimen_collection-v4.txt": "04a82c819a2a9196621a18422259a302425cb73d5bbbec986e531828d6cbe20b",  # pragma: allowlist secret
 }
 # Each role's pin digest on its v4 file (the digest of common-v1.txt, the v4 file and the owned-fields line).
 V4_ROLE_DIGESTS = {
-    SpecialistRole.TAXONOMY: "132aa9819c78ae43364f1a1be9e7e45454f8bf4be6019e14ea97b81f78203564",  # pragma: allowlist secret
-    SpecialistRole.GEOGRAPHY: "5afe4f2009c2534c2146cb7b1f12bd317e59c2f3070ca8eba9db600b1cd4e5cf",  # pragma: allowlist secret
+    SpecialistRole.TAXONOMY: "c7c35ed3ccf7b6571eeabb3b8cba0bc5c6e648f09213486924261d9e373d2e88",  # pragma: allowlist secret
+    SpecialistRole.GEOGRAPHY: "473ae15d1835ef911c27ce8f0b6338f776edc676a33b89ccde6d0b44a8fbe6f8",  # pragma: allowlist secret
     SpecialistRole.TEMPORAL: "1764838c2795e22120bf946b806bedc79c293132cbfe0ebb1658063f76d60886",  # pragma: allowlist secret
     SpecialistRole.MEASUREMENT: "cd304517f75902dd88235f28d4c9cfc5cfb1e34418c85d182671a4454c8e890d",  # pragma: allowlist secret
-    SpecialistRole.PARTIES: "262edc021fdab5d2d09d391bab3a7d3a396d95266906ba4094427ba2fa8f36c1",  # pragma: allowlist secret
-    SpecialistRole.COLLECTION: "3f0d6bf0a0e238b8d06c46f9491683bc8c8fcd011b34a7a56721a3ba07338d50",  # pragma: allowlist secret
+    SpecialistRole.PARTIES: "d465ddd68fa218068eeb2c6cca3419034fde5253675c96fd270b5e608867fc3a",  # pragma: allowlist secret
+    SpecialistRole.COLLECTION: "cfe83bcbe4fcf821f46ada2977810b916f6dfd824b22738f3633d880bdff881d",  # pragma: allowlist secret
 }
 # The committed research profile's digest for the synthetic ids org / coll (a production job's differs
 # with its real organization and collection ids; the digest covers them).
@@ -169,20 +172,46 @@ def test_a_declared_field_that_can_be_grounded_still_resolves_as_before(role, se
     assert sentence in flat(block(role))
 
 
-def test_taxonomy_keeps_waiting_source_for_a_failed_lookup():
+def test_taxonomy_keeps_waiting_source_for_a_failed_lookup_and_sets_a_policy_blocked_source_aside():
     text = flat(block(SpecialistRole.TAXONOMY))
-    assert ("If a lookup failed, timed out, was rate limited or refused, or its source is not configured, "
-            "return waiting_source as above") in text
-    assert "that is operational and blocks the record." in text
+    assert ("If a lookup failed, timed out, was rate limited, or failed with an authentication or authorization "
+            "error, return waiting_source as above, even beside a no_match from another source: that is "
+            "operational and blocks the record.") in text
+    # The code treats policy_blocked as no outage (agents.SOURCE_OUTAGES): the text must say the same.
+    assert ("A policy_blocked answer (an unqualified source such as BugGuide, or a refused query text) is not "
+            "an outage: set that source aside.") in text
+    assert "refused, or its source is not configured" not in text
     # The engine retries only operational_failed and retry_scheduled fields (engine.py), never a
     # waiting_source, so the prompt does not say it is retried.
     assert "retried" not in text
 
 
-def test_geography_keeps_waiting_source_for_a_failed_lookup():
+def test_the_taxonomy_rule_is_not_vacuously_true_when_no_lookup_was_made():
+    """T2 of the review: 'every lookup you made completed without a match' holds when none was made. A
+    named taxon is looked up first, and waiting_policy follows only a completed lookup with no accepted match."""
+    text = flat(block(SpecialistRole.TAXONOMY))
+    assert "When the readings name no taxon, return work_state waiting_policy for taxon." in text
+    assert ("When they name one, look it up first (GBIF decides); return waiting_policy only after at least one "
+            "lookup completed and none produced an accepted match (no_match, or a tie that no distinguishing "
+            "evidence breaks).") in text
+    assert "every taxonomy lookup you made" not in text
+    # The v2 example asks which taxon was intended, a question that cannot be built (HumanQuestion needs
+    # exhausted coverage; a GBIF search is SEARCHED), so the block replaces it.
+    v2 = (ROOT / "specimen_taxonomy-v2.txt").read_text(encoding="utf-8")
+    assert "ask which taxon was intended" in flat(v2)
+    assert ("This replaces the example above that asks which taxon was intended: a completed search cannot be "
+            "put to a person as a question (a human question needs exhausted coverage), so a tie is "
+            "waiting_policy.") in text
+
+
+def test_geography_keeps_waiting_source_for_a_failed_lookup_and_a_policy_blocked_place_defect_is_nothing_to_look_up():
     text = flat(block(SpecialistRole.GEOGRAPHY))
-    assert ("If a GEOLocate lookup for the field failed, timed out or was refused, abstain with "
-            "waiting_source as above: that is operational and blocks the record") in text
+    assert ("If a GEOLocate lookup for the field failed or timed out (an HTTP error, a rate limit, a malformed "
+            "answer), abstain with waiting_source as above: that is operational and blocks the record.") in text
+    # For county outside the USA the lookup is refused (policy_blocked): that is the first rule's case.
+    assert ('A policy_blocked answer naming a place-text defect (for county, a country outside the USA) is the '
+            '"nothing to look up" case: waiting_policy.') in text
+    assert "failed, timed out or was refused" not in text
     assert "This replaces the waiting_source instruction above for that case only" in text
 
 
@@ -206,19 +235,40 @@ def test_the_irn_and_verbatim_dts_texts_are_unchanged_in_the_roles_that_own_them
 
 # ---- the v3 reading-citation text and this block do not contradict each other ---------------------
 @pytest.mark.parametrize("role", CITING_ROLES)
-def test_a_value_resolved_from_a_lookup_still_cites_its_reading_and_a_waiting_policy_value_cites_none(role):
-    """#257's producer block tells the role to cite the one reading a lookup-resolved value came from;
-    this block tells it to return waiting_policy when nothing grounds a declared field. Both are in the
-    live text, and the block says which applies to which value."""
+def test_the_v3_producer_block_and_the_v4_block_are_both_in_the_live_text_and_in_that_order(role):
+    """#257's producer block is in all four lookup roles; the v4 block is the last text before the owned fields."""
     live = flat(pin(role).text)
     assert "Where the request has no assembly for the field that your interpretation read" in live
     assert "source_observation_id = its observation_id" in live
-    assert "a waiting_policy value cites no reading" in flat(block(role))
-    assert ("still cites its reading, as the producer block" in flat(block(role)))
-    # The producer block comes first; the missing-policy block is the last text before the owned fields.
     text = pin(role).text
     assert text.index("Producer and literal without an assembly") < text.index("Missing policy (unstructured labels)")
     assert text.endswith(block(role) + "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n")
+    assert "a waiting_policy value cites no reading" in flat(block(role)) or role in NO_LOOKUP_ROLES
+
+
+@pytest.mark.parametrize("role", LOOKUP_ROLES)
+def test_a_value_resolved_from_a_lookup_still_cites_its_reading_and_a_waiting_policy_value_cites_none(role):
+    """Taxonomy and geography can resolve a value from a lookup: it cites its reading as the producer block
+    says, and a waiting_policy value cites none."""
+    text = flat(block(role))
+    assert "still cites its reading, as the producer block" in text
+    assert "a waiting_policy value cites no reading" in text
+
+
+@pytest.mark.parametrize("role", NO_LOOKUP_ROLES)
+def test_parties_and_collection_are_told_the_producer_block_does_not_let_them_resolve_without_an_assembly(role):
+    """T1 of the review: #257's block shows how to cite a reading for a value without an assembly (and says
+    value.literal is then one line of that reading); the v4 block says never to resolve these fields from
+    reading text without an assembly, and the validator agrees (a literal field needs assembly_ids,
+    evidence.py). The block says which applies, so a model that follows the producer block does not resolve a
+    field the validator would refuse (a refusal fails the whole role)."""
+    text = flat(block(role))
+    assert "Never resolve" in text
+    assert ("The producer block above applies to a value that cites a lookup. None of these fields has a lookup, "
+            "and a literal without an accepted assembly is refused, so it does not let you resolve them from a "
+            "reading.") in text
+    # Taxonomy's and geography's sentence about resolved lookup values is not in these two.
+    assert "still cites its reading" not in text
 
 
 @pytest.mark.parametrize("role", tuple(SpecialistRole))

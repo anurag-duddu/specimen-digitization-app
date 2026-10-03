@@ -56,3 +56,6 @@ waiting_source for it, because there is no source that could fail and waiting_so
 blocks the record; this replaces the common rule that a missing adapter is a source
 prerequisite. Collectors with an accepted assembly resolve as above.
 identified_by_irn is unchanged: the declared exception.
+The producer block above applies to a value that cites a lookup. None of these fields
+has a lookup, and a literal without an accepted assembly is refused, so it does not let
+you resolve them from a reading.
