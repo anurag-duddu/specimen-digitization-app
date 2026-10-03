@@ -14161,3 +14161,156 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
 - Remaining follow-ups: whether the provider forwards property descriptions to the model, and whether the Qwen
   reader's malformed-answer rate falls (2 of 25 retries in the diagnosis), is Not confirmed until live runs; this is
   a reliability change, not a guarantee.
+
+### 2026-10-03 — Worker create and get on the research harness prefixes (Claude)
+
+- Task: go-live: let the production worker create and read the research harness's blobs (dispatched by the "Go-live
+  coordinator" session after its read-only IAM check; no task ID recorded).
+- Branch/worktree: `claude/worker-research-object-grants` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a0137d2b1b86ea1fe`,
+  base `main` c6f3c10d, merged with origin/main db855ad6 (#242) before the push.
+- Outcome: In progress. Pull request open and ready for review; not merged. No `gcloud` or `firebase` command was run
+  and merging applies no IAM (a push to main still runs the releases): the two worker-only bindings (`objectCreator` and `objectViewer`, condition
+  `specimen_research_objects` on `research-capture/`, `research-journal/` and `research-media/`) reach the project
+  only when the coordinator runs `scripts/ops/iam.py` or `scripts/ops/owner_setup.sh` and reads the bucket policy back.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/250; code commit dfbe1972, merge
+  c1d110fb.
+- Validation: the new assertions fail on the original `iam.py` and `owner_setup.sh` (`test_ops_scripts.py` 2 failed,
+  44 passed; `test_simple_owner_setup.py` 11 failed, 30 passed, 1 skipped) and pass on the change (46 passed; 41
+  passed, 1 skipped for the missing local `shellcheck`). Five temporary mutations (API also given the pair in
+  `iam.py`; `objectAdmin` for `objectCreator` in `iam.py` and in `owner_setup.sh`; SAM given the pair in
+  `owner_setup.sh`; one prefix dropped from the `owner_setup.sh` condition) each failed the new tests and were
+  restored byte for byte. At merge c1d110fb, one file at a time: `test_owner_grants.py` 13, `test_data_released_deploy.py`
+  75, `test_runtime_released_deploy.py` 43, `tests/test_deployment_policy.py` 25, `test_runtime_settings.py` 9,
+  `test_data_setup_window.py` 101, `tests/test_live_data_plan.py` 28, `test_simple_runtime_release.py` 68,
+  `test_simple_data_release.py` 148, all passed. `pre-commit run --files` on the changed files passed. Not run: the
+  full suite, `scripts/ci/verify.sh`, any live or paid call. Not confirmed: the grant working end to end (not
+  applied), duplicate-create behaviour (412 or 403, needs a write), organization deny policies (could not be listed),
+  and whether a list call is denied under the condition.
+- Durable learnings:
+  - `scripts/ci/owner_grants.py` and `test_owner_grants.py` are on `scripts/ci/RETIRED.md` (lists 1 and 2), which
+    keeps them byte for byte unchanged, and AGENTS.md says not to extend them, yet `test_simple_owner_setup.py` and
+    `test_ops_scripts.py` still compare the active scripts with its table. Adding a grant to the active scripts
+    therefore means holding it apart in those two comparisons (`RESEARCH_ROWS`; `expected +=` in the iam test) and
+    pinning it with a condition written out in the test, not editing the retired table. A run of the retired
+    `owner_grants.py plan` would list the new live bindings as "Review: not in the table".
+  - `tests/test_deployment_policy.py` scans the non-test files of `scripts/ops` for the names of retired files:
+    naming `owner_grants.py` in a comment of `iam.py` fails it (tried, then reverted).
+  - A new standing grant changes the change counts that `test_simple_owner_setup.py` pins in eight assertions (18 to
+    20, 17 to 19, 16 to 18, 19 to 21 setup changes); the apply stays idempotent (a second run changes nothing).
+  - `scripts/ops/iam.py` grants the API nothing on the bucket (its bucket rows are `owner_setup.sh`'s), so the iam
+    test's set of API bucket grants is empty, not the application pair.
+- Failed approaches: first edited `owner_grants.py` and its test as the brief listed (its 14 tests passed and three
+  mutations failed them), then found both on the retired list and reverted those two files. The Bash tool refused
+  several compound commands (a heredoc followed by git, or several statements) with a worktree-isolation message:
+  put scripts in files and run one command at a time.
+- Remaining follow-ups: coordinator applies and reads back the bindings after merge; owner or coordinator decides
+  whether the retired table should still receive the two rows; test the duplicate-create status and the list denial
+  with a live write when one is authorized.
+### 2026-10-03 — GEOLocate authority_id without the matched point (Claude)
+
+- Task: dispatched by the coordinator after an independent reviewer ran the offline end-to-end test
+  on Lane H's draft #243 and found the matched point in `field_candidate.authorityId` and in the public geography
+  fields (no task ID recorded). The coordinator's ruling: GEOLocate coordinates stay in evidence and trace only;
+  the uncertainty radius stays in-house (D13).
+- Branch/worktree: `claude/geolocate-authority-id-no-point` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a90f41aeb3445d9dc`,
+  base `main` c6f3c10d, merged with `main` db855ad6 (#242) before the first push and with `main` 9272a188 (#243)
+  afterwards.
+- Outcome: In progress. Pull request open and ready for review; not merged; nothing in it ran against production, a
+  cloud service or a paid model. An independent review of head 37a73b27, relayed by the coordinator, said merge after
+  fixes; the later commits on the branch carry those fixes.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/248; code commit 7abd410f.
+- Validation: the new assertions fail on `main`'s `sources.py` and pass on the change (validator file 8 failed and
+  72 passed before, 80 passed after; capture file 2 failed and 4 passed before, 6 passed after; the new record-field
+  file 1 failed before, 1 passed after). Run one file at a time, all passing on the branch merged with `main`
+  db855ad6 (#242), before #243 merged: `test_production_e2e.py` (3 passed, 1 xfailed, as `main` was then),
+  `test_geography_prompt_v2.py`, `test_committed_pins.py`, `test_native_canonical_contract.py`,
+  `test_native_canonical_v2_contract.py`, `test_canonical_projection_v2.py`, `test_canonical_materialization_v2.py`,
+  `tests/test_research_harness_publication.py`, `tests/test_research_harness_publication_integrity.py`,
+  `test_source_capture_v2.py`, `test_canonical_evidence_provider_v2.py`. On the tree merged with `main` 9272a188
+  (#243): `test_production_e2e.py` 4 passed, `test_geolocate_validator.py` 80, `test_geolocate_capture.py` 6,
+  `test_geolocate_record_fields.py` 1, `test_committed_pins.py` 17; the e2e's new scan of the fake tables failed on
+  `field_candidate` with `main`'s `sources.py` and passed with the change. Not run: `scripts/ci/verify.sh`, the
+  full suite, any live GEOLocate call, any database query.
+- Durable learnings:
+  - The e2e geography path and its `CHICAGO` pin were on Lane H's #243 when this was dispatched, not on `main`, so the
+    first push could not change that pin; once #243 merged the pin moved here (the new Chicago id is
+    `geolocate:79a9389b0ba6bcaf`) along with a scan of every fake table. A change to a value another open pull
+    request pins needs that pull request's tests moved by whichever merges second.
+  - The canonical provider verifies a stored capture against its stored result digest
+    (`canonical_evidence_provider_v2.py`, `semantic_result_digest`); it does not run the adapter again. By code
+    reading, so an id stored before this change keeps verifying, and is also not rewritten by it.
+  - A candidate's `authority_id` is only compared with the candidate's own (`evidence.validate_resolution`) and copied
+    to `authorityId` (`canonical_projection_v2`, `application.projection`); nothing parses a source's id string. A
+    source id can change format without touching a byte pin: `research_harness/sources.py` is not byte-pinned. The
+    pinned sources are `research_harness/evidence.py` (`VALIDATOR_SOURCE_SHA256`), `engine.py` and `journal.py`
+    (`accepted_output.py`), `model_gateway.py`, and `application/projection.py` (`CANONICAL_PROJECTOR_SHA256`;
+    `native_canonical.py` imports that module as `canonical_projection`, which is not
+    `research_harness/canonical_projection_v2.py`) with `application/domain.py`, `application/storage.py` and
+    `application/active_graph.py` (the expected digests in `native_canonical.py`).
+  - Where the matched point can still be read after this change: the tool result (the candidate and the receipt's
+    result), the stored full response, the canonical evidence `excerpt` (`"\n".join(candidate_json)`), which is in the
+    snapshot's `run.evidence` and so in the public workspace JSON's `evidence` list, and the trace (G39's place for
+    it; no trace was inspected). On the e2e's fake connector no table row held the point after the change (the e2e now
+    scans every table); the historian's own placement is in `tool_call.arguments` by code reading, not scanned.
+  - A regression test whose first assertion checks a format hides the one that matters: the first version of the
+    record-field test failed on the old code at the id format, not at the coordinates. Put the scan first.
+- Failed approaches: none beyond the ordering above.
+- Remaining follow-ups:
+  - OPEN OWNER QUESTION: may the matched point appear in the public evidence excerpt list (the workspace JSON's
+    `evidence`)? The coordinator's ruling and G39 keep it out of record fields only; this change leaves the excerpt
+    as it was.
+  - Old-format rows: GEOLocate is ready on `main` since #243, behind the `SPECIMEN_RESEARCH_HARNESS` switch. The
+    coordinator says that switch is off in production, so no stored `geolocate:<lat>,<lon>` ids are expected. I did not
+    query any database or read the production setting, and this change does not rewrite stored rows.
+### 2026-10-03 — Live fix: a first pass with no listed difference ignores verdicts (Claude)
+
+- Task: go-live live-fix (dispatched by the "Go-live coordinator" session from a read-only production diagnosis of
+  pilot position 10, region R1; no task ID recorded).
+- Branch/worktree: `claude/first-pass-zero-difference-verdicts` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a359dbbce86d26511`,
+  base `main` db855ad6.
+- Outcome: In progress. Pull request open and ready for review; not merged; nothing in it has run against
+  production or a paid model. It removes one deterministic failure path; that R1 then passes, and that R2 passes,
+  is Not confirmed.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/247; code commit d2dc8117.
+- Validation: with the new tests and the old `first_pass.py`, `tests/test_first_pass.py` gave 5 failed, 50 passed
+  (40 passed before the new tests); with the change, 55 passed. The regression test fails on the old code with
+  `AdapterFailure: model_malformed_response` after two requests. Run one file at a time with TZ=America/Chicago and
+  a UTF-8 locale: `test_first_pass_workflow.py` 26 passed before and after, `test_first_pass_bound.py` 7 passed,
+  `test_first_pass_privacy.py` 3 passed, `test_field_harness.py` 150 passed (after). `pre-commit` on the changed
+  files: all hooks passed. Not run: the full suite, `scripts/ci/verify.sh`, any live or paid model call.
+- Durable learnings:
+  - Readings that differ only in whitespace list no difference but still get a first pass (HARNESS.md section 4:
+    every region with two non-identical stored readings). `output_problems` took any verdict as a phantom when the
+    count was 0, so a zero-difference call could fail on verdict count alone; with count 0 the verdicts are now
+    ignored (`first_pass_direct` never reads them) and the pick, the reader letters and the notes are still checked.
+  - The downstream outcome for such a call needs no special case and did not change: the model's pick stands
+    verbatim (`g19_pick` has no material difference to hold against it), a null pick leaves the region unresolved
+    with both readings as `raw_reading` handoffs, and `verify_evidence` accepts either. The workflow test that shows
+    this (`test_a_whitespace_only_pair_is_decided_by_the_first_pass_pick_alone`) passes on the old code as well, so
+    it documents the outcome; it is not the regression test.
+  - The phantom-verdict rule, and the retry text "give exactly one verdict for each difference 1 to 0" it would
+    have sent, are the only things this changes. The failing sub-rule in production could not be proven: a call that ends
+    `model_malformed_response` records no raw responses (`run_agent_bounded` raises before `first_pass_direct`
+    builds the call's record), so the three failed answers are gone. The offline regression shows a verdict at count
+    0 alone reproduces the failure. Only that path is fixed: replayed offline at count 0, an omitted or null
+    `verdicts` (the field has no default), `reader_notes` sent as a JSON string, a missing note, an unknown pick and
+    an empty rationale each still end `model_malformed_response` after the change, as before it, so R1 may still
+    fail. An omitted or null `verdicts` is at least as plausible a production cause as the `reader_notes` string.
+  - `git checkout -b <branch> origin/main` sets the new branch's upstream to `origin/main`. With
+    `push.default=simple` a bare `git push` is refused (the upstream's name differs from the branch's); it would
+    push to main only under `push.default=upstream`. Either way, push with an explicit refspec
+    (`git push -u origin <branch>:<branch>`).
+- Failed approaches: none.
+- Remaining follow-ups: whether to skip the model for whitespace-only readings is a spec question for the owner (not
+  changed); the next live run of position 10 (R1 and R2) is the test of this fix; storing the raw responses of a call
+  that ends malformed would let the next diagnosis prove the failing rule (not done, it changes what a blocked call
+  records); tolerance for an omitted or null `verdicts` or a `reader_notes` JSON string is a possible follow-up, and
+  neither is a confirmed cause (the diagnosis's replay was offline); for the owner, the projection writer
+  (`projection.py`, `"alternatives": still_open if differences else list(transcript.alternatives)`) writes the
+  transcript's alternatives when no difference is listed, so a whitespace-only region with a first pass stores both
+  whitespace variants as alternatives with empty spans, which DATA_CONTRACT 4.2 (alternatives from the material
+  differences left `neither` or `uncertain`) does not describe; a zero-difference first pass never succeeded in
+  production before, so this path has not run there; no change was made.
