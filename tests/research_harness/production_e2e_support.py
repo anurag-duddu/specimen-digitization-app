@@ -54,8 +54,6 @@ ORG = "00000000-0000-4000-8000-000000000001"
 COLLECTION = "00000000-0000-4000-8000-000000000002"
 WORKER = "offline-e2e-worker"
 OPERATOR_ROLES = ("operator", "reviewer", "manager", "admin")
-# The roles the connector lets register a research binding.
-REGISTRATION_ROLES = ("manager", "admin")
 TERMINAL_WORK = ("resolved", "waiting_human", "nonblocking_exception")
 # The public synthetic label (application.api.SYNTHETIC_VALUES) with a catalog
 # number of the catalog parser's 5 to 9 digits and an elevation with its
@@ -468,7 +466,7 @@ class FakeDataConnect:
         return {**self.envelope(variables, specimen_id), "binding": self.binding_row(variables, specimen_id)}
 
     def op_RegisterCanonicalResearchBindingV2(self, variables):
-        self.require_member(variables, REGISTRATION_ROLES)
+        self.require_member(variables)
         specimen_id, r = variables["specimenId"], json.loads(variables["registrationJson"])
         specimen = self.specimens.get(specimen_id)
         snap = None if specimen is None else self.snapshots[(specimen_id, specimen["revision"])]
@@ -515,9 +513,19 @@ class FakeDataConnect:
             "import_proof_digest": r["import_proof_digest"], "current_chain_digest": r["current_chain_digest"],
             "publication_version": "research-publication/v2", "registered_by": variables["actorUid"],
             "registered_at": iso_now()}
-        # Insert-only: the specimen's single binding row is never overwritten.
-        if specimen_id in self.bindings:
-            raise _AlreadyExists("canonical_research_binding_v2")
+        existing = self.bindings.get(specimen_id)
+        registration_columns = [key for key in row if key not in {"registered_by", "registered_at"}]
+        if existing is not None:
+            stale = (existing["binding_id"] != row["binding_id"] and (not existing["active"]
+                or existing["canonical_run_id"] != row["canonical_run_id"]
+                or existing["current_canonical_revision"] != row["current_canonical_revision"]
+                or existing["current_snapshot_sha256"] != row["current_snapshot_sha256"]))
+            replay = (existing["current_receipt_id"] is None
+                and all(existing[key] == row[key] for key in registration_columns))
+            if not (stale or replay):
+                raise ConnectorRefusal("research registration unavailable")
+            if replay:
+                row["registered_by"], row["registered_at"] = existing["registered_by"], existing["registered_at"]
         self.bindings[specimen_id] = row
         return {"registered": 1}
 

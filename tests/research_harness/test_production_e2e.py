@@ -33,7 +33,7 @@ from specimen_digitization.application.worker_deadline import WorkerDeadline
 from specimen_digitization.application.workflow import OperationalBlock, SyntheticAdapters, Workflow
 from specimen_digitization.research_harness.contracts import FieldKey
 from specimen_digitization.research_harness.persistence import (
-    DurabilityScope, HeldUnknown, ImmutableFileBlobs, SqliteStateBackend,
+    DurabilityScope, ImmutableFileBlobs, SqliteStateBackend,
 )
 from specimen_digitization.research_harness.production_runtime import research_program_key
 from specimen_digitization.research_harness.workflow_bridge import compose_production_research_workflow
@@ -46,12 +46,6 @@ from production_e2e_support import (
 
 SWITCH_ON = {"SPECIMEN_RESEARCH_HARNESS": "on"}
 OTHER_OPERATOR = "offline-e2e-other-operator"
-# The connector registers a research binding for a manager or admin only, so
-# the e2e worker is a manager. Production's worker membership is operator: it
-# needs either the owner's approval to widen registration to operator and above
-# (a follow-up change) or a manager-role worker membership; until then its plan
-# tick holds (test_an_operator_worker_cannot_register_and_the_bridge_holds_the_run).
-WORKER_ROLE = "manager"
 RESEARCH_OPERATIONS = {"GetCanonicalResearchBindingV2", "RegisterCanonicalResearchBindingV2",
     "GetCanonicalResearchMaterializationInputsV2", "PublishCanonicalResearchV2"}
 COL_XR = "7ddf754f-d193-4cc9-b351-99906754a03b"
@@ -80,16 +74,15 @@ def no_network(monkeypatch):
 @pytest.fixture
 def rig(tmp_path, monkeypatch):
     backend = SqliteStateBackend(tmp_path / "research-state.sqlite")
-    members = {uid: [{"organization_id": ORG, "collection_id": COLLECTION, "role": role,
-        "can_view_sensitive": False}] for uid, role in ((WORKER, WORKER_ROLE), (OTHER_OPERATOR, "operator"))}
-    backend.grant(DurabilityScope(ORG, COLLECTION, "membership", "membership", 1, WORKER, False),
-        role=WORKER_ROLE)
+    members = {uid: [{"organization_id": ORG, "collection_id": COLLECTION, "role": "operator",
+        "can_view_sensitive": False}] for uid in (WORKER, OTHER_OPERATOR)}
+    backend.grant(DurabilityScope(ORG, COLLECTION, "membership", "membership", 1, WORKER, False))
     fake = FakeDataConnect(backend, members=members)
     blobs = GenerationBlobs(tmp_path / "blobs")
     repository = SqlConnectRepository(session=fake, graph_blobs=blobs)
     ordinary = Workflow(repository, blobs, SyntheticAdapters(blobs, LABEL_TEXT))
     token = actor_uid.set(WORKER)
-    principal = worker_principal(role=WORKER_ROLE)
+    principal = worker_principal()
     created = repository.create(principal, specimen_before_adjudication(blobs), "e2e-intake", "e2e-intake")
     yield SimpleNamespace(fake=fake, backend=backend, repository=repository, ordinary=ordinary,
         principal=principal, specimen_id=created.id, research_blobs=ImmutableFileBlobs(tmp_path / "research"),
@@ -389,27 +382,3 @@ def test_a_principal_other_than_the_worker_actor_is_refused_before_any_research_
         program) is None
     assert not rig.fake.bindings and "RegisterCanonicalResearchBindingV2" not in rig.fake.calls
     assert not rig.model_calls and not rig.source_urls
-
-
-def test_an_operator_worker_cannot_register_and_the_bridge_holds_the_run(rig):
-    workflow = compose(rig)
-    parsed = to_plan(workflow, rig)
-    # At plan the worker has production's membership: operator.
-    rig.fake.members[WORKER][0]["role"] = "operator"
-    rig.backend.grant(DurabilityScope(ORG, COLLECTION, "membership", "membership", 1, WORKER, False))
-    operator = worker_principal(role="operator")
-    with pytest.raises(HeldUnknown, match="native_canonical_owner_required"):
-        asyncio.run(workflow.provision(operator, parsed))
-    with supervised(), pytest.raises(OperationalBlock, match="native_research_admission_or_binding_unavailable"):
-        workflow.step(operator, rig.specimen_id)
-    # The writer refuses before the connector is asked; no binding, no research.
-    assert not rig.fake.bindings and "RegisterCanonicalResearchBindingV2" not in rig.fake.calls
-    assert not rig.model_calls and not rig.source_urls and not rig.fake.receipts
-    held = rig.repository.get(rig.principal.scope, rig.specimen_id)
-    assert held.version == parsed.version and held.run.stage == "plan"
-    # The steps before registration were written once and replayed: the base
-    # record and the run's state with its one job.
-    assert len([row for row in rig.fake.tables["record_version"].values() if row["runId"] == parsed.run.id]) == 1
-    document = rig.backend.load(DurabilityScope(ORG, COLLECTION, rig.specimen_id, "read", 1, WORKER, False),
-        research_program_key(parsed.run.id))
-    assert len(document.state["jobs"]) == 1

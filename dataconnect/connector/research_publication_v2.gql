@@ -801,9 +801,10 @@ mutation MarkResearchPublicationAttemptV2($organizationId: UUID!, $collectionId:
 }
 
 
-# Specimen-ID restart discovery reads immutable actor-scoped intents only.
-# A complete <=20 inventory is required; overflow returns NULL and HOLDs. It
-# never picks a latest row, current registration, lease, budget or mutable job.
+# Specimen-ID restart discovery reads immutable actor-scoped intents of the
+# specimen's active binding only, so intents left by a replaced registration are
+# never replayed or counted. A complete <=20 inventory is required; overflow
+# returns NULL and HOLDs. It never picks a latest row, lease, budget or mutable job.
 query GetRetainedResearchPublicationLocatorsV2($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!) @auth(level: NO_ACCESS) {
   organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) { active }
   collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) { active role canViewSensitive }
@@ -817,6 +818,8 @@ query GetRetainedResearchPublicationLocatorsV2($organizationId: UUID!, $collecti
       WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
     ), complete AS (
       SELECT i.* FROM public.research_publication_intent_v2 i JOIN permitted s ON s.id=i.specimen_id
+      JOIN public.canonical_research_binding_v2 b ON b.organization_id=$1 AND b.collection_id=$2
+        AND b.specimen_id=$3 AND b.active AND i.payload->>'binding_id'=b.binding_id::text
       WHERE i.organization_id=$1 AND i.collection_id=$2 AND i.specimen_id=$3 AND i.actor_uid=$4
     ) SELECT count(*) AS locator_count, CASE WHEN count(*)<=20 THEN
       COALESCE(jsonb_agg(jsonb_build_object('contract_version','retained-publication-locator/v2',

@@ -701,29 +701,28 @@ def registration_case(c,*,journal=False,policy_digest=None):
         specimen_id=c.p.basis.scope.specimen_id)
 
 
-def registering(c,role="manager"):
-    # The connector registers a binding for a manager or admin only.
+def registering(c,role="operator"):
+    # The connector registers a binding for an operator, reviewer, manager or admin.
     return c.b.principal.model_copy(update={"role":role})
 
 
-def test_a_manager_registers_the_binding_with_the_provisioners_store_and_scope(causal):
+def test_an_operator_registers_the_binding_with_the_provisioners_store_and_scope(causal):
     c=causal;r=registration_case(c)
-    manager=registering(c)
-    result=call(c,lambda:r.writer.register_current_binding(manager,r.specimen_id,r.registration,store=r.store,scope=r.scope))
+    operator=registering(c)
+    result=call(c,lambda:r.writer.register_current_binding(operator,r.specimen_id,r.registration,store=r.store,scope=r.scope))
     assert result=="registered-binding" and r.store.reads==[r.scope]
     assert [row[0] for row in r.connector.calls]==["RegisterCanonicalResearchBindingV2","read_current_binding"]
     operation,variables,mutation=r.connector.calls[0]
     payload=json.loads(variables["registrationJson"])
-    assert mutation is True and variables["actorUid"]==manager.user_id and variables["specimenId"]==r.specimen_id
+    assert mutation is True and variables["actorUid"]==operator.user_id and variables["specimenId"]==r.specimen_id
     assert payload["binding_id"]==str(r.registration.binding_id)
     assert payload["journal_budget_policy"]==REGISTRATION_POLICY and payload["state_revision"]==3
 
 
-@pytest.mark.parametrize("role",["viewer","operator","reviewer"])
-def test_only_a_manager_or_admin_registers_a_binding(causal,role):
+def test_a_viewer_cannot_register_a_binding(causal):
     c=causal;r=registration_case(c)
-    with pytest.raises(PermissionError,match="native_canonical_owner_required"):
-        call(c,lambda:r.writer.register_current_binding(registering(c,role),r.specimen_id,r.registration,store=r.store,scope=r.scope))
+    with pytest.raises(PermissionError,match="native_canonical_operator_required"):
+        call(c,lambda:r.writer.register_current_binding(registering(c,"viewer"),r.specimen_id,r.registration,store=r.store,scope=r.scope))
     assert r.connector.calls==[] and r.store.reads==[]
 
 
