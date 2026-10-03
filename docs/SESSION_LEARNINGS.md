@@ -14038,3 +14038,38 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   `scripts/ops/owner_setup.sh` run (with `--setup-only` before the merge, or in full after it; push-triggered
   releases fail until the setup has been done);
   first live run settles the items listed as not verified in the pull request body.
+
+### 2026-10-03 — Live fix: an unreadable region stays unresolved in the projection (Claude)
+
+- Task: go-live live-fix 1 of 2 (dispatched by the "Go-live coordinator" session from a read-only production
+  diagnosis; no task ID recorded).
+- Branch/worktree: `claude/live-fix-unreadable-region-projection` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a2513201fcc4717de`,
+  base `main` 1fbd5a5b.
+- Outcome: In progress. Pull request open and ready for review; not merged; nothing in it has run against
+  production.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/244; code commit fec1383a.
+- Validation: the new regression test fails on the old `projection.py` (the Data Connect `picked` rule, as a
+  Python assertion) and passes on the fix. 24 projection, first-pass and research-harness canonical test files run one
+  at a time, all passed (`test_sqlconnect_projection.py` skipped, 2 tests); `tests/test_deployment_policy.py`
+  passed. A differential render of `writes()` from main's file and the fixed file on one fixture state: resolved
+  regions byte-identical, only the unresolved identical region differs. `pre-commit` on the changed files: all
+  hooks passed. Not run: the full suite (CI runs it), anything against Data Connect or production.
+- Durable learnings:
+  - `CANONICAL_PROJECTOR_SHA256` in `research_harness/native_canonical.py` is the SHA-256 of
+    `application/projection.py`. Any edit to the projection, even a comment, must re-pin it in the same commit, or
+    19 tests in `test_native_canonical_contract.py` fail with `canonical_projector_source_not_qualified`. Edit the
+    file last, then run `shasum -a 256` on it. Domain, storage and active_graph have the same kind of pin beside it.
+  - A new 64-hex literal trips detect-secrets, and putting its SHA-1 into `.secrets.baseline` then trips gitleaks
+    (generic-api-key on the `hashed_secret` line) unless `.gitleaks.toml` gets a per-hash entry. The inline
+    `# pragma: allowlist secret` on the literal avoids both; the detect-secrets hook then removes the stale
+    baseline entry itself.
+  - The `specimen()` fixture makes random ids on every call. To compare two copies of a module, build one state and
+    render both modules from it; two fresh states never compare equal, even old against old.
+  - A worktree has no `.venv`: `uv sync --frozen` first. A script started with `&` inside a backgrounded Bash call
+    kept running after the call returned and wrote into the same results file as the later foreground run.
+- Failed approaches: updating the hashed_secret in `.secrets.baseline` (blocked by gitleaks, see above).
+- Remaining follow-ups: re-projecting the already-affected production specimen adds a new
+  `TranscriptionVersion` row and handoffs and leaves the old wrong row (no delete operations exist); about 10
+  percent of real slides may contain an unreadable region; whether the research-harness canonical publication
+  path is live is Not confirmed.
