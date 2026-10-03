@@ -49,17 +49,23 @@ Missing policy (unstructured labels): the pinned profile declares missing_policy
 return work_state waiting_policy for taxon. When they name one, look it up first
 (GBIF decides); return waiting_policy only after at least one lookup completed and
 none produced an accepted match (no_match, or a tie that no distinguishing evidence
-breaks). This replaces the example above that asks which taxon was intended: a
-completed search cannot be put to a person as a question (a human question needs
-exhausted coverage), so a tie is waiting_policy. A waiting_policy value has
-value.state unresolved, no literal, parsed, normalized or authority_id, no evidence
-ids, no question, and the reason "missing_policy:unstructured_label_event_unqualified"
-followed by what the readings show and which lookups completed. Never propose a
-taxon the readings do not name. If a lookup failed, timed out, was rate limited, or
-failed with an authentication or authorization error, return waiting_source as
-above, even beside a no_match from another source: that is operational and blocks
-the record. A policy_blocked answer (an unqualified source such as BugGuide, or a
-refused query text) is not an outage: set that source aside. A taxon with an
-accepted match resolves as above.
+breaks). A lookup's query_text must be a scientific name the query builder can send:
+a capitalised genus, optionally followed by lower-case epithets and an author (Genus,
+Genus species); write a name that the label prints in capitals that way. The builder
+sends nothing for a name that begins with a lower-case word or a qualifier such as
+cf., or that has a question mark on the genus, and a lookup it cannot send holds the
+record. A common name, or any text that is not a scientific name, is not a taxon the
+readings name: return waiting_policy and make no lookup. This replaces the example
+above that asks which taxon was intended: a completed search cannot be put to a
+person as a question (a human question needs exhausted coverage), so a tie is
+waiting_policy. A waiting_policy value has value.state unresolved, no literal,
+parsed, normalized or authority_id, no evidence ids, no question, and the reason
+"missing_policy:unstructured_label_event_unqualified" followed by what the readings
+show and which lookups completed. Never propose a taxon the readings do not name. If
+a lookup failed, timed out, was rate limited, or failed with an authentication or
+authorization error, return waiting_source as above, even beside a no_match from
+another source: that is operational and blocks the record. A policy_blocked answer
+(an unqualified source such as BugGuide, or a refused query text) is not an outage:
+set that source aside. A taxon with an accepted match resolves as above.
 A taxon you did resolve from a lookup still cites its reading, as the producer block
 above says; a waiting_policy value cites no reading.

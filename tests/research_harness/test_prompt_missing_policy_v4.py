@@ -47,8 +47,8 @@ FILE_SHA256 = {
     "specimen_measurement-v3.txt": "9fcc4eb9d206b597cfbc0e203c6d57c2c4c8e578c403c939938baeee516b5480",  # pragma: allowlist secret
     "specimen_parties-v3.txt": "752b3c106e8942840eb0e6be7540d286f8ae6724d962c018e67fa0d0cde9011f",  # pragma: allowlist secret
     "specimen_collection-v3.txt": "40d6979ed0a375987fb696afb9b20dc4e25e026f1946ec594d4292affdcd6b18",  # pragma: allowlist secret
-    "specimen_taxonomy-v4.txt": "0b504275294d858fb7a78c370d439fae9478139e5aff06a3a8103ed56722e8bb",  # pragma: allowlist secret
-    "specimen_geography-v4.txt": "26ef81b5efd5850e67ba6afe4908f18bdfaae2af12ca0762ada5dd689c039a4d",  # pragma: allowlist secret
+    "specimen_taxonomy-v4.txt": "bb64de77ab72514726c34b64519c73574542dfcbd5d14b9fbf6c6cb4978312ab",  # pragma: allowlist secret
+    "specimen_geography-v4.txt": "dc11acc47becdecedb7f329f65fdbbdd5d07abdd1833b38e5812a6568c2a00b4",  # pragma: allowlist secret
     "specimen_temporal-v4.txt": "92a1663ce8b4df46b6d916eef2c1a368e1bcd1ca537f54caea6ac4d62c950cf9",  # pragma: allowlist secret
     "specimen_measurement-v4.txt": "2dc272a7ac098339563b81565d529c00d039fcb9c589b911006f75a8bdede63d",  # pragma: allowlist secret
     "specimen_parties-v4.txt": "c8d20d3a8eaa81e7cd53ca9f7c9ee81ebd01ddc933067a3d6591e6b3b9fed4be",  # pragma: allowlist secret
@@ -56,8 +56,8 @@ FILE_SHA256 = {
 }
 # Each role's pin digest on its v4 file (the digest of common-v1.txt, the v4 file and the owned-fields line).
 V4_ROLE_DIGESTS = {
-    SpecialistRole.TAXONOMY: "c7c35ed3ccf7b6571eeabb3b8cba0bc5c6e648f09213486924261d9e373d2e88",  # pragma: allowlist secret
-    SpecialistRole.GEOGRAPHY: "473ae15d1835ef911c27ce8f0b6338f776edc676a33b89ccde6d0b44a8fbe6f8",  # pragma: allowlist secret
+    SpecialistRole.TAXONOMY: "f16c0c617e79d3ec35b817ff6b202887c09bd032682ccea2995cc59b97532b4e",  # pragma: allowlist secret
+    SpecialistRole.GEOGRAPHY: "e9cef2c07f305e20010bee859d972c33f22c09b540b9288d76fec7fa7c182ebe",  # pragma: allowlist secret
     SpecialistRole.TEMPORAL: "1764838c2795e22120bf946b806bedc79c293132cbfe0ebb1658063f76d60886",  # pragma: allowlist secret
     SpecialistRole.MEASUREMENT: "cd304517f75902dd88235f28d4c9cfc5cfb1e34418c85d182671a4454c8e890d",  # pragma: allowlist secret
     SpecialistRole.PARTIES: "d465ddd68fa218068eeb2c6cca3419034fde5253675c96fd270b5e608867fc3a",  # pragma: allowlist secret
@@ -213,6 +213,51 @@ def test_geography_keeps_waiting_source_for_a_failed_lookup_and_a_policy_blocked
             '"nothing to look up" case: waiting_policy.') in text
     assert "failed, timed out or was refused" not in text
     assert "This replaces the waiting_source instruction above for that case only" in text
+
+
+def test_a_taxon_lookup_is_only_for_a_name_the_query_builder_can_send():
+    """N1 of the second review: 'look it up first' sent GBIF a name the query builder rejects (all capitals, a
+    lower-case start, 'cf.', a question mark): no request is sent and the record ends
+    research_worker_custody_requires_reconciliation. The block names exactly the shapes the builder refuses."""
+    text = flat(block(SpecialistRole.TAXONOMY))
+    assert ("A lookup's query_text must be a scientific name the query builder can send: a capitalised genus, "
+            "optionally followed by lower-case epithets and an author (Genus, Genus species); write a name that "
+            "the label prints in capitals that way.") in text
+    assert ("The builder sends nothing for a name that begins with a lower-case word or a qualifier such as cf., "
+            "or that has a question mark on the genus, and a lookup it cannot send holds the record.") in text
+    assert ("A common name, or any text that is not a scientific name, is not a taxon the readings name: "
+            "return waiting_policy and make no lookup.") in text
+
+
+# What lookup.scientific_name (the query builder behind GBIF's request) sends for each shape the text names.
+SENDABLE = ("Camponotus", "Camponotus sp.", "Danaus plexippus", "Danaus plexippus Linnaeus",
+    "Danaus plexippus (Linnaeus, 1758)", "Carabidae")
+NOT_SENDABLE = ("CAMPONOTUS", "CAMPONOTUS SP.", "unknown beetle", "danaus plexippus", "cf. Danaus", "Danaus?")
+
+
+@pytest.mark.parametrize("literal", SENDABLE)
+def test_the_shapes_the_taxonomy_text_allows_are_sent(literal):
+    from specimen_digitization.application.lookup import scientific_name
+    name = scientific_name(literal)
+    assert name is not None and name.genus and name.query[0].isupper()
+
+
+@pytest.mark.parametrize("literal", NOT_SENDABLE)
+def test_the_shapes_the_taxonomy_text_refuses_send_nothing(literal):
+    """The builder returns no name, or a name with no genus, and sources.SourceBroker raises before any request
+    (no captured response, so the record is held): the text must keep a model from sending them."""
+    from specimen_digitization.application.lookup import scientific_name
+    name = scientific_name(literal)
+    assert name is None or not name.genus
+
+
+def test_geography_does_not_send_a_query_for_nothing_to_look_up():
+    """N2 of the second review: a refused (policy_blocked) result is receiptless, and a receiptless result in a
+    role whose fields publish stops its publications (canonical_local_utility_unproved). The first rule keeps a
+    model from sending the query at all."""
+    text = flat(block(SpecialistRole.GEOGRAPHY))
+    assert ("there is nothing to look up and you do not send such a query: return work_state waiting_policy "
+            "for that field") in text
 
 
 def test_geography_leaves_country_state_and_precise_location_and_the_human_route_alone():

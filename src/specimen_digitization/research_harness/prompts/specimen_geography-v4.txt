@@ -105,9 +105,9 @@ passes validation, then blocks publication of the record.
 Missing policy (unstructured labels): the pinned profile declares missing_policy
 "unstructured_label_event_unqualified" for county and city. When the label names no
 such unit, or for county when the country is not the USA (GEOLocate confirms a
-county only inside the USA), there is nothing to look up: return work_state
-waiting_policy for that field, value.state unresolved, no literal, parsed, normalized
-or authority_id, no evidence ids, no question, reason
+county only inside the USA), there is nothing to look up and you do not send such a
+query: return work_state waiting_policy for that field, value.state unresolved, no
+literal, parsed, normalized or authority_id, no evidence ids, no question, reason
 "missing_policy:unstructured_label_event_unqualified" followed by what the label
 shows. This replaces the waiting_source instruction above for that case only. If a
 GEOLocate lookup for the field failed or timed out (an HTTP error, a rate limit, a

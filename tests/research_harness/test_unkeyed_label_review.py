@@ -44,6 +44,7 @@ from pydantic_ai.models.function import FunctionModel
 
 import production_e2e_support as support
 from specimen_digitization.application.domain import FieldValue, LookupStatus, ValueState
+from specimen_digitization.application.lookup import scientific_name
 from specimen_digitization.application.production import SqlConnectRepository, actor_uid
 from specimen_digitization.application.worker_deadline import WorkerDeadline
 from specimen_digitization.application.workflow import OperationalBlock, SyntheticAdapters, Workflow
@@ -134,6 +135,20 @@ def unkeyed(tmp_path, monkeypatch):
 
 
 @pytest.fixture
+def printed_taxon(tmp_path, monkeypatch):
+    """A rig factory: ``printed_taxon(line)`` builds the rig for the unkeyed label plus that taxon line."""
+    tokens = []
+
+    def make(line):
+        rig, token = build_rig(tmp_path, monkeypatch, "\n".join((*LABEL_LINES, line)))
+        tokens.append(token)
+        return rig
+    yield make
+    for token in tokens:
+        actor_uid.reset(token)
+
+
+@pytest.fixture
 def named_taxon(tmp_path, monkeypatch):
     rig, token = build_rig(tmp_path, monkeypatch, NAMED_TAXON_LABEL)
     yield rig
@@ -168,6 +183,24 @@ def instructed(request):
         r"(.+?)(?:, and no source|\.)", text)
     named = {FieldKey(name) for name in re.findall(r"[a-z_]+", listed[1]) if name != "and"} if listed else set()
     return tuple(name for name in CITATION_FIELDS if name in producer), named
+
+
+LOOKUP_RULE = "A lookup's query_text must be a scientific name the query builder can send"
+
+
+def lookup_query(request, printed, follow=True):
+    """The query_text a taxonomy specialist sends GBIF for the taxon the label prints; None: no lookup.
+
+    A specialist that reads the pinned text's lookup rule writes a name the query builder can send (a
+    name printed in capitals gets a capitalised genus and lower-case epithets) and makes no lookup of text
+    that is no scientific name; one that does not read it (``follow`` False, or a text without the rule)
+    sends what the label prints."""
+    if not follow or LOOKUP_RULE not in " ".join(request.prompt.text.split()):
+        return printed
+    if printed.isupper():
+        printed = " ".join(word.capitalize() if index == 0 else word.lower() for index, word in enumerate(printed.split()))
+    name = scientific_name(printed)
+    return printed if name is not None and name.genus else None
 
 
 def reading_provenance(request, fields):
@@ -205,7 +238,8 @@ FAILED_LOOKUP = {LookupStatus.RATE_LIMITED, LookupStatus.TIMEOUT, LookupStatus.A
 
 
 def specialist_factory(log, *, abstain=None, taxon_lookup=False, after_failure=WorkState.WAITING_SOURCE,
-                       after_retry=None, geography_rounds=(GEOGRAPHY,), probe_museum_source=False):
+                       after_retry=None, geography_rounds=(GEOGRAPHY,), probe_museum_source=False,
+                       taxon_printed="Danaus plexippus", follow_lookup_rule=True):
     """A scripted specialist for the unkeyed label.
 
     The specialist reads its pinned prompt text (``instructed``): it cites the reading the producer block
@@ -217,7 +251,9 @@ def specialist_factory(log, *, abstain=None, taxon_lookup=False, after_failure=W
     refused its answer); after a completed no_match it returns waiting_policy.
     ``geography_rounds``: the fields it sends to GEOLocate in each turn. A declared geography field
     (county, city) whose lookup failed gets ``after_failure``; an undeclared one waiting_source.
-    ``probe_museum_source``: the collection specialist first queries an unready museum source."""
+    ``probe_museum_source``: the collection specialist first queries an unready museum source.
+    ``taxon_printed``: the taxon text the label prints; the specialist queries GBIF with what ``lookup_query``
+    makes of it, and makes no lookup (waiting_policy) when the text is no scientific name."""
     def factory(request, binding):
         role = request.role
 
@@ -227,9 +263,10 @@ def specialist_factory(log, *, abstain=None, taxon_lookup=False, after_failure=W
             results, attempted = support._results(messages)
             retried = any(isinstance(part, RetryPromptPart) and part.tool_name not in ("lookup_source", "invoke_utility")
                 for message in messages for part in getattr(message, "parts", ()))
-            if role == SpecialistRole.TAXONOMY and taxon_lookup and not attempted:
+            query = lookup_query(request, taxon_printed, follow_lookup_rule) if taxon_lookup else None
+            if role == SpecialistRole.TAXONOMY and query is not None and not attempted:
                 return ModelResponse(parts=[ToolCallPart("lookup_source", {"query": {
-                    "source_id": "gbif", "field_key": "taxon", "query_text": "Danaus plexippus"}},
+                    "source_id": "gbif", "field_key": "taxon", "query_text": query}},
                     tool_call_id="unkeyed-gbif")], usage=support.USAGE)
             if role == SpecialistRole.GEOGRAPHY and turn <= len(geography_rounds):
                 return ModelResponse(parts=[ToolCallPart("lookup_source", {"query": {
@@ -259,7 +296,12 @@ def specialist_factory(log, *, abstain=None, taxon_lookup=False, after_failure=W
                             "the GEOLocate lookup failed"))
                 elif key == FieldKey.TAXON and taxon_lookup:
                     result = last_result(results, "gbif", key)
-                    if result.status == LookupStatus.NO_MATCH:
+                    if result is None:
+                        # No lookup was made: the text the label prints is no scientific name.
+                        assert query is None
+                        resolutions.append(abstention(key, WorkState.WAITING_POLICY if key in named
+                            else WorkState.WAITING_SOURCE, "the readings name no scientific name"))
+                    elif result.status == LookupStatus.NO_MATCH:
                         resolutions.append(abstention(key, WorkState.WAITING_POLICY if key in named
                             else WorkState.WAITING_SOURCE, "GBIF completed with no match"))
                     else:
@@ -531,3 +573,49 @@ def test_a_specialist_reading_the_v3_text_alone_blocks_the_record_and_the_v4_blo
     assert {f"research_work:{key}:waiting_source" for key in (*LITERALS, "taxon")} <= reasons
     assert not {reason for reason in reasons if reason.startswith("mandatory_unresolved:")
                 and reason != "mandatory_unresolved:verbatim_dts"}
+
+
+# ---- N1: look up only a name the query builder can send --------------------------------------------
+def test_the_pinned_taxonomy_text_carries_the_lookup_rule_and_the_v3_text_does_not():
+    from specimen_digitization.research_harness.prompts import READING_CITATION_PROMPT_VERSION  # noqa: F401
+    assert LOOKUP_RULE in " ".join(pinned(SpecialistRole.TAXONOMY).prompt.text.split())
+    assert LOOKUP_RULE not in " ".join(pinned(SpecialistRole.TAXONOMY, "specimen_taxonomy-v3.txt").prompt.text.split())
+
+
+@pytest.mark.parametrize("printed", ["unknown beetle", "cf. Danaus", "Danaus?"])
+def test_a_specialist_reading_the_text_makes_no_lookup_of_text_the_query_builder_cannot_send(printed_taxon, printed):
+    """The label prints a common name (or a doubtful name). The text says to make no lookup and return
+    waiting_policy: no GBIF request, the record ends in review with mandatory_unresolved:taxon."""
+    rig = printed_taxon(printed)
+    parsed, specimen, hold = run_research(rig, specialist_factory(rig.model_calls, taxon_lookup=True,
+        taxon_printed=printed), transport(rig.source_urls))
+    assert hold is None, hold
+    assert (specimen.run.stage, specimen.run.disposition) == ("finalized", "needs_human_review")
+    assert not [url for url in rig.source_urls if "gbif" in url]
+    assert "mandatory_unresolved:taxon" in specimen.run.reasons
+    assert not [reason for reason in specimen.run.reasons if reason.startswith("research_work:")]
+
+
+def test_a_specialist_reading_the_text_writes_a_name_printed_in_capitals_as_a_capitalised_genus(printed_taxon):
+    """'CAMPONOTUS SP.' is refused by the query builder as printed (probe M of the review); the text says to
+    write it with a capitalised genus, which GBIF is asked for (here a genuine no_match)."""
+    rig = printed_taxon("CAMPONOTUS SP.")
+    parsed, specimen, hold = run_research(rig, specialist_factory(rig.model_calls, taxon_lookup=True,
+        taxon_printed="CAMPONOTUS SP."), transport(rig.source_urls, gbif_body=gbif_no_match()))
+    assert hold is None, hold
+    assert (specimen.run.stage, specimen.run.disposition) == ("finalized", "needs_human_review")
+    [url] = [url for url in rig.source_urls if "gbif" in url]
+    assert "scientificName=Camponotus&" in url and "CAMPONOTUS" not in url
+    assert "mandatory_unresolved:taxon" in specimen.run.reasons
+
+
+def test_a_specialist_that_sends_the_printed_name_holds_the_record_and_no_request_is_sent(printed_taxon):
+    """The hazard the rule prevents (probe M): a name in capitals sent as printed. The query builder raises
+    before any HTTP request, no response is captured, and the record is held whatever the specialist
+    answers afterwards."""
+    rig = printed_taxon("CAMPONOTUS SP.")
+    parsed, specimen, hold = run_research(rig, specialist_factory(rig.model_calls, taxon_lookup=True,
+        taxon_printed="CAMPONOTUS SP.", follow_lookup_rule=False), transport(rig.source_urls))
+    assert isinstance(hold, OperationalBlock) and str(hold) == "research_worker_custody_requires_reconciliation"
+    assert specimen.run.stage == "plan" and specimen.run.disposition is None
+    assert not [url for url in rig.source_urls if "gbif" in url]
