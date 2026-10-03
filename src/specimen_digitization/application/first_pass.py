@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent, BinaryContent, ModelRetry
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.messages import ModelMessagesTypeAdapter
+from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.usage import UsageLimits
 
 from ..model_gateway import HuggingFaceModelGateway
@@ -213,8 +214,33 @@ def g19_pick(selected: str | None, differences) -> str | None:
     return selected
 
 
+class InputBoundModel(WrapperModel):
+    """Sends a request only when its input cannot exceed the route's bound, so
+    the call never spends past its reservation (lane_reservations). A first
+    request over the bound blocks the step; a retry over it stops the call at
+    its cap, which selects no reading (G19)."""
+
+    def __init__(self, wrapped, bound: int, rule: dict | None):
+        super().__init__(wrapped)
+        self.bound, self.rule = bound, rule
+
+    async def request(self, messages, model_settings, model_request_parameters):
+        from .lane_reservations import request_input_tokens
+        from .workflow import OperationalBlock
+
+        size = request_input_tokens(messages, model_request_parameters, self.rule)
+        if size is None or size > self.bound:
+            if not any(message.kind == "response" for message in messages):
+                raise OperationalBlock("first_pass_input_over_bound")
+            raise UsageLimitExceeded("The retry's input could exceed its bound")
+        return await self.wrapped.request(
+            messages, model_settings, model_request_parameters
+        )
+
+
 def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
     """Run the first pass for one region in the isolated model child."""
+    from .lane_reservations import image_rule
     from .reliability import run_agent_bounded
     from .workflow import OperationalBlock, crop_bytes
 
@@ -260,12 +286,21 @@ def first_pass_direct(adapter, specimen, region, readings) -> FirstPassDecision:
     )
     request, letters = build_request(readings, differences)
     image = crop_bytes(adapter.blobs, specimen, region)
+    # The bounds the step's reservation assumed: each request's input, checked
+    # before it is sent, and each answer's tokens, capped by the provider.
+    prices = run.profile.execution.price_list or {}
+    price = prices.get("models", {}).get(route_id) or {}
+    model = PrivateProviderModel(gateway.model_for(route_id))
+    if bound := price.get("max_input_tokens") or price.get("context_tokens"):
+        model = InputBoundModel(model, bound, image_rule(prices, route_id))
+    output_cap = price.get("max_output_tokens")
     # No instrumentation override: the lane's global setting applies (HARNESS.md 3).
     agent = Agent(
-        PrivateProviderModel(gateway.model_for(route_id)),
+        model,
         name="first_pass_" + route_id.replace("-", "_"),
         output_type=FirstPassOutput,
         instructions=prompt.text,
+        model_settings={"max_tokens": output_cap} if output_cap else None,
     )
 
     @agent.output_validator

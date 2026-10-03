@@ -148,6 +148,24 @@ class ModelPrice(FrozenRecord):
     image_tokens: ImageTokens | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # The pipeline's own bounds on one request, when it sets them: a request
+    # whose input could exceed `max_input_tokens` is refused before it is sent,
+    # each answer is capped at `max_output_tokens`, and the call reserves these
+    # in place of the context length (the first pass; lane_reservations).
+    max_input_tokens: int | None = Field(
+        default=None, ge=1, le=10**8, exclude_if=lambda value: value is None
+    )
+    max_output_tokens: int | None = Field(
+        default=None, ge=1, le=10**6, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def bounds_fit_the_context(self):
+        if self.max_input_tokens is not None and (
+            self.context_tokens is None or self.max_input_tokens > self.context_tokens
+        ):
+            raise ValueError("a request's input bound must fit the route's context length")
+        return self
 
 
 class ServicePrice(FrozenRecord):
