@@ -122,6 +122,19 @@ def test_the_worker_hands_over_to_the_job_the_api_starts():
     assert [grant.role for grant in handover] == ["roles/run.invoker"]
 
 
+def test_only_the_worker_job_turns_the_research_harness_on():
+    """The drain reads the switch with enablement's own parser; the API and SAM 3 never carry it."""
+    from specimen_digitization.research_harness.enablement import SETTING, research_harness_enabled
+
+    assert SETTING == "SPECIMEN_RESEARCH_HARNESS" and S.WORKER["env"][SETTING] == "on"
+    built = bodies("api", "worker", "sam")
+    worker = plain_env(built["worker"]["template"]["template"]["containers"][0])
+    assert worker[SETTING] == "on" and research_harness_enabled(worker) is True
+    for role in ("api", "sam"):
+        names = {row["name"] for row in built[role]["template"]["containers"][0]["env"]}
+        assert SETTING not in S.ROLES[role]["env"] and SETTING not in names
+
+
 def test_the_worker_job_passes_the_real_drain_parser_and_settings_check(monkeypatch, capsys):
     """The job's args replace the image's CMD ["--mode", "production"], so they must carry the mode themselves."""
     from specimen_digitization import observability
