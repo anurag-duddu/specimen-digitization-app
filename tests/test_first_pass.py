@@ -41,6 +41,10 @@ from specimen_digitization.prompts import PromptName, ResolvedPrompt
 
 QWEN = "VI-24-68-7.\nEpipocous\nsp.1\n♀ terminalia"
 MUSE = "VI-24-68-7\nEpipsocus\nSp. 1\n♀ terminalia"
+# The same characters, spaced differently: the shape of the pilot's position-10
+# R1 pair, whose first pass listed no difference.
+COMPACT = "IX-3-66-10\nIX-14-46"
+SPACED = "IX - 3 - 66 - 10\nIX - 14 - 46"
 REGION = Region(
     asset_id="asset-1", x=0, y=0, width=9, height=9, order=0, method="m", version="1"
 )
@@ -116,6 +120,85 @@ def test_output_problems_demand_one_verdict_per_difference_and_known_letters():
         "give exactly one verdict for each difference 1 to 2",
         "give one note for each reader ['A', 'B']",
     ]
+
+
+def answer(**update):
+    return FirstPassOutput(
+        **{
+            "selected_reader": "A",
+            "verdicts": [],
+            "rationale": "r",
+            "reader_notes": {"A": "a", "B": "b"},
+            **update,
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "verdicts",
+    [
+        [],
+        [{"number": 1, "supported": "A"}],
+        [{"number": 1, "supported": "B"}, {"number": 2, "supported": "neither"}],
+        [{"number": 7, "supported": "nobody"}],
+    ],
+    ids=[
+        "none",
+        "one for a difference not listed",
+        "two",
+        "a number and letter unknown",
+    ],
+)
+def test_verdicts_are_ignored_when_no_difference_is_listed(verdicts):
+    # Nothing is numbered, so a verdict is for a difference that does not exist;
+    # first_pass_direct reads verdicts 1..len(differences) only, none here.
+    assert output_problems(answer(verdicts=verdicts), {"A": 0, "B": 1}, 0) == []
+
+
+def test_a_call_with_no_difference_still_needs_its_pick_and_its_notes():
+    output = answer(
+        selected_reader="C",
+        verdicts=[{"number": 1, "supported": "A"}],
+        reader_notes={"A": "a"},
+    )
+
+    assert output_problems(output, {"A": 0, "B": 1}, 0) == [
+        "selected_reader must be one of ['A', 'B'] or null",
+        "give one note for each reader ['A', 'B']",
+    ]
+
+
+@pytest.mark.parametrize(
+    "verdicts",
+    [
+        [],
+        [{"number": 2, "supported": "A"}],
+        [{"number": 1, "supported": "A"}, {"number": 1, "supported": "A"}],
+        [{"number": 1, "supported": "A"}, {"number": 2, "supported": "A"}],
+    ],
+    ids=[
+        "a verdict missing",
+        "the wrong number",
+        "a number twice",
+        "a phantom verdict",
+    ],
+)
+def test_a_listed_difference_still_demands_exactly_its_own_verdict(verdicts):
+    assert output_problems(answer(verdicts=verdicts), {"A": 0, "B": 1}, 1) == [
+        "give exactly one verdict for each difference 1 to 1"
+    ]
+
+
+def test_a_listed_difference_is_met_by_its_verdict_and_its_letter_is_checked():
+    letters = {"A": 0, "B": 1}
+
+    assert (
+        output_problems(answer(verdicts=[{"number": 1, "supported": "B"}]), letters, 1)
+        == []
+    )
+    assert output_problems(
+        answer(verdicts=[{"number": 1, "supported": "C"}]), letters, 1
+    ) == ["each verdict's supported must be one of ['A', 'B', 'neither', 'uncertain']"]
 
 
 def test_first_pass_cost_reservation_is_one_key_for_every_region():
@@ -356,6 +439,96 @@ def test_an_answer_that_stays_invalid_is_a_known_malformed_response(
     assert len(calls) == 2
     assert failure.value.status == LookupStatus.MALFORMED
     assert failure.value.outcome_unknown is False
+
+
+def test_a_phantom_verdict_for_a_listed_difference_is_still_malformed(
+    monkeypatch, tmp_path
+):
+    # The count-0 rule does not weaken a real difference's check: a fourth
+    # verdict for three listed differences is retried once, then malformed.
+    phantom = dict(
+        VALID, verdicts=[*VALID["verdicts"], {"number": 4, "supported": "B"}]
+    )
+    calls = []
+    with pytest.raises(AdapterFailure) as failure:
+        direct_first_pass(monkeypatch, tmp_path, calls, phantom)
+
+    assert len(calls) == 2 and failure.value.status == LookupStatus.MALFORMED
+    retried, _ = direct_first_pass(monkeypatch, tmp_path, [], phantom, VALID)
+    assert retried.selected_observation_id is not None
+
+
+def whitespace_pair():
+    return [reading("handwriting-qwen", COMPACT), reading("handwriting-muse", SPACED)]
+
+
+NO_DIFFERENCE = {
+    "selected_reader": "A",
+    "verdicts": [],
+    "rationale": "The same characters, spaced differently.",
+    "reader_notes": {"A": "compact", "B": "spaced"},
+}
+PHANTOM_VERDICT = dict(NO_DIFFERENCE, verdicts=[{"number": 1, "supported": "A"}])
+
+
+def test_a_phantom_verdict_does_not_fail_a_call_with_no_difference_to_judge(
+    monkeypatch, tmp_path
+):
+    # The pilot's position 10, R1: the readers differ only in whitespace, so no
+    # difference is listed; the model's verdict for a difference that does not
+    # exist failed validation twice and blocked the run as
+    # model_malformed_response. Scripted: the same phantom answer twice.
+    first, second = whitespace_pair()
+    assert reading_differences(first.literal_text, second.literal_text) == []
+    calls = []
+
+    decision, _ = direct_first_pass(
+        monkeypatch,
+        tmp_path,
+        calls,
+        PHANTOM_VERDICT,
+        PHANTOM_VERDICT,
+        readings=[first, second],
+    )
+
+    assert len(calls) == 1, "no output retry is spent on it"
+    request = next(
+        str(part.content)
+        for part in calls[0][0].parts
+        if "Reader A:" in str(part.content)
+    )
+    assert "The transcripts differ only in whitespace." in request
+    assert decision.call.completion_state == "validated_output"
+    assert decision.differences == []
+    assert decision.selected_observation_id == first.id
+    assert decision.notes == {first.id: "compact", second.id: "spaced"}
+    assert decision.rationale == NO_DIFFERENCE["rationale"]
+    # What the model said stays in the call's raw responses, unread.
+    raw = json.loads(LocalBlobs(tmp_path).get(decision.call.raw_ref))
+    assert json.loads(raw[-1]["parts"][0]["args"])["verdicts"] == [
+        {"number": 1, "supported": "A"}
+    ]
+
+
+@pytest.mark.parametrize("selected,index", [("A", 0), ("B", 1), (None, None)])
+def test_a_call_with_no_difference_and_no_verdicts_is_accepted_with_the_models_pick(
+    monkeypatch, tmp_path, selected, index
+):
+    readings = whitespace_pair()
+    calls = []
+
+    decision, _ = direct_first_pass(
+        monkeypatch,
+        tmp_path,
+        calls,
+        dict(NO_DIFFERENCE, selected_reader=selected),
+        readings=readings,
+    )
+
+    assert len(calls) == 1 and decision.differences == []
+    assert decision.selected_observation_id == (
+        None if index is None else readings[index].id
+    )
 
 
 @pytest.mark.parametrize(
