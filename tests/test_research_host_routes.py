@@ -271,6 +271,7 @@ def assert_private_503(reply):
     assert reply.status_code == 503
     assert reply.content == UNAVAILABLE_BODY
     assert reply.headers["cache-control"] == "no-store, private"
+    assert reply.headers["pragma"] == "no-cache"
 
 
 def assert_no_request_ids(text):
@@ -345,6 +346,28 @@ async def test_fixed_code_type_with_free_text_logs_no_message(host, caplog, mess
     assert "PublicationUnavailable" in text
     assert message not in text and "Smith" not in text and "forged" not in text
     assert "\n" not in text
+
+
+class UninspectableFailure(PublicationUnavailable):
+    """A failure whose attributes raise when the logging code reads them."""
+
+    @property
+    def args(self):
+        raise RuntimeError("raised while the failure was being logged")
+
+
+@pytest.mark.asyncio
+async def test_a_failure_that_cannot_be_logged_is_still_the_same_503(host, caplog):
+    app, native, _, _ = host
+    native.error = UninspectableFailure()
+    caplog.set_level(logging.DEBUG, logger=API_LOGGER)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://fixture") as client:
+        reply = await client.get(CURRENT, headers={"Authorization": "Bearer actor-one"})
+    assert_private_503(reply)
+    (record,) = api_records(caplog)
+    assert record.levelno == logging.ERROR
+    assert "details unavailable" in record.getMessage()
+    assert actor_uid.get() is None
 
 
 @pytest.mark.asyncio

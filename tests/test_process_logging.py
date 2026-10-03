@@ -20,24 +20,21 @@ PROBE_LOGGER = "specimen_digitization.application.production"
 
 
 @pytest.fixture(autouse=True)
-def restore_logging_state():
-    """Entry points and uvicorn mutate process-wide logging; give it back."""
-    root = logging.getLogger()
-    handlers, level = list(root.handlers), root.level
-    uvicorn = {
-        name: (
-            list(logging.getLogger(name).handlers),
-            logging.getLogger(name).propagate,
-        )
-        for name in ("uvicorn", "uvicorn.error", "uvicorn.access")
-    }
-    root.setLevel(logging.WARNING)
-    yield
-    root.handlers[:] = handlers
-    root.setLevel(level)
-    for name, (kept, propagate) in uvicorn.items():
-        logging.getLogger(name).handlers[:] = kept
-        logging.getLogger(name).propagate = propagate
+def root_at_warning():
+    # tests/conftest.py (owned_process_logging) removes the process handler and
+    # restores the other process-wide logging state around every test; this only
+    # fixes the root level the assertions below depend on.
+    logging.getLogger().setLevel(logging.WARNING)
+
+
+def process_handlers():
+    from specimen_digitization.process_logging import HANDLER_NAME
+
+    return [
+        handler
+        for handler in logging.getLogger().handlers
+        if handler.get_name() == HANDLER_NAME
+    ]
 
 
 def stderr_lines(capsys):
@@ -159,13 +156,40 @@ def test_configure_writes_warnings_as_json_with_severity(capsys):
 def test_configure_is_idempotent(capsys):
     from specimen_digitization.process_logging import configure_process_logging
 
-    before = len(logging.getLogger().handlers)
+    assert process_handlers() == []
     configure_process_logging()
     configure_process_logging()
 
-    assert len(logging.getLogger().handlers) == before + 1
+    assert len(process_handlers()) == 1
     probe("once")
     assert len(stderr_lines(capsys)) == 1
+
+
+def test_a_library_handler_does_not_write_each_record_twice(capsys):
+    from specimen_digitization.process_logging import configure_process_logging
+
+    # huggingface_hub attaches its own plain stderr handler to its logger and also
+    # propagates to the root; the same shape, built here under capture.
+    library = logging.getLogger("huggingface_hub")
+    library.addHandler(logging.StreamHandler())
+    configure_process_logging()
+    logging.getLogger("huggingface_hub.utils._http").warning("hub warning")
+
+    entry = json_line_about(stderr_lines(capsys), "hub warning")
+    assert entry["severity"] == "WARNING"
+    assert entry["logger"] == "huggingface_hub.utils._http"
+
+
+def test_the_real_huggingface_hub_logger_is_left_to_the_root_handler(capsys):
+    import huggingface_hub  # noqa: F401  (the API and worker import it at start)
+
+    from specimen_digitization.process_logging import configure_process_logging
+
+    configure_process_logging()
+
+    library = logging.getLogger("huggingface_hub")
+    assert [h for h in library.handlers if type(h) is logging.StreamHandler] == []
+    assert library.propagate
 
 
 def test_handler_follows_the_current_stderr(capsys, monkeypatch):
@@ -206,7 +230,11 @@ def test_api_entry_point_configures_process_logging(monkeypatch, capsys):
     monkeypatch.setattr(runtime_server, "serve", lambda *args, **kwargs: None)
     monkeypatch.setattr(sys, "argv", ["specimen-api", "--mode", "synthetic"])
 
+    # An earlier test's main() must not have left the handler behind, or this
+    # test would pass without the entry point doing anything.
+    assert process_handlers() == []
     cli.main()
+    assert len(process_handlers()) == 1
     probe("from the api process")
 
     entry = json_line_about(stderr_lines(capsys), "from the api process")
@@ -222,9 +250,11 @@ def test_worker_entry_point_configures_process_logging(monkeypatch, capsys):
         "argv",
         ["specimen-worker", "--mode", "production", "--drain", "--max-seconds", "600"],
     )
+    assert process_handlers() == []
     with pytest.raises(SystemExit) as caught:
         worker.main()
     assert caught.value.code == 2
+    assert len(process_handlers()) == 1
     capsys.readouterr()
     probe("from the worker process")
 

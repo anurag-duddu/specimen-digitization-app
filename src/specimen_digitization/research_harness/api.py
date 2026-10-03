@@ -46,14 +46,20 @@ def _log_unavailable(method: str, route_path: str, error: Exception) -> None:
     request log line carries those), the exception class and, for the repository's
     fixed-code types, the code. Never the message of any other exception (a
     validation or provider error can embed input text) and never a traceback.
+
+    This runs inside the catch-all: it must never change the response, so any error
+    while describing the failure is reduced to a bare line.
     """
-    if isinstance(error, _FIXED_CODE_ERRORS):
-        code = log_code(error.args[0] if len(error.args) == 1 else None)
-        LOGGER.warning("research route unavailable: %s %s error_class=%s code=%s",
-                       method, route_path, type(error).__name__, code)
-    else:
-        LOGGER.error("research route unavailable: %s %s error_class=%s",
-                     method, route_path, type(error).__name__)
+    try:
+        if isinstance(error, _FIXED_CODE_ERRORS):
+            code = log_code(error.args[0] if len(error.args) == 1 else None)
+            LOGGER.warning("research route unavailable: %s %s error_class=%s code=%s",
+                           method, route_path, type(error).__name__, code)
+        else:
+            LOGGER.error("research route unavailable: %s %s error_class=%s",
+                         method, route_path, type(error).__name__)
+    except Exception:  # noqa: BLE001 - describing a failure must not change the response
+        LOGGER.error("research route unavailable: details unavailable")
 
 
 class _PrivateResearchRoute(APIRoute):

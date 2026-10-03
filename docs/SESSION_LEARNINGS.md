@@ -14170,21 +14170,36 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a93300eb597e7b2e3`,
   from `main` db855ad6, then `origin/main` 9272a188 (PR #243) merged locally.
 - Outcome: In progress. Pull request open and ready for review; not merged. No production access, deploy or paid call.
-- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/251; code commit b1b4b222 (the entry
-  and a comment correction are in the commit after the `origin/main` merge).
-- What changed: the research route's catch-all 503 now logs the exception class and, for `PublicationUnavailable` and
-  `BindingUnavailable`, the fixed code (response unchanged); the workflow's `AdapterFailure`, `OperationalBlock`,
-  unexpected-exception and deadline-override branches each write one WARNING line (run, step, branch, attempt, codes,
-  classes, provider HTTP status); a new `process_logging.py` gives the API and worker a root handler that writes one
-  JSON line per record with `severity`.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/251; code commit b1b4b222. Review round
+  1 (an independent reviewer at head f296c639: CI "Python tests" red, one overclaiming sentence) is fixed by a later
+  commit on the same branch after merging `origin/main` (PR #246); this entry was edited in that commit (it was not
+  merged yet).
+- What changed: the research route's catch-all 503 now emits a log record with the exception class and, for
+  `PublicationUnavailable` and `BindingUnavailable`, the fixed code (response unchanged); the workflow's
+  `AdapterFailure`, `OperationalBlock`, unexpected-exception and deadline-override branches each emit one WARNING
+  record (run, step, branch, attempt, status or code, blocker, stage, error class). The cause class and provider HTTP
+  status appear only when the provider error is raised in the worker process; production model calls run in an
+  isolated child and the parent rebuilds the `AdapterFailure` without a cause, so for those steps both read `-` and
+  the code, status and branch carry the diagnosis. Both log helpers swallow their own errors. A new
+  `process_logging.py` gives the API and worker a root handler that writes one JSON line per record with `severity`
+  to stderr (`huggingface_hub`'s own stderr handler is dropped so its records are written once). That Cloud Logging
+  shows the severity is Not confirmed.
 - Validation: written first and failing on the unchanged source: `test_research_host_routes.py` 6 failed, 9 passed;
   `test_step_failure_logging.py` 8 failed, 2 passed (the 2 are before-and-after guards); `test_process_logging.py` 25
   failed (23 are the missing module, 2 are the entry points leaving no JSON line). After: 15, 10 and 25 passed. 32
   related files run one at a time before the `origin/main` merge, all passed (`test_model_runtime.py` 11 passed, 1
   skipped; `test_http_process_restart.py` 1 skipped); the three changed files re-run after the merge, passed.
   `pre-commit` on the changed files: all hooks passed. `ruff check` (0.16.9 defaults; the repo has no ruff config):
-  no more findings on the existing changed files than on `origin/main`; new files clean and formatted. Not run: the
-  full suite, any `scripts/ci/verify.sh` gate, a live or paid call.
+  no more findings on the existing changed files than on `origin/main`; new files clean and formatted.
+  Review round 1: reproduced the CI failure in one process (`test_api_runtime.py test_lane_drain_cli.py
+  test_process_logging.py`: 1 failed, 85 passed); after the conftest fix the five files `test_api_runtime`,
+  `test_lane_drain_cli`, `test_process_logging`, `test_step_failure_logging`, `test_research_host_routes` pass together
+  in one pytest process in that order (116 passed) and reversed (116 passed); with only `cli.py` and `worker.py`
+  reverted to `origin/main`, the two entry-point tests fail (`assert 0 == 1`, no handler after `main()`) in the
+  leaking order. The full suite as CI runs it (`pytest -q`, one process, Python 3.11 venv, not CI's 3.12): 9987
+  passed, 107 skipped in 846 s. New tests failed first: the two `huggingface_hub` tests and the two "cannot be
+  logged" tests. After that run, only two `# noqa: BLE001` comments were added to source. Not run: any
+  `scripts/ci/verify.sh` gate, a live or paid call.
 - Durable learnings:
   - No logging was configured anywhere in `src`. Every `LOGGER.warning` (projection stops, registration refusals)
     reached Cloud Run as a bare stderr line through the standard library's last-resort handler, so Cloud Logging
@@ -14201,8 +14216,22 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
     embed input text. A `log_code` shape check keeps free text out even from the code-bearing types.
   - `tests/test_step_outcome.py`'s `drain_to_parse_failure` is the cheap way to drive a real workflow step into each
     failure branch (patch `ExtractingAdapters.extract`, or pass a `phase_error`).
+  - CI runs `uv run pytest -q` in one process. `cli.main()` and `worker.main()` (called by `test_api_runtime.py` and
+    `test_lane_drain_cli.py`) now leave the root handler installed, which made `test_configure_is_idempotent` fail
+    (`assert 5 == 5 + 1`) and made the two entry-point tests pass without the change. Running test files one at a time
+    never showed it. `tests/conftest.py` now removes the named handler (and restores the root level and the
+    `huggingface_hub`/`uvicorn*` logger handlers) around every test, and the entry-point tests assert the handler is
+    absent before `main()` and present after. Any global a production entry point sets needs the same treatment.
+  - `huggingface_hub` (imported by the API and worker modules) attaches its own `StreamHandler` to its logger and also
+    propagates, so a root handler doubled its warnings. `configure_process_logging` drops that one handler; a library
+    first imported after the call would bring the duplicate back.
+  - Production model calls (`invoke_model`, `model_runtime.py`) run in an isolated child whose stderr is discarded; the
+    parent rebuilds `AdapterFailure` from JSON (code, status, retry, outcome_unknown) with no cause. Only the code,
+    status and branch can be logged for those steps.
 - Failed approaches: an in-test `revoke_after_first` request order for the no-noise guard (the fixture revokes on the
-  second membership read inside the first request); the guard now flips it between two requests.
+  second membership read inside the first request); the guard now flips it between two requests. A first test-file-only
+  logging fixture (it restored `root.handlers` but only for that file, so it could not stop the leak from the earlier
+  files in the single-process run; the conftest fixture above replaces it).
 - Remaining follow-ups: Not confirmed that Cloud Logging shows `jsonPayload.severity` for these lines in production
   (check after the next worker execution); trace correlation, Error Reporting format, the same handler for
   `specimen-sam` and uvicorn's own lines; the early-return blocks (budget, circuit, allowance) still log nothing;

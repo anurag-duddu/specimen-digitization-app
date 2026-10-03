@@ -71,23 +71,37 @@ def _log_step_failure(run, step, branch, *, error=None, **fields):
     The line carries the run id, step, branch, attempt and codes and classes only:
     never a prompt, a response, a provider body or label text. Every value is a
     number, an identifier, or a string that ``log_code`` has checked.
+
+    The cause class and HTTP status are only present when the provider error was
+    raised in this process. Model calls run in an isolated child process and the
+    parent rebuilds the ``AdapterFailure`` from JSON without a cause, so for those
+    steps both read ``-`` and the code, status and branch carry the diagnosis.
+
+    This runs inside the failure handlers: it must never change what the step does,
+    so any error while describing the failure is reduced to a bare line.
     """
-    if error is not None:
-        cause = error.__cause__
-        fields["error_class"] = type(error).__name__
-        fields["cause_class"] = None if cause is None else type(cause).__name__
-        fields["http_status"] = _http_status(error, cause)
-    values = {
-        "run": run.id,
-        "step": step,
-        "branch": branch,
-        **fields,
-        "attempt": run.attempts.get(step, 0),
-    }
-    LOGGER.warning(
-        "Specimen step failed: %s",
-        " ".join(f"{key}={'-' if value is None else value}" for key, value in values.items()),
-    )
+    try:
+        if error is not None:
+            cause = error.__cause__
+            fields["error_class"] = type(error).__name__
+            fields["cause_class"] = None if cause is None else type(cause).__name__
+            fields["http_status"] = _http_status(error, cause)
+        values = {
+            "run": run.id,
+            "step": step,
+            "branch": branch,
+            **fields,
+            "attempt": run.attempts.get(step, 0),
+        }
+        LOGGER.warning(
+            "Specimen step failed: %s",
+            " ".join(
+                f"{key}={'-' if value is None else value}"
+                for key, value in values.items()
+            ),
+        )
+    except Exception:  # noqa: BLE001 - describing a failure must not change the step
+        LOGGER.warning("Specimen step failed: branch=%s fields=unavailable", branch)
 
 
 class PipelineAdapters(Protocol):

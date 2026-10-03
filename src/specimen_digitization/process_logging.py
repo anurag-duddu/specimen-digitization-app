@@ -5,8 +5,9 @@ fell to the standard library's last-resort handler, which prints the bare messag
 stderr; Cloud Logging recorded that at DEFAULT severity, so ``severity>=WARNING``
 filters and alerts never saw it. Cloud Run reads one JSON object per stderr line as a
 structured entry and takes its ``severity`` and ``message`` fields, so this module
-installs a single root handler that writes exactly that and nothing else changes: the
-root level stays at WARNING, so the same records are emitted as before.
+installs a single root handler that writes exactly that. The root level stays at
+WARNING, so the same records are emitted as before, in a different shape. One library
+logger is adjusted so a record is still written once (see ``_LIBRARY_LOGGERS``).
 """
 
 from __future__ import annotations
@@ -16,7 +17,14 @@ import logging
 import re
 import sys
 
-_HANDLER_NAME = "specimen-process-logging"
+HANDLER_NAME = "specimen-process-logging"
+# huggingface_hub (a production dependency, imported by the API and worker modules)
+# attaches its own plain stderr handler to its logger, which also propagates to the
+# root. Left alone, each of its warnings would be written twice: its bare text line
+# and the root handler's JSON line. Dropping that one handler lets the record reach
+# the root handler once. If such a library is first imported after this call, its
+# handler is attached afterwards and the duplicate returns for that library.
+_LIBRARY_LOGGERS = ("huggingface_hub",)
 _CODE = re.compile(r"[A-Za-z0-9_:.\-]{1,160}")
 
 
@@ -77,9 +85,14 @@ class _StderrHandler(logging.StreamHandler):
 def configure_process_logging() -> None:
     """Install the Cloud Logging handler on the root logger, once per process."""
     root = logging.getLogger()
-    if any(handler.get_name() == _HANDLER_NAME for handler in root.handlers):
+    if any(handler.get_name() == HANDLER_NAME for handler in root.handlers):
         return
     handler = _StderrHandler()
-    handler.set_name(_HANDLER_NAME)
+    handler.set_name(HANDLER_NAME)
     handler.setFormatter(CloudLoggingFormatter())
     root.addHandler(handler)
+    for name in _LIBRARY_LOGGERS:
+        library = logging.getLogger(name)
+        for own in list(library.handlers):
+            if type(own) is logging.StreamHandler and library.propagate:
+                library.removeHandler(own)

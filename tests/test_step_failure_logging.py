@@ -189,6 +189,53 @@ def test_ambiguous_provider_failure_logs_the_code_the_blocker_hides(
     assert fields["http_status"] == "502"
 
 
+def test_model_step_failure_rebuilt_in_the_parent_logs_the_code_without_a_cause(
+    tmp_path, monkeypatch, caplog
+):
+    # Production model calls run in an isolated child process; invoke_model
+    # rebuilds the AdapterFailure from JSON (code, status, retry, outcome_unknown),
+    # so the parent sees no __cause__ and no HTTP status. The code is still logged.
+    monkeypatch.setattr(
+        ExtractingAdapters,
+        "extract",
+        raising(
+            adapter_failure(
+                "model_provider_error", LookupStatus.PROVIDER, outcome_unknown=True
+            )
+        ),
+    )
+    _, _, result = drain_to_parse_failure(tmp_path, monkeypatch, None)
+
+    assert result.run.blocker == "external_outcome_unknown"
+    fields = only_failure(caplog)
+    assert fields["code"] == "model_provider_error"
+    assert fields["blocker"] == "external_outcome_unknown"
+    assert fields["outcome_unknown"] == "True"
+    assert fields["cause_class"] == "-"
+    assert fields["http_status"] == "-"
+
+
+class UninspectableError(Exception):
+    """An error whose attributes raise when the logging code reads them."""
+
+    @property
+    def status_code(self):
+        raise ValueError("raised while the failure was being logged")
+
+
+def test_a_failure_that_cannot_be_logged_does_not_change_the_step_outcome(
+    tmp_path, monkeypatch, caplog
+):
+    monkeypatch.setattr(ExtractingAdapters, "extract", raising(UninspectableError))
+    _, _, result = drain_to_parse_failure(tmp_path, monkeypatch, None)
+
+    assert result.run.stage == "processing_blocked"
+    assert result.run.blocker == "external_outcome_unknown"
+    fields = only_failure(caplog)
+    assert fields["branch"] == "unexpected_exception"
+    assert fields["fields"] == "unavailable"
+
+
 def test_retryable_provider_failure_logs_the_scheduled_retry(
     tmp_path, monkeypatch, caplog
 ):
