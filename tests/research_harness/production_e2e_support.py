@@ -6,7 +6,9 @@ Everything is the production code except three stand-ins:
   each operation the way the connector SQL in this branch does, with the owner
   approved removal of the import-proof row and the publication time window.
 - scripted pydantic-ai FunctionModels replace the model gateway;
-- recorded source responses (fixtures/production_e2e) replace source HTTP.
+- recorded source responses (fixtures/production_e2e) replace source HTTP:
+  the three taxonomy APIs and GEOLocate's glcwrap answer for the synthetic
+  label's city (Chicago, Cook, Illinois, United States).
 The research state document is a real SqliteStateBackend; the fake reads and
 compare-and-swaps the same document, as the connector does with its table.
 Label text is the public synthetic fixture (application.api.SYNTHETIC_VALUES).
@@ -1016,6 +1018,14 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures" / "production_e2e"
 # The taxonomy sources source_readiness.py makes ready. GBIF decides (G23);
 # the other two support and are looked up for the record.
 TAXONOMY_SOURCES = ("gbif", "global_names_verifier", "catalogue_of_life")
+# The geography fields the label names; GEOLocate validates each (the v2
+# historian prompt), one query per field, sent together.
+GEOGRAPHY_FIELDS = (FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.COUNTY, FieldKey.CITY)
+# The historian's placement of the label's city, decimal degrees WGS84, and a
+# radius for a city. The place names are the label's own. The four queries send
+# one request; geolocate-glcwrap-chicago.json is GEOLocate's answer to it,
+# recorded live once on 2026-10-03 (sources.json, requested_at).
+PLACEMENT = {"latitude": 41.88, "longitude": -87.63, "radius_km": 15}
 LITERAL_FIELDS = {FieldKey.COLLECTION_CODE, FieldKey.HABITAT, FieldKey.COLLECTION_METHOD,
     FieldKey.COLLECTORS, FieldKey.PRECISE_LOCATION, FieldKey.FMNH_INS_NUMBER}
 ELEVATIONS = (FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M,
@@ -1098,6 +1108,36 @@ def _elevations(request):
     return dict.fromkeys(ELEVATIONS, error) if error else {}
 
 
+def _geolocate_queries(request):
+    """One query_text per geography field: the label's country, state, county
+    and city as one interpretation, with that field's value."""
+    named = {key: rows[0].interpreted_text for key in GEOGRAPHY_FIELDS if (rows := _assemblies(request, key))}
+    if set(named) != set(GEOGRAPHY_FIELDS):
+        return {}
+    place = {"country": named[FieldKey.COUNTRY], "state": named[FieldKey.PROVINCE_STATE],
+        "county": named[FieldKey.COUNTY], "locality": named[FieldKey.CITY], "place": named[FieldKey.CITY],
+        **PLACEMENT}
+    return {key: json.dumps({**place, "value": named[key]}) for key in GEOGRAPHY_FIELDS}
+
+
+def _geolocated(key, results):
+    """A GEOLocate success resolved as the v2 prompt's success bullet says."""
+    for result in results:
+        if (result.coverage.source_id != "geolocate" or result.coverage.field_key != key
+                or result.status != LookupStatus.SUCCESS):
+            continue
+        [candidate] = [json.loads(raw) for raw in result.candidate_json]
+        evidence = tuple(item.id for item in result.evidence)
+        return FieldResolution(field_key=key, work_state=WorkState.RESOLVED, value_layer="settled",
+            value=FieldValue(state=ValueState.SUPPORTED, normalized=candidate["value"],
+                authority_id=candidate["authority_id"], evidence_ids=list(evidence),
+                evidence_relations=dict.fromkeys(evidence, "supports")),
+            evidence_ids=evidence,
+            reason=f"Label writes {candidate['value']}; GEOLocate confirms {candidate['match_name']} "
+                f"({candidate['match_admin']}) within the placement radius; high confidence")
+    return None
+
+
 def _taxon(request, results):
     rows = _assemblies(request, FieldKey.TAXON)
     if not rows:
@@ -1147,8 +1187,10 @@ def _proposals(request, results):
                 proposed[key] = dates.get(key)
             elif key in LITERAL_FIELDS:
                 proposed[key] = _literal(request, key)
+            elif key in GEOGRAPHY_FIELDS:
+                proposed[key] = _geolocated(key, results)
             else:
-                proposed[key] = None  # Country, state, county, city: no ready source.
+                proposed[key] = None
         except EvidenceError as error:
             proposed[key] = error
     return proposed
@@ -1171,9 +1213,12 @@ def _results(messages):
     return found, attempted
 
 
-def scripted_model_factory(log: list):
+def scripted_model_factory(log: list, *, geolocate: bool = True):
     """``(request, binding) -> FunctionModel``; each call appends (role, turn) to log.
 
+    With ``geolocate`` the geography historian validates the label's country,
+    state, county and city with GEOLocate; without it, it makes no lookup and
+    those fields wait on a source.
     ``factory.fallbacks`` lists (role, field, reason) for every field proposed
     unfinished because no valid settled value exists; ``factory.errors`` keeps
     tracebacks from inside a model call (the gateway wrapper hides them).
@@ -1198,6 +1243,13 @@ def scripted_model_factory(log: list):
                         "source_id": source, "field_key": str(FieldKey.TAXON),
                         "query_text": taxon[0].interpreted_text}},
                         tool_call_id=f"e2e-{role.value}-lookup-{source}")], usage=USAGE)
+                geography = _geolocate_queries(request) if geolocate and role == SpecialistRole.GEOGRAPHY else {}
+                if geography and not attempted:
+                    # Independent GEOLocate queries go together (the v2 prompt).
+                    return ModelResponse(parts=[ToolCallPart("lookup_source", {"query": {
+                        "source_id": "geolocate", "field_key": str(key), "query_text": text}},
+                        tool_call_id=f"e2e-{role.value}-lookup-{key}") for key, text in geography.items()],
+                        usage=USAGE)
                 resolutions = []
                 for key, proposal in _proposals(request, results).items():
                     reason = str(proposal) if isinstance(proposal, Exception) else "no_settled_value"
