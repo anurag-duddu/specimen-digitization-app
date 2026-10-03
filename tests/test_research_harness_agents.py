@@ -424,3 +424,20 @@ def test_real_gateway_missing_liability_guard_refuses_construction(tmp_path,monk
         model(real_model,request=request,broker=broker,scope=scope,lease=lease)
     assert store._read(scope).state["effects"] == {}
     assert store.budget(scope)["held_micro_usd"] == store.budget(scope)["settled_micro_usd"] == 0
+
+
+@pytest.mark.parametrize(("mode", "content"), [("approved-content", True), ("metadata", False), (None, False)])
+def test_harness_agents_record_content_only_under_approved_content(tmp_path, monkeypatch, mode, content):
+    from pydantic_ai.capabilities import Instrumentation
+    from specimen_digitization import observability
+
+    monkeypatch.setattr(observability, "_configured_settings", None if mode is None else
+        observability.ObservabilitySettings(environment="test", service_name="specimen-worker",
+            capture_mode=observability.CaptureMode(mode), head_sample_rate=1.0,
+            distributed_tracing=False))
+    runtime, *_ = harness(tmp_path)
+    for agent in runtime.agents.values():
+        instrumentation = next(item for item in agent.root_capability.capabilities
+            if isinstance(item, Instrumentation))
+        assert instrumentation.settings.include_content is content
+        assert instrumentation.settings.include_binary_content is False
