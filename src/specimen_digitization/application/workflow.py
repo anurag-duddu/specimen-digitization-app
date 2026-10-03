@@ -786,7 +786,10 @@ class Workflow:
     def parse(run: Run, asset_id: str) -> None:
         # Deliberately narrow deterministic parser for explicit key:value text.
         # Unstructured real labels remain reviewable and abstain; never guess mapping.
-        run.fields = {key: FieldValue() for key in run.profile.mandatory_fields}
+        # Every field classify bound, mandatory and optional; a run without
+        # bound field groups keeps the profile's mandatory fields.
+        groups = tuple(run.field_groups) or run.profile.mandatory_fields
+        run.fields = {key: FieldValue() for key in groups}
         for transcript in run.transcripts:
             if not transcript.resolved or not transcript.text:
                 continue

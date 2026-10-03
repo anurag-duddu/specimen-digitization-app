@@ -19,9 +19,10 @@ from specimen_digitization.research_harness.committed_pins import (
 from specimen_digitization.research_harness.contracts import ALL_FIELDS, SpecialistRole, digest
 from specimen_digitization.research_harness.gateway import ModelBinding
 from specimen_digitization.research_harness.persistence import (
-    MAX_STATE_BYTES, BudgetPolicy, DurabilityScope, PinnedRuntime, ResearchStore,
+    MAX_STATE_BYTES, BudgetPolicy, DurabilityScope, HeldUnknown, PinnedRuntime, ResearchStore,
     SqliteStateBackend, canonical,
 )
+from specimen_digitization.research_harness.production_runtime import committed_job_pins
 from specimen_digitization.research_harness.source_readiness import (
     CAPTURE_POLICIES, SOURCE_READINESS,
 )
@@ -119,19 +120,61 @@ def test_readiness_rows_hold_the_committed_canary_schemas_and_a_repository_refer
         canaries["catalogue_of_life"]["resolved_dataset_key"])
 
 
-def test_capture_rows_follow_the_installed_registry(monkeypatch):
+def install_smaller_registry(monkeypatch):
+    """Installs the source registry minus one row that has a capture policy but
+    is not ready (as removing google_maps did); returns the real registry and
+    the dropped id. Choosing the row from the live registry keeps this true
+    after any later row change."""
     real = sources.insects_registry
+    dropped = next(policy.id for policy in reversed(real().policies)
+        if policy.id in CAPTURE_POLICIES and policy.id not in SOURCE_READINESS)
 
-    def without_google(*, qualification_overrides=None):
+    def smaller(*, qualification_overrides=None):
         registry = real(qualification_overrides=qualification_overrides)
-        return sources.SourceRegistry([p for p in registry.policies if p.id != "google_maps"])
+        return sources.SourceRegistry([p for p in registry.policies if p.id != dropped])
 
-    monkeypatch.setattr(committed_pins, "insects_registry", without_google)
-    monkeypatch.setattr(registered_pins, "insects_registry", without_google)
+    monkeypatch.setattr(committed_pins, "insects_registry", smaller)
+    monkeypatch.setattr(registered_pins, "insects_registry", smaller)
+    return real, dropped
+
+
+def test_capture_rows_follow_the_installed_registry(monkeypatch):
+    real, dropped = install_smaller_registry(monkeypatch)
     pins = pins_for()
-    assert "google_maps" not in pins["sources"]["capture_policies"]
-    assert "google_maps" not in {row["id"] for row in pins["sources"]["registry_policies"]}
+    assert dropped not in pins["sources"]["capture_policies"]
+    assert dropped not in {row["id"] for row in pins["sources"]["registry_policies"]}
     assert pins["sources"]["registry_digest"] != real().digest
+
+
+def test_pins_built_on_a_smaller_registry_hold_exactly_the_installed_rows(monkeypatch):
+    real, _ = install_smaller_registry(monkeypatch)
+    installed = committed_pins.insects_registry()
+    assert len(installed.policies) == len(real().policies) - 1
+    pins = pins_for()
+    assert [row["id"] for row in pins["sources"]["registry_policies"]] == [
+        policy.id for policy in installed.policies]
+    registry = registered_pins.registered_registry(pins["sources"])
+    assert registry.digest == pins["sources"]["registry_digest"]
+    assert set(registered_pins.registered_capture_policies(pins["sources"], registry)) == (
+        set(CAPTURE_POLICIES) & {policy.id for policy in installed.policies})
+    assert set(registered_pins.registered_model_prices(pins["sources"], bindings_of(pins))) == (
+        set(SpecialistRole))
+
+
+def test_a_job_pinned_on_the_old_registry_is_not_reused_after_a_row_is_removed(monkeypatch):
+    stale = committed_job_pins(published(), organization_id=ORG, collection_id=COLLECTION,
+        input_digest="a" * 64)
+    registered_pins.registered_registry(stale["sources"])
+    _, dropped = install_smaller_registry(monkeypatch)
+    assert dropped in {row["id"] for row in stale["sources"]["registry_policies"]}
+    rebuilt = committed_job_pins(published(), organization_id=ORG, collection_id=COLLECTION,
+        input_digest="a" * 64)
+    # NativeResearchRuntimeFactory.open holds a job whose pins differ from a
+    # rebuild, and the registry validator it applies next refuses the old rows.
+    assert stale != rebuilt
+    assert stale["sources"]["registry_digest"] != rebuilt["sources"]["registry_digest"]
+    with pytest.raises(HeldUnknown, match="research_registered_source_policies_missing"):
+        registered_pins.registered_registry(stale["sources"])
 
 
 def test_the_harness_route_is_priced_at_the_cited_list_price():

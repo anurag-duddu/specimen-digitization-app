@@ -30,6 +30,7 @@ from specimen_digitization.application.domain import (
     Region,
     Run,
     Scope,
+    Transcript,
 )
 from specimen_digitization.application.profile_runtime import published_risk_registry
 from specimen_digitization.application.review_risk import (
@@ -37,7 +38,11 @@ from specimen_digitization.application.review_risk import (
     RiskPolicyReference,
 )
 from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository
-from specimen_digitization.application.workflow import SyntheticAdapters, crop_bytes
+from specimen_digitization.application.workflow import (
+    SyntheticAdapters,
+    Workflow,
+    crop_bytes,
+)
 
 from test_api_runtime import config_env
 from test_lane_trigger import RecordingDispatcher, intake, specimen_with
@@ -187,6 +192,39 @@ def test_classify_gives_the_run_every_field_with_its_group(tmp_path):
         for key in MANDATORY
     }
     assert "identified_by_irn" not in specimen.run.profile.mandatory_fields
+
+
+def test_parse_keeps_every_field_group_classify_bound(tmp_path):
+    # Parse rebuilds the fields after classify. The optional identified_by_irn
+    # stays and is parsed, so the run reaches plan with all twenty fields.
+    run = Run(
+        profile=Profile(synthetic=False),
+        classification_selection={
+            "collection_id": "insects",
+            "actor_id": USER,
+            "reason": "Intake collection",
+        },
+    )
+    specimen = specimen_with(run)
+    blobs = LocalBlobs(tmp_path / "blobs")
+    issue = classify_and_select(
+        specimen, published_registry(), None, blobs, published_risk_registry()
+    )
+    assert issue is None
+    specimen.run.transcripts = [
+        Transcript(
+            region_id="fixture-region",
+            text="identified_by_irn: 1000001\ncountry: Kenya",
+            observation_ids=[],
+            alternatives=[],
+            resolved=True,
+        )
+    ]
+    Workflow.parse(specimen.run, specimen.asset.id)
+    assert list(specimen.run.fields) == list(specimen.run.field_groups)
+    assert set(specimen.run.fields) == set(MANDATORY)
+    assert specimen.run.fields["identified_by_irn"].literal == "1000001"
+    assert specimen.run.fields["country"].literal == "Kenya"
 
 
 def test_runs_without_optional_fields_serialize_as_before():
