@@ -531,6 +531,21 @@ G10, G12, G26, G29. `geography_lookup` (`application/geography_tool.py`) is the
 first version of the geography tool behind the interface of section 6; an
 accepted S8 plan replaces this module, not the interface.
 
+2026-10-03 (owner G-geo-1 to G-geo-3, quoted in PLAN 2.1): this section is
+retired, and Google Maps leaves the harness permanently. The research harness's
+geography specialist runs the historian prompt `specimen_geography-v2.txt`: it
+interprets the label's verbatim locality with historical knowledge and asks the
+GEOLocate validator (source `geolocate` in `research_harness/sources.py`) to
+check each geography value it proposes. The validator sends one request per
+lookup to GEOLocate's `glcwrap.aspx` (`fmt=json`, over HTTPS), with at least
+3 s between GEOLocate request starts in one process, and captures the full
+response as evidence. The matched point's coordinates are candidate metadata in
+the tool result and the trace, not record fields (G39), and the research
+thread card does not show them yet; no uncertainty radius is taken from
+GEOLocate (D13). `application/geography_tool.py` stays in the repository with
+no production caller (only tests import it); the text below records it as
+built.
+
 **One call per reading** carries every locality literal of that reading. The
 address is the reading's unassigned locality text when there is any, otherwise
 its assigned literals from the most to the least precise field. The key comes

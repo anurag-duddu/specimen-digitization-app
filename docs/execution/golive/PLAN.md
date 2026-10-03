@@ -161,6 +161,36 @@ https://www.bugguide.net/node/view/15740 (North American)
 or an agent shell, and nobody weakens branch protection, required checks,
 environments, pinned action SHAs or identity conditions.
 
+2026-10-03 (owner G-geo-1 to G-geo-3): three owner rulings supersede G10, the
+interim Google tool of G12 and, for geography, G34's Google path and the Google
+step of G35's tier 2. The owner's words, quoted exactly:
+
+- G-geo-1: "the google maps thing will fail in the harness we need to use GEOLocate as it can handle strings and verbatim locaiton infromation. Make this fix permanently"
+- G-geo-2: "in the harness we use a system prompt that figures out from the transcription + historical know how of LLM what i could be from verbatim like a historian agent and then have a validator that usese GEO locate API or Geocodio and verfies and get the cooridnates"
+- G-geo-3: "then use geolocate not geocodio"
+
+They are also recorded in
+`~/specimen-golive/live-20261003/lane-g-notes/geolocate-validator-spec.md`.
+What holds now: Google Maps leaves the harness permanently, and Geocodio is not
+integrated. The source registry (`research_harness/sources.py`) has no
+`google_maps` source, and `research_harness/source_capture_v2.py` has no Google
+capture kind; the test-only `insects_profile` helper in
+`research_harness/evidence.py` still lists `google_maps` among its geography
+sources, because that file's bytes are integrity-pinned and changing them needs
+separate authorization. The geography specialist runs the historian prompt
+`specimen_geography-v2.txt`, which interprets the verbatim locality with
+historical knowledge and asks the GEOLocate validator to check each geography
+value it proposes. The validator sends one request per lookup to GEOLocate's
+`glcwrap.aspx` (`fmt=json`, over HTTPS), with at least 3 s between GEOLocate
+request starts in one process, and captures the full response as evidence
+(section 4.8). The matched point's coordinates are candidate metadata in the
+tool result and the trace, not record fields (G39), and the research thread
+card does not show them yet (coordinator engineering call, 2026-10-03, left as
+a follow-up); no uncertainty radius is taken from GEOLocate (D13). G26 stays in
+force as `DATA_CONTRACT.md` rule 6, whose `google-maps-geocoding` source string
+has no production producer. The later mentions of Google geocoding in this plan
+(sections 2.2, 2.3, 4.1, 4.4, 4.5, 4.8 and 7.2) describe the retired design.
+
 ### 2.2 What the existing documents already fix
 
 Sessions implement these as specified; none is a new decision.
@@ -174,7 +204,7 @@ Sessions implement these as specified; none is a new decision.
 | Raw reading provenance | `PRD.md` TRN-005; `CONTRACTS.md` 184 |
 | Disagreement score `bounded-levenshtein-fraction-v1`, labelled as review priority and uncalibrated | `BACKEND_ADJUDICATION_PROVENANCE.md` 5; `READING_EVIDENCE.md` 70-89; `PRD.md` SCR-004, SCR-005 |
 | The LLM first pass prompt is the managed prompt `transcription-disagreement-adjudication` | `src/specimen_digitization/prompts.py` 63-72 |
-| Lookup sources: taxonomy through GBIF, which decides, with Global Names Verifier and Catalogue of Life as supporting evidence, and BugGuide isn't used (G23); geography through Google Maps (G10), keeping only the place ID, the outcome and a response fingerprint (G26), until S8's place tool replaces it behind the same interface with the owner's three tiers (G35): historical gazetteers (GeoNames, Wikidata, Getty TGN, NGA), Google given the modernized name, and the point-radius uncertainty, with the outside data of section 4.8. On `PRD.md` 573 (may a Google-only match clear): G10, G20, G27 and G34 let a Google lookup settle a place field, and G35 decided S8's D1 by keeping Google as tier 2, so a Google-only match can support that field's clearance. Fields other than taxonomy, geography and parties resolution are transcribed as seen. Parties resolution (`identified_by_irn`) needs EMu Parties, which is not provisioned, so that field is optional for the slide pilot (G16) | `PRD.md` 12.4 (490-501, 538-550); `GBIF.md` |
+| Lookup sources: taxonomy through GBIF, which decides, with Global Names Verifier and Catalogue of Life as supporting evidence, and BugGuide isn't used (G23); geography through Google Maps (G10), keeping only the place ID, the outcome and a response fingerprint (G26), until S8's place tool replaces it behind the same interface with the owner's three tiers (G35): historical gazetteers (GeoNames, Wikidata, Getty TGN, NGA), Google given the modernized name, and the point-radius uncertainty, with the outside data of section 4.8. On `PRD.md` 573 (may a Google-only match clear): G10, G20, G27 and G34 let a Google lookup settle a place field, and G35 decided S8's D1 by keeping Google as tier 2, so a Google-only match can support that field's clearance. Fields other than taxonomy, geography and parties resolution are transcribed as seen. Parties resolution (`identified_by_irn`) needs EMu Parties, which is not provisioned, so that field is optional for the slide pilot (G16). 2026-10-03 (owner G-geo-1 to G-geo-3, quoted in section 2.1): the geography part of this row is superseded: Google Maps is not used, the historian prompt proposes each geography value and the GEOLocate validator checks it, and no Google lookup settles a place field | `PRD.md` 12.4 (490-501, 538-550); `GBIF.md` |
 | Typed lookup outcomes: the eleven of HAR-008, as `LookupStatus` encodes them; no outcome is added. The failure table: a missing or rejected credential is an authentication error and an operational block | `PRD.md` HAR-008 (333), 682-694; `domain.py` 43-54 |
 | Queue definitions: exactly one of cleared, needs human review, deferred; deferred only for documented model-capability limits; missing configuration, rate limits, timeouts, invalid credentials, outages, budget exhaustion and code errors are operational blocks with retry, not a queue | `PRD.md` QUE-001 to QUE-005 (390-394); `CONTRACTS.md` 217-246, as modified by G1 |
 | Field value states; only `supported` satisfies a mandatory field | `CONTRACTS.md` 221-237 |
@@ -186,7 +216,7 @@ Sessions implement these as specified; none is a new decision.
 | Item | Needed by | How |
 |---|---|---|
 | The mandatory and optional field list for the slide pilot (G8); `identified_by_irn` is already optional (G16) | first-pass and harness workstream, before acceptance | done 2026-09-24 (G42): the twenty fields of `PRD.md` 12.4, with G16 kept (G43) |
-| Google Maps Platform key (G10) | harness geography tool | done 2026-09-23: `specimen-google-maps-key` version 1, a key restricted to the Geocoding API |
+| Google Maps Platform key (G10) | harness geography tool | done 2026-09-23: `specimen-google-maps-key` version 1, a key restricted to the Geocoding API. 2026-10-03 (owner G-geo-1 to G-geo-3, quoted in section 2.1): superseded: GEOLocate needs no key and no production code reads this one; pull request #236 removes the worker's mount of it, and destroying the secret is an owner step |
 | Logfire write token (G3) | tracing in production | done 2026-09-23: the owner's existing token, stored as `specimen-worker-logfire` version 1 and verified for the specimen project |
 | Hugging Face token rotation | none | withdrawn by the owner on 2026-09-23; the existing `huggingface-runtime-token` version is used |
 | Hugging Face Inference Providers credits: the account's included monthly credits ran out on 2026-09-23 and routed calls return HTTP 402 | every model call: readers, first pass, harness, the acceptance lab | done 2026-09-23: the owner bought pre-paid credits, and routed calls succeed again |
@@ -652,6 +682,7 @@ The taxonomy tools send the taxon name, never place text (`GBIF.md` 107-114).
 | Source | Sent | Kept | Licence and credit |
 |---|---|---|---|
 | Google Geocoding (place tool, tier 2) | the modernized name, or the literal, with the same reading's place text (this section's sources) | the place ID, the outcome and the response fingerprint only (G26); names and coordinates are read in memory to compute the outcome and never feed a stored or derived value | nothing of Google's is stored |
+| 2026-10-03 (owner G-geo-1 to G-geo-3, quoted in section 2.1): GEOLocate, the validator of the geography specialist's interpretation; it supersedes the Google Geocoding row | the modern country, state and county and the locality text of the interpretation, one request per lookup to `glcwrap.aspx` (`fmt=json`, over HTTPS), with at least 3 s between GEOLocate request starts in one process; the named place, proposed point, radius and value stay in the adapter, which checks each returned match against them | the full response, as evidence (the coordinator's engineering call of 2026-10-03 under the owner's standing technical approval; revisit if GEOLocate publishes terms); the matched point's coordinates are candidate metadata in the tool result and the trace, not record fields (G39), and no uncertainty is taken from it (D13) | no published web-service terms; anonymous |
 | GeoNames (place tool, tier 1) | nothing: its dumps are read from the project's storage | GeoNames ids, names, codes and coordinates | CC BY 4.0, credited |
 | Wikidata (place tool, tier 1) | the name, with the same reading's place text (this section's sources), and the item ids Wikidata returned (this section's Identifiers) | item ids, labels and coordinates | CC0, credited as a courtesy |
 | Getty TGN (place tool, tier 1) | the name, with the same reading's place text (this section's sources), and the TGN ids TGN returned (this section's Identifiers) | TGN ids, names, dates and coordinates | ODC-By 1.0, credited |
