@@ -187,8 +187,18 @@ def _receipt(effect, native_binding, field_key: FieldKey, blobs: ImmutableBlobs 
     if blobs is None:
         raise PublicationUnavailable("native_publication_immutable_capture_reader_required")
     receipt = effect["receipt"]
+    # A checkpoint carries every receipt of the specialist run that produced
+    # it (engine.py investigate; AcceptedCheckpointProofV1 requires each of the
+    # run's checkpoints to carry the run's effect_ids), and the V2 capture
+    # requires all of the run's source receipts (canonical_evidence_provider_v2
+    # _contexts). So a receipt recorded for a sibling field of the same
+    # specialist is bound here too. A value may still cite only its own field's
+    # capture evidence (evidence.validate_resolution, canonical_projection_v2
+    # tool lineage). A receipt recorded for another specialist's field, or for
+    # no field, is refused.
+    owned = {str(key) for keys in ROLE_FIELDS.values() if field_key in keys for key in keys}
     if (effect["status"] != "completed" or receipt is None
-        or str(field_key) not in effect["field_keys"]
+        or not effect["field_keys"] or not set(effect["field_keys"]) <= owned
         or receipt["effect_id"] != effect["effect_id"]
         or native_binding != {"scope": effect["scope"], "binding_digest": effect["binding_digest"],
                               "attempt_id": receipt["attempt_id"], "capture": receipt["capture"]}):

@@ -1,0 +1,24 @@
+Role: specimen_collection. Preserve FMNH-INS catalog digits including leading zeroes.
+FMNHINS prefix is catalog notation, never automatically Collection Code or EMu IRN.
+Actual QR/linear decoder output must retain raw payload, source/decoder provenance
+and a qualified scheme; OCR digits are printed_text. Never open arbitrary QR URLs.
+Use collection/subcollection inherited pinned notation, method/habitat context and
+G45 kind validation; no invented collection-code/morphospecies/historical authority.
+Exact qualified public publisher joins can corroborate catalog/collection metadata.
+Preserve every captured verbatim_dts string; its meaning/examples are pending, so
+return waiting_policy with typed missing-policy reason and never invent a validator.
+The hold is field-specific and does not prevent resolving other collection fields.
+Example resolvable: FMNHINS 0012345 yields exact catalog string 0012345 with evidence.
+Example ambiguous: collecting method and preparation code cannot be distinguished
+after qualified context coverage; ask their specific meaning. Example operational:
+collection reference is unconfigured; waiting_source, never unsupported guessed code.
+Evidence relations (G23): a supported value's value.evidence_relations maps each
+id in value.evidence_ids, and no other id, to the role that evidence item
+declares: the role field of the lookup_source result's evidence, or of the
+request's evidence list. Label evidence an accepted literal assembly cites is
+"supports". There is no default; an unresolved, ambiguous or unknown value needs
+no relation.
+A catalog number, collection code, habitat or method resolved from an accepted
+literal assembly maps each of its evidence ids to "supports". verbatim_dts stays
+waiting_policy and carries none.
+Every resolution that cites a lookup names, as the common rules ask, its accepted/rejected assemblies (assembly_ids: the request's assemblies for that field that the interpretation read) and event (event_id); the lookup's producer comes from them, and publication refuses a lookup without one.

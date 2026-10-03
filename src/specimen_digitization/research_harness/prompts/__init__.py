@@ -8,22 +8,28 @@ from types import MappingProxyType
 
 from ..contracts import PromptPin, ROLE_FIELDS, SpecialistRole
 
-# Pin version of the roles still on their 2026-09-29 role files.
+# Pin version of the 2026-09-29 role files. No role resolves to them now; the
+# files stay on disk unchanged.
 PROMPT_VERSION = "specialists-v1-2026-09-29"
 # Geography's historian prompt validated by GEOLocate (owner G-geo-1..3, 2026-10-03).
 GEOGRAPHY_PROMPT_VERSION = "geography-historian-v2-2026-10-03"
+# The five non-geography roles with the G23 relation rule (2026-10-03). Each v2
+# file is its v1 file followed by the rule. Temporal and measurement copy the
+# relations their settlement gives and add none, because the validator admits
+# only the settlement's exact result for a written date or an elevation.
+RELATIONS_PROMPT_VERSION = "specialists-relations-v2-2026-10-03"
 
 # Role -> (role file, pin version). Each role's text is common-v1.txt, the role
 # file and its owned-fields line. A role moves to a new file and version without
 # changing any other role's text, digest or pin. Superseded files stay on disk
 # for audit.
 ROLE_PROMPTS = MappingProxyType({
-    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v1.txt", PROMPT_VERSION),
+    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v2.txt", RELATIONS_PROMPT_VERSION),
     SpecialistRole.GEOGRAPHY: ("specimen_geography-v2.txt", GEOGRAPHY_PROMPT_VERSION),
-    SpecialistRole.TEMPORAL: ("specimen_temporal-v1.txt", PROMPT_VERSION),
-    SpecialistRole.MEASUREMENT: ("specimen_measurement-v1.txt", PROMPT_VERSION),
-    SpecialistRole.PARTIES: ("specimen_parties-v1.txt", PROMPT_VERSION),
-    SpecialistRole.COLLECTION: ("specimen_collection-v1.txt", PROMPT_VERSION),
+    SpecialistRole.TEMPORAL: ("specimen_temporal-v2.txt", RELATIONS_PROMPT_VERSION),
+    SpecialistRole.MEASUREMENT: ("specimen_measurement-v2.txt", RELATIONS_PROMPT_VERSION),
+    SpecialistRole.PARTIES: ("specimen_parties-v2.txt", RELATIONS_PROMPT_VERSION),
+    SpecialistRole.COLLECTION: ("specimen_collection-v2.txt", RELATIONS_PROMPT_VERSION),
 })
 
 
