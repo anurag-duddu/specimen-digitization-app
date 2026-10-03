@@ -267,7 +267,9 @@
             "first-pass-glm": {
               "input_micros_per_million": 150000,
               "output_micros_per_million": 500000,
-              "context_tokens": 1048576
+              "context_tokens": 1048576,
+              "max_input_tokens": 32768,
+              "max_output_tokens": 4096
             }
           },
           "segmentation": {
