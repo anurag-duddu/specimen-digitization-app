@@ -3,9 +3,10 @@
 `harness.apply_candidates` once checked only that the extractor's quoted literal
 occurs in the decided transcript. Real records then showed an elevation read
 from a foot mark in the metres field, a slide-preparation code in Collection
-Code, and a slide code in Date Identified, each "Supported". The three rules under test are G41 with GEOREFERENCING.md:172 (a
-unit is never guessed), G45 (a slide-preparation code in a field no lookup
-checks) and GEOREFERENCING.md:173 (a preparation code is never a date).
+Code, and a slide code in Date Identified, each "Supported". The three rules
+under test are G41 with GEOREFERENCING.md:172 (a unit is never guessed), G45 (a
+slide-preparation code in a field no lookup checks) and GEOREFERENCING.md:173 (a
+preparation code is never a date).
 
 Fixtures: the label text is the stored decided transcript of each pilot
 specimen (positions 2, 3, 5 and 7), and the candidates are the (field, literal)
@@ -417,6 +418,12 @@ CASES = {
         "IV-29-68-2",
         None,
     ),
+    "a code with blanks around it is still a code": (
+        "collection_code",
+        " IX-17-66-2 ",
+        " IX-17-66-2 ",
+        CODE,
+    ),
     "a code, then words": (
         "habitat",
         "VI-24-68-7 epipsocus",
@@ -497,7 +504,7 @@ CASES = {
         "IV-23-25-48",
         NOT_A_DATE,
     ),
-    # The parser also reads no part of any other hyphen-joined token (HARNESS.md:648-650,
+    # The parser also reads no part of any other hyphen-joined token (HARNESS.md:648-651,
     # warning part_of_hyphenated_token): not a slide code, the parser's own rule. The
     # guard follows the parser, so these are refused; no stored value depends on them.
     "part of another joined token": (
@@ -523,6 +530,30 @@ CASES = {
         "10",
         "Sept. 10-12, 1946",
         PART,
+    ),
+    "unspaced two-date range, first date": (
+        "date_visited_from",
+        "12-IV-48",
+        "12-IV-48-15-IV-48",
+        NOT_A_DATE,
+    ),
+    "unspaced two-date range, second date": (
+        "date_visited_to",
+        "IV-25-48",
+        "IV-23-48-IV-25-48",
+        NOT_A_DATE,
+    ),
+    "unspaced two-date range, whole": (
+        "date_visited_from",
+        "12-IV-48-15-IV-48",
+        "12-IV-48-15-IV-48",
+        NOT_A_DATE,
+    ),
+    "spaced two-date range is not refused": (
+        "date_visited_from",
+        "IV-23-48",
+        "IV-23-48 - IV-25-48",
+        None,
     ),
     "the whole written day range is not refused": (
         "date_visited_from",

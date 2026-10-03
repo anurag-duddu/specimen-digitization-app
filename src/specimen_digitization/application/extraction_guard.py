@@ -17,10 +17,16 @@ new product rule):
   question, so nothing here refuses it. `verbatim_dts` is not checked: there it is
   a finding only, under the coordinator's hold (PLAN.md:227).
 - Date. "preparation codes such as 10-6-78-1a or IX-17-66-2 are never dates"
-  (GEOREFERENCING.md:173): `date_parser` says `slide_code`. It also says
-  `part_of_hyphenated_token` for a piece of any other hyphen-joined token
-  (HARNESS.md:648-650); that is the parser's own written rule, and the guard
-  follows the parser on both.
+  (GEOREFERENCING.md:173) names whole codes: `date_parser` says `slide_code`. Its
+  own written rule (HARNESS.md:648-651) also says `slide_code` for a date-shaped
+  part of a code ("IV-29-68" in "IV-29-68-4") and `part_of_hyphenated_token` for a
+  part of any other hyphen-joined token. The guard follows the parser on all three.
+  Consequences, none of which touches a stored value: the end of a hyphenated year
+  range ("1948" in "1948-1950"), a part of a written day range ("10" in
+  "10-12 Sept. 1946"), a date touching a hyphen-joined neighbour, a hyphen-written
+  day range ("IV-23-25-48") and an unspaced two-date range ("12-IV-48-15-IV-48",
+  "IV-23-48-IV-25-48", whole and at each end) are refused; the whole written range
+  literal ("10-12 Sept. 1946") and a spaced two-date range are not.
 
 The helpers are the repo's own (`field_validators`), imported unchanged: an edit
 there would change the pinned validator's behaviour without moving its hash.

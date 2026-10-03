@@ -14326,34 +14326,35 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   production or a model. It changes new runs only (existing records keep their values until reprocessed), and only
   once the worker image is rebuilt from it. After the independent review of head b23e5231 the coordinator removed
   the cut-off-fragment rule (below); the scope is now three rules, each on a written rule.
-- Commits/PRs: code commit 5c9032ef, merge 97ece3e6, wording commit 2ddb3fb1, the review head b23e5231, then the
-  scope-narrowing commit that follows it on this branch;
+- Commits/PRs: code commit 5c9032ef, merge 97ece3e6, wording commit 2ddb3fb1, the review head b23e5231, the
+  scope-narrowing commit 12808330, then a commit of the delta review's text nits;
   https://github.com/anurag-duddu/specimen-digitization-app/pull/256.
 - What the guard refuses: (1) a number the label marks with the other elevation unit (G41, GEOREFERENCING.md:172,
   HARNESS.md:976-977); (2) a value that is a whole slide-preparation code (`field_validators._slide_code`) in
   `collection_code`, `habitat`, `collection_method` and `collectors` (G45, LAB.md:173-179); (3) a date literal for
   which `date_parser` says `no_match` with `slide_code` (GEOREFERENCING.md:173) or `part_of_hyphenated_token`
-  (the parser's own rule, HARNESS.md:648-650). The stored position-3 `date_identified` "V-4-67-1" is refused by
+  (the parser's own rule, HARNESS.md:648-651). The stored position-3 `date_identified` "V-4-67-1" is refused by
   `slide_code`; no stored value depends on `part_of_hyphenated_token`. A piece of a slide code ("IX" from
   "IX-17-66-2", position 7's `collection_code`) is not refused: refusing a piece of a hyphen-joined token was my
   reading of `_enclosing_tokens`, not a written rule, and the coordinator removed it. A test pins "IX" as Supported.
-- Validation: the new file fails on the unchanged `src/` of `origin/main` (92 failed, 6 passed: five replay tests
-  fail on assertion, 87 table cases for want of the module; the six that pass are the control, the position-7 "IX"
-  test and the four date-rule premise tests) and passes on the change (98 passed). With the module present but the
-  call in `apply_candidates` absent, 5 fail and 93 pass, the five failing because a refused value is Supported.
+- Validation: the new file fails on the unchanged `src/` of `origin/main` (97 failed, 6 passed: five replay tests
+  fail on assertion, 92 table cases for want of the module; the six that pass are the control, the position-7 "IX"
+  test and the four date-rule premise tests) and passes on the change (103 passed). With the module present but the
+  call in `apply_candidates` absent, 5 fail and 98 pass, the five failing because a refused value is Supported.
   Each rule switched off in memory fails its own tests (scratch mutation check). The ten stored runs' 48 supported
   (field, value) pairs through the final guard: 5 refused, exactly `elevation_from_m` on positions 2 and 7,
   `collection_code` on 2 and 5 and `date_identified` on 3; the other 43 untouched. Run one file at a time after
-  the change, all passed: the new file (98) and the pin tests `research_harness/test_committed_pins.py` (17),
+  the change, all passed: the new file (103) and the pin tests `research_harness/test_committed_pins.py` (17),
   `test_native_canonical_contract.py` (110), `test_native_canonical_v2_contract.py` (87) and
   `test_canonical_materialization.py` (45). In one pytest
   process, as CI runs it, the new file plus eleven neighbouring files (`test_application.py`,
   `test_evidence_integrity.py`, `test_huggingface_preflight.py`, `test_bounded_telemetry.py`,
   `test_field_validators.py`, `test_field_harness.py`, `test_model_runtime.py` and the four pin files), in both
-  orders: 733 passed, 1 skipped each. The whole suite in one process (`python -m pytest -q`, the command CI
-  runs through `uv run`) with the change: 10063 passed, 107 skipped, 0 failed, 13 min 25 s. At the review head
-  b23e5231, with the fragment rule, the neighbour files one at a time and the whole suite (10047 passed,
-  107 skipped) had passed too.
+  orders: 733 passed, 1 skipped each (measured at 12808330 with 98 new tests, to be re-run before the push).
+  The whole suite in one process (`python -m pytest -q`, the command CI runs through `uv run`) with the change,
+  also at 12808330: 10063 passed, 107 skipped, 0 failed, 13 min 25 s. At the review head b23e5231, with the
+  fragment rule, the neighbour files one at a time and the whole suite (10047 passed, 107 skipped) had passed
+  too.
   `pre-commit run --files` on the changed files: all hooks passed; `ruff format --check` and `ruff check` (not a
   repository gate; there is no ruff configuration) clean on the two Python files this branch adds. Commits were
   made with `--no-verify` after the hooks ran by hand. Not run: CI's Python 3.12 (the local venv is 3.11), the
@@ -14372,8 +14373,11 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   - The date rule follows the parser on pieces of hyphen-joined tokens too: the end of a hyphenated year range
     ("1948" in "1948-1950"), a part of a written day range ("12 Sept. 1946" or "10" in "10-12 Sept. 1946") and any
     date touching a hyphen-joined neighbour are refused, while the whole range literal ("10-12 Sept. 1946") is not.
-    A hyphen-written day range ("IV-23-25-48") is a slide code to the parser. Tests pin each. No stored value is
-    affected. Narrowing the date rule to `slide_code` alone is a one-line change if the owner does not want the rest.
+    A hyphen-written day range ("IV-23-25-48") and an unspaced two-date range ("12-IV-48-15-IV-48", whole and at
+    each end) are slide codes to the parser; a spaced range ("IV-23-48 - IV-25-48") is not refused. The date-shaped
+    part of a code ("IV-29-68" in "IV-29-68-4") is `slide_code` by the HARNESS.md clause, not by
+    GEOREFERENCING.md:173, which names whole codes. Tests pin each. No stored value is affected. Narrowing the
+    date rule to `slide_code` alone is a one-line change if the owner does not want the rest.
   - A refused value reaches review only as the generic `mandatory_unresolved:{key}` reason (`policy.py:71`). The
     guard's own reason string is returned to the caller and recorded nowhere, so a reader of LAB.md:173-179 who looks
     for a kind-specific reason will not find one.
