@@ -83,6 +83,9 @@ def sam_argv(env_path: str, digest: str) -> list[str]:
             "--no-allow-unauthenticated", "--ingress=all", "--execution-environment=gen2",
             f"--cpu={spec['cpu']}", f"--memory={spec['memory']}", "--cpu-throttling", "--no-cpu-boost",
             f"--concurrency={spec['concurrency']}", f"--timeout={spec['timeout_seconds']}s", "--port=8080",
+            # Revision level (--*-instances) and service level (--min/--max), as released_bodies sets scaling on both
+            # and verify_runtime_template checks both. Cloud Run applies the lesser maximum and the larger minimum
+            # (docs.cloud.google.com/run/docs/configuring/max-instances and min-instances).
             f"--min-instances={low}", f"--max-instances={high}", f"--min={low}", f"--max={high}",
             f"--startup-probe={probe_flag(spec['startup_probe'])}",
             f"--env-vars-file={env_path}", f"--set-secrets={role_secrets('sam')}",

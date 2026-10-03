@@ -70,7 +70,7 @@ def test_sam_service_is_private_authorized_run_with_the_read_only_checkpoint_mou
     assert code == 0, output
     [service] = find(commands, "gcloud", "run", "deploy", "specimen-sam")
     for flag in ("--no-allow-unauthenticated", "--ingress=all", "--cpu=4", "--memory=16Gi", "--concurrency=1",
-                 "--max-instances=1", "--min-instances=1", "--timeout=300s", "--clear-volumes",
+                 "--max-instances=1", "--min-instances=1", "--max=1", "--min=1", "--timeout=300s", "--clear-volumes",
                  f"--service-account={S.SAM['service_account']}",
                  "--startup-probe=tcpSocket.port=8080,periodSeconds=10,timeoutSeconds=10,failureThreshold=60",
                  "--add-volume-mount=volume=checkpoint,mount-path=/model-cache"):
@@ -82,6 +82,22 @@ def test_sam_service_is_private_authorized_run_with_the_read_only_checkpoint_mou
     assert "# env HF_HUB_OFFLINE=1" in output
     assert "--set-secrets=LOGFIRE_TOKEN=specimen-worker-logfire:1" in service and "HF_TOKEN" not in output
     assert not any(arg.startswith("--allow-unauthenticated") for arg in service)
+
+
+def test_sam_scaling_is_set_at_both_levels_as_the_release_body_sets_it():
+    code, output, commands = dry("deploy.py", "sam")
+    assert code == 0, output
+    [service] = find(commands, "gcloud", "run", "deploy", "specimen-sam")
+    flags = {arg.split("=", 1)[0]: arg.split("=", 1)[1] for arg in service
+             if arg.startswith(("--min", "--max"))}
+    released = importlib.import_module("deploy_runtime")
+    body = released.released_bodies({"sam": f"{released.REGISTRY}/sam@sha256:" + "6" * 64}, SHA, 1, 1, ["sam"])["sam"]
+    service_level, revision_level = body["scaling"], body["template"]["scaling"]
+    assert flags == {
+        "--min": str(service_level["minInstanceCount"]), "--max": str(service_level["maxInstanceCount"]),
+        "--min-instances": str(revision_level["minInstanceCount"]),
+        "--max-instances": str(revision_level["maxInstanceCount"]),
+    } == {"--min": "0", "--max": "1", "--min-instances": "0", "--max-instances": "1"}
 
 
 def test_deploy_refuses_another_project_and_a_bad_minimum():
@@ -211,14 +227,16 @@ def test_checkpoint_dry_run_prints_the_layout_and_the_digest():
 class FakeGcloud:
     """Answers the few gcloud commands the scripts send; records every argv."""
 
-    def __init__(self, listings=(), secret=FAKE_TOKEN):
-        self.calls, self.listings, self.secret = [], list(listings), secret
+    def __init__(self, listings=(), secret=FAKE_TOKEN, secrets=None):
+        self.calls, self.listings, self.secret, self.secrets = [], list(listings), secret, secrets or {}
 
     def __call__(self, argv, **kwargs):
         self.calls.append(list(argv))
         out = ""
         if argv[:4] == ["gcloud", "secrets", "versions", "access"]:
-            out = self.secret + "\n"
+            # gcloud prints the stored value with no terminator (format value[terminator=""]).
+            name = next(arg.split("=", 1)[1] for arg in argv if arg.startswith("--secret="))
+            out = self.secrets.get(name, self.secret)
         elif argv[:4] == ["gcloud", "storage", "objects", "list"]:
             out = json.dumps(self.listings.pop(0) if self.listings else [])
         elif argv[:3] == ["gcloud", "config", "get-value"]:
@@ -287,21 +305,31 @@ def test_checkpoint_already_stored_downloads_nothing(monkeypatch, capsys):
 
 # seed_allowance_ledger.py
 
-def test_seed_dry_run_prints_the_ledger_id_per_spec():
-    code, output, commands = dry("seed_allowance_ledger.py", ORG_ID=ORG, COLLECTION_ID=COLLECTION)
+ACTOR = "worker-actor-" + "x" * 12
+BINDINGS = json.dumps({COLLECTION: "insects", "7d9a1c2b-3e4f-4a5b-8c6d-0e1f2a3b4c5d": "botany"})
+
+
+def seed_secrets(actor=ACTOR, bindings=BINDINGS):
+    return FakeGcloud(secrets={"specimen-worker-actor-uid": actor, "specimen-collection-bindings": bindings})
+
+
+def test_seed_dry_run_reads_both_secrets_and_prints_no_identifier():
+    code, output, commands = dry("seed_allowance_ledger.py", ORG_ID=ORG)
     assert code == 0, output
-    assert output.rstrip().endswith(str(uuid5(NAMESPACE_URL, f"processing-lane-allowance:{ORG}/{COLLECTION}")))
     assert find(commands, "gcloud", "secrets", "versions", "access", "1", "--secret=specimen-worker-actor-uid")
-    assert dry("seed_allowance_ledger.py", ORG_ID=ORG.upper(), COLLECTION_ID=COLLECTION)[0] != 0
-    assert dry("seed_allowance_ledger.py", ORG_ID=ORG)[0] != 0
+    assert find(commands, "gcloud", "secrets", "versions", "access", "1", "--secret=specimen-collection-bindings")
+    assert ORG not in output and "as the operator credentials" in output
+    assert dry("seed_allowance_ledger.py", ORG_ID=ORG.upper())[0] != 0
+    assert dry("seed_allowance_ledger.py")[0] != 0
 
 
 class FakeStore:
-    def __init__(self, existing=None, member=True):
-        self.existing, self.member, self.created = existing, member, []
+    def __init__(self, existing=None, member=True, role="operator"):
+        self.existing, self.member, self.role, self.created = existing, member, role, []
 
     def memberships(self, uid):
-        return [{"organization_id": ORG, "collection_id": COLLECTION}] if self.member else []
+        assert uid == ACTOR
+        return [{"organization_id": ORG, "collection_id": COLLECTION, "role": self.role}] if self.member else []
 
     def document(self, scope, kind, ident):
         from specimen_digitization.application.storage import Missing
@@ -316,34 +344,75 @@ class FakeStore:
         return dict(payload, revision=expected + 1)
 
 
-@pytest.mark.parametrize("existing", [None, {"sensitive": False, "reserved_total_micros": 12, "revision": 4}])
-def test_seed_creates_the_ledger_only_when_absent(monkeypatch, capsys, existing):
+def run_seed(monkeypatch, store, gcloud=None):
     seed = importlib.import_module("seed_allowance_ledger")
     monkeypatch.delenv("DRY_RUN", raising=False)
+    monkeypatch.delenv("IMPERSONATE", raising=False)
     monkeypatch.setenv("ORG_ID", ORG)
-    monkeypatch.setenv("COLLECTION_ID", COLLECTION)
-    actor = "worker-actor-" + "x" * 12
+    identities = []
+    monkeypatch.setattr(ops.subprocess, "run", gcloud or seed_secrets())
+    monkeypatch.setattr(seed, "repository", lambda impersonate: (identities.append(impersonate), store)[1])
+    return seed.main(), identities
+
+
+@pytest.mark.parametrize("existing", [None, {"sensitive": False, "reserved_total_micros": 12, "revision": 4}])
+def test_seed_creates_the_ledger_only_when_absent(monkeypatch, capsys, existing):
     store = FakeStore(existing)
-    monkeypatch.setattr(ops.subprocess, "run", FakeGcloud(secret=actor))
-    monkeypatch.setattr(seed, "repository", lambda impersonate: store)
-    assert seed.main() == 0
+    code, identities = run_seed(monkeypatch, store)
+    assert code == 0
     out, err = capsys.readouterr()
-    ident = str(uuid5(NAMESPACE_URL, f"processing-lane-allowance:{ORG}/{COLLECTION}"))
-    expected = [] if existing else [("worker_cursor", ident, {"sensitive": False, "reserved_total_micros": 0}, 0)]
+    # The ledger is the worker's own: its id, kind and scope as lane_allowance reads them.
+    from specimen_digitization.application.domain import Scope
+    from specimen_digitization.application.lane_allowance import LEDGER_KIND, ProgramLedger
+
+    ident = ProgramLedger(None, Scope(organization_id=ORG, collection_id=COLLECTION)).ident
+    assert ident == str(uuid5(NAMESPACE_URL, f"processing-lane-allowance:{ORG}/{COLLECTION}"))
+    expected = [] if existing else [(LEDGER_KIND, ident, {"sensitive": False, "reserved_total_micros": 0}, 0)]
     assert store.created == expected
-    assert actor not in out + err and ORG not in out + err and COLLECTION not in out + err
+    assert identities == [""]  # The operator's own credentials unless IMPERSONATE names an account.
+    assert ACTOR not in out + err and ORG not in out + err and COLLECTION not in out + err
 
 
 def test_seed_refuses_without_the_actor_membership(monkeypatch):
-    seed = importlib.import_module("seed_allowance_ledger")
-    monkeypatch.delenv("DRY_RUN", raising=False)
-    monkeypatch.setenv("ORG_ID", ORG)
-    monkeypatch.setenv("COLLECTION_ID", COLLECTION)
     store = FakeStore(member=False)
-    monkeypatch.setattr(ops.subprocess, "run", FakeGcloud(secret="worker-actor"))  # pragma: allowlist secret (test value)
-    monkeypatch.setattr(seed, "repository", lambda impersonate: store)
     with pytest.raises(SystemExit, match="membership"):
-        seed.main()
+        run_seed(monkeypatch, store)
+    assert store.created == []
+
+
+def test_seed_refuses_a_membership_role_the_ledger_write_rejects(monkeypatch):
+    store = FakeStore(role="viewer")
+    with pytest.raises(SystemExit, match="role"):
+        run_seed(monkeypatch, store)
+    assert store.created == []
+
+
+@pytest.mark.parametrize("actor", [ACTOR + "\n", " " + ACTOR, ACTOR + "\x00"])
+def test_seed_refuses_an_actor_uid_the_worker_would_not_match(monkeypatch, capsys, actor):
+    store = FakeStore()
+    with pytest.raises(SystemExit, match="exact Firebase UID") as refusal:
+        run_seed(monkeypatch, store, seed_secrets(actor=actor))
+    assert ACTOR not in str(refusal.value) + "".join(capsys.readouterr())
+    assert store.created == []
+    from specimen_digitization.application.lane_worker import drain_settings
+
+    with pytest.raises(ValueError, match="SPECIMEN_WORKER_ACTOR_UID"):  # The worker refuses the same value.
+        drain_settings({"SPECIMEN_WORKER_ACTOR_UID": actor})
+
+
+@pytest.mark.parametrize("bindings", [
+    json.dumps({COLLECTION: "botany"}),  # None bound to the ledger node.
+    json.dumps({COLLECTION: "insects", "7d9a1c2b-3e4f-4a5b-8c6d-0e1f2a3b4c5d": "insects"}),  # Two.
+    json.dumps({COLLECTION: "no-such-node"}),
+    "{" + COLLECTION,
+    json.dumps({"not-a-uuid": "insects"}),
+])
+def test_seed_takes_the_one_bound_ledger_collection_or_refuses(monkeypatch, capsys, bindings):
+    store = FakeStore()
+    with pytest.raises(SystemExit) as refusal:
+        run_seed(monkeypatch, store, seed_secrets(bindings=bindings))
+    message = str(refusal.value) + "".join(capsys.readouterr())
+    assert COLLECTION not in message and "7d9a1c2b" not in message and "not-a-uuid" not in message
     assert store.created == []
 
 

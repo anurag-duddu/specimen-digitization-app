@@ -11,8 +11,11 @@ docstring lists its other parameters.
 ## Before you start
 
 - Sign in to `gcloud` as a project owner.
-- The seed script also needs application-default credentials (`gcloud auth application-default login`). It also
-  needs `roles/iam.serviceAccountTokenCreator` on `specimen-worker-runtime`.
+- The seed script needs both: the `gcloud` sign-in, with which it reads the secrets `specimen-worker-actor-uid` and
+  `specimen-collection-bindings`, and application-default credentials (`gcloud auth application-default login`),
+  with which it calls Data Connect as the worker actor. The project owner's own credentials suffice. Impersonating
+  `specimen-worker-runtime` instead (`IMPERSONATE=<its email>`) is opt-in and needs
+  `roles/iam.serviceAccountTokenCreator` on it, which `roles/owner` does not include and `iam.py` does not grant.
 
 ## Run order
 
@@ -24,8 +27,8 @@ docstring lists its other parameters.
 | 4 | `uv run --frozen python scripts/ops/deploy.py sam` | Deploys the private SAM 3 service with the read-only checkpoint mount. |
 | 5 | `uv run --frozen python scripts/ops/deploy.py worker` | Defines the worker job: one task, no retries, 3600 s. |
 | 6 | `uv run --frozen python scripts/ops/iam.py` | Adds the invoker grants on `specimen-sam` and `specimen-worker`. |
-| 7 | `ORG_ID=<uuid> COLLECTION_ID=<uuid> uv run --frozen python scripts/ops/seed_allowance_ledger.py` | Creates the program's allowance ledger as the worker, only if it is absent. |
-| 8 | `uv run --frozen python scripts/ops/warm_sam.py` | Run this right before each worker execution. It returns once SAM 3 has loaded its model. |
+| 7 | `ORG_ID=<uuid> uv run --frozen python scripts/ops/seed_allowance_ledger.py` | Creates the program's allowance ledger as the worker actor, only if it is absent, in the one collection `specimen-collection-bindings` binds to `insects`. |
+| 8 | `uv run --frozen python scripts/ops/warm_sam.py` | Run this right before each worker execution, including an import, which starts the worker through the API. It returns once SAM 3 has loaded its model. |
 
 Steps 1 to 3 do not depend on each other.
 

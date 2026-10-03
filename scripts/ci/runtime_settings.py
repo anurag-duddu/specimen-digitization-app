@@ -67,7 +67,8 @@ API = {
                    "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings"},
 }
 
-# A Cloud Run job the release defines and never runs: one task, no parallelism, no retries.
+# A Cloud Run job the release defines but never starts; the API and the drain's deadline hand-over start its
+# executions (jobs:run, SPECIMEN_WORKER_JOB). One task, no parallelism, no retries.
 WORKER = {
     "service_account": WORKER_EMAIL, "cpu": "1", "memory": "1Gi", "timeout_seconds": 3600,
     # These replace the image's CMD, so they carry the mode. The drain's own deadline ends 300 s inside the task's.
@@ -86,7 +87,9 @@ SAM = {
     # 300 s: two concepts per image plus a cold start; the server stops at 240 s, the worker's segment call at 270 s.
     "cpu": "4", "memory": "16Gi", "max_instances": 1, "concurrency": 1, "timeout_seconds": 300,
     # SAM 3 hashes and loads the 3.4 GB checkpoint from the mount before it listens on 8080. Cloud Run's default TCP
-    # startup probe allows 240 s; this one allows 600 s (60 x 10 s), its maximum without a GPU.
+    # startup probe allows 240 s; this one allows 600 s (60 x 10 s), its maximum without a GPU: failureThreshold x
+    # periodSeconds "cannot exceed 600 seconds (1800 for GPU)", and timeoutSeconds cannot exceed periodSeconds
+    # (docs.cloud.google.com/run/docs/configuring/healthchecks, read 2026-10-03).
     "startup_probe": {"tcpSocket": {"port": 8080}, "periodSeconds": 10, "timeoutSeconds": 10, "failureThreshold": 60},
     # SPECIMEN_SAM3_CHECKPOINT_SHA256 and the read-only /model-cache mount follow SAM_CHECKPOINT_SHA256.
     "env": {**tracing_env("sam"), "HF_HOME": "/model-cache", "HF_HUB_OFFLINE": "1", "SPECIMEN_SAM3_AUDIENCE": SAM_URL,

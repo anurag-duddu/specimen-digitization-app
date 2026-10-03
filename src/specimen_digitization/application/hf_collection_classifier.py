@@ -32,7 +32,7 @@ from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.usage import UsageLimits
 
 from ..model_gateway import ModelGatewayConfigurationError
-from ..provider_privacy import agent_instrumentation
+from ..provider_privacy import agent_instrumentation, private_instrumentation
 from .classification import Candidate, ClassificationRequest, ClassificationResult
 from .collection_profiles import FrozenRecord
 
@@ -152,12 +152,14 @@ class HFCollectionClassifier:
         image_loader: Callable[[ClassificationRequest], ApprovedClassificationImage],
         provenance_sink: Callable[[bytes], str],
         catalog: Mapping[str, str],
+        allow_sensitive: bool = False,
     ):
         self.config = config
         self.gateway = gateway
         self.image_loader = image_loader
         self.provenance_sink = provenance_sink
         self.catalog = MappingProxyType(dict(catalog))
+        self.allow_sensitive = allow_sensitive
 
     def classify(self, request: ClassificationRequest) -> ClassificationResult:
         started = time.monotonic()
@@ -274,8 +276,13 @@ class HFCollectionClassifier:
                 name="hf_collection_classifier",
             )
             # Prompt and messages follow the configured capture mode (G3); the
-            # image bytes are never recorded.
-            agent.instrument = agent_instrumentation()
+            # image bytes are never recorded. A classifier allowed to see
+            # sensitive records never records content.
+            agent.instrument = (
+                private_instrumentation()
+                if self.allow_sensitive
+                else agent_instrumentation()
+            )
 
             async def run():
                 async with asyncio.timeout(remaining()):

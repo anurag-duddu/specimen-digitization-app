@@ -94,15 +94,19 @@ def read(argv) -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
-def secret_value(argv) -> str | None:
-    """A secret's value, for this process only. The command is printed; its output never is. None under DRY_RUN=1."""
+def secret_value(argv, *, exact: bool = False) -> str | None:
+    """A secret's value, for this process only. The command is printed; its output never is. None under DRY_RUN=1.
+
+    exact=True returns the output unstripped: `gcloud secrets versions access` prints the stored value with no
+    terminator, as Cloud Run hands it to a job, so surrounding whitespace is part of the value.
+    """
     show(argv)
     if dry_run():
         return None
     result = subprocess.run(argv, cwd=ROOT, capture_output=True, text=True)
     if result.returncode != 0 or not result.stdout.strip():
         raise SystemExit("could not read the secret; the command's output is withheld")
-    return result.stdout.strip()
+    return result.stdout if exact else result.stdout.strip()
 
 
 def pinned_secret(name: str) -> str:

@@ -59,6 +59,20 @@ class DrainSettings:
     worker_job: str = ""
 
 
+def exact_uid(value) -> bool:
+    """The bootstrap's rule for an explicit Firebase UID (bootstrap_admin.py).
+
+    The drain takes the secret's value as given, never stripped, so a UID with
+    surrounding whitespace or a control character would match no membership.
+    """
+    return (
+        isinstance(value, str)
+        and 1 <= len(value) <= 128
+        and value == value.strip()
+        and not any(ord(character) < 32 for character in value)
+    )
+
+
 def drain_settings(env) -> DrainSettings:
     """Fail closed before any work is taken. Errors name settings, never values."""
     from ..hub_models import SAM3_MODEL
@@ -67,8 +81,8 @@ def drain_settings(env) -> DrainSettings:
     from .runtime_config import collection_bindings
 
     actor = env.get("SPECIMEN_WORKER_ACTOR_UID", "")
-    if not 1 <= len(actor) <= 128:
-        raise ValueError("SPECIMEN_WORKER_ACTOR_UID is required for the drain")
+    if not exact_uid(actor):
+        raise ValueError("SPECIMEN_WORKER_ACTOR_UID must be an exact Firebase UID for the drain")
     if env.get("SPECIMEN_APPROVED_INFERENCE") != "true":
         raise ValueError("SPECIMEN_APPROVED_INFERENCE must be true for the drain")
     if any(env.get(key) for key in EMULATOR_KEYS):
