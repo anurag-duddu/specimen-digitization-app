@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import copy
 import math
-import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -17,6 +16,7 @@ from typing import Literal
 from uuid import UUID
 
 from specimen_digitization.application.domain import Disposition, OPERATIONAL, Principal, Specimen, ValueState
+from specimen_digitization.application.field_validators import CATALOG
 from specimen_digitization.application.policy import PLACEHOLDERS
 from specimen_digitization.application.storage import digest as canonical_digest
 from .canonical_materialization import KEYS, IRN, ResearchCanonicalPolicyV1, _date_bounds, _raw_grounded, unavailable
@@ -289,7 +289,7 @@ def _scientific_reasons(result, profile, observed_at, *, latest_work, field_mapp
         except (ValueError, OverflowError, OSError):
             reasons.append("date_precision_requires_review")
     identifier = run.fields["fmnh_ins_number"]
-    if latest_work["fmnh_ins_number"] in TERMINAL and not re.fullmatch(r"FMNH[- ]?INS[ #]*\d+", identifier.normalized or identifier.parsed or identifier.literal or "", re.I):
+    if latest_work["fmnh_ins_number"] in TERMINAL and not CATALOG.fullmatch(identifier.normalized or identifier.parsed or identifier.literal or ""):
         reasons.append("identifier_format")
     return list(dict.fromkeys(reasons))
 

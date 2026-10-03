@@ -1,10 +1,10 @@
 """Deterministic, abstaining Insects disposition policy."""
 
-import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from .domain import Disposition, OPERATIONAL, Run, ValueState
+from .field_validators import CATALOG
 
 PLACEHOLDERS = {
     "unknown",
@@ -124,15 +124,15 @@ def evaluate(run: Run) -> list[str]:
             failures.append("date_order")
     except (ValueError, KeyError):
         failures.append("date_precision_requires_review")
-    if not re.fullmatch(
-        r"FMNH[- ]?INS[ #]*\d+",
+    # A catalog number as the slides print it, by the catalog_number_validator tool's
+    # grammar (HARNESS.md section 8): an optional FMNH INS prefix, then 5 to 9 digits.
+    if not CATALOG.fullmatch(
         (
             run.fields["fmnh_ins_number"].literal
             if "fmnh_ins_number" in run.fields
             else ""
         )
-        or "",
-        re.I,
+        or ""
     ):
         failures.append("identifier_format")
     if not run.human_approved:
