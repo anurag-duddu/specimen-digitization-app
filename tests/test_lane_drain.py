@@ -615,6 +615,11 @@ def test_production_due_work_uses_the_ordered_non_sensitive_query(monkeypatch):
     ("change", "problem"),
     [
         ({"SPECIMEN_WORKER_ACTOR_UID": None}, "SPECIMEN_WORKER_ACTOR_UID"),
+        # A secret stored with a trailing newline reaches the job as-is.
+        ({"SPECIMEN_WORKER_ACTOR_UID": "worker\n"}, "SPECIMEN_WORKER_ACTOR_UID"),
+        ({"SPECIMEN_WORKER_ACTOR_UID": " worker"}, "SPECIMEN_WORKER_ACTOR_UID"),
+        ({"SPECIMEN_WORKER_ACTOR_UID": "wor\x00ker"}, "SPECIMEN_WORKER_ACTOR_UID"),
+        ({"SPECIMEN_WORKER_ACTOR_UID": "w" * 129}, "SPECIMEN_WORKER_ACTOR_UID"),
         ({"SPECIMEN_APPROVED_INFERENCE": None}, "SPECIMEN_APPROVED_INFERENCE"),
         ({"SPECIMEN_SQL_EMULATOR_HOST": "127.0.0.1:9499"}, "emulator"),
         ({"DATA_CONNECT_EMULATOR_HOST": "127.0.0.1:9399"}, "emulator"),

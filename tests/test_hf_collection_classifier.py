@@ -558,3 +558,116 @@ def test_trace_content_remains_private_even_with_global_capture(capfire):
         assert base64.b64encode(f.image.png).decode() not in trace
     finally:
         Agent.instrument_all(previous)
+
+
+def test_trace_content_is_recorded_when_configured_for_approved_content(
+    capfire, monkeypatch
+):
+    """G3: under approved-content the classifier's prompt, catalog input and
+    ranked output are on its spans; image bytes and provider error bodies never."""
+    from specimen_digitization import observability
+
+    monkeypatch.setattr(
+        observability,
+        "_configured_settings",
+        observability.ObservabilitySettings(
+            environment="test",
+            service_name="specimen-worker",
+            capture_mode=observability.CaptureMode.APPROVED_CONTENT,
+            head_sample_rate=1.0,
+            distributed_tracing=False,
+        ),
+    )
+    for failure in (False, "http", "generic"):
+        f = Fixture()
+        f.config = f.config.model_copy(update={"prompt_text": "classifier_prompt_canary"})
+        f.payload = {"candidates": [candidate() | {"reasons": ["output_canary"]}]}
+        if failure == "http":
+            f.error = ModelHTTPError(401, "fixture/model", "private_error_canary")
+        elif failure == "generic":
+            f.error = RuntimeError("private_error_canary")
+        result = f.adapter().classify(f.request)
+        assert result.status == ("blocked" if failure else "completed")
+    trace = json.dumps(capfire.exporter.exported_spans_as_dict(), default=str)
+    assert "classifier_prompt_canary" in trace
+    assert "Zoology / Insects" in trace
+    assert "output_canary" in trace
+    assert "private_error_canary" not in trace
+    assert base64.b64encode(f.image.png).decode() not in trace
+
+
+def test_trace_content_stays_private_when_the_classifier_may_see_sensitive_records(
+    capfire, monkeypatch
+):
+    """Under approved-content, a classifier allowed to see sensitive records
+    (SPECIMEN_CLASSIFIER_ALLOW_SENSITIVE=true) still records no content."""
+    from specimen_digitization import observability
+
+    monkeypatch.setattr(
+        observability,
+        "_configured_settings",
+        observability.ObservabilitySettings(
+            environment="test",
+            service_name="specimen-worker",
+            capture_mode=observability.CaptureMode.APPROVED_CONTENT,
+            head_sample_rate=1.0,
+            distributed_tracing=False,
+        ),
+    )
+    f = Fixture()
+    f.config = f.config.model_copy(update={"prompt_text": "classifier_prompt_canary"})
+    f.payload = {"candidates": [candidate() | {"reasons": ["output_canary"]}]}
+    result = f.adapter(allow_sensitive=True).classify(f.request)
+    assert result.status == "completed"
+    trace = json.dumps(capfire.exporter.exported_spans_as_dict(), default=str)
+    assert "hf_collection_classifier" in trace
+    assert "classifier_prompt_canary" not in trace
+    assert "output_canary" not in trace
+    assert base64.b64encode(f.image.png).decode() not in trace
+
+
+@pytest.mark.parametrize("sensitive", [True, False])
+def test_the_runtime_child_passes_the_sensitive_switch_to_the_classifier(
+    tmp_path, monkeypatch, sensitive
+):
+    from specimen_digitization.application import classifier_runtime
+    from specimen_digitization.application import hf_collection_classifier
+    from specimen_digitization.application.classification import ClassificationResult
+    from specimen_digitization.application.domain import Asset
+    from specimen_digitization import model_gateway
+
+    built = []
+
+    class Recording:
+        def __init__(self, **kwargs):
+            built.append(kwargs["allow_sensitive"])
+
+        def classify(self, request):
+            return ClassificationResult(
+                status="blocked",
+                input_sha256=request.input_sha256,
+                reason="recorded",
+                adapter_version="test",
+            )
+
+    monkeypatch.setattr(hf_collection_classifier, "HFCollectionClassifier", Recording)
+    monkeypatch.setattr(
+        model_gateway, "HuggingFaceModelGateway", lambda **kwargs: object()
+    )
+    f = Fixture()
+    asset = Asset(
+        id="original", sensitive=sensitive, sha256="a" * 64, blob_ref="unused",
+        media_type="image/png", size_bytes=1, width=8, height=8,
+        filename="a.png", uploader="tester",
+    )
+    classifier_runtime._classifier_child(
+        {
+            "storage": {"kind": "local", "root": str(tmp_path)},
+            "config": f.config.model_dump(mode="json"),
+            "asset": asset.model_dump(mode="json"),
+            "request": f.request.model_dump(mode="json"),
+            "catalog": {"insects": "Zoology / Insects", "botany": "Botany"},
+            "allow_sensitive": sensitive,
+        }
+    )
+    assert built == [sensitive]

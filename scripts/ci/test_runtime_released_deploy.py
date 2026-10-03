@@ -209,21 +209,23 @@ def test_bodies_are_built_only_from_the_committed_settings(ready):
                            "SPECIMEN_SOURCE_REGISTRY_JSON": ("specimen-source-registry", "1"),
                            "SPECIMEN_COLLECTION_BINDINGS_JSON": ("specimen-collection-bindings", "1")}
     assert RuntimeConfig.from_env(api_env).readiness_generation == 1790562271708431
-    for role, cpu, memory, cap, concurrency, timeout in (("api", "1", "1Gi", 2, 8, "600s"), ("sam", "4", "16Gi", 1, 1, "300s")):
+    # SAM 3 has CPU always allocated and startup boost on (runtime_settings.SAM); the API keeps request-based billing.
+    for role, cpu, memory, cap, concurrency, timeout, idle, boost in (("api", "1", "1Gi", 2, 8, "600s", True, False),
+                                                                     ("sam", "4", "16Gi", 1, 1, "300s", False, True)):
         body, template = bodies[role], bodies[role]["template"]
         assert (body["name"], body["ingress"], body["labels"]) == (NAMES[role], "INGRESS_TRAFFIC_ALL", labels)
         assert body["scaling"] == template["scaling"] == {"minInstanceCount": 0, "maxInstanceCount": cap}
         assert (template["revision"], template["serviceAccount"], template["timeout"], template["maxInstanceRequestConcurrency"],
                 template["executionEnvironment"]) == (NEW[role], ACCOUNT.format(f"specimen-{role}"), timeout, concurrency,
                                                       "EXECUTION_ENVIRONMENT_GEN2")
-        assert template["containers"][0]["resources"] == {"limits": {"cpu": cpu, "memory": memory}, "cpuIdle": True,
-                                                          "startupCpuBoost": False}
+        assert template["containers"][0]["resources"] == {"limits": {"cpu": cpu, "memory": memory}, "cpuIdle": idle,
+                                                          "startupCpuBoost": boost}
     assert "startupProbe" not in bodies["api"]["template"]["containers"][0]  # Cloud Run's default probe
     assert bodies["sam"]["template"]["containers"][0]["startupProbe"] == {
         "tcpSocket": {"port": 8080}, "periodSeconds": 10, "timeoutSeconds": 10, "failureThreshold": 60}
     sam = bodies["sam"]["template"]
     assert sam["volumes"] == [{"name": "checkpoint", "gcs": {"bucket": bucket, "readOnly": True, "mountOptions": [
-        "only-dir=application/sha256/" + S.SAM_CHECKPOINT_SHA256 + "/sam3-cache"]}}]
+        "only-dir=application/sha256/" + S.SAM_CHECKPOINT_SHA256 + "/sam3-cache", "uid=10001", "gid=10001"]}}]
     assert sam["containers"][0]["volumeMounts"] == [{"name": "checkpoint", "mountPath": "/model-cache"}]
     assert env_of(sam["containers"][0]) == ({
         **tracing, "LOGFIRE_SERVICE_NAME": "specimen-sam",

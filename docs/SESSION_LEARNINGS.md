@@ -13963,3 +13963,63 @@ Actual new regressions RED10failed then focused GREEN442passed/14.21s, including
 ### 2026-10-03 Current initializer fixture-pin qualification correction
 
 Root task01a0efd9-3858-70b2-b734-3cab8b895a81; branch codex/initializer-user-readback-recovery-20261003, worktree technical-go-live-20261002, source parent64bccac7/tree5a2a7a30 against protected main02a486/e58. Actual unchanged canonical scripts/ci/verify.sh with per-command GIT_FLUSH=0 exited1:8FAIL9268PASS106SKIP in Python; UI/build/routes not reached. Retain execution eccfaa02967254eef6d59957ef644ddb27675523197d56664249639367aab234 and stdout1a8848df785a18030626e6cba5e77f180bb2534718f1d50b195bc652e74e4c1b privately. Eight failures bind synthetic template copies to the previous initializer hash4aae. Update ONLY literal CURRENT_INITIALIZATION_FILES checksum to actual current source732a743bff742a7a6d94583ad090711824ee7ed5077b063dd20127f962e30321. Frozen raw origins, retired hashes and every test name/decorator/assertion unchanged. Actual whole release-plan-template module55PASS1.26s, receipt7956206ab580180bdd1faf423eb6b8fcf6a5543980dec88047f5f5f45bebea44. Prior442 focusedPASS and initial RED10FAIL/focused16FAIL419PASS retained separately. Final-source full canonical/current-head source review/protected CI/new A remain pending; no PASS or live inference. Root asked coordinator for a fresh finite SDK reservation, no old-clock renewal. Standing technical owner authority remains sufficient; no technical permission question. Principal and exact8 IAM cleanups remain completed; old A consumed/B unsent. Native original-ten0/10.
+
+## 2026-10-03 — Lane W: worker and SAM runtime for Phase A (Claude)
+
+Task: go-live Lane W (coordinator session "Go-live coordinator"), branch claude/live-w-worker-sam-runtime, worktree .claude/worktrees/festive-murdock-85bece, base main 2f85b429, PR #236. No production command was run from this session; ops scripts are for the coordinator.
+
+Deploy authority for scripts/ops/deploy.py (a gcloud run deploy from an operator shell, which AGENTS.md's deployment rules forbid). The quotes below were relayed to Lane W by the go-live coordinator session on 2026-10-03; Lane W did not see the owner's messages directly. In the coordinator session that day, the owner said "Take over, get this live". At about 05:25Z, answering whether the coordinator may merge lane PRs and run the setup and deploy steps, the owner said "Yes, get it done. You have my authorization. The safety checks are being paranoid and not required. you have full permission". The plan approved in plan mode that day lists one supervised bring-up using these scripts. Lane R's PR rewrites the AGENTS.md deployment section to match, so this PR edits neither AGENTS.md nor PLAN.md. deploy.py is not in the approved-script list of tests/test_deployment_policy.py. Instead, the lint allows exactly two `gcloud run (jobs) deploy` calls in it (count pinned at 2), and a negative test shows that any other deploy command added there fails. This exemption is for the hand bring-up and should be removed when Lane R's workflows (PR #238) run the deploys.
+
+Outcome: the drain runs the ordinary chain unless SPECIMEN_RESEARCH_HARNESS=on (contract shared with Lane H in research_harness/enablement.py); #231 folded in. The published profile gains the first-pass route, price and a bounded request (max_input_tokens 32,768, max_output_tokens 4,096; 20,000 micros reserved per region). On the segment step a sam3_* failure keeps its retry past the 270 s budget (250 s wait) instead of ending external_outcome_unknown. Runtime settings: worker --drain args, SAM authorized-run with checkpoint digest 9089029b…ac9b8 (already in the bucket), no Google Maps mount, CPU always allocated for SAM. G3: readers, extraction and classifier capture content under approved-content. scripts/ops/ holds the bring-up scripts and run order.
+
+Learnings: roles/owner lacks iam.serviceAccounts.getAccessToken, so impersonating the worker account needs an explicit tokenCreator grant; the seed uses the operator's own ADC instead. gcsfuse needs bucket-level list at mount, which a prefix-conditioned grant does not give. pre-commit's commit hook stashes unstaged files, so with several agents editing one worktree, run `pre-commit run --files` and commit with --no-verify.
+
+Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. Flutter, UI and build gates of verify.sh not run (no Dart change). Follow-ups: SAM timing on Cloud Run is estimated, not measured; owner_grants.py does not list the new SAM bucket-list grant.
+### 2026-10-03 — Lane R: simple on-merge data and runtime releases (data plane + API)
+
+- Task: go-live Lane R (release simplification), coordinated by the "Go-live coordinator" session; plan
+  `~/.claude/plans/distributed-sparking-rivest.md`; status file `~/specimen-golive/live-20261003/lane-r.md`.
+- Branch/worktree: `claude/live-r-simple-release` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/ecstatic-maxwell-3daecb`,
+  base `main` 2f85b429.
+- Outcome: In progress. Pull request open; the coordinator's independent review of head 79aeea9e said merge
+  after fixes, no blockers, and the fixes are in the second commit; not merged; nothing in it has run against
+  production.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/238; first commit 79aeea9e.
+- Validation: `uv run pytest -q` on the staged tree before the pre-review fixes: 9451 passed, 107 skipped.
+  After the fixes, targeted files only: `tests/test_deployment_policy.py`, `scripts/release`, `scripts/ops` and four
+  workflow-scanning `scripts/ci` files, counts in the pull request body. `pre-commit run` on the staged files: all hooks
+  passed. `check_ui_strings.py`: 0 violations. Flutter gates not run locally (no Dart file changed). The
+  initialization SQL and the SQL runner were run on a local PostgreSQL 18.6 with stand-in roles; the Google REST
+  layer was faked; `deploy_api.py` was rehearsed with real gcloud against a local stand-in API;
+  `owner_setup.sh` ran once for real with `--dry-run` only (read-only). Not confirmed: every live call.
+- Durable learnings:
+  - The release sign-in providers bind `workflow_ref` to the workflow FILE NAME and `event_name == 'push'`.
+    Replacing a workflow in place keeps sign-in working; renaming it, or adding `workflow_dispatch`, does not,
+    until the owner widens the condition (`scripts/ops/owner_setup.sh` does).
+  - The policy tests scan for deploy commands outside an approved script list and for `dataconnect:` subcommands
+    in workflows. New release code lives in `scripts/release/` and is called from YAML, never inlined.
+  - `scripts/ci/release_initialize.mjs` pins the SHA-256 of six files and the plan templates under
+    `infra/release/` hold digests of others, so the retired scripts are marked in `scripts/ci/RETIRED.md`
+    instead of by a header comment in each file.
+  - Data Connect's differ (emulator 3.2.0) plans `DROP INDEX` for the release's own supplemental indexes. The
+    diff step sets those four aside (printed, never run) and refuses every other drop.
+  - `scripts/ci/release_bootstrap.py` and `schema_gate.py` are still imported by the new data release; importing
+    `release_bootstrap` loads several gate modules. They are listed as in use in `RETIRED.md`.
+  - An owner-script test that compares hard-coded grants with `runtime_settings.py` couples lanes: it would have
+    failed the next lane's required checks after merge. Strict equality is kept only for what one change owns.
+  - The main checkout was on another branch with unsaved work; the owner page copies the script from
+    `origin/main` with `git show` instead of switching branches there.
+- Failed approaches: none that reached a commit. Considered and dropped: reusing `deploy_data.py` /
+  `deploy_runtime.py` (both need the gate packet); the auth action's `token_format: access_token` for the
+  registry login (unproven for a federated principal here; replaced by `gcloud auth print-access-token`); a
+  bootstrap that fails when rows differ from the artifact (it would have failed every later release; it now warns).
+  - Authority citations must point at something a reader can find: the owner's 2026-10-03 messages live in the
+    coordinator session, so the docs quote them and say where they are recorded.
+  - When the Cloud SQL connector's `getOptions` rejects, `connector.close()` raises an unhandled rejection and
+    Node prints its version as the last line; `data_sql.mjs` now prints one `data_sql` line and exits.
+- Remaining follow-ups: second pull request for the SAM and worker jobs and their invoker grants, reconciled
+  with Lane W's #236; delete the retired scripts and their tests; the owner's one-time
+  `scripts/ops/owner_setup.sh` run (with `--setup-only` before the merge, or in full after it; push-triggered
+  releases fail until the setup has been done);
+  first live run settles the items listed as not verified in the pull request body.

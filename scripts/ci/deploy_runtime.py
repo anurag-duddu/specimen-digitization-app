@@ -507,8 +507,10 @@ def verify_runtime_template(observed, expected, *, role):
             and actual.get("args", []) == desired.get("args", []), "runtime image or entrypoint changed")
     require(actual.get("resources", {}).get("limits") == desired["resources"]["limits"], "runtime CPU or memory changed")
     if role != "worker":
-        require(actual.get("resources", {}).get("cpuIdle") is True
-                and actual.get("resources", {}).get("startupCpuBoost", False) is False,
+        # Both are plain proto3 bools (googleapis run/v2/k8s.min.proto), so a false one may be absent.
+        resources, wanted_resources = actual.get("resources", {}), desired["resources"]
+        require(resources.get("cpuIdle", False) is wanted_resources["cpuIdle"]
+                and resources.get("startupCpuBoost", False) is wanted_resources["startupCpuBoost"],
                 "runtime billing or startup CPU policy changed")
     require(actual.get("env", []) == desired.get("env", []) and actual.get("volumeMounts", []) == desired.get("volumeMounts", []), "runtime environment or mounts changed")
     # Only a probe the body sets is compared; Cloud Run fills in its default probe where none is sent.
@@ -727,7 +729,7 @@ def released_bodies(images, source_sha, run_id, attempt, roles):
         revision = f"specimen-{role}-{source_sha[:12]}-{run_id}-{attempt}"
         require(len(revision) <= 63, "revision name too long")
         container["ports"] = [{"containerPort": 8080}]
-        container["resources"].update(cpuIdle=True, startupCpuBoost=False)
+        container["resources"].update(cpuIdle=spec.get("cpu_idle", True), startupCpuBoost=spec.get("startup_cpu_boost", False))
         if "startup_probe" in spec:
             container["startupProbe"] = copy.deepcopy(spec["startup_probe"])
         scaling = {"minInstanceCount": 0, "maxInstanceCount": spec["max_instances"]}
@@ -736,7 +738,7 @@ def released_bodies(images, source_sha, run_id, attempt, roles):
                     "executionEnvironment": "EXECUTION_ENVIRONMENT_GEN2", "containers": [container]}
         if role == "sam":
             template["volumes"] = [{"name": "checkpoint", "gcs": {"bucket": committed.BUCKET, "readOnly": True, "mountOptions": [
-                f"only-dir=application/sha256/{committed.SAM_CHECKPOINT_SHA256}/sam3-cache"]}}]
+                f"only-dir=application/sha256/{committed.SAM_CHECKPOINT_SHA256}/sam3-cache", *spec["mount_options"]]}}]
             container["volumeMounts"] = [{"name": "checkpoint", "mountPath": "/model-cache"}]
         bodies[role] = {"name": f"{committed.PREFIX}/services/specimen-{role}", "ingress": "INGRESS_TRAFFIC_ALL",
                         "scaling": scaling, "labels": dict(labels), "template": template}
