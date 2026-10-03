@@ -76,9 +76,10 @@ def extraction_refusal(field_key: str, literal: str, text: str) -> str | None:
         # Refuse only when every unit written for this number is the other one.
         return "elevation_unit_conflict" if units and unit not in units else None
     if field_key in DATE_FIELDS:
-        # `date_parser` decides a slide code or a hyphen-joined part before it reads
-        # the profile's date rules, so no rules are passed: the extraction child
-        # process has no profile snapshot, and the answer does not depend on them.
+        # `date_parser` decides a slide code or a hyphen-joined part without the
+        # profile's date rules (it only validates them first, then applies them to
+        # a literal that is a date). None are passed: the extraction child process
+        # has no profile snapshot, and this answer does not depend on them.
         result = date_parser(literal, source_text=text)
         if result.outcome == LookupStatus.NO_MATCH and {
             "slide_code",

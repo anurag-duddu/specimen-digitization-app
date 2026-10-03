@@ -480,7 +480,7 @@ def test_the_pure_function_refuses_exactly_these_values(case):
 def test_the_date_refusal_does_not_depend_on_the_profile_date_rules(rules):
     """The guard passes no date rules (the extraction child has none), which is
     sound only while `date_parser` decides a slide code or a hyphen-joined part
-    before it applies them. If that changes, this test says so."""
+    without them. If that changes, this test says so."""
     from specimen_digitization.application.domain import LookupStatus
     from specimen_digitization.application.field_validators import date_parser
 
