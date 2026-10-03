@@ -74,5 +74,19 @@
       "content_type": "application/json; charset=utf-8",
       "purpose": "subjects 105526328-330: verbatim label locality with the label's misspelling"
     }
+  ],
+  "omitted": [
+    {
+      "url": "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx?Country=Guatemala&State=Chimaltenango&County=Yepocapa&Locality=Yepocapa&hwyX=false&enableH2O=false&doUncert=true&doPoly=false&displacePoly=false&languageKey=0&fmt=json",
+      "requested_at": "2026-10-03T04:52:30.867279+00:00",
+      "http_status": 200,
+      "same_results_as": "yepocapa-modern.json"
+    },
+    {
+      "url": "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx?Country=Philippines&State=Davao+City&County=&Locality=Mount+McKinley&hwyX=false&enableH2O=false&doUncert=true&doPoly=false&displacePoly=false&languageKey=0&fmt=json",
+      "requested_at": "2026-10-03T04:52:40.875915+00:00",
+      "http_status": 200,
+      "same_results_as": "mckinley-modern.json"
+    }
   ]
 }

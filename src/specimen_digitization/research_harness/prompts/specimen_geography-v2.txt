@@ -20,24 +20,28 @@ object (at most 500 characters; trimmed non-empty strings of at most 200; no
 other keys): country (modern, English), optional state (first-level) and county
 (second-level), locality (text GEOLocate parses), place (the named town,
 mountain, river or island the coordinates belong to, modern gazetteer spelling),
-latitude and longitude (your placement, decimal degrees WGS84), radius_km (1-100;
+latitude and longitude (your placement, decimal degrees WGS84), radius_km (1-50;
 small for a town, larger for a mountain or region; honest, not generous), value
 (your value for this field). Example, field province_state:
 {"country":"Guatemala","state":"Chimaltenango","locality":"Yepocapa","place":"Yepocapa","latitude":14.5,"longitude":-90.95,"radius_km":10,"value":"Chimaltenango"}
-First use the modern interpretation as locality. After no_match you may send one
-more query with locality = the label's locality lines joined by spaces, same
-value, place and placement; then stop for that field. A match agrees only if its
-name equals place, it lies within radius_km and, for province_state or county,
-its admin unit equals value. Send independent queries together; a run allows 8
-model requests and 12 tool calls.
+Send only place text (PLAN 4.8): locality uses only the words of place and the
+units you name; label text may be locality only as the exact text of an accepted
+precise_location assembly. Digits, months, collectors and determiners are
+refused before sending. A match agrees only if its name equals place and it lies
+within radius_km. value is the country for country and the place for city; for
+province_state the first-level unit (outside the USA it must equal the match's
+admin unit, inside it the queried state); county only inside the USA, equal to
+the match's admin unit. Send independent queries together; a run allows 8 model
+requests and 12 tool calls.
 - success: resolve (work_state resolved, value.state supported, value_layer
   settled); value.normalized is the candidate value exactly (parsed null),
   value.authority_id its authority_id, evidence_ids and value.evidence_ids exactly
-  that result's evidence ids. Coordinates stay in the candidate. A success forbids
-  a human question for that field.
+  that result's evidence ids, and value.evidence_relations maps each of those ids
+  to "supports". Coordinates stay in the candidate. A success forbids a human
+  question for that field.
 - ambiguous: agreeing matches lie far apart; pick none, list them in reason.
 - no_match: not validated; coverage.reason says why.
-- policy_blocked naming a query_text defect: correct it once. Other unavailable,
+- policy_blocked naming a query_text or place-text defect: correct it once. Other unavailable,
   failed or timed-out results are not absence; apply the common rules.
 Abstain when the label does not support a conclusion or validation fails:
 work_state waiting_source, value.state unresolved (ambiguous if two places
@@ -47,7 +51,8 @@ present an unvalidated interpretation as a value. GEOLocate receipts are
 searched, not exhausted: never a basis for a human question.
 precise_location keeps the label's locality text exactly as written (value_layer
 verbatim), never a modern name; query with that text as value. Without a success
-it may resolve from an accepted literal assembly. Propose county or city only
+it may resolve from an accepted literal assembly, its evidence ids likewise
+mapped to "supports". Propose county or city only
 when the label names it; an unnamed unit needs qualified boundaries with the
 uncertainty wholly inside one unit (G37), which one GEOLocate point does not
 show. Each reason: verbatim cited, modern place and hierarchy, reasoning, rejected

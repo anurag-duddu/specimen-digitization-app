@@ -6,6 +6,7 @@ The fixtures are recorded responses of paced live probes for the ten pilot local
 
 import asyncio
 import hashlib
+import inspect
 import json
 from pathlib import Path
 
@@ -13,20 +14,33 @@ import httpx
 import pytest
 
 from specimen_digitization.application.domain import FieldValue, LookupStatus, ValueState
+from specimen_digitization.research_harness import canonical_materialization, canonical_projection_v2, prompts
 from specimen_digitization.research_harness.contracts import (
-    ROLE_FIELDS, FieldKey, FieldResolution, ResearchScope, SourceCoverageState, SourceQuery,
-    SpecialistRequest, SpecialistRole, ToolReceipt, WorkState, digest,
+    ROLE_FIELDS, EventHypothesis, EventKind, FieldKey, FieldResolution, ResearchScope, SourceCoverageState,
+    SourceFragment, SourceQuery, SpecialistRequest, SpecialistRole, ToolReceipt, WorkState, digest,
 )
-from specimen_digitization.research_harness.evidence import EvidenceError, validate_resolution
+from specimen_digitization.research_harness.evidence import EvidenceError, assemble_field, validate_resolution
 from specimen_digitization.research_harness.prompts import resolve_prompt
 from specimen_digitization.research_harness.sources import (
-    GEOLOCATE_QUALIFICATION, BoundedHTTPTransport, FixtureSourceTransport, RequestPacer,
-    SourceBroker, geolocate_interpretation, insects_registry, validate_destination,
+    GEOLOCATE_QUALIFICATION, SOURCE_PACER, SOURCE_REQUEST_INTERVAL_SECONDS, BoundedHTTPTransport,
+    FixtureSourceTransport, RequestPacer, SourceBroker, geolocate_interpretation, insects_registry,
+    validate_destination,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures" / "geolocate"
 MANIFEST = {item["file"]: item for item in json.loads((FIXTURES / "manifest.json").read_text())["fixtures"]}
 PIN = "0" * 64
+FIXTURE_SHA256 = {
+    "apo-modern.json": "38e8b32e7845e3c2d152fc4d5d43acc882a98324a3d8b9068f092fd2e9b98ad9",  # pragma: allowlist secret
+    "apo-verbatim.json": "b8d982317b9989afe179cd475c43d81f6dc53cfd73c19f960f9edeb23740a5dd",  # pragma: allowlist secret
+    "evanston-control.json": "044dafa006dba4ffaa29917caaf57f66f8e08543beda3183b4f43b0f3482cb1c",  # pragma: allowlist secret
+    "mckinley-modern.json": "8bf7bcbf475e9d6d0087b66d5d4d9edcbbf8948ab9610095c36193fc421a53a6",  # pragma: allowlist secret
+    "mckinley-old-province.json": "248687fa7e8cd6ab57f3cf3a8f32d2b91eeba9d9c166cc30f93e2bf4d02714c0",  # pragma: allowlist secret
+    "mckinley-verbatim.json": "74fdd4c7f29339067eeb54674161fb4e8e980ecdbffae0d65143adc5f811a049",  # pragma: allowlist secret
+    "yepocapa-geojson-format.json": "df49649ba0aa6c65458bbaf280565ead6d42a89f22920411f883a0d8dbffbcb0",  # pragma: allowlist secret
+    "yepocapa-modern.json": "64ce81273d34129b48321b4e2a7b50443e50dda3bc02a3e26c44ca450265a46c",  # pragma: allowlist secret
+    "yepocapa-verbatim.json": "70a81fa3c129faa9e22dd20001b1e24d73f68dbc13d7a1369bc9717909c707d2",  # pragma: allowlist secret
+}
 REGISTRY = insects_registry(qualification_overrides={"geolocate": GEOLOCATE_QUALIFICATION})
 YEPOCAPA = {"country": "Guatemala", "state": "Chimaltenango", "locality": "Yepocapa", "place": "Yepocapa",
             "latitude": 14.5, "longitude": -90.95, "radius_km": 15}
@@ -44,13 +58,44 @@ def verbatim(interpretation, label):
     return {**{key: item for key, item in interpretation.items() if key != "state"}, "locality": label}
 
 
-def geography_request(registry=REGISTRY):
-    scope = ResearchScope(organization_id="org", collection_id="insects", specimen_id="subject_105526328",
-                          job_id="job", generation=1, input_digest=PIN, profile_digest=PIN, sensitive=False)
+SCOPE = ResearchScope(organization_id="org", collection_id="insects", specimen_id="subject_105526328",
+                      job_id="job", generation=1, input_digest=PIN, profile_digest=PIN, sensitive=False)
+# Reader lines of two pilot locality labels (S4 reader baseline 2026-09-23, qwen reader).
+LABEL_321 = "10-6-78-la\nE. slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.\nF.G. Werner\n3 sept. '46\nMossy forest 6400'"
+LABEL_330 = "IV-29-68-a\nYepocapa, 4800 ft.\nChimaltenango\nGuatemala, IV-25\n1948, R.D. Mitchell"
+
+
+def geography_request(registry=REGISTRY, fragments=(), events=(), assemblies=()):
     prompt = resolve_prompt(SpecialistRole.GEOGRAPHY, profile_digest=PIN, source_registry_digest=registry.digest,
                             toolset_digest=PIN, model_route="harness-deepseek", output_schema_digest=PIN)
-    return SpecialistRequest(scope=scope, role=SpecialistRole.GEOGRAPHY,
-                             field_keys=ROLE_FIELDS[SpecialistRole.GEOGRAPHY], prompt=prompt)
+    return SpecialistRequest(scope=SCOPE, role=SpecialistRole.GEOGRAPHY,
+                             field_keys=ROLE_FIELDS[SpecialistRole.GEOGRAPHY], prompt=prompt,
+                             fragments=tuple(fragments), events=tuple(events), assemblies=tuple(assemblies))
+
+
+def label_fragments(text):
+    fragments, start = [], 0
+    for order, line in enumerate(text.split("\n")):
+        fragments.append(SourceFragment(
+            id=f"line{order}", scope=SCOPE, asset_id="asset", asset_generation="1", asset_digest=PIN,
+            label_id="label", region_id="label", observation_id="observation", reader="independent-reader",
+            model_id="fake", prompt_digest=PIN, observation_text=text,
+            observation_digest=hashlib.sha256(text.encode()).hexdigest(), start=start, end=start + len(line),
+            literal=line, order=order))
+        start += len(line) + 1
+    return fragments
+
+
+def assembled_request(locality):
+    # The label's locality as an accepted precise_location assembly: the one way label text leaves.
+    [fragment] = label_fragments(locality)
+    event = EventHypothesis(id="event", scope=SCOPE, kind=EventKind.COLLECTING, fragment_ids=(fragment.id,),
+                            evidence_ids=("role-evidence",), reason="Independently annotated synthetic event",
+                            status="accepted", validator_version="gold-v1")
+    assembly = assemble_field(assembly_id="locality", scope=SCOPE, field_key=FieldKey.PRECISE_LOCATION,
+                              fragments=[fragment], event=event)
+    assert assembly.interpreted_text == locality
+    return geography_request(fragments=[fragment], events=[event], assemblies=[assembly])
 
 
 async def completed_effect(request, tool_id, arguments, invoke):
@@ -68,7 +113,7 @@ def query(field_key, interpretation, value):
                        query_text=json.dumps({**interpretation, "value": value}))
 
 
-def lookup(fixture, field_key, interpretation, value):
+def lookup(fixture, field_key, interpretation, value, request=None):
     sent = []
 
     async def read(url, policy):
@@ -76,7 +121,7 @@ def lookup(fixture, field_key, interpretation, value):
         return 200, (FIXTURES / fixture).read_bytes()
 
     broker = SourceBroker(REGISTRY, transport=FixtureSourceTransport(read), effect_dispatch=completed_effect)
-    result = asyncio.run(broker.query(geography_request(), query(field_key, interpretation, value)))
+    result = asyncio.run(broker.query(request or geography_request(), query(field_key, interpretation, value)))
     assert sent == [MANIFEST[fixture]["url"]], "the adapter must send exactly the recorded request"
     return result
 
@@ -86,10 +131,14 @@ def candidates(result):
 
 
 def test_every_fixture_is_a_recorded_live_response():
-    assert sorted(MANIFEST) == sorted(path.name for path in FIXTURES.glob("*.json") if path.name != "manifest.json")
-    for item in MANIFEST.values():
+    assert sorted(MANIFEST) == sorted(FIXTURE_SHA256)
+    for name, item in MANIFEST.items():
+        assert hashlib.sha256((FIXTURES / name).read_bytes()).hexdigest() == FIXTURE_SHA256[name]
         assert item["http_status"] == 200 and item["url"].startswith("https://geo-locate.org/")
         assert item["requested_at"].startswith("2026-10-03T")
+    # Eleven live requests: nine kept as fixtures, two omitted because their results repeat a kept one.
+    omitted = json.loads((FIXTURES / "manifest.json").read_text())["omitted"]
+    assert len(MANIFEST) + len(omitted) == 11
 
 
 def test_registry_admits_only_the_glcwrap_json_endpoint_and_drops_google_maps():
@@ -115,7 +164,8 @@ def test_registry_admits_only_the_glcwrap_json_endpoint_and_drops_google_maps():
     (json.dumps({key: item for key, item in YEPOCAPA.items() if key != "place"} | {"value": "x"}), "missing place"),
     (json.dumps({**YEPOCAPA, "value": " Yepocapa"}), "value must be trimmed"),
     (json.dumps({**YEPOCAPA, "value": ""}), "value must be trimmed"),
-    (json.dumps({**YEPOCAPA, "value": "Yepocapa", "radius_km": 500}), "radius_km must be a number"),
+    (json.dumps({**YEPOCAPA, "value": "Yepocapa", "radius_km": 51}), "radius_km must be a number from 1 to 50"),
+    (json.dumps({**YEPOCAPA, "value": "Yepocapa", "Locality <b>": 1}), "unknown \\?$"),
     (json.dumps({**YEPOCAPA, "value": "Yepocapa", "latitude": "14.5"}), "latitude must be a number"),
     (json.dumps({**YEPOCAPA, "value": "Yepocapa"}).replace("14.5", "1e999"), "latitude must be a number"),
     (json.dumps({**YEPOCAPA, "value": "Yepocapa", "radius_km": True}), "radius_km must be a number"),
@@ -123,6 +173,57 @@ def test_registry_admits_only_the_glcwrap_json_endpoint_and_drops_google_maps():
 def test_interpretation_contract_names_each_defect(text, message):
     with pytest.raises(ValueError, match=message):
         geolocate_interpretation(text)
+
+
+@pytest.mark.parametrize(("field_key", "interpretation", "value", "message"), [
+    (FieldKey.COUNTRY, APO, "Taiwan", "country value must be the queried country"),
+    (FieldKey.CITY, YEPOCAPA, "Antigua Guatemala", "city value must be the queried place"),
+    (FieldKey.COUNTY, YEPOCAPA, "Chimaltenango", "county only inside the USA"),
+    (FieldKey.PROVINCE_STATE, {"country": "USA", "state": "Illinois", "locality": "Evanston", "place": "Evanston",
+                               "latitude": 42.05, "longitude": -87.69, "radius_km": 10}, "Iowa",
+     "state value inside the USA must be the queried state"),
+])
+def test_value_must_be_what_geolocate_can_confirm(field_key, interpretation, value, message):
+    async def no_effect(*_):
+        raise AssertionError("an unconfirmable value must never open an effect")
+
+    broker = SourceBroker(REGISTRY, transport=FixtureSourceTransport(no_effect), effect_dispatch=no_effect)
+    result = asyncio.run(broker.query(geography_request(), query(field_key, interpretation, value)))
+    assert result.status == LookupStatus.POLICY and message in result.coverage.reason
+
+
+@pytest.mark.parametrize(("label", "field_key", "interpretation", "value", "message"), [
+    # A whole reader line, a label slice, a collector beside the place, dates, an elevation.
+    (LABEL_321, FieldKey.PRECISE_LOCATION, {**MCKINLEY, "locality": "E. slope Mt. McKinley"}, "E. slope Mt. McKinley",
+     "locality must use only the words of place"),
+    (LABEL_330, FieldKey.CITY, {**YEPOCAPA, "locality": "Yepocapa R.D. Mitchell"}, "Yepocapa",
+     "locality must use only the words of place"),
+    (LABEL_330, FieldKey.CITY, {**YEPOCAPA, "locality": "1948, R.D. Mitchell"}, "Yepocapa", "locality must be place text: no digits"),
+    (LABEL_330, FieldKey.CITY, {**YEPOCAPA, "locality": "Yepocapa, 4800 ft."}, "Yepocapa", "locality must be place text: no digits"),
+    (LABEL_321, FieldKey.COUNTRY, {**MCKINLEY, "state": "3 sept. '46"}, "Philippines", "state must be place text: no digits"),
+    (LABEL_321, FieldKey.COUNTRY, {**MCKINLEY, "county": "Sept"}, "Philippines", "county must be place text: no month words"),
+    # A clause holding a collector marker never leaves, even as the place itself.
+    ("Yepocapa, Chimaltenango\nleg. R.D. Mitchell", FieldKey.CITY,
+     {**YEPOCAPA, "locality": "Mitchell", "place": "Mitchell"}, "Mitchell", "no collector or determiner text"),
+])
+def test_only_place_text_is_ever_sent(label, field_key, interpretation, value, message):
+    async def no_effect(*_):
+        raise AssertionError("label text that is not place text must never open an effect or a request")
+
+    broker = SourceBroker(REGISTRY, transport=FixtureSourceTransport(no_effect), effect_dispatch=no_effect)
+    request = geography_request(fragments=label_fragments(label))
+    result = asyncio.run(broker.query(request, query(field_key, interpretation, value)))
+    # A typed refusal the historian sees, never a silent skip.
+    assert result.status == LookupStatus.POLICY and result.coverage.state == SourceCoverageState.UNQUALIFIED
+    assert message in result.coverage.reason
+
+
+def test_the_modern_interpretation_of_a_real_label_sends_no_label_text():
+    request = geography_request(fragments=label_fragments(LABEL_330))
+    result = lookup("yepocapa-modern.json", FieldKey.CITY, YEPOCAPA, "Yepocapa", request)
+    assert result.status == LookupStatus.SUCCESS
+    url = MANIFEST["yepocapa-modern.json"]["url"]
+    assert not any(token in url for token in ("Mitchell", "1948", "4800", "IV-25", "IV-29"))
 
 
 def test_invalid_interpretation_is_refused_before_any_effect_or_request():
@@ -165,10 +266,12 @@ def test_the_province_must_be_the_unit_gazetteer_reports():
 
 
 def test_verbatim_label_locality_is_validated_by_the_named_place_only():
-    yepocapa = lookup("yepocapa-verbatim.json", FieldKey.CITY, verbatim(YEPOCAPA, YEPOCAPA_LABEL), "Yepocapa")
+    yepocapa = lookup("yepocapa-verbatim.json", FieldKey.CITY, verbatim(YEPOCAPA, YEPOCAPA_LABEL), "Yepocapa",
+                      assembled_request(YEPOCAPA_LABEL))
     assert yepocapa.status == LookupStatus.SUCCESS and yepocapa.coverage.candidate_count == 9
     assert candidates(yepocapa)[0]["authority_id"] == "geolocate:14.501946,-90.953956"
-    apo = lookup("apo-verbatim.json", FieldKey.PRECISE_LOCATION, verbatim(APO, APO_LABEL), APO_LABEL)
+    apo = lookup("apo-verbatim.json", FieldKey.PRECISE_LOCATION, verbatim(APO, APO_LABEL), APO_LABEL,
+                 assembled_request(APO_LABEL))
     assert apo.status == LookupStatus.SUCCESS
     [candidate] = candidates(apo)
     assert (candidate["value"], candidate["decimal_latitude"], candidate["decimal_longitude"]) == (APO_LABEL, 6.989444, 125.269722)
@@ -177,9 +280,10 @@ def test_verbatim_label_locality_is_validated_by_the_named_place_only():
 
 def test_mount_mckinley_has_no_mindanao_match_and_says_so():
     # Nine McKinley places exist on other islands; Davao and Mindanao hits never confirm a mountain.
-    for fixture, interpretation in (("mckinley-modern.json", MCKINLEY),
-                                    ("mckinley-verbatim.json", verbatim(MCKINLEY, MCKINLEY_LABEL))):
-        result = lookup(fixture, FieldKey.PRECISE_LOCATION, interpretation, MCKINLEY_LABEL)
+    for fixture, interpretation, request in (
+            ("mckinley-modern.json", MCKINLEY, None),
+            ("mckinley-verbatim.json", verbatim(MCKINLEY, MCKINLEY_LABEL), assembled_request(MCKINLEY_LABEL))):
+        result = lookup(fixture, FieldKey.PRECISE_LOCATION, interpretation, MCKINLEY_LABEL, request)
         assert result.status == LookupStatus.NO_MATCH and result.candidate_json == ()
         assert result.coverage.state == SourceCoverageState.SEARCHED
         count = result.coverage.candidate_count
@@ -197,25 +301,63 @@ def test_state_is_ignored_outside_the_usa():
 
 
 def test_agreeing_points_far_apart_are_ambiguous():
-    # A loose placement between the Apo summit and a second Mindanao "Mount Apo" 93 km away.
-    loose = {**APO, "latitude": 6.6, "longitude": 125.45, "radius_km": 100}
+    # A placement midway between the Apo summit and a second Mindanao "Mount Apo" 92 km away.
+    loose = {**APO, "latitude": 6.611, "longitude": 125.449, "radius_km": 50}
     result = lookup("apo-modern.json", FieldKey.COUNTRY, loose, "Philippines")
     assert result.status == LookupStatus.AMBIGUOUS
     assert [item["authority_id"] for item in candidates(result)] == [
-        "geolocate:6.233611,125.628333", "geolocate:6.983300,125.266700", "geolocate:6.989444,125.269722"]
-    assert result.coverage.reason == "GEOLocate is ambiguous for 'Philippines': agreeing matches lie up to 93 km apart"
+        "geolocate:6.983300,125.266700", "geolocate:6.233611,125.628333", "geolocate:6.989444,125.269722"]
+    assert result.coverage.reason == "GEOLocate is ambiguous for 'Philippines': agreeing matches lie up to 92 km apart"
 
 
 def test_usa_control_and_geojson_format():
     evanston = {"country": "USA", "state": "Illinois", "county": "Cook", "locality": "Evanston", "place": "Evanston",
                 "latitude": 42.05, "longitude": -87.69, "radius_km": 10}
     assert lookup("evanston-control.json", FieldKey.COUNTY, evanston, "Cook").status == LookupStatus.SUCCESS
+    # Inside the USA the gazetteer admin unit is the county, and State confines the search.
+    assert lookup("evanston-control.json", FieldKey.PROVINCE_STATE, evanston, "Illinois").status == LookupStatus.SUCCESS
+    assert lookup("evanston-control.json", FieldKey.COUNTY, evanston, "Lake").status == LookupStatus.NO_MATCH
     # fmt=geojson drops numResults/engineVersion: a schema failure, never a scientific absence.
     async def read(url, policy):
         return 200, (FIXTURES / "yepocapa-geojson-format.json").read_bytes()
     broker = SourceBroker(REGISTRY, transport=FixtureSourceTransport(read), effect_dispatch=completed_effect)
     result = asyncio.run(broker.query(geography_request(), query(FieldKey.CITY, YEPOCAPA, "Yepocapa")))
     assert result.status == LookupStatus.MALFORMED and result.coverage.state == SourceCoverageState.FAILED
+
+
+def lookup_body(body, field_key=FieldKey.CITY, interpretation=YEPOCAPA, value="Yepocapa", code=200):
+    async def read(url, policy):
+        return code, body
+
+    broker = SourceBroker(REGISTRY, transport=FixtureSourceTransport(read), effect_dispatch=completed_effect)
+    return asyncio.run(broker.query(geography_request(), query(field_key, interpretation, value)))
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda feature: feature.pop("geometry"),
+    lambda feature: feature.update(geometry=None),
+    lambda feature: feature.update(geometry=[-90.95, 14.5]),
+    lambda feature: feature.update(geometry="POINT (-90.95 14.5)"),
+    lambda feature: feature.update(geometry=7),
+    lambda feature: feature.update(properties=None),
+    lambda feature: feature.clear(),
+])
+def test_malformed_features_are_typed_failures_never_exceptions(mutate):
+    # An uncaught exception would leave the captured effect held_unknown and abort the field.
+    payload = json.loads((FIXTURES / "yepocapa-modern.json").read_bytes())
+    mutate(payload["resultSet"]["features"][0])
+    result = lookup_body(json.dumps(payload).encode())
+    assert result.status == LookupStatus.MALFORMED and result.coverage.state == SourceCoverageState.FAILED
+    feature_not_object = json.loads((FIXTURES / "yepocapa-modern.json").read_bytes())
+    feature_not_object["resultSet"]["features"][0] = "feature"
+    assert lookup_body(json.dumps(feature_not_object).encode()).status == LookupStatus.MALFORMED
+
+
+@pytest.mark.parametrize(("code", "status"), [
+    (429, LookupStatus.RATE_LIMITED), (404, LookupStatus.PROVIDER), (500, LookupStatus.PROVIDER)])
+def test_http_failures_are_not_scientific_absence(code, status):
+    result = lookup_body(b"busy", code=code)
+    assert result.status == status and result.coverage.state == SourceCoverageState.FAILED
 
 
 def test_success_candidate_decides_the_field_value_and_its_evidence():
@@ -233,6 +375,12 @@ def test_success_candidate_decides_the_field_value_and_its_evidence():
     assert validate_resolution(geography_request(), resolution("Yepocapa"), (result,)).value.parsed == "Yepocapa"
     with pytest.raises(EvidenceError, match="trusted source-supported candidates"):
         validate_resolution(geography_request(), resolution("Chimaltenango"), (result,))
+
+
+def test_production_wiring_paces_geolocate_three_seconds_apart():
+    assert SOURCE_REQUEST_INTERVAL_SECONDS == {"geolocate": 3.0}
+    assert BoundedHTTPTransport().pacer is SOURCE_PACER
+    assert SOURCE_PACER._intervals == SOURCE_REQUEST_INTERVAL_SECONDS
 
 
 def test_pacer_spaces_request_starts_three_seconds_per_source():
@@ -270,3 +418,58 @@ def test_bounded_transport_waits_for_the_pacer_before_each_request():
 
     code, _ = asyncio.run(get())
     assert code == 200 and events == [("wait", "geolocate"), ("request", "geo-locate.org")]
+
+
+# --- evidence_relations: the publication gate the v2 success bullet must teach ---
+V2_PROMPT = Path(prompts.__file__).parent / "specimen_geography-v2.txt"
+V1_GATE = 'set(relations) != cited or not any(role in {"supports", "decides"} for role in relations.values())'
+V2_GATE = "if evidence not in canonical_ids or (relation is None and not scientific):"
+
+
+def publication_accepts_relations(value):
+    """The two candidate-evidence gates, which are inline and have no smaller callable.
+
+    canonical_materialization.py:307-311 (v1 materializer) and canonical_projection_v2.py:553-561
+    (the production V2 path, for a value that is not derived)."""
+    cited, relations = set(value.evidence_ids), value.evidence_relations
+    v1 = set(relations) == cited and any(role in {"supports", "decides"} for role in relations.values())
+    v2 = all(relations.get(item) in {"decides", "supports", "contradicts"} for item in value.evidence_ids)
+    return v1 and v2
+
+
+def test_the_mirrored_publication_gates_are_still_in_the_source():
+    assert V1_GATE in inspect.getsource(canonical_materialization.CanonicalResearchMaterializer.materialize)
+    assert V2_GATE in inspect.getsource(canonical_projection_v2.project_canonical_value_v2)
+
+
+def test_the_prompted_success_resolution_carries_the_relations_publication_requires():
+    text = V2_PROMPT.read_text(encoding="utf-8")
+    assert 'value.evidence_relations maps each of those ids\n  to "supports"' in text
+    result = lookup("yepocapa-modern.json", FieldKey.CITY, YEPOCAPA, "Yepocapa")
+    [candidate] = candidates(result)
+    evidence = tuple(item.id for item in result.evidence)
+    # GEOLocate is a candidate authority: its evidence supports, never decides (sources.py:720).
+    assert evidence and {item.role for item in result.evidence} == {"supports"}
+
+    def prompted(**relations):
+        # Exactly the success bullet: resolved, supported, settled, normalized = candidate value,
+        # parsed null, the candidate's authority_id, both evidence lists = that result's ids.
+        return FieldResolution(
+            field_key=FieldKey.CITY, work_state=WorkState.RESOLVED, value_layer="settled", evidence_ids=evidence,
+            value=FieldValue(state=ValueState.SUPPORTED, normalized=candidate["value"], parsed=None,
+                             authority_id=candidate["authority_id"], evidence_ids=list(evidence), **relations),
+            reason="1948 label 'Yepocapa, Mun. Yepocapa'; modern municipality in Chimaltenango; GEOLocate confirms")
+
+    complete = prompted(evidence_relations=dict.fromkeys(evidence, "supports"))
+    assert validate_resolution(geography_request(), complete, (result,)) == complete
+    assert complete.value.authority_id == "geolocate:14.501946,-90.953956"
+    assert publication_accepts_relations(complete.value)
+
+    # The validator never reads evidence_relations, so the engine accepts an omission ...
+    omitted = prompted()
+    assert omitted.value.evidence_relations == {}
+    assert validate_resolution(geography_request(), omitted, (result,)) == omitted
+    # ... and only publication refuses it.
+    assert not publication_accepts_relations(omitted.value)
+    assert not publication_accepts_relations(prompted(evidence_relations={"source:other": "supports"}).value)
+    assert not publication_accepts_relations(prompted(evidence_relations=dict.fromkeys(evidence, "contradicts")).value)

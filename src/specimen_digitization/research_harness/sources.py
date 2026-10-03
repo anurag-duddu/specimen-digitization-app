@@ -25,7 +25,7 @@ from pydantic import Field
 
 from specimen_digitization.application.domain import LookupStatus, now
 from specimen_digitization.application.lookup import (
-    COL_XR, _shape_ok, cleared_synonym, row_one, scientific_name,
+    COL_XR, MONTHS, _shape_ok, cleared_synonym, row_one, scientific_name,
 )
 
 from .contracts import (
@@ -187,7 +187,8 @@ GEOLOCATE_AGREEMENT_KM = 10.0
 SOURCE_REQUEST_INTERVAL_SECONDS = {"geolocate": 3.0}
 _GEOLOCATE_TEXT = ("country", "state", "county", "locality", "place", "value")
 _GEOLOCATE_REQUIRED = ("country", "locality", "place", "value", "latitude", "longitude", "radius_km")
-_GEOLOCATE_BOUNDS = {"latitude": (-90.0, 90.0), "longitude": (-180.0, 180.0), "radius_km": (1.0, 100.0)}
+_GEOLOCATE_BOUNDS = {"latitude": (-90.0, 90.0), "longitude": (-180.0, 180.0), "radius_km": (1.0, 50.0)}
+_USA = {("usa",), ("us",), ("united", "states"), ("united", "states", "of", "america")}
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,8 +217,13 @@ class _GeolocateMatch:
     distance_km: float
 
 
-def geolocate_interpretation(query_text: str) -> GeolocateInterpretation:
-    """Parse the query_text JSON; the ValueError message tells the agent what to correct."""
+def geolocate_interpretation(query_text: str, field_key: FieldKey | None = None) -> GeolocateInterpretation:
+    """Parse the query_text JSON; the ValueError message tells the agent what to correct.
+
+    With a field key, also refuse a value GEOLocate cannot confirm for that field: country and
+    city must be the queried country and place, and a county exists only inside the USA, where
+    the gazetteer's admin unit is the county (outside it, the first-level unit).
+    """
     try:
         value = _source_json(query_text.encode())
     except ValueError:
@@ -227,8 +233,9 @@ def geolocate_interpretation(query_text: str) -> GeolocateInterpretation:
     unknown = sorted(set(value) - set(_GEOLOCATE_TEXT) - set(_GEOLOCATE_BOUNDS))
     missing = [key for key in _GEOLOCATE_REQUIRED if key not in value]
     if unknown or missing:
+        shown = [key if re.fullmatch(r"[A-Za-z_]{1,32}", key) else "?" for key in unknown]
         raise ValueError("GEOLocate query_text keys: " + "; ".join(
-            part for part in ("unknown " + ", ".join(unknown) if unknown else "",
+            part for part in ("unknown " + ", ".join(shown) if unknown else "",
                               "missing " + ", ".join(missing) if missing else "") if part))
     for key in _GEOLOCATE_TEXT:
         item = value.get(key, "")
@@ -239,10 +246,56 @@ def geolocate_interpretation(query_text: str) -> GeolocateInterpretation:
         item = value[key]
         if type(item) not in (int, float) or not math.isfinite(item) or not low <= item <= high:
             raise ValueError(f"GEOLocate {key} must be a number from {low:g} to {high:g}")
-    return GeolocateInterpretation(
+    place = GeolocateInterpretation(
         country=value["country"], state=value.get("state", ""), county=value.get("county", ""),
         locality=value["locality"], place=value["place"], value=value["value"], latitude=float(value["latitude"]),
         longitude=float(value["longitude"]), radius_km=float(value["radius_km"]))
+    claimed = _fold_words(place.value)
+    usa = _fold_words(place.country) in _USA
+    if field_key == FieldKey.COUNTRY and claimed != _fold_words(place.country):
+        raise ValueError("GEOLocate country value must be the queried country")
+    if field_key == FieldKey.CITY and claimed != _fold_words(place.place):
+        raise ValueError("GEOLocate city value must be the queried place")
+    if field_key == FieldKey.COUNTY and not usa:
+        raise ValueError("GEOLocate confirms a county only inside the USA")
+    if field_key == FieldKey.PROVINCE_STATE and usa and claimed != _fold_words(place.state):
+        raise ValueError("GEOLocate state value inside the USA must be the queried state")
+    return place
+
+
+# PLAN 4.8's collector and determiner markers; a clause holding one is never place text.
+_PARTY_MARKERS = frozenset({"leg", "legit", "coll", "collector", "col", "colector", "det"})
+
+
+def geolocate_place_text_defect(request: SpecialistRequest, place: GeolocateInterpretation) -> str | None:
+    """PLAN 4.8: only place text leaves the harness, so the request names what GEOLocate may see.
+
+    The locality is built from the historian's own place and unit names, or is the exact text of
+    an accepted precise_location assembly; no request has a reusable per-field place filter, and a
+    reading line can hold a collector or a date beside the locality. Every sent value is refused
+    when it holds a digit, a month word, a party marker, or a word of any label clause that holds
+    a marker.
+    """
+    marked = set()
+    for fragment in request.fragments:
+        for clause in re.split(r"[,;]", fragment.literal):
+            words = set(_fold_words(clause))
+            if words & _PARTY_MARKERS:
+                marked |= words
+    for key in ("country", "state", "county", "locality", "place"):
+        words = set(_fold_words(getattr(place, key)))
+        if any(character.isdigit() for word in words for character in word):
+            return f"GEOLocate {key} must be place text: no digits, dates or elevations"
+        if words & MONTHS:
+            return f"GEOLocate {key} must be place text: no month words"
+        if words & (_PARTY_MARKERS | marked):
+            return f"GEOLocate {key} must be place text: no collector or determiner text"
+    named = set(_fold_words(" ".join((place.place, place.county, place.state, place.country))))
+    assembled = {item.interpreted_text for item in request.assemblies if item.field_key == FieldKey.PRECISE_LOCATION}
+    if not set(_fold_words(place.locality)) <= named and place.locality not in assembled:
+        return ("GEOLocate locality must use only the words of place and the named units, "
+                "or the exact text of an accepted precise_location assembly")
+    return None
 
 
 def _fold_words(text: str) -> tuple[str, ...]:
@@ -272,7 +325,7 @@ def _geolocate_matches(payload, place: GeolocateInterpretation) -> tuple[str, in
         geometry = feature.get("geometry") if isinstance(feature, dict) else None
         properties = feature.get("properties") if isinstance(feature, dict) else None
         point = geometry.get("coordinates") if isinstance(geometry, dict) else None
-        if (not isinstance(properties, dict) or geometry.get("type") != "Point"
+        if (not isinstance(properties, dict) or not isinstance(geometry, dict) or geometry.get("type") != "Point"
                 or not isinstance(point, list) or len(point) != 2
                 or any(type(item) not in (int, float) or not math.isfinite(item) for item in point)
                 or type(properties.get("parsePattern")) is not str or type(properties.get("precision")) is not str
@@ -294,14 +347,17 @@ def _geolocate_agrees(field_key: FieldKey, place: GeolocateInterpretation, match
     """The match must be the named place, near the historian's placement, inside the claimed unit."""
     if match.distance_km > place.radius_km or _fold_words(match.name) != _fold_words(place.place):
         return False
-    if field_key in {FieldKey.PROVINCE_STATE, FieldKey.COUNTY}:
+    # The admin unit is the county inside the USA and the first-level unit outside it; inside
+    # the USA GEOLocate confines the search to the queried State instead.
+    usa = _fold_words(place.country) in _USA
+    if field_key == FieldKey.COUNTY or (field_key == FieldKey.PROVINCE_STATE and not usa):
         return bool(match.admin) and _fold_words(match.admin) == _fold_words(place.value)
     return True
 
 
 def geolocate_verdict(policy: SourcePolicy, query: SourceQuery, payload) -> tuple[LookupStatus, list[dict], int, str]:
     """Verify every GEOLocate match against the interpretation; only agreeing points become candidates."""
-    place = geolocate_interpretation(query.query_text)
+    place = geolocate_interpretation(query.query_text, query.field_key)
     engine, count, matches = _geolocate_matches(payload, place)
     agreeing = sorted((item for item in matches if _geolocate_agrees(query.field_key, place, item)),
                       key=lambda item: (-item.score, item.distance_km))
@@ -484,9 +540,11 @@ class SourceBroker:
         if query.source_id == "geolocate":
             # Checked before effect dispatch: a request that cannot be sent must never hold an effect.
             try:
-                geolocate_interpretation(query.query_text)
+                defect = geolocate_place_text_defect(request, geolocate_interpretation(query.query_text, query.field_key))
             except ValueError as error:
-                return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED, str(error))
+                defect = str(error)
+            if defect:
+                return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED, defect)
 
         async def invoke() -> str:
             if hasattr(self.effect_dispatch, "validate_transport"):
@@ -529,7 +587,7 @@ class SourceBroker:
                     raise ValueError("COL immutable integer release key must be pinned; aliases are mutable")
                 url = f"https://api.checklistbank.org/dataset/{policy.source_release}/nameusage/search?" + urlencode({"q": query.query_text, "limit": policy.result_limit})
             elif query.source_id == "geolocate":
-                place = geolocate_interpretation(query.query_text)
+                place = geolocate_interpretation(query.query_text, query.field_key)
                 url = GEOLOCATE_ENDPOINT + "?" + urlencode({
                     "Country": place.country, "State": place.state, "County": place.county,
                     "Locality": place.locality, "hwyX": "false", "enableH2O": "false", "doUncert": "true",
