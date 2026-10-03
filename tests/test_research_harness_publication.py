@@ -7,7 +7,9 @@ import pytest
 
 from specimen_digitization.application.domain import FieldValue, Principal, Scope, ValueState
 from specimen_digitization.research_harness.compatibility import PublicationUnavailable
-from specimen_digitization.research_harness.contracts import DependencyPin, FieldKey, FieldResolution, SpecialistRole, WorkState, digest
+from specimen_digitization.research_harness.contracts import (
+    ROLE_FIELDS, DependencyPin, FieldKey, FieldResolution, SpecialistRole, WorkState, digest,
+)
 from specimen_digitization.research_harness.journal import DurableResearchJournal
 from specimen_digitization.research_harness.persistence import (
     CapturedResult, DurableEffectBroker, ImmutableFileBlobs, PinnedRuntime, StaleWork,
@@ -293,6 +295,14 @@ def test_a_receipt_recorded_for_another_specialists_field_or_none_is_refused(tmp
     with pytest.raises(StaleWork, match="native_publication_receipt_binding_changed"):
         asyncio.run(prepare_native_publication(journal, req.scope, FieldKey.COUNTRY,
             principal=principal, expected_record_revision=0, blobs=blobs))
+
+
+def test_role_fields_partition_the_twenty_fields():
+    """The receipt check binds every field of the published field's specialist.
+    A field listed under two roles would silently widen that set."""
+    listed = [key for keys in ROLE_FIELDS.values() for key in keys]
+    assert len(listed) == len(set(listed)) == 20
+    assert set(listed) == set(FieldKey)
 
 
 def test_wrong_canonical_record_revision_fails_existing_store_guard(tmp_path):
