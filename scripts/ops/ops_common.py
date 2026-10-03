@@ -47,7 +47,7 @@ def committed_project() -> str:
 
 
 def registry() -> str:
-    """The Artifact Registry Docker repository the runtime images live in (deploy_runtime.REGISTRY)."""
+    """The Artifact Registry Docker repository the runtime images live in."""
     return f"{region()}-docker.pkg.dev/{project()}/specimen-runtime"
 
 

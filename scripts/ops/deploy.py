@@ -18,8 +18,7 @@ worker  Cloud Run job specimen-worker: one task, no parallelism, no retries, the
 
 Images: <registry>/<role>:<SOURCE_SHA> (build_images.py), or SAM_IMAGE / WORKER_IMAGE. Both resources are labelled
 source-sha=<the image's commit>: the image tag when it is a full commit SHA, else SOURCE_SHA, which must then be set
-(and must equal the tag when both are). A later release (scripts/ci/deploy_runtime.py, rollback_guard) refuses to
-change a resource without that label, and requires its own commit to equal it or be ahead of it on GitHub.
+(and must equal the tag when both are), so the deployed commit can be read back from either resource.
 Parameters (environment): PROJECT, REGION (must match runtime_settings, whose values name them), SOURCE_SHA,
 SAM_IMAGE, WORKER_IMAGE, SAM_CHECKPOINT_SHA256, SAM_MIN_INSTANCES, DRY_RUN=1.
 Grants are separate: iam.py, re-run after this script so the invoker grants find the service and the job.
@@ -48,7 +47,7 @@ def checked_settings(role: str) -> dict:
 
 
 def role_env(role: str, digest: str) -> dict[str, str]:
-    """The role's plain environment, composed as deploy_runtime.released_bodies composes it."""
+    """The role's plain environment, composed from runtime_settings."""
     values = dict(settings.ROLES[role]["env"])
     values["SPECIMEN_SAM3_CHECKPOINT_SHA256"] = digest
     if role == "sam":
@@ -90,7 +89,7 @@ def checkpoint_prefix(digest: str) -> str:
 
 
 def mount_options(digest: str) -> list[str]:
-    """The checkpoint volume's gcsfuse options, as released_bodies sends them."""
+    """The checkpoint volume's gcsfuse options."""
     return [f"only-dir={checkpoint_prefix(digest)}", *settings.SAM["mount_options"]]
 
 
@@ -108,8 +107,8 @@ def sam_argv(env_path: str, digest: str) -> list[str]:
             "--cpu-throttling" if spec["cpu_idle"] else "--no-cpu-throttling",
             "--cpu-boost" if spec["startup_cpu_boost"] else "--no-cpu-boost",
             f"--concurrency={spec['concurrency']}", f"--timeout={spec['timeout_seconds']}s", "--port=8080",
-            # Revision level (--*-instances) and service level (--min/--max), as released_bodies sets scaling on both
-            # and verify_runtime_template checks both. Cloud Run applies the lesser maximum and the larger minimum
+            # Revision level (--*-instances) and service level (--min/--max), both set to the same values. Cloud Run
+            # applies the lesser maximum and the larger minimum
             # (docs.cloud.google.com/run/docs/configuring/max-instances and min-instances).
             f"--min-instances={low}", f"--max-instances={high}", f"--min={low}", f"--max={high}",
             f"--startup-probe={probe_flag(spec['startup_probe'])}",

@@ -7,13 +7,11 @@ Run it before deploy.py (the SAM 3 revision cannot start without its checkpoint 
 the specimen-sam service and the specimen-worker job are skipped, and named, while those do not exist yet.
 
 Every grant is one `add-iam-policy-binding`, which changes nothing when the binding is already there, so a re-run is
-safe. None is time-limited. Two bucket grants carry a resource condition, the same as scripts/ci/owner_grants.py's
-table, because the bucket also holds the source slides and private originals: application objects only, and SAM 3's
-listing of its own checkpoint prefix. It grants no secret access: each runtime secret is already granted at the one
+safe. None is time-limited. Two bucket grants carry a resource condition, because the bucket also holds the
+source slides and private originals: application objects only, and SAM 3's listing of its own checkpoint prefix. It grants no secret access: each runtime secret is already granted at the one
 version the runtime mounts (a version condition), and an unconditioned binding beside it would open every version.
 
-The table follows owner_grants.py (STANDING, AFTER_RELEASE and runtime_grants) for these three members, plus one
-grant owner_grants.py does not list: SAM 3's unconditioned bucket listing (see LIST_BUCKET).
+SAM 3's bucket listing is the one unconditioned bucket grant (see LIST_BUCKET).
   worker  specimenRuntimeConnector on the project (the connector's named operations); objectViewer and
           objectCreator on application objects; run.invoker on specimen-sam (segmentation) and on
           specimen-worker (the drain's deadline hand-over).
@@ -52,7 +50,7 @@ LIST_BUCKET = "roles/storage.legacyBucketReader"
 
 
 def conditions(bucket: str, digest: str) -> tuple[tuple[str, str], tuple[str, str]]:
-    """(expression, title) of owner_grants.APP and of its checkpoint-listing condition."""
+    """(expression, title) of the application-objects condition and of the checkpoint-listing condition."""
     app = (f'resource.name.startsWith("projects/_/buckets/{bucket}/objects/application/sha256/")',
            "specimen_application_objects")
     listing = (f'{LISTING}.startsWith("application/sha256/{digest}/sam3-cache")', "specimen_sam3_checkpoint_listing")

@@ -19,12 +19,10 @@ docstring lists its other parameters.
 - The runtime secrets are granted at their pinned versions (`runtime_settings.SECRET_VERSIONS`), each by a binding
   conditioned on that one version: `huggingface-runtime-token` v2 to the worker; `specimen-worker-logfire` v1 to the
   worker, SAM 3 and the API; `specimen-worker-actor-uid` v1 to the worker; `specimen-collection-bindings` v1 to the
-  worker and the API; `specimen-source-registry` v1 to the API. The owner's setup (`owner_setup.sh`) grants them, and
-  `scripts/ci/owner_grants.py plan` lists any that is missing. `iam.py` grants no secret access.
+  worker and the API; `specimen-source-registry` v1 to the API. The owner's setup (`owner_setup.sh`) grants them. `iam.py`
+  grants no secret access.
 - Build and deploy a commit that is pushed to GitHub and reaches `main` by a merge, not a squash or rebase.
-  `deploy.py` labels the service and the job `source-sha=<that commit>`; a later release
-  (`scripts/ci/deploy_runtime.py`, `rollback_guard`) compares that label with its own commit on GitHub and stops
-  unless its commit equals it or is ahead of it.
+  `deploy.py` labels the service and the job `source-sha=<that commit>`, so the deployed commit can be read back.
 
 ## Run order
 
@@ -40,7 +38,7 @@ docstring lists its other parameters.
 | 8 | `uv run --frozen python scripts/ops/scale_sam.py 1` | Before the import: keeps one SAM 3 instance running. Alternatively, deploy in step 4 with `SAM_MIN_INSTANCES=1`. |
 | 9 | `uv run --frozen python scripts/ops/warm_sam.py` | Returns once SAM 3 has loaded its model. |
 | 10 | Import the ten specimens in the app. | Right after step 9. Each import starts a worker execution (`jobs:run`) at once. |
-| 11 | `uv run --frozen python scripts/ops/scale_sam.py 0` | After the ten have finished (all in a queue state). REQUIRED: stops the warm instance, which is billed for as long as it runs (about USD 0.37 an hour: 4 vCPU and 16 GiB at the instance-based list prices of cloud.google.com/run/pricing, Tier 1, which includes us-east4). It also restores the minimum of 0 that a release requires (`deploy_runtime.verify_runtime_template`). |
+| 11 | `uv run --frozen python scripts/ops/scale_sam.py 0` | After the ten have finished (all in a queue state). REQUIRED: stops the warm instance, which is billed for as long as it runs (about USD 0.37 an hour: 4 vCPU and 16 GiB at the instance-based list prices of cloud.google.com/run/pricing, Tier 1, which includes us-east4). It also restores the minimum of 0 at both levels. |
 
 Steps 1 to 3 do not depend on each other. Steps 8 and 11 print the minimum at the service and revision level.
 

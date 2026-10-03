@@ -13,8 +13,7 @@ health check, on by default, starts one instance of it and waits for its startup
 confirms that either way.
 
 SAM 3 has CPU always allocated (runtime_settings.SAM), so a kept instance is billed for as long as it runs, idle or
-not. N = 0 also restores the minimum of 0 at both levels that a release requires
-(scripts/ci/deploy_runtime.py, verify_runtime_template).
+not. N = 0 restores the minimum of 0 at both levels.
 
 Parameters (environment): PROJECT, REGION (must match runtime_settings), DRY_RUN=1.
 """
