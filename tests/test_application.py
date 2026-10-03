@@ -23,6 +23,7 @@ from specimen_digitization.application.domain import (
     Principal,
     Scope,
 )
+from specimen_digitization.application.field_validators import catalog_number_validator
 from specimen_digitization.application.lookup import GbifTaxonomy
 from specimen_digitization.application.policy import evaluate, finalize
 from specimen_digitization.application.storage import (
@@ -180,6 +181,98 @@ def test_mandatory_gate_every_field_and_semantics(tmp_path):
     finalize(s.run)
     assert s.run.disposition == Disposition.REVIEW
     assert "mandatory_semantics_unconfirmed" in s.run.reasons
+
+
+def approved_synthetic_run(tmp_path):
+    """The synthetic run the test above proves clean, approved by a reviewer."""
+    c = client(tmp_path)
+    specimen = intake(c)
+    c.post(PREFIX + f"/specimens/{specimen['specimen_id']}/process", headers=HEADERS)
+    repo = SQLiteRepository(tmp_path / "state.sqlite3")
+    s = repo.list(
+        Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
+    )[0]
+    s.run.human_approved = True
+    assert not evaluate(s.run)
+    return s.run
+
+
+def with_catalog_number(run, text):
+    """The run with `text` as the stored catalog number and as its own evidence."""
+    run = run.model_copy(deep=True)
+    field = run.fields["fmnh_ins_number"]
+    field.literal = field.parsed = text
+    for item in run.evidence:
+        if item.id in field.evidence_ids:
+            item.excerpt = text  # policy.py needs the literal inside its evidence
+    return run
+
+
+# A catalog number as the slides print it, judged by the catalog_number_validator
+# tool's grammar (HARNESS.md section 8): an optional FMNH INS prefix, then five to
+# nine ASCII digits, nothing else. The barcode sticker prints FMNHINS on one line and
+# the seven digits on the next, and the pipeline stores the digits alone.
+CATALOG_NUMBERS_ACCEPTED = [
+    "4486784",
+    "FMNHINS\n4486784",
+    "FMNHINS 4486784",
+    "FMNH-INS 4486784",
+    "FMNH INS #4486784",
+    "fmnh-ins# 4486784",
+    "FMNH-INS 10001",
+    "FMNH-INS 123456789",
+    "0012345",
+    "  4486784  ",
+]
+CATALOG_NUMBERS_REJECTED = [
+    "",
+    "FMNHINS",
+    "FMNHNS\n4486784",
+    "FMNHINS\nunknown",
+    "ABC4486784",
+    "4486784 x",
+    "4486 784",
+    "FMNH-INS 1001",
+    "1234",
+    "1234567890",
+    "FMNH-INS 1234567890",
+    "".join(chr(0xFF10 + int(digit)) for digit in "4486784"),  # full-width digits
+]
+
+
+@pytest.mark.parametrize("text", CATALOG_NUMBERS_ACCEPTED)
+def test_a_catalog_number_the_validator_accepts_is_not_an_identifier_format_failure(
+    tmp_path, text
+):
+    assert catalog_number_validator(text, source_text=text).outcome == (
+        LookupStatus.SUCCESS
+    )
+    assert evaluate(with_catalog_number(approved_synthetic_run(tmp_path), text)) == []
+
+
+@pytest.mark.parametrize("text", CATALOG_NUMBERS_REJECTED)
+def test_text_the_validator_rejects_is_still_an_identifier_format_failure(
+    tmp_path, text
+):
+    assert catalog_number_validator(text, source_text=text).outcome != (
+        LookupStatus.SUCCESS
+    )
+    run = with_catalog_number(approved_synthetic_run(tmp_path), text)
+    assert "identifier_format" in evaluate(run)
+
+
+def test_a_reviewer_can_clear_a_record_whose_catalog_number_is_the_sticker_digits(
+    tmp_path,
+):
+    approved = approved_synthetic_run(tmp_path)
+    run = with_catalog_number(approved, "4486784")
+    finalize(run)
+    assert "identifier_format" not in run.reasons
+    assert run.disposition == Disposition.CLEARED
+    run = with_catalog_number(approved, "FMNHNS\n4486784")
+    finalize(run)
+    assert "identifier_format" in run.reasons
+    assert run.disposition == Disposition.REVIEW
 
 
 def test_auth_scope_stale_write_and_concurrent_cas(tmp_path):
