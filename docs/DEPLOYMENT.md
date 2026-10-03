@@ -738,11 +738,23 @@ a pull request is merged to `main` with the required checks passed, and a
 workflow deploys the merged commit. A release needs nothing else prepared,
 signed or approved.
 
-The authority is the owner's decision G11 of 2026-09-23 in
-[`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-(data and runtime releases deploy automatically on merge, like Hosting) and
-the go-live plan the owner approved on 2026-10-03, which replaced the two
-protected release workflows with the ones described here.
+The standing authority is the owner's decision G11 of 2026-09-23 in
+[`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator):
+data and runtime releases deploy automatically on merge, like Hosting.
+
+On 2026-10-03 the owner authorized replacing the two protected release
+workflows with the ones described here. The messages were typed in the go-live
+coordinator session and are recorded there, not in this repository: "Take
+over, get this live", and at about 05:25Z "Yes, get it done. You have my
+authorization. The safety checks are being paranoid and not required. you have
+full permission". The coordinator's record also says the owner never asked for
+the time-limited access windows, the receipts or the release safeguards.
+
+That authorization supersedes one clause of G11, "the PR steward approves".
+Until the ten pilot specimens are live, a pull request needs one independent
+reviewer per head plus the green required checks (the owner's rule G51, quoted
+in the go-live lane briefs: "until the ten are live, one reviewer per PR head
+plus green checks").
 
 These controls stay: branch protection and the required checks on `main`,
 keyless Workload Identity Federation identities with no service-account keys,
@@ -979,7 +991,9 @@ authorized that run first-hand. The setup part does seven things.
      user ID secret;
    - runtime image build: write to the image registry;
    - runtime deploy: deploy to Cloud Run, read the image registry, act as the
-     runtime service accounts, and set the Cloud Run invoker policy;
+     runtime service accounts, and set who may invoke the API service. That
+     last right is granted on the project only until the service exists; the
+     next run moves it onto that one service;
    - runtime service accounts: the grants they already hold (the connector,
      user lookup, the bucket and their pinned secrets), plus the SAM runtime's
      listing of the bucket for its checkpoint mount.

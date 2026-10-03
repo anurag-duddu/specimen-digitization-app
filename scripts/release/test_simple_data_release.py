@@ -1054,6 +1054,20 @@ def test_a_failed_sql_step_is_a_failure_with_its_own_message_and_a_json_answer_i
     monkeypatch.setattr(D.subprocess, "run", fake(1, ""))
     with pytest.raises(D.Failure, match="probe: the SQL step failed without a message"):
         D.node_sql("probe")
+    # Whatever Node prints after the script's own line, that line stays the reason; the rest is shown in part.
+    dump = "".join(f"    at frame {number}\n" for number in range(25))
+    monkeypatch.setattr(D.subprocess, "run", fake(1, "", f"data_sql probe: first\ndata_sql probe: the reason\n{dump}\nNode.js v22.1.0\n"))
+    capsys.readouterr()
+    with pytest.raises(D.Failure) as failure:
+        D.node_sql("probe")
+    assert str(failure.value) == "probe: the reason"
+    shown = capsys.readouterr().out.splitlines()
+    assert len(shown) == D.STDERR_LINES + 1 and shown[-2] == "Node.js v22.1.0"
+    assert shown[-1] == "probe: 17 more line(s) of Node output are not shown"
+    monkeypatch.setattr(D.subprocess, "run", fake(1, "", "something else\nNode.js v22.1.0\n\n"))
+    with pytest.raises(D.Failure) as failure:
+        D.node_sql("probe")
+    assert str(failure.value) == "Node.js v22.1.0"
 
 
 # The SQL files.
@@ -1073,7 +1087,12 @@ def test_initialize_sql_is_one_transaction_that_only_adds():
             "scripts/ops/owner_setup.sh once';") in sql
     assert re.findall(r"CREATE EXTENSION[^;]*;", code) == ['CREATE EXTENSION IF NOT EXISTS "uuid-ossp" SCHEMA public;']
     blocks = {name: body for name, body in re.findall(r"^DO \$(\w+)\$\n(.*?)\n\$\1\$;$", code, re.M | re.S)}
-    assert list(blocks) == ["executor", "roles", "owner"]
+    assert list(blocks) == ["executor", "roles", "membership", "owner"]
+    # The grant to cloudsqlsuperuser is the one statement that can meet roles another user created; its refusal
+    # is caught and replaced by a line that says what fixes it.
+    assert re.search(r"TO cloudsqlsuperuser WITH INHERIT TRUE, SET TRUE;\s+EXCEPTION WHEN insufficient_privilege THEN\s+SELECT",
+                     blocks["membership"])
+    assert "must run once: GRANT % TO % WITH ADMIN OPTION; then run the release again. Nothing was changed'" in blocks["membership"]
     # Every CREATE ROLE sits behind an existence check, and every ALTER SCHEMA behind an owner check.
     assert code.count("CREATE ROLE") == 1 and re.search(
         r"IF NOT EXISTS \(SELECT 1 FROM pg_catalog\.pg_roles WHERE rolname = wanted\) THEN\s+EXECUTE pg_catalog\.format\(\s+"
@@ -1113,6 +1132,130 @@ def test_data_sql_parses_and_refuses_an_unknown_mode():
     assert unset.returncode == 1 and unset.stdout == "" and "RELEASE_NODE_MODULES is not set" in unset.stderr
 
 
+STUB_CONNECTOR = """
+// Stands in for @google-cloud/cloud-sql-connector 1.9.1. Like the real one (dist/cjs/connector.js) it caches the
+// first refresh's promise with a handler, awaits it in getOptions, and in close() chains .then() on it without a
+// catch: after a failed refresh, or when closing the instance throws, that is an unhandled rejection.
+exports.AuthTypes = {IAM: 'IAM'};
+exports.IpAddressTypes = {PUBLIC: 'PUBLIC'};
+function forbidden() {
+  const error = new Error('Request failed with status code 403: Not authorized to access resource. '
+    + 'Possibly missing permission cloudsql.instances.get');
+  const headers = Object.fromEntries(Array.from({length: 24}, (_, n) => [`x-header-${n}`, `value-${n}`]));
+  error.config = {method: 'GET', url: 'https://sqladmin.googleapis.com/sql/v1beta4/projects/p/instances/i/connectSettings', headers};
+  error.response = {status: 403, headers, data: {error: {errors: Array.from({length: 12}, (_, n) => ({message: `detail ${n}`}))}}};
+  return error;
+}
+exports.Connector = class {
+  constructor() { this.instances = []; }
+  async getOptions() {
+    const instance = {close() { if (process.env.STUB_CLOSE === 'reject') throw new Error('closing the instance failed'); }};
+    const promise = process.env.STUB_CONNECT === 'reject' ? Promise.reject(forbidden()) : Promise.resolve(instance);
+    promise.then(() => {}).catch(() => {});
+    this.instances.push({promise});
+    await promise;
+    return {};
+  }
+  close() {
+    if (process.env.STUB_CLOSE === 'throw') throw new Error('close threw');
+    for (const instance of this.instances) instance.promise.then(inst => inst.close());
+  }
+};
+"""
+STUB_PG = """
+// Stands in for pg: one client whose queries answer as STUB_QUERY says.
+exports.Pool = class {
+  async connect() {
+    if (process.env.STUB_LINGER) setInterval(() => {}, 1000);  // a socket that never closes
+    return {
+      query() {
+        if (process.env.STUB_QUERY === 'fail') return Promise.reject(new Error('relation "public.missing" does not exist'));
+        if (process.env.STUB_QUERY === 'background') Promise.reject(new Error('a background task\\n  failed'));
+        if (process.env.STUB_QUERY === 'uncaught') setTimeout(() => { throw new Error('an emitter failed'); }, 5);
+        if (process.env.STUB_QUERY) return new Promise(() => setTimeout(() => {}, 60000));
+        return Promise.resolve({rows: [{present: {owner_role: true}}]});
+      },
+      release() {
+        if (process.env.STUB_CLOSE === 'throw') throw new Error('release threw');
+        if (process.env.STUB_CLOSE === 'late') Promise.reject(new Error('a late failure while closing'));
+      },
+    };
+  }
+  async end() {
+    // "late": the pool takes a moment to end, so the rejection above is reported while the script still waits.
+    if (process.env.STUB_CLOSE === 'late') return new Promise(done => setTimeout(done, 50));
+    if (process.env.STUB_CLOSE) throw new Error('ending the pool failed');
+  }
+};
+"""
+FORBIDDEN = ("data_sql probe: Request failed with status code 403: Not authorized to access resource. Possibly missing "
+             "permission cloudsql.instances.get")
+MISSING = 'data_sql probe: relation "public.missing" does not exist'
+
+
+@pytest.fixture
+def stub_modules(tmp_path):
+    """A node_modules folder for RELEASE_NODE_MODULES whose connector and pg are the stubs above; no database."""
+    for name, source in (("@google-cloud/cloud-sql-connector", STUB_CONNECTOR), ("pg", STUB_PG)):
+        folder = tmp_path / "node_modules" / name
+        folder.mkdir(parents=True)
+        (folder / "package.json").write_text(json.dumps({"name": name, "version": "0.0.0-stub", "main": "index.js"}))
+        (folder / "index.js").write_text(source)
+    return tmp_path / "node_modules"
+
+
+def run_probe(modules, **stub):
+    env = {key: value for key, value in os.environ.items() if not key.startswith("STUB_")}
+    return subprocess.run(["node", str(DATA_SQL), "probe"], capture_output=True, text=True, timeout=20,
+                          env={**env, "RELEASE_NODE_MODULES": str(modules), **stub})
+
+
+NODE = pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+
+
+@NODE
+def test_a_connector_that_cannot_reach_the_instance_fails_with_one_line_and_no_node_dump(stub_modules, monkeypatch, capsys):
+    done = run_probe(stub_modules, STUB_CONNECT="reject")
+    assert done.returncode == 1 and done.stdout == ""
+    # One line that starts with data_sql, and nothing else: no error object, no stack, no "Node.js v..." line.
+    assert done.stderr.splitlines() == [FORBIDDEN] and "Node.js v" not in done.stderr
+    monkeypatch.setenv("RELEASE_NODE_MODULES", str(stub_modules))
+    monkeypatch.setenv("STUB_CONNECT", "reject")
+    with pytest.raises(D.Failure) as failure:
+        D.node_sql("probe")
+    assert str(failure.value) == FORBIDDEN.removeprefix("data_sql ") and "Node.js v" not in str(failure.value)
+    assert capsys.readouterr().out == ""
+
+
+@NODE
+@pytest.mark.parametrize("close", ["reject", "throw", "late"])
+def test_a_failure_while_closing_neither_fails_a_finished_mode_nor_hides_a_real_failure(stub_modules, close):
+    finished = run_probe(stub_modules, STUB_CLOSE=close)
+    assert (finished.returncode, finished.stdout, finished.stderr) == (0, '{"owner_role":true}\n', "")
+    failed = run_probe(stub_modules, STUB_QUERY="fail", STUB_CLOSE=close)
+    assert (failed.returncode, failed.stdout, failed.stderr.splitlines()) == (1, "", [MISSING])
+    both = run_probe(stub_modules, STUB_CONNECT="reject", STUB_CLOSE=close)
+    assert (both.returncode, both.stdout, both.stderr.splitlines()) == (1, "", [FORBIDDEN])
+
+
+@NODE
+@pytest.mark.parametrize("query, line", [("background", "data_sql probe: a background task failed"),
+                                         ("uncaught", "data_sql probe: an emitter failed")])
+def test_an_unhandled_rejection_or_exception_anywhere_prints_the_one_line_and_exits(stub_modules, query, line):
+    # The query itself never settles, so only the explicit exit ends the process.
+    done = run_probe(stub_modules, STUB_QUERY=query)
+    assert (done.returncode, done.stdout, done.stderr.splitlines()) == (1, "", [line])
+
+
+@NODE
+@pytest.mark.parametrize("stub", [{}, {"STUB_LINGER": "1"}])
+def test_a_success_prints_its_json_and_exits_even_with_a_socket_left_open(stub_modules, stub):
+    done = run_probe(stub_modules, **stub)
+    assert (done.returncode, done.stdout, done.stderr) == (0, '{"owner_role":true}\n', "")
+    failed = run_probe(stub_modules, STUB_QUERY="fail", **stub)
+    assert (failed.returncode, failed.stdout, failed.stderr.splitlines()) == (1, "", [MISSING])
+
+
 def test_new_release_files_are_ascii():
     for path in (ROOT / ".github/workflows/data-release.yml", ROOT / "scripts/release/data_release.py", Path(__file__)):
         assert path.read_text().isascii(), path.name
@@ -1130,12 +1273,18 @@ SELECT 'extension', extname, extnamespace::regnamespace FROM pg_extension ORDER 
 """
 
 
-@pytest.mark.skipif(any(shutil.which(tool) is None for tool in ("initdb", "pg_ctl", "psql")) or os.geteuid() == 0,
-                    reason="requires non-root disposable local PostgreSQL tools; never connects to production")
-def test_initialize_sql_runs_twice_on_a_local_postgresql_and_the_probe_sees_everything(tmp_path):
-    """A throwaway local server with stand-ins for Cloud SQL's managed role and the two IAM users. The role syntax
-    (WITH INHERIT TRUE, SET TRUE; pg_has_role 'SET') needs PostgreSQL 16 or newer; production runs 18."""
-    release_user, agent = "specimen-data-release@specimen-digitization.iam", "service-716045864126@gcp-sa-firebasedataconnect.iam"
+POSTGRES = pytest.mark.skipif(any(shutil.which(tool) is None for tool in ("initdb", "pg_ctl", "psql")) or os.geteuid() == 0,
+                              reason="requires non-root disposable local PostgreSQL tools; never connects to production")
+RELEASE_USER, AGENT = "specimen-data-release@specimen-digitization.iam", "service-716045864126@gcp-sa-firebasedataconnect.iam"
+OWNER_ROLE, WRITER_ROLE, READER_ROLE = (f'"firebase{kind}_specimen-digitization-database_public"'
+                                        for kind in ("owner", "writer", "reader"))
+
+
+@pytest.fixture
+def postgres(tmp_path):
+    """A throwaway local server with stand-ins for Cloud SQL's managed role and the two IAM users; yields
+    sql(text, user, database). The role syntax (WITH INHERIT TRUE, SET TRUE; pg_has_role 'SET') needs PostgreSQL 16
+    or newer; production runs 18."""
     # macOS refuses to start the server without a valid locale in the environment.
     env = {**os.environ, "LC_ALL": "C"}
 
@@ -1154,45 +1303,93 @@ def test_initialize_sql_runs_twice_on_a_local_postgresql_and_the_probe_sees_ever
         return command(["psql", "-X", "-v", "ON_ERROR_STOP=1", "-h", "127.0.0.1", "-p", port, "-U", user, "-d", database,
                         "-qAt"], input=text)
 
-    def probe():
-        answer = sql(re.search(r"^const PROBE = `(.*?)`;$", DATA_SQL.read_text(), re.M | re.S).group(1), user=release_user)
-        assert answer.returncode == 0, answer.stderr
-        return json.loads(answer.stdout)
-
     try:
         ready = sql("SELECT current_setting('server_version_num')::int >= 160000 AND EXISTS ("
                     "SELECT 1 FROM pg_available_extensions WHERE name = 'uuid-ossp')", database="postgres")
         if ready.stdout.strip() != "t":
             pytest.skip("needs PostgreSQL 16 or newer with the uuid-ossp extension available")
         setup = sql(f'''CREATE ROLE cloudsqlsuperuser NOLOGIN NOSUPERUSER CREATEROLE CREATEDB;
-            CREATE ROLE "{release_user}" LOGIN; CREATE ROLE "{agent}" LOGIN;
+            CREATE ROLE "{RELEASE_USER}" LOGIN; CREATE ROLE "{AGENT}" LOGIN;
             CREATE DATABASE "{D.DATABASE}" OWNER cloudsqlsuperuser;''', database="postgres")
         assert setup.returncode == 0, setup.stderr
-        assert not any(probe().values())
-        # Before the owner assigns cloudsqlsuperuser: one clear line, and nothing changes.
-        before = sql(SNAPSHOT).stdout
-        refused = sql(INIT_SQL.read_text(), user=release_user)
-        assert refused.returncode != 0 and ("ERROR:  the data-release SQL user lacks cloudsqlsuperuser; the owner runs "
-                                            "scripts/ops/owner_setup.sh once") in refused.stderr
-        assert sql(SNAPSHOT).stdout == before and not any(probe().values())
-        assert sql(f'GRANT cloudsqlsuperuser TO "{release_user}" WITH INHERIT TRUE, SET TRUE').returncode == 0
-        first = sql(INIT_SQL.read_text(), user=release_user)
-        assert first.returncode == 0, first.stderr
-        created = sql(SNAPSHOT).stdout
-        assert all(probe().values()) and len(probe()) == 12
-        second = sql(INIT_SQL.read_text(), user=release_user)
-        assert second.returncode == 0, second.stderr
-        assert sql(SNAPSHOT).stdout == created and all(probe().values())
-        # The release user keeps working once cloudsqlsuperuser is taken back: it migrates as the owner role, and the
-        # Data Connect agent can write the table it made.
-        assert sql(f'REVOKE cloudsqlsuperuser FROM "{release_user}"').returncode == 0
-        owner = "firebaseowner_specimen-digitization-database_public"
-        table = sql(f'BEGIN; SET LOCAL search_path = public; SET LOCAL ROLE "{owner}"; CREATE TABLE "public"."organization" '
-                    '("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" text NOT NULL, PRIMARY KEY ("id")); COMMIT;',
-                    user=release_user)
-        assert table.returncode == 0, table.stderr
-        row = sql("INSERT INTO public.organization (name) VALUES ('x') RETURNING name", user=agent)
-        assert row.returncode == 0 and row.stdout.strip() == "x", row.stderr
-        assert all(probe().values())
+        yield sql
     finally:
         command(["pg_ctl", "-D", str(tmp_path / "cluster"), "-m", "immediate", "-w", "stop"])
+
+
+def probe(sql):
+    answer = sql(re.search(r"^const PROBE = `(.*?)`;$", DATA_SQL.read_text(), re.M | re.S).group(1), user=RELEASE_USER)
+    assert answer.returncode == 0, answer.stderr
+    return json.loads(answer.stdout)
+
+
+@POSTGRES
+def test_initialize_sql_runs_twice_on_a_local_postgresql_and_the_probe_sees_everything(postgres):
+    sql = postgres
+    assert not any(probe(sql).values())
+    # Before the owner assigns cloudsqlsuperuser: one clear line, and nothing changes.
+    before = sql(SNAPSHOT).stdout
+    refused = sql(INIT_SQL.read_text(), user=RELEASE_USER)
+    assert refused.returncode != 0 and ("ERROR:  the data-release SQL user lacks cloudsqlsuperuser; the owner runs "
+                                        "scripts/ops/owner_setup.sh once") in refused.stderr
+    assert sql(SNAPSHOT).stdout == before and not any(probe(sql).values())
+    assert sql(f'GRANT cloudsqlsuperuser TO "{RELEASE_USER}" WITH INHERIT TRUE, SET TRUE').returncode == 0
+    first = sql(INIT_SQL.read_text(), user=RELEASE_USER)
+    assert first.returncode == 0, first.stderr
+    created = sql(SNAPSHOT).stdout
+    assert all(probe(sql).values()) and len(probe(sql)) == 12
+    second = sql(INIT_SQL.read_text(), user=RELEASE_USER)
+    assert second.returncode == 0, second.stderr
+    assert sql(SNAPSHOT).stdout == created and all(probe(sql).values())
+    # The release user keeps working once cloudsqlsuperuser is taken back: it migrates as the owner role, and the
+    # Data Connect agent can write the table it made.
+    assert sql(f'REVOKE cloudsqlsuperuser FROM "{RELEASE_USER}"').returncode == 0
+    table = sql(f'BEGIN; SET LOCAL search_path = public; SET LOCAL ROLE {OWNER_ROLE}; CREATE TABLE "public"."organization" '
+                '("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "name" text NOT NULL, PRIMARY KEY ("id")); COMMIT;',
+                user=RELEASE_USER)
+    assert table.returncode == 0, table.stderr
+    row = sql("INSERT INTO public.organization (name) VALUES ('x') RETURNING name", user=AGENT)
+    assert row.returncode == 0 and row.stdout.strip() == "x", row.stderr
+    assert all(probe(sql).values())
+
+
+def hint(names):
+    return ("ERROR:  these database roles already exist and were created by another user, so the release may not grant "
+            f"them: {names}. A user that holds ADMIN on them (the one that created them) must run once: GRANT {names} TO "
+            "cloudsqlsuperuser WITH ADMIN OPTION; then run the release again. Nothing was changed")
+
+
+@POSTGRES
+def test_roles_another_user_created_stop_init_with_the_line_that_fixes_it_and_nothing_changes(postgres):
+    sql = postgres
+    # The three roles exist, made by another CREATEROLE user (as the postgres user would on Cloud SQL), so
+    # cloudsqlsuperuser holds no ADMIN option on them.
+    assert sql(f'GRANT cloudsqlsuperuser TO "{RELEASE_USER}" WITH INHERIT TRUE, SET TRUE; '
+               "CREATE ROLE other_admin LOGIN CREATEROLE; CREATE ROLE bystander LOGIN CREATEROLE").returncode == 0
+    made = sql(f"CREATE ROLE {OWNER_ROLE} NOLOGIN; CREATE ROLE {WRITER_ROLE} NOLOGIN; CREATE ROLE {READER_ROLE} NOLOGIN",
+               user="other_admin")
+    assert made.returncode == 0, made.stderr
+    before, names = sql(SNAPSHOT).stdout, f"{OWNER_ROLE}, {READER_ROLE}, {WRITER_ROLE}"
+    refused = sql(INIT_SQL.read_text(), user=RELEASE_USER)
+    assert refused.returncode != 0 and hint(names) in refused.stderr
+    assert sql(SNAPSHOT).stdout == before
+    # The line says what fixes it: a user without ADMIN on the roles cannot, the one that created them can.
+    grant = f"GRANT {names} TO cloudsqlsuperuser WITH ADMIN OPTION"
+    assert sql(grant, user="bystander").returncode != 0 and sql(SNAPSHOT).stdout == before
+    assert sql(grant, user="other_admin").returncode == 0
+    for attempt in range(2):
+        fixed = sql(INIT_SQL.read_text(), user=RELEASE_USER)
+        assert fixed.returncode == 0, fixed.stderr
+    assert all(probe(sql).values())
+
+
+@POSTGRES
+def test_only_the_roles_the_release_may_not_grant_are_named_and_the_others_are_not_left_behind(postgres):
+    sql = postgres
+    assert sql(f'GRANT cloudsqlsuperuser TO "{RELEASE_USER}" WITH INHERIT TRUE, SET TRUE; CREATE ROLE {WRITER_ROLE} NOLOGIN').returncode == 0
+    before = sql(SNAPSHOT).stdout
+    refused = sql(INIT_SQL.read_text(), user=RELEASE_USER)
+    assert refused.returncode != 0 and hint(WRITER_ROLE) in refused.stderr
+    # The owner and reader roles the transaction had created are gone again with it.
+    assert sql(SNAPSHOT).stdout == before
+    assert sql("SELECT count(*) FROM pg_roles WHERE rolname LIKE 'firebase%'").stdout.strip() == "1"

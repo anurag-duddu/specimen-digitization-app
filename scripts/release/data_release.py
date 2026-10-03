@@ -44,6 +44,8 @@ OWNER_SETUP = "the owner runs scripts/ops/owner_setup.sh once"
 HTTP_SECONDS, OPERATION_SECONDS, SQL_SECONDS = 120, 600, 1200
 # A call that changes nothing is tried again on a lost connection, 429 or 5xx; a write never is.
 ATTEMPTS, BACKOFF_SECONDS = 3, 2
+# How much of a failed SQL step's other stderr output reaches the log.
+STDERR_LINES = 10
 ANY_ORGANIZATION = "query AnyOrganization { organizations(limit: 1) { id } }"
 # The additive rule reads a diff statement outside its quoted identifiers and string literals.
 QUOTED = re.compile("'(?:[^']|'')*'" + '|"(?:[^"]|"")*"')
@@ -127,7 +129,8 @@ class Api:
 
 
 def node_sql(mode, *arguments):
-    """Run one scripts/release/data_sql.mjs mode. Its stdout is a JSON answer; its last stderr line says why it failed."""
+    """Run one scripts/release/data_sql.mjs mode. Its stdout is a JSON answer. When it fails, the reason is its own
+    last stderr line, the one that starts with "data_sql"; whatever else Node printed is not the reason."""
     command = ["node", str(ROOT / "scripts/release/data_sql.mjs"), mode, *arguments]
     try:
         done = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=SQL_SECONDS)
@@ -135,11 +138,17 @@ def node_sql(mode, *arguments):
         raise Failure("node is not on PATH") from None
     except subprocess.TimeoutExpired:
         raise Failure(f"{mode}: the SQL step is still running after {SQL_SECONDS // 60} minutes") from None
-    lines = done.stderr.strip().splitlines()
     if done.returncode:
-        for line in lines[:-1]:
+        lines = [line for line in done.stderr.splitlines() if line.strip()]
+        own = [line for line in lines if line.startswith("data_sql ")]
+        reason = (own or lines or [f"data_sql {mode}: the SQL step failed without a message"])[-1]
+        others = [line for line in lines if line is not reason]
+        # The rest goes to the log before the reason, a few lines at most.
+        for line in others[-STDERR_LINES:]:
             say(line)
-        raise Failure(lines[-1].removeprefix("data_sql ") if lines else f"{mode}: the SQL step failed without a message")
+        if len(others) > STDERR_LINES:
+            say(f"{mode}: {len(others) - STDERR_LINES} more line(s) of Node output are not shown")
+        raise Failure(reason.removeprefix("data_sql "))
     return json.loads(done.stdout) if done.stdout.strip() else None
 
 

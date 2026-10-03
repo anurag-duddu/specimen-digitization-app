@@ -70,8 +70,7 @@ ROLES = {
     "specimenRuntimeRelease": [
         "run.jobs.create", "run.jobs.get", "run.jobs.update", "run.operations.get", "run.revisions.get",
         "run.services.create", "run.services.get", "run.services.getIamPolicy", "run.services.update"],
-    "specimenRuntimeInvokerPolicy": [
-        "run.jobs.getIamPolicy", "run.jobs.setIamPolicy", "run.services.getIamPolicy", "run.services.setIamPolicy"],
+    "specimenRuntimeInvokerPolicy": ["run.services.getIamPolicy", "run.services.setIamPolicy"],  # no run.jobs
     "specimenRuntimeConnector": [
         "firebasedataconnect.connectors.impersonateMutation", "firebasedataconnect.connectors.impersonateQuery"],
     "specimenApiUserLookup": ["firebaseauth.users.get"],
@@ -125,7 +124,8 @@ PROVIDER = {"workload-identity-pool": "github-actions", "location": "global", "p
 KINDS = {("projects",): ("project", {}), ("storage", "buckets"): ("bucket", {}),
          ("artifacts", "repositories"): ("repository", {"location": "us-east4", "project": PROJECT}),
          ("iam", "service-accounts"): ("service-account", {"project": PROJECT}),
-         ("secrets",): ("secret", {"project": PROJECT})}
+         ("secrets",): ("secret", {"project": PROJECT}),
+         ("run", "services"): ("service", {"region": "us-east4", "project": PROJECT})}
 POLICY_VERBS = ("get-iam-policy", "add-iam-policy-binding", "remove-iam-policy-binding")
 FIELDS = ("title", "expression", "description")
 # The two jq programs the script hands to gh; the fake renders what they print and accepts no other.
@@ -162,6 +162,11 @@ def policy(verb, kind, scope, name, flags, state, entry):
     if kind == "bucket":
         expect(name[:5], "gs://")
         name = name[5:]
+    if kind == "service" and name not in state["services"]:  # a service has no policy before it exists
+        entry["write"] = verb != "get-iam-policy"
+        print(f"ERROR: (gcloud.run.services.{verb}) NOT_FOUND: Resource '{name}' of kind 'SERVICE' does not exist.",
+              file=sys.stderr)
+        return 1
     bindings = state["policies"].setdefault(f"{kind}/{name}", [])
     if verb == "get-iam-policy":
         expect(flags, {**scope, "flatten": "bindings[].members", "format": POLICY_FORMAT})
@@ -236,6 +241,16 @@ def gcloud(argv, state, entry):
             print(state["account"])
         else:
             print("(unset)", file=sys.stderr)
+        return 0
+    if words[:3] == ["run", "services", "describe"] and len(words) == 4:
+        expect(flags, {"region": "us-east4", "project": PROJECT, "format": "value(metadata.name)"})
+        if state["unreadable_services"]:
+            print("ERROR: (gcloud.run.services.describe) HTTPError 503: Service Unavailable.", file=sys.stderr)
+            return 1
+        if words[3] not in state["services"]:
+            print(f"ERROR: (gcloud.run.services.describe) Cannot find service [{words[3]}]", file=sys.stderr)
+            return 1
+        print(words[3])
         return 0
     if words == ["projects", "describe", PROJECT]:
         expect(flags, {"format": "value(projectNumber)"})
@@ -349,6 +364,11 @@ def gh(argv, state, entry):
             expect(argv[3:], [*repository, "--json", "attempt,status,conclusion,url,jobs", "--jq", RUN_JQ])
             entry["advance"] = True  # each reading moves the run one scripted state on; the last state stays
             run["at"] = min(run["at"] + 1, len(run["frames"]) - 1)
+            if now.get("deploys") and now["deploys"] not in state["services"]:
+                # The release this run stands for created the service and opened it to the web client.
+                state["services"].append(now["deploys"])
+                state["policies"][f"service/{now['deploys']}"] = [
+                    {"role": "roles/run.invoker", "members": ["allUsers"], "condition": None}]
             if now.get("unreadable"):
                 print("HTTP 502: Bad Gateway", file=sys.stderr)
                 return 1
@@ -499,7 +519,8 @@ def fresh_state():
             "providers": {name: provider(*rest, name) for name, rest in PROVIDERS.items()},
             "variables": {}, "secrets": [], "fail": [],
             "workflows": {"data-release.yml": OLD_WORKFLOW, "runtime-release.yml": OLD_WORKFLOW},
-            "runs": [], "dispatches": {}, "reruns": {}, "next_id": 500, "appear_after": 0, "http": {}}
+            "runs": [], "dispatches": {}, "reruns": {}, "next_id": 500, "appear_after": 0, "http": {},
+            "services": [], "unreadable_services": False}
 
 
 def live_state():
@@ -650,6 +671,14 @@ def provider_update(name):
 # The SAM 3 checkpoint mount lists the bucket (follow-up change #236): no condition, and no object read in the role.
 SAM_LISTS_BUCKET = ["gcloud", "storage", "buckets", "add-iam-policy-binding", f"gs://{BUCKET}", f"--member={SAM}",
                     "--role=roles/storage.legacyBucketReader", "--condition=None"]
+# The right to set who may call the API, on the one service; and the wider, project-level grant taken away.
+INVOKER_ROLE = f"--role={CUSTOM}specimenRuntimeInvokerPolicy"
+SERVICE = "specimen-api"
+NARROW = ["gcloud", "run", "services", "add-iam-policy-binding", SERVICE, "--region=us-east4",
+          f"--project={PROJECT}", f"--member={RELEASE}", INVOKER_ROLE, "--condition=None"]
+UNWIDEN = ["gcloud", "projects", "remove-iam-policy-binding", PROJECT, f"--member={RELEASE}", INVOKER_ROLE,
+           "--condition=None"]
+MOVES = "runtime release: the right to set who may call the API now moves from the project to the one service"
 # Every change the live state needs, in the script's order, with exact arguments.
 EXPECTED = [
     *(["gcloud", "projects", "remove-iam-policy-binding", PROJECT, f"--member={DATA}", f"--role={CUSTOM}{role}",
@@ -666,7 +695,7 @@ EXPECTED = [
      "--instance=specimen-digitization-instance", "--type=CLOUD_IAM_SERVICE_ACCOUNT",
      "--database-roles=cloudsqlsuperuser", "--project=specimen-digitization"],
     role_create("specimenRuntimeInvokerPolicy", "Specimen runtime invoker policy",
-                "Read and set who may invoke the Cloud Run services and the worker job."),
+                "Read and set who may call the API service."),
     project_grant(RELEASE, "specimenRuntimeInvokerPolicy"),
     SAM_LISTS_BUCKET,
     *(provider_update(name) for name in PROVIDERS),
@@ -770,6 +799,9 @@ def test_apply_makes_each_change_once_and_a_second_run_makes_none(tmp_path, shel
                 and row["role"] != "roles/storage.legacyBucketReader"]  # no other unconditioned right for SAM 3
     assert after["variables"] == {"SPECIMEN_API_BASE_URL": API_URL, "SPECIMEN_RECAPTCHA_SITE_KEY": SITE_KEY}
     assert f"secret {ARTIFACT} exists and is left as it is" in run.out
+    # No API service yet: the right to open it sits on the project, and the script says the next run narrows it.
+    assert "the next run of this script narrows it to that one service" in run.out
+    assert not [argv for argv in run.ran if argv[:3] == ["gcloud", "run", "services"]]
     # Main still holds the push-only workflows: the setup is done, no release is started, and that is no failure.
     assert ("The simple release workflows are not on main yet (the pull request is not merged). Setup is complete. "
             "Run this script again after the merge.") in run.out
@@ -1099,9 +1131,9 @@ def runtime_run():
         step(3, "Complete job")])
     build = [step(1, "Set up job"), step(2, "Push the image and report its digest")]
     deploy = [step(1, "Deploy the API to Cloud Run"), step(2, "Smoke the public API")]
-    return [reading([wait, job("Build and push the API image", build[:1], None)]),
-            reading([wait, job("Build and push the API image", build), job("Deploy the API and smoke it", deploy)],
-                    "success")]
+    done = reading([wait, job("Build and push the API image", build), job("Deploy the API and smoke it", deploy)],
+                   "success")
+    return [reading([wait, job("Build and push the API image", build[:1], None)]), {**done, "deploys": "specimen-api"}]
 
 
 def web_build(conclusion="success", attempt=1):
@@ -1164,7 +1196,9 @@ def test_releases_start_in_order_and_each_finished_step_is_printed_once(tmp_path
                                            f"data release: PASS {RUNS}501"]
     assert run.lines("runtime release: ") == [
         f"runtime release: started {RUNS}502", *RUNTIME_LINES, f"runtime release: PASS {RUNS}502",
-        f"runtime release: the API now serves commit {COMMIT}"]
+        f"runtime release: the API now serves commit {COMMIT}", MOVES]
+    # The release created the service, so the right moves to it now: first the narrow grant, then the wide one goes.
+    assert run.ran == [START_DATA, START_RUNTIME, NARROW, UNWIDEN]
     assert "Bad Gateway" not in run.err  # one failed reading of a run is retried without a word
     assert run.lines("web app: ") == ["web app: variables already set; no rebuild needed",
                                       "web app: the site points at the API"]
@@ -1173,7 +1207,7 @@ def test_releases_start_in_order_and_each_finished_step_is_printed_once(tmp_path
     assert stages(run)[1:] == [f"  Data release: PASS {RUNS}501", f"  Runtime release: PASS {RUNS}502",
                                "  Web app: SKIPPED (variables already set; no rebuild needed; "
                                "the site points at the API)"]
-    assert stages(run)[0].startswith("  Setup: PASS (0 changed, ")
+    assert stages(run)[0].startswith("  Setup: PASS (2 changed, ")
     assert "None: the setup and the releases are done." in run.summary and run.summary.splitlines()[-1] == SAFE
     assert "To read the log" not in run.summary and "WARNING" not in run.out
 
@@ -1218,7 +1252,8 @@ def test_first_morning_waits_for_new_access_retries_once_and_rebuilds_the_site(t
         "web app: running the build of main again so that it reads the repository variables", *WEB_JOBS,
         f"web app: PASS {RUNS}400", f"web app: the site now serves commit {COMMIT}",
         "web app: the site now points at the API"]
-    assert stages(run) == ["  Setup: PASS (17 changed, 39 already in place)", f"  Data release: PASS {RUNS}502",
+    assert run.ran[-3:] == [NARROW, UNWIDEN, RERUN] and run.ran.index(START_RUNTIME) == len(run.ran) - 4
+    assert stages(run) == ["  Setup: PASS (19 changed, 39 already in place)", f"  Data release: PASS {RUNS}502",
                            f"  Runtime release: PASS {RUNS}503",
                            f"  Web app: PASS {RUNS}400 (the site points at the API)"]
     assert "To read the log" not in run.summary and "--redeploy-web" not in run.summary
@@ -1401,3 +1436,95 @@ def test_dry_run_reads_the_site_when_nothing_would_be_rebuilt_and_says_when_it_c
     assert stages(run)[3] == ("  Web app: SKIPPED (variables already set; no rebuild needed; "
                               "the site could not be checked)")
     assert len(program_reads(run)) == 1
+
+
+def invoker_scope(state):
+    """Where the release identity holds the invoker-policy role: on the project, on the API service."""
+    role = CUSTOM + "specimenRuntimeInvokerPolicy"
+    return [binding(role, [RELEASE]) in state["policies"].get(key, [])
+            for key in (f"project/{PROJECT}", "service/specimen-api")]
+
+
+def test_invoker_policy_right_moves_to_the_api_service_once_it_exists(tmp_path, settled):
+    # After the first release: the service exists and the right still sits on the project (state of a second run).
+    assert invoker_scope(settled) == [True, False]
+    state = {**settled, "services": ["specimen-api"],
+             "policies": {**settled["policies"], "service/specimen-api": [binding("roles/run.invoker", ["allUsers"])]}}
+    harness = Harness(tmp_path, state)
+    preview = harness.run("--dry-run")
+    assert preview.code == 0 and preview.writes == [] and preview.printed == [NARROW, UNWIDEN]
+    run = harness.run()
+    assert run.code == 0, run.err
+    assert run.ran == [NARROW, UNWIDEN]  # the narrow grant first, then the wide one goes; nothing else changes
+    after = harness.state()
+    assert invoker_scope(after) == [False, True]
+    assert binding("roles/run.invoker", ["allUsers"]) in after["policies"]["service/specimen-api"]
+    assert binding(CUSTOM + "specimenRuntimeRelease", [RELEASE]) in after["policies"][f"project/{PROJECT}"]
+    assert "the next run of this script narrows" not in run.out
+    again = harness.run()
+    assert again.code == 0 and again.writes == [] and harness.state() == after
+    assert "ok: not granted (nothing to remove): specimen-runtime-release: specimenRuntimeInvokerPolicy" in again.out
+
+
+def test_failed_narrowing_after_the_release_is_a_warning_and_keeps_the_wider_grant(tmp_path, settled):
+    state = {**merged(settled, data=[data_run()], runtime=[runtime_run()]), "fail": ["specimen-api"]}
+    harness = Harness(tmp_path, state)
+    run = harness.run()
+    assert run.code == 0, run.err  # tidying up after a passed release never fails the run
+    # The wide grant is not removed while the narrow one is missing.
+    assert run.ran == [START_DATA, START_RUNTIME, NARROW]
+    assert invoker_scope(harness.state()) == [True, False]
+    warning = ("grant specimen-runtime-release: specimenRuntimeInvokerPolicy on service specimen-api: this did not "
+               "go through (the error is above); the next run of this script tries again")
+    assert f"  WARNING: {warning}" in run.out.splitlines()
+    assert f"  - {warning}" in run.summary.split("Warnings:\n", 1)[1].splitlines()
+    assert stages(run)[:3] == [stages(run)[0], f"  Data release: PASS {RUNS}501", f"  Runtime release: PASS {RUNS}502"]
+    assert stages(run)[0].startswith("  Setup: PASS (0 changed, ") and "FAILED" not in run.out
+
+
+def test_setup_stops_when_it_cannot_tell_whether_the_api_service_exists(tmp_path):
+    run = Harness(tmp_path, {**live_state(), "unreadable_services": True}).run()
+    assert run.code == 1 and "could not tell whether the service specimen-api exists" in run.err
+    assert not [argv for argv in run.ran if "specimenRuntimeInvokerPolicy" in " ".join(argv) and "binding" in argv[2]]
+    assert stages(run)[0] == "  Setup: FAIL (stopped early; the error is above)"
+
+
+def test_setup_only_before_the_merge_applies_the_setup_and_touches_no_workflow(tmp_path):
+    # The coordinator's plan: --setup-only from this change's head while main still holds the old, push-only
+    # workflows, so that the merge commit's own runs are the first releases.
+    harness = Harness(tmp_path, live_state())
+    assert "workflow_dispatch" not in "".join(harness.state()["workflows"].values())
+    run = harness.run("--setup-only")
+    assert run.code == 0, run.err
+    assert run.ran == EXPECTED and run.printed == EXPECTED
+    assert not [call for call in run.calls if call["tool"] == "gh" and call["argv"][0] in ("workflow", "run")]
+    assert run.sleeps == [] and not [call for call in run.calls if call["tool"] == "curl"]
+    assert run.summary.split("Stages:\n", 1)[1].splitlines()[:5] == [
+        "  Setup: PASS (17 changed, 39 already in place)", "  Data release: SKIPPED (--setup-only)",
+        "  Runtime release: SKIPPED (--setup-only)", "  Web app: SKIPPED (--setup-only)",
+        "State: SETUP DONE, RELEASES NOT STARTED (--setup-only)"]
+    assert run.summary.split("Next steps:\n", 1)[1].splitlines() == [
+        "  The releases were not started (--setup-only): the next merge to main starts them and builds the site with "
+        "these settings.",
+        "  To start them without a merge, run this script again without --setup-only and with --redeploy-web.", SAFE]
+    assert "WARNING" not in run.out and "not on main yet" not in run.out
+    assert invoker_scope(harness.state()) == [True, False]  # on the project until the first release makes the service
+    again = harness.run("--setup-only")
+    assert again.code == 0 and again.writes == [] and "0 step(s) changed:" in again.out
+
+
+@pytest.mark.parametrize("shell", ["zsh", "sh"])
+def test_another_shell_is_told_to_use_bash_before_anything_runs(tmp_path, shell):
+    path = shutil.which(shell)
+    if path is None:
+        pytest.skip(f"{shell} is not installed")
+    run = Harness(tmp_path, live_state(), path).run("--dry-run")
+    assert (run.code, run.calls, run.out) == (2, [], "")
+    assert run.err == "run this script with bash: bash scripts/ops/owner_setup.sh\n"
+    # The guard is the first thing the script does, in words every shell reads the same way.
+    code = [line.strip() for line in SCRIPT.read_text().splitlines()
+            if line.strip() and not line.strip().startswith("#")]
+    assert code[:5] == ["case ${BASH_VERSION:-}:${SHELLOPTS:-} in", ":* | *:*posix*)",
+                        "echo 'run this script with bash: bash scripts/ops/owner_setup.sh' >&2",
+                        "return 2 2> /dev/null || exit 2", ";;"]
+    assert code[5:7] == ["esac", "set -euo pipefail"]

@@ -47,10 +47,31 @@ BEGIN
 END
 $roles$;
 -- Downward membership only: the managed superuser role can act as each application role.
-GRANT "firebaseowner_specimen-digitization-database_public",
-      "firebasewriter_specimen-digitization-database_public",
-      "firebasereader_specimen-digitization-database_public"
-  TO cloudsqlsuperuser WITH INHERIT TRUE, SET TRUE;
+-- A role that already existed was created by another user, and then only a holder of its ADMIN option may hand it
+-- on. PostgreSQL's own refusal does not say what to do, so it is replaced by one that does. Either way the whole
+-- transaction rolls back and nothing is changed.
+DO $membership$
+DECLARE
+  others text;
+BEGIN
+  GRANT "firebaseowner_specimen-digitization-database_public",
+        "firebasewriter_specimen-digitization-database_public",
+        "firebasereader_specimen-digitization-database_public"
+    TO cloudsqlsuperuser WITH INHERIT TRUE, SET TRUE;
+EXCEPTION WHEN insufficient_privilege THEN
+  SELECT pg_catalog.string_agg(pg_catalog.quote_ident(rolname), ', ' ORDER BY rolname) INTO others
+    FROM pg_catalog.pg_roles
+    WHERE rolname IN ('firebaseowner_specimen-digitization-database_public',
+                      'firebasewriter_specimen-digitization-database_public',
+                      'firebasereader_specimen-digitization-database_public')
+      AND NOT pg_catalog.pg_has_role(current_user, oid, 'MEMBER WITH ADMIN OPTION');
+  IF others IS NULL THEN
+    RAISE;
+  END IF;
+  RAISE EXCEPTION 'these database roles already exist and were created by another user, so the release may not grant them: %. A user that holds ADMIN on them (the one that created them) must run once: GRANT % TO % WITH ADMIN OPTION; then run the release again. Nothing was changed',
+    others, others, pg_catalog.quote_ident(current_user);
+END
+$membership$;
 -- The CREATE grant around the owner change is kept from the original initialization and taken back at once.
 -- PostgreSQL does not need it: it checks the role making the change, the database owner, not the new owner.
 DO $owner$

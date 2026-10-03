@@ -42,10 +42,13 @@ GitHub environments, or production, read `docs/DEPLOYMENT.md` completely.
   `.github/workflows/runtime-release.yml`. The data and runtime workflows also
   accept a manual run (`workflow_dispatch`) on `main` only; a manual run of the
   Hosting workflow runs the checks and does not deploy. The authority is the
-  owner's decision G11 of 2026-09-23 in `docs/execution/golive/PLAN.md`
-  section 2.1 (data and runtime releases deploy automatically on merge, like
-  Hosting) and the go-live plan the owner approved on 2026-10-03.
-  `docs/DEPLOYMENT.md` describes each workflow.
+  owner's standing decision G11 of 2026-09-23 in
+  `docs/execution/golive/PLAN.md` section 2.1 (data and runtime releases
+  deploy automatically on merge, like Hosting), and the owner's messages of
+  2026-10-03 in the go-live coordinator session ("Take over, get this live";
+  "Yes, get it done. You have my authorization..."), which supersede G11's
+  "the PR steward approves" clause. `docs/DEPLOYMENT.md` quotes them and
+  describes each workflow.
 - The Hosting release deploys the tested web build. The data release
   initializes the database where something is missing, applies additive-only
   schema changes, publishes the schema and connector, creates the indexes in
@@ -55,7 +58,8 @@ GitHub environments, or production, read `docs/DEPLOYMENT.md` completely.
   only after the data release succeeded on the same commit.
 - No release ceremony. Do not add receipts, evidence digests, signed intents,
   time-limited access windows, approval packets or admission gates to a
-  release. The owner never asked for them and three releases failed on them.
+  release. The owner never asked for them and repeated release attempts failed
+  on them.
 - The data release never drops, deletes or truncates. A destructive schema
   change stops the release and needs the owner.
 - One-time owner setup is `scripts/ops/owner_setup.sh` (standing

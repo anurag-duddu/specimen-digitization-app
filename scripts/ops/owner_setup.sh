@@ -16,6 +16,16 @@
 # Needs gcloud signed in as a project Owner (or IAM admin plus Cloud SQL admin) and gh signed
 # in with admin rights on the repository. Written for the stock macOS bash 3.2: no associative
 # arrays, no mapfile, and no pattern substitution with a computed replacement.
+
+# Bash only. Any other shell (zsh, a plain sh, bash started as sh) stops here, at lines every
+# shell reads the same way, before it misreads the rest; a shell that sourced the file survives.
+case ${BASH_VERSION:-}:${SHELLOPTS:-} in
+  :* | *:*posix*)
+    echo 'run this script with bash: bash scripts/ops/owner_setup.sh' >&2
+    # shellcheck disable=SC2317
+    return 2 2> /dev/null || exit 2
+    ;;
+esac
 set -euo pipefail
 
 readonly PROJECT=specimen-digitization
@@ -24,6 +34,7 @@ readonly REGION=us-east4
 readonly REPOSITORY=anurag-duddu/specimen-digitization-app
 readonly BUCKET="$PROJECT.firebasestorage.app"
 readonly REGISTRY=specimen-runtime
+readonly API_SERVICE=specimen-api
 readonly INSTANCE=specimen-digitization-instance
 readonly SQL_USER="specimen-data-release@$PROJECT.iam"
 readonly POOL=github-actions
@@ -104,6 +115,9 @@ REPLACED=''
 COMMAND=(gcloud)
 # Release stages: what the summary says about each, and what the waits are.
 LAST_OK=0
+HELD=0
+LENIENT=0
+NARROWED=0
 ACCESS_CHANGED=0
 VARIABLES_CHANGED=0
 NOT_MERGED=0
@@ -179,6 +193,10 @@ succeeded() {
 # A failed change does not stop the steps after it: they do not depend on it for safety, and
 # the next run retries exactly what is still missing.
 failed() {
+  if [ "$LENIENT" -eq 1 ]; then
+    warn "$PENDING: this did not go through (the error is above); the next run of this script tries again"
+    return 0
+  fi
   FAILURE_COUNT=$((FAILURE_COUNT + 1))
   FAILURES="$FAILURES  - $PENDING"$'\n'
   printf '  FAILED: %s (the error is above; the steps after it still run)\n' "$PENDING"
@@ -272,6 +290,7 @@ resource_command() { # resource_command VERB KIND NAME
     repository) COMMAND=(gcloud artifacts repositories "$1" "$3" "--location=$REGION" "--project=$PROJECT") ;;
     service-account) COMMAND=(gcloud iam service-accounts "$1" "$3" "--project=$PROJECT") ;;
     secret) COMMAND=(gcloud secrets "$1" "$3" "--project=$PROJECT") ;;
+    service) COMMAND=(gcloud run services "$1" "$3" "--region=$REGION" "--project=$PROJECT") ;;
     *) die "unknown kind of resource: $2" ;;
   esac
 }
@@ -283,9 +302,17 @@ load_policy() { # load_policy KIND NAME
   POLICY="$WORK/policy.$key"
   if [ -f "$POLICY" ]; then return 0; fi
   resource_command get-iam-policy "$1" "$2"
-  "${COMMAND[@]}" '--flatten=bindings[].members' "--format=$POLICY_FORMAT" > "$POLICY.new" < /dev/null ||
-    die "could not read the access policy of $1 $2 (see the error above)"
+  if ! "${COMMAND[@]}" '--flatten=bindings[].members' "--format=$POLICY_FORMAT" > "$POLICY.new" < /dev/null; then
+    if [ "$LENIENT" -eq 0 ]; then die "could not read the access policy of $1 $2 (see the error above)"; fi
+    warn "could not read the access policy of $1 $2 (the error is above)"
+    return 1
+  fi
   mv "$POLICY.new" "$POLICY"
+}
+
+# Drops what was read of a resource's policy, so that the next look reads it again.
+forget_policy() { # forget_policy KIND NAME
+  rm -f "$WORK/policy.$(printf '%s' "$1.$2" | tr -c 'A-Za-z0-9._-' '_')"
 }
 
 # True when the policy file holds exactly this binding: no condition at all when TITLE is
@@ -319,15 +346,18 @@ member_name() {
   esac
 }
 
-# Adds one binding unless the exact binding is already live.
+# Adds one binding unless the exact binding is already live. Sets HELD: 1 when the binding
+# is in place afterwards (in a dry run: would be), 0 when it could not be read or added.
 grant() { # grant KIND NAME MEMBER ROLE [TITLE EXPRESSION [DESCRIPTION]]
   local kind=$1 name=$2 member=$3 role=$4 title=${5:-} expression=${6:-} description=${7:-} what
+  HELD=0
   member_name "$member"
   what="$REPLACED: ${role##*/} on $kind $name"
   if [ -n "$title" ]; then what="$what, condition $title"; fi
-  load_policy "$kind" "$name"
+  if ! load_policy "$kind" "$name"; then return 0; fi
   if has_binding "$POLICY" "$member" "$role" "$title" "$expression"; then
     in_place "$what"
+    HELD=1
     return 0
   fi
   change "grant $what"
@@ -338,6 +368,72 @@ grant() { # grant KIND NAME MEMBER ROLE [TITLE EXPRESSION [DESCRIPTION]]
     condition_file "$title" "$expression" "$description"
     run "${COMMAND[@]}" "--member=$member" "--role=$role" "--condition-from-file=$CONDITION_FILE"
   fi
+  HELD=$LAST_OK
+}
+
+# Removes one binding that has no condition, when it is live: never another binding of that
+# role or member, and never --all.
+revoke() { # revoke KIND NAME MEMBER ROLE
+  local kind=$1 name=$2 member=$3 role=$4 what
+  member_name "$member"
+  what="$REPLACED: ${role##*/} on $kind $name"
+  if ! load_policy "$kind" "$name"; then return 0; fi
+  if ! has_binding "$POLICY" "$member" "$role" '' ''; then
+    in_place "not granted (nothing to remove): $what"
+    return 0
+  fi
+  change "remove the wider grant $what"
+  resource_command remove-iam-policy-binding "$kind" "$name"
+  run "${COMMAND[@]}" "--member=$member" "--role=$role" --condition=None
+}
+
+# Whether the API's Cloud Run service exists: 0 it does, 1 not yet, 2 that could not be read.
+api_service_exists() {
+  if gcloud run services describe "$API_SERVICE" "--region=$REGION" "--project=$PROJECT" \
+    '--format=value(metadata.name)' > /dev/null 2> "$WORK/stderr" < /dev/null; then
+    return 0
+  fi
+  if grep -q 'Cannot find service' "$WORK/stderr"; then return 1; fi
+  cat "$WORK/stderr" >&2
+  return 2
+}
+
+# The right to say who may call the API (specimenRuntimeInvokerPolicy) belongs on that one
+# service. Cloud Run takes no condition on a resource name, and a grant on a service needs
+# the service, which the first release creates. So: while the service does not exist the
+# grant sits on the project; once it exists the grant moves to the service, and the wider
+# one goes only after the narrow one holds.
+scope_invoker_policy() {
+  local role="$CUSTOM/specimenRuntimeInvokerPolicy" status
+  if api_service_exists; then status=0; else status=$?; fi
+  case $status in
+    0)
+      grant service "$API_SERVICE" "$RELEASE" "$role"
+      if [ "$HELD" -eq 1 ]; then
+        revoke project "$PROJECT" "$RELEASE" "$role"
+        NARROWED=1
+      fi
+      ;;
+    1)
+      grant project "$PROJECT" "$RELEASE" "$role"
+      note "the service $API_SERVICE does not exist yet, so the first release needs this right on the project; the next run of this script narrows it to that one service."
+      ;;
+    *)
+      if [ "$LENIENT" -eq 0 ]; then die "could not tell whether the service $API_SERVICE exists (see the error above)"; fi
+      warn "could not tell whether the service $API_SERVICE exists (the error is above); the next run of this script narrows the right to it"
+      ;;
+  esac
+}
+
+# Right after a passed runtime release the service exists, so the right moves now instead of
+# at the next run. This is tidying up, not part of the release: a failure here is a warning.
+narrow_after_release() {
+  printf 'runtime release: the right to set who may call the API now moves from the project to the one service\n'
+  forget_policy project "$PROJECT"
+  forget_policy service "$API_SERVICE"
+  LENIENT=1
+  scope_invoker_policy
+  LENIENT=0
 }
 
 # A runtime reads one exact version of a secret, never "latest".
@@ -387,7 +483,7 @@ preflight() {
   login=$(gh api user --jq .login 2> /dev/null < /dev/null) || login='(not shown by gh)'
   if ! number=$(gcloud projects describe "$PROJECT" '--format=value(projectNumber)' 2> "$WORK/stderr" < /dev/null); then
     cat "$WORK/stderr" >&2
-    die "cannot reach project $PROJECT as $account"
+    die "cannot reach project $PROJECT as $account (if the sign-in has expired: gcloud auth login)"
   fi
   [ "$number" = "$PROJECT_NUMBER" ] || die "project $PROJECT has number $number, expected $PROJECT_NUMBER"
   printf 'Google Cloud account: %s\n' "$account"
@@ -498,9 +594,10 @@ runtime_grants() {
     'Create and update the Cloud Run services and the worker job; no delete, no job runs.' \
     run.services.create run.services.get run.services.update run.services.getIamPolicy \
     run.jobs.create run.jobs.get run.jobs.update run.operations.get run.revisions.get
+  # The worker job's invokers belong to the follow-up change: no run.jobs permission here.
   ensure_role specimenRuntimeInvokerPolicy 'Specimen runtime invoker policy' \
-    'Read and set who may invoke the Cloud Run services and the worker job.' \
-    run.services.getIamPolicy run.services.setIamPolicy run.jobs.getIamPolicy run.jobs.setIamPolicy
+    'Read and set who may call the API service.' \
+    run.services.getIamPolicy run.services.setIamPolicy
   ensure_role specimenRuntimeConnector 'Specimen runtime connector' \
     'call the named operations of the connector only, never arbitrary GraphQL' \
     firebasedataconnect.connectors.impersonateQuery firebasedataconnect.connectors.impersonateMutation
@@ -510,7 +607,7 @@ runtime_grants() {
 
   grant repository "$REGISTRY" "$BUILD" roles/artifactregistry.writer
   grant project "$PROJECT" "$RELEASE" "$CUSTOM/specimenRuntimeRelease"
-  grant project "$PROJECT" "$RELEASE" "$CUSTOM/specimenRuntimeInvokerPolicy"
+  scope_invoker_policy
   grant project "$PROJECT" "$RELEASE" "$CUSTOM/specimenDataInventoryProjectRead"
   grant repository "$REGISTRY" "$RELEASE" roles/artifactregistry.reader
   for name in api worker sam; do
@@ -909,6 +1006,13 @@ runtime_stage() {
   if release_stage 'runtime release' "$RUNTIME_WORKFLOW" job-steps; then
     RUNTIME_STATE=$STAGE_STATE
     if [ "$DRY_RUN" -eq 0 ]; then report_live 'runtime release' "$API_BASE_URL/version" source_sha 'the API'; fi
+    if [ "$NARROWED" -eq 0 ]; then
+      if [ "$DRY_RUN" -eq 0 ]; then
+        narrow_after_release
+      else
+        printf 'runtime release: once it has passed, the right to set who may call the API would move from the project to the one service\n'
+      fi
+    fi
     return 0
   fi
   RUNTIME_STATE=$STAGE_STATE
@@ -1101,8 +1205,12 @@ summary() {
   printf '  Data release: %s\n' "${DATA_STATE:-SKIPPED}"
   printf '  Runtime release: %s\n' "${RUNTIME_STATE:-SKIPPED}"
   printf '  Web app: %s\n' "${WEB_STATE:-SKIPPED}"
-  if [ "$NOT_MERGED" -eq 1 ] && [ "$DRY_RUN" -eq 0 ] && [ "$FAILURE_COUNT" -eq 0 ]; then
-    printf 'State: SETUP DONE, RELEASES NOT STARTED\n'
+  if [ "$DRY_RUN" -eq 0 ] && [ "$FAILURE_COUNT" -eq 0 ] && [ "$STOPPED" -eq 0 ]; then
+    if [ "$SETUP_ONLY" -eq 1 ]; then
+      printf 'State: SETUP DONE, RELEASES NOT STARTED (--setup-only)\n'
+    elif [ "$NOT_MERGED" -eq 1 ]; then
+      printf 'State: SETUP DONE, RELEASES NOT STARTED\n'
+    fi
   fi
   printf 'Live addresses:\n  API: %s\n  App: %s\n' "$API_BASE_URL" "$APP_URL"
   if [ -n "$LOG_COMMANDS" ]; then printf 'To read the log of what failed:\n%s' "$LOG_COMMANDS"; fi
@@ -1123,7 +1231,13 @@ summary() {
   elif [ "$DRY_RUN" -eq 1 ]; then
     printf '  Run this script again without --dry-run to apply the steps above.\n'
   elif [ "$SETUP_ONLY" -eq 1 ]; then
-    printf '  Run this script again without --setup-only to start the releases and watch them.\n'
+    printf '  The releases were not started (--setup-only): the next merge to main starts them and builds the site with these settings.\n'
+    if [ "$web_pending" -eq 1 ]; then
+      printf '  To start them without a merge, run this script again without --setup-only and with --redeploy-web.\n'
+      web_pending=0
+    else
+      printf '  To start them without a merge, run this script again without --setup-only.\n'
+    fi
   else
     case $WEB_STATE in
       WARN*) printf '  None now: the setup and the releases are done, and the next merge to main builds the site with the API address.\n' ;;

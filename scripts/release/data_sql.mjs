@@ -81,8 +81,9 @@ async function connect() {
       statement_timeout: 120000, application_name: 'specimen-data-release'});
     return {connector, pool, client: await pool.connect()};
   } catch (error) {
-    await pool?.end();
-    connector.close();
+    // Cleaning up must not replace the error that brought us here.
+    await pool?.end().catch(() => {});
+    try { connector.close(); } catch {}
     throw error;
   }
 }
@@ -157,15 +158,41 @@ if (!Object.hasOwn(MODES, mode)) {
   console.error(`usage: node data_sql.mjs ${Object.keys(MODES).join('|')} [arguments]`);
   process.exit(2);
 }
+
+// A failed run says why in one stderr line that starts with "data_sql": its first failure. Once the outcome is
+// settled nothing replaces that line, and nothing that goes wrong while closing turns a finished mode into a failure.
+let settled = false;
+function fail(error) {
+  if (settled) return;
+  settled = true;
+  process.exitCode = 1;
+  const reason = String(error?.message ?? error).replace(/\s+/g, ' ').trim();
+  console.error(`data_sql ${mode}: ${reason || 'failed without a message'}`);
+}
+// An explicit exit once stdout has drained, so a socket left open can neither keep the process alive nor change
+// the exit code.
+function leave() {
+  process.stdout.write('', () => process.exit(process.exitCode ?? 0));
+}
+// After a failed first refresh the connector's close() rejects in the background. Unhandled, Node would print the
+// whole error object and end the log with its own version line instead of the reason.
+for (const event of ['unhandledRejection', 'uncaughtException']) {
+  process.on(event, error => {
+    fail(error);
+    leave();
+  });
+}
+
 let connection;
 try {
   connection = await connect();
   await MODES[mode](connection.client, args);
+  settled = true;
 } catch (error) {
-  console.error(`data_sql ${mode}: ${error.message}`);
-  process.exitCode = 1;
-} finally {
-  connection?.client.release();
-  await connection?.pool.end();
-  connection?.connector.close();
+  fail(error);
 }
+// Closing is given five seconds and its own failures are dropped: the outcome above already stands.
+try { connection?.client.release(); } catch {}
+await Promise.race([connection?.pool.end().catch(() => {}), new Promise(done => setTimeout(done, 5000))]);
+try { connection?.connector.close(); } catch {}
+leave();

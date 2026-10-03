@@ -2,9 +2,9 @@
 
 The scripts in list 1 served the protected-release process of the data and
 runtime releases: gate packets, admission, recovery windows, the restore clone
-and the one-time database initializer. The go-live plan the owner approved on
-2026-10-03 retired that process. The current one is the chapter "Data and
-runtime releases" in `docs/DEPLOYMENT.md`.
+and the one-time database initializer. The owner's authorization of
+2026-10-03 retired that process; the chapter "Data and runtime releases" in
+`docs/DEPLOYMENT.md` quotes it and describes the current process.
 
 - No workflow calls these scripts any more.
 - They stay in the tree, byte for byte unchanged, until a follow-up pull
