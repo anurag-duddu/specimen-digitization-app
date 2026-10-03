@@ -17,9 +17,10 @@ from .publication import prepare_native_publication
 from .worker import ResearchRetryWorker
 
 LOGGER = logging.getLogger(__name__)
-# The publication layers refuse with lower-case codes; any other message (a
-# validation error, a connector's text) can carry values and is never logged.
-CODE = re.compile(r"[a-z0-9_]{1,80}")
+# The publication layers refuse with lower-case snake_case codes (every one has
+# an underscore). Any other message (a validation error, a connector's text, a
+# bare word or number) can carry values and is never logged.
+CODE = re.compile(r"(?=.{1,80}\Z)[a-z][a-z0-9]*(?:_[a-z0-9]+)+")
 
 # Only terminal work publishes (canonical_materialization_v2 target gate,
 # research_publication_v2.gql field work_state check). Waiting work reaches the
