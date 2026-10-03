@@ -89,10 +89,8 @@ def test_three_taxonomy_lookups_in_one_response_leave_the_run_healthy(rig):  # n
     except OperationalBlock as block:
         plan_outcome = str(block)
 
-    # The scripted model really asked for all three at once, and the taxonomy
-    # specialist's tool definitions are what the test thinks they are.
+    # The scripted model really asked for all three at once.
     assert ("specimen_taxonomy", "all-three-lookups-in-one-response") in rig.model_calls
-    assert set(TOOLS) <= set(seen_tools)
     state = rig.backend.load(
         DurabilityScope(support.ORG, support.COLLECTION, rig.specimen_id, f"{parsed.run.id}-r3", 1,
                         support.WORKER, False),
@@ -100,13 +98,19 @@ def test_three_taxonomy_lookups_in_one_response_leave_the_run_healthy(rig):  # n
     effects = list(state["effects"].values())
     job = next(iter(state["jobs"].values()))
     # Not poisoned: no effect is held or still sending, the taxon resolved, and the
-    # tick did not end in the custody hold (it may still end in the ordinary
-    # operational hold for fields whose sources are not ready; that is not asserted).
+    # tick did not end in the custody hold (whether it ends in an ordinary operational
+    # hold for fields whose sources are not ready is not asserted).
     assert plan_outcome != "research_worker_custody_requires_reconciliation"
     assert [effect["status"] for effect in effects if effect["status"] != "completed"] == []
     assert job["fields"]["taxon"]["work_state"] == "resolved"
-    assert [url.split("/")[2] for url in rig.source_urls] == SOURCE_HOSTS
-    assert sum(effect["operation_key"].startswith("source_capture_v2:") for effect in effects) == 3
+    # Only the taxonomy field is asserted: other roles (geography's GEOLocate lookups)
+    # also fetch URLs and capture sources.
+    assert [host for host in (url.split("/")[2] for url in rig.source_urls) if host in SOURCE_HOSTS] == SOURCE_HOSTS
+    assert sum(effect["operation_key"].startswith("source_capture_v2:") and effect["field_keys"] == ["taxon"]
+               for effect in effects) == 3
+    # The production specialist was offered both tools as sequential barriers (the
+    # flag survives the Instrumentation, StepPersistence and SubAgents wrappers).
+    assert {name: seen_tools[name] for name in TOOLS} == {"lookup_source": True, "invoke_utility": True}
 
 
 def specialist_request():
