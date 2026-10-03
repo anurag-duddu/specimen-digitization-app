@@ -7,6 +7,7 @@ admission. Preparation does not run the worker or claim product acceptance.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -510,6 +511,9 @@ def verify_runtime_template(observed, expected, *, role):
                 and actual.get("resources", {}).get("startupCpuBoost", False) is False,
                 "runtime billing or startup CPU policy changed")
     require(actual.get("env", []) == desired.get("env", []) and actual.get("volumeMounts", []) == desired.get("volumeMounts", []), "runtime environment or mounts changed")
+    # Only a probe the body sets is compared; Cloud Run fills in its default probe where none is sent.
+    require(all((actual.get("startupProbe") or {}).get(key) == value for key, value in desired.get("startupProbe", {}).items()),
+            "runtime startup probe changed")
     require(template.get("volumes", []) == wanted.get("volumes", []), "runtime volume definition changed")
 
 def activation_worker(body, plan, packet, *, now=None):
@@ -724,6 +728,8 @@ def released_bodies(images, source_sha, run_id, attempt, roles):
         require(len(revision) <= 63, "revision name too long")
         container["ports"] = [{"containerPort": 8080}]
         container["resources"].update(cpuIdle=True, startupCpuBoost=False)
+        if "startup_probe" in spec:
+            container["startupProbe"] = copy.deepcopy(spec["startup_probe"])
         scaling = {"minInstanceCount": 0, "maxInstanceCount": spec["max_instances"]}
         template = {"revision": revision, "serviceAccount": spec["service_account"], "scaling": dict(scaling),
                     "timeout": f"{spec['timeout_seconds']}s", "maxInstanceRequestConcurrency": spec["concurrency"],
