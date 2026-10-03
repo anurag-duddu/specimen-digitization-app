@@ -22,7 +22,7 @@ from specimen_digitization.research_harness.evidence import (
     EvidenceError, assemble_field, elevation_resolutions, settle_elevation, temporal_resolutions,
     validate_resolution,
 )
-from specimen_digitization.research_harness.prompts import RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt
+from specimen_digitization.research_harness.prompts import MISSING_POLICY_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt
 from specimen_digitization.research_harness.sources import insects_registry
 
 ROOT = Path(prompts.__file__).parent
@@ -70,17 +70,21 @@ def flat(text):
 
 
 @pytest.mark.parametrize("role", FIVE)
-def test_each_role_resolves_to_its_v1_text_followed_by_the_relation_rule(role):
-    assert ROLE_PROMPTS[role] == (f"{role.value}-v2.txt", RELATIONS_PROMPT_VERSION)
+def test_each_role_has_its_v1_text_followed_by_the_relation_rule_in_its_v2_file(role):
+    # The v2 files are superseded as the live pin by the v3 files (the missing-policy
+    # block, tests/research_harness/test_prompt_missing_policy_v3.py) but stay on disk
+    # for audit; each live v3 text begins with the v2 text this test checks.
     (ROOT / f"{role.value}-v2.txt").read_bytes().decode("ascii")
     rule = added(role)
     assert rule.startswith("Evidence relations (G23): ") and "value.evidence_relations" in rule
     prompt = resolve_prompt(role, profile_digest=PIN, source_registry_digest=PIN, toolset_digest=PIN,
                             model_route="harness-deepseek", output_schema_digest=PIN)
-    expected = ((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
-                + (ROOT / f"{role.value}-v2.txt").read_text(encoding="utf-8")
-                + "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n")
-    assert prompt.text == expected and prompt.digest == hashlib.sha256(expected.encode()).hexdigest()
+    v2 = (ROOT / f"{role.value}-v2.txt").read_text(encoding="utf-8")
+    common = (ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
+    assert ROLE_PROMPTS[role] == (f"{role.value}-v3.txt", MISSING_POLICY_PROMPT_VERSION)
+    assert prompt.text.startswith(common + v2)
+    assert prompt.text == (common + (ROOT / f"{role.value}-v3.txt").read_text(encoding="utf-8")
+                           + "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n")
 
 
 @pytest.mark.parametrize("role", tuple(ROLE_LINES))

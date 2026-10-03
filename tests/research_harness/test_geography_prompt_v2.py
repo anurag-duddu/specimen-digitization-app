@@ -17,7 +17,8 @@ import pytest
 from specimen_digitization.research_harness import prompts
 from specimen_digitization.research_harness.contracts import FieldKey, ROLE_FIELDS, SpecialistRole
 from specimen_digitization.research_harness.prompts import (
-    GEOGRAPHY_PROMPT_VERSION, PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
+    GEOGRAPHY_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION, PROMPT_VERSION, RELATIONS_PROMPT_VERSION,
+    ROLE_PROMPTS, resolve_prompt,
 )
 from specimen_digitization.research_harness.sources import insects_registry
 
@@ -33,6 +34,8 @@ V1_FILES = {
     "specimen_collection-v1.txt": "3c8fb750b35374bb1173b843ff5c4155febd6d880b9859d7a79904e28756c187",  # pragma: allowlist secret
 }
 GEOGRAPHY_V1_DIGEST = "9bba8680c505de86e5327a886d1982311627382a8772ab42c80b49b033268f68"  # pragma: allowlist secret
+# The geography pin digest on its v2 file (what main's committed pins held before the v3 files).
+GEOGRAPHY_V2_DIGEST = "359cbdb19403726e0a26da738758e06ad7f40e414aae15b89f7011155f71dcd4"  # pragma: allowlist secret
 V1_ROLE_DIGESTS = {
     SpecialistRole.TAXONOMY: "a3105c9b4a41e5029366ccb871a7e002cbbc762e93f4d52e73f778bae75e5bd4",  # pragma: allowlist secret
     SpecialistRole.TEMPORAL: "24a7e0108526928b609e2f6ec64878195d780c42f30c96c3b1bb0bf7e1dc9b9d",  # pragma: allowlist secret
@@ -59,6 +62,13 @@ def pin(role):
                           model_route="harness-deepseek", output_schema_digest=PIN)
 
 
+def v2_text(role):
+    """The text a role's pin had on its v2 file, which the v3 files superseded (kept on disk for audit)."""
+    return ((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
+            + (ROOT / f"{role.value}-v2.txt").read_text(encoding="utf-8")
+            + "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n")
+
+
 @pytest.mark.parametrize(("name", "sha256"), tuple(V1_FILES.items()))
 def test_v1_prompt_files_stay_byte_identical(name, sha256):
     assert hashlib.sha256((ROOT / name).read_bytes()).hexdigest() == sha256
@@ -67,33 +77,37 @@ def test_v1_prompt_files_stay_byte_identical(name, sha256):
 def test_the_table_names_every_role_and_an_existing_file():
     assert set(ROLE_PROMPTS) == set(SpecialistRole)
     assert all((ROOT / name).is_file() for name, _ in ROLE_PROMPTS.values())
-    assert ROLE_PROMPTS[SpecialistRole.GEOGRAPHY] == ("specimen_geography-v2.txt", GEOGRAPHY_PROMPT_VERSION)
+    assert ROLE_PROMPTS[SpecialistRole.GEOGRAPHY] == ("specimen_geography-v3.txt", MISSING_POLICY_PROMPT_VERSION)
 
 
-def test_geography_resolves_to_the_v2_historian_prompt_with_its_owned_fields():
-    prompt = pin(SpecialistRole.GEOGRAPHY)
+def test_the_geography_v2_historian_prompt_is_kept_and_begins_the_live_geography_prompt():
     expected = ((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n" + V2.read_text(encoding="utf-8")
                 + "\nOwned fields: country, province_state, county, city, precise_location.\n")
-    assert prompt.text == expected
-    assert prompt.version == GEOGRAPHY_PROMPT_VERSION == "geography-historian-v2-2026-10-03"
-    assert prompt.digest == hashlib.sha256(expected.encode()).hexdigest() != GEOGRAPHY_V1_DIGEST
+    assert v2_text(SpecialistRole.GEOGRAPHY) == expected
+    assert GEOGRAPHY_PROMPT_VERSION == "geography-historian-v2-2026-10-03"
+    assert hashlib.sha256(expected.encode()).hexdigest() == GEOGRAPHY_V2_DIGEST != GEOGRAPHY_V1_DIGEST
+    prompt = pin(SpecialistRole.GEOGRAPHY)
+    assert prompt.text.startswith((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n" + V2.read_text(encoding="utf-8"))
+    assert prompt.version == MISSING_POLICY_PROMPT_VERSION and prompt.digest != GEOGRAPHY_V2_DIGEST
     assert all(str(key) in prompt.text for key in ROLE_FIELDS[SpecialistRole.GEOGRAPHY])
 
 
 @pytest.mark.parametrize("role", tuple(RELATION_DIGESTS))
-def test_the_other_five_roles_move_to_v2_the_v1_text_plus_the_relation_rule(role):
-    assert ROLE_PROMPTS[role] == (f"{role.value}-v2.txt", RELATIONS_PROMPT_VERSION)
+def test_the_other_five_roles_keep_their_v2_files_the_v1_text_plus_the_relation_rule(role):
     common = (ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
     owned = "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n"
     v1 = (ROOT / f"{role.value}-v1.txt").read_text(encoding="utf-8")
     v2 = (ROOT / f"{role.value}-v2.txt").read_text(encoding="utf-8")
     assert v2.startswith(v1) and v2[len(v1):].startswith("Evidence relations (G23): ")
+    # The v2 files on disk still give the v2 pin digests; the live pins moved to v3.
+    assert v2_text(role) == common + v2 + owned
+    assert hashlib.sha256(v2_text(role).encode()).hexdigest() == RELATION_DIGESTS[role]
     prompt = pin(role)
-    assert prompt.version == RELATIONS_PROMPT_VERSION == "specialists-relations-v2-2026-10-03"
-    assert prompt.text == common + v2 + owned
-    assert prompt.digest == RELATION_DIGESTS[role]
+    assert RELATIONS_PROMPT_VERSION == "specialists-relations-v2-2026-10-03"
+    assert prompt.version == MISSING_POLICY_PROMPT_VERSION and prompt.digest != RELATION_DIGESTS[role]
+    assert prompt.text.startswith(common + v2)
     # The v1 files on disk still give the v1 pin digests.
-    assert hashlib.sha256((common + v1 + owned).encode()).hexdigest() == V1_ROLE_DIGESTS[role] != prompt.digest
+    assert hashlib.sha256((common + v1 + owned).encode()).hexdigest() == V1_ROLE_DIGESTS[role] != RELATION_DIGESTS[role]
     assert PROMPT_VERSION == "specialists-v1-2026-09-29"
 
 

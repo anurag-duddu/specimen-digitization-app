@@ -29,7 +29,7 @@ from specimen_digitization.application.collection_profiles import (
 from specimen_digitization.model_gateway import HUGGINGFACE_ROUTES
 from .accepted_output import VALIDATOR_SOURCE_SHA256, VALIDATOR_VERSION, validation_boundary_pins
 from .agents import specialist_output_schema_digest
-from .contracts import SourceQuery, SourceResult, SpecialistRole, digest
+from .contracts import CollectionProfile, FieldKey, SourceQuery, SourceResult, SpecialistRole, digest
 from .evidence import insects_profile
 from .gateway import ModelBinding, ModelGatewayBlocked
 from .local_utility_proof_v2 import UTILITY_ROLES, UTILITY_VERSION
@@ -43,6 +43,47 @@ from .source_readiness import CAPTURE_POLICIES, SOURCE_READINESS
 from .sources import insects_registry
 
 ENGINE_VERSION = "research_harness_v1"
+
+# No pinned rule qualifies an event or a field assembly from unstructured label text:
+# initial_requests._graph builds an assembly only from an exact `field_key: value`
+# line of a decided transcript, and no recorded production reading has one (the name
+# below is the reason that module gives an unkeyed event). A field can then be
+# grounded only by a source this deployment offers for it. Declaring the missing
+# policy here, as verbatim_dts declares its own, turns a specialist's waiting_policy
+# on a declared field into the existing needs_human_review path with the reason
+# mandatory_unresolved:{field} (canonical_materialization_v2._policy_held, status.py
+# and the connector's disposition check, none of which names a field). A
+# waiting_source is not held: a failed, rate-limited or unconfigured source still
+# blocks the record. The v3 role prompts tell a specialist which of the two to return.
+UNQUALIFIED_LABEL_POLICY = "unstructured_label_event_unqualified"
+# The twelve fields that no source this deployment offers can ground, so nothing can
+# fail for them and a specialist's waiting_policy on one is unambiguous ...
+UNQUALIFIED_LABEL_LITERAL_FIELDS = (
+    FieldKey.DATE_VISITED_FROM, FieldKey.DATE_VISITED_TO, FieldKey.DATE_IDENTIFIED,
+    FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M, FieldKey.ELEVATION_FROM_FT,
+    FieldKey.ELEVATION_TO_FT, FieldKey.COLLECTORS, FieldKey.FMNH_INS_NUMBER,
+    FieldKey.COLLECTION_CODE, FieldKey.HABITAT, FieldKey.COLLECTION_METHOD)
+# ... and the three that have a source but, for a label that names nothing to look up
+# or a lookup that completes without a match, no other end state: county (GEOLocate
+# confirms a county only inside the USA, so outside it no receipt exists to back a
+# human question), city (only a place the label names can be queried) and taxon (a
+# completed GBIF search with no match cannot become a human question). Their prompts
+# keep waiting_source for a lookup that failed, timed out or was refused.
+# country, province_state and precise_location are not declared: a GEOLocate no_match
+# or ambiguous result on them is already a human question.
+UNQUALIFIED_LABEL_LOOKUP_FIELDS = (FieldKey.COUNTY, FieldKey.CITY, FieldKey.TAXON)
+UNQUALIFIED_LABEL_FIELDS = frozenset((*UNQUALIFIED_LABEL_LITERAL_FIELDS, *UNQUALIFIED_LABEL_LOOKUP_FIELDS))
+
+
+def committed_research_profile(organization_id: str, collection_id: str) -> CollectionProfile:
+    """The research profile every committed job pins: insects_profile, plus the
+    missing policy of each field no unstructured label can ground."""
+    base = insects_profile(organization_id, collection_id)
+    return insects_profile(organization_id, collection_id, overrides=tuple(
+        row.model_copy(update={"missing_policy": UNQUALIFIED_LABEL_POLICY})
+        for row in base.fields if row.field_key in UNQUALIFIED_LABEL_FIELDS))
+
+
 # docs/execution/golive/HARNESS.md, Budget (G30): each request writes at most
 # 2,048 output tokens. The gateway's own cap is 4,096.
 MAX_OUTPUT_TOKENS = 2048
@@ -233,7 +274,7 @@ def build_committed_pins(profile, *, organization_id: str, collection_id: str) -
     if binding.reservation_micro_usd > committed_run_cost_limit_micros(profile):
         raise ValueError("research_committed_reservation_exceeds_run_limit")
     roles = tuple(SpecialistRole)
-    research_profile = insects_profile(organization_id, collection_id)
+    research_profile = committed_research_profile(organization_id, collection_id)
     toolset, schema = _toolset_digest(), specialist_output_schema_digest()
     prompts = {str(role): resolve_prompt(role, profile_digest=digest(research_profile),
         source_registry_digest=registry.digest, toolset_digest=toolset,

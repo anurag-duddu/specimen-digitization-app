@@ -10,7 +10,7 @@ Label text is the public synthetic fixture.
 
 Stage 1, the publications land: the taxon, researched through the three ready
 taxonomy sources, precise_location, settled from its label evidence, and the
-parties and collection fields. Its geography historian makes no GEOLocate
+collection and parties fields. Its geography historian makes no GEOLocate
 lookup, so the geography fields wait on a source. The dates and elevations are
 not published; each carries its mandatory_unresolved field reason. Stage 2,
 with the historian's GEOLocate lookups: the country, state, county and city
@@ -167,7 +167,7 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
 
     # Plan tick 3, a new worker: provisioning returns at once and research runs
     # all six roles. The taxon publishes, then precise_location, then the
-    # parties and collection fields. Neither the geography fields still waiting
+    # collection and parties fields. Neither the geography fields still waiting
     # on a source nor the dates and elevations are offered for publication: the
     # evidence.py date and elevation helpers give a settled value no evidence
     # relation, which the V2 projection requires, so each of those fields keeps
@@ -213,14 +213,15 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     held = sum(effect["held_micro_usd"] for effect in effects)
     assert held == 0 and 0 < settled <= 500_000
     assert [role for role, _ in rig.model_calls] == ["specimen_taxonomy"] * 4 + [
-        "specimen_geography", "specimen_temporal", "specimen_measurement", "specimen_parties",
-        "specimen_collection"]
+        "specimen_geography", "specimen_temporal", "specimen_measurement", "specimen_collection",
+        "specimen_parties"]
 
     # Eight publications: the taxon, from the GBIF exact match, precise_location,
-    # then the parties and collection fields.
+    # then the collection and parties fields (parties last: identified_by_irn is
+    # always terminal, so the last publication sees every other role's work).
     receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
     assert [row["causal_proof"]["changed_field"] for row in receipts] == ["taxon", "precise_location",
-        "collectors", "identified_by_irn", "collection_code", "collection_method", "fmnh_ins_number", "habitat"]
+        "collection_code", "collection_method", "fmnh_ins_number", "habitat", "collectors", "identified_by_irn"]
     receipt, place, last = receipts[0], receipts[1], receipts[-1]
     assert (receipt["used_canonical_revision"], receipt["resulting_canonical_revision"]) == (3, 4)
     assert (place["used_canonical_revision"], place["resulting_canonical_revision"]) == (4, 5)
@@ -308,7 +309,7 @@ def test_the_run_reaches_its_final_queue(rig):
     url = json.loads((FIXTURES / "sources.json").read_text())["geolocate"]["url"]
     assert len(rig.source_urls) == 7 and rig.source_urls.count(url) == 4
     assert [role for role, _ in rig.model_calls] == ["specimen_taxonomy"] * 4 + ["specimen_geography"] * 2 + [
-        "specimen_temporal", "specimen_measurement", "specimen_parties", "specimen_collection"]
+        "specimen_temporal", "specimen_measurement", "specimen_collection", "specimen_parties"]
     _, state = research_state(rig.fake, rig.specimen_id)
     captures = {key: effect for key, effect in state["effects"].items()
         if effect["operation_key"].startswith("source_capture_v2:")}
@@ -321,11 +322,11 @@ def test_the_run_reaches_its_final_queue(rig):
             if effect in captures} == {(name,) for name in GEOGRAPHY}
 
     # Twelve publications: the taxon, the geography with precise_location, then
-    # the parties and collection fields.
+    # the collection and parties fields.
     receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
     assert [row["causal_proof"]["changed_field"] for row in receipts] == ["taxon", "city", "country",
-        "county", "precise_location", "province_state", "collectors", "identified_by_irn", "collection_code",
-        "collection_method", "fmnh_ins_number", "habitat"]
+        "county", "precise_location", "province_state", "collection_code", "collection_method",
+        "fmnh_ins_number", "habitat", "collectors", "identified_by_irn"]
     published = rig.repository.get(rig.principal.scope, rig.specimen_id)
     assert published.version == specimen.version == parsed.version + 12
     by_field = {row["causal_proof"]["changed_field"]: row for row in receipts}
