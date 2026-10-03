@@ -2,20 +2,48 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from uuid import UUID
 
 from specimen_digitization.application.domain import Principal
+from specimen_digitization.application.storage import digest as canonical_digest
+from .committed_pins import build_committed_pins, committed_run_cost_limit_micros
 from .contracts import CollectionProfile, SpecialistRequest, SpecialistRole
 from .discovery_v2 import ResearchDiscoveryV2
 from .gateway import ModelBinding
 from .journal import DurableResearchJournal
 from .native_service import SqlConnectNativeCanonicalServiceV2
-from .persistence import (DurableEffectBroker, GcsImmutableBlobs, HeldUnknown, ResearchStore,
-    SqlConnectStateBackend, StaleWork, DurabilityScope, Lease)
+from .persistence import (BudgetPolicy, DurableEffectBroker, GcsImmutableBlobs, HeldUnknown,
+    PinnedRuntime, ResearchStore, SqlConnectStateBackend, StaleWork, DurabilityScope, Lease)
 from .runtime import build_research_engine
-from .sources import BoundedHTTPTransport
+from .sources import BoundedHTTPTransport, FixtureSourceTransport
 from .registered_pins import (registered_registry, registered_capture_policies,
     registered_model_prices, registered_model_request_guards)
+
+WORKER_ROLES = {"operator", "reviewer", "manager", "admin"}
+
+
+def research_program_key(run_id: str) -> str:
+    """One research state document per run, so its budget is the run's own."""
+    return "research-run:" + str(UUID(str(run_id)))
+
+
+def research_budget_policy(profile) -> BudgetPolicy:
+    """The run's research allowance: the profile's run cost limit, live."""
+    return BudgetPolicy(committed_run_cost_limit_micros(profile), live_authorized=True, hold_reason=None)
+
+
+def committed_job_pins(profile, *, organization_id: str, collection_id: str, input_digest: str) -> dict:
+    """The job pins committed config gives this run; input_digest is the base snapshot."""
+    pins = dict(build_committed_pins(profile, organization_id=organization_id,
+        collection_id=collection_id))
+    return PinnedRuntime(**{**pins, "input_digest": input_digest}).payload()
+
+
+def _gateway_models():
+    from specimen_digitization.model_gateway import HuggingFaceModelGateway
+    gateway = HuggingFaceModelGateway(timeout_seconds=120)
+    return lambda request, binding: gateway.model_for(binding.route_id)
 
 
 @dataclass(frozen=True)
@@ -35,27 +63,36 @@ class NativeResearchRuntimeFactory:
     """Compose the actual repository, immutable inputs and genuine Harness.
 
     Pure construction creates no program, prompts, lease, allowance or effect.
-    Source readiness, capture retention and numeric prices come only from the
-    exact retained generation. Missing authority closes before dispatch.
+    Pins, source readiness, capture retention and prices are the committed
+    ones for the run's profile. ``authorize`` builds the live authority at each
+    open; without it the store refuses before any dispatch. The state backend,
+    model factory and source transport default to production; the execution
+    class follows from the transport's type and is never chosen by a caller.
     """
-    def __init__(self, repository, *, verify_access, registry=None, request_factory=None,
+    def __init__(self, repository, *, verify_access, authorize=None, state_backend=None,
+                 model_factory=None, source_transport=None, registry=None, request_factory=None,
                  materializer=None, evidence_provider=None, projection_services=None,
-                 actual_cost=None, blobs=None, limits=None):
+                 blobs=None, limits=None):
         self.repository, self.registry = repository, registry
         self.request_factory = request_factory
         # Retained optional services are only for immutable receipt reads. New
         # publication services are constructed from the registered binding.
         self.materializer, self.evidence_provider = materializer, evidence_provider
         self.projection_services, self.verify_access = projection_services, verify_access
+        self.authorize, self.state_backend = authorize, state_backend
+        self.model_factory, self.source_transport = model_factory, source_transport
         self.limits = limits
         self.blobs = blobs or GcsImmutableBlobs(repository.graph_blobs.bucket)
         self.discovery = ResearchDiscoveryV2(repository, verify_access=verify_access)
+
+    def _backend(self):
+        return self.state_backend if self.state_backend is not None else SqlConnectStateBackend(self.repository)
 
     def _receipt_service(self, principal, original_scope, program_key):
         scope = DurabilityScope(**{key:getattr(original_scope,key) for key in
             ("organization_id", "collection_id", "specimen_id", "job_id", "generation")},
             actor_uid=principal.user_id, sensitive=original_scope.sensitive)
-        store = ResearchStore(SqlConnectStateBackend(self.repository), program_key)
+        store = ResearchStore(self._backend(), program_key)
         journal = DurableResearchJournal(store, scope, Lease(scope.key,"receipt-read-only",0,scope.generation,0), self.blobs)
         return SqlConnectNativeCanonicalServiceV2(self.repository, journal, blobs=self.blobs,
             materializer=self.materializer, evidence_provider=self.evidence_provider,
@@ -83,19 +120,35 @@ class NativeResearchRuntimeFactory:
 
     async def open(self, principal, specimen_id, *, owner, ttl_seconds=300):
         principal = Principal.model_validate(principal.model_dump(mode="json"))
-        if principal.role not in {"operator", "reviewer", "manager", "admin"}:
+        if principal.role not in WORKER_ROLES:
             raise PermissionError("research_worker_access_denied")
         binding = await self.discovery.binding(principal, specimen_id)
         scope = binding.durability_scope(principal)
-        store = ResearchStore(SqlConnectStateBackend(self.repository), binding.program_key)
-        await asyncio.to_thread(store.require_live_authority, scope)
+        specimen = await asyncio.to_thread(self.repository.get, principal.scope, specimen_id)
+        authority = None if self.authorize is None else await self.authorize(principal, specimen, binding)
+        program_key = research_program_key(binding.base_canonical.canonical_run_id)
+        if binding.program_key != program_key:
+            raise StaleWork("research_program_key_unproved")
+        store = ResearchStore(self._backend(), program_key, live_authority=authority)
+        store.require_live_authority(scope)
         document = await asyncio.to_thread(store._read, scope)
         job = store._job(document.state, scope)
         binding.validate_job(job, program_key=store.program_key)
-        policy = document.state["budget_policy"]
-        if (type(policy.get("ceiling_micro_usd")) is not int
-            or not 0 < policy["ceiling_micro_usd"] <= 12_000_000
-            or policy.get("live_authorized") is not True or policy.get("hold_reason") is not None
+        profile_snapshot = specimen.run.profile_snapshot
+        if (specimen.run.id != str(binding.base_canonical.canonical_run_id)
+            or canonical_digest(profile_snapshot) != binding.canonical_profile_digest):
+            raise StaleWork("research_run_profile_unproved")
+        # The job keeps the pins committed config gave it at provisioning; a
+        # change in config or installed code since then holds the run.
+        try:
+            committed = committed_job_pins(profile_snapshot, organization_id=scope.organization_id,
+                collection_id=scope.collection_id, input_digest=binding.base_canonical.snapshot_sha256)
+            policy = asdict(research_budget_policy(profile_snapshot))
+        except (TypeError, ValueError):
+            raise HeldUnknown("research_committed_pins_unavailable") from None
+        if job["pins"] != committed:
+            raise HeldUnknown("research_committed_pins_changed")
+        if (document.state["budget_policy"] != policy
             or document.state.get("halted") is not False or job["paused"]):
             raise HeldUnknown("research_live_admission_unqualified")
         budget = await asyncio.to_thread(store.budget, scope)
@@ -106,12 +159,6 @@ class NativeResearchRuntimeFactory:
         if self.registry is not None and registry.digest != self.registry.digest:
             raise StaleWork("research_source_registry_pin_changed")
         capture_policies = registered_capture_policies(source_pins, registry)
-        from .accepted_output import validation_boundary_pins, VALIDATOR_VERSION, VALIDATOR_SOURCE_SHA256
-        boundary = {"contract_version":"research-acceptance-boundary/v1",
-            "validator_version":VALIDATOR_VERSION, "validator_source_sha256":VALIDATOR_SOURCE_SHA256,
-            **validation_boundary_pins()}
-        if source_pins.get("acceptance_boundary") != boundary:
-            raise HeldUnknown("research_registered_acceptance_boundary_missing")
         from .initial_requests import NativeGenerationRequestFactory
         request_factory = self.request_factory or NativeGenerationRequestFactory(
             self.repository, verify_access=self.verify_access, registry=registry)
@@ -134,20 +181,21 @@ class NativeResearchRuntimeFactory:
         from .canonical_materialization_v2 import ResearchCanonicalPolicyV2
         from .native_materialization_services_v2 import build_native_materialization_services_v2
         from .canonical_evidence_provider_v2 import build_captured_research_services_v2
-        from specimen_digitization.model_gateway import HuggingFaceModelGateway
         effects = DurableEffectBroker(store, self.blobs)
         scientific_policy = ResearchCanonicalPolicyV2.from_registered_binding(binding)
         services = build_native_materialization_services_v2(
             self.repository, effects, registry, scientific_policy, request_factory)
-        gateway = HuggingFaceModelGateway(timeout_seconds=120)
+        model_factory = self.model_factory or _gateway_models()
+        transport = self.source_transport if self.source_transport is not None else BoundedHTTPTransport()
+        execution_class = "offline" if type(transport) is FixtureSourceTransport else "live"
         lease = await asyncio.to_thread(store.claim, scope, owner, ttl_seconds=ttl_seconds)
         tools, _ = build_captured_research_services_v2(repository=self.repository,
             effect_broker=effects, scope=scope, lease=lease, registry=registry,
-            policies=capture_policies, transport=BoundedHTTPTransport(), execution_class="live")
+            policies=capture_policies, transport=transport, execution_class=execution_class)
         engine = build_research_engine(profile=profile, requests=requests,
             store=store, scope=scope, lease=lease, blobs=self.blobs, tool_broker=tools,
             bindings=bindings, settings=job["pins"]["settings"], source_pins=source_pins,
-            base_model_factory=lambda request:gateway.model_for(bindings[request.role].route_id),
+            base_model_factory=lambda request:model_factory(request, bindings[request.role]),
             actual_cost=prices, request_guard=request_guards, limits=self.limits, max_concurrency=1)
         service = SqlConnectNativeCanonicalServiceV2(self.repository, engine.journal, blobs=self.blobs,
             materializer=services.materializer, evidence_provider=services.evidence_provider,

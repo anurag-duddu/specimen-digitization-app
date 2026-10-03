@@ -18,14 +18,21 @@ class ResearchStatusV1(FrozenRecord):
     canonical_acceptance: Literal["read_canonical_workspace"] = "read_canonical_workspace"
 
     @classmethod
-    def from_thread(cls, thread: ResearchThread):
-        states = {item.work_state for item in thread.fields}
+    def from_thread(cls, thread: ResearchThread, *, missing_policy_fields: frozenset[FieldKey] = frozenset()):
+        # missing_policy_fields are the fields whose pinned profile declares a
+        # missing policy (verbatim_dts). A committed waiting_policy checkpoint on
+        # one of them is that field's policy gate: it waits on people. Any other
+        # waiting_policy, and a locked field with no checkpoint
+        # (thread_view.py:61-62), still blocks.
+        held = {item.field_key for item in thread.fields if item.work_state == WorkState.WAITING_POLICY
+            and item.checkpoint is not None and item.field_key in missing_policy_fields}
+        states = {item.work_state for item in thread.fields if item.field_key not in held}
         operational = {WorkState.OPERATIONAL_FAILED, WorkState.CANCELLED,
             WorkState.WAITING_POLICY, WorkState.WAITING_SOURCE}
         unknown = any(item.status in {"sending", "held_unknown"}
             or (item.status == "completed" and item.actual_micro_usd is None) for item in thread.effects)
         status = ("blocked" if thread.paused or unknown or states & operational
-            else "waiting_input" if WorkState.WAITING_HUMAN in states
+            else "waiting_input" if WorkState.WAITING_HUMAN in states or held
             else "pending" if not states <= {WorkState.RESOLVED, WorkState.NONBLOCKING_EXCEPTION}
             else "completed")
         return cls(scope=thread.scope, status=status, paused=thread.paused,

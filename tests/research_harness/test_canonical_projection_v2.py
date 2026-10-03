@@ -21,7 +21,7 @@ from specimen_digitization.application.storage import LocalBlobs, digest as cano
 from specimen_digitization.research_harness.canonical_projection_v2 import (
     CanonicalLineageContextV2, ConsumedCanonicalSourceV2, NativePriorSnapshotProofV2, project_canonical_value_v2,
     project_tool_input_lineage_v2,
-    NativeRawSourceAssetProofV2, NativeTranscriptionDecisionProofV2,
+    NativeRawSourceAssetProofV2, NativeTranscriptionDecisionProofV2, relation_unproved_fields, relations_unproved,
 )
 from specimen_digitization.research_harness.compatibility import PublicationUnavailable
 from specimen_digitization.research_harness.contracts import (
@@ -250,6 +250,36 @@ def test_literal_less_settled_lookup_retains_both_raw_readers_without_a_selected
     broken = result.model_copy(deep=True);broken.run.fields["country"].evidence_relations = {}
     with pytest.raises(PublicationUnavailable):
         project_canonical_value_v2(b.principal, prior=prior, result=broken, checkpoint=cp, context=context)
+
+
+def test_the_relation_rule_names_the_supported_value_the_projection_refuses(materialization):
+    b = settled_case(materialization)
+    assert not relations_unproved(b.checkpoint.resolution) and relation_unproved_fields((b.checkpoint,)) == frozenset()
+    project(b)
+    value = b.checkpoint.resolution.value.model_copy(update={"evidence_relations": {}})
+    cp = b.checkpoint.model_copy(update={"resolution": b.checkpoint.resolution.model_copy(update={"value": value})})
+    job = copy.deepcopy(b.context.job)
+    retain_checkpoint(job, cp)
+    result = b.prior.model_copy(deep=True);result.version += 1
+    result.run.fields["country"] = canonical_value_v1(cp.resolution, b.context.field_mapping, b.context.evidence_id_mapping)
+    assert relations_unproved(cp.resolution) and relation_unproved_fields((cp,)) == {FieldKey.COUNTRY}
+    with pytest.raises(PublicationUnavailable, match="^canonical_lineage_candidate_evidence_unproved$"):
+        project_canonical_value_v2(b.principal, prior=b.prior, result=result, checkpoint=cp,
+            context=replace(b.context, job=job))
+
+
+@pytest.mark.parametrize("kind", ["G44", "G41-ft", "G41-m"])
+def test_a_derived_value_is_covered_by_its_record_but_held_with_a_source_lacking_relations(basis, kind):
+    b = projection_case(basis, kind)
+    source = b.context.consumed_sources[0].checkpoint
+    # The real helpers' settled source names no relation; the derivation record
+    # covers the derived value's evidence, so the projection admits it.
+    assert relations_unproved(source.resolution) and not relations_unproved(b.checkpoint.resolution)
+    project(b)
+    # With that source loaded it is held too: a source that cannot publish
+    # never reaches the record.
+    assert relation_unproved_fields((b.checkpoint, source)) == {source.field_key, b.checkpoint.field_key}
+    assert relation_unproved_fields((b.checkpoint,)) == frozenset()
 
 
 @pytest.mark.parametrize("mutation", ["invented_literal", "unrelated_selected_reading"])

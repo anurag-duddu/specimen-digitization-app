@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 import hashlib
+import json
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Protocol
@@ -462,7 +463,7 @@ class Workflow:
                         )
                     )
             elif step == "parse":
-                self.parse(run, specimen.asset.id)
+                self.parse(run, specimen.asset.id, self.blobs)
                 if hasattr(self.adapters, "extract"):
                     self.adapters.extract(specimen)
             elif step == "plan":
@@ -792,10 +793,13 @@ class Workflow:
         return "finalize"
 
     @staticmethod
-    def parse(run: Run, asset_id: str) -> None:
+    def parse(run: Run, asset_id: str, blobs: BlobStore | None = None) -> None:
         # Deliberately narrow deterministic parser for explicit key:value text.
         # Unstructured real labels remain reviewable and abstain; never guess mapping.
-        run.fields = {key: FieldValue() for key in run.profile.mandatory_fields}
+        # Every field classify bound, mandatory and optional; a run without
+        # bound field groups keeps the profile's mandatory fields.
+        groups = tuple(run.field_groups) or run.profile.mandatory_fields
+        run.fields = {key: FieldValue() for key in groups}
         for transcript in run.transcripts:
             if not transcript.resolved or not transcript.text:
                 continue
@@ -804,6 +808,18 @@ class Workflow:
                 key, value = key.strip(), value.strip()
                 if not sep or key not in run.fields or not value:
                     continue
+                # With a blob store each line's evidence keeps its record, as the field
+                # harness does (field_resolution._ground), so it projects as recorded
+                # evidence (#88).
+                record = json.dumps(
+                    {
+                        "region_id": transcript.region_id,
+                        "observation_ids": transcript.observation_ids,
+                        "excerpt": line,
+                    },
+                    sort_keys=True,
+                ).encode()
+                stored = blobs is not None
                 evidence = Evidence(
                     kind="literal",
                     asset_id=asset_id,
@@ -812,6 +828,8 @@ class Workflow:
                     source="label",
                     locator=f"region:{transcript.region_id}",
                     excerpt=line,
+                    raw_ref=blobs.put(record) if stored else None,
+                    digest=hashlib.sha256(record).hexdigest() if stored else None,
                 )
                 run.evidence.append(evidence)
                 old = run.fields[key]

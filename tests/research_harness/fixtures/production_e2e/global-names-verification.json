@@ -1,0 +1,36 @@
+{
+  "metadata": {
+    "namesNumber": 1,
+    "withAllSources": false,
+    "withAllMatches": false,
+    "withStats": false,
+    "mainTaxonThreshold": 0.5
+  },
+  "names": [
+    {
+      "id": "fixture-gnv-name-1",
+      "name": "Danaus plexippus",
+      "cardinality": 2,
+      "matchType": "Exact",
+      "bestResult": {
+        "dataSourceId": 1,
+        "dataSourceTitleShort": "Catalogue of Life",
+        "curation": "Curated",
+        "recordId": "FIXTUREDPLEX1",
+        "entryDate": "2026-09-11",
+        "matchedName": "Danaus plexippus (Linnaeus, 1758)",
+        "matchedCanonicalSimple": "Danaus plexippus",
+        "currentRecordId": "FIXTUREDPLEX1",
+        "currentName": "Danaus plexippus (Linnaeus, 1758)",
+        "currentCanonicalSimple": "Danaus plexippus",
+        "taxonomicStatus": "Accepted",
+        "isSynonym": false,
+        "classificationPath": "Animalia|Arthropoda|Insecta|Lepidoptera|Nymphalidae|Danaus|Danaus plexippus",
+        "classificationRanks": "kingdom|phylum|class|order|family|genus|species",
+        "matchType": "Exact"
+      },
+      "dataSourcesNum": 1,
+      "curation": "Curated"
+    }
+  ]
+}

@@ -22,7 +22,7 @@ from specimen_digitization.application.storage import digest as canonical_digest
 from .canonical_materialization import KEYS, IRN, ResearchCanonicalPolicyV1, _date_bounds, _raw_grounded, unavailable
 from .canonical_projection_v2 import (CanonicalLineageContextV2, _checkpoint, _literal_grounding, _prior_snapshot,
     _readings, _source_lineage, _value, project_canonical_value_v2, project_tool_input_lineage_v2,
-    validate_checkpoint_resolution_v2)
+    relation_unproved_fields, validate_checkpoint_resolution_v2)
 from .canonical_evidence_provider_v2 import CapturedCanonicalEvidenceV2
 from .contracts import ALL_FIELDS, CollectionProfile, FieldCheckpoint, FieldKey, SourceResult, SpecialistRequest, WorkState, digest
 from .evidence import emu_irn_exception, validate_resolution
@@ -37,6 +37,37 @@ from .native_materialization_context_v2 import (
 TERMINAL = {str(WorkState.RESOLVED), str(WorkState.WAITING_HUMAN), str(WorkState.NONBLOCKING_EXCEPTION)}
 BLOCKED = {str(WorkState.WAITING_SOURCE), str(WorkState.WAITING_POLICY), str(WorkState.OPERATIONAL_FAILED), str(WorkState.RETRY_SCHEDULED), str(WorkState.CANCELLED)}
 UNFINISHED = BLOCKED | {str(WorkState.PENDING), str(WorkState.RESEARCHING)}
+
+
+def _policy_held(canonical, profile, field_mapping):
+    """Fields waiting on a policy the research profile declares missing (verbatim_dts).
+
+    Unknown semantics fail the field's policy gate (CONTRACTS.md:225-226): needs
+    human review with the field reason, never an operational block, never cleared.
+    Any other waiting_policy stays an operational block (CONTRACTS.md:243-246).
+    """
+    declared = {field_mapping[str(row.field_key)] for row in profile.fields if row.missing_policy}
+    return frozenset(key for key, state in canonical.items()
+        if key in declared and state == str(WorkState.WAITING_POLICY))
+
+
+def _relations_unproved(job, field_mapping):
+    """Terminal fields whose committed value cannot publish for want of the
+    evidence relations the V2 projection requires (relation_unproved_fields;
+    today the evidence.py date and elevation helper values).
+
+    The worker does not offer them, so each keeps its prior record value. Like
+    a held policy field, each carries mandatory_unresolved:{key}, a needs human
+    review reason, and neither blocks the record nor needs whole-record grounding.
+    """
+    committed = []
+    for row in job["fields"].values():
+        if row["work_state"] in TERMINAL and row.get("checkpoint") is not None:
+            try:
+                committed.append(FieldCheckpoint.model_validate(row["checkpoint"]["payload"]))
+            except (KeyError, TypeError, ValueError):
+                unavailable("canonical_field_work_mapping_unproved")
+    return frozenset(field_mapping[str(key)] for key in relation_unproved_fields(committed))
 
 
 class ResearchCanonicalPolicyV2(ResearchCanonicalPolicyV1):
@@ -80,7 +111,7 @@ class MaterializationRequestV2:
     decision_lookup_ids: frozenset[str] | None = None
 
 
-def _work_progress(reg, checkpoint, run, *, decision_lookup_ids=None):
+def _work_progress(reg, checkpoint, run, *, decision_lookup_ids=None, profile=None):
     fields = reg.job.get("fields")
     if (type(fields) is not dict or set(fields) != {str(key) for key in ALL_FIELDS}
             or set(reg.field_mapping) != set(fields) or set(reg.field_mapping.values()) != KEYS or len(set(reg.field_mapping.values())) != 20
@@ -90,8 +121,10 @@ def _work_progress(reg, checkpoint, run, *, decision_lookup_ids=None):
         unavailable("canonical_field_work_mapping_unproved")
     research = {key: row["work_state"] for key, row in fields.items()}
     canonical = {reg.field_mapping[key]: state for key, state in research.items()}
-    operational = [f"research_work:{key}:{state}" for key, state in canonical.items() if state in BLOCKED]
+    held = frozenset() if profile is None else _policy_held(canonical, profile, reg.field_mapping)
+    operational = [f"research_work:{key}:{state}" for key, state in canonical.items() if state in BLOCKED and key not in held]
     human = [f"research_human_question:{key}" for key, state in canonical.items() if state == str(WorkState.WAITING_HUMAN)]
+    human += [f"mandatory_unresolved:{key}" for key in sorted(held)]
     if run.blocker:
         operational.append(run.blocker)  # The actual blocker, no invented global cancellation.
     if decision_lookup_ids is not None and (type(decision_lookup_ids) is not frozenset
@@ -145,7 +178,8 @@ def _qualified_terminal_fields(prior, result, target_proof, contexts, canonical_
     return frozenset(qualified)
 
 
-def _scientific_reasons(result, profile, observed_at, *, latest_work, field_mapping, scientific_qualified):
+def _scientific_reasons(result, profile, observed_at, *, latest_work, field_mapping, scientific_qualified,
+        unpublished=frozenset()):
     """Versioned G1/G6/G42/G43 science rules evaluated on genuine settled fields.
 
     Unfinished work is handled separately; no work state is fabricated. Exact
@@ -153,6 +187,9 @@ def _scientific_reasons(result, profile, observed_at, *, latest_work, field_mapp
     layers before any source-evidence exemption below.
     """
     run = result.run
+    # An unpublished terminal field (_relations_unproved) keeps its prior record
+    # value, which is not its research result: the rules leave it out.
+    latest_work = {key: None if key in unpublished else state for key, state in latest_work.items()}
     reasons = [f"research_human_question:{key}" for key, state in latest_work.items() if state == str(WorkState.WAITING_HUMAN)]
     # This producer is admitted only through its distinct registered enhanced
     # scientific policy. PLAN G1 retires legacy31-34 and blanket138-139 here;
@@ -383,34 +420,48 @@ class CanonicalResearchMaterializerV2:
                 if not existing:
                     result.run.tool_calls.append(producer.model_copy(deep=True))
         result.run.fields[key] = canonical_value_v1(original.resolution, reg.field_mapping, ids)
-        research, canonical, operational, human = _work_progress(reg, original, result.run, decision_lookup_ids=context.decision_lookup_ids)
+        research, canonical, operational, human = _work_progress(reg, original, result.run,
+            decision_lookup_ids=context.decision_lookup_ids, profile=profile)
+        # A held field keeps its prior canonical value and carries its field
+        # reason; it neither blocks the record nor needs whole-record grounding.
+        held = _policy_held(canonical, profile, reg.field_mapping)
+        # So does a terminal field whose value cannot publish for want of
+        # evidence relations, whatever value the record holds for it.
+        unpublished = _relations_unproved(reg.job, reg.field_mapping)
+        states = {state for key, state in canonical.items() if key not in held}
         qualified = _qualified_terminal_fields(prior, result, TerminalFieldProofV2(checkpoint, lineage), context.field_lineage_contexts, canonical)
-        human = tuple(dict.fromkeys((*human, *_scientific_reasons(result, profile, observed_at,
-            latest_work=canonical, field_mapping=reg.field_mapping, scientific_qualified=qualified))))
-        if not set(canonical.values()) & UNFINISHED and qualified != KEYS:
-            operational += tuple(f"canonical_field_grounding_unproved:{field}" for field in sorted(KEYS - qualified))
-        unfinished = bool(set(canonical.values()) & UNFINISHED)
-        blocked = bool(set(canonical.values()) & BLOCKED or operational)
-        result.run.disposition = Disposition.DEFERRED if unfinished or operational else Disposition.REVIEW if human else Disposition.CLEARED
+        human = tuple(dict.fromkeys((*human, *(f"mandatory_unresolved:{key}" for key in sorted(unpublished)),
+            *_scientific_reasons(result, profile, observed_at, latest_work=canonical, field_mapping=reg.field_mapping,
+                scientific_qualified=qualified, unpublished=unpublished))))
+        ungrounded = KEYS - held - unpublished - qualified
+        if not states & UNFINISHED and ungrounded:
+            operational += tuple(f"canonical_field_grounding_unproved:{field}" for field in sorted(ungrounded))
+        unfinished = bool(states & UNFINISHED)
+        blocked = bool(states & BLOCKED or operational)
+        # An unfinished run has no disposition, and an operational failure is a
+        # block, never Deferred (docs/execution/CONTRACTS.md:217-246). The stage
+        # carries both.
+        result.run.disposition = None if unfinished or operational else Disposition.REVIEW if human else Disposition.CLEARED
         result.run.stage = "processing_blocked" if blocked else "research_in_progress" if unfinished else "finalized"
         result.run.reasons = list(dict.fromkeys((*operational, *human)))
         projection = project_canonical_value_v2(principal, prior=prior, result=result, checkpoint=checkpoint, context=lineage)
         tool_rows = tuple(write for item in contributions if isinstance(item, CapturedCanonicalEvidenceV2)
             for write in project_tool_input_lineage_v2(principal, prior=prior, checkpoint=checkpoint, context=lineage, contribution=item))
         result_sha = canonical_digest(result.model_dump(mode="json"))
+        disposition = None if result.run.disposition is None else str(result.run.disposition)
         progress = CanonicalProgressReceiptV2(binding_id=reg.binding_id, job_key=reg.job_key, generation=reg.generation,
             prior_canonical=binding.canonical, result_digest=result_sha, policy_digest=reg.policy_digest,
             field_work_digest=digest(reg.job["fields"]), field_mapping_digest=digest(reg.field_mapping),
             research_field_work=research, canonical_field_work=canonical, target_research_field=original.field_key,
             target_canonical_field=key, wire_status="processing_blocked" if blocked else "running" if unfinished else "completed",
-            run_stage=result.run.stage, disposition=str(result.run.disposition), operational_reason_codes=operational,
+            run_stage=result.run.stage, disposition=disposition, operational_reason_codes=operational,
             human_reason_codes=human, exportable=result.run.disposition == Disposition.CLEARED)
         receipt = {"status": "computed", "policy_contract_version": self.policy.contract_version,
             "publication_digest": digest(prepared.publication), "prior_canonical": binding.canonical.model_dump(mode="json"),
             "result_digest": result_sha, "policy_digest": reg.policy_digest, "semantic_mapping_digest": reg.semantic_mapping_digest,
             "field_work_digest": progress.field_work_digest, "field_mapping_digest": progress.field_mapping_digest,
             "exact_field_keys": sorted(KEYS), "progress_receipt_digest": digest(progress),
-            "disposition": str(result.run.disposition), "reasons": result.run.reasons, "date_identified_mandatory": True,
+            "disposition": disposition, "reasons": result.run.reasons, "date_identified_mandatory": True,
             "blanket_human_approval_required": False,
             "local_utility_replays": [proof.as_receipt() for proof in local_replays],
             "lineage_digest": projection.lineage_digest,

@@ -174,6 +174,9 @@ def verify_worker_construction(args, launch):
         "SPECIMEN_SAM3_REVISION": SAM3_MODEL.revision,
         "SPECIMEN_SAM3_ENDPOINT": "https://synthetic-offline.run.app",
         "SPECIMEN_WORKER_ACTOR_UID": "synthetic-offline-actor",
+        # The research harness mounts only with its switch on; the smoke
+        # traverses that mount too.
+        "SPECIMEN_RESEARCH_HARNESS": "on",
     }
     args.check_config = False
     args.once = True

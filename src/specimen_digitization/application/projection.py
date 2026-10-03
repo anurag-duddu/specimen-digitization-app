@@ -76,11 +76,14 @@ def writes(
     reviewer: bool = False,
     *,
     review_proofs: list[ReviewDecisionProof] | None = None,
+    base_record: bool = False,
 ) -> list[Write]:
     """Every row the specimen supports so far, each after the rows it references.
 
     Review decisions and reviewers' transcript decisions are included only for a
-    reviewer's save: their operations admit no other role.
+    reviewer's save: their operations admit no other role. `base_record` writes
+    the record version before any disposition exists: the research harness needs
+    the run's base record at plan.
     """
     result = [_original(specimen, locate)]
     run = specimen.run
@@ -127,7 +130,7 @@ def writes(
     ]
     candidates: dict[str, str | None] = {}
     result += _fields(run, decisions, linkable, candidates)
-    if run.disposition:
+    if run.disposition or base_record:
         result += _record(run, candidates, recorded)
     if reviewer:
         result += _review_decisions(specimen, review_proofs)
@@ -377,8 +380,15 @@ def _first_pass(
         raw = asset(call.raw_ref, "raw_response")
         result.append(_reading(run, call, raw, independent=False, step_key=step))
     selected = getattr(transcript, "selected_observation_id", None)
-    if selected is None and kind == "identical_readings" and transcript.observation_ids:
-        # Identical readings decide by any one of them when none is recorded (section 11).
+    if (
+        selected is None
+        and kind == "identical_readings"
+        and transcript.resolved
+        and transcript.observation_ids
+    ):
+        # Resolved identical readings decide by any one of them when none is recorded.
+        # An unresolved region (unreadable spans, unmeasured alignment) selects none
+        # (DATA_CONTRACT 4.2), and every handoff stays a raw reading.
         selected = transcript.observation_ids[0]
     differences = [_plain(d) for d in getattr(transcript, "differences", None) or []]
     still_open = [
@@ -620,7 +630,10 @@ def _record(run: Run, candidates: dict, recorded: set) -> list[Write]:
     reasons = list(run.reasons)
     findings = list(getattr(run, "findings", None) or [])
     disposition = _value(run.disposition)
-    summary = getattr(run, "disposition_summary", None) or "; ".join(reasons) or disposition
+    # record_version.summary is required; a base record has no disposition yet.
+    summary = (
+        getattr(run, "disposition_summary", None) or "; ".join(reasons) or disposition or run.stage
+    )
     content = {
         "disposition": disposition,
         "reasons": reasons,

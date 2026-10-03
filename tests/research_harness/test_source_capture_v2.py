@@ -292,11 +292,11 @@ def test_sensitive_request_stays_policy_denied_without_an_effect(capture_rig):
     assert rig.store._read(rig.durable_scope).state["effects"] == {}
 
 
-def test_live_remains_hold_without_verified_external_import(capture_rig):
+def test_live_refused_without_live_authority(capture_rig):
     rig = capture_rig
     async def dispatch(attempt_id, provider_key):
         raise AssertionError("no live dispatch is admitted")
-    with pytest.raises(PermissionError, match="Verified legacy ProgramLedger"):
+    with pytest.raises(PermissionError, match="research_live_authority_required"):
         asyncio.run(rig.effects.execute(rig.durable_scope, rig.lease, "live-not-admitted", {}, 1, dispatch,
             execution_class="live", field_keys=("taxon",)))
     assert rig.calls == []

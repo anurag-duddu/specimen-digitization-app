@@ -270,6 +270,11 @@
               "context_tokens": 1048576,
               "max_input_tokens": 32768,
               "max_output_tokens": 4096
+            },
+            "harness-deepseek": {
+              "input_micros_per_million": 200000,
+              "output_micros_per_million": 600000,
+              "context_tokens": 1048576
             }
           },
           "segmentation": {
@@ -285,6 +290,7 @@
         }
       },
       "first_pass_route": "first-pass-glm",
+      "harness_route": "harness-deepseek",
       "date_rules": {
         "version": "date-rules-v1",
         "two_digit_year_century": 1900,

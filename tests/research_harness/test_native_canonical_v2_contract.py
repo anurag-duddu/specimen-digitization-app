@@ -9,6 +9,7 @@ separate compiled connector qualification, never inferred from these fakes.
 """
 import asyncio
 import copy
+import json
 from types import SimpleNamespace
 from uuid import UUID
 
@@ -147,7 +148,7 @@ def progress_fixture(c,used,field,result_digest,state=None):
         field_work_digest=digest(state["jobs"][c.intent.job_key]["fields"]),field_mapping_digest=digest(c.b.binding.registration.field_mapping),
         research_field_work=work,canonical_field_work=work,target_research_field=FieldKey(field),target_canonical_field=field,
         wire_status="processing_blocked" if blocked else "running",run_stage="processing_blocked" if blocked else "research_in_progress",
-        disposition="deferred",operational_reason_codes=(),human_reason_codes=(),exportable=False)
+        disposition=None,operational_reason_codes=(),human_reason_codes=(),exportable=False)
 
 
 def receipt(c,*,field="county",used=None,parent=None,state=None,state_revision=7,reg_revision=1,resulting=None,native_commit=None,preparation=None):
@@ -306,12 +307,13 @@ class ReceiptConnector:
 
 def retained_fixture(c):
     b=c.b;result=b.prior.model_copy(deep=True);result.version=2
-    result.run.stage="research_in_progress"
+    result.run.stage="research_in_progress";result.run.disposition=None
     policy_graph=result.model_copy(deep=True)
     policy_digest=canonical_digest(result.model_dump(mode="json"))
     result.audit.append(AuditEvent(id=ident("audit:country"),actor=b.principal.user_id,action="research_publication",
         reason=c.intent.operation_digest,before={"revision":1},after={"revision":2}))
-    projection=writes(result,b.connector.locate,b.connector._sized,b.principal.user_id)
+    # An unfinished publication has no disposition; its record still comes from the projector.
+    projection=writes(result,b.connector.locate,b.connector._sized,b.principal.user_id,base_record=True)
     record=next(w.variables for w in projection if w.operation=="AppendRecordVersionV2")
     fields=sorted([w.variables for w in projection if w.operation=="AppendResolvedFieldV2"],key=lambda r:r["fieldKey"])
     result.audit[-1].after["record_version_id"]=record["id"]
@@ -472,14 +474,21 @@ def test_retained_attempt_cannot_be_switched_to_an_unproved_preparation(causal):
 
 
 @pytest.mark.parametrize("state",["pending","researching","waiting_source","waiting_policy","operational_failed","retry_scheduled","cancelled"])
-def test_V2_whole20_progress_is_deferred_running_or_operationally_blocked_not_lane_completed(causal,state):
+def test_V2_whole20_progress_has_no_disposition_while_running_or_operationally_blocked(causal,state):
+    from pydantic import ValidationError
     c=causal;work={key:"resolved" for key in v1.RESEARCH_KEYS};work["county"]=state
     blocked=state in {"waiting_source","waiting_policy","operational_failed","retry_scheduled","cancelled"}
     values=progress_fixture(c,c.intent.original_base,"country",digest("whole20-actual-fixture")).model_dump(mode="json")
     values.update(research_field_work=work,canonical_field_work=work,
         wire_status="processing_blocked" if blocked else "running",run_stage="processing_blocked" if blocked else "research_in_progress")
     progress=v2.CanonicalProgressReceiptV2.model_validate(values)
-    assert progress.disposition=="deferred" and not progress.exportable
+    assert progress.disposition is None and not progress.exportable
+    # Deferred is not the state of unfinished or blocked research.
+    with pytest.raises(ValidationError):
+        v2.CanonicalProgressReceiptV2.model_validate({**values,"disposition":"deferred"})
+    for final in ("cleared","needs_human_review"):
+        with pytest.raises(v1.PublicationUnavailable,match="false_completion"):
+            v2.CanonicalProgressReceiptV2.model_validate({**values,"disposition":final})
     values["wire_status"]="completed"
     with pytest.raises(v1.PublicationUnavailable,match="false_completion"):
         v2.CanonicalProgressReceiptV2.model_validate(values)
@@ -489,7 +498,7 @@ def test_V2_progress_retains_genuine_human_reasons_while_sibling_work_remains(ca
     c=causal;progress=progress_fixture(c,c.intent.original_base,"country",digest("fixture"))
     raw=progress.model_dump(mode="json");raw["human_reason_codes"]=["fixture-genuine-human-need"]
     actual=v2.CanonicalProgressReceiptV2.model_validate(raw)
-    assert actual.human_reason_codes==("fixture-genuine-human-need",) and actual.disposition=="deferred" and not actual.exportable
+    assert actual.human_reason_codes==("fixture-genuine-human-need",) and actual.disposition is None and not actual.exportable
 
 
 @pytest.mark.parametrize("mutation",["missing","unknown","wrong_type","duplicate_mapping"])
@@ -505,7 +514,7 @@ def test_V2_progress_missing_or_unproved_whole20_work_state_holds(causal,mutatio
 # SOURCE UNRUN: synthetic retained work/reason metadata exercises actual typed
 # guards and actual receipt replay; it grants no scientific/native authority.
 # Compiled PublishCanonicalResearchV2 must separately qualify both terminal
-# human cases, proper CLEAR, deferred human cases and exportable type/mismatch
+# human cases, proper CLEAR, unfinished human cases and exportable type/mismatch
 # controls with actual native rollback/readback. No source-string assertion or
 # fake connector response is used as proof of that SQL transaction.
 def terminal_progress_raw(c):
@@ -542,13 +551,58 @@ def test_unfinished_or_blocked_sibling_preserves_human_need_without_terminal_com
     raw["human_reason_codes"]=["fixture-genuine-human-need"]
     blocked=state not in {"pending","researching"}
     raw.update(wire_status="processing_blocked" if blocked else "running",
-        run_stage="processing_blocked" if blocked else "research_in_progress",disposition="deferred",exportable=False)
+        run_stage="processing_blocked" if blocked else "research_in_progress",disposition=None,exportable=False)
     before=copy.deepcopy(raw)
     actual=v2.CanonicalProgressReceiptV2.model_validate(raw)
-    assert actual.disposition=="deferred" and not actual.exportable
+    assert actual.disposition is None and not actual.exportable
     assert actual.wire_status==raw["wire_status"] and actual.human_reason_codes==("fixture-genuine-human-need",)
     assert actual.research_field_work==before["research_field_work"] and actual.canonical_field_work==before["canonical_field_work"]
     assert raw==before
+
+
+def held_policy_raw(c,*,reason=True,other=None):
+    # verbatim_dts waits on the policy its profile declares missing; every other field is resolved.
+    raw=terminal_progress_raw(c)
+    raw["research_field_work"]["verbatim_dts"]=raw["canonical_field_work"]["verbatim_dts"]="waiting_policy"
+    if other is not None:
+        raw["research_field_work"]["county"]=raw["canonical_field_work"]["county"]=other
+    raw["human_reason_codes"]=["mandatory_unresolved:verbatim_dts"] if reason else []
+    return raw
+
+
+def test_a_held_policy_field_refuses_clear_and_accepts_needs_human_review(causal):
+    raw=held_policy_raw(causal)
+    with pytest.raises(v1.PublicationUnavailable,match="final_human_review_required"):
+        v2.CanonicalProgressReceiptV2.model_validate(raw)
+    raw.update(disposition="needs_human_review",exportable=False)
+    actual=v2.CanonicalProgressReceiptV2.model_validate(raw)
+    assert actual.wire_status=="completed" and actual.disposition=="needs_human_review" and not actual.exportable
+    assert actual.human_reason_codes==("mandatory_unresolved:verbatim_dts",)
+    # Nor is it an operational block.
+    with pytest.raises(v1.PublicationUnavailable,match="final_policy_unproved"):
+        v2.CanonicalProgressReceiptV2.model_validate({**raw,"wire_status":"processing_blocked",
+            "run_stage":"processing_blocked","disposition":None})
+
+
+def test_waiting_policy_without_its_field_reason_stays_operationally_blocked(causal):
+    raw=held_policy_raw(causal,reason=False)
+    for final in ("cleared","needs_human_review"):
+        with pytest.raises(v1.PublicationUnavailable,match="false_completion"):
+            v2.CanonicalProgressReceiptV2.model_validate({**raw,"disposition":final,"exportable":final=="cleared"})
+    raw.update(wire_status="processing_blocked",run_stage="processing_blocked",disposition=None,exportable=False)
+    assert v2.CanonicalProgressReceiptV2.model_validate(raw).disposition is None
+
+
+@pytest.mark.parametrize("state",["waiting_source","operational_failed","pending"])
+def test_a_held_policy_field_does_not_hide_other_unfinished_or_blocked_work(causal,state):
+    raw=held_policy_raw(causal,other=state)
+    with pytest.raises(v1.PublicationUnavailable,match="false_completion"):
+        v2.CanonicalProgressReceiptV2.model_validate({**raw,"disposition":"needs_human_review","exportable":False})
+    blocked=state!="pending"
+    raw.update(wire_status="processing_blocked" if blocked else "running",
+        run_stage="processing_blocked" if blocked else "research_in_progress",disposition=None,exportable=False)
+    actual=v2.CanonicalProgressReceiptV2.model_validate(raw)
+    assert actual.disposition is None and actual.human_reason_codes==("mandatory_unresolved:verbatim_dts",)
 
 
 def test_all_resolved_no_human_proper_clear_remains_possible_at_progress_guard(causal):
@@ -557,6 +611,16 @@ def test_all_resolved_no_human_proper_clear_remains_possible_at_progress_guard(c
     assert actual.wire_status=="completed" and actual.disposition=="cleared" and actual.exportable
     assert actual.human_reason_codes==() and set(actual.canonical_field_work.values())=={"resolved"}
     # This typed positive does not supply actual scientific/native policy.
+
+
+def test_terminal_progress_refuses_a_missing_or_deferred_disposition(causal):
+    from pydantic import ValidationError
+    raw=terminal_progress_raw(causal);raw.update(disposition=None,exportable=False)
+    with pytest.raises(v1.PublicationUnavailable,match="final_policy_unproved"):
+        v2.CanonicalProgressReceiptV2.model_validate(raw)
+    raw["disposition"]="deferred"
+    with pytest.raises(ValidationError):
+        v2.CanonicalProgressReceiptV2.model_validate(raw)
 
 
 @pytest.mark.parametrize("disposition,exportable",[("cleared",False),("needs_human_review",True)])
@@ -589,3 +653,96 @@ def test_actual_retained_receipt_replay_refuses_terminal_human_false_clear_witho
             c.intent.idempotency_key,c.intent.server_request_identity_digest))
     assert connector.row==before
     assert connector.calls==["GetResearchPublicationIntentV2","GetResearchPublicationReceiptV2"]
+
+
+# The binding registration writer. A fake operation client captures the native
+# call; the SQL itself is not exercised here.
+REGISTRATION_POLICY={"fixture":"synthetic committed budget policy, no authority"}
+
+
+class RegistrationStore:
+    def __init__(self,budget_policy):
+        self.budget_policy=budget_policy;self.reads=[]
+    def _read(self,scope):
+        self.reads.append(scope)
+        return SimpleNamespace(state={"budget_policy":copy.deepcopy(self.budget_policy)},revision=3)
+
+
+class RegistrationConnector:
+    graph_blobs=None
+    def __init__(self):
+        self.calls=[]
+    def execute(self,operation,variables,mutation=False):
+        self.calls.append((operation,copy.deepcopy(variables),mutation))
+        if operation=="RegisterCanonicalResearchBindingV2":return {"registered":1}
+        raise AssertionError("registration reads its binding back through read_current_binding: "+operation)
+
+
+def registration_case(c,*,journal=False,policy_digest=None):
+    reg=c.b.binding.registration
+    semantic={**copy.deepcopy(reg.semantic_mapping),
+        "journal_budget_policy_digest":policy_digest or digest(REGISTRATION_POLICY)}
+    values={k:v for k,v in reg.model_dump(mode="json").items() if k in adapter.OwnerRegistrationV2.model_fields}
+    authority=digest("synthetic registration authority")
+    values.update(semantic_mapping=semantic,semantic_mapping_digest=digest(semantic),authority_digest=authority,
+        import_proof_id=str(reg.binding_id),import_proof_digest=authority,
+        current_chain_digest=v2.genesis_digest(reg.binding_id,reg.base_canonical))
+    registration=adapter.OwnerRegistrationV2.model_validate(values)
+    store=RegistrationStore(REGISTRATION_POLICY)
+    scope=SimpleNamespace(actor_uid=c.b.principal.user_id,specimen_id=c.p.basis.scope.specimen_id)
+    connector=RegistrationConnector()
+    writer=adapter.SqlConnectCanonicalResearchWriterV2(connector,
+        SimpleNamespace(store=store,scope=scope) if journal else None,blobs=None,operation_client=connector)
+    async def read_back(principal,specimen_id):
+        connector.calls.append(("read_current_binding",specimen_id,False))
+        return "registered-binding"
+    writer.read_current_binding=read_back
+    return SimpleNamespace(registration=registration,store=store,scope=scope,connector=connector,writer=writer,
+        specimen_id=c.p.basis.scope.specimen_id)
+
+
+def registering(c,role="manager"):
+    # The connector registers a binding for a manager or admin only.
+    return c.b.principal.model_copy(update={"role":role})
+
+
+def test_a_manager_registers_the_binding_with_the_provisioners_store_and_scope(causal):
+    c=causal;r=registration_case(c)
+    manager=registering(c)
+    result=call(c,lambda:r.writer.register_current_binding(manager,r.specimen_id,r.registration,store=r.store,scope=r.scope))
+    assert result=="registered-binding" and r.store.reads==[r.scope]
+    assert [row[0] for row in r.connector.calls]==["RegisterCanonicalResearchBindingV2","read_current_binding"]
+    operation,variables,mutation=r.connector.calls[0]
+    payload=json.loads(variables["registrationJson"])
+    assert mutation is True and variables["actorUid"]==manager.user_id and variables["specimenId"]==r.specimen_id
+    assert payload["binding_id"]==str(r.registration.binding_id)
+    assert payload["journal_budget_policy"]==REGISTRATION_POLICY and payload["state_revision"]==3
+
+
+@pytest.mark.parametrize("role",["viewer","operator","reviewer"])
+def test_only_a_manager_or_admin_registers_a_binding(causal,role):
+    c=causal;r=registration_case(c)
+    with pytest.raises(PermissionError,match="native_canonical_owner_required"):
+        call(c,lambda:r.writer.register_current_binding(registering(c,role),r.specimen_id,r.registration,store=r.store,scope=r.scope))
+    assert r.connector.calls==[] and r.store.reads==[]
+
+
+def test_registration_uses_the_journal_only_when_no_store_and_scope_are_passed(causal):
+    c=causal;r=registration_case(c,journal=True)
+    assert call(c,lambda:r.writer.register_current_binding(registering(c,"admin"),r.specimen_id,r.registration))=="registered-binding"
+    assert r.store.reads==[r.scope]
+    bare=registration_case(c)
+    with pytest.raises(ValueError,match="store_and_scope_required"):
+        call(c,lambda:bare.writer.register_current_binding(registering(c),bare.specimen_id,bare.registration))
+    assert bare.connector.calls==[]
+
+
+@pytest.mark.parametrize("mismatch",["budget_policy","actor","specimen"])
+def test_registration_refuses_an_unpinned_budget_policy_or_foreign_scope(causal,mismatch):
+    c=causal
+    r=registration_case(c,policy_digest=digest("another budget policy") if mismatch=="budget_policy" else None)
+    if mismatch=="actor":r.scope.actor_uid="another-worker"
+    if mismatch=="specimen":r.scope.specimen_id=ident("another-specimen")
+    with pytest.raises(v1.PublicationUnavailable,match="native_v2_owner_policy_pin_unproved"):
+        call(c,lambda:r.writer.register_current_binding(registering(c),r.specimen_id,r.registration,store=r.store,scope=r.scope))
+    assert r.connector.calls==[]

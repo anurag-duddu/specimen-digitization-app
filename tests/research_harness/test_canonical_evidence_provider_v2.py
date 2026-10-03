@@ -22,7 +22,8 @@ from specimen_digitization.research_harness.canonical_evidence_provider_v2 impor
 )
 from specimen_digitization.research_harness.compatibility import PublicationUnavailable
 from specimen_digitization.research_harness.contracts import (
-    ALL_FIELDS, FieldCheckpoint, FieldKey, FieldResolution, SourceFragment, WorkState, digest,
+    ALL_FIELDS, FieldAssemblyCandidate, FieldCheckpoint, FieldKey, FieldResolution, SourceFragment,
+    WorkState, digest,
 )
 from specimen_digitization.research_harness.native_canonical import CanonicalBindingV1, CanonicalIdentityV1
 from specimen_digitization.research_harness.publication import NativeReceiptBinding, PreparedNativePublication
@@ -299,8 +300,24 @@ def test_input_context_retains_all_actual_readings_and_never_picks_by_order(nati
     mixed_context = native_input_context_v2(mixed, f.rig.query, f.checkpoint.resolution, prior, mapping,
         asset_generation=f.repository.locate(prior.asset.blob_ref).generation,
         native_inputs=asyncio.run(f.provider._native_inputs(mixed, prior)))
-    assert mixed_context.input_source is None
+    # The selected reading grounds the value, so the mixed lineage still has
+    # a single producer source.
+    assert mixed_context.input_source == "raw_reading"
     assert mixed_context.tool_input_lineage.input_sources == ("raw_reading", "decided_transcript")
+    # A value also grounded in an assembly of the decided transcript fragment
+    # names two input sources, so the mixed lineage has no producer.
+    resolution = f.checkpoint.resolution
+    assembly = FieldAssemblyCandidate(id="assembly:transcript", scope=mixed.scope,
+        field_key=resolution.field_key, event_id="event:transcript", fragment_ids=(fragment.id,),
+        assertion_kind="complete", interpreted_text=observation.literal_text, rule_version="fixture",
+        evidence_ids=("evidence:transcript",))
+    both = mixed.model_copy(update={"assemblies": (assembly,)})
+    both_context = native_input_context_v2(both, f.rig.query,
+        resolution.model_copy(update={"assembly_ids": (assembly.id,)}), prior, mapping,
+        asset_generation=f.repository.locate(prior.asset.blob_ref).generation,
+        native_inputs=asyncio.run(f.provider._native_inputs(both, prior)))
+    assert both_context.input_source is None
+    assert both_context.tool_input_lineage.input_sources == ("raw_reading", "decided_transcript")
 
 
 def test_readingless_v2_lineage_keeps_empty_inputs_without_fabricating_v1(native_capture_rig):

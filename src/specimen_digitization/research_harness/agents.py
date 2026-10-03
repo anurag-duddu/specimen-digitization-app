@@ -18,7 +18,7 @@ from pydantic_ai.usage import UsageLimits
 from pydantic_ai_harness import ManagedPrompt, StepPersistence, SubAgent, SubAgents
 from pydantic_ai_harness.step_persistence import StepStore
 
-from specimen_digitization.provider_privacy import private_instrumentation
+from specimen_digitization.provider_privacy import agent_instrumentation
 
 from .contracts import FieldResolution, PromptPin, SpecialistRequest, SpecialistRole, SourceQuery, SourceResult
 from .gateway import EffectModel, ModelGatewayBlocked
@@ -249,7 +249,9 @@ class SpecialistHarness:
             capabilities = [
                 PinnedManagedPrompt(request),
                 ScopedResearchInput(),
-                Instrumentation(settings=private_instrumentation()),
+                # Prompt, messages and tool calls follow the configured capture
+                # mode (owner G3: harness tracing visible in Logfire).
+                Instrumentation(settings=agent_instrumentation()),
                 NativeStepPersistence(store=store, agent_name=role.value,
                                 capture_frontier=True,
                                 metadata={"job_id": request.scope.job_id,
