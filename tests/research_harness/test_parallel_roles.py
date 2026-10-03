@@ -101,8 +101,11 @@ def tick(tmp_path, k, *, replace=None, ceiling=None, key=None):
         if k is not None:
             forced_windows(mp, k)
         if ceiling is not None:
-            def policy(profile):
-                return BudgetPolicy(ceiling, live_authorized=True, hold_reason=None)
+            def policy(profile, ordinary_spend_micros=0):
+                # Same shape as production_runtime.research_budget_policy, whatever the run's
+                # ordinary chain has already spent against the limit (zero on the synthetic rig).
+                return BudgetPolicy(ceiling, external_settled_micro_usd=ordinary_spend_micros,
+                    live_authorized=True, hold_reason=None)
             mp.setattr(production_runtime, "research_budget_policy", policy)
             mp.setattr(provisioning, "research_budget_policy", policy)
         original_engine = engine_mod.ResearchEngine.run
