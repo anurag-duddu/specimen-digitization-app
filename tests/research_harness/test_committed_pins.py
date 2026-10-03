@@ -284,3 +284,14 @@ def test_twenty_publications_of_a_full_run_fit_one_state_document(tmp_path):
         store.validate_publication(scope, guard)
     size = len(canonical(backend.load(scope, "program-synthetic").state))
     assert size < MAX_STATE_BYTES // 2, size
+
+
+def test_pins_hold_the_live_eight_row_registry_without_google_maps():
+    # registered_pins.registered_registry requires exactly the installed rows;
+    # after Google Maps was removed (owner G-geo-1, #237) that is eight.
+    installed = [policy.id for policy in sources.insects_registry().policies]
+    pins = pins_for()
+    ids = [row["id"] for row in pins["sources"]["registry_policies"]]
+    assert ids == installed and len(ids) == 8
+    assert "google_maps" not in ids and "google_maps" not in pins["sources"]["capture_policies"]
+    registered_pins.registered_registry(pins["sources"])
