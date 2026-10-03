@@ -124,6 +124,7 @@ def test_actual_catalog_utility_acceptance_reaches_materialization_without_exter
     proof=asyncio.run(b.producer.materialize(b.principal,b.prepared,b.binding,b.prior,
         prior_projection=b.rows,captured_evidence=b.evidence,projection_services=b.services))
     assert proof.result.run.fields["fmnh_ins_number"].parsed=="105526321"
+    assert "identifier_format" not in proof.policy_receipt["reasons"]
     assert proof.progress_receipt.wire_status=="running" and not proof.progress_receipt.exportable
     assert b.producer.request_source.context.tool_results==(b.utility,)
     assert b.utility.receipt is None and b.checkpoint.effect_receipt_ids==()
