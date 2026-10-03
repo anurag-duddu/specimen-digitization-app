@@ -54,6 +54,8 @@ MCKINLEY = {"country": "Philippines", "state": "Davao del Sur", "locality": "Mou
 APO_LABEL = "E. slope Mt. Apo, Davao Prov., Mindanao, P.I."
 MCKINLEY_LABEL = "E. slope Mt. McKinley, Davao Prov., Mindanao, P.I."
 YEPOCAPA_LABEL = "Yepocapa, Mun. Yepocapa, chimaltenago, Guatemala"
+# geolocate_authority_id of the Yepocapa match: a digest of its name, admin unit and point (G39).
+YEPOCAPA_ID = "geolocate:76853dedbc6ff5ce"
 
 
 def verbatim(interpretation, label):
@@ -271,7 +273,7 @@ def test_yepocapa_is_confirmed_with_gazetteer_coordinates():
     assert result.coverage.reason == "success: GEOLocate confirms 'Yepocapa': 2 of 2 match(es) agree within 10 km of each other"
     [candidate] = candidates(result)
     assert candidate == {
-        "field_key": "city", "value": "Yepocapa", "authority_id": "geolocate:14.501946,-90.953956",
+        "field_key": "city", "value": "Yepocapa", "authority_id": YEPOCAPA_ID,
         "authority_role": "candidate", "input_literal": "Yepocapa", "rank": 1,
         "decimal_latitude": 14.501946, "decimal_longitude": -90.953956, "geodetic_datum": "EPSG:4326",
         "match_name": "YEPOCAPA", "match_admin": "CHIMALTENANGO", "match_precision": "High", "match_score": 83,
@@ -296,7 +298,7 @@ def test_verbatim_label_locality_is_validated_by_the_named_place_only():
     yepocapa = lookup("yepocapa-verbatim.json", FieldKey.CITY, verbatim(YEPOCAPA, YEPOCAPA_LABEL), "Yepocapa",
                       assembled_request(YEPOCAPA_LABEL))
     assert yepocapa.status == LookupStatus.SUCCESS and yepocapa.coverage.candidate_count == 9
-    assert candidates(yepocapa)[0]["authority_id"] == "geolocate:14.501946,-90.953956"
+    assert candidates(yepocapa)[0]["authority_id"] == YEPOCAPA_ID
     apo = lookup("apo-verbatim.json", FieldKey.PRECISE_LOCATION, verbatim(APO, APO_LABEL), APO_LABEL,
                  assembled_request(APO_LABEL))
     assert apo.status == LookupStatus.SUCCESS
@@ -333,7 +335,7 @@ def test_agreeing_points_far_apart_are_ambiguous():
     result = lookup("apo-modern.json", FieldKey.COUNTRY, loose, "Philippines")
     assert result.status == LookupStatus.AMBIGUOUS
     assert [item["authority_id"] for item in candidates(result)] == [
-        "geolocate:6.983300,125.266700", "geolocate:6.233611,125.628333", "geolocate:6.989444,125.269722"]
+        "geolocate:a863d52e6ff08fe2", "geolocate:a71cd5741681e8fa", "geolocate:3e5a153ca95eedd5"]
     assert result.coverage.reason == "ambiguous: GEOLocate is ambiguous for 'Philippines': agreeing matches lie up to 92 km apart"
 
 
@@ -358,6 +360,75 @@ def lookup_body(body, field_key=FieldKey.CITY, interpretation=YEPOCAPA, value="Y
 
     broker = SourceBroker(REGISTRY, transport=FixtureSourceTransport(read), effect_dispatch=completed_effect)
     return asyncio.run(broker.query(geography_request(), query(field_key, interpretation, value)))
+
+
+# --- G39: the matched point is candidate metadata, never part of the candidate's identifier ---
+ID_FORMAT = re.compile(r"geolocate:[0-9a-f]{16}")
+DECIMAL_NUMBER = re.compile(r"\d+\.\d+")
+EVANSTON = {"country": "USA", "state": "Illinois", "county": "Cook", "locality": "Evanston", "place": "Evanston",
+            "latitude": 42.05, "longitude": -87.69, "radius_km": 10}
+
+
+def recorded_points(fixture):
+    """Every [longitude, latitude] pair of the recorded glcwrap answer: the evidence."""
+    features = json.loads((FIXTURES / fixture).read_bytes())["resultSet"]["features"]
+    return [feature["geometry"]["coordinates"] for feature in features]
+
+
+@pytest.mark.parametrize(("fixture", "interpretation", "value", "field_key", "count"), [
+    ("yepocapa-modern.json", YEPOCAPA, "Yepocapa", FieldKey.CITY, 1),
+    ("evanston-control.json", EVANSTON, "Evanston", FieldKey.CITY, 1),
+    ("apo-modern.json", {**APO, "latitude": 6.611, "longitude": 125.449, "radius_km": 50}, "Philippines",
+     FieldKey.COUNTRY, 3)])
+def test_the_authority_id_holds_no_coordinates_and_the_point_stays_in_the_result(
+        fixture, interpretation, value, field_key, count):
+    found = candidates(lookup(fixture, field_key, interpretation, value))
+    assert len(found) == count
+    assert len({item["authority_id"] for item in found}) == count, "each match has an identifier of its own"
+    for item in found:
+        identifier = item["authority_id"]
+        assert ID_FORMAT.fullmatch(identifier), identifier
+        latitude, longitude = item["decimal_latitude"], item["decimal_longitude"]
+        for spelling in (f"{latitude:.6f}", str(latitude), f"{longitude:.6f}", str(longitude)):
+            assert spelling not in identifier
+        assert not DECIMAL_NUMBER.search(identifier)
+        # The point is where G39 keeps it: the tool result, which is the recorded response's own point.
+        assert [longitude, latitude] in recorded_points(fixture)
+        assert item["geodetic_datum"] == "EPSG:4326"
+
+
+def test_a_match_keeps_its_authority_id_and_another_point_or_place_gets_another():
+    first = candidates(lookup("yepocapa-modern.json", FieldKey.CITY, YEPOCAPA, "Yepocapa"))
+    again = candidates(lookup("yepocapa-modern.json", FieldKey.CITY, YEPOCAPA, "Yepocapa"))
+    assert first == again and first[0]["authority_id"] == YEPOCAPA_ID
+    # The id does not depend on the field or on the historian's placement, only on the match.
+    elsewhere = candidates(lookup("yepocapa-modern.json", FieldKey.PROVINCE_STATE,
+                                  {**YEPOCAPA, "latitude": 14.52, "longitude": -90.93}, "Chimaltenango"))
+    assert elsewhere[0]["authority_id"] == YEPOCAPA_ID
+
+    payload = json.loads((FIXTURES / "yepocapa-modern.json").read_bytes())
+
+    def identified(mutate):
+        changed = json.loads(json.dumps(payload))
+        mutate(changed["resultSet"]["features"][0])
+        [item] = candidates(lookup_body(json.dumps(changed).encode()))
+        return item
+
+    def move(offset):
+        def mutate(feature):
+            feature["geometry"]["coordinates"][0] += offset
+        return mutate
+
+    # One millionth of a degree is a different point; a hundred-millionth rounds to the same one.
+    nudged = identified(move(0.000001))
+    assert round(nudged["decimal_longitude"], 6) == -90.953955 and nudged["authority_id"] != YEPOCAPA_ID
+    assert identified(move(0.00000001))["authority_id"] == YEPOCAPA_ID
+    assert identified(lambda feature: feature["properties"].update(parsePattern="Yepocapa"))["authority_id"] != YEPOCAPA_ID
+    assert identified(lambda feature: feature["properties"].update(
+        debug=feature["properties"]["debug"].replace("CHIMALTENANGO", "SACATEPEQUEZ")))["authority_id"] != YEPOCAPA_ID
+    # A re-score or a new engine does not rename a place.
+    rescored = identified(lambda feature: feature["properties"].update(score=90, precision="Medium"))
+    assert rescored["match_score"] == 90 and rescored["authority_id"] == YEPOCAPA_ID
 
 
 @pytest.mark.parametrize("mutate", [
@@ -489,7 +560,7 @@ def test_the_prompted_success_resolution_carries_the_relations_publication_requi
 
     complete = prompted(evidence_relations=dict.fromkeys(evidence, "supports"))
     assert validate_resolution(geography_request(), complete, (result,)) == complete
-    assert complete.value.authority_id == "geolocate:14.501946,-90.953956"
+    assert complete.value.authority_id == YEPOCAPA_ID
     assert publication_accepts_relations(complete.value)
 
     # The validator never reads evidence_relations, so the engine accepts an omission ...
