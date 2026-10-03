@@ -12,10 +12,10 @@ Stage 1, the publications land: the taxon, researched through the three ready
 taxonomy sources, precise_location, settled from its label evidence, and the
 parties and collection fields. Its geography historian makes no GEOLocate
 lookup, so the geography fields wait on a source. The dates and elevations are
-not published; each carries its mandatory_unresolved field reason. With the
-historian's GEOLocate lookups, the geography is validated but no geography
-field can publish yet (the blocker named on Stage 2). Stage 2, the run
-reaching its final queue, is expected to fail until that blocker is fixed.
+not published; each carries its mandatory_unresolved field reason. Stage 2,
+with the historian's GEOLocate lookups: the country, state, county and city
+publish with their GEOLocate evidence, and the run reaches its final queue,
+needs_human_review, on the mandatory_unresolved field reasons.
 """
 from __future__ import annotations
 
@@ -31,10 +31,9 @@ from specimen_digitization.application.production import SqlConnectRepository, a
 from specimen_digitization.application.storage import digest as canonical_digest
 from specimen_digitization.application.worker_deadline import WorkerDeadline
 from specimen_digitization.application.workflow import OperationalBlock, SyntheticAdapters, Workflow
-from specimen_digitization.research_harness import native_worker
 from specimen_digitization.research_harness.contracts import FieldKey
 from specimen_digitization.research_harness.persistence import (
-    DurabilityScope, HeldUnknown, ImmutableFileBlobs, SqliteStateBackend, StaleWork,
+    DurabilityScope, HeldUnknown, ImmutableFileBlobs, SqliteStateBackend,
 )
 from specimen_digitization.research_harness.production_runtime import research_program_key
 from specimen_digitization.research_harness.workflow_bridge import compose_production_research_workflow
@@ -130,9 +129,9 @@ def jobs_and_bindings(rig):
 
 
 def test_first_publication_lands_through_the_production_entry_point(rig):
-    # The geography historian makes no GEOLocate lookup here: with lookups no
-    # geography field can publish yet, and the publications after it would not
-    # be reached (test_geolocate_validates_the_geography_but_none_of_it_can_publish_yet).
+    # The geography historian makes no GEOLocate lookup here, so this stage
+    # covers the abstaining historian: the geography waits on a source and the
+    # record is processing_blocked (Stage 2 covers the lookups).
     workflow = compose(rig, geolocate=False)
     parsed = to_plan(workflow, rig)
     assert not RESEARCH_OPERATIONS & set(rig.fake.calls)
@@ -300,34 +299,23 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     assert len(rig.model_calls) == 9 and len(rig.source_urls) == 3
 
 
-def test_geolocate_validates_the_geography_but_none_of_it_can_publish_yet(rig, monkeypatch):
+def test_the_run_reaches_its_final_queue(rig):
     """The historian validates the label's country, state, county and city with
     GEOLocate through the capture broker: four captures, one per field. The
-    engine pins every receipt of a role's run on each of that role's checkpoints
-    (engine.py, journal.commit), and preparing a publication refuses a receipt
-    captured for another field (publication._receipt). So after the taxon the
-    first geography publication is refused and the plan tick ends for
-    reconciliation. This is the blocker named on Stage 2."""
-    refused = []
-    prepare = native_worker.prepare_native_publication
-
-    async def recording(journal, scope, field_key, **kwargs):
-        try:
-            return await prepare(journal, scope, field_key, **kwargs)
-        except StaleWork as error:
-            refused.append((str(field_key), str(error)))
-            raise
-    monkeypatch.setattr(native_worker, "prepare_native_publication", recording)
+    engine pins every receipt of the geography run on each of its checkpoints,
+    and each field publishes with them, citing only its own field's capture.
+    One plan tick publishes every terminal field and finalizes the run."""
     workflow = compose(rig)
-    to_plan(workflow, rig)
-    with supervised(), pytest.raises(OperationalBlock, match="native_publication_requires_reconciliation"):
-        workflow.step(rig.principal, rig.specimen_id)
+    parsed = to_plan(workflow, rig)
+    with supervised():
+        specimen = workflow.step(rig.principal, rig.specimen_id)
 
     # The four queries send the one recorded glcwrap request, each a completed
     # offline capture effect of its own field.
     url = json.loads((FIXTURES / "sources.json").read_text())["geolocate"]["url"]
     assert len(rig.source_urls) == 7 and rig.source_urls.count(url) == 4
-    assert [role for role, _ in rig.model_calls] == ["specimen_taxonomy"] * 4 + ["specimen_geography"] * 2
+    assert [role for role, _ in rig.model_calls] == ["specimen_taxonomy"] * 4 + ["specimen_geography"] * 2 + [
+        "specimen_temporal", "specimen_measurement", "specimen_parties", "specimen_collection"]
     _, state = research_state(rig.fake, rig.specimen_id)
     captures = {key: effect for key, effect in state["effects"].items()
         if effect["operation_key"].startswith("source_capture_v2:")}
@@ -335,38 +323,44 @@ def test_geolocate_validates_the_geography_but_none_of_it_can_publish_yet(rig, m
     assert {effect["execution_class"] for effect in captures.values()} == {"offline"}
     job = list(state["jobs"].values())[0]
     for key in GEOGRAPHY:
-        field = job["fields"][key]
-        value = field["checkpoint"]["payload"]["resolution"]["value"]
-        assert field["work_state"] == "resolved" and value["state"] == "supported"
-        assert value["normalized"] == LABEL_VALUES[key] and value["authority_id"] == CHICAGO
-        assert value["evidence_ids"] and value["evidence_relations"] == dict.fromkeys(value["evidence_ids"], "supports")
-        # The cause: each checkpoint carries all four fields' captures.
-        assert {tuple(captures[effect]["field_keys"]) for effect in field["checkpoint"]["receipt_ids"]
+        # Each geography checkpoint carries all four fields' captures.
+        assert {tuple(captures[effect]["field_keys"]) for effect in job["fields"][key]["checkpoint"]["receipt_ids"]
             if effect in captures} == {(name,) for name in GEOGRAPHY}
-    assert [reason for _, reason in refused] == ["native_publication_receipt_binding_changed"]
-    assert refused[0][0] in GEOGRAPHY + ("precise_location",)
-    assert [row["causal_proof"]["changed_field"] for row in rig.fake.receipts.values()] == ["taxon"]
 
+    # Twelve publications: the taxon, the geography with precise_location, then
+    # the parties and collection fields.
+    receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
+    assert [row["causal_proof"]["changed_field"] for row in receipts] == ["taxon", "city", "country",
+        "county", "precise_location", "province_state", "collectors", "identified_by_irn", "collection_code",
+        "collection_method", "fmnh_ins_number", "habitat"]
+    published = rig.repository.get(rig.principal.scope, rig.specimen_id)
+    assert published.version == specimen.version == parsed.version + 12
+    by_field = {row["causal_proof"]["changed_field"]: row for row in receipts}
+    for key in GEOGRAPHY:
+        # The label's value with GEOLocate's Chicago match, linked as "supports"
+        # to one GEOLocate evidence row: a success from its own field's capture,
+        # with one producer call for that field.
+        value = published.run.fields[key]
+        assert value.state == "supported" and value.normalized == LABEL_VALUES[key] and value.authority_id == CHICAGO
+        record = rig.fake.tables["record_version"][by_field[key]["native_record_version_id"]]
+        field = next(row for row in rig.fake.tables["resolved_field"].values()
+            if row["recordVersionId"] == record["id"] and row["fieldKey"] == key)
+        links = [row for row in rig.fake.tables["candidate_evidence"].values()
+            if row["candidateId"] == field["candidateId"]]
+        assert [row["relation"] for row in links] == ["supports"]
+        evidence = rig.fake.tables["evidence_item"][links[0]["evidenceId"]]
+        assert (evidence["source"], evidence["outcome"]) == ("geolocate", "success")
+        calls = [row for row in rig.fake.tables["tool_call"].values() if row["evidenceId"] == evidence["id"]]
+        assert [(row["fieldKeys"], row["outcome"]) for row in calls] == [([key], "success")]
 
-@pytest.mark.xfail(strict=True, raises=OperationalBlock, reason=(
-    "Blocked outside this test's scope: with GEOLocate ready, the geography historian's "
-    "four lookups are four captures, one per field; the engine pins every receipt of a role's "
-    "run on each of that role's checkpoints, and publication._receipt refuses a receipt "
-    "captured for another field (native_publication_receipt_binding_changed). So after the "
-    "taxon the first geography publication ends the plan tick with "
-    "native_publication_requires_reconciliation "
-    "(test_geolocate_validates_the_geography_but_none_of_it_can_publish_yet). The dates and "
-    "elevations do not block: each carries its mandatory_unresolved field reason (needs human review)"))
-def test_the_run_reaches_its_final_queue(rig):
-    workflow = compose(rig)
-    to_plan(workflow, rig)
-    with supervised():
-        for _ in range(8):
-            specimen = workflow.step(rig.principal, rig.specimen_id)
-            if specimen.run.stage == "finalized":
-                break
-    assert specimen.run.stage == "finalized"
-    assert specimen.run.disposition in {"cleared", "needs_human_review"}
+    # The final queue: needs human review on the field reasons of verbatim_dts
+    # and the held dates and elevations, with no operational reason.
+    assert specimen.run.stage == "finalized" and specimen.run.disposition == "needs_human_review"
+    unresolved = {f"mandatory_unresolved:{key}" for key in ("verbatim_dts", *DATES_AND_ELEVATIONS)}
+    assert {reason for reason in specimen.run.reasons if reason.startswith("mandatory_unresolved:")} == unresolved
+    progress = receipts[-1]["causal_proof"]["progress_receipt"]
+    assert unresolved <= set(progress["human_reason_codes"]) and not progress["operational_reason_codes"]
+    assert not rig.fake.duplicates
 
 
 def test_with_the_switch_off_the_worker_keeps_the_ordinary_workflow(rig):

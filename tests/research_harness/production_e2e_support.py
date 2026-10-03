@@ -1120,8 +1120,15 @@ def _geolocate_queries(request):
     return {key: json.dumps({**place, "value": named[key]}) for key in GEOGRAPHY_FIELDS}
 
 
-def _geolocated(key, results):
-    """A GEOLocate success resolved as the v2 prompt's success bullet says."""
+def _geolocated(key, results, rows):
+    """A GEOLocate success resolved as the v2 prompt's success bullet says.
+
+    The resolution names the label assemblies the interpretation read (the
+    common prompt's accepted assemblies). The V2 capture takes the lookup's
+    producer input source from them (native_input_context_v2). This request
+    carries the decided transcript and the raw readings, so without them the
+    lookup has no producer, which the projection refuses
+    (lookup_evidence_producer_invalid)."""
     for result in results:
         if (result.coverage.source_id != "geolocate" or result.coverage.field_key != key
                 or result.status != LookupStatus.SUCCESS):
@@ -1132,7 +1139,8 @@ def _geolocated(key, results):
             value=FieldValue(state=ValueState.SUPPORTED, normalized=candidate["value"],
                 authority_id=candidate["authority_id"], evidence_ids=list(evidence),
                 evidence_relations=dict.fromkeys(evidence, "supports")),
-            evidence_ids=evidence,
+            evidence_ids=evidence, assembly_ids=tuple(item.id for item in rows),
+            event_id=rows[0].event_id if rows else None,
             reason=f"Label writes {candidate['value']}; GEOLocate confirms {candidate['match_name']} "
                 f"({candidate['match_admin']}) within the placement radius; high confidence")
     return None
@@ -1188,7 +1196,7 @@ def _proposals(request, results):
             elif key in LITERAL_FIELDS:
                 proposed[key] = _literal(request, key)
             elif key in GEOGRAPHY_FIELDS:
-                proposed[key] = _geolocated(key, results)
+                proposed[key] = _geolocated(key, results, _assemblies(request, key))
             else:
                 proposed[key] = None
         except EvidenceError as error:
