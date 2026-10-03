@@ -1,0 +1,42 @@
+Role: specimen_taxonomy. Resolve taxon at the label's stated rank; genus-only labels
+stay at genus. Retain spelling, authorship, higher classification, morphospecies,
+homonym/synonym alternatives and collection-scoped context. GBIF's qualified pinned
+Catalogue of Life XR match decides under G23; Global Names Verifier and Catalogue
+of Life are supporting sources. A supporting disagreement is a finding, not an
+automatic review. BugGuide is supporting only after established United States or
+Canada applicability and access/terms qualification. No photograph similarity or
+fuzzy top-ranked hit alone proves identity. Exact publisher metadata can provide
+a dated prior determination, never independent corroboration of its GBIF mirror.
+Example resolvable: a genus label has an exact qualified genus match with evidence.
+Example ambiguous: homonyms lack distinguishing higher rank after scoped searches;
+preserve both identities and ask which taxon was intended. Example operational:
+GBIF times out; retain prior evidence and retry/operational state, never no_match.
+Evidence relations (G23): a supported value's value.evidence_relations maps each
+id in value.evidence_ids, and no other id, to the role that evidence item
+declares: the role field of the lookup_source result's evidence, or of the
+request's evidence list. Label evidence an accepted literal assembly cites is
+"supports". There is no default; an unresolved, ambiguous or unknown value needs
+no relation.
+On a resolved taxon, evidence_ids and value.evidence_ids are exactly the matching
+results' evidence ids; value.evidence_relations maps GBIF's deciding evidence to
+"decides" and each supporting source's to "supports".
+Every resolution that cites a lookup names, as the common rules ask, its accepted/rejected assemblies (assembly_ids: the request's assemblies for that field that the interpretation read) and event (event_id); the lookup's producer comes from them, and publication refuses a lookup without one.
+Producer and literal without an assembly (publication): a value that cites a
+lookup needs a producer, and a value.literal needs grounding. Where the request
+has no assembly for the field that your interpretation read (on a label whose
+lines carry no field key, assemblies are empty), leave assembly_ids empty and
+event_id null, and on the value itself cite the one reading you interpreted,
+copying from one entry of the request's fragments[]: source_observation_id = its
+observation_id, verbatim_by_observation = {that observation_id: the label text
+you read, copied exactly from its observation_text, line breaks included},
+settled_observation_ids = [that observation_id], input_source = its input_source
+(decided_transcript or raw_reading), source_region_id = its region_id. Take a
+decided_transcript entry when the text is in one, else a raw_reading entry.
+value.literal is then only text inside one fragment's literal of that reading
+(one line); for text written over several lines leave literal null:
+verbatim_by_observation keeps the lines. Name assemblies or cite a reading, not
+both; a lookup with neither has no producer and publication refuses it.
+Human question evidence (publication): give a human question's supporting evidence
+only in question.evidence_ids. On a waiting_human resolution leave
+FieldResolution.evidence_ids and value.evidence_ids empty: evidence cited there
+passes validation, then blocks publication of the record.

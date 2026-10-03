@@ -22,7 +22,9 @@ from specimen_digitization.research_harness.evidence import (
     EvidenceError, assemble_field, elevation_resolutions, settle_elevation, temporal_resolutions,
     validate_resolution,
 )
-from specimen_digitization.research_harness.prompts import RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt
+from specimen_digitization.research_harness.prompts import (
+    READING_CITATION_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
+)
 from specimen_digitization.research_harness.sources import insects_registry
 
 ROOT = Path(prompts.__file__).parent
@@ -70,17 +72,19 @@ def flat(text):
 
 
 @pytest.mark.parametrize("role", FIVE)
-def test_each_role_resolves_to_its_v1_text_followed_by_the_relation_rule(role):
-    assert ROLE_PROMPTS[role] == (f"{role.value}-v2.txt", RELATIONS_PROMPT_VERSION)
+def test_each_v2_file_is_its_v1_text_followed_by_the_relation_rule_and_the_pin_extends_it(role):
+    # The v2 files stay on disk as the audit record (their digests: test_geography_prompt_v2.py). The live
+    # pins moved to the v3 files, each the v2 file followed by two blocks (test_prompt_reading_citation_v3.py).
+    assert ROLE_PROMPTS[role] == (f"{role.value}-v3.txt", READING_CITATION_PROMPT_VERSION)
+    assert RELATIONS_PROMPT_VERSION == "specialists-relations-v2-2026-10-03"
     (ROOT / f"{role.value}-v2.txt").read_bytes().decode("ascii")
     rule = added(role)
     assert rule.startswith("Evidence relations (G23): ") and "value.evidence_relations" in rule
     prompt = resolve_prompt(role, profile_digest=PIN, source_registry_digest=PIN, toolset_digest=PIN,
                             model_route="harness-deepseek", output_schema_digest=PIN)
-    expected = ((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
-                + (ROOT / f"{role.value}-v2.txt").read_text(encoding="utf-8")
-                + "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n")
-    assert prompt.text == expected and prompt.digest == hashlib.sha256(expected.encode()).hexdigest()
+    v2 = (ROOT / f"{role.value}-v2.txt").read_text(encoding="utf-8")
+    assert prompt.text.startswith((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n" + v2)
+    assert prompt.digest == hashlib.sha256(prompt.text.encode()).hexdigest()
 
 
 @pytest.mark.parametrize("role", tuple(ROLE_LINES))
