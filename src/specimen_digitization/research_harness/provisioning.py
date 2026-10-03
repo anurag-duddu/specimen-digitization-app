@@ -8,9 +8,9 @@ once. Otherwise it writes, in order and each idempotently:
 3. the job "{run.id}-r{revision}", generation 1, with the committed pins,
 4. the canonical binding, registered by the worker actor.
 A retry after a partial failure replays the steps already written.
-The connector registers for a manager or admin only and never overwrites the
-specimen's binding row; a refused registration raises HeldUnknown, so the
-run holds.
+The connector registers for an operator or above and replaces a binding row
+left by an earlier run or revision; a refused registration raises
+HeldUnknown, so the run holds.
 """
 from __future__ import annotations
 
@@ -86,9 +86,8 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
         raise HeldUnknown(str(error)) from None
     if current is not None and current.get("active_registration_count") == 1:
         return
-    # No current binding: register this run's current revision. A row left
-    # by an earlier run or revision is not replaced, so that registration is
-    # refused and the run holds.
+    # No binding row yet (count 0), or a row for an earlier run or revision
+    # (no current row): register this run's current revision.
     if (specimen.asset.sensitive is not False or run.stage != "plan"
         or set(run.fields) != set(MANDATORY)
         or committed_harness_route(run.profile_snapshot) is None
@@ -164,9 +163,9 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
             store=store, scope=scope)
     except PublicationUnavailable as error:
         # The connector refused this specimen's row: this record alone is held.
-        # A refusal arrives as GraphQL errors (a second row under insert-only
-        # registration fails on the table's key, and a row the checks do not
-        # admit fails the count check), or as a count other than one.
+        # A refusal arrives as GraphQL errors (a row the checks do not admit,
+        # or one that may not replace the current row, fails the count check),
+        # or as a count other than one.
         if str(error) in REGISTRATION_REFUSED:
             # GraphQL errors also cover transient connector failures (unavailable,
             # deadline, permission, a connector not yet redeployed); the hold is
