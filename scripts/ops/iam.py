@@ -7,14 +7,17 @@ Run it before deploy.py (the SAM 3 revision cannot start without its checkpoint 
 the specimen-sam service and the specimen-worker job are skipped, and named, while those do not exist yet.
 
 Every grant is one `add-iam-policy-binding`, which changes nothing when the binding is already there, so a re-run is
-safe. None is time-limited. Two bucket grants carry a resource condition, because the bucket also holds the
-source slides and private originals: application objects only, and SAM 3's listing of its own checkpoint prefix. It grants no secret access: each runtime secret is already granted at the one
-version the runtime mounts (a version condition), and an unconditioned binding beside it would open every version.
+safe. None is time-limited. Seven bucket rows carry a resource condition, three conditions in all, because the
+bucket also holds the source slides and private originals: application objects only, the research harness's three
+prefixes (the worker only), and SAM 3's listing of its own checkpoint prefix. It grants no secret access: each
+runtime secret is already granted at the one version the runtime mounts (a version condition), and an
+unconditioned binding beside it would open every version.
 
 SAM 3's bucket listing is the one unconditioned bucket grant (see LIST_BUCKET).
   worker  specimenRuntimeConnector on the project (the connector's named operations); objectViewer and
-          objectCreator on application objects; run.invoker on specimen-sam (segmentation) and on
-          specimen-worker (the drain's deadline hand-over).
+          objectCreator on application objects, and on the research-capture/, research-journal/ and research-media/
+          objects (create and get; the condition has no listing clause); run.invoker on specimen-sam
+          (segmentation) and on specimen-worker (the drain's deadline hand-over).
   sam     objectViewer and objectCreator on application objects; objectViewer for listing the checkpoint prefix
           (the read-only mount); legacyBucketReader on the bucket, unconditioned, for the mount itself.
   api     run.invoker on specimen-worker: the API starts executions with jobs:run and no overrides
@@ -49,17 +52,19 @@ LISTING = 'api.getAttribute("storage.googleapis.com/objectListPrefix", "")'
 LIST_BUCKET = "roles/storage.legacyBucketReader"
 
 
-def conditions(bucket: str, digest: str) -> tuple[tuple[str, str], tuple[str, str]]:
-    """(expression, title) of the application-objects condition and of the checkpoint-listing condition."""
-    app = (f'resource.name.startsWith("projects/_/buckets/{bucket}/objects/application/sha256/")',
-           "specimen_application_objects")
+def conditions(bucket: str, digest: str) -> tuple[tuple[str, str], tuple[str, str], tuple[str, str]]:
+    """(expression, title) of the application-objects, the checkpoint-listing and the research-objects conditions."""
+    objects = f"projects/_/buckets/{bucket}/objects/"
+    app = (f'resource.name.startsWith("{objects}application/sha256/")', "specimen_application_objects")
     listing = (f'{LISTING}.startsWith("application/sha256/{digest}/sam3-cache")', "specimen_sam3_checkpoint_listing")
-    return app, listing
+    research = (" || ".join(f'resource.name.startsWith("{objects}research-{kind}/")'
+                            for kind in ("capture", "journal", "media")), "specimen_research_objects")
+    return app, listing, research
 
 
 def grants(project: str, digest: str) -> list[Grant]:
     bucket = settings.BUCKET
-    app, listing = conditions(bucket, digest)
+    app, listing, research = conditions(bucket, digest)
     worker, sam, api = (f"serviceAccount:{settings.ROLES[role]['service_account']}" for role in ("worker", "sam", "api"))
     table = [Grant(worker, f"projects/{project}/roles/specimenRuntimeConnector", "project", project, None,
                    "call the connector's named operations only")]
@@ -70,6 +75,10 @@ def grants(project: str, digest: str) -> list[Grant]:
             table.append(Grant(sam, VIEW, "bucket", bucket, listing, "list the checkpoint prefix it mounts read-only"))
             table.append(Grant(sam, LIST_BUCKET, "bucket", bucket, None,
                                "mount the checkpoint: the bucket and object listing at mount time; no object reads"))
+    # The research harness (SPECIMEN_RESEARCH_HARNESS=on) creates objects with a generation match and reads them
+    # back, under these three prefixes. It never lists or deletes, so the worker, and only the worker, gets this pair.
+    table += [Grant(worker, role, "bucket", bucket, research, "read and write research harness objects; no delete")
+              for role in (VIEW, CREATE)]
     table += [Grant(worker, INVOKE, "service", "specimen-sam", None, "call SAM 3"),
               Grant(worker, INVOKE, "job", "specimen-worker", None, "hand work left at its deadline to a new execution"),
               Grant(api, INVOKE, "job", "specimen-worker", None, "start executions (jobs:run, no overrides)")]

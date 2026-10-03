@@ -102,6 +102,13 @@ Runtime connector permissions contain only named query/mutation impersonation.
 Storage grants contain only object get/create, conditionally restricted to
 `application/sha256/`. No runtime object delete/update/list, bucket metadata,
 schema/connector administration, arbitrary GraphQL or SQL access is proposed.
+That file records the September proposal and is unchanged. The standing grants
+committed in `scripts/ops/owner_setup.sh` and `scripts/ops/iam.py` on 2026-10-03
+add one worker-only pair for the research harness: object get/create
+(`objectViewer` and `objectCreator`) conditioned on `research-capture/`,
+`research-journal/` and `research-media/`, and nothing else; the API and SAM
+runtimes get no research grant. Merging does not apply them; running one of
+those two scripts does.
 API receives no provider secrets; worker secret grants belong to separately
 approved exact-secret processing policy. Neither receives Hosting release identity.
 The lowest supported connector IAM binding/condition and actual denied operations

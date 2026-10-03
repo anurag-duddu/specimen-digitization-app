@@ -74,6 +74,9 @@ readonly WATCH_POLLS=180
 readonly OBJECTS="projects/_/buckets/$BUCKET/objects/"
 readonly APP_TITLE=specimen_application_objects
 readonly APP_EXPRESSION="resource.name.startsWith(\"${OBJECTS}application/sha256/\")"
+# The research harness's three prefixes (SPECIMEN_RESEARCH_HARNESS=on): the worker alone creates and gets there.
+readonly RESEARCH_TITLE=specimen_research_objects
+readonly RESEARCH_EXPRESSION="resource.name.startsWith(\"${OBJECTS}research-capture/\") || resource.name.startsWith(\"${OBJECTS}research-journal/\") || resource.name.startsWith(\"${OBJECTS}research-media/\")"
 readonly SLIDES_TITLE=specimen_source_slides
 readonly SLIDES_EXPRESSION="resource.name.startsWith(\"${OBJECTS}microscopic-slides/\") || api.getAttribute(\"storage.googleapis.com/objectListPrefix\", \"\").startsWith(\"microscopic-slides/\")"
 readonly SQL_TITLE=specimen_source_inventory_only
@@ -622,6 +625,10 @@ runtime_grants() {
     grant bucket "$BUCKET" "$name" roles/storage.objectViewer "$APP_TITLE" "$APP_EXPRESSION"
     grant bucket "$BUCKET" "$name" roles/storage.objectCreator "$APP_TITLE" "$APP_EXPRESSION"
   done
+  # The research harness creates objects with a generation match and reads them back; it never lists or deletes.
+  # So the worker, and no other account, gets create and get on its three prefixes.
+  grant bucket "$BUCKET" "$WORKER" roles/storage.objectViewer "$RESEARCH_TITLE" "$RESEARCH_EXPRESSION"
+  grant bucket "$BUCKET" "$WORKER" roles/storage.objectCreator "$RESEARCH_TITLE" "$RESEARCH_EXPRESSION"
   grant bucket "$BUCKET" "$API" roles/storage.objectViewer "$SLIDES_TITLE" "$SLIDES_EXPRESSION"
   # Versions as pinned in scripts/ci/runtime_settings.py. The worker reads no Google Maps key
   # any more (the owner took Maps out of the pipeline): that read is neither granted nor removed here.
