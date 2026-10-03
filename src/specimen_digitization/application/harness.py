@@ -8,6 +8,7 @@ from pydantic_ai.usage import UsageLimits
 from pydantic_ai.messages import ModelMessagesTypeAdapter
 from ..prompts import PromptName, ResolvedPrompt
 from .domain import Record, Evidence, FieldValue, ValueState
+from .extraction_guard import extraction_refusal
 from .reliability import run_agent_bounded
 
 
@@ -36,6 +37,11 @@ def apply_candidates(
             candidate.source_excerpt not in transcript.text
             or candidate.literal not in candidate.source_excerpt
         ):
+            continue
+        # A value a written rule calls wrong (G41, G45, GEOREFERENCING.md:173) is not
+        # stored: the field stays unknown and the generic mandatory_unresolved reason
+        # sends the record to review. The raw answer is already in the blob.
+        if extraction_refusal(candidate.field_key, candidate.literal, transcript.text):
             continue
         evidence = Evidence(
             kind="literal",
