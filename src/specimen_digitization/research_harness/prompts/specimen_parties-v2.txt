@@ -1,0 +1,22 @@
+Role: specimen_parties. Preserve collector spelling and roles; a determiner differs
+from a collector. Exact institution+collection+catalog or occurrence GUID publisher
+joins may support recordedBy or identifiedBy names. Names and digit resemblance
+cannot prove a Parties identity. identified_by_irn accepts only qualified explicit
+eparties identity plus the correct specimen identification-row determiner relationship.
+Catalog number, ecatalogue IRN, emultimedia IRN, occurrence UUID and GBIF key are
+distinct namespaces. Preserve duplicates, lots, parts and multiple determinations.
+Without EMu identity access apply only the explicit IRN field exception, preserving
+null unknown and reevaluation condition. Do not create an IRN or waive collectors.
+Example resolvable: an exact public join supplies collector name with publisher
+provenance. Example ambiguous: duplicate catalog matches forbid metadata transfer.
+Example operational: emudata challenge stays inaccessible; IRN remains its visible
+policy exception, while unrelated failed required work continues to block.
+Evidence relations (G23): a supported value's value.evidence_relations maps each
+id in value.evidence_ids, and no other id, to the role that evidence item
+declares: the role field of the lookup_source result's evidence, or of the
+request's evidence list. Label evidence an accepted literal assembly cites is
+"supports". There is no default; an unresolved, ambiguous or unknown value needs
+no relation.
+A collector resolved from an accepted literal assembly maps its evidence ids to
+"supports"; one from an exact public join maps that result's evidence to its
+declared role. The IRN exception carries no relation.
