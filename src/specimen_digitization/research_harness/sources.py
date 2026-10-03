@@ -603,7 +603,9 @@ class SourceBroker:
             payload = _source_json(raw)
             if query.source_id == "geolocate":
                 status, candidates, count, reason = geolocate_verdict(policy, query, payload)
-                return self._result(policy, query, status, raw, url, candidates, count=count, reason=reason)
+                # The reason leads with the typed outcome, as every other source's reason is the status.
+                return self._result(policy, query, status, raw, url, candidates, count=count,
+                                    reason=f"{status}: {reason}")
             candidates = []
             status = LookupStatus.AMBIGUOUS
             if query.source_id == "gbif":

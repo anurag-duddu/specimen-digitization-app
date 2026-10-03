@@ -790,6 +790,40 @@ def test_a_new_resolved_candidate_is_a_new_record_version():
     assert rows(writes(s, locate, size, "worker-uid"), "AppendRecordVersionV2")[0]["id"] != first
 
 
+def test_identical_but_unresolved_readings_select_none_and_hand_over_both_as_raw():
+    """Regression for the 2026-10-03 production abort: two readers return the same '[unreadable]' text,
+    the region stays unresolved, so no reading is selected (DATA_CONTRACT 4.2) and both handoffs are raw."""
+    s = base()
+    right, left = s.run.observations
+    same = right.literal_text
+    s.run.observations = [right, left.model_copy(update={"literal_text": same})]
+    transcript = s.run.transcripts[0]
+    s.run.transcripts = [
+        DecidedTranscript.model_validate(
+            {
+                **transcript.model_dump(),
+                "decision_kind": "identical_readings",
+                "selected_observation_id": None,
+                "resolved": False,
+                "text": None,
+                "handoffs": [
+                    {"observation_id": o.id, "role": "raw_reading", "handed_text": o.literal_text, "note": None}
+                    for o in s.run.observations
+                ],
+            }
+        )
+    ]
+    ws = writes(s, locate, size, "worker-uid")
+    (tv,) = rows(ws, "AppendTranscriptionVersionV2")
+    handoffs = rows(ws, "AppendHarnessInputV1")
+    # The Data Connect `picked` check (dataconnect/connector/projection.gql): a handoff is the
+    # decided transcript exactly when it is the stored selected reading. A forced selection here
+    # made the first raw handoff fail it and aborted the whole projection.
+    assert all((h["role"] == "decided_transcript") == (h["observationId"] == tv["selectedObservationId"]) for h in handoffs)
+    assert (tv["decisionKind"], tv["selectedObservationId"], tv["unresolved"]) == ("identical_readings", None, True)
+    assert [h["role"] for h in handoffs] == ["raw_reading", "raw_reading"]
+
+
 def test_a_base_record_at_plan_writes_the_record_and_all_20_fields_without_a_disposition():
     s = base()
     s.run.stage = "plan"

@@ -25,6 +25,14 @@ def test_literal_transcription_requires_lines_to_reconstruct_text() -> None:
         )
 
 
+def test_the_output_schema_states_the_line_rule_the_validator_enforces() -> None:
+    properties = LiteralTranscription.model_json_schema()["properties"]
+
+    assert "single newline" in properties["verbatim_text"]["description"]
+    assert "single newline" in properties["lines"]["description"]
+    assert "`verbatim_text`" in properties["lines"]["description"]
+
+
 def test_transcription_agent_has_a_stable_logfire_name() -> None:
     prompt = ResolvedPrompt(
         name=PromptName.LITERAL_TRANSCRIPTION,
