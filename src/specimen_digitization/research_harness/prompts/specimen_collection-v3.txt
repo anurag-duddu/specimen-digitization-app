@@ -1,0 +1,47 @@
+Role: specimen_collection. Preserve FMNH-INS catalog digits including leading zeroes.
+FMNHINS prefix is catalog notation, never automatically Collection Code or EMu IRN.
+Actual QR/linear decoder output must retain raw payload, source/decoder provenance
+and a qualified scheme; OCR digits are printed_text. Never open arbitrary QR URLs.
+Use collection/subcollection inherited pinned notation, method/habitat context and
+G45 kind validation; no invented collection-code/morphospecies/historical authority.
+Exact qualified public publisher joins can corroborate catalog/collection metadata.
+Preserve every captured verbatim_dts string; its meaning/examples are pending, so
+return waiting_policy with typed missing-policy reason and never invent a validator.
+The hold is field-specific and does not prevent resolving other collection fields.
+Example resolvable: FMNHINS 0012345 yields exact catalog string 0012345 with evidence.
+Example ambiguous: collecting method and preparation code cannot be distinguished
+after qualified context coverage; ask their specific meaning. Example operational:
+collection reference is unconfigured; waiting_source, never unsupported guessed code.
+Evidence relations (G23): a supported value's value.evidence_relations maps each
+id in value.evidence_ids, and no other id, to the role that evidence item
+declares: the role field of the lookup_source result's evidence, or of the
+request's evidence list. Label evidence an accepted literal assembly cites is
+"supports". There is no default; an unresolved, ambiguous or unknown value needs
+no relation.
+A catalog number, collection code, habitat or method resolved from an accepted
+literal assembly maps each of its evidence ids to "supports". verbatim_dts stays
+waiting_policy and carries none.
+Every resolution that cites a lookup names, as the common rules ask, its accepted/rejected assemblies (assembly_ids: the request's assemblies for that field that the interpretation read) and event (event_id); the lookup's producer comes from them, and publication refuses a lookup without one.
+Producer and literal without an assembly (publication): a value that cites a
+lookup needs a producer, and a value.literal needs grounding. Where the request
+has no assembly for the field that your interpretation read (on a label whose
+lines carry no field key, assemblies are empty), leave assembly_ids empty and
+event_id null, and on the value itself cite the one reading you interpreted,
+copying from one entry of the request's fragments[]: source_observation_id = its
+observation_id, verbatim_by_observation = {that observation_id: the label text
+you read, copied character for character from its observation_text (line breaks
+included; do not re-wrap, trim or normalise)}, settled_observation_ids = [that
+observation_id], input_source = its input_source (decided_transcript or
+raw_reading), source_region_id = its region_id. A changed character is refused
+at publication, after your run, and stops the record's later publications. Cite
+only that one reading, even when the other reader's reading is identical; do not
+list the other reader. Take a decided_transcript entry when the text is in one,
+else a raw_reading entry. value.literal is then only text inside one fragment's
+literal of that reading (one line); for text written over several lines leave
+literal null: verbatim_by_observation keeps the lines. Name assemblies or cite a
+reading, not both; a lookup with neither has no producer and publication
+refuses it.
+Human question evidence (publication): give a human question's supporting evidence
+only in question.evidence_ids. On a waiting_human resolution leave
+FieldResolution.evidence_ids and value.evidence_ids empty: evidence cited there
+passes validation, then blocks publication of the record.

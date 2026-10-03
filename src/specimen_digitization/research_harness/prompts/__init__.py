@@ -18,18 +18,24 @@ GEOGRAPHY_PROMPT_VERSION = "geography-historian-v2-2026-10-03"
 # relations their settlement gives and add none, because the validator admits
 # only the settlement's exact result for a written date or an elevation.
 RELATIONS_PROMPT_VERSION = "specialists-relations-v2-2026-10-03"
+# All six roles with the publication rules a real label needs (Lane P, 2026-10-03).
+# Each v3 file is its v2 file followed by one or two blocks: a resolution with no
+# assembly cites the reading it interpreted so its lookup has a producer, and a
+# human question cites its evidence only on the question. The v2 files stay on disk
+# unchanged for audit (GEOGRAPHY_PROMPT_VERSION and RELATIONS_PROMPT_VERSION name them).
+READING_CITATION_PROMPT_VERSION = "specialists-reading-citation-v3-2026-10-03"
 
 # Role -> (role file, pin version). Each role's text is common-v1.txt, the role
 # file and its owned-fields line. A role moves to a new file and version without
 # changing any other role's text, digest or pin. Superseded files stay on disk
 # for audit.
 ROLE_PROMPTS = MappingProxyType({
-    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v2.txt", RELATIONS_PROMPT_VERSION),
-    SpecialistRole.GEOGRAPHY: ("specimen_geography-v2.txt", GEOGRAPHY_PROMPT_VERSION),
-    SpecialistRole.TEMPORAL: ("specimen_temporal-v2.txt", RELATIONS_PROMPT_VERSION),
-    SpecialistRole.MEASUREMENT: ("specimen_measurement-v2.txt", RELATIONS_PROMPT_VERSION),
-    SpecialistRole.PARTIES: ("specimen_parties-v2.txt", RELATIONS_PROMPT_VERSION),
-    SpecialistRole.COLLECTION: ("specimen_collection-v2.txt", RELATIONS_PROMPT_VERSION),
+    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v3.txt", READING_CITATION_PROMPT_VERSION),
+    SpecialistRole.GEOGRAPHY: ("specimen_geography-v3.txt", READING_CITATION_PROMPT_VERSION),
+    SpecialistRole.TEMPORAL: ("specimen_temporal-v3.txt", READING_CITATION_PROMPT_VERSION),
+    SpecialistRole.MEASUREMENT: ("specimen_measurement-v3.txt", READING_CITATION_PROMPT_VERSION),
+    SpecialistRole.PARTIES: ("specimen_parties-v3.txt", READING_CITATION_PROMPT_VERSION),
+    SpecialistRole.COLLECTION: ("specimen_collection-v3.txt", READING_CITATION_PROMPT_VERSION),
 })
 
 

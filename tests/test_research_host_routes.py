@@ -1,6 +1,7 @@
 """Mounted host tests use synthetic data and a real verified-identity dependency."""
 
 import asyncio
+import logging
 from copy import deepcopy
 
 import httpx
@@ -11,6 +12,7 @@ from specimen_digitization.application.production import actor_uid
 from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository
 from specimen_digitization.application.workflow import SyntheticAdapters
 from specimen_digitization.research_harness.canonical_binding import CanonicalBindingSnapshot
+from specimen_digitization.research_harness.compatibility import PublicationUnavailable
 from specimen_digitization.research_harness.contracts import FieldKey, digest
 from specimen_digitization.research_harness.discovery import ScopedCanonicalReadStore
 
@@ -251,3 +253,132 @@ async def test_mounted_thread_uses_real_checkpoint_reader_and_native_locks(host)
     assert "program_key" not in reply.text and "budget_totals" not in reply.text
     assert native.state == before
     assert actor_uid.get() is None
+
+
+# The catch-all 503 is deliberately opaque to the caller (the tests above), but it
+# must leave the operator a cause. Only the exception class and, for the repo's
+# fixed-code types, the fixed code are logged: never a message that could carry
+# text, never an exception chain, never the ids in the path.
+API_LOGGER = "specimen_digitization.research_harness.api"
+UNAVAILABLE_BODY = b'{"detail":"research_service_unavailable"}'
+
+
+def api_records(caplog):
+    return [record for record in caplog.records if record.name == API_LOGGER]
+
+
+def assert_private_503(reply):
+    assert reply.status_code == 503
+    assert reply.content == UNAVAILABLE_BODY
+    assert reply.headers["cache-control"] == "no-store, private"
+    assert reply.headers["pragma"] == "no-cache"
+
+
+def assert_no_request_ids(text):
+    assert SPECIMEN not in text and ORG not in text and COLLECTION not in text
+
+
+@pytest.mark.asyncio
+async def test_missing_registration_503_logs_class_and_fixed_code(host, caplog):
+    app, native, _, _ = host
+    native.error = PublicationUnavailable("native_v2_registration_missing_or_ambiguous")
+    caplog.set_level(logging.DEBUG, logger=API_LOGGER)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://fixture") as client:
+        reply = await client.get(CURRENT, headers={"Authorization": "Bearer actor-one"})
+    assert_private_503(reply)
+    (record,) = api_records(caplog)
+    text = record.getMessage()
+    assert record.levelno == logging.WARNING
+    assert "PublicationUnavailable" in text
+    assert "native_v2_registration_missing_or_ambiguous" in text
+    assert "GET" in text and "/research/current" in text
+    assert_no_request_ids(text)
+    assert record.exc_info is None
+    assert actor_uid.get() is None
+
+
+@pytest.mark.asyncio
+async def test_unavailable_binding_503_logs_class_and_fixed_code(host, caplog):
+    app, native, _, _ = host
+    native.unavailable = True
+    caplog.set_level(logging.DEBUG, logger=API_LOGGER)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://fixture") as client:
+        reply = await client.get(CURRENT, headers={"Authorization": "Bearer actor-one"})
+    assert_private_503(reply)
+    (record,) = api_records(caplog)
+    text = record.getMessage()
+    assert record.levelno == logging.WARNING
+    assert "BindingUnavailable" in text and "canonical_binding_unavailable" in text
+    assert_no_request_ids(text)
+    assert actor_uid.get() is None
+
+
+@pytest.mark.asyncio
+async def test_other_failure_503_logs_only_the_class_at_error(host, caplog):
+    app, native, _, _ = host
+    native.error = RuntimeError("private native failure or path must not escape")
+    caplog.set_level(logging.DEBUG, logger=API_LOGGER)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://fixture") as client:
+        reply = await client.get(CURRENT, headers={"Authorization": "Bearer actor-one"})
+    assert_private_503(reply)
+    (record,) = api_records(caplog)
+    text = record.getMessage()
+    assert record.levelno == logging.ERROR
+    assert "RuntimeError" in text
+    assert "private native" not in text and "must not escape" not in text
+    assert_no_request_ids(text)
+    assert record.exc_info is None and record.exc_text is None
+    assert actor_uid.get() is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message", ["Label reads: J. Smith, Ohio 1923", "x" * 300, "native_v2\nforged line"],
+                         ids=["free_text", "overlong", "newline"])
+async def test_fixed_code_type_with_free_text_logs_no_message(host, caplog, message):
+    app, native, _, _ = host
+    native.error = PublicationUnavailable(message)
+    caplog.set_level(logging.DEBUG, logger=API_LOGGER)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://fixture") as client:
+        reply = await client.get(CURRENT, headers={"Authorization": "Bearer actor-one"})
+    assert_private_503(reply)
+    (record,) = api_records(caplog)
+    text = record.getMessage()
+    assert "PublicationUnavailable" in text
+    assert message not in text and "Smith" not in text and "forged" not in text
+    assert "\n" not in text
+
+
+class UninspectableFailure(PublicationUnavailable):
+    """A failure whose attributes raise when the logging code reads them."""
+
+    @property
+    def args(self):
+        raise RuntimeError("raised while the failure was being logged")
+
+
+@pytest.mark.asyncio
+async def test_a_failure_that_cannot_be_logged_is_still_the_same_503(host, caplog):
+    app, native, _, _ = host
+    native.error = UninspectableFailure()
+    caplog.set_level(logging.DEBUG, logger=API_LOGGER)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://fixture") as client:
+        reply = await client.get(CURRENT, headers={"Authorization": "Bearer actor-one"})
+    assert_private_503(reply)
+    (record,) = api_records(caplog)
+    assert record.levelno == logging.ERROR
+    assert "details unavailable" in record.getMessage()
+    assert actor_uid.get() is None
+
+
+@pytest.mark.asyncio
+async def test_successful_and_mapped_requests_log_nothing(host, caplog):
+    app, _, access, _ = host
+    caplog.set_level(logging.DEBUG, logger=API_LOGGER)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://fixture") as client:
+        ok = await client.get(CURRENT, headers={"Authorization": "Bearer actor-one"})
+        access["revoke_after_first"] = True
+        denied = await client.get(CURRENT, headers={"Authorization": "Bearer actor-one"})
+    assert ok.status_code == 200
+    assert denied.status_code == 403
+    assert denied.json() == {"detail": "research_access_denied"}
+    assert api_records(caplog) == []

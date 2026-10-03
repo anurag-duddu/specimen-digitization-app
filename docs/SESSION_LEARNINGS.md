@@ -14162,6 +14162,90 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   reader's malformed-answer rate falls (2 of 25 retries in the diagnosis), is Not confirmed until live runs; this is
   a reliability change, not a guarantee.
 
+### 2026-10-03 — Lane Q: log the cause of silent failure paths (Claude)
+
+- Task: `lane-q-failure-logging` (Lane Q, PR-OBS; dispatched by the Go-live coordinator from the 2026-10-03 production
+  log scan, items D3 and D5).
+- Branch/worktree: `claude/lane-q-failure-logging` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a93300eb597e7b2e3`,
+  from `main` db855ad6, then `origin/main` merged locally as it moved (PRs #243, #246, #247, #248 and #257 so far).
+- Outcome: In progress. Pull request open and ready for review; not merged. No production access, deploy or paid call.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/251; code commit b1b4b222. Review round
+  1 (an independent reviewer at head f296c639: CI "Python tests" red, one overclaiming sentence) is fixed by commit
+  860cca2d on the same branch; review round 2 (head c3af937b, all nine checks green, clean with nits) is addressed by a
+  later commit. This entry was edited in those commits (it was not merged yet).
+- What changed: the research route's catch-all 503 now emits a log record with the exception class and, for
+  `PublicationUnavailable` and `BindingUnavailable`, the fixed code (response unchanged); the workflow's
+  `AdapterFailure`, `OperationalBlock`, unexpected-exception and deadline-override branches each emit one WARNING
+  record (run, step, branch, attempt, status or code, blocker, stage, error class). The cause class and provider HTTP
+  status appear only when the provider error is raised in the worker process; production model calls run in an
+  isolated child and the parent rebuilds the `AdapterFailure` without a cause, so for those steps both read `-` and
+  the code, status and branch carry the diagnosis. Both log helpers swallow their own errors. A new
+  `process_logging.py` gives the API and worker a root handler that writes one JSON line per record with `severity`
+  to stderr (`huggingface_hub`'s own stderr handler is dropped so its records are written once). That Cloud Logging
+  shows the severity is Not confirmed.
+- Validation: the tests were written first and failed on the unchanged source. The final test files against
+  `origin/main` source (af47c931): `test_research_host_routes.py` 7 failed, 9 passed (no log record; the 9 are the 8
+  existing tests plus the no-noise guard); `test_step_failure_logging.py` 10 failed, 2 passed (the 2 are
+  before-and-after guards); `test_process_logging.py` 27 failed (all `ModuleNotFoundError`; the meaningful pair, the
+  two entry-point tests, fail with `assert 0 == 1` when only `cli.py` and `worker.py` are reverted and the module is
+  kept). With the change: 16, 12 and 27 passed. Earlier drafts of the same files gave 6/9, 8/2 and 25 failed; those
+  counts are superseded. 32 related files were run one at a time at the first head, all passed
+  (`test_model_runtime.py` 11 passed, 1 skipped; `test_http_process_restart.py` 1 skipped). `pre-commit` on the changed
+  files: all hooks passed. `ruff check` (0.16.9 defaults; the repo has no ruff config): no more findings on the
+  existing changed files than on `origin/main`; new files clean and formatted.
+  Single process (the order CI uses): the failure of review round 1 reproduced as `test_api_runtime.py
+  test_lane_drain_cli.py test_process_logging.py` 1 failed, 85 passed; after the conftest fixture the five files
+  `test_api_runtime`, `test_lane_drain_cli`, `test_process_logging`, `test_step_failure_logging`,
+  `test_research_host_routes` pass together in one process (116 passed) in that order and reversed. On the final head,
+  after merging PR #257, they were run once each (27, 12, 16, 41 and 20 passed) and in one process in the CI order, in
+  the order `test_process_logging` first and in its reverse (116 passed each), and in the last two of those orders with
+  `--log-level=DEBUG` (116 passed each); also `test_lane_drain`, `test_application`, `test_extraction_kind_guard`,
+  `tests/research_harness/test_native_worker_log` (files main's new commits changed that touch the changed code), and the
+  four pin tests (`test_committed_pins`, `test_native_canonical_contract`, `test_native_canonical_v2_contract`,
+  `test_canonical_materialization`), one at a time, all passed. The full suite as CI runs it (`pytest -q`, one process,
+  Python 3.11 venv, not CI's 3.12): 9987 passed, 107 skipped in 846 s, run before two `# noqa: BLE001` comments and the
+  merges of PRs #247, #248 and #257 and not repeated locally since; CI's own run at head c3af937b: all nine checks
+  passed (Python tests 10012 passed, 104 skipped). Round 2 also made two tests independent of `pytest --log-level` and
+  live logging, and restored the uvicorn logger levels in the fixture. Not run: any `scripts/ci/verify.sh` gate, a live
+  or paid call.
+- Durable learnings:
+  - No logging was configured anywhere in `src`. Every `LOGGER.warning` (projection stops, registration refusals)
+    reached Cloud Run as a bare stderr line through the standard library's last-resort handler, so Cloud Logging
+    gave it DEFAULT severity. This, not the call sites, is why `severity>=WARNING` showed nothing from the worker.
+  - Under pytest the "before" run showed no stderr line at all for a root-level WARNING, consistent with pytest's own
+    root handlers keeping the last-resort handler from running (inferred, not isolated). A test that proves a
+    severity must therefore go through an installed handler and read `sys.stderr`; `caplog` cannot show it.
+  - The stored blocker hides the cause: an ambiguous provider failure (`AdapterFailure(outcome_unknown=True)`), an
+    unexpected exception before the provider answered, and a deadline overrun all become `external_outcome_unknown`.
+    Only the new WARNING lines distinguish them.
+  - A route class's `get_route_handler` can capture `self.path`, the route template without ids, for a log line;
+    the request path itself carries specimen and collection ids.
+  - Do not log `exc_info` or exception messages from these paths: pydantic validation errors and provider errors can
+    embed input text. A `log_code` shape check keeps free text out even from the code-bearing types.
+  - `tests/test_step_outcome.py`'s `drain_to_parse_failure` is the cheap way to drive a real workflow step into each
+    failure branch (patch `ExtractingAdapters.extract`, or pass a `phase_error`).
+  - CI runs `uv run pytest -q` in one process. `cli.main()` and `worker.main()` (called by `test_api_runtime.py` and
+    `test_lane_drain_cli.py`) now leave the root handler installed, which made `test_configure_is_idempotent` fail
+    (`assert 5 == 5 + 1`) and made the two entry-point tests pass without the change. Running test files one at a time
+    never showed it. `tests/conftest.py` now removes the named handler (and restores the root level and the
+    `huggingface_hub`/`uvicorn*` logger handlers) around every test, and the entry-point tests assert the handler is
+    absent before `main()` and present after. Any global a production entry point sets needs the same treatment.
+  - `huggingface_hub` (imported by the API and worker modules) attaches its own `StreamHandler` to its logger and also
+    propagates, so a root handler doubled its warnings. `configure_process_logging` drops that one handler; a library
+    first imported after the call would bring the duplicate back.
+  - Production model calls (`invoke_model`, `model_runtime.py`) run in an isolated child whose stderr is discarded; the
+    parent rebuilds `AdapterFailure` from JSON (code, status, retry, outcome_unknown) with no cause. Only the code,
+    status and branch can be logged for those steps.
+- Failed approaches: an in-test `revoke_after_first` request order for the no-noise guard (the fixture revokes on the
+  second membership read inside the first request); the guard now flips it between two requests. A first test-file-only
+  logging fixture (it restored `root.handlers` but only for that file, so it could not stop the leak from the earlier
+  files in the single-process run; the conftest fixture above replaces it).
+- Remaining follow-ups: Not confirmed that Cloud Logging shows `jsonPayload.severity` for these lines in production
+  (check after the next worker execution); trace correlation, Error Reporting format, the same handler for
+  `specimen-sam` and uvicorn's own lines; the early-return blocks (budget, circuit, allowance) still log nothing;
+  not confirmed that every `PublicationUnavailable` raise site passes a fixed code (`log_code` guards the shape).
+
 ### 2026-10-03 — Worker create and get on the research harness prefixes (Claude)
 
 - Task: go-live: let the production worker create and read the research harness's blobs (dispatched by the "Go-live
