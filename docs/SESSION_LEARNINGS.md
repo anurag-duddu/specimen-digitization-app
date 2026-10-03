@@ -14189,16 +14189,26 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
     with both readings as `raw_reading` handoffs, and `verify_evidence` accepts either. The workflow test that shows
     this (`test_a_whitespace_only_pair_is_decided_by_the_first_pass_pick_alone`) passes on the old code as well, so
     it documents the outcome; it is not the regression test.
-  - The phantom-verdict rule, and the retry text "give exactly one verdict for each difference 1 to 0" it produced,
-    are the only things this changes. The failing sub-rule in production could not be proven: a call that ends
+  - The phantom-verdict rule, and the retry text "give exactly one verdict for each difference 1 to 0" it would
+    have sent, are the only things this changes. The failing sub-rule in production could not be proven: a call that ends
     `model_malformed_response` records no raw responses (`run_agent_bounded` raises before `first_pass_direct`
     builds the call's record), so the three failed answers are gone. The offline regression shows a verdict at count
-    0 alone reproduces the failure.
-  - `git checkout -b <branch> origin/main` sets the new branch's upstream to `origin/main`, so a bare `git push`
-    would target main. Push with an explicit refspec (`git push -u origin <branch>:<branch>`).
+    0 alone reproduces the failure. Only that path is fixed: replayed offline at count 0, an omitted or null
+    `verdicts` (the field has no default), `reader_notes` sent as a JSON string, a missing note, an unknown pick and
+    an empty rationale each still end `model_malformed_response` after the change, as before it, so R1 may still
+    fail. An omitted or null `verdicts` is at least as plausible a production cause as the `reader_notes` string.
+  - `git checkout -b <branch> origin/main` sets the new branch's upstream to `origin/main`. With
+    `push.default=simple` a bare `git push` is refused (the upstream's name differs from the branch's); it would
+    push to main only under `push.default=upstream`. Either way, push with an explicit refspec
+    (`git push -u origin <branch>:<branch>`).
 - Failed approaches: none.
 - Remaining follow-ups: whether to skip the model for whitespace-only readings is a spec question for the owner (not
   changed); the next live run of position 10 (R1 and R2) is the test of this fix; storing the raw responses of a call
   that ends malformed would let the next diagnosis prove the failing rule (not done, it changes what a blocked call
-  records); a before-validator for `reader_notes` sent as a JSON string is an unconfirmed hypothesis from the
-  diagnosis's offline replay, not a finding.
+  records); tolerance for an omitted or null `verdicts` or a `reader_notes` JSON string is a possible follow-up, and
+  neither is a confirmed cause (the diagnosis's replay was offline); for the owner, the projection writer
+  (`projection.py`, `"alternatives": still_open if differences else list(transcript.alternatives)`) writes the
+  transcript's alternatives when no difference is listed, so a whitespace-only region with a first pass stores both
+  whitespace variants as alternatives with empty spans, which DATA_CONTRACT 4.2 (alternatives from the material
+  differences left `neither` or `uncertain`) does not describe; a zero-difference first pass never succeeded in
+  production before, so this path has not run there; no change was made.
