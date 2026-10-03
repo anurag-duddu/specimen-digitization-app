@@ -1052,6 +1052,7 @@ def _verbatims(request, rows):
 
 
 def _literal(request, key):
+    """A complete written assertion; the label evidence it cites supports it (G23)."""
     rows = _assemblies(request, key)
     if not rows:
         return None
@@ -1060,7 +1061,8 @@ def _literal(request, key):
     evidence = tuple(dict.fromkeys(eid for item in rows for eid in item.evidence_ids))
     return FieldResolution(field_key=key, work_state=WorkState.RESOLVED,
         value=FieldValue(state=ValueState.SUPPORTED, literal=text, parsed=settled,
-            normalized=settled, evidence_ids=list(evidence), **_verbatims(request, rows)),
+            normalized=settled, evidence_ids=list(evidence),
+            evidence_relations=dict.fromkeys(evidence, "supports"), **_verbatims(request, rows)),
         evidence_ids=evidence, assembly_ids=tuple(item.id for item in rows),
         event_id=rows[0].event_id, reason="Complete written field assertion")
 
@@ -1069,6 +1071,8 @@ def _dates(request):
     """Written collecting and determination dates through the G24/G29/G44 helper.
 
     A collecting event's single written date also fills date_visited_to (G44).
+    The validator admits only the helper's exact result, so a date carries the
+    relations the helper gives it.
     """
     found = {}
     events = {item.id: item for item in request.events}
@@ -1086,7 +1090,8 @@ def _dates(request):
 
 
 def _elevations(request):
-    """The first event whose written elevations settle supplies all four endpoints."""
+    """The first event whose written elevations settle supplies all four endpoints,
+    each exactly as the helper gives it (the validator admits nothing else)."""
     events = list(dict.fromkeys(item.event_id for item in request.assemblies
         if item.field_key in ELEVATIONS))
     error = None
@@ -1113,11 +1118,13 @@ def _taxon(request, results):
             if candidate.get("input_literal") != rows[0].interpreted_text:
                 continue
             evidence = tuple(item.id for item in result.evidence)
+            # Each cited evidence's relation is the role its evidence item declares (G23).
             return FieldResolution(field_key=FieldKey.TAXON, work_state=WorkState.RESOLVED,
                 value_layer="settled",
                 value=FieldValue(state=ValueState.SUPPORTED, parsed=candidate["value"],
                     normalized=candidate["value"], authority_id=candidate["authority_id"],
-                    evidence_ids=list(evidence)),
+                    evidence_ids=list(evidence),
+                    evidence_relations={item.id: item.role for item in result.evidence}),
                 evidence_ids=evidence, assembly_ids=tuple(item.id for item in rows),
                 event_id=rows[0].event_id,
                 source_coverage=tuple(item.coverage for item in results
@@ -1153,23 +1160,6 @@ def _proposals(request, results):
         except EvidenceError as error:
             proposed[key] = error
     return proposed
-
-
-def _with_relations(resolution, request, results):
-    """A supported value names each cited evidence's relation, as its evidence item declares it.
-
-    The V2 projection links a candidate only to evidence with a relation
-    (canonical_projection_v2.py, G23: no default relation).
-    """
-    value = resolution.value
-    if value.state != ValueState.SUPPORTED or set(value.evidence_relations) == set(value.evidence_ids):
-        return resolution
-    roles = {item.id: item.role for item in request.evidence}
-    roles.update({item.id: item.role for result in results for item in result.evidence})
-    derived = set(resolution.derivation.evidence_ids) if resolution.derivation is not None else set()
-    relations = {evidence: roles[evidence] for evidence in value.evidence_ids
-        if evidence in roles and evidence not in derived}
-    return resolution.model_copy(update={"value": value.model_copy(update={"evidence_relations": relations})})
 
 
 def _results(messages):
@@ -1220,7 +1210,6 @@ def scripted_model_factory(log: list):
                 for key, proposal in _proposals(request, results).items():
                     reason = str(proposal) if isinstance(proposal, Exception) else "no_settled_value"
                     if isinstance(proposal, FieldResolution):
-                        proposal = _with_relations(proposal, request, results)
                         try:
                             resolutions.append(validate_resolution(request, proposal, tuple(results)))
                             continue

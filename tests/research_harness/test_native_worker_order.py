@@ -1,0 +1,40 @@
+"""The worker offers a derived field's publication after its source field's.
+
+The journal lists fields in key order, so elevation_from_ft comes before
+elevation_from_m; the V2 projection refuses a derived value whose source is not
+yet on the record. Offline: the runtime is test_production_bridge's recording
+stand-in.
+"""
+from specimen_digitization.application.domain import FieldValue, ValueState
+from specimen_digitization.research_harness.contracts import (
+    DependencyPin, FieldKey, FieldResolution, WorkState, digest,
+)
+
+from test_production_bridge import TAXON, checkpoint, publish, thread, waiting
+
+
+def resolved(key, *sources):
+    return checkpoint(FieldResolution(field_key=key, work_state=WorkState.RESOLVED,
+        value=FieldValue(state=ValueState.SUPPORTED, literal="180", evidence_ids=["e-label"]),
+        evidence_ids=("e-label",), reason="synthetic resolved work",
+        dependencies=tuple(DependencyPin(field_key=source.field_key, revision=source.revision,
+            digest=digest(source.resolution)) for source in sources)))
+
+
+def test_a_derived_field_is_offered_after_its_source(monkeypatch):
+    from_m, to_m = resolved(FieldKey.ELEVATION_FROM_M), resolved(FieldKey.ELEVATION_TO_M)
+    from_ft, to_ft = resolved(FieldKey.ELEVATION_FROM_FT, from_m), resolved(FieldKey.ELEVATION_TO_FT, to_m)
+    county = waiting(FieldKey.COUNTY, WorkState.WAITING_SOURCE)
+    # Key order, as the journal loads them.
+    typed = (county, from_ft, from_m, to_ft, to_m, TAXON)
+    runtime, outcome = publish(monkeypatch, typed, thread(*typed))
+    assert runtime.prepared == [FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M, FieldKey.TAXON,
+        FieldKey.ELEVATION_FROM_FT, FieldKey.ELEVATION_TO_FT]
+    assert len(outcome.publication_receipt_ids) == 5 and "native-county" not in outcome.checkpoint_ids
+
+
+def test_a_dependency_outside_the_loaded_checkpoints_keeps_journal_order(monkeypatch):
+    absent = resolved(FieldKey.DATE_VISITED_FROM)
+    derived = resolved(FieldKey.DATE_VISITED_TO, absent)
+    runtime, _ = publish(monkeypatch, (derived, TAXON), thread(derived, TAXON))
+    assert runtime.prepared == [FieldKey.DATE_VISITED_TO, FieldKey.TAXON]

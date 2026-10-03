@@ -17,6 +17,29 @@ from .worker import ResearchRetryWorker
 PUBLISHABLE = frozenset({WorkState.RESOLVED, WorkState.WAITING_HUMAN, WorkState.NONBLOCKING_EXCEPTION})
 
 
+def _sources_first(checkpoints):
+    """Journal order, except that a checkpoint follows the checkpoints its
+    resolution's dependency pins name. The V2 projection publishes a derived
+    value only after its source field's value is on the record
+    (canonical_projection_v2._source_lineage), and the journal lists fields in
+    key order, so elevation_from_ft would come before elevation_from_m."""
+    remaining, ordered = list(checkpoints), []
+    loaded = {item.field_key for item in remaining}
+    placed = set()
+    while remaining:
+        ready = [item for item in remaining if all(pin.field_key in placed or pin.field_key not in loaded
+            for pin in item.resolution.dependencies)]
+        if not ready:
+            # A cycle has no source-first order: keep journal order and let
+            # publication refuse it.
+            ordered.extend(remaining)
+            break
+        ordered.extend(ready)
+        placed.update(item.field_key for item in ready)
+        remaining = [item for item in remaining if item.field_key not in placed]
+    return tuple(ordered)
+
+
 class ImmutablePublicationLocatorV2(FrozenRecord):
     contract_version: Literal["native-publication-locator/v2"] = "native-publication-locator/v2"
     original_scope: ResearchScope
@@ -130,7 +153,7 @@ class NativeResearchWorker:
         scope = runtime.binding.research_scope()
         # Only committed current checkpoints are eligible. A legacy/historical
         # body or a failed engine run is not scientific publication authority.
-        typed = await runtime.journal.load(scope)
+        typed = _sources_first(await runtime.journal.load(scope))
         receipts, checkpoint_ids = [], []
         for checkpoint in typed:
             if checkpoint.resolution.work_state not in PUBLISHABLE:
