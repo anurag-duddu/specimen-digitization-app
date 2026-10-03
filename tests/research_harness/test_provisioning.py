@@ -288,14 +288,23 @@ def test_a_new_revision_after_a_stale_binding_starts_a_new_job(rig):
 
 
 @pytest.mark.parametrize("refusal", sorted(REGISTRATION_REFUSALS))
-def test_a_registration_the_connector_refuses_holds_the_record_through_the_real_writer(rig, refusal):
+def test_a_registration_the_connector_refuses_holds_the_record_through_the_real_writer(rig, refusal,
+                                                                                      caplog):
     # The production binding writer: the connector's GraphQL errors reach it as
     # native_canonical_transaction_rejected, which is this record's own hold.
     session = ConnectorSession(REGISTRATION_REFUSALS[refusal])
     rig.repository.session, rig.repository.url = session, CONNECTOR_URL
-    with pytest.raises(HeldUnknown, match="^research_provision_registration_refused$"):
-        asyncio.run(provisioning.provision(rig.repository, rig.principal, rig.specimen,
-            state_backend=rig.backend))
+    with caplog.at_level("WARNING", logger=provisioning.__name__):
+        with pytest.raises(HeldUnknown, match="^research_provision_registration_refused$"):
+            asyncio.run(provisioning.provision(rig.repository, rig.principal, rig.specimen,
+                state_backend=rig.backend))
+    # The underlying code is logged so a transient connector error can be told
+    # apart from a refusal; the record id is shortened and no payload is logged.
+    [record] = [item for item in caplog.records if item.name == provisioning.__name__]
+    assert record.levelname == "WARNING"
+    assert "native_canonical_transaction_rejected" in record.getMessage()
+    assert str(rig.specimen.id) not in record.getMessage()
+    assert str(rig.specimen.id)[-6:] in record.getMessage()
     assert session.posts == [("GetCanonicalResearchBindingV2", "impersonateQuery"),
         ("RegisterCanonicalResearchBindingV2", "impersonateMutation")]
     # The steps before registration were written once; the next tick replays them.
