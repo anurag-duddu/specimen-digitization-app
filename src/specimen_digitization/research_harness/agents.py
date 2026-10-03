@@ -273,7 +273,11 @@ class SpecialistHarness:
 
     @staticmethod
     def _register_tools(agent):
-        @agent.tool
+        # Both tools are sequential barriers: pydantic-ai runs the tool calls of one
+        # model response concurrently otherwise, and the durable effect broker holds
+        # concurrent source-capture effects on one field as held_unknown (the
+        # taxonomy specialist has three sources for `taxon`).
+        @agent.tool(sequential=True)
         async def lookup_source(ctx: RunContext[ResearchDeps], query: SourceQuery) -> SourceResult:
             """Query one approved source for a field owned by this specialist."""
             request = ctx.deps.for_agent(ctx.agent.name)
@@ -286,7 +290,7 @@ class SpecialistHarness:
             ctx.deps.tool_results.setdefault(request.role, []).append(result)
             return result
 
-        @agent.tool
+        @agent.tool(sequential=True)
         async def invoke_utility(ctx: RunContext[ResearchDeps], tool_id: str,
                                  arguments: dict[str, Any]) -> SourceResult:
             """Run a scoped deterministic utility from the approved tool registry."""
