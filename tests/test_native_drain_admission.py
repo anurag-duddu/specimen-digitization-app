@@ -1,122 +1,148 @@
-"""Actual native drain adapter over offline authority/native-read boundaries.
+"""The research harness mount over the ordinary drain, with offline stand-ins.
 
-No live authority installation, provider, blob, IAM or SQL acceptance is implied.
+No live provider, blob, IAM or SQL acceptance is implied.
 """
 from types import SimpleNamespace
 import time
 
 import pytest
 
+from specimen_digitization.application.collection_profiles import published_registry
 from specimen_digitization.application.domain import Principal, Scope
 from specimen_digitization.application.native_drain import (
     RegisteredNativeDrainWorkflow, compose_registered_native_drain,
 )
 from specimen_digitization.application.workflow import OperationalBlock
 from specimen_digitization.application.worker_deadline import WorkerDeadline
-from specimen_digitization.research_harness.persistence import DurabilityScope, HeldUnknown
+from specimen_digitization.research_harness.native_worker import NativeResearchWorkerOutcomeV2
+from specimen_digitization.research_harness.contracts import ResearchScope
+from specimen_digitization.research_harness.persistence import HeldUnknown
 from specimen_digitization.research_harness.workflow_bridge import NativeResearchWorkflow
 
 ORG = "00000000-0000-4000-8000-000000000001"
 COLLECTION = "00000000-0000-4000-8000-000000000002"
-TEN = tuple(f"specimen-{n}" for n in range(321, 331))
+SPECIMEN = "00000000-0000-4000-8000-000000000321"
+# The published profile names the harness route; a run pins it as its snapshot.
+HARNESS = published_registry().profiles[0].model_dump(mode="json")
+assert HARNESS["harness_route"] == "harness-deepseek"
+# Construction only: the composer's factory keeps the repository's blob bucket.
+REPOSITORY = SimpleNamespace(graph_blobs=SimpleNamespace(bucket=object()))
 
 
-def test_direct_cli_missing_installed_admission_refuses_before_factory_or_work():
-    ordinary = SimpleNamespace(admission=None)
-    with pytest.raises(OperationalBlock, match="legacy_import_protected_authority_origin_unavailable"):
-        compose_registered_native_drain(ordinary, repository=object())
+def test_switch_off_leaves_the_ordinary_workflow_in_place():
+    ordinary = SimpleNamespace(repository=object())
+    for environ in ({}, {"SPECIMEN_RESEARCH_HARNESS": ""}, {"SPECIMEN_RESEARCH_HARNESS": "off"}):
+        assert compose_registered_native_drain(ordinary, repository=object(), environ=environ) is ordinary
 
 
-@pytest.mark.parametrize("ids,evidence", [(TEN[:-1], False), (TEN, True)])
-def test_no_expanded_or_draft_cohort_can_mount_native_drain(ids, evidence):
-    ordinary = SimpleNamespace(admission=SimpleNamespace(
-        bindings={i:object() for i in ids}, launch=SimpleNamespace(evidence_only=evidence)))
-    with pytest.raises(OperationalBlock, match="native_drain_original_ten_admission_required"):
-        compose_registered_native_drain(ordinary, repository=object())
+@pytest.mark.parametrize("value", ["yes", "On", "1"])
+def test_an_unknown_switch_value_names_the_setting_not_the_value(value):
+    with pytest.raises(ValueError, match="SPECIMEN_RESEARCH_HARNESS") as caught:
+        compose_registered_native_drain(SimpleNamespace(), repository=object(),
+            environ={"SPECIMEN_RESEARCH_HARNESS": value})
+    assert value not in str(caught.value)
 
 
-def scenario(*, authority=False, remaining=1):
+def test_switch_on_mounts_research_over_an_ordinary_workflow_without_admission():
+    ordinary = SimpleNamespace(repository=object(), admission=None)
+    mounted = compose_registered_native_drain(ordinary, repository=REPOSITORY,
+        environ={"SPECIMEN_RESEARCH_HARNESS": "on"})
+    assert isinstance(mounted, RegisteredNativeDrainWorkflow)
+    assert isinstance(mounted.workflow, NativeResearchWorkflow) and mounted.ordinary is ordinary
+
+
+def test_an_unsupervised_drain_step_reads_nothing():
+    workflow, principal, _, calls = scenario(step="segment")
+    with pytest.raises(OperationalBlock, match="worker_supervisor_required"):
+        RegisteredNativeDrainWorkflow(workflow).step(principal, SPECIMEN)
+    assert calls == []
+    with WorkerDeadline(time.monotonic()+30).scope():
+        RegisteredNativeDrainWorkflow(workflow).step(principal, SPECIMEN)
+    assert calls == ["get", "ordinary_step"]
+
+
+def scenario(*, step="plan", profile=HARNESS, stage="plan", refusal=None, outcome="completed"):
     calls = []
-    principal = Principal(user_id="offline-reviewer", role="reviewer",
+    principal = Principal(user_id="offline-worker", role="operator",
         scope=Scope(organization_id=ORG, collection_id=COLLECTION))
-    specimen = SimpleNamespace(run=SimpleNamespace(stage="parse", dependencies={}))
+    specimen = SimpleNamespace(id=SPECIMEN, run=SimpleNamespace(stage=stage, dependencies={},
+        profile_snapshot=profile))
     class Repository:
         def get(self, scope, ident):
             calls.append("get")
             return specimen
-    class Admission:
-        def admit(self, value):
-            assert value is specimen
-            calls.append("original_ten_admit")
-    class Store:
-        def require_live_authority(self, scope):
-            calls.append("protected_authority")
-            if not authority:
-                raise HeldUnknown("synthetic_missing_protected_origin")
-        def budget(self, scope):
-            calls.append("budget")
-            return {"remaining_micro_usd":remaining}
-    bound = DurabilityScope(ORG, COLLECTION, TEN[0], "offline-job", 1, principal.user_id, False)
-    class Binding:
-        def durability_scope(self, caller):
-            assert caller is principal
-            return bound
-    class Discovery:
-        async def binding(self, caller, ident):
-            calls.append("native_binding")
-            return Binding()
-        def mutable_store(self, binding):
-            return Store()
-    ordinary = SimpleNamespace(repository=Repository(), admission=Admission())
-    ordinary.next_step = lambda run: "parse"
-    def step(caller, ident):
+    ordinary = SimpleNamespace(repository=Repository(), admission=None)
+    ordinary.next_step = lambda run: step
+    def ordinary_step(caller, ident):
         calls.append("ordinary_step")
         return specimen
-    ordinary.step = step
-    native_worker = SimpleNamespace(runtime_factory=SimpleNamespace(discovery=Discovery()))
-    mounted = RegisteredNativeDrainWorkflow(NativeResearchWorkflow(
-        ordinary, native_worker, approved_specimen_ids=TEN))
+    ordinary.step = ordinary_step
+    class NativeWorker:
+        async def run_registered(self, caller, ident, *, owner):
+            assert caller is principal and ident == SPECIMEN
+            calls.append("native_run")
+            if refusal is not None:
+                raise refusal
+            scope = ResearchScope(organization_id=ORG, collection_id=COLLECTION, specimen_id=ident,
+                job_id="offline-job", generation=1, input_digest="0" * 64, profile_digest="0" * 64)
+            return NativeResearchWorkerOutcomeV2(scope=scope, status=outcome,
+                reason_code="research_retry_not_completed" if outcome == "blocked" else None)
+    async def provision(caller, value):
+        assert caller is principal and value is specimen
+        calls.append("provision")
+    mounted = NativeResearchWorkflow(ordinary, NativeWorker(), provision=provision)
     return mounted, principal, specimen, calls
 
 
-def test_native_missing_authority_stops_before_ordinary_paid_step():
-    workflow, principal, _, calls = scenario()
+# The run's own refusal keeps its code, so the drain holds that record; any
+# other refusal is one code that ends the drain's execution.
+@pytest.mark.parametrize("refusal,code", [
+    (PermissionError("research_live_authority_required"), "native_research_admission_or_binding_unavailable"),
+    (HeldUnknown("research_committed_pins_changed"), "research_committed_pins_changed")])
+def test_a_refused_research_open_stops_before_any_ordinary_step(refusal, code):
+    workflow, principal, _, calls = scenario(refusal=refusal)
     with WorkerDeadline(time.monotonic()+30).scope():
-        with pytest.raises(OperationalBlock, match="native_drain_protected_admission_unavailable"):
-            workflow.step(principal, TEN[0])
-    assert calls == ["get", "original_ten_admit", "native_binding", "protected_authority"]
+        with pytest.raises(OperationalBlock, match=f"^{code}$"):
+            workflow.step(principal, SPECIMEN)
+    assert calls == ["get", "provision", "native_run"]
 
 
-@pytest.mark.parametrize("remaining", [None, True, 0, -1, 0.5])
-def test_unknown_or_exhausted_native_headroom_never_calls_ordinary_step(remaining):
-    workflow, principal, _, calls = scenario(authority=True, remaining=remaining)
+def test_a_researched_plan_step_provisions_then_runs_and_rereads_the_record():
+    workflow, principal, specimen, calls = scenario()
     with WorkerDeadline(time.monotonic()+30).scope():
-        with pytest.raises(OperationalBlock, match="native_drain_protected_admission_unavailable"):
-            workflow.step(principal, TEN[0])
+        assert workflow.step(principal, SPECIMEN) is specimen
+    assert calls == ["get", "provision", "native_run", "get"]
+
+
+def test_a_blocked_research_outcome_names_its_reason():
+    workflow, principal, _, calls = scenario(outcome="blocked")
+    with WorkerDeadline(time.monotonic()+30).scope():
+        with pytest.raises(OperationalBlock, match="^research_retry_not_completed$"):
+            workflow.step(principal, SPECIMEN)
     assert "ordinary_step" not in calls
 
 
-def test_proved_offline_transport_path_retains_the_original_parse_boundary():
-    workflow, principal, specimen, calls = scenario(authority=True)
-    with WorkerDeadline(time.monotonic()+30).scope():
-        assert workflow.step(principal, TEN[0]) is specimen
-    assert calls.index("protected_authority") < calls.index("budget") < calls.index("ordinary_step")
-    # The transport fixture does not supply a real installed ledger authority.
+@pytest.mark.parametrize("step,profile", [("parse", HARNESS), ("segment", HARNESS),
+    ("plan", {}), ("plan", {**HARNESS, "harness_route": None}),
+    ("plan", {**HARNESS, "harness_route": "handwriting-qwen"})])
+def test_other_steps_and_runs_without_a_harness_route_stay_ordinary(step, profile):
+    workflow, principal, specimen, calls = scenario(step=step, profile=profile)
+    assert workflow.step(principal, SPECIMEN) is specimen
+    assert calls == ["get", "ordinary_step"]
 
 
-def test_outside_original_cohort_never_reads_native_or_ordinary_record():
-    workflow, principal, _, calls = scenario(authority=True)
-    with WorkerDeadline(time.monotonic()+30).scope():
-        with pytest.raises(PermissionError, match="outside_approved_cohort"):
-            workflow.step(principal, "specimen-331")
-    assert calls == []
+@pytest.mark.parametrize("stage", ["finalized", "paused", "cancelled", "processing_blocked"])
+def test_a_terminal_run_is_returned_untouched(stage):
+    workflow, principal, specimen, calls = scenario(stage=stage)
+    assert workflow.step(principal, SPECIMEN) is specimen
+    assert calls == ["get"]
 
 
-def test_unsupervised_drain_cannot_read_or_dispatch():
-    workflow, principal, _, calls = scenario(authority=True)
+def test_unsupervised_research_cannot_provision_or_dispatch():
+    workflow, principal, _, calls = scenario()
     with pytest.raises(OperationalBlock, match="worker_supervisor_required"):
-        workflow.step(principal, TEN[0])
-    assert calls == []
+        workflow.step(principal, SPECIMEN)
+    assert calls == ["get"]
 
 
 def test_missing_legacy_ledger_is_not_created_or_zeroed():
@@ -132,7 +158,7 @@ def test_missing_legacy_ledger_is_not_created_or_zeroed():
     ledger = ProgramLedger(Repository(), Scope(organization_id=ORG, collection_id=COLLECTION))
     with pytest.raises(LegacyLedgerUnavailable):
         ledger.read()
-    result = ledger.reserve(12_000_000, 1, specimen_id=TEN[0], run_id="r", step="segment", attempt=1)
+    result = ledger.reserve(12_000_000, 1, specimen_id=SPECIMEN, run_id="r", step="segment", attempt=1)
     assert result.issue == "program_allowance_ledger_unavailable" and result.position is None
     assert calls == []
 

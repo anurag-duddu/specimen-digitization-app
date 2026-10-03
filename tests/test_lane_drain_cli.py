@@ -398,32 +398,38 @@ def test_with_the_harness_on_the_drain_mounts_it_over_the_ordinary_chain(
     assert seen["worker"] == (repository, "harness-workflow")
 
 
-def test_with_the_harness_on_a_drain_without_protected_origin_refuses_before_fence_or_paid_work(
+def test_with_the_harness_on_the_actual_mount_wraps_the_ordinary_workflow_without_admission(
     drain_env, capsys
 ):
     from types import SimpleNamespace
-    from specimen_digitization import observability
     from specimen_digitization.application import lane_worker
+    from specimen_digitization.application.native_drain import RegisteredNativeDrainWorkflow
+    from specimen_digitization.research_harness.workflow_bridge import NativeResearchWorkflow
     drain_env.setenv("SPECIMEN_RESEARCH_HARNESS", "on")
+    seen = {}
     class Repository:
         def __init__(self, **_):
             pass
         def memberships(self, _):
-            raise AssertionError("no collection fence/discovery before installed admission")
+            raise AssertionError("mounting reads no membership; each research open does")
+    ordinary = SimpleNamespace(admission=None)
     drain_env.setattr(worker, "SqlConnectRepository", Repository)
     drain_env.setattr(worker, "sql_endpoint_from_env", lambda: {})
-    drain_env.setattr(worker, "GcsBlobs", lambda: object())
+    drain_env.setattr(worker, "GcsBlobs", lambda: SimpleNamespace(bucket=object()))
     drain_env.setattr(worker, "ProductionAdapters", lambda _: object())
-    drain_env.setattr(worker, "Workflow", lambda *_, **__: SimpleNamespace(admission=None))
+    drain_env.setattr(worker, "Workflow", lambda *_, **__: ordinary)
     drain_env.setattr("signal.signal", lambda *args: None)
-    def no_worker(*_, **__):
-        raise AssertionError("a missing protected origin must not construct a drain")
-    drain_env.setattr(lane_worker, "DrainWorker", no_worker)
-    with pytest.raises(SystemExit) as caught:
-        cli(drain_env, "--mode", "production", "--drain")
-    assert caught.value.code == 2
-    assert json.loads(capsys.readouterr().out) == {
-        "status":"blocked", "reason":"legacy_import_protected_authority_origin_unavailable"}
+    class Worker:
+        def __init__(self, repository, workflow, *args, **options):
+            seen["workflow"] = workflow
+        def run(self, stop):
+            return {"status": "drained", "processed": []}
+    drain_env.setattr(lane_worker, "DrainWorker", Worker)
+    cli(drain_env, "--mode", "production", "--drain")
+    assert json.loads(capsys.readouterr().out) == {"status": "drained", "processed": []}
+    assert isinstance(seen["workflow"], RegisteredNativeDrainWorkflow)
+    assert isinstance(seen["workflow"].workflow, NativeResearchWorkflow)
+    assert seen["workflow"].ordinary is ordinary
 
 
 @pytest.mark.parametrize("value", ["yes-please", "true", "On", "1", " on"])

@@ -65,6 +65,12 @@ query GetResearchPublicationReceiptV2($organizationId: UUID!, $collectionId: UUI
     """, params: [$organizationId,$collectionId,$specimenId,$actorUid,$idempotencyKey,$operationDigest])
 }
 
+# Routing follows CONTRACTS.md: an unfinished (running) or operationally blocked
+# publication carries a null disposition, never deferred; only a completed one
+# carries cleared or needs_human_review. A running publication stays due work.
+# A field waiting on a policy the profile declares missing (verbatim_dts) is a
+# policy gate: completed, needs_human_review, with its mandatory_unresolved field
+# reason.
 mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $commitJson: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
@@ -107,11 +113,6 @@ mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!
         AND attempt.collection_id=s.collection_id AND attempt.intent_id=intent.id AND attempt.preparation_id=prep.id
         AND attempt.operation_digest=intent.operation_digest AND attempt.preparation_digest=prep.preparation_digest
         AND attempt.admission_digest=prep.admission_digest
-      JOIN public.research_ledger_import_proof_v1 authority ON authority.organization_id=h.organization_id
-        AND authority.program_key=h.program_key AND authority.id=(h.state->'budget_policy'->>'import_receipt_id')::uuid
-      JOIN public.auxiliary_document legacy ON legacy.organization_id=authority.organization_id
-        AND legacy.collection_id=authority.legacy_collection_id AND legacy.id=authority.legacy_document_id
-        AND legacy.kind=authority.legacy_document_kind AND authority.legacy_document_kind='worker_cursor'
       JOIN public.organization_member om ON om.organization_id=s.organization_id AND om.uid=$4 AND om.active
       JOIN public.collection_member cm ON cm.organization_id=s.organization_id AND cm.collection_id=s.collection_id
         AND cm.uid=$4 AND cm.active AND cm.role IN ('operator','reviewer','manager','admin')
@@ -242,18 +243,10 @@ mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!
         AND h.revision=(c->>'state_revision')::integer AND h.state=c->'expected_state'
         AND h.state->>'contract_version'='research-durability/v1' AND h.state->>'program_key'=b.program_key
         AND (h.state->>'halted')::boolean=false
-        AND legacy.revision=authority.legacy_document_revision AND legacy.payload=authority.legacy_payload
-        AND authority.authority_complete AND authority.old_engine_quiescent AND authority.valid_until>statement_timestamp()
-        AND authority.ceiling_micro_usd<=12000000 AND authority.ceiling_micro_usd>0
-        AND authority.ledger_digest=h.state->'budget_policy'->>'external_ledger_digest'
-        AND authority.import_digest=h.state->'budget_policy'->>'import_digest'
-        AND authority.proof_digest=h.state->'budget_policy'->>'import_proof_digest'
-        AND authority.settled_micro_usd=(h.state->'budget_policy'->>'external_settled_micro_usd')::bigint
-        AND authority.held_micro_usd=(h.state->'budget_policy'->>'external_held_micro_usd')::bigint
-        AND authority.ceiling_micro_usd=(h.state->'budget_policy'->>'ceiling_micro_usd')::bigint
+        AND (h.state->'budget_policy'->>'ceiling_micro_usd')::bigint<=12000000
+        AND (h.state->'budget_policy'->>'ceiling_micro_usd')::bigint>0
         AND (h.state->'budget_totals'->>'settled_micro_usd')::bigint
-          +(h.state->'budget_totals'->>'held_micro_usd')::bigint+authority.lag_reserve_micro_usd
-          +authority.shared_reserve_micro_usd<=authority.ceiling_micro_usd
+          +(h.state->'budget_totals'->>'held_micro_usd')::bigint<=(h.state->'budget_policy'->>'ceiling_micro_usd')::bigint
         AND h.state->'jobs'->b.job_key->>'binding_digest'=b.runtime_binding_digest
         AND h.state->'jobs'->b.job_key->'pins'->>'input_digest'=b.input_digest
         AND h.state->'jobs'->b.job_key->'identity'=jsonb_build_object('organization_id',$1::text,
@@ -285,7 +278,7 @@ mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!
         AND c->'policy_materialization'->'progress_receipt'->>'result_digest'=c->'policy_materialization'->>'result_digest'
         AND c->'policy_materialization'->'progress_receipt'->>'wire_status'=c->>'state'
         AND c->'policy_materialization'->'progress_receipt'->>'run_stage'=c->'snapshot'->'run'->>'stage'
-        AND c->'policy_materialization'->'progress_receipt'->>'disposition'=c->'record'->>'disposition'
+        AND c->'policy_materialization'->'progress_receipt'->'disposition'=c->'record'->'disposition'
         AND c->'policy_materialization'->'progress_receipt'->>'target_canonical_field'=c->>'changed_field'
         AND c->'policy_materialization'->'progress_receipt'->>'target_research_field'=c->'prepared'->'basis'->>'field_key'
         AND (SELECT jsonb_object_agg(f.key,f.value->'work_state') FROM jsonb_each(h.state->'jobs'->b.job_key->'fields') f)
@@ -299,17 +292,22 @@ mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!
             ('pending','researching','resolved','waiting_source','waiting_policy','retry_scheduled','operational_failed','waiting_human','nonblocking_exception','cancelled'))
         AND jsonb_typeof(c->'policy_materialization'->'progress_receipt'->'exportable')='boolean'
         AND c->'policy_materialization'->'progress_receipt'->'exportable'
-          =to_jsonb(c->'record'->>'disposition'='cleared')
+          =to_jsonb(COALESCE(c->'record'->>'disposition'='cleared',false))
         AND (CASE WHEN EXISTS (SELECT 1 FROM jsonb_each(h.state->'jobs'->b.job_key->'fields') f
-          WHERE f.value->>'work_state' IN ('waiting_source','waiting_policy','operational_failed','retry_scheduled','cancelled'))
+          WHERE f.value->>'work_state' IN ('waiting_source','waiting_policy','operational_failed','retry_scheduled','cancelled')
+            AND NOT (f.value->>'work_state'='waiting_policy'
+              AND c->'policy_materialization'->'progress_receipt'->'human_reason_codes'
+                @> jsonb_build_array('mandatory_unresolved:'||(b.semantic_mapping->'field_mapping'->>f.key))
+              AND EXISTS (SELECT 1 FROM jsonb_array_elements(h.state->'jobs'->b.job_key->'pins'->'profile'->'fields') p
+                WHERE p->>'field_key'=f.key AND jsonb_typeof(p->'missing_policy')='string')))
           OR jsonb_array_length(c->'policy_materialization'->'progress_receipt'->'operational_reason_codes')>0 THEN
-            c->>'state'='processing_blocked' AND c->'record'->>'disposition'='deferred'
+            c->>'state'='processing_blocked' AND c->'record'->'disposition'='null'::jsonb
             AND c->'snapshot'->'run'->>'stage'='processing_blocked'
           WHEN EXISTS (SELECT 1 FROM jsonb_each(h.state->'jobs'->b.job_key->'fields') f
             WHERE f.value->>'work_state' IN ('pending','researching')) THEN c->>'state'='running'
-            AND c->'record'->>'disposition'='deferred' AND c->'snapshot'->'run'->>'stage'='research_in_progress'
+            AND c->'record'->'disposition'='null'::jsonb AND c->'snapshot'->'run'->>'stage'='research_in_progress'
           WHEN EXISTS (SELECT 1 FROM jsonb_each(h.state->'jobs'->b.job_key->'fields') f
-            WHERE f.value->>'work_state'='waiting_human')
+            WHERE f.value->>'work_state' IN ('waiting_human','waiting_policy'))
             OR jsonb_array_length(c->'policy_materialization'->'progress_receipt'->'human_reason_codes')>0 THEN
               c->>'state'='completed' AND c->'record'->>'disposition'='needs_human_review'
           ELSE c->>'state'='completed' AND c->'record'->>'disposition' IN ('cleared','needs_human_review') END)
@@ -350,7 +348,7 @@ mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!
           OR h.state->'effects'->(r->>'effect_id')->>'request_digest' IS DISTINCT FROM r->>'request_digest'
           OR h.state->'effects'->(r->>'effect_id')->'receipt'->>'attempt_id' IS DISTINCT FROM r->>'attempt_id'
           OR h.state->'effects'->(r->>'effect_id')->'receipt'->'capture' IS DISTINCT FROM r->'capture')
-      FOR UPDATE OF s,b,h,authority,legacy
+      FOR UPDATE OF s,b,h
     ), native_facts AS (
       SELECT l.*,jsonb_build_object('record_versions',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'predecessorId',r.predecessor_id,'disposition',r.disposition,'policyVersion',r.policy_version,'reasonCodes',r.reason_codes,'summary',r.summary,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.record_version r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.run_id=l.canonical_run_id ORDER BY r.id LIMIT 4097) r),
         'resolved_fields',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'recordVersionId',r.record_version_id,'candidateId',r.candidate_id,'fieldKey',r.field_key,'state',r.state,'fieldGroup',r.field_group,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.resolved_field r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.record_version_id IN (SELECT v.id FROM public.record_version v WHERE v.organization_id=$1 AND v.collection_id=$2 AND v.run_id=l.canonical_run_id) ORDER BY r.id LIMIT 4097) r),
@@ -500,18 +498,18 @@ mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!
           ON candidate.organization_id=$1 AND candidate.collection_id=$2 AND candidate.id=f.candidate_id
           WHERE (f.candidate_id IS NOT NULL AND (candidate.id IS NULL OR candidate.run_id<>canonical_run_id OR candidate.field_key<>f.field_key))
             OR (f.state='supported' AND f.candidate_id IS NULL))
-        AND c->'changed_field'=semantic_mapping->'field_mapping'->>(c->'prepared'->'basis'->>'field_key')
+        AND c->>'changed_field'=semantic_mapping->'field_mapping'->>(c->'prepared'->'basis'->>'field_key')
         AND COALESCE((c->'snapshot'->'run'->>'human_approved')::boolean,false)=false
         AND c->'record'->>'runId'=canonical_run_id::text
         AND c->'record'->>'predecessorId'=current_record_version_id::text
         AND c->'record'->>'id'=c->'receipt'->>'nativeRecordVersionId'
-        AND c->'record'->>'disposition' IN ('cleared','needs_human_review','deferred')
+        AND (c->'record'->'disposition'='null'::jsonb OR c->'record'->>'disposition' IN ('cleared','needs_human_review'))
         AND c->'snapshot'->>'id'=$3::text AND (c->'snapshot'->>'version')::integer=revision+1
         AND c->'snapshot'->'asset'->>'sha256'=source_sha256
         AND COALESCE((c->'snapshot'->'asset'->>'sensitive')::boolean,true)=false
         AND c->'snapshot'->'scope'=jsonb_build_object('organization_id',$1::text,'collection_id',$2::text)
         AND c->'snapshot'->'run'->>'id'=canonical_run_id::text
-        AND c->'snapshot'->'run'->>'disposition'=c->'record'->>'disposition'
+        AND c->'snapshot'->'run'->'disposition'=c->'record'->'disposition'
     ), assets AS (
       INSERT INTO public.source_asset(organization_id,collection_id,id,specimen_id,kind,parent_asset_id,bucket,object_name,
         generation,sha256,mime_type,byte_size,width,height,acquisition_method,uploader_uid,created_at)
@@ -610,7 +608,8 @@ mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!
       WHERE (SELECT count(*) FROM tool_input_lineage)=jsonb_array_length(c->'delta'->'tool_input_lineage') RETURNING id
     ), specimen_commit AS (
       UPDATE public.specimen s SET revision=l.revision+1,state=c->>'state',disposition=c->'record'->>'disposition',
-        active_run_id=canonical_run_id,work_available_at=NULL,updated_at=statement_timestamp()
+        active_run_id=canonical_run_id,work_available_at=CASE WHEN c->>'state'='running' THEN statement_timestamp() ELSE NULL END,
+        updated_at=statement_timestamp()
       FROM admissible l WHERE (SELECT count(*) FROM captured_tool_executions)=jsonb_array_length(c->'delta'->'captured_tool_executions')
         AND s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3 AND s.revision=l.revision
         AND (SELECT count(*) FROM fields)=20 AND (SELECT count(DISTINCT field_key) FROM fields)=20

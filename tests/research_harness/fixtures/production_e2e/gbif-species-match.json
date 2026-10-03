@@ -1,0 +1,26 @@
+{
+  "usage": {
+    "key": "FIXTUREDPLEX1",
+    "name": "Danaus plexippus (Linnaeus, 1758)",
+    "canonicalName": "Danaus plexippus",
+    "authorship": "(Linnaeus, 1758)",
+    "rank": "SPECIES",
+    "status": "ACCEPTED"
+  },
+  "classification": [
+    {"key": "FIXTUREK1", "name": "Animalia", "rank": "KINGDOM"},
+    {"key": "FIXTUREP1", "name": "Arthropoda", "rank": "PHYLUM"},
+    {"key": "FIXTUREC1", "name": "Insecta", "rank": "CLASS"},
+    {"key": "FIXTUREO1", "name": "Lepidoptera", "rank": "ORDER"},
+    {"key": "FIXTUREF1", "name": "Nymphalidae", "rank": "FAMILY"},
+    {"key": "FIXTUREG1", "name": "Danaus", "rank": "GENUS"},
+    {"key": "FIXTUREDPLEX1", "name": "Danaus plexippus", "rank": "SPECIES"}
+  ],
+  "diagnostics": {
+    "matchType": "EXACT",
+    "confidence": 99,
+    "timeTaken": 1,
+    "alternatives": []
+  },
+  "synonym": false
+}

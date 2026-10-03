@@ -456,6 +456,35 @@ def _literal_grounding(value, resolution, reading_rows, request):
     return {"kind": "original_target_assembly", "literal": value.literal, "assemblies": proofs}
 
 
+def relations_unproved(resolution):
+    """The candidate-evidence rule of project_canonical_value_v2, read on the
+    research resolution: a supported value cites an evidence item that has no
+    declared relation and that its derivation record does not cover. The
+    projection refuses such a value (canonical_lineage_candidate_evidence_unproved).
+    """
+    value = resolution.value
+    if value.state != ValueState.SUPPORTED:
+        return False
+    derived = set(resolution.derivation.evidence_ids) if resolution.derivation is not None else set()
+    return any(item not in value.evidence_relations and item not in derived for item in value.evidence_ids)
+
+
+def relation_unproved_fields(checkpoints):
+    """Fields whose committed value cannot publish for want of evidence
+    relations: the value itself (relations_unproved; today the evidence.py date
+    and elevation helper values), or a value that depends on such a field, since
+    its source never reaches the record (_source_lineage).
+    """
+    checkpoints = tuple(checkpoints)
+    held = {cp.field_key for cp in checkpoints if relations_unproved(cp.resolution)}
+    while True:
+        more = {cp.field_key for cp in checkpoints if cp.field_key not in held
+            and any(pin.field_key in held for pin in cp.resolution.dependencies)}
+        if not more:
+            return frozenset(held)
+        held |= more
+
+
 def project_canonical_value_v2(principal: Principal, *, prior: Specimen, result: Specimen,
         checkpoint: FieldCheckpoint, context: CanonicalLineageContextV2) -> CanonicalValueProjectionV2:
     """Faithfully project one validated value and all20 normalized field references.

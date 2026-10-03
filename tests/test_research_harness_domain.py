@@ -581,8 +581,8 @@ def test_live_source_transport_cannot_claim_offline_and_hold_blocks_before_netwo
         DurableSourceEffects(effects.broker, dscope, effects.lease, transport=BoundedHTTPTransport(), execution_class="offline")
     live_transport = BoundedHTTPTransport()
     live = DurableSourceEffects(effects.broker, dscope, effects.lease, transport=live_transport, execution_class="live")
-    # Imported real program policy remains HOLD; no network occurs.
-    with pytest.raises(PermissionError, match="HOLD|import authority"):
+    # The store has no live authority and the policy is a HOLD; no network occurs.
+    with pytest.raises(PermissionError, match="research_live_authority_required|HOLD"):
         asyncio.run(SourceBroker(registry, transport=live_transport, effect_dispatch=live).query(req, museum_query()))
 
 

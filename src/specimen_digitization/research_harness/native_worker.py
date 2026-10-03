@@ -6,10 +6,39 @@ from typing import Literal
 from pydantic import Field
 
 from .accepted_output import read_accepted_checkpoint_proof
-from .contracts import Digest, FrozenRecord, ResearchScope, digest
+from .canonical_projection_v2 import relation_unproved_fields
+from .contracts import CollectionProfile, Digest, FrozenRecord, ResearchScope, WorkState, digest
 from .persistence import HeldUnknown, StaleWork
 from .publication import prepare_native_publication
 from .worker import ResearchRetryWorker
+
+# Only terminal work publishes (canonical_materialization_v2 target gate,
+# research_publication_v2.gql field work_state check). Waiting work reaches the
+# record through the job's whole-20 field state on a terminal publication.
+PUBLISHABLE = frozenset({WorkState.RESOLVED, WorkState.WAITING_HUMAN, WorkState.NONBLOCKING_EXCEPTION})
+
+
+def _sources_first(checkpoints):
+    """Journal order, except that a checkpoint follows the checkpoints its
+    resolution's dependency pins name. The V2 projection publishes a derived
+    value only after its source field's value is on the record
+    (canonical_projection_v2._source_lineage), and the journal lists fields in
+    key order, so elevation_from_ft would come before elevation_from_m."""
+    remaining, ordered = list(checkpoints), []
+    loaded = {item.field_key for item in remaining}
+    placed = set()
+    while remaining:
+        ready = [item for item in remaining if all(pin.field_key in placed or pin.field_key not in loaded
+            for pin in item.resolution.dependencies)]
+        if not ready:
+            # A cycle has no source-first order: keep journal order and let
+            # publication refuse it.
+            ordered.extend(remaining)
+            break
+        ordered.extend(ready)
+        placed.update(item.field_key for item in ready)
+        remaining = [item for item in remaining if item.field_key not in placed]
+    return tuple(ordered)
 
 
 class ImmutablePublicationLocatorV2(FrozenRecord):
@@ -125,9 +154,18 @@ class NativeResearchWorker:
         scope = runtime.binding.research_scope()
         # Only committed current checkpoints are eligible. A legacy/historical
         # body or a failed engine run is not scientific publication authority.
-        typed = await runtime.journal.load(scope)
+        typed = _sources_first(await runtime.journal.load(scope))
+        # A supported value without the evidence relations the V2 projection
+        # requires (today the evidence.py date and elevation helper values), and
+        # any value that depends on one, is not offered: publication would
+        # refuse it. The field keeps its prior record value, and each later
+        # publication gives it the review reason mandatory_unresolved:{key}
+        # (canonical_materialization_v2) instead of an operational block.
+        unpublishable = relation_unproved_fields(item for item in typed if item.resolution.work_state in PUBLISHABLE)
         receipts, checkpoint_ids = [], []
         for checkpoint in typed:
+            if checkpoint.resolution.work_state not in PUBLISHABLE or checkpoint.field_key in unpublishable:
+                continue
             job = await asyncio.to_thread(runtime.store.job, runtime.scope)
             native = job["fields"][str(checkpoint.field_key)]["checkpoint"]
             checkpoint_ids.append(native["id"])
@@ -171,7 +209,10 @@ class NativeResearchWorker:
             receipts.append(str(published.causal.receipt_id))
         thread = await self._thread(runtime)
         from .status import ResearchStatusV1
-        status = ResearchStatusV1.from_thread(thread)
+        job = await asyncio.to_thread(runtime.store.job, runtime.scope)
+        profile = CollectionProfile.model_validate(job["pins"]["profile"])
+        status = ResearchStatusV1.from_thread(thread, missing_policy_fields=frozenset(
+            row.field_key for row in profile.fields if row.missing_policy))
         return NativeResearchWorkerOutcomeV2(scope=scope, status=status.status,
             checkpoint_ids=tuple(checkpoint_ids), publication_receipt_ids=tuple(receipts))
 

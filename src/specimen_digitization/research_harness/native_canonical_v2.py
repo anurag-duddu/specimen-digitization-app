@@ -159,7 +159,8 @@ class CanonicalPolicyMaterializationV2(CanonicalPolicyMaterializationV1):
         progress=self.progress_receipt
         if (digest(progress)!=self.progress_receipt_digest or progress.result_digest!=self.result_digest
             or progress.policy_digest!=self.policy_digest or progress.prior_canonical!=self.prior_canonical
-            or self.result.run.stage!=progress.run_stage or str(self.result.run.disposition)!=progress.disposition
+            or self.result.run.stage!=progress.run_stage
+            or (None if self.result.run.disposition is None else str(self.result.run.disposition))!=progress.disposition
             or not set(progress.operational_reason_codes+progress.human_reason_codes)<=set(self.result.run.reasons)):
             fail("native_v2_materialized_progress_unproved")
         return self
@@ -428,13 +429,20 @@ class SqlConnectCanonicalResearchWriterV2(SqlConnectCanonicalResearchWriter):
             preparation=await self.append_preparation(principal,intent,prepared)
         return await self.publish_preparation(principal,intent,preparation)
 
-    async def register_current_binding(self,principal,specimen_id,registration):
+    async def register_current_binding(self,principal,specimen_id,registration,*,store=None,scope=None):
+        # The provisioner registers before any journal or lease exists, so it
+        # passes the run's research store and scope; a journal supplies both.
+        if store is None or scope is None:
+            if self.journal is None:
+                raise ValueError("native_v2_registration_store_and_scope_required")
+            store=self.journal.store if store is None else store
+            scope=self.journal.scope if scope is None else scope
         principal=self._principal(principal,specimen_id)
         if principal.role not in {"manager","admin"}:
             raise PermissionError("native_canonical_owner_required")
         registration=OwnerRegistrationV2.model_validate(registration.model_dump(mode="json"))
-        document=await asyncio.to_thread(self.journal.store._read,self.journal.scope)
-        if (self.journal.scope.actor_uid!=principal.user_id or self.journal.scope.specimen_id!=str(UUID(str(specimen_id)))
+        document=await asyncio.to_thread(store._read,scope)
+        if (scope.actor_uid!=principal.user_id or scope.specimen_id!=str(UUID(str(specimen_id)))
             or digest(document.state.get("budget_policy"))!=registration.semantic_mapping.get("journal_budget_policy_digest")):
             fail("native_v2_owner_policy_pin_unproved")
         payload={**registration.model_dump(mode="json"),"journal_budget_policy":document.state["budget_policy"],"state_revision":document.revision}
@@ -709,7 +717,7 @@ class SqlConnectCanonicalResearchWriterV2(SqlConnectCanonicalResearchWriter):
             or result.version != prior.version + 1 or result.run.id != prior.run.id
             or result.previous_runs != prior.previous_runs or result.audit != prior.audit
             or result.audit_offset != prior.audit_offset or result.history_through_revision != prior.history_through_revision
-            or result.run.disposition is None or result.run.human_approved != prior.run.human_approved
+            or result.run.human_approved != prior.run.human_approved
             or set(prior.run.fields) != CANONICAL_KEYS or set(result.run.fields) != CANONICAL_KEYS
             or any(reg.human_locks[field] and result.run.fields[field] != prior.run.fields[field] for field in CANONICAL_KEYS)):
             fail("canonical_policy_materialization_invalid")
@@ -915,7 +923,7 @@ class SqlConnectCanonicalResearchWriterV2(SqlConnectCanonicalResearchWriter):
         payload=self._materialization_v2(principal,p,binding,raw,prior,materialized,intent=intent,bundle=bundle,
             projection_services=services,captured_evidence=captured)
         # Explicit V2 status; never inherit lane.run_status's completed-on-any-
-        # disposition convention for real deferred/running/blocked progress.
+        # disposition convention for running/blocked progress, which has none.
         payload["state"]=progress.wire_status
         payload["materialization_input_guard"]=copy.deepcopy(inputs.guard)
         # The genuine V2 producer/context/projection are recomputed above.

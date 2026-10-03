@@ -84,7 +84,7 @@ def make_prepack_proof_v2(policy_graph, post_audit_graph, packed_snapshot, *, pr
                       native_record_version_id=native_record_version_id)
     if (graph_digest(policy) != progress.result_digest
             or policy_graph.run.stage != progress.run_stage
-            or str(policy_graph.run.disposition) != progress.disposition):
+            or (None if policy_graph.run.disposition is None else str(policy_graph.run.disposition)) != progress.disposition):
         fail("native_v2_prepack_policy_unproved")
     return {"contract_version": PROOF_VERSION,
             "policy_graph_json": _json(policy), "policy_graph_digest": graph_digest(policy),
@@ -115,6 +115,6 @@ def verify_prepack_proof_v2(proof, *, expected_digest, retained, packed_snapshot
     expected["active_graph"] = copy.deepcopy(proof["packing_metadata"])
     if (not _types_equal(expected, retained.model_dump(mode="json"))
             or retained.run.stage != progress.run_stage
-            or str(retained.run.disposition) != progress.disposition):
+            or (None if retained.run.disposition is None else str(retained.run.disposition)) != progress.disposition):
         fail("native_v2_prepack_rehydrated_graph_unproved")
     return policy

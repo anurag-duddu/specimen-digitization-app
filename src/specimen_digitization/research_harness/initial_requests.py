@@ -39,7 +39,7 @@ class NativeGenerationRequestFactory:
         profile = CollectionProfile.model_validate(job["pins"]["profile"])
         if (original.scope != principal.scope or original.id != binding.canonical.specimen_id
             or type(original.version) is not int or original.version != binding.base_canonical.record_revision
-            or original.run.id != binding.base_canonical.canonical_run_id
+            or original.run.id != str(binding.base_canonical.canonical_run_id)
             or original.asset.sha256 != binding.source_sha256
             or original.asset.sensitive is not False or binding.canonical.sensitive is not False
             or canonical_digest(original.run.profile_snapshot) != binding.canonical_profile_digest
