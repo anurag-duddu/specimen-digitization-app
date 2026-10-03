@@ -183,7 +183,7 @@ historical knowledge and asks the GEOLocate validator to check each geography
 value it proposes. The validator sends one request per lookup to GEOLocate's
 `glcwrap.aspx` (`fmt=json`, over HTTPS), with at least 3 s between GEOLocate
 request starts in one process, and captures the full response as evidence
-(section 4.8). The matched point's coordinates are candidate metadata in the
+(coordinator engineering calls of 2026-10-03; section 4.8). The matched point's coordinates are candidate metadata in the
 tool result and the trace, not record fields (G39), and the research thread
 card does not show them yet (coordinator engineering call, 2026-10-03, left as
 a follow-up); no uncertainty radius is taken from GEOLocate (D13). G26 stays in
