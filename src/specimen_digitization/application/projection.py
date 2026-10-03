@@ -377,8 +377,15 @@ def _first_pass(
         raw = asset(call.raw_ref, "raw_response")
         result.append(_reading(run, call, raw, independent=False, step_key=step))
     selected = getattr(transcript, "selected_observation_id", None)
-    if selected is None and kind == "identical_readings" and transcript.observation_ids:
-        # Identical readings decide by any one of them when none is recorded (section 11).
+    if (
+        selected is None
+        and kind == "identical_readings"
+        and transcript.resolved
+        and transcript.observation_ids
+    ):
+        # Resolved identical readings decide by any one of them when none is recorded.
+        # An unresolved region (unreadable spans, unmeasured alignment) selects none
+        # (DATA_CONTRACT 4.2), and every handoff stays a raw reading.
         selected = transcript.observation_ids[0]
     differences = [_plain(d) for d in getattr(transcript, "differences", None) or []]
     still_open = [
