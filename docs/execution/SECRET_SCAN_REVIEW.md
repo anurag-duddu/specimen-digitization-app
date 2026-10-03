@@ -407,3 +407,16 @@ to the existing Gitleaks AND allowlist. No source path exclusion, detector,
 threshold or filter change. Raw templates remain unchanged and rejected as
 current initialization inputs; the no-credential test retains all original
 assertions with the old digest explicitly explained by its pinned origin.
+
+
+## 2026-10-02 canonical projector source digest follow-up (#169 re-cut)
+
+One scanner finding, `src/specimen_digitization/research_harness/native_canonical.py`
+line 51, is `CANONICAL_PROJECTOR_SHA256`: the SHA-256 of
+`src/specimen_digitization/application/projection.py`, which the native
+canonical writer recomputes from that file before it projects. The #169 re-cut
+changes `projection.py`, so the pin changes from `619c041e...c5635` to
+`ff29877c...33051`. The SHA-1 finding identifier was recomputed from the exact
+new literal. The existing baseline row for that line, with is_secret=false, and
+its exact Gitleaks metadata line now name the new identifier in place of the
+old one. No source path exclusion, detector, threshold or filter change.

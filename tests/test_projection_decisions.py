@@ -6,8 +6,10 @@ subclasses carry them until they reach the shared domain model.
 
 from __future__ import annotations
 
+import pytest
 from pydantic import BaseModel
 
+from specimen_digitization.application.collection_profiles import CoverageRule
 from specimen_digitization.application.domain import (
     AuditEvent,
     Disposition,
@@ -19,6 +21,7 @@ from specimen_digitization.application.domain import (
     Transcript,
     ValueState,
 )
+from specimen_digitization.application.label_coverage import check_coverage
 from specimen_digitization.application.projection import derived_id, writes
 from specimen_digitization.application.storage import digest
 
@@ -352,6 +355,43 @@ def test_lookups_and_stored_evidence_become_evidence_items():
     assert (asset["kind"], asset["sha256"], asset["width"]) == ("evidence_record", "9" * 64, None)
     assert (items[1]["outcome"], items[1]["locator"]) == ("no_match", None)
     assert items[2]["locator"] == "gbif/1"
+
+
+@pytest.mark.parametrize(("labels", "outcome"), [(1, "confirmed"), (2, "unconfirmed")])
+def test_the_coverage_check_is_recorded_evidence(labels, outcome):
+    """G15's check is an EvidenceItem of its own (DATA_CONTRACT.md section 2, stage 2; #169)."""
+    s = base()
+    s.run.segmentation = {
+        "blob_ref": f"{'2' * 64}:3",
+        "sha256": "2" * 64,
+        "cross_check": {"concept": "text", "detections": []},
+    }
+    rule = CoverageRule(
+        min_label_regions=labels,
+        max_label_regions=3,
+        merge_iou=0.9,
+        cross_check_threshold=0.5,
+        min_inside_fraction=0.5,
+    )
+    check_coverage(rule, s)
+    assert s.run.coverage_check["outcome"] == outcome
+    result = writes(s, locate, size, "worker-uid")
+    references_come_first(result)
+    items = [i for i in rows(result, "AppendEvidenceItemV2") if i["source"] == "label-coverage-check"]
+    assert len(items) == 1, items
+    item = items[0]
+    assert item["id"] == derived_id("coverage", s.run.id, "2" * 64)
+    assert (item["runId"], item["outcome"]) == (s.run.id, "recorded")
+    assert item["locator"] == "coverage/coverage-check-v1"
+    assert (item["sourceVersion"], item["adapterVersion"]) == ("coverage-check-v1",) * 2
+    assert (item["query"], item["responseSha256"]) == ({}, "2" * 64)
+    assert item["capturedAt"] == s.run.coverage_check["checked_at"]
+    asset = next(w.variables for w in result if w.variables["id"] == item["rawAssetId"])
+    assert (asset["kind"], asset["sha256"]) == ("evidence_record", "2" * 64)
+    # A check without an evidence blob has no evidence item.
+    s.run.coverage_check = {**s.run.coverage_check, "evidence_ref": None}
+    result = writes(s, locate, size, "worker-uid")
+    assert "label-coverage-check" not in {i["source"] for i in rows(result, "AppendEvidenceItemV2")}
 
 
 def test_the_ledgers_lookup_evidence_takes_the_outcome_of_its_call():

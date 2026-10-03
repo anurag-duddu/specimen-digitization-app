@@ -101,7 +101,7 @@ reads them.
 |---|---|---|
 | 1 Image | `Specimen.asset` | `SourceAsset`, kind `original` |
 | 2 Segmentation | `Run.regions[]`; `Run.segmentation` (model revision, settings) | `LabelRegion` per region of the run, with the domain's region id in `domainRegionId`, geometry in the original's pixels with `rotation_quarter_turns`; the settings and revision in `PipelineRun.pinnedVersions.segmentation` |
-| 2 Coverage (G15) | `Run.coverage_check` (S3, section 4.1) | `EvidenceItem` with `source` `label-coverage-check`, outcome `recorded` and its own locator; a failed check also reaches the queue's reason codes and a hard `ValidationFinding` |
+| 2 Coverage (G15) | `Run.coverage_check` (S3, section 4.1) | `EvidenceItem` with `source` `label-coverage-check`, outcome `recorded` and its own locator, `coverage/{check version}`; an `evidence_record` asset for the check's evidence blob; a failed check also reaches the queue's reason codes and a hard `ValidationFinding` |
 | 3, 4 Readings | `Run.observations[]`, raw envelope at `raw_ref` | `ModelObservation` per reading: `independent` true, `stepKey` `transcribe:{region_id}:{route_id}`, `routeId`, `unreadableSpans`; `SourceAsset` kind `raw_response` for the envelope |
 | 5 Disagreement | `Transcript` alignment fields | `ReadingComparison` per pair of readings of a region, with the ratio and its components |
 | 6 First pass | `Transcript` per region, extended by S4 (section 4.2) | `TranscriptionVersion` with region, decision kind, selected reading and rationale; the first pass's model call as a `ModelObservation` with `independent` false and `stepKey` `first_pass:{region_id}`; `HarnessInput` per reading handed over |
@@ -419,6 +419,7 @@ comparison's fixed order (section 3.1):
 |---|---|
 | `SourceAsset` other than the original | `asset/{specimen}/{bucket}/{object}/{generation}` |
 | `LabelRegion` | `region/{run}/{region}` |
+| `EvidenceItem` of the label-coverage check (G15) | `coverage/{run}/{evidence sha256}` |
 | `ProfileVersion` | `profile/{collection}/{profile key}/{version}/{config sha256}` |
 | `TranscriptionVersion` | `transcription/{run}/{region}/{digest of decision}` |
 | `HarnessInput` | `handoff/{transcription version}/{observation}` |
