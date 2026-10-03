@@ -14168,12 +14168,12 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   log scan, items D3 and D5).
 - Branch/worktree: `claude/lane-q-failure-logging` at
   `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a93300eb597e7b2e3`,
-  from `main` db855ad6, then `origin/main` 9272a188 (PR #243) merged locally.
+  from `main` db855ad6, then `origin/main` merged locally as it moved (PRs #243, #246, #247 and #248 so far).
 - Outcome: In progress. Pull request open and ready for review; not merged. No production access, deploy or paid call.
 - Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/251; code commit b1b4b222. Review round
-  1 (an independent reviewer at head f296c639: CI "Python tests" red, one overclaiming sentence) is fixed by a later
-  commit on the same branch after merging `origin/main` (PR #246); this entry was edited in that commit (it was not
-  merged yet).
+  1 (an independent reviewer at head f296c639: CI "Python tests" red, one overclaiming sentence) is fixed by commit
+  860cca2d on the same branch; review round 2 (head c3af937b, all nine checks green, clean with nits) is addressed by a
+  later commit. This entry was edited in those commits (it was not merged yet).
 - What changed: the research route's catch-all 503 now emits a log record with the exception class and, for
   `PublicationUnavailable` and `BindingUnavailable`, the fixed code (response unchanged); the workflow's
   `AdapterFailure`, `OperationalBlock`, unexpected-exception and deadline-override branches each emit one WARNING
@@ -14184,22 +14184,25 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   `process_logging.py` gives the API and worker a root handler that writes one JSON line per record with `severity`
   to stderr (`huggingface_hub`'s own stderr handler is dropped so its records are written once). That Cloud Logging
   shows the severity is Not confirmed.
-- Validation: written first and failing on the unchanged source: `test_research_host_routes.py` 6 failed, 9 passed;
-  `test_step_failure_logging.py` 8 failed, 2 passed (the 2 are before-and-after guards); `test_process_logging.py` 25
-  failed (23 are the missing module, 2 are the entry points leaving no JSON line). After: 15, 10 and 25 passed. 32
-  related files run one at a time before the `origin/main` merge, all passed (`test_model_runtime.py` 11 passed, 1
-  skipped; `test_http_process_restart.py` 1 skipped); the three changed files re-run after the merge, passed.
-  `pre-commit` on the changed files: all hooks passed. `ruff check` (0.16.9 defaults; the repo has no ruff config):
-  no more findings on the existing changed files than on `origin/main`; new files clean and formatted.
-  Review round 1: reproduced the CI failure in one process (`test_api_runtime.py test_lane_drain_cli.py
-  test_process_logging.py`: 1 failed, 85 passed); after the conftest fix the five files `test_api_runtime`,
-  `test_lane_drain_cli`, `test_process_logging`, `test_step_failure_logging`, `test_research_host_routes` pass together
-  in one pytest process in that order (116 passed) and reversed (116 passed); with only `cli.py` and `worker.py`
-  reverted to `origin/main`, the two entry-point tests fail (`assert 0 == 1`, no handler after `main()`) in the
-  leaking order. The full suite as CI runs it (`pytest -q`, one process, Python 3.11 venv, not CI's 3.12): 9987
-  passed, 107 skipped in 846 s. New tests failed first: the two `huggingface_hub` tests and the two "cannot be
-  logged" tests. After that run, only two `# noqa: BLE001` comments were added to source. Not run: any
-  `scripts/ci/verify.sh` gate, a live or paid call.
+- Validation: the tests were written first and failed on the unchanged source. The final test files against
+  `origin/main` source (af47c931): `test_research_host_routes.py` 7 failed, 9 passed (no log record; the 9 are the 8
+  existing tests plus the no-noise guard); `test_step_failure_logging.py` 10 failed, 2 passed (the 2 are
+  before-and-after guards); `test_process_logging.py` 27 failed (all `ModuleNotFoundError`; the meaningful pair, the
+  two entry-point tests, fail with `assert 0 == 1` when only `cli.py` and `worker.py` are reverted and the module is
+  kept). With the change: 16, 12 and 27 passed. Earlier drafts of the same files gave 6/9, 8/2 and 25 failed; those
+  counts are superseded. 32 related files were run one at a time at the first head, all passed
+  (`test_model_runtime.py` 11 passed, 1 skipped; `test_http_process_restart.py` 1 skipped). `pre-commit` on the changed
+  files: all hooks passed. `ruff check` (0.16.9 defaults; the repo has no ruff config): no more findings on the
+  existing changed files than on `origin/main`; new files clean and formatted.
+  Single process (the order CI uses): the failure of review round 1 reproduced as `test_api_runtime.py
+  test_lane_drain_cli.py test_process_logging.py` 1 failed, 85 passed; after the conftest fixture the five files
+  `test_api_runtime`, `test_lane_drain_cli`, `test_process_logging`, `test_step_failure_logging`,
+  `test_research_host_routes` pass together in that order (116 passed) and reversed (116 passed), re-run after each
+  merge of `origin/main`. The full suite as CI runs it (`pytest -q`, one process, Python 3.11 venv, not CI's 3.12):
+  9987 passed, 107 skipped in 846 s, run before two `# noqa: BLE001` comments and the merges of PRs #247 and #248; CI's
+  own run at head c3af937b: all nine checks passed (Python tests 10012 passed, 104 skipped). Round 2 also made two
+  tests independent of `pytest --log-level` and live logging, and restored the uvicorn logger levels in the fixture.
+  Not run: any `scripts/ci/verify.sh` gate, a live or paid call.
 - Durable learnings:
   - No logging was configured anywhere in `src`. Every `LOGGER.warning` (projection stops, registration refusals)
     reached Cloud Run as a bare stderr line through the standard library's last-resort handler, so Cloud Logging
@@ -14236,6 +14239,7 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   (check after the next worker execution); trace correlation, Error Reporting format, the same handler for
   `specimen-sam` and uvicorn's own lines; the early-return blocks (budget, circuit, allowance) still log nothing;
   not confirmed that every `PublicationUnavailable` raise site passes a fixed code (`log_code` guards the shape).
+
 ### 2026-10-03 — GEOLocate authority_id without the matched point (Claude)
 
 - Task: dispatched by the coordinator after an independent reviewer ran the offline end-to-end test

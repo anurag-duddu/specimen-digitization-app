@@ -19,14 +19,6 @@ from fastapi import FastAPI
 PROBE_LOGGER = "specimen_digitization.application.production"
 
 
-@pytest.fixture(autouse=True)
-def root_at_warning():
-    # tests/conftest.py (owned_process_logging) removes the process handler and
-    # restores the other process-wide logging state around every test; this only
-    # fixes the root level the assertions below depend on.
-    logging.getLogger().setLevel(logging.WARNING)
-
-
 def process_handlers():
     from specimen_digitization.process_logging import HANDLER_NAME
 
@@ -140,6 +132,10 @@ def test_log_code_passes_code_shaped_text_and_nothing_else(value, kept):
 def test_configure_writes_warnings_as_json_with_severity(capsys):
     from specimen_digitization.process_logging import configure_process_logging
 
+    # The production root level. Set here, in the test body: under pytest's
+    # --log-level, pytest resets the root level around each phase, so a fixture
+    # would not hold. conftest.py (owned_process_logging) restores the level.
+    logging.getLogger().setLevel(logging.WARNING)
     configure_process_logging()
     probe("Projection for specimen %s stopped", "s1")
     probe("not shown", level=logging.INFO)
@@ -196,9 +192,13 @@ def test_handler_follows_the_current_stderr(capsys, monkeypatch):
     from specimen_digitization.process_logging import configure_process_logging
 
     configure_process_logging()
+    (handler,) = process_handlers()
     replaced = io.StringIO()
     monkeypatch.setattr(sys, "stderr", replaced)
-    probe("later")
+    # Through the handler itself: under live logging (-o log_cli=true) pytest
+    # re-points sys.stderr whenever it emits, so a record sent through the root
+    # logger would not show which stream this handler used.
+    handler.handle(make_record(logging.WARNING, "later"))
 
     assert json.loads(replaced.getvalue())["message"] == "later"
 

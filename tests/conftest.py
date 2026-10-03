@@ -47,6 +47,7 @@ def owned_process_logging():
         name: (
             list(logging.getLogger(name).handlers),
             logging.getLogger(name).propagate,
+            logging.getLogger(name).level,
         )
         for name in _PROCESS_LOGGERS
     }
@@ -56,7 +57,8 @@ def owned_process_logging():
     finally:
         _remove_process_handler(root)
         root.setLevel(level)
-        for name, (handlers, propagate) in kept.items():
+        for name, (handlers, propagate, logger_level) in kept.items():
             logger = logging.getLogger(name)
             logger.handlers[:] = handlers
             logger.propagate = propagate
+            logger.setLevel(logger_level)
