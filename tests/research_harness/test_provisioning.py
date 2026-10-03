@@ -31,10 +31,8 @@ from specimen_digitization.research_harness.production_runtime import (
 ORG = "00000000-0000-4000-8000-000000000001"
 COLLECTION = "00000000-0000-4000-8000-000000000002"
 WORKER = "offline-worker"
-# The connector registers a binding for a manager or admin only (main's rule),
-# so the rig's worker is a manager. Production's worker membership is operator:
-# see test_an_operator_worker_cannot_register_so_the_run_holds.
-WORKER_ROLE = "manager"
+# Production's worker membership, which the connector lets register a binding.
+WORKER_ROLE = "operator"
 
 
 def plan_specimen(version=3):
@@ -103,8 +101,9 @@ class Repository:
 class Writer:
     """The binding read and the registration writer, shared across ticks.
 
-    Registration follows the connector: a manager or admin registers, and the
-    specimen's single binding row (``rows``) is insert-only.
+    Registration follows the connector: an operator or above registers. The
+    specimen's single binding row (``rows``) is replaced when it names another
+    revision; an identical registration replays; any other is refused.
     """
     registered, binding, rows, fail_next = [], None, {}, None
 
@@ -121,14 +120,17 @@ class Writer:
 
     async def register_current_binding(self, principal, specimen_id, registration, *, store, scope):
         cls = type(self)
-        if principal.role not in {"manager", "admin"}:
-            raise PermissionError("native_canonical_owner_required")
+        if principal.role not in {"operator", "reviewer", "manager", "admin"}:
+            raise PermissionError("native_canonical_operator_required")
         if cls.fail_next:
             failure, cls.fail_next = cls.fail_next, None
             raise failure
-        if specimen_id in cls.rows:
+        existing = cls.rows.get(specimen_id)
+        stale = existing is not None and (existing.binding_id != registration.binding_id
+            and existing.current_canonical != registration.current_canonical)
+        if existing is not None and not stale and existing != registration:
             raise PublicationUnavailable("native_canonical_transaction_rejected")
-        cls.rows[specimen_id] = registration.binding_id
+        cls.rows[specimen_id] = registration
         cls.registered.append((registration, store.program_key, scope))
         cls.binding = {"active_registration_count": 1}
 
@@ -165,12 +167,10 @@ class ConnectorSession:
 
 
 CONNECTOR_URL = "https://dataconnect.invalid/v1/projects/p/locations/l/services/s/connectors/c"
-# The connector's GraphQL errors for a refused registration: a second row for
-# the specimen under insert-only registration fails on the table's key, and a
-# registration the row checks do not admit fails the @check on the count.
+# The connector's GraphQL errors for a refused registration: a registration the
+# row checks do not admit, or one that may not replace the current row, writes
+# no row and fails the @check on the count.
 REGISTRATION_REFUSALS = {
-    "second_row": {"message": 'duplicate key value violates unique constraint '
-        '"canonical_research_binding_v2_pkey"', "extensions": {"code": "ALREADY_EXISTS"}},
     "row_checks": {"message": "research registration unavailable",
         "extensions": {"code": "FAILED_PRECONDITION"}},
 }
@@ -271,17 +271,20 @@ def test_a_refused_base_record_holds_before_any_state(rig):
     assert len(rig.writer.registered) == 1
 
 
-def test_a_new_revision_after_a_registered_one_holds_because_the_row_is_not_replaced(rig):
+def test_a_new_revision_after_a_stale_binding_starts_a_new_job(rig):
     rig.provision()
     later = rig.specimen.model_copy(deep=True)
     later.version += 1
     rig.repository.specimen = later
     rig.writer.binding = None  # The row names the earlier revision.
-    with pytest.raises(HeldUnknown, match="^research_provision_registration_refused$"):
-        rig.provision(later)
-    [(registration, _, _)] = rig.writer.registered
-    assert registration.job_id.endswith("-r3")
-    assert rig.writer.rows == {rig.specimen.id: registration.binding_id}
+    rig.provision(later)
+    first, second = rig.writer.registered
+    assert first[0].job_id.endswith("-r3") and second[0].job_id.endswith("-r4")
+    assert first[1] == second[1] == research_program_key(later.run.id)
+    assert first[0].binding_id != second[0].binding_id
+    assert rig.writer.rows == {later.id: second[0]}
+    store = ResearchStore(rig.backend, second[1])
+    assert len(store._read(job_scope(rig, later)).state["jobs"]) == 2
 
 
 @pytest.mark.parametrize("refusal", sorted(REGISTRATION_REFUSALS))
@@ -308,17 +311,6 @@ def test_a_registration_the_connector_refuses_holds_the_record_through_the_real_
     scope = job_scope(rig)
     store = ResearchStore(rig.backend, research_program_key(rig.specimen.run.id))
     assert list(store._read(scope).state["jobs"]) == [scope.key]
-
-
-def test_an_operator_worker_cannot_register_so_the_run_holds(rig):
-    # Production's worker membership is operator. Registration needs a manager
-    # or admin, so provisioning raises HeldUnknown and the bridge holds the run.
-    rig.repository.role = "operator"
-    operator = rig.principal.model_copy(update={"role": "operator"})
-    with pytest.raises(HeldUnknown, match="native_canonical_owner_required"):
-        asyncio.run(provisioning.provision(rig.repository, operator, rig.specimen,
-            state_backend=rig.backend, writer_factory=rig.writer))
-    assert rig.writer.registered == [] and rig.writer.rows == {}
 
 
 @pytest.mark.parametrize("change", ["sensitive", "stage", "no_route", "unpinned"])
