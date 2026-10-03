@@ -168,7 +168,8 @@ class NativeResearchWorker:
             prior = await self._publish_committed(runtime, principal, specimen_id)
             if prior.reason_code is not None:
                 return prior
-            await runtime.engine.run(role_limit=1)
+            # One lease window: the next role_window pending specialists, at once.
+            await runtime.engine.run(role_limit=runtime.role_window)
         return await self._publish_committed(runtime, principal, specimen_id)
 
     async def _publish_committed(self, runtime, principal, specimen_id):

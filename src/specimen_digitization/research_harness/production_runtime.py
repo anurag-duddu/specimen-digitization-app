@@ -16,6 +16,7 @@ from .native_service import SqlConnectNativeCanonicalServiceV2
 from .persistence import (BudgetPolicy, DurableEffectBroker, GcsImmutableBlobs, HeldUnknown,
     MAX_LEASE_TTL_SECONDS, PinnedRuntime, ResearchStore, SqlConnectStateBackend, StaleWork,
     DurabilityScope, Lease)
+from . import role_windows
 from .runtime import build_research_engine
 from .sources import BoundedHTTPTransport, FixtureSourceTransport
 from .registered_pins import (registered_registry, registered_capture_policies,
@@ -58,6 +59,9 @@ class NativeResearchRuntime:
     engine: object
     canonical_service: SqlConnectNativeCanonicalServiceV2
     blobs: object
+    # Specialists this window runs at once: the engine's concurrency and the number
+    # of roles a worker hands it per lease (role_windows.ROLE_CONCURRENCY).
+    role_window: int = 1
 
 
 class NativeResearchRuntimeFactory:
@@ -193,12 +197,14 @@ class NativeResearchRuntimeFactory:
         tools, _ = build_captured_research_services_v2(repository=self.repository,
             effect_broker=effects, scope=scope, lease=lease, registry=registry,
             policies=capture_policies, transport=transport, execution_class=execution_class)
+        window = role_windows.ROLE_CONCURRENCY
         engine = build_research_engine(profile=profile, requests=requests,
             store=store, scope=scope, lease=lease, blobs=self.blobs, tool_broker=tools,
             bindings=bindings, settings=job["pins"]["settings"], source_pins=source_pins,
             base_model_factory=lambda request:model_factory(request, bindings[request.role]),
-            actual_cost=prices, request_guard=request_guards, limits=self.limits, max_concurrency=1)
+            actual_cost=prices, request_guard=request_guards, limits=self.limits, max_concurrency=window)
         service = SqlConnectNativeCanonicalServiceV2(self.repository, engine.journal, blobs=self.blobs,
             materializer=services.materializer, evidence_provider=services.evidence_provider,
             projection_services=services.projection_services)
-        return NativeResearchRuntime(principal, binding, store, scope, lease, engine.journal, engine, service, self.blobs)
+        return NativeResearchRuntime(principal, binding, store, scope, lease, engine.journal, engine, service,
+            self.blobs, window)

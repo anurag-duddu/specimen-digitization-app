@@ -30,6 +30,7 @@ from specimen_digitization.research_harness.workflow_bridge import compose_produ
 
 from test_production_e2e import SWITCH_ON, build_rig, no_network, supervised, to_plan  # noqa: F401
 
+SHIPPED_WINDOW = True  # conftest: this module runs role_windows.ROLE_CONCURRENCY, not one role per window
 RESERVATION = 107_725
 TICKS = {}
 
@@ -76,7 +77,7 @@ def answers_nothing(messages, info):
 def tick(tmp_path, k, *, replace=None, key=None):
     """One plan tick of the synthetic specimen with k roles per window; the observed facts.
 
-    k None: the production composer as shipped (the window size it picks itself)."""
+    k None: the production composer as shipped (the window size role_windows.ROLE_CONCURRENCY gives it)."""
     if key is not None and key in TICKS:
         return TICKS[key]
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -163,7 +164,7 @@ def tick(tmp_path, k, *, replace=None, key=None):
 
 def test_two_roles_per_window_publish_what_one_role_per_window_publishes(tmp_path):
     one = tick(tmp_path / "one", 1, key="k1")
-    two = tick(tmp_path / "two", 2, key="k2")
+    two = tick(tmp_path / "two", None, key="shipped")
     # The synthetic label reaches its final queue either way (needs human review on the
     # held verbatim_dts and the dates and elevations without evidence relations).
     for facts in (one, two):
@@ -185,10 +186,14 @@ def test_two_roles_per_window_publish_what_one_role_per_window_publishes(tmp_pat
     assert [len(run["roles"]) for run in one["engine_runs"]] == [1] * 6
     assert [len(run["roles"]) for run in two["engine_runs"]] == [2, 2, 2]
     assert (one["fence"], two["fence"]) == (6, 3)
+    # The shipped constant drives it: the worker asks the engine for two roles and the engine runs two.
+    assert {(run["role_limit"], run["max_concurrency"]) for run in two["engine_runs"]} == {(2, 2)}
+    assert [sorted(role.removeprefix("specimen_") for role in run["roles"]) for run in two["engine_runs"]] == [
+        ["geography", "taxonomy"], ["measurement", "temporal"], ["collection", "parties"]]
 
 
 def test_a_window_reserves_two_requests_at_a_time_inside_the_half_dollar_ceiling(tmp_path):
-    two = tick(tmp_path / "two", 2, key="k2")
+    two = tick(tmp_path / "two", None, key="shipped")
     assert two["ceiling"] == 500_000
     # Two roles' first requests are in flight together: two reservations held, never more, never refused.
     assert two["peak_held"] == 2 * RESERVATION < two["ceiling"]
@@ -200,7 +205,7 @@ def test_a_role_that_fails_alone_does_not_take_its_window_partner_down(tmp_path)
     """Geography answers nothing valid, twice: its five fields fail (operational_failed), a
     model effect per request is completed and paid, none is held. Taxonomy, its partner in the
     window, publishes its field anyway, and the later windows run."""
-    facts = tick(tmp_path, 2, replace={"specimen_geography": answers_nothing})
+    facts = tick(tmp_path, None, replace={"specimen_geography": answers_nothing})
     states = facts["work_states"]
     geography = ("city", "country", "county", "precise_location", "province_state")
     assert {states[key] for key in geography} == {"operational_failed"} and states["taxon"] == "resolved"
@@ -218,7 +223,7 @@ def test_a_held_unknown_model_effect_still_blocks_every_publication_of_the_run(t
     not retried and its reservation stays held). Geography, its partner in the window, finished
     and checkpointed its fields, but no publication of the run is allowed while a held effect
     exists: nothing is published, the lease stays set, the record is held. Unchanged by windows."""
-    two = tick(tmp_path / "two", 2, replace={"specimen_taxonomy": provider_fails})
+    two = tick(tmp_path / "two", None, replace={"specimen_taxonomy": provider_fails})
     assert two["effects"][("model", "held_unknown")] == 1 and two["held_after"] == RESERVATION
     assert two["publications"] == [] and two["lease_left_set"] is True
     assert two["work_states"]["taxon"] == "operational_failed"
