@@ -186,6 +186,7 @@ def instructed(request):
 
 
 LOOKUP_RULE = "A lookup's query_text must be a scientific name the query builder can send"
+DOUBT_RULE = "A name in doubt is not sent either: return waiting_policy and make no lookup."
 
 
 def lookup_query(request, printed, follow=True):
@@ -195,12 +196,19 @@ def lookup_query(request, printed, follow=True):
     name printed in capitals gets a capitalised genus and lower-case epithets) and makes no lookup of text
     that is no scientific name; one that does not read it (``follow`` False, or a text without the rule)
     sends what the label prints."""
-    if not follow or LOOKUP_RULE not in " ".join(request.prompt.text.split()):
+    text = " ".join(request.prompt.text.split())
+    if not follow or LOOKUP_RULE not in text:
         return printed
     if printed.isupper():
         printed = " ".join(word.capitalize() if index == 0 else word.lower() for index, word in enumerate(printed.split()))
     name = scientific_name(printed)
-    return printed if name is not None and name.genus else None
+    if name is None:
+        return None  # text that is no scientific name: the text says to make no lookup
+    if not name.genus:
+        # A name in doubt (cf., aff., a question mark): only the sentence that says so keeps a model from
+        # sending it; a text without it names common names and non-scientific text only.
+        return None if DOUBT_RULE in text else printed
+    return printed
 
 
 def reading_provenance(request, fields):
@@ -576,15 +584,17 @@ def test_a_specialist_reading_the_v3_text_alone_blocks_the_record_and_the_v4_blo
 
 
 # ---- N1: look up only a name the query builder can send --------------------------------------------
-def test_the_pinned_taxonomy_text_carries_the_lookup_rule_and_the_v3_text_does_not():
-    from specimen_digitization.research_harness.prompts import READING_CITATION_PROMPT_VERSION  # noqa: F401
-    assert LOOKUP_RULE in " ".join(pinned(SpecialistRole.TAXONOMY).prompt.text.split())
-    assert LOOKUP_RULE not in " ".join(pinned(SpecialistRole.TAXONOMY, "specimen_taxonomy-v3.txt").prompt.text.split())
+def test_the_pinned_taxonomy_text_carries_the_lookup_rules_and_the_v3_text_does_not():
+    live = " ".join(pinned(SpecialistRole.TAXONOMY).prompt.text.split())
+    v3 = " ".join(pinned(SpecialistRole.TAXONOMY, "specimen_taxonomy-v3.txt").prompt.text.split())
+    assert LOOKUP_RULE in live and DOUBT_RULE in live
+    assert LOOKUP_RULE not in v3 and DOUBT_RULE not in v3
 
 
-@pytest.mark.parametrize("printed", ["unknown beetle", "cf. Danaus", "Danaus?"])
+@pytest.mark.parametrize("printed", ["unknown beetle", "cf. Danaus", "cf. Danaus plexippus", "aff. Danaus plexippus",
+    "Danaus?"])
 def test_a_specialist_reading_the_text_makes_no_lookup_of_text_the_query_builder_cannot_send(printed_taxon, printed):
-    """The label prints a common name (or a doubtful name). The text says to make no lookup and return
+    """The label prints a common name or a name in doubt. The text says to make no lookup and return
     waiting_policy: no GBIF request, the record ends in review with mandatory_unresolved:taxon."""
     rig = printed_taxon(printed)
     parsed, specimen, hold = run_research(rig, specialist_factory(rig.model_calls, taxon_lookup=True,
@@ -609,13 +619,14 @@ def test_a_specialist_reading_the_text_writes_a_name_printed_in_capitals_as_a_ca
     assert "mandatory_unresolved:taxon" in specimen.run.reasons
 
 
-def test_a_specialist_that_sends_the_printed_name_holds_the_record_and_no_request_is_sent(printed_taxon):
-    """The hazard the rule prevents (probe M): a name in capitals sent as printed. The query builder raises
-    before any HTTP request, no response is captured, and the record is held whatever the specialist
-    answers afterwards."""
-    rig = printed_taxon("CAMPONOTUS SP.")
+@pytest.mark.parametrize("printed", ["CAMPONOTUS SP.", "cf. Danaus plexippus", "Danaus?"])
+def test_a_specialist_that_sends_the_printed_name_holds_the_record_and_no_request_is_sent(printed_taxon, printed):
+    """The hazard the rules prevent (probe M, and N4 for a name in doubt): a name in capitals or in doubt sent as
+    printed. The query builder raises before any HTTP request, no response is captured, and the record is held
+    whatever the specialist answers afterwards."""
+    rig = printed_taxon(printed)
     parsed, specimen, hold = run_research(rig, specialist_factory(rig.model_calls, taxon_lookup=True,
-        taxon_printed="CAMPONOTUS SP.", follow_lookup_rule=False), transport(rig.source_urls))
+        taxon_printed=printed, follow_lookup_rule=False), transport(rig.source_urls))
     assert isinstance(hold, OperationalBlock) and str(hold) == "research_worker_custody_requires_reconciliation"
     assert specimen.run.stage == "plan" and specimen.run.disposition is None
     assert not [url for url in rig.source_urls if "gbif" in url]

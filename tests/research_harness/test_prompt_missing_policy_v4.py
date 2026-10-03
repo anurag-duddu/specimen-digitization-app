@@ -47,7 +47,7 @@ FILE_SHA256 = {
     "specimen_measurement-v3.txt": "9fcc4eb9d206b597cfbc0e203c6d57c2c4c8e578c403c939938baeee516b5480",  # pragma: allowlist secret
     "specimen_parties-v3.txt": "752b3c106e8942840eb0e6be7540d286f8ae6724d962c018e67fa0d0cde9011f",  # pragma: allowlist secret
     "specimen_collection-v3.txt": "40d6979ed0a375987fb696afb9b20dc4e25e026f1946ec594d4292affdcd6b18",  # pragma: allowlist secret
-    "specimen_taxonomy-v4.txt": "bb64de77ab72514726c34b64519c73574542dfcbd5d14b9fbf6c6cb4978312ab",  # pragma: allowlist secret
+    "specimen_taxonomy-v4.txt": "5f722a49eaf703dbb96fdca08d8b2d5b0dd29a4544dffb050a67ef73805caa27",  # pragma: allowlist secret
     "specimen_geography-v4.txt": "dc11acc47becdecedb7f329f65fdbbdd5d07abdd1833b38e5812a6568c2a00b4",  # pragma: allowlist secret
     "specimen_temporal-v4.txt": "92a1663ce8b4df46b6d916eef2c1a368e1bcd1ca537f54caea6ac4d62c950cf9",  # pragma: allowlist secret
     "specimen_measurement-v4.txt": "2dc272a7ac098339563b81565d529c00d039fcb9c589b911006f75a8bdede63d",  # pragma: allowlist secret
@@ -56,7 +56,7 @@ FILE_SHA256 = {
 }
 # Each role's pin digest on its v4 file (the digest of common-v1.txt, the v4 file and the owned-fields line).
 V4_ROLE_DIGESTS = {
-    SpecialistRole.TAXONOMY: "f16c0c617e79d3ec35b817ff6b202887c09bd032682ccea2995cc59b97532b4e",  # pragma: allowlist secret
+    SpecialistRole.TAXONOMY: "4e6fc532dd512e91f0c6859ab32efd0d14a3bf65ce9843cf41e183a13b84a4c5",  # pragma: allowlist secret
     SpecialistRole.GEOGRAPHY: "e9cef2c07f305e20010bee859d972c33f22c09b540b9288d76fec7fa7c182ebe",  # pragma: allowlist secret
     SpecialistRole.TEMPORAL: "1764838c2795e22120bf946b806bedc79c293132cbfe0ebb1658063f76d60886",  # pragma: allowlist secret
     SpecialistRole.MEASUREMENT: "cd304517f75902dd88235f28d4c9cfc5cfb1e34418c85d182671a4454c8e890d",  # pragma: allowlist secret
@@ -225,6 +225,10 @@ def test_a_taxon_lookup_is_only_for_a_name_the_query_builder_can_send():
             "the label prints in capitals that way.") in text
     assert ("The builder sends nothing for a name that begins with a lower-case word or a qualifier such as cf., "
             "or that has a question mark on the genus, and a lookup it cannot send holds the record.") in text
+    # N4 of the third review: a name in doubt (cf., aff., a question mark before or on the genus) is a shape the
+    # builder refuses, and the text must say what to return for it, not only for common names.
+    assert "A name in doubt is not sent either: return waiting_policy and make no lookup." in text
+    assert text.index("holds the record. A name in doubt") < text.index("A common name, or any text")
     assert ("A common name, or any text that is not a scientific name, is not a taxon the readings name: "
             "return waiting_policy and make no lookup.") in text
 
@@ -232,7 +236,8 @@ def test_a_taxon_lookup_is_only_for_a_name_the_query_builder_can_send():
 # What lookup.scientific_name (the query builder behind GBIF's request) sends for each shape the text names.
 SENDABLE = ("Camponotus", "Camponotus sp.", "Danaus plexippus", "Danaus plexippus Linnaeus",
     "Danaus plexippus (Linnaeus, 1758)", "Carabidae")
-NOT_SENDABLE = ("CAMPONOTUS", "CAMPONOTUS SP.", "unknown beetle", "danaus plexippus", "cf. Danaus", "Danaus?")
+NOT_SENDABLE = ("CAMPONOTUS", "CAMPONOTUS SP.", "unknown beetle", "danaus plexippus", "cf. Danaus", "Danaus?",
+    "cf. Danaus plexippus", "aff. Danaus plexippus", "nr. Danaus plexippus", "? Danaus plexippus")
 
 
 @pytest.mark.parametrize("literal", SENDABLE)
