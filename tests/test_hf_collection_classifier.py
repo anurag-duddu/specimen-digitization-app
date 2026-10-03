@@ -558,3 +558,39 @@ def test_trace_content_remains_private_even_with_global_capture(capfire):
         assert base64.b64encode(f.image.png).decode() not in trace
     finally:
         Agent.instrument_all(previous)
+
+
+def test_trace_content_is_recorded_when_configured_for_approved_content(
+    capfire, monkeypatch
+):
+    """G3: under approved-content the classifier's prompt, catalog input and
+    ranked output are on its spans; image bytes and provider error bodies never."""
+    from specimen_digitization import observability
+
+    monkeypatch.setattr(
+        observability,
+        "_configured_settings",
+        observability.ObservabilitySettings(
+            environment="test",
+            service_name="specimen-worker",
+            capture_mode=observability.CaptureMode.APPROVED_CONTENT,
+            head_sample_rate=1.0,
+            distributed_tracing=False,
+        ),
+    )
+    for failure in (False, "http", "generic"):
+        f = Fixture()
+        f.config = f.config.model_copy(update={"prompt_text": "classifier_prompt_canary"})
+        f.payload = {"candidates": [candidate() | {"reasons": ["output_canary"]}]}
+        if failure == "http":
+            f.error = ModelHTTPError(401, "fixture/model", "private_error_canary")
+        elif failure == "generic":
+            f.error = RuntimeError("private_error_canary")
+        result = f.adapter().classify(f.request)
+        assert result.status == ("blocked" if failure else "completed")
+    trace = json.dumps(capfire.exporter.exported_spans_as_dict(), default=str)
+    assert "classifier_prompt_canary" in trace
+    assert "Zoology / Insects" in trace
+    assert "output_canary" in trace
+    assert "private_error_canary" not in trace
+    assert base64.b64encode(f.image.png).decode() not in trace

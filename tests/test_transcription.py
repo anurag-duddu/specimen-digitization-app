@@ -42,3 +42,43 @@ def test_transcription_agent_has_a_stable_logfire_name() -> None:
     )
 
     assert agent.name == "literal_transcriber_handwriting_qwen"
+
+
+@pytest.mark.parametrize(
+    ("mode", "content"),
+    [("approved-content", True), ("metadata", False), (None, False)],
+)
+def test_reader_agent_records_content_only_under_approved_content(
+    monkeypatch, mode, content
+) -> None:
+    from specimen_digitization import observability
+
+    monkeypatch.setattr(
+        observability,
+        "_configured_settings",
+        None
+        if mode is None
+        else observability.ObservabilitySettings(
+            environment="test",
+            service_name="specimen-worker",
+            capture_mode=observability.CaptureMode(mode),
+            head_sample_rate=1.0,
+            distributed_tracing=False,
+        ),
+    )
+    prompt = ResolvedPrompt(
+        name=PromptName.LITERAL_TRANSCRIPTION,
+        text="Transcribe literally.",
+        requested_label="candidate",
+        served_label="candidate",
+        version=2,
+        resolution_reason="remote",
+    )
+
+    agent = build_literal_transcription_agent(
+        FakeGateway(), route_id="handwriting-qwen", prompt=prompt
+    )
+
+    assert agent.instrument.include_content is content
+    assert agent.instrument.include_model_request_parameters is content
+    assert agent.instrument.include_binary_content is False

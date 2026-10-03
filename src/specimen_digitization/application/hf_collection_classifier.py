@@ -28,11 +28,11 @@ from pydantic_ai.exceptions import (
 )
 from pydantic_ai.messages import ModelResponse
 from pydantic_ai.models.huggingface import HuggingFaceModel
-from pydantic_ai.models.instrumented import InstrumentationSettings
 from pydantic_ai.models.wrapper import WrapperModel
 from pydantic_ai.usage import UsageLimits
 
 from ..model_gateway import ModelGatewayConfigurationError
+from ..provider_privacy import agent_instrumentation
 from .classification import Candidate, ClassificationRequest, ClassificationResult
 from .collection_profiles import FrozenRecord
 
@@ -273,11 +273,9 @@ class HFCollectionClassifier:
                 retries=0,
                 name="hf_collection_classifier",
             )
-            agent.instrument = InstrumentationSettings(
-                include_content=False,
-                include_binary_content=False,
-                include_model_request_parameters=False,
-            )
+            # Prompt and messages follow the configured capture mode (G3); the
+            # image bytes are never recorded.
+            agent.instrument = agent_instrumentation()
 
             async def run():
                 async with asyncio.timeout(remaining()):
