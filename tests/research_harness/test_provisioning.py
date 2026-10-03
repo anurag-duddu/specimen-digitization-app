@@ -30,6 +30,10 @@ from specimen_digitization.research_harness.production_runtime import (
 ORG = "00000000-0000-4000-8000-000000000001"
 COLLECTION = "00000000-0000-4000-8000-000000000002"
 WORKER = "offline-worker"
+# The connector registers a binding for a manager or admin only (main's rule),
+# so the rig's worker is a manager. Production's worker membership is operator:
+# see test_an_operator_worker_cannot_register_so_the_run_holds.
+WORKER_ROLE = "manager"
 
 
 def plan_specimen(version=3):
@@ -68,7 +72,7 @@ class Repository:
     def __init__(self, specimen, *, refuse=None):
         self.specimen, self.refuse = specimen, refuse
         self.inserts, self.member_reads = [], 0
-        self.role = "operator"
+        self.role = WORKER_ROLE
 
     def memberships(self, uid):
         self.member_reads += 1
@@ -96,8 +100,12 @@ class Repository:
 
 
 class Writer:
-    """The binding read and the registration writer, shared across ticks."""
-    registered, binding, fail_next = [], None, None
+    """The binding read and the registration writer, shared across ticks.
+
+    Registration follows the connector: a manager or admin registers, and the
+    specimen's single binding row (``rows``) is insert-only.
+    """
+    registered, binding, rows, fail_next = [], None, {}, None
 
     def __init__(self, repository, journal, *, blobs):
         assert journal is None and blobs is None
@@ -112,9 +120,14 @@ class Writer:
 
     async def register_current_binding(self, principal, specimen_id, registration, *, store, scope):
         cls = type(self)
+        if principal.role not in {"manager", "admin"}:
+            raise PermissionError("native_canonical_owner_required")
         if cls.fail_next:
             failure, cls.fail_next = cls.fail_next, None
             raise failure
+        if specimen_id in cls.rows:
+            raise PublicationUnavailable("native_canonical_transaction_rejected")
+        cls.rows[specimen_id] = registration.binding_id
         cls.registered.append((registration, store.program_key, scope))
         cls.binding = {"active_registration_count": 1}
 
@@ -122,12 +135,12 @@ class Writer:
 @pytest.fixture
 def rig(tmp_path):
     class Fresh(Writer):
-        registered, binding, fail_next = [], None, None
+        registered, binding, rows, fail_next = [], None, {}, None
     specimen = plan_specimen()
     repository = Repository(specimen)
     backend = SqliteStateBackend(tmp_path / "state.sqlite")
     backend.grant(DurabilityScope(ORG, COLLECTION, specimen.id, "membership", 1, WORKER, False))
-    principal = Principal(user_id=WORKER, role="operator",
+    principal = Principal(user_id=WORKER, role=WORKER_ROLE,
         scope=Scope(organization_id=ORG, collection_id=COLLECTION))
     token = actor_uid.set(WORKER)
     def provision(value=None):
@@ -191,7 +204,8 @@ def test_a_second_tick_with_a_current_binding_writes_nothing(rig):
 def test_a_retry_after_a_lost_registration_replays_one_job_and_one_binding_id(rig):
     scope = job_scope(rig)
     rig.writer.fail_next = PublicationUnavailable("native_v2_registration_rejected")
-    with pytest.raises(HeldUnknown, match="native_v2_registration_rejected"):
+    # A refused row is this record's own hold (workflow_bridge.RECORD_REFUSALS).
+    with pytest.raises(HeldUnknown, match="^research_provision_registration_refused$"):
         rig.provision()
     rig.provision()
     rig.provision()
@@ -213,19 +227,28 @@ def test_a_refused_base_record_holds_before_any_state(rig):
     assert len(rig.writer.registered) == 1
 
 
-def test_a_new_revision_after_a_stale_binding_starts_a_new_job(rig):
+def test_a_new_revision_after_a_registered_one_holds_because_the_row_is_not_replaced(rig):
     rig.provision()
     later = rig.specimen.model_copy(deep=True)
     later.version += 1
     rig.repository.specimen = later
     rig.writer.binding = None  # The row names the earlier revision.
-    rig.provision(later)
-    first, second = rig.writer.registered
-    assert first[0].job_id.endswith("-r3") and second[0].job_id.endswith("-r4")
-    assert first[1] == second[1] == research_program_key(later.run.id)
-    assert first[0].binding_id != second[0].binding_id
-    store = ResearchStore(rig.backend, second[1])
-    assert len(store._read(job_scope(rig, later)).state["jobs"]) == 2
+    with pytest.raises(HeldUnknown, match="native_canonical_transaction_rejected"):
+        rig.provision(later)
+    [(registration, _, _)] = rig.writer.registered
+    assert registration.job_id.endswith("-r3")
+    assert rig.writer.rows == {rig.specimen.id: registration.binding_id}
+
+
+def test_an_operator_worker_cannot_register_so_the_run_holds(rig):
+    # Production's worker membership is operator. Registration needs a manager
+    # or admin, so provisioning raises HeldUnknown and the bridge holds the run.
+    rig.repository.role = "operator"
+    operator = rig.principal.model_copy(update={"role": "operator"})
+    with pytest.raises(HeldUnknown, match="native_canonical_owner_required"):
+        asyncio.run(provisioning.provision(rig.repository, operator, rig.specimen,
+            state_backend=rig.backend, writer_factory=rig.writer))
+    assert rig.writer.registered == [] and rig.writer.rows == {}
 
 
 @pytest.mark.parametrize("change", ["sensitive", "stage", "no_route", "unpinned"])

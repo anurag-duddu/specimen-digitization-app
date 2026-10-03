@@ -102,17 +102,12 @@ query GetCanonicalResearchBindingV2($organizationId: UUID!, $collectionId: UUID!
     """, params: [$organizationId, $collectionId, $specimenId, $actorUid])
 }
 
-# Registration is a guarded upsert of the specimen's single binding row. A row that
-# is no longer current for the specimen's revision, run or snapshot is replaced by a
-# registration under a new binding id; old receipts keep the old id, so they leave
-# the causal chain. An identical unpublished registration replays without change.
-# Every other overwrite is refused, including a current binding that has published.
-# The worker actor may be an operator, reviewer, manager or admin. No latest
-# selection or caller budget.
+# Registration is insert-only V2. Updating a mapping/generation needs a separately
+# reviewed replacement contract; no upsert/latest selection or caller budget.
 mutation RegisterCanonicalResearchBindingV2($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $registrationJson: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role canViewSensitive }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['manager', 'admin']") { active role canViewSensitive }
   }
   registered: _execute(sql: """
     WITH args AS (SELECT $5::jsonb AS r), admitted AS (
@@ -129,8 +124,7 @@ mutation RegisterCanonicalResearchBindingV2($organizationId: UUID!, $collectionI
       JOIN public.research_harness_state h ON h.organization_id=s.organization_id AND h.program_key=r->>'program_key'
       JOIN public.organization_member om ON om.organization_id=s.organization_id AND om.uid=$4 AND om.active
       JOIN public.collection_member cm ON cm.organization_id=s.organization_id AND cm.collection_id=s.collection_id
-        AND cm.uid=$4 AND cm.active AND cm.role IN ('operator','reviewer','manager','admin')
-        AND (NOT s.sensitive OR cm.can_view_sensitive)
+        AND cm.uid=$4 AND cm.active AND cm.role IN ('manager','admin') AND (NOT s.sensitive OR cm.can_view_sensitive)
       WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3 AND s.revision>=1
         AND r->>'publication_version'='research-publication/v2'
         AND r->>'authority_digest'<>'' AND r->>'current_chain_digest'<>''
@@ -155,7 +149,7 @@ mutation RegisterCanonicalResearchBindingV2($organizationId: UUID!, $collectionI
           AND collection_id=$2 AND record_version_id=rv.id)=20
       FOR UPDATE OF s, h
     )
-    INSERT INTO public.canonical_research_binding_v2 AS existing (
+    INSERT INTO public.canonical_research_binding_v2 (
       organization_id,collection_id,specimen_id,binding_id,registration_revision,active,
       base_canonical_revision,base_record_version_id,base_snapshot_sha256,base_host_record_version_id,canonical_run_id,
       current_canonical_revision,current_record_version_id,current_snapshot_sha256,current_host_record_version_id,current_receipt_id,
@@ -168,46 +162,5 @@ mutation RegisterCanonicalResearchBindingV2($organizationId: UUID!, $collectionI
       r->>'semantic_mapping_digest',r->>'policy_digest',r->>'program_key',r->'semantic_mapping',r->>'authority_digest',
       (r->>'import_proof_id')::uuid,r->>'import_proof_digest',r->>'current_chain_digest','research-publication/v2',$4,statement_timestamp()
     FROM admitted
-    ON CONFLICT (organization_id,collection_id,specimen_id) DO UPDATE SET
-      binding_id=EXCLUDED.binding_id,registration_revision=EXCLUDED.registration_revision,active=EXCLUDED.active,
-      base_canonical_revision=EXCLUDED.base_canonical_revision,base_record_version_id=EXCLUDED.base_record_version_id,
-      base_snapshot_sha256=EXCLUDED.base_snapshot_sha256,base_host_record_version_id=EXCLUDED.base_host_record_version_id,
-      canonical_run_id=EXCLUDED.canonical_run_id,current_canonical_revision=EXCLUDED.current_canonical_revision,
-      current_record_version_id=EXCLUDED.current_record_version_id,current_snapshot_sha256=EXCLUDED.current_snapshot_sha256,
-      current_host_record_version_id=EXCLUDED.current_host_record_version_id,current_receipt_id=EXCLUDED.current_receipt_id,
-      job_id=EXCLUDED.job_id,job_key=EXCLUDED.job_key,generation=EXCLUDED.generation,input_digest=EXCLUDED.input_digest,
-      profile_digest=EXCLUDED.profile_digest,runtime_binding_digest=EXCLUDED.runtime_binding_digest,
-      canonical_profile_digest=EXCLUDED.canonical_profile_digest,source_sha256=EXCLUDED.source_sha256,
-      semantic_mapping_digest=EXCLUDED.semantic_mapping_digest,policy_digest=EXCLUDED.policy_digest,
-      program_key=EXCLUDED.program_key,semantic_mapping=EXCLUDED.semantic_mapping,authority_digest=EXCLUDED.authority_digest,
-      import_proof_id=EXCLUDED.import_proof_id,import_proof_digest=EXCLUDED.import_proof_digest,
-      current_chain_digest=EXCLUDED.current_chain_digest,publication_version=EXCLUDED.publication_version,
-      registered_by=CASE WHEN existing.binding_id=EXCLUDED.binding_id THEN existing.registered_by ELSE EXCLUDED.registered_by END,
-      registered_at=CASE WHEN existing.binding_id=EXCLUDED.binding_id THEN existing.registered_at ELSE EXCLUDED.registered_at END
-    WHERE (existing.binding_id<>EXCLUDED.binding_id AND (NOT existing.active
-        OR existing.canonical_run_id<>EXCLUDED.canonical_run_id
-        OR existing.current_canonical_revision<>EXCLUDED.current_canonical_revision
-        OR existing.current_snapshot_sha256<>EXCLUDED.current_snapshot_sha256))
-      OR (existing.current_receipt_id IS NULL AND (
-        existing.binding_id,existing.registration_revision,existing.active,existing.base_canonical_revision,
-        existing.base_record_version_id,existing.base_snapshot_sha256,existing.base_host_record_version_id,
-        existing.canonical_run_id,existing.current_canonical_revision,existing.current_record_version_id,
-        existing.current_snapshot_sha256,existing.current_host_record_version_id,existing.job_id,
-        existing.job_key,existing.generation,existing.input_digest,existing.profile_digest,
-        existing.runtime_binding_digest,existing.canonical_profile_digest,existing.source_sha256,
-        existing.semantic_mapping_digest,existing.policy_digest,existing.program_key,existing.semantic_mapping,
-        existing.authority_digest,existing.import_proof_id,existing.import_proof_digest,
-        existing.current_chain_digest,existing.publication_version
-      )=(
-        EXCLUDED.binding_id,EXCLUDED.registration_revision,EXCLUDED.active,EXCLUDED.base_canonical_revision,
-        EXCLUDED.base_record_version_id,EXCLUDED.base_snapshot_sha256,EXCLUDED.base_host_record_version_id,
-        EXCLUDED.canonical_run_id,EXCLUDED.current_canonical_revision,EXCLUDED.current_record_version_id,
-        EXCLUDED.current_snapshot_sha256,EXCLUDED.current_host_record_version_id,EXCLUDED.job_id,
-        EXCLUDED.job_key,EXCLUDED.generation,EXCLUDED.input_digest,EXCLUDED.profile_digest,
-        EXCLUDED.runtime_binding_digest,EXCLUDED.canonical_profile_digest,EXCLUDED.source_sha256,
-        EXCLUDED.semantic_mapping_digest,EXCLUDED.policy_digest,EXCLUDED.program_key,EXCLUDED.semantic_mapping,
-        EXCLUDED.authority_digest,EXCLUDED.import_proof_id,EXCLUDED.import_proof_digest,
-        EXCLUDED.current_chain_digest,EXCLUDED.publication_version
-      ))
     """, params: [$organizationId, $collectionId, $specimenId, $actorUid, $registrationJson]) @check(expr: "this == 1", message: "research registration unavailable")
 }

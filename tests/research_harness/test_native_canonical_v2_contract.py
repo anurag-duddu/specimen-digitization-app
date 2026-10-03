@@ -701,34 +701,39 @@ def registration_case(c,*,journal=False,policy_digest=None):
         specimen_id=c.p.basis.scope.specimen_id)
 
 
-def test_an_operator_registers_the_binding_with_the_provisioners_store_and_scope(causal):
+def registering(c,role="manager"):
+    # The connector registers a binding for a manager or admin only.
+    return c.b.principal.model_copy(update={"role":role})
+
+
+def test_a_manager_registers_the_binding_with_the_provisioners_store_and_scope(causal):
     c=causal;r=registration_case(c)
-    operator=c.b.principal.model_copy(update={"role":"operator"})
-    result=call(c,lambda:r.writer.register_current_binding(operator,r.specimen_id,r.registration,store=r.store,scope=r.scope))
+    manager=registering(c)
+    result=call(c,lambda:r.writer.register_current_binding(manager,r.specimen_id,r.registration,store=r.store,scope=r.scope))
     assert result=="registered-binding" and r.store.reads==[r.scope]
     assert [row[0] for row in r.connector.calls]==["RegisterCanonicalResearchBindingV2","read_current_binding"]
     operation,variables,mutation=r.connector.calls[0]
     payload=json.loads(variables["registrationJson"])
-    assert mutation is True and variables["actorUid"]==operator.user_id and variables["specimenId"]==r.specimen_id
+    assert mutation is True and variables["actorUid"]==manager.user_id and variables["specimenId"]==r.specimen_id
     assert payload["binding_id"]==str(r.registration.binding_id)
     assert payload["journal_budget_policy"]==REGISTRATION_POLICY and payload["state_revision"]==3
 
 
-def test_a_viewer_cannot_register_a_binding(causal):
+@pytest.mark.parametrize("role",["viewer","operator","reviewer"])
+def test_only_a_manager_or_admin_registers_a_binding(causal,role):
     c=causal;r=registration_case(c)
-    viewer=c.b.principal.model_copy(update={"role":"viewer"})
-    with pytest.raises(PermissionError,match="native_canonical_operator_required"):
-        call(c,lambda:r.writer.register_current_binding(viewer,r.specimen_id,r.registration,store=r.store,scope=r.scope))
+    with pytest.raises(PermissionError,match="native_canonical_owner_required"):
+        call(c,lambda:r.writer.register_current_binding(registering(c,role),r.specimen_id,r.registration,store=r.store,scope=r.scope))
     assert r.connector.calls==[] and r.store.reads==[]
 
 
 def test_registration_uses_the_journal_only_when_no_store_and_scope_are_passed(causal):
     c=causal;r=registration_case(c,journal=True)
-    assert call(c,lambda:r.writer.register_current_binding(c.b.principal,r.specimen_id,r.registration))=="registered-binding"
+    assert call(c,lambda:r.writer.register_current_binding(registering(c,"admin"),r.specimen_id,r.registration))=="registered-binding"
     assert r.store.reads==[r.scope]
     bare=registration_case(c)
     with pytest.raises(ValueError,match="store_and_scope_required"):
-        call(c,lambda:bare.writer.register_current_binding(c.b.principal,bare.specimen_id,bare.registration))
+        call(c,lambda:bare.writer.register_current_binding(registering(c),bare.specimen_id,bare.registration))
     assert bare.connector.calls==[]
 
 
@@ -739,5 +744,5 @@ def test_registration_refuses_an_unpinned_budget_policy_or_foreign_scope(causal,
     if mismatch=="actor":r.scope.actor_uid="another-worker"
     if mismatch=="specimen":r.scope.specimen_id=ident("another-specimen")
     with pytest.raises(v1.PublicationUnavailable,match="native_v2_owner_policy_pin_unproved"):
-        call(c,lambda:r.writer.register_current_binding(c.b.principal,r.specimen_id,r.registration,store=r.store,scope=r.scope))
+        call(c,lambda:r.writer.register_current_binding(registering(c),r.specimen_id,r.registration,store=r.store,scope=r.scope))
     assert r.connector.calls==[]

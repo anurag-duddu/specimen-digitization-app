@@ -438,8 +438,8 @@ class SqlConnectCanonicalResearchWriterV2(SqlConnectCanonicalResearchWriter):
             store=self.journal.store if store is None else store
             scope=self.journal.scope if scope is None else scope
         principal=self._principal(principal,specimen_id)
-        if principal.role not in {"operator","reviewer","manager","admin"}:
-            raise PermissionError("native_canonical_operator_required")
+        if principal.role not in {"manager","admin"}:
+            raise PermissionError("native_canonical_owner_required")
         registration=OwnerRegistrationV2.model_validate(registration.model_dump(mode="json"))
         document=await asyncio.to_thread(store._read,scope)
         if (scope.actor_uid!=principal.user_id or scope.specimen_id!=str(UUID(str(specimen_id)))

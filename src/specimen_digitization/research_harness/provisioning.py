@@ -8,6 +8,9 @@ once. Otherwise it writes, in order and each idempotently:
 3. the job "{run.id}-r{revision}", generation 1, with the committed pins,
 4. the canonical binding, registered by the worker actor.
 A retry after a partial failure replays the steps already written.
+The connector registers for a manager or admin only and never overwrites the
+specimen's binding row; a refused registration raises HeldUnknown, so the
+run holds.
 """
 from __future__ import annotations
 
@@ -76,8 +79,9 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
         raise HeldUnknown(str(error)) from None
     if current is not None and current.get("active_registration_count") == 1:
         return
-    # No binding row yet (count 0), or a row for an earlier run or revision
-    # (no current row): register this run's current revision.
+    # No current binding: register this run's current revision. A row left
+    # by an earlier run or revision is not replaced, so that registration is
+    # refused and the run holds.
     if (specimen.asset.sensitive is not False or run.stage != "plan"
         or set(run.fields) != set(MANDATORY)
         or committed_harness_route(run.profile_snapshot) is None
@@ -152,4 +156,11 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
         await writer.register_current_binding(principal, specimen.id, registration,
             store=store, scope=scope)
     except PublicationUnavailable as error:
+        # The connector refused this specimen's row (for example a second row
+        # under insert-only registration): this record alone is held.
+        if str(error) == "native_v2_registration_rejected":
+            raise HeldUnknown("research_provision_registration_refused") from None
+        raise HeldUnknown(str(error)) from None
+    except PermissionError as error:
+        # The worker's role cannot register: an authorization failure.
         raise HeldUnknown(str(error)) from None
