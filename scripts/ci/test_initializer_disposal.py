@@ -55,6 +55,10 @@ def test_ordinary_disposal_reconciles_unknown_source_create_without_replaying(tm
                 return {"items": operations}
             if resource.endswith("/users"):
                 return {"items": [{"name": init.INITIALIZER_SQL, "type": "CLOUD_IAM_SERVICE_ACCOUNT"}] if self.present else []}
+            if resource.endswith("/users/" + init.INITIALIZER_SQL):
+                assert kwargs.get("params") == {"host": ""} and self.present
+                return {"name": init.INITIALIZER_SQL, "type": "CLOUD_IAM_SERVICE_ACCOUNT", "instance": init.SOURCE,
+                        "project": init.PROJECT, "host": "", "databaseRoles": []}
             raise AssertionError(resource)
         def dispose_initializer(self, instance, action):
             trace.append((instance, action))

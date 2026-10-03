@@ -101,6 +101,9 @@ class Cloud:
             return self.operations[-1]
         if resource.endswith("/users"):
             return {"items": [self.principal] if self.principal else []}
+        if resource.endswith("/users/" + I.INITIALIZER_SQL):
+            assert method == "GET" and params == {"host": ""} and self.principal is not None
+            return {**self.principal, "instance": I.SOURCE, "project": I.PROJECT, "host": ""}
         if resource.endswith("/operations"):
             return {"items": self.operations}
         if resource.endswith("/databases/" + I.DATABASE):

@@ -107,6 +107,17 @@ traded for a passing release:
   replaces another technical consent prompt, while protected PR checks and
   the steward's current-head review remain required. A fresh main push gives
   a new A attempt; a failed prior A cannot be relabelled B or replayed.
+- 2026-10-03 native readback correction: a complete `users.list` proves
+  initializer presence and uniqueness, while the fixed named `users.get`
+  supplies its role memberships. Both initialization paths retain the exact
+  `cloudsqlsuperuser` predicate, and disposal retains independent native SQL
+  privilege-removal and absence checks. The named detail read keeps the
+  original observation deadline and verifies the exact project, instance,
+  name, IAM service-account type and empty host. Role replacement specifies
+  that same name and IAM type in its body, with `revokeExistingRoles=true`
+  in the query and no password or additive body roles. No new permission or
+  resource scope is introduced. The earlier disposal's `INTERNAL_ERROR`
+  remains a native failure; its cause and rollback are not inferred.
 - No private value (administrator or bootstrap identities, organization or
   collection ids, tokens) appears in a workflow log or artifact, because both
   are public in this repository.
