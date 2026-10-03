@@ -1097,6 +1097,14 @@ def segmentation_pins():
     return dict(pins, checkpoint_sha256=checkpoint) if checkpoint else pins
 
 
+# The SAM 3 service ends a request at 240 s, and answers busy while it serves
+# another or a run's claim is younger than that (sam3_server.serve_runs,
+# RunSegmenter). 250 s after a timeout or a busy answer, a claim taken before
+# it has its response stored or can be taken over. The service sends no
+# Retry-After; the drain waits under its 300 s fence lease (lane_worker).
+SAM3_RETRY_SECONDS = 250
+
+
 class Sam3Service:
     """Pinned remote SAM3 activity contract. Service must return original pixel regions.
 
@@ -1217,7 +1225,11 @@ class Sam3Service:
         # The service's per-run claim makes a repeat safe: it returns a finished
         # inference instead of running it again, so these failures retry (G6).
         if result.status == "deadline_exceeded":
-            raise AdapterFailure("sam3_timeout", LookupStatus.TIMEOUT)
+            raise AdapterFailure(
+                "sam3_timeout",
+                LookupStatus.TIMEOUT,
+                retry_after_seconds=SAM3_RETRY_SECONDS,
+            )
         if result.status == "worker_failed":
             raise AdapterFailure("sam3_unavailable", LookupStatus.PROVIDER)
         if result.status != "completed":
@@ -1231,7 +1243,11 @@ class Sam3Service:
             except (ValueError, AttributeError):
                 detail = None
             if status == 429 or (status == 409 and detail == "sam3_busy"):
-                raise AdapterFailure("sam3_busy", LookupStatus.RATE_LIMITED)
+                raise AdapterFailure(
+                    "sam3_busy",
+                    LookupStatus.RATE_LIMITED,
+                    retry_after_seconds=SAM3_RETRY_SECONDS,
+                )
             if status >= 500:
                 raise AdapterFailure("sam3_unavailable", LookupStatus.PROVIDER)
             raise OperationalBlock(f"sam3_http_{status}")

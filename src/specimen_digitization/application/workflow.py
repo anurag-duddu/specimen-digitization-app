@@ -307,6 +307,8 @@ class Workflow:
         # Set once the step's model or lookup call has returned: a later failure
         # is deterministic and its outcome known (issue #80, HARNESS.md 2).
         effect_settled = False
+        # A SAM 3 failure keeps its retry even past the budget (below).
+        repeatable = False
         observed = len(run.observations)
         try:
             if step == "pin_dependencies":
@@ -627,6 +629,13 @@ class Workflow:
                 LookupStatus.PROVIDER,
             }:
                 self.schedule_retry(run, step, exc.retry_after_seconds)
+            # The SAM 3 service answers a repeat of a run's request from the
+            # response it stored (sam3_server.RunSegmenter).
+            repeatable = (
+                step == "segment"
+                and exc.code.startswith("sam3_")
+                and not exc.outcome_unknown
+            )
         except OperationalBlock as exc:
             circuit_failure = (
                 None if effect_settled else str(exc).removeprefix("taxonomy_")
@@ -658,7 +667,7 @@ class Workflow:
             run.stage = "processing_blocked"
             run.disposition = None
         elapsed = max(0, self.monotonic() - started)
-        if external and elapsed > effect_timeout:
+        if external and elapsed > effect_timeout and not repeatable:
             circuit_failure = "timeout"
             specimen = reserved
             run = specimen.run
