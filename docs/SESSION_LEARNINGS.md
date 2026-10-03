@@ -14240,6 +14240,51 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   `specimen-sam` and uvicorn's own lines; the early-return blocks (budget, circuit, allowance) still log nothing;
   not confirmed that every `PublicationUnavailable` raise site passes a fixed code (`log_code` guards the shape).
 
+### 2026-10-03 — Worker create and get on the research harness prefixes (Claude)
+
+- Task: go-live: let the production worker create and read the research harness's blobs (dispatched by the "Go-live
+  coordinator" session after its read-only IAM check; no task ID recorded).
+- Branch/worktree: `claude/worker-research-object-grants` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a0137d2b1b86ea1fe`,
+  base `main` c6f3c10d, merged with origin/main db855ad6 (#242) before the push.
+- Outcome: In progress. Pull request open and ready for review; not merged. No `gcloud` or `firebase` command was run
+  and merging applies no IAM (a push to main still runs the releases): the two worker-only bindings (`objectCreator` and `objectViewer`, condition
+  `specimen_research_objects` on `research-capture/`, `research-journal/` and `research-media/`) reach the project
+  only when the coordinator runs `scripts/ops/iam.py` or `scripts/ops/owner_setup.sh` and reads the bucket policy back.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/250; code commit dfbe1972, merge
+  c1d110fb.
+- Validation: the new assertions fail on the original `iam.py` and `owner_setup.sh` (`test_ops_scripts.py` 2 failed,
+  44 passed; `test_simple_owner_setup.py` 11 failed, 30 passed, 1 skipped) and pass on the change (46 passed; 41
+  passed, 1 skipped for the missing local `shellcheck`). Five temporary mutations (API also given the pair in
+  `iam.py`; `objectAdmin` for `objectCreator` in `iam.py` and in `owner_setup.sh`; SAM given the pair in
+  `owner_setup.sh`; one prefix dropped from the `owner_setup.sh` condition) each failed the new tests and were
+  restored byte for byte. At merge c1d110fb, one file at a time: `test_owner_grants.py` 13, `test_data_released_deploy.py`
+  75, `test_runtime_released_deploy.py` 43, `tests/test_deployment_policy.py` 25, `test_runtime_settings.py` 9,
+  `test_data_setup_window.py` 101, `tests/test_live_data_plan.py` 28, `test_simple_runtime_release.py` 68,
+  `test_simple_data_release.py` 148, all passed. `pre-commit run --files` on the changed files passed. Not run: the
+  full suite, `scripts/ci/verify.sh`, any live or paid call. Not confirmed: the grant working end to end (not
+  applied), duplicate-create behaviour (412 or 403, needs a write), organization deny policies (could not be listed),
+  and whether a list call is denied under the condition.
+- Durable learnings:
+  - `scripts/ci/owner_grants.py` and `test_owner_grants.py` are on `scripts/ci/RETIRED.md` (lists 1 and 2), which
+    keeps them byte for byte unchanged, and AGENTS.md says not to extend them, yet `test_simple_owner_setup.py` and
+    `test_ops_scripts.py` still compare the active scripts with its table. Adding a grant to the active scripts
+    therefore means holding it apart in those two comparisons (`RESEARCH_ROWS`; `expected +=` in the iam test) and
+    pinning it with a condition written out in the test, not editing the retired table. A run of the retired
+    `owner_grants.py plan` would list the new live bindings as "Review: not in the table".
+  - `tests/test_deployment_policy.py` scans the non-test files of `scripts/ops` for the names of retired files:
+    naming `owner_grants.py` in a comment of `iam.py` fails it (tried, then reverted).
+  - A new standing grant changes the change counts that `test_simple_owner_setup.py` pins in eight assertions (18 to
+    20, 17 to 19, 16 to 18, 19 to 21 setup changes); the apply stays idempotent (a second run changes nothing).
+  - `scripts/ops/iam.py` grants the API nothing on the bucket (its bucket rows are `owner_setup.sh`'s), so the iam
+    test's set of API bucket grants is empty, not the application pair.
+- Failed approaches: first edited `owner_grants.py` and its test as the brief listed (its 14 tests passed and three
+  mutations failed them), then found both on the retired list and reverted those two files. The Bash tool refused
+  several compound commands (a heredoc followed by git, or several statements) with a worktree-isolation message:
+  put scripts in files and run one command at a time.
+- Remaining follow-ups: coordinator applies and reads back the bindings after merge; owner or coordinator decides
+  whether the retired table should still receive the two rows; test the duplicate-create status and the list denial
+  with a live write when one is authorized.
 ### 2026-10-03 — GEOLocate authority_id without the matched point (Claude)
 
 - Task: dispatched by the coordinator after an independent reviewer ran the offline end-to-end test
@@ -14347,3 +14392,148 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   whitespace variants as alternatives with empty spans, which DATA_CONTRACT 4.2 (alternatives from the material
   differences left `neither` or `uncertain`) does not describe; a zero-difference first pass never succeeded in
   production before, so this path has not run there; no change was made.
+
+### 2026-10-03 — lane-q-extraction-guard: refuse values the written rules call wrong at extraction (Claude)
+
+- Task: `lane-q-extraction-guard` (Lane Q, PR-EG; from the triage note T2-wrong-values, dispatched by the
+  "Go-live coordinator" session).
+- Branch/worktree: `claude/lane-q-extraction-guard` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-ac9b7f55c4101c9d9`,
+  base `main` 61966503, merged with `origin/main` before each push.
+- Outcome: In progress. Pull request open and ready for review; not merged; nothing in it has run against
+  production or a model. It changes new runs only (existing records keep their values until reprocessed), and only
+  once the worker image is rebuilt from it. After the independent review of head b23e5231 the coordinator removed
+  the cut-off-fragment rule (below); the scope is now three rules, each on a written rule.
+- Commits/PRs: code commit 5c9032ef, merge 97ece3e6, wording commit 2ddb3fb1, the review head b23e5231, the
+  scope-narrowing commit 12808330, then a commit of the delta review's text nits;
+  https://github.com/anurag-duddu/specimen-digitization-app/pull/256.
+- What the guard refuses: (1) a number the label marks with the other elevation unit (G41, GEOREFERENCING.md:172,
+  HARNESS.md:976-977); (2) a value that is a whole slide-preparation code (`field_validators._slide_code`) in
+  `collection_code`, `habitat`, `collection_method` and `collectors` (G45, LAB.md:173-179); (3) a date literal for
+  which `date_parser` says `no_match` with `slide_code` (GEOREFERENCING.md:173) or `part_of_hyphenated_token`
+  (the parser's own rule, HARNESS.md:648-651). The stored position-3 `date_identified` "V-4-67-1" is refused by
+  `slide_code`; no stored value depends on `part_of_hyphenated_token`. A piece of a slide code ("IX" from
+  "IX-17-66-2", position 7's `collection_code`) is not refused: refusing a piece of a hyphen-joined token was my
+  reading of `_enclosing_tokens`, not a written rule, and the coordinator removed it. A test pins "IX" as Supported.
+- Validation: the new file fails on the unchanged `src/` of `origin/main` (97 failed, 6 passed: five replay tests
+  fail on assertion, 92 table cases for want of the module; the six that pass are the control, the position-7 "IX"
+  test and the four date-rule premise tests) and passes on the change (103 passed). With the module present but the
+  call in `apply_candidates` absent, 5 fail and 98 pass, the five failing because a refused value is Supported.
+  Each rule switched off in memory fails its own tests (scratch mutation check). The ten stored runs' 48 supported
+  (field, value) pairs through the final guard: 5 refused, exactly `elevation_from_m` on positions 2 and 7,
+  `collection_code` on 2 and 5 and `date_identified` on 3; the other 43 untouched. Run one file at a time after
+  the change, all passed: the new file (103) and the pin tests `research_harness/test_committed_pins.py` (17),
+  `test_native_canonical_contract.py` (110), `test_native_canonical_v2_contract.py` (87) and
+  `test_canonical_materialization.py` (45). In one pytest
+  process, as CI runs it, the new file plus eleven neighbouring files (`test_application.py`,
+  `test_evidence_integrity.py`, `test_huggingface_preflight.py`, `test_bounded_telemetry.py`,
+  `test_field_validators.py`, `test_field_harness.py`, `test_model_runtime.py` and the four pin files), in both
+  orders: 733 passed, 1 skipped each (measured at 12808330 with 98 new tests, to be re-run before the push).
+  The whole suite in one process (`python -m pytest -q`, the command CI runs through `uv run`) with the change,
+  also at 12808330: 10063 passed, 107 skipped, 0 failed, 13 min 25 s. At the review head b23e5231, with the
+  fragment rule, the neighbour files one at a time and the whole suite (10047 passed, 107 skipped) had passed
+  too.
+  `pre-commit run --files` on the changed files: all hooks passed; `ruff format --check` and `ruff check` (not a
+  repository gate; there is no ruff configuration) clean on the two Python files this branch adds. Commits were
+  made with `--no-verify` after the hooks ran by hand. Not run: CI's Python 3.12 (the local venv is 3.11), the
+  Flutter jobs, `verify.sh` as a whole, any model call, any check against production.
+- Durable learnings:
+  - The worker's extraction child builds its run as a `SimpleNamespace` with `profile`, `dependencies`,
+    `transcripts`, `fields`, `evidence` and `usage` only (`model_runtime.py` `_model_child`, line 68). Code in
+    `apply_candidates` that reads `run.profile_snapshot` raises there, the child fails and the run blocks as
+    `external_outcome_unknown`. Only `tests/test_model_runtime.py` shows it: my first version failed its first test
+    there, and `origin/main`'s source passes it. The triage prototype used `getattr(run, "profile_snapshot", {})`
+    for this reason. The guard now reads no run attribute at all, and the replay tests use a run of the child's shape.
+  - `field_validators.date_parser` decides a slide code or a hyphen-joined part without the profile's date rules (it
+    validates them first, line 85, and applies them only to a literal that is a date), so the refusal needs none;
+    `test_the_date_refusal_does_not_depend_on_the_profile_date_rules` pins that for four rule sets and would fail
+    if the parser ever used them for that decision.
+  - The date rule follows the parser on pieces of hyphen-joined tokens too: the end of a hyphenated year range
+    ("1948" in "1948-1950"), a part of a written day range ("12 Sept. 1946" or "10" in "10-12 Sept. 1946") and any
+    date touching a hyphen-joined neighbour are refused, while the whole range literal ("10-12 Sept. 1946") is not.
+    A hyphen-written day range ("IV-23-25-48") and an unspaced two-date range ("12-IV-48-15-IV-48", whole and at
+    each end) are slide codes to the parser; a spaced range ("IV-23-48 - IV-25-48") is not refused. The date-shaped
+    part of a code ("IV-29-68" in "IV-29-68-4") is `slide_code` by the HARNESS.md clause, not by
+    GEOREFERENCING.md:173, which names whole codes. Tests pin each. No stored value is affected. Narrowing the
+    date rule to `slide_code` alone is a one-line change if the owner does not want the rest.
+  - A refused value reaches review only as the generic `mandatory_unresolved:{key}` reason (`policy.py:71`). The
+    guard's own reason string is returned to the caller and recorded nowhere, so a reader of LAB.md:173-179 who looks
+    for a kind-specific reason will not find one.
+  - A guard on a literal's unit must read a mark after a range ("3300-3500 ft") as the unit of both ends and count
+    only whole-number occurrences ("300" is not the tail of "1300" or "3,300"). The real label text has a comma
+    straight before the number ("Yepocapa,4800 ft."): my first boundary refused any number after a comma and missed
+    it, and the table test caught that.
+  - A table test written as a dict silently drops a case whose name repeats (ruff F601 found two of mine); give
+    each case its own name.
+  - Limits the review listed, pinned by table cases: a slide code after other words ("H. Hoogstraal VI-24-68-7"),
+    written with dots, or a literal that carries its own wrong unit ("3300 ft" in the metres field, left to the
+    policy's Decimal reading and the derivations) passes the guard.
+- Failed approaches: passing `run.profile_snapshot.get("date_rules")` into `date_parser`, as the brief said: it
+  broke the extraction child (see the first learning). Refusing a proper fragment of a hyphen-joined token
+  (`_enclosing_tokens`) in the four code-free fields: removed, see above.
+- Remaining follow-ups: the owner's open questions: what Collection Code holds and where the top-edge code goes
+  (including whether a piece of a slide-preparation code should ever be stored as Collection Code); whether a species
+  or specimen number such as "Sp.#1" is a Taxon or Habitat value; they would add the refusals this PR leaves out (the
+  FMNHINS prefix, the "Sp.#1" shape, a piece of a code). Giving the extractor the field meanings is separate. Whether
+  the worker release rebuilds the job image on merge is Not confirmed (`docs/DEPLOYMENT.md:976` says the worker job
+  is a follow-up).
+### 2026-10-03 — lane-q-identifier-format: the identifier_format check follows the catalog-number validator (Claude)
+
+- Task: `lane-q-identifier-format` (PR-IDF, dispatched by the Go-live coordinator's Lane Q from a read-only triage of the
+  `identifier_format` review reason).
+- Branch/worktree: `claude/lane-q-identifier-format` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a8b9a8bf7a3799a36`,
+  created from `origin/main` 61966503, then merged with `origin/main` 3365a08f (PRs 247 and 248; no overlapping files).
+- Outcome: In progress. Pull request open and ready for review; not merged; nothing in it ran against production, a
+  paid model or a live service.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/254; code commit cc715d3a, merge f58e2e9b,
+  plus the commit that adds this entry.
+- What changed: `application/policy.py` and `research_harness/canonical_materialization_v2.py` now test the stored
+  catalog number with `field_validators.CATALOG` (the `catalog_number_validator` grammar: optional FMNH INS prefix,
+  any spacing, `-` or `#`, a line break, then 5 to 9 ASCII digits) instead of `FMNH[- ]?INS[ #]*\d+`; the synthetic
+  demo number in `application/api.py` moves from `FMNH-INS 1001` to `FMNH-INS 1000001` so the synthetic run stays
+  clean under the digit bound. V1 (`canonical_materialization.py`) is untouched: only its own test builds that
+  materializer. What the field stores, the other reasons, the date checks and `evidence.py` are unchanged.
+- Validation actually run: the new tests, written first, failed on the unchanged source (`test_application.py` 7
+  failed, 16 passed among the new cases; `test_canonical_materialization_v2.py` 3 failed, 47 passed;
+  `test_local_utility_publication_v2.py` 1 failed, 12 passed) and pass on the change (64, 50 and 13 passed). Every
+  Python test file in the repository (272 files under `tests/` and `scripts/`), one pytest process each, before
+  merging main: 9975 passed, 0 failed, 107 skipped (nine files skipped whole: Postgres, Docker and Data Connect
+  tests). After the merge, 14 related files were re-run and passed. Pin and contract files run alone:
+  `test_committed_pins.py` 17, `test_native_canonical_contract.py` 110, `test_native_canonical_v2_contract.py` 87,
+  `test_canonical_materialization.py` 45 (all passed). `pre-commit run --files` on the six changed files passed;
+  `scripts/ci/check_ui_strings.py` 0 violations; committed with `--no-verify` after running the hooks by hand. No
+  pin moved: `evidence.py`, `projection.py`, `domain.py`, `storage.py`, `active_graph.py`, `model_gateway.py`,
+  `engine.py` and `journal.py` are not in the diff. Not run: `scripts/ci/verify.sh` as a whole, the Flutter gates,
+  any live or paid call, the replay of the nine stored production snapshots (the triage ran that, this branch did not).
+- Durable learnings:
+  - The prefix requirement was a code assumption from the first backend commit (36e218e2, synthetic value
+    `FMNH-INS 1001`). The engineering spec (`HARNESS.md` 658-660, 854; merged under review, not an owner ruling) says
+    prefix optional and the digits are the catalog number. Nothing of the owner's states the stored shape.
+  - Adopting the validator's five-to-nine-digit bound is not free: the synthetic demo value had four digits, so the
+    synthetic run (the "proved clean" fixture behind most of `test_application.py`) failed until `api.py`'s value
+    changed. The recorded wire examples under `docs/execution/` and the Flutter fixture copies still show the old
+    synthetic value; they are digest-pinned snapshots that nothing regenerates, so they were left alone.
+  - Two catalog grammars exist: the validator's `CATALOG` (`[\s#-]*` between the parts) and `evidence.catalog_literal`
+    (one `-` or space, optional `#` or `:`). They disagree on `FMNH INS: 4486784` (colon: only `catalog_literal`),
+    and on `FMNH--INS 4486784` and `FMNH INS ##4486784` (only the validator). Aligning them needs `evidence.py`,
+    which is the `VALIDATOR_SOURCE_SHA256` pin; not attempted.
+  - A new test table that compares the policy to the validator row by row (it asserts the validator's verdict for each
+    string first) pins the two together without a second copy of the pattern.
+  - `tests/test_step_failure_logging.py`, an untracked 5-byte file containing `DONE`, appeared in this worktree during the
+    full run. It is not mine to explain and was not committed. Origin Not confirmed.
+- Failed approaches: the triage's `[0-9]+` (any digit count) pattern was not used, because the validator's grammar
+  (`HARNESS.md` 658-660) has the five-to-nine-digit bound and the task message for this change asked to match that
+  grammar including its bounds (that message is not recorded in a file); the first draft of one test built the
+  synthetic run twice in one directory and hit an upload conflict (fixed by building it once).
+- Remaining follow-ups: the owner's answer on the stored shape of the catalog number (digits only, with the
+  prefix, or the digits plus the printed letters) is open and does not block this change; already finished records keep
+  the stored `identifier_format` reason until a reviewer decision re-runs `finalize` or the specimen is reprocessed;
+  whether `identifier_format` should be re-evaluated on the nine pilot records is the coordinator's call (Not confirmed
+  that any such re-evaluation was done). An independent reviewer found head 7801c674 clean with nits (the review
+  note is outside the repository: `~/specimen-golive/live-20261003/lane-q-notes/pr254-REVIEW.md`); the text-only nits
+  were addressed in the next commit (the finalize test's name, this entry's attribution, the PR body's wording). Not
+  done, because they are not text: a policy test with the production shape (digits as the literal, the two-line
+  sticker text as the evidence excerpt; the reviewer replayed it on the stored snapshots, the repository does not
+  pin it) and a valid five-to-nine-digit value for the shared `FMNH INS 321` fixture. Whether the required checks
+  pass on the final head is Not confirmed at the time of writing.

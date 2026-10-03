@@ -23,7 +23,7 @@ from specimen_digitization.research_harness.contracts import (
     ToolReceipt, WorkState, digest,
 )
 from specimen_digitization.research_harness.evidence import EvidenceError, assemble_field, validate_resolution
-from specimen_digitization.research_harness.prompts import resolve_prompt
+from specimen_digitization.research_harness.prompts import ROLE_PROMPTS, resolve_prompt
 from specimen_digitization.research_harness.sources import (
     GEOLOCATE_QUALIFICATION, SOURCE_PACER, SOURCE_REQUEST_INTERVAL_SECONDS, BoundedHTTPTransport,
     FixtureSourceTransport, RequestPacer, SourceBroker, geolocate_interpretation, insects_registry,
@@ -524,7 +524,8 @@ def test_bounded_transport_waits_for_the_pacer_before_each_request():
 
 
 # --- evidence_relations: the publication gate the v2 success bullet must teach ---
-V2_PROMPT = Path(prompts.__file__).parent / "specimen_geography-v2.txt"
+# The live geography file: the v2 text followed by the v3 blocks.
+V2_PROMPT = Path(prompts.__file__).parent / ROLE_PROMPTS[SpecialistRole.GEOGRAPHY][0]
 V1_GATE = 'set(relations) != cited or not any(role in {"supports", "decides"} for role in relations.values())'
 V2_GATE = "if evidence not in canonical_ids or (relation is None and not scientific):"
 
@@ -722,7 +723,7 @@ def test_five_human_questions_echoing_their_receipts_fit_one_response():
 def test_lookup_citing_resolutions_name_the_assemblies_they_read():
     # The capture takes a lookup's producer from the citing resolution's assemblies; without them
     # publication refuses the lookup (application/projection.py lookup_evidence_producer_invalid).
-    text = (Path(prompts.__file__).parent / "specimen_geography-v2.txt").read_text(encoding="utf-8")
+    text = V2_PROMPT.read_text(encoding="utf-8")
     assert ("Every resolution that cites a GEOLocate lookup names, as the common rules ask,\n"
             "its accepted/rejected assemblies (assembly_ids") in text and "event (event_id)" in text
     request = assembled_request("Yepocapa", FieldKey.CITY)

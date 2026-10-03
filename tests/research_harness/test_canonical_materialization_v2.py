@@ -408,6 +408,25 @@ def test_the_science_rules_do_not_judge_the_prior_value_of_an_unpublished_field(
     assert not any(reason.endswith(":elevation_from_m") for reason in held)
 
 
+# The catalog_number_validator tool's grammar (HARNESS.md section 8) and the value the
+# harness settles to: the digits alone, with or without the printed FMNHINS prefix.
+# The shared fixture value "FMNH INS 321" has three digits, below that grammar's bound,
+# so the other cases built on the fixture carry this reason too; none asserts on it.
+@pytest.mark.parametrize("text,format_failure", [
+    ("4486784", False), ("FMNHINS\n4486784", False), ("FMNH-INS 4486784", False), ("FMNH INS #12345", False),
+    ("", True), ("FMNHINS", True), ("FMNHNS\n4486784", True), ("ABC4486784", True), ("4486784 x", True),
+    ("1234", True), ("FMNH INS 321", True), ("1234567890", True)])
+def test_the_identifier_format_reason_follows_the_catalog_number_validator_grammar(materialization, text, format_failure):
+    b = v2_case(materialization, "resolved")
+    profile = CollectionProfile.model_validate(b.binding.registration.job["pins"]["profile"])
+    result = b.prior.model_copy(deep=True)
+    result.run.fields["fmnh_ins_number"] = FieldValue(state=ValueState.SUPPORTED, literal=text, parsed=text)
+    _, work, _, _ = _work_progress(b.binding.registration, b.checkpoint, result.run)
+    reasons = _scientific_reasons(result, profile, 2000000000.0, latest_work=work,
+        field_mapping=b.binding.registration.field_mapping, scientific_qualified=frozenset())
+    assert ("identifier_format" in reasons) is format_failure
+
+
 def test_date_identified_stays_mandatory_and_emu_irn_exception_does_not_fabricate_party(materialization):
     b = v2_case(materialization, "resolved")
     profile = CollectionProfile.model_validate(b.binding.registration.job["pins"]["profile"])

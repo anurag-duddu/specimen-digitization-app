@@ -72,7 +72,7 @@ from .workflow import OperationalBlock, SyntheticAdapters, Workflow
 SYNTHETIC_ORG = "00000000-0000-4000-8000-000000000001"
 SYNTHETIC_COLLECTION = "00000000-0000-4000-8000-000000000002"
 SYNTHETIC_VALUES = {
-    "fmnh_ins_number": "FMNH-INS 1001",
+    "fmnh_ins_number": "FMNH-INS 1000001",
     "collection_code": "SYNTHETIC",
     "country": "United States",
     "province_state": "Illinois",

@@ -20,7 +20,7 @@ from pydantic import Field, model_validator
 
 from specimen_digitization.application.domain import Evidence, Principal, Specimen, ToolCallRecord
 from specimen_digitization.application.projection import derived_id
-from specimen_digitization.application.storage import digest as canonical_digest
+from specimen_digitization.application.storage import Conflict, digest as canonical_digest
 
 from .canonical_materialization import MaterializationRequestV1
 from .contracts import Digest, EvidenceItem, FieldCheckpoint, FrozenRecord, LookupStatus, SourceFragment, SourceQuery, SourceResult, SpecialistRequest, digest
@@ -315,6 +315,23 @@ class BoundedImmutableCaptureReaderV3:
         except Exception:
             # Preserve no provider/body/error content in the operational failure.
             raise ValueError("Bounded retained GCS read unavailable") from None
+
+
+class _BudgetedPixelReader:
+    """The blob reader ``crop_bytes`` cuts a region's crop with.
+
+    Every byte it returns counts against the native-input budget the caller
+    shares with its other reads; the caller reads ``remaining`` back afterwards.
+    """
+    def __init__(self, blobs, remaining):
+        self.blobs, self.remaining = blobs, remaining
+
+    def get_bounded(self, ref, max_bytes):
+        if self.remaining < 1:
+            unavailable("canonical_capture_native_input_total_bound")
+        data = self.blobs.get_bounded(ref, min(max_bytes, self.remaining))
+        self.remaining -= len(data)
+        return data
 
 
 class CanonicalEvidenceProviderV2:
@@ -652,12 +669,39 @@ class CanonicalEvidenceProviderV2:
 
         This reads existing canonical objects, never refetches source responses.
         Missing legacy crop provenance fails closed without inventing an input.
+
+        A reading's declared crop must be the crop of its own region. A region
+        that stores its crop (``crop_ref``) is the declaration: the reading must
+        name that exact object. A SAM 3 region stores none (``crop_ref`` is
+        always None, sam3_effect.py; DATA_CONTRACT 3.3): the crop each reader saw
+        is identified by its content, so the reading's ``input_sha256`` must be
+        the digest of the crop this region's geometry cuts from the asset's
+        retained pixels, the check integrity.verify_evidence makes at finalize.
         """
         observations = {row.id: row for row in prior.run.observations}
         regions = {row.id: row for row in prior.run.regions}
         if len(observations) != len(prior.run.observations) or len(regions) != len(prior.run.regions):
             unavailable("canonical_capture_native_input_identity_ambiguous")
-        verified, retained, read_bytes = {}, {}, 0
+        verified, retained, read_bytes, derived = {}, {}, 0, {}
+        async def derived_crop_sha256(region):
+            """SHA-256 of the crop the readers' own function cuts for this region."""
+            nonlocal read_bytes
+            if region.id not in derived:
+                from specimen_digitization.application.workflow import crop_bytes
+                # The geometry applies to the asset's retained pixels. A derivative's
+                # digest is checked by source_image; the original's must be the
+                # asset's own (the blob store checks its bytes against its ref).
+                if (not prior.asset.processing_derivative
+                        and prior.asset.blob_ref.partition(":")[0] != prior.asset.sha256):
+                    unavailable("canonical_capture_native_crop_unproved")
+                reader = _BudgetedPixelReader(self.canonical_blobs, MAX_NATIVE_INPUT_BYTES - read_bytes)
+                try:
+                    crop = await asyncio.to_thread(crop_bytes, reader, prior, region)
+                except (ValueError, LookupError, OSError, Conflict):
+                    unavailable("canonical_capture_native_crop_unproved")
+                read_bytes = MAX_NATIVE_INPUT_BYTES - reader.remaining
+                derived[region.id] = hashlib.sha256(crop).hexdigest()
+            return derived[region.id]
         async def retained_fingerprint(ref, limit):
             nonlocal read_bytes
             if ref in retained:
@@ -687,7 +731,13 @@ class CanonicalEvidenceProviderV2:
             # A checksum proves bytes, never an input object or its generation.
             # Honor the actual declared crop even when its bytes equal the asset.
             if reading.input_crop_ref is not None:
-                if not reading.input_crop_ref or reading.input_crop_ref != region.crop_ref:
+                if not reading.input_crop_ref:
+                    unavailable("canonical_capture_native_crop_unproved")
+                if region.crop_ref is not None:
+                    if reading.input_crop_ref != region.crop_ref:
+                        unavailable("canonical_capture_native_crop_unproved")
+                elif reading.input_sha256 != await derived_crop_sha256(region):
+                    # The bytes at input_crop_ref are checked against input_sha256 below.
                     unavailable("canonical_capture_native_crop_unproved")
                 input_ref, origin = reading.input_crop_ref, "native_region_crop"
             elif (reading.input_asset_id == prior.asset.id
