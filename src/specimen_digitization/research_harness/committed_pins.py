@@ -43,9 +43,15 @@ from .source_readiness import CAPTURE_POLICIES, SOURCE_READINESS
 from .sources import insects_registry
 
 ENGINE_VERSION = "research_harness_v1"
-# docs/execution/golive/HARNESS.md, Budget (G30): each request writes at most
-# 2,048 output tokens. The gateway's own cap is 4,096.
-MAX_OUTPUT_TOKENS = 2048
+# Each request writes at most 4,096 output tokens: the gateway's own cap (gateway.ModelBinding)
+# and the budget the geography prompt and test_five_human_questions_echoing_their_receipts_fit_one_response
+# state. 2,048 (HARNESS.md G30, written for the single-agent field harness) can truncate a
+# five-field geography answer. Counted offline with the pinned DeepSeek tokenizer on answers
+# scripted for the ten pilot labels (Lane P, 2026-10-03; not a production observation), one
+# is 2,072 to 2,468 tokens with every default key written and 1,465 to 1,815 with null keys
+# omitted. The value is in the committed pins (model, settings): a job provisioned at another
+# value is held research_committed_pins_changed.
+MAX_OUTPUT_TOKENS = 4096
 
 # The tokenizer files the request bound reasons about, read 2026-10-02 from
 # deepseek-ai/DeepSeek-V4.1-Flash at hub commit 2cba9e42aa026125f3ed06c6d98c1db82f7ca027:
