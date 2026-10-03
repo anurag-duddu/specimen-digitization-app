@@ -14125,3 +14125,39 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   on option (a) (evidence helpers set "supports"), the registration widening/upsert, and D/T/S; publication
   request size (about 14-20 MB) untested against Data Connect; reserve research spend against
   `lane_allowance.ProgramLedger`; the run keeps no disposition if the held fields commit last.
+
+### 2026-10-03 — Live fix: describe the reader output's line rule in its schema (Claude)
+
+- Task: go-live live-fix 2 of 2 (dispatched by the "Go-live coordinator" session from a read-only production
+  diagnosis; no task ID recorded).
+- Branch/worktree: `claude/live-fix-reader-schema-description` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a2513201fcc4717de`,
+  base `main` 1fbd5a5b.
+- Outcome: In progress. Pull request open and ready for review; not merged; nothing in it has run against
+  production or a paid model.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/245; code commit ac4b5113.
+- Validation: the two new assertions fail on the old schema (3 failed, 12 passed in the two reader test files) and
+  pass on the change (15 passed). 27 related files (the files named in the pull request body: reader, first-pass,
+  lane, route and reservation tests), run one at a time, all passed (`test_model_runtime.py` 11 passed, 1 skipped).
+  `pre-commit` on the changed files: all hooks passed. Not run: the full suite (CI runs it), any live or paid reader
+  call.
+- Durable learnings:
+  - Nothing pins the reader's output schema: the reader's `prompt_version` is the SHA-256 of the prompt text
+    (`production.py`), its `input_sha256` is the crop's, and the published profile's `prompt_set` is only a name.
+    The research harness's `SpecialistOutput` digest and the release's SQL schema digests are other models.
+  - The one consumer of the schema's size is `lane_reservations.reading_prompt_tokens`, which counts schema bytes
+    as tokens. The new descriptions add 326 bytes (1,169 to 1,495); every pilot crop still reserves the 20,000-micro
+    floor, and the worst case under it rose from 18,393 to 18,589 (muse, 40,000 x 1,000). Re-check
+    `test_lane_reservations.py` if the schema or the prompt grows much more.
+  - Readings made before and after this release share one `prompt_version` (the SHA-256 of the prompt text) but
+    have different effective tool definitions, so that field no longer identifies exactly what a reader was sent.
+    The 326 added schema bytes are roughly 80 tokens a request (an estimate at about four bytes a token, not
+    tokenized) and count against the reader's `total_tokens_limit=16000` (`production.py`).
+  - A failed assertion inside an httpx `MockTransport` handler surfaces as `RuntimeError: provider_request_failed`,
+    not as the assertion, and the cause is dropped: `provider_privacy.py:21` does
+    `raise RuntimeError("provider_request_failed") from None`, so the traceback does not name the assertion. Exercise
+    the handler's assertions directly to see which one failed.
+- Failed approaches: none.
+- Remaining follow-ups: whether the provider forwards property descriptions to the model, and whether the Qwen
+  reader's malformed-answer rate falls (2 of 25 retries in the diagnosis), is Not confirmed until live runs; this is
+  a reliability change, not a guarantee.

@@ -27,8 +27,21 @@ class LiteralTranscription(DeclarationCandidates):
 
     model_config = ConfigDict(frozen=True)
 
-    verbatim_text: str = Field(min_length=1)
-    lines: list[str] = Field(min_length=1)
+    verbatim_text: str = Field(
+        min_length=1,
+        description=(
+            "The whole transcription as one string: the entries of `lines` joined "
+            "with a single newline character, with no other change."
+        ),
+    )
+    lines: list[str] = Field(
+        min_length=1,
+        description=(
+            "The same transcription split on newlines, one entry per line in "
+            "reading order. Joining the entries with a single newline character "
+            "must give `verbatim_text` exactly."
+        ),
+    )
     unreadable_spans: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
