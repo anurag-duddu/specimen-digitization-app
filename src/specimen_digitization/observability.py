@@ -354,15 +354,32 @@ def configure_production_observability(service: str, *, instrument_agents: bool 
         capture_mode=CaptureMode.APPROVED_CONTENT, instrument_agents=instrument_agents)
 
 
-def flush_production_observability(*, shutdown=False, maximum_millis=1000):
-    """Flush within the existing effect/task clock; grant no extra work or cleanup time."""
+# The flush bounds, in milliseconds. Every caller keeps FLUSH_MILLIS (one second) except the
+# drain, whose last act is logfire.shutdown with FINAL_FLUSH_MILLIS: the last specimen's spans
+# are still queued then (about 350 KB gzip behind a TLS connection that may be cold), and one
+# second false-alarmed drain_trace_export_incomplete on a healthy tail. The ceiling keeps any
+# explicit bound finite.
+FLUSH_MILLIS = 1_000
+FINAL_FLUSH_MILLIS = 10_000
+FLUSH_CEILING_MILLIS = 30_000
+
+
+def flush_production_observability(*, shutdown=False, maximum_millis=FLUSH_MILLIS):
+    """Flush within the existing effect/task clock; grant no extra work or cleanup time.
+
+    ``complete`` is False when the flush took longer than ``maximum_millis``, or when the
+    effect/task deadline is nearer than that. The SDK's batch processor does not interrupt an
+    export in progress (opentelemetry-python issue 4568), so the bound decides the verdict, not
+    the duration: a stuck export ends only when the exporter's own HTTP timeout does. It does not
+    say whether the export succeeded.
+    """
     from .application.bounded_effect import current_effect_deadline
     from .application.worker_deadline import current_deadline
     deadlines = [value for value in [current_effect_deadline(),
         current_deadline().deadline if current_deadline() is not None else None]
         if value is not None]
     deadline = min(deadlines) if deadlines else None
-    if type(maximum_millis) is not int or not 0 < maximum_millis <= 1000:
+    if type(maximum_millis) is not int or not 0 < maximum_millis <= FLUSH_CEILING_MILLIS:
         raise ObservabilityConfigurationError("production_trace_flush_bound_invalid")
     if deadline is not None:
         remaining = deadline - time.monotonic()
