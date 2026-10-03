@@ -1,7 +1,8 @@
 """Registered native post-parse drain, using the existing canonical writer.
 
-The CLI currently has no protected installed original-ten/program admission.
-It therefore refuses before fencing or any ordinary paid effect. An existing
+The drain CLI mounts it only when SPECIMEN_RESEARCH_HARNESS is on. The CLI
+currently has no protected installed original-ten/program admission. It
+therefore refuses before fencing or any ordinary paid effect. An existing
 admission object is not enough by itself: each actual native binding must also
 pass the current ResearchStore protected authority gate before an ordinary step.
 No new launch file, registration, allowance, import proof or price is invented.
