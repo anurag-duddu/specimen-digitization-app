@@ -21,13 +21,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 import time
 from types import SimpleNamespace
 
 import pytest
 
-from specimen_digitization.application.native_drain import compose_registered_native_drain
+from specimen_digitization.application.lane_worker import DrainWorker
+from specimen_digitization.application.native_drain import (
+    RegisteredNativeDrainWorkflow, compose_registered_native_drain,
+)
 from specimen_digitization.application.production import SqlConnectRepository, actor_uid
 from specimen_digitization.application.storage import digest as canonical_digest
 from specimen_digitization.application.worker_deadline import WorkerDeadline
@@ -40,9 +44,9 @@ from specimen_digitization.research_harness.production_runtime import research_p
 from specimen_digitization.research_harness.workflow_bridge import compose_production_research_workflow
 
 from production_e2e_support import (
-    COLLECTION, FIXTURES, LABEL_TEXT, LABEL_VALUES, ORG, WORKER, FakeDataConnect, GenerationBlobs,
-    fixture_source_transport, research_state, scripted_model_factory, specimen_before_adjudication,
-    worker_principal,
+    COLLECTION, FIXTURES, LABEL_TEXT, LABEL_VALUES, ORG, WORKER, ConnectorRefusal, FakeDataConnect,
+    GenerationBlobs, fixture_source_transport, research_state, scripted_model_factory,
+    specimen_before_adjudication, worker_principal,
 )
 
 SWITCH_ON = {"SPECIMEN_RESEARCH_HARNESS": "on"}
@@ -76,8 +80,7 @@ def no_network(monkeypatch):
     monkeypatch.setattr(httpx.Client, "send", refuse)
 
 
-@pytest.fixture
-def rig(tmp_path, monkeypatch):
+def build_rig(tmp_path, *, first_pass=False):
     backend = SqliteStateBackend(tmp_path / "research-state.sqlite")
     members = {uid: [{"organization_id": ORG, "collection_id": COLLECTION, "role": "operator",
         "can_view_sensitive": False}] for uid in (WORKER, OTHER_OPERATOR)}
@@ -88,11 +91,23 @@ def rig(tmp_path, monkeypatch):
     ordinary = Workflow(repository, blobs, SyntheticAdapters(blobs, LABEL_TEXT))
     token = actor_uid.set(WORKER)
     principal = worker_principal()
-    created = repository.create(principal, specimen_before_adjudication(blobs), "e2e-intake", "e2e-intake")
+    created = repository.create(principal, specimen_before_adjudication(blobs, first_pass=first_pass),
+        "e2e-intake", "e2e-intake")
     yield SimpleNamespace(fake=fake, backend=backend, repository=repository, ordinary=ordinary,
         principal=principal, specimen_id=created.id, research_blobs=ImmutableFileBlobs(tmp_path / "research"),
         model_calls=[], source_urls=[])
     actor_uid.reset(token)
+
+
+@pytest.fixture
+def rig(tmp_path, monkeypatch):
+    yield from build_rig(tmp_path)
+
+
+@pytest.fixture
+def first_pass_rig(tmp_path):
+    """The same specimen, its two readers disagreeing and the first pass deciding."""
+    yield from build_rig(tmp_path, first_pass=True)
 
 
 def compose(rig, *, environ=SWITCH_ON, geolocate=True):
@@ -374,6 +389,168 @@ def test_the_run_reaches_its_final_queue(rig):
     progress = receipts[-1]["causal_proof"]["progress_receipt"]
     assert unresolved <= set(progress["human_reason_codes"]) and not progress["operational_reason_codes"]
     assert not rig.fake.duplicates
+
+
+def first_pass_to_plan(workflow, rig):
+    """The ordinary chain on the first-pass specimen: adjudicate, then parse."""
+    with supervised():
+        adjudicated = workflow.step(rig.principal, rig.specimen_id)
+        parsed = workflow.step(rig.principal, rig.specimen_id)
+    [transcript] = adjudicated.run.transcripts
+    assert transcript.decision_kind == "first_pass" and transcript.resolved and transcript.text == LABEL_TEXT
+    assert transcript.first_pass_call is not None and len(transcript.observation_ids) == 2
+    assert rig.ordinary.next_step(parsed.run) == "plan"
+    return parsed
+
+
+def test_a_region_decided_by_the_first_pass_publishes(first_pass_rig):
+    """Two readers disagree on one letter and the first pass decides the region.
+
+    The ordinary projection then writes the first pass's own model observation
+    (a non-independent row, projection._first_pass) beside the transcription
+    version. The materialization inputs carry that row, and the native context
+    must take it as part of the decision it recomputes, as it takes the
+    transcription version and the handoffs. Before, the first publication held
+    with canonical_native_decision_operation_unproved: native_publication_requires_reconciliation.
+    """
+    rig = first_pass_rig
+    workflow = compose(rig)
+    parsed = first_pass_to_plan(workflow, rig)
+    with supervised():
+        specimen = workflow.step(rig.principal, rig.specimen_id)
+
+    # The decided region's rows as the ordinary projection saved them.
+    first_pass_rows = [row for row in rig.fake.tables["model_observation"].values()
+        if row["stepKey"].startswith("first_pass:")]
+    assert len(first_pass_rows) == 1 and first_pass_rows[0]["independent"] is False
+    [version] = [row for row in rig.fake.tables["transcription_version"].values()]
+    assert version["decisionKind"] == "first_pass" and version["firstPassObservationId"] == first_pass_rows[0]["id"]
+    assert version["literalText"] == LABEL_TEXT and version["unresolved"] is False
+    readers = [row for row in rig.fake.tables["model_observation"].values() if row["independent"]]
+    assert len(readers) == 2 and {row["literalText"] for row in readers} == {LABEL_TEXT,
+        LABEL_TEXT.replace("grassland", "grassIand")}
+
+    # Every research publication landed from the first-pass-decided transcript.
+    receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
+    assert [row["causal_proof"]["changed_field"] for row in receipts] == ["taxon", "city", "country",
+        "county", "precise_location", "province_state", "collectors", "identified_by_irn", "collection_code",
+        "collection_method", "fmnh_ins_number", "habitat"]
+    published = rig.repository.get(rig.principal.scope, rig.specimen_id)
+    assert published.version == specimen.version == parsed.version + 12
+    assert published.run.fields["taxon"].normalized == GBIF_NAME
+    taxon = next(row for row in rig.fake.tables["evidence_item"].values() if row["source"] == "gbif")
+    [call] = [row for row in rig.fake.tables["tool_call"].values() if row["evidenceId"] == taxon["id"]]
+    assert call["inputSource"] == "decided_transcript"
+    # The label fields' lineage names the first pass's transcription version as its source.
+    sources = {row["researchFieldKey"]: row["readingSources"]
+        for row in rig.fake.tables["canonical_value_lineage_v2"].values() if row["readingSources"]}
+    assert set(sources) == {"precise_location", "collectors", "collection_code", "collection_method",
+        "fmnh_ins_number", "habitat"}
+    assert all(item["inputSource"] == "decided_transcript" and item["transcriptionVersionId"] == version["id"]
+        for items in sources.values() for item in items)
+    assert specimen.run.stage == "finalized" and specimen.run.disposition == "needs_human_review"
+    assert not rig.fake.duplicates
+
+
+class NoFence:
+    """The drain's collection fence is not under test: one run is stepped."""
+
+    def hold(self, *args, **kwargs):
+        pass
+
+
+def refuse_publications_from(rig, number, states):
+    """The connector refuses the ``number``-th publication and every later one.
+
+    ``states`` collects the specimen's routing state each publication finds."""
+    publish = rig.fake.op_PublishCanonicalResearchV2
+    calls = []
+
+    def refusing(variables):
+        calls.append(variables["specimenId"])
+        states.append(rig.fake.specimens[rig.specimen_id]["state"])
+        if len(calls) >= number:
+            raise ConnectorRefusal("publication refused")
+        return publish(variables)
+    rig.fake.op_PublishCanonicalResearchV2 = refusing
+
+
+def native_worker_lines(caplog):
+    return [record.getMessage() for record in caplog.records if record.name.endswith(".native_worker")]
+
+
+def test_a_refused_publication_logs_its_cause_and_the_drain_records_the_hold(rig, caplog):
+    """The geography fields wait on a source, so the second publication leaves the
+    record processing_blocked; the connector then refuses the third. The worker's
+    one code, native_publication_requires_reconciliation, stands for every cause:
+    the log names the exception class and the code behind it, and the drain
+    records the hold on the record it finds already blocked."""
+    workflow = compose(rig, geolocate=False)
+    states = []
+    refuse_publications_from(rig, 3, states)
+    drain = DrainWorker(rig.repository, RegisteredNativeDrainWorkflow(workflow), WORKER, lambda user: [],
+        execution_id="e2e-drain")
+    with caplog.at_level(logging.WARNING), supervised():
+        run, progressed = drain._step_until_stopped(rig.principal, NoFence(), rig.specimen_id, None)
+
+    receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
+    assert [row["causal_proof"]["changed_field"] for row in receipts] == ["taxon", "precise_location"]
+    assert len(states) == 3 and states[-1] == "processing_blocked"
+    code = "native_publication_requires_reconciliation"
+    held = rig.repository.get(rig.principal.scope, rig.specimen_id)
+    # The publications blocked the record first; the hold's code reaches it all the same.
+    assert (run.stage, run.blocker, run.disposition) == ("processing_blocked", code, None)
+    assert (held.run.stage, held.run.blocker) == ("processing_blocked", code)
+    assert (held.audit[-1].action, held.audit[-1].reason) == ("lane_block", code)
+    assert rig.fake.specimens[rig.specimen_id]["state"] == "processing_blocked"
+
+    # The cause is in the log: the class, the code, the file and line that raised
+    # it, the field, and the record's last six characters. The connector's own
+    # refusal text, the specimen id and the label are not.
+    lines = {record.name.rpartition(".")[2]: record.getMessage() for record in caplog.records
+        if record.levelno == logging.WARNING}
+    assert set(lines) == {"native_worker", "lane_worker"}
+    short = rig.specimen_id[-6:]
+    assert lines["native_worker"] == ("native publication failed: PublicationUnavailable "
+        f"code=native_v2_commit_outcome_unknown field=collectors (record ...{short})")
+    assert lines["lane_worker"] == f"record held by the drain: {code} (record ...{short})"
+    assert rig.specimen_id not in caplog.text and "publication refused" not in caplog.text
+    assert not any(value in caplog.text for value in LABEL_VALUES.values())
+
+
+def test_a_publication_failure_with_no_code_logs_its_class_only(rig, caplog):
+    """An exception whose message is not a code (a transport error, a validation
+    error carrying a value) is logged by class and location, never by message."""
+    workflow = compose(rig, geolocate=False)
+    to_plan(workflow, rig)
+
+    def unreadable(variables):
+        raise ValueError("input_value='Synthetic teaching garden'")
+    rig.fake.op_GetCanonicalResearchMaterializationInputsV2 = unreadable
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.research_harness.native_worker"), \
+            supervised(), pytest.raises(OperationalBlock, match="^native_publication_requires_reconciliation$"):
+        workflow.step(rig.principal, rig.specimen_id)
+    [line] = native_worker_lines(caplog)
+    assert line.startswith("native publication failed: ValueError at=") and " field=taxon (record ..." in line
+    assert "Synthetic teaching garden" not in caplog.text and "input_value" not in caplog.text
+
+
+def test_a_drifted_first_pass_observation_row_is_refused_and_logged(first_pass_rig, caplog):
+    """The first pass's row is checked column by column against the row the
+    projection writes, like every other decision row: a row the connector holds
+    with another text is not accepted as the decision's."""
+    rig = first_pass_rig
+    workflow = compose(rig, geolocate=False)
+    first_pass_to_plan(workflow, rig)
+    [row] = [row for row in rig.fake.tables["model_observation"].values() if row["stepKey"].startswith("first_pass:")]
+    row["literalText"] = "a text the first pass did not return"
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.research_harness.native_worker"), \
+            supervised(), pytest.raises(OperationalBlock, match="^native_publication_requires_reconciliation$"):
+        workflow.step(rig.principal, rig.specimen_id)
+    [line] = native_worker_lines(caplog)
+    assert line.startswith("native publication failed: PublicationUnavailable "
+        "code=canonical_native_row_write_normalization_unproved field=taxon (record ...")
+    assert not rig.fake.receipts
 
 
 def test_with_the_switch_off_the_worker_keeps_the_ordinary_workflow(rig):

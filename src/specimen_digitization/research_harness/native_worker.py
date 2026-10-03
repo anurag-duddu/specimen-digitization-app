@@ -2,6 +2,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
+import re
+import traceback
+from pathlib import Path
 from typing import Literal
 from pydantic import Field
 
@@ -12,10 +16,27 @@ from .persistence import HeldUnknown, StaleWork
 from .publication import prepare_native_publication
 from .worker import ResearchRetryWorker
 
+LOGGER = logging.getLogger(__name__)
+# The publication layers refuse with lower-case snake_case codes (every one has
+# an underscore). Any other message (a validation error, a connector's text, a
+# bare word or number) can carry values and is never logged.
+CODE = re.compile(r"(?=.{1,80}\Z)[a-z][a-z0-9]*(?:_[a-z0-9]+)+")
+
 # Only terminal work publishes (canonical_materialization_v2 target gate,
 # research_publication_v2.gql field work_state check). Waiting work reaches the
 # record through the job's whole-20 field state on a terminal publication.
 PUBLISHABLE = frozenset({WorkState.RESOLVED, WorkState.WAITING_HUMAN, WorkState.NONBLOCKING_EXCEPTION})
+
+
+def _described(error):
+    """What a publication failure may put in a log: its class, then its message
+    when that is a code, else the file and line that raised it. Never other text."""
+    message = str(error)
+    if CODE.fullmatch(message):
+        return type(error).__name__, "code=" + message
+    frames = traceback.extract_tb(error.__traceback__)
+    where = f"{Path(frames[-1].filename).name}:{frames[-1].lineno}" if frames else "-"
+    return type(error).__name__, "at=" + where
 
 
 def _sources_first(checkpoints):
@@ -200,9 +221,13 @@ class NativeResearchWorker:
                     server_request_identity_digest=identity)
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as error:
                 # Do not classify an unknown commit/operational failure as a
                 # quality question or attempt a generic specimen save fallback.
+                # The one code below stands for every cause, so the cause is
+                # logged here (no payload, no label text, a short record suffix).
+                LOGGER.warning("native publication failed: %s %s field=%s (record ...%s)",
+                    *_described(error), checkpoint.field_key, str(specimen_id)[-6:])
                 return NativeResearchWorkerOutcomeV2(scope=scope, status="blocked",
                     checkpoint_ids=tuple(checkpoint_ids), publication_receipt_ids=tuple(receipts),
                     reason_code="native_publication_requires_reconciliation")
