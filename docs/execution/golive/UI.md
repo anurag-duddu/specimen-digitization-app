@@ -62,6 +62,13 @@ the `state.blocked` colours and the clock, prohibit and stop circle glyphs, and
 extends to the G13 waiting state (`pending`) when S3 names it, with existing
 tokens only.
 
+Each of the three also opens its definition from the chip, as Processing
+blocked does: the strip's chip is a glossary term, and a word with no
+definition was a chip that opened nothing. A test holds every record state
+to having one. The Help screen's glossary pane scrolls on its own, so its
+contrast test uses a window tall enough to show the whole pane: a term cut
+by the pane's edge cannot be measured, and a longer glossary moves the cut.
+
 `completed` is deliberately not a chip. The backend sends it only together
 with a disposition (`api.py` `summary()`, `production.py` `_commit`,
 `search.py`), and the chip shows the disposition, which is the queue. A

@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_digitization/src/glossary.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/widgets/specimen_status.dart';
 import 'package:specimen_ui/specimen_ui.dart';
@@ -70,6 +71,20 @@ void main() {
   });
 
   group('operational states', () {
+    // The strip's chip opens its word's definition (a `TermAffordance`), so
+    // a record state with no definition is a chip that opens nothing.
+    test('every record state has a definition to open', () {
+      for (final SpecimenStatus status in SpecimenStatus.values.where(
+        (SpecimenStatus s) => s.isRecordStatus,
+      )) {
+        expect(
+          glossaryDefinition(status.label),
+          isNotNull,
+          reason: '${status.label} has no glossary definition',
+        );
+      }
+    });
+
     test('say the word PRD 10.1 uses for each', () {
       expect(SpecimenStatus.retryScheduled.label, 'Retry scheduled');
       expect(SpecimenStatus.paused.label, 'Paused');
