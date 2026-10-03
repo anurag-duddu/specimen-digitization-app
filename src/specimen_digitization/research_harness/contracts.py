@@ -349,6 +349,21 @@ class PolicyException(FrozenRecord):
     reevaluate_when: str
 
 
+def _geolocate_unresolved(item: SourceCoverageReceipt, field_key: FieldKey) -> bool:
+    """A searched GEOLocate no_match or ambiguous outcome for a geography field.
+
+    Coordinator engineering call of 2026-10-03, citing the owner's rule that unresolved or
+    unavailable data goes to the human queue with a reason: for this case only, "human questions
+    need exhausted sources" is loosened. The outcome is scientific (GEOLocate answered and nothing
+    agreed, or agreeing points lie far apart); outages stay FAILED, INACCESSIBLE or UNQUALIFIED and
+    remain operational blocks.
+    """
+    return (item.state == SourceCoverageState.SEARCHED and item.source_id == "geolocate"
+            and field_key in {FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.COUNTY,
+                              FieldKey.CITY, FieldKey.PRECISE_LOCATION}
+            and item.reason.partition(":")[0] in {"no_match", "ambiguous"})
+
+
 class HumanQuestion(FrozenRecord):
     field_key: FieldKey
     question: str = Field(min_length=1)
@@ -358,7 +373,8 @@ class HumanQuestion(FrozenRecord):
 
     @model_validator(mode="after")
     def no_operational_review(self):
-        if any(item.state != SourceCoverageState.EXHAUSTED for item in self.coverage):
+        if not all(item.state == SourceCoverageState.EXHAUSTED or _geolocate_unresolved(item, self.field_key)
+                   for item in self.coverage):
             raise ValueError("Human review requires exhausted available permitted strategies")
         if any(item.field_key != self.field_key for item in self.coverage):
             raise ValueError("Human coverage belongs to the same requested field")

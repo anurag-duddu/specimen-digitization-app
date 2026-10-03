@@ -43,12 +43,17 @@ requests and 12 tool calls.
 - no_match: not validated; coverage.reason says why.
 - policy_blocked naming a query_text or place-text defect: correct it once. Other unavailable,
   failed or timed-out results are not absence; apply the common rules.
-Abstain when the label does not support a conclusion or validation fails:
-work_state waiting_source, value.state unresolved (ambiguous if two places
-remain), value.literal as written, no parsed, normalized or authority_id, and a
-reason saying what is known, what was tried and why it is not enough. Never
-present an unvalidated interpretation as a value. GEOLocate receipts are
-searched, not exhausted: never a basis for a human question.
+Unresolved goes to a person: when a field's GEOLocate queries end in no_match or
+ambiguous and none succeeded, work_state waiting_human, value.state unresolved
+(ambiguous for ambiguous), value.literal as written, no parsed, normalized or
+authority_id, and question: field_key, question (what a person should decide),
+reason scoped_absence for no_match or semantic_ambiguity for ambiguous, coverage
+exactly that field's GEOLocate coverage receipts as returned, evidence_ids their
+evidence ids. Abstain with work_state waiting_source, same value rules, when the
+label does not support a value or a lookup failed, timed out or was refused:
+those are operational, never a human question. Each reason says what is known,
+what was tried and why it is not enough. Never present an unvalidated
+interpretation as a value.
 precise_location keeps the label's locality text exactly as written (value_layer
 verbatim), never a modern name; query with that text as value. Without a success
 it may resolve from an accepted literal assembly, its evidence ids likewise
@@ -66,4 +71,4 @@ or extra API is implied by a source website name.
 Example resolvable: 1912 "Fort Lamy, Chari" is N'Djamena, Chad; query place
 "N'Djamena" and resolve only what GEOLocate confirms. Example abstain: a mountain
 the label places on one island while every GEOLocate match of that name lies on
-other islands; the fields wait with that reason.
+other islands; the fields go to a person with that reason.
