@@ -11,6 +11,8 @@ APPROVED_DEPLOY_SCRIPTS = {
     DEPLOY_SCRIPT,
     ROOT / "scripts/ci/deploy_runtime.py",
     ROOT / "scripts/ci/deploy_data.py",
+    # The operator's plain runtime deploy (scripts/ops/README.md): SAM 3 service and worker job.
+    ROOT / "scripts/ops/deploy.py",
 }
 
 
