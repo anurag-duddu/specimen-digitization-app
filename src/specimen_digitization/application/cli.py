@@ -3,6 +3,7 @@
 import argparse
 import os
 from pathlib import Path
+from ..process_logging import configure_process_logging
 from .api import local_app, create_app
 from .lane_dispatch import dispatcher_from_value
 from .production import GcsBlobs, ProductionAdapters, SqlConnectRepository
@@ -94,6 +95,7 @@ def main():
         "--persistence", choices=["sqlite", "sql-emulator"], default="sqlite"
     )
     args = parser.parse_args()
+    configure_process_logging()
     config = None
     if args.mode == "production":
         from .runtime_config import RuntimeConfig
