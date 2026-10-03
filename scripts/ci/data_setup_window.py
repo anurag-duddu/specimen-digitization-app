@@ -24,6 +24,13 @@ it manages and prints how to revoke it, and it renews a binding only when the
 text after its two time bounds is exactly its role's live resource predicate
 (``PREDICATES``), so nothing appended can make it outlast them.
 
+The owner's 2026-10-02 SQL-condition correction makes only the initializer
+and disposal suffixes empty: their project-level custom roles retain the
+same permissions, identities and 75/115-minute bounds. Clone and claim
+resource predicates remain exact. This legacy three-effect helper does not
+activate the fresh recovery's eight absent bindings or reuse existing roles;
+that activation belongs to its separately reviewed, owner-authorized packet.
+
 ``plan`` reads the live project policy (one read) and records an exact action
 packet bound to the policy's etag; nothing changes. ``execute`` re-reads the
 policy, refuses any drift, and performs the three effects with six requests,
@@ -75,14 +82,14 @@ RENEWALS = (
     ("specimenDataRestoreAllowanceClaim", DATA_IDENTITY, 120),
     ("specimenDataRuntimeAbsence", DATA_IDENTITY, 120),
 )
-# Each renewed role's exact text after its two time bounds, as its live binding carries it (read on 2026-09-23). A
+# Each renewed role's approved exact text after its two time bounds. A
 # renewal requires it exactly: CEL binds && tighter than || and ?:, so anything appended, such as `|| true`, could
-# outlast the time bounds. The initializer's and disposal's predicates hold a parenthesized || of their own.
+# outlast the time bounds. The 2026-10-02 owner correction removes only the initializer/disposal resource suffixes.
 SQL_INSTANCE = "resource.service == 'sqladmin.googleapis.com' && resource.type == 'sqladmin.googleapis.com/Instance'"
 ON_SOURCE, ON_CLONE = (f"resource.name == 'projects/{PROJECT}/instances/{name}'" for name in (SOURCE, CLONE))
 PREDICATES = {
-    "specimenDataInitializeTemporary": f" && {SQL_INSTANCE} && ({ON_SOURCE} || {ON_CLONE})",
-    "specimenDataInitializerDisposal": f" && {SQL_INSTANCE} && ({ON_SOURCE} || {ON_CLONE})",
+    "specimenDataInitializeTemporary": "",
+    "specimenDataInitializerDisposal": "",
     "specimenDataCloneControl": f" && {SQL_INSTANCE} && ({ON_CLONE})",
     "specimenDataCloneCreate": f" && {SQL_INSTANCE} && ({ON_CLONE})",
     "specimenDataRestoreAllowanceClaim": f" && resource.name == 'projects/_/buckets/{BUCKET}/objects/{KEY}'",
