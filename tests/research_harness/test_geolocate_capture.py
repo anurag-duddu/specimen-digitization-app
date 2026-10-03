@@ -9,6 +9,7 @@ The ledger is a new disposable SQLite file per test.
 import asyncio
 import hashlib
 import json
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -105,7 +106,7 @@ def test_success_completes_the_effect_and_captures_the_full_response(tmp_path):
     result = lookup(rig, YEPOCAPA)
     assert result.status == LookupStatus.SUCCESS and result.receipt.effect_status == "completed"
     [candidate] = [json.loads(item) for item in result.candidate_json]
-    assert candidate["authority_id"] == "geolocate:14.501946,-90.953956"
+    assert candidate["authority_id"] == "geolocate:76853dedbc6ff5ce"
     effect, envelope = saved_envelope(rig, result)
     assert effect["status"] == "completed" and effect["held_micro_usd"] == 0
     assert effect["receipt"]["actual_micro_usd"] == 0
@@ -116,6 +117,24 @@ def test_success_completes_the_effect_and_captures_the_full_response(tmp_path):
     assert response.response_fingerprint == hashlib.sha256(RECORDED_BODY).hexdigest()
     assert result.evidence[0].response_digest == response.response_fingerprint
     assert rig.calls == [RECORDED_URL]
+
+
+def test_the_point_is_in_the_result_the_receipt_and_the_captured_response_not_in_the_identifier(tmp_path):
+    """G39: the matched point is candidate metadata in the tool result and the evidence, not a record field."""
+    rig = make_rig(tmp_path, [RECORDED_BODY])
+    result = lookup(rig, YEPOCAPA)
+    [candidate] = [json.loads(item) for item in result.candidate_json]
+    identifier = candidate["authority_id"]
+    assert re.fullmatch(r"geolocate:[0-9a-f]{16}", identifier)
+    assert not any(text in identifier for text in ("14.5", "90.9", "14.501946", "-90.953956"))
+    # The tool result, as the engine hands it to the model and the trace, keeps the point ...
+    assert (candidate["decimal_latitude"], candidate["decimal_longitude"]) == (14.501946, -90.953956)
+    receipt = json.loads(result.receipt.result_json)
+    assert [json.loads(item) for item in receipt["candidate_json"]] == [candidate]
+    # ... and so does the full response the capture stored as the evidence.
+    _, envelope = saved_envelope(rig, result)
+    stored = json.loads(rig.blobs.get(BlobRef(**envelope.responses[0].body.model_dump())))
+    assert [-90.953956, 14.501946] in [item["geometry"]["coordinates"] for item in stored["resultSet"]["features"]]
 
 
 def test_the_same_query_replays_the_capture_without_a_second_read(tmp_path):
