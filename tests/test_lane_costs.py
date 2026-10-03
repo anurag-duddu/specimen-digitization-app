@@ -72,6 +72,12 @@ PRICES = PriceList(
                 "source": "https://models.example.test/muse/processor_config.json",
             },
         },
+        # The pilot names a first-pass route, so the price list must price it.
+        "first-pass-glm": {
+            "input_micros_per_million": 150_000,
+            "output_micros_per_million": 500_000,
+            "context_tokens": 1_048_576,
+        },
     },
     segmentation={
         "vcpus": 4,
