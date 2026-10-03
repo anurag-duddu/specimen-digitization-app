@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from types import SimpleNamespace
 
@@ -53,8 +54,12 @@ DATES_AND_ELEVATIONS = ("date_visited_from", "date_visited_to", "date_identified
     "elevation_to_m", "elevation_from_ft", "elevation_to_ft")
 GBIF_NAME = "Danaus plexippus (Linnaeus, 1758)"
 GEOGRAPHY = ("country", "province_state", "county", "city")
-# GEOLocate's best Chicago match in the recorded glcwrap answer.
-CHICAGO = "geolocate:41.850033,-87.650052"
+# GEOLocate's best Chicago match in the recorded glcwrap answer, as an opaque id
+# (sources.geolocate_authority_id: a digest of its name, admin unit and point), and its point.
+CHICAGO = "geolocate:79a9389b0ba6bcaf"
+CHICAGO_POINT = ("41.850033", "-87.650052")
+# Two decimal numbers side by side, however separated: a point written into a string.
+COORDINATE_PAIR = re.compile(r"-?\d{1,3}\.\d+\s*[,;/ ]\s*-?\d{1,3}\.\d+")
 
 
 class SimulatedCrash(Exception):
@@ -330,6 +335,21 @@ def test_the_run_reaches_its_final_queue(rig):
     published = rig.repository.get(rig.principal.scope, rig.specimen_id)
     assert published.version == specimen.version == parsed.version + 12
     by_field = {row["causal_proof"]["changed_field"]: row for row in receipts}
+
+    # G39: the matched point is candidate metadata in the tool result and the trace, not a record
+    # field. No row of any table the record is written to, and no public field, holds Chicago's
+    # point or any coordinate pair; the point stays in the evidence, the GEOLocate evidence
+    # excerpts of the published snapshot (the tool result).
+    for table, rows in rig.fake.tables.items():
+        text = json.dumps(list(rows.values()), sort_keys=True, default=str)
+        assert not any(number in text for number in CHICAGO_POINT) and not COORDINATE_PAIR.search(text), table
+    public = json.dumps({key: value.model_dump(mode="json") for key, value in published.run.fields.items()},
+        sort_keys=True)
+    assert not any(number in public for number in CHICAGO_POINT) and not COORDINATE_PAIR.search(public)
+    snapshot = rig.fake.snapshots[(rig.specimen_id, published.version)]["snapshot"]
+    excerpts = [item["excerpt"] for item in snapshot["run"]["evidence"] if item["source"] == "geolocate"]
+    assert len(excerpts) == len(GEOGRAPHY) and all(
+        f'"decimal_latitude":{CHICAGO_POINT[0]},"decimal_longitude":{CHICAGO_POINT[1]}' in text for text in excerpts)
     for key in GEOGRAPHY:
         # The label's value with GEOLocate's Chicago match, linked as "supports"
         # to one GEOLocate evidence row: a success from its own field's capture,
