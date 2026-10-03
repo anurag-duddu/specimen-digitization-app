@@ -441,6 +441,28 @@ def _first_pass(
 def _evidence(run: Run, asset) -> list[Write]:
     """Lookups and evidence with a stored response; the rest stay in the snapshot."""
     result = []
+    coverage = run.coverage_check or {}
+    if coverage.get("evidence_ref") and coverage.get("evidence_sha256"):
+        # G15's label-coverage check is recorded evidence of its own (section 2).
+        version = str(coverage.get("version") or "unversioned")
+        result.append(
+            _write(
+                "AppendEvidenceItemV2",
+                {
+                    "id": derived_id("coverage", run.id, coverage["evidence_sha256"]),
+                    "runId": run.id,
+                    "source": "label-coverage-check",
+                    "sourceVersion": version,
+                    "adapterVersion": version,
+                    "query": {},
+                    "outcome": "recorded",
+                    "locator": f"coverage/{version}",
+                    "responseSha256": coverage["evidence_sha256"],
+                    "capturedAt": coverage.get("checked_at"),
+                    "rawAssetId": asset(coverage["evidence_ref"], "evidence_record"),
+                },
+            )
+        )
     for found in run.lookups:
         if not (found.raw_ref and found.digest):
             continue

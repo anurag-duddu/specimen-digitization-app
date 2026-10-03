@@ -516,7 +516,7 @@ regexes = [
   '''^\s*"hashed_secret": "6977076704521cd7fdfb444e45c597486dec555b",?\s*$''', # pragma: allowlist secret (reviewed scanner metadata)
   '''^\s*"hashed_secret": "6b940be0fd1db7311554adbf18be664a3a70afdc",?\s*$''', # pragma: allowlist secret (reviewed scanner metadata)
   '''^\s*"hashed_secret": "6f6daa01df19cae5706834c7876130e51485e566",?\s*$''', # pragma: allowlist secret (reviewed scanner metadata)
-  '''^\s*"hashed_secret": "6f74beacaed8ce7210715852581c63f01df655a3",?\s*$''', # pragma: allowlist secret (reviewed scanner metadata)
+  '''^\s*"hashed_secret": "0cdade1b926d71db8f23266e3018112fcd12f544",?\s*$''', # pragma: allowlist secret (reviewed scanner metadata)
   '''^\s*"hashed_secret": "721e86bb22c9782fc0ff2ed8eca4983e482b5c78",?\s*$''', # pragma: allowlist secret (reviewed scanner metadata)
   '''^\s*"hashed_secret": "72feb83b2d92522fc7ff6a115230e9d7dd1f84f6",?\s*$''', # pragma: allowlist secret (reviewed scanner metadata)
   '''^\s*"hashed_secret": "7343ac623a2bc590befc03625911f156fe27a6f4",?\s*$''', # pragma: allowlist secret (reviewed scanner metadata)
