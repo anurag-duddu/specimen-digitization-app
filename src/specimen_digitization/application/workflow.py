@@ -3,10 +3,12 @@
 from __future__ import annotations
 import hashlib
 import json
+import logging
 import time
 from datetime import datetime, timezone, timedelta
 from typing import Protocol
 import logfire
+from ..process_logging import log_code
 from .domain import (
     AuditEvent,
     Evidence,
@@ -45,8 +47,47 @@ from .storage import BlobStore, Repository, digest
 from .reliability import AdapterFailure, retry_delay
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 class OperationalBlock(RuntimeError):
     """Sanitized actionable code, never an exception containing provider credentials."""
+
+
+def _http_status(*errors):
+    """The HTTP status a provider error keeps: a number, never its body."""
+    for error in errors:
+        status = getattr(error, "status_code", None)
+        if type(status) is int:
+            return status
+    return None
+
+
+def _log_step_failure(run, step, branch, *, error=None, **fields):
+    """Write one WARNING line for a failed step, so the worker's process log shows it.
+
+    The stored blocker alone does not say which branch failed or why (an ambiguous
+    provider failure and a deadline overrun both become ``external_outcome_unknown``).
+    The line carries the run id, step, branch, attempt and codes and classes only:
+    never a prompt, a response, a provider body or label text. Every value is a
+    number, an identifier, or a string that ``log_code`` has checked.
+    """
+    if error is not None:
+        cause = error.__cause__
+        fields["error_class"] = type(error).__name__
+        fields["cause_class"] = None if cause is None else type(cause).__name__
+        fields["http_status"] = _http_status(error, cause)
+    values = {
+        "run": run.id,
+        "step": step,
+        "branch": branch,
+        **fields,
+        "attempt": run.attempts.get(step, 0),
+    }
+    LOGGER.warning(
+        "Specimen step failed: %s",
+        " ".join(f"{key}={'-' if value is None else value}" for key, value in values.items()),
+    )
 
 
 class PipelineAdapters(Protocol):
@@ -637,6 +678,17 @@ class Workflow:
                 and exc.code.startswith("sam3_")
                 and not exc.outcome_unknown
             )
+            _log_step_failure(
+                run,
+                step,
+                "adapter_failure",
+                error=exc,
+                status=exc.status.value,
+                code=log_code(exc.code),
+                blocker=log_code(run.blocker),
+                stage=run.stage,
+                outcome_unknown=exc.outcome_unknown,
+            )
         except OperationalBlock as exc:
             circuit_failure = (
                 None if effect_settled else str(exc).removeprefix("taxonomy_")
@@ -650,6 +702,15 @@ class Workflow:
                 "taxonomy_provider_error",
             }:
                 self.schedule_retry(run, step, run.lookups[-1].retry_after_seconds)
+            _log_step_failure(
+                run,
+                step,
+                "operational_block",
+                error=exc,
+                code=log_code(str(exc)),
+                blocker=log_code(run.blocker),
+                stage=run.stage,
+            )
         except Exception as exc:
             outcome_unknown = external and not effect_settled
             circuit_failure = "provider_error" if outcome_unknown else None
@@ -667,6 +728,15 @@ class Workflow:
             )
             run.stage = "processing_blocked"
             run.disposition = None
+            _log_step_failure(
+                run,
+                step,
+                "unexpected_exception",
+                error=exc,
+                blocker=log_code(run.blocker),
+                stage=run.stage,
+                outcome_unknown=outcome_unknown,
+            )
         elapsed = max(0, self.monotonic() - started)
         if external and elapsed > effect_timeout and not repeatable:
             circuit_failure = "timeout"
@@ -676,6 +746,16 @@ class Workflow:
             run.stage = "processing_blocked"
             run.disposition = None
             run.reasons = ["external_stage_deadline_exceeded"]
+            _log_step_failure(
+                run,
+                step,
+                "external_deadline_exceeded",
+                code=run.reasons[0],
+                blocker=run.blocker,
+                stage=run.stage,
+                elapsed_seconds=f"{elapsed:.1f}",
+                effect_timeout_seconds=effect_timeout,
+            )
         run.usage.active_seconds += elapsed
         run.usage.tokens += max(
             0,

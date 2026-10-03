@@ -6,6 +6,7 @@ is installed by importing or constructing this router.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Annotated
 
@@ -16,7 +17,10 @@ from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 
 from specimen_digitization.application.domain import Principal
+from specimen_digitization.process_logging import log_code
 
+from .canonical_binding import BindingUnavailable
+from .compatibility import PublicationUnavailable
 from .contracts import FieldKey
 from .persistence import BudgetExceeded, CasConflict, HeldUnknown, StaleWork
 from .service import ResearchLocator, ResearchService, RetryAccepted, RetryFieldRequest
@@ -24,15 +28,38 @@ from .thread_view import ResearchThread
 from .status import ResearchStatusV1, ResearchOutputV1
 from .discovery import ResearchDiscovery, ResearchDiscoveryResult
 
+LOGGER = logging.getLogger(__name__)
+# The repository's fixed-code exception types: raised with a short code as the
+# only argument. log_code checks that shape before anything is logged, so a
+# message that is not a code is dropped rather than written.
+_FIXED_CODE_ERRORS = (PublicationUnavailable, BindingUnavailable)
 _NO_CACHE = {"Cache-Control":"no-store, private", "Pragma":"no-cache"}
 IdentifierPath = Annotated[str, Path(min_length=1, max_length=100)]
 GenerationPath = Annotated[int, Path(ge=1)]
 JobPath = Annotated[str, Path(min_length=1, max_length=256)]
 
 
+def _log_unavailable(method: str, route_path: str, error: Exception) -> None:
+    """Record why a private 503 happened; the response itself stays opaque.
+
+    Logged: the HTTP method, the route template (never the ids in the path; the
+    request log line carries those), the exception class and, for the repository's
+    fixed-code types, the code. Never the message of any other exception (a
+    validation or provider error can embed input text) and never a traceback.
+    """
+    if isinstance(error, _FIXED_CODE_ERRORS):
+        code = log_code(error.args[0] if len(error.args) == 1 else None)
+        LOGGER.warning("research route unavailable: %s %s error_class=%s code=%s",
+                       method, route_path, type(error).__name__, code)
+    else:
+        LOGGER.error("research route unavailable: %s %s error_class=%s",
+                     method, route_path, type(error).__name__)
+
+
 class _PrivateResearchRoute(APIRoute):
     def get_route_handler(self):
         original = super().get_route_handler()
+        route_path = self.path
 
         async def private_handler(request: Request):
             try:
@@ -50,7 +77,8 @@ class _PrivateResearchRoute(APIRoute):
                 response = JSONResponse({"detail":"research_state_changed"}, status_code=409)
             except (HeldUnknown, BudgetExceeded):
                 response = JSONResponse({"detail":"research_retry_unavailable"}, status_code=409)
-            except Exception:
+            except Exception as error:
+                _log_unavailable(request.method, route_path, error)
                 response = JSONResponse({"detail":"research_service_unavailable"}, status_code=503)
             response.headers.update(_NO_CACHE)
             return response
