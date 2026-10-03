@@ -1,0 +1,127 @@
+{
+"engineVersion" : "GLC:9.4|U:1.01374|eng:1.0",
+"numResults" : 9,
+"executionTimems" : 296.8864,
+"resultSet" : { "type": "FeatureCollection",
+"features": [
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [123.2606, 10.0857]},
+"properties": {
+"parsePattern" : "MCKINLEY",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=NEGROS ORIENTAL|:NP=MCKINLEY|:KFID=|MCKINLEY"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [123.2592, 10.0844]},
+"properties": {
+"parsePattern" : "MCKINLEY",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=NEGROS ORIENTAL|:NP=MCKINLEY|:KFID=|MCKINLEY"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [124.666667, 12.45]},
+"properties": {
+"parsePattern" : "MCKINLEY",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=NORTHERN SAMAR|:NP=MCKINLEY|:KFID=|MCKINLEY"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [122.55, 11.25]},
+"properties": {
+"parsePattern" : "MCKINLEY",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=CAPIZ|:NP=MCKINLEY|:KFID=|MCKINLEY"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [120.494317, 17.205026]},
+"properties": {
+"parsePattern" : "MCKINLEY",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=ILOCOS SUR|:NP=MCKINLEY|:KFID=|MCKINLEY"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [121.116595, 14.634484]},
+"properties": {
+"parsePattern" : "MCKINLEY",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=RIZAL|:NP=MCKINLEY|:KFID=|MCKINLEY"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [120.490074, 17.203703]},
+"properties": {
+"parsePattern" : "MCKINLEY",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=ILOCOS SUR|:NP=MCKINLEY|:KFID=|MCKINLEY"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [121.012674, 14.553801]},
+"properties": {
+"parsePattern" : "MCKINLEY",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=MAKATI|:NP=MCKINLEY|:KFID=|MCKINLEY"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [121.046888, 14.601871]},
+"properties": {
+"parsePattern" : "MCKINLEY",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=SAN JUAN|:NP=MCKINLEY|:KFID=|MCKINLEY"
+}
+}
+ ],
+"crs": { "type" : "EPSG", "properties" : { "code" : 4326 }}
+}
+}

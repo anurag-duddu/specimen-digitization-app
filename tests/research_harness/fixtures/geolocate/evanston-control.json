@@ -1,0 +1,36 @@
+{
+"engineVersion" : "GLC:9.4|U:1.01374|eng:1.0",
+"numResults" : 2,
+"executionTimems" : 125.0129,
+"resultSet" : { "type": "FeatureCollection",
+"features": [
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-87.690059, 42.041141]},
+"properties": {
+"parsePattern" : "EVANSTON",
+"precision" : "High",
+"score" : 85,
+"uncertaintyRadiusMeters" : 4554,
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=COOK|:NPExtent=7561|:NP=EVANSTON|:KFID=IL:ppl:5439|EVANSTON"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-87.6833, 42.0333]},
+"properties": {
+"parsePattern" : "EVANSTON",
+"precision" : "High",
+"score" : 83,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=COOK|:NP=EVANSTON|:KFID=|EVANSTON"
+}
+}
+ ],
+"crs": { "type" : "EPSG", "properties" : { "code" : 4326 }}
+}
+}

@@ -46,7 +46,7 @@ uv run python scripts/lab/run_specimen.py subject_105526321
    run with the production adapters refuses any other subject, `main()`
    before the fetch and `production_lane` before any upload, and the lane
    itself refuses one whenever its adapters are not the synthetic ones. So a
-   Sensitive image never reaches a model provider (PRD.md 67, PLAN.md 182). A
+   Sensitive image never reaches a model provider (PRD.md 67, PLAN.md 212). A
    dry run builds no lane, though it still downloads the image, which no
    provider sees; tests may drive another subject with the synthetic adapters.
 4. **Process.** The runner drives the record until it is finalized, blocked
@@ -265,8 +265,8 @@ when a phase or the lane's teardown fails.
 The runner never writes a token value. Every text artifact passes through a
 redactor that removes the values of the known token variables (`HF_TOKEN`,
 `HUGGING_FACE_HUB_TOKEN`, `HUGGINGFACEHUB_API_TOKEN`, `LOGFIRE_TOKEN`,
-`LOGFIRE_READ_TOKEN`, `SPECIMEN_SAM3_ENDPOINT`, `SPECIMEN_SAM3_LAB_TOKEN`,
-`SPECIMEN_GOOGLE_MAPS_API_KEY` and `HF_BILL_TO`) and anything
+`LOGFIRE_READ_TOKEN`, `SPECIMEN_SAM3_ENDPOINT`, `SPECIMEN_SAM3_LAB_TOKEN`
+and `HF_BILL_TO`) and anything
 shaped like a Hugging Face token, a bearer header, a Google access token or a
 JWT. It also removes what PLAN 7.7 keeps out of shared logs and issues:
 
@@ -278,7 +278,7 @@ JWT. It also removes what PLAN 7.7 keeps out of shared logs and issues:
   `classification_selection.actor_id`, and the SQL columns `actor_uid`, `created_by`, `uid`, `user_id`, `uploader_uid`
   (`SourceAsset.uploaderUid`) and `approved_by` (`ProfileVersion.approvedBy`); and the private values the file
   `LAB_REDACT_VALUES_FILE` lists, such as a signed-in UID and the GCP project
-  number. That file must be under `~/specimen-release-private/` (PLAN 840), never
+  number. That file must be under `~/specimen-release-private/` (PLAN 871), never
   in a repository. It holds one value per line, in UTF-8 (a leading
   byte-order mark is allowed), made only of ASCII letters, digits and
   `. _ @ : + -`. A line that, once trimmed, holds any other character (an
@@ -291,8 +291,10 @@ JWT. It also removes what PLAN 7.7 keeps out of shared logs and issues:
   unreadable, empty, or has no line of at least 3 characters;
 - billing and organization ids: `HF_BILL_TO`'s organization and the Logfire
   project URL's organization slug;
-- more secrets: the SAM lab token, the Logfire read token, the Geocoding key
-  (`SPECIMEN_GOOGLE_MAPS_API_KEY`), and the `AIza...` and `pylf_...` shapes;
+- more secrets: the SAM lab token, the Logfire read token, and the `AIza...`
+  (Google API key) and `pylf_...` shapes. The Google Maps key left the harness
+  on 2026-10-03 (owner G-geo-1 to G-geo-3, PLAN 2.1), so its variable is no
+  longer listed; a stray key of that kind is still caught by the `AIza...` shape;
 - the account name: paths under the home directory, in any case, are written
   relative to `~`, since the account name can equal the Logfire organization
   slug.

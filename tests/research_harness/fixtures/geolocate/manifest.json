@@ -1,0 +1,94 @@
+{
+  "service": "GEOLocate glcwrap.aspx",
+  "recorded_by": "Lane G live probes, at least 5 s apart (owner G-geo-1..3)",
+  "fixtures": [
+    {
+      "file": "evanston-control.json",
+      "url": "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx?Country=USA&State=Illinois&County=Cook&Locality=Evanston&hwyX=false&enableH2O=false&doUncert=true&doPoly=false&displacePoly=false&languageKey=0&fmt=json",
+      "requested_at": "2026-10-03T04:38:38.486372+00:00",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "purpose": "USA control: county-level admin and a numeric uncertainty radius"
+    },
+    {
+      "file": "yepocapa-geojson-format.json",
+      "url": "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx?Country=Guatemala&State=Chimaltenago&County=&Locality=Yepocapa&hwyX=false&enableH2O=false&doUncert=true&doPoly=false&displacePoly=false&languageKey=0&fmt=geojson",
+      "requested_at": "2026-10-03T04:38:50.850369+00:00",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "purpose": "fmt=geojson answers a bare FeatureCollection; the adapter requires fmt=json"
+    },
+    {
+      "file": "mckinley-modern.json",
+      "url": "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx?Country=Philippines&State=Davao+del+Sur&County=&Locality=Mount+McKinley&hwyX=false&enableH2O=false&doUncert=true&doPoly=false&displacePoly=false&languageKey=0&fmt=json",
+      "requested_at": "2026-10-03T04:52:00.847769+00:00",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "purpose": "subjects 105526321-326: modern interpretation; no Mindanao match exists"
+    },
+    {
+      "file": "mckinley-old-province.json",
+      "url": "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx?Country=Philippines&State=Davao&County=&Locality=Mt.+McKinley&hwyX=false&enableH2O=false&doUncert=true&doPoly=false&displacePoly=false&languageKey=0&fmt=json",
+      "requested_at": "2026-10-03T04:52:05.848038+00:00",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "purpose": "same query with the pre-1967 province; State is ignored outside the USA"
+    },
+    {
+      "file": "mckinley-verbatim.json",
+      "url": "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx?Country=Philippines&State=&County=&Locality=E.+slope+Mt.+McKinley%2C+Davao+Prov.%2C+Mindanao%2C+P.I.&hwyX=false&enableH2O=false&doUncert=true&doPoly=false&displacePoly=false&languageKey=0&fmt=json",
+      "requested_at": "2026-10-03T04:52:10.853270+00:00",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "purpose": "subjects 105526321-326: verbatim label locality"
+    },
+    {
+      "file": "apo-modern.json",
+      "url": "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx?Country=Philippines&State=Davao+del+Sur&County=&Locality=Mount+Apo&hwyX=false&enableH2O=false&doUncert=true&doPoly=false&displacePoly=false&languageKey=0&fmt=json",
+      "requested_at": "2026-10-03T04:52:15.853915+00:00",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "purpose": "subject 105526327: modern interpretation; summit admin is Cotabato"
+    },
+    {
+      "file": "apo-verbatim.json",
+      "url": "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx?Country=Philippines&State=&County=&Locality=E.+slope+Mt.+Apo%2C+Davao+Prov.%2C+Mindanao%2C+P.I.&hwyX=false&enableH2O=false&doUncert=true&doPoly=false&displacePoly=false&languageKey=0&fmt=json",
+      "requested_at": "2026-10-03T04:52:20.859125+00:00",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "purpose": "subject 105526327: verbatim label locality"
+    },
+    {
+      "file": "yepocapa-modern.json",
+      "url": "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx?Country=Guatemala&State=Chimaltenango&County=&Locality=Yepocapa&hwyX=false&enableH2O=false&doUncert=true&doPoly=false&displacePoly=false&languageKey=0&fmt=json",
+      "requested_at": "2026-10-03T04:52:25.861895+00:00",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "purpose": "subjects 105526328-330: modern interpretation"
+    },
+    {
+      "file": "yepocapa-verbatim.json",
+      "url": "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx?Country=Guatemala&State=&County=&Locality=Yepocapa%2C+Mun.+Yepocapa%2C+chimaltenago%2C+Guatemala&hwyX=false&enableH2O=false&doUncert=true&doPoly=false&displacePoly=false&languageKey=0&fmt=json",
+      "requested_at": "2026-10-03T04:52:35.870920+00:00",
+      "http_status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "purpose": "subjects 105526328-330: verbatim label locality with the label's misspelling"
+    }
+  ],
+  "omitted": [
+    {
+      "url": "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx?Country=Guatemala&State=Chimaltenango&County=Yepocapa&Locality=Yepocapa&hwyX=false&enableH2O=false&doUncert=true&doPoly=false&displacePoly=false&languageKey=0&fmt=json",
+      "requested_at": "2026-10-03T04:52:30.867279+00:00",
+      "http_status": 200,
+      "same_results_as": "yepocapa-modern.json",
+      "retained": false
+    },
+    {
+      "url": "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx?Country=Philippines&State=Davao+City&County=&Locality=Mount+McKinley&hwyX=false&enableH2O=false&doUncert=true&doPoly=false&displacePoly=false&languageKey=0&fmt=json",
+      "requested_at": "2026-10-03T04:52:40.875915+00:00",
+      "http_status": 200,
+      "same_results_as": "mckinley-modern.json",
+      "retained": false
+    }
+  ]
+}

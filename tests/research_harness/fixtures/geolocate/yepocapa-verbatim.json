@@ -1,0 +1,127 @@
+{
+"engineVersion" : "GLC:9.4|U:1.01374|eng:1.0",
+"numResults" : 9,
+"executionTimems" : 79.5909,
+"resultSet" : { "type": "FeatureCollection",
+"features": [
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-90.5, 14.666667]},
+"properties": {
+"parsePattern" : "GUATEMALA",
+"precision" : "Low",
+"score" : 39,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=GUATEMALA|:NP=GUATEMALA|:KFID=|GUATEMALA"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-90.526944, 14.621111]},
+"properties": {
+"parsePattern" : "GUATEMALA",
+"precision" : "Low",
+"score" : 39,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=GUATEMALA|:NP=GUATEMALA|:KFID=|GUATEMALA"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-90.25, 15.5]},
+"properties": {
+"parsePattern" : "GUATEMALA",
+"precision" : "Low",
+"score" : 39,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=GT00|:NP=GUATEMALA|:KFID=|GUATEMALA"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-90.490674, 14.631311]},
+"properties": {
+"parsePattern" : "GUATEMALA",
+"precision" : "Low",
+"score" : 39,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=GUATEMALA|:NP=GUATEMALA|:KFID=|GUATEMALA"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-90.3667, 14.6333]},
+"properties": {
+"parsePattern" : "GUATEMALA",
+"precision" : "Low",
+"score" : 39,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=GUATEMALA|:NP=GUATEMALA|:KFID=|GUATEMALA"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-90.5, 14.6667]},
+"properties": {
+"parsePattern" : "GUATEMALA",
+"precision" : "Low",
+"score" : 39,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=GUATEMALA|:NP=GUATEMALA|:KFID=|GUATEMALA"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-90.25, 15.5]},
+"properties": {
+"parsePattern" : "GUATEMALA",
+"precision" : "Low",
+"score" : 39,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=ALTA VERAPAZ|:NP=GUATEMALA|:KFID=|GUATEMALA"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-90.974157, 14.467246]},
+"properties": {
+"parsePattern" : "YEPOCAPA",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=CHIMALTENANGO|:NP=YEPOCAPA|:KFID=|YEPOCAPA"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-90.953956, 14.501946]},
+"properties": {
+"parsePattern" : "YEPOCAPA",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=CHIMALTENANGO|:NP=YEPOCAPA|:KFID=|YEPOCAPA"
+}
+}
+ ],
+"crs": { "type" : "EPSG", "properties" : { "code" : 4326 }}
+}
+}

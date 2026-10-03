@@ -140,6 +140,12 @@ project. Release runs reserve and reconcile no cost, because the release
 ledgers retire under G11. G30's per-call reservations stand (PLAN 4.3; the
 coordinator's ruling on the mechanism).
 
+> 2026-10-03 (owner G-geo-1 to G-geo-3): the Google Maps Platform item above is
+> superseded by
+> [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator):
+> the harness no longer calls Google Maps, and its geography validator,
+> GEOLocate, is a keyless public service. The USD 25 ceiling is unchanged.
+
 Until the release workstream retires the envelope admission, the old figures are
 still enforced in code: `APPROVED_LIMIT_MICROS` and the v3 ledger checks in
 `src/specimen_digitization/release_budget.py`, and the human-review scope digests
