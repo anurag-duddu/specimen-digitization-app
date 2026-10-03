@@ -24,11 +24,12 @@ from pydantic_ai.models.function import FunctionModel
 import production_e2e_support as support
 from specimen_digitization.application.workflow import OperationalBlock
 from specimen_digitization.research_harness import engine as engine_mod
-from specimen_digitization.research_harness import production_runtime, provisioning
+from specimen_digitization.research_harness import native_worker, production_runtime, provisioning
 from specimen_digitization.research_harness.committed_pins import (
     build_committed_pins, committed_run_cost_limit_micros,
 )
 from specimen_digitization.research_harness.agents import SpecialistHarness
+from specimen_digitization.research_harness.native_service import SqlConnectNativeCanonicalServiceV2
 from specimen_digitization.research_harness.persistence import BudgetPolicy, ResearchStore
 from specimen_digitization.research_harness.workflow_bridge import compose_production_research_workflow
 
@@ -126,6 +127,23 @@ def tick(tmp_path, k, *, replace=None, ceiling=None, key=None):
                 timeline.append(("specialist", str(role), began, next(clock)))
         mp.setattr(SpecialistHarness, "run_specialist", run_specialist)
 
+        # The publication pass's per-checkpoint verification: the accepted-output proof read and the
+        # receipt probe (the probe is also what a restart runs per retained operation; a single
+        # tick on a fresh run has none of those).
+        proof_reads, receipt_probes = [], []
+        original_proof = native_worker.read_accepted_checkpoint_proof
+
+        def read_proof(*args, **kwargs):
+            proof_reads.append(args[3])
+            return original_proof(*args, **kwargs)
+        mp.setattr(native_worker, "read_accepted_checkpoint_proof", read_proof)
+        original_probe = SqlConnectNativeCanonicalServiceV2.winning_receipt
+
+        async def probe(self, *args, **kwargs):
+            receipt_probes.append(kwargs.get("idempotency_key"))
+            return await original_probe(self, *args, **kwargs)
+        mp.setattr(SqlConnectNativeCanonicalServiceV2, "winning_receipt", probe)
+
         original_reserve = ResearchStore.reserve_effect
 
         def reserve(store, scope, lease, operation_key, request, reservation, **kwargs):
@@ -175,6 +193,8 @@ def tick(tmp_path, k, *, replace=None, ceiling=None, key=None):
             "final_progress": receipts[-1]["causal_proof"]["progress_receipt"] if receipts else None,
             "specimen_state": rig.fake.specimens[rig.specimen_id]["state"],
             "duplicates": len(rig.fake.duplicates),
+            "proof_reads": len(proof_reads), "receipt_probes": len(receipt_probes),
+            "connector_calls": collections.Counter(rig.fake.calls),
         }
     if key is not None:
         TICKS[key] = facts
@@ -200,6 +220,10 @@ def test_two_roles_per_window_publish_what_one_role_per_window_publishes(tmp_pat
     # The last publication carries the whole twenty fields' progress in both.
     assert two["final_progress"]["human_reason_codes"] == one["final_progress"]["human_reason_codes"]
     assert not two["final_progress"]["operational_reason_codes"]
+    # A pass verifies a checkpoint (proof read) and probes its receipt only when it publishes it: a
+    # checkpoint an earlier pass delivered is not walked again, however many windows follow.
+    for facts in (one, two):
+        assert facts["proof_reads"] == 12 and facts["receipt_probes"] == 0
     # Concurrency really happened: two roles at once, in three lease windows instead of six.
     assert (one["peak_roles"], two["peak_roles"]) == (1, 2)
     assert [len(run["roles"]) for run in one["engine_runs"]] == [1] * 6

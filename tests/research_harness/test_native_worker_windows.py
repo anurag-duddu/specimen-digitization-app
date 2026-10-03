@@ -44,9 +44,10 @@ class CountingRuntime(PublishingRuntime):
             self.reads["state"] += 1
             return SimpleNamespace(state={"outbox": outbox})
         self.store = SimpleNamespace(job=read_job, _read=read_state)
-        winners = winners or {}
+        winners, self.probes = winners or {}, []
 
         async def winning_receipt(principal, specimen_id, *, idempotency_key, request_identity_digest):
+            self.probes.append(idempotency_key)
             return winners.get(idempotency_key)
         self.canonical_service = SimpleNamespace(publish_checkpoint=self._publish, winning_receipt=winning_receipt)
 
@@ -130,3 +131,84 @@ def test_the_runtime_opens_each_window_with_the_longest_lease():
     heartbeat: it claims the longest lease the store allows."""
     default = inspect.signature(NativeResearchRuntimeFactory.open).parameters["ttl_seconds"].default
     assert default == 900
+
+
+def delivered(key, *, commit=True, flag=True):
+    """The outbox entry of a publication: pending, or delivered with the receipt's canonical_commit."""
+    entry = {"kind": "canonical_publication_required", "delivered": flag,
+        "guard": {"checkpoint_id": f"native-{key}", "idempotency_key": f"idem-{key}"}}
+    if flag is None:
+        del entry["delivered"]
+    if commit:
+        entry["canonical_commit"] = {"id": f"receipt-of-{key}"}
+    return {f"publish/{key}": entry}
+
+
+def test_a_pass_over_delivered_checkpoints_reads_no_proof_and_asks_for_no_receipt(monkeypatch):
+    """Every later window walks every earlier checkpoint. The state document records each delivered
+    publication (the receipt and the flag are written in one SQL transaction): twenty of them cost
+    no proof read, no receipt probe and no publication, only the one read of the state."""
+    typed = tuple(resolved(key) for key in FieldKey)
+    outbox = {}
+    for item in typed:
+        outbox.update(delivered(item.field_key))
+    runtime = CountingRuntime(typed, outbox=outbox)
+    outcome = publish(monkeypatch, runtime, thread(*typed))
+    assert runtime.proofs == [] and runtime.probes == [] and runtime.prepared == []
+    assert runtime.reads == {"job": 1, "state": 1}
+    # The outcome is the one a replay gives: every checkpoint, every receipt, in journal order.
+    assert outcome.checkpoint_ids == tuple(f"native-{item.field_key}" for item in typed)
+    assert outcome.publication_receipt_ids == tuple(f"receipt-of-{item.field_key}" for item in typed)
+    assert outcome.reason_code is None
+
+
+def test_a_pass_publishes_the_new_checkpoints_and_skips_the_delivered_ones(monkeypatch):
+    typed = (resolved(FieldKey.CITY), resolved(FieldKey.COUNTRY), TAXON, resolved(FieldKey.HABITAT))
+    outbox = {**delivered(FieldKey.COUNTRY), **delivered(FieldKey.HABITAT)}
+    runtime = CountingRuntime(typed, outbox=outbox)
+    outcome = publish(monkeypatch, runtime, thread(*typed))
+    assert [field for field, _ in runtime.prepared] == [FieldKey.CITY, FieldKey.TAXON]
+    assert runtime.proofs == ["native-city", "native-taxon"] and runtime.probes == []
+    assert outcome.publication_receipt_ids == ("receipt-city", "receipt-of-country", "receipt-taxon",
+        "receipt-of-habitat")
+
+
+@pytest.mark.parametrize("flag", [False, None])
+def test_a_publication_not_marked_delivered_is_still_verified(monkeypatch, flag):
+    """A pending entry (a crash after the attempt was marked, before the commit) is verified: its
+    proof is read and its receipt probed, and a winner found by the probe is reused."""
+    typed = (resolved(FieldKey.CITY), TAXON)
+    outbox = {**delivered(FieldKey.CITY, commit=False, flag=flag), **delivered(FieldKey.TAXON, commit=False, flag=flag)}
+    winner = SimpleNamespace(causal=SimpleNamespace(receipt_id="receipt-found"))
+    runtime = CountingRuntime(typed, outbox=outbox, winners={"idem-taxon": winner})
+    outcome = publish(monkeypatch, runtime, thread(*typed))
+    assert runtime.proofs == ["native-city", "native-taxon"] and runtime.probes == ["idem-city", "idem-taxon"]
+    assert [field for field, _ in runtime.prepared] == [FieldKey.CITY]
+    assert outcome.publication_receipt_ids == ("receipt-city", "receipt-found")
+
+
+@pytest.mark.parametrize("commit", [None, {}, {"id": None}, {"id": ""}, {"id": 7}, "receipt"])
+def test_a_delivered_flag_without_its_receipt_commit_is_not_trusted(monkeypatch, commit):
+    """The code only ever sets ``delivered`` together with ``canonical_commit`` (publication_v2
+    .outbox_completion and the connector's exact next-state check), so this entry is not one it
+    wrote. It is not skipped: it is verified like a pending one. If the probe finds no receipt, the
+    worker prepares the publication, and the real preparation refuses a delivered entry
+    (native_publication_already_delivered, tests/test_research_harness_publication.py), so the
+    pass ends blocked instead of trusting the flag."""
+    typed = (TAXON,)
+    entry = delivered(FieldKey.TAXON, commit=False)
+    if commit is not None:
+        entry["publish/taxon"]["canonical_commit"] = commit
+    runtime = CountingRuntime(typed, outbox=entry)
+    publish(monkeypatch, runtime, thread(*typed))
+    assert runtime.proofs == ["native-taxon"] and runtime.probes == ["idem-taxon"]
+    assert [field for field, _ in runtime.prepared] == [FieldKey.TAXON]
+
+
+def test_two_entries_for_one_checkpoint_are_ambiguous_even_when_one_is_delivered(monkeypatch):
+    first = delivered(FieldKey.TAXON)
+    second = {"publish/other": dict(first["publish/taxon"], delivered=False)}
+    runtime = CountingRuntime((TAXON,), outbox={**first, **second})
+    with pytest.raises(StaleWork, match="native_publication_operation_ambiguous"):
+        publish(monkeypatch, runtime, thread(TAXON))
+    assert runtime.prepared == []

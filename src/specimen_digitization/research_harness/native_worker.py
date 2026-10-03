@@ -39,6 +39,20 @@ def _described(error):
     return type(error).__name__, "at=" + where
 
 
+def _delivered_receipt_id(event):
+    """The receipt id of a publication its outbox entry records as delivered, else None.
+
+    PublishCanonicalResearchV2 inserts the receipt and sets this entry's ``delivered`` and
+    ``canonical_commit`` in one SQL transaction (the connector requires the state to change by
+    exactly that delta), and no other code sets ``delivered`` on a publication entry. The pair
+    therefore stands for the receipt. An entry with only one of the two is not trusted: the
+    caller verifies it against the receipt as it verifies a pending one."""
+    commit = event.get("canonical_commit")
+    if event.get("delivered") is True and type(commit) is dict and type(commit.get("id")) is str and commit["id"]:
+        return commit["id"]
+    return None
+
+
 def _sources_first(checkpoints):
     """Journal order, except that a checkpoint follows the checkpoints its
     resolution's dependency pins name. The V2 projection publishes a derived
@@ -193,7 +207,7 @@ class NativeResearchWorker:
         # each window of a lease.
         job = await asyncio.to_thread(runtime.store.job, runtime.scope)
         document = await asyncio.to_thread(runtime.store._read, runtime.scope)
-        guards = [event.get("guard", {}) for event in document.state["outbox"].values()
+        events = [event for event in document.state["outbox"].values()
             if event.get("kind") == "canonical_publication_required"]
         receipts, checkpoint_ids = [], []
         for checkpoint in typed:
@@ -201,6 +215,13 @@ class NativeResearchWorker:
                 continue
             native = job["fields"][str(checkpoint.field_key)]["checkpoint"]
             checkpoint_ids.append(native["id"])
+            pending = [event for event in events if event.get("guard", {}).get("checkpoint_id") == native["id"]]
+            # A checkpoint the state document records as delivered was published by an
+            # earlier pass: nothing to verify or read again (the proof, the receipt and
+            # the intent are immutable and were checked when it was published).
+            if len(pending) == 1 and (delivered := _delivered_receipt_id(pending[0])) is not None:
+                receipts.append(delivered)
+                continue
             try:
                 await asyncio.to_thread(read_accepted_checkpoint_proof, runtime.store,
                     runtime.scope, runtime.blobs, native["id"])
@@ -213,12 +234,11 @@ class NativeResearchWorker:
             identity = digest({"contract_version":"native-research-worker-request/v2",
                 "scope":native["scope"], "checkpoint_id":native["id"],
                 "checkpoint_payload_digest":digest(native["payload"])})
-            pending = [guard for guard in guards if guard.get("checkpoint_id") == native["id"]]
             if len(pending) > 1:
                 raise StaleWork("native_publication_operation_ambiguous")
             if pending:
                 winner = await runtime.canonical_service.winning_receipt(principal, specimen_id,
-                    idempotency_key=pending[0]["idempotency_key"], request_identity_digest=identity)
+                    idempotency_key=pending[0]["guard"]["idempotency_key"], request_identity_digest=identity)
                 if winner is not None:
                     receipts.append(str(winner.causal.receipt_id))
                     continue
