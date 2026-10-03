@@ -200,6 +200,14 @@ def test_iam_grants_are_standing_bindings_only():
     assert "google-maps" not in output
 
 
+# The research harness (SPECIMEN_RESEARCH_HARNESS=on) creates and reads objects under these three prefixes only,
+# written out here rather than composed.
+RESEARCH = ('resource.name.startsWith("projects/_/buckets/specimen-digitization.firebasestorage.app/objects/'
+            'research-capture/") || resource.name.startsWith("projects/_/buckets/specimen-digitization.'
+            'firebasestorage.app/objects/research-journal/") || resource.name.startsWith("projects/_/buckets/'
+            'specimen-digitization.firebasestorage.app/objects/research-media/")')
+
+
 def test_iam_covers_owner_grants_for_the_worker_and_sam_identities():
     iam = importlib.import_module("iam")
     grants = importlib.import_module("owner_grants")
@@ -213,7 +221,51 @@ def test_iam_covers_owner_grants_for_the_worker_and_sam_identities():
                 if g.resource[0] != "secret"]
     # Plus the one grant owner_grants does not list: SAM 3's unconditioned bucket listing for the mount.
     expected.append((SAM_SA, "roles/storage.legacyBucketReader", ("bucket", S.BUCKET), None))
+    # And the two it does not list either: the research harness's create and get, for the worker alone. That table
+    # belongs to the retired release process, which scripts/ci/RETIRED.md keeps unchanged, so the pair is held to the
+    # test below, which writes it out, instead.
+    expected += [(WORKER_SA, role, ("bucket", S.BUCKET), (RESEARCH, "specimen_research_objects"))
+                 for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")]
     assert sorted(mine) == sorted(expected) and len(set(mine)) == len(mine)
+
+
+def test_iam_gives_the_worker_alone_create_and_get_under_the_research_prefixes_and_nothing_else():
+    iam = importlib.import_module("iam")
+    table = iam.grants(S.PROJECT, S.SAM_CHECKPOINT_SHA256)
+    research = [g for g in table if g.condition and g.condition[1] == "specimen_research_objects"]
+    assert {(g.member, g.role, g.kind, g.name, g.condition) for g in research} == {
+        (WORKER_SA, role, "bucket", S.BUCKET, (RESEARCH, "specimen_research_objects"))
+        for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")} and len(research) == 2
+    assert [g for g in table if g not in research and "research-" in (g.condition or ("",))[0]] == []
+    on_bucket = {member: {(g.role, g.condition and g.condition[1]) for g in table
+                          if g.member == member and g.kind == "bucket"} for member in (WORKER_SA, SAM_SA, API_SA)}
+    # No list, delete, update or admin role for the worker on the bucket. This script gives the API nothing on the
+    # bucket (its grants are owner_setup.sh's), and SAM 3 what it was given before.
+    assert on_bucket[WORKER_SA] == {
+        (role, title) for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")
+        for title in ("specimen_application_objects", "specimen_research_objects")}
+    assert on_bucket[API_SA] == set()
+    assert on_bucket[SAM_SA] == {("roles/storage.objectViewer", "specimen_application_objects"),
+                                 ("roles/storage.objectCreator", "specimen_application_objects"),
+                                 ("roles/storage.objectViewer", "specimen_sam3_checkpoint_listing"),
+                                 ("roles/storage.legacyBucketReader", None)}
+    # The application condition, which SAM 3 shares, is not widened; the research condition has no listing clause.
+    app = {g.condition for g in table if g.condition and g.condition[1] == "specimen_application_objects"}
+    assert app == {('resource.name.startsWith("projects/_/buckets/specimen-digitization.firebasestorage.app/objects/'
+                    'application/sha256/")', "specimen_application_objects")}
+    assert "objectListPrefix" not in RESEARCH and "application/sha256" not in RESEARCH
+    # The commands themselves: exactly two research bindings, each for the worker, each from the one condition file.
+    code, output, commands = dry("iam.py")
+    assert code == 0, output
+    buckets = find(commands, "gcloud", "storage", "buckets", "add-iam-policy-binding", f"gs://{S.BUCKET}")
+    researched = [argv for argv in buckets if any(arg.endswith("/specimen_research_objects.json") for arg in argv)]
+    assert sorted(argv[argv.index(f"--member={WORKER_SA}") + 1] for argv in researched) == [
+        "--role=roles/storage.objectCreator", "--role=roles/storage.objectViewer"]
+    assert len(researched) == 2 and all(f"--member={WORKER_SA}" in argv for argv in researched)
+    assert f"# condition specimen_research_objects: {RESEARCH}" in output.splitlines()
+    others = "".join(arg for argv in commands if f"--member={SAM_SA}" in argv or f"--member={API_SA}" in argv
+                     for arg in argv)
+    assert others and "research" not in others
 
 
 def test_iam_never_grants_secret_access():
