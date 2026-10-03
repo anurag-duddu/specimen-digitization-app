@@ -208,12 +208,22 @@ def test_iam_covers_owner_grants_for_the_worker_and_sam_identities():
     assert waiting == []
     theirs = [g for g in (*grants.STANDING, *grants.AFTER_RELEASE, *standing) if g.member in {WORKER_SA, SAM_SA}]
     theirs += [g for g in grants.AFTER_RELEASE if g.member == API_SA and g.resource == ("job", "specimen-worker")]
-    # The bucket's resource conditions are kept exactly; owner_grants' secret-version pins are not (per-secret grants).
-    expected = [(g.member, g.role, g.resource, g.condition if g.resource[0] == "bucket" else None) for g in theirs]
+    # The bucket's resource conditions are kept exactly. Secrets are left to their version-pinned grants.
+    expected = [(g.member, g.role, g.resource, g.condition if g.resource[0] == "bucket" else None) for g in theirs
+                if g.resource[0] != "secret"]
     # Plus the one grant owner_grants does not list: SAM 3's unconditioned bucket listing for the mount.
     expected.append((SAM_SA, "roles/storage.legacyBucketReader", ("bucket", S.BUCKET), None))
     assert sorted(mine) == sorted(expected) and len(set(mine)) == len(mine)
-    assert any(resource[0] == "secret" for _, _, resource, _ in mine)
+
+
+def test_iam_never_grants_secret_access():
+    # Each runtime secret is granted at one pinned version; a binding without that condition would open every version.
+    code, output, commands = dry("iam.py")
+    assert code == 0, output
+    assert "secretmanager" not in output
+    assert not [argv for argv in commands if argv[:2] == ["gcloud", "secrets"]]
+    assert not [g for g in importlib.import_module("iam").grants(S.PROJECT, S.SAM_CHECKPOINT_SHA256)
+                if g.kind == "secret" or "secretmanager" in g.role]
 
 
 def test_sam_gets_an_unconditioned_bucket_listing_and_no_other_unconditioned_bucket_grant():

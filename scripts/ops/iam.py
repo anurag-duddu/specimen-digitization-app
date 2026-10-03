@@ -9,21 +9,21 @@ the specimen-sam service and the specimen-worker job are skipped, and named, whi
 Every grant is one `add-iam-policy-binding`, which changes nothing when the binding is already there, so a re-run is
 safe. None is time-limited. Two bucket grants carry a resource condition, the same as scripts/ci/owner_grants.py's
 table, because the bucket also holds the source slides and private originals: application objects only, and SAM 3's
-listing of its own checkpoint prefix. Secrets are granted per secret.
+listing of its own checkpoint prefix. It grants no secret access: each runtime secret is already granted at the one
+version the runtime mounts (a version condition), and an unconditioned binding beside it would open every version.
 
 The table follows owner_grants.py (STANDING, AFTER_RELEASE and runtime_grants) for these three members, plus one
 grant owner_grants.py does not list: SAM 3's unconditioned bucket listing (see LIST_BUCKET).
   worker  specimenRuntimeConnector on the project (the connector's named operations); objectViewer and
-          objectCreator on application objects; secretAccessor on each secret it reads; run.invoker on
-          specimen-sam (segmentation) and on specimen-worker (the drain's deadline hand-over).
+          objectCreator on application objects; run.invoker on specimen-sam (segmentation) and on
+          specimen-worker (the drain's deadline hand-over).
   sam     objectViewer and objectCreator on application objects; objectViewer for listing the checkpoint prefix
-          (the read-only mount); legacyBucketReader on the bucket, unconditioned, for the mount itself;
-          secretAccessor on its Logfire secret.
+          (the read-only mount); legacyBucketReader on the bucket, unconditioned, for the mount itself.
   api     run.invoker on specimen-worker: the API starts executions with jobs:run and no overrides
           (lane_dispatch.py), which needs run.jobs.run only, not actAs on the worker identity.
 
 Parameters (environment): PROJECT, REGION (must match runtime_settings), SAM_CHECKPOINT_SHA256, DRY_RUN=1.
-The operator needs setIamPolicy on the project, bucket, secrets, service and job (the project owner has it).
+The operator needs setIamPolicy on the project, bucket, service and job (the project owner has it).
 """
 from __future__ import annotations
 
@@ -37,8 +37,7 @@ import ops_common as ops
 
 settings = ops.settings
 Grant = namedtuple("Grant", "member role kind name condition reason")
-VIEW, CREATE, ACCESS, INVOKE = ("roles/storage.objectViewer", "roles/storage.objectCreator",
-                                "roles/secretmanager.secretAccessor", "roles/run.invoker")
+VIEW, CREATE, INVOKE = "roles/storage.objectViewer", "roles/storage.objectCreator", "roles/run.invoker"
 LISTING = 'api.getAttribute("storage.googleapis.com/objectListPrefix", "")'
 # The checkpoint mount's gcsfuse calls GetStorageLayout on the bucket and returns its error; gcsfuse v3.11.4 sends
 # it with Prefix "", v3.12.0 with the only-dir prefix (internal/storage/storage_handle.go), and Cloud Run does not
@@ -73,8 +72,6 @@ def grants(project: str, digest: str) -> list[Grant]:
             table.append(Grant(sam, VIEW, "bucket", bucket, listing, "list the checkpoint prefix it mounts read-only"))
             table.append(Grant(sam, LIST_BUCKET, "bucket", bucket, None,
                                "mount the checkpoint: the bucket and object listing at mount time; no object reads"))
-        table += [Grant(member, ACCESS, "secret", secret, None, f"read {variable}")
-                  for variable, secret in sorted(settings.ROLES[who]["secret_env"].items())]
     table += [Grant(worker, INVOKE, "service", "specimen-sam", None, "call SAM 3"),
               Grant(worker, INVOKE, "job", "specimen-worker", None, "hand work left at its deadline to a new execution"),
               Grant(api, INVOKE, "job", "specimen-worker", None, "start executions (jobs:run, no overrides)")]
@@ -86,7 +83,6 @@ def binding_argv(grant: Grant, project: str, region: str) -> list[str]:
     group, target, scope = {
         "project": (["projects"], grant.name, []),
         "bucket": (["storage", "buckets"], f"gs://{grant.name}", []),
-        "secret": (["secrets"], grant.name, [f"--project={project}"]),
         "service": (["run", "services"], grant.name, [f"--region={region}", f"--project={project}"]),
         "job": (["run", "jobs"], grant.name, [f"--region={region}", f"--project={project}"]),
     }[grant.kind]
