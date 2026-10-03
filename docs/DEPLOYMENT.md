@@ -742,19 +742,30 @@ The standing authority is the owner's decision G11 of 2026-09-23 in
 [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator):
 data and runtime releases deploy automatically on merge, like Hosting.
 
-On 2026-10-03 the owner authorized replacing the two protected release
-workflows with the ones described here. The messages were typed in the go-live
-coordinator session and are recorded there, not in this repository: "Take
-over, get this live", and at about 05:25Z "Yes, get it done. You have my
-authorization. The safety checks are being paranoid and not required. you have
-full permission". The coordinator's record also says the owner never asked for
-the time-limited access windows, the receipts or the release safeguards.
+On 2026-10-03, in the go-live coordinator session, the owner told the agents
+"Take over, get this live". The coordinator's record of that session also says
+the owner never asked for the time-limited access windows, the receipts or the
+release safeguards. At about 05:25Z the owner answered two questions from the
+coordinator with "Yes, get it done. You have my authorization. The safety
+checks are being paranoid and not required. you have full permission". The two
+questions were:
 
-That authorization supersedes one clause of G11, "the PR steward approves".
-Until the ten pilot specimens are live, a pull request needs one independent
-reviewer per head plus the green required checks (the owner's rule G51, quoted
-in the go-live lane briefs: "until the ten are live, one reviewer per PR head
-plus green checks").
+1. whether the coordinator may merge lane pull requests once the required
+   checks are green and an independent review is clean;
+2. whether the setup script may start the two release workflows.
+
+That answer does not cover disabling required checks or branch protection.
+These messages are recorded in the coordinator session, not in this
+repository.
+
+Review before merge follows the owner's ruling G51. It is recorded outside
+this repository, in
+`~/specimen-golive/first-ten-20261001/claude-owner-rulings-receipt-20261002T230630Z-v1.json`:
+until the ten pilot specimens are live, one independent reviewer per pull
+request head plus green required checks replaces G18's four-reviewer swarm,
+and branch protection settings are unchanged. That G51 also replaces the "PR
+steward approves" clause of G11 is the coordinator's reading, not a sentence
+the owner wrote.
 
 These controls stay: branch protection and the required checks on `main`,
 keyless Workload Identity Federation identities with no service-account keys,
