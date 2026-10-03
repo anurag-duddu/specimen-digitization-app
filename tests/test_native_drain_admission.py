@@ -94,12 +94,15 @@ def scenario(*, step="plan", profile=HARNESS, stage="plan", refusal=None, outcom
     return mounted, principal, specimen, calls
 
 
-@pytest.mark.parametrize("refusal", [PermissionError("research_live_authority_required"),
-    HeldUnknown("research_committed_pins_changed")])
-def test_a_refused_research_open_stops_before_any_ordinary_step(refusal):
+# The run's own refusal keeps its code, so the drain holds that record; any
+# other refusal is one code that ends the drain's execution.
+@pytest.mark.parametrize("refusal,code", [
+    (PermissionError("research_live_authority_required"), "native_research_admission_or_binding_unavailable"),
+    (HeldUnknown("research_committed_pins_changed"), "research_committed_pins_changed")])
+def test_a_refused_research_open_stops_before_any_ordinary_step(refusal, code):
     workflow, principal, _, calls = scenario(refusal=refusal)
     with WorkerDeadline(time.monotonic()+30).scope():
-        with pytest.raises(OperationalBlock, match="native_research_admission_or_binding_unavailable"):
+        with pytest.raises(OperationalBlock, match=f"^{code}$"):
             workflow.step(principal, SPECIMEN)
     assert calls == ["get", "provision", "native_run"]
 

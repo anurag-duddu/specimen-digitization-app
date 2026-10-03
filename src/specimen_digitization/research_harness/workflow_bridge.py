@@ -20,6 +20,22 @@ from .persistence import HeldUnknown, LiveResearchAuthority, StaleWork
 from .production_runtime import NativeResearchRuntimeFactory
 
 WORKER_ROLES = {"operator", "reviewer", "manager", "admin"}
+# Refusals that concern this run alone: its job was pinned before the committed
+# pins changed (a job is never re-pinned), provisioning refused the run, the
+# run's research state or job exists with other pins or allowance, the
+# connector refused this specimen's binding row, or the run's own research
+# allowance (one state document per run) is halted or spent. Each keeps its own
+# code, which the drain holds as that record's (lane_worker.RECORD_HOLDS).
+# Every other refusal (switch, worker actor, membership, configuration, storage)
+# is one code that ends the drain's execution.
+RECORD_REFUSALS = frozenset({
+    "research_committed_pins_changed",
+    "research_live_admission_unqualified",
+    "research_program_headroom_unavailable",
+    "research_provision_registration_refused",
+    "research_provision_run_unavailable",
+    "research_provision_state_conflict",
+})
 
 
 class NativeResearchWorkflow:
@@ -49,7 +65,9 @@ class NativeResearchWorkflow:
         deadline.check()
         try:
             outcome = asyncio.run(self._research(principal, specimen))
-        except (PermissionError, HeldUnknown, StaleWork):
+        except (PermissionError, HeldUnknown, StaleWork) as error:
+            if str(error) in RECORD_REFUSALS:
+                raise OperationalBlock(str(error)) from None
             raise OperationalBlock("native_research_admission_or_binding_unavailable") from None
         deadline.check()
         if outcome.status == "blocked":

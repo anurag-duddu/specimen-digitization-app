@@ -6,6 +6,7 @@ is a real SQLite store and the pins are the committed ones. No model, source or
 network call is made.
 """
 import asyncio
+import time
 from dataclasses import asdict, replace
 from types import SimpleNamespace
 from uuid import UUID
@@ -13,8 +14,11 @@ from uuid import UUID
 import pytest
 
 from specimen_digitization.application.domain import FieldValue, Principal, Scope, ValueState
+from specimen_digitization.application.lane_worker import RECORD_HOLDS
 from specimen_digitization.application.native_drain import compose_registered_native_drain
 from specimen_digitization.application.production import actor_uid
+from specimen_digitization.application.worker_deadline import WorkerDeadline
+from specimen_digitization.application.workflow import OperationalBlock
 from specimen_digitization.research_harness import native_worker, provisioning
 from specimen_digitization.research_harness.contracts import (
     FieldCheckpoint, FieldKey, FieldResolution, ResearchScope, WorkState, digest,
@@ -30,8 +34,8 @@ from specimen_digitization.research_harness.production_runtime import (
 from specimen_digitization.research_harness.status import ResearchStatusV1
 from specimen_digitization.research_harness.thread_view import FieldThread, ResearchThread
 from specimen_digitization.research_harness.workflow_bridge import (
-    NativeResearchWorkflow, authorize_live_research, compose_production_research_workflow,
-    compose_registered_native_workflow, membership_verifier,
+    RECORD_REFUSALS, NativeResearchWorkflow, authorize_live_research,
+    compose_production_research_workflow, compose_registered_native_workflow, membership_verifier,
 )
 
 from test_native_canonical_contract import helper_resolutions
@@ -284,6 +288,74 @@ def test_open_holds_when_the_allowance_is_not_the_committed_one(opened, monkeypa
     with pytest.raises(HeldUnknown, match="research_live_admission_unqualified"):
         opened.open(opened.factory())
     assert opened.store._read(opened.scope).state["budget_policy"] == asdict(policy)
+
+
+SYSTEMIC = "native_research_admission_or_binding_unavailable"
+
+
+class Refusing:
+    """A native worker whose research open() refuses."""
+    def __init__(self, refusal):
+        self.refusal = refusal
+
+    async def run_registered(self, caller, ident, *, owner):
+        raise self.refusal
+
+
+def bridge_step(specimen, worker, *, provision=None, repository=None):
+    ordinary = SimpleNamespace(repository=repository or Repository(specimen),
+        next_step=lambda run: "plan")
+    workflow = NativeResearchWorkflow(ordinary, worker, provision=provision)
+    with WorkerDeadline(time.monotonic() + 30).scope():
+        return workflow.step(principal(), specimen.id)
+
+
+# A refusal that concerns this run alone keeps its own code, which the drain
+# holds as that record's (lane_worker.RECORD_HOLDS). Every other refusal is the
+# one code that ends the drain's execution.
+@pytest.mark.parametrize("site,refusal,code", [
+    ("open", HeldUnknown("research_committed_pins_changed"), "research_committed_pins_changed"),
+    ("provision", StaleWork("research_provision_run_unavailable"), "research_provision_run_unavailable"),
+    ("provision", HeldUnknown("research_provision_state_conflict"), "research_provision_state_conflict"),
+    ("provision", HeldUnknown("research_provision_registration_refused"),
+        "research_provision_registration_refused"),
+    ("open", HeldUnknown("research_live_admission_unqualified"), "research_live_admission_unqualified"),
+    ("open", HeldUnknown("research_program_headroom_unavailable"), "research_program_headroom_unavailable"),
+    ("provision", HeldUnknown("native_canonical_owner_required"), SYSTEMIC),
+    ("open", PermissionError("research_harness_switch_off"), SYSTEMIC),
+    ("open", PermissionError("research_worker_actor_required"), SYSTEMIC),
+    ("open", PermissionError("research_worker_access_denied"), SYSTEMIC),
+    ("open", HeldUnknown("research_committed_pins_unavailable"), SYSTEMIC),
+    ("provision", PermissionError("research_worker_actor_required"), SYSTEMIC),
+    ("provision", HeldUnknown("research_base_record_unavailable"), SYSTEMIC),
+])
+def test_a_runs_own_refusal_keeps_its_code_for_the_drain_to_hold(site, refusal, code):
+    async def provision(caller, specimen):
+        if site == "provision":
+            raise refusal
+    with pytest.raises(OperationalBlock, match=f"^{code}$"):
+        bridge_step(plan_specimen(), Refusing(refusal), provision=provision)
+    assert (code in RECORD_HOLDS) is (code != SYSTEMIC)
+
+
+def test_the_drain_holds_every_refusal_the_bridge_keeps_as_the_runs_own():
+    assert RECORD_REFUSALS <= RECORD_HOLDS and SYSTEMIC not in RECORD_HOLDS
+
+
+def test_a_job_pinned_before_the_pins_changed_is_held_as_its_record(opened, monkeypatch):
+    from specimen_digitization.research_harness import production_runtime
+    real = production_runtime.build_committed_pins
+    monkeypatch.setattr(production_runtime, "build_committed_pins",
+        lambda *args, **kwargs: {**real(*args, **kwargs), "settings": {"max_tokens": 4096}})
+    built = opened.factory()
+
+    class Opening:
+        async def run_registered(self, caller, ident, *, owner):
+            await built.open(caller, ident, owner=owner)
+
+    with pytest.raises(OperationalBlock, match="^research_committed_pins_changed$"):
+        bridge_step(opened.specimen, Opening(), repository=opened.repository)
+    assert "research_committed_pins_changed" in RECORD_HOLDS
 
 
 # A field waiting on the policy its profile declares missing (verbatim_dts)

@@ -32,7 +32,7 @@ from specimen_digitization.research_harness.contracts import ResearchScope
 from specimen_digitization.research_harness.native_worker import (
     NativeResearchWorkerOutcomeV2,
 )
-from specimen_digitization.research_harness.persistence import HeldUnknown
+from specimen_digitization.research_harness.persistence import HeldUnknown, StaleWork
 from specimen_digitization.research_harness.workflow_bridge import NativeResearchWorkflow
 
 ORG = "00000000-0000-4000-8000-000000000001"
@@ -716,14 +716,17 @@ class Ordinary:
 class NativeLane:
     """The native research worker, offline."""
 
-    def __init__(self, repository, holds=None, *, failure=None):
+    def __init__(self, repository, holds=None, *, failure=None, refusals=None):
         self.repository, self.holds, self.failure = repository, holds or {}, failure
+        self.refusals = refusals or {}  # One record's own open() refusal.
         self.runs = []
 
     async def run_registered(self, principal, ident, *, owner):
         self.runs.append(ident)
         if self.failure is not None:
             raise self.failure
+        if ident in self.refusals:
+            raise self.refusals[ident]
         scope = ResearchScope(
             organization_id=ORG,
             collection_id=COLLECTION,
@@ -746,12 +749,14 @@ class NativeLane:
         return NativeResearchWorkerOutcomeV2(scope=scope, status="completed")
 
 
-def drain_the_ten(lane, native, *, supervised=True, at_plan=False):
+def drain_the_ten(lane, native, *, supervised=True, at_plan=False, provision=None):
     profile = harness_profile()
     for minutes, ident in zip(range(50, 40, -1), TEN):
         queued(lane.repository, ident, minutes=minutes, profile_snapshot=profile)
     workflow = RegisteredNativeDrainWorkflow(
-        NativeResearchWorkflow(Ordinary(lane.repository, at_plan=at_plan), native)
+        NativeResearchWorkflow(
+            Ordinary(lane.repository, at_plan=at_plan), native, provision=provision
+        )
     )
     drain = worker(lane.repository, workflow, lane.clock)
     if not supervised:
@@ -798,6 +803,58 @@ def test_a_held_record_is_blocked_and_the_later_records_are_drained(
     assert fence(lane).read()["holder"] is None
 
 
+@pytest.mark.parametrize(
+    ("site", "refusal"),
+    [
+        # open(): the run's job was pinned before the committed pins changed,
+        # and a job is never re-pinned (production_runtime.py).
+        ("open", HeldUnknown("research_committed_pins_changed")),
+        # provision(): the run is not one provisioning accepts (provisioning.py).
+        ("provision", StaleWork("research_provision_run_unavailable")),
+        # provision(): the run's research state or job exists with other pins
+        # or allowance (provisioning.py).
+        ("provision", HeldUnknown("research_provision_state_conflict")),
+        # provision(): the connector refused this specimen's binding row.
+        ("provision", HeldUnknown("research_provision_registration_refused")),
+        # open(): the run's own research allowance (one state document per run)
+        # is halted, or has no headroom left (production_runtime.py).
+        ("open", HeldUnknown("research_live_admission_unqualified")),
+        ("open", HeldUnknown("research_program_headroom_unavailable")),
+    ],
+)
+def test_a_runs_own_refusal_holds_that_record_and_the_drain_goes_on(
+    lane, site, refusal
+):
+    code = str(refusal)
+    refusals = {TEN[0]: refusal} if site == "open" else None
+    native = NativeLane(lane.repository, refusals=refusals)
+    provisioned = []
+
+    async def provision(principal, specimen):
+        provisioned.append(specimen.id)
+        if site == "provision" and specimen.id == TEN[0]:
+            raise refusal
+
+    summary = drain_the_ten(lane, native, provision=provision)
+    assert summary["status"] == "drained"
+    assert summary["processed"] == list(TEN)
+    assert provisioned == list(TEN)
+    assert native.runs == (list(TEN) if site == "open" else list(TEN[1:]))
+    held = lane.repository.get(SCOPE, TEN[0])
+    assert (held.run.stage, held.run.blocker, held.run.disposition) == (
+        "processing_blocked",
+        code,
+        None,
+    )
+    assert (held.audit[-1].action, held.audit[-1].reason) == ("lane_block", code)
+    for ident in TEN[1:]:
+        run = lane.repository.get(SCOPE, ident).run
+        assert (run.stage, run.disposition) == ("finalized", Disposition.REVIEW)
+    later = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    assert lane.repository.oldest_due(SCOPE, later, limit=10) == []
+    assert fence(lane).read()["holder"] is None
+
+
 def test_a_hold_on_a_runs_first_step_keeps_its_own_blocker(lane):
     # No step saved before the hold, so the drain also takes the run as not
     # progressing; the hold's blocker stays the one recorded.
@@ -821,15 +878,15 @@ def test_a_hold_on_a_runs_first_step_keeps_its_own_blocker(lane):
 @pytest.mark.parametrize(
     ("change", "error", "message"),
     [
-        # Authorization: the run's live research authority is refused.
+        # Configuration: the research harness switch is off.
         (
-            {"failure": PermissionError("research_live_authority_required")},
+            {"failure": PermissionError("research_harness_switch_off")},
             OperationalBlock,
             "native_research_admission_or_binding_unavailable",
         ),
-        # Budget: the run's research allowance has no headroom.
+        # Authorization: the run's live research authority is refused.
         (
-            {"failure": HeldUnknown("research_program_headroom_unavailable")},
+            {"failure": PermissionError("research_live_authority_required")},
             OperationalBlock,
             "native_research_admission_or_binding_unavailable",
         ),
