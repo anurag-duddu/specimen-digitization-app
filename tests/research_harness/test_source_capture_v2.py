@@ -1,11 +1,10 @@
 """SOURCE-AUTHORED, UNRUN: real SQLite effects and immutable fixture bytes.
 
-These tests authorize no native connector, Google call, live spend or job reset.
+These tests authorize no native connector, live spend or job reset.
 The fixture starts a new disposable local ledger; no production ledger is used.
 """
 import asyncio
 import hashlib
-import json
 from dataclasses import asdict, replace
 from types import SimpleNamespace
 from urllib.parse import unquote, urlparse
@@ -24,8 +23,8 @@ from specimen_digitization.research_harness.persistence import (
     ImmutableFileBlobs, PinnedRuntime, ResearchStore, SqliteStateBackend, StaleWork,
 )
 from specimen_digitization.research_harness.source_capture_v2 import (
-    CaptureSourceBrokerV2, CapturedSourceTransportV2, GoogleMinimalCaptureV2,
-    RegisteredCapturePolicyV2, SourceRequestEnvelopeV2, captured_google_metadata_v2, logical_request_v2,
+    CaptureSourceBrokerV2, CapturedSourceTransportV2,
+    RegisteredCapturePolicyV2, SourceRequestEnvelopeV2, logical_request_v2,
 )
 from specimen_digitization.research_harness.sources import (
     BoundedHTTPTransport, FixtureSourceTransport, MUSEUM_DATASET, canonical_json, insects_registry,
@@ -42,7 +41,7 @@ def make_capture_rig(tmp_path, *, source_id="global_names_verifier", join=None):
         "schema_digest": digest("fixture-schema"), "source_release": "fixture-release"}})
     source = registry.get(source_id)
     policy = RegisteredCapturePolicyV2(source_id=source.id, source_policy_digest=digest(source),
-        kind="google_policy_minimal" if source_id == "google_maps" else "full_response", owner_registration_digest=digest("fixture-owner-registration"),
+        kind="full_response", owner_registration_digest=digest("fixture-owner-registration"),
         owner_registration_origin="disposable local test registration", maximum_responses=2 if source_id == "field_museum_ipt" else 1)
     profile = CollectionProfile(id="insects", version="fixture-v1", organization_id=ident("org"),
         collection_id=ident("collection"), ancestry=(), knowledge_version="fixture-v1",
@@ -57,8 +56,8 @@ def make_capture_rig(tmp_path, *, source_id="global_names_verifier", join=None):
             digest=hashlib.sha256(text.encode()).hexdigest(), output_schema_digest=digest(FieldResolution.model_json_schema()),
             profile_digest=scope.profile_digest, source_registry_digest=registry.digest,
             toolset_digest=digest("fixture-tools"), model_route="function-fixture").model_dump(mode="json")
-    role = SpecialistRole.GEOGRAPHY if source_id == "google_maps" else SpecialistRole.TAXONOMY
-    field_key = FieldKey.COUNTRY if source_id == "google_maps" else FieldKey.TAXON
+    role = SpecialistRole.TAXONOMY
+    field_key = FieldKey.TAXON
     request = SpecialistRequest(scope=scope, role=role, field_keys=(field_key,),
         prompt=PromptPin.model_validate(prompts[str(role)]), field_revisions={field_key: 0})
     durable_scope = DurabilityScope(scope.organization_id, scope.collection_id, scope.specimen_id,
@@ -79,8 +78,6 @@ def make_capture_rig(tmp_path, *, source_id="global_names_verifier", join=None):
     calls, bodies, control = [], [], {"cancel": False, "pause": None}
 
     async def read(url, policy):
-        if source_id == "google_maps":
-            raise AssertionError("No Google transport/body fixture is installed")
         calls.append(url)
         if control["cancel"]:
             raise asyncio.CancelledError()
@@ -102,7 +99,7 @@ def make_capture_rig(tmp_path, *, source_id="global_names_verifier", join=None):
     transport = FixtureSourceTransport(read)
     broker = CaptureSourceBrokerV2(registry, {source.id: policy}, effects, durable_scope, lease,
         transport=transport, execution_class="offline")
-    query = SourceQuery(source_id=source.id, field_key=field_key, query_text="" if source_id == "google_maps" else "Danaus plexippus", join=join)
+    query = SourceQuery(source_id=source.id, field_key=field_key, query_text="Danaus plexippus", join=join)
     return SimpleNamespace(registry=registry, source=source, policy=policy, profile=profile,
         scope=scope, request=request, durable_scope=durable_scope, backend=backend, store=store,
         pins=pins, lease=lease, blobs=blobs, effects=effects, transport=transport, broker=broker,
@@ -121,9 +118,15 @@ def test_capture_source_capability_advertises_only_ready_registered_full_respons
     assert f.broker.available_sources(f.request) == ()
 
 
-def test_capture_source_capability_never_advertises_google_minimal_adapter(tmp_path):
-    f = make_capture_rig(tmp_path, source_id="google_maps")
-    assert f.policy.kind == "google_policy_minimal"
+def test_retired_google_maps_has_no_capture_kind_or_source(capture_rig):
+    """Owner G-geo-1 (2026-10-03): Google Maps is removed from the harness permanently."""
+    f = capture_rig
+    with pytest.raises(ValidationError):
+        RegisteredCapturePolicyV2(source_id="google_maps", source_policy_digest=digest("policy"),
+            kind="google_policy_minimal", owner_registration_digest=digest("registration"),
+            owner_registration_origin="fixture", maximum_responses=1)
+    with pytest.raises(ValueError, match="outside owner allowlist"):
+        f.registry.get("google_maps")
     assert "google_maps" not in f.broker.available_sources(f.request)
     assert f.calls == []
 
@@ -281,49 +284,12 @@ def test_raw_host_scope_boolean_generation_cannot_alias_generation_one(capture_r
     assert rig.calls == [] and rig.store._read(rig.durable_scope).state["effects"] == {}
 
 
-def test_google_retains_only_typed_minimal_metadata_and_distinct_sanitized_hash():
-    fingerprint = digest("synthetic original response fingerprint; no response fixture")
-    minimal = GoogleMinimalCaptureV2(place_id="fixture_place_id", outcome=LookupStatus.SUCCESS,
-        response_fingerprint=fingerprint)
-    persisted = json.loads(minimal.sanitized_bytes())
-    assert set(persisted) == {"contract_version", "place_id", "outcome", "response_fingerprint"}
-    assert minimal.sanitized_envelope_sha256 != fingerprint
-    with pytest.raises(ValidationError):
-        GoogleMinimalCaptureV2.model_validate({**persisted, "latitude": 1})
-    with pytest.raises(ValidationError):
-        RegisteredCapturePolicyV2(source_id="google_maps", source_policy_digest=digest("policy"),
-            kind="full_response", owner_registration_digest=digest("registration"),
-            owner_registration_origin="fixture", maximum_responses=1)
-
-
 def test_sensitive_request_stays_policy_denied_without_an_effect(capture_rig):
     rig = capture_rig
     rig.request = rig.request.model_copy(update={"scope": rig.scope.model_copy(update={"sensitive": True})})
     result = query_once(rig)
     assert result.status == LookupStatus.POLICY and rig.calls == []
     assert rig.store._read(rig.durable_scope).state["effects"] == {}
-
-
-def test_google_metadata_hook_binds_real_offline_effect_and_keeps_paid_cost_unknown(tmp_path):
-    """Synthetic permitted metadata only; no Google body or transport fixture."""
-    rig = make_capture_rig(tmp_path, source_id="google_maps")
-    metadata = GoogleMinimalCaptureV2(place_id=None, outcome=LookupStatus.NO_MATCH,
-        response_fingerprint=digest("synthetic permitted fingerprint only"))
-    logical = logical_request_v2(rig.request, rig.query, rig.policy)
-    async def dispatch(attempt_id, effect_id):
-        return captured_google_metadata_v2(rig.broker.effects, rig.request, rig.query, metadata,
-            attempt_id=attempt_id, effect_id=effect_id)
-    receipt = asyncio.run(rig.effects.execute(rig.durable_scope, rig.lease, "google_metadata_v2:" + digest(logical),
-        logical, 1, dispatch, execution_class="offline", field_keys=("country",)))
-    assert rig.calls == [] and receipt.actual_micro_usd is None and receipt.held_micro_usd == 1
-    envelope = json.loads(rig.blobs.get(receipt.raw_capture))
-    assert envelope["metadata"] == metadata.model_dump(mode="json")
-    assert set(envelope["metadata"]) == {"contract_version", "place_id", "outcome", "response_fingerprint"}
-    assert receipt.raw_capture.sha256 == receipt.typed_payload["sanitized_envelope_sha256"]
-    assert receipt.raw_capture.sha256 != metadata.response_fingerprint
-    assert envelope["original_request"] == rig.request.model_dump(mode="json")
-    assert envelope["effect_id"] == receipt.effect_id and envelope["attempt_id"] == receipt.attempt_id
-    assert asyncio.run(rig.broker.query_source(rig.request, rig.query)).status == LookupStatus.POLICY
 
 
 def test_live_refused_without_live_authority(capture_rig):

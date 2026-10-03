@@ -7,9 +7,14 @@ sources cannot be relabelled exhausted; Museum occurrence reads have only the
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+import math
 import re
+import threading
+import time
+import unicodedata
 from dataclasses import dataclass
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Protocol
@@ -20,7 +25,7 @@ from pydantic import Field
 
 from specimen_digitization.application.domain import LookupStatus, now
 from specimen_digitization.application.lookup import (
-    COL_XR, _shape_ok, cleared_synonym, row_one, scientific_name,
+    CLAUSES, COL_XR, MONTHS, _shape_ok, cleared_synonym, row_one, scientific_name,
 )
 
 from .contracts import (
@@ -117,7 +122,7 @@ class SourceRegistry:
 
 
 def insects_registry(*, qualification_overrides: Mapping[str, dict] | None = None) -> SourceRegistry:
-    """All nine owner-selected sources; no unqualified site grants a tool."""
+    """All eight owner-selected sources; no unqualified site grants a tool."""
     taxonomy = (SpecialistRole.TAXONOMY,)
     geography = (SpecialistRole.GEOGRAPHY,)
     geo_fields = (FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.COUNTY,
@@ -134,10 +139,8 @@ def insects_registry(*, qualification_overrides: Mapping[str, dict] | None = Non
          (r"/node/view/[0-9]+",), "browser", "individual-content-specific", "https://www.bugguide.net/node/view/6/bgimage", "terms/access pending; no image reuse", "bugguide-community", "supports"),
         ("mapcarta", geography, geo_fields, ("mapcarta.com",),
          (r"/(?:[0-9]+|[A-Z][A-Za-z0-9_]*)",), "browser", "CC BY-SA/ODbL with exceptions", "https://mapcarta.com/About_Mapcarta", "upstream attribution; no map/photo screenshot storage", "mapcarta-upstream", "supports"),
-        ("google_maps", geography, geo_fields, ("maps.googleapis.com",),
-         (r"/maps/api/geocode/json",), "credentialed_api", "Google Maps Platform restricted", "https://developers.google.com/maps/documentation/geocoding/policies", "G26 only place ID/outcome/fingerprint", "google-maps", "supports"),
         ("geolocate", geography, geo_fields, ("geo-locate.org", "www.geo-locate.org"),
-         (r"/webservices/geolocatesvcv2/geolocatesvc.asmx/Georef2",), "public_api", "hosted-service terms unqualified", "https://geo-locate.org/developers/default.html", "hosted retention pending", "geolocate", "candidate"),
+         (r"/webservices/geolocatesvcv2/glcwrap\.aspx",), "public_api", "keyless public web service; no published terms", "https://geo-locate.org/developers/default.html", "full response retained as evidence (coordinator engineering call 2026-10-03 under the owner standing technical approval; revisit if GEOLocate publishes terms)", "geolocate", "candidate"),
         ("field_museum_ipt", museum_roles, _METADATA_FIELDS, ("fmipt.fieldmuseum.org", "api.gbif.org"),
          (r"/ipt/eml.do", r"/ipt/resource.do", r"/v1/occurrence/search", r"/v1/occurrence/[0-9]+/verbatim"), "public_publisher_metadata", "CC0 dataset; images excluded", "https://fmipt.fieldmuseum.org/ipt/eml.do?r=fmnh_insects&v=12.64", "bounded exact publisher metadata; no archive/media", "field-museum-insects", "publisher_assertion"),
         ("field_museum_emudata", museum_roles, _METADATA_FIELDS + (FieldKey.IDENTIFIED_BY_IRN,), ("emudata.fieldmuseum.org",),
@@ -152,7 +155,6 @@ def insects_registry(*, qualification_overrides: Mapping[str, dict] | None = Non
                               fields=fields, allowed_hosts=hosts, allowed_path_patterns=paths,
                               source_type=kind, license=license, terms_locator=terms,
                               retention=retention, publisher_id=publisher, authority_role=authority,
-                              credentials_required=source_id == "google_maps", paid=source_id == "google_maps",
                               purpose_policy=PUBLIC_METADATA_POLICY if source_id == "field_museum_ipt" else "insects-research-v1")
         if source_id in overrides:
             # Qualification changes readiness/version only; never grants host/role/field.
@@ -162,6 +164,258 @@ def insects_registry(*, qualification_overrides: Mapping[str, dict] | None = Non
             policy = SourcePolicy.model_validate({**policy.model_dump(), **overrides[source_id]})
         policies.append(policy)
     return SourceRegistry(policies)
+
+
+# GEOLocate validates the geography historian's interpretation (owner G-geo-1..3,
+# 2026-10-03). The glcwrap wrapper answers JSON; outside the USA it ignores State and
+# reports no uncertainty, and the uncertainty radius is computed in-house (D13).
+GEOLOCATE_ENDPOINT = "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx"
+GEOLOCATE_RELEASE = "geolocatesvcv2-glcwrap-json"
+GEOLOCATE_SCHEMA = (
+    "engineVersion:string", "numResults:integer", "resultSet.type:FeatureCollection",
+    "resultSet.crs:EPSG:4326", "features[].geometry:Point[longitude,latitude]",
+    "features[].properties.parsePattern:string", "features[].properties.precision:string",
+    "features[].properties.score:integer", "features[].properties.debug:string(:Adm=)",
+)
+GEOLOCATE_QUALIFICATION = {
+    "qualification_state": SourceCoverageState.SEARCHED.value,
+    "qualification_receipt": "owner G-geo-1..3 2026-10-03; glcwrap.aspx fmt=json probed 2026-10-03",
+    "schema_digest": digest(GEOLOCATE_SCHEMA),
+    "source_release": GEOLOCATE_RELEASE,
+}
+GEOLOCATE_AGREEMENT_KM = 10.0
+SOURCE_REQUEST_INTERVAL_SECONDS = {"geolocate": 3.0}
+_GEOLOCATE_TEXT = ("country", "state", "county", "locality", "place", "value")
+_GEOLOCATE_REQUIRED = ("country", "locality", "place", "value", "latitude", "longitude", "radius_km")
+_GEOLOCATE_BOUNDS = {"latitude": (-90.0, 90.0), "longitude": (-180.0, 180.0), "radius_km": (1.0, 50.0)}
+_USA = {("usa",), ("us",), ("united", "states"), ("united", "states", "of", "america")}
+
+
+@dataclass(frozen=True, slots=True)
+class GeolocateInterpretation:
+    """The historian's reading of one locality, as sent to GEOLocate and checked against it."""
+
+    country: str
+    state: str
+    county: str
+    locality: str
+    place: str
+    value: str
+    latitude: float
+    longitude: float
+    radius_km: float
+
+
+@dataclass(frozen=True, slots=True)
+class _GeolocateMatch:
+    latitude: float
+    longitude: float
+    name: str
+    admin: str
+    precision: str
+    score: int
+    distance_km: float
+
+
+def geolocate_interpretation(query_text: str, field_key: FieldKey | None = None) -> GeolocateInterpretation:
+    """Parse the query_text JSON; the ValueError message tells the agent what to correct.
+
+    With a field key, also refuse a value GEOLocate cannot confirm for that field: country and
+    city must be the queried country and place, and a county exists only inside the USA, where
+    the gazetteer's admin unit is the county (outside it, the first-level unit).
+    """
+    try:
+        value = _source_json(query_text.encode())
+    except ValueError:
+        value = None
+    if not isinstance(value, dict):
+        raise ValueError("GEOLocate query_text must be one JSON object")
+    unknown = sorted(set(value) - set(_GEOLOCATE_TEXT) - set(_GEOLOCATE_BOUNDS))
+    missing = [key for key in _GEOLOCATE_REQUIRED if key not in value]
+    if unknown or missing:
+        shown = [key if re.fullmatch(r"[A-Za-z_]{1,32}", key) else "?" for key in unknown]
+        raise ValueError("GEOLocate query_text keys: " + "; ".join(
+            part for part in ("unknown " + ", ".join(shown) if unknown else "",
+                              "missing " + ", ".join(missing) if missing else "") if part))
+    for key in _GEOLOCATE_TEXT:
+        item = value.get(key, "")
+        if (type(item) is not str or item != item.strip() or len(item) > 200
+                or any(ord(character) < 32 for character in item) or (key in _GEOLOCATE_REQUIRED and not item)):
+            raise ValueError(f"GEOLocate {key} must be trimmed text of at most 200 characters")
+    for key, (low, high) in _GEOLOCATE_BOUNDS.items():
+        item = value[key]
+        if not _finite_number(item) or not low <= item <= high:
+            raise ValueError(f"GEOLocate {key} must be a number from {low:g} to {high:g}")
+    place = GeolocateInterpretation(
+        country=value["country"], state=value.get("state", ""), county=value.get("county", ""),
+        locality=value["locality"], place=value["place"], value=value["value"], latitude=float(value["latitude"]),
+        longitude=float(value["longitude"]), radius_km=float(value["radius_km"]))
+    claimed = _fold_words(place.value)
+    usa = _fold_words(place.country) in _USA
+    if field_key == FieldKey.COUNTRY and claimed != _fold_words(place.country):
+        raise ValueError("GEOLocate country value must be the queried country")
+    if field_key == FieldKey.CITY and claimed != _fold_words(place.place):
+        raise ValueError("GEOLocate city value must be the queried place")
+    if field_key == FieldKey.COUNTY and not usa:
+        raise ValueError("GEOLocate confirms a county only inside the USA")
+    if field_key == FieldKey.PROVINCE_STATE and usa and claimed != _fold_words(place.state):
+        raise ValueError("GEOLocate state value inside the USA must be the queried state")
+    return place
+
+
+def _finite_number(item) -> bool:
+    # A JSON integer of any length compares exactly; converting a huge one to float overflows.
+    return type(item) is int or (type(item) is float and math.isfinite(item))
+
+
+def geolocate_place_text_defect(request: SpecialistRequest, place: GeolocateInterpretation) -> str | None:
+    """PLAN 4.8: only place text leaves the harness, so the request names what GEOLocate may see.
+
+    The locality is built from the historian's own place and unit names, or is the exact text of
+    an accepted precise_location assembly; no request has a reusable per-field place filter, and a
+    reading line can hold a collector or a date beside the locality. Every sent value is refused
+    when it holds a digit, a month word, a party marker, or a word of any label clause that holds
+    a marker.
+    """
+    markers = {word for clause in CLAUSES for word in _fold_words(clause)}
+    marked = {word for item in request.assemblies if item.field_key == FieldKey.COLLECTORS
+              for word in _fold_words(item.interpreted_text)}
+    for fragment in request.fragments:
+        for clause in re.split(r"[,;]", fragment.literal):
+            words = set(_fold_words(clause))
+            if words & markers:
+                marked |= words
+    for key in ("country", "state", "county", "locality", "place"):
+        words = set(_fold_words(getattr(place, key)))
+        if any(character.isdigit() for word in words for character in word):
+            return f"GEOLocate {key} must be place text: no digits, dates or elevations"
+        if words & MONTHS:
+            return f"GEOLocate {key} must be place text: no month words"
+        if words & (markers | marked):
+            return f"GEOLocate {key} must be place text: no collector or determiner text"
+    named = set(_fold_words(" ".join((place.place, place.county, place.state, place.country))))
+    assembled = {item.interpreted_text for item in request.assemblies if item.field_key == FieldKey.PRECISE_LOCATION}
+    if not set(_fold_words(place.locality)) <= named and place.locality not in assembled:
+        return ("GEOLocate locality must use only the words of place and the named units, "
+                "or the exact text of an accepted precise_location assembly")
+    return None
+
+
+def _fold_words(text: str) -> tuple[str, ...]:
+    plain = "".join(character for character in unicodedata.normalize("NFKD", text)
+                    if not unicodedata.combining(character)).casefold()
+    return tuple("mount" if word == "mt" else word for word in re.sub(r"[\W_]+", " ", plain).split())
+
+
+def _distance_km(latitude: float, longitude: float, other_latitude: float, other_longitude: float) -> float:
+    phi, other_phi = math.radians(latitude), math.radians(other_latitude)
+    half_chord = (math.sin((other_phi - phi) / 2) ** 2 + math.cos(phi) * math.cos(other_phi)
+                  * math.sin(math.radians(other_longitude - longitude) / 2) ** 2)
+    return 2 * 6371.0088 * math.asin(min(1.0, math.sqrt(half_chord)))
+
+
+def _geolocate_matches(payload, place: GeolocateInterpretation) -> tuple[str, int, list[_GeolocateMatch]]:
+    result_set = payload.get("resultSet") if isinstance(payload, dict) else None
+    features = result_set.get("features") if isinstance(result_set, dict) else None
+    count = payload.get("numResults") if isinstance(payload, dict) else None
+    engine = payload.get("engineVersion") if isinstance(payload, dict) else None
+    if (type(count) is not int or count < 0 or not isinstance(features, list) or len(features) != count
+            or result_set.get("type") != "FeatureCollection" or type(engine) is not str or not engine
+            or (features and result_set.get("crs") != {"type": "EPSG", "properties": {"code": 4326}})):
+        raise ValueError("GEOLocate glcwrap schema mismatch")
+    matches = []
+    for feature in features:
+        geometry = feature.get("geometry") if isinstance(feature, dict) else None
+        properties = feature.get("properties") if isinstance(feature, dict) else None
+        point = geometry.get("coordinates") if isinstance(geometry, dict) else None
+        if (not isinstance(properties, dict) or not isinstance(geometry, dict) or geometry.get("type") != "Point"
+                or not isinstance(point, list) or len(point) != 2
+                or any(not _finite_number(item) for item in point)
+                or type(properties.get("parsePattern")) is not str or type(properties.get("precision")) is not str
+                or type(properties.get("score")) is not int or type(properties.get("debug")) is not str):
+            raise ValueError("GEOLocate feature schema mismatch")
+        if not (-180 <= point[0] <= 180 and -90 <= point[1] <= 90):
+            raise ValueError("GEOLocate coordinates out of range")
+        longitude, latitude = (float(item) for item in point)
+        admin = re.search(r"(?:^|\|):Adm=([^|]*)", properties["debug"])
+        matches.append(_GeolocateMatch(
+            latitude=latitude, longitude=longitude, name=properties["parsePattern"],
+            admin=admin.group(1) if admin else "", precision=properties["precision"],
+            score=properties["score"],
+            distance_km=_distance_km(place.latitude, place.longitude, latitude, longitude)))
+    return engine, count, matches
+
+
+def _geolocate_agrees(field_key: FieldKey, place: GeolocateInterpretation, match: _GeolocateMatch) -> bool:
+    """The match must be the named place, near the historian's placement, inside the claimed unit."""
+    if match.distance_km > place.radius_km or _fold_words(match.name) != _fold_words(place.place):
+        return False
+    # The admin unit is the county inside the USA and the first-level unit outside it; inside
+    # the USA GEOLocate confines the search to the queried State instead.
+    usa = _fold_words(place.country) in _USA
+    if field_key == FieldKey.COUNTY or (field_key == FieldKey.PROVINCE_STATE and not usa):
+        return bool(match.admin) and _fold_words(match.admin) == _fold_words(place.value)
+    return True
+
+
+def geolocate_verdict(policy: SourcePolicy, query: SourceQuery, payload) -> tuple[LookupStatus, list[dict], int, str]:
+    """Verify every GEOLocate match against the interpretation; only agreeing points become candidates."""
+    place = geolocate_interpretation(query.query_text, query.field_key)
+    engine, count, matches = _geolocate_matches(payload, place)
+    agreeing = sorted((item for item in matches if _geolocate_agrees(query.field_key, place, item)),
+                      key=lambda item: (-item.score, item.distance_km))
+    if not agreeing:
+        named = sorted({item.admin or "no unit" for item in matches if item.distance_km <= place.radius_km
+                        and _fold_words(item.name) == _fold_words(place.place)})
+        if named:
+            return (LookupStatus.NO_MATCH, [], count,
+                    f"GEOLocate places {place.place!r} in {', '.join(named)}, not {place.value!r}")
+        return (LookupStatus.NO_MATCH, [], count,
+                f"GEOLocate returned {count} match(es); none is {place.place!r} "
+                f"within {place.radius_km:g} km of the interpreted placement")
+    best = agreeing[0]
+    spread = max(_distance_km(best.latitude, best.longitude, item.latitude, item.longitude) for item in agreeing)
+    chosen = [best] if spread <= GEOLOCATE_AGREEMENT_KM else agreeing[:policy.result_limit]
+    candidates = [{
+        "field_key": str(query.field_key), "value": place.value,
+        "authority_id": f"geolocate:{item.latitude:.6f},{item.longitude:.6f}",
+        "authority_role": policy.authority_role, "input_literal": place.locality, "rank": rank,
+        "decimal_latitude": item.latitude, "decimal_longitude": item.longitude, "geodetic_datum": "EPSG:4326",
+        "match_name": item.name, "match_admin": item.admin, "match_precision": item.precision,
+        "match_score": item.score, "distance_km": round(item.distance_km, 1), "engine_version": engine,
+    } for rank, item in enumerate(chosen, 1)]
+    if len(chosen) == 1:
+        return (LookupStatus.SUCCESS, candidates, count,
+                f"GEOLocate confirms {place.value!r}: {len(agreeing)} of {count} match(es) agree within "
+                f"{GEOLOCATE_AGREEMENT_KM:g} km of each other")
+    return (LookupStatus.AMBIGUOUS, candidates, count,
+            f"GEOLocate is ambiguous for {place.value!r}: agreeing matches lie up to {spread:.0f} km apart")
+
+
+class RequestPacer:
+    """Process-wide minimum spacing between request starts to one source; it never raises."""
+
+    def __init__(self, intervals: Mapping[str, float], *, clock: Callable[[], float] = time.monotonic,
+                 sleep: Callable[[float], Awaitable[object]] = asyncio.sleep):
+        self._intervals = dict(intervals)
+        self._clock = clock
+        self._sleep = sleep
+        self._lock = threading.Lock()
+        self._next_start: dict[str, float] = {}
+
+    async def wait(self, source_id: str) -> None:
+        interval = self._intervals.get(source_id)
+        if not interval:
+            return
+        with self._lock:
+            current = self._clock()
+            start = max(current, self._next_start.get(source_id, current))
+            self._next_start[source_id] = start + interval
+        if start > current:
+            await self._sleep(start - current)
+
+
+SOURCE_PACER = RequestPacer(SOURCE_REQUEST_INTERVAL_SECONDS)
 
 
 class SourceTransport(Protocol):
@@ -185,11 +439,13 @@ class FixtureSourceTransport:
 class BoundedHTTPTransport:
     """TLS-verified streamed GET with redirects/encoding/response size refused."""
 
-    def __init__(self, client: httpx.AsyncClient | None = None):
+    def __init__(self, client: httpx.AsyncClient | None = None, *, pacer: RequestPacer | None = None):
         self.client = client
+        self.pacer = pacer or SOURCE_PACER
 
     async def get(self, url: str, *, policy: SourcePolicy) -> tuple[int, bytes]:
         validate_destination(policy, url)
+        await self.pacer.wait(policy.id)
         if self.client is None:
             async with httpx.AsyncClient(follow_redirects=False, trust_env=False) as client:
                 return await self._read(client, url, policy)
@@ -284,6 +540,14 @@ class SourceBroker:
             return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED, "No sensitive source disclosure authorization")
         if self.effect_dispatch is None:
             return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED, "Durable effect dispatcher required before source execution")
+        if query.source_id == "geolocate":
+            # Checked before effect dispatch: a request that cannot be sent must never hold an effect.
+            try:
+                defect = geolocate_place_text_defect(request, geolocate_interpretation(query.query_text, query.field_key))
+            except ValueError as error:
+                defect = str(error)
+            if defect:
+                return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED, defect)
 
         async def invoke() -> str:
             if hasattr(self.effect_dispatch, "validate_transport"):
@@ -325,12 +589,21 @@ class SourceBroker:
                 if not re.fullmatch(r"[1-9][0-9]*", policy.source_release or ""):
                     raise ValueError("COL immutable integer release key must be pinned; aliases are mutable")
                 url = f"https://api.checklistbank.org/dataset/{policy.source_release}/nameusage/search?" + urlencode({"q": query.query_text, "limit": policy.result_limit})
+            elif query.source_id == "geolocate":
+                place = geolocate_interpretation(query.query_text, query.field_key)
+                url = GEOLOCATE_ENDPOINT + "?" + urlencode({
+                    "Country": place.country, "State": place.state, "County": place.county,
+                    "Locality": place.locality, "hwyX": "false", "enableH2O": "false", "doUncert": "true",
+                    "doPoly": "false", "displacePoly": "false", "languageKey": "0", "fmt": "json"})
             else:
                 return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED, "Typed hosted-method adapter/schema/terms prerequisite")
             code, raw = await self.transport.get(url, policy=policy)
             if code != 200:
                 return self._failure(policy, query, _status(code), raw)
             payload = _source_json(raw)
+            if query.source_id == "geolocate":
+                status, candidates, count, reason = geolocate_verdict(policy, query, payload)
+                return self._result(policy, query, status, raw, url, candidates, count=count, reason=reason)
             candidates = []
             status = LookupStatus.AMBIGUOUS
             if query.source_id == "gbif":
@@ -393,7 +666,7 @@ class SourceBroker:
             return self._failure(policy, query, LookupStatus.TIMEOUT)
         except httpx.HTTPError:
             return self._failure(policy, query, LookupStatus.PROVIDER)
-        except (ValueError, KeyError, TypeError):
+        except (ValueError, KeyError, TypeError, ArithmeticError):
             return self._failure(policy, query, LookupStatus.MALFORMED)
 
     async def _museum(self, policy, query):
@@ -477,7 +750,7 @@ class SourceBroker:
             qualification_digest=digest(policy), query_digest=digest(query),
             coverage_limit="Transport/schema failure is not scientific absence", reason=str(status)))
 
-    def _result(self, policy, query, status, raw, locator, candidates, *, exact_attempt=False, exact_proven=False, count=None):
+    def _result(self, policy, query, status, raw, locator, candidates, *, exact_attempt=False, exact_proven=False, count=None, reason=None):
         response_digest = hashlib.sha256(raw).hexdigest()
         evidence_id = "source:" + digest((policy.id, query.model_dump(mode="json"), response_digest))
         publisher_id = f"{policy.publisher_id}:{policy.source_release}:{query.join.occurrence_id or query.join.catalog_number}" if query.join else f"{policy.publisher_id}:{policy.source_release}:{query.query_text}"
@@ -497,7 +770,7 @@ class SourceBroker:
             source_version=policy.source_release, qualification_digest=digest(policy),
             exact_join_attempted=exact_attempt, exact_join_proven=exact_proven,
             query_digest=digest(query), receipt_ids=(evidence_id,), candidate_count=count,
-            coverage_limit=limit, reason=str(status))
+            coverage_limit=limit, reason=reason or str(status))
         return SourceResult(status=status, coverage=coverage, evidence=(evidence,),
                             candidate_json=tuple(canonical_json(item) for item in candidates))
 

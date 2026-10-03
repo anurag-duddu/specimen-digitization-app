@@ -178,6 +178,11 @@ interfaces are approved. Google Maps automation needs a reviewed API policy.
 Public catalogue IRNs cannot substitute for EMu `eparties` authority. Source
 failures and authority ambiguity must remain distinguishable.
 
+> 2026-10-03 (owner G-geo-1 to G-geo-3): the Google Maps sentence above is
+> superseded by `docs/execution/golive/PLAN.md` section 2.1: Google Maps is not
+> used, and GEOLocate's keyless web service validates the geography
+> specialist's interpretation.
+
 Pydantic AI executes bounded typed phases under an allow-listed tool registry.
 The application owns budgets, evidence schemas, checkpoints and policy. Logfire
 stores correlated telemetry, not authoritative decisions or raw audit evidence.

@@ -15,7 +15,7 @@ from typing import Literal
 from pydantic import Field, ValidationError, model_validator
 
 from .compatibility import PublicationUnavailable
-from .contracts import Digest, FrozenRecord, LookupStatus, SourceQuery, SourceResult, SpecialistRequest, ToolReceipt, digest
+from .contracts import Digest, FrozenRecord, SourceQuery, SourceResult, SpecialistRequest, ToolReceipt, digest
 from .persistence import BlobRef, CapturedResult, HeldUnknown, StaleWork
 from .publication import NativeCapture
 from .sources import (
@@ -46,153 +46,10 @@ class RegisteredCapturePolicyV2(FrozenRecord):
     contract_version: Literal["source-capture-retention/v2"] = "source-capture-retention/v2"
     source_id: str = Field(min_length=1)
     source_policy_digest: Digest
-    kind: Literal["full_response", "google_policy_minimal", "denied"]
+    kind: Literal["full_response", "denied"]
     owner_registration_digest: Digest
     owner_registration_origin: str = Field(min_length=1)
     maximum_responses: int = Field(strict=True, ge=1, le=2)
-
-    @model_validator(mode="after")
-    def google_retention(self):
-        if self.source_id == "google_maps" and self.kind == "full_response":
-            raise ValueError("google_full_response_retention_forbidden")
-        if self.kind == "google_policy_minimal" and self.source_id != "google_maps":
-            raise ValueError("google_minimal_source_mismatch")
-        return self
-
-
-class GoogleMinimalCaptureV2(FrozenRecord):
-    """Permitted metadata only; this never purports to be an original body.
-
-    No Google adapter is installed here. A separately admitted service adapter
-    would have to derive this from its actual transient response under a sending
-    effect. Names, coordinates, response text and extra members are refused.
-    """
-    contract_version: Literal["google-policy-minimal/v2"] = "google-policy-minimal/v2"
-    place_id: str | None = Field(default=None, min_length=1, max_length=256, pattern=r"^[A-Za-z0-9_-]+$")
-    outcome: LookupStatus
-    response_fingerprint: Digest
-
-    @model_validator(mode="after")
-    def place_id_is_actual_outcome(self):
-        if (self.outcome == LookupStatus.SUCCESS and self.place_id is None
-            or self.outcome != LookupStatus.SUCCESS and self.place_id is not None):
-            raise ValueError("google_minimal_place_outcome_changed")
-        return self
-
-    def sanitized_bytes(self) -> bytes:
-        return canonical_json(self.model_dump(mode="json")).encode()
-
-    @property
-    def sanitized_envelope_sha256(self) -> str:
-        return hashlib.sha256(self.sanitized_bytes()).hexdigest()
-
-
-def google_minimal_from_transient_response_v2(body: bytes) -> GoogleMinimalCaptureV2:
-    """Private adapter sanitizer: discard every derived name/location/body.
-
-    No adapter invokes this here. Only original response fingerprint, status and
-    an unambiguous place ID escape; fixed errors contain no response material.
-    """
-    if not isinstance(body, bytes) or len(body) > 150_000:
-        unavailable("google_minimal_response_bound")
-    def unique(pairs):
-        value = {}
-        for key, item in pairs:
-            if key in value:
-                unavailable("google_minimal_response_unproved")
-            value[key] = item
-        return value
-    try:
-        payload = json.loads(body, object_pairs_hook=unique, parse_constant=lambda _: unavailable("google_minimal_response_unproved"))
-        status = payload.get("status") if isinstance(payload, dict) else None
-        rows = payload.get("results") if isinstance(payload, dict) else None
-        if not isinstance(rows, list):
-            unavailable("google_minimal_response_unproved")
-        place_id = None
-        if status == "ZERO_RESULTS" and not rows:
-            outcome = LookupStatus.NO_MATCH
-        elif status == "OK" and len(rows) == 1 and isinstance(rows[0], dict):
-            place_id = rows[0].get("place_id")
-            if type(place_id) is not str or not place_id:
-                unavailable("google_minimal_response_unproved")
-            outcome = LookupStatus.SUCCESS
-        elif status == "OK" and len(rows) > 1:
-            outcome = LookupStatus.AMBIGUOUS
-        else:
-            unavailable("google_minimal_response_unproved")
-        return typed(GoogleMinimalCaptureV2, {"place_id": place_id, "outcome": outcome,
-            "response_fingerprint": hashlib.sha256(body).hexdigest()})
-    except (ValueError, TypeError, UnicodeError):
-        unavailable("google_minimal_response_unproved")
-
-
-class GoogleMinimalCaptureEnvelopeV2(FrozenRecord):
-    contract_version: Literal["google-policy-minimal-request-envelope/v2"] = "google-policy-minimal-request-envelope/v2"
-    original_request: SpecialistRequest
-    query: SourceQuery
-    policy: RegisteredCapturePolicyV2
-    logical_request: dict
-    effect_id: Digest
-    attempt_id: str = Field(min_length=1)
-    binding_digest: Digest
-    metadata: GoogleMinimalCaptureV2
-
-    @model_validator(mode="after")
-    def minimal_context(self):
-        if (self.policy.kind != "google_policy_minimal" or self.query.source_id != "google_maps"
-            or self.policy.source_id != self.query.source_id or self.query.field_key not in self.original_request.field_keys
-            or self.logical_request != logical_request_v2(self.original_request, self.query, self.policy)):
-            raise ValueError("google_minimal_capture_context_changed")
-        return self
-
-
-def captured_google_metadata_v2(effects, request, query, metadata, *, effect_id, attempt_id):
-    """Sending-effect retention hook, no transport or inferred paid cost.
-
-    A separately admitted actual Google adapter must call the transient-body
-    sanitizer inside this same sending attempt. This hook creates no effect,
-    never dispatches or refetches, and keeps unknown cost held. The current
-    public source broker and native V1 cannot consume this envelope as rawbody.
-    """
-    request = typed(SpecialistRequest, request.model_dump(mode="json"))
-    query = typed(SourceQuery, query.model_dump(mode="json"))
-    metadata = typed(GoogleMinimalCaptureV2, metadata.model_dump(mode="json"))
-    if len(canonical_json(request.model_dump(mode="json")).encode()) > MAX_REQUEST_BYTES:
-        unavailable("google_minimal_request_bound")
-    source, policy = effects.registry.get(query.source_id), effects.policies.get(query.source_id)
-    if (source.id != "google_maps" or policy is None or policy.kind != "google_policy_minimal"
-        or request.scope.sensitive or request.scope.sensitive != effects.scope.sensitive or policy.source_policy_digest != digest(source)
-        or request.role not in source.roles or query.field_key not in source.fields
-        or any(getattr(request.scope, key) != value for key, value in effects.scope.identity().items())):
-        unavailable("google_minimal_capture_not_admitted")
-    document = effects.broker.store._read(effects.scope)
-    job = effects.broker.store._lease(document.state, effects.scope, effects.lease, document.server_time)
-    logical = logical_request_v2(request, query, policy)
-    effect = effects.broker.store.effect(effects.scope, effect_id)
-    attempts = [row for row in effect["attempts"] if row["attempt_id"] == attempt_id]
-    current = job["fields"].get(str(query.field_key))
-    if (digest(job["pins"]) != job["binding_digest"] or request.prompt.source_registry_digest != effects.registry.digest
-        or job["pins"]["input_digest"] != request.scope.input_digest or digest(job["pins"]["profile"]) != request.scope.profile_digest
-        or job["pins"]["sources"].get("registry_digest") != effects.registry.digest
-        or job["pins"]["prompts"].get(str(request.role)) != request.prompt.model_dump(mode="json")
-        or job["pins"]["sources"].get("capture_policies", {}).get(source.id) != policy.model_dump(mode="json")
-        or effect["scope"] != effects.scope.identity() or effect["status"] != "sending"
-        or effect["binding_digest"] != job["binding_digest"] or effect["request_digest"] != digest(logical)
-        or effect["operation_key"] != "google_metadata_v2:" + digest(logical)
-        or effect["field_keys"] != [str(query.field_key)]
-        or not current or current["locked"] or current["revision"] != request.field_revisions.get(query.field_key, 0)
-        or len(attempts) != 1 or attempts[0]["status"] != "sending" or attempts[0]["provider_idempotency_key"] != effect_id):
-        unavailable("google_minimal_sending_effect_unproved")
-    effects.broker.store.validate_dispatch(effects.scope, effects.lease, effect_id, attempt_id)
-    envelope = GoogleMinimalCaptureEnvelopeV2(original_request=request, query=query, policy=policy,
-        logical_request=logical, effect_id=effect_id, attempt_id=attempt_id,
-        binding_digest=job["binding_digest"], metadata=metadata)
-    raw = canonical_json(envelope.model_dump(mode="json")).encode()
-    if len(raw) > MAX_ENVELOPE_BYTES:
-        unavailable("google_minimal_capture_bound")
-    return CapturedResult(typed_payload={"contract_version": "google-policy-minimal/v2",
-        "metadata": metadata.model_dump(mode="json"), "sanitized_envelope_sha256": hashlib.sha256(raw).hexdigest()},
-        raw_payload=raw, actual_micro_usd=None, usage={"metadata_retention_only": True})
 
 
 class CapturedTransportResponseV2(FrozenRecord):
@@ -278,7 +135,7 @@ class CapturedSourceTransportV2:
             or type(self.transport) is not expected or session.policy.source_id != policy.id
             or session.policy.source_policy_digest != digest(policy)
             or session.policy.kind != "full_response" or not policy.ready
-            or policy.id == "google_maps" or policy.paid or policy.credentials_required
+            or policy.paid or policy.credentials_required
             or len(session.responses) >= session.policy.maximum_responses):
             unavailable("source_capture_transport_not_admitted")
         session.validate()
@@ -325,7 +182,7 @@ class SourceCaptureEffectsV2:
         policy = self.policies.get(query.source_id)
         source = self.registry.get(query.source_id)
         if (tool_id != "source_lookup" or query.field_key not in request.field_keys
-            or policy is None or policy.kind != "full_response" or source.id == "google_maps"
+            or policy is None or policy.kind != "full_response"
             or policy.source_policy_digest != digest(source) or not source.ready
             or source.paid or source.credentials_required or request.scope.sensitive):
             unavailable("source_capture_retention_not_registered")
@@ -443,7 +300,6 @@ class CaptureSourceBrokerV2:
         return tuple(source_id for source_id in self.broker.available_sources(request)
             if source_id in self.effects.policies
             and self.effects.policies[source_id].kind == "full_response"
-            and source_id != "google_maps"
             and self.effects.policies[source_id].source_policy_digest == digest(self.broker.registry.get(source_id))
             and self.broker.registry.get(source_id).ready
             and not self.broker.registry.get(source_id).paid

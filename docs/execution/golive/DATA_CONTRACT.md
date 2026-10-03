@@ -90,6 +90,10 @@ reads them.
      locator, and its `normalizedValue` is at most a reader's exactly matching
      literal, never a Google name.
    - GBIF's accepted names may be stored (G28).
+   - 2026-10-03 (owner G-geo-1 to G-geo-3): Google Maps left the harness
+     permanently (PLAN 2.1), and no production code produces
+     `google-maps-geocoding` any more. Rule 6 and the server's checks on that
+     source string stay in force for any such row.
 7. A place or taxon field keeps both its verbatim, as written on the label, and
    its settled value, as the harness settled it (G27, G28). When the first pass
    selected no reading, the verbatim is one value per reader, each attributed to

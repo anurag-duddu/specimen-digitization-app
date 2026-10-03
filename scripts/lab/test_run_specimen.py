@@ -13,7 +13,6 @@ from test_lab_checks import SUBJECT, snapshot
 TOKEN = "hf_" + "Q7" * 15
 ENV = {"HF_TOKEN": TOKEN, "SPECIMEN_APPROVED_INFERENCE": "true"}
 IMAGE = b"\xff\xd8\xff\xe0 lab fixture bytes"
-MAPS_FIXTURE = "AIza" + "k" * 35  # the Geocoding key's shape, synthetic
 START = datetime(2026, 9, 23, 20, 15, tzinfo=timezone.utc)
 
 
@@ -61,7 +60,7 @@ def fetch(subject):
 
 def run(tmp_path, *args, lane=None, env=ENV, load=1.0, clock=START, values="default", fetcher=fetch):
     lanes = []
-    private = tmp_path / "private"  # stands in for ~/specimen-release-private/ (PLAN 840)
+    private = tmp_path / "private"  # stands in for ~/specimen-release-private/ (PLAN 871)
     if values == "default":
         values = private / "redact-values"
         values.parent.mkdir(parents=True, exist_ok=True)
@@ -249,7 +248,6 @@ def test_the_redactor_covers_plan_7_7_identities_ids_and_key_shapes():
     # Every value is synthetic. The private values come from the caller, which read the file once (#83 round 1).
     redact = run_specimen.Redactor({
         "HF_BILL_TO": "example-billing-org", "LOGFIRE_READ_TOKEN": "pylf_v1_us_" + "r" * 30,
-        "SPECIMEN_GOOGLE_MAPS_API_KEY": MAPS_FIXTURE,
     }, values={"adminuidfixture", "zq7"})
     text = redact(
         "caller admin@example.org lacks permission; uploader adminuidfixture; billed to example-billing-org; "

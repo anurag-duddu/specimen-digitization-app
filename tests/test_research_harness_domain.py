@@ -219,9 +219,9 @@ def test_profile_has_exact_exception_and_dts_retains_verbatim():
     assert dts.value.literal == "unknown literal meaning" and dts.work_state == WorkState.WAITING_POLICY
 
 
-def test_registry_selected_nine_is_distinct_from_qualified_capability():
+def test_registry_selected_eight_is_distinct_from_qualified_capability():
     registry = insects_registry()
-    assert len(registry.policies) == 9
+    assert len(registry.policies) == 8 and "google_maps" not in {item.id for item in registry.policies}
     assert SourceBroker(registry).available_sources(request(SpecialistRole.TAXONOMY)) == ()
     with pytest.raises(ValueError, match="expand"):
         insects_registry(qualification_overrides={"gbif": {"allowed_hosts": ("evil.example",)}})

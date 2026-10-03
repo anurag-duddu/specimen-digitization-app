@@ -1,0 +1,400 @@
+{
+"engineVersion" : "GLC:9.4|U:1.01374|eng:1.0",
+"numResults" : 30,
+"executionTimems" : 218.7991,
+"resultSet" : { "type": "FeatureCollection",
+"features": [
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [122.7744, 11.1858]},
+"properties": {
+"parsePattern" : "MOUNT APO",
+"precision" : "Low",
+"score" : 39,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=ILOILO|:NP=MOUNT APO|:KFID=|MOUNT APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.628333, 6.233611]},
+"properties": {
+"parsePattern" : "MOUNT APO",
+"precision" : "Low",
+"score" : 39,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=RPP3|:NP=MOUNT APO|:KFID=|MOUNT APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [121.055247, 14.534434]},
+"properties": {
+"parsePattern" : "MOUNT APO",
+"precision" : "Low",
+"score" : 39,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=MAKATI|:NP=MOUNT APO|:KFID=|MOUNT APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.2667, 6.9833]},
+"properties": {
+"parsePattern" : "MOUNT APO",
+"precision" : "Low",
+"score" : 39,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=CENTRAL MINDANAO|:NP=MOUNT APO|:KFID=|MOUNT APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.269722, 6.989444]},
+"properties": {
+"parsePattern" : "MOUNT APO",
+"precision" : "Low",
+"score" : 39,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=COTABATO|:NP=MOUNT APO|:KFID=|MOUNT APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [120.98723, 14.509425]},
+"properties": {
+"parsePattern" : "MINDANAO",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=PARAÑAQUE|:NP=MINDANAO|:KFID=|MINDANAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125, 8]},
+"properties": {
+"parsePattern" : "MINDANAO",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=RP00|:NP=MINDANAO|:KFID=|MINDANAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [124.203611, 7.2575]},
+"properties": {
+"parsePattern" : "MINDANAO",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=RP00|:NP=MINDANAO|:KFID=|MINDANAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [123.3256, 9.6441]},
+"properties": {
+"parsePattern" : "MINDANAO",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=CEBU|:NP=MINDANAO|:KFID=|MINDANAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [121.167904, 14.19258]},
+"properties": {
+"parsePattern" : "MINDANAO",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=LAGUNA|:NP=MINDANAO|:KFID=|MINDANAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [123.349539, 9.645452]},
+"properties": {
+"parsePattern" : "MINDANAO",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=CEBU|:NP=MINDANAO|:KFID=|MINDANAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [124.505, 7.029]},
+"properties": {
+"parsePattern" : "MINDANAO",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=CENTRAL MINDANAO|:NP=MINDANAO|:KFID=|MINDANAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125, 6.5]},
+"properties": {
+"parsePattern" : "MINDANAO",
+"precision" : "Low",
+"score" : 38,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=SOUTHERN MINDANAO|:NP=MINDANAO|:KFID=|MINDANAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.666, 7.622]},
+"properties": {
+"parsePattern" : "DAVAO",
+"precision" : "Low",
+"score" : 35,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=SOUTHERN MINDANAO|:NP=DAVAO|:KFID=|DAVAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.612, 7.073]},
+"properties": {
+"parsePattern" : "DAVAO",
+"precision" : "Low",
+"score" : 35,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=SOUTHERN MINDANAO|:NP=DAVAO|:KFID=|DAVAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.619167, 7.063611]},
+"properties": {
+"parsePattern" : "DAVAO",
+"precision" : "Low",
+"score" : 35,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=RP00|:NP=DAVAO|:KFID=|DAVAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.433333, 7.316667]},
+"properties": {
+"parsePattern" : "DAVAO",
+"precision" : "Low",
+"score" : 35,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=SOUTHERN MINDANAO|:NP=DAVAO|:KFID=|DAVAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.65, 7.133333]},
+"properties": {
+"parsePattern" : "DAVAO",
+"precision" : "Low",
+"score" : 35,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=DAVAO|:NP=DAVAO|:KFID=|DAVAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.6333, 7.0833]},
+"properties": {
+"parsePattern" : "DAVAO",
+"precision" : "Low",
+"score" : 35,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=SOUTHERN MINDANAO|:NP=DAVAO|:KFID=|DAVAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.674749, 7.622328]},
+"properties": {
+"parsePattern" : "DAVAO",
+"precision" : "Low",
+"score" : 35,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=DAVAO DEL NORTE|:NP=DAVAO|:KFID=|DAVAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [120.978212, 14.446059]},
+"properties": {
+"parsePattern" : "DAVAO",
+"precision" : "Low",
+"score" : 35,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=LAS PIÑAS|:NP=DAVAO|:KFID=|DAVAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.612778, 7.073056]},
+"properties": {
+"parsePattern" : "DAVAO",
+"precision" : "Low",
+"score" : 35,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=DAVAO|:NP=DAVAO|:KFID=|DAVAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.433333, 7.316667]},
+"properties": {
+"parsePattern" : "DAVAO",
+"precision" : "Low",
+"score" : 35,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=DAVAO|:NP=DAVAO|:KFID=|DAVAO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [122.7972, 11.1792]},
+"properties": {
+"parsePattern" : "APO",
+"precision" : "Low",
+"score" : 33,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=ILOILO|:NP=APO|:KFID=|APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [121.04697, 14.273899]},
+"properties": {
+"parsePattern" : "APO",
+"precision" : "Low",
+"score" : 33,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=LAGUNA|:NP=APO|:KFID=|APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [123.511378, 9.970677]},
+"properties": {
+"parsePattern" : "APO",
+"precision" : "Low",
+"score" : 33,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=CEBU|:NP=APO|:KFID=|APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [121.045777, 14.570128]},
+"properties": {
+"parsePattern" : "APO",
+"precision" : "Low",
+"score" : 33,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=MANDALUYONG|:NP=APO|:KFID=|APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [123.526386, 9.981295]},
+"properties": {
+"parsePattern" : "APO",
+"precision" : "Low",
+"score" : 33,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=CEBU|:NP=APO|:KFID=|APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [117.306793, 8.271943]},
+"properties": {
+"parsePattern" : "APO",
+"precision" : "Low",
+"score" : 33,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=PALAWAN|:NP=APO|:KFID=|APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [123.2708, 9.0765]},
+"properties": {
+"parsePattern" : "APO",
+"precision" : "Low",
+"score" : 33,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=NEGROS ORIENTAL|:NP=APO|:KFID=|APO"
+}
+}
+ ],
+"crs": { "type" : "EPSG", "properties" : { "code" : 4326 }}
+}
+}

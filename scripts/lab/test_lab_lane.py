@@ -154,7 +154,7 @@ def test_receipt_blobs_are_collected_for_the_d4_scan(tmp_path):
 
 def test_a_production_run_refuses_a_slide_outside_the_ten(tmp_path):
     # #84 round 1 (blocking): the lane processed a Sensitive slide. With the production adapters its image
-    # would reach the model providers, which PRD.md 67 and PLAN.md 182 rule out; refuse before any upload.
+    # would reach the model providers, which PRD.md 67 and PLAN.md 212 rule out; refuse before any upload.
     from types import SimpleNamespace
 
     options = SimpleNamespace(persistence="sqlite", segmentation="sam3", subject="subject_105526331")

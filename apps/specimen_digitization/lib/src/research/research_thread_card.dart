@@ -346,7 +346,6 @@ class ResearchThreadCard extends StatelessWidget {
     'gbif' => 'GBIF',
     'bugguide' => 'BugGuide',
     'mapcarta' => 'Mapcarta',
-    'google_maps' => 'Google Maps',
     'geolocate' => 'GEOLocate',
     'field_museum_ipt' => 'Field Museum IPT',
     'field_museum_emudata' => 'Field Museum EMu data',
