@@ -16,7 +16,12 @@ on a synthetic label of that shape and shows, with the real validators and produ
   test_a_human_question_follows_the_pinned_prompts_rule_for_where_its_evidence_goes for the
   question rule alone). These two FAIL on origin/main, each for its own code, because their
   specialist reads its behaviour out of the pinned prompt text and the v2 text instructs neither
-  the reading citation nor question-only evidence;
+  the reading citation nor question-only evidence. The specialist also reads three sentences of the
+  block (instructed()): "Cite only that one reading" (absent: it lists both readers), "character for
+  character" (absent: it re-wraps the copy) and "leave literal null" (absent: a multi-line literal), so
+  deleting one of them from a taxonomy or geography v3 file fails the first test, not only the byte
+  freeze in test_prompt_reading_citation_v3.py. Parties and collection never cite a lookup in this
+  rig, so their copy of the block is guarded by the freeze alone;
 - the shapes the old prompts led to are refused, each for its own code, and the exact
   fields the citation needs are the ones the v3 text names. These tests exercise code
   the prompt change does not touch, so they pass on origin/main too: they pin the contract
@@ -94,6 +99,8 @@ class Behaviour:
     human_cites_reading: bool = False  # also put the reading citation on the human question's value
     literal: str | None = None         # value.literal on precise_location
     human_literal: str | None = None   # value.literal on the human question's value
+    both_readers: bool = False         # also list the region's other reader (common-v1: "preserve each reader's verbatim")
+    collapse_breaks: bool = False      # copy the text with its line breaks replaced by spaces
 
 
 @pytest.fixture(autouse=True)
@@ -190,9 +197,14 @@ def fragment_of(request, route, containing):
 def citation(request, behaviour, containing):
     """The fields the behaviour sets, copied from the fragment it read, as the v3 text says to."""
     fragment = fragment_of(request, behaviour.route, containing)
-    full = dict(source_observation_id=fragment.observation_id,
-        verbatim_by_observation={fragment.observation_id: fragment.observation_text},
-        settled_observation_ids=[fragment.observation_id], input_source=fragment.input_source,
+    readings = [fragment]
+    if behaviour.both_readers:
+        readings += [item for item in request.fragments if item.region_id == fragment.region_id
+            and item.observation_id != fragment.observation_id][:1]
+    copied = {item.observation_id: item.observation_text.replace("\n", " ") if behaviour.collapse_breaks
+        else item.observation_text for item in readings}
+    full = dict(source_observation_id=fragment.observation_id, verbatim_by_observation=copied,
+        settled_observation_ids=list(copied), input_source=fragment.input_source,
         source_region_id=fragment.region_id)
     return {name: full[name] for name in behaviour.fields}
 
@@ -201,7 +213,12 @@ def instructed(request):
     """What the pinned prompt text tells a specialist to do on a label with no assembly.
 
     The fields the producer block names (the text from its heading to the human question block),
-    and whether evidence is to go only on the question. The v2 text has neither block."""
+    whether evidence is to go only on the question, and three sentences of the block. A specialist
+    does what a sentence says and, when the sentence is absent, what a plausible model does instead:
+    "Cite only that one reading" absent: it lists both readers (common-v1 says to preserve each
+    reader's verbatim); "character for character" absent: it re-wraps the copy; "leave literal null"
+    absent: it sets precise_location's literal to the whole multi-line locality (the geography text
+    says "as written"). The v2 text has none of them."""
     text = " ".join(request.prompt.text.split())
     start = text.find("Producer and literal without an assembly (publication):")
     block = text[start:text.find("Human question evidence (publication):")] if start >= 0 else ""
@@ -209,7 +226,9 @@ def instructed(request):
     # The geography prompt asks for the written text as value.literal on a human question; the v3 block
     # grounds a one-line literal on the cited reading, so the specialist cites it when the block says so.
     return Behaviour(fields=fields, question_extra="only in question.evidence_ids" not in text,
-        human_cites_reading=bool(fields), human_literal="Chicago")
+        human_cites_reading=bool(fields), human_literal="Chicago",
+        both_readers="Cite only that one reading" not in text, collapse_breaks="character for character" not in text,
+        literal=None if "leave literal null" in text else "Chicago\nCook Co., Illinois")
 
 
 def geography(request, key, results, behaviour):
@@ -399,6 +418,21 @@ def test_each_of_these_fields_is_needed_when_the_reading_is_a_decided_transcript
     parsed, specimen, hold, published = run_research(unkeyed,
         specialist_factory(unkeyed.model_calls, Behaviour(fields=fields)))
     assert refusals == [refused]
+    assert published == [] and str(hold) == "native_publication_requires_reconciliation"
+
+
+@pytest.mark.parametrize("breakage", [
+    # common-v1 says to preserve each reader's verbatim: listing the other reader beside a decided input_source.
+    {"both_readers": True},
+    # A copy with its line breaks turned into spaces is not a substring of the reading.
+    {"collapse_breaks": True},
+], ids=["lists_the_other_reader", "copy_with_collapsed_line_breaks"])
+def test_a_second_reader_or_a_changed_copy_is_refused_at_publication_with_no_retry(unkeyed, refusals, breakage):
+    """The two sentences the v3 text adds after the review of #257. Validators do not look at the citation
+    before publication, so the specialist's run ends cleanly and the first publication is the first refusal."""
+    parsed, specimen, hold, published = run_research(unkeyed,
+        specialist_factory(unkeyed.model_calls, Behaviour(fields=CITATION_FIELDS, **breakage)))
+    assert refusals == ["canonical_lineage_reading_unproved"]
     assert published == [] and str(hold) == "native_publication_requires_reconciliation"
 
 

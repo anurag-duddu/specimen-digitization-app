@@ -36,14 +36,18 @@ lines carry no field key, assemblies are empty), leave assembly_ids empty and
 event_id null, and on the value itself cite the one reading you interpreted,
 copying from one entry of the request's fragments[]: source_observation_id = its
 observation_id, verbatim_by_observation = {that observation_id: the label text
-you read, copied exactly from its observation_text, line breaks included},
-settled_observation_ids = [that observation_id], input_source = its input_source
-(decided_transcript or raw_reading), source_region_id = its region_id. Take a
-decided_transcript entry when the text is in one, else a raw_reading entry.
-value.literal is then only text inside one fragment's literal of that reading
-(one line); for text written over several lines leave literal null:
-verbatim_by_observation keeps the lines. Name assemblies or cite a reading, not
-both; a lookup with neither has no producer and publication refuses it.
+you read, copied character for character from its observation_text (line breaks
+included; do not re-wrap, trim or normalise)}, settled_observation_ids = [that
+observation_id], input_source = its input_source (decided_transcript or
+raw_reading), source_region_id = its region_id. A changed character is refused
+at publication, after your run, and stops the record's later publications. Cite
+only that one reading, even when the other reader's reading is identical; do not
+list the other reader. Take a decided_transcript entry when the text is in one,
+else a raw_reading entry. value.literal is then only text inside one fragment's
+literal of that reading (one line); for text written over several lines leave
+literal null: verbatim_by_observation keeps the lines. Name assemblies or cite a
+reading, not both; a lookup with neither has no producer and publication
+refuses it.
 """
 QUESTION_BLOCK = """Human question evidence (publication): give a human question's supporting evidence
 only in question.evidence_ids. On a waiting_human resolution leave
@@ -61,20 +65,20 @@ BLOCKS = {
 # The v3 files' sha256 and the pin digests of common-v1.txt + the file + the owned-fields line
 # (resolve_prompt). The v2 pin digests they replace are in test_geography_prompt_v2.py.
 V3_FILES = {
-    SpecialistRole.TAXONOMY: "200061869423f5c78756cbfa78af0e5ae484959dbfc00535b06cb25350a47aad",  # pragma: allowlist secret
-    SpecialistRole.GEOGRAPHY: "6272e7c7c108e2d4e55d2e17e50f336a4d6323a55c1ac59c8acdd866924ff42a",  # pragma: allowlist secret
+    SpecialistRole.TAXONOMY: "8c251604bd7e625e5f2ad88f723e233c749ec26b6d3f09a9ce0677d5b9f93963",  # pragma: allowlist secret
+    SpecialistRole.GEOGRAPHY: "1f9c6a5762e1873228b829f0f334f547c29d97a59c51831c694fe8f4190f4795",  # pragma: allowlist secret
     SpecialistRole.TEMPORAL: "dddedbcab47180c728f0538b2359c93972c8ec540a9ae9dfa6f4d79202a9b38f",  # pragma: allowlist secret
     SpecialistRole.MEASUREMENT: "9fcc4eb9d206b597cfbc0e203c6d57c2c4c8e578c403c939938baeee516b5480",  # pragma: allowlist secret
-    SpecialistRole.PARTIES: "15bbf1d52e0f52d2ab35b851d819cb221ba39e5f529f6d3b5e654dac84c32c0f",  # pragma: allowlist secret
-    SpecialistRole.COLLECTION: "850af685ecc1c95e58e28639d5a14084010b0b09b32903e0bfd6ca614e9dceb5",  # pragma: allowlist secret
+    SpecialistRole.PARTIES: "752b3c106e8942840eb0e6be7540d286f8ae6724d962c018e67fa0d0cde9011f",  # pragma: allowlist secret
+    SpecialistRole.COLLECTION: "40d6979ed0a375987fb696afb9b20dc4e25e026f1946ec594d4292affdcd6b18",  # pragma: allowlist secret
 }
 V3_PIN_DIGESTS = {
-    SpecialistRole.TAXONOMY: "845b3c147fbdf2e9c1e86866697884a36380ab46d547dd380566ff4c10949439",  # pragma: allowlist secret
-    SpecialistRole.GEOGRAPHY: "2cb4ee2f6df94e8f5a90dac25310679da8b53ecea8595a293bc1d9274e3c5f4f",  # pragma: allowlist secret
+    SpecialistRole.TAXONOMY: "d70e05f68980495c4062b22d333732d8d0755341edab97c5d97e20be71b5e821",  # pragma: allowlist secret
+    SpecialistRole.GEOGRAPHY: "8d543fe32d4c700ee001a58ddd7904b56443b053e520f40a33ebb35738042b16",  # pragma: allowlist secret
     SpecialistRole.TEMPORAL: "5c64fa5e00c2f2af515e4629eaeb9ad6994679b34dfe7fc007fa86ca0183241e",  # pragma: allowlist secret
     SpecialistRole.MEASUREMENT: "9b89f875c2976561b4b1605cd19d35fb230cd27f932a2f86b2eb5ddabf556976",  # pragma: allowlist secret
-    SpecialistRole.PARTIES: "b85e48ac65629a5471d5370467ce4c24cac2ccdff0eb1eb1fdb857e882dc82d8",  # pragma: allowlist secret
-    SpecialistRole.COLLECTION: "90347b59eb7217c1998012a13fb17434a80a2c79cd5e52a271e8f7800751c2c7",  # pragma: allowlist secret
+    SpecialistRole.PARTIES: "1fe094ef0724f4a0ac82ebadb6d0ade04879b455ca2c65265afcfe5a6565a99c",  # pragma: allowlist secret
+    SpecialistRole.COLLECTION: "c2545fe73a63a3fabaa16dbcfcd75dcee394b463ef1fcb12574fa9db3f533128",  # pragma: allowlist secret
 }
 # The old sentence, kept in the four roles: where assemblies exist a resolution still names them.
 ASSEMBLY_RULE = (
@@ -132,6 +136,9 @@ def test_the_four_lookup_roles_still_name_assemblies_where_the_request_has_them(
     # The reading is for a field with no assembly the interpretation read, and never beside assemblies.
     assert "Where the request has no assembly for the field that your interpretation read" in text
     assert "Name assemblies or cite a reading, not both" in text
+    # The two rules a plausible model breaks (Lane P review of #257): both readers listed, and a changed copy.
+    assert "Cite only that one reading, even when the other reader's reading is identical; do not list the other reader." in text
+    assert "copied character for character from its observation_text (line breaks included; do not re-wrap, trim or normalise)" in text
 
 
 @pytest.mark.parametrize("role", (SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT))
