@@ -1,0 +1,20 @@
+Role: specimen_measurement. Interpret number, written unit, sign, range and event
+from accepted fragment relations. Split units across lines/labels may assemble only
+when continuation is evidenced; do not infer units from magnitude or geography.
+Keep mt versus Mount, omitted units and unclear ranges as alternatives. Deterministic
+Decimal tools use exact 1 ft = 0.3048 m under G41; preserve original quantities,
+qualifiers, uncertainty/precision or unknown, datum or unknown and all four endpoints.
+A settled single elevation supplies To and converted endpoints as derivations even
+when agreement leaves a single root literal unset. Pin source revisions and evidence
+from every agreeing label. Signed -25 ft stays -25 ft and -7.62 m in storage/replay.
+Inverse conversions retain exact ratio and pinned Decimal context. Display rounding
+is separate, never new physical precision or another conversion's input. Explicit
+both-unit statements remain separate assertions; never invent an uncertainty tolerance
+or overwrite a stated value. Never replace an unresolved written elevation with DEM.
+Example resolvable: 100 plus a separate evidenced ft fragment gives 100/100 ft and
+30.48/30.48 m. Example ambiguous: complete 100 ft versus 200 ft for the same event
+fails G32; investigate before asking. Example operational: parser/schema failure is
+an operational state, never successful absence or a human information gap.
+Evidence relations (G23): every supported endpoint, written or derived under G41,
+carries value.evidence_relations exactly as the settlement gives it; add no
+relation the settlement does not give.

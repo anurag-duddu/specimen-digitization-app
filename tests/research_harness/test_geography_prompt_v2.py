@@ -1,7 +1,10 @@
 """Geography's historian prompt v2 and the per-role prompt table (owner G-geo-1..3, 2026-10-03).
 
-Only geography moves to a new prompt file and pin version. The digests below were
-computed from main 2f85b429 before v2 was wired; the other five roles must keep them.
+Geography moves to its historian prompt. The other five roles move to v2 files
+that are their v1 files followed by the G23 relation rule (Lane H, 2026-10-03;
+tests/research_harness/test_prompt_relations_v2.py checks that text). The v1
+files stay byte-identical on disk. The v1 role digests below were computed from
+main 2f85b429 before any v2 was wired.
 """
 
 import hashlib
@@ -14,7 +17,7 @@ import pytest
 from specimen_digitization.research_harness import prompts
 from specimen_digitization.research_harness.contracts import FieldKey, ROLE_FIELDS, SpecialistRole
 from specimen_digitization.research_harness.prompts import (
-    GEOGRAPHY_PROMPT_VERSION, PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
+    GEOGRAPHY_PROMPT_VERSION, PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 from specimen_digitization.research_harness.sources import insects_registry
 
@@ -30,12 +33,20 @@ V1_FILES = {
     "specimen_collection-v1.txt": "3c8fb750b35374bb1173b843ff5c4155febd6d880b9859d7a79904e28756c187",  # pragma: allowlist secret
 }
 GEOGRAPHY_V1_DIGEST = "9bba8680c505de86e5327a886d1982311627382a8772ab42c80b49b033268f68"  # pragma: allowlist secret
-UNCHANGED_DIGESTS = {
+V1_ROLE_DIGESTS = {
     SpecialistRole.TAXONOMY: "a3105c9b4a41e5029366ccb871a7e002cbbc762e93f4d52e73f778bae75e5bd4",  # pragma: allowlist secret
     SpecialistRole.TEMPORAL: "24a7e0108526928b609e2f6ec64878195d780c42f30c96c3b1bb0bf7e1dc9b9d",  # pragma: allowlist secret
     SpecialistRole.MEASUREMENT: "6b4ccc7eb831c5cf01e2c34d4b47de2ea6a9b8dcdcad35f65dd1e6e9e8027470",  # pragma: allowlist secret
     SpecialistRole.PARTIES: "cc559ad8cfd7f36c037db683618fe597b2a79a2c60873c924d12d9cbce060993",  # pragma: allowlist secret
     SpecialistRole.COLLECTION: "46db0eeffb2c388ffe1f4c18c687a3174e14a603e645ad9e78c892047ebdd99e",  # pragma: allowlist secret
+}
+# The same five roles' pin digests on their v2 files (pin() arguments below).
+RELATION_DIGESTS = {
+    SpecialistRole.TAXONOMY: "891d78856639fd1c1e8042e1f23177f5939f03966a8088b5af4bda35d4103bfd",  # pragma: allowlist secret
+    SpecialistRole.TEMPORAL: "1b41c74c2a4483ae6eb4bcc5a4a74e97a9d685dd7c09e8876530c1ac9b853937",  # pragma: allowlist secret
+    SpecialistRole.MEASUREMENT: "58ac6830c6cde16d2d2a8747537f9721f687185d97bc5f832e9e141248244f52",  # pragma: allowlist secret
+    SpecialistRole.PARTIES: "b331cd9956fc6d464490eff47292ecefcd7b8d0fa8093605a188c69445bf6177",  # pragma: allowlist secret
+    SpecialistRole.COLLECTION: "64b98ef934ea701b153545c361ba8183ebc8dfaed1fa6dc33081e9212c7a3d80",  # pragma: allowlist secret
 }
 # The GEOLocate query_text contract (lane G validator spec, revised 2026-10-03 with "place").
 QUERY_KEYS = ("country", "state", "county", "locality", "place", "latitude", "longitude", "radius_km", "value")
@@ -69,13 +80,21 @@ def test_geography_resolves_to_the_v2_historian_prompt_with_its_owned_fields():
     assert all(str(key) in prompt.text for key in ROLE_FIELDS[SpecialistRole.GEOGRAPHY])
 
 
-@pytest.mark.parametrize("role", tuple(UNCHANGED_DIGESTS))
-def test_the_other_five_roles_keep_their_text_digest_and_version(role):
+@pytest.mark.parametrize("role", tuple(RELATION_DIGESTS))
+def test_the_other_five_roles_move_to_v2_the_v1_text_plus_the_relation_rule(role):
+    assert ROLE_PROMPTS[role] == (f"{role.value}-v2.txt", RELATIONS_PROMPT_VERSION)
+    common = (ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
+    owned = "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n"
+    v1 = (ROOT / f"{role.value}-v1.txt").read_text(encoding="utf-8")
+    v2 = (ROOT / f"{role.value}-v2.txt").read_text(encoding="utf-8")
+    assert v2.startswith(v1) and v2[len(v1):].startswith("Evidence relations (G23): ")
     prompt = pin(role)
-    assert prompt.digest == UNCHANGED_DIGESTS[role]
-    assert prompt.version == PROMPT_VERSION == "specialists-v1-2026-09-29"
-    assert prompt.text.startswith((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n")
-    assert (ROOT / f"{role.value}-v1.txt").read_text(encoding="utf-8") in prompt.text
+    assert prompt.version == RELATIONS_PROMPT_VERSION == "specialists-relations-v2-2026-10-03"
+    assert prompt.text == common + v2 + owned
+    assert prompt.digest == RELATION_DIGESTS[role]
+    # The v1 files on disk still give the v1 pin digests.
+    assert hashlib.sha256((common + v1 + owned).encode()).hexdigest() == V1_ROLE_DIGESTS[role] != prompt.digest
+    assert PROMPT_VERSION == "specialists-v1-2026-09-29"
 
 
 def test_v2_is_ascii_and_names_no_other_geocoder():
@@ -112,3 +131,18 @@ def test_v2_names_only_source_and_field_pairs_the_registry_admits():
     assert set(registry.get("field_museum_ipt").fields) & geography == ipt
     assert "field_museum_ipt exact joins\nserve only country, province_state and precise_location" in text
     assert "google_maps" not in text and "invoke_utility" not in text
+
+
+LOOKUP_PRODUCER_RULE = (
+    "Every resolution that cites a lookup names, as the common rules ask, its accepted/rejected "
+    "assemblies (assembly_ids: the request's assemblies for that field that the interpretation read) "
+    "and event (event_id); the lookup's producer comes from them, and publication refuses a lookup "
+    "without one.")
+
+
+@pytest.mark.parametrize("role", (SpecialistRole.TAXONOMY, SpecialistRole.PARTIES, SpecialistRole.COLLECTION))
+def test_lookup_citing_resolutions_name_the_assemblies_they_read(role):
+    # Without assembly_ids and event_id a cited lookup has no producer
+    # (lookup_evidence_producer_invalid), so these roles state it explicitly.
+    text = " ".join(pin(role).text.split())
+    assert LOOKUP_PRODUCER_RULE in text

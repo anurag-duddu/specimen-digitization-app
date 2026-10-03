@@ -28,6 +28,7 @@ from specimen_digitization.research_harness.source_readiness import (
 )
 
 ORG, COLLECTION = "org-synthetic", "collection-synthetic"
+TAXONOMY_APIS = ("gbif", "global_names_verifier", "catalogue_of_life")
 CANARIES = (Path(sources.__file__).parent / "prompts"
     / "public-source-canaries-2026-09-29.json")
 
@@ -98,18 +99,29 @@ def test_a_created_job_holds_the_pins_a_rebuild_produces(tmp_path):
     store.create_job(scope, PinnedRuntime(input_digest="a" * 64, **pins_for()), [str(key) for key in ALL_FIELDS])
 
 
-def test_the_three_taxonomy_apis_are_ready_and_geolocate_is_not_yet():
-    registry = registered_pins.registered_registry(pins_for()["sources"])
-    assert {policy.id for policy in registry.policies if policy.ready} == {
-        "gbif", "global_names_verifier", "catalogue_of_life"}
-    assert "geolocate" not in SOURCE_READINESS
-    assert not registry.get("geolocate").ready
+def test_the_three_taxonomy_apis_and_geolocate_are_ready():
+    pins = pins_for()
+    registry = registered_pins.registered_registry(pins["sources"])
+    assert {policy.id for policy in registry.policies if policy.ready} == set(TAXONOMY_APIS) | {"geolocate"}
+    assert set(SOURCE_READINESS) == set(TAXONOMY_APIS) | {"geolocate"}
+    # Lane G's qualification, read from sources.py so the two cannot drift.
+    assert SOURCE_READINESS["geolocate"] == sources.GEOLOCATE_QUALIFICATION
+    assert set(sources.GEOLOCATE_QUALIFICATION) == registered_pins._READINESS
+    geolocate = registry.get("geolocate")
+    assert {key: getattr(geolocate, key) for key in registered_pins._READINESS} == (
+        sources.GEOLOCATE_QUALIFICATION)
+    assert geolocate.schema_digest == digest(sources.GEOLOCATE_SCHEMA)
+    assert geolocate.source_release == sources.GEOLOCATE_RELEASE
     assert CAPTURE_POLICIES["geolocate"] == ("full_response", 1)
+    capture = registered_pins.registered_capture_policies(pins["sources"], registry)
+    assert capture["geolocate"].kind == "full_response" and capture["geolocate"].maximum_responses == 1
+    assert capture["geolocate"].source_policy_digest == digest(geolocate)
 
 
 def test_readiness_rows_hold_the_committed_canary_schemas_and_a_repository_reference():
     canaries = {row["source_id"]: row for row in json.loads(CANARIES.read_text())["results"]}
-    for source_id, row in SOURCE_READINESS.items():
+    for source_id in TAXONOMY_APIS:
+        row = SOURCE_READINESS[source_id]
         assert set(row) == registered_pins._READINESS
         assert row["qualification_state"] == "searched"
         assert row["schema_digest"] == digest(canaries[source_id]["schema_keys"])

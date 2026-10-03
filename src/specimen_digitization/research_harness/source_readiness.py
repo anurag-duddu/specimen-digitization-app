@@ -5,28 +5,33 @@ builder (committed_pins.py) keeps only the rows whose id the installed registry
 has, so a source that leaves the registry drops out of the pins.
 
 SOURCE_READINESS rows hold the four fields ``insects_registry`` accepts as
-qualification overrides. ``qualification_receipt`` is a reference to the row in
-this file; no receipt exists. ``schema_digest`` is ``contracts.digest`` of the
-response keys the typed adapter reads, as listed for the source in
-``prompts/public-source-canaries-2026-09-29.json``. The releases were read on
-2026-10-02:
+qualification overrides. For the three taxonomy APIs, ``qualification_receipt``
+is a reference to the row in this file; no receipt exists. ``schema_digest`` is
+``contracts.digest`` of the response keys the typed adapter reads, as listed for
+the source in ``prompts/public-source-canaries-2026-09-29.json``. The releases
+were read on 2026-10-02:
 - gbif: the COL XR checklist the adapter queries (``COL_XR``), published
   2026-06-19 (https://api.gbif.org/v1/dataset/7ddf754f-d193-4cc9-b351-99906754a03b).
 - global_names_verifier: https://verifier.globalnames.org/api/v1/version, v1.6.2.
 - catalogue_of_life: https://api.checklistbank.org/dataset/3LR resolved to the
   release key 316321 (COL26.9, issued 2026-09-11), the key the canary recorded.
   The adapter puts this key in the request path, so it must stay an integer.
+The geolocate row is ``sources.GEOLOCATE_QUALIFICATION`` itself, imported so the
+two cannot drift: its receipt names the owner rulings G-geo-1..3 and the
+2026-10-03 glcwrap.aspx probe, its schema digest is ``digest(GEOLOCATE_SCHEMA)``
+and its release is ``GEOLOCATE_RELEASE``.
 
 CAPTURE_POLICIES gives each source's retention as (kind, maximum_responses).
 Only full_response lets a lookup run, and only for a ready source. The three
-taxonomy adapters make one GET per lookup (sources.SourceBroker._execute). The
-geolocate row waits for Lane G's adapter: until its readiness row lands the
-source is not ready and no lookup runs. Browser sources, the unqualified museum
+taxonomy adapters and the GEOLocate adapter make one GET per lookup
+(sources.SourceBroker._execute). Browser sources, the unqualified museum
 catalogue and Google Maps (paid, never full_response) are denied.
 field_museum_ipt is absent: its joined lookup needs per-specimen joins that
 committed data cannot give.
 """
 from __future__ import annotations
+
+from .sources import GEOLOCATE_QUALIFICATION
 
 _ORIGIN = "repo:src/specimen_digitization/research_harness/source_readiness.py"
 
@@ -52,8 +57,7 @@ SOURCE_READINESS = {
         "schema_digest": "bac8db5166c6ae1638b1459f154c7f8e967074fb33a04b8f772b167dc7107f69",  # pragma: allowlist secret (response schema digest)
         "source_release": "316321",
     },
-    # geolocate: not ready yet. Lane G's adapter (sources.GEOLOCATE_QUALIFICATION)
-    # lands first; its readiness row is added here in a follow-up.
+    "geolocate": GEOLOCATE_QUALIFICATION,
 }
 
 CAPTURE_POLICIES = {
