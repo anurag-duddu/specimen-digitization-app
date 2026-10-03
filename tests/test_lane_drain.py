@@ -36,6 +36,7 @@ from specimen_digitization.application.worker_deadline import WorkerDeadline
 from specimen_digitization.application.workflow import OperationalBlock, Workflow
 from specimen_digitization.hub_models import SAM3_MODEL
 from specimen_digitization.research_harness import provisioning
+from specimen_digitization.research_harness.compatibility import PublicationUnavailable
 from specimen_digitization.research_harness.contracts import ResearchScope
 from specimen_digitization.research_harness.native_worker import (
     NativeResearchWorkerOutcomeV2,
@@ -46,6 +47,7 @@ from specimen_digitization.research_harness.persistence import (
     SqliteStateBackend,
     StaleWork,
 )
+from specimen_digitization.research_harness.native_canonical_v2 import SqlConnectCanonicalResearchWriterV2
 from specimen_digitization.research_harness.workflow_bridge import NativeResearchWorkflow
 
 ORG = "00000000-0000-4000-8000-000000000001"
@@ -1015,6 +1017,46 @@ def test_a_registration_the_connector_refuses_holds_that_record_and_the_drain_go
     later = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     assert lane.repository.oldest_due(SCOPE, later, limit=11) == []
     assert fence(lane).read()["holder"] is None
+
+
+def test_an_unrelated_registration_error_still_ends_the_drain(lane, tmp_path, monkeypatch):
+    # Only the connector's refusal codes are this record's hold. Any other code
+    # from the registration call is the drain's systemic stop, as before.
+    lane.repository.create(principal(), parsed_request(REFUSED, 51), "queue:refused", REFUSED)
+    profile = harness_profile()
+    for minutes, ident in zip(range(50, 40, -1), TEN):
+        queued(lane.repository, ident, minutes=minutes, profile_snapshot=profile)
+    connector = RefusingConnector(lane.repository)
+    backend = SqliteStateBackend(tmp_path / "research-state.sqlite")
+    backend.grant(DurabilityScope(ORG, COLLECTION, REFUSED, "membership", 1, WORKER, False),
+        role="manager")
+
+    async def unrelated(self, *args, **kwargs):
+        raise PublicationUnavailable("native_v2_owner_policy_pin_unproved")
+
+    monkeypatch.setattr(SqlConnectCanonicalResearchWriterV2, "register_current_binding", unrelated)
+
+    async def fresh_member(principal, sensitive):
+        assert principal.role == "manager" and sensitive is False
+
+    async def provision(principal, specimen):
+        await provisioning.provision(connector, principal, specimen, actor_uid=WORKER,
+            verify_access=fresh_member, state_backend=backend)
+
+    native = NativeLane(lane.repository)
+    workflow = RegisteredNativeDrainWorkflow(
+        NativeResearchWorkflow(Ordinary(lane.repository), native, provision=provision)
+    )
+    drain = worker(lane.repository, workflow, lane.clock, role="manager")
+    token = actor_uid.set(WORKER)
+    try:
+        with WorkerDeadline(time.monotonic() + 600).scope():
+            with pytest.raises(OperationalBlock, match="^native_research_admission_or_binding_unavailable$"):
+                drain.run(stop=None)
+    finally:
+        actor_uid.reset(token)
+    assert native.runs == []
+    assert lane.repository.get(SCOPE, REFUSED).run.blocker != "research_provision_registration_refused"
 
 
 def test_a_hold_on_a_runs_first_step_keeps_its_own_blocker(lane):

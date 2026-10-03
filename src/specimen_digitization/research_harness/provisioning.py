@@ -15,6 +15,7 @@ run holds.
 from __future__ import annotations
 
 import asyncio
+import logging
 from uuid import NAMESPACE_URL, uuid5
 
 from specimen_digitization.application import projection
@@ -35,6 +36,7 @@ from .production_runtime import (WORKER_ROLES, committed_job_pins, research_budg
 from .publication_v2 import genesis_digest
 from .workflow_bridge import membership_verifier, worker_actor
 
+LOGGER = logging.getLogger(__name__)
 POLICY_ORIGIN = "repo:src/specimen_digitization/research_harness/canonical_materialization_v2.py#ResearchCanonicalPolicyV2"
 # The binding writer's codes for a registration the connector refused: GraphQL
 # errors (native_canonical.SqlConnectNativeOperationClient.execute) and a
@@ -166,6 +168,11 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
         # registration fails on the table's key, and a row the checks do not
         # admit fails the count check), or as a count other than one.
         if str(error) in REGISTRATION_REFUSED:
+            # GraphQL errors also cover transient connector failures (unavailable,
+            # deadline, permission, a connector not yet redeployed); the hold is
+            # the same, so the underlying code is logged (no payload).
+            LOGGER.warning("research binding registration refused: %s (record ...%s)",
+                str(error), str(specimen.id)[-6:])
             raise HeldUnknown("research_provision_registration_refused") from None
         raise HeldUnknown(str(error)) from None
     except PermissionError as error:
