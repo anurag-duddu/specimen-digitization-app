@@ -87,6 +87,7 @@ def _classifier_child(payload):
         image_loader=loader,
         provenance_sink=blobs.put,
         catalog=payload["catalog"],
+        allow_sensitive=payload["allow_sensitive"],
     )
     return classifier.classify(request).model_dump_json().encode()
 

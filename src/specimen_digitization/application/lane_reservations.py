@@ -6,6 +6,10 @@ reserves for each request it may make; each request reserves the lesser of
 (b), where the route documents its image-token rule, the crop's tokens under
 that rule plus the prompt and the output cap. The stage's reservation is the
 floor.
+
+A route whose price names `max_input_tokens` reserves that in place of its
+context length in (a), and `max_output_tokens` as its output cap; the call
+enforces both (the coordinator, 2026-10-03: bound the first pass's request).
 """
 
 from __future__ import annotations
@@ -47,13 +51,17 @@ def _micros(price: dict, input_tokens: int, output_tokens: int) -> int:
     return -(-cost // MILLION)
 
 
-def call_micros(price: dict, crop_and_prompt: int | None, output_cap=OUTPUT_CAP) -> int:
+def call_micros(price: dict, crop_and_prompt: int | None) -> int:
     """The call's worst case: each request the lesser of (a) and (b).
 
     `crop_and_prompt` is None when the route documents no image rule, and then
     every request reserves (a).
     """
-    bound_a = _micros(price, price["context_tokens"], output_cap)
+    output_cap = price.get("max_output_tokens") or OUTPUT_CAP
+    input_cap = min(
+        price["context_tokens"], price.get("max_input_tokens") or price["context_tokens"]
+    )
+    bound_a = _micros(price, input_cap, output_cap)
     total = 0
     for request in range(REQUESTS):
         if crop_and_prompt is None:
@@ -125,5 +133,94 @@ def step_reservation(run, step: str):
         price = (prices or {}).get("models", {}).get(run.profile.first_pass_route)
         if not price or not price.get("context_tokens"):
             return None  # No qualified numeric route price: refuse before call.
+        # Each request at its input bound (first_pass.InputBoundModel enforces it).
         return max(floor, call_micros(price, None))
     return floor
+
+
+def image_rule(prices: dict, route: str) -> dict | None:
+    """The route's documented image rule, or else the most conservative pinned
+    rule on uncapped pixels (the coordinator's ruling of 2026-09-24)."""
+    models = prices.get("models", {})
+    rule = models.get(route, {}).get("image_tokens")
+    if rule:
+        return rule
+    pinned = [m["image_tokens"] for m in models.values() if m.get("image_tokens")]
+    if not pinned:
+        return None
+    return {"pixels_per_token": min(r["pixels_per_token"] for r in pinned)}
+
+
+def request_input_tokens(messages, parameters, rule: dict | None) -> int | None:
+    """At most the input tokens one request with these messages and tools becomes.
+
+    Text counts a token per UTF-8 byte, which a byte-level tokenizer never
+    exceeds; an image counts its tokens under `rule`; the chat template counts
+    its framing. None when a part cannot be sized, so the request is refused.
+    """
+    import io
+
+    from PIL import Image
+    from pydantic_ai.messages import (
+        BinaryContent,
+        ModelRequest,
+        RetryPromptPart,
+        SystemPromptPart,
+        TextContent,
+        TextPart,
+        ThinkingPart,
+        ToolCallPart,
+        ToolReturnPart,
+        UserPromptPart,
+    )
+
+    texts, images = [], []
+    instructions = parameters.instruction_parts
+    texts += [part.content for part in instructions or []]
+    for tool in [*parameters.function_tools, *parameters.output_tools]:
+        # As the request carries it (HuggingFaceModel._map_tool_definition).
+        function = {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": tool.parameters_json_schema,
+        }
+        texts.append(json.dumps({"type": "function", "function": function}))
+    for message in messages:
+        if not isinstance(message, ModelRequest):
+            for part in message.parts:
+                if isinstance(part, ToolCallPart):
+                    texts += [part.tool_name, part.args_as_json_str(), part.tool_call_id or ""]
+                elif isinstance(part, TextPart | ThinkingPart):
+                    texts.append(part.content)
+            continue
+        if instructions is None and message.instructions:
+            texts.append(message.instructions)
+        for part in message.parts:
+            if isinstance(part, RetryPromptPart):
+                texts.append(part.model_response())
+            elif isinstance(part, ToolReturnPart):
+                texts.append(part.model_response_str())
+            elif isinstance(part, SystemPromptPart):
+                texts.append(part.content)
+            elif isinstance(part, UserPromptPart):
+                content = part.content
+                for item in [content] if isinstance(content, str) else content:
+                    if isinstance(item, str | TextContent):
+                        texts.append(item if isinstance(item, str) else item.content)
+                    elif isinstance(item, BinaryContent) and item.is_image:
+                        images.append(item.data)
+                    else:
+                        return None
+            else:
+                return None
+    tokens = sum(len(text.encode()) for text in texts)
+    for data in images:
+        if rule is None:
+            return None
+        try:
+            with Image.open(io.BytesIO(data)) as image:
+                width, height = image.size
+        except Exception:
+            return None
+        tokens += image_tokens(rule, width, height)
+    return tokens + PROMPT_FRAMING_TOKENS + LATER_FRAMING_TOKENS * (len(messages) - 1)

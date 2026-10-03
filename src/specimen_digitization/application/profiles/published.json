@@ -220,6 +220,7 @@
             "segment": 45000,
             "transcribe:handwriting-qwen": 20000,
             "transcribe:handwriting-muse": 20000,
+            "first_pass": 20000,
             "parse": 20000
           }
         },
@@ -233,7 +234,7 @@
           "ledger_collection": "insects"
         },
         "price_list": {
-          "version": "pilot-prices-2026-09-24",
+          "version": "pilot-prices-2026-10-03",
           "as_of": "2026-09-24",
           "sources": [
             "https://router.huggingface.co/v1/models",
@@ -262,6 +263,13 @@
                 "max_tokens": 4096,
                 "source": "https://huggingface.co/meta-models/Muse-Glimmer-30B/blob/main/processor_config.json"
               }
+            },
+            "first-pass-glm": {
+              "input_micros_per_million": 150000,
+              "output_micros_per_million": 500000,
+              "context_tokens": 1048576,
+              "max_input_tokens": 32768,
+              "max_output_tokens": 4096
             }
           },
           "segmentation": {
@@ -276,6 +284,7 @@
           }
         }
       },
+      "first_pass_route": "first-pass-glm",
       "date_rules": {
         "version": "date-rules-v1",
         "two_digit_year_century": 1900,

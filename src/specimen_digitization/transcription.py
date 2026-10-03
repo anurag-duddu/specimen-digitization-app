@@ -10,7 +10,7 @@ from pydantic_ai import Agent, BinaryContent
 
 from .application.reading_declarations import DeclarationCandidates
 from .model_gateway import HuggingFaceModelGateway, ModelGatewayConfigurationError
-from .provider_privacy import PrivateProviderModel, private_instrumentation
+from .provider_privacy import PrivateProviderModel, agent_instrumentation
 from .prompts import (
     CollectionPromptInputs,
     PromptName,
@@ -72,7 +72,9 @@ def build_literal_transcription_agent(
         output_type=LiteralTranscription,
         instructions=prompt.text,
     )
-    agent.instrument = private_instrumentation()
+    # Prompt, messages and output follow the configured capture mode (G3);
+    # the image bytes are never recorded.
+    agent.instrument = agent_instrumentation()
     return agent
 
 

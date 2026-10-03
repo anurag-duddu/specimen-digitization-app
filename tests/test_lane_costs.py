@@ -72,6 +72,12 @@ PRICES = PriceList(
                 "source": "https://models.example.test/muse/processor_config.json",
             },
         },
+        # The pilot names a first-pass route, so the price list must price it.
+        "first-pass-glm": {
+            "input_micros_per_million": 150_000,
+            "output_micros_per_million": 500_000,
+            "context_tokens": 1_048_576,
+        },
     },
     segmentation={
         "vcpus": 4,
@@ -391,7 +397,7 @@ def test_a_step_without_recorded_calls_stays_reserved(tmp_path):
 
 def test_the_pilot_pins_the_prices_read_on_2026_09_24():
     prices = published_registry().resolve("insects").profile.processing.price_list
-    assert (prices.version, prices.as_of) == ("pilot-prices-2026-09-24", "2026-09-24")
+    assert (prices.version, prices.as_of) == ("pilot-prices-2026-10-03", "2026-09-24")
     qwen, muse = prices.models["handwriting-qwen"], prices.models["handwriting-muse"]
     assert (qwen.input_micros_per_million, qwen.output_micros_per_million) == (
         200_000,

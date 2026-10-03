@@ -19,6 +19,17 @@ APPROVED_DEPLOY_SCRIPTS = {
     ROOT / "scripts/ci/deploy_runtime.py",
     ROOT / "scripts/ci/deploy_data.py",
 }
+# The operator's plain runtime deploy (scripts/ops/README.md) may issue only its two Cloud Run deploys, the SAM 3
+# service and the worker job; any other deploy command in it still fails. The exemption is for the hand bring-up and
+# should be removed when the release workflows run these deploys.
+OPS_DEPLOY = ROOT / "scripts/ops/deploy.py"
+OPS_DEPLOY_CALLS = re.compile(r'"gcloud", "run", (?:"jobs", )?"deploy"')
+ARGV_DEPLOY = re.compile(r'"(?:firebase|gcloud)"[^\n]*"[^"\n]*deploy[^"\n]*"', re.IGNORECASE)
+DEPLOY_PATTERNS = (
+    re.compile(r"firebase(?:-tools)?(?:@[^\s]+)?\s+deploy", re.IGNORECASE),
+    re.compile(r"firebase\s+hosting:channel:deploy", re.IGNORECASE),
+    re.compile(r"gcloud\s+[^\n]*\bdeploy\b", re.IGNORECASE),
+)
 RELEASE_WORKFLOWS = {
     "data": ROOT / ".github/workflows/data-release.yml",
     "runtime": ROOT / ".github/workflows/runtime-release.yml",
@@ -175,11 +186,6 @@ def test_only_the_three_deploy_workflows_can_sign_in_to_the_cloud() -> None:
 
 
 def test_no_other_automation_can_issue_a_deploy() -> None:
-    deploy_patterns = (
-        re.compile(r"firebase(?:-tools)?(?:@[^\s]+)?\s+deploy", re.IGNORECASE),
-        re.compile(r"firebase\s+hosting:channel:deploy", re.IGNORECASE),
-        re.compile(r"gcloud\s+[^\n]*\bdeploy\b", re.IGNORECASE),
-    )
     candidates = [
         *ROOT.glob(".github/workflows/*.yml"),
         *ROOT.glob(".github/workflows/*.yaml"),
@@ -193,11 +199,27 @@ def test_no_other_automation_can_issue_a_deploy() -> None:
     for path in candidates:
         if path in APPROVED_DEPLOY_SCRIPTS:
             continue
-        text = path.read_text()
-        if any(pattern.search(text) for pattern in deploy_patterns):
+        if issues_deploy(path, path.read_text()):
             violations.append(str(path.relative_to(ROOT)))
 
     assert violations == [], f"unapproved deployment command in: {violations}"
+
+
+def issues_deploy(path: Path, text: str) -> bool:
+    if path == OPS_DEPLOY:
+        text = OPS_DEPLOY_CALLS.sub("", text)
+        if ARGV_DEPLOY.search(text):
+            return True
+    return any(pattern.search(text) for pattern in DEPLOY_PATTERNS)
+
+
+def test_ops_deploy_may_issue_only_its_two_cloud_run_deploys() -> None:
+    text = OPS_DEPLOY.read_text()
+    assert len(OPS_DEPLOY_CALLS.findall(text)) == 2
+    assert not issues_deploy(OPS_DEPLOY, text)
+    for added in ('["firebase", "deploy", "--only", "hosting"]', "firebase deploy --only hosting",
+                  '["gcloud", "functions", "deploy", "f"]', "gcloud app deploy"):
+        assert issues_deploy(OPS_DEPLOY, text + "\n" + added + "\n"), added
 
 
 def test_firebase_target_is_exactly_the_default_hosting_site() -> None:

@@ -16,6 +16,7 @@ from uuid import NAMESPACE_URL, uuid5
 
 from .domain import AuditEvent, Principal, Scope
 from .storage import Conflict, Missing, digest
+from .workflow import OperationalBlock
 
 LANE_ROLES = {"operator", "reviewer", "manager", "admin"}
 # A run stops being stepped at any of these; the workflow waits on the rest.
@@ -28,6 +29,20 @@ MAX_CONFLICTS = 3  # Consecutive save conflicts on one run before moving on.
 MAX_IDLE_HANDOVERS = 3  # Consecutive hand-overs without progress, then stop.
 RUN_STALLED = "lane_run_not_progressing"
 HANDOVER_STALLED = "lane_handover_without_progress"
+# One record's own hold: the native worker's blocked outcome codes
+# (native_worker.py), raised by the bridge at workflow_bridge.py 52-53. The
+# drain blocks that run and moves on. A step's other errors, save conflicts
+# aside, still end the execution, so an authorization, budget, configuration
+# or storage failure is not recorded against each record in turn.
+RECORD_HOLDS = frozenset(
+    {
+        "accepted_output_proof_unavailable",
+        "native_publication_requires_reconciliation",
+        "native_research_operational_hold",
+        "research_retry_not_completed",
+        "research_worker_custody_requires_reconciliation",
+    }
+)
 EMULATOR_KEYS = (
     "SPECIMEN_SQL_EMULATOR_HOST",
     "DATA_CONNECT_EMULATOR_HOST",
@@ -44,6 +59,20 @@ class DrainSettings:
     worker_job: str = ""
 
 
+def exact_uid(value) -> bool:
+    """The bootstrap's rule for an explicit Firebase UID (bootstrap_admin.py).
+
+    The drain takes the secret's value as given, never stripped, so a UID with
+    surrounding whitespace or a control character would match no membership.
+    """
+    return (
+        isinstance(value, str)
+        and 1 <= len(value) <= 128
+        and value == value.strip()
+        and not any(ord(character) < 32 for character in value)
+    )
+
+
 def drain_settings(env) -> DrainSettings:
     """Fail closed before any work is taken. Errors name settings, never values."""
     from ..hub_models import SAM3_MODEL
@@ -52,8 +81,8 @@ def drain_settings(env) -> DrainSettings:
     from .runtime_config import collection_bindings
 
     actor = env.get("SPECIMEN_WORKER_ACTOR_UID", "")
-    if not 1 <= len(actor) <= 128:
-        raise ValueError("SPECIMEN_WORKER_ACTOR_UID is required for the drain")
+    if not exact_uid(actor):
+        raise ValueError("SPECIMEN_WORKER_ACTOR_UID must be an exact Firebase UID for the drain")
     if env.get("SPECIMEN_APPROVED_INFERENCE") != "true":
         raise ValueError("SPECIMEN_APPROVED_INFERENCE must be true for the drain")
     if any(env.get(key) for key in EMULATOR_KEYS):
@@ -406,6 +435,12 @@ class DrainWorker:
                 before = self.repository.get(principal.scope, ident)
                 run = before.run
                 continue
+            except OperationalBlock as exc:
+                if str(exc) not in RECORD_HOLDS:
+                    raise
+                # Blocked where people can see it, so it is no longer due.
+                self._block(principal, ident, str(exc))
+                return self.repository.get(principal.scope, ident).run, progressed
             conflicts = 0
             fence.hold(ident, specimen.run.id)
             run = specimen.run
