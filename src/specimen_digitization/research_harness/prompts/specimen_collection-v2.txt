@@ -21,3 +21,4 @@ no relation.
 A catalog number, collection code, habitat or method resolved from an accepted
 literal assembly maps each of its evidence ids to "supports". verbatim_dts stays
 waiting_policy and carries none.
+Every resolution that cites a lookup names, as the common rules ask, its accepted/rejected assemblies (assembly_ids: the request's assemblies for that field that the interpretation read) and event (event_id); the lookup's producer comes from them, and publication refuses a lookup without one.

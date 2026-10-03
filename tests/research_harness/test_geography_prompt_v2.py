@@ -42,11 +42,11 @@ V1_ROLE_DIGESTS = {
 }
 # The same five roles' pin digests on their v2 files (pin() arguments below).
 RELATION_DIGESTS = {
-    SpecialistRole.TAXONOMY: "8892f77e123c706220256b9683fee844e2dc99c2abf8a0267f664f3d88722e9a",  # pragma: allowlist secret
+    SpecialistRole.TAXONOMY: "891d78856639fd1c1e8042e1f23177f5939f03966a8088b5af4bda35d4103bfd",  # pragma: allowlist secret
     SpecialistRole.TEMPORAL: "1b41c74c2a4483ae6eb4bcc5a4a74e97a9d685dd7c09e8876530c1ac9b853937",  # pragma: allowlist secret
     SpecialistRole.MEASUREMENT: "58ac6830c6cde16d2d2a8747537f9721f687185d97bc5f832e9e141248244f52",  # pragma: allowlist secret
-    SpecialistRole.PARTIES: "b1f3e1bc9a7fc78a4fe66fb2eda4d2d503dccf63479f092d97c19d62b6020229",  # pragma: allowlist secret
-    SpecialistRole.COLLECTION: "91dfa2cd734ebc83221ec22eea5d33dedc44849ff3c982c4cf08b8a03aa9ca21",  # pragma: allowlist secret
+    SpecialistRole.PARTIES: "b331cd9956fc6d464490eff47292ecefcd7b8d0fa8093605a188c69445bf6177",  # pragma: allowlist secret
+    SpecialistRole.COLLECTION: "64b98ef934ea701b153545c361ba8183ebc8dfaed1fa6dc33081e9212c7a3d80",  # pragma: allowlist secret
 }
 # The GEOLocate query_text contract (lane G validator spec, revised 2026-10-03 with "place").
 QUERY_KEYS = ("country", "state", "county", "locality", "place", "latitude", "longitude", "radius_km", "value")
@@ -131,3 +131,18 @@ def test_v2_names_only_source_and_field_pairs_the_registry_admits():
     assert set(registry.get("field_museum_ipt").fields) & geography == ipt
     assert "field_museum_ipt exact joins\nserve only country, province_state and precise_location" in text
     assert "google_maps" not in text and "invoke_utility" not in text
+
+
+LOOKUP_PRODUCER_RULE = (
+    "Every resolution that cites a lookup names, as the common rules ask, its accepted/rejected "
+    "assemblies (assembly_ids: the request's assemblies for that field that the interpretation read) "
+    "and event (event_id); the lookup's producer comes from them, and publication refuses a lookup "
+    "without one.")
+
+
+@pytest.mark.parametrize("role", (SpecialistRole.TAXONOMY, SpecialistRole.PARTIES, SpecialistRole.COLLECTION))
+def test_lookup_citing_resolutions_name_the_assemblies_they_read(role):
+    # Without assembly_ids and event_id a cited lookup has no producer
+    # (lookup_evidence_producer_invalid), so these roles state it explicitly.
+    text = " ".join(pin(role).text.split())
+    assert LOOKUP_PRODUCER_RULE in text

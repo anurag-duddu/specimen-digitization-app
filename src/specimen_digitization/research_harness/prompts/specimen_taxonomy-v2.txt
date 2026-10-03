@@ -20,3 +20,4 @@ no relation.
 On a resolved taxon, evidence_ids and value.evidence_ids are exactly the matching
 results' evidence ids; value.evidence_relations maps GBIF's deciding evidence to
 "decides" and each supporting source's to "supports".
+Every resolution that cites a lookup names, as the common rules ask, its accepted/rejected assemblies (assembly_ids: the request's assemblies for that field that the interpretation read) and event (event_id); the lookup's producer comes from them, and publication refuses a lookup without one.

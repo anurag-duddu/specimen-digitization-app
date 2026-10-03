@@ -20,3 +20,4 @@ no relation.
 A collector resolved from an accepted literal assembly maps its evidence ids to
 "supports"; one from an exact public join maps that result's evidence to its
 declared role. The IRN exception carries no relation.
+Every resolution that cites a lookup names, as the common rules ask, its accepted/rejected assemblies (assembly_ids: the request's assemblies for that field that the interpretation read) and event (event_id); the lookup's producer comes from them, and publication refuses a lookup without one.
