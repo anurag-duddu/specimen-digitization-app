@@ -6,6 +6,7 @@ Connect HTTP session. The research state is a real SQLite store; the base
 record comes from the real ordinary projector. Label text is synthetic.
 """
 import asyncio
+import copy
 from types import SimpleNamespace
 
 import pytest
@@ -215,7 +216,7 @@ def test_first_tick_writes_the_base_record_state_job_and_binding(rig):
     snapshot = rig.specimen.model_dump(mode="json")
     pins = committed_job_pins(rig.specimen.run.profile_snapshot, organization_id=ORG,
         collection_id=COLLECTION, input_digest=canonical_digest(snapshot))
-    assert state["budget_policy"]["ceiling_micro_usd"] == 500_000
+    assert state["budget_policy"]["ceiling_micro_usd"] == 1_000_000
     assert state["budget_policy"]["live_authorized"] is True
     assert state["budget_policy"]["hold_reason"] is None
     assert job["pins"] == pins and job["record_revision"] == rig.specimen.version
@@ -351,3 +352,82 @@ def test_an_existing_state_with_another_allowance_holds(rig):
     with pytest.raises(HeldUnknown, match="research_provision_state_conflict"):
         rig.provision()
     assert rig.writer.registered == []
+
+
+def test_the_run_allowance_is_seeded_with_the_ordinary_spend(rig):
+    # The ordinary chain's running total against the same per-run limit: the
+    # measured actuals of settled calls and the full reservation of any call
+    # whose cost it could not measure. By the plan step every paid ordinary
+    # step is done, so the number is final when the research state is created.
+    rig.specimen.run.usage.reserved_cost_micros = 234_567
+    scope = job_scope(rig)
+    rig.provision()
+    [(registration, program_key, _)] = rig.writer.registered
+    state = ResearchStore(rig.backend, program_key)._read(scope).state
+    policy, totals = state["budget_policy"], state["budget_totals"]
+    assert policy["external_settled_micro_usd"] == 234_567 and policy["external_held_micro_usd"] == 0
+    assert policy["ceiling_micro_usd"] == 1_000_000
+    # The ceiling bounds the whole specimen run: the research run starts with the
+    # ordinary spend already counted.
+    assert totals["settled_micro_usd"] == 234_567 and totals["held_micro_usd"] == 0
+    assert totals["remaining_micro_usd"] == 1_000_000 - 234_567
+    # The registered binding and its authority name the seeded policy.
+    assert registration.semantic_mapping["journal_budget_policy_digest"] == digest(policy)
+    assert registration.authority_digest == digest({"program_key": program_key, "budget_policy": policy})
+
+
+def test_a_replay_after_a_lost_registration_keeps_the_seeded_spend(rig):
+    rig.specimen.run.usage.reserved_cost_micros = 40_000
+    scope = job_scope(rig)
+    rig.writer.fail_next = PublicationUnavailable("native_v2_registration_rejected")
+    with pytest.raises(HeldUnknown, match="^research_provision_registration_refused$"):
+        rig.provision()
+    rig.provision()
+    [(_, program_key, _)] = rig.writer.registered
+    state = ResearchStore(rig.backend, program_key)._read(scope).state
+    assert state["budget_policy"]["external_settled_micro_usd"] == 40_000
+    assert list(state["jobs"]) == [scope.key]
+
+
+def test_ordinary_spend_that_moved_after_the_state_was_seeded_holds(rig):
+    # The run's allowance is immutable, so a later revision of the same run that
+    # computes another ordinary spend cannot reseed it: it holds, and registers
+    # nothing. (No ordinary step is paid after plan, so this is a fail-closed case.)
+    rig.specimen.run.usage.reserved_cost_micros = 40_000
+    rig.provision()
+    later = rig.specimen.model_copy(deep=True)
+    later.version += 1
+    later.run.usage.reserved_cost_micros = 41_000
+    rig.repository.specimen = later
+    rig.writer.binding = None  # The row names the earlier revision.
+    with pytest.raises(HeldUnknown, match="research_provision_state_conflict"):
+        rig.provision(later)
+    assert len(rig.writer.registered) == 1
+    state = ResearchStore(rig.backend, research_program_key(later.run.id))._read(job_scope(rig, later)).state
+    assert state["budget_policy"]["external_settled_micro_usd"] == 40_000 and len(state["jobs"]) == 1
+
+
+def with_run_limit(specimen, limit):
+    """The run's profile snapshot with another collection's per-run limit, re-pinned."""
+    snapshot = copy.deepcopy(specimen.run.profile_snapshot)
+    snapshot["processing"]["run_cost_limit_micros"] = limit
+    specimen.run.profile_snapshot = snapshot
+    specimen.run.dependencies["profile_snapshot_sha256"] = canonical_digest(snapshot)
+
+
+@pytest.mark.parametrize("limit", [250_000, 750_000, 2_000_000])
+def test_the_ceiling_is_the_collection_profiles_run_limit(rig, limit):
+    # An institution sets its own limit in its collection's profile; the
+    # research ceiling is that run's snapshot of it, not a constant.
+    with_run_limit(rig.specimen, limit)
+    rig.provision()
+    [(_, program_key, _)] = rig.writer.registered
+    state = ResearchStore(rig.backend, program_key)._read(job_scope(rig)).state
+    assert state["budget_policy"]["ceiling_micro_usd"] == limit == state["budget_totals"]["ceiling_micro_usd"]
+
+
+def test_a_run_limit_below_one_request_reservation_holds_the_run(rig):
+    with_run_limit(rig.specimen, 50_000)
+    with pytest.raises(HeldUnknown, match="research_committed_pins_unavailable"):
+        rig.provision()
+    assert rig.writer.registered == [] and rig.repository.inserts == []

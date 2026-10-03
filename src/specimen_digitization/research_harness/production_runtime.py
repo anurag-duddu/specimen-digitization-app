@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from uuid import UUID
 
 from specimen_digitization.application.domain import Principal
@@ -28,9 +28,17 @@ def research_program_key(run_id: str) -> str:
     return "research-run:" + str(UUID(str(run_id)))
 
 
-def research_budget_policy(profile) -> BudgetPolicy:
-    """The run's research allowance: the profile's run cost limit, live."""
-    return BudgetPolicy(committed_run_cost_limit_micros(profile), live_authorized=True, hold_reason=None)
+def research_budget_policy(profile, ordinary_spend_micros: int = 0) -> BudgetPolicy:
+    """The run's research allowance: the profile's run cost limit, live.
+
+    ``ordinary_spend_micros`` is what the run's ordinary chain has already spent
+    against that same limit (``run.usage.reserved_cost_micros``: the measured
+    actuals of settled calls and the full reservation of any call whose cost it
+    could not measure, which the run never gets back). It counts as settled, so
+    the one limit bounds the whole specimen run and research gets the remainder.
+    """
+    return BudgetPolicy(committed_run_cost_limit_micros(profile),
+        external_settled_micro_usd=ordinary_spend_micros, live_authorized=True, hold_reason=None)
 
 
 def committed_job_pins(profile, *, organization_id: str, collection_id: str, input_digest: str) -> dict:
@@ -138,12 +146,19 @@ class NativeResearchRuntimeFactory:
         if (specimen.run.id != str(binding.base_canonical.canonical_run_id)
             or canonical_digest(profile_snapshot) != binding.canonical_profile_digest):
             raise StaleWork("research_run_profile_unproved")
+        # The ordinary spend the allowance was seeded with at provisioning is this
+        # run's own record (the stored policy is immutable and the registered
+        # binding names its digest); every other field must be the committed one.
+        spend = document.state["budget_policy"].get("external_settled_micro_usd", 0)
+        if type(spend) is not int or spend < 0:
+            raise HeldUnknown("research_live_admission_unqualified")
         # The job keeps the pins committed config gave it at provisioning; a
         # change in config or installed code since then holds the run.
         try:
             committed = committed_job_pins(profile_snapshot, organization_id=scope.organization_id,
                 collection_id=scope.collection_id, input_digest=binding.base_canonical.snapshot_sha256)
-            policy = asdict(research_budget_policy(profile_snapshot))
+            policy = asdict(replace(research_budget_policy(profile_snapshot),
+                external_settled_micro_usd=spend))
         except (TypeError, ValueError):
             raise HeldUnknown("research_committed_pins_unavailable") from None
         if job["pins"] != committed:

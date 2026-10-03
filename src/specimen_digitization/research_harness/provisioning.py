@@ -105,7 +105,9 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
     try:
         pins = committed_job_pins(run.profile_snapshot, organization_id=scope.organization_id,
             collection_id=scope.collection_id, input_digest=row["sha256"])
-        allowance_policy = research_budget_policy(run.profile_snapshot)
+        # At the plan step every paid ordinary step is done, so the run's ordinary
+        # spend is final: the research allowance starts with it counted.
+        allowance_policy = research_budget_policy(run.profile_snapshot, run.usage.reserved_cost_micros)
     except (TypeError, ValueError):
         raise HeldUnknown("research_committed_pins_unavailable") from None
     try:
