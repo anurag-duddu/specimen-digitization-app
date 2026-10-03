@@ -97,7 +97,7 @@ def test_the_slide_pilot_profile_carries_the_specified_settings():
     assert "identified_by_irn" not in profile.field_tools
     assert profile.segmentation_settings.prompt == "label"
     assert profile.clearance_policy == "insects-clearance-v1"
-    assert profile.first_pass_route is None and profile.harness_route is None
+    assert profile.first_pass_route == "first-pass-glm" and profile.harness_route is None
     assert not profile.institutional_policy_approved
     assert not profile.semantics_confirmed
     allowance = profile.processing
@@ -106,6 +106,7 @@ def test_the_slide_pilot_profile_carries_the_specified_settings():
         "segment": 45_000,
         "transcribe:handwriting-qwen": 20_000,
         "transcribe:handwriting-muse": 20_000,
+        "first_pass": 20_000,
         "parse": 20_000,
     }
     assert (allowance.max_tokens, allowance.max_external_calls) == (480_000, 96)

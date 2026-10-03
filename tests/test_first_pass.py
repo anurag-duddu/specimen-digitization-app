@@ -169,13 +169,18 @@ def direct_first_pass(
     profile=None,
     dependencies=None,
     approved=True,
+    crop=b"PNG",
+    infos=None,
 ):
     """first_pass_direct against a fake provider that gives these answers in turn:
     an answer sent as its tool call, or a function of the output tool's name that
-    returns the provider's whole response."""
+    returns the provider's whole response. `infos` collects what each request
+    carried besides its messages."""
 
     def respond(messages, info):
         calls.append(messages)
+        if infos is not None:
+            infos.append(info)
         answer = answers[min(len(calls), len(answers)) - 1]
         tool = info.output_tools[0].name
         if callable(answer):
@@ -199,7 +204,7 @@ def direct_first_pass(
     else:
         monkeypatch.delenv("SPECIMEN_APPROVED_INFERENCE", raising=False)
     monkeypatch.setattr(first_pass_module, "HuggingFaceModelGateway", Gateway)
-    monkeypatch.setattr(workflow_module, "crop_bytes", lambda *args: b"PNG")
+    monkeypatch.setattr(workflow_module, "crop_bytes", lambda *args: crop)
     run = Run(
         profile=profile or Profile(first_pass_route=ROUTE.route_id),
         dependencies=DEPENDENCIES if dependencies is None else dependencies,

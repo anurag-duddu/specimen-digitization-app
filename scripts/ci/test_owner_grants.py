@@ -42,7 +42,7 @@ SQL_SOURCE = ("resource.name == 'projects/specimen-digitization/instances/specim
 EXPIRED = ("request.time >= timestamp('2026-09-13T20:25:15Z') && request.time < timestamp('2026-09-13T22:25:15Z')",
            "specimen_pr21_window")
 # The version each accessor condition names: the pin in runtime_settings.SECRET_VERSIONS (RELEASE.md section 5).
-VERSIONS = {"specimen-worker-logfire": 1, "specimen-google-maps-key": 1, "specimen-source-registry": 1,
+VERSIONS = {"specimen-worker-logfire": 1, "specimen-source-registry": 1,
             "specimen-collection-bindings": 1, "specimen-worker-actor-uid": 1, "huggingface-runtime-token": 2}
 PERMISSIONS = {
     "specimenRuntimeRelease": ["run.services.create", "run.services.get", "run.services.update",
@@ -61,7 +61,6 @@ SECRETS = {  # each role's secret_env as scripts/ci/runtime_settings.py commits 
     "API": {"LOGFIRE_TOKEN": "specimen-worker-logfire", "SPECIMEN_SOURCE_REGISTRY_JSON": "specimen-source-registry",
             "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings"},
     "WORKER": {"HF_TOKEN": "huggingface-runtime-token", "LOGFIRE_TOKEN": "specimen-worker-logfire",
-               "SPECIMEN_GOOGLE_MAPS_API_KEY": "specimen-google-maps-key",  # pragma: allowlist secret (a name)
                "SPECIMEN_WORKER_ACTOR_UID": "specimen-worker-actor-uid",
                "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings"},
     "SAM": {"LOGFIRE_TOKEN": "specimen-worker-logfire"}}
@@ -96,8 +95,8 @@ TABLE = {
     *((SECRET(name), ACCESS, API, pinned(name))
       for name in ("specimen-worker-logfire", "specimen-source-registry", "specimen-collection-bindings")),
     *((SECRET(name), ACCESS, WORKER, pinned(name))
-      for name in ("huggingface-runtime-token", "specimen-worker-logfire", "specimen-google-maps-key",
-                   "specimen-worker-actor-uid", "specimen-collection-bindings")),
+      for name in ("huggingface-runtime-token", "specimen-worker-logfire", "specimen-worker-actor-uid",
+                   "specimen-collection-bindings")),
     (SECRET("specimen-worker-logfire"), ACCESS, SAM, pinned("specimen-worker-logfire"))}
 INVOKERS = {("run services get-iam-policy specimen-api --region=us-east4", "roles/run.invoker", "allUsers", None),
             (JOB, "roles/run.invoker", API, None), (JOB, "roles/run.invoker", WORKER, None),
@@ -351,9 +350,9 @@ def test_grants_outside_the_table_are_removed_time_bounded_or_reviewed_never_mis
 def test_secret_grants_follow_runtime_settings_per_identity_secret_and_pinned_version():
     before = grants(sections(report())["Missing standing grants"])
     accessors = [(member, condition) for _, role, member, condition in before if role == ACCESS]
-    assert Counter(member for member, _ in accessors) == {API: 3, WORKER: 5, SAM: 1}
+    assert Counter(member for member, _ in accessors) == {API: 3, WORKER: 4, SAM: 1}
     assert {condition[1] for _, condition in accessors} == {  # version 2 of the Hugging Face token, version 1 else
-        "specimen_worker_logfire_v1", "specimen_google_maps_key_v1", "specimen_source_registry_v1",
+        "specimen_worker_logfire_v1", "specimen_source_registry_v1",
         "specimen_collection_bindings_v1", "specimen_worker_actor_uid_v1", "huggingface_runtime_token_v2"}
     sam = {"service_account": EMAIL("sam-runtime"),
            "secret_env": {**SECRETS["SAM"], "HF_TOKEN": "huggingface-runtime-token"}}
@@ -387,13 +386,13 @@ def test_a_failed_read_is_reported_without_values_and_the_rest_continues():
     denied = (1, "", "ERROR: PERMISSION_DENIED PRIVATE-STDERR")
     text = report(cloud=Cloud(existing() | {
         B: denied, "iam roles describe specimenDataStorageRules": denied,
-        "secrets describe specimen-google-maps-key": subprocess.TimeoutExpired(["gcloud"], 30)}))
+        "secrets describe specimen-worker-actor-uid": subprocess.TimeoutExpired(["gcloud"], 30)}))
     parts = sections(text)
     assert parts["Other owner steps"][:3] == [
         "# could not read the custom role specimenDataStorageRules; rerun the plan",
         f"# could not read bucket gs://{BUCKET}; its grants were not compared: rerun the plan",
-        "# could not read secret specimen-google-maps-key; its grants were not compared: rerun the plan"]
-    unread = (B, SECRET("specimen-google-maps-key"))
+        "# could not read secret specimen-worker-actor-uid; its grants were not compared: rerun the plan"]
+    unread = (B, SECRET("specimen-worker-actor-uid"))
     # The Cloud Run resources exist here, so their invoker grants no longer wait: they are missing.
     assert grants(parts["Missing standing grants"]) == {row for row in TABLE | INVOKERS if row[0] not in unread}
     assert parts["Waits for the first runtime release"] == ["(none)"] and "PRIVATE" not in text
@@ -403,7 +402,7 @@ def test_a_failed_read_is_reported_without_values_and_the_rest_continues():
 def test_the_plan_sends_only_reads_and_refuses_any_write():
     cloud = Cloud()
     report(cloud=cloud)
-    assert len(cloud.calls) == 3 + 5 + 1 + 1 + 3 + 1 + 6 + 3, "roles, project, registry, accounts, bucket, secrets, run"
+    assert len(cloud.calls) == 3 + 5 + 1 + 1 + 3 + 1 + 5 + 3, "roles, project, registry, accounts, bucket, secrets, run"
     calls, gcloud = list(cloud.calls), G.Gcloud(NOW + 60, ceiling=10, runner=cloud, clock=lambda: NOW)
     for write in (("projects", "set-iam-policy", PROJECT, "policy.json"),
                   ("projects", "remove-iam-policy-binding", PROJECT),

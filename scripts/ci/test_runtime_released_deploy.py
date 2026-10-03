@@ -159,8 +159,12 @@ def env_of(container):
 def test_committed_settings_name_each_pending_value_and_nothing_is_touched(tmp_path, monkeypatch):
     assert S.READINESS_GENERATION == 1790562271708431
     assert type(S.READINESS_GENERATION) is int and S.pending("api") == []
-    # Preserve the original missing-marker refusal with an explicit synthetic PENDING case.
+    assert {role: S.pending(role) for role in S.ROLES} == {"api": [], "worker": [], "sam": []}
+    # Preserve the original refusals with explicit synthetic PENDING cases; test_runtime_settings.py pins the values.
     monkeypatch.setattr(S, "READINESS_GENERATION", S.PENDING)
+    monkeypatch.setattr(S, "SAM_CHECKPOINT_SHA256", S.PENDING)
+    monkeypatch.setattr(S, "SAM_SERVER_ENV", S.PENDING)
+    monkeypatch.setitem(S.WORKER, "args", S.PENDING)
     assert S.pending("api") == ["READINESS_GENERATION"]
     assert S.pending("worker") == ['WORKER["args"]', "SAM_CHECKPOINT_SHA256"]
     assert S.pending("sam") == ["SAM_SERVER_ENV", "SAM_CHECKPOINT_SHA256"]
@@ -205,24 +209,29 @@ def test_bodies_are_built_only_from_the_committed_settings(ready):
                            "SPECIMEN_SOURCE_REGISTRY_JSON": ("specimen-source-registry", "1"),
                            "SPECIMEN_COLLECTION_BINDINGS_JSON": ("specimen-collection-bindings", "1")}
     assert RuntimeConfig.from_env(api_env).readiness_generation == 1790562271708431
-    for role, cpu, memory, cap, concurrency, timeout in (("api", "1", "1Gi", 2, 8, "600s"), ("sam", "4", "16Gi", 1, 1, "300s")):
+    # SAM 3 has CPU always allocated and startup boost on (runtime_settings.SAM); the API keeps request-based billing.
+    for role, cpu, memory, cap, concurrency, timeout, idle, boost in (("api", "1", "1Gi", 2, 8, "600s", True, False),
+                                                                     ("sam", "4", "16Gi", 1, 1, "300s", False, True)):
         body, template = bodies[role], bodies[role]["template"]
         assert (body["name"], body["ingress"], body["labels"]) == (NAMES[role], "INGRESS_TRAFFIC_ALL", labels)
         assert body["scaling"] == template["scaling"] == {"minInstanceCount": 0, "maxInstanceCount": cap}
         assert (template["revision"], template["serviceAccount"], template["timeout"], template["maxInstanceRequestConcurrency"],
                 template["executionEnvironment"]) == (NEW[role], ACCOUNT.format(f"specimen-{role}"), timeout, concurrency,
                                                       "EXECUTION_ENVIRONMENT_GEN2")
-        assert template["containers"][0]["resources"] == {"limits": {"cpu": cpu, "memory": memory}, "cpuIdle": True,
-                                                          "startupCpuBoost": False}
+        assert template["containers"][0]["resources"] == {"limits": {"cpu": cpu, "memory": memory}, "cpuIdle": idle,
+                                                          "startupCpuBoost": boost}
+    assert "startupProbe" not in bodies["api"]["template"]["containers"][0]  # Cloud Run's default probe
+    assert bodies["sam"]["template"]["containers"][0]["startupProbe"] == {
+        "tcpSocket": {"port": 8080}, "periodSeconds": 10, "timeoutSeconds": 10, "failureThreshold": 60}
     sam = bodies["sam"]["template"]
     assert sam["volumes"] == [{"name": "checkpoint", "gcs": {"bucket": bucket, "readOnly": True, "mountOptions": [
-        "only-dir=application/sha256/" + "4" * 64 + "/sam3-cache"]}}]
+        "only-dir=application/sha256/" + S.SAM_CHECKPOINT_SHA256 + "/sam3-cache", "uid=10001", "gid=10001"]}}]
     assert sam["containers"][0]["volumeMounts"] == [{"name": "checkpoint", "mountPath": "/model-cache"}]
     assert env_of(sam["containers"][0]) == ({
         **tracing, "LOGFIRE_SERVICE_NAME": "specimen-sam",
-        "HF_HOME": "/model-cache", "HF_HUB_OFFLINE": "1", "SPECIMEN_SAM3_CHECKPOINT_SHA256": "4" * 64,
+        "HF_HOME": "/model-cache", "HF_HUB_OFFLINE": "1", "SPECIMEN_SAM3_CHECKPOINT_SHA256": S.SAM_CHECKPOINT_SHA256,
         "SPECIMEN_SAM3_AUDIENCE": SAM_URL, "SPECIMEN_SAM3_CALLER_EMAIL": ACCOUNT.format("specimen-worker"),
-        "SPECIMEN_SAM3_OUTPUT_BUCKET": bucket, "SPECIMEN_SAM3_MAX_REQUEST_BYTES": "1048576"},
+        "SPECIMEN_SAM3_OUTPUT_BUCKET": bucket, "SPECIMEN_SAM3_ENABLE": "authorized-run"},
         {"LOGFIRE_TOKEN": ("specimen-worker-logfire", "1")})
     worker = bodies["worker"]
     task = worker["template"]["template"]
@@ -230,14 +239,13 @@ def test_bodies_are_built_only_from_the_committed_settings(ready):
         NAMES["worker"], labels, 1, 1)
     assert (task["serviceAccount"], task["timeout"], task["maxRetries"]) == (ACCOUNT.format("specimen-worker"), "3600s", 0)
     container = task["containers"][0]
-    assert container["args"] == ["--drain", "--max-seconds", "3300"]
+    assert container["args"] == ["--mode", "production", "--drain", "--max-seconds", "3300"]
     assert container["resources"] == {"limits": {"cpu": "1", "memory": "1Gi"}}
     worker_env, worker_secrets = env_of(container)
     assert worker_env == {**tracing, "LOGFIRE_SERVICE_NAME": "specimen-worker", **sql, "SPECIMEN_GCS_BUCKET": bucket, "SPECIMEN_SAM3_ENDPOINT": SAM_URL,
                           "SPECIMEN_SAM3_REVISION": SAM3_MODEL.revision, "SPECIMEN_APPROVED_INFERENCE": "true",
-                          "SPECIMEN_SAM3_CHECKPOINT_SHA256": "4" * 64}
+                          "SPECIMEN_WORKER_JOB": NAMES["worker"], "SPECIMEN_SAM3_CHECKPOINT_SHA256": S.SAM_CHECKPOINT_SHA256}
     assert worker_secrets == {"HF_TOKEN": ("huggingface-runtime-token", "2"), "LOGFIRE_TOKEN": ("specimen-worker-logfire", "1"),
-                              "SPECIMEN_GOOGLE_MAPS_API_KEY": ("specimen-google-maps-key", "1"),
                               "SPECIMEN_WORKER_ACTOR_UID": ("specimen-worker-actor-uid", "1"),
                               "SPECIMEN_COLLECTION_BINDINGS_JSON": ("specimen-collection-bindings", "1")}
     assert sql_endpoint_from_env(worker_env) == {"location": "us-east4", "service": "specimen-digitization-service",
@@ -498,10 +506,13 @@ def test_a_newer_deployed_commit_stops_the_release_before_any_change(tmp_path, m
     assert google.calls == ["login", "GET specimen-sam"] and google.bodies == [] and receipt["deployed"] == {}
 
 
-@pytest.mark.parametrize("setting,skipped", [('WORKER["args"]', {"worker"}), ("SAM_CHECKPOINT_SHA256", {"worker", "sam"})])
+@pytest.mark.parametrize("setting,skipped", [('WORKER["args"]', {"worker"}), ("SAM_SERVER_ENV", {"sam"}),
+                                             ("SAM_CHECKPOINT_SHA256", {"worker", "sam"})])
 def test_a_role_with_a_pending_setting_is_not_deployed_and_the_others_are(tmp_path, monkeypatch, ready, setting, skipped):
     if setting == "SAM_CHECKPOINT_SHA256":  # the worker carries the same digest as SAM 3, so both wait for it
         monkeypatch.setattr(S, "SAM_CHECKPOINT_SHA256", S.PENDING)
+    elif setting == "SAM_SERVER_ENV":  # only SAM 3 reads it
+        monkeypatch.setattr(S, "SAM_SERVER_ENV", S.PENDING)
     else:
         monkeypatch.setitem(S.WORKER, "args", S.PENDING)
     google = FakeGoogle()
