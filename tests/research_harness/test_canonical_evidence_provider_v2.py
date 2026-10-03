@@ -11,7 +11,7 @@ from dataclasses import asdict
 from types import SimpleNamespace
 
 import pytest
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
 from specimen_digitization.application.workflow import crop_bytes
 from specimen_digitization.application.domain import (
@@ -444,6 +444,53 @@ def test_sam3_region_crop_that_is_not_its_own_is_refused(native_capture_rig, mon
     assert f.rig.store._read(f.rig.durable_scope).state == before and len(f.rig.calls) == 1
 
 
+def derivative_case(f, *, readers_saw_derivative=True):
+    """A SAM 3 region in the coordinates of the asset's processing derivative.
+
+    The asset's original (a SAM 3 case image) and its derivative (the inverted image) differ,
+    so a crop cut from one is not the crop cut from the other. source_image decodes the
+    derivative, after checking its digest and the original's, for any asset that has one.
+    """
+    prior, original_crop = sam3_case(f)
+    encoded = io.BytesIO()
+    ImageOps.invert(quadrant_image()).save(encoded, format="JPEG", quality=95)
+    derivative = encoded.getvalue()
+    prior.asset.processing_derivative = {"blob_ref": f.graph.put(derivative), "original_sha256": prior.asset.sha256,
+        "derivative_sha256": hashlib.sha256(derivative).hexdigest(), "coordinate_space": prior.asset.pixel_basis}
+    crop = crop_bytes(f.graph, prior, prior.run.regions[0])
+    assert crop != original_crop
+    if readers_saw_derivative:
+        reading = prior.run.observations[0]
+        reading.input_crop_ref, reading.input_sha256 = f.graph.put(crop), hashlib.sha256(crop).hexdigest()
+    return prior, crop
+
+
+def test_sam3_region_on_a_derivative_asset_is_proved_by_the_derivative_pixels(native_capture_rig):
+    f = native_capture_rig
+    prior, crop = derivative_case(f)
+    assert prior.asset.processing_derivative and prior.run.regions[0].crop_ref is None
+    actual = asyncio.run(f.provider._native_inputs(f.rig.request, prior))[0]
+    assert actual.input_origin == "native_region_crop" and actual.input_ref == prior.run.observations[0].input_crop_ref
+    assert actual.input_sha256 == hashlib.sha256(crop).hexdigest() != prior.asset.sha256
+    assert f.graph.get(actual.input_ref) == crop and len(f.rig.calls) == 1
+
+
+@pytest.mark.parametrize("mutation", ["readers_saw_the_original", "derivative_digest_tampered",
+    "derivative_of_another_original"])
+def test_sam3_region_on_a_derivative_asset_needs_the_derivative_to_be_the_assets(native_capture_rig, mutation):
+    f = native_capture_rig
+    prior, crop = derivative_case(f, readers_saw_derivative=mutation != "readers_saw_the_original")
+    metadata = prior.asset.processing_derivative
+    if mutation == "derivative_digest_tampered":
+        metadata["derivative_sha256"] = hashlib.sha256(b"another derivative").hexdigest()
+    elif mutation == "derivative_of_another_original":
+        metadata["original_sha256"] = hashlib.sha256(b"another original").hexdigest()
+    before = copy.deepcopy(f.rig.store._read(f.rig.durable_scope).state)
+    with pytest.raises(PublicationUnavailable, match="canonical_capture_native_crop_unproved"):
+        asyncio.run(f.provider._native_inputs(f.rig.request, prior))
+    assert f.rig.store._read(f.rig.durable_scope).state == before and len(f.rig.calls) == 1
+
+
 def test_missing_original_body_or_request_envelope_has_no_refetch(native_capture_rig):
     f = native_capture_rig
     row = f.prepared.basis.receipts[0]
@@ -537,6 +584,20 @@ def test_equal_sha_explicit_crop_requires_exact_native_region_declaration_and_re
     with pytest.raises(PublicationUnavailable, match="canonical_capture_native_(crop|asset|input)_"):
         asyncio.run(provider._native_inputs(f.rig.request, prior))
     assert f.rig.store._read(f.rig.durable_scope).state == before and len(f.rig.calls) == 1
+
+
+def test_stored_crop_must_be_named_by_the_exact_reference_even_when_the_other_object_is_retained(native_capture_rig, tmp_path):
+    # Isolates the exact `input_crop_ref != region.crop_ref` comparison for a region that stores
+    # its crop: the other generation is retained and holds the same bytes, so only the reference
+    # differs and no later read or checksum check can refuse it.
+    f = native_capture_rig
+    prior, crop_ref, graph, repository, provider = equal_sha_crop_case(f, tmp_path)
+    other = prior.asset.blob_ref + ":43"
+    graph.retain(other, f.graph.get(prior.asset.blob_ref))
+    prior.run.observations[0].input_crop_ref = other
+    assert other != prior.run.regions[0].crop_ref == crop_ref
+    with pytest.raises(PublicationUnavailable, match="canonical_capture_native_crop_unproved"):
+        asyncio.run(provider._native_inputs(f.rig.request, prior))
 
 
 @pytest.mark.parametrize("mutation", ["missing_original_asset_declaration", "ambiguous_registered_crop",
