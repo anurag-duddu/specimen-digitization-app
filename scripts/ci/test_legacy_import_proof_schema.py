@@ -24,11 +24,13 @@ RETAINED_RAW_DDL_SHA256 = "6d53057be6e318984e5966bc3348601e211610df4615777c73f2c
 CURRENT_DDL_SHA256 = "753b929178c0b630abbd9f76e01d350f5bcecaa3fcab426774d815c76812b4d5"
 SCHEMA = gate.read_tree(ROOT / "dataconnect/schema")
 CONNECTOR = gate.read_tree(ROOT / "dataconnect/connector")
-SUBJECT_REFERENCE_COUNTS = {
-    "research_binding_v2.gql": 2,
-    "research_materialization_inputs_v2.gql": 1,
-    "research_publication_v2.gql": 1,
-}
+# The owner removed the import-proof requirement from these research
+# connectors on 2026-10-03; none of them may read the proof table again.
+RESEARCH_CONNECTORS = (
+    "research_binding_v2.gql",
+    "research_materialization_inputs_v2.gql",
+    "research_publication_v2.gql",
+)
 PROOF_FIELDS = {
     "organizationId": "UUID", "programKey": "String", "id": "UUID",
     "legacyCollectionId": "UUID", "legacyDocumentId": "UUID",
@@ -75,16 +77,14 @@ def test_additive_proof_restoration_changes_only_one_declared_physical_table():
     assert gate.check_additive(before, SCHEMA, CONNECTOR, CONNECTOR, relaxations={}) == []
 
 
-def test_current_i2_physical_table_and_proof_column_references_are_declared():
+def test_research_connectors_no_longer_read_the_proof_table():
     tables = gate.declared_sql(SCHEMA, {})[0]
-    proof_columns = {gate._sql(name, None) for name in PROOF_FIELDS}
-    for name, count in SUBJECT_REFERENCE_COUNTS.items():
+    for name in RESEARCH_CONNECTORS:
         text = CONNECTOR[name]
-        assert text.count("public." + PROOF_TABLE) == count
+        assert "public." + PROOF_TABLE not in text, name
+        assert not re.search(r"\b(?:authority|proof)\.[a-z_]\w*", text), name
         physical = set(re.findall(r"\b(?:FROM|JOIN|UPDATE|INTO)\s+public\.(\w+)", text, re.I))
         assert physical <= tables, (name, physical - tables)
-        referenced = set(re.findall(r"\b(?:authority|proof)\.([a-z_]\w*)", text))
-        assert referenced and referenced <= proof_columns, (name, referenced - proof_columns)
 
 
 def test_no_current_connector_writes_legacy_proof_rows():

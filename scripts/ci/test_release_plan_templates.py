@@ -59,10 +59,10 @@ CURRENT_DATA_SOURCE_FILES = {'dataconnect/connector/artifacts.gql': '4d4da17483f
  'dataconnect/connector/paging.gql': 'e1b9a90c5989cb602aaccddd2f19994b73aa0965cc5b28bea5282d59ced5b4bb',
  'dataconnect/connector/projection.gql': '00f887b0e9064f94418d7426e414106ba81362d0e992b7bfd066545ec7817da9',
  'dataconnect/connector/readiness.gql': 'ae5f7aedbb5c971894fd3a7e2726406bc2463b781a79d833deea5891ac56bfd9',
- 'dataconnect/connector/research_binding_v2.gql': '58d2159b9272eab374f8e44762f7baa10a2e3c0a761f356faebf1da4dc77165b',  # pragma: allowlist secret (connector file digest)
+ 'dataconnect/connector/research_binding_v2.gql': '9fb1c7ba31f0afa1167829e062fbe1af94f3eb01fc0e862cd9bb9101140d76bc',  # pragma: allowlist secret (connector file digest)
  'dataconnect/connector/research_harness.gql': 'e55b3694001f138029457d28f422e242da2dfe0f51af9631edb5c1d10b34e79f',
- 'dataconnect/connector/research_materialization_inputs_v2.gql': 'fcd991a489dadaa7e5ce512daa6bf0dd518bdc53ae1c23444c223e2c29a777ee',
- 'dataconnect/connector/research_publication_v2.gql': '3b080585703e3910582bf6604a40115288d41af6c035a8bbad22bb8b8ae51a10',  # pragma: allowlist secret (connector file digest)
+ 'dataconnect/connector/research_materialization_inputs_v2.gql': '109b1db27593a9a258f699e3c1d2d62a2b6c32f0531f17d310a27808f2efe6fc',  # pragma: allowlist secret (connector file digest)
+ 'dataconnect/connector/research_publication_v2.gql': 'd614e854342dc771a93b86c4295e213a729efe5eef56367591c71f02a28c1258',  # pragma: allowlist secret (connector file digest)
  'dataconnect/connector/scheduling.gql': 'c12e53ae48fa342deaa2479c4aeca0298b1caf7e2288550d81ec9796f38c51ef',
  'dataconnect/connector/search.gql': '4d344d2acfcc0566719268acff25472975c6136977aa31fde2c8ada29983d681',
  'dataconnect/connector/sensitivity.gql': '521774b8dcef9e0c0c1c43481ae19ad808aafbe08b32c3111e2287313cf1db1f',

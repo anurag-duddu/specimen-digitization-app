@@ -110,11 +110,6 @@ mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!
         AND attempt.collection_id=s.collection_id AND attempt.intent_id=intent.id AND attempt.preparation_id=prep.id
         AND attempt.operation_digest=intent.operation_digest AND attempt.preparation_digest=prep.preparation_digest
         AND attempt.admission_digest=prep.admission_digest
-      JOIN public.research_ledger_import_proof_v1 authority ON authority.organization_id=h.organization_id
-        AND authority.program_key=h.program_key AND authority.id=(h.state->'budget_policy'->>'import_receipt_id')::uuid
-      JOIN public.auxiliary_document legacy ON legacy.organization_id=authority.organization_id
-        AND legacy.collection_id=authority.legacy_collection_id AND legacy.id=authority.legacy_document_id
-        AND legacy.kind=authority.legacy_document_kind AND authority.legacy_document_kind='worker_cursor'
       JOIN public.organization_member om ON om.organization_id=s.organization_id AND om.uid=$4 AND om.active
       JOIN public.collection_member cm ON cm.organization_id=s.organization_id AND cm.collection_id=s.collection_id
         AND cm.uid=$4 AND cm.active AND cm.role IN ('operator','reviewer','manager','admin')
@@ -245,18 +240,10 @@ mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!
         AND h.revision=(c->>'state_revision')::integer AND h.state=c->'expected_state'
         AND h.state->>'contract_version'='research-durability/v1' AND h.state->>'program_key'=b.program_key
         AND (h.state->>'halted')::boolean=false
-        AND legacy.revision=authority.legacy_document_revision AND legacy.payload=authority.legacy_payload
-        AND authority.authority_complete AND authority.old_engine_quiescent AND authority.valid_until>statement_timestamp()
-        AND authority.ceiling_micro_usd<=12000000 AND authority.ceiling_micro_usd>0
-        AND authority.ledger_digest=h.state->'budget_policy'->>'external_ledger_digest'
-        AND authority.import_digest=h.state->'budget_policy'->>'import_digest'
-        AND authority.proof_digest=h.state->'budget_policy'->>'import_proof_digest'
-        AND authority.settled_micro_usd=(h.state->'budget_policy'->>'external_settled_micro_usd')::bigint
-        AND authority.held_micro_usd=(h.state->'budget_policy'->>'external_held_micro_usd')::bigint
-        AND authority.ceiling_micro_usd=(h.state->'budget_policy'->>'ceiling_micro_usd')::bigint
+        AND (h.state->'budget_policy'->>'ceiling_micro_usd')::bigint<=12000000
+        AND (h.state->'budget_policy'->>'ceiling_micro_usd')::bigint>0
         AND (h.state->'budget_totals'->>'settled_micro_usd')::bigint
-          +(h.state->'budget_totals'->>'held_micro_usd')::bigint+authority.lag_reserve_micro_usd
-          +authority.shared_reserve_micro_usd<=authority.ceiling_micro_usd
+          +(h.state->'budget_totals'->>'held_micro_usd')::bigint<=(h.state->'budget_policy'->>'ceiling_micro_usd')::bigint
         AND h.state->'jobs'->b.job_key->>'binding_digest'=b.runtime_binding_digest
         AND h.state->'jobs'->b.job_key->'pins'->>'input_digest'=b.input_digest
         AND h.state->'jobs'->b.job_key->'identity'=jsonb_build_object('organization_id',$1::text,
@@ -353,7 +340,7 @@ mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!
           OR h.state->'effects'->(r->>'effect_id')->>'request_digest' IS DISTINCT FROM r->>'request_digest'
           OR h.state->'effects'->(r->>'effect_id')->'receipt'->>'attempt_id' IS DISTINCT FROM r->>'attempt_id'
           OR h.state->'effects'->(r->>'effect_id')->'receipt'->'capture' IS DISTINCT FROM r->'capture')
-      FOR UPDATE OF s,b,h,authority,legacy
+      FOR UPDATE OF s,b,h
     ), native_facts AS (
       SELECT l.*,jsonb_build_object('record_versions',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'runId',r.run_id,'predecessorId',r.predecessor_id,'disposition',r.disposition,'policyVersion',r.policy_version,'reasonCodes',r.reason_codes,'summary',r.summary,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.record_version r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.run_id=l.canonical_run_id ORDER BY r.id LIMIT 4097) r),
         'resolved_fields',(SELECT COALESCE(jsonb_agg(jsonb_build_object('organizationId',r.organization_id,'collectionId',r.collection_id,'id',r.id,'recordVersionId',r.record_version_id,'candidateId',r.candidate_id,'fieldKey',r.field_key,'state',r.state,'fieldGroup',r.field_group,'createdAt',r.created_at) ORDER BY r.id),'[]'::jsonb) FROM (SELECT * FROM public.resolved_field r WHERE r.organization_id=$1 AND r.collection_id=$2 AND r.record_version_id IN (SELECT v.id FROM public.record_version v WHERE v.organization_id=$1 AND v.collection_id=$2 AND v.run_id=l.canonical_run_id) ORDER BY r.id LIMIT 4097) r),
