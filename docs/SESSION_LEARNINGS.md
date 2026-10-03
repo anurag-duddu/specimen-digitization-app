@@ -14161,3 +14161,54 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
 - Remaining follow-ups: whether the provider forwards property descriptions to the model, and whether the Qwen
   reader's malformed-answer rate falls (2 of 25 retries in the diagnosis), is Not confirmed until live runs; this is
   a reliability change, not a guarantee.
+
+### 2026-10-03 — Live fix: a first pass with no listed difference ignores verdicts (Claude)
+
+- Task: go-live live-fix (dispatched by the "Go-live coordinator" session from a read-only production diagnosis of
+  pilot position 10, region R1; no task ID recorded).
+- Branch/worktree: `claude/first-pass-zero-difference-verdicts` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a359dbbce86d26511`,
+  base `main` db855ad6.
+- Outcome: In progress. Pull request open and ready for review; not merged; nothing in it has run against
+  production or a paid model. It removes one deterministic failure path; that R1 then passes, and that R2 passes,
+  is Not confirmed.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/247; code commit d2dc8117.
+- Validation: with the new tests and the old `first_pass.py`, `tests/test_first_pass.py` gave 5 failed, 50 passed
+  (40 passed before the new tests); with the change, 55 passed. The regression test fails on the old code with
+  `AdapterFailure: model_malformed_response` after two requests. Run one file at a time with TZ=America/Chicago and
+  a UTF-8 locale: `test_first_pass_workflow.py` 26 passed before and after, `test_first_pass_bound.py` 7 passed,
+  `test_first_pass_privacy.py` 3 passed, `test_field_harness.py` 150 passed (after). `pre-commit` on the changed
+  files: all hooks passed. Not run: the full suite, `scripts/ci/verify.sh`, any live or paid model call.
+- Durable learnings:
+  - Readings that differ only in whitespace list no difference but still get a first pass (HARNESS.md section 4:
+    every region with two non-identical stored readings). `output_problems` took any verdict as a phantom when the
+    count was 0, so a zero-difference call could fail on verdict count alone; with count 0 the verdicts are now
+    ignored (`first_pass_direct` never reads them) and the pick, the reader letters and the notes are still checked.
+  - The downstream outcome for such a call needs no special case and did not change: the model's pick stands
+    verbatim (`g19_pick` has no material difference to hold against it), a null pick leaves the region unresolved
+    with both readings as `raw_reading` handoffs, and `verify_evidence` accepts either. The workflow test that shows
+    this (`test_a_whitespace_only_pair_is_decided_by_the_first_pass_pick_alone`) passes on the old code as well, so
+    it documents the outcome; it is not the regression test.
+  - The phantom-verdict rule, and the retry text "give exactly one verdict for each difference 1 to 0" it would
+    have sent, are the only things this changes. The failing sub-rule in production could not be proven: a call that ends
+    `model_malformed_response` records no raw responses (`run_agent_bounded` raises before `first_pass_direct`
+    builds the call's record), so the three failed answers are gone. The offline regression shows a verdict at count
+    0 alone reproduces the failure. Only that path is fixed: replayed offline at count 0, an omitted or null
+    `verdicts` (the field has no default), `reader_notes` sent as a JSON string, a missing note, an unknown pick and
+    an empty rationale each still end `model_malformed_response` after the change, as before it, so R1 may still
+    fail. An omitted or null `verdicts` is at least as plausible a production cause as the `reader_notes` string.
+  - `git checkout -b <branch> origin/main` sets the new branch's upstream to `origin/main`. With
+    `push.default=simple` a bare `git push` is refused (the upstream's name differs from the branch's); it would
+    push to main only under `push.default=upstream`. Either way, push with an explicit refspec
+    (`git push -u origin <branch>:<branch>`).
+- Failed approaches: none.
+- Remaining follow-ups: whether to skip the model for whitespace-only readings is a spec question for the owner (not
+  changed); the next live run of position 10 (R1 and R2) is the test of this fix; storing the raw responses of a call
+  that ends malformed would let the next diagnosis prove the failing rule (not done, it changes what a blocked call
+  records); tolerance for an omitted or null `verdicts` or a `reader_notes` JSON string is a possible follow-up, and
+  neither is a confirmed cause (the diagnosis's replay was offline); for the owner, the projection writer
+  (`projection.py`, `"alternatives": still_open if differences else list(transcript.alternatives)`) writes the
+  transcript's alternatives when no difference is listed, so a whitespace-only region with a first pass stores both
+  whitespace variants as alternatives with empty spans, which DATA_CONTRACT 4.2 (alternatives from the material
+  differences left `neither` or `uncertain`) does not describe; a zero-difference first pass never succeeded in
+  production before, so this path has not run there; no change was made.
