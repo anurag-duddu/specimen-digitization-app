@@ -5,8 +5,9 @@ record on country, state, county and city alike. These cases run the adapter's r
 recorded Evanston answer, put each candidate's id on the four geography fields of a run, and read
 the run back through the production projection (application.projection.writes: the field_candidate,
 resolved_field and record_version rows) and the public workspace JSON (application.api.workspace).
-The offline end-to-end test of the research harness has its own check of the rows a published
-record keeps (test_production_e2e.py, where the GEOLocate lookups run).
+The offline end-to-end test (test_production_e2e.py) runs no GEOLocate lookup on main yet, so it
+cannot show the rows a published research record keeps; this projection stands in for it until
+the end-to-end test runs them, and that test should then scan its fake tables the same way.
 """
 import json
 import re
