@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from enum import StrEnum
 from typing import Annotated, Literal
 
@@ -352,16 +353,17 @@ class PolicyException(FrozenRecord):
 def _geolocate_unresolved(item: SourceCoverageReceipt, field_key: FieldKey) -> bool:
     """A searched GEOLocate no_match or ambiguous outcome for a geography field.
 
-    Coordinator engineering call of 2026-10-03, citing the owner's rule that unresolved or
+    Coordinator engineering call of 2026-10-03, citing the owner's rule G6 that unresolved or
     unavailable data goes to the human queue with a reason: for this case only, "human questions
     need exhausted sources" is loosened. The outcome is scientific (GEOLocate answered and nothing
     agreed, or agreeing points lie far apart); outages stay FAILED, INACCESSIBLE or UNQUALIFIED and
-    remain operational blocks.
+    remain operational blocks. The receipt has no status field, so the adapter's reason leads with
+    the typed status; evidence.py requires every claimed receipt to equal a real broker receipt.
     """
     return (item.state == SourceCoverageState.SEARCHED and item.source_id == "geolocate"
             and field_key in {FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.COUNTY,
                               FieldKey.CITY, FieldKey.PRECISE_LOCATION}
-            and item.reason.partition(":")[0] in {"no_match", "ambiguous"})
+            and re.fullmatch(r"(?:no_match|ambiguous): \S.*", item.reason, re.DOTALL) is not None)
 
 
 class HumanQuestion(FrozenRecord):
@@ -373,8 +375,9 @@ class HumanQuestion(FrozenRecord):
 
     @model_validator(mode="after")
     def no_operational_review(self):
-        if not all(item.state == SourceCoverageState.EXHAUSTED or _geolocate_unresolved(item, self.field_key)
-                   for item in self.coverage):
+        # Either every strategy is exhausted, or every claim is a GEOLocate scientific outcome; never mixed.
+        if not (all(item.state == SourceCoverageState.EXHAUSTED for item in self.coverage)
+                or all(_geolocate_unresolved(item, self.field_key) for item in self.coverage)):
             raise ValueError("Human review requires exhausted available permitted strategies")
         if any(item.field_key != self.field_key for item in self.coverage):
             raise ValueError("Human coverage belongs to the same requested field")

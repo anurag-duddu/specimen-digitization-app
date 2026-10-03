@@ -13983,6 +13983,7 @@ Follow-ups: show coordinates on the research thread card (versioned thread contr
 ## 2026-10-03 Lane G: unresolved GEOLocate geography reaches a person (Claude)
 
 Task: go-live Lane G, coordinator ruling 7 (option a1); branch claude/live-g-geography-review stacked on #237 (head aa20d1cb). HumanQuestion now accepts SEARCHED coverage only for a geography field whose claimed receipts are all GEOLocate no_match or ambiguous outcomes (the coverage reason leads with the typed status); every outage (timeout, 403, 429, 500, malformed, not ready, no adapter, refused query) still fails "exhausted" and stays an operational block. The historian prompt sends those outcomes to waiting_human with the field's GEOLocate receipts. No change to evidence.py, domain.py, canonical_projection.py, the materializer disposition lines or SQL; the existing materializer treats waiting_human as terminal with a human reason. Validation actually run: research-harness and lab suites 1240 passed, 10 skipped; the new routing test fails on #237's contracts.py. Not confirmed: an end-to-end record reaching Needs human review, because verbatim_dts is still waiting_policy for every record (assigned to Lane H).
+
 ## 2026-10-03 — Lane W: worker and SAM runtime for Phase A (Claude)
 
 Task: go-live Lane W (coordinator session "Go-live coordinator"), branch claude/live-w-worker-sam-runtime, worktree .claude/worktrees/festive-murdock-85bece, base main 2f85b429, PR #236. No production command was run from this session; ops scripts are for the coordinator.

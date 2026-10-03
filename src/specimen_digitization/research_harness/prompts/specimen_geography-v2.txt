@@ -43,15 +43,17 @@ requests and 12 tool calls.
 - no_match: not validated; coverage.reason says why.
 - policy_blocked naming a query_text or place-text defect: correct it once. Other unavailable,
   failed or timed-out results are not absence; apply the common rules.
-Unresolved goes to a person: when a field's GEOLocate queries end in no_match or
-ambiguous and none succeeded, work_state waiting_human, value.state unresolved
+Unresolved goes to a person. This is an exception to the common rule that a
+human question needs exhausted sources, for GEOLocate geography outcomes only:
+when every GEOLocate lookup for a field ended in no_match or ambiguous and none
+succeeded, work_state waiting_human, value.state unresolved
 (ambiguous for ambiguous), value.literal as written, no parsed, normalized or
 authority_id, and question: field_key, question (what a person should decide),
 reason scoped_absence for no_match or semantic_ambiguity for ambiguous, coverage
 exactly that field's GEOLocate coverage receipts as returned, evidence_ids their
-evidence ids. Abstain with work_state waiting_source, same value rules, when the
-label does not support a value or a lookup failed, timed out or was refused:
-those are operational, never a human question. Each reason says what is known,
+evidence ids. If any lookup for that field failed, timed out or was refused, or
+the label does not support a value, abstain with work_state waiting_source, same
+value rules: operational, never a human question, even beside a no_match. Each reason says what is known,
 what was tried and why it is not enough. Never present an unvalidated
 interpretation as a value.
 precise_location keeps the label's locality text exactly as written (value_layer
@@ -61,8 +63,9 @@ mapped to "supports". Propose county or city only
 when the label names it; an unnamed unit needs qualified boundaries with the
 uncertainty wholly inside one unit (G37), which one GEOLocate point does not
 show. Each reason: verbatim cited, modern place and hierarchy, reasoning, rejected
-alternatives, confidence, GEOLocate outcome; under 600 characters, so all results
-fit one response of at most 4096 tokens. source_coverage may stay empty; the run
+alternatives, confidence, GEOLocate outcome; under 300 characters. Make one
+GEOLocate lookup per field (a policy_blocked correction records no receipt), so
+all five results, each echoing its receipt, fit one response of 4096 tokens. source_coverage may stay empty; the run
 records each receipt. Report no coordinate uncertainty: computed in-house (D13),
 never from GEOLocate. Use no other geocoder or map service. Cite only qualified
 sources; Mapcarta is registered but unqualified. field_museum_ipt exact joins

@@ -8,6 +8,7 @@ import asyncio
 import hashlib
 import inspect
 import json
+import re
 from pathlib import Path
 
 import httpx
@@ -67,10 +68,10 @@ LABEL_321 = "10-6-78-la\nE. slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.\nF.G
 LABEL_330 = "IV-29-68-a\nYepocapa, 4800 ft.\nChimaltenango\nGuatemala, IV-25\n1948, R.D. Mitchell"
 
 
-def geography_request(registry=REGISTRY, fragments=(), events=(), assemblies=()):
+def geography_request(registry=REGISTRY, fragments=(), events=(), assemblies=(), scope=SCOPE):
     prompt = resolve_prompt(SpecialistRole.GEOGRAPHY, profile_digest=PIN, source_registry_digest=registry.digest,
                             toolset_digest=PIN, model_route="harness-deepseek", output_schema_digest=PIN)
-    return SpecialistRequest(scope=SCOPE, role=SpecialistRole.GEOGRAPHY,
+    return SpecialistRequest(scope=scope, role=SpecialistRole.GEOGRAPHY,
                              field_keys=ROLE_FIELDS[SpecialistRole.GEOGRAPHY], prompt=prompt,
                              fragments=tuple(fragments), events=tuple(events), assemblies=tuple(assemblies))
 
@@ -527,6 +528,16 @@ def timed_out(url, policy):
     raise httpx.ReadTimeout("slow")
 
 
+PARTLY_QUALIFIED = insects_registry(qualification_overrides={"geolocate": {"qualification_state": "searched"}})
+
+
+async def held_effect(request, tool_id, arguments, invoke):
+    return ToolReceipt(id="receipt", scope=request.scope, tool_id=tool_id, source_id=arguments["source_id"],
+                       field_keys=(arguments["field_key"],), effect_id="effect", attempt_ids=("attempt",),
+                       request_digest=digest(arguments), binding_digest=digest(request.scope),
+                       outcome="timeout", effect_status="held_unknown")
+
+
 @pytest.mark.parametrize("outage", [
     lambda: lookup_body(b"busy", code=429),
     lambda: lookup_body(b"forbidden", code=403),
@@ -544,6 +555,21 @@ def timed_out(url, policy):
         SourceQuery(source_id="mapcarta", field_key=FieldKey.CITY, query_text="Yepocapa"))),
     # A refused query (not place text) is operational too.
     lambda: lookup_body(b"", interpretation={**YEPOCAPA, "locality": "Yepocapa, 4800 ft."}),
+    lambda: lookup_body(b"unauthorized", code=401),
+    # Not ready although marked searched: the real receipt is SEARCHED with a POLICY status.
+    lambda: asyncio.run(SourceBroker(PARTLY_QUALIFIED, transport=FixtureSourceTransport(timed_out),
+                                     effect_dispatch=completed_effect).query(
+        geography_request(PARTLY_QUALIFIED), query(FieldKey.CITY, YEPOCAPA, "Yepocapa"))),
+    # The durable effect outcome is held unknown.
+    lambda: asyncio.run(SourceBroker(REGISTRY, transport=FixtureSourceTransport(timed_out), effect_dispatch=held_effect)
+                        .query(geography_request(), query(FieldKey.CITY, YEPOCAPA, "Yepocapa"))),
+    # A sensitive specimen is never disclosed to a source.
+    lambda: asyncio.run(SourceBroker(REGISTRY, transport=FixtureSourceTransport(timed_out), effect_dispatch=completed_effect)
+                        .query(geography_request(scope=SCOPE.model_copy(update={"sensitive": True})),
+                               query(FieldKey.CITY, YEPOCAPA, "Yepocapa"))),
+    # No durable effect dispatcher.
+    lambda: asyncio.run(SourceBroker(REGISTRY, transport=FixtureSourceTransport(timed_out))
+                        .query(geography_request(), query(FieldKey.CITY, YEPOCAPA, "Yepocapa"))),
 ])
 def test_an_outage_never_produces_a_human_question(outage):
     result = outage()
@@ -561,3 +587,57 @@ def test_only_geolocate_geography_outcomes_are_loosened():
                                          source_version="v", coverage_limit="bounded", reason="no_match: none")
         with pytest.raises(ValidationError, match="exhausted"):
             HumanQuestion(field_key=field_key, question="?", reason="scoped_absence", coverage=(searched,))
+
+
+def receipt(source_id="geolocate", state=SourceCoverageState.SEARCHED, reason="no_match: GEOLocate returned 2 match(es)"):
+    return SourceCoverageReceipt(source_id=source_id, field_key=FieldKey.CITY, state=state, source_version="v",
+                                 coverage_limit="bounded", reason=reason)
+
+
+def asks(*coverage):
+    return HumanQuestion(field_key=FieldKey.CITY, question="?", reason="scoped_absence", coverage=coverage)
+
+
+def test_the_loosened_rule_admits_only_typed_geolocate_outcomes_never_mixed():
+    assert asks(receipt()).coverage == (receipt(),)
+    assert asks(receipt(reason="ambiguous: GEOLocate is ambiguous for 'Yepocapa'")).reason == "scoped_absence"
+    refused = [
+        receipt(source_id="mapcarta"),
+        # A spoofed scientific reason on an outage receipt.
+        *(receipt(state=state) for state in (SourceCoverageState.FAILED, SourceCoverageState.INACCESSIBLE,
+                                             SourceCoverageState.UNQUALIFIED, SourceCoverageState.NOT_ATTEMPTED,
+                                             SourceCoverageState.SCHEMA_ONLY)),
+        *(receipt(reason=reason) for reason in ("no_match", "no_match:", "no_match: ", "ambiguous",
+                                                "success: GEOLocate confirms 'Yepocapa'", "policy_blocked: x",
+                                                "Source endpoint/schema/terms/version qualification incomplete")),
+    ]
+    for item in refused:
+        with pytest.raises(ValidationError, match="exhausted"):
+            asks(item)
+    exhausted = SourceCoverageReceipt(
+        source_id="field_museum_ipt", field_key=FieldKey.CITY, state=SourceCoverageState.EXHAUSTED, source_version="v",
+        qualification_digest=PIN, exact_join_attempted=True, query_digest=PIN, receipt_ids=("source:exact",),
+        coverage_limit="Only this pinned publisher occurrence search/term", reason="no_match")
+    assert asks(exhausted).coverage == (exhausted,)
+    with pytest.raises(ValidationError, match="exhausted"):
+        asks(exhausted, receipt())
+    with pytest.raises(ValidationError, match="exhausted"):
+        asks(receipt(), receipt(state=SourceCoverageState.FAILED, reason="timeout"))
+
+
+def test_five_human_questions_echoing_their_receipts_fit_one_response():
+    # The prompt's budget: one GEOLocate lookup per field, reasons under 300 characters, 4096 tokens
+    # per reply. Conservative estimate: two characters per token for hex digests, three otherwise.
+    request = assembled_request(MCKINLEY_LABEL)
+    unmatched = lookup("mckinley-modern.json", FieldKey.PRECISE_LOCATION, MCKINLEY, MCKINLEY_LABEL, request)
+    asked = HumanQuestion(
+        field_key=FieldKey.PRECISE_LOCATION, reason="scoped_absence", coverage=(unmatched.coverage,),
+        question="Which modern place is 'E. slope Mt. McKinley, Davao Prov.'? GEOLocate holds none on Mindanao.",
+        evidence_ids=tuple(item.id for item in unmatched.evidence))
+    waiting = FieldResolution(
+        field_key=FieldKey.PRECISE_LOCATION, work_state=WorkState.WAITING_HUMAN, question=asked,
+        value=FieldValue(state=ValueState.UNRESOLVED, literal=MCKINLEY_LABEL), evidence_ids=asked.evidence_ids,
+        reason="r" * 299).model_dump_json()
+    hex_characters = sum(len(item) for item in re.findall(r"[0-9a-f]{32,}", waiting))
+    tokens = hex_characters / 2 + (len(waiting) - hex_characters) / 3
+    assert 5 * tokens + 100 <= 4096
