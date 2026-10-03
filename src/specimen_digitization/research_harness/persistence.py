@@ -12,8 +12,10 @@ import copy
 import hashlib
 import json
 import os
+import random
 import re
 import sqlite3
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +29,11 @@ MAX_STATE_BYTES = 900_000
 # so it must outlast a whole window: the research phase of the roles in it and the
 # publication of everything they committed, a few hundred Data Connect round trips.
 MAX_LEASE_TTL_SECONDS = 900
+# A lost compare-and-swap waits a random time before it re-reads: up to 10 ms the first
+# time, doubling each retry, never more than 0.5 s. Specialists in one window lose the swap
+# to each other; with no wait they retry in lockstep.
+CAS_PAUSE_FIRST_SECONDS = 0.01
+CAS_PAUSE_MAX_SECONDS = 0.5
 
 
 def canonical(value: Any) -> bytes:
@@ -357,7 +364,7 @@ class ResearchStore:
         return doc
 
     def _mutate(self, scope: DurabilityScope, reducer: Callable[[dict[str, Any], float], Any], *, lease: Lease | None = None, review_required: bool = False, force_cas: bool = False) -> Any:
-        for _ in range(self.max_cas_retries):
+        for attempt in range(self.max_cas_retries):
             doc = self._read(scope)
             state = copy.deepcopy(doc.state)
             result = reducer(state, doc.server_time)
@@ -370,6 +377,8 @@ class ResearchStore:
                 self.backend.cas(scope, self.program_key, doc.revision, state, valid_until=lease.expires_at if lease else None, review_required=review_required)
                 return result
             except CasConflict:
+                if attempt + 1 < self.max_cas_retries:
+                    time.sleep(random.uniform(0, min(CAS_PAUSE_MAX_SECONDS, CAS_PAUSE_FIRST_SECONDS * 2 ** attempt)))
                 continue
         raise CasConflict("Bounded SQL rebase limit exceeded")
 

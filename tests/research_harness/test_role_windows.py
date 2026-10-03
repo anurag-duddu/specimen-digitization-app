@@ -84,3 +84,21 @@ def test_no_two_roles_can_run_the_same_source():
         assert runnable_sources(role) == set(), role
     for first, second in combinations(SpecialistRole, 2):
         assert not runnable_sources(first) & runnable_sources(second), (first, second)
+
+
+@pytest.mark.parametrize("remaining,reservation,window", [
+    (500_000, 100_000, 2),    # room for five requests: the full window
+    (200_000, 100_000, 2),    # exactly two reservations
+    (199_999, 100_000, 1),    # one micro-USD short of two
+    (100_000, 100_000, 1),    # exactly one
+    (50_000, 100_000, 1),     # not even one: the window is one role (its request is refused as it is today)
+    (0, 100_000, 1),
+    (10 ** 9, 100_000, 2),    # never above the committed constant
+])
+def test_a_window_is_no_wider_than_the_allowance_can_reserve_for(remaining, reservation, window):
+    assert role_windows.window_size(remaining, reservation) == window
+
+
+def test_the_window_follows_the_constant_when_it_is_changed(monkeypatch):
+    monkeypatch.setattr(role_windows, "ROLE_CONCURRENCY", 1)
+    assert role_windows.window_size(10 ** 9, 100_000) == 1

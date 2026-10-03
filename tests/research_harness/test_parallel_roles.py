@@ -24,15 +24,28 @@ from pydantic_ai.models.function import FunctionModel
 import production_e2e_support as support
 from specimen_digitization.application.workflow import OperationalBlock
 from specimen_digitization.research_harness import engine as engine_mod
+from specimen_digitization.research_harness import production_runtime, provisioning
+from specimen_digitization.research_harness.committed_pins import (
+    build_committed_pins, committed_run_cost_limit_micros,
+)
 from specimen_digitization.research_harness.agents import SpecialistHarness
-from specimen_digitization.research_harness.persistence import ResearchStore
+from specimen_digitization.research_harness.persistence import BudgetPolicy, ResearchStore
 from specimen_digitization.research_harness.workflow_bridge import compose_production_research_workflow
 
 from test_production_e2e import SWITCH_ON, build_rig, no_network, supervised, to_plan  # noqa: F401
 
 SHIPPED_WINDOW = True  # conftest: this module runs role_windows.ROLE_CONCURRENCY, not one role per window
-RESERVATION = 107_725
 TICKS = {}
+
+
+def committed_reservation():
+    """What one model request reserves: the committed pin, derived from the route price and output cap."""
+    pins = build_committed_pins(support.published_profile(), organization_id=support.ORG,
+        collection_id=support.COLLECTION)
+    return pins["model"]["specimen_taxonomy"]["reservation_micro_usd"]
+
+
+RESERVATION = committed_reservation()
 
 
 def forced_windows(monkeypatch, k):
@@ -74,10 +87,11 @@ def answers_nothing(messages, info):
     return ModelResponse([ToolCallPart(info.output_tools[0].name, {"role": "specimen_geography", "resolutions": []})])
 
 
-def tick(tmp_path, k, *, replace=None, key=None):
+def tick(tmp_path, k, *, replace=None, ceiling=None, key=None):
     """One plan tick of the synthetic specimen with k roles per window; the observed facts.
 
-    k None: the production composer as shipped (the window size role_windows.ROLE_CONCURRENCY gives it)."""
+    k None: the production composer as shipped (the window size role_windows.ROLE_CONCURRENCY gives it).
+    ceiling: the run's allowance in micro-USD (the published profile's is 500,000)."""
     if key is not None and key in TICKS:
         return TICKS[key]
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -85,6 +99,11 @@ def tick(tmp_path, k, *, replace=None, key=None):
     with pytest.MonkeyPatch.context() as mp, contextlib.contextmanager(build_rig)(tmp_path) as rig:
         if k is not None:
             forced_windows(mp, k)
+        if ceiling is not None:
+            def policy(profile):
+                return BudgetPolicy(ceiling, live_authorized=True, hold_reason=None)
+            mp.setattr(production_runtime, "research_budget_policy", policy)
+            mp.setattr(provisioning, "research_budget_policy", policy)
         original_engine = engine_mod.ResearchEngine.run
 
         async def run(self, **kwargs):
@@ -192,9 +211,10 @@ def test_two_roles_per_window_publish_what_one_role_per_window_publishes(tmp_pat
         ["geography", "taxonomy"], ["measurement", "temporal"], ["collection", "parties"]]
 
 
-def test_a_window_reserves_two_requests_at_a_time_inside_the_half_dollar_ceiling(tmp_path):
+def test_a_window_reserves_two_requests_at_a_time_inside_the_run_allowance(tmp_path):
     two = tick(tmp_path / "two", None, key="shipped")
-    assert two["ceiling"] == 500_000
+    # The published profile's run allowance (USD 0.5 today); two reservations are a fraction of it.
+    assert two["ceiling"] == committed_run_cost_limit_micros(support.published_profile())
     # Two roles' first requests are in flight together: two reservations held, never more, never refused.
     assert two["peak_held"] == 2 * RESERVATION < two["ceiling"]
     assert not two["refusals"] and not two["halted"] and two["held_after"] == 0
@@ -235,3 +255,26 @@ def test_a_held_unknown_model_effect_still_blocks_every_publication_of_the_run(t
     assert one["effects"][("model", "held_unknown")] == 1 and one["publications"] == []
     assert one["outcome"] == "OperationalBlock(research_worker_custody_requires_reconciliation)"
     assert one["work_states"]["city"] == "pending"
+
+
+def test_a_window_never_runs_more_roles_than_the_run_can_reserve_for(tmp_path):
+    """Each running role holds one request's reservation. With an allowance that fits one reservation
+    but not two, two concurrent roles would see the second refused (BudgetExceeded, its fields lost
+    as operational_failed); the window is narrowed to one role instead, and the run completes."""
+    one = tick(tmp_path / "one", 1, key="k1")
+    short = tick(tmp_path / "short", None, ceiling=RESERVATION * 19 // 10, key="short")
+    assert RESERVATION < short["ceiling"] < 2 * RESERVATION
+    assert {(run["role_limit"], run["max_concurrency"]) for run in short["engine_runs"]} == {(1, 1)}
+    assert [len(run["roles"]) for run in short["engine_runs"]] == [1] * 6 and short["peak_roles"] == 1
+    assert not short["refusals"] and short["held_after"] == 0 and not short["halted"]
+    assert (short["stage"], short["disposition"]) == ("finalized", "needs_human_review")
+    assert sorted(short["publications"]) == sorted(one["publications"])
+    assert short["work_states"] == one["work_states"]
+
+
+def test_an_allowance_for_two_reservations_keeps_the_two_role_window(tmp_path):
+    two = tick(tmp_path / "two", None, ceiling=RESERVATION * 5 // 2, key="enough")
+    assert 2 * RESERVATION <= two["ceiling"] < 3 * RESERVATION
+    assert [len(run["roles"]) for run in two["engine_runs"]] == [2, 2, 2]
+    assert two["peak_held"] == 2 * RESERVATION and not two["refusals"] and two["held_after"] == 0
+    assert (two["stage"], two["disposition"]) == ("finalized", "needs_human_review")

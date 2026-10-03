@@ -197,7 +197,8 @@ class NativeResearchRuntimeFactory:
         tools, _ = build_captured_research_services_v2(repository=self.repository,
             effect_broker=effects, scope=scope, lease=lease, registry=registry,
             policies=capture_policies, transport=transport, execution_class=execution_class)
-        window = role_windows.ROLE_CONCURRENCY
+        window = role_windows.window_size(budget["remaining_micro_usd"],
+            max(binding.reservation_micro_usd for binding in bindings.values()))
         engine = build_research_engine(profile=profile, requests=requests,
             store=store, scope=scope, lease=lease, blobs=self.blobs, tool_broker=tools,
             bindings=bindings, settings=job["pins"]["settings"], source_pins=source_pins,
