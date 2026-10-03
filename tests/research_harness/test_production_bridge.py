@@ -281,7 +281,7 @@ def test_open_holds_when_the_committed_pins_changed(opened, monkeypatch):
     real = production_runtime.build_committed_pins
     def changed(*args, **kwargs):
         pins = real(*args, **kwargs)
-        return {**pins, "settings": {"max_tokens": 4096}}
+        return {**pins, "settings": {"max_tokens": 1024}}
     monkeypatch.setattr(production_runtime, "build_committed_pins", changed)
     with pytest.raises(HeldUnknown, match="research_committed_pins_changed"):
         opened.open(opened.factory())
@@ -353,7 +353,7 @@ def test_a_job_pinned_before_the_pins_changed_is_held_as_its_record(opened, monk
     from specimen_digitization.research_harness import production_runtime
     real = production_runtime.build_committed_pins
     monkeypatch.setattr(production_runtime, "build_committed_pins",
-        lambda *args, **kwargs: {**real(*args, **kwargs), "settings": {"max_tokens": 4096}})
+        lambda *args, **kwargs: {**real(*args, **kwargs), "settings": {"max_tokens": 1024}})
     built = opened.factory()
 
     class Opening:
