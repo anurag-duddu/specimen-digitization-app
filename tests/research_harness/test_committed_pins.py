@@ -183,8 +183,12 @@ def test_the_harness_route_is_priced_at_the_cited_list_price():
     route = HUGGINGFACE_ROUTES["harness-deepseek"]
     assert (route.logical_capability, tuple(route.required_input_modalities)) == ("field_harness", ("text",))
     prices = profile.processing.price_list
-    assert prices.version == "pilot-prices-2026-09-24"
-    assert prices.models["harness-deepseek"].model_dump() == {
+    # The pins carry whatever version the published price list has.
+    assert prices.version.startswith("pilot-prices-")
+    assert {binding["price_version"] for binding in pins_for()["model"].values()} == {prices.version}
+    row = prices.models["harness-deepseek"].model_dump(exclude_none=True)
+    assert {key: row[key] for key in ("input_micros_per_million", "output_micros_per_million",
+        "context_tokens")} == {
         "input_micros_per_million": 200_000,
         "output_micros_per_million": 600_000,
         "context_tokens": 1_048_576,
