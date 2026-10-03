@@ -147,9 +147,26 @@ def user_request(instance, action):
         return "POST", resource, {"body": {"name": INITIALIZER_SQL, "type": "CLOUD_IAM_SERVICE_ACCOUNT",
                                            "databaseRoles": ["cloudsqlsuperuser"]}}
     if action == "revoke":
-        return "PUT", resource, {"params": {"name": INITIALIZER_SQL, "revokeExistingRoles": "true"}, "body": {}}
+        return "PUT", resource, {"params": {"name": INITIALIZER_SQL, "revokeExistingRoles": "true"},
+                                 "body": {"name": INITIALIZER_SQL, "type": "CLOUD_IAM_SERVICE_ACCOUNT"}}
     require(action == "delete", "unknown user action")
     return "DELETE", resource, {"params": {"name": INITIALIZER_SQL}}
+
+
+def initializer_user_detail(google, instance):
+    """Read roles from the exact user detail after complete-list presence."""
+    require(instance in (SOURCE, CLONE), "unowned initializer user detail target")
+    deadline = google.sql_read_deadline
+    require(time.time() < deadline, "initializer role detail has no remaining observation time")
+    with stage("google.sql-initializer-user-detail"):
+        user = google.request("sql", "GET", f"projects/{PROJECT}/instances/{instance}/users/{INITIALIZER_SQL}",
+                              params={"host": ""})
+    require(time.time() < deadline, "initializer role detail exceeded its original observation deadline")
+    require(user.get("name") == INITIALIZER_SQL and user.get("type") == "CLOUD_IAM_SERVICE_ACCOUNT"
+            and user.get("instance") == instance and user.get("project") == PROJECT and user.get("host") == "",
+            "native initializer user detail identity differs")
+    require(time.time() < deadline, "initializer role detail acceptance exceeded its original observation deadline")
+    return user
 
 
 def recovery_receipt(packet, plan, native, now):
@@ -360,6 +377,9 @@ def validate_request(api, method, resource, body, params, *, gate=False):
     require(api == "sql", "initializer has no other Google API effects")
     for instance in (SOURCE,) if gate else (SOURCE, CLONE):
         prefix = f"projects/{PROJECT}/instances/{instance}"
+        if method == "GET" and resource == prefix + "/users/" + INITIALIZER_SQL:
+            require(body is None and params == {"host": ""}, "unexpected named initializer detail parameters")
+            return
         if method == "GET" and resource in (prefix, prefix + "/users", prefix + "/databases", prefix + "/databases/" + DATABASE):
             require(body is None and (params is None or resource.endswith('/users') and set(params) <= {"pageToken"}), "unexpected initializer read parameters")
             return
@@ -465,6 +485,8 @@ def initialize_targets(google, plan, directory, recovery, output, *, prepared_in
         created[instance] = operation
         data.wait_sql(google, operation, maximum_seconds=max(1, deadline - time.time() - 60))
         user = observe(lambda: own_user(instance), lambda u: u is not None, deadline)
+        require(user.get("type") == "CLOUD_IAM_SERVICE_ACCOUNT", "native initializer identity differs")
+        user = initializer_user_detail(google, instance)
         require(user.get("type") == "CLOUD_IAM_SERVICE_ACCOUNT" and user.get("databaseRoles") == ["cloudsqlsuperuser"],
                 "native initializer identity or assigned role differs")
         native(directory, instance, "capability", files=files, deadline=deadline,
@@ -496,7 +518,7 @@ def initialize_targets(google, plan, directory, recovery, output, *, prepared_in
         operation_proof(operation, instance, "UPDATE_USER", recovery)
         state["step"] = "observe_role_revocation"
         data.wait_sql(google, operation, maximum_seconds=max(1, deadline-time.time()))
-        observe(lambda: own_user(instance), lambda u: u is not None and u.get("databaseRoles", []) == [], deadline)
+        observe(lambda: initializer_user_detail(google, instance), lambda u: u.get("databaseRoles", []) == [], deadline)
         state["api_roles_empty"] = True
         state["step"] = "verify_native_privilege_removal"
         native(directory, instance, "clean", files=files, deadline=deadline)
@@ -718,7 +740,8 @@ def dispose_initializer_target(google, instance, recovery, journals, directory, 
                 poll(operation)
                 if action == "revoke":
                     acknowledged_updates[operation["name"]] = operation
-                    observe(users, lambda value: value is not None and value.get("databaseRoles", []) == [], deadline)
+                    observe(users, lambda value: value is not None, deadline)
+                    observe(lambda: initializer_user_detail(google, instance), lambda value: value.get("databaseRoles", []) == [], deadline)
                     check("disposal-check")
                 else:
                     observe(users, lambda value: value is None, deadline)
@@ -811,6 +834,8 @@ def _initialize_existing(google, directory, output):
     with http_stage("google.sql-initializer-operation-poll"):
         data.wait_sql(google, operation, maximum_seconds=max(1, deadline - time.time() - 60))
     user = observe(lambda: own_principal(google), lambda value: value is not None, deadline)
+    require(user.get("type") == "CLOUD_IAM_SERVICE_ACCOUNT", "native initializer identity differs")
+    user = initializer_user_detail(google, SOURCE)
     require(user.get("type") == "CLOUD_IAM_SERVICE_ACCOUNT" and user.get("databaseRoles") == ["cloudsqlsuperuser"],
             "native initializer identity or assigned role differs")
     result = once(directory, "roles-create-" + SOURCE, lambda: native(directory, SOURCE, "initialize", files=fingerprints(),

@@ -117,7 +117,8 @@ def test_role_replacement_uses_query_parameters_and_never_additive_body_roles():
     module = init_module()
     method, resource, kwargs = module.user_request(data.CLONE, "revoke")
     assert method == "PUT" and resource.endswith(data.CLONE + "/users")
-    assert kwargs == {"params": {"name": module.INITIALIZER_SQL, "revokeExistingRoles": "true"}, "body": {}}
+    assert kwargs == {"params": {"name": module.INITIALIZER_SQL, "revokeExistingRoles": "true"},
+                      "body": {"name": module.INITIALIZER_SQL, "type": "CLOUD_IAM_SERVICE_ACCOUNT"}}
     method, resource, kwargs = module.user_request(data.CLONE, "create")
     assert method == "POST"
     assert kwargs["body"]["databaseRoles"] == ["cloudsqlsuperuser"]
@@ -233,6 +234,9 @@ def test_actual_initializer_orchestrator_proves_clone_cleanup_before_source(tmp_
                 if resource.endswith('/operations'):
                     return {'items':[op for op in self.operations if op['targetId']==kw['params']['instance']]}
                 if resource.endswith('/users'):return {'items':[self.user[instance]] if instance in self.user else []}
+                if resource.endswith('/users/'+module.INITIALIZER_SQL):
+                    assert kw.get('params')=={'host':''} and instance in self.user
+                    return {**self.user[instance],'instance':instance,'project':module.PROJECT,'host':''}
                 if '/databases/' in resource:return self.databases.get(instance)
                 if instance==data.CLONE:return {'name':data.CLONE,'createTime':native_recovery()['create_time'],
                     'settings':{'userLabels':{'release-run':'123','purpose':'isolated-restore-rehearsal'}}}
