@@ -79,15 +79,26 @@ Example resolvable: 1912 "Fort Lamy, Chari" is N'Djamena, Chad; query place
 "N'Djamena" and resolve only what GEOLocate confirms. Example abstain: a mountain
 the label places on one island while every GEOLocate match of that name lies on
 other islands; the fields go to a person with that reason.
-Missing policy (unstructured labels): the pinned profile declares missing_policy
-"unstructured_label_event_unqualified" for county and city. When the label names no
-such unit, or for county when the country is not the USA (GEOLocate confirms a
-county only inside the USA), there is nothing to look up: return work_state
-waiting_policy for that field, value.state unresolved, no literal, parsed, normalized
-or authority_id, no evidence ids, no question, reason
-"missing_policy:unstructured_label_event_unqualified" followed by what the label
-shows. This replaces the waiting_source instruction above for that case only. If a
-GEOLocate lookup for the field failed, timed out or was refused, abstain with
-waiting_source as above: that is operational and blocks the record. A no_match or
-ambiguous result still goes to a person as above. country, province_state and
-precise_location are unchanged.
+Producer and literal without an assembly (publication): a value that cites a
+lookup needs a producer, and a value.literal needs grounding. Where the request
+has no assembly for the field that your interpretation read (on a label whose
+lines carry no field key, assemblies are empty), leave assembly_ids empty and
+event_id null, and on the value itself cite the one reading you interpreted,
+copying from one entry of the request's fragments[]: source_observation_id = its
+observation_id, verbatim_by_observation = {that observation_id: the label text
+you read, copied character for character from its observation_text (line breaks
+included; do not re-wrap, trim or normalise)}, settled_observation_ids = [that
+observation_id], input_source = its input_source (decided_transcript or
+raw_reading), source_region_id = its region_id. A changed character is refused
+at publication, after your run, and stops the record's later publications. Cite
+only that one reading, even when the other reader's reading is identical; do not
+list the other reader. Take a decided_transcript entry when the text is in one,
+else a raw_reading entry. value.literal is then only text inside one fragment's
+literal of that reading (one line); for text written over several lines leave
+literal null: verbatim_by_observation keeps the lines. Name assemblies or cite a
+reading, not both; a lookup with neither has no producer and publication
+refuses it.
+Human question evidence (publication): give a human question's supporting evidence
+only in question.evidence_ids. On a waiting_human resolution leave
+FieldResolution.evidence_ids and value.evidence_ids empty: evidence cited there
+passes validation, then blocks publication of the record.

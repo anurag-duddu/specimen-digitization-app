@@ -495,6 +495,12 @@ APP = condition("specimen_application_objects", 'resource.name.startsWith("proje
 SLIDES = condition("specimen_source_slides", 'resource.name.startsWith("projects/_/buckets/'
                    'specimen-digitization.firebasestorage.app/objects/microscopic-slides/") || api.getAttribute('
                    '"storage.googleapis.com/objectListPrefix", "").startsWith("microscopic-slides/")')
+# The research harness's three object prefixes, for the worker only; written out, not composed.
+RESEARCH = condition("specimen_research_objects", 'resource.name.startsWith("projects/_/buckets/'
+                     'specimen-digitization.firebasestorage.app/objects/research-capture/") || '
+                     'resource.name.startsWith("projects/_/buckets/specimen-digitization.firebasestorage.app/objects/'
+                     'research-journal/") || resource.name.startsWith("projects/_/buckets/'
+                     'specimen-digitization.firebasestorage.app/objects/research-media/")')
 SQL = condition("specimen_source_inventory_only", "resource.name == 'projects/specimen-digitization/instances/"
                 "specimen-digitization-instance' && resource.service == 'sqladmin.googleapis.com' && resource.type == "
                 "'sqladmin.googleapis.com/Instance'",
@@ -668,6 +674,11 @@ def provider_update(name):
             f"--attribute-condition={provider(*PROVIDERS[name], name, EITHER)}"]
 
 
+# The research harness's create and get, on its three prefixes: the worker only, and not a list or delete role.
+RESEARCH_GRANTS = [
+    ["gcloud", "storage", "buckets", "add-iam-policy-binding", f"gs://{BUCKET}", f"--member={WORKER}",
+     f"--role=roles/storage.{role}", f"--condition-from-file=condition-{number}-specimen_research_objects.yaml"]
+    for number, role in ((6, "objectViewer"), (7, "objectCreator"))]
 # The SAM 3 checkpoint mount lists the bucket (follow-up change #236): no condition, and no object read in the role.
 SAM_LISTS_BUCKET = ["gcloud", "storage", "buckets", "add-iam-policy-binding", f"gs://{BUCKET}", f"--member={SAM}",
                     "--role=roles/storage.legacyBucketReader", "--condition=None"]
@@ -697,6 +708,7 @@ EXPECTED = [
     role_create("specimenRuntimeInvokerPolicy", "Specimen runtime invoker policy",
                 "Read and set who may call the API service."),
     project_grant(RELEASE, "specimenRuntimeInvokerPolicy"),
+    *RESEARCH_GRANTS,
     SAM_LISTS_BUCKET,
     *(provider_update(name) for name in PROVIDERS),
     ["gh", "variable", "set", "SPECIMEN_API_BASE_URL", "-R", REPOSITORY, "--body", API_URL],
@@ -704,7 +716,8 @@ EXPECTED = [
 ]
 EXPECTED_CONDITIONS = {
     **{f"condition-{number}-specimen_pr21_{role}.yaml": held for number, (role, held) in enumerate(EXPIRED.items(), 1)},
-    "condition-5-specimen_worker_actor_uid_v1.yaml": pin("specimen-worker-actor-uid", 1)}
+    "condition-5-specimen_worker_actor_uid_v1.yaml": pin("specimen-worker-actor-uid", 1),
+    "condition-6-specimen_research_objects.yaml": RESEARCH, "condition-7-specimen_research_objects.yaml": RESEARCH}
 
 
 def given(held):
@@ -753,7 +766,7 @@ def test_dry_run_prints_every_change_and_makes_none(tmp_path, shell):
     assert f"from the artifact file ({len(content)} bytes)" in run.out
     shown = run.out + run.err + json.dumps(run.calls)
     assert "PRIVATE-MARKER" not in shown and base64.b64encode(content).decode()[:40] not in shown
-    assert "Dry run: nothing was changed. 18 step(s) would change:" in run.out
+    assert "Dry run: nothing was changed. 20 step(s) would change:" in run.out
     assert run.printed.count(SAM_LISTS_BUCKET) == 1
     assert "--all" not in run.out
     for name in RETIRE:
@@ -764,7 +777,7 @@ def test_dry_run_prints_every_change_and_makes_none(tmp_path, shell):
         "== Clean-up", "== Data release", "== Cloud SQL", "== Runtime release", "== Manual runs", "== GitHub",
         "== GitHub", "== Retire later", "== Releases", "== Summary =="]
     assert run.sleeps == [] and run.summary.splitlines()[-1] == SAFE
-    assert "  Setup: WOULD RUN (18 change(s))" in run.summary
+    assert "  Setup: WOULD RUN (20 change(s))" in run.summary
     assert "Setup is complete" not in run.out and "State:" not in run.summary
     assert "the three database roles once (later releases only use the firebaseowner role)" in headings[2]
 
@@ -777,7 +790,7 @@ def test_apply_makes_each_change_once_and_a_second_run_makes_none(tmp_path, shel
     assert run.ran == EXPECTED and run.printed == EXPECTED
     assert run.conditions() == {name: given(held) for name, held in EXPECTED_CONDITIONS.items()}
     assert provider_update("specimen-data-release")[-1] == f"--attribute-condition={DATA_PROVIDER_AFTER}"
-    assert "17 step(s) changed:" in run.out
+    assert "19 step(s) changed:" in run.out
     assert run.ran.count(SAM_LISTS_BUCKET) == 1
 
     after = harness.state()
@@ -807,7 +820,7 @@ def test_apply_makes_each_change_once_and_a_second_run_makes_none(tmp_path, shel
             "Run this script again after the merge.") in run.out
     assert run.starts == [] and run.sleeps == []
     assert run.summary.split("Stages:\n", 1)[1].splitlines()[:5] == [
-        "  Setup: PASS (17 changed, 39 already in place)",
+        "  Setup: PASS (19 changed, 39 already in place)",
         "  Data release: SKIPPED (the simple workflows are not on main yet)",
         "  Runtime release: SKIPPED (the simple workflows are not on main yet)",
         "  Web app: SKIPPED (the simple workflows are not on main yet)",
@@ -906,7 +919,7 @@ def test_failed_change_does_not_stop_the_later_steps_and_the_next_run_retries_it
     run = harness.run()
     assert run.code == 1 and run.ran == EXPECTED  # every step was tried, in order
     assert "FAILED: 1 step(s) did not go through:\n  - make specimen-data-release@specimen-digitization.iam" in run.out
-    assert "16 step(s) changed:" in run.out and "Stopped before the end" not in run.err
+    assert "18 step(s) changed:" in run.out and "Stopped before the end" not in run.err
     assert "the service refused this change" in run.err
     harness.save({**harness.state(), "fail": []})
     again = harness.run()
@@ -959,6 +972,11 @@ THEIR_GRANTS = {
       for member in THEIRS for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")),
     *((f"secret/{secret}", member, ACCESSOR, *list(pin(secret, version).values())[:2])
       for member, secret, version in LIVE_PINS if member in THEIRS and secret != MAPS_KEY)}
+# The research harness's create and get, for the worker alone. The standing table the next test compares with is the
+# retired release process's (scripts/ci/owner_grants.py), which scripts/ci/RETIRED.md keeps unchanged, so this pair
+# is held to this file and to the test that writes it out, not to that table.
+RESEARCH_ROWS = {(f"bucket/{BUCKET}", WORKER, role, RESEARCH["title"], RESEARCH["expression"])
+                 for role in ("roles/storage.objectViewer", "roles/storage.objectCreator")}
 # The settings may ask for these; the script must not grant them, each for its own reason.
 NOT_GRANTED = {
     MAPS_KEY: "retired by the owner; #236 removes it from the worker's settings",
@@ -1049,7 +1067,7 @@ def test_fresh_project_gets_every_role_and_pins_every_secret_read(fresh, setting
     assert {grant for grant in owned(granted) if grant[0].startswith("secret/")} == api | {
         grant for grant in ADDED if grant[0].startswith("secret/")}
     # Strict, against this file: what the script grants the worker and SAM 3 today, so a lost line is noticed.
-    assert granted - owned(granted) == THEIR_GRANTS
+    assert granted - owned(granted) == THEIR_GRANTS | RESEARCH_ROWS
     # Shape, against the settings: for those two accounts the settings may move without this script.
     assert shape_problems(granted, settings) == []
     assert "the listing grant limited to the checkpoint prefix is not made here" in run.out
@@ -1073,7 +1091,7 @@ def test_shape_rules_name_what_is_wrong():
     }
     for grant, words in wrong.items():
         assert [problem for problem in shape_problems({grant}, settings) if words in problem], grant
-    assert shape_problems(THEIR_GRANTS | ADDED, settings) == []
+    assert shape_problems(THEIR_GRANTS | RESEARCH_ROWS | ADDED, settings) == []
 
 
 def test_fresh_project_grants_match_the_standing_table_for_what_this_change_owns(fresh, settings):
@@ -1089,9 +1107,34 @@ def test_fresh_project_grants_match_the_standing_table_for_what_this_change_owns
     # Not strict: the table's rows for the worker and SAM 3 follow their own change. The script stays inside them
     # (apart from its pinned secret reads, which shape_problems judges), and may leave rows out: on main the
     # retired Maps key, on #236 the checkpoint listing.
-    assert {grant for grant in granted - owned(granted) if grant[2] != ACCESSOR} <= theirs
+    assert {grant for grant in granted - owned(granted) if grant[2] != ACCESSOR} - RESEARCH_ROWS <= theirs
     for name, (_, _, permissions) in table.ROLES.items():
         assert sorted(permissions) == ROLES[name]
+
+
+def test_the_worker_alone_gets_create_and_get_on_the_three_research_prefixes_and_no_wider_grant(fresh):
+    """The research harness creates and gets objects under research-capture/, research-journal/ and research-media/,
+    and never lists or deletes. The setup grants the worker exactly objectCreator and objectViewer there; the
+    application condition, which the API and SAM 3 share, is the one it always was."""
+    harness, run = fresh
+    granted, viewer, creator = grants(run), "roles/storage.objectViewer", "roles/storage.objectCreator"
+    bucket_rows = {grant for grant in granted if grant[0] == f"bucket/{BUCKET}"}
+    research = {grant for grant in bucket_rows if grant[3] == RESEARCH["title"] or "research-" in (grant[4] or "")}
+    assert research == {(f"bucket/{BUCKET}", WORKER, role, RESEARCH["title"], RESEARCH["expression"])
+                        for role in (viewer, creator)}
+    # Nothing the script grants anywhere else names a research prefix.
+    assert not [grant for grant in granted - research if "research-" in (grant[4] or "")]
+    # Besides SAM 3's mount listing, the bucket grants are object get and create alone: no list, delete or admin role.
+    assert {grant[2] for grant in bucket_rows} - {"roles/storage.legacyBucketReader"} == {viewer, creator}
+    on_bucket = harness.state()["policies"][f"bucket/{BUCKET}"]
+    held = [row for row in on_bucket if row["condition"] and "research-" in row["condition"]["expression"]]
+    assert sorted(held, key=lambda row: row["role"]) == [binding(creator, [WORKER], RESEARCH),
+                                                         binding(viewer, [WORKER], RESEARCH)]
+    for role in (creator, viewer):  # the application grant is neither widened nor moved
+        [row] = [row for row in on_bucket if row["role"] == role and row["condition"] == APP]
+        assert sorted(row["members"]) == sorted([API, SAM, WORKER])
+    again = harness.run()
+    assert again.code == 0 and again.writes == [], "the bindings are in place: a second run changes nothing"
 
 
 # The release stages. A run is a list of states; each reading of it by the script shows the next one.
@@ -1228,7 +1271,7 @@ def test_failed_data_release_stops_before_the_runtime_release(tmp_path, settled)
 
 
 def test_first_morning_waits_for_new_access_retries_once_and_rebuilds_the_site(tmp_path):
-    # The whole first run after the merge: 17 setup changes, a data release that fails while the new access
+    # The whole first run after the merge: 19 setup changes, a data release that fails while the new access
     # settles, and a build of main that is still running (and then fails) when the variables change.
     first = web_build("failure")
     lagging = [first[-1], *web_build(attempt=2)]  # right after the re-run GitHub still shows the old attempt
@@ -1253,7 +1296,7 @@ def test_first_morning_waits_for_new_access_retries_once_and_rebuilds_the_site(t
         f"web app: PASS {RUNS}400", f"web app: the site now serves commit {COMMIT}",
         "web app: the site now points at the API"]
     assert run.ran[-3:] == [NARROW, UNWIDEN, RERUN] and run.ran.index(START_RUNTIME) == len(run.ran) - 4
-    assert stages(run) == ["  Setup: PASS (19 changed, 39 already in place)", f"  Data release: PASS {RUNS}502",
+    assert stages(run) == ["  Setup: PASS (21 changed, 39 already in place)", f"  Data release: PASS {RUNS}502",
                            f"  Runtime release: PASS {RUNS}503",
                            f"  Web app: PASS {RUNS}400 (the site points at the API)"]
     assert "To read the log" not in run.summary and "--redeploy-web" not in run.summary
@@ -1307,7 +1350,7 @@ def test_dry_run_prints_the_starts_and_starts_nothing(tmp_path):
     assert run.writes == [] and run.sleeps == [] and harness.state() == state
     assert run.printed == [*EXPECTED, START_DATA, START_RUNTIME, RERUN]
     assert "  Would wait 120 seconds for the new access to take effect" in run.out.splitlines()
-    assert stages(run) == ["  Setup: WOULD RUN (17 change(s))", "  Data release: WOULD RUN",
+    assert stages(run) == ["  Setup: WOULD RUN (19 change(s))", "  Data release: WOULD RUN",
                            "  Runtime release: WOULD RUN", f"  Web app: WOULD RUN {RUNS}400"]
     # A build would run, so the site is not read now: the check would follow that build.
     assert "web app: after that build the live site would be checked for the API address" in run.out.splitlines()
@@ -1500,7 +1543,7 @@ def test_setup_only_before_the_merge_applies_the_setup_and_touches_no_workflow(t
     assert not [call for call in run.calls if call["tool"] == "gh" and call["argv"][0] in ("workflow", "run")]
     assert run.sleeps == [] and not [call for call in run.calls if call["tool"] == "curl"]
     assert run.summary.split("Stages:\n", 1)[1].splitlines()[:5] == [
-        "  Setup: PASS (17 changed, 39 already in place)", "  Data release: SKIPPED (--setup-only)",
+        "  Setup: PASS (19 changed, 39 already in place)", "  Data release: SKIPPED (--setup-only)",
         "  Runtime release: SKIPPED (--setup-only)", "  Web app: SKIPPED (--setup-only)",
         "State: SETUP DONE, RELEASES NOT STARTED (--setup-only)"]
     assert run.summary.split("Next steps:\n", 1)[1].splitlines() == [

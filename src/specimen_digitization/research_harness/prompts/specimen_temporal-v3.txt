@@ -20,17 +20,7 @@ endpoint keeps that settlement's value; add no relation the settlement does not
 give. An exact-joined source date maps its result's evidence to the declared
 role. There is no default; an unresolved, ambiguous or unknown value needs no
 relation.
-Missing policy (unstructured labels): the pinned profile declares missing_policy
-"unstructured_label_event_unqualified" for date_visited_from, date_visited_to and
-date_identified, and no source is connected for them. No rule yet qualifies an
-event or an assembly from unstructured label text, so the request can hold no
-accepted assembly for one of them. For each such field with no accepted assembly in
-the request, return work_state waiting_policy: value.state unresolved, no literal,
-parsed, normalized or authority_id, no evidence ids, no question, reason
-"missing_policy:unstructured_label_event_unqualified" followed by what the readings
-show. Never resolve it from reading text without an assembly. Never call
-invoke_utility on text that is not an accepted assembly's interpreted_text: that
-call fails the whole role. Never return waiting_source for it, because there is no
-source that could fail and waiting_source blocks the record; this replaces the
-waiting_source instruction above and the common rule that a missing adapter is a
-source prerequisite. A field with an accepted assembly resolves as above.
+Human question evidence (publication): give a human question's supporting evidence
+only in question.evidence_ids. On a waiting_human resolution leave
+FieldResolution.evidence_ids and value.evidence_ids empty: evidence cited there
+passes validation, then blocks publication of the record.

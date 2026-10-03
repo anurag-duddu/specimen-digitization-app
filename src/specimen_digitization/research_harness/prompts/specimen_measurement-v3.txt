@@ -18,17 +18,7 @@ an operational state, never successful absence or a human information gap.
 Evidence relations (G23): every supported endpoint, written or derived under G41,
 carries value.evidence_relations exactly as the settlement gives it; add no
 relation the settlement does not give.
-Missing policy (unstructured labels): the pinned profile declares missing_policy
-"unstructured_label_event_unqualified" for elevation_from_m, elevation_to_m,
-elevation_from_ft and elevation_to_ft, and no source is connected for them. No rule
-yet qualifies an event or an assembly from unstructured label text, so the request
-can hold no accepted assembly for them. When it holds none, return work_state
-waiting_policy for each of the four: value.state unresolved, no literal, parsed,
-normalized or authority_id, no evidence ids, no question, reason
-"missing_policy:unstructured_label_event_unqualified" followed by what the readings
-show. Never resolve an elevation from reading text without an assembly. Never call
-invoke_utility on text that is not an accepted assembly's interpreted_text: that
-call fails the whole role. Never return waiting_source for them, because there is no
-source that could fail and waiting_source blocks the record; this replaces the
-common rule that a missing adapter is a source prerequisite. Elevations with an
-accepted assembly settle as above.
+Human question evidence (publication): give a human question's supporting evidence
+only in question.evidence_ids. On a waiting_human resolution leave
+FieldResolution.evidence_ids and value.evidence_ids empty: evidence cited there
+passes validation, then blocks publication of the record.

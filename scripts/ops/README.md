@@ -29,7 +29,7 @@ docstring lists its other parameters.
 | Step | Command | Result |
 |---|---|---|
 | 1 | `uv run --frozen python scripts/ops/sam_checkpoint.py` | Prints the checkpoint digest. It downloads nothing when every checkpoint file is already in the bucket, as it is now. It stops if the bucket listing fails. |
-| 2 | `uv run --frozen python scripts/ops/iam.py` | Grants for the worker, SAM 3 and the API, none on a secret. Grants on the service and the job are skipped until they exist. |
+| 2 | `uv run --frozen python scripts/ops/iam.py` | Grants for the worker, SAM 3 and the API, none on a secret. The worker alone also gets object create and get on `research-capture/`, `research-journal/` and `research-media/`. Grants on the service and the job are skipped until they exist. |
 | 3 | `uv run --frozen python scripts/ops/build_images.py` | Enables Cloud Build and builds the `worker` and `sam` images, tagged with the commit SHA. Prints their digests. |
 | 4 | `uv run --frozen python scripts/ops/deploy.py sam` | Deploys the private SAM 3 service with the read-only checkpoint mount. |
 | 5 | `uv run --frozen python scripts/ops/deploy.py worker` | Defines the worker job: one task, no retries, 3600 s. |

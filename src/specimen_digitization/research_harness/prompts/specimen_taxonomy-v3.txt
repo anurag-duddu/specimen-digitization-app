@@ -21,14 +21,26 @@ On a resolved taxon, evidence_ids and value.evidence_ids are exactly the matchin
 results' evidence ids; value.evidence_relations maps GBIF's deciding evidence to
 "decides" and each supporting source's to "supports".
 Every resolution that cites a lookup names, as the common rules ask, its accepted/rejected assemblies (assembly_ids: the request's assemblies for that field that the interpretation read) and event (event_id); the lookup's producer comes from them, and publication refuses a lookup without one.
-Missing policy (unstructured labels): the pinned profile declares missing_policy
-"unstructured_label_event_unqualified" for taxon. When the readings name no taxon,
-or every taxonomy lookup you made completed without an accepted match (no_match,
-or a tie that no distinguishing evidence breaks), return work_state waiting_policy
-for taxon: value.state unresolved, no literal, parsed, normalized or authority_id,
-no evidence ids, no question, reason "missing_policy:unstructured_label_event_unqualified"
-followed by what the readings show and which lookups completed. Never propose a
-taxon the readings do not name. If a lookup failed, timed out, was rate limited or
-refused, or its source is not configured, return waiting_source as above, even
-beside a no_match from another source: that is operational and blocks the record.
-A taxon with an accepted match resolves as above.
+Producer and literal without an assembly (publication): a value that cites a
+lookup needs a producer, and a value.literal needs grounding. Where the request
+has no assembly for the field that your interpretation read (on a label whose
+lines carry no field key, assemblies are empty), leave assembly_ids empty and
+event_id null, and on the value itself cite the one reading you interpreted,
+copying from one entry of the request's fragments[]: source_observation_id = its
+observation_id, verbatim_by_observation = {that observation_id: the label text
+you read, copied character for character from its observation_text (line breaks
+included; do not re-wrap, trim or normalise)}, settled_observation_ids = [that
+observation_id], input_source = its input_source (decided_transcript or
+raw_reading), source_region_id = its region_id. A changed character is refused
+at publication, after your run, and stops the record's later publications. Cite
+only that one reading, even when the other reader's reading is identical; do not
+list the other reader. Take a decided_transcript entry when the text is in one,
+else a raw_reading entry. value.literal is then only text inside one fragment's
+literal of that reading (one line); for text written over several lines leave
+literal null: verbatim_by_observation keeps the lines. Name assemblies or cite a
+reading, not both; a lookup with neither has no producer and publication
+refuses it.
+Human question evidence (publication): give a human question's supporting evidence
+only in question.evidence_ids. On a waiting_human resolution leave
+FieldResolution.evidence_ids and value.evidence_ids empty: evidence cited there
+passes validation, then blocks publication of the record.
