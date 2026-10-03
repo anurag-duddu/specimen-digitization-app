@@ -16,6 +16,11 @@ docstring lists its other parameters.
   with which it calls Data Connect as the worker actor. The project owner's own credentials suffice. Impersonating
   `specimen-worker-runtime` instead (`IMPERSONATE=<its email>`) is opt-in and needs
   `roles/iam.serviceAccountTokenCreator` on it, which `roles/owner` does not include and `iam.py` does not grant.
+- The runtime secrets are granted at their pinned versions (`runtime_settings.SECRET_VERSIONS`), each by a binding
+  conditioned on that one version: `huggingface-runtime-token` v2 to the worker; `specimen-worker-logfire` v1 to the
+  worker, SAM 3 and the API; `specimen-worker-actor-uid` v1 to the worker; `specimen-collection-bindings` v1 to the
+  worker and the API; `specimen-source-registry` v1 to the API. The owner's setup (`owner_setup.sh`) grants them, and
+  `scripts/ci/owner_grants.py plan` lists any that is missing. `iam.py` grants no secret access.
 - Build and deploy a commit that is pushed to GitHub and reaches `main` by a merge, not a squash or rebase.
   `deploy.py` labels the service and the job `source-sha=<that commit>`; a later release
   (`scripts/ci/deploy_runtime.py`, `rollback_guard`) compares that label with its own commit on GitHub and stops
@@ -25,8 +30,8 @@ docstring lists its other parameters.
 
 | Step | Command | Result |
 |---|---|---|
-| 1 | `uv run --frozen python scripts/ops/sam_checkpoint.py` | Prints the checkpoint digest. The checkpoint is already in the bucket, so this downloads nothing. |
-| 2 | `uv run --frozen python scripts/ops/iam.py` | Grants for the worker, SAM 3 and the API. Grants on the service and the job are skipped until they exist. |
+| 1 | `uv run --frozen python scripts/ops/sam_checkpoint.py` | Prints the checkpoint digest. It downloads nothing when every checkpoint file is already in the bucket, as it is now. It stops if the bucket listing fails. |
+| 2 | `uv run --frozen python scripts/ops/iam.py` | Grants for the worker, SAM 3 and the API, none on a secret. Grants on the service and the job are skipped until they exist. |
 | 3 | `uv run --frozen python scripts/ops/build_images.py` | Enables Cloud Build and builds the `worker` and `sam` images, tagged with the commit SHA. Prints their digests. |
 | 4 | `uv run --frozen python scripts/ops/deploy.py sam` | Deploys the private SAM 3 service with the read-only checkpoint mount. |
 | 5 | `uv run --frozen python scripts/ops/deploy.py worker` | Defines the worker job: one task, no retries, 3600 s. |

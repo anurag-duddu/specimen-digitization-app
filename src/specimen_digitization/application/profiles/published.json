@@ -234,7 +234,7 @@
           "ledger_collection": "insects"
         },
         "price_list": {
-          "version": "pilot-prices-2026-09-24",
+          "version": "pilot-prices-2026-10-03",
           "as_of": "2026-09-24",
           "sources": [
             "https://router.huggingface.co/v1/models",

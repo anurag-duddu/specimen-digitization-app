@@ -114,7 +114,7 @@ def sam_argv(env_path: str, digest: str) -> list[str]:
             f"--min-instances={low}", f"--max-instances={high}", f"--min={low}", f"--max={high}",
             f"--startup-probe={probe_flag(spec['startup_probe'])}",
             f"--env-vars-file={env_path}", f"--set-secrets={role_secrets('sam')}",
-            # gcloud takes the gcsfuse options separated by semicolons (run deploy --help, --add-volume).
+            # The gcsfuse options are separated by semicolons (--add-volume in the run deploy help).
             "--clear-volumes", "--add-volume=name=checkpoint,type=cloud-storage,"
             f"bucket={settings.BUCKET},readonly=true,mount-options={';'.join(mount_options(digest))}",
             "--clear-volume-mounts", f"--add-volume-mount=volume=checkpoint,mount-path={MOUNT}", "--quiet"]

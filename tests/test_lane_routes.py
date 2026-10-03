@@ -235,6 +235,8 @@ def test_four_disagreeing_regions_and_a_retried_first_pass_fit_the_run_cap(tmp_p
     reserved = {(c["step"], c["attempt"]): c["reserved_micros"] for c in run.paid_calls}
     assert sum(r for (step, _), r in reserved.items() if step in steps) == 100_000
     assert sum(reserved.values()) == 305_000 <= RUN_CAP
+    # Production's parse is a paid call (ProductionAdapters.extract): 20,000 more.
+    assert sum(reserved.values()) + step_reservation(run, "parse") == 325_000 <= RUN_CAP
     # Settled: the failed call's 20,000 stays held, the rest is what was spent.
     spent = sum(c["cost_micros"] for c in run.paid_calls if c["cost_basis"] == "computed")
     assert run.usage.reserved_cost_micros == 20_000 + spent

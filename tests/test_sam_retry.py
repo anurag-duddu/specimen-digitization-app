@@ -169,16 +169,22 @@ def test_a_sam_timeout_past_its_budget_retries_and_storage_answers_the_repeat(
 
 
 class LateReader(DisagreeingReaders):
-    """A paid reader or first pass whose provider call ran past its budget and
-    then failed as a timeout."""
+    """A paid segmentation, reader or first pass whose provider call ran past
+    its budget and then failed, by default as a timeout."""
 
-    def __init__(self, blobs, late):
+    def __init__(self, blobs, late, failure=None):
         super().__init__(blobs)
         self.late, self.elapsed = late, [0.0]
+        self.failure = failure or AdapterFailure("provider_timeout", LookupStatus.TIMEOUT)
 
     def overran(self, specimen, step):
         self.elapsed[0] += specimen.run.profile.execution.effect_timeout_for_step(step) + 1
-        raise AdapterFailure("provider_timeout", LookupStatus.TIMEOUT)
+        raise self.failure
+
+    def segment(self, specimen):
+        if self.late == "segment":
+            self.overran(specimen, "segment")
+        return super().segment(specimen)
 
     def transcribe(self, specimen, region, route):
         if self.late == "transcribe":
@@ -207,6 +213,38 @@ def test_any_other_paid_call_past_its_budget_still_waits_for_reconciliation(
 
 
 @pytest.mark.parametrize(
+    ("late", "failure"),
+    [
+        # Another failure on the segment step,
+        ("segment", AdapterFailure("provider_timeout", LookupStatus.TIMEOUT)),
+        # a SAM 3 failure whose outcome is unknown,
+        (
+            "segment",
+            AdapterFailure("sam3_timeout", LookupStatus.TIMEOUT, outcome_unknown=True),
+        ),
+        # and a SAM 3 code on another paid step.
+        (
+            "transcribe",
+            AdapterFailure(
+                "sam3_timeout", LookupStatus.TIMEOUT, retry_after_seconds=SAM3_RETRY_SECONDS
+            ),
+        ),
+    ],
+    ids=["segment-other-code", "segment-outcome-unknown", "transcribe-sam3-code"],
+)
+def test_only_a_known_sam3_failure_on_segment_keeps_its_retry_past_the_budget(
+    tmp_path, late, failure
+):
+    adapters = LateReader(LocalBlobs(tmp_path / "blobs"), late, failure)
+    workflow, principal, ident = start(tmp_path, adapters)
+    workflow.monotonic = lambda: adapters.elapsed[0]
+    run = workflow.drain(principal, ident).run
+    assert (run.stage, run.blocker) == ("processing_blocked", "external_outcome_unknown")
+    assert run.reasons == ["external_stage_deadline_exceeded"]
+    assert run.next_retry_at is None and run.lease_until is not None
+
+
+@pytest.mark.parametrize(
     ("result", "code"),
     [
         (isolated("deadline_exceeded", "worker_deadline"), "sam3_timeout"),
@@ -222,6 +260,29 @@ def test_a_timeout_or_busy_answer_waits_out_the_services_window(
     with pytest.raises(AdapterFailure) as failure:
         service.segment_per_run(lane_specimen())
     assert (failure.value.code, failure.value.retry_after_seconds) == (code, 250)
+
+
+def test_sam_timeouts_past_the_attempt_budget_dead_letter_the_record(
+    tmp_path, monkeypatch
+):
+    adapters = ServedSam(LocalBlobs(tmp_path / "blobs"), ["timeout"] * 3)
+    c = lane(tmp_path, monkeypatch, adapters)
+    run = drain(c)
+    for _ in range(2):
+        assert (run.stage, run.blocker) == ("retry_scheduled", "sam3_timeout"), run.reasons
+        at(c, datetime.fromisoformat(run.next_retry_at) + timedelta(seconds=5))
+        run = drain(c)
+    assert run.attempts["segment"] == run.profile.execution.max_attempts == 3
+    # Dead-lettered on its own code, never left waiting for reconciliation.
+    assert run.dead_letter and run.blocker == "retry_budget_exhausted:sam3_timeout"
+    assert run.stage == "processing_blocked" and run.next_retry_at is None
+    assert run.lease_until is None and run.reasons != ["external_stage_deadline_exceeded"]
+    segments = [call for call in run.paid_calls if call["step"] == "segment"]
+    assert [(call["attempt"], call["outcome"]) for call in segments] == [
+        (1, "failed"),
+        (2, "failed"),
+        (3, "failed"),
+    ]
 
 
 def test_a_live_claim_is_waited_out_within_the_attempt_budget(tmp_path, monkeypatch):

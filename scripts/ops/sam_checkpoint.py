@@ -11,7 +11,8 @@ Face cache layout that HF_HOME=/model-cache resolves offline.
 
 Idempotent. When the digest is known (SAM_CHECKPOINT_SHA256, else runtime_settings) and every file of the pinned
 revision is already stored at that prefix with its Hub size, nothing is downloaded. Otherwise it downloads, refuses
-a digest that differs from the known one, and uploads only what is missing or different (rsync, by checksum).
+a digest that differs from the known one, and uploads only what is missing or different (rsync, by checksum). A
+bucket listing that fails stops the script; it is never taken as an empty prefix.
 
 The Hugging Face token is read from Secret Manager (huggingface-runtime-token, at the version
 runtime_settings.SECRET_VERSIONS pins for the runtime, never "latest") only when a download is needed, held in this
@@ -52,17 +53,26 @@ def hub_files(token) -> dict[str, int]:
 
 
 def stored_files(bucket: str, digest: str) -> dict[str, int] | None:
-    """{path: size} stored under the digest's snapshot prefix; None under DRY_RUN=1."""
+    """{path: size} stored under the digest's snapshot prefix; None under DRY_RUN=1.
+
+    A prefix with no objects lists as [] with exit code 0 (gcloud 582). A listing that fails or cannot be read stops
+    the script; it is never taken as an empty prefix, which would start a download.
+    """
     import json
 
     prefix = snapshot_prefix(bucket, digest)
     out = ops.read(["gcloud", "storage", "objects", "list", prefix + "**", f"--project={ops.project()}",
                     "--format=json"])
     if out is None:
-        return None if ops.dry_run() else {}
+        if ops.dry_run():
+            return None
+        raise SystemExit(f"could not list {prefix} (the command above failed); stopped")
     start = prefix[len(f"gs://{bucket}/"):]
-    return {item["name"][len(start):]: int(item["size"]) for item in json.loads(out or "[]")
-            if item.get("name", "").startswith(start)}
+    try:
+        return {item["name"][len(start):]: int(item["size"]) for item in json.loads(out)
+                if item["name"].startswith(start)}
+    except (AttributeError, KeyError, TypeError, ValueError):
+        raise SystemExit(f"could not read the listing of {prefix}; stopped") from None
 
 
 def holds(stored: dict[str, int] | None, wanted: dict[str, int]) -> bool:

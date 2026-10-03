@@ -301,7 +301,10 @@ class FakeGcloud:
             name = next(arg.split("=", 1)[1] for arg in argv if arg.startswith("--secret="))
             out = self.secrets.get(name, self.secret)
         elif argv[:4] == ["gcloud", "storage", "objects", "list"]:
-            out = json.dumps(self.listings.pop(0) if self.listings else [])
+            answer = self.listings.pop(0) if self.listings else []
+            if isinstance(answer, SimpleNamespace):  # The finished command, as gcloud answered it.
+                return answer
+            out = json.dumps(answer)
         elif argv[:3] == ["gcloud", "config", "get-value"]:
             out = "operator@example.org\n"
         elif argv[:3] == ["gcloud", "auth", "print-identity-token"]:
@@ -364,6 +367,50 @@ def test_checkpoint_already_stored_downloads_nothing(monkeypatch, capsys):
     assert checkpoint.main() == 0
     assert capsys.readouterr().out.rstrip().endswith(S.SAM_CHECKPOINT_SHA256)
     assert [argv[:4] for argv in gcloud.calls] == [["gcloud", "storage", "objects", "list"]]  # No secret, no upload.
+
+
+def checkpoint_with_a_known_digest(monkeypatch, listing_answer):
+    """sam_checkpoint with the committed digest, a Hub listing, and gcloud answering the bucket listing so."""
+    checkpoint = importlib.import_module("sam_checkpoint")
+    monkeypatch.delenv("DRY_RUN", raising=False)
+    monkeypatch.delenv("SAM_CHECKPOINT_SHA256", raising=False)
+    for name in ("HF_HOME", "HF_HUB_DISABLE_TELEMETRY"):  # main() sets both; restore them afterwards.
+        monkeypatch.setenv(name, os.environ.get(name, ""))
+    monkeypatch.setattr(checkpoint, "hub_files", lambda token: {"config.json": 25843, "model.safetensors": 3439938512})
+    gcloud = FakeGcloud([listing_answer])
+    monkeypatch.setattr(ops.subprocess, "run", gcloud)
+    return checkpoint, gcloud
+
+
+@pytest.mark.parametrize("answer", [
+    # A missing bucket: gcloud 582 prints [] and exits 1, with the error on stderr.
+    SimpleNamespace(returncode=1, stdout="[]\n", stderr="ERROR: (gcloud.storage.objects.list) gs://b not found: 404."),
+    SimpleNamespace(returncode=1, stdout="", stderr="ERROR: (gcloud.storage.objects.list) HTTPError 403"),
+    SimpleNamespace(returncode=0, stdout='[{"name": "application/', stderr=""),
+], ids=["not-found", "denied", "unreadable"])
+def test_checkpoint_stops_when_the_listing_fails(monkeypatch, answer):
+    checkpoint, gcloud = checkpoint_with_a_known_digest(monkeypatch, answer)
+    monkeypatch.setattr(checkpoint, "download", lambda *_: pytest.fail("downloaded after a failed listing"))
+    with pytest.raises(SystemExit) as stopped:
+        checkpoint.main()
+    assert "stopped" in str(stopped.value.code)
+    assert [argv[:4] for argv in gcloud.calls] == [["gcloud", "storage", "objects", "list"]]  # No secret, no upload.
+
+
+def test_checkpoint_downloads_when_the_listing_shows_no_files(monkeypatch):
+    checkpoint, gcloud = checkpoint_with_a_known_digest(monkeypatch, [])  # Listed: [], exit code 0.
+
+    class Downloading(Exception):
+        pass
+
+    def download(token, cache_dir):
+        raise Downloading
+
+    monkeypatch.setattr(checkpoint, "download", download)
+    with pytest.raises(Downloading):
+        checkpoint.main()
+    assert [argv[:4] for argv in gcloud.calls] == [["gcloud", "storage", "objects", "list"],
+                                                   ["gcloud", "secrets", "versions", "access"]]
 
 
 # seed_allowance_ledger.py
