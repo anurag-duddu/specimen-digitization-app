@@ -34,7 +34,7 @@ from specimen_digitization.research_harness.workflow_bridge import compose_produ
 
 from production_e2e_support import (
     COLLECTION, LABEL_TEXT, ORG, WORKER, FakeDataConnect, GenerationBlobs, fixture_source_transport,
-    parse_keeping_published_groups, research_state, scripted_model_factory, specimen_before_adjudication,
+    research_state, scripted_model_factory, specimen_before_adjudication,
     worker_principal,
 )
 
@@ -62,8 +62,6 @@ def no_network(monkeypatch):
 
 @pytest.fixture
 def rig(tmp_path, monkeypatch):
-    # Blocker 1 (application/workflow.py:789): see parse_keeping_published_groups.
-    monkeypatch.setattr(Workflow, "parse", parse_keeping_published_groups(Workflow.parse))
     backend = SqliteStateBackend(tmp_path / "research-state.sqlite")
     members = {uid: [{"organization_id": ORG, "collection_id": COLLECTION, "role": "operator",
         "can_view_sensitive": False}] for uid in (WORKER, OTHER_OPERATOR)}

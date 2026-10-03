@@ -1013,27 +1013,6 @@ def specimen_before_adjudication(blobs):
     return specimen
 
 
-def parse_keeping_published_groups(original):
-    """Workflow.parse over every field group classify pinned, mandatory and optional.
-
-    Workflow.parse (application/workflow.py:789) rebuilds run.fields from the
-    profile's mandatory fields only, so a run of the published profile reaches
-    plan without its optional identified_by_irn field, and provisioning refuses
-    it (the research harness needs all 20 fields). This applies the one-line fix
-    proposed in the Lane H report: parse over run.field_groups when classify set
-    them. It calls the production parse unchanged otherwise.
-    """
-    def parse(run, asset_id):
-        groups = tuple(run.field_groups) or run.profile.mandatory_fields
-        profile = run.profile
-        run.profile = profile.model_copy(update={"mandatory_fields": groups})
-        try:
-            original(run, asset_id)
-        finally:
-            run.profile = profile
-    return staticmethod(parse)
-
-
 def research_state(fake, specimen_id):
     """The run's research state document as the connector stores it."""
     binding = fake.active_binding(specimen_id)
