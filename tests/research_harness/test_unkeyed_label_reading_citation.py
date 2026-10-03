@@ -12,9 +12,11 @@ v3 prompts say what to cite instead; this test runs the production composer
 on a synthetic label of that shape and shows, with the real validators and producer logic:
 
 - a scripted specialist that does what the pinned prompt text instructs is accepted
-  (test_a_specialist_following_the_pinned_prompt_publishes_*). This is the one test that
-  FAILS on origin/main, because its specialist reads its behaviour out of the pinned prompt
-  text, and the v2 text instructs neither the reading citation nor question-only evidence;
+  (test_a_specialist_following_the_pinned_prompt_publishes_every_lookup_citing_value, and
+  test_a_human_question_follows_the_pinned_prompts_rule_for_where_its_evidence_goes for the
+  question rule alone). These two FAIL on origin/main, each for its own code, because their
+  specialist reads its behaviour out of the pinned prompt text and the v2 text instructs neither
+  the reading citation nor question-only evidence;
 - the shapes the old prompts led to are refused, each for its own code, and the exact
   fields the citation needs are the ones the v3 text names. These tests exercise code
   the prompt change does not touch, so they pass on origin/main too: they pin the contract
@@ -92,9 +94,6 @@ class Behaviour:
     human_cites_reading: bool = False  # also put the reading citation on the human question's value
     literal: str | None = None         # value.literal on precise_location
     human_literal: str | None = None   # value.literal on the human question's value
-
-
-NEW = Behaviour(fields=CITATION_FIELDS)
 
 
 @pytest.fixture(autouse=True)
