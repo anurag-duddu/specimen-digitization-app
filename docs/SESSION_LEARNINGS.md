@@ -13979,3 +13979,51 @@ Learnings:
 - evidence.py is integrity-pinned (accepted_output.py VALIDATOR_SOURCE_SHA256); the permission classifier refused a pin bump in this lane, so the test-only insects_profile still lists google_maps. Follow-up with explicit authorization.
 
 Follow-ups: show coordinates on the research thread card (versioned thread contract, about 8-12 files); bump the evidence.py pin; remove the legacy Google geocoder (application/geography_tool.py), which production cannot reach; published.json:243 Google pricing URL (Lane W's file). Live GEOLocate probes used: 11.
+### 2026-10-03 — Lane R: simple on-merge data and runtime releases (data plane + API)
+
+- Task: go-live Lane R (release simplification), coordinated by the "Go-live coordinator" session; plan
+  `~/.claude/plans/distributed-sparking-rivest.md`; status file `~/specimen-golive/live-20261003/lane-r.md`.
+- Branch/worktree: `claude/live-r-simple-release` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/ecstatic-maxwell-3daecb`,
+  base `main` 2f85b429.
+- Outcome: In progress. Pull request open; the coordinator's independent review of head 79aeea9e said merge
+  after fixes, no blockers, and the fixes are in the second commit; not merged; nothing in it has run against
+  production.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/238; first commit 79aeea9e.
+- Validation: `uv run pytest -q` on the staged tree before the pre-review fixes: 9451 passed, 107 skipped.
+  After the fixes, targeted files only: `tests/test_deployment_policy.py`, `scripts/release`, `scripts/ops` and four
+  workflow-scanning `scripts/ci` files, counts in the pull request body. `pre-commit run` on the staged files: all hooks
+  passed. `check_ui_strings.py`: 0 violations. Flutter gates not run locally (no Dart file changed). The
+  initialization SQL and the SQL runner were run on a local PostgreSQL 18.6 with stand-in roles; the Google REST
+  layer was faked; `deploy_api.py` was rehearsed with real gcloud against a local stand-in API;
+  `owner_setup.sh` ran once for real with `--dry-run` only (read-only). Not confirmed: every live call.
+- Durable learnings:
+  - The release sign-in providers bind `workflow_ref` to the workflow FILE NAME and `event_name == 'push'`.
+    Replacing a workflow in place keeps sign-in working; renaming it, or adding `workflow_dispatch`, does not,
+    until the owner widens the condition (`scripts/ops/owner_setup.sh` does).
+  - The policy tests scan for deploy commands outside an approved script list and for `dataconnect:` subcommands
+    in workflows. New release code lives in `scripts/release/` and is called from YAML, never inlined.
+  - `scripts/ci/release_initialize.mjs` pins the SHA-256 of six files and the plan templates under
+    `infra/release/` hold digests of others, so the retired scripts are marked in `scripts/ci/RETIRED.md`
+    instead of by a header comment in each file.
+  - Data Connect's differ (emulator 3.2.0) plans `DROP INDEX` for the release's own supplemental indexes. The
+    diff step sets those four aside (printed, never run) and refuses every other drop.
+  - `scripts/ci/release_bootstrap.py` and `schema_gate.py` are still imported by the new data release; importing
+    `release_bootstrap` loads several gate modules. They are listed as in use in `RETIRED.md`.
+  - An owner-script test that compares hard-coded grants with `runtime_settings.py` couples lanes: it would have
+    failed the next lane's required checks after merge. Strict equality is kept only for what one change owns.
+  - The main checkout was on another branch with unsaved work; the owner page copies the script from
+    `origin/main` with `git show` instead of switching branches there.
+- Failed approaches: none that reached a commit. Considered and dropped: reusing `deploy_data.py` /
+  `deploy_runtime.py` (both need the gate packet); the auth action's `token_format: access_token` for the
+  registry login (unproven for a federated principal here; replaced by `gcloud auth print-access-token`); a
+  bootstrap that fails when rows differ from the artifact (it would have failed every later release; it now warns).
+  - Authority citations must point at something a reader can find: the owner's 2026-10-03 messages live in the
+    coordinator session, so the docs quote them and say where they are recorded.
+  - When the Cloud SQL connector's `getOptions` rejects, `connector.close()` raises an unhandled rejection and
+    Node prints its version as the last line; `data_sql.mjs` now prints one `data_sql` line and exits.
+- Remaining follow-ups: second pull request for the SAM and worker jobs and their invoker grants, reconciled
+  with Lane W's #236; delete the retired scripts and their tests; the owner's one-time
+  `scripts/ops/owner_setup.sh` run (with `--setup-only` before the merge, or in full after it; push-triggered
+  releases fail until the setup has been done);
+  first live run settles the items listed as not verified in the pull request body.
