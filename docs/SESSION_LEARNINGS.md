@@ -14269,3 +14269,58 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   whitespace variants as alternatives with empty spans, which DATA_CONTRACT 4.2 (alternatives from the material
   differences left `neither` or `uncertain`) does not describe; a zero-difference first pass never succeeded in
   production before, so this path has not run there; no change was made.
+
+### 2026-10-03 — lane-q-identifier-format: the identifier_format check follows the catalog-number validator (Claude)
+
+- Task: `lane-q-identifier-format` (PR-IDF, dispatched by the Go-live coordinator's Lane Q from a read-only triage of the
+  `identifier_format` review reason).
+- Branch/worktree: `claude/lane-q-identifier-format` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a8b9a8bf7a3799a36`,
+  created from `origin/main` 61966503, then merged with `origin/main` 3365a08f (PRs 247 and 248; no overlapping files).
+- Outcome: In progress. Pull request open and ready for review; not merged; nothing in it ran against production, a
+  paid model or a live service.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/254; code commit cc715d3a, merge f58e2e9b,
+  plus the commit that adds this entry.
+- What changed: `application/policy.py` and `research_harness/canonical_materialization_v2.py` now test the stored
+  catalog number with `field_validators.CATALOG` (the `catalog_number_validator` grammar: optional FMNH INS prefix,
+  any spacing, `-` or `#`, a line break, then 5 to 9 ASCII digits) instead of `FMNH[- ]?INS[ #]*\d+`; the synthetic
+  demo number in `application/api.py` moves from `FMNH-INS 1001` to `FMNH-INS 1000001` so the synthetic run stays
+  clean under the digit bound. V1 (`canonical_materialization.py`) is untouched: only its own test builds that
+  materializer. What the field stores, the other reasons, the date checks and `evidence.py` are unchanged.
+- Validation actually run: the new tests, written first, failed on the unchanged source (`test_application.py` 7
+  failed, 16 passed among the new cases; `test_canonical_materialization_v2.py` 3 failed, 47 passed;
+  `test_local_utility_publication_v2.py` 1 failed, 12 passed) and pass on the change (64, 50 and 13 passed). Every
+  Python test file in the repository (272 files under `tests/` and `scripts/`), one pytest process each, before
+  merging main: 9975 passed, 0 failed, 107 skipped (nine files skipped whole: Postgres, Docker and Data Connect
+  tests). After the merge, 14 related files were re-run and passed. Pin and contract files run alone:
+  `test_committed_pins.py` 17, `test_native_canonical_contract.py` 110, `test_native_canonical_v2_contract.py` 87,
+  `test_canonical_materialization.py` 45 (all passed). `pre-commit run --files` on the six changed files passed;
+  `scripts/ci/check_ui_strings.py` 0 violations; committed with `--no-verify` after running the hooks by hand. No
+  pin moved: `evidence.py`, `projection.py`, `domain.py`, `storage.py`, `active_graph.py`, `model_gateway.py`,
+  `engine.py` and `journal.py` are not in the diff. Not run: `scripts/ci/verify.sh` as a whole, the Flutter gates,
+  any live or paid call, the replay of the nine stored production snapshots (the triage ran that, this branch did not).
+- Durable learnings:
+  - The prefix requirement was a code assumption from the first backend commit (36e218e2, synthetic value
+    `FMNH-INS 1001`). The engineering spec (`HARNESS.md` 658-660, 854; merged under review, not an owner ruling) says
+    prefix optional and the digits are the catalog number. Nothing of the owner's states the stored shape.
+  - Adopting the validator's five-to-nine-digit bound is not free: the synthetic demo value had four digits, so the
+    synthetic run (the "proved clean" fixture behind most of `test_application.py`) failed until `api.py`'s value
+    changed. The recorded wire examples under `docs/execution/` and the Flutter fixture copies still show the old
+    synthetic value; they are digest-pinned snapshots that nothing regenerates, so they were left alone.
+  - Two catalog grammars exist: the validator's `CATALOG` (`[\s#-]*` between the parts) and `evidence.catalog_literal`
+    (one `-` or space, optional `#` or `:`). They disagree on `FMNH INS: 4486784` (colon: only `catalog_literal`),
+    and on `FMNH--INS 4486784` and `FMNH INS ##4486784` (only the validator). Aligning them needs `evidence.py`,
+    which is the `VALIDATOR_SOURCE_SHA256` pin; not attempted.
+  - A new test table that compares the policy to the validator row by row (it asserts the validator's verdict for each
+    string first) pins the two together without a second copy of the pattern.
+  - `tests/test_step_failure_logging.py`, an untracked 5-byte file containing `DONE`, appeared in this worktree during the
+    full run. It is not mine to explain and was not committed. Origin Not confirmed.
+- Failed approaches: the triage's `[0-9]+` (any digit count) pattern was not used, because the coordinator asked for the
+  validator's digit-count bounds; the first draft of one test built the synthetic run twice in one directory and hit an
+  upload conflict (fixed by building it once).
+- Remaining follow-ups: the owner's answer on the stored shape of the catalog number (digits only, with the
+  prefix, or the digits plus the printed letters) is open and does not block this change; already finished records keep
+  the stored `identifier_format` reason until a reviewer decision re-runs `finalize` or the specimen is reprocessed;
+  whether `identifier_format` should be re-evaluated on the nine pilot records is the coordinator's call (Not confirmed
+  that any such re-evaluation was done). Review per G51 (one independent reviewer on the head plus green required
+  checks) is pending. Whether the CI checks pass on the pull request is Not confirmed at the time of writing.
