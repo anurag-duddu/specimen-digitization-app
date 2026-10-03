@@ -76,6 +76,9 @@ WORKER = {
     # SPECIMEN_SAM3_CHECKPOINT_SHA256, the same digest SAM 3 serves, joins these from SAM_CHECKPOINT_SHA256.
     "env": {**tracing_env("worker"), **SQL, "SPECIMEN_GCS_BUCKET": BUCKET, "SPECIMEN_SAM3_ENDPOINT": SAM_URL,
             "SPECIMEN_SAM3_REVISION": SAM3_MODEL.revision, "SPECIMEN_APPROVED_INFERENCE": "true",
+            # The drain mounts the research harness: a run whose profile names a harness route is researched at its
+            # plan step, every other step stays ordinary (research_harness/enablement.py, native_drain.py).
+            "SPECIMEN_RESEARCH_HARNESS": "on",
             "SPECIMEN_WORKER_JOB": WORKER_JOB},  # The drain hands work left at its deadline to the next execution.
     "secret_env": {"HF_TOKEN": "huggingface-runtime-token", "LOGFIRE_TOKEN": "specimen-worker-logfire",
                    "SPECIMEN_WORKER_ACTOR_UID": "specimen-worker-actor-uid",
