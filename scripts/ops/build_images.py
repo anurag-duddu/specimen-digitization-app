@@ -64,6 +64,12 @@ def build(role: str, sha: str, project: str, region: str, builder: str, staging:
             archive = str(Path(work, "source.tar.gz"))
             ops.run(["git", "archive", "--format=tar.gz", f"--output={archive}", sha, *COMMON, DOCKERFILES[role],
                      *EXTRA.get(role, [])])
+            # GA `builds submit` streams no log for a CLOUD_LOGGING_ONLY build: it polls the build until it leaves
+            # QUEUED and WORKING and exits non-zero only when its status is not SUCCESS (gcloud 582,
+            # command_lib/builds/submit_util.py Build, api_lib/cloudbuild/logs.py CloudBuildClient.Stream). `beta
+            # builds submit` would tail Cloud Logging in a thread whose HTTP errors are raised after the build ends,
+            # so a log-read error could fail a good build. The digest check below confirms the push. A build's
+            # log: `gcloud builds log <BUILD_ID> --region=<REGION>`, which reads Cloud Logging for such a build.
             ops.run(["gcloud", "builds", "submit", archive, f"--config={CONFIG}", f"--project={project}",
                      f"--region={region}", f"--service-account=projects/{project}/serviceAccounts/{builder}",
                      f"--gcs-source-staging-dir={staging}/source",

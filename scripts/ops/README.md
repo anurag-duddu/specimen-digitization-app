@@ -16,6 +16,10 @@ docstring lists its other parameters.
   with which it calls Data Connect as the worker actor. The project owner's own credentials suffice. Impersonating
   `specimen-worker-runtime` instead (`IMPERSONATE=<its email>`) is opt-in and needs
   `roles/iam.serviceAccountTokenCreator` on it, which `roles/owner` does not include and `iam.py` does not grant.
+- Build and deploy a commit that is pushed to GitHub and reaches `main` by a merge, not a squash or rebase.
+  `deploy.py` labels the service and the job `source-sha=<that commit>`; a later release
+  (`scripts/ci/deploy_runtime.py`, `rollback_guard`) compares that label with its own commit on GitHub and stops
+  unless its commit equals it or is ahead of it.
 
 ## Run order
 
@@ -28,16 +32,19 @@ docstring lists its other parameters.
 | 5 | `uv run --frozen python scripts/ops/deploy.py worker` | Defines the worker job: one task, no retries, 3600 s. |
 | 6 | `uv run --frozen python scripts/ops/iam.py` | Adds the invoker grants on `specimen-sam` and `specimen-worker`. |
 | 7 | `ORG_ID=<uuid> uv run --frozen python scripts/ops/seed_allowance_ledger.py` | Creates the program's allowance ledger as the worker actor, only if it is absent, in the one collection `specimen-collection-bindings` binds to `insects`. |
-| 8 | `uv run --frozen python scripts/ops/warm_sam.py` | Run this right before each worker execution, including an import, which starts the worker through the API. It returns once SAM 3 has loaded its model. |
+| 8 | `uv run --frozen python scripts/ops/scale_sam.py 1` | Before the import: keeps one SAM 3 instance running. Alternatively, deploy in step 4 with `SAM_MIN_INSTANCES=1`. |
+| 9 | `uv run --frozen python scripts/ops/warm_sam.py` | Returns once SAM 3 has loaded its model. |
+| 10 | Import the ten specimens in the app. | Right after step 9. Each import starts a worker execution (`jobs:run`) at once. |
+| 11 | `uv run --frozen python scripts/ops/scale_sam.py 0` | After the ten have finished (all in a queue state). REQUIRED: stops the warm instance, which is billed for as long as it runs (about USD 0.37 an hour: 4 vCPU and 16 GiB at the instance-based list prices of cloud.google.com/run/pricing, Tier 1, which includes us-east4). It also restores the minimum of 0 that a release requires (`deploy_runtime.verify_runtime_template`). |
 
-Steps 1 to 3 do not depend on each other.
+Steps 1 to 3 do not depend on each other. Steps 8 and 11 print the minimum at the service and revision level.
 
-## After step 8
+## Starting the worker
 
 The API starts the worker itself. It calls `jobs:run` on `SPECIMEN_WORKER_JOB`, which is already in the API's
 committed environment. Its identity holds `run.invoker` on the job from step 6.
 
-To start the worker by hand instead:
+To start the worker by hand instead, run steps 8 and 9 first, then step 11 when it has finished:
 
 ```
 gcloud run jobs execute specimen-worker --region=us-east4

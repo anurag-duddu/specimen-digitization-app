@@ -13,12 +13,12 @@ Idempotent. When the digest is known (SAM_CHECKPOINT_SHA256, else runtime_settin
 revision is already stored at that prefix with its Hub size, nothing is downloaded. Otherwise it downloads, refuses
 a digest that differs from the known one, and uploads only what is missing or different (rsync, by checksum).
 
-The Hugging Face token is read from Secret Manager (huggingface-runtime-token, version HF_TOKEN_VERSION, default
-"latest") only when a download is needed, held in this process and passed to the downloader; it is never printed
-and never written to disk.
+The Hugging Face token is read from Secret Manager (huggingface-runtime-token, at the version
+runtime_settings.SECRET_VERSIONS pins for the runtime, never "latest") only when a download is needed, held in this
+process and passed to the downloader; it is never printed and never written to disk.
 
-Parameters (environment): PROJECT, BUCKET, SAM_CHECKPOINT_SHA256, HF_TOKEN_VERSION, WORK_DIR (where the temporary
-directory is made; needs about 7 GB free), DRY_RUN=1.
+Parameters (environment): PROJECT, BUCKET, SAM_CHECKPOINT_SHA256, WORK_DIR (where the temporary directory is made;
+needs about 7 GB free), DRY_RUN=1.
 """
 from __future__ import annotations
 
@@ -89,8 +89,9 @@ def main() -> int:
     known = os.environ.get("SAM_CHECKPOINT_SHA256") or ops.settings.SAM_CHECKPOINT_SHA256
     if known is not None and not (isinstance(known, str) and ops.HEX64.fullmatch(known)):
         raise SystemExit("SAM_CHECKPOINT_SHA256 must be 64 lowercase hex digits")
-    token_command = ["gcloud", "secrets", "versions", "access", ops.param("HF_TOKEN_VERSION", "latest"),
-                     f"--secret={TOKEN_SECRET}", f"--project={project}"]
+    version = ops.pinned_secret(TOKEN_SECRET).rsplit(":", 1)[1]  # The version the worker's HF_TOKEN reads.
+    token_command = ["gcloud", "secrets", "versions", "access", version, f"--secret={TOKEN_SECRET}",
+                     f"--project={project}"]
     ops.note(f"checkpoint {SAM3_MODEL.repo_id}@{SAM3_MODEL.revision}, files {' '.join(PATTERNS)}")
 
     if dry:

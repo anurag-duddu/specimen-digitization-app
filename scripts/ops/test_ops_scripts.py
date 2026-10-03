@@ -29,7 +29,7 @@ def dry(script, *args, **env):
     """Run a script with DRY_RUN=1: (exit code, stdout+stderr, the printed commands as argv lists)."""
     environment = {key: value for key, value in os.environ.items()
                    if key not in {"PROJECT", "REGION", "SAM_CHECKPOINT_SHA256", "SAM_IMAGE", "WORKER_IMAGE"}}
-    environment.update(DRY_RUN="1", SOURCE_SHA=SHA, **env)
+    environment.update({"DRY_RUN": "1", "SOURCE_SHA": SHA, **env})
     result = subprocess.run([sys.executable, str(HERE / script), *args], capture_output=True, text=True,
                             env=environment, timeout=300)
     output = result.stdout + result.stderr
@@ -56,6 +56,7 @@ def test_worker_job_is_one_task_no_retries_with_the_drain_args_and_no_maps_key()
     assert "--args=" + ",".join(S.WORKER["args"]) in job
     assert S.WORKER["args"][:3] == ["--mode", "production", "--drain"]
     assert f"--service-account={S.WORKER_EMAIL}" in job
+    assert f"--labels=source-sha={SHA}" in job and f"--image={ops.registry()}/worker:{SHA}" in job
     secrets = next(arg for arg in job if arg.startswith("--set-secrets="))
     assert ":latest" not in secrets and "HF_TOKEN=huggingface-runtime-token:" in secrets
     assert "maps" not in output.lower()
@@ -75,9 +76,12 @@ def test_sam_service_is_private_authorized_run_with_the_read_only_checkpoint_mou
                  "--startup-probe=tcpSocket.port=8080,periodSeconds=10,timeoutSeconds=10,failureThreshold=60",
                  "--add-volume-mount=volume=checkpoint,mount-path=/model-cache"):
         assert flag in service
+    assert "--no-cpu-throttling" in service and "--cpu-boost" in service
+    assert "--cpu-throttling" not in service and "--no-cpu-boost" not in service
+    assert f"--labels=source-sha={SHA}" in service
     prefix = f"application/sha256/{S.SAM_CHECKPOINT_SHA256}/sam3-cache"
     assert (f"--add-volume=name=checkpoint,type=cloud-storage,bucket={S.BUCKET},readonly=true,"
-            f"mount-options=only-dir={prefix}") in service
+            f"mount-options=only-dir={prefix};uid=10001;gid=10001") in service
     assert "# env SPECIMEN_SAM3_ENABLE=authorized-run" in output
     assert "# env HF_HUB_OFFLINE=1" in output
     assert "--set-secrets=LOGFIRE_TOKEN=specimen-worker-logfire:1" in service and "HF_TOKEN" not in output
@@ -105,6 +109,26 @@ def test_deploy_refuses_another_project_and_a_bad_minimum():
     assert dry("deploy.py", "sam", SAM_MIN_INSTANCES="2")[0] != 0
 
 
+@pytest.mark.parametrize("image, source, label", [
+    (f"{{registry}}/sam:{'d' * 40}", "", "d" * 40),  # build_images.py's tag names the commit
+    (f"{{registry}}/sam:{'d' * 40}", "d" * 40, "d" * 40),
+    (f"{{registry}}/sam@sha256:{'6' * 64}", "d" * 40, "d" * 40),  # by digest: SOURCE_SHA names the commit
+    (f"{{registry}}/sam:{'d' * 40}", SHA, None),  # tag and SOURCE_SHA disagree
+    (f"{{registry}}/sam@sha256:{'6' * 64}", "", None),  # by digest, no commit named
+    ("{registry}/sam:latest", "", None),
+])
+def test_deploy_labels_each_resource_with_the_image_commit(image, source, label):
+    code, output, commands = dry("deploy.py", "sam", SAM_IMAGE=image.format(registry=ops.registry()), SOURCE_SHA=source)
+    if label is None:
+        assert code != 0 and not find(commands, "gcloud", "run", "deploy")
+        return
+    assert code == 0, output
+    [service] = find(commands, "gcloud", "run", "deploy", "specimen-sam")
+    assert f"--labels=source-sha={label}" in service
+    released = importlib.import_module("deploy_runtime")
+    released.rollback_guard({"labels": {"source-sha": label}}, label)  # A release of that commit accepts the label.
+
+
 def test_deploy_env_and_secrets_match_the_release_bodies():
     """The same committed settings, composed the same way as deploy_runtime.released_bodies."""
     deploy = importlib.import_module("deploy")
@@ -122,7 +146,17 @@ def test_deploy_env_and_secrets_match_the_release_bodies():
     probe = bodies["sam"]["template"]["containers"][0]["startupProbe"]
     assert deploy.probe_flag(probe) == "tcpSocket.port=8080,periodSeconds=10,timeoutSeconds=10,failureThreshold=60"
     mount = bodies["sam"]["template"]["volumes"][0]["gcs"]["mountOptions"]
-    assert mount == ["only-dir=" + deploy.checkpoint_prefix(S.SAM_CHECKPOINT_SHA256)]
+    assert mount == deploy.mount_options(S.SAM_CHECKPOINT_SHA256)
+    assert mount[0] == "only-dir=" + deploy.checkpoint_prefix(S.SAM_CHECKPOINT_SHA256)
+    # gcloud splits mount-options on ";" into the v2 list (googlecloudsdk command_lib/run/volumes.py).
+    code, output, commands = dry("deploy.py", "sam")
+    assert code == 0, output
+    [service] = find(commands, "gcloud", "run", "deploy", "specimen-sam")
+    volume = next(arg for arg in service if arg.startswith("--add-volume="))
+    assert volume.split("mount-options=", 1)[1].split(";") == mount
+    resources = bodies["sam"]["template"]["containers"][0]["resources"]
+    assert ("--no-cpu-throttling" if not resources["cpuIdle"] else "--cpu-throttling") in service
+    assert ("--cpu-boost" if resources["startupCpuBoost"] else "--no-cpu-boost") in service
 
 
 def test_worker_deploy_refuses_a_sam_service_without_the_committed_url(monkeypatch):
@@ -176,8 +210,23 @@ def test_iam_covers_owner_grants_for_the_worker_and_sam_identities():
     theirs += [g for g in grants.AFTER_RELEASE if g.member == API_SA and g.resource == ("job", "specimen-worker")]
     # The bucket's resource conditions are kept exactly; owner_grants' secret-version pins are not (per-secret grants).
     expected = [(g.member, g.role, g.resource, g.condition if g.resource[0] == "bucket" else None) for g in theirs]
+    # Plus the one grant owner_grants does not list: SAM 3's unconditioned bucket listing for the mount.
+    expected.append((SAM_SA, "roles/storage.legacyBucketReader", ("bucket", S.BUCKET), None))
     assert sorted(mine) == sorted(expected) and len(set(mine)) == len(mine)
     assert any(resource[0] == "secret" for _, _, resource, _ in mine)
+
+
+def test_sam_gets_an_unconditioned_bucket_listing_and_no_other_unconditioned_bucket_grant():
+    code, output, commands = dry("iam.py")
+    assert code == 0, output
+    buckets = find(commands, "gcloud", "storage", "buckets", "add-iam-policy-binding", f"gs://{S.BUCKET}")
+    unconditioned = [argv for argv in buckets if "--condition=None" in argv]
+    assert unconditioned == [["gcloud", "storage", "buckets", "add-iam-policy-binding", f"gs://{S.BUCKET}",
+                              f"--member={SAM_SA}", "--role=roles/storage.legacyBucketReader", "--condition=None",
+                              "--quiet"]]
+    # The checkpoint's conditioned listing grant stays.
+    assert any(f"--member={SAM_SA}" in argv and "--role=roles/storage.objectViewer" in argv
+               and any("specimen_sam3_checkpoint_listing" in arg for arg in argv) for argv in buckets)
 
 
 # build_images.py
@@ -221,7 +270,11 @@ def test_checkpoint_dry_run_prints_the_layout_and_the_digest():
     assert "--no-ignore-symlinks" in rsync and "--checksums-only" in rsync
     assert rsync[4] == (f"gs://{S.BUCKET}/application/sha256/{S.SAM_CHECKPOINT_SHA256}/sam3-cache/hub/"
                         f"models--facebook--sam3/snapshots/{S.SAM3_MODEL.revision}/")
-    assert find(commands, "gcloud", "secrets", "versions", "access", "latest", "--secret=huggingface-runtime-token")
+    pinned = str(S.SECRET_VERSIONS["huggingface-runtime-token"])
+    assert find(commands, "gcloud", "secrets", "versions", "access", pinned, "--secret=huggingface-runtime-token")
+    assert pinned == dict(pair.split("=", 1) for pair in importlib.import_module("deploy").role_secrets(
+        "worker").split(","))["HF_TOKEN"].rsplit(":", 1)[1]  # The version the worker's HF_TOKEN reads.
+    assert "latest" not in output
 
 
 class FakeGcloud:
@@ -422,12 +475,75 @@ def test_warm_sam_retries_until_live_without_echoing_the_token(monkeypatch, caps
     warm = importlib.import_module("warm_sam")
     monkeypatch.delenv("DRY_RUN", raising=False)
     monkeypatch.setattr(ops.subprocess, "run", FakeGcloud())
-    statuses, urls = [503, 0, 200], []
+    statuses, urls = [503, 429, 0, 200], []
     monkeypatch.setattr(warm, "get", lambda url, token: (urls.append((url, token)), statuses.pop(0))[1])
     monkeypatch.setattr(warm.time, "sleep", lambda seconds: None)
     assert warm.main() == 0
     out, err = capsys.readouterr()
-    assert urls == [(S.SAM_URL + "/health/live", FAKE_TOKEN)] * 3
+    assert urls == [(S.SAM_URL + "/health/live", FAKE_TOKEN)] * 4
     assert FAKE_TOKEN not in out + err
     server = importlib.import_module("specimen_digitization.application.sam3_server")
     assert '"/health/live"' in inspect.getsource(server.create_app)
+
+
+# scale_sam.py
+
+def test_scale_sam_dry_run_sets_both_minimums():
+    for wanted in ("0", "1"):
+        code, output, commands = dry("scale_sam.py", wanted)
+        assert code == 0, output
+        [update] = find(commands, "gcloud", "run", "services", "update", "specimen-sam")
+        assert f"--min={wanted}" in update and f"--min-instances={wanted}" in update
+        assert f"--region={S.REGION}" in update and f"--project={S.PROJECT}" in update
+    for wrong in ((), ("2",), ("-1",), ("one",), ("0", "1")):
+        assert dry("scale_sam.py", *wrong)[0] != 0
+    assert dry("scale_sam.py", "0", PROJECT="another-project")[0] != 0
+
+
+def described(service_min, revision_min):
+    """`gcloud run services describe --format=json`; gcloud removes a minimum annotation for 0."""
+    def annotations(key, value):
+        return {} if value == 0 else {key: str(value)}
+    return json.dumps({"metadata": {"annotations": annotations("run.googleapis.com/minScale", service_min)},
+                       "spec": {"template": {"metadata": {"annotations": annotations(
+                           "autoscaling.knative.dev/minScale", revision_min)}}}})
+
+
+@pytest.mark.parametrize("before, wanted, flags", [
+    ((1, 1), 0, ["--min=0", "--min-instances=0"]),
+    ((0, 0), 1, ["--min=1", "--min-instances=1"]),
+    ((0, 1), 0, ["--min-instances=0"]),  # Only the level that differs changes.
+    ((0, 0), 0, None),  # Already there: no update.
+])
+def test_scale_sam_changes_only_what_differs_and_prints_the_result(monkeypatch, capsys, before, wanted, flags):
+    scale = importlib.import_module("scale_sam")
+    monkeypatch.delenv("DRY_RUN", raising=False)
+    state, updates = list(before), []
+    monkeypatch.setattr(ops, "read", lambda argv: described(*state))
+
+    def run(argv):
+        updates.append(argv)
+        state[:] = [wanted if any(a.startswith("--min=") for a in argv) else state[0],
+                    wanted if any(a.startswith("--min-instances=") for a in argv) else state[1]]
+
+    monkeypatch.setattr(ops, "run", run)
+    assert scale.main([str(wanted)]) == 0
+    if flags is None:
+        assert updates == []
+    else:
+        [update] = updates
+        assert update[:5] == ["gcloud", "run", "services", "update", "specimen-sam"]
+        assert [arg for arg in update if arg.startswith("--min")] == flags
+    assert f"service level {wanted}, revision level {wanted}" in capsys.readouterr().out
+
+
+def test_scale_sam_fails_when_the_service_does_not_report_the_minimum(monkeypatch):
+    scale = importlib.import_module("scale_sam")
+    monkeypatch.delenv("DRY_RUN", raising=False)
+    monkeypatch.setattr(ops, "read", lambda argv: described(1, 1))
+    monkeypatch.setattr(ops, "run", lambda argv: None)  # The update did not take.
+    with pytest.raises(SystemExit, match="minimum of 0"):
+        scale.main(["0"])
+    monkeypatch.setattr(ops, "read", lambda argv: None)
+    with pytest.raises(SystemExit, match="not deployed"):
+        scale.main(["1"])

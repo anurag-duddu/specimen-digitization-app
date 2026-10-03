@@ -37,7 +37,7 @@ def test_the_checkpoint_digest_names_the_mount_both_bodies_and_the_listing_grant
     assert S.SAM_CHECKPOINT_SHA256 == CHECKPOINT
     built, prefix = bodies("sam", "worker"), f"application/sha256/{CHECKPOINT}/sam3-cache"
     sam = built["sam"]["template"]
-    assert sam["volumes"][0]["gcs"]["mountOptions"] == [f"only-dir={prefix}"]
+    assert sam["volumes"][0]["gcs"]["mountOptions"] == [f"only-dir={prefix}", "uid=10001", "gid=10001"]
     assert sam["containers"][0]["volumeMounts"] == [{"name": "checkpoint", "mountPath": S.SAM["env"]["HF_HOME"]}]
     for container in (sam["containers"][0], built["worker"]["template"]["template"]["containers"][0]):
         assert plain_env(container)["SPECIMEN_SAM3_CHECKPOINT_SHA256"] == CHECKPOINT
@@ -78,6 +78,34 @@ def test_sam3_may_take_the_longest_startup_cloud_run_allows_without_a_gpu():
     defaulted["template"]["containers"][0]["startupProbe"] = {
         "tcpSocket": {"port": 8080}, "timeoutSeconds": 240, "periodSeconds": 240, "failureThreshold": 1}
     D.verify_runtime_template(defaulted, api, role="api")
+
+
+def test_sam3_keeps_cpu_allocated_and_boosts_startup_and_the_check_holds_it():
+    """An abandoned inference holds SAM 3's run lock; it must keep its CPU after the worker disconnects."""
+    built = bodies("sam", "api")
+    sam, api = (built[role]["template"]["containers"][0]["resources"] for role in ("sam", "api"))
+    assert (sam["cpuIdle"], sam["startupCpuBoost"]) == (S.SAM["cpu_idle"], S.SAM["startup_cpu_boost"]) == (False, True)
+    assert (api["cpuIdle"], api["startupCpuBoost"]) == (True, False)
+    expected = built["sam"]
+    reported = copy.deepcopy(expected)  # proto3 JSON may omit a false bool
+    del reported["template"]["containers"][0]["resources"]["cpuIdle"]
+    D.verify_runtime_template(reported, expected, role="sam")
+    for drift in ({"cpuIdle": True}, {"startupCpuBoost": False}):
+        changed = copy.deepcopy(expected)
+        changed["template"]["containers"][0]["resources"].update(drift)
+        with pytest.raises(ValueError, match="runtime billing or startup CPU policy changed"):
+            D.verify_runtime_template(changed, expected, role="sam")
+    defaulted = copy.deepcopy(built["api"])
+    del defaulted["template"]["containers"][0]["resources"]["cpuIdle"]  # the API must still report cpuIdle true
+    with pytest.raises(ValueError, match="runtime billing or startup CPU policy changed"):
+        D.verify_runtime_template(defaulted, built["api"], role="api")
+
+
+def test_the_checkpoint_mount_belongs_to_the_sam3_image_user():
+    """Cloud Run volumes are root-owned by default; the mount names the uid and gid the SAM 3 image runs as."""
+    dockerfile = (Path(__file__).resolve().parents[2] / "containers/worker/sam3.Dockerfile").read_text()
+    assert "useradd --uid 10001 " in dockerfile and "\nUSER 10001\n" in dockerfile
+    assert S.SAM["mount_options"] == ["uid=10001", "gid=10001"]
 
 
 def test_no_role_mounts_the_google_maps_key():

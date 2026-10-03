@@ -11,12 +11,14 @@ safe. None is time-limited. Two bucket grants carry a resource condition, the sa
 table, because the bucket also holds the source slides and private originals: application objects only, and SAM 3's
 listing of its own checkpoint prefix. Secrets are granted per secret.
 
-The table follows owner_grants.py (STANDING, AFTER_RELEASE and runtime_grants) for these three members:
+The table follows owner_grants.py (STANDING, AFTER_RELEASE and runtime_grants) for these three members, plus one
+grant owner_grants.py does not list: SAM 3's unconditioned bucket listing (see LIST_BUCKET).
   worker  specimenRuntimeConnector on the project (the connector's named operations); objectViewer and
           objectCreator on application objects; secretAccessor on each secret it reads; run.invoker on
           specimen-sam (segmentation) and on specimen-worker (the drain's deadline hand-over).
   sam     objectViewer and objectCreator on application objects; objectViewer for listing the checkpoint prefix
-          (the read-only mount); secretAccessor on its Logfire secret.
+          (the read-only mount); legacyBucketReader on the bucket, unconditioned, for the mount itself;
+          secretAccessor on its Logfire secret.
   api     run.invoker on specimen-worker: the API starts executions with jobs:run and no overrides
           (lane_dispatch.py), which needs run.jobs.run only, not actAs on the worker identity.
 
@@ -38,6 +40,16 @@ Grant = namedtuple("Grant", "member role kind name condition reason")
 VIEW, CREATE, ACCESS, INVOKE = ("roles/storage.objectViewer", "roles/storage.objectCreator",
                                 "roles/secretmanager.secretAccessor", "roles/run.invoker")
 LISTING = 'api.getAttribute("storage.googleapis.com/objectListPrefix", "")'
+# The checkpoint mount's gcsfuse calls GetStorageLayout on the bucket and returns its error; gcsfuse v3.11.4 sends
+# it with Prefix "", v3.12.0 with the only-dir prefix (internal/storage/storage_handle.go), and Cloud Run does not
+# publish which release it runs. The call "Requires the storage.objects.list IAM permission on the bucket", the
+# prefix being "used for permission check" (docs.cloud.google.com/storage/docs/reference/rpc/
+# google.storage.control.v2), and an empty prefix fails the listing condition above. This role holds
+# storage.buckets.get, storage.objects.list and folder, managed-folder and multipart-upload get/list, and no
+# storage.objects.get (`gcloud iam roles describe roles/storage.legacyBucketReader`). Granted on the whole bucket,
+# it lets SAM 3 list every object's name and metadata, source slides and originals included; object contents stay
+# readable only under application/sha256/, through the APP-conditioned objectViewer.
+LIST_BUCKET = "roles/storage.legacyBucketReader"
 
 
 def conditions(bucket: str, digest: str) -> tuple[tuple[str, str], tuple[str, str]]:
@@ -59,6 +71,8 @@ def grants(project: str, digest: str) -> list[Grant]:
                   for role in (VIEW, CREATE)]
         if who == "sam":
             table.append(Grant(sam, VIEW, "bucket", bucket, listing, "list the checkpoint prefix it mounts read-only"))
+            table.append(Grant(sam, LIST_BUCKET, "bucket", bucket, None,
+                               "mount the checkpoint: the bucket and object listing at mount time; no object reads"))
         table += [Grant(member, ACCESS, "secret", secret, None, f"read {variable}")
                   for variable, secret in sorted(settings.ROLES[who]["secret_env"].items())]
     table += [Grant(worker, INVOKE, "service", "specimen-sam", None, "call SAM 3"),

@@ -24,7 +24,10 @@ import urllib.request
 import ops_common as ops
 
 PATH = "/health/live"  # sam3_server.create_app; the app itself does not authenticate this path.
-ATTEMPT_SECONDS = 330  # Longer than the service's 300 s request timeout, which also bounds a held cold start.
+# A request waiting for an instance pends for up to 3.5 times the service's average startup time or 10 s, whichever
+# is greater, then fails with 429 (docs.cloud.google.com/run/docs/about-instance-autoscaling; "no available instance"
+# in docs.cloud.google.com/run/docs/troubleshooting). The loop below retries a 429 like any status but 200, 401, 403.
+ATTEMPT_SECONDS = 330  # Longer than the service's 300 s request timeout.
 
 
 def token_argv(url: str) -> list[str]:

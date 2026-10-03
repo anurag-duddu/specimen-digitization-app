@@ -9,13 +9,17 @@ scripts/ci/runtime_settings.py; the checkpoint digest from SAM_CHECKPOINT_SHA256
 Each deploy replaces the whole environment, secret set and volume set, so a re-run converges on the same definition.
 
 sam     Cloud Run service specimen-sam: private (no allUsers invoker), ingress all, the read-only checkpoint mount at
-        /model-cache, request-based billing, CPU boost off, minimum SAM_MIN_INSTANCES (default 0), maximum 1.
+        /model-cache owned by the image's user, CPU always allocated and startup CPU boost on (runtime_settings.SAM
+        says why), minimum SAM_MIN_INSTANCES (default 0), maximum 1. scale_sam.py changes the minimum later.
 worker  Cloud Run job specimen-worker: one task, no parallelism, no retries, the drain arguments. The job is only
         defined here; the API starts executions (jobs:run, no overrides, named by SPECIMEN_WORKER_JOB). Requires
         specimen-sam to be deployed: its URLs must include runtime_settings.SAM_URL, the endpoint and the audience
         SAM 3 checks the worker's identity token against.
 
-Images: <registry>/<role>:<SOURCE_SHA> (build_images.py), or SAM_IMAGE / WORKER_IMAGE.
+Images: <registry>/<role>:<SOURCE_SHA> (build_images.py), or SAM_IMAGE / WORKER_IMAGE. Both resources are labelled
+source-sha=<the image's commit>: the image tag when it is a full commit SHA, else SOURCE_SHA, which must then be set
+(and must equal the tag when both are). A later release (scripts/ci/deploy_runtime.py, rollback_guard) refuses to
+change a resource without that label, and requires its own commit to equal it or be ahead of it on GitHub.
 Parameters (environment): PROJECT, REGION (must match runtime_settings, whose values name them), SOURCE_SHA,
 SAM_IMAGE, WORKER_IMAGE, SAM_CHECKPOINT_SHA256, SAM_MIN_INSTANCES, DRY_RUN=1.
 Grants are separate: iam.py, re-run after this script so the invoker grants find the service and the job.
@@ -64,12 +68,30 @@ def probe_flag(probe: dict, prefix: str = "") -> str:
                     for key, value in probe.items())
 
 
-def image(role: str) -> str:
-    return os.environ.get(f"{role.upper()}_IMAGE") or f"{ops.registry()}/{role}:{ops.source_sha()}"
+def image(role: str) -> tuple[str, str]:
+    """(image reference, the commit it was built from), the commit for the source-sha label."""
+    given = os.environ.get(f"{role.upper()}_IMAGE")
+    if not given:
+        sha = ops.source_sha()
+        return f"{ops.registry()}/{role}:{sha}", sha
+    name = given.split("@", 1)[0].rsplit("/", 1)[-1]
+    tag, source = name.partition(":")[2], os.environ.get("SOURCE_SHA")
+    if tag and source and tag != source:
+        raise SystemExit(f"{role.upper()}_IMAGE's tag differs from SOURCE_SHA; the label must name the image's commit")
+    sha = tag or source or ""
+    if not ops.SHA.fullmatch(sha):
+        raise SystemExit(f"{role.upper()}_IMAGE needs a full commit SHA as its tag (build_images.py tags it so) or "
+                         "SOURCE_SHA naming the commit it was built from")
+    return given, sha
 
 
 def checkpoint_prefix(digest: str) -> str:
     return f"application/sha256/{digest}/sam3-cache"
+
+
+def mount_options(digest: str) -> list[str]:
+    """The checkpoint volume's gcsfuse options, as released_bodies sends them."""
+    return [f"only-dir={checkpoint_prefix(digest)}", *settings.SAM["mount_options"]]
 
 
 def sam_argv(env_path: str, digest: str) -> list[str]:
@@ -78,10 +100,13 @@ def sam_argv(env_path: str, digest: str) -> list[str]:
     if not low.isdigit() or int(low) > spec["max_instances"]:
         raise SystemExit("SAM_MIN_INSTANCES must be a whole number no larger than the maximum")
     high = str(spec["max_instances"])
+    reference, sha = image("sam")
     return ["gcloud", "run", "deploy", SERVICE, f"--project={ops.project()}", f"--region={ops.region()}",
-            f"--image={image('sam')}", f"--service-account={spec['service_account']}",
+            f"--image={reference}", f"--labels=source-sha={sha}", f"--service-account={spec['service_account']}",
             "--no-allow-unauthenticated", "--ingress=all", "--execution-environment=gen2",
-            f"--cpu={spec['cpu']}", f"--memory={spec['memory']}", "--cpu-throttling", "--no-cpu-boost",
+            f"--cpu={spec['cpu']}", f"--memory={spec['memory']}",
+            "--cpu-throttling" if spec["cpu_idle"] else "--no-cpu-throttling",
+            "--cpu-boost" if spec["startup_cpu_boost"] else "--no-cpu-boost",
             f"--concurrency={spec['concurrency']}", f"--timeout={spec['timeout_seconds']}s", "--port=8080",
             # Revision level (--*-instances) and service level (--min/--max), as released_bodies sets scaling on both
             # and verify_runtime_template checks both. Cloud Run applies the lesser maximum and the larger minimum
@@ -89,8 +114,9 @@ def sam_argv(env_path: str, digest: str) -> list[str]:
             f"--min-instances={low}", f"--max-instances={high}", f"--min={low}", f"--max={high}",
             f"--startup-probe={probe_flag(spec['startup_probe'])}",
             f"--env-vars-file={env_path}", f"--set-secrets={role_secrets('sam')}",
+            # gcloud takes the gcsfuse options separated by semicolons (run deploy --help, --add-volume).
             "--clear-volumes", "--add-volume=name=checkpoint,type=cloud-storage,"
-            f"bucket={settings.BUCKET},readonly=true,mount-options=only-dir={checkpoint_prefix(digest)}",
+            f"bucket={settings.BUCKET},readonly=true,mount-options={';'.join(mount_options(digest))}",
             "--clear-volume-mounts", f"--add-volume-mount=volume=checkpoint,mount-path={MOUNT}", "--quiet"]
 
 
@@ -99,8 +125,9 @@ def worker_argv(env_path: str) -> list[str]:
     args = spec["args"]
     if not all(isinstance(arg, str) and arg and "," not in arg for arg in args):
         raise SystemExit("runtime_settings.WORKER['args'] must be non-empty strings without commas")
+    reference, sha = image("worker")
     return ["gcloud", "run", "jobs", "deploy", JOB, f"--project={ops.project()}", f"--region={ops.region()}",
-            f"--image={image('worker')}", f"--service-account={spec['service_account']}",
+            f"--image={reference}", f"--labels=source-sha={sha}", f"--service-account={spec['service_account']}",
             "--tasks", "1", "--parallelism", "1", "--max-retries", "0",
             "--task-timeout", f"{spec['timeout_seconds']}s",
             f"--cpu={spec['cpu']}", f"--memory={spec['memory']}", "--args=" + ",".join(args),
