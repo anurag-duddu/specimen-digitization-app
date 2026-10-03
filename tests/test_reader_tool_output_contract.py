@@ -69,6 +69,9 @@ def test_actual_hf_reader_sends_tool_schema_and_validates_literal_retry(monkeypa
         tool = payload["tools"][0]
         assert tool["type"] == "function"
         assert {"verbatim_text", "lines"} <= set(tool["function"]["parameters"]["required"])
+        # The reader is told the line rule in the schema it is sent, not only by the validator.
+        properties = tool["function"]["parameters"]["properties"]
+        assert all("single newline" in properties[name]["description"] for name in ("verbatim_text", "lines"))
         assert payload["max_tokens"] == 4096
         output = {"verbatim_text": "synthetic alpha", "lines": ["wrong" if len(sent) == 1 else "synthetic alpha"]}
         return httpx.Response(200, json={
