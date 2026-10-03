@@ -1,0 +1,36 @@
+{
+"engineVersion" : "GLC:9.4|U:1.01374|eng:1.0",
+"numResults" : 2,
+"executionTimems" : 125.0145,
+"resultSet" : { "type": "FeatureCollection",
+"features": [
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-87.650052, 41.850033]},
+"properties": {
+"parsePattern" : "CHICAGO",
+"precision" : "High",
+"score" : 84,
+"uncertaintyRadiusMeters" : 31817,
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=COOK|:NPExtent=52817|:NP=CHICAGO|:KFID=IL:ppl:5282|CHICAGO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-87.65, 41.85]},
+"properties": {
+"parsePattern" : "CHICAGO",
+"precision" : "High",
+"score" : 82,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=COOK|:NP=CHICAGO|:KFID=|CHICAGO"
+}
+}
+ ],
+"crs": { "type" : "EPSG", "properties" : { "code" : 4326 }}
+}
+}
