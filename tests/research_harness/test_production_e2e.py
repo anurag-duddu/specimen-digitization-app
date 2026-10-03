@@ -10,14 +10,17 @@ Label text is the public synthetic fixture.
 
 Stage 1, the publications land: the taxon, researched through the three ready
 taxonomy sources, precise_location, settled from its label evidence, and the
-parties and collection fields. The dates and elevations are not published;
-each carries its mandatory_unresolved field reason. Stage 2, the run reaching
-its final queue, is expected to fail until the blocker named on its test is
-fixed.
+parties and collection fields. Its geography historian makes no GEOLocate
+lookup, so the geography fields wait on a source. The dates and elevations are
+not published; each carries its mandatory_unresolved field reason. Stage 2,
+with the historian's GEOLocate lookups: the country, state, county and city
+publish with their GEOLocate evidence, and the run reaches its final queue,
+needs_human_review, on the mandatory_unresolved field reasons.
 """
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from types import SimpleNamespace
 
@@ -36,7 +39,7 @@ from specimen_digitization.research_harness.production_runtime import research_p
 from specimen_digitization.research_harness.workflow_bridge import compose_production_research_workflow
 
 from production_e2e_support import (
-    COLLECTION, LABEL_TEXT, LABEL_VALUES, ORG, WORKER, FakeDataConnect, GenerationBlobs,
+    COLLECTION, FIXTURES, LABEL_TEXT, LABEL_VALUES, ORG, WORKER, FakeDataConnect, GenerationBlobs,
     fixture_source_transport, research_state, scripted_model_factory, specimen_before_adjudication,
     worker_principal,
 )
@@ -49,6 +52,9 @@ COL_XR = "7ddf754f-d193-4cc9-b351-99906754a03b"
 DATES_AND_ELEVATIONS = ("date_visited_from", "date_visited_to", "date_identified", "elevation_from_m",
     "elevation_to_m", "elevation_from_ft", "elevation_to_ft")
 GBIF_NAME = "Danaus plexippus (Linnaeus, 1758)"
+GEOGRAPHY = ("country", "province_state", "county", "city")
+# GEOLocate's best Chicago match in the recorded glcwrap answer.
+CHICAGO = "geolocate:41.850033,-87.650052"
 
 
 class SimulatedCrash(Exception):
@@ -84,10 +90,13 @@ def rig(tmp_path, monkeypatch):
     actor_uid.reset(token)
 
 
-def compose(rig, *, environ=SWITCH_ON):
-    """The production composer with the three offline seams; a new worker process each call."""
+def compose(rig, *, environ=SWITCH_ON, geolocate=True):
+    """The production composer with the three offline seams; a new worker process each call.
+
+    ``geolocate`` False: the geography historian makes no GEOLocate lookup."""
     return compose_production_research_workflow(rig.ordinary, repository=rig.repository, environ=environ,
-        actor_uid=WORKER, state_backend=rig.backend, model_factory=scripted_model_factory(rig.model_calls),
+        actor_uid=WORKER, state_backend=rig.backend,
+        model_factory=scripted_model_factory(rig.model_calls, geolocate=geolocate),
         source_transport=fixture_source_transport(rig.source_urls), blobs=rig.research_blobs)
 
 
@@ -113,7 +122,10 @@ def jobs_and_bindings(rig):
 
 
 def test_first_publication_lands_through_the_production_entry_point(rig):
-    workflow = compose(rig)
+    # The geography historian makes no GEOLocate lookup here, so this stage
+    # covers the abstaining historian: the geography waits on a source and the
+    # record is processing_blocked (Stage 2 covers the lookups).
+    workflow = compose(rig, geolocate=False)
     parsed = to_plan(workflow, rig)
     assert not RESEARCH_OPERATIONS & set(rig.fake.calls)
     program = research_program_key(parsed.run.id)
@@ -138,7 +150,7 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
 
     # Plan tick 2, a new worker: provisioning replays and registers, then the
     # process dies before the research worker starts.
-    restarted = compose(rig)
+    restarted = compose(rig, geolocate=False)
 
     async def crash(*args, **kwargs):
         raise SimulatedCrash
@@ -160,9 +172,9 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     # evidence.py date and elevation helpers give a settled value no evidence
     # relation, which the V2 projection requires, so each of those fields keeps
     # its base record value and carries the field reason mandatory_unresolved.
-    # The geography fields keep the record processing_blocked, so the step ends
-    # with an operational hold.
-    resumed = compose(rig)
+    # The geography fields, with no GEOLocate lookup, keep the record
+    # processing_blocked, so the step ends with an operational hold.
+    resumed = compose(rig, geolocate=False)
     routing = []
 
     def observe(variables):
@@ -222,8 +234,7 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     # The taxon left the run unfinished and due again (no disposition).
     assert len(routing) == 8 and routing[1][0] == "running" and routing[1][1] is not None
     # From precise_location on, the record carries the geography fields still
-    # waiting on a source, which the V2 routing treats as processing_blocked
-    # (the blocker named on the Stage 2 test).
+    # waiting on a source, which the V2 routing treats as processing_blocked.
     assert published.run.stage == "processing_blocked" and published.run.disposition is None
     waiting_reasons = tuple(f"research_work:{key}:waiting_source" for key in ("city", "country", "county",
         "province_state"))
@@ -270,7 +281,7 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
 
     # The next tick finds the run processing_blocked: it does not re-enter
     # research, so nothing is published or paid for twice.
-    again = compose(rig)
+    again = compose(rig, geolocate=False)
     before = len(rig.fake.calls)
     with supervised():
         blocked = again.step(rig.principal, rig.specimen_id)
@@ -281,22 +292,68 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     assert len(rig.model_calls) == 9 and len(rig.source_urls) == 3
 
 
-@pytest.mark.xfail(strict=True, raises=OperationalBlock, reason=(
-    "Blocked outside this test's scope: country, province_state, county and city stay "
-    "waiting_source until Lane G's GEOLocate source is ready, and the V2 routing treats "
-    "waiting_source as processing_blocked, so the first plan tick ends with "
-    "native_research_operational_hold after eight publications. The dates and elevations "
-    "no longer block: each carries its mandatory_unresolved field reason (needs human review)"))
 def test_the_run_reaches_its_final_queue(rig):
+    """The historian validates the label's country, state, county and city with
+    GEOLocate through the capture broker: four captures, one per field. The
+    engine pins every receipt of the geography run on each of its checkpoints,
+    and each field publishes with them, citing only its own field's capture.
+    One plan tick publishes every terminal field and finalizes the run."""
     workflow = compose(rig)
-    to_plan(workflow, rig)
+    parsed = to_plan(workflow, rig)
     with supervised():
-        for _ in range(8):
-            specimen = workflow.step(rig.principal, rig.specimen_id)
-            if specimen.run.stage == "finalized":
-                break
-    assert specimen.run.stage == "finalized"
-    assert specimen.run.disposition in {"cleared", "needs_human_review"}
+        specimen = workflow.step(rig.principal, rig.specimen_id)
+
+    # The four queries send the one recorded glcwrap request, each a completed
+    # offline capture effect of its own field.
+    url = json.loads((FIXTURES / "sources.json").read_text())["geolocate"]["url"]
+    assert len(rig.source_urls) == 7 and rig.source_urls.count(url) == 4
+    assert [role for role, _ in rig.model_calls] == ["specimen_taxonomy"] * 4 + ["specimen_geography"] * 2 + [
+        "specimen_temporal", "specimen_measurement", "specimen_parties", "specimen_collection"]
+    _, state = research_state(rig.fake, rig.specimen_id)
+    captures = {key: effect for key, effect in state["effects"].items()
+        if effect["operation_key"].startswith("source_capture_v2:")}
+    assert len(captures) == 7 and {effect["status"] for effect in captures.values()} == {"completed"}
+    assert {effect["execution_class"] for effect in captures.values()} == {"offline"}
+    job = list(state["jobs"].values())[0]
+    for key in GEOGRAPHY:
+        # Each geography checkpoint carries all four fields' captures.
+        assert {tuple(captures[effect]["field_keys"]) for effect in job["fields"][key]["checkpoint"]["receipt_ids"]
+            if effect in captures} == {(name,) for name in GEOGRAPHY}
+
+    # Twelve publications: the taxon, the geography with precise_location, then
+    # the parties and collection fields.
+    receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
+    assert [row["causal_proof"]["changed_field"] for row in receipts] == ["taxon", "city", "country",
+        "county", "precise_location", "province_state", "collectors", "identified_by_irn", "collection_code",
+        "collection_method", "fmnh_ins_number", "habitat"]
+    published = rig.repository.get(rig.principal.scope, rig.specimen_id)
+    assert published.version == specimen.version == parsed.version + 12
+    by_field = {row["causal_proof"]["changed_field"]: row for row in receipts}
+    for key in GEOGRAPHY:
+        # The label's value with GEOLocate's Chicago match, linked as "supports"
+        # to one GEOLocate evidence row: a success from its own field's capture,
+        # with one producer call for that field.
+        value = published.run.fields[key]
+        assert value.state == "supported" and value.normalized == LABEL_VALUES[key] and value.authority_id == CHICAGO
+        record = rig.fake.tables["record_version"][by_field[key]["native_record_version_id"]]
+        field = next(row for row in rig.fake.tables["resolved_field"].values()
+            if row["recordVersionId"] == record["id"] and row["fieldKey"] == key)
+        links = [row for row in rig.fake.tables["candidate_evidence"].values()
+            if row["candidateId"] == field["candidateId"]]
+        assert [row["relation"] for row in links] == ["supports"]
+        evidence = rig.fake.tables["evidence_item"][links[0]["evidenceId"]]
+        assert (evidence["source"], evidence["outcome"]) == ("geolocate", "success")
+        calls = [row for row in rig.fake.tables["tool_call"].values() if row["evidenceId"] == evidence["id"]]
+        assert [(row["fieldKeys"], row["outcome"]) for row in calls] == [([key], "success")]
+
+    # The final queue: needs human review on the field reasons of verbatim_dts
+    # and the held dates and elevations, with no operational reason.
+    assert specimen.run.stage == "finalized" and specimen.run.disposition == "needs_human_review"
+    unresolved = {f"mandatory_unresolved:{key}" for key in ("verbatim_dts", *DATES_AND_ELEVATIONS)}
+    assert {reason for reason in specimen.run.reasons if reason.startswith("mandatory_unresolved:")} == unresolved
+    progress = receipts[-1]["causal_proof"]["progress_receipt"]
+    assert unresolved <= set(progress["human_reason_codes"]) and not progress["operational_reason_codes"]
+    assert not rig.fake.duplicates
 
 
 def test_with_the_switch_off_the_worker_keeps_the_ordinary_workflow(rig):

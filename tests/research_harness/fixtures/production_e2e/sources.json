@@ -10,5 +10,10 @@
   "catalogue_of_life": {
     "url": "https://api.checklistbank.org/dataset/316321/nameusage/search?q=Danaus+plexippus&limit=3",
     "body": "catalogue-of-life-nameusage-search.json"
+  },
+  "geolocate": {
+    "url": "https://geo-locate.org/webservices/geolocatesvcv2/glcwrap.aspx?Country=United+States&State=Illinois&County=Cook&Locality=Chicago&hwyX=false&enableH2O=false&doUncert=true&doPoly=false&displacePoly=false&languageKey=0&fmt=json",
+    "body": "geolocate-glcwrap-chicago.json",
+    "requested_at": "2026-10-03T12:47:52+00:00"
   }
 }
