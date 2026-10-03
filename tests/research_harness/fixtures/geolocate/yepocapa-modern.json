@@ -1,0 +1,36 @@
+{
+"engineVersion" : "GLC:9.4|U:1.01374|eng:1.0",
+"numResults" : 2,
+"executionTimems" : 62.5103,
+"resultSet" : { "type": "FeatureCollection",
+"features": [
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-90.953956, 14.501946]},
+"properties": {
+"parsePattern" : "YEPOCAPA",
+"precision" : "High",
+"score" : 83,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=CHIMALTENANGO|:NP=YEPOCAPA|:KFID=|YEPOCAPA"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [-90.974157, 14.467246]},
+"properties": {
+"parsePattern" : "YEPOCAPA",
+"precision" : "High",
+"score" : 83,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=CHIMALTENANGO|:NP=YEPOCAPA|:KFID=|YEPOCAPA"
+}
+}
+ ],
+"crs": { "type" : "EPSG", "properties" : { "code" : 4326 }}
+}
+}

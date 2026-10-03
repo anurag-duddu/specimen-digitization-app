@@ -1,0 +1,75 @@
+{
+"engineVersion" : "GLC:9.4|U:1.01374|eng:1.0",
+"numResults" : 5,
+"executionTimems" : 187.5089,
+"resultSet" : { "type": "FeatureCollection",
+"features": [
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [121.055247, 14.534434]},
+"properties": {
+"parsePattern" : "MOUNT APO",
+"precision" : "High",
+"score" : 84,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=MAKATI|:NP=MOUNT APO|:KFID=|MOUNT APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [122.7744, 11.1858]},
+"properties": {
+"parsePattern" : "MOUNT APO",
+"precision" : "High",
+"score" : 84,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=ILOILO|:NP=MOUNT APO|:KFID=|MOUNT APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.269722, 6.989444]},
+"properties": {
+"parsePattern" : "MOUNT APO",
+"precision" : "High",
+"score" : 84,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=COTABATO|:NP=MOUNT APO|:KFID=|MOUNT APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.628333, 6.233611]},
+"properties": {
+"parsePattern" : "MOUNT APO",
+"precision" : "High",
+"score" : 84,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=RPP3|:NP=MOUNT APO|:KFID=|MOUNT APO"
+}
+},
+{ "type": "Feature",
+"geometry": {"type": "Point", "coordinates": [125.2667, 6.9833]},
+"properties": {
+"parsePattern" : "MOUNT APO",
+"precision" : "High",
+"score" : 84,
+"uncertaintyRadiusMeters" : "Unavailable",
+"uncertaintyPolygon" : "Unavailable",
+"displacedDistanceMiles" : 0,
+"displacedHeadingDegrees" : 0,
+"debug" : ":GazPartMatch=False|:inAdm=True|:Adm=CENTRAL MINDANAO|:NP=MOUNT APO|:KFID=|MOUNT APO"
+}
+}
+ ],
+"crs": { "type" : "EPSG", "properties" : { "code" : 4326 }}
+}
+}
