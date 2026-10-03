@@ -261,7 +261,10 @@ Future<void> chooseSegment(
   });
   await tester.pumpAndSettle();
   await settleImages(tester);
-  expect(tester.widget<UiTabs>(tabs).selected.value, segment.index);
+  expect(
+    tester.widget<UiTabs>(tabs).selected.value,
+    WorkbenchSegment.forRegime(WorkbenchRegime.stacked).indexOf(segment),
+  );
   for (final ScrollableState scroll in tester.stateList<ScrollableState>(
     find.byType(Scrollable),
   )) {

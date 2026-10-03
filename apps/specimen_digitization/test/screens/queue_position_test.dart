@@ -12,6 +12,7 @@ import 'package:specimen_digitization/src/app/help_screen.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
+import 'package:specimen_digitization/src/widgets/queue_row.dart';
 import 'package:specimen_digitization/src/workbench.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 
@@ -52,12 +53,14 @@ void main() {
         .descendant(of: list, matching: find.byType(UiListRow))
         .hitTestable();
     expect(visibleRows, findsWidgets);
-    final String selectedId = tester.widget<UiListRow>(visibleRows.first).title;
+    final String selectedId = tester
+        .widget<QueueRow>(
+          find.ancestor(of: visibleRows.first, matching: find.byType(QueueRow)),
+        )
+        .id;
     Finder selectedRow() => find.descendant(
-      of: list,
-      matching: find.byWidgetPredicate(
-        (widget) => widget is UiListRow && widget.title == selectedId,
-      ),
+      of: find.byKey(ValueKey<String>('queue-row-$selectedId')),
+      matching: find.byType(UiListRow),
     );
 
     await tester.tap(selectedRow().hitTestable());

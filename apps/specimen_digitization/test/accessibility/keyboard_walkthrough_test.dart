@@ -17,6 +17,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/screens/queue/queue_screen.dart';
 import 'package:specimen_digitization/src/screens/queue/workbench_screen.dart';
+import 'package:specimen_digitization/src/screens/workbench/source_pane.dart';
 import 'package:specimen_digitization/src/widgets/widgets.dart';
 
 import '../golden/golden_harness.dart';
@@ -108,16 +109,33 @@ void main() {
     await press(tester, LogicalKeyboardKey.enter);
     expect(find.byType(WorkbenchScreen), findsOneWidget);
     expect(locationOf(tester), endsWith('/queue/$goldenSpecimenId'));
+    expect(tester.widget<UiTabs>(uiTabs('Record view')).selected.value, 0);
+    expect(find.byType(FieldRow), findsWidgets);
+    expect(
+      tester
+          .widget<WorkbenchSourcePane>(find.byType(WorkbenchSourcePane))
+          .selectedRegionId,
+      isNull,
+      reason: 'opening a record leaves the whole photograph selected',
+    );
 
     // F, H and R move between the three evidence panels.
     await press(tester, LogicalKeyboardKey.keyF);
-    expect(tester.widget<UiTabs>(uiTabs('Record view')).selected.value, 1);
+    expect(tester.widget<UiTabs>(uiTabs('Record view')).selected.value, 0);
     expect(find.byType(FieldRow), findsWidgets);
     await press(tester, LogicalKeyboardKey.keyH);
     expect(tester.widget<UiTabs>(uiTabs('Record view')).selected.value, 2);
     await press(tester, LogicalKeyboardKey.keyR);
-    expect(tester.widget<UiTabs>(uiTabs('Record view')).selected.value, 0);
+    expect(tester.widget<UiTabs>(uiTabs('Record view')).selected.value, 1);
     expect(find.byType(FieldRow), findsNothing);
+    expect(tester.widget<UiSelect<String>>(uiSelect('Label')).value, isEmpty);
+    expect(
+      tester
+          .widgetList<RegionOverlay>(find.byType(RegionOverlay))
+          .where((overlay) => overlay.selected),
+      isEmpty,
+      reason: 'opening Labels does not automatically select a label',
+    );
 
     // Label digits belong to the focused photograph; Tab reaches it without
     // a pointer before the selection shortcut is sent.
@@ -142,6 +160,7 @@ void main() {
     );
 
     expect(overlays.singleWhere((RegionOverlay o) => o.selected).index, 2);
+    expect(tester.widget<UiSelect<String>>(uiSelect('Label')).value, 'r2');
 
     // A starts the approval, with its reason field and its consequences.
     await press(tester, LogicalKeyboardKey.keyA);

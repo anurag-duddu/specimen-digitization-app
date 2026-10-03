@@ -6,23 +6,38 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart' hide FieldLayer;
 
 import 'large_record.dart';
+import 'history_timeline.dart';
 import 'models.dart';
 import 'screens/workbench/moments.dart';
 import 'vocabulary.dart';
 import 'widgets/widgets.dart';
 
 String auditActionLabel(Json event) {
-  final action = textOf(event['action'], 'change');
+  final action = textOf(event['action'], '');
   final named = switch (action) {
+    '' => 'Action not recorded',
     'review_restore_version' =>
       'Restored version ${event['source_revision'] ?? (event['after'] as Map?)?['source_revision'] ?? ''}',
     'review_reset_initial' => 'Reset to initial version',
     'initial_record' => 'Initial record',
     'ingest' => 'Added photograph',
+    'intake' => 'Added photograph',
     'transcribe' => 'Transcribed labels',
     'review_field' => 'Edited specimen data',
     'review_transcription' => 'Edited label transcription',
     'review_approve' => 'Approved review',
+    'review_coverage' => 'Checked label coverage',
+    'review_reading_metadata' => 'Updated reading declaration',
+    'review_regions' => 'Corrected label regions',
+    'review_classification' => 'Corrected classification',
+    'review_authority' => 'Resolved authority match',
+    'review_capability_defer' => 'Deferred review',
+    'workflow_step' => 'Processing step',
+    'process' => 'Requested processing',
+    'retry' => 'Requested processing retry',
+    'reprocess' => 'Requested reprocessing',
+    'pause' => 'Paused processing',
+    'resume' => 'Resumed processing',
     _ => vocabularyLabel(action),
   };
   final target = textOf(event['target_id'], '');
@@ -68,6 +83,16 @@ class AuditHistoryPanel extends StatefulWidget {
 }
 
 class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
+  static const _archiveBatchSize = 2;
+  static const _eventPageSize = 20;
+  int _visibleEventCount = _eventPageSize;
+  late HistoryTimeline _timeline;
+  int? _olderRevision;
+  final Set<int> _visitedArchives = {};
+  int _eventsGeneration = 0;
+  bool _loadingEvents = false;
+  bool _archiveIncomplete = false;
+  String? _eventsError;
   final List<Json> _revisions = [];
   final GlobalKey _previewKey = GlobalKey(
     debugLabel: 'history-version-preview',
@@ -91,6 +116,7 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
   @override
   void initState() {
     super.initState();
+    _resetTimeline();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _more();
     });
@@ -103,6 +129,8 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
         oldWidget.specimen.revision != widget.specimen.revision) {
       ++_generation;
       ++_pageGeneration;
+      ++_eventsGeneration;
+      _resetTimeline();
       _revisions.clear();
       _cursor = null;
       _started = _loadingPage = _loadingRecord = _resetPreview = false;
@@ -115,6 +143,77 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
     }
   }
 
+  void _resetTimeline() {
+    _timeline = HistoryTimeline(widget.specimen);
+    _olderRevision = historyArchiveRevision(widget.specimen);
+    _visitedArchives.clear();
+    _loadingEvents = false;
+    _visibleEventCount = _eventPageSize;
+    _eventsError = null;
+    _archiveIncomplete =
+        (historyAuditOffset(widget.specimen) > 0 && _olderRevision == null) ||
+        (widget.specimen.data['artifact_receipt'] is Map &&
+            widget.specimen.audit.isEmpty);
+  }
+
+  void _retainEvents(Specimen record) {
+    _timeline.add(record);
+    if (record.revision != _olderRevision) return;
+    _visitedArchives.add(record.revision);
+    _olderRevision = historyArchiveRevision(record);
+    _archiveIncomplete =
+        record.data['artifact_receipt'] is Map ||
+        (_olderRevision == null && _timeline.missingArchivedEvents > 0);
+  }
+
+  /// Each request recovers at most two immutable compaction boundaries.
+  /// A hundred processing snapshots are not a hundred reviewer edits.
+  Future<void> _olderEvents() async {
+    final load = widget.loadRevision;
+    if (load == null || _loadingEvents || _olderRevision == null || _mutating) {
+      return;
+    }
+    final generation = ++_eventsGeneration;
+    setState(() {
+      _loadingEvents = true;
+      _eventsError = null;
+    });
+    try {
+      for (var count = 0; count < _archiveBatchSize; count++) {
+        if (!mounted ||
+            generation != _eventsGeneration ||
+            _olderRevision == null) {
+          return;
+        }
+        final revision = _olderRevision!;
+        if (_visitedArchives.contains(revision)) {
+          throw const ApiFailure(
+            'The earlier event boundary could not be verified.',
+          );
+        }
+        final record = await load(revision, null, null);
+        if (!mounted || generation != _eventsGeneration) return;
+        if (record.id != widget.specimen.id ||
+            record.revision != revision ||
+            revision > _timeline.throughRevision) {
+          throw const ApiFailure(
+            'The requested history snapshot could not be verified.',
+          );
+        }
+        setState(() => _retainEvents(record));
+        if (_timeline.newestFirst.length > _visibleEventCount) break;
+      }
+    } catch (e) {
+      if (mounted && generation == _eventsGeneration) {
+        setState(() => _eventsError = _message(e));
+      }
+    } finally {
+      if (mounted && generation == _eventsGeneration) {
+        setState(() => _loadingEvents = false);
+      }
+    }
+  }
+
   String _message(Object e) =>
       e is ApiFailure ? e.message : 'History could not be loaded. Retry.';
   TextStyle get _line =>
@@ -122,7 +221,7 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
 
   Future<void> _more() async {
     if (_loadingPage || widget.loadPage == null) return;
-    final through = _started ? (_cursor ?? 0) : widget.specimen.revision;
+    final through = _started ? (_cursor ?? 0) : _timeline.throughRevision;
     if (through < 1) return;
     final after = through > 10 ? through - 10 : 0;
     final generation = ++_pageGeneration;
@@ -133,8 +232,22 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
     try {
       final page = await widget.loadPage!(after, through);
       if (!mounted || generation != _pageGeneration) return;
+      if (page.throughRevision != through) {
+        throw const ApiFailure(
+          'The requested history boundary could not be verified.',
+        );
+      }
       setState(() {
-        _revisions.addAll(page.items.reversed);
+        final known = _revisions.map((item) => item['revision']).toSet();
+        _revisions.addAll(
+          page.items.reversed.where(
+            (item) =>
+                item['revision'] is int &&
+                item['revision'] > after &&
+                item['revision'] <= through &&
+                known.add(item['revision']),
+          ),
+        );
         _cursor = after == 0 ? null : after;
         _started = true;
         _loadingPage = false;
@@ -180,6 +293,7 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
       setState(() {
         _historical = record;
         _loadingRecord = false;
+        _retainEvents(record);
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final preview = _previewKey.currentContext;
@@ -277,27 +391,166 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
     );
   }
 
-  Widget _event(Json event) {
+  String _eventLabel(Json event) {
+    final after = event['after'];
+    final target = textOf(
+      event['target_id'] ?? (after is Map ? after['field_key'] : null),
+      '',
+    );
+    final action = auditActionLabel({...event, 'target_id': ''});
+    if (target.isEmpty) return action;
+    for (final field in widget.specimen.fields) {
+      if (field['field_key'] == target) {
+        return '$action: ${textOf(field['display_name'], vocabularyLabel(target))}';
+      }
+    }
+    final labelIndex = widget.specimen.regions.indexWhere(
+      (region) => (region['region_id'] ?? region['id']) == target,
+    );
+    return labelIndex >= 0
+        ? '$action: Label ${labelIndex + 1}'
+        : '$action: ${vocabularyLabel(target)}';
+  }
+
+  List<String> _eventChanges(Json event) {
+    Map payload(String side) {
+      final value = event[side];
+      final record = value is Map ? value : const {};
+      final after = event['after'];
+      final target =
+          event['target_id'] ?? (after is Map ? after['field_key'] : null);
+      final fields = record['fields'];
+      if (target != null && event['action'] == 'review_field') {
+        if (fields is Map && fields[target] is Map) {
+          return fields[target] as Map;
+        }
+        if (fields is List) {
+          for (final field in fields.whereType<Map>()) {
+            if (field['field_key'] == target) return field;
+          }
+        }
+      }
+      final transcripts = record['transcripts'] ?? record['transcriptions'];
+      if (target != null &&
+          event['action'] == 'review_transcription' &&
+          transcripts is List) {
+        for (final transcript in transcripts.whereType<Map>()) {
+          if (transcript['region_id'] == target) return transcript;
+        }
+      }
+      return record;
+    }
+
+    final before = payload('before');
+    final after = payload('after');
+    const labels = {
+      'literal': 'As written',
+      'literal_value': 'As written',
+      'parsed': 'Read as',
+      'parsed_value': 'Read as',
+      'normalized': 'Standardized',
+      'text': 'Transcription',
+      'verbatim_text': 'Transcription',
+      'value_state': 'Status',
+      'state': 'Status',
+      'resolved': 'Resolution',
+      'confirmed': 'Label coverage checked',
+      'human_approved': 'Review approval',
+      'stage': 'Processing state',
+      'blocker': 'Processing blocker',
+    };
+    final changes = <String>[];
+    final seen = <String>{};
+    String display(Object? value, String key) {
+      if (value is bool) {
+        return switch (key) {
+          'resolved' => value ? 'Resolved' : 'Unresolved',
+          'confirmed' => value ? 'Confirmed' : 'Not confirmed',
+          'human_approved' => value ? 'Approved' : 'Not approved',
+          _ => 'Recorded as $value',
+        };
+      }
+      final text = textOf(value, 'Not recorded');
+      return {'state', 'value_state', 'stage', 'blocker'}.contains(key)
+          ? vocabularyLabel(text)
+          : text;
+    }
+
+    for (final entry in labels.entries) {
+      final key = entry.key;
+      if ((!before.containsKey(key) && !after.containsKey(key)) ||
+          before[key] == after[key] ||
+          !seen.add(entry.value)) {
+        continue;
+      }
+      if (before[key] is Map ||
+          before[key] is List ||
+          after[key] is Map ||
+          after[key] is List) {
+        continue;
+      }
+      changes.add(
+        '${entry.value}: ${display(before[key], key)} → ${display(after[key], key)}',
+      );
+    }
+    return changes;
+  }
+
+  Widget _event(Json event, {int? retainedRevision}) {
     final before = event['before'];
-    final revision =
+    final referencedRevision =
         before is Map && before['specimen_id'] == widget.specimen.id
         ? before['revision']
         : null;
+    final revision = event['base_revision'] is int
+        ? event['base_revision']
+        : referencedRevision;
+    final resulting = event['resulting_revision'];
+    final named = _eventLabel(event);
+    final time = DateTime.tryParse(textOf(event['created_at'], '')) == null
+        ? 'Time not recorded'
+        : citedInstant(event['created_at']);
     return Padding(
       padding: EdgeInsets.only(bottom: context.ui.space.s2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(auditActionLabel(event), style: context.ui.type.label),
+          Text(named, style: context.ui.type.label),
           Text(
-            '${textOf(event['actor_id'], textOf(event['actor'], 'Unknown actor'))} · ${citedInstant(event['created_at'])}',
+            '${textOf(event['actor_id'], textOf(event['actor'], 'Actor not recorded'))} · $time',
             style: _line,
           ),
+          if (resulting is int &&
+              resulting > 0 &&
+              resulting <= _timeline.throughRevision)
+            Text('Version $resulting', style: _line)
+          else if (retainedRevision != null)
+            Text(
+              'Retained in version $retainedRevision · event version not recorded',
+              style: _line,
+            ),
           if (textOf(event['reason'], '').isNotEmpty)
-            Text(textOf(event['reason']), style: context.ui.type.body),
+            Text(
+              'Reason: ${textOf(event['reason'])}',
+              style: context.ui.type.body,
+            ),
+          for (final change in _eventChanges(event))
+            Text(change, style: context.ui.type.body),
+          if (event['action'] == 'review_field' &&
+              textOf(
+                event['target_id'] ??
+                    (event['after'] is Map
+                        ? event['after']['field_key']
+                        : null),
+                '',
+              ).isEmpty)
+            Text('Field name not recorded in this event.', style: _line),
           if (revision is int &&
               revision > 0 &&
-              revision <= widget.specimen.revision)
+              revision <= _timeline.throughRevision &&
+              (before is! Map ||
+                  before['specimen_id'] == null ||
+                  before['specimen_id'] == widget.specimen.id))
             UiButton(
               label: 'Open version $revision',
               variant: UiButtonVariant.ghost,
@@ -305,17 +558,152 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
                   ? null
                   : () => _open(
                       revision,
-                      runId: before['run_sha256'] is String
+                      runId: before is Map && before['run_sha256'] is String
                           ? before['run_id'] as String?
                           : null,
-                      runSha256: before['run_sha256'] as String?,
+                      runSha256: before is Map
+                          ? before['run_sha256'] as String?
+                          : null,
                     ),
             ),
-          EvidenceDrawer(payload: event, section: auditActionLabel(event)),
+          EvidenceDrawer(payload: event, section: named),
         ],
       ),
     );
   }
+
+  Widget _timelineView() {
+    final recovered = _timeline.newestFirst;
+    final entries = recovered.take(_visibleEventCount).toList();
+    final moreRetained = recovered.length > entries.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (entries.isEmpty)
+          Text(
+            widget.specimen.data['artifact_receipt'] is Map
+                ? 'Audit events are not included in this summary. Open a saved version to inspect its retained evidence.'
+                : 'No audit events are recorded in this snapshot.',
+            style: _line,
+          ),
+        for (var index = 0; index < entries.length; index++)
+          CustomPaint(
+            key: ValueKey('history-event:${entries[index].key}'),
+            painter: _HistoryRail(
+              line: context.ui.color.boundary,
+              dot: context.ui.color.inkTertiary,
+              direction: Directionality.of(context),
+              first: index == 0,
+              last: index == entries.length - 1,
+            ),
+            child: Padding(
+              padding: EdgeInsetsDirectional.only(start: context.ui.space.s5),
+              child: _event(
+                entries[index].event,
+                retainedRevision: entries[index].retainedRevision,
+              ),
+            ),
+          ),
+        if (_timeline.hasLegacyEvents)
+          Text(
+            'Some older events do not record the version where they occurred. Their retained record is shown instead.',
+            style: _line,
+          ),
+        if (_timeline.missingArchivedEvents > 0 && _olderRevision != null)
+          Text(
+            'Earlier events are retained in older saved versions.',
+            style: _line,
+          ),
+        if (_archiveIncomplete)
+          Text(
+            'Some earlier event details could not be recovered from these snapshots. Saved versions remain available for inspection.',
+            style: _line,
+          ),
+        if (_eventsError != null)
+          Semantics(
+            liveRegion: true,
+            child: Text(_eventsError!, style: context.ui.type.body),
+          ),
+        if (_loadingEvents)
+          Semantics(
+            liveRegion: true,
+            child: Text('Loading earlier events', style: _line),
+          ),
+        if (!_loadingEvents && (moreRetained || _olderRevision != null))
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: UiButton(
+              label: _eventsError == null
+                  ? 'Load older history'
+                  : 'Retry older history',
+              variant: UiButtonVariant.ghost,
+              disabledReason:
+                  'Earlier events cannot be loaded on this connection.',
+              onPressed:
+                  _mutating || (!moreRetained && widget.loadRevision == null)
+                  ? null
+                  : () {
+                      if (moreRetained) {
+                        setState(() => _visibleEventCount += _eventPageSize);
+                      } else {
+                        _olderEvents();
+                      }
+                    },
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _savedVersions() => UiDisclosure(
+    key: ValueKey(
+      'saved-versions:${widget.specimen.id}:${_timeline.throughRevision}',
+    ),
+    title: 'Saved versions',
+    summary:
+        'Read-only snapshots, including processing updates without an audit event.',
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final item in _revisions)
+          UiListRow(
+            title:
+                'Version ${item['revision']}${item['revision'] == _timeline.throughRevision ? ' · current' : ''}',
+            // The history index records only version and checksum. It cannot
+            // establish who changed a record, when, or what they did.
+            subtitle: 'Retained snapshot',
+            trailing: const UiRowTrailing(label: 'View', icon: UiIcons.next),
+            disabledReason:
+                'Past versions cannot be loaded on this connection.',
+            onPressed: widget.loadRevision == null || _mutating
+                ? null
+                : () => _open(item['revision'] as int),
+          ),
+        if (_pageError != null) Text(_pageError!, style: context.ui.type.body),
+        if (_loadingPage) Text('Loading versions', style: _line),
+        if (!_loadingPage &&
+            widget.loadPage != null &&
+            (!_started || _cursor != null))
+          Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: UiButton(
+              label: _pageError != null
+                  ? 'Retry history page'
+                  : 'Load earlier versions',
+              variant: UiButtonVariant.ghost,
+              onPressed: _more,
+            ),
+          ),
+        if (widget.loadPage == null)
+          Text(
+            'Past versions cannot be loaded on this connection.',
+            style: _line,
+          ),
+      ],
+    ),
+  );
 
   String? _value(dynamic value) {
     final text = textOf(value, '');
@@ -545,7 +933,7 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
     ],
     if (record.audit.isNotEmpty) ...[
       SizedBox(height: context.ui.space.s3),
-      Text('Changes saved in this version', style: context.ui.type.label),
+      Text('Latest retained event', style: context.ui.type.label),
       ...record.audit.reversed.take(1).map(_event),
     ],
     EvidenceDrawer(title: 'Retained version data', payload: record.data),
@@ -595,41 +983,12 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
               ),
             ],
           ),
-          if (widget.loadPage == null)
-            ...widget.specimen.audit.reversed.map(_event),
-          for (final item in _revisions)
-            UiListRow(
-              title:
-                  'Version ${item['revision']}${item['revision'] == widget.specimen.revision ? ' · current' : ''}',
-              subtitle:
-                  '${auditActionLabel(item)} · ${textOf(item['actor_id'], textOf(item['actor'], 'Unknown actor'))}\n${citedInstant(item['created_at'])}',
-              trailing: const UiRowTrailing(label: 'View', icon: UiIcons.next),
-              disabledReason:
-                  'Past versions cannot be loaded on this connection.',
-              onPressed: widget.loadRevision == null || _mutating
-                  ? null
-                  : () => _open(item['revision'] as int),
-            ),
-          if (_pageError != null) Text(_pageError!, style: ui.type.body),
-          if (_loadingPage) Text('Loading versions', style: _line),
-          if (!_loadingPage &&
-              widget.loadPage != null &&
-              (!_started || _cursor != null))
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: UiButton(
-                label: _pageError != null
-                    ? 'Retry history page'
-                    : 'Load earlier versions',
-                variant: UiButtonVariant.ghost,
-                onPressed: _more,
-              ),
-            ),
-          if (widget.loadPage == null && widget.specimen.audit.isEmpty)
-            Text(
-              'Past versions cannot be loaded on this connection.',
-              style: _line,
-            ),
+          SizedBox(height: ui.space.s3),
+          Text('Saved audit events, newest first', style: _line),
+          SizedBox(height: ui.space.s2),
+          _timelineView(),
+          SizedBox(height: ui.space.s3),
+          _savedVersions(),
         ]),
         if (_loadingRecord)
           Semantics(
@@ -664,4 +1023,43 @@ class _AuditHistoryPanelState extends State<AuditHistoryPanel> {
       ],
     );
   }
+}
+
+/// Decorative continuity only; the event text carries all meaning.
+class _HistoryRail extends CustomPainter {
+  const _HistoryRail({
+    required this.line,
+    required this.dot,
+    required this.direction,
+    required this.first,
+    required this.last,
+  });
+
+  final Color line;
+  final Color dot;
+  final TextDirection direction;
+  final bool first;
+  final bool last;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final x = direction == TextDirection.rtl ? size.width - 6 : 6.0;
+    const y = 7.0;
+    canvas.drawLine(
+      Offset(x, first ? y : 0),
+      Offset(x, last ? y : size.height),
+      Paint()
+        ..color = line
+        ..strokeWidth = 1,
+    );
+    canvas.drawCircle(Offset(x, y), 3, Paint()..color = dot);
+  }
+
+  @override
+  bool shouldRepaint(_HistoryRail oldDelegate) =>
+      oldDelegate.line != line ||
+      oldDelegate.dot != dot ||
+      oldDelegate.direction != direction ||
+      oldDelegate.first != first ||
+      oldDelegate.last != last;
 }

@@ -3,7 +3,7 @@
 // Opening, picking by pointer and by keyboard, type to filter, the expanded
 // state a screen reader reads, and Escape returning focus to the trigger.
 
-import 'dart:ui' show Tristate;
+import 'dart:ui' show PointerDeviceKind, Tristate;
 
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -174,6 +174,80 @@ void main() {
     expect(picked, 'review');
     expect(find.text('Deferred'), findsNothing, reason: 'the list closed');
   });
+
+  for (final PointerDeviceKind kind in <PointerDeviceKind>[
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.touch,
+  ]) {
+    testWidgets('a second ${kind.name} press closes the select', (
+      WidgetTester tester,
+    ) async {
+      final SemanticsHandle semantics = tester.ensureSemantics();
+      String? picked;
+      try {
+        await tester.pumpWidget(
+          uiHarness(
+            child: _select(
+              value: 'cleared',
+              onChanged: (String value) => picked = value,
+            ),
+          ),
+        );
+        final Offset position = tester.getCenter(find.bySemanticsLabel(_label));
+        final TestGesture first = await tester.startGesture(
+          position,
+          kind: kind,
+        );
+        await first.up();
+        await tester.pumpAndSettle();
+        expect(find.text('Deferred'), findsOneWidget);
+        expect(_trigger(tester).flagsCollection.isExpanded, Tristate.isTrue);
+
+        final TestGesture second = await tester.startGesture(
+          position,
+          kind: kind,
+        );
+        await tester.pump();
+        final Tristate expandedOnDown = _trigger(
+          tester,
+        ).flagsCollection.isExpanded;
+        await second.up();
+        await tester.pumpAndSettle();
+        expect(find.text('Deferred'), findsNothing);
+        expect(
+          expandedOnDown,
+          Tristate.isTrue,
+          reason: 'the trigger is inside',
+        );
+        expect(_trigger(tester).flagsCollection.isExpanded, Tristate.isFalse);
+        expect(picked, isNull, reason: 'closing the list changes no selection');
+        expect(
+          FocusManager.instance.primaryFocus?.debugLabel,
+          'UiSelect trigger',
+        );
+
+        final TestGesture third = await tester.startGesture(
+          position,
+          kind: kind,
+        );
+        await third.up();
+        await tester.pumpAndSettle();
+        expect(find.text('Deferred'), findsOneWidget);
+        final TestGesture outside = await tester.startGesture(
+          Offset.zero,
+          kind: kind,
+        );
+        await tester.pump();
+        expect(find.text('Deferred'), findsNothing);
+        await outside.up();
+        await tester.pumpAndSettle();
+        expect(find.text('Deferred'), findsNothing);
+        expect(_trigger(tester).flagsCollection.isExpanded, Tristate.isFalse);
+      } finally {
+        semantics.dispose();
+      }
+    });
+  }
 
   testWidgets('the picked option is the one marked selected', (
     WidgetTester tester,

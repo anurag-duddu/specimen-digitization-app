@@ -26,11 +26,11 @@ import '../workspace.dart';
 /// guessing which button the sentence meant. `test/screens/help_test.dart`
 /// holds the naming: each quoted control has to exist in the product.
 const List<String> reviewWalkthrough = <String>[
-  "Open a specimen from the sidebar. Use its toggle to expand or collapse the list.",
-  "Choose a label in 'Label review' to compare each model's exact transcription with the photograph.",
-  "Open 'Specimen data' for required and optional structured fields. Edit a value, then choose 'Keep this correction'.",
-  "Resolve findings beside the label or field they concern. Save corrections with a reason, then 'Confirm label coverage' or 'Approve record' when available.",
-  "Use History to inspect earlier versions, restore one, or start over from the initial version. Each restoration creates another history entry.",
+  "Open a specimen from the sidebar. Its photograph starts with no label selected.",
+  "Start in 'Specimen data'. Open a field to inspect its values and sources. Choose 'Keep this correction' to stage an edit.",
+  "Choose a label in 'Label review' to compare model readings or correct the transcription.",
+  "Save corrections with a reason. Use 'Confirm label coverage' or 'Approve record' when available.",
+  "Follow changes in History. Open a saved version to inspect or restore it; restoration creates a new version.",
 ];
 
 const List<String> walkthroughControls = <String>[
@@ -57,6 +57,7 @@ const Map<String, String> queueShortcuts = <String, String>{
   'J or down arrow': 'Next record',
   'K or up arrow': 'Previous record',
   'Enter': 'Open the selected record',
+  'Shift + S': 'Select or deselect the focused specimen',
   '/': 'Focus the search field',
 };
 

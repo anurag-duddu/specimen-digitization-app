@@ -64,7 +64,11 @@ enum WorkbenchSegment {
   const WorkbenchSegment(this.label);
   final String label;
 
-  static List<WorkbenchSegment> forRegime(WorkbenchRegime regime) => values;
+  static List<WorkbenchSegment> forRegime(WorkbenchRegime regime) => const [
+    fields,
+    readings,
+    history,
+  ];
 }
 
 /// The general source header's expanded share, retained by the region editor.

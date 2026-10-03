@@ -190,10 +190,9 @@ class QueueRow extends StatelessWidget {
           riskComposite! <= 100;
       return UiListRow(
         size: UiSize.sm,
-        title: id,
+        title: title,
         semanticsLabel: <String>[
-          id,
-          if (title != id) title,
+          title,
           if (showStatus) status.semanticsLabel,
           if (showScore) 'Risk $riskComposite of 100',
         ].join(', '),

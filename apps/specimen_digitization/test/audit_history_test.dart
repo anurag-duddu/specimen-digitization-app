@@ -16,6 +16,12 @@ void main() {
       .map((row) => row.title)
       .toList();
 
+  Future<void> savedVersions(WidgetTester tester) async {
+    await tester.ensureVisible(find.text('Saved versions'));
+    await tester.tap(find.text('Saved versions'));
+    await tester.pumpAndSettle();
+  }
+
   testWidgets(
     'history loads newest first, pages within its snapshot and previews read only',
     (tester) async {
@@ -71,6 +77,7 @@ void main() {
         [3, 13],
       ]);
       expect(revisionCalls, isEmpty);
+      await savedVersions(tester);
       expect(timelineTitles(tester), [
         'Version 13 · current',
         for (var revision = 12; revision >= 4; revision--) 'Version $revision',
@@ -81,15 +88,24 @@ void main() {
       await tester.pumpAndSettle();
       expect(revisionCalls, [12]);
       expect(find.text('Changes from current version 13'), findsOneWidget);
-      expect(find.text('Changes saved in this version'), findsOneWidget);
+      expect(find.text('Latest retained event'), findsOneWidget);
       expect(controlEnabled(tester, 'Restore this version'), false);
       expect(find.byType(EditableText), findsNothing);
       expect(find.text('Approve'), findsNothing);
-      expect(find.textContaining('Retained original evidence'), findsNothing);
+      expect(
+        find.text('As written: Retained original evidence → Not recorded'),
+        findsNWidgets(2),
+      );
       await tester.ensureVisible(find.text('Retained version data'));
       await tester.tap(find.text('Retained version data'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('Retained original evidence'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(UiDialog),
+          matching: find.textContaining('Retained original evidence'),
+        ),
+        findsOneWidget,
+      );
       await closeUiModal(tester);
       await tester.ensureVisible(find.text('Close past version'));
       await tester.tap(find.text('Close past version'));
@@ -188,6 +204,7 @@ void main() {
         );
         await tester.pumpWidget(panel(current, 'scope-a'));
         await tester.pumpAndSettle();
+        await savedVersions(tester);
         await tester.tap(find.text('Version 1'));
         await tester.pump();
         expect(find.text('Loading version 1'), findsOneWidget);
@@ -244,6 +261,7 @@ void main() {
     );
     await tester.pumpWidget(panel(current));
     await tester.pump();
+    await savedVersions(tester);
     expect(find.text('Loading versions'), findsOneWidget);
     await tester.pumpWidget(
       panel(const Specimen({'specimen_id': 'other', 'revision': 5})),
@@ -258,6 +276,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    await savedVersions(tester);
     expect(calls, ['s:0:3', 'other:0:5']);
     expect(timelineTitles(tester), ['Version 5 · current']);
     expect(find.textContaining('PRIVATE_OLD_SCOPE'), findsNothing);
@@ -294,6 +313,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await savedVersions(tester);
       await tester.tap(find.text('Version 2'));
       await tester.pumpAndSettle();
       expect(find.text('Changes from current version 3'), findsOneWidget);

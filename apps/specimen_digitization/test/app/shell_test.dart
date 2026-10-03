@@ -126,7 +126,7 @@ void main() {
     expect(find.byKey(const ValueKey('mobile-navigation')), findsOneWidget);
     expect(find.byKey(const ValueKey('global-sidebar')), findsNothing);
     expect(uiIconButton(AppShell.backLabel), findsOneWidget);
-    expect(find.text(goldenSpecimenId), findsWidgets);
+    expect(find.text(goldenVerifiedSpecimen().displayReference), findsWidgets);
     expect(
       find.bySemanticsLabel(RegExp('^Authorized collection,')),
       findsNothing,

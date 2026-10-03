@@ -22,6 +22,7 @@ import '../../evidence_panel.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import 'reader_identity.dart';
+import 'reader_heading.dart';
 
 const List<String> _transcriptionStates = <String>[
   'supported',
@@ -143,6 +144,8 @@ class WorkbenchReadings extends StatefulWidget {
 
 class _WorkbenchReadingsState extends State<WorkbenchReadings> {
   final Map<String, _LabelTextDraft> _drafts = <String, _LabelTextDraft>{};
+  final Map<String, bool> _correctionOpen = <String, bool>{};
+  final Map<String, int> _correctionGeneration = <String, int>{};
   final FocusNode _saveFocus = FocusNode(debugLabel: 'Save label text');
   final FocusNode _presentationFocus = FocusNode(
     debugLabel: 'Reading presentation transition',
@@ -275,6 +278,8 @@ class _WorkbenchReadingsState extends State<WorkbenchReadings> {
         draft.dispose();
       }
       _drafts.clear();
+      _correctionOpen.clear();
+      _correctionGeneration.clear();
       _reportDrafts();
     } else if (oldWidget.specimen.revision != specimen.revision) {
       for (final String id in _drafts.keys.toList()) {
@@ -535,7 +540,17 @@ class _WorkbenchReadingsState extends State<WorkbenchReadings> {
           SizedBox(height: ui.space.s4),
           const UiHairline(),
           SizedBox(height: ui.space.s4),
-          _acceptedEditor(context, regionId, draft),
+          UiDisclosure(
+            key: ValueKey<String>(
+              'label-correction:$regionId:${_correctionGeneration[regionId] ?? 0}',
+            ),
+            title: 'Correct label transcription',
+            summary: draft.dirty ? 'Unsaved changes' : null,
+            semanticsLabel: 'Correct label transcription',
+            initiallyExpanded: _correctionOpen[regionId] ?? false,
+            onExpansionChanged: (open) => _correctionOpen[regionId] = open,
+            child: _acceptedEditor(context, regionId, draft),
+          ),
           SizedBox(height: ui.space.s4),
           UiDisclosure(
             title: WorkbenchReadings.differencesHeading,
@@ -563,8 +578,7 @@ class _WorkbenchReadingsState extends State<WorkbenchReadings> {
     _LabelTextDraft? draft,
   ) {
     final UiThemeData ui = context.ui;
-    final String name =
-        _readerNames[readerIdentity(o)] ?? 'Unidentified reader';
+    final String name = _readerNames[readerIdentity(o)] ?? readerModelName(o);
     final List<Json> sameReader =
         specimen.observations
             .where(
@@ -596,7 +610,9 @@ class _WorkbenchReadingsState extends State<WorkbenchReadings> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              Expanded(child: Text(name, style: ui.type.label)),
+              Expanded(
+                child: ReaderHeading(observation: o, name: name),
+              ),
               UiIconButton(
                 icon: UiIcons.info,
                 semanticsLabel:
@@ -634,6 +650,12 @@ class _WorkbenchReadingsState extends State<WorkbenchReadings> {
                           draft.state = 'supported';
                           draft.dirty = true;
                           draft.error = null;
+                          final regionId = textOf(o['region_id'], '');
+                          if (_correctionOpen[regionId] != true) {
+                            _correctionOpen[regionId] = true;
+                            _correctionGeneration[regionId] =
+                                (_correctionGeneration[regionId] ?? 0) + 1;
+                          }
                         });
                         _reportDrafts();
                       },
@@ -841,6 +863,13 @@ class _WorkbenchReadingsState extends State<WorkbenchReadings> {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Text(textOf(o['model_id'], 'Model not recorded'), style: ui.type.label),
+        if (textOf(o['provider_model_id'], '').trim().isNotEmpty)
+          Text(
+            'Provider model: ${textOf(o['provider_model_id'])}',
+            style: ui.type.bodySmall,
+          ),
+        if (textOf(o['route_id'], '').trim().isNotEmpty)
+          Text('Route: ${textOf(o['route_id'])}', style: ui.type.bodySmall),
         TermText(
           'Provider',
           displayText: textOf(o['provider'], 'Not recorded'),

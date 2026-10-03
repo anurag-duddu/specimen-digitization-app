@@ -177,7 +177,7 @@ void main() {
     repository.pageGate!.complete();
     await tester.pump(resultBudget);
     expect(
-      find.text('fixture-page-2'),
+      find.byKey(const ValueKey<String>('queue-row-fixture-page-2')),
       findsOneWidget,
       reason:
           'the appended rows were not on screen a second after the '

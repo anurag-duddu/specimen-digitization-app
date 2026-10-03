@@ -144,7 +144,7 @@ class QueueKeyboardController extends ChangeNotifier {
   }
 }
 
-/// Read views and selection actions beside the collection switcher.
+/// Ends an active selection beside the collection switcher.
 class QueueListActions extends StatelessWidget {
   const QueueListActions({required this.controller, super.key});
   final QueueKeyboardController controller;
@@ -152,9 +152,7 @@ class QueueListActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: controller,
-    builder: (context, child) => !controller.canBrowse
-        ? const SizedBox.shrink()
-        : controller.selecting
+    builder: (context, child) => controller.selecting
         ? UiIconButton(
             key: const ValueKey<String>('queue-select-records'),
             icon: UiIcons.check,
@@ -162,31 +160,7 @@ class QueueListActions extends StatelessWidget {
             tooltip: 'Done selecting',
             onPressed: controller.toggleSelection,
           )
-        : UiMenuTrigger(
-            key: const ValueKey<String>('queue-select-records'),
-            icon: UiIcons.more,
-            semanticsLabel: 'Specimen list actions',
-            items: <UiMenuItem>[
-              UiMenuItem(
-                label: 'All specimens',
-                icon: UiIcons.queue,
-                onSelected: () => controller.showView(''),
-              ),
-              UiMenuItem(
-                label: 'Blocked',
-                icon: UiIcons.blocked,
-                onSelected: () => controller.showView('processing_blocked'),
-              ),
-              UiMenuItem(
-                label: 'Select specimens',
-                icon: UiIcons.selectAll,
-                onSelected: controller.canSelect
-                    ? controller.toggleSelection
-                    : null,
-                disabledReason: 'No specimens in this view.',
-              ),
-            ],
-          ),
+        : const SizedBox.shrink(),
   );
 }
 
@@ -532,6 +506,8 @@ class _QueuePaneState extends State<QueuePane> {
         SingleActivator(LogicalKeyboardKey.keyK): _MoveSelectionIntent(-1),
         SingleActivator(LogicalKeyboardKey.arrowUp): _MoveSelectionIntent(-1),
         SingleActivator(LogicalKeyboardKey.enter): _OpenSelectionIntent(),
+        SingleActivator(LogicalKeyboardKey.keyS, shift: true):
+            _ToggleFocusedRowIntent(),
         SingleActivator(LogicalKeyboardKey.slash): _FocusSearchIntent(),
         SingleActivator(LogicalKeyboardKey.escape): _ClearSelectionIntent(),
       },
@@ -548,6 +524,16 @@ class _QueuePaneState extends State<QueuePane> {
             onInvoke: (_) {
               if (_searchFocus.hasFocus) return null;
               _openSelected();
+              return null;
+            },
+          ),
+          _ToggleFocusedRowIntent: CallbackAction<_ToggleFocusedRowIntent>(
+            onInvoke: (_) {
+              if (controller.mutating || _checkingDecision) return null;
+              final focused = controller.items
+                  .where((item) => _rowFocus[item.id]?.hasFocus ?? false)
+                  .firstOrNull;
+              if (focused != null) _selection.toggle(focused);
               return null;
             },
           ),
@@ -725,7 +711,7 @@ class _QueuePaneState extends State<QueuePane> {
 
   /// The search field's one label, so the control, its hint and the tests
   /// cannot word it three ways.
-  static const String searchLabel = 'Search by specimen ID';
+  static const String searchLabel = 'Search by full specimen ID';
 
   /// Search matches the exact specimen identifier the API accepts.
   static const String searchHint = 'Specimen ID';
@@ -911,14 +897,14 @@ class _QueueListRow extends StatelessWidget {
     selected: selected,
     enabled: disabledReason == null,
     disabledReason: disabledReason,
-    label: specimen.id,
+    label: specimen.displayReference,
     showCheckbox: showCheckbox,
     onToggle: onToggle,
     onExtend: onExtend,
     onLongPress: onLongPress,
     child: QueueRow(
       id: specimen.id,
-      title: specimen.id,
+      title: specimen.displayReference,
       concise: true,
       showStatus: false,
       reason: queueReason(specimen),
@@ -1373,6 +1359,10 @@ class _MoveSelectionIntent extends Intent {
 
 class _OpenSelectionIntent extends Intent {
   const _OpenSelectionIntent();
+}
+
+class _ToggleFocusedRowIntent extends Intent {
+  const _ToggleFocusedRowIntent();
 }
 
 class _FocusSearchIntent extends Intent {

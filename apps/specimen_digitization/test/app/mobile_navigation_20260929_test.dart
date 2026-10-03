@@ -15,6 +15,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 import '../golden/golden_harness.dart';
 import '../ui_finders.dart';
+import '../reading_region_comparison_test.dart' show selectLabel;
 
 Finder _nativeBar(TargetPlatform platform) => platform == TargetPlatform.iOS
     ? find.byType(cupertino.CupertinoTabBar)
@@ -68,6 +69,8 @@ Future<void> _tap(WidgetTester tester, Finder control) async {
 }
 
 Future<void> _edit(WidgetTester tester, String text) async {
+  await selectLabel(tester, 1);
+  await openLabelCorrection(tester);
   await tester.ensureVisible(uiField('Accepted label text'));
   await tester.enterText(uiField('Accepted label text'), text);
   await tester.pumpAndSettle();

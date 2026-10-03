@@ -2,7 +2,6 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/main.dart';
 import 'package:specimen_digitization/src/models.dart';
-import 'package:specimen_ui/specimen_ui.dart';
 
 import '../ui_finders.dart';
 import '../widget_test.dart' show TestRepository, TestSession;
@@ -125,31 +124,6 @@ Future<void> _pumpQueue(
   await tester.pumpAndSettle();
 }
 
-Future<void> _chooseReadView(WidgetTester tester, String label) async {
-  final trigger = uiMenuTrigger('Specimen list actions');
-  expect(trigger, findsOneWidget);
-  await tester.ensureVisible(trigger);
-  expect(trigger.hitTestable(), findsOneWidget);
-  await tester.tap(trigger);
-  await tester.pumpAndSettle();
-  final option = find.text(label);
-  expect(option, findsOneWidget);
-  await tester.ensureVisible(option);
-  expect(option.hitTestable(), findsOneWidget);
-  await tester.tap(option);
-  await tester.pumpAndSettle();
-}
-
-void _expectSelectionEnabled(WidgetTester tester, bool enabled) {
-  final menu = tester.widget<UiMenuTrigger>(
-    uiMenuTrigger('Specimen list actions'),
-  );
-  expect(
-    menu.items.singleWhere((item) => item.label == 'Select specimens').enabled,
-    enabled,
-  );
-}
-
 void main() {
   testWidgets('the three review views retain their original filters', (
     tester,
@@ -178,70 +152,54 @@ void main() {
     (name: 'compact', window: const Size(390, 844), scale: 1.0),
     (name: 'compact at 200 percent', window: const Size(390, 844), scale: 2.0),
   ]) {
-    testWidgets('${layout.name}: empty review queue can browse held records', (
-      tester,
-    ) async {
-      final repository = _ReadViewsRepository();
-      await _pumpQueue(
-        tester,
-        repository,
-        window: layout.window,
-        textScale: layout.scale,
-      );
-      expect(repository.requests.single, {'disposition': 'needs_human_review'});
-      expect(find.text('No specimens need a human'), findsOneWidget);
-      expect(find.text(_blocked.id), findsNothing);
-      expect(find.text(_pending.id), findsNothing);
-      // Access to other read views must not depend on rows in this view.
-      expect(uiMenuTrigger('Specimen list actions'), findsOneWidget);
-      _expectSelectionEnabled(tester, false);
-
-      await _chooseReadView(tester, 'All specimens');
-      expect(repository.requests.last, isEmpty);
-      expect(find.text('All specimens'), findsOneWidget);
-      if (layout.scale == 1) {
-        expect(
-          tester.getCenter(find.text('All specimens')).dy,
-          closeTo(
-            tester
-                .getCenter(
-                  find.byKey(
-                    const ValueKey<String>('queue-filter-needs_human_review'),
-                  ),
-                )
-                .dy,
-            1,
-          ),
+    testWidgets(
+      '${layout.name}: core views remain below search without overflow',
+      (tester) async {
+        final repository = _ReadViewsRepository();
+        await _pumpQueue(
+          tester,
+          repository,
+          window: layout.window,
+          textScale: layout.scale,
         );
-      }
-      expect(find.text(_blocked.id), findsOneWidget);
-      expect(find.text(_pending.id), findsOneWidget);
-      _expectSelectionEnabled(tester, true);
-      expect(tester.takeException(), isNull);
-
-      await _chooseReadView(tester, 'Blocked');
-      expect(repository.requests.last, {'state': 'processing_blocked'});
-      expect(find.text('Blocked'), findsOneWidget);
-      expect(find.text(_blocked.id), findsOneWidget);
-      expect(find.text(_pending.id), findsNothing);
-      _expectSelectionEnabled(tester, true);
-      expect(tester.takeException(), isNull);
-
-      await pickSpecimenQueue(tester, 'Needs a human');
-      expect(repository.requests.last, {'disposition': 'needs_human_review'});
-      expect(find.text('No specimens need a human'), findsOneWidget);
-      expect(find.text(_blocked.id), findsNothing);
-      expect(find.text(_pending.id), findsNothing);
-      _expectSelectionEnabled(tester, false);
-      expect(find.text('All specimens'), findsNothing);
-      expect(find.text('Blocked'), findsNothing);
-      expect(repository.mutations, isEmpty);
-      expect(_blocked.disposition, isNull);
-      expect(_pending.disposition, isNull);
-      expect(_blocked.revision, 1);
-      expect(_pending.revision, 1);
-      expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox.shrink());
-    });
+        expect(repository.requests.single, {
+          'disposition': 'needs_human_review',
+        });
+        expect(find.text('No specimens need a human'), findsOneWidget);
+        expect(find.text(_blocked.id), findsNothing);
+        expect(find.text(_pending.id), findsNothing);
+        expect(uiMenuTrigger('Specimen list actions'), findsNothing);
+        expect(uiIconButton('Done selecting'), findsNothing);
+        for (final entry in {
+          'Needs a human': 'needs_human_review',
+          'Deferred': 'deferred',
+          'Cleared': 'cleared',
+        }.entries) {
+          final filter = find.byKey(
+            ValueKey<String>('queue-filter-${entry.value}'),
+          );
+          expect(filter, findsOneWidget);
+          expect(
+            tester.getTopLeft(filter).dy,
+            greaterThanOrEqualTo(
+              tester.getBottomLeft(uiField('Search by full specimen ID')).dy,
+            ),
+          );
+          await pickSpecimenQueue(tester, entry.key);
+          expect(repository.requests.last, {'disposition': entry.value});
+          expect(find.text(_blocked.id), findsNothing);
+          expect(find.text(_pending.id), findsNothing);
+        }
+        expect(find.text('All specimens'), findsNothing);
+        expect(find.text('Blocked'), findsNothing);
+        expect(repository.mutations, isEmpty);
+        expect(_blocked.disposition, isNull);
+        expect(_pending.disposition, isNull);
+        expect(_blocked.revision, 1);
+        expect(_pending.revision, 1);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
   }
 }

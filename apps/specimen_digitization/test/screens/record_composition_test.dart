@@ -23,6 +23,7 @@ import '../composition/chrome_budget_test.dart'
 import '../composition/composition_harness.dart';
 import '../golden/golden_harness.dart';
 import '../reading_region_comparison_test.dart' show selectLabel;
+import '../ui_finders.dart' show uiRecordView;
 
 /// The phone 13 section 0 measured the defect on.
 const Size phone = Size(390, 844);
@@ -41,7 +42,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
   testWidgets(
-    'the photograph and label chooser are above the fold; selection reveals the reading',
+    'Label review keeps the photograph and chooser above the fold; selection reveals the reading',
     (WidgetTester tester) async {
       tester.view.padding = const FakeViewPadding(top: 44, bottom: 34);
       tester.view.viewPadding = const FakeViewPadding(top: 44, bottom: 34);
@@ -51,6 +52,11 @@ void main() {
         brightness: Brightness.light,
         location: goldenSpecimenLocation,
       );
+
+      final labelReview = uiRecordView('Label review');
+      expect(labelReview.hitTestable(), findsOneWidget);
+      await tester.tap(labelReview);
+      await tester.pumpAndSettle();
 
       expect(nativeNavigation(), findsOneWidget);
       final Rect content = contentAboveNativeNavigation(tester);

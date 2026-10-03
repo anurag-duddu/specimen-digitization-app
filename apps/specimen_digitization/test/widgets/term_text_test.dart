@@ -184,19 +184,25 @@ void main() {
         ),
       );
       expect(
-        find.bySemanticsLabel(RegExp(r'^Country \(required\)\. U.S.A.')),
+        find.bySemanticsLabel(
+          'Country (required). Supported · Read as: United States',
+        ),
         findsOneWidget,
       );
+      expect(find.text('As written'), findsNothing);
+      expect(find.text('Read as'), findsNothing);
+      expect(find.text('Standardized'), findsNothing);
       await tester.tap(find.text('Country (required)'));
       await tester.pumpAndSettle();
       for (final String label in [
         'Country (required)',
+        'Field state: Supported',
         'As written',
         'U.S.A.',
         'Read as',
         'United States',
         'Standardized',
-        'Supported',
+        'Not recorded',
       ]) {
         expect(find.bySemanticsLabel(label), findsOneWidget);
       }

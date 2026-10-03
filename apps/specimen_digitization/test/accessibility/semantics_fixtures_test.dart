@@ -380,7 +380,7 @@ void main() {
         1,
         reason: 'exactly one segment is current',
       );
-      expect(states['Label review'], isTrue);
+      expect(states['Structured specimen data'], isTrue);
       handle.dispose();
       await tester.pumpWidget(const SizedBox());
     });
@@ -423,6 +423,8 @@ void main() {
         repository: GoldenRepository.verified(),
       );
       expect(find.byType(RegionOverlay), findsWidgets);
+      await tester.tap(uiRecordView('Label review'));
+      await tester.pumpAndSettle();
       expect(spokenNames(tester).join(' '), contains('Label to review'));
       // Other label regions may be outside the cropped image. The chooser is
       // the accessible route to every label, without duplicate always-visible
@@ -653,7 +655,7 @@ void main() {
           .getSemanticsData();
       expect(row.flagsCollection.isButton, isTrue);
       expect(row.hasAction(SemanticsAction.tap), isTrue);
-      expect(row.label, contains(goldenSpecimenId));
+      expect(row.label, contains(goldenVerifiedSpecimen().displayReference));
       // The active queue already names the state. Each row announces its
       // stable identity without repeating the same queue reason.
       expect(row.label, isNot(contains('human approval required')));

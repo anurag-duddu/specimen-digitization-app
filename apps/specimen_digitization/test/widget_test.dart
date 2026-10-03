@@ -486,7 +486,26 @@ void main() {
     );
     expect(uiIconButton(RegExp(r'^Edit as written')), findsNothing);
     // The state the server sent is still shown, never swallowed.
-    expect(find.text('State unknown', findRichText: true), findsWidgets);
+    expect(
+      find.textContaining('State unknown', findRichText: true),
+      findsWidgets,
+    );
+    final country = uiDisclosure(RegExp(r'^Country'));
+    await tester.ensureVisible(country);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find
+          .descendant(
+            of: country,
+            matching: find.byWidgetPredicate(
+              (widget) => widget is Pressable && widget.onPressed != null,
+            ),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Field state: State unknown'), findsOneWidget);
+    expect(uiIconButton(RegExp(r'^Edit as written')), findsNothing);
   });
 
   testWidgets('viewer cannot invoke reviewer controls, and hears why', (
@@ -562,10 +581,11 @@ void main() {
       await tester.pumpAndSettle();
       await selectLabel(tester, 1);
       // Both readings are visible beside the field, not behind it.
-      expect(find.text('VLM 1'), findsWidgets);
+      expect(find.text('Synthetic reading A'), findsWidgets);
       expect(find.text('Chicago 1912', findRichText: true), findsWidgets);
-      expect(find.text('VLM 2'), findsWidgets);
+      expect(find.text('Synthetic reading B'), findsWidgets);
       expect(find.text('Chicago 1917', findRichText: true), findsWidgets);
+      await openLabelCorrection(tester);
       await tester.tap(uiSelect('Text status'));
       await tester.pumpAndSettle();
       expect(find.text('Not applicable'), findsNothing);

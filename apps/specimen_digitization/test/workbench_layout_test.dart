@@ -123,7 +123,11 @@ void main() {
       expect(WorkbenchRegime.fromWidth(840), WorkbenchRegime.twoPane);
       expect(WorkbenchRegime.fromWidth(1200), WorkbenchRegime.twoPane);
       for (final regime in WorkbenchRegime.values) {
-        expect(WorkbenchSegment.forRegime(regime), WorkbenchSegment.values);
+        expect(WorkbenchSegment.forRegime(regime), const [
+          WorkbenchSegment.fields,
+          WorkbenchSegment.readings,
+          WorkbenchSegment.history,
+        ]);
       }
     });
 
@@ -156,18 +160,63 @@ void main() {
       tester,
     ) async {
       useWindow(tester, compactWindow);
-      await tester.pumpWidget(host(record()));
+      final initial = record();
+      final scrollingRecord = Specimen({
+        ...initial.data,
+        'fields': [
+          ...initial.fields,
+          for (final (key, name) in const [
+            ('collector', 'Collector'),
+            ('collection_date', 'Collection date'),
+            ('province_state', 'Province/state'),
+            ('county', 'County'),
+            ('city', 'City'),
+            ('precise_location', 'Precise location'),
+          ])
+            {
+              'field_key': key,
+              'display_name': name,
+              'required': true,
+              'state': 'unknown',
+            },
+        ],
+      });
+      await tester.pumpWidget(host(scrollingRecord));
       await tester.pumpAndSettle();
-      expect(find.text('History'), findsOneWidget);
-      expect(find.byType(AuditHistoryPanel), findsNothing);
-      final Finder photo = find.byType(InteractiveViewer);
+      final ScrollPosition pagePosition = tester
+          .state<ScrollableState>(scrollableIn(find.byKey(evidenceScrollKey)))
+          .position;
+      pagePosition.jumpTo(pagePosition.minScrollExtent);
+      await tester.pumpAndSettle();
+      // A fitted compact photograph yields pan gestures to the page and uses
+      // a plain transform. Measure its stable viewport rather than a viewer
+      // that appears only when detailed inspection enables pan.
+      final Finder photo = find.byKey(
+        const ValueKey<String>('source-photo-viewport'),
+      );
       final Rect before = tester.getRect(photo);
       expect(before.height, greaterThanOrEqualTo(sourceImageMinHeight));
       expect(before.width, lessThanOrEqualTo(compactWindow.width));
-      await tester.drag(find.byKey(evidenceScrollKey), const Offset(0, -200));
+      expect(find.text('History'), findsOneWidget);
+      expect(find.byType(AuditHistoryPanel), findsNothing);
+      // Drag the field content, so the photograph's own pan does not consume
+      // the gesture. A realistic set of required fields makes the page scroll.
+      final Rect page = tester.getRect(find.byKey(evidenceScrollKey));
+      final double initialOffset = pagePosition.pixels;
+      await tester.dragFrom(
+        Offset(page.center.dx, page.bottom - 20),
+        const Offset(0, -200),
+      );
       await tester.pumpAndSettle();
-      expect(tester.getTopLeft(photo).dy, lessThan(before.top));
-      expect(find.byType(InteractiveViewer), findsOneWidget);
+      expect(pagePosition.pixels, greaterThan(initialOffset));
+      if (photo.evaluate().isEmpty) {
+        // An offscreen sliver may dispose its photograph. A pinned source
+        // would remain visible while the fields page moves underneath it.
+        expect(photo, findsNothing);
+      } else {
+        expect(tester.getTopLeft(photo).dy, lessThan(before.top));
+        expect(photo, findsOneWidget);
+      }
       expect(tester.takeException(), isNull);
     });
 
@@ -359,9 +408,8 @@ void main() {
         await tester.tap(find.text('Specimen data'));
         await tester.pumpAndSettle();
         final Finder finding = find.text('A supported country is required');
-        await tester.ensureVisible(finding);
-        await tester.pumpAndSettle();
-        expect(finding, findsOneWidget);
+        expect(finding, findsNothing);
+        expect(find.text('Unknown · 1 check to review'), findsOneWidget);
         expect(find.text('Required'), findsOneWidget);
         expect(find.text('Country'), findsOneWidget);
         final Finder disclosure = find.descendant(
@@ -378,11 +426,13 @@ void main() {
         await tester.ensureVisible(header);
         await tester.tap(header);
         await tester.pumpAndSettle();
+        await tester.ensureVisible(finding);
+        await tester.pumpAndSettle();
+        expect(finding, findsOneWidget);
         final Finder edit = uiIconButton('Edit as written for Country');
         expect(edit, findsOneWidget);
         expect(tester.widget<UiIconButton>(edit).onPressed, isNotNull);
-        // Check the genuine correction control while its route is visible.
-        // Opening its dialog puts that underlying route offstage.
+        // The finding and correction remain together in the field details.
         await scrollAndTap(tester, edit);
         expect(find.text('Correct Country'), findsOneWidget);
         expect(uiSelect('Evidence state'), findsOneWidget);
@@ -412,6 +462,7 @@ void main() {
       final semantics = tester.ensureSemantics();
       await tester.pumpWidget(host(record()));
       await tester.pumpAndSettle();
+      await selectLabel(tester, 1);
       expect(find.text('Differs in 1 place'), findsOneWidget);
       expect(
         find.bySemanticsLabel(RegExp('Differs in 1 place')),
@@ -430,6 +481,8 @@ void main() {
         try {
           await tester.pumpWidget(host(record()));
           await tester.pumpAndSettle();
+          await tester.tap(uiRecordView('Label review'));
+          await tester.pumpAndSettle();
           final UiSelect<String> selector = tester.widget<UiSelect<String>>(
             uiSelect('Label'),
           );
@@ -437,10 +490,15 @@ void main() {
             selector.options.map((option) => option.label),
             containsAll(<String>['Label 1', 'Label 2']),
           );
+          expect(selector.value, isEmpty);
           for (final int index in <int>[1, 2]) {
             expect(regionOverlay(index), findsOneWidget);
             expect(regionOverlayControl(index), findsOneWidget);
             expect(find.bySemanticsLabel('Label $index'), findsWidgets);
+            expect(
+              tester.widget<RegionOverlay>(regionOverlay(index)).selected,
+              isFalse,
+            );
           }
           await selectLabel(tester, 2);
           expect(

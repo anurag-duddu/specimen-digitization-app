@@ -71,11 +71,14 @@ void main() {
         repository: LiveShapeRepository(record),
         location: recordRoute(record),
       );
+      await tester.tap(uiRecordView('Label review'));
+      await tester.pumpAndSettle();
+      await pickUiSelect(tester, 'Label', 'Label 1');
       final List<String> words = renderedText(tester);
 
       // Both readers are named on every reading, never one merged answer.
-      expect(words.where((String w) => w == 'VLM 1'), isNotEmpty);
-      expect(words.where((String w) => w == 'VLM 2'), isNotEmpty);
+      expect(words.where((String w) => w == 'gemma-3-27b-it'), isNotEmpty);
+      expect(words.where((String w) => w == 'qwen2.5-vl-72b'), isNotEmpty);
 
       // Each disagreement is counted rather than coloured
       // (design/00-north-star.md, "never color alone").
@@ -86,15 +89,12 @@ void main() {
       );
 
       // The concise reader name never replaces its producer provenance.
-      for (final entry in <String, String>{
-        'VLM 1': 'gemma-3-27b-it',
-        'VLM 2': 'qwen2.5-vl-72b',
-      }.entries) {
+      for (final model in ['gemma-3-27b-it', 'qwen2.5-vl-72b']) {
         await scrollAndTap(
           tester,
-          uiIconButton('How this reading was produced, Label 1, ${entry.key}'),
+          uiIconButton('How this reading was produced, Label 1, $model'),
         );
-        expect(find.text(entry.value), findsOneWidget);
+        expect(find.text(model), findsWidgets);
         await tester.tap(uiButton('Close'));
         await tester.pumpAndSettle();
       }
@@ -134,6 +134,9 @@ void main() {
 
       // The whole reading is on screen, not an ellipsis of it: a
       // transcription is content, and content wraps (11 section 3.3).
+      await tester.tap(uiRecordView('Label review'));
+      await tester.pumpAndSettle();
+      await pickUiSelect(tester, 'Label', 'Label 1');
       expect(
         renderedText(tester).where((String w) => w == reading),
         isNotEmpty,

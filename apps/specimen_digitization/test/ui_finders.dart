@@ -1,4 +1,5 @@
 import 'package:specimen_digitization/src/widgets/field_row.dart';
+import 'package:specimen_digitization/src/widgets/selection_bar.dart';
 // Finders for the design system's controls.
 //
 // `find.byTooltip` matches Material's `Tooltip` and nothing else, and
@@ -112,6 +113,33 @@ Finder uiDisclosure(Pattern title) => find.byWidgetPredicate(
   description: 'UiDisclosure("$title")',
 );
 
+/// Opens the supporting label editor after a label has been selected.
+Future<void> openLabelCorrection(WidgetTester tester) async {
+  final labelView = uiRecordView('Label review');
+  if (labelView.evaluate().isNotEmpty) {
+    await tester.ensureVisible(labelView);
+    await tester.tap(labelView);
+    await tester.pumpAndSettle();
+  }
+  if (uiField('Accepted label text').evaluate().isNotEmpty) return;
+  final disclosure = uiDisclosure('Correct label transcription');
+  expect(disclosure, findsOneWidget);
+  final trigger = find
+      .descendant(
+        of: disclosure,
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is Pressable &&
+              widget.semanticsLabel == 'Correct label transcription',
+        ),
+      )
+      .first;
+  await tester.ensureVisible(trigger);
+  await tester.tap(trigger);
+  await tester.pumpAndSettle();
+  expect(uiField('Accepted label text'), findsOneWidget);
+}
+
 /// The tab strip whose accessibility name is [label].
 Finder uiTabs(String label) => find.byWidgetPredicate(
   (Widget widget) => widget is UiTabs && widget.semanticsLabel == label,
@@ -219,11 +247,13 @@ Future<void> openFieldEditor(
   await tester.pumpAndSettle();
 }
 
-/// Enters explicit selection through the specimen list's action menu.
+/// Reveals selection with a row's long press, without leaving a row selected.
 Future<void> enterSpecimenSelection(WidgetTester tester) async {
-  await tester.tap(uiMenuTrigger('Specimen list actions'));
+  final row = find.byType(SelectableRow).first;
+  await tester.ensureVisible(row);
+  await tester.longPress(row);
   await tester.pumpAndSettle();
-  await tester.tap(find.text('Select specimens'));
+  await tester.tap(find.descendant(of: row, matching: find.byType(UiCheckbox)));
   await tester.pumpAndSettle();
 }
 
