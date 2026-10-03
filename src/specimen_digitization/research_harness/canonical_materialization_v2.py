@@ -39,6 +39,18 @@ BLOCKED = {str(WorkState.WAITING_SOURCE), str(WorkState.WAITING_POLICY), str(Wor
 UNFINISHED = BLOCKED | {str(WorkState.PENDING), str(WorkState.RESEARCHING)}
 
 
+def _policy_held(canonical, profile, field_mapping):
+    """Fields waiting on a policy the research profile declares missing (verbatim_dts).
+
+    Unknown semantics fail the field's policy gate (CONTRACTS.md:225-226): needs
+    human review with the field reason, never an operational block, never cleared.
+    Any other waiting_policy stays an operational block (CONTRACTS.md:243-246).
+    """
+    declared = {field_mapping[str(row.field_key)] for row in profile.fields if row.missing_policy}
+    return frozenset(key for key, state in canonical.items()
+        if key in declared and state == str(WorkState.WAITING_POLICY))
+
+
 class ResearchCanonicalPolicyV2(ResearchCanonicalPolicyV1):
     contract_version: Literal["research-canonical-policy/v2"] = "research-canonical-policy/v2"
     lineage_rule: Literal["canonical-value-lineage/v2"] = "canonical-value-lineage/v2"
@@ -80,7 +92,7 @@ class MaterializationRequestV2:
     decision_lookup_ids: frozenset[str] | None = None
 
 
-def _work_progress(reg, checkpoint, run, *, decision_lookup_ids=None):
+def _work_progress(reg, checkpoint, run, *, decision_lookup_ids=None, profile=None):
     fields = reg.job.get("fields")
     if (type(fields) is not dict or set(fields) != {str(key) for key in ALL_FIELDS}
             or set(reg.field_mapping) != set(fields) or set(reg.field_mapping.values()) != KEYS or len(set(reg.field_mapping.values())) != 20
@@ -90,8 +102,10 @@ def _work_progress(reg, checkpoint, run, *, decision_lookup_ids=None):
         unavailable("canonical_field_work_mapping_unproved")
     research = {key: row["work_state"] for key, row in fields.items()}
     canonical = {reg.field_mapping[key]: state for key, state in research.items()}
-    operational = [f"research_work:{key}:{state}" for key, state in canonical.items() if state in BLOCKED]
+    held = frozenset() if profile is None else _policy_held(canonical, profile, reg.field_mapping)
+    operational = [f"research_work:{key}:{state}" for key, state in canonical.items() if state in BLOCKED and key not in held]
     human = [f"research_human_question:{key}" for key, state in canonical.items() if state == str(WorkState.WAITING_HUMAN)]
+    human += [f"mandatory_unresolved:{key}" for key in sorted(held)]
     if run.blocker:
         operational.append(run.blocker)  # The actual blocker, no invented global cancellation.
     if decision_lookup_ids is not None and (type(decision_lookup_ids) is not frozenset
@@ -383,14 +397,20 @@ class CanonicalResearchMaterializerV2:
                 if not existing:
                     result.run.tool_calls.append(producer.model_copy(deep=True))
         result.run.fields[key] = canonical_value_v1(original.resolution, reg.field_mapping, ids)
-        research, canonical, operational, human = _work_progress(reg, original, result.run, decision_lookup_ids=context.decision_lookup_ids)
+        research, canonical, operational, human = _work_progress(reg, original, result.run,
+            decision_lookup_ids=context.decision_lookup_ids, profile=profile)
+        # A held field keeps its prior canonical value and carries its field
+        # reason; it neither blocks the record nor needs whole-record grounding.
+        held = _policy_held(canonical, profile, reg.field_mapping)
+        states = {state for key, state in canonical.items() if key not in held}
         qualified = _qualified_terminal_fields(prior, result, TerminalFieldProofV2(checkpoint, lineage), context.field_lineage_contexts, canonical)
         human = tuple(dict.fromkeys((*human, *_scientific_reasons(result, profile, observed_at,
             latest_work=canonical, field_mapping=reg.field_mapping, scientific_qualified=qualified))))
-        if not set(canonical.values()) & UNFINISHED and qualified != KEYS:
-            operational += tuple(f"canonical_field_grounding_unproved:{field}" for field in sorted(KEYS - qualified))
-        unfinished = bool(set(canonical.values()) & UNFINISHED)
-        blocked = bool(set(canonical.values()) & BLOCKED or operational)
+        ungrounded = KEYS - held - qualified
+        if not states & UNFINISHED and ungrounded:
+            operational += tuple(f"canonical_field_grounding_unproved:{field}" for field in sorted(ungrounded))
+        unfinished = bool(states & UNFINISHED)
+        blocked = bool(states & BLOCKED or operational)
         # An unfinished run has no disposition, and an operational failure is a
         # block, never Deferred (docs/execution/CONTRACTS.md:217-246). The stage
         # carries both.

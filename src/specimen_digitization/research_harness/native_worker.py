@@ -6,10 +6,15 @@ from typing import Literal
 from pydantic import Field
 
 from .accepted_output import read_accepted_checkpoint_proof
-from .contracts import Digest, FrozenRecord, ResearchScope, digest
+from .contracts import CollectionProfile, Digest, FrozenRecord, ResearchScope, WorkState, digest
 from .persistence import HeldUnknown, StaleWork
 from .publication import prepare_native_publication
 from .worker import ResearchRetryWorker
+
+# Only terminal work publishes (canonical_materialization_v2 target gate,
+# research_publication_v2.gql field work_state check). Waiting work reaches the
+# record through the job's whole-20 field state on a terminal publication.
+PUBLISHABLE = frozenset({WorkState.RESOLVED, WorkState.WAITING_HUMAN, WorkState.NONBLOCKING_EXCEPTION})
 
 
 class ImmutablePublicationLocatorV2(FrozenRecord):
@@ -128,6 +133,8 @@ class NativeResearchWorker:
         typed = await runtime.journal.load(scope)
         receipts, checkpoint_ids = [], []
         for checkpoint in typed:
+            if checkpoint.resolution.work_state not in PUBLISHABLE:
+                continue
             job = await asyncio.to_thread(runtime.store.job, runtime.scope)
             native = job["fields"][str(checkpoint.field_key)]["checkpoint"]
             checkpoint_ids.append(native["id"])
@@ -171,7 +178,10 @@ class NativeResearchWorker:
             receipts.append(str(published.causal.receipt_id))
         thread = await self._thread(runtime)
         from .status import ResearchStatusV1
-        status = ResearchStatusV1.from_thread(thread)
+        job = await asyncio.to_thread(runtime.store.job, runtime.scope)
+        profile = CollectionProfile.model_validate(job["pins"]["profile"])
+        status = ResearchStatusV1.from_thread(thread, missing_policy_fields=frozenset(
+            row.field_key for row in profile.fields if row.missing_policy))
         return NativeResearchWorkerOutcomeV2(scope=scope, status=status.status,
             checkpoint_ids=tuple(checkpoint_ids), publication_receipt_ids=tuple(receipts))
 

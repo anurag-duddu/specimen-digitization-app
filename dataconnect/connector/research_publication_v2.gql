@@ -68,6 +68,9 @@ query GetResearchPublicationReceiptV2($organizationId: UUID!, $collectionId: UUI
 # Routing follows CONTRACTS.md: an unfinished (running) or operationally blocked
 # publication carries a null disposition, never deferred; only a completed one
 # carries cleared or needs_human_review. A running publication stays due work.
+# A field waiting on a policy the profile declares missing (verbatim_dts) is a
+# policy gate: completed, needs_human_review, with its mandatory_unresolved field
+# reason.
 mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $commitJson: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
@@ -291,7 +294,12 @@ mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!
         AND c->'policy_materialization'->'progress_receipt'->'exportable'
           =to_jsonb(COALESCE(c->'record'->>'disposition'='cleared',false))
         AND (CASE WHEN EXISTS (SELECT 1 FROM jsonb_each(h.state->'jobs'->b.job_key->'fields') f
-          WHERE f.value->>'work_state' IN ('waiting_source','waiting_policy','operational_failed','retry_scheduled','cancelled'))
+          WHERE f.value->>'work_state' IN ('waiting_source','waiting_policy','operational_failed','retry_scheduled','cancelled')
+            AND NOT (f.value->>'work_state'='waiting_policy'
+              AND c->'policy_materialization'->'progress_receipt'->'human_reason_codes'
+                @> jsonb_build_array('mandatory_unresolved:'||(b.semantic_mapping->'field_mapping'->>f.key))
+              AND EXISTS (SELECT 1 FROM jsonb_array_elements(h.state->'jobs'->b.job_key->'pins'->'profile'->'fields') p
+                WHERE p->>'field_key'=f.key AND jsonb_typeof(p->'missing_policy')='string')))
           OR jsonb_array_length(c->'policy_materialization'->'progress_receipt'->'operational_reason_codes')>0 THEN
             c->>'state'='processing_blocked' AND c->'record'->'disposition'='null'::jsonb
             AND c->'snapshot'->'run'->>'stage'='processing_blocked'
@@ -299,7 +307,7 @@ mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!
             WHERE f.value->>'work_state' IN ('pending','researching')) THEN c->>'state'='running'
             AND c->'record'->'disposition'='null'::jsonb AND c->'snapshot'->'run'->>'stage'='research_in_progress'
           WHEN EXISTS (SELECT 1 FROM jsonb_each(h.state->'jobs'->b.job_key->'fields') f
-            WHERE f.value->>'work_state'='waiting_human')
+            WHERE f.value->>'work_state' IN ('waiting_human','waiting_policy'))
             OR jsonb_array_length(c->'policy_materialization'->'progress_receipt'->'human_reason_codes')>0 THEN
               c->>'state'='completed' AND c->'record'->>'disposition'='needs_human_review'
           ELSE c->>'state'='completed' AND c->'record'->>'disposition' IN ('cleared','needs_human_review') END)

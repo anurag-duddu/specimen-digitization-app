@@ -96,7 +96,10 @@ def basis():
     organization, collection, specimen_id, run_id = (ident(v) for v in ("org","collection","specimen","run"))
     principal = Principal(user_id="reviewer-A",scope=Scope(organization_id=organization,collection_id=collection),role="reviewer")
     research_profile = CollectionProfile(id="insects",version="fixture-v1",organization_id=organization,
-        collection_id=collection,ancestry=(),fields=tuple(FieldProfile(field_key=key) for key in ALL_FIELDS),knowledge_version="fixture-v1")
+        collection_id=collection,ancestry=(),knowledge_version="fixture-v1",
+        # verbatim_dts declares its missing policy, as the production profile does.
+        fields=tuple(FieldProfile(field_key=key,missing_policy="verbatim_dts_definition_examples"
+            if key == FieldKey.VERBATIM_DTS else None) for key in ALL_FIELDS))
     pins = {"input_digest":digest("research-input-distinct-from-image"),"profile":research_profile.model_dump(mode="json"),
             "test_only":"No provider/native authority"}
     scope = ResearchScope(organization_id=organization,collection_id=collection,specimen_id=specimen_id,

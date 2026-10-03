@@ -1,4 +1,5 @@
-"""The live research authority's builder, the production composer and open().
+"""The live research authority's builder, the production composer, open(), and
+the worker's publication offer and status.
 
 Offline stand-ins replace Data Connect and the binding read; the research state
 is a real SQLite store and the pins are the committed ones. No model, source or
@@ -11,11 +12,14 @@ from uuid import UUID
 
 import pytest
 
-from specimen_digitization.application.domain import Principal, Scope
+from specimen_digitization.application.domain import FieldValue, Principal, Scope, ValueState
 from specimen_digitization.application.native_drain import compose_registered_native_drain
 from specimen_digitization.application.production import actor_uid
-from specimen_digitization.research_harness import provisioning
-from specimen_digitization.research_harness.contracts import FieldKey
+from specimen_digitization.research_harness import native_worker, provisioning
+from specimen_digitization.research_harness.contracts import (
+    FieldCheckpoint, FieldKey, FieldResolution, ResearchScope, WorkState, digest,
+)
+from specimen_digitization.research_harness.evidence import dts_policy_resolution, insects_profile
 from specimen_digitization.research_harness.persistence import (
     DurabilityScope, HeldUnknown, LiveResearchAuthority, PinnedRuntime, ResearchStore,
     SqliteStateBackend, StaleWork,
@@ -23,6 +27,8 @@ from specimen_digitization.research_harness.persistence import (
 from specimen_digitization.research_harness.production_runtime import (
     NativeResearchRuntimeFactory, committed_job_pins, research_budget_policy, research_program_key,
 )
+from specimen_digitization.research_harness.status import ResearchStatusV1
+from specimen_digitization.research_harness.thread_view import FieldThread, ResearchThread
 from specimen_digitization.research_harness.workflow_bridge import (
     NativeResearchWorkflow, authorize_live_research, compose_production_research_workflow,
     compose_registered_native_workflow, membership_verifier,
@@ -277,3 +283,121 @@ def test_open_holds_when_the_allowance_is_not_the_committed_one(opened, monkeypa
     with pytest.raises(HeldUnknown, match="research_live_admission_unqualified"):
         opened.open(opened.factory())
     assert opened.store._read(opened.scope).state["budget_policy"] == asdict(policy)
+
+
+# A field waiting on the policy its profile declares missing (verbatim_dts)
+# waits on people; every other waiting state stays an operational block.
+RESEARCH_PROFILE = insects_profile(ORG, COLLECTION)
+DECLARED = frozenset(row.field_key for row in RESEARCH_PROFILE.fields if row.missing_policy)
+RESEARCH_SCOPE = ResearchScope(organization_id=ORG, collection_id=COLLECTION, specimen_id="synthetic-specimen",
+    job_id="synthetic-job", generation=1, input_digest=digest("synthetic input"),
+    profile_digest=digest(RESEARCH_PROFILE), sensitive=False)
+
+
+def checkpoint(resolution):
+    return FieldCheckpoint(scope=RESEARCH_SCOPE, field_key=resolution.field_key, revision=1,
+        resolution=resolution, prompt_digest=digest("prompt"), model_settings_digest=digest("settings"),
+        source_registry_digest=digest("registry"))
+
+
+def waiting(key, state):
+    return checkpoint(FieldResolution(field_key=key, work_state=state, value=FieldValue(),
+        reason="synthetic waiting work"))
+
+
+DTS = checkpoint(dts_policy_resolution("synthetic D/T/S text"))
+TAXON = checkpoint(FieldResolution(field_key=FieldKey.TAXON, work_state=WorkState.RESOLVED,
+    value=FieldValue(state=ValueState.SUPPORTED, literal="Synthetic taxon", evidence_ids=["e-taxon"]),
+    evidence_ids=("e-taxon",), reason="synthetic resolved work"))
+
+
+def thread(*checkpoints, locked=()):
+    """Every other field resolved; ``locked`` fields wait on policy with no checkpoint."""
+    by_key = {item.field_key: item for item in checkpoints}
+    fields = []
+    for key in FieldKey:
+        item = by_key.get(key)
+        state = item.resolution.work_state if item else WorkState.WAITING_POLICY if key in locked else WorkState.RESOLVED
+        fields.append(FieldThread(field_key=key, work_state=state, value=FieldValue(), checkpoint=item))
+    return ResearchThread(scope=RESEARCH_SCOPE, paused=False, fields=tuple(fields), effects=(),
+        resolved_count=sum(item.work_state == WorkState.RESOLVED for item in fields), exception_count=0)
+
+
+def status(view, declared=DECLARED):
+    return ResearchStatusV1.from_thread(view, missing_policy_fields=declared).status
+
+
+def test_the_production_profile_declares_a_missing_policy_only_for_verbatim_dts():
+    assert DECLARED == {FieldKey.VERBATIM_DTS}
+
+
+def test_a_committed_held_policy_checkpoint_waits_on_people():
+    assert status(thread(DTS)) == "waiting_input"
+    # Without the profile's declaration it is still an operational block.
+    assert status(thread(DTS), declared=frozenset()) == "blocked"
+    assert ResearchStatusV1.from_thread(thread(DTS)).status == "blocked"
+
+
+@pytest.mark.parametrize("other", [waiting(FieldKey.COUNTY, WorkState.WAITING_SOURCE),
+    waiting(FieldKey.COUNTY, WorkState.OPERATIONAL_FAILED), waiting(FieldKey.HABITAT, WorkState.WAITING_POLICY)])
+def test_other_waiting_work_beside_a_held_field_stays_blocked(other):
+    assert status(thread(DTS, other)) == "blocked"
+
+
+def test_a_locked_field_without_a_checkpoint_stays_blocked():
+    assert status(thread(locked={FieldKey.VERBATIM_DTS})) == "blocked"
+
+
+class PublishingRuntime:
+    """The runtime parts _publish_committed reads, with recorded publications."""
+
+    def __init__(self, typed):
+        self.typed, self.prepared, self.proofs = typed, [], []
+        self.scope, self.blobs = "durability-scope", None
+        self.binding = SimpleNamespace(research_scope=lambda: RESEARCH_SCOPE)
+        self.journal = SimpleNamespace(load=self._load)
+        job = {"record_revision": 4, "pins": {"profile": RESEARCH_PROFILE.model_dump(mode="json")},
+            "fields": {str(key): {"checkpoint": {"id": f"native-{key}", "scope": RESEARCH_SCOPE.model_dump(mode="json"),
+                "payload": {"field_key": str(key)}}} for key in FieldKey}}
+        self.store = SimpleNamespace(job=lambda scope: job, _read=lambda scope: SimpleNamespace(state={"outbox": {}}))
+        self.canonical_service = SimpleNamespace(publish_checkpoint=self._publish)
+
+    async def _load(self, scope):
+        return list(self.typed)
+
+    async def _publish(self, principal, prepared, *, server_request_identity_digest):
+        return SimpleNamespace(causal=SimpleNamespace(receipt_id=f"receipt-{prepared}"))
+
+
+def publish(monkeypatch, typed, view):
+    runtime = PublishingRuntime(typed)
+    monkeypatch.setattr(native_worker, "read_accepted_checkpoint_proof",
+        lambda store, scope, blobs, checkpoint_id: runtime.proofs.append(checkpoint_id))
+
+    async def prepare(journal, scope, field_key, *, principal, expected_record_revision, blobs):
+        runtime.prepared.append(field_key)
+        return str(field_key)
+
+    async def read_thread(_runtime):
+        return view
+    monkeypatch.setattr(native_worker, "prepare_native_publication", prepare)
+    monkeypatch.setattr(native_worker.NativeResearchWorker, "_thread", staticmethod(read_thread))
+    outcome = asyncio.run(native_worker.NativeResearchWorker(None)._publish_committed(
+        runtime, principal(), RESEARCH_SCOPE.specimen_id))
+    return runtime, outcome
+
+
+def test_only_terminal_checkpoints_are_offered_for_publication(monkeypatch):
+    county = waiting(FieldKey.COUNTY, WorkState.WAITING_SOURCE)
+    runtime, outcome = publish(monkeypatch, (DTS, county, TAXON), thread(DTS, TAXON))
+    assert runtime.prepared == [FieldKey.TAXON] and runtime.proofs == ["native-taxon"]
+    assert outcome.checkpoint_ids == ("native-taxon",) and outcome.publication_receipt_ids == ("receipt-taxon",)
+    # The held D/T/S field waits on people: no reconciliation hold, no operational block.
+    assert outcome.reason_code is None and outcome.status == "waiting_input"
+
+
+def test_a_source_outage_ends_the_tick_as_an_operational_block(monkeypatch):
+    county = waiting(FieldKey.COUNTY, WorkState.WAITING_SOURCE)
+    runtime, outcome = publish(monkeypatch, (DTS, county, TAXON), thread(DTS, county, TAXON))
+    assert runtime.prepared == [FieldKey.TAXON]
+    assert outcome.reason_code is None and outcome.status == "blocked"

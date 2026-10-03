@@ -113,7 +113,11 @@ class CanonicalProgressReceiptV2(FrozenRecord):
             fail("native_v2_progress_mapping_unproved")
         blocked={"waiting_source","waiting_policy","operational_failed","retry_scheduled","cancelled"}
         unfinished=blocked|{"pending","researching"}
-        values=set(self.canonical_field_work.values())
+        # A field held on a policy the profile declares missing carries its field
+        # reason and goes to needs human review; it is never cleared.
+        held={key for key,state in self.canonical_field_work.items()
+            if state=="waiting_policy" and f"mandatory_unresolved:{key}" in self.human_reason_codes}
+        values={state for key,state in self.canonical_field_work.items() if key not in held}
         if values&unfinished or self.operational_reason_codes:
             expected="processing_blocked" if values&blocked or self.operational_reason_codes else "running"
             stage="processing_blocked" if expected=="processing_blocked" else "research_in_progress"

@@ -146,9 +146,11 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
         "catalogue_of_life"}
 
     # Plan tick 3, a new worker: provisioning returns at once and research runs.
-    # The taxon publishes; the next field offered for publication is a
-    # geography field still waiting on a source, which the materializer refuses
-    # (blocker 2), so the step ends with an operational block.
+    # The taxon publishes. The geography fields still waiting on a source are
+    # not offered for publication; the next terminal field offered,
+    # precise_location, links evidence that has no evidence_item row, which the
+    # connector refuses (the blocker named on the Stage 2 test), so the step
+    # ends with an operational block.
     resumed = compose(rig)
     with supervised(), pytest.raises(OperationalBlock, match="native_publication_requires_reconciliation"):
         resumed.step(rig.principal, rig.specimen_id)
@@ -157,6 +159,14 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     # Exactly one job and one binding after every retry.
     (revision, state), binding = jobs_and_bindings(rig)
     assert len(state["jobs"]) == 1 and len(rig.fake.bindings) == 1 and binding["job_id"] == job_id
+
+    # Only terminal checkpoints were offered: no publication was prepared for a
+    # field still waiting on a source.
+    job = list(state["jobs"].values())[0]
+    offered = {event["guard"]["checkpoint_id"] for event in state["outbox"].values()
+        if event.get("kind") == "canonical_publication_required"}
+    waiting = [field["checkpoint"]["id"] for field in job["fields"].values() if field["work_state"] == "waiting_source"]
+    assert waiting and offered and not offered & set(waiting)
 
     # The three ready taxonomy sources were fetched once each through the
     # capture broker, offline, and the run's spend is within its allowance.
@@ -215,11 +225,10 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
 
 
 @pytest.mark.xfail(strict=True, raises=OperationalBlock, reason=(
-    "Blocked in src outside this test's scope (see the Lane H D report): the native worker offers "
-    "non-terminal checkpoints for publication (research_harness/native_worker.py); settled label "
-    "values cannot carry a publishable evidence relation (evidence.py helpers, and canonical "
-    "literal evidence has no evidence_item row); geography and verbatim_dts stay waiting_source/"
-    "waiting_policy, which the V2 routing treats as processing_blocked"))
+    "Blocked in src outside this test's scope (see the Lane H D report): settled label values "
+    "cannot carry a publishable evidence relation (evidence.py helpers, and canonical literal "
+    "evidence has no evidence_item row); geography stays waiting_source, which the V2 routing "
+    "treats as processing_blocked"))
 def test_the_run_reaches_its_final_queue(rig):
     workflow = compose(rig)
     to_plan(workflow, rig)

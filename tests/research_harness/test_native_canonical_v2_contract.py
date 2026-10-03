@@ -560,6 +560,51 @@ def test_unfinished_or_blocked_sibling_preserves_human_need_without_terminal_com
     assert raw==before
 
 
+def held_policy_raw(c,*,reason=True,other=None):
+    # verbatim_dts waits on the policy its profile declares missing; every other field is resolved.
+    raw=terminal_progress_raw(c)
+    raw["research_field_work"]["verbatim_dts"]=raw["canonical_field_work"]["verbatim_dts"]="waiting_policy"
+    if other is not None:
+        raw["research_field_work"]["county"]=raw["canonical_field_work"]["county"]=other
+    raw["human_reason_codes"]=["mandatory_unresolved:verbatim_dts"] if reason else []
+    return raw
+
+
+def test_a_held_policy_field_refuses_clear_and_accepts_needs_human_review(causal):
+    raw=held_policy_raw(causal)
+    with pytest.raises(v1.PublicationUnavailable,match="final_human_review_required"):
+        v2.CanonicalProgressReceiptV2.model_validate(raw)
+    raw.update(disposition="needs_human_review",exportable=False)
+    actual=v2.CanonicalProgressReceiptV2.model_validate(raw)
+    assert actual.wire_status=="completed" and actual.disposition=="needs_human_review" and not actual.exportable
+    assert actual.human_reason_codes==("mandatory_unresolved:verbatim_dts",)
+    # Nor is it an operational block.
+    with pytest.raises(v1.PublicationUnavailable,match="final_policy_unproved"):
+        v2.CanonicalProgressReceiptV2.model_validate({**raw,"wire_status":"processing_blocked",
+            "run_stage":"processing_blocked","disposition":None})
+
+
+def test_waiting_policy_without_its_field_reason_stays_operationally_blocked(causal):
+    raw=held_policy_raw(causal,reason=False)
+    for final in ("cleared","needs_human_review"):
+        with pytest.raises(v1.PublicationUnavailable,match="false_completion"):
+            v2.CanonicalProgressReceiptV2.model_validate({**raw,"disposition":final,"exportable":final=="cleared"})
+    raw.update(wire_status="processing_blocked",run_stage="processing_blocked",disposition=None,exportable=False)
+    assert v2.CanonicalProgressReceiptV2.model_validate(raw).disposition is None
+
+
+@pytest.mark.parametrize("state",["waiting_source","operational_failed","pending"])
+def test_a_held_policy_field_does_not_hide_other_unfinished_or_blocked_work(causal,state):
+    raw=held_policy_raw(causal,other=state)
+    with pytest.raises(v1.PublicationUnavailable,match="false_completion"):
+        v2.CanonicalProgressReceiptV2.model_validate({**raw,"disposition":"needs_human_review","exportable":False})
+    blocked=state!="pending"
+    raw.update(wire_status="processing_blocked" if blocked else "running",
+        run_stage="processing_blocked" if blocked else "research_in_progress",disposition=None,exportable=False)
+    actual=v2.CanonicalProgressReceiptV2.model_validate(raw)
+    assert actual.disposition is None and actual.human_reason_codes==("mandatory_unresolved:verbatim_dts",)
+
+
 def test_all_resolved_no_human_proper_clear_remains_possible_at_progress_guard(causal):
     raw=terminal_progress_raw(causal)
     actual=v2.CanonicalProgressReceiptV2.model_validate(raw)
