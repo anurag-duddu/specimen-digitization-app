@@ -385,7 +385,7 @@ def test_overrun_stops_already_reserved_and_sending_siblings_but_replays_capture
     assert asyncio.run(broker.execute(scope, lease, "first", {}, 20, forbidden)) == completed
 
 
-def test_unverified_new_program_cannot_authorize_live_or_viewer_mutation(tmp_path):
+def test_live_allowed_program_without_live_authority_cannot_authorize_live_or_viewer_mutation(tmp_path):
     backend = SqliteStateBackend(tmp_path / "authority.sqlite")
     scope = DurabilityScope("org", "collection", "specimen", "job", 1, "actor", False)
     backend.grant(scope)
@@ -394,7 +394,7 @@ def test_unverified_new_program_cannot_authorize_live_or_viewer_mutation(tmp_pat
     pins = PinnedRuntime("input", {}, {}, {}, {}, {}, "engine")
     store.create_job(scope, pins, ["taxon"])
     lease = store.claim(scope, "owner")
-    with pytest.raises(PermissionError):
+    with pytest.raises(PermissionError, match="research_live_authority_required"):
         store.reserve_effect(scope, lease, "live", {}, 10, execution_class="live")
     backend.grant(scope, role="viewer")
     assert store.job(scope)["pins"] == pins.payload()
@@ -769,7 +769,7 @@ def test_retry_admission_is_atomic_single_field_idempotent_and_fresh_acl(tmp_pat
     store.checkpoint(scope, lease, "country", {"state": "operational_failed"}, expected_revision=0)
     neighbor = store.job(scope)["fields"]["taxon"]
     arguments = dict(expected_generation=1, expected_field_revision=1, idempotency_key="server-stable", execution_class="offline")
-    with pytest.raises(PermissionError):
+    with pytest.raises(PermissionError, match="research_live_authority_required"):
         store.admit_retry(scope, "country", **{k:v for k,v in arguments.items() if k != "execution_class"})
     with ThreadPoolExecutor(max_workers=4) as pool:
         commands = list(pool.map(lambda _:store.admit_retry(scope, "country", **arguments), range(4)))

@@ -299,7 +299,9 @@ def test_input_context_retains_all_actual_readings_and_never_picks_by_order(nati
     mixed_context = native_input_context_v2(mixed, f.rig.query, f.checkpoint.resolution, prior, mapping,
         asset_generation=f.repository.locate(prior.asset.blob_ref).generation,
         native_inputs=asyncio.run(f.provider._native_inputs(mixed, prior)))
-    assert mixed_context.input_source is None
+    # The selected reading grounds the value, so the mixed lineage still has
+    # a single producer source.
+    assert mixed_context.input_source == "raw_reading"
     assert mixed_context.tool_input_lineage.input_sources == ("raw_reading", "decided_transcript")
 
 

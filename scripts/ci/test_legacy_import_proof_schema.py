@@ -96,9 +96,3 @@ def test_no_current_connector_writes_legacy_proof_rows():
         assert not re.search(
             r"\bresearchLedgerImportProofV1_(?:insert|upsert|update|delete)\b", text,
         ), name
-
-
-def test_legacy_store_live_admission_still_requires_genuine_import_authority():
-    source = (ROOT / "src/specimen_digitization/research_harness/persistence.py").read_text()
-    method = source.split("def require_live_authority(", 1)[1].split("\n    def ", 1)[0]
-    assert 'raise PermissionError("Verified legacy ProgramLedger import authority is not installed")' in method

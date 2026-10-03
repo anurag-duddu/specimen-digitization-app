@@ -378,7 +378,7 @@ def test_registered_real_gateway_cannot_use_offline_allowance(tmp_path, monkeypa
     gated = model(real_model, request=request, broker=broker, scope=scope, lease=lease,
         request_guard=inert_serialization_probe)
     assert gated.execution_class == "live"
-    with pytest.raises(PermissionError, match="program HOLD|import authority"):
+    with pytest.raises(PermissionError, match="research_live_authority_required|program HOLD"):
         Agent(gated).run_sync("Synthetic offline admission test")
     assert len(observed) == 1 and observed[0][0]
     assert store._read(scope).state["effects"] == {}

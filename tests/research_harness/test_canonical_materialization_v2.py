@@ -93,7 +93,8 @@ def test_settled_A_publishes_while_real_B_work_remains_running(materialization, 
     assert proof.contract_version == "canonical-policy-materialization/v2"
     assert proof.result.run.fields["country"].literal is None
     assert proof.result.run.fields["country"].normalized == "Peru"
-    assert proof.result.run.disposition == Disposition.DEFERRED
+    assert proof.result.run.disposition is None and proof.progress_receipt.disposition is None
+    assert proof.policy_receipt["disposition"] is None
     assert proof.result.run.stage == "research_in_progress"
     assert proof.progress_receipt.wire_status == "running" and proof.progress_receipt.exportable is False
     assert proof.progress_receipt.canonical_field_work["county"] == state
@@ -111,7 +112,7 @@ def test_settled_A_publishes_while_real_B_work_remains_running(materialization, 
 def test_actual_operational_B_blocks_export_without_human_quality_completion(materialization, state):
     b = v2_case(materialization, state)
     proof = produce_v2(b)
-    assert proof.result.run.disposition == Disposition.DEFERRED
+    assert proof.result.run.disposition is None and proof.progress_receipt.disposition is None
     assert proof.result.run.stage == "processing_blocked" and proof.progress_receipt.wire_status == "processing_blocked"
     assert proof.progress_receipt.exportable is False
     assert f"research_work:county:{state}" in proof.progress_receipt.operational_reason_codes
@@ -122,7 +123,7 @@ def test_actual_operational_B_blocks_export_without_human_quality_completion(mat
 def test_terminal_claim_requires_actual_whole20_original_field_grounding(materialization):
     b = v2_case(materialization, "resolved")
     proof = produce_v2(b)
-    assert proof.result.run.disposition == Disposition.DEFERRED
+    assert proof.result.run.disposition is None and proof.progress_receipt.disposition is None
     assert proof.progress_receipt.wire_status == "processing_blocked" and proof.progress_receipt.exportable is False
     assert "canonical_field_grounding_unproved:date_identified" in proof.progress_receipt.operational_reason_codes
     assert proof.progress_receipt.canonical_field_work["county"] == "resolved"
@@ -157,9 +158,60 @@ def test_pending_run_retains_actual_field_human_question_in_distinct_reason_set(
     b.binding = b.binding.model_copy(update={"registration": reg})
     b.source.context = replace(b.source.context, lineage_context=replace(b.source.context.lineage_context, job=reg.job))
     proof = produce_v2(b)
-    assert proof.result.run.disposition == Disposition.DEFERRED and proof.progress_receipt.wire_status == "running"
+    assert proof.result.run.disposition is None and proof.progress_receipt.wire_status == "running"
     assert "research_human_question:habitat" in proof.progress_receipt.human_reason_codes
     assert "research_human_question:habitat" not in proof.progress_receipt.operational_reason_codes
+
+
+@pytest.mark.parametrize("state,wire,stage", [("pending", "running", "research_in_progress"),
+    ("waiting_source", "processing_blocked", "processing_blocked")])
+def test_native_writer_publishes_an_unfinished_or_blocked_record_without_a_disposition(materialization, state, wire, stage):
+    from specimen_digitization.research_harness.native_canonical_v2 import SqlConnectCanonicalResearchWriterV2
+    b = v2_case(materialization, state)
+    proof = produce_v2(b)
+    writer = SqlConnectCanonicalResearchWriterV2(None, None, blobs=None, operation_client=object())
+    intent = SimpleNamespace(operation_digest=digest("synthetic operation"), actor_uid=b.principal.user_id,
+        idempotency_key=b.prepared.basis.idempotency_key)
+    payload = writer._materialization_v2(b.principal, b.prepared, b.binding, {"projection": list(b.rows)}, b.prior, proof,
+        intent=intent, bundle=SimpleNamespace(target=b.source.context), projection_services=b.services,
+        captured_evidence=b.evidence)
+    assert payload["state"] == wire and payload["snapshot"]["run"]["stage"] == stage
+    assert payload["snapshot"]["run"]["disposition"] is None and payload["record"]["disposition"] is None
+    # record_version.summary is required: the reasons, or the stage when there are none.
+    assert payload["record"]["summary"] == ("; ".join(proof.result.run.reasons) or stage)
+    assert len(payload["fields"]) == 20
+
+
+def terminal_routing_case(materialization, monkeypatch, human_field=None):
+    """All 20 fields terminal, with whole-record grounding and the science rules
+    stubbed, so only the materializer's routing decides the outcome."""
+    from specimen_digitization.research_harness import canonical_materialization_v2 as module
+    b = v2_case(materialization, "resolved")
+    if human_field is not None:
+        reg = b.binding.registration.model_copy(deep=True)
+        reg.job["fields"][human_field]["work_state"] = "waiting_human"
+        b.binding = b.binding.model_copy(update={"registration": reg})
+        b.source.context = replace(b.source.context, lineage_context=replace(b.source.context.lineage_context, job=reg.job))
+    monkeypatch.setattr(module, "_qualified_terminal_fields", lambda *args: module.KEYS)
+    monkeypatch.setattr(module, "_scientific_reasons", lambda *args, **kwargs: [])
+    return b
+
+
+def test_terminal_record_with_a_human_question_routes_to_review(materialization, monkeypatch):
+    proof = produce_v2(terminal_routing_case(materialization, monkeypatch, human_field="habitat"))
+    assert proof.result.run.disposition == Disposition.REVIEW and proof.result.run.stage == "finalized"
+    assert proof.progress_receipt.disposition == "needs_human_review" and proof.policy_receipt["disposition"] == "needs_human_review"
+    assert proof.progress_receipt.wire_status == "completed" and proof.progress_receipt.exportable is False
+    assert proof.progress_receipt.human_reason_codes == ("research_human_question:habitat",)
+    assert proof.progress_receipt.operational_reason_codes == ()
+
+
+def test_terminal_record_without_reasons_routes_to_cleared(materialization, monkeypatch):
+    proof = produce_v2(terminal_routing_case(materialization, monkeypatch))
+    assert proof.result.run.disposition == Disposition.CLEARED and proof.result.run.stage == "finalized"
+    assert proof.progress_receipt.disposition == "cleared" and proof.policy_receipt["disposition"] == "cleared"
+    assert proof.progress_receipt.wire_status == "completed" and proof.progress_receipt.exportable is True
+    assert proof.result.run.reasons == []
 
 
 def test_date_identified_stays_mandatory_and_emu_irn_exception_does_not_fabricate_party(materialization):

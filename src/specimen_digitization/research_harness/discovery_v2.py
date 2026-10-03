@@ -109,7 +109,9 @@ class ResearchDiscoveryV2(ResearchDiscovery):
         return binding
 
     def mutable_store(self, binding):
-        # Uses the existing owner-installed shared program, never initialize().
+        # Uses the existing program state, never initialize(). This API store
+        # carries no live authority, so retry_available stays False for live
+        # retries.
         return ResearchStore(SqlConnectStateBackend(self.native_repository), binding.program_key)
 
     async def retry_available(self, principal, scope, field_key):

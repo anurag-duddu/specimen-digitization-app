@@ -391,26 +391,30 @@ class CanonicalResearchMaterializerV2:
             operational += tuple(f"canonical_field_grounding_unproved:{field}" for field in sorted(KEYS - qualified))
         unfinished = bool(set(canonical.values()) & UNFINISHED)
         blocked = bool(set(canonical.values()) & BLOCKED or operational)
-        result.run.disposition = Disposition.DEFERRED if unfinished or operational else Disposition.REVIEW if human else Disposition.CLEARED
+        # An unfinished run has no disposition, and an operational failure is a
+        # block, never Deferred (docs/execution/CONTRACTS.md:217-246). The stage
+        # carries both.
+        result.run.disposition = None if unfinished or operational else Disposition.REVIEW if human else Disposition.CLEARED
         result.run.stage = "processing_blocked" if blocked else "research_in_progress" if unfinished else "finalized"
         result.run.reasons = list(dict.fromkeys((*operational, *human)))
         projection = project_canonical_value_v2(principal, prior=prior, result=result, checkpoint=checkpoint, context=lineage)
         tool_rows = tuple(write for item in contributions if isinstance(item, CapturedCanonicalEvidenceV2)
             for write in project_tool_input_lineage_v2(principal, prior=prior, checkpoint=checkpoint, context=lineage, contribution=item))
         result_sha = canonical_digest(result.model_dump(mode="json"))
+        disposition = None if result.run.disposition is None else str(result.run.disposition)
         progress = CanonicalProgressReceiptV2(binding_id=reg.binding_id, job_key=reg.job_key, generation=reg.generation,
             prior_canonical=binding.canonical, result_digest=result_sha, policy_digest=reg.policy_digest,
             field_work_digest=digest(reg.job["fields"]), field_mapping_digest=digest(reg.field_mapping),
             research_field_work=research, canonical_field_work=canonical, target_research_field=original.field_key,
             target_canonical_field=key, wire_status="processing_blocked" if blocked else "running" if unfinished else "completed",
-            run_stage=result.run.stage, disposition=str(result.run.disposition), operational_reason_codes=operational,
+            run_stage=result.run.stage, disposition=disposition, operational_reason_codes=operational,
             human_reason_codes=human, exportable=result.run.disposition == Disposition.CLEARED)
         receipt = {"status": "computed", "policy_contract_version": self.policy.contract_version,
             "publication_digest": digest(prepared.publication), "prior_canonical": binding.canonical.model_dump(mode="json"),
             "result_digest": result_sha, "policy_digest": reg.policy_digest, "semantic_mapping_digest": reg.semantic_mapping_digest,
             "field_work_digest": progress.field_work_digest, "field_mapping_digest": progress.field_mapping_digest,
             "exact_field_keys": sorted(KEYS), "progress_receipt_digest": digest(progress),
-            "disposition": str(result.run.disposition), "reasons": result.run.reasons, "date_identified_mandatory": True,
+            "disposition": disposition, "reasons": result.run.reasons, "date_identified_mandatory": True,
             "blanket_human_approval_required": False,
             "local_utility_replays": [proof.as_receipt() for proof in local_replays],
             "lineage_digest": projection.lineage_digest,

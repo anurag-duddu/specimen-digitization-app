@@ -86,8 +86,10 @@ def principal(scope=SCOPE):
     return Principal(user_id=WORKER, scope=scope, role="operator")
 
 
-def queued(repository, ident, minutes, *, sensitive=False, stage="pending", scope=SCOPE):
-    run = Run(profile=Profile(synthetic=False), stage=stage)
+def queued(repository, ident, minutes, *, sensitive=False, stage="pending", scope=SCOPE,
+           profile_snapshot=None):
+    run = Run(profile=Profile(synthetic=False), stage=stage,
+              profile_snapshot=profile_snapshot or {})
     run.queued_at = (START - timedelta(minutes=minutes)).isoformat()
     specimen = Specimen(
         id=ident,
@@ -667,10 +669,17 @@ def test_the_drains_blocks_are_retried_by_the_operator_action(tmp_path, blocker)
     assert dispatcher.calls == 2
 
 
-# The production drain composition (worker.py 737-739) over offline stand-ins:
+# The production drain composition (worker.py 737-744) over offline stand-ins:
 # the actual RegisteredNativeDrainWorkflow and NativeResearchWorkflow, the
-# ordinary path up to the plan boundary, and the native worker's outcome.
+# ordinary path up to the plan boundary, and the native worker's outcome. Each run pins the published profile, which
+# names the harness route.
 TEN = tuple(f"subject_{n}" for n in range(105526321, 105526331))
+
+
+def harness_profile():
+    from specimen_digitization.application.collection_profiles import published_registry
+
+    return published_registry().profiles[0].model_dump(mode="json")
 
 
 class Admission:
@@ -700,26 +709,11 @@ class Ordinary:
 
 
 class NativeLane:
-    """The native worker, its discovery and its store, offline."""
+    """The native research worker, offline."""
 
-    def __init__(self, repository, holds=None, *, remaining=1, authority=None, failure=None):
-        self.repository, self.holds = repository, holds or {}
-        self.remaining, self.authority, self.failure = remaining, authority, failure
+    def __init__(self, repository, holds=None, *, failure=None):
+        self.repository, self.holds, self.failure = repository, holds or {}, failure
         self.runs = []
-        self.runtime_factory = SimpleNamespace(discovery=self)
-
-    async def binding(self, caller, ident):
-        return SimpleNamespace(durability_scope=lambda principal: ident)
-
-    def mutable_store(self, binding):
-        return self
-
-    def require_live_authority(self, bound):
-        if self.authority is not None:
-            raise self.authority
-
-    def budget(self, bound):
-        return {"remaining_micro_usd": self.remaining}
 
     async def run_registered(self, principal, ident, *, owner):
         self.runs.append(ident)
@@ -748,12 +742,11 @@ class NativeLane:
 
 
 def drain_the_ten(lane, native, *, supervised=True, at_plan=False):
+    profile = harness_profile()
     for minutes, ident in zip(range(50, 40, -1), TEN):
-        queued(lane.repository, ident, minutes=minutes)
+        queued(lane.repository, ident, minutes=minutes, profile_snapshot=profile)
     workflow = RegisteredNativeDrainWorkflow(
-        NativeResearchWorkflow(
-            Ordinary(lane.repository, at_plan=at_plan), native, approved_specimen_ids=TEN
-        )
+        NativeResearchWorkflow(Ordinary(lane.repository, at_plan=at_plan), native)
     )
     drain = worker(lane.repository, workflow, lane.clock)
     if not supervised:
@@ -823,13 +816,17 @@ def test_a_hold_on_a_runs_first_step_keeps_its_own_blocker(lane):
 @pytest.mark.parametrize(
     ("change", "error", "message"),
     [
-        # Budget: the program's headroom is exhausted.
-        ({"remaining": 0}, OperationalBlock, "native_drain_protected_admission_unavailable"),
-        # Authorization: the protected authority refuses.
+        # Authorization: the run's live research authority is refused.
         (
-            {"authority": PermissionError("research_worker_access_denied")},
+            {"failure": PermissionError("research_live_authority_required")},
             OperationalBlock,
-            "native_drain_protected_admission_unavailable",
+            "native_research_admission_or_binding_unavailable",
+        ),
+        # Budget: the run's research allowance has no headroom.
+        (
+            {"failure": HeldUnknown("research_program_headroom_unavailable")},
+            OperationalBlock,
+            "native_research_admission_or_binding_unavailable",
         ),
         # Authorization: the native run's access check refuses.
         (

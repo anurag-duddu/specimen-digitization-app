@@ -93,7 +93,8 @@ class CanonicalProgressReceiptV2(FrozenRecord):
     target_canonical_field: str
     wire_status: Literal["running","processing_blocked","completed"]
     run_stage: str
-    disposition: Literal["deferred","cleared","needs_human_review"]
+    # None while research is unfinished or blocked: neither is a disposition.
+    disposition: Literal["cleared","needs_human_review"] | None
     operational_reason_codes: tuple[str,...]
     human_reason_codes: tuple[str,...]
     exportable: bool=Field(strict=True)
@@ -116,7 +117,7 @@ class CanonicalProgressReceiptV2(FrozenRecord):
         if values&unfinished or self.operational_reason_codes:
             expected="processing_blocked" if values&blocked or self.operational_reason_codes else "running"
             stage="processing_blocked" if expected=="processing_blocked" else "research_in_progress"
-            if self.disposition!="deferred" or self.wire_status!=expected or self.run_stage!=stage or self.exportable:
+            if self.disposition is not None or self.wire_status!=expected or self.run_stage!=stage or self.exportable:
                 fail("native_v2_progress_false_completion")
         elif self.wire_status!="completed" or self.disposition not in {"cleared","needs_human_review"} or self.exportable!=(self.disposition=="cleared"):
             fail("native_v2_final_policy_unproved")

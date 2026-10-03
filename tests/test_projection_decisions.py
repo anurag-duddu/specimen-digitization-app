@@ -788,3 +788,39 @@ def test_a_new_resolved_candidate_is_a_new_record_version():
     # Same state, another value: an authority selection that keeps the state still changes the record.
     s.run.fields["city"] = s.run.fields["city"].model_copy(update={"literal": "Chicago, Ill."})
     assert rows(writes(s, locate, size, "worker-uid"), "AppendRecordVersionV2")[0]["id"] != first
+
+
+def test_a_base_record_at_plan_writes_the_record_and_all_20_fields_without_a_disposition():
+    s = base()
+    s.run.stage = "plan"
+    assert s.run.disposition is None and len(s.run.fields) == 20
+    assert "AppendRecordVersionV2" not in ops(writes(s, locate, size, "worker-uid"))
+    result = writes(s, locate, size, "worker-uid", base_record=True)
+    references_come_first(result)
+    [record] = rows(result, "AppendRecordVersionV2")
+    assert record["disposition"] is None
+    assert record["summary"] == "plan"
+    assert record["reasonCodes"] == [] and record["predecessorId"] is None
+    resolved = rows(result, "AppendResolvedFieldV2")
+    assert len(resolved) == 20 and {r["fieldKey"] for r in resolved} == set(s.run.fields)
+    assert {r["recordVersionId"] for r in resolved} == {record["id"]}
+    assert rows(result, "AppendValidationFindingV2") == []
+    content = {
+        "disposition": None,
+        "reasons": [],
+        "summary": "plan",
+        "findings": [],
+        "fields": {key: value.state.value for key, value in s.run.fields.items()},
+        "candidates": {key: None for key in s.run.fields},
+    }
+    assert record["id"] == derived_id("record", s.run.id, digest(content))
+
+
+def test_the_base_record_flag_leaves_a_decided_runs_writes_unchanged():
+    s = first_pass(base())
+    s.run.stage = "finalized"
+    s.run.disposition, s.run.reasons = Disposition.REVIEW, ["taxonomy_unresolved"]
+    plain = writes(s, locate, size, "worker-uid")
+    flagged = writes(s, locate, size, "worker-uid", base_record=True)
+    assert [(w.key, w.variables) for w in plain] == [(w.key, w.variables) for w in flagged]
+    assert rows(plain, "AppendRecordVersionV2")[0]["summary"] == "taxonomy_unresolved"

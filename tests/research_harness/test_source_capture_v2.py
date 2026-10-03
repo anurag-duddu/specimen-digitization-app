@@ -326,11 +326,11 @@ def test_google_metadata_hook_binds_real_offline_effect_and_keeps_paid_cost_unkn
     assert asyncio.run(rig.broker.query_source(rig.request, rig.query)).status == LookupStatus.POLICY
 
 
-def test_live_remains_hold_without_verified_external_import(capture_rig):
+def test_live_refused_without_live_authority(capture_rig):
     rig = capture_rig
     async def dispatch(attempt_id, provider_key):
         raise AssertionError("no live dispatch is admitted")
-    with pytest.raises(PermissionError, match="Verified legacy ProgramLedger"):
+    with pytest.raises(PermissionError, match="research_live_authority_required"):
         asyncio.run(rig.effects.execute(rig.durable_scope, rig.lease, "live-not-admitted", {}, 1, dispatch,
             execution_class="live", field_keys=("taxon",)))
     assert rig.calls == []

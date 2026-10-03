@@ -31,7 +31,7 @@ class ResearchRetryWorker:
 
     The command's offline classification cannot classify an actual provider:
     model and source adapters independently enforce their transport admission.
-    Live work remains closed until legacy ledger import authority is installed.
+    Live work needs the store's live research authority (persistence.py).
     The caller supplies an existing fenced lease; this consumer never releases
     a lease, creates a job, resets a budget or writes canonical specimen values.
     """

@@ -182,8 +182,11 @@ class CapturedCanonicalEvidenceV2(FrozenRecord):
     @model_validator(mode="after")
     def actual_producer_context(self):
         lineage, producer, execution = self.tool_input_lineage, self.canonical_producer, self.tool_execution
+        # A single-source lineage always has its producer. A mixed one (the
+        # decided transcript and the raw readings of a two-reader region) has
+        # one when the value's own grounding names a single input source.
         representable = bool(lineage.observation_ids) and len(lineage.input_sources) == 1
-        if (representable != (producer is not None)
+        if ((producer is None if representable else producer is not None and not lineage.observation_ids)
             or lineage.original_request_digest != digest(self.original_specialist_request)
             or lineage.query_digest != self.proof.query_digest
             or lineage.query_digest != digest(execution.arguments)
@@ -198,7 +201,7 @@ class CapturedCanonicalEvidenceV2(FrozenRecord):
             or self.source_result.receipt is not None
             or self.evidence not in self.source_result.evidence):
             raise ValueError("canonical_v2_producer_context_changed")
-        if producer is not None and (producer.input_source != lineage.input_sources[0]
+        if producer is not None and (producer.input_source not in lineage.input_sources
             or producer.evidence_id != self.canonical_evidence.id
             or producer.arguments != execution.arguments.model_dump(mode="json")
             or producer.started_at != execution.started_at or producer.completed_at != execution.completed_at):
@@ -772,6 +775,15 @@ def native_input_context_v2(request, query, resolution, prior, source_mapping, *
     selected = resolution.value.source_observation_id
     if selected is not None and selected not in ids:
         unavailable("canonical_capture_selected_reading_unproved")
+    # The lookup's producer takes the input source of the value's own grounding:
+    # the fragments of the assemblies it cites, or the reading it selects. A
+    # two-reader request carries both the decided transcript and the raw
+    # readings; its value's assemblies come from the decided transcript only.
+    cited = {key for item in request.assemblies if item.id in resolution.assembly_ids for key in item.fragment_ids}
+    grounding = list(dict.fromkeys(fragment.input_source for fragment in request.fragments
+        if fragment.id in cited or selected is not None and fragment.observation_id == selected))
+    producer_source = (input_sources[0] if len(input_sources) == 1
+        else grounding[0] if len(grounding) == 1 else None)
     try:
         native_ids = tuple(UUID(identifier) for identifier in ids)
         native_regions = tuple(UUID(identifier) for identifier in regions)
@@ -790,7 +802,7 @@ def native_input_context_v2(request, query, resolution, prior, source_mapping, *
     return CanonicalCaptureContextV2(request_digest=digest(request), query_digest=digest(query),
         canonical_run_id=run_id, asset_id=prior.asset.id,
         region_id=regions[0] if len(regions) == 1 else None,
-        observation_ids=native_ids, input_source=input_sources[0] if len(input_sources) == 1 else None,
+        observation_ids=native_ids, input_source=producer_source,
         selected_observation_id=UUID(selected) if selected is not None else None,
         canonical_source=source_mapping["canonical_source"], evidence_id_rule=source_mapping["evidence_id_rule"],
         tool_input_lineage=lineage)

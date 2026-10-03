@@ -71,6 +71,31 @@ class DurabilityScope:
 
 
 @dataclass(frozen=True)
+class LiveResearchAuthority:
+    """Live research permission for one specimen: the worker actor, a run whose
+    profile names a harness route, and SPECIMEN_RESEARCH_HARNESS=on.
+
+    Built only by workflow_bridge.authorize_live_research.
+    """
+    organization_id: str
+    collection_id: str
+    specimen_id: str
+    actor_uid: str
+    harness_route: str
+    switch_on: bool
+
+    def __post_init__(self) -> None:
+        if self.switch_on is not True or not all(isinstance(v, str) and v for v in (
+                self.organization_id, self.collection_id, self.specimen_id, self.actor_uid, self.harness_route)):
+            raise ValueError("research_live_authority_invalid")
+
+    def covers(self, scope: DurabilityScope) -> bool:
+        return scope.sensitive is False and (scope.organization_id, scope.collection_id,
+            scope.specimen_id, scope.actor_uid) == (self.organization_id, self.collection_id,
+            self.specimen_id, self.actor_uid)
+
+
+@dataclass(frozen=True)
 class PinnedRuntime:
     input_digest: str
     profile: Mapping[str, Any]
@@ -98,8 +123,8 @@ class BudgetPolicy:
         for v in (self.ceiling_micro_usd, self.external_settled_micro_usd, self.external_held_micro_usd):
             if type(v) is not int or v < 0:
                 raise ValueError("Budget amounts must be nonnegative integer microUSD")
-        if self.live_authorized and (self.hold_reason or self.external_ledger_digest == "local-unqualified"):
-            raise ValueError("Live allowance requires a reconciled legacy ledger and cleared hold")
+        if self.live_authorized and self.hold_reason:
+            raise ValueError("A live allowance cannot carry a hold reason")
 
 
 @dataclass(frozen=True)
@@ -287,20 +312,23 @@ class SqlConnectStateBackend:
 
 
 class ResearchStore:
-    def __init__(self, backend: StateBackend, program_key: str, *, max_cas_retries: int = 32):
+    def __init__(self, backend: StateBackend, program_key: str, *, max_cas_retries: int = 32,
+                 live_authority: LiveResearchAuthority | None = None):
         if not program_key:
             raise ValueError("Bind the existing shared ProgramLedger identity")
         self.backend, self.program_key = backend, program_key
         self.max_cas_retries = max_cas_retries
+        self.live_authority = live_authority
 
     def require_live_authority(self, scope: DurabilityScope) -> None:
-        """No policy boolean or registered-row read installs legacy import proof.
+        """Refuse live work unless this store's authority covers the scope.
 
-        The genuine native ProgramLedger import verifier/inserter is a required
-        implementation dependency. This refusal also prevents read capability
-        metadata and factory construction from claiming live retry admission.
+        A store built without an authority, such as the API store, refuses
+        every live effect and live retry. The budget policy's live flag is
+        checked separately when an effect is reserved.
         """
-        raise PermissionError("Verified legacy ProgramLedger import authority is not installed")
+        if self.live_authority is None or not self.live_authority.covers(scope):
+            raise PermissionError("research_live_authority_required")
 
     def initialize(self, scope: DurabilityScope, policy: BudgetPolicy) -> None:
         existing = self.backend.load(scope, self.program_key)
@@ -458,9 +486,7 @@ class ResearchStore:
         if execution_class not in {"offline", "live"}:
             raise ValueError("Explicit offline or live dispatch class required")
         if execution_class == "live":
-            # Caller-provided keys/digests cannot qualify the incomplete legacy
-            # ledger import. A reviewed authority bridge must precede admission.
-            raise PermissionError("Verified legacy ProgramLedger import authority is not installed")
+            self.require_live_authority(scope)
         request_hash = digest(request)
         def reduce(state, now):
             job = self._job(state, scope)
@@ -825,12 +851,13 @@ class ResearchStore:
     def admit_retry(self, scope: DurabilityScope, field_key: str, *, expected_generation: int, expected_field_revision: int, idempotency_key: str, execution_class: str = "live") -> dict[str, Any]:
         """Atomically queue one failed field; only server-configured fixtures use offline.
 
+        A live retry needs a live authority on this store that covers the scope.
         No model call, lease release, budget activation or canonical write occurs.
         A consumer must independently classify its actual transport/provider.
         """
         if execution_class == "live":
-            raise PermissionError("Verified legacy ProgramLedger import authority is not installed")
-        if execution_class != "offline" or not idempotency_key:
+            self.require_live_authority(scope)
+        if execution_class not in {"offline", "live"} or not idempotency_key:
             raise ValueError("Explicit server-owned execution class and idempotency key required")
         def reduce(state, now):
             job = self._job(state, scope)
@@ -864,14 +891,13 @@ class ResearchStore:
             return copy.deepcopy(command)
         return self._mutate(scope, reduce, force_cas=True)
 
-    @staticmethod
-    def _retry_command(state: dict[str, Any], scope: DurabilityScope, command_id: str) -> dict[str, Any]:
+    def _retry_command(self, state: dict[str, Any], scope: DurabilityScope, command_id: str) -> dict[str, Any]:
         event = state["outbox"].get("retry/" + command_id)
         command = event.get("command") if event else None
         if not command or event["kind"] != "research_field_retry" or command["id"] != command_id or command["scope"] != scope.identity():
             raise PermissionError("Retry command is outside the requested generation")
         if command["execution_class"] != "offline":
-            raise PermissionError("Verified legacy ProgramLedger import authority is not installed")
+            self.require_live_authority(scope)
         return command
 
     @staticmethod
