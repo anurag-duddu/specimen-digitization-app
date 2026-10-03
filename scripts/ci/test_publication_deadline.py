@@ -159,19 +159,6 @@ def test_only_a_gate_record_is_supervised_without_the_retired_authorized_sha(gua
             guard.frozen_packet(path, env)
 
 
-def test_workflow_auth_is_inside_one_guard_and_keeps_provenance():
-    root = Path(__file__).resolve().parents[2]
-    workflow = (root / ".github/workflows/runtime-release.yml").read_text()
-    build = workflow.split("  build:", 1)[1].split("  release:", 1)[0]
-    assert "uses: ./.github/actions/runtime-publication" in build
-    assert "uses: google-github-actions/auth@" not in build
-    assert "ref: 7c6bc770dae815cd3e89ee6cdf493a5fab2cc093" in build
-    assert "fail-fast: false" in build
-    assert "actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6" in build
-    action = (root / ".github/actions/runtime-publication/action.yml").read_text()
-    assert "post:" in action and "node24" in action
-
-
 def test_failed_started_evidence_still_terminates_the_owned_group(guard, tmp_path):
     def fail_started(events):
         if events[-1]["event"] == "started":

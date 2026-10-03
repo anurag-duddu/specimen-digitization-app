@@ -17,9 +17,12 @@ new release inputs must explicitly select the approved additive contracts.
 > and data and runtime releases deploy on merge without release inputs (G11).
 > G30's per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
 > mechanism).
-> [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) lists the code
-> that still enforces a superseded clause until a later go-live pull request
-> changes it.
+>
+> 2026-10-03: The protected data and runtime release process is retired. The
+> chapter [Data and runtime releases](#data-and-runtime-releases) below is the
+> current contract for those two planes.
+> [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) describes the
+> retired process and is kept for history.
 
 This document is the authoritative release runbook for Specimen Digitization.
 It applies to humans, automation, agents, every branch, every worktree, and every
@@ -29,6 +32,9 @@ The governing rule is simple:
 
 > Production changes reach Firebase Hosting only through the repository's
 > GitHub Actions workflow after a pull request is merged to `main`.
+
+The database, the Storage rules and the API follow the same rule through their
+own two workflows; see [Data and runtime releases](#data-and-runtime-releases).
 
 Do not perform a hand deployment because it appears faster, because CI is
 blocked, or because a local build succeeds. Fix the gate or report the blocker.
@@ -44,8 +50,8 @@ blocked, or because a local build succeeds. Fix the gate or report the blocker.
 | Firebase Hosting site | `specimen-digitization` |
 | Production URL | <https://specimen-digitization.web.app> |
 | Workflow | `.github/workflows/ci-cd.yml` |
-| Approved runtime workflow | `.github/workflows/runtime-release.yml` |
-| Approved data workflow | `.github/workflows/data-release.yml` |
+| Runtime release workflow | `.github/workflows/runtime-release.yml` |
+| Data release workflow | `.github/workflows/data-release.yml` |
 | GitHub environment | `production`, branch policy `main` only |
 | Deployment service account | `github-firebase-hosting@specimen-digitization.iam.gserviceaccount.com` |
 | Firebase CLI in CI | `15.8.0` |
@@ -57,8 +63,8 @@ Firebase SQL Connect backed by Cloud SQL for PostgreSQL is the application
 database direction. Firestore is not the application database. The current
 Hosting pipeline deploys only the static Flutter web artifact to Firebase Hosting; it
 does not deploy or migrate SQL Connect, Cloud SQL, Storage, Functions, Cloud
-Run, Temporal, or model workers. The separately approved runtime/data paths
-below do not change that Hosting boundary. AWS is not part of this design.
+Run, Temporal, or model workers. The data and runtime releases described below
+do not change that Hosting boundary. AWS is not part of this design.
 
 ## Non-negotiable rules
 
@@ -67,7 +73,9 @@ below do not change that Hosting boundary. AWS is not part of this design.
 3. Push the branch and open a pull request. Do not push a release directly to
    `main`.
 4. Required pull-request checks must pass on the exact candidate commit.
-5. Merge through GitHub. A merge to `main` is the only production trigger.
+5. Merge through GitHub. A merge to `main` is the production trigger. The data
+   and runtime workflows also accept a manual run on `main`; nothing else
+   deploys.
 6. Do not run `firebase deploy`, `firebase hosting:channel:deploy`, or a
    `gcloud ... deploy` command from a workstation, agent shell, or ad hoc job.
 7. Do not change a failed check, branch protection, the `production`
@@ -79,8 +87,9 @@ below do not change that Hosting boundary. AWS is not part of this design.
    GitHub OIDC credentials through Workload Identity Federation.
 10. Never put `.env`, FlutterFire generated production files, provider keys,
     museum data, or Google credentials in Git.
-11. A release is complete only after the `main` workflow is green and the
-    public site reports the exact merged commit SHA in `/deployment.json`.
+11. A release is complete only after the three `main` workflows are green, the
+    public site reports the exact merged commit SHA in `/deployment.json` and
+    the API reports it at `/version`.
 12. If any required proof is unavailable, report the release as incomplete.
 
 The only executable Hosting deploy command lives in
@@ -90,11 +99,10 @@ SHA, tested artifact marker, and keyless Google credential file. It installs the
 pinned Firebase CLI into a private prefix with `npm install --ignore-scripts`,
 as the data plane does, and runs that binary directly: no dependency's install
 script executes while the short-lived Google credential file is on the runner. Tests reject
-deploy commands added to unapproved automation files. The only approved backend
-effect entrypoints are `scripts/ci/deploy_runtime.py` and
-`scripts/ci/deploy_data.py`, invoked exclusively by their respective main-push
-workflows under the admission and verification contract below. A policy
-allowlist is not evidence that an entrypoint or its live inputs are ready.
+deploy commands added to unapproved automation files. The data and runtime
+releases change production only through the scripts under `scripts/release/`,
+which only their own workflows call; see
+[Data and runtime releases](#data-and-runtime-releases).
 
 ## Pipeline behavior
 
@@ -172,14 +180,18 @@ request runs can be cancelled when superseded.
 
 ### Manual workflow runs
 
-`workflow_dispatch` intentionally runs CI only. It cannot deploy. Do not change
-manual dispatch into a production trigger. A replay of a failed production job
-must retain its original `push` event and merged `main` commit.
+In this Hosting workflow, `workflow_dispatch` intentionally runs CI only. It
+cannot deploy. Do not change manual dispatch into a Hosting production trigger.
+A replay of a failed Hosting production job must retain its original `push`
+event and merged `main` commit. The data and runtime release workflows are
+different: they accept a manual run on `main`, as
+[Data and runtime releases](#data-and-runtime-releases) describes.
 
 ## Authentication and secrets
 
-GitHub Actions authenticates with Workload Identity Federation. The Google
-provider must accept only:
+GitHub Actions authenticates with Workload Identity Federation. This section
+covers Hosting; the data and runtime identities are listed under
+[Identities](#identities). The Hosting provider must accept only:
 
 - repository ID `1360732425`;
 - repository owner ID `140138196`;
@@ -189,7 +201,7 @@ provider must accept only:
 - workflow ref
   `anurag-duddu/specimen-digitization-app/.github/workflows/ci-cd.yml@refs/heads/main`.
 
-The deploy service account has only:
+The Hosting deploy service account has only:
 
 - `roles/firebasehosting.admin`; and
 - `roles/serviceusage.apiKeysViewer`, required by Firebase CLI project checks.
@@ -473,7 +485,7 @@ git ls-files --others --exclude-standard
 Changes to the following are release-sensitive and require deliberate review:
 
 - `.github/workflows/**`
-- `scripts/ci/**`
+- `scripts/ci/**`, `scripts/release/**` and `scripts/ops/**`
 - `firebase.json` and `.firebaserc`
 - `.gitignore` and `.pre-commit-config.yaml`
 - `apps/specimen_digitization/pubspec.lock`
@@ -557,7 +569,9 @@ gh run view RUN_ID
 ```
 
 The run must show the exact merged commit and all six job results green, including
-`Deploy Firebase Hosting`. Then independently re-run the public marker smoke:
+`Deploy Firebase Hosting`. The same merge also starts the data and runtime
+release runs; [Verifying a release](#verifying-a-release) covers all three.
+Then independently re-run the public marker smoke:
 
 ```bash
 scripts/ci/smoke_hosting.sh \
@@ -584,12 +598,10 @@ successful.
 These protections are not self-sustaining. They lapsed while the repository
 was private on a GitHub plan that does not offer branch protection, and on
 2026-09-22 `main` reported `protected: false` while every earlier release
-had assumed otherwise. The protected data and runtime workflows depend on
-them directly: their admission requires GitHub's `GITHUB_REF_PROTECTED` flag
-to be `true`, which GitHub sets only when a protection rule or ruleset
-exists for the branch, so without protection those planes fail closed on
-their first context check regardless of any release envelope. Before any
-release, and after any plan or visibility change, verify:
+had assumed otherwise. All three release workflows depend on them directly:
+a merge to `main` is what deploys, so the required checks on the pull request
+are the gate in front of production. Before any release, and after any plan
+or visibility change, verify:
 
 ```bash
 gh api repos/anurag-duddu/specimen-digitization-app/branches/main --jq .protected
@@ -601,10 +613,11 @@ was verified through the same command. Restoring or changing protection is
 an owner action and the applied settings must be recorded in the session
 log.
 
-The GitHub `production` environment must accept deployments only from `main`.
-GitHub Actions' default token permission must remain read-only; only the deploy
-job receives `id-token: write`. Third-party actions remain pinned to immutable
-commit SHAs.
+The GitHub `production`, `data-production`, `runtime-build-production` and
+`runtime-production` environments must accept deployments only from `main`.
+GitHub Actions' default token permission must remain read-only; only the jobs
+that deploy or publish receive `id-token: write`. Third-party actions remain
+pinned to immutable commit SHAs.
 
 Changing these protections is a security-sensitive administrative operation,
 not a troubleshooting technique. Document and obtain explicit approval before
@@ -634,8 +647,9 @@ weakening them.
   and `GoogleService-Info.plist` are ignored. Commit only the explicit
   credential-free CI placeholder.
 - **SQL safety:** Hosting success says nothing about SQL Connect or Cloud SQL.
-  Define a separate reviewed migration workflow before any production schema
-  change. Never make Flutter connect directly to PostgreSQL.
+  A production schema change goes only through the data release, which applies
+  additive changes and refuses destructive ones. Never make Flutter connect
+  directly to PostgreSQL.
 - **Java confusion:** Java may be needed for an emulator or Android tooling; it
   is not a Hosting runtime or deployment requirement.
 - **Provider costs and data policy:** model preflights are separate from the
@@ -654,8 +668,10 @@ check.
 
 ### Main CI fails before deployment
 
-Production was not changed. Create a repair branch from the failing merge,
-revert or fix through a pull request, and let the normal pipeline run.
+Hosting was not changed. The data and runtime releases start from the same
+push and do not wait for this workflow, so check their runs as well. Create a
+repair branch from the failing merge, revert or fix through a pull request,
+and let the normal pipeline run.
 
 ### Deployment or public smoke fails
 
@@ -685,9 +701,10 @@ Any session asked to release or "make it live" must begin by answering:
 6. Did `scripts/ci/verify.sh` pass on the release candidate?
 7. Does the pull request show all required checks on its latest SHA?
 8. Was the change merged through GitHub rather than pushed directly?
-9. Did the `main` workflow's deploy job succeed for the merge SHA?
-10. Does the public `deployment.json` report that same SHA, and did the public
-    application smoke pass?
+9. Did the Hosting deploy job, the data release and the runtime release all
+   succeed on `main` for the merge SHA?
+10. Does the public `deployment.json` report that same SHA, does the API
+    `/version` report it, and did the public application smoke pass?
 
 If any answer is no or unknown, the release is not complete and no substitute
 manual deployment is permitted.
@@ -714,233 +731,372 @@ signing. Neither check uses paid inference or authenticates to real Firebase.
 The canonical pre-push gate remains `scripts/ci/verify.sh`; mobile checks are
 additional platform gates and must pass on the integrated candidate.
 
-## Approved runtime/data release contract
+## Data and runtime releases
 
-The user approved release decision packet v1 on 2026-09-08. The bounded,
-current authority is recorded in
-[RELEASE_AUTHORIZATION.md](execution/RELEASE_AUTHORIZATION.md), superseding
-the approval-pending statements in the historical
-[LIVE_DELIVERY.md](execution/LIVE_DELIVERY.md) proposal. It authorizes the
-separate paths below and the documented bounded Google Cloud setup. It does
-not establish cloud readiness or authorize an unspecified expansion. The
-initial sample remains the data owner's frozen first ten existing specimens;
-expansion requires user review and approval of end-to-end results.
+The database, the Storage rules and the API are released the way Hosting is:
+a pull request is merged to `main` with the required checks passed, and a
+workflow deploys the merged commit. A release needs nothing else prepared,
+signed or approved.
 
-> 2026-09-23: Superseded for the go-live program by
-> [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G2 and G11. The authority for the runtime and data paths is G11: they deploy
-> automatically when a pull request is merged to `main` after the required
-> checks pass and the PR steward approves. Specimens, including new uploads,
-> are processed one at a time on demand; the ten pilot specimens are the
-> acceptance cohort, processed in order.
+The authority is the owner's decision G11 of 2026-09-23 in
+[`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
+(data and runtime releases deploy automatically on merge, like Hosting) and
+the go-live plan the owner approved on 2026-10-03, which replaced the two
+protected release workflows with the ones described here.
 
-- `.github/workflows/runtime-release.yml` and
-  `.github/workflows/data-release.yml` accept only pushes to `main` after a PR
-  merge. No PR/tag/manual/workflow-run deployment route is permitted.
-- Before obtaining Google credentials, independently verify the repository,
-  numeric owner/repository IDs, protected branch, exact workflow/source SHA,
-  merged-PR provenance, latest main, all five successful CI/CD jobs on that
-  exact source, and the applicable reviewed authorization packet. A stale,
-  incomplete, example or unreviewed packet fails closed.
-  > 2026-09-23: The authorization packet is superseded for the go-live program
-  > by
-  > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G11; the PR steward's approval replaces it. Every other check in this item
-  > stays.
-- Runtime publication and runtime promotion use separate identities and
-  main-only environments (`runtime-build-production` and
-  `runtime-production`), so a publisher cannot inherit deployment authority.
-  Data uses `data-production`. Exact WIF resources and effective permissions
-  must be verified after inventory; never infer their existence or a project
-  number from an example. Restrict each provider to the correct repository IDs,
-  push/main, environment and workflow. Keep Hosting's provider and identity
-  unchanged. No long-lived service-account keys.
-- Build the exact merged source once, retain immutable image digests and trusted
-  provenance, and deploy those same digests. Publication credentials are limited
-  to the named registry; deployment credentials have only the reviewed resource
-  permissions. No mutable tag, arbitrary command or user-supplied script is a
-  substitute for a typed, reviewed release operation.
-- Verify current backup and isolated restore proof before compatible data
-  changes. Keep writers quiesced when uniqueness protection could be absent;
-  restore and independently verify supplemental indexes after reconciliation.
-  > 2026-09-23: For additive applies, quiescing writers is superseded for the
-  > go-live program by
-  > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G11. The uniqueness this item protects is never absent during an additive
-  > apply. Every unique constraint is declared in the schema (for example
-  > `specimen_scope_checksum`), the gate refuses any change to an existing one
-  > except PLAN section 4.4's closed `SourceAsset` exception, which adds the new
-  > constraint in one apply and drops the old one in a later apply only after
-  > a live read-back, and the supplemental SQL indexes are non-unique. So
-  > writers keep running.
-  > The supplemental indexes are still restored and checked by definition
-  > after every apply, and a backup with a verified restore path still precedes
-  > it. The isolated restore proof is now done once, on the first apply (the
-  > coordinator's ruling D1).
-  > All of this is specified in
-  > [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) section 1.
-  Do not create or upgrade a source SQL instance as a side effect of deployment.
-  Preserve source data and object generations. Bootstrap the approved initial
-  administrator only after verified identity/scope, with sensitive access off.
-  The additive [first organization/collection contract](execution/FIRST_COLLECTION_BOOTSTRAP.md)
-  uses the same protected DATA lane and a reviewed fixed UUID pair/names for one
-  four-insert transaction. By the owner's decision of 2026-09-22
-  ([RELEASE_AUTHORIZATION.md](execution/RELEASE_AUTHORIZATION.md)), the
-  additive hierarchy mode of that contract inserts the organization, the
-  reviewed collection tree from `infra/reference/fieldmuseum-collection-tree.json`
-  in parent-first order and the same two memberships in one transaction,
-  binding the tree file's exact digest at the source commit. Legacy
-  existing-scope bootstrap remains available;
-  neither mode creates a generic runtime signup or collection-creation API.
-  First-scope plans additionally bind a reviewed public encryption key. The
-  release job attests and retains only encrypted bootstrap evidence on ordinary
-  failure paths; raw account/scope records remain private. Missing artifacts
-  after abrupt runner loss remain unknown and do not authorize retry.
-- Verify compatible deployed data before promoting runtimes. Enforce the
-  approved API/worker/SAM resource, expiry, scope and cumulative cost limits.
-  Build admission precedes images; data admission precedes data apply; runtime
-  promotion follows data readiness; public acceptance follows deployment.
-  Do not create circular prerequisites or confuse preflight with acceptance.
-  > 2026-09-23: The expiry, scope and cumulative cost limits are superseded for
-  > the go-live program by
-  > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G2, G9 and G11. SAM 3 scales to zero instead of expiring, the worker runs
-  > on demand, and the USD 25 ceiling is held by the pipeline and a billing
-  > alert rather than by release admission. G30's per-call reservations stand
-  > (PLAN 4.3; the coordinator's ruling on the mechanism). The ordering in
-  > this item stays.
-- Serialize production transitions without cancellation. Quiesce on failure;
-  retain previous known revisions and evidence. Runtime rollback uses a reviewed
-  main PR and compatible data; never delete original data to simulate recovery.
-- Completion requires the exact main workflow/deploy results, public Hosting
-  marker, matching runtime/data revisions and authenticated full-cohort product
-  evidence. An evidence-only intermediate run is not full-pipeline acceptance.
-  > 2026-09-23: The full-cohort product evidence is superseded for the go-live
-  > program by
-  > [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-  > G1, G2, G9 and G11. Each specimen is checked through the full pipeline as it
-  > is processed (PLAN section 8), a record the harness resolves is cleared
-  > without a human (G1), and the workflow, marker and revision evidence stay.
-  > The rest of product acceptance stands, including every UI and live case the
-  > human-review checker (`scripts/qa/live/human_review.py`) requires: the ten
-  > UI cases of [`RELEASE_ACCEPTANCE.md`](execution/RELEASE_ACCEPTANCE.md)
-  > (UI-SIGN-IN, UI-INTAKE, UI-PROCESSING, UI-IMAGE-REGIONS,
-  > UI-LITERAL-UNCERTAINTY, UI-SAVE-REOPEN, UI-SEARCH-QUEUE,
-  > UI-PROVENANCE-HISTORY, UI-DENIAL-RECOVERY and UI-NO-SYNTHETIC-FALLBACK) and
-  > the fifteen live cases of [`LIVE_QA.md`](execution/LIVE_QA.md)
-  > (AUTH-IDENTITY, AUTH-APPCHECK, AUTH-MEMBERSHIP, AUTH-REVOKE,
-  > AUTH-CROSS-SCOPE, DATA-TEN, DATA-GENERATION, DATA-RESTORE, PROVIDER-ACTUAL,
-  > COST-BOUNDS, RETRY-UNKNOWN, WORKER-RESTART, API-RESTART, DEPLOY-IDENTITY and
-  > BROWSER-E2E), with UI-SIGN-IN's unverified and no-role denial,
-  > UI-DENIAL-RECOVERY's unauthenticated, cross-organization or
-  > cross-collection, viewer-write and revoked-access denials, in which stale
-  > responses cannot restore access, and UI-SAVE-REOPEN's stale concurrent save,
-  > and with the ten, in order and beside new uploads, in place of a frozen
-  > manifest (G2), G9's USD 25 ceiling in place of the cohort budget, and the
-  > release packet and the cohort ledger retired (G11). G30's per-call
-  > reservations stand (PLAN 4.3; the coordinator's ruling on the mechanism). In
-  > S2's reading of G11 and PLAN 4.6, DEPLOY-IDENTITY compares the deployed API
-  > and worker SHAs and image digests with the candidate's own runtime release
-  > run, and the SQL and rules revisions with the data release run that deployed
-  > them, which is the candidate's own or a main run at or before the candidate
-  > with those inputs unchanged between the two, in place of the packet; the
-  > rest of DEPLOY-IDENTITY stands.
+These controls stay: branch protection and the required checks on `main`,
+keyless Workload Identity Federation identities with no service-account keys,
+one main-only GitHub environment per identity, and actions pinned to commit
+SHAs. A release must not have receipts, evidence digests, signed intents,
+time-limited access windows, approval packets or admission gates. Do not add
+them.
 
-The coordinator may perform only the approved, independently reviewed setup
-actions after live inventory and recording the exact bounded action packet.
-Check the complete conservative cost reservation before each billable action;
-unknown costs are not zero. The USD 5 limit is cumulative across all sessions
-and retries. Stop if costs do not fit or an action exceeds the recorded scope.
-Only the newly created restore clone may be removed, by its two-hour expiry,
-after verification evidence is retained. Existing data and source SQL remain.
+### Triggers
 
-> 2026-09-23: Superseded for the go-live program by
-> [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G9 and G11. The owner runs the standing grants and secret steps from the
-> release workstream's reviewed, read-only-generated list, with no action
-> packet or release cost reservation, and the ceiling is USD 25. G30's
-> per-call reservations stand (PLAN 4.3; the coordinator's ruling on the
-> mechanism).
-> [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md) section 1 names
-> the five standing data-release roles. The one-time roles (the initializer
-> role, `specimenDataOwnerBootstrap` and `specimenDataInitializerDisposal`)
-> and the clone, claim and runtime-absence roles stay in the bounded setup
-> window with its action packet. A restore clone is still removed by its
-> two-hour expiry.
-> Existing data and source SQL still remain.
+`.github/workflows/data-release.yml` ("Data release") and
+`.github/workflows/runtime-release.yml` ("Runtime release") run on every push
+to `main`. Each also accepts a manual run (`workflow_dispatch`), and its jobs
+run only when the ref is `main`. Each workflow runs one release at a time and
+never cancels a release in progress.
 
-Recovery admission additionally requires the original typed
-[`recovery.allowance` contract](execution/CLONE_ALLOWANCE.md). The protected data
-workflow publishes and verifies a signed original intent, then atomically creates
-one fixed-key held Storage claim before any backup/clone liability. Only that
-invocation's complete native winning response grants the in-memory capability.
-No retries, receipt adoption or allowance reset are permitted. Root must first
-qualify the complete issuance baseline, effective exact-object create-only IAM
-and continuing held-object costs. This source contract grants no native setup or
-new execution window; existing clone ownership and cleanup controls still apply.
+### Identities
 
-> 2026-09-23: For the go-live program, under
-> [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11 and the coordinator's D1, this allowance guards only the first apply's
-> single restore clone. The on-demand backup before every apply needs no
-> claim. The claim stays single-use, and its role
-> (`specimenDataRestoreAllowanceClaim`) stays time-bounded.
+Every identity signs in through the Workload Identity Federation pool
+`projects/716045864126/locations/global/workloadIdentityPools/github-actions`.
+The service accounts belong to the `specimen-digitization` project, so
+`specimen-data-release` below is
+`specimen-data-release@specimen-digitization.iam.gserviceaccount.com`.
+
+| Plane | Workflow file | GitHub environment | Service account | Provider |
+|---|---|---|---|---|
+| Hosting | `.github/workflows/ci-cd.yml` | `production` | `github-firebase-hosting` | `specimen-digitization` |
+| Data | `.github/workflows/data-release.yml` | `data-production` | `specimen-data-release` | `specimen-data-release` |
+| Runtime image build | `.github/workflows/runtime-release.yml` | `runtime-build-production` | `specimen-runtime-build` | `specimen-runtime-build` |
+| Runtime deploy | `.github/workflows/runtime-release.yml` | `runtime-production` | `specimen-runtime-release` | `specimen-runtime-release` |
+
+Each provider accepts only this repository, the `main` ref, its own GitHub
+environment and its own workflow file. The Hosting provider accepts `push`
+events only. The other three accept `push` and, once the owner setup below has
+run, `workflow_dispatch`. A provider is bound to the workflow's file name, so
+renaming a workflow file breaks its sign-in. The image build identity can
+write to the image registry and cannot deploy. The deploy identity can deploy
+and can only read the registry.
+
+### Data release
+
+The workflow has one job, `release`, in the `data-production` environment. It
+checks out the commit, installs the locked Python environment and the two
+pinned Node packages the SQL steps use, signs in as `specimen-data-release`
+and runs `scripts/release/data_release.py`. That script runs the steps below
+in order and prints one line per step, saying what it did or that it skipped.
+A failure stops the run with one line that starts `data release failed:`. The
+script refuses to run outside GitHub Actions.
+
+1. **Initialize.** `scripts/release/data_sql.mjs probe` reads what the
+   database already has: the three Data Connect roles (owner, writer and
+   reader), the `uuid-ossp` extension, the owner of schema `public`, the role
+   memberships of the release identity and of the Data Connect service agent,
+   the default privileges, the connect and usage grants, and that the database
+   and the schema are closed to every other role. When everything is present,
+   the step is skipped. Otherwise `data_sql.mjs init` runs
+   `scripts/release/sql/initialize.sql` in one transaction. That file creates
+   what is missing, sets those grants and removes no object and no data, so it
+   is safe on a database that an earlier attempt left partly initialized. The
+   probe then runs again and must find everything present.
+2. **Diff.** The script sends the committed schema (`dataconnect/schema`) to
+   Data Connect in validate-only mode. Data Connect answers either that the
+   database already matches, or with the SQL statements that would make it
+   match. Every statement is printed.
+3. **Apply.** When there are statements and the additive rule below accepts
+   all of them, `data_sql.mjs migrate` runs them in one transaction as the
+   database owner role. Any error rolls the whole transaction back.
+4. **Schema.** The committed schema is published to the Data Connect service
+   `specimen-digitization-service` as schema `main`. The step is skipped when
+   the live schema files equal the committed ones and the diff was empty.
+5. **Indexes.** `data_sql.mjs indexes` runs
+   `dataconnect/sql/paging-indexes.sql` and
+   `dataconnect/sql/search-indexes.sql`. Every statement in them must be
+   `CREATE INDEX CONCURRENTLY IF NOT EXISTS`, so an existing index is left
+   alone. The step then fails, naming the index, if any index is marked
+   invalid. It never drops one.
+6. **Connector.** The committed connector (`dataconnect/connector`) is
+   published as `specimen-server`. The step is skipped when the live files
+   equal the committed ones.
+7. **Storage rules.** `storage.rules` is published. The step is skipped when
+   the live ruleset has the same content.
+8. **Bootstrap rows.** Two sets of rows, each read before anything is written:
+   - the organization, its 18 collections and the owner's administrator
+     membership, from the prepared artifact in the environment secret
+     `DATA_BOOTSTRAP_ARTIFACT_B64`;
+   - the worker's operator membership, for the user ID held in the Secret
+     Manager secret `specimen-worker-actor-uid`, version 1. The ID is never
+     printed.
+
+   For each set: when the rows exist and are identical, nothing is written.
+   When they are absent, they are inserted and read back. When they exist and
+   differ, nothing is written: the step prints one warning that names which
+   part differs (never a value) and the release continues, so later edits to
+   these rows do not block releases. Before the organization rows are
+   written, the artifact is checked against the committed collection tree. The bootstrap inserts these prepared rows and nothing more; it
+   creates no generic runtime signup or collection-creation API.
+9. **Done.** The last line is `data release complete for <sha>`.
+
+#### Additive only
+
+The release changes the database schema only by adding to it. It refuses a
+schema change when Data Connect marks the diff, or any statement in it, as
+destructive, or when a statement contains `DROP`, `TRUNCATE`, `DELETE` or
+`RENAME` as a SQL keyword. Quoted identifiers and string literals are not
+searched. Two uses of those words are accepted because they remove nothing:
+`DROP NOT NULL`, which makes a required column optional, and the `ON DELETE`
+action of a foreign key. A statement the rule cannot read safely is refused
+as well: one with a backslash, a comment, a dollar quote or an unbalanced
+quote.
+
+A refusal happens at the diff step, before the apply step. The release prints
+the statements and the reason and exits with an error, and no schema statement
+has run.
+
+One kind of statement is set aside instead of refused. Data Connect does not
+know the supplemental indexes that the release creates from
+`dataconnect/sql/paging-indexes.sql` and `dataconnect/sql/search-indexes.sql`,
+so its diff can ask to drop them. A `DROP INDEX` that names exactly one of
+those indexes is printed, never run and never counted as destructive; the
+indexes stay. A `DROP INDEX` of any other name is refused like every other
+drop.
+
+When the answer says the committed schema does not fit the connector that is
+live, the release stops with its own message naming the connector. It does not
+delete or rewrite the connector; that change needs the owner.
+
+Calls that only read (the reads, the operation polls, the validate-only
+request and the secret read) are tried up to three times when the connection
+drops or Google answers 429 or a 5xx. A call that writes is sent once.
+
+#### Never drop
+
+No step of the data release drops, deletes or truncates. Initialization
+creates what is missing and sets grants. The additive rule refuses destructive
+statements. An invalid index is reported, not dropped. Bootstrap rows that
+differ from the artifact are reported, not overwritten. A destructive schema
+change stops the release and needs the owner.
+
+#### A push that changes no data files
+
+The data release runs on every push to `main`, including a docs-only push,
+because the runtime release waits for it on every commit. On such a push every
+step is a no-op: initialization finds everything present, the diff is empty,
+the schema, connector and rules already match, the indexes exist and the
+bootstrap rows are identical. The run still prints the completion line and
+succeeds.
+
+#### Inputs
+
+- `DATA_BOOTSTRAP_ARTIFACT_B64`, a secret of the `data-production`
+  environment: the prepared organization and collection rows, base64-encoded.
+  It is the only GitHub secret the data release reads. When the secret is
+  unset and no organization exists, the step fails and says so. When the
+  secret is unset and an organization exists, the step is skipped without
+  comparing anything.
+- The Secret Manager secret `specimen-worker-actor-uid`, version 1: the
+  worker's user ID, read during the bootstrap step when the artifact is set.
+- Everything else the release reads is committed in this repository:
+  `dataconnect/`, `storage.rules`, the collection tree under
+  `infra/reference/` and the release scripts.
+
+#### Running it again
+
+Every step reads the current state first and writes only what is missing, so
+a second run is safe. Re-run the failed workflow run, or start a manual run of
+"Data release" on `main`.
+
+### Runtime release
+
+The workflow has three jobs.
+
+1. **`data`** waits for the data release of the same commit.
+   `scripts/release/wait_for_data.sh` finds the newest "Data release" run for
+   the commit, polls it every 15 seconds and passes only when that run
+   concluded with success. A manual data run after a failed one counts,
+   because the newest run decides. The job uses no environment and no cloud
+   credentials. The API is therefore never deployed ahead of the schema it
+   reads.
+2. **`build`** runs in parallel with `data`, in the `runtime-build-production`
+   environment, as `specimen-runtime-build`.
+   `scripts/ci/build_runtime_image.sh api` builds the API image from the
+   committed files of the merged commit and checks it offline.
+   `scripts/release/push_image.sh api` pushes it to
+   `us-east4-docker.pkg.dev/specimen-digitization/specimen-runtime/api` under
+   the tag `sha-<commit>-<run id>-<run attempt>`. The registry does not let a
+   tag be overwritten, so the run ID and attempt keep a re-run from colliding
+   with its earlier push. The job passes the image on by digest,
+   `.../specimen-runtime/api@sha256:<digest>`, never by tag.
+3. **`release`** needs both jobs and runs in the `runtime-production`
+   environment, as `specimen-runtime-release`.
+   - `scripts/release/deploy_api.py` deploys that digest to the Cloud Run
+     service `specimen-api` in `us-east4` with `gcloud run deploy`. The
+     service account, CPU, memory, instance limit, concurrency, timeout,
+     environment variables and secret references all come from
+     `scripts/ci/runtime_settings.py`, the one committed source for them.
+     Secrets are referenced by numbered version, never `latest`. The new
+     revision takes all traffic.
+   - The same script then reads the service's access policy and adds the
+     public invoker binding (`allUsers`) only when it is absent.
+   - `scripts/release/smoke_api.sh` checks the public URL. `/version` must
+     report the merged commit as `source_sha` and the mode `production`.
+     `/health/ready` must return 200 with status `ready`. `/v1/session`
+     without credentials must return exactly 401, which shows the application
+     received the request and refused it. A 403 means Cloud Run blocked the
+     request first, so the public invoker binding is missing. The three checks
+     share about three minutes of retries while the new revision starts.
+
+The worker job and the SAM 3 service are added in a follow-up change.
+
+### One-time owner setup
+
+The owner grants the standing access the releases need once, and starts the
+first releases, with:
+
+```bash
+scripts/ops/owner_setup.sh --dry-run     # read the live state, print what would change
+scripts/ops/owner_setup.sh               # set up, then start and follow the releases
+scripts/ops/owner_setup.sh --setup-only  # set up and start nothing
+```
+
+The script needs `gcloud` signed in as a project owner and `gh` signed in with
+admin rights on the repository. It is idempotent: each step reads the live
+state first and changes only what is missing, so running it again is safe. It
+prints every command before running it, asks no questions and needs no
+terminal. The owner runs it; an agent runs it only when the owner has
+authorized that run first-hand. The setup part does seven things.
+
+1. It removes four expired, time-limited role bindings left on the data
+   release identity, each matched by its exact condition.
+2. It makes sure the custom roles and the standing grants exist:
+   - data release: publish the schema and connector, publish Storage rules,
+     read the project, connect to the one Cloud SQL instance, read and write
+     the bootstrap rows through Data Connect, and read version 1 of the worker
+     user ID secret;
+   - runtime image build: write to the image registry;
+   - runtime deploy: deploy to Cloud Run, read the image registry, act as the
+     runtime service accounts, and set the Cloud Run invoker policy;
+   - runtime service accounts: the grants they already hold (the connector,
+     user lookup, the bucket and their pinned secrets), plus the SAM runtime's
+     listing of the bucket for its checkpoint mount.
+3. It gives the data release database user the `cloudsqlsuperuser` database
+   role, which the initialize step needs.
+4. It widens the condition of the three release providers to accept
+   `workflow_dispatch` as well as `push`, and changes nothing else in it. The
+   Hosting provider is not touched.
+5. It sets the repository variables `SPECIMEN_API_BASE_URL` and
+   `SPECIMEN_RECAPTCHA_SITE_KEY`, described next.
+6. It sets the `DATA_BOOTSTRAP_ARTIFACT_B64` secret in `data-production` from
+   the owner's private artifact file when that file is on the machine. The
+   value goes through a pipe and is never printed. GitHub cannot show a
+   secret, so this one step repeats on every run.
+7. It prints, and does not remove, what the retired process left behind: the
+   `RELEASE_*` variables and the unused secrets of `data-production`, the
+   `data-initialization-production` environment with its provider and service
+   account, and the roles nothing uses any more.
+
+After the setup, unless `--setup-only` is given, the script starts the
+releases and follows them, printing one line each time a step finishes:
+
+1. It waits two minutes when it changed any access, so the change can take
+   effect.
+2. It starts the data release on `main` and follows it to the end.
+3. It starts the runtime release on `main` and follows it to the end.
+4. When it changed a repository variable (or with `--redeploy-web`), it runs
+   the latest Hosting run on `main` again, then checks that the live site's
+   built JavaScript names the API address. If it does not, the script prints a
+   warning, not a failure: the next merge to `main` rebuilds the site.
+
+It starts nothing when a setup change failed, or when the simple workflows are
+not on `main` yet. It ends with a summary: one PASS, FAIL, WARN or SKIPPED
+line per stage with the run address, the live addresses, and for a failure the
+exact command that shows the log.
+
+When a release step fails with "the owner runs scripts/ops/owner_setup.sh
+once", a grant or the bootstrap secret from this list is missing or out of
+date.
+
+### Repository variables for the web build
+
+Main web builds accept the public repository variables
+`SPECIMEN_API_BASE_URL` and `SPECIMEN_RECAPTCHA_SITE_KEY` together. Both unset
+preserve the setup screen; partial or unsafe configuration fails the build.
+When both are set, the next push to `main` builds the web client against the
+live API, with the site key as its App Check key. The owner setup sets the
+pair. The API URL is `https://specimen-api-716045864126.us-east4.run.app`. The
+site key is the public reCAPTCHA key registered for this app. Both values are
+public configuration that ships in the web bundle.
+
+The optional public repository variable `SPECIMEN_ADMIN_CONTACT` names the
+collection administrator the client shows in its help sheet and in every "ask
+your administrator" message when no collection document publishes a contact; it
+accepts `Name <address>`, `Name, address` or a bare address, is validated for
+that shape only, and is forwarded on main pushes independently of the API pair.
+`build_web.sh` never forwards these variables for PR/manual/native builds.
+
+### Verifying a release
+
+The release of a merged commit is complete when all of these hold:
+
+1. the three workflow runs on that commit are green: "CI/CD", "Data release"
+   and "Runtime release";
+2. the public Hosting marker `deployment.json` reports the commit;
+3. the API reports the commit as `source_sha` at `/version`;
+4. the smoke steps passed: the Hosting smoke at the end of "CI/CD" and the API
+   smoke at the end of "Runtime release".
+
+```bash
+sha="$(git rev-parse origin/main)"
+gh run list --commit "$sha" --json workflowName,status,conclusion,url
+scripts/ci/smoke_hosting.sh https://specimen-digitization.web.app "$sha"
+curl -fsS https://specimen-api-716045864126.us-east4.run.app/version
+```
+
+These commands only read. Record the commit, the pull request and the three
+run URLs in the session log.
+
+### When a data or runtime release fails
+
+1. Open the failed run and read the failing step's log line. Each step prints
+   what it was doing, and a missing grant names the owner setup script.
+2. Fix forward. A code or schema problem is fixed by a pull request. A missing
+   grant is fixed by the owner running the setup script.
+3. Run the release again: re-run the failed run, or start a manual run on
+   `main`. Every step is idempotent, so a release that stopped part way is
+   safe to repeat.
+4. Do not deploy by hand, and do not weaken a check to get past the failure.
+
+A runtime release that fails in its `data` job is waiting on a failed data
+release; fix that one first. Two failures need the owner rather than a code
+fix: a schema change the additive rule refused, and an index reported invalid.
+In each case the release stops without dropping or overwriting anything.
+Bootstrap rows that differ from the prepared artifact do not stop a release;
+the warning in the run is the owner's cue to look.
+
+### Container build check
 
 The candidate CI workflow `runtime-ci.yml` builds committed container inputs
 without credentials or registry publication. Scoped PRs report absent owner
 inputs as Not run; main/integration fail if either container or the data-plan
 validator is absent. This is additive coverage, not a runtime release workflow.
 
-Main web builds accept the approved public repository variables
-`SPECIMEN_API_BASE_URL` and `SPECIMEN_RECAPTCHA_SITE_KEY` together. Both unset
-preserve the setup screen; partial or unsafe configuration fails the build.
-The optional public repository variable `SPECIMEN_ADMIN_CONTACT` names the
-collection administrator the client shows in its help sheet and in every "ask
-your administrator" message when no collection document publishes a contact; it
-accepts `Name <address>`, `Name, address` or a bare address, is validated for
-that shape only, and is forwarded on main pushes independently of the API pair.
-`build_web.sh` never forwards these variables for PR/manual/native builds. This
-wiring alone grants no authority. Release decision packet v1 separately
-authorizes configuring the verified API URL and App Check registration/site key
-for this live app after target verification and access-denial checks.
+### Retired
 
-Release completeness is separate from candidate structure CI. The strict
-non-deploying preflight `scripts/ci/check_release_readiness.py` accepts a real
-generated/private packet only in the expected GitHub main/integration workflow
-context, derives the expected source SHA from that context and rejects missing,
-incomplete, example or stale packets. No future deploy implementation may replace
-this with example/schema validation. API, worker and CPU SAM image provenance,
-pinned model artifact hashes, data restoration and approval evidence are required;
-actual evidence verification and cloud authorization remain additional gates.
+The earlier protected-release contract is retired. Gate packets, admission,
+recovery windows and the one-time initializer are no longer part of a release.
+The scripts that implemented them are listed in
+[`scripts/ci/RETIRED.md`](../scripts/ci/RETIRED.md). They stay in the tree
+unchanged until a follow-up pull request deletes them with their tests. Do not
+extend them or call them from new code.
 
-> 2026-09-23: The packet requirement is superseded for the go-live program by
-> [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11. Image provenance and pinned model artifact hashes stay; the packet and
-> its approval evidence retire with the envelopes.
-
-The first missing application database uses the typed
-`data-initialize-missing/v1` phase in that same protected data workflow. The
-plan may bind the exact empty Firebase onboarding schema instead of requiring
-schema absence. It verifies that observation before recovery and before
-conditional publication; existing application schemas remain ineligible.
-The one-time initializer has a separate main-only `data-initialization-production`
-environment and `specimen-data-initialize` keyless identity. Native source and
-restore parity precede initializer credentials; fixed SQL and privilege disposal
-must qualify on the same owned clone before source initialization. Ordinary data
-apply resumes with ordinary credentials and the original recovery proof, without
-another clone. The maximum temporary privilege window is ten minutes after
-native parity, inside the existing two-hour clone deadline. Actual identities,
-conditional permissions and this exact temporary privilege require the existing
-independent authority/admission review. The workflow creates no IAM policy or
-password and changes no source capacity. See the precise contract and live gates
-in [DATABASE_INITIALIZATION.md](execution/DATABASE_INITIALIZATION.md).
-
-> 2026-09-23: The independent authority and admission review is superseded for
-> the go-live program by
-> [`docs/execution/golive/PLAN.md` section 2.1](execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator)
-> G11. The application database already exists and is empty (PLAN section 3),
-> so the release workstream's data-plane pull request specifies a first
-> initialization that matches that state, in
-> [`execution/golive/RELEASE.md`](execution/golive/RELEASE.md). The
-> initializer's temporary privilege stays one-time and time-bounded and is
-> removed after use; the workflow still creates no IAM policy or password.
+[`docs/execution/RELEASE_AUTHORIZATION.md`](execution/RELEASE_AUTHORIZATION.md)
+and [`docs/execution/golive/RELEASE.md`](execution/golive/RELEASE.md) describe
+the retired process and are kept for history. Where they conflict with this
+chapter, this chapter wins. In particular, a manual run of the data or runtime
+workflow on `main` is now allowed. The rules at the top of this document still
+forbid workstation deployments, weaker branch protection, broader Hosting
+permissions and service-account keys, and AWS stays out of the design.
