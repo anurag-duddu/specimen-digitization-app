@@ -14168,7 +14168,7 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   log scan, items D3 and D5).
 - Branch/worktree: `claude/lane-q-failure-logging` at
   `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a93300eb597e7b2e3`,
-  from `main` db855ad6, then `origin/main` merged locally as it moved (PRs #243, #246, #247 and #248 so far).
+  from `main` db855ad6, then `origin/main` merged locally as it moved (PRs #243, #246, #247, #248 and #257 so far).
 - Outcome: In progress. Pull request open and ready for review; not merged. No production access, deploy or paid call.
 - Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/251; code commit b1b4b222. Review round
   1 (an independent reviewer at head f296c639: CI "Python tests" red, one overclaiming sentence) is fixed by commit
@@ -14197,12 +14197,18 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   Single process (the order CI uses): the failure of review round 1 reproduced as `test_api_runtime.py
   test_lane_drain_cli.py test_process_logging.py` 1 failed, 85 passed; after the conftest fixture the five files
   `test_api_runtime`, `test_lane_drain_cli`, `test_process_logging`, `test_step_failure_logging`,
-  `test_research_host_routes` pass together in that order (116 passed) and reversed (116 passed), re-run after each
-  merge of `origin/main`. The full suite as CI runs it (`pytest -q`, one process, Python 3.11 venv, not CI's 3.12):
-  9987 passed, 107 skipped in 846 s, run before two `# noqa: BLE001` comments and the merges of PRs #247 and #248; CI's
-  own run at head c3af937b: all nine checks passed (Python tests 10012 passed, 104 skipped). Round 2 also made two
-  tests independent of `pytest --log-level` and live logging, and restored the uvicorn logger levels in the fixture.
-  Not run: any `scripts/ci/verify.sh` gate, a live or paid call.
+  `test_research_host_routes` pass together in one process (116 passed) in that order and reversed. On the final head,
+  after merging PR #257, they were run once each (27, 12, 16, 41 and 20 passed) and in one process in the CI order, in
+  the order `test_process_logging` first and in its reverse (116 passed each), and in the last two of those orders with
+  `--log-level=DEBUG` (116 passed each); also `test_lane_drain`, `test_application`, `test_extraction_kind_guard`,
+  `tests/research_harness/test_native_worker_log` (files main's new commits changed that touch the changed code), and the
+  four pin tests (`test_committed_pins`, `test_native_canonical_contract`, `test_native_canonical_v2_contract`,
+  `test_canonical_materialization`), one at a time, all passed. The full suite as CI runs it (`pytest -q`, one process,
+  Python 3.11 venv, not CI's 3.12): 9987 passed, 107 skipped in 846 s, run before two `# noqa: BLE001` comments and the
+  merges of PRs #247, #248 and #257 and not repeated locally since; CI's own run at head c3af937b: all nine checks
+  passed (Python tests 10012 passed, 104 skipped). Round 2 also made two tests independent of `pytest --log-level` and
+  live logging, and restored the uvicorn logger levels in the fixture. Not run: any `scripts/ci/verify.sh` gate, a live
+  or paid call.
 - Durable learnings:
   - No logging was configured anywhere in `src`. Every `LOGGER.warning` (projection stops, registration refusals)
     reached Cloud Run as a bare stderr line through the standard library's last-resort handler, so Cloud Logging
