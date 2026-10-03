@@ -703,9 +703,11 @@ def _execute_drain(args, deadline):
     from .lane_dispatch import UNCONFIGURED, dispatcher_from_value
     from .lane_worker import DrainWorker, drain_settings
     from .profile_runtime import published_risk_registry
+    from ..research_harness.enablement import research_harness_enabled
 
     try:
         settings = drain_settings(os.environ)
+        research_harness = research_harness_enabled(os.environ)
     except ValueError as exc:
         # The message names the setting, never its value.
         print(json.dumps({
@@ -734,9 +736,12 @@ def _execute_drain(args, deadline):
             profile_registry=published_registry(settings.bindings),
             risk_registry=published_risk_registry(),
         )
-        from .native_drain import compose_registered_native_drain
+        # Each run steps through the ordinary processing chain unless
+        # SPECIMEN_RESEARCH_HARNESS mounts the research harness over it.
+        if research_harness:
+            from .native_drain import compose_registered_native_drain
 
-        workflow = compose_registered_native_drain(workflow, repository=repository)
+            workflow = compose_registered_native_drain(workflow, repository=repository)
         dispatcher = dispatcher_from_value(settings.worker_job)
         # A retried task attempt is the same holder: its predecessor has exited.
         execution = os.getenv("CLOUD_RUN_EXECUTION")

@@ -16,6 +16,23 @@ from specimen_digitization.application.api import SYNTHETIC_TEXT, create_app
 from specimen_digitization.application.storage import LocalBlobs
 
 
+def decoded_strings(value):
+    """Every string in exported spans, JSON-encoded attribute values decoded."""
+    if isinstance(value, str):
+        yield value
+        if value[:1] in ("[", "{"):
+            try:
+                yield from decoded_strings(json.loads(value))
+            except ValueError:
+                pass
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from decoded_strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from decoded_strings(item)
+
+
 def traced_model_factory(payload):
     """Use the real application configuration with a local buffered exporter."""
     from logfire.testing import TestExporter
@@ -67,12 +84,13 @@ class TracedModelAdapters(ModelAdapters):
         self.model_effect = traced_model_factory
 
 
+@pytest.mark.parametrize("mode", ["approved-content", "metadata"])
 def test_fresh_model_children_export_linked_private_spans_before_return(
-    tmp_path, monkeypatch, capfire
+    tmp_path, monkeypatch, capfire, mode
 ):
     monkeypatch.setenv("SPECIMEN_APPROVED_INFERENCE", "true")
-    # G3 approved-content selection retains the existing lineage/privacy checks.
-    monkeypatch.setenv("LOGFIRE_CAPTURE_MODE", "approved-content")
+    # Both capture modes keep the lineage and privacy checks; G3 content follows.
+    monkeypatch.setenv("LOGFIRE_CAPTURE_MODE", mode)
     blobs = LocalBlobs(tmp_path / "blobs")
     app = create_app(
         mode="synthetic",
@@ -99,7 +117,7 @@ def test_fresh_model_children_export_linked_private_spans_before_return(
     records = [json.loads(p.read_text()) for p in tmp_path.glob("*.trace.json")]
     assert len(records) == 3  # Both independent readers and resolved extraction.
     for record in records:
-        assert record["configured"] == [{"specimen.telemetry.capture_mode": "approved-content"}]
+        assert record["configured"] == [{"specimen.telemetry.capture_mode": mode}]
         spans = record["spans"]
         effect = next(s for s in spans if s["name"] == "Run isolated specimen model")
         assert any(
@@ -126,16 +144,28 @@ def test_fresh_model_children_export_linked_private_spans_before_return(
             assert attrs["specimen.region.id"] == observation["region_id"]
             assert attrs["specimen.route.id"] == observation["route_id"]
         exported = json.dumps(record)
-        for private in (
-            "BAGGAGE-CANARY",
-            SYNTHETIC_TEXT,
-            "synthetic.png",
-            "data:image/",
-            work["run"]["dependencies"]["prompts"]["literal-label-transcription"][
-                "text"
-            ],
-        ):
+        for private in ("BAGGAGE-CANARY", "synthetic.png", "data:image/"):
             assert private not in exported
+        # The agent's prompt, its input and the label text (in the reader's
+        # output and the extractor's input) are on the spans exactly under
+        # approved-content. Compared decoded: json.dumps escapes multi-line text.
+        prompts = work["run"]["dependencies"]["prompts"]
+        texts = list(decoded_strings(spans))
+        if attrs["specimen.model.operation"] == "transcribe":
+            content = (
+                prompts["literal-label-transcription"]["text"].strip(),
+                "Transcribe only the supplied source image.",
+                SYNTHETIC_TEXT,
+            )
+        else:
+            assert attrs["specimen.model.operation"] == "extract"
+            content = (
+                prompts["structured-field-extraction"]["text"].strip(),
+                "source_transcripts",
+                SYNTHETIC_TEXT,
+            )
+        for text in content:
+            assert any(text in t for t in texts) is (mode == "approved-content")
 
 
 def test_unexpected_child_failure_exports_only_safe_failure_and_does_not_replay(

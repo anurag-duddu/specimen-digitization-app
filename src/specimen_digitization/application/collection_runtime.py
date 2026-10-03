@@ -112,6 +112,8 @@ def classify_and_select(specimen, registry, classifier, blobs, risk_registry=Non
         policy_version=published.clearance_policy,
         mandatory_fields=published.mandatory_fields,
         routes=published.model_routes,
+        # The first-pass route, pinned again after classify (HARNESS.md 3).
+        first_pass_route=published.first_pass_route,
         synthetic=published.synthetic,
         institutional_policy_approved=published.institutional_policy_approved,
         semantics_confirmed=published.semantics_confirmed,

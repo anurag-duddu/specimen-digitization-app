@@ -1,0 +1,17 @@
+# One runtime image, built by Cloud Build from a git archive of the committed sources (scripts/ops/build_images.py).
+# Substitutions: _DOCKERFILE (path in the archive), _IMAGE (registry/role:sha), _SOURCE_SHA (the commit).
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    env: ["DOCKER_BUILDKIT=1"]  # sam3.Dockerfile checks TARGETARCH, which BuildKit sets from --platform.
+    args: ["build", "--platform=linux/amd64", "--build-arg=SOURCE_SHA=${_SOURCE_SHA}",
+           "--label=org.opencontainers.image.revision=${_SOURCE_SHA}", "--file=${_DOCKERFILE}", "--tag=${_IMAGE}", "."]
+  - id: smoke
+    name: gcr.io/cloud-builders/docker
+    # Both entrypoints print {"source_sha": ...} for --version without a network or credentials.
+    args: ["run", "--rm", "--network=none", "${_IMAGE}", "--version"]
+images: ["${_IMAGE}"]
+options:
+  logging: CLOUD_LOGGING_ONLY  # Required when the build runs as a named service account.
+  machineType: E2_HIGHCPU_8
+timeout: 3600s

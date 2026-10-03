@@ -34,6 +34,7 @@ def drain_env(monkeypatch, tmp_path):
         "SPECIMEN_SAM3_LAB",
         "SPECIMEN_WORKER_JOB",
         "SPECIMEN_COLLECTION_BINDINGS_JSON",
+        "SPECIMEN_RESEARCH_HARNESS",
         "CLOUD_RUN_EXECUTION",
         "CLOUD_RUN_TASK_INDEX",
     ):
@@ -180,10 +181,6 @@ def test_the_drain_runs_the_lane_worker_with_the_published_registries(
     drain_env.setattr(worker, "GcsBlobs", lambda: "blobs")
     drain_env.setattr(worker, "ProductionAdapters", lambda blobs: "adapters")
     drain_env.setattr(worker, "Workflow", workflow)
-    # This existing offline wiring control proves no admission authority. The
-    # genuine missing-authority CLI refusal has a separate actual-caller case.
-    drain_env.setattr("specimen_digitization.application.native_drain.compose_registered_native_drain",
-        lambda ordinary, **_: ordinary)
     drain_env.setattr(lane_worker, "DrainWorker", Worker)
     drain_env.setattr("signal.signal", lambda signum, handler: None)
 
@@ -193,6 +190,7 @@ def test_the_drain_runs_the_lane_worker_with_the_published_registries(
     assert actor.get() is None
     options = seen["worker"]
     assert options["user_id"] == "worker"
+    assert options["workflow"] == "workflow"  # The ordinary chain, by default.
     assert 600 < options["deadline_seconds"] <= 3600  # Same original clock, including setup.
     assert options["execution_id"] == "specimen-worker-abc12/0"
     continuation = options["continuation"]
@@ -234,8 +232,6 @@ def test_the_drain_without_a_job_reports_an_unconfigured_hand_over(
     drain_env.setattr(worker, "GcsBlobs", lambda: "blobs")
     drain_env.setattr(worker, "ProductionAdapters", lambda blobs: "adapters")
     drain_env.setattr(worker, "Workflow", lambda *args, **kwargs: "workflow")
-    drain_env.setattr("specimen_digitization.application.native_drain.compose_registered_native_drain",
-        lambda ordinary, **_: ordinary)
     drain_env.setattr(lane_worker, "DrainWorker", Worker)
     drain_env.setattr("signal.signal", lambda signum, handler: None)
 
@@ -248,10 +244,167 @@ def test_the_drain_without_a_job_reports_an_unconfigured_hand_over(
     assert len(seen["execution_id"]) == 36
 
 
-def test_actual_drain_without_protected_origin_refuses_before_fence_or_paid_work(drain_env, capsys):
+def test_by_default_the_drain_takes_a_queued_record_through_the_ordinary_chain(
+    drain_env, capsys, tmp_path
+):
+    """The actual Workflow and DrainWorker with the published registries. SQLite,
+    local blobs and ProductionLikeAdapters (a whole-image region, readers that
+    read their crop, a synthetic taxonomy lookup) stand in for SQL Connect,
+    Cloud Storage, SAM 3, the Hugging Face readers and GBIF."""
+    import time
+
+    from fastapi.testclient import TestClient
+
+    from specimen_digitization.application.api import (
+        SYNTHETIC_COLLECTION,
+        SYNTHETIC_ORG,
+        SYNTHETIC_TEXT,
+        create_app,
+    )
+    from specimen_digitization.application.collection_profiles import published_registry
+    from specimen_digitization.application.domain import Disposition, LookupStatus
+    from specimen_digitization.application.lane_allowance import ProgramLedger
+    from specimen_digitization.application.profile_runtime import published_risk_registry
+    from specimen_digitization.application.storage import LocalBlobs
+
+    from test_lane_costs import seed_synthetic_ledger
+    from test_lane_drain import NonSensitiveMember
+    from test_lane_profile import ProductionLikeAdapters
+    from test_lane_trigger import SCOPE, RecordingDispatcher, intake
+
+    member = {
+        "organization_id": SYNTHETIC_ORG,
+        "collection_id": SYNTHETIC_COLLECTION,
+        "role": "operator",
+        "can_view_sensitive": False,
+    }
+
+    class Repository(NonSensitiveMember):
+        def memberships(self, uid):
+            return [member] if uid == "worker" else []
+
+    blobs = LocalBlobs(tmp_path / "blobs")
+    repository = Repository(tmp_path / "state.sqlite3")
+    seed_synthetic_ledger(repository)
+    registry = published_registry({SYNTHETIC_COLLECTION: "insects"})
+    # A reviewer uploads one non-sensitive slide, which queues it (LANE.md T1).
+    app = create_app(
+        mode="emulator",
+        repository=repository,
+        blobs=blobs,
+        adapters=ProductionLikeAdapters(blobs, SYNTHETIC_TEXT),
+        identity_verifier=lambda token, check: "lane-reviewer",
+        memberships=lambda user: [dict(member, role="reviewer", can_view_sensitive=True)],
+        profile_registry=registry,
+        risk_registry=published_risk_registry(),
+        worker_dispatcher=RecordingDispatcher(),
+    )
+    ident = intake(TestClient(app, raise_server_exceptions=False))["specimen_id"]
+    assert repository.get(SCOPE, ident).run.stage == "pending"
+    # The drain lists work created and requested a second before its clock.
+    time.sleep(1.1)
+
+    drain_env.setenv(
+        "SPECIMEN_COLLECTION_BINDINGS_JSON", json.dumps({SYNTHETIC_COLLECTION: "insects"})
+    )
+    drain_env.setattr(worker, "sql_endpoint_from_env", lambda: {})
+    drain_env.setattr(worker, "SqlConnectRepository", lambda **endpoint: repository)
+    drain_env.setattr(worker, "GcsBlobs", lambda: blobs)
+    drain_env.setattr(
+        worker, "ProductionAdapters", lambda blobs: ProductionLikeAdapters(blobs, SYNTHETIC_TEXT)
+    )
+
+    def no_harness(*_, **__):
+        raise AssertionError("the research harness is off unless SPECIMEN_RESEARCH_HARNESS is on")
+
+    drain_env.setattr(
+        "specimen_digitization.application.native_drain.compose_registered_native_drain",
+        no_harness,
+    )
+    drain_env.setattr("signal.signal", lambda signum, handler: None)
+
+    cli(drain_env, "--mode", "production", "--drain")
+
+    summary = json.loads(capsys.readouterr().out)
+    assert (summary["status"], summary["processed"]) == ("drained", [ident])
+    run = repository.get(SCOPE, ident).run
+    assert (run.stage, run.disposition, run.blocker) == (
+        "finalized",
+        Disposition.REVIEW,
+        None,
+    )
+    [region] = run.regions
+    routes = ("handwriting-qwen", "handwriting-muse")
+    for step in (
+        "segment",
+        *(f"transcribe:{region.id}:{route}" for route in routes),
+        "parse",
+        "plan",
+        "lookup",
+        "finalize",
+    ):
+        assert step in run.completed_steps
+    assert run.lookups[-1].status == LookupStatus.SUCCESS
+    # The paid steps reserved on the program's allowance, as on any other path.
+    assert {"segment", *(f"transcribe:{region.id}:{route}" for route in routes)} <= {
+        call["step"] for call in run.paid_calls
+    }
+    assert ProgramLedger(repository, SCOPE).read()["reserved_total_micros"] > 0
+
+
+def test_with_the_harness_on_the_drain_mounts_it_over_the_ordinary_chain(
+    drain_env, capsys
+):
+    from specimen_digitization.application import lane_worker
+
+    drain_env.setenv("SPECIMEN_RESEARCH_HARNESS", "on")
+    seen = {}
+
+    class Repository:
+        def __init__(self, **endpoint):
+            pass
+
+        def memberships(self, uid):
+            return []
+
+    def compose(ordinary, *, repository):
+        seen["composed"] = (ordinary, repository)
+        return "harness-workflow"
+
+    class Worker:
+        def __init__(self, repository, workflow, *args, **options):
+            seen["worker"] = (repository, workflow)
+
+        def run(self, stop):
+            return {"status": "drained", "processed": []}
+
+    drain_env.setattr(worker, "sql_endpoint_from_env", lambda: {})
+    drain_env.setattr(worker, "SqlConnectRepository", Repository)
+    drain_env.setattr(worker, "GcsBlobs", lambda: "blobs")
+    drain_env.setattr(worker, "ProductionAdapters", lambda blobs: "adapters")
+    drain_env.setattr(worker, "Workflow", lambda *args, **kwargs: "ordinary-workflow")
+    drain_env.setattr(
+        "specimen_digitization.application.native_drain.compose_registered_native_drain",
+        compose,
+    )
+    drain_env.setattr(lane_worker, "DrainWorker", Worker)
+    drain_env.setattr("signal.signal", lambda signum, handler: None)
+
+    cli(drain_env, "--mode", "production", "--drain")
+
+    assert json.loads(capsys.readouterr().out) == {"status": "drained", "processed": []}
+    ordinary, repository = seen["composed"]
+    assert ordinary == "ordinary-workflow"
+    assert seen["worker"] == (repository, "harness-workflow")
+
+
+def test_with_the_harness_on_a_drain_without_protected_origin_refuses_before_fence_or_paid_work(
+    drain_env, capsys
+):
     from types import SimpleNamespace
     from specimen_digitization import observability
     from specimen_digitization.application import lane_worker
+    drain_env.setenv("SPECIMEN_RESEARCH_HARNESS", "on")
     class Repository:
         def __init__(self, **_):
             pass
@@ -271,3 +424,23 @@ def test_actual_drain_without_protected_origin_refuses_before_fence_or_paid_work
     assert caught.value.code == 2
     assert json.loads(capsys.readouterr().out) == {
         "status":"blocked", "reason":"legacy_import_protected_authority_origin_unavailable"}
+
+
+@pytest.mark.parametrize("value", ["yes-please", "true", "On", "1", " on"])
+def test_an_unknown_harness_setting_stops_the_drain_before_any_work(
+    drain_env, capsys, value
+):
+    drain_env.setenv("SPECIMEN_RESEARCH_HARNESS", value)
+
+    def nothing_constructed(*_, **__):
+        raise AssertionError("no repository before the settings are valid")
+
+    drain_env.setattr(worker, "SqlConnectRepository", nothing_constructed)
+    with pytest.raises(SystemExit) as caught:
+        cli(drain_env, "--mode", "production", "--drain")
+    assert caught.value.code == 2
+    output = capsys.readouterr().out
+    report = json.loads(output)
+    assert (report["status"], report["reason"]) == ("blocked", "drain_configuration_invalid")
+    assert "SPECIMEN_RESEARCH_HARNESS" in report["detail"]
+    assert "yes-please" not in output

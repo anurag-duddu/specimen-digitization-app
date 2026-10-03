@@ -1,6 +1,7 @@
 """The production worker drains the queue (docs/execution/golive/LANE.md, T2)."""
 
 import hashlib
+import time
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -22,8 +23,17 @@ from specimen_digitization.application.lane_worker import (
     FenceLost,
     drain_settings,
 )
+from specimen_digitization.application.native_drain import RegisteredNativeDrainWorkflow
 from specimen_digitization.application.storage import Conflict, SQLiteRepository
+from specimen_digitization.application.worker_deadline import WorkerDeadline
+from specimen_digitization.application.workflow import OperationalBlock
 from specimen_digitization.hub_models import SAM3_MODEL
+from specimen_digitization.research_harness.contracts import ResearchScope
+from specimen_digitization.research_harness.native_worker import (
+    NativeResearchWorkerOutcomeV2,
+)
+from specimen_digitization.research_harness.persistence import HeldUnknown
+from specimen_digitization.research_harness.workflow_bridge import NativeResearchWorkflow
 
 ORG = "00000000-0000-4000-8000-000000000001"
 COLLECTION = "00000000-0000-4000-8000-000000000002"
@@ -603,6 +613,11 @@ def test_production_due_work_uses_the_ordered_non_sensitive_query(monkeypatch):
     ("change", "problem"),
     [
         ({"SPECIMEN_WORKER_ACTOR_UID": None}, "SPECIMEN_WORKER_ACTOR_UID"),
+        # A secret stored with a trailing newline reaches the job as-is.
+        ({"SPECIMEN_WORKER_ACTOR_UID": "worker\n"}, "SPECIMEN_WORKER_ACTOR_UID"),
+        ({"SPECIMEN_WORKER_ACTOR_UID": " worker"}, "SPECIMEN_WORKER_ACTOR_UID"),
+        ({"SPECIMEN_WORKER_ACTOR_UID": "wor\x00ker"}, "SPECIMEN_WORKER_ACTOR_UID"),
+        ({"SPECIMEN_WORKER_ACTOR_UID": "w" * 129}, "SPECIMEN_WORKER_ACTOR_UID"),
         ({"SPECIMEN_APPROVED_INFERENCE": None}, "SPECIMEN_APPROVED_INFERENCE"),
         ({"SPECIMEN_SQL_EMULATOR_HOST": "127.0.0.1:9499"}, "emulator"),
         ({"DATA_CONNECT_EMULATOR_HOST": "127.0.0.1:9399"}, "emulator"),
@@ -655,3 +670,207 @@ def test_the_drains_blocks_are_retried_by_the_operator_action(tmp_path, blocker)
     run = trigger.stored(tmp_path, specimen_id).run
     assert (run.stage, run.blocker) == ("pending", None)
     assert dispatcher.calls == 2
+
+
+# The production drain composition (worker.py 737-739) over offline stand-ins:
+# the actual RegisteredNativeDrainWorkflow and NativeResearchWorkflow, the
+# ordinary path up to the plan boundary, and the native worker's outcome.
+TEN = tuple(f"subject_{n}" for n in range(105526321, 105526331))
+
+
+class Admission:
+    def __init__(self):
+        self.admitted = []
+
+    def admit(self, specimen):
+        self.admitted.append(specimen.id)
+
+
+class Ordinary:
+    """The ordinary producer path, which hands over at the plan boundary."""
+
+    def __init__(self, repository, *, at_plan=False):
+        self.repository, self.admission = repository, Admission()
+        self.at_plan = at_plan  # The ordinary stages are already complete.
+
+    def next_step(self, run):
+        return "plan" if self.at_plan or run.stage == "plan" else "segment"
+
+    def step(self, principal, ident):
+        specimen = self.repository.get(principal.scope, ident)
+        specimen.run.stage = "plan"
+        return self.repository.save(
+            principal, specimen, specimen.version, f"ordinary:{ident}", ident
+        )
+
+
+class NativeLane:
+    """The native worker, its discovery and its store, offline."""
+
+    def __init__(self, repository, holds=None, *, remaining=1, authority=None, failure=None):
+        self.repository, self.holds = repository, holds or {}
+        self.remaining, self.authority, self.failure = remaining, authority, failure
+        self.runs = []
+        self.runtime_factory = SimpleNamespace(discovery=self)
+
+    async def binding(self, caller, ident):
+        return SimpleNamespace(durability_scope=lambda principal: ident)
+
+    def mutable_store(self, binding):
+        return self
+
+    def require_live_authority(self, bound):
+        if self.authority is not None:
+            raise self.authority
+
+    def budget(self, bound):
+        return {"remaining_micro_usd": self.remaining}
+
+    async def run_registered(self, principal, ident, *, owner):
+        self.runs.append(ident)
+        if self.failure is not None:
+            raise self.failure
+        scope = ResearchScope(
+            organization_id=ORG,
+            collection_id=COLLECTION,
+            specimen_id=ident,
+            job_id="offline-job",
+            generation=0,
+            input_digest="0" * 64,
+            profile_digest="0" * 64,
+        )
+        if ident in self.holds:
+            return NativeResearchWorkerOutcomeV2(
+                scope=scope, status="blocked", reason_code=self.holds[ident]
+            )
+        # Stands in for the canonical publication's own save.
+        specimen = self.repository.get(principal.scope, ident)
+        specimen.run.stage, specimen.run.disposition = "finalized", Disposition.REVIEW
+        self.repository.save(
+            principal, specimen, specimen.version, f"publish:{ident}", ident
+        )
+        return NativeResearchWorkerOutcomeV2(scope=scope, status="completed")
+
+
+def drain_the_ten(lane, native, *, supervised=True, at_plan=False):
+    for minutes, ident in zip(range(50, 40, -1), TEN):
+        queued(lane.repository, ident, minutes=minutes)
+    workflow = RegisteredNativeDrainWorkflow(
+        NativeResearchWorkflow(
+            Ordinary(lane.repository, at_plan=at_plan), native, approved_specimen_ids=TEN
+        )
+    )
+    drain = worker(lane.repository, workflow, lane.clock)
+    if not supervised:
+        return drain.run(stop=None)
+    with WorkerDeadline(time.monotonic() + 600).scope():
+        return drain.run(stop=None)
+
+
+@pytest.mark.parametrize(
+    ("reason_code", "blocker"),
+    [
+        ("accepted_output_proof_unavailable", "accepted_output_proof_unavailable"),
+        ("native_publication_requires_reconciliation", "native_publication_requires_reconciliation"),
+        ("research_retry_not_completed", "research_retry_not_completed"),
+        (
+            "research_worker_custody_requires_reconciliation",
+            "research_worker_custody_requires_reconciliation",
+        ),
+        (None, "native_research_operational_hold"),
+    ],
+)
+def test_a_held_record_is_blocked_and_the_later_records_are_drained(
+    lane, reason_code, blocker
+):
+    native = NativeLane(lane.repository, {TEN[0]: reason_code})
+    summary = drain_the_ten(lane, native)
+    assert summary["status"] == "drained"
+    assert summary["processed"] == list(TEN)
+    assert native.runs == list(TEN)
+    held = lane.repository.get(SCOPE, TEN[0])
+    assert (held.run.stage, held.run.blocker, held.run.disposition) == (
+        "processing_blocked",
+        blocker,
+        None,
+    )
+    assert (held.audit[-1].action, held.audit[-1].reason) == ("lane_block", blocker)
+    for ident in TEN[1:]:
+        run = lane.repository.get(SCOPE, ident).run
+        assert (run.stage, run.disposition) == ("finalized", Disposition.REVIEW)
+    # Nothing is left due, so a later execution does not step the held record
+    # again. A started run's due time is its last save, on the real clock.
+    later = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    assert lane.repository.oldest_due(SCOPE, later, limit=10) == []
+    assert fence(lane).read()["holder"] is None
+
+
+def test_a_hold_on_a_runs_first_step_keeps_its_own_blocker(lane):
+    # No step saved before the hold, so the drain also takes the run as not
+    # progressing; the hold's blocker stays the one recorded.
+    held = TEN[4]
+    native = NativeLane(lane.repository, {held: "native_publication_requires_reconciliation"})
+    summary = drain_the_ten(lane, native, at_plan=True)
+    assert summary["status"] == "drained"
+    assert native.runs == list(TEN)
+    run = lane.repository.get(SCOPE, held).run
+    assert (run.stage, run.blocker) == (
+        "processing_blocked",
+        "native_publication_requires_reconciliation",
+    )
+    actions = [event.action for event in lane.repository.get(SCOPE, held).audit]
+    assert actions.count("lane_block") == 1
+    assert [
+        lane.repository.get(SCOPE, ident).run.disposition for ident in TEN if ident != held
+    ] == [Disposition.REVIEW] * 9
+
+
+@pytest.mark.parametrize(
+    ("change", "error", "message"),
+    [
+        # Budget: the program's headroom is exhausted.
+        ({"remaining": 0}, OperationalBlock, "native_drain_protected_admission_unavailable"),
+        # Authorization: the protected authority refuses.
+        (
+            {"authority": PermissionError("research_worker_access_denied")},
+            OperationalBlock,
+            "native_drain_protected_admission_unavailable",
+        ),
+        # Authorization: the native run's access check refuses.
+        (
+            {"failure": PermissionError("research_worker_access_denied")},
+            OperationalBlock,
+            "native_research_admission_or_binding_unavailable",
+        ),
+        # Storage: the research store's outcome is unknown.
+        (
+            {"failure": HeldUnknown("research_store_unavailable")},
+            OperationalBlock,
+            "native_research_admission_or_binding_unavailable",
+        ),
+        # Storage: the connection fails.
+        ({"failure": ConnectionError("sql_unavailable")}, ConnectionError, "sql_unavailable"),
+    ],
+)
+def test_a_systemic_failure_still_ends_the_execution(lane, change, error, message):
+    native = NativeLane(lane.repository, **change)
+    with pytest.raises(error, match=f"^{message}$"):
+        drain_the_ten(lane, native)
+    first = lane.repository.get(SCOPE, TEN[0]).run
+    assert first.stage != "processing_blocked" and first.blocker is None
+    assert native.runs in ([], [TEN[0]])
+    assert [lane.repository.get(SCOPE, ident).run.stage for ident in TEN[1:]] == [
+        "pending"
+    ] * 9
+    assert fence(lane).read()["holder"] is None
+
+
+def test_an_unsupervised_drain_still_ends_the_execution(lane):
+    native = NativeLane(lane.repository)
+    with pytest.raises(OperationalBlock, match="^native_research_worker_supervisor_required$"):
+        drain_the_ten(lane, native, supervised=False)
+    assert native.runs == []
+    assert [lane.repository.get(SCOPE, ident).run.stage for ident in TEN] == [
+        "pending"
+    ] * 10
+    assert fence(lane).read()["holder"] is None

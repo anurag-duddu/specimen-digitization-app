@@ -25,7 +25,6 @@ WORKER_EMAIL = f"specimen-worker-runtime@{PROJECT}.iam.gserviceaccount.com"
 SECRET_VERSIONS = {
     "huggingface-runtime-token": 2,
     "specimen-worker-logfire": 1,
-    "specimen-google-maps-key": 1,
     "specimen-source-registry": 1,
     "specimen-collection-bindings": 1,
     "specimen-worker-actor-uid": 1,
@@ -36,8 +35,11 @@ SECRET_VERSIONS = {
 READINESS_OBJECT = "application/sha256/a1c115b623cdc43c1b062e5431c8ca8cb6411aa08057885e3b44a9238747818e"  # pragma: allowlist secret (public marker digest)
 # Root authenticated generation/size/SHA read on 2026-10-01; immutable 50-byte marker above.
 READINESS_GENERATION = 1790562271708431
-# The owner uploads the SAM 3 checkpoint to application/sha256/<digest>/sam3-cache.
-SAM_CHECKPOINT_SHA256 = PENDING
+# The owner uploads the SAM 3 checkpoint to application/sha256/<digest>/sam3-cache. The digest is SHA-256 of the
+# canonical JSON {file name: SHA-256} of the snapshot's top-level *.safetensors, *.json and *.txt files, which SAM 3
+# recomputes at start-up and refuses to serve on a mismatch (sam3_server.checkpoint_files_digest, Sam3Engine).
+# Read on 2026-10-02: the eight objects under this prefix have the MD5s of a snapshot that hashes to this digest.
+SAM_CHECKPOINT_SHA256 = "9089029b241c8342be41225b51531bf0457f2db0c3b9896c844b22b3487ac9b8"  # pragma: allowlist secret (public checkpoint digest)
 
 SQL = {"SPECIMEN_SQL_LOCATION": REGION, "SPECIMEN_SQL_SERVICE": "specimen-digitization-service",
        "SPECIMEN_SQL_CONNECTOR": "specimen-server"}
@@ -65,15 +67,17 @@ API = {
                    "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings"},
 }
 
-# A Cloud Run job the release defines and never runs: one task, no parallelism, no retries.
+# A Cloud Run job the release defines but never starts; the API and the drain's deadline hand-over start its
+# executions (jobs:run, SPECIMEN_WORKER_JOB). One task, no parallelism, no retries.
 WORKER = {
     "service_account": WORKER_EMAIL, "cpu": "1", "memory": "1Gi", "timeout_seconds": 3600,
-    "args": PENDING,  # The processing lane's drain argv, once its server code merges.
-    # SPECIMEN_SAM3_CHECKPOINT_SHA256, the same digest SAM 3 serves, joins these once SAM_CHECKPOINT_SHA256 is known.
+    # These replace the image's CMD, so they carry the mode. The drain's own deadline ends 300 s inside the task's.
+    "args": ["--mode", "production", "--drain", "--max-seconds", "3300"],
+    # SPECIMEN_SAM3_CHECKPOINT_SHA256, the same digest SAM 3 serves, joins these from SAM_CHECKPOINT_SHA256.
     "env": {**tracing_env("worker"), **SQL, "SPECIMEN_GCS_BUCKET": BUCKET, "SPECIMEN_SAM3_ENDPOINT": SAM_URL,
-            "SPECIMEN_SAM3_REVISION": SAM3_MODEL.revision, "SPECIMEN_APPROVED_INFERENCE": "true"},
+            "SPECIMEN_SAM3_REVISION": SAM3_MODEL.revision, "SPECIMEN_APPROVED_INFERENCE": "true",
+            "SPECIMEN_WORKER_JOB": WORKER_JOB},  # The drain hands work left at its deadline to the next execution.
     "secret_env": {"HF_TOKEN": "huggingface-runtime-token", "LOGFIRE_TOKEN": "specimen-worker-logfire",
-                   "SPECIMEN_GOOGLE_MAPS_API_KEY": "specimen-google-maps-key",  # pragma: allowlist secret (secret name, not a value)
                    "SPECIMEN_WORKER_ACTOR_UID": "specimen-worker-actor-uid",
                    "SPECIMEN_COLLECTION_BINDINGS_JSON": "specimen-collection-bindings"},
 }
@@ -82,12 +86,29 @@ SAM = {
     "service_account": f"specimen-sam-runtime@{PROJECT}.iam.gserviceaccount.com",
     # 300 s: two concepts per image plus a cold start; the server stops at 240 s, the worker's segment call at 270 s.
     "cpu": "4", "memory": "16Gi", "max_instances": 1, "concurrency": 1, "timeout_seconds": 300,
+    # CPU always allocated (cpuIdle false, gcloud --no-cpu-throttling). A segment call the worker abandons at its
+    # timeout keeps running and holds RunSegmenter's lock (a call meanwhile gets 429 sam3_busy); with request-based
+    # billing "CPU is only allocated during request processing", so that inference would starve and hold the lock.
+    # Instance-based billing charges "for the entire lifecycle of the instance", idle included
+    # (docs.cloud.google.com/run/docs/configuring/billing-settings). Startup CPU boost, 8 vCPU instead of 4 during
+    # startup and 10 s after, "to reduce startup latency", covers the hash and load of the 3.4 GB checkpoint, which
+    # SAM 3 does before it listens (docs.cloud.google.com/run/docs/configuring/services/cpu).
+    "cpu_idle": False, "startup_cpu_boost": True,
+    # Gcsfuse options after only-dir=<checkpoint prefix> on the checkpoint mount. The image runs as uid 10001, gid
+    # 10001 (sam3.Dockerfile; `id` in an image built from it); Cloud Run volumes are owned by root by default
+    # (docs.cloud.google.com/run/docs/configuring/services/cloud-storage-volume-mounts).
+    "mount_options": ["uid=10001", "gid=10001"],
+    # SAM 3 hashes and loads the 3.4 GB checkpoint from the mount before it listens on 8080. Cloud Run's default TCP
+    # startup probe allows 240 s; this one allows 600 s (60 x 10 s), its maximum without a GPU: failureThreshold x
+    # periodSeconds "cannot exceed 600 seconds (1800 for GPU)", and timeoutSeconds cannot exceed periodSeconds
+    # (docs.cloud.google.com/run/docs/configuring/healthchecks, read 2026-10-03).
+    "startup_probe": {"tcpSocket": {"port": 8080}, "periodSeconds": 10, "timeoutSeconds": 10, "failureThreshold": 60},
     # SPECIMEN_SAM3_CHECKPOINT_SHA256 and the read-only /model-cache mount follow SAM_CHECKPOINT_SHA256.
     "env": {**tracing_env("sam"), "HF_HOME": "/model-cache", "HF_HUB_OFFLINE": "1", "SPECIMEN_SAM3_AUDIENCE": SAM_URL,
             "SPECIMEN_SAM3_CALLER_EMAIL": WORKER_EMAIL, "SPECIMEN_SAM3_OUTPUT_BUCKET": BUCKET},
     "secret_env": {"LOGFIRE_TOKEN": "specimen-worker-logfire"},
 }
-SAM_SERVER_ENV = PENDING  # The processing lane's per-run server settings, once merged.
+SAM_SERVER_ENV = {"SPECIMEN_SAM3_ENABLE": "authorized-run"}  # Per-run serving, which sam3_server accepts only on Cloud Run.
 
 ROLES = {"api": API, "worker": WORKER, "sam": SAM}
 
