@@ -250,6 +250,51 @@ def test_native_adapter_absence_and_ordinary_save_remain_closed(tmp_path):
             asyncio.run(publish_native_publication(journal, prepared, principal=principal, blobs=blobs, adapter=adapter))
 
 
+def geography_run(tmp_path, other_field_keys):
+    """One geography run: a country capture and a second capture with the given
+    recorded fields. The engine pins both receipts on the run's checkpoints."""
+    _, requests, journal, settings = setup(tmp_path)
+    req = requests[SpecialistRole.GEOGRAPHY]
+    principal = Principal(user_id=journal.scope.actor_uid, scope=Scope(
+        organization_id=req.scope.organization_id, collection_id=req.scope.collection_id), role="operator")
+    blobs = ImmutableFileBlobs(tmp_path / "publication-blobs")
+
+    def capture(name, field_keys):
+        async def dispatch(attempt, idempotency):
+            return CapturedResult(typed_payload={"query": name}, actual_micro_usd=3,
+                                  usage={"synthetic_source_requests": 1})
+        return asyncio.run(DurableEffectBroker(journal.store, blobs).execute(
+            journal.scope, journal.lease, f"synthetic-{name}-evidence", {"query": name},
+            5, dispatch, field_keys=field_keys)).effect_id
+    effect_ids = (capture("country", (str(FieldKey.COUNTRY),)), capture("other", other_field_keys))
+    resolutions = tuple(FieldResolution(field_key=key, work_state=WorkState.RESOLVED,
+        value=FieldValue(state=ValueState.SUPPORTED, literal=text, parsed=text, evidence_ids=[f"{key}-label"]),
+        evidence_ids=(f"{key}-label",), reason="Independent synthetic expected label")
+        for key, text in ((FieldKey.COUNTRY, "Peru"), (FieldKey.CITY, "Lima")))
+    asyncio.run(journal.commit(req, resolutions, receipt_ids=effect_ids, model_settings_digest=settings))
+    return req, journal, principal, blobs, effect_ids
+
+
+def test_each_field_publishes_with_its_specialist_runs_sibling_field_receipts(tmp_path):
+    req, journal, principal, blobs, effect_ids = geography_run(tmp_path, (str(FieldKey.CITY),))
+    for field_key in (FieldKey.COUNTRY, FieldKey.CITY):
+        prepared = asyncio.run(prepare_native_publication(journal, req.scope, field_key,
+            principal=principal, expected_record_revision=0, blobs=blobs))
+        assert prepared.publication.checkpoints[0].effect_receipt_ids == effect_ids
+        assert tuple(item.effect_id for item in prepared.basis.receipts) == effect_ids
+        asyncio.run(validate_native_publication(journal, prepared, principal=principal, blobs=blobs))
+
+
+@pytest.mark.parametrize("other_field_keys", (
+    (str(FieldKey.TAXON),), (), (str(FieldKey.CITY), str(FieldKey.TAXON)),
+))
+def test_a_receipt_recorded_for_another_specialists_field_or_none_is_refused(tmp_path, other_field_keys):
+    req, journal, principal, blobs, _ = geography_run(tmp_path, other_field_keys)
+    with pytest.raises(StaleWork, match="native_publication_receipt_binding_changed"):
+        asyncio.run(prepare_native_publication(journal, req.scope, FieldKey.COUNTRY,
+            principal=principal, expected_record_revision=0, blobs=blobs))
+
+
 def test_wrong_canonical_record_revision_fails_existing_store_guard(tmp_path):
     req, journal, principal, blobs, _ = fixture(tmp_path)
     with pytest.raises(StaleWork, match="publication revision"):
