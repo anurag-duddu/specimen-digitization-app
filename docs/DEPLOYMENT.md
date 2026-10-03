@@ -1007,7 +1007,12 @@ authorized that run first-hand. The setup part does seven things.
      next run moves it onto that one service;
    - runtime service accounts: the grants they already hold (the connector,
      user lookup, the bucket and their pinned secrets), plus the SAM runtime's
-     listing of the bucket for its checkpoint mount.
+     listing of the bucket for its checkpoint mount, plus the worker's create
+     and get on the `research-capture/`, `research-journal/` and
+     `research-media/` prefixes of the bucket (the research harness's objects:
+     create-only writes and reads. The roles are `objectCreator` and
+     `objectViewer` only, the condition has no listing clause, nothing grants
+     delete or update there, and no other account holds this grant).
 3. It gives the data release database user the `cloudsqlsuperuser` database
    role, which the initialize step needs.
 4. It widens the condition of the three release providers to accept

@@ -14161,3 +14161,49 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
 - Remaining follow-ups: whether the provider forwards property descriptions to the model, and whether the Qwen
   reader's malformed-answer rate falls (2 of 25 retries in the diagnosis), is Not confirmed until live runs; this is
   a reliability change, not a guarantee.
+
+### 2026-10-03 — Worker create and get on the research harness prefixes (Claude)
+
+- Task: go-live: let the production worker create and read the research harness's blobs (dispatched by the "Go-live
+  coordinator" session after its read-only IAM check; no task ID recorded).
+- Branch/worktree: `claude/worker-research-object-grants` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a0137d2b1b86ea1fe`,
+  base `main` c6f3c10d, merged with origin/main db855ad6 (#242) before the push.
+- Outcome: In progress. Pull request open and ready for review; not merged. No `gcloud` or `firebase` command was run
+  and merging applies nothing: the two worker-only bindings (`objectCreator` and `objectViewer`, condition
+  `specimen_research_objects` on `research-capture/`, `research-journal/` and `research-media/`) reach the project
+  only when the coordinator runs `scripts/ops/iam.py` or `scripts/ops/owner_setup.sh` and reads the bucket policy back.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/250; code commit dfbe1972, merge
+  c1d110fb.
+- Validation: the new assertions fail on the original `iam.py` and `owner_setup.sh` (`test_ops_scripts.py` 2 failed,
+  44 passed; `test_simple_owner_setup.py` 11 failed, 30 passed, 1 skipped) and pass on the change (46 passed; 41
+  passed, 1 skipped for the missing local `shellcheck`). Five temporary mutations (API also given the pair in
+  `iam.py`; `objectAdmin` for `objectCreator` in `iam.py` and in `owner_setup.sh`; SAM given the pair in
+  `owner_setup.sh`; one prefix dropped from the `owner_setup.sh` condition) each failed the new tests and were
+  restored byte for byte. At merge c1d110fb, one file at a time: `test_owner_grants.py` 13, `test_data_released_deploy.py`
+  75, `test_runtime_released_deploy.py` 43, `tests/test_deployment_policy.py` 25, `test_runtime_settings.py` 9,
+  `test_data_setup_window.py` 101, `tests/test_live_data_plan.py` 28, `test_simple_runtime_release.py` 68,
+  `test_simple_data_release.py` 148, all passed. `pre-commit run --files` on the changed files passed. Not run: the
+  full suite, `scripts/ci/verify.sh`, any live or paid call. Not confirmed: the grant working end to end (not
+  applied), duplicate-create behaviour (412 or 403, needs a write), organization deny policies (could not be listed),
+  and whether a list call is denied under the condition.
+- Durable learnings:
+  - `scripts/ci/owner_grants.py` and `test_owner_grants.py` are on `scripts/ci/RETIRED.md` (lists 1 and 2), which
+    keeps them byte for byte unchanged, and AGENTS.md says not to extend them, yet `test_simple_owner_setup.py` and
+    `test_ops_scripts.py` still compare the active scripts with its table. Adding a grant to the active scripts
+    therefore means holding it apart in those two comparisons (`RESEARCH_ROWS`; `expected +=` in the iam test) and
+    pinning it with a condition written out in the test, not editing the retired table. A run of the retired
+    `owner_grants.py plan` would list the new live bindings as "Review: not in the table".
+  - `tests/test_deployment_policy.py` scans the non-test files of `scripts/ops` for the names of retired files:
+    naming `owner_grants.py` in a comment of `iam.py` fails it (tried, then reverted).
+  - A new standing grant changes the change counts that `test_simple_owner_setup.py` pins in eight assertions (18 to
+    20, 17 to 19, 16 to 18, 19 to 21 setup changes); the apply stays idempotent (a second run changes nothing).
+  - `scripts/ops/iam.py` grants the API nothing on the bucket (its bucket rows are `owner_setup.sh`'s), so the iam
+    test's set of API bucket grants is empty, not the application pair.
+- Failed approaches: first edited `owner_grants.py` and its test as the brief listed (its 14 tests passed and three
+  mutations failed them), then found both on the retired list and reverted those two files. The Bash tool refused
+  several compound commands (a heredoc followed by git, or several statements) with a worktree-isolation message:
+  put scripts in files and run one command at a time.
+- Remaining follow-ups: coordinator applies and reads back the bindings after merge; owner or coordinator decides
+  whether the retired table should still receive the two rows; test the duplicate-create status and the list denial
+  with a live write when one is authorized.
