@@ -22,6 +22,11 @@ from uuid import uuid4
 
 CONTRACT_VERSION = "research-durability/v1"
 MAX_STATE_BYTES = 900_000
+# The longest lease claim/heartbeat accept. A lease is never renewed during a window
+# (renewing it would change the stored lease object that publication's SQL compares),
+# so it must outlast a whole window: the research phase of the roles in it and the
+# publication of everything they committed, a few hundred Data Connect round trips.
+MAX_LEASE_TTL_SECONDS = 900
 
 
 def canonical(value: Any) -> bytes:
@@ -411,8 +416,8 @@ class ResearchStore:
         return copy.deepcopy(self._job(self._read(scope).state, scope))
 
     def claim(self, scope: DurabilityScope, owner: str, *, ttl_seconds: int = 60) -> Lease:
-        if not owner or not 1 <= ttl_seconds <= 300:
-            raise ValueError("Lease TTL must be 1..300 seconds")
+        if not owner or not 1 <= ttl_seconds <= MAX_LEASE_TTL_SECONDS:
+            raise ValueError(f"Lease TTL must be 1..{MAX_LEASE_TTL_SECONDS} seconds")
         def reduce(state, now):
             job = self._job(state, scope)
             if job["paused"] or (job["lease"] and job["lease"]["expires_at"] > now):
@@ -436,8 +441,8 @@ class ResearchStore:
         self._mutate(scope, reduce, lease=lease)
 
     def heartbeat(self, scope: DurabilityScope, lease: Lease, *, ttl_seconds: int = 60) -> Lease:
-        if not 1 <= ttl_seconds <= 300:
-            raise ValueError("Lease TTL must be 1..300 seconds")
+        if not 1 <= ttl_seconds <= MAX_LEASE_TTL_SECONDS:
+            raise ValueError(f"Lease TTL must be 1..{MAX_LEASE_TTL_SECONDS} seconds")
         def reduce(state, now):
             job = self._lease(state, scope, lease, now)
             renewed = Lease(lease.job_key, lease.owner, lease.fence, lease.generation, now + ttl_seconds)

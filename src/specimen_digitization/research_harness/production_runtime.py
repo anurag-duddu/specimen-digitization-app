@@ -14,7 +14,8 @@ from .gateway import ModelBinding
 from .journal import DurableResearchJournal
 from .native_service import SqlConnectNativeCanonicalServiceV2
 from .persistence import (BudgetPolicy, DurableEffectBroker, GcsImmutableBlobs, HeldUnknown,
-    PinnedRuntime, ResearchStore, SqlConnectStateBackend, StaleWork, DurabilityScope, Lease)
+    MAX_LEASE_TTL_SECONDS, PinnedRuntime, ResearchStore, SqlConnectStateBackend, StaleWork,
+    DurabilityScope, Lease)
 from .runtime import build_research_engine
 from .sources import BoundedHTTPTransport, FixtureSourceTransport
 from .registered_pins import (registered_registry, registered_capture_policies,
@@ -118,7 +119,7 @@ class NativeResearchRuntimeFactory:
             idempotency_key=operation.idempotency_key,
             request_identity_digest=operation.request_identity_digest)
 
-    async def open(self, principal, specimen_id, *, owner, ttl_seconds=300):
+    async def open(self, principal, specimen_id, *, owner, ttl_seconds=MAX_LEASE_TTL_SECONDS):
         principal = Principal.model_validate(principal.model_dump(mode="json"))
         if principal.role not in WORKER_ROLES:
             raise PermissionError("research_worker_access_denied")

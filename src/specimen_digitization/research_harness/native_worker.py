@@ -183,11 +183,21 @@ class NativeResearchWorker:
         # publication gives it the review reason mandatory_unresolved:{key}
         # (canonical_materialization_v2) instead of an operational block.
         unpublishable = relation_unproved_fields(item for item in typed if item.resolution.work_state in PUBLISHABLE)
+        # The job and the outbox are read once for the whole pass. A publication
+        # rewrites neither a job field nor the job's record_revision (it only marks
+        # its own two outbox events delivered), and a checkpoint's own pending guard
+        # is created only when this loop prepares that checkpoint, so nothing the
+        # loop reads for one checkpoint is changed by publishing another. Every pass
+        # walks every earlier checkpoint again, so reading per checkpoint grew with
+        # each window of a lease.
+        job = await asyncio.to_thread(runtime.store.job, runtime.scope)
+        document = await asyncio.to_thread(runtime.store._read, runtime.scope)
+        guards = [event.get("guard", {}) for event in document.state["outbox"].values()
+            if event.get("kind") == "canonical_publication_required"]
         receipts, checkpoint_ids = [], []
         for checkpoint in typed:
             if checkpoint.resolution.work_state not in PUBLISHABLE or checkpoint.field_key in unpublishable:
                 continue
-            job = await asyncio.to_thread(runtime.store.job, runtime.scope)
             native = job["fields"][str(checkpoint.field_key)]["checkpoint"]
             checkpoint_ids.append(native["id"])
             try:
@@ -202,10 +212,7 @@ class NativeResearchWorker:
             identity = digest({"contract_version":"native-research-worker-request/v2",
                 "scope":native["scope"], "checkpoint_id":native["id"],
                 "checkpoint_payload_digest":digest(native["payload"])})
-            document = await asyncio.to_thread(runtime.store._read, runtime.scope)
-            pending = [event["guard"] for event in document.state["outbox"].values()
-                if event.get("kind") == "canonical_publication_required"
-                and event.get("guard", {}).get("checkpoint_id") == native["id"]]
+            pending = [guard for guard in guards if guard.get("checkpoint_id") == native["id"]]
             if len(pending) > 1:
                 raise StaleWork("native_publication_operation_ambiguous")
             if pending:
@@ -234,7 +241,6 @@ class NativeResearchWorker:
             receipts.append(str(published.causal.receipt_id))
         thread = await self._thread(runtime)
         from .status import ResearchStatusV1
-        job = await asyncio.to_thread(runtime.store.job, runtime.scope)
         profile = CollectionProfile.model_validate(job["pins"]["profile"])
         status = ResearchStatusV1.from_thread(thread, missing_policy_fields=frozenset(
             row.field_key for row in profile.fields if row.missing_policy))
