@@ -4,10 +4,12 @@ A GEOLocate candidate's authority_id is stored on field_candidate rows and appea
 record on country, state, county and city alike. These cases run the adapter's real lookups on the
 recorded Evanston answer, put each candidate's id on the four geography fields of a run, and read
 the run back through the production projection (application.projection.writes: the field_candidate,
-resolved_field and record_version rows) and the public workspace JSON (application.api.workspace).
-The offline end-to-end test (test_production_e2e.py) scans the fake connector's tables the same
-way for the rows a published research record keeps; this file covers the projection and the
-public JSON directly, on the recorded Evanston answer, without the worker.
+resolved_field and record_version rows) and the public workspace JSON (application.api.workspace)
+fields and run.fields. The workspace's evidence list is not scanned: the evidence excerpt is the
+tool result and carries the point, and whether it may is an open owner question. The offline
+end-to-end test (test_production_e2e.py) scans the fake connector's tables the same way for the
+rows a published research record keeps; this file covers the projection and the public fields
+directly, on the recorded Evanston answer, without the worker.
 """
 import json
 import re

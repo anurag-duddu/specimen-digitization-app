@@ -414,15 +414,20 @@ def test_a_match_keeps_its_authority_id_and_another_point_or_place_gets_another(
         [item] = candidates(lookup_body(json.dumps(changed).encode()))
         return item
 
-    def move(offset):
+    def move(offset, axis=0):
+        # GeoJSON order: axis 0 is the longitude, axis 1 the latitude.
         def mutate(feature):
-            feature["geometry"]["coordinates"][0] += offset
+            feature["geometry"]["coordinates"][axis] += offset
         return mutate
 
-    # One millionth of a degree is a different point; a hundred-millionth rounds to the same one.
-    nudged = identified(move(0.000001))
-    assert round(nudged["decimal_longitude"], 6) == -90.953955 and nudged["authority_id"] != YEPOCAPA_ID
+    # One millionth of a degree, east or north, is a different point; a hundred-millionth rounds to the same one.
+    east = identified(move(0.000001))
+    assert round(east["decimal_longitude"], 6) == -90.953955 and east["authority_id"] != YEPOCAPA_ID
+    north = identified(move(0.000001, axis=1))
+    assert round(north["decimal_latitude"], 6) == 14.501947 and north["authority_id"] != YEPOCAPA_ID
+    assert north["authority_id"] != east["authority_id"]
     assert identified(move(0.00000001))["authority_id"] == YEPOCAPA_ID
+    assert identified(move(0.00000001, axis=1))["authority_id"] == YEPOCAPA_ID
     assert identified(lambda feature: feature["properties"].update(parsePattern="Yepocapa"))["authority_id"] != YEPOCAPA_ID
     assert identified(lambda feature: feature["properties"].update(
         debug=feature["properties"]["debug"].replace("CHIMALTENANGO", "SACATEPEQUEZ")))["authority_id"] != YEPOCAPA_ID

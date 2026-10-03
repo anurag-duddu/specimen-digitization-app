@@ -14173,41 +14173,49 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   base `main` c6f3c10d, merged with `main` db855ad6 (#242) before the first push and with `main` 9272a188 (#243)
   afterwards.
 - Outcome: In progress. Pull request open and ready for review; not merged; nothing in it ran against production, a
-  cloud service or a paid model.
+  cloud service or a paid model. An independent review of head 37a73b27, relayed by the coordinator, said merge after
+  fixes; the later commits on the branch carry those fixes.
 - Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/248; code commit 7abd410f.
 - Validation: the new assertions fail on `main`'s `sources.py` and pass on the change (validator file 8 failed and
   72 passed before, 80 passed after; capture file 2 failed and 4 passed before, 6 passed after; the new record-field
-  file 1 failed before, 1 passed after). Run one file at a time, all passing on the branch merged with `main`:
-  `test_production_e2e.py` (3 passed, 1 xfailed, as on main), `test_geography_prompt_v2.py`, `test_committed_pins.py`,
-  `test_native_canonical_contract.py`, `test_native_canonical_v2_contract.py`, `test_canonical_projection_v2.py`,
-  `test_canonical_materialization_v2.py`, `tests/test_research_harness_publication.py`,
-  `tests/test_research_harness_publication_integrity.py`, `test_source_capture_v2.py`,
-  `test_canonical_evidence_provider_v2.py`. After #243 merged, on the branch merged with `main` 9272a188:
-  `test_production_e2e.py` 4 passed, `test_geolocate_validator.py` 80, `test_geolocate_capture.py` 6,
+  file 1 failed before, 1 passed after). Run one file at a time, all passing on the branch merged with `main`
+  db855ad6 (#242), before #243 merged: `test_production_e2e.py` (3 passed, 1 xfailed, as `main` was then),
+  `test_geography_prompt_v2.py`, `test_committed_pins.py`, `test_native_canonical_contract.py`,
+  `test_native_canonical_v2_contract.py`, `test_canonical_projection_v2.py`, `test_canonical_materialization_v2.py`,
+  `tests/test_research_harness_publication.py`, `tests/test_research_harness_publication_integrity.py`,
+  `test_source_capture_v2.py`, `test_canonical_evidence_provider_v2.py`. On the tree merged with `main` 9272a188
+  (#243): `test_production_e2e.py` 4 passed, `test_geolocate_validator.py` 80, `test_geolocate_capture.py` 6,
   `test_geolocate_record_fields.py` 1, `test_committed_pins.py` 17; the e2e's new scan of the fake tables failed on
-  `field_candidate` with `main`'s `sources.py` and passed with the change.
-  Not run: `scripts/ci/verify.sh`, the full suite, any live GEOLocate call, any database query.
+  `field_candidate` with `main`'s `sources.py` and passed with the change. Not run: `scripts/ci/verify.sh`, the
+  full suite, any live GEOLocate call, any database query.
 - Durable learnings:
   - The e2e geography path and its `CHICAGO` pin were on Lane H's #243 when this was dispatched, not on `main`, so the
     first push could not change that pin; once #243 merged the pin moved here (the new Chicago id is
-    `geolocate:79a9389b0ba6bcaf`) along with a scan of every fake table. A fix that changes a value another open
-    pull request pins needs that value's patch carried by whichever merges second.
+    `geolocate:79a9389b0ba6bcaf`) along with a scan of every fake table. A change to a value another open pull
+    request pins needs that pull request's tests moved by whichever merges second.
   - The canonical provider verifies a stored capture against its stored result digest
     (`canonical_evidence_provider_v2.py`, `semantic_result_digest`); it does not run the adapter again. By code
     reading, so an id stored before this change keeps verifying, and is also not rewritten by it.
   - A candidate's `authority_id` is only compared with the candidate's own (`evidence.validate_resolution`) and copied
     to `authorityId` (`canonical_projection_v2`, `application.projection`); nothing parses a source's id string. A
-    source id can change format without touching the validator or projector pins (`sources.py` is not byte-pinned;
-    `evidence.py`, `engine.py`, `journal.py`, `model_gateway.py` and `canonical_projection.py` are).
-  - Where the matched point can still be read after this change: the candidate in the tool result and the receipt, the
-    stored full response, and the canonical evidence `excerpt` (`"\n".join(candidate_json)`), which is in the
-    snapshot's `run.evidence` and so in the public workspace JSON's `evidence` list. Whether to take it out of that
-    list is not decided here. On the e2e's fake connector no table row held the point after the change (the e2e now
+    source id can change format without touching a byte pin: `research_harness/sources.py` is not byte-pinned. The
+    pinned sources are `research_harness/evidence.py` (`VALIDATOR_SOURCE_SHA256`), `engine.py` and `journal.py`
+    (`accepted_output.py`), `model_gateway.py`, and `application/projection.py` (`CANONICAL_PROJECTOR_SHA256`;
+    `native_canonical.py` imports that module as `canonical_projection`, which is not
+    `research_harness/canonical_projection_v2.py`) with `application/domain.py`, `application/storage.py` and
+    `application/active_graph.py` (the expected digests in `native_canonical.py`).
+  - Where the matched point can still be read after this change: the tool result (the candidate and the receipt's
+    result), the stored full response, the canonical evidence `excerpt` (`"\n".join(candidate_json)`), which is in the
+    snapshot's `run.evidence` and so in the public workspace JSON's `evidence` list, and the trace (G39's place for
+    it; no trace was inspected). On the e2e's fake connector no table row held the point after the change (the e2e now
     scans every table); the historian's own placement is in `tool_call.arguments` by code reading, not scanned.
   - A regression test whose first assertion checks a format hides the one that matters: the first version of the
     record-field test failed on the old code at the id format, not at the coordinates. Put the scan first.
 - Failed approaches: none beyond the ordering above.
-- Remaining follow-ups: whether any database already holds an old-format `geolocate:<lat>,<lon>` id is Not
-  confirmed: #243 added the geolocate row to `SOURCE_READINESS` on `main`, so a lookup run between that merge and this
-  one would store the old format, and this change does not rewrite stored rows; no database was queried. Whether the
-  public `evidence` list should keep the point is an open decision.
+- Remaining follow-ups:
+  - OPEN OWNER QUESTION: may the matched point appear in the public evidence excerpt list (the workspace JSON's
+    `evidence`)? The coordinator's ruling and G39 keep it out of record fields only; this change leaves the excerpt
+    as it was.
+  - Old-format rows: GEOLocate is ready on `main` since #243, behind the `SPECIMEN_RESEARCH_HARNESS` switch. The
+    coordinator says that switch is off in production, so no stored `geolocate:<lat>,<lon>` ids are expected. I did not
+    query any database or read the production setting, and this change does not rewrite stored rows.
