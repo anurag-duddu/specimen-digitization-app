@@ -14315,12 +14315,18 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
     string first) pins the two together without a second copy of the pattern.
   - `tests/test_step_failure_logging.py`, an untracked 5-byte file containing `DONE`, appeared in this worktree during the
     full run. It is not mine to explain and was not committed. Origin Not confirmed.
-- Failed approaches: the triage's `[0-9]+` (any digit count) pattern was not used, because the coordinator asked for the
-  validator's digit-count bounds; the first draft of one test built the synthetic run twice in one directory and hit an
-  upload conflict (fixed by building it once).
+- Failed approaches: the triage's `[0-9]+` (any digit count) pattern was not used, because the validator's grammar
+  (`HARNESS.md` 658-660) has the five-to-nine-digit bound and the task message for this change asked to match that
+  grammar including its bounds (that message is not recorded in a file); the first draft of one test built the
+  synthetic run twice in one directory and hit an upload conflict (fixed by building it once).
 - Remaining follow-ups: the owner's answer on the stored shape of the catalog number (digits only, with the
   prefix, or the digits plus the printed letters) is open and does not block this change; already finished records keep
   the stored `identifier_format` reason until a reviewer decision re-runs `finalize` or the specimen is reprocessed;
   whether `identifier_format` should be re-evaluated on the nine pilot records is the coordinator's call (Not confirmed
-  that any such re-evaluation was done). Review per G51 (one independent reviewer on the head plus green required
-  checks) is pending. Whether the CI checks pass on the pull request is Not confirmed at the time of writing.
+  that any such re-evaluation was done). An independent reviewer found head 7801c674 clean with nits (the review
+  note is outside the repository: `~/specimen-golive/live-20261003/lane-q-notes/pr254-REVIEW.md`); the text-only nits
+  were addressed in the next commit (the finalize test's name, this entry's attribution, the PR body's wording). Not
+  done, because they are not text: a policy test with the production shape (digits as the literal, the two-line
+  sticker text as the evidence excerpt; the reviewer replayed it on the stored snapshots, the repository does not
+  pin it) and a valid five-to-nine-digit value for the shared `FMNH INS 321` fixture. Whether the required checks
+  pass on the final head is Not confirmed at the time of writing.

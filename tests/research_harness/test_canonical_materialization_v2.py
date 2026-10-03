@@ -410,6 +410,8 @@ def test_the_science_rules_do_not_judge_the_prior_value_of_an_unpublished_field(
 
 # The catalog_number_validator tool's grammar (HARNESS.md section 8) and the value the
 # harness settles to: the digits alone, with or without the printed FMNHINS prefix.
+# The shared fixture value "FMNH INS 321" has three digits, below that grammar's bound,
+# so the other cases built on the fixture carry this reason too; none asserts on it.
 @pytest.mark.parametrize("text,format_failure", [
     ("4486784", False), ("FMNHINS\n4486784", False), ("FMNH-INS 4486784", False), ("FMNH INS #12345", False),
     ("", True), ("FMNHINS", True), ("FMNHNS\n4486784", True), ("ABC4486784", True), ("4486784 x", True),

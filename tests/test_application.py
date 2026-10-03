@@ -261,9 +261,9 @@ def test_text_the_validator_rejects_is_still_an_identifier_format_failure(
     assert "identifier_format" in evaluate(run)
 
 
-def test_a_reviewer_can_clear_a_record_whose_catalog_number_is_the_sticker_digits(
-    tmp_path,
-):
+def test_finalize_gives_no_identifier_format_reason_for_the_sticker_digits(tmp_path):
+    # Calls `finalize` on the synthetic run with its approval flag already set. It does
+    # not drive the API decision route, and a real record carries other reasons too.
     approved = approved_synthetic_run(tmp_path)
     run = with_catalog_number(approved, "4486784")
     finalize(run)
