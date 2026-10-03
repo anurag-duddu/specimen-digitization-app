@@ -309,7 +309,7 @@ def test_consumed_dependency_digest_and_correction_closure_are_atomic(tmp_path):
         store.checkpoint(scope, lease, "country", {}, expected_revision=0, dependencies={"taxon": 1})
     store.checkpoint(scope, lease, "country", {"state": "resolved"}, expected_revision=0, dependencies={"taxon": 1}, dependency_digests={"taxon": digest(resolution)})
     guard = store.prepare_publication(scope, lease, "country", expected_field_revision=1, expected_record_revision=0)
-    assert guard["pins"] == store.job(scope)["pins"]
+    assert "pins" not in guard and guard["binding_digest"] == digest(store.job(scope)["pins"])
     assert guard["dependency_digests"] == {"taxon": digest(resolution)}
     pins = replace(PinnedRuntime(**store.job(scope)["pins"]), input_digest="corrected-taxon")
     with pytest.raises(ValueError):

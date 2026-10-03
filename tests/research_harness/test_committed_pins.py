@@ -254,3 +254,29 @@ def test_a_profile_without_a_registered_harness_route_has_no_pins():
 
 def test_the_pins_fit_one_state_document_per_run_with_room_to_spare():
     assert len(canonical(pins_for())) < MAX_STATE_BYTES // 8
+
+
+def test_twenty_publications_of_a_full_run_fit_one_state_document(tmp_path):
+    # One research state document per run: all 20 fields of a run built from
+    # the committed pins must be publishable before the document is full.
+    scope = DurabilityScope(ORG, COLLECTION, "specimen-synthetic", "run-synthetic-r1", 1,
+        "worker-synthetic", False)
+    backend = SqliteStateBackend(tmp_path / "state.sqlite3")
+    backend.grant(scope)
+    store = ResearchStore(backend, "program-synthetic")
+    store.initialize(scope, BudgetPolicy(500_000))
+    fields = [str(key) for key in ALL_FIELDS]
+    assert len(fields) == 20
+    store.create_job(scope, PinnedRuntime(input_digest="a" * 64, **pins_for()), fields)
+    lease = store.claim(scope, "worker-synthetic", ttl_seconds=300)
+    # Each checkpoint about the size of a typed resolution in the e2e run.
+    for field in fields:
+        store.checkpoint(scope, lease, field, {"resolution": {"field_key": field,
+            "work_state": "resolved", "note": "x" * 4000}}, expected_revision=0)
+    for field in fields:
+        guard = store.prepare_publication(scope, lease, field, expected_field_revision=1,
+            expected_record_revision=0)
+        assert "pins" not in guard
+        store.validate_publication(scope, guard)
+    size = len(canonical(backend.load(scope, "program-synthetic").state))
+    assert size < MAX_STATE_BYTES // 2, size

@@ -281,7 +281,7 @@ async def _translate(journal, scope, principal, typed, native_guard, blobs) -> P
             raise StaleWork("native_publication_dependency_checkpoint_changed")
         _native_checkpoint(job, source, scope)
     native_basis = journal.store._publication_basis(job, journal.scope, str(typed.field_key))
-    guard_keys = {"scope", "lease", "binding_digest", "pins", "input_digest", "field_key", "field_revision",
+    guard_keys = {"scope", "lease", "binding_digest", "input_digest", "field_key", "field_revision",
                   "record_revision", "checkpoint_id", "checkpoint_digest", "receipt_ids", "dependencies",
                   "dependency_digests", "checkpoint_basis", "receipt_bindings", "canonical_commit", "idempotency_key"}
     if (set(native_guard) != guard_keys or native_guard["canonical_commit"] is not None

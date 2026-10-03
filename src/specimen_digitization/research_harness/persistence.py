@@ -1038,8 +1038,9 @@ class ResearchStore:
             self._dependencies(job, consumed_dependencies, consumed_dependency_digests)
             basis = self._publication_basis(job, scope, field_key)
             receipt_bindings = self._publication_receipts(state, consumed_receipts, basis)
+            # binding_digest is digest(job["pins"]), so the guard binds the pins
+            # without a full copy in every outbox entry of the state document.
             guard = {"scope": scope.identity(), "lease": asdict(lease), "binding_digest": job["binding_digest"],
-                     "pins": copy.deepcopy(job["pins"]),
                      "input_digest": job["pins"]["input_digest"], "field_key": field_key,
                      "field_revision": expected_field_revision, "record_revision": expected_record_revision,
                      "checkpoint_id": value["checkpoint"]["id"], "checkpoint_digest": digest(value["checkpoint"]),
@@ -1060,7 +1061,7 @@ class ResearchStore:
         lease = Lease(**guard["lease"])
         job = self._lease(doc.state, scope, lease, doc.server_time)
         value = job["fields"].get(guard["field_key"])
-        if guard["scope"] != scope.identity() or guard["binding_digest"] != job["binding_digest"] or guard["pins"] != job["pins"] or guard["input_digest"] != job["pins"]["input_digest"] or guard["record_revision"] != job["record_revision"] or not value or value["locked"] or value["revision"] != guard["field_revision"] or not value["checkpoint"] or value["checkpoint"]["id"] != guard["checkpoint_id"] or digest(value["checkpoint"]) != guard["checkpoint_digest"]:
+        if guard["scope"] != scope.identity() or guard["binding_digest"] != job["binding_digest"] or guard["input_digest"] != job["pins"]["input_digest"] or guard["record_revision"] != job["record_revision"] or not value or value["locked"] or value["revision"] != guard["field_revision"] or not value["checkpoint"] or value["checkpoint"]["id"] != guard["checkpoint_id"] or digest(value["checkpoint"]) != guard["checkpoint_digest"]:
             raise StaleWork("Publication authorization superseded")
         if guard["receipt_ids"] != value["checkpoint"]["receipt_ids"] or guard["dependencies"] != value["checkpoint"]["dependencies"]:
             raise StaleWork("Publication receipt or dependency basis changed")
