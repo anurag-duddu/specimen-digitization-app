@@ -34,6 +34,7 @@ from specimen_digitization.application.domain import (
     Asset, FieldValue, LookupStatus, Observation, Principal, Profile, Region, Run, Scope, Specimen,
     ValueState,
 )
+from specimen_digitization.application.first_pass import synthetic_decision
 from specimen_digitization.application.profile_runtime import (
     bind_profile_rules, published_risk_registry,
 )
@@ -963,11 +964,16 @@ def worker_principal(role="operator", user_id=WORKER):
     return Principal(user_id=user_id, role=role, scope=Scope(organization_id=ORG, collection_id=COLLECTION))
 
 
-def specimen_before_adjudication(blobs):
+def specimen_before_adjudication(blobs, *, first_pass=False):
     """A non-sensitive specimen whose two readers agree, at the ordinary adjudicate step.
 
     Intake, classify, quality check, segmentation and both readings are done, as
     the ordinary chain leaves them; classify pinned the published profile.
+
+    With ``first_pass`` the second reader misreads one letter of the habitat
+    line, and the first pass (also done) decided for the first reader's text:
+    the region's transcript is then decided by the first pass, not by two
+    agreeing readers, which writes the first pass's own model observation row.
     """
     published = published_profile()
     output = io.BytesIO()
@@ -1002,15 +1008,23 @@ def specimen_before_adjudication(blobs):
     run.dependencies = {"adapter": "OfflineE2E", "synthetic": False,
         "profile_snapshot_sha256": canonical_digest(run.profile_snapshot),
         "profile_registry_version": run.profile_registry_version}
-    for route in run.profile.routes:
-        raw = ("SYNTHETIC FIXTURE " + route + "\n" + LABEL_TEXT).encode()
+    for index, route in enumerate(run.profile.routes):
+        text = LABEL_TEXT.replace("grassland", "grassIand") if first_pass and index == 1 else LABEL_TEXT
+        raw = ("SYNTHETIC FIXTURE " + route + "\n" + text).encode()
         run.observations.append(Observation(region_id=region.id, route_id=route, model_id="synthetic-" + route,
             provider="synthetic", prompt_version=hashlib.sha256(("prompt:" + route).encode()).hexdigest(),
             input_sha256=crop, input_asset_id=asset.id, input_crop_ref=region.crop_ref,
-            literal_text=LABEL_TEXT, raw_ref=blobs.put(raw),
+            literal_text=text, raw_ref=blobs.put(raw),
             raw_sha256=hashlib.sha256(raw).hexdigest()))
     run.completed_steps = ["pin_dependencies", "classify", "quality_check", "segment"] + [
         f"transcribe:{region.id}:{route}" for route in run.profile.routes]
+    if first_pass:
+        first, second = run.observations
+        decision = synthetic_decision(blobs, region, [first, second])
+        # The first pass supports the first reading on every difference.
+        run.first_pass_decisions = [decision.model_copy(update={"selected_observation_id": first.id,
+            "differences": [item.model_copy(update={"verdict": first.id}) for item in decision.differences]})]
+        run.completed_steps.append(f"first_pass:{region.id}")
     run.stage = "running"
     return specimen
 

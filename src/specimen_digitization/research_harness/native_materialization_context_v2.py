@@ -207,8 +207,13 @@ def _transcription_contexts(prior, native_inputs, scope, projection_services, re
             return row["id"]
         decision_writes = _first_pass(prior.run, transcript, asset, {}, reviewer=True)
         decision = []
+        # The first pass's own call (projection._first_pass) is a model
+        # observation row, written with independent=false beside the decision;
+        # it joins the decision's rows, and the readers' rows below stay the
+        # independent members. Both come from the observations query.
         operation_groups = {"AppendTranscriptionVersionV2":"transcriptions",
-            "AppendHarnessInputV1":"handoffs", "AppendReadingComparisonV1":"comparisons"}
+            "AppendHarnessInputV1":"handoffs", "AppendReadingComparisonV1":"comparisons",
+            "AppendModelObservationV2":"observations"}
         for write in decision_writes:
             expected = {**outer, **write.variables}
             group = operation_groups.get(write.operation)
