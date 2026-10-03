@@ -36,6 +36,11 @@ from .publication_v2 import genesis_digest
 from .workflow_bridge import membership_verifier, worker_actor
 
 POLICY_ORIGIN = "repo:src/specimen_digitization/research_harness/canonical_materialization_v2.py#ResearchCanonicalPolicyV2"
+# The binding writer's codes for a registration the connector refused: GraphQL
+# errors (native_canonical.SqlConnectNativeOperationClient.execute) and a
+# registered count other than one (native_canonical_v2.register_current_binding).
+REGISTRATION_REFUSED = frozenset({"native_canonical_transaction_rejected",
+    "native_v2_registration_rejected"})
 
 
 def research_job_id(specimen) -> str:
@@ -156,9 +161,11 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
         await writer.register_current_binding(principal, specimen.id, registration,
             store=store, scope=scope)
     except PublicationUnavailable as error:
-        # The connector refused this specimen's row (for example a second row
-        # under insert-only registration): this record alone is held.
-        if str(error) == "native_v2_registration_rejected":
+        # The connector refused this specimen's row: this record alone is held.
+        # A refusal arrives as GraphQL errors (a second row under insert-only
+        # registration fails on the table's key, and a row the checks do not
+        # admit fails the count check), or as a count other than one.
+        if str(error) in REGISTRATION_REFUSED:
             raise HeldUnknown("research_provision_registration_refused") from None
         raise HeldUnknown(str(error)) from None
     except PermissionError as error:

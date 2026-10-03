@@ -1,8 +1,9 @@
 """Research provisioning at the plan step: idempotent, with offline stand-ins.
 
-The repository, the binding writer and the Data Connect binding read are fakes.
-The research state is a real SQLite store; the base record comes from the
-real ordinary projector. Label text is synthetic.
+The repository, the binding writer and the Data Connect binding read are fakes,
+except where a test drives the production binding writer over a fake Data
+Connect HTTP session. The research state is a real SQLite store; the base
+record comes from the real ordinary projector. Label text is synthetic.
 """
 import asyncio
 from types import SimpleNamespace
@@ -132,6 +133,49 @@ class Writer:
         cls.binding = {"active_registration_count": 1}
 
 
+class ConnectorResponse:
+    status_code = 200
+
+    def __init__(self, body):
+        self.body = body
+
+    def json(self):
+        return self.body
+
+
+class ConnectorSession:
+    """The Data Connect HTTP session the real binding writer posts through.
+
+    No binding is current, and RegisterCanonicalResearchBindingV2 answers with
+    the GraphQL errors the connector returns for ``refusal``.
+    """
+
+    def __init__(self, refusal):
+        self.refusal, self.posts = refusal, []
+
+    def post(self, url, json=None, timeout=None):
+        operation = json["operationName"]
+        self.posts.append((operation, url.rsplit(":", 1)[1]))
+        if operation == "GetCanonicalResearchBindingV2":
+            return ConnectorResponse({"data": {"organizationMember": {"active": True},
+                "collectionMember": {"active": True, "role": WORKER_ROLE, "canViewSensitive": False},
+                "specimen": {"sensitive": False}, "binding": None}})
+        assert operation == "RegisterCanonicalResearchBindingV2"
+        return ConnectorResponse({"errors": [self.refusal]})
+
+
+CONNECTOR_URL = "https://dataconnect.invalid/v1/projects/p/locations/l/services/s/connectors/c"
+# The connector's GraphQL errors for a refused registration: a second row for
+# the specimen under insert-only registration fails on the table's key, and a
+# registration the row checks do not admit fails the @check on the count.
+REGISTRATION_REFUSALS = {
+    "second_row": {"message": 'duplicate key value violates unique constraint '
+        '"canonical_research_binding_v2_pkey"', "extensions": {"code": "ALREADY_EXISTS"}},
+    "row_checks": {"message": "research registration unavailable",
+        "extensions": {"code": "FAILED_PRECONDITION"}},
+}
+
+
 @pytest.fixture
 def rig(tmp_path):
     class Fresh(Writer):
@@ -233,11 +277,28 @@ def test_a_new_revision_after_a_registered_one_holds_because_the_row_is_not_repl
     later.version += 1
     rig.repository.specimen = later
     rig.writer.binding = None  # The row names the earlier revision.
-    with pytest.raises(HeldUnknown, match="native_canonical_transaction_rejected"):
+    with pytest.raises(HeldUnknown, match="^research_provision_registration_refused$"):
         rig.provision(later)
     [(registration, _, _)] = rig.writer.registered
     assert registration.job_id.endswith("-r3")
     assert rig.writer.rows == {rig.specimen.id: registration.binding_id}
+
+
+@pytest.mark.parametrize("refusal", sorted(REGISTRATION_REFUSALS))
+def test_a_registration_the_connector_refuses_holds_the_record_through_the_real_writer(rig, refusal):
+    # The production binding writer: the connector's GraphQL errors reach it as
+    # native_canonical_transaction_rejected, which is this record's own hold.
+    session = ConnectorSession(REGISTRATION_REFUSALS[refusal])
+    rig.repository.session, rig.repository.url = session, CONNECTOR_URL
+    with pytest.raises(HeldUnknown, match="^research_provision_registration_refused$"):
+        asyncio.run(provisioning.provision(rig.repository, rig.principal, rig.specimen,
+            state_backend=rig.backend))
+    assert session.posts == [("GetCanonicalResearchBindingV2", "impersonateQuery"),
+        ("RegisterCanonicalResearchBindingV2", "impersonateMutation")]
+    # The steps before registration were written once; the next tick replays them.
+    scope = job_scope(rig)
+    store = ResearchStore(rig.backend, research_program_key(rig.specimen.run.id))
+    assert list(store._read(scope).state["jobs"]) == [scope.key]
 
 
 def test_an_operator_worker_cannot_register_so_the_run_holds(rig):

@@ -10,11 +10,15 @@ import pytest
 from specimen_digitization.application.domain import (
     Asset,
     Disposition,
+    Observation,
     Principal,
     Profile,
+    ReaderHandoff,
+    Region,
     Run,
     Scope,
     Specimen,
+    Transcript,
 )
 from specimen_digitization.application.lane_dispatch import DispatchOutcome
 from specimen_digitization.application.lane_worker import (
@@ -24,15 +28,24 @@ from specimen_digitization.application.lane_worker import (
     drain_settings,
 )
 from specimen_digitization.application.native_drain import RegisteredNativeDrainWorkflow
+from specimen_digitization.application.production import SqlConnectRepository, actor_uid
+from specimen_digitization.application.projection import Blob
 from specimen_digitization.application.storage import Conflict, SQLiteRepository
+from specimen_digitization.application.storage import digest as canonical_digest
 from specimen_digitization.application.worker_deadline import WorkerDeadline
-from specimen_digitization.application.workflow import OperationalBlock
+from specimen_digitization.application.workflow import OperationalBlock, Workflow
 from specimen_digitization.hub_models import SAM3_MODEL
+from specimen_digitization.research_harness import provisioning
 from specimen_digitization.research_harness.contracts import ResearchScope
 from specimen_digitization.research_harness.native_worker import (
     NativeResearchWorkerOutcomeV2,
 )
-from specimen_digitization.research_harness.persistence import HeldUnknown, StaleWork
+from specimen_digitization.research_harness.persistence import (
+    DurabilityScope,
+    HeldUnknown,
+    SqliteStateBackend,
+    StaleWork,
+)
 from specimen_digitization.research_harness.workflow_bridge import NativeResearchWorkflow
 
 ORG = "00000000-0000-4000-8000-000000000001"
@@ -852,6 +865,155 @@ def test_a_runs_own_refusal_holds_that_record_and_the_drain_goes_on(
         assert (run.stage, run.disposition) == ("finalized", Disposition.REVIEW)
     later = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     assert lane.repository.oldest_due(SCOPE, later, limit=10) == []
+    assert fence(lane).read()["holder"] is None
+
+
+REFUSED = "00000000-0000-4000-8000-0000000000aa"
+
+
+def parsed_request(ident, minutes):
+    """A requested harness-routed run whose label reading is parsed, so
+    provisioning accepts it once the ordinary chain hands it over at plan."""
+    asset = Asset(sha256="a" * 64, blob_ref="a" * 64 + ":1", media_type="image/jpeg",
+        size_bytes=10, width=100, height=100, filename="fixture.jpeg", uploader="fixture",
+        sensitive=False)
+    region = Region(asset_id=asset.id, x=0, y=0, width=100, height=100, order=0,
+        method="fixture", version="fixture")
+    reading = Observation(region_id=region.id, route_id="handwriting-qwen",
+        model_id="fixture-model", provider="fixture", prompt_version="b" * 64,
+        input_sha256="c" * 64, input_asset_id=asset.id, literal_text="country: Kenya",
+        raw_ref="d" * 64 + ":2", raw_sha256="d" * 64)
+    transcript = Transcript(region_id=region.id, text=reading.literal_text,
+        observation_ids=[reading.id], alternatives=[reading.literal_text], resolved=True,
+        decision_kind="identical_readings", selected_observation_id=reading.id,
+        handoffs=[ReaderHandoff(observation_id=reading.id, role="decided_transcript",
+            handed_text=reading.literal_text)])
+    from specimen_digitization.application.collection_profiles import published_registry
+
+    profile = published_registry().profiles[0]
+    run = Run(profile=Profile(id=profile.id, version=profile.version,
+        routes=tuple(profile.model_routes)), regions=[region], observations=[reading],
+        transcripts=[transcript], profile_snapshot=profile.model_dump(mode="json"),
+        profile_registry_version="registry-1")
+    Workflow.parse(run, asset.id)
+    run.dependencies = {"profile_snapshot_sha256": canonical_digest(run.profile_snapshot),
+        "profile_registry_version": "registry-1"}
+    run.stage, run.queued_at = "pending", (START - timedelta(minutes=minutes)).isoformat()
+    return Specimen(id=ident, scope=SCOPE, run=run, asset=asset,
+        created_at=(START - timedelta(hours=1)).isoformat())
+
+
+class ConnectorResponse:
+    status_code = 200
+
+    def __init__(self, body):
+        self.body = body
+
+    def json(self):
+        return self.body
+
+
+class RefusingConnector:
+    """The Data Connect calls provisioning makes, offline.
+
+    The snapshot read and the base record rows are local. The binding writer
+    posts through ``session``: no binding is current, and
+    RegisterCanonicalResearchBindingV2 answers with the GraphQL errors of a
+    registration the connector does not admit (its count check fails).
+    """
+
+    variables = staticmethod(SqlConnectRepository.variables)
+    url = "https://dataconnect.invalid/v1/projects/p/locations/l/services/s/connectors/c"
+
+    def __init__(self, repository):
+        self.repository, self.session, self.posts = repository, self, []
+
+    def execute(self, operation, variables, mutation=False):
+        assert operation == "GetSnapshot"
+        specimen = self.repository.get(SCOPE, variables["id"])
+        assert specimen.version == variables["revision"]
+        snapshot = specimen.model_dump(mode="json")
+        return {"specimenSnapshot": {"revision": specimen.version, "snapshot": snapshot,
+            "sha256": canonical_digest(snapshot), "contractVersion": "fixture"}}
+
+    def locate(self, ref):
+        sha, _, generation = ref.partition(":")
+        return Blob("offline", sha, generation)
+
+    def _sized(self, ref):
+        return 64
+
+    def _insert(self, operation, variables):
+        pass
+
+    def post(self, url, json=None, timeout=None):
+        operation = json["operationName"]
+        self.posts.append(operation)
+        if operation == "GetCanonicalResearchBindingV2":
+            return ConnectorResponse({"data": {"organizationMember": {"active": True},
+                "collectionMember": {"active": True, "role": "manager",
+                    "canViewSensitive": False},
+                "specimen": {"sensitive": False}, "binding": None}})
+        assert operation == "RegisterCanonicalResearchBindingV2"
+        return ConnectorResponse({"errors": [{"message": "research registration unavailable",
+            "extensions": {"code": "FAILED_PRECONDITION"}}]})
+
+
+def test_a_registration_the_connector_refuses_holds_that_record_and_the_drain_goes_on(
+    lane, tmp_path
+):
+    # The first request goes through the production provisioning and binding
+    # writer. The worker is a manager, a role the connector registers for, so
+    # the registration reaches the connector, whose refusal arrives as GraphQL
+    # errors. The ten requests after it proceed.
+    lane.repository.create(principal(), parsed_request(REFUSED, 51), "queue:refused", REFUSED)
+    profile = harness_profile()
+    for minutes, ident in zip(range(50, 40, -1), TEN):
+        queued(lane.repository, ident, minutes=minutes, profile_snapshot=profile)
+    connector = RefusingConnector(lane.repository)
+    backend = SqliteStateBackend(tmp_path / "research-state.sqlite")
+    backend.grant(DurabilityScope(ORG, COLLECTION, REFUSED, "membership", 1, WORKER, False),
+        role="manager")
+    provisioned = []
+
+    async def fresh_member(principal, sensitive):
+        assert principal.role == "manager" and sensitive is False
+
+    async def provision(principal, specimen):
+        provisioned.append(specimen.id)
+        if specimen.id == REFUSED:
+            await provisioning.provision(connector, principal, specimen, actor_uid=WORKER,
+                verify_access=fresh_member, state_backend=backend)
+
+    native = NativeLane(lane.repository)
+    workflow = RegisteredNativeDrainWorkflow(
+        NativeResearchWorkflow(Ordinary(lane.repository), native, provision=provision)
+    )
+    drain = worker(lane.repository, workflow, lane.clock, role="manager")
+    token = actor_uid.set(WORKER)
+    try:
+        with WorkerDeadline(time.monotonic() + 600).scope():
+            summary = drain.run(stop=None)
+    finally:
+        actor_uid.reset(token)
+    code = "research_provision_registration_refused"
+    assert summary["status"] == "drained"
+    assert summary["processed"] == [REFUSED, *TEN]
+    assert provisioned == [REFUSED, *TEN] and native.runs == list(TEN)
+    assert connector.posts == ["GetCanonicalResearchBindingV2",
+        "RegisterCanonicalResearchBindingV2"]
+    held = lane.repository.get(SCOPE, REFUSED)
+    assert (held.run.stage, held.run.blocker, held.run.disposition) == (
+        "processing_blocked",
+        code,
+        None,
+    )
+    assert (held.audit[-1].action, held.audit[-1].reason) == ("lane_block", code)
+    for ident in TEN:
+        run = lane.repository.get(SCOPE, ident).run
+        assert (run.stage, run.disposition) == ("finalized", Disposition.REVIEW)
+    later = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+    assert lane.repository.oldest_due(SCOPE, later, limit=11) == []
     assert fence(lane).read()["holder"] is None
 
 
