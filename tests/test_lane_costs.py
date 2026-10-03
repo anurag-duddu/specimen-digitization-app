@@ -78,6 +78,12 @@ PRICES = PriceList(
             "output_micros_per_million": 500_000,
             "context_tokens": 1_048_576,
         },
+        # And its harness route.
+        "harness-deepseek": {
+            "input_micros_per_million": 200_000,
+            "output_micros_per_million": 600_000,
+            "context_tokens": 1_048_576,
+        },
     },
     segmentation={
         "vcpus": 4,

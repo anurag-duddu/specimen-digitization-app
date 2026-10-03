@@ -97,7 +97,8 @@ def test_the_slide_pilot_profile_carries_the_specified_settings():
     assert "identified_by_irn" not in profile.field_tools
     assert profile.segmentation_settings.prompt == "label"
     assert profile.clearance_policy == "insects-clearance-v1"
-    assert profile.first_pass_route == "first-pass-glm" and profile.harness_route is None
+    assert profile.first_pass_route == "first-pass-glm"
+    assert profile.harness_route == "harness-deepseek"
     assert not profile.institutional_policy_approved
     assert not profile.semantics_confirmed
     allowance = profile.processing
