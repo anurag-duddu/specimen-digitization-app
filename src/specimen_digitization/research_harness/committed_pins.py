@@ -54,7 +54,7 @@ ENGINE_VERSION = "research_harness_v1"
 # mandatory_unresolved:{field} (canonical_materialization_v2._policy_held, status.py
 # and the connector's disposition check, none of which names a field). A
 # waiting_source is not held: a failed, rate-limited or unconfigured source still
-# blocks the record. The v3 role prompts tell a specialist which of the two to return.
+# blocks the record. The v4 role prompts tell a specialist which of the two to return.
 UNQUALIFIED_LABEL_POLICY = "unstructured_label_event_unqualified"
 # The twelve fields that no source this deployment offers can ground, so nothing can
 # fail for them and a specialist's waiting_policy on one is unambiguous ...

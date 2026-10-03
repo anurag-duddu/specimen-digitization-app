@@ -434,8 +434,8 @@ def test_a_region_decided_by_the_first_pass_publishes(first_pass_rig):
     # Every research publication landed from the first-pass-decided transcript.
     receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
     assert [row["causal_proof"]["changed_field"] for row in receipts] == ["taxon", "city", "country",
-        "county", "precise_location", "province_state", "collectors", "identified_by_irn", "collection_code",
-        "collection_method", "fmnh_ins_number", "habitat"]
+        "county", "precise_location", "province_state", "collection_code", "collection_method",
+        "fmnh_ins_number", "habitat", "collectors", "identified_by_irn"]
     published = rig.repository.get(rig.principal.scope, rig.specimen_id)
     assert published.version == specimen.version == parsed.version + 12
     assert published.run.fields["taxon"].normalized == GBIF_NAME
@@ -513,7 +513,7 @@ def test_a_refused_publication_logs_its_cause_and_the_drain_records_the_hold(rig
     assert set(lines) == {"native_worker", "lane_worker"}
     short = rig.specimen_id[-6:]
     assert lines["native_worker"] == ("native publication failed: PublicationUnavailable "
-        f"code=native_v2_commit_outcome_unknown field=collectors (record ...{short})")
+        f"code=native_v2_commit_outcome_unknown field=collection_code (record ...{short})")
     assert lines["lane_worker"] == f"record held by the drain: {code} (record ...{short})"
     assert rig.specimen_id not in caplog.text and "publication refused" not in caplog.text
     assert not any(value in caplog.text for value in LABEL_VALUES.values())

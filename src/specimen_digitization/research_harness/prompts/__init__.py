@@ -24,18 +24,25 @@ RELATIONS_PROMPT_VERSION = "specialists-relations-v2-2026-10-03"
 # human question cites its evidence only on the question. The v2 files stay on disk
 # unchanged for audit (GEOGRAPHY_PROMPT_VERSION and RELATIONS_PROMPT_VERSION name them).
 READING_CITATION_PROMPT_VERSION = "specialists-reading-citation-v3-2026-10-03"
+# All six roles, for the fields the committed research profile declares missing
+# policy "unstructured_label_event_unqualified" (committed_pins.py). Each v4 file is
+# its v3 file followed by one block that tells the role to return waiting_policy,
+# never waiting_source, for an owned declared field that no assembly and no source
+# can ground, and waiting_source only for a source that failed or is unconfigured.
+# The v3 files stay on disk unchanged for audit (READING_CITATION_PROMPT_VERSION).
+MISSING_POLICY_PROMPT_VERSION = "specialists-missing-policy-v4-2026-10-03"
 
 # Role -> (role file, pin version). Each role's text is common-v1.txt, the role
 # file and its owned-fields line. A role moves to a new file and version without
 # changing any other role's text, digest or pin. Superseded files stay on disk
 # for audit.
 ROLE_PROMPTS = MappingProxyType({
-    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v3.txt", READING_CITATION_PROMPT_VERSION),
-    SpecialistRole.GEOGRAPHY: ("specimen_geography-v3.txt", READING_CITATION_PROMPT_VERSION),
-    SpecialistRole.TEMPORAL: ("specimen_temporal-v3.txt", READING_CITATION_PROMPT_VERSION),
-    SpecialistRole.MEASUREMENT: ("specimen_measurement-v3.txt", READING_CITATION_PROMPT_VERSION),
-    SpecialistRole.PARTIES: ("specimen_parties-v3.txt", READING_CITATION_PROMPT_VERSION),
-    SpecialistRole.COLLECTION: ("specimen_collection-v3.txt", READING_CITATION_PROMPT_VERSION),
+    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v4.txt", MISSING_POLICY_PROMPT_VERSION),
+    SpecialistRole.GEOGRAPHY: ("specimen_geography-v4.txt", MISSING_POLICY_PROMPT_VERSION),
+    SpecialistRole.TEMPORAL: ("specimen_temporal-v4.txt", MISSING_POLICY_PROMPT_VERSION),
+    SpecialistRole.MEASUREMENT: ("specimen_measurement-v4.txt", MISSING_POLICY_PROMPT_VERSION),
+    SpecialistRole.PARTIES: ("specimen_parties-v4.txt", MISSING_POLICY_PROMPT_VERSION),
+    SpecialistRole.COLLECTION: ("specimen_collection-v4.txt", MISSING_POLICY_PROMPT_VERSION),
 })
 
 

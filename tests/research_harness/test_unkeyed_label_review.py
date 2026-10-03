@@ -5,8 +5,10 @@ initial_requests._graph builds no event and no assembly, and fifteen fields (the
 twelve literals, county, city and taxon) have no accepted assembly and, for the
 twelve, no ready source. A specialist can only abstain on them. This test runs
 that label through compose_production_research_workflow with the offline rig of
-production_e2e_support (imported, not edited) and a scripted specialist that
-abstains the way the v3 prompts tell a model to:
+production_e2e_support (imported, not edited) and a scripted specialist that reads
+its behaviour out of the pinned v4 prompt text (the v3 reading citation of #257, then
+the missing-policy block): it cites the reading the producer block names and abstains
+the way the missing-policy block tells a model to:
 
 - waiting_policy on a field the committed profile declares missing policy
   "unstructured_label_event_unqualified" when no assembly or source can ground it;
@@ -24,15 +26,17 @@ source; the twelve literals have no ready source, so there is nothing to hide.
 
 The label text is synthetic: only its shape (plain lines, no colon prefixes,
 the locality, a date, a collector, habitat and method lines) comes from the
-recorded snapshots. The scripted specialist is not a model: whether a real model
-follows the prompt is not tested here, and its geography values cite the reading
-they came from (see reading_provenance).
+recorded snapshots. The scripted specialist is not a model: it parses the field
+names the blocks list (``instructed``); whether a real model follows the prompt is not
+tested here.
 """
 from __future__ import annotations
 
 import json
+import re
 import time
-from types import SimpleNamespace
+from pathlib import Path
+from types import MappingProxyType, SimpleNamespace
 
 import pytest
 from pydantic_ai.messages import ModelResponse, RetryPromptPart, ToolCallPart
@@ -49,9 +53,11 @@ from specimen_digitization.research_harness.contracts import (
 )
 from specimen_digitization.research_harness.evidence import dts_policy_resolution, missing_irn_resolution
 from specimen_digitization.research_harness.initial_requests import NativeGenerationRequestFactory
+from specimen_digitization.research_harness import prompts
 from specimen_digitization.research_harness.persistence import (
     DurabilityScope, ImmutableFileBlobs, SqliteStateBackend,
 )
+from specimen_digitization.research_harness.prompts import READING_CITATION_PROMPT_VERSION, resolve_prompt
 from specimen_digitization.research_harness.sources import FixtureSourceTransport
 from specimen_digitization.research_harness.workflow_bridge import compose_production_research_workflow
 
@@ -142,20 +148,40 @@ def abstention(key, state, reason):
     return FieldResolution(field_key=key, work_state=state, value=FieldValue(), reason=reason)
 
 
-def reading_provenance(request):
-    """The decided reading a value was read from.
+# The citation fields the producer block of the pinned prompt names (#257, test_prompt_reading_citation_v3.py).
+CITATION_FIELDS = ("source_observation_id", "verbatim_by_observation", "settled_observation_ids", "input_source",
+    "source_region_id")
+
+
+def instructed(request):
+    """What the pinned prompt text tells a specialist on a label with no assembly.
+
+    The citation fields the producer block names (the text from its heading to the human question
+    block) and the fields the missing-policy block names (the text after 'declares missing_policy
+    "..." for'): the fields for which it says to return waiting_policy. A specialist does what the
+    text says; without the missing-policy block (a v3 text) it names no field, so it answers
+    waiting_source for a field nothing grounds, as the v2 text told it to."""
+    text = " ".join(request.prompt.text.split())
+    start = text.find("Producer and literal without an assembly (publication):")
+    producer = text[start:text.find("Human question evidence (publication):")] if start >= 0 else ""
+    listed = re.search(rf'Missing policy \(unstructured labels\): .*? declares missing_policy "{POLICY}" for '
+        r"(.+?)(?:, and no source|\.)", text)
+    named = {FieldKey(name) for name in re.findall(r"[a-z_]+", listed[1]) if name != "and"} if listed else set()
+    return tuple(name for name in CITATION_FIELDS if name in producer), named
+
+
+def reading_provenance(request, fields):
+    """The decided reading a value was read from, as the producer block says to cite it.
 
     A lookup in a request with no assembly has no producer unless the value that cites it names its
-    reading; without these fields the publication ends native_publication_requires_reconciliation
-    (a separate finding, independent of the missing-policy declaration, that no v3 prompt text
-    addresses). The scripted geography specialist supplies them so this test isolates the
-    disposition of the declared fields."""
+    reading (a separate finding, independent of the missing-policy declaration, that #257's text
+    addresses); the specialist cites the fields its pinned text names."""
     fragment = next(item for item in request.fragments if item.input_source == "decided_transcript")
-    return dict(input_source=fragment.input_source, source_region_id=fragment.region_id,
+    every = dict(input_source=fragment.input_source, source_region_id=fragment.region_id,
         source_observation_id=fragment.observation_id,
         verbatim_by_observation={fragment.observation_id: fragment.observation_text},
-        input_source_by_observation={fragment.observation_id: fragment.input_source},
         settled_observation_ids=[fragment.observation_id])
+    return {name: every[name] for name in fields}
 
 
 def last_result(results, source_id, key):
@@ -163,14 +189,14 @@ def last_result(results, source_id, key):
         if item.coverage.source_id == source_id and item.coverage.field_key == key), None)
 
 
-def geolocated(request, key, result):
+def geolocated(request, key, result, cites):
     [candidate] = [json.loads(raw) for raw in result.candidate_json]
     evidence = tuple(item.id for item in result.evidence)
     return FieldResolution(field_key=key, work_state=WorkState.RESOLVED,
         value_layer="verbatim" if key == FieldKey.PRECISE_LOCATION else "settled",
         value=FieldValue(state=ValueState.SUPPORTED, normalized=candidate["value"],
             authority_id=candidate["authority_id"], evidence_ids=list(evidence),
-            evidence_relations=dict.fromkeys(evidence, "supports"), **reading_provenance(request)),
+            evidence_relations=dict.fromkeys(evidence, "supports"), **reading_provenance(request, cites)),
         evidence_ids=evidence, reason=f"Label writes {candidate['value']}; GEOLocate confirms it")
 
 
@@ -178,12 +204,14 @@ FAILED_LOOKUP = {LookupStatus.RATE_LIMITED, LookupStatus.TIMEOUT, LookupStatus.A
     LookupStatus.AUTHORIZATION, LookupStatus.PROVIDER, LookupStatus.MALFORMED}
 
 
-def specialist_factory(log, *, abstain, taxon_lookup=False, after_failure=WorkState.WAITING_SOURCE,
+def specialist_factory(log, *, abstain=None, taxon_lookup=False, after_failure=WorkState.WAITING_SOURCE,
                        after_retry=None, geography_rounds=(GEOGRAPHY,), probe_museum_source=False):
     """A scripted specialist for the unkeyed label.
 
-    ``abstain`` is the work state it returns for a declared field nothing can ground:
-    waiting_policy (the v3 prompts) or waiting_source (the v2 prompts).
+    The specialist reads its pinned prompt text (``instructed``): it cites the reading the producer block
+    names and returns waiting_policy for a field the missing-policy block names, else waiting_source.
+    ``abstain`` overrides what it returns for a declared field nothing can ground (a model that ignores
+    the block: waiting_source).
     ``taxon_lookup``: the taxonomy specialist queries GBIF for the taxon the label names. After a
     failed lookup it returns ``after_failure`` (and ``after_retry`` once the output validator has
     refused its answer); after a completed no_match it returns waiting_policy.
@@ -214,6 +242,7 @@ def specialist_factory(log, *, abstain, taxon_lookup=False, after_failure=WorkSt
                     "source_id": "field_museum_ipt", "field_key": "fmnh_ins_number", "query_text": "0010001"}},
                     tool_call_id="unkeyed-museum")], usage=support.USAGE)
             after = after_retry if retried and after_retry is not None else after_failure
+            cites, named = instructed(request)
             resolutions = []
             for key in request.field_keys:
                 if key == FieldKey.IDENTIFIED_BY_IRN:
@@ -223,7 +252,7 @@ def specialist_factory(log, *, abstain, taxon_lookup=False, after_failure=WorkSt
                 elif key in GROUNDED_BY_GEOLOCATE:
                     result = last_result(results, "geolocate", key)
                     if result.status == LookupStatus.SUCCESS:
-                        resolutions.append(geolocated(request, key, result))
+                        resolutions.append(geolocated(request, key, result, cites))
                     else:
                         assert result.status in FAILED_LOOKUP, result.status
                         resolutions.append(abstention(key, after if key in DECLARED else WorkState.WAITING_SOURCE,
@@ -231,12 +260,14 @@ def specialist_factory(log, *, abstain, taxon_lookup=False, after_failure=WorkSt
                 elif key == FieldKey.TAXON and taxon_lookup:
                     result = last_result(results, "gbif", key)
                     if result.status == LookupStatus.NO_MATCH:
-                        resolutions.append(abstention(key, WorkState.WAITING_POLICY, "GBIF completed with no match"))
+                        resolutions.append(abstention(key, WorkState.WAITING_POLICY if key in named
+                            else WorkState.WAITING_SOURCE, "GBIF completed with no match"))
                     else:
                         assert result.status in FAILED_LOOKUP, result.status
                         resolutions.append(abstention(key, after, "the GBIF lookup failed"))
                 else:
-                    state = abstain if key in DECLARED else WorkState.WAITING_SOURCE
+                    state = (abstain or (WorkState.WAITING_POLICY if key in named else WorkState.WAITING_SOURCE)
+                             if key in DECLARED else WorkState.WAITING_SOURCE)
                     resolutions.append(abstention(key, state, "no assembly and no source can ground it"))
             output = SpecialistOutput(role=role, resolutions=tuple(resolutions))
             return ModelResponse(parts=[ToolCallPart(info.output_tools[0].name, output.model_dump(mode="json"),
@@ -306,7 +337,7 @@ def run_research(rig, factory, source_transport):
 def test_the_unkeyed_label_gives_the_request_fragments_and_no_event_or_assembly(unkeyed):
     """The premise, read from the graph the production request factory builds from the ordinary
     snapshot: every line of every reading is a fragment, and nothing is an event or an assembly."""
-    parsed = to_plan(compose(unkeyed, specialist_factory([], abstain=WorkState.WAITING_POLICY), transport([])),
+    parsed = to_plan(compose(unkeyed, specialist_factory([]), transport([])),
         unkeyed)
     assert not [key for key, value in parsed.run.fields.items() if value.state == "supported"]
     scope = ResearchScope(organization_id=ORG, collection_id=COLLECTION, specimen_id=unkeyed.specimen_id,
@@ -318,8 +349,7 @@ def test_the_unkeyed_label_gives_the_request_fragments_and_no_event_or_assembly(
 def test_an_unkeyed_label_lands_in_needs_human_review_on_the_declared_fields(unkeyed):
     """FAILS on origin/main: the profile declares only verbatim_dts, so every waiting_policy
     field below blocks the record (processing_blocked, no disposition, an operational hold)."""
-    parsed, specimen, hold = run_research(unkeyed, specialist_factory(unkeyed.model_calls,
-        abstain=WorkState.WAITING_POLICY), transport(unkeyed.source_urls))
+    parsed, specimen, hold = run_research(unkeyed, specialist_factory(unkeyed.model_calls), transport(unkeyed.source_urls))
     assert hold is None, f"the record is held: {hold}"
     assert specimen.run.stage == "finalized" and specimen.run.disposition == "needs_human_review"
     reasons = set(specimen.run.reasons)
@@ -346,8 +376,7 @@ def test_parties_runs_last_so_the_always_terminal_irn_publishes_the_final_state(
     """FAILS on origin/main: COLLECTION is last, nothing in it is terminal, and the last publication
     (identified_by_irn) predates its result, so the record cannot finalize."""
     assert list(SpecialistRole)[-2:] == [SpecialistRole.COLLECTION, SpecialistRole.PARTIES]
-    parsed, specimen, hold = run_research(unkeyed, specialist_factory(unkeyed.model_calls,
-        abstain=WorkState.WAITING_POLICY), transport(unkeyed.source_urls))
+    parsed, specimen, hold = run_research(unkeyed, specialist_factory(unkeyed.model_calls), transport(unkeyed.source_urls))
     roles = [role for role, _ in unkeyed.model_calls]
     assert roles == ["specimen_taxonomy", "specimen_geography", "specimen_geography", "specimen_temporal",
         "specimen_measurement", "specimen_collection", "specimen_parties"]
@@ -376,7 +405,7 @@ def test_a_waiting_source_after_a_failed_lookup_blocks_the_record(named_taxon, s
     a waiting_source blocks; that a waiting_policy cannot hide the failure is proved by the
     outage-guard tests below."""
     parsed, specimen, hold = run_research(named_taxon, specialist_factory(named_taxon.model_calls,
-        abstain=WorkState.WAITING_POLICY, taxon_lookup=True), transport(named_taxon.source_urls, gbif_status=status))
+        taxon_lookup=True), transport(named_taxon.source_urls, gbif_status=status))
     assert any("gbif" in url for url in named_taxon.source_urls)
     assert isinstance(hold, OperationalBlock) and str(hold) == "native_research_operational_hold"
     assert specimen.run.stage == "processing_blocked" and specimen.run.disposition is None
@@ -397,7 +426,7 @@ def test_a_waiting_policy_after_a_failed_gbif_lookup_is_refused_and_the_record_b
     operational reason. The specialist keeps its answer after the refusal, so the run fails and the
     engine commits operational_failed for taxon."""
     parsed, specimen, hold = run_research(named_taxon, specialist_factory(named_taxon.model_calls,
-        abstain=WorkState.WAITING_POLICY, taxon_lookup=True, after_failure=WorkState.WAITING_POLICY),
+        taxon_lookup=True, after_failure=WorkState.WAITING_POLICY),
         transport(named_taxon.source_urls, gbif_status=status))
     assert any("gbif" in url for url in named_taxon.source_urls)
     assert (specimen.run.stage, specimen.run.disposition) == ("processing_blocked", None)
@@ -411,7 +440,7 @@ def test_a_waiting_policy_after_a_failed_gbif_lookup_is_refused_and_the_record_b
 
 def test_a_specialist_that_corrects_to_waiting_source_after_the_refusal_blocks_as_waiting_source(named_taxon):
     parsed, specimen, hold = run_research(named_taxon, specialist_factory(named_taxon.model_calls,
-        abstain=WorkState.WAITING_POLICY, taxon_lookup=True, after_failure=WorkState.WAITING_POLICY,
+        taxon_lookup=True, after_failure=WorkState.WAITING_POLICY,
         after_retry=WorkState.WAITING_SOURCE), transport(named_taxon.source_urls, gbif_status=503))
     assert specimen.run.stage == "processing_blocked" and isinstance(hold, OperationalBlock)
     reasons = set(specimen.run.reasons)
@@ -425,7 +454,7 @@ def test_a_waiting_policy_after_a_partial_geolocate_outage_on_county_and_city_bl
     mandatory_unresolved:county and :city. The refusal fails the geography role, so every
     geography field is operational_failed."""
     parsed, specimen, hold = run_research(unkeyed, specialist_factory(unkeyed.model_calls,
-        abstain=WorkState.WAITING_POLICY, after_failure=WorkState.WAITING_POLICY,
+        after_failure=WorkState.WAITING_POLICY,
         geography_rounds=((FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.PRECISE_LOCATION),
             (FieldKey.COUNTY, FieldKey.CITY))), transport(unkeyed.source_urls, geolocate_fails_after=3))
     assert len(unkeyed.source_urls) == 5
@@ -439,7 +468,7 @@ def test_a_waiting_policy_after_a_partial_geolocate_outage_on_county_and_city_bl
 def test_a_waiting_policy_after_a_genuine_gbif_no_match_still_goes_to_review(named_taxon):
     """A completed search with no match is not an outage: taxon is held for review."""
     parsed, specimen, hold = run_research(named_taxon, specialist_factory(named_taxon.model_calls,
-        abstain=WorkState.WAITING_POLICY, taxon_lookup=True),
+        taxon_lookup=True),
         transport(named_taxon.source_urls, gbif_body=gbif_no_match()))
     assert hold is None and specimen.run.stage == "finalized" and specimen.run.disposition == "needs_human_review"
     reasons = set(specimen.run.reasons)
@@ -454,8 +483,51 @@ def test_a_waiting_policy_on_a_literal_after_a_refused_museum_source_probe_still
     first probes the registered but unqualified museum source (policy_blocked, not an outage) and then
     answers waiting_policy for fmnh_ins_number is held for review."""
     parsed, specimen, hold = run_research(unkeyed, specialist_factory(unkeyed.model_calls,
-        abstain=WorkState.WAITING_POLICY, probe_museum_source=True), transport(unkeyed.source_urls))
+        probe_museum_source=True), transport(unkeyed.source_urls))
     assert hold is None and specimen.run.stage == "finalized" and specimen.run.disposition == "needs_human_review"
     assert "mandatory_unresolved:fmnh_ins_number" in specimen.run.reasons
     assert not [reason for reason in specimen.run.reasons if reason.startswith("research_work:")]
     assert [turn for role, turn in unkeyed.model_calls if role == "specimen_collection"] == [1, 2]
+
+
+def pinned(role, filename=None):
+    """A request-like object carrying the role's pin; ``filename`` pins an earlier file instead of the table's."""
+    prompt = resolve_prompt(role, profile_digest="f" * 64, source_registry_digest="a" * 64, toolset_digest="b" * 64,
+        model_route="harness-deepseek", output_schema_digest="c" * 64)
+    if filename:
+        root = Path(prompts.__file__).parent
+        text = ((root / "common-v1.txt").read_text(encoding="utf-8") + "\n" + (root / filename).read_text(encoding="utf-8")
+                + "\nOwned fields: " + ", ".join(map(str, prompts.ROLE_FIELDS[role])) + ".\n")
+        prompt = prompt.model_copy(update={"text": text})
+    return SimpleNamespace(prompt=prompt)
+
+
+def test_the_specialist_reads_the_citation_fields_and_the_declared_fields_out_of_the_v4_text():
+    named = set()
+    for role in SpecialistRole:
+        cites, fields = instructed(pinned(role))
+        assert set(cites) == (set(CITATION_FIELDS) if role in (SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY,
+            SpecialistRole.PARTIES, SpecialistRole.COLLECTION) else set())
+        assert fields <= set(prompts.ROLE_FIELDS[role])
+        named |= fields
+    assert named == DECLARED
+    # The v3 text (the reading citation alone) names no declared field: the specialist then abstains with
+    # waiting_source, as the v2 text told it to.
+    for role in SpecialistRole:
+        assert instructed(pinned(role, f"{role.value}-v3.txt"))[1] == set()
+
+
+def test_a_specialist_reading_the_v3_text_alone_blocks_the_record_and_the_v4_block_is_what_moves_it_to_review(
+        unkeyed, monkeypatch):
+    """#257's v3 text names no waiting_policy: a specialist reading only it answers waiting_source for the
+    fields nothing grounds, and the record blocks. The v4 block (the live text, the test above) moves it."""
+    v3 = MappingProxyType({role: (f"{role.value}-v3.txt", READING_CITATION_PROMPT_VERSION) for role in SpecialistRole})
+    monkeypatch.setattr(prompts, "ROLE_PROMPTS", v3)
+    parsed, specimen, hold = run_research(unkeyed, specialist_factory(unkeyed.model_calls),
+        transport(unkeyed.source_urls))
+    assert (specimen.run.stage, specimen.run.disposition) == ("processing_blocked", None)
+    assert isinstance(hold, OperationalBlock) and str(hold) == "native_research_operational_hold"
+    reasons = set(specimen.run.reasons)
+    assert {f"research_work:{key}:waiting_source" for key in (*LITERALS, "taxon")} <= reasons
+    assert not {reason for reason in reasons if reason.startswith("mandatory_unresolved:")
+                and reason != "mandatory_unresolved:verbatim_dts"}
