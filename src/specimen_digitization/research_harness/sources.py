@@ -358,6 +358,31 @@ def _geolocate_agrees(field_key: FieldKey, place: GeolocateInterpretation, match
     return True
 
 
+GEOLOCATE_ID_SCHEME = "geolocate-match-v1"
+
+
+def geolocate_authority_id(match: _GeolocateMatch) -> str:
+    """The identifier of one GEOLocate match: ``geolocate:`` and 16 hex digits, no coordinates.
+
+    A candidate's authority_id is stored on field_candidate rows and shown in the public record
+    on country, state, county and city alike. The matched point is candidate metadata in the tool
+    result and the trace, not a record field (G39), so the identifier is a digest of the match
+    instead of the point itself; the point stays in the candidate's decimal_latitude and
+    decimal_longitude and in the captured response.
+
+    The digest input is the match's own identity: the scheme, the place name and admin unit
+    GEOLocate returned, and the point rounded to 6 decimals (about 0.1 m, the precision the
+    earlier identifier kept). The same match always gives the same identifier, a different point,
+    name or unit gives a different one, and score, precision, distance and engine version are
+    left out, so a re-ranking never renames a place. The digest is a name, not a cipher:
+    whoever holds the same GEOLocate response can recompute it, but the string does not hold
+    the coordinates.
+    """
+    identity = digest({"scheme": GEOLOCATE_ID_SCHEME, "name": match.name, "admin": match.admin,
+                       "latitude": f"{match.latitude:.6f}", "longitude": f"{match.longitude:.6f}"})
+    return "geolocate:" + identity[:16]
+
+
 def geolocate_verdict(policy: SourcePolicy, query: SourceQuery, payload) -> tuple[LookupStatus, list[dict], int, str]:
     """Verify every GEOLocate match against the interpretation; only agreeing points become candidates."""
     place = geolocate_interpretation(query.query_text, query.field_key)
@@ -378,7 +403,7 @@ def geolocate_verdict(policy: SourcePolicy, query: SourceQuery, payload) -> tupl
     chosen = [best] if spread <= GEOLOCATE_AGREEMENT_KM else agreeing[:policy.result_limit]
     candidates = [{
         "field_key": str(query.field_key), "value": place.value,
-        "authority_id": f"geolocate:{item.latitude:.6f},{item.longitude:.6f}",
+        "authority_id": geolocate_authority_id(item),
         "authority_role": policy.authority_role, "input_literal": place.locality, "rank": rank,
         "decimal_latitude": item.latitude, "decimal_longitude": item.longitude, "geodetic_datum": "EPSG:4326",
         "match_name": item.name, "match_admin": item.admin, "match_precision": item.precision,
