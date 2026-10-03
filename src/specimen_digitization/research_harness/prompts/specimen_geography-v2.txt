@@ -43,6 +43,10 @@ requests and 12 tool calls.
 - no_match: not validated; coverage.reason says why.
 - policy_blocked naming a query_text or place-text defect: correct it once. Other unavailable,
   failed or timed-out results are not absence; apply the common rules.
+Every resolution that cites a GEOLocate lookup names, as the common rules ask,
+its accepted/rejected assemblies (assembly_ids: the request's assemblies for
+that field that the interpretation read) and event (event_id); the lookup's
+producer comes from them, and publication refuses a lookup without one.
 Unresolved goes to a person. This is an exception to the common rule that a
 human question needs exhausted sources, for GEOLocate geography outcomes only:
 when every GEOLocate lookup for a field ended in no_match or ambiguous and none

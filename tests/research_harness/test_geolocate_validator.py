@@ -89,13 +89,13 @@ def label_fragments(text):
     return fragments
 
 
-def assembled_request(locality):
-    # The label's locality as an accepted precise_location assembly: the one way label text leaves.
+def assembled_request(locality, field_key=FieldKey.PRECISE_LOCATION):
+    # The label's locality as an accepted assembly (for precise_location, the one way label text leaves).
     [fragment] = label_fragments(locality)
     event = EventHypothesis(id="event", scope=SCOPE, kind=EventKind.COLLECTING, fragment_ids=(fragment.id,),
                             evidence_ids=("role-evidence",), reason="Independently annotated synthetic event",
                             status="accepted", validator_version="gold-v1")
-    assembly = assemble_field(assembly_id="locality", scope=SCOPE, field_key=FieldKey.PRECISE_LOCATION,
+    assembly = assemble_field(assembly_id="locality", scope=SCOPE, field_key=field_key,
                               fragments=[fragment], event=event)
     assert assembly.interpreted_text == locality
     return geography_request(fragments=[fragment], events=[event], assemblies=[assembly])
@@ -637,7 +637,37 @@ def test_five_human_questions_echoing_their_receipts_fit_one_response():
     waiting = FieldResolution(
         field_key=FieldKey.PRECISE_LOCATION, work_state=WorkState.WAITING_HUMAN, question=asked,
         value=FieldValue(state=ValueState.UNRESOLVED, literal=MCKINLEY_LABEL), evidence_ids=asked.evidence_ids,
-        reason="r" * 299).model_dump_json()
+        assembly_ids=("locality",), event_id="event", reason="r" * 299).model_dump_json()
     hex_characters = sum(len(item) for item in re.findall(r"[0-9a-f]{32,}", waiting))
     tokens = hex_characters / 2 + (len(waiting) - hex_characters) / 3
     assert 5 * tokens + 100 <= 4096
+
+
+def test_lookup_citing_resolutions_name_the_assemblies_they_read():
+    # The capture takes a lookup's producer from the citing resolution's assemblies; without them
+    # publication refuses the lookup (application/projection.py lookup_evidence_producer_invalid).
+    text = (Path(prompts.__file__).parent / "specimen_geography-v2.txt").read_text(encoding="utf-8")
+    assert ("Every resolution that cites a GEOLocate lookup names, as the common rules ask,\n"
+            "its accepted/rejected assemblies (assembly_ids") in text and "event (event_id)" in text
+    request = assembled_request("Yepocapa", FieldKey.CITY)
+    [assembly] = request.assemblies
+    result = lookup("yepocapa-modern.json", FieldKey.CITY, YEPOCAPA, "Yepocapa", request)
+    [candidate] = candidates(result)
+    evidence = tuple(item.id for item in result.evidence)
+    resolved = FieldResolution(
+        field_key=FieldKey.CITY, work_state=WorkState.RESOLVED, value_layer="settled", evidence_ids=evidence,
+        assembly_ids=(assembly.id,), event_id=assembly.event_id,
+        value=FieldValue(state=ValueState.SUPPORTED, normalized=candidate["value"], authority_id=candidate["authority_id"],
+                         evidence_ids=list(evidence), evidence_relations=dict.fromkeys(evidence, "supports")),
+        reason="1948 label 'Yepocapa'; modern municipality in Chimaltenango; GEOLocate confirms")
+    assert validate_resolution(request, resolved, (result,)) == resolved
+    unmatched_request = assembled_request(MCKINLEY_LABEL)
+    [locality] = unmatched_request.assemblies
+    unmatched = lookup("mckinley-modern.json", FieldKey.PRECISE_LOCATION, MCKINLEY, MCKINLEY_LABEL, unmatched_request)
+    asked = question(unmatched, FieldKey.PRECISE_LOCATION, "scoped_absence")
+    waiting = FieldResolution(
+        field_key=FieldKey.PRECISE_LOCATION, work_state=WorkState.WAITING_HUMAN, question=asked,
+        value=FieldValue(state=ValueState.UNRESOLVED, literal=MCKINLEY_LABEL), evidence_ids=asked.evidence_ids,
+        assembly_ids=(locality.id,), event_id=locality.event_id,
+        reason="1946 label; no Mount McKinley on Mindanao in GEOLocate")
+    assert validate_resolution(unmatched_request, waiting, (unmatched,)) == waiting
