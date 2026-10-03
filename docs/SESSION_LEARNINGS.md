@@ -14161,3 +14161,46 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
 - Remaining follow-ups: whether the provider forwards property descriptions to the model, and whether the Qwen
   reader's malformed-answer rate falls (2 of 25 retries in the diagnosis), is Not confirmed until live runs; this is
   a reliability change, not a guarantee.
+
+### 2026-10-03 — GEOLocate authority_id without the matched point (Claude)
+
+- Task: dispatched by the coordinator after an independent reviewer ran the offline end-to-end test
+  on Lane H's draft #243 and found the matched point in `field_candidate.authorityId` and in the public geography
+  fields (no task ID recorded). The coordinator's ruling: GEOLocate coordinates stay in evidence and trace only;
+  the uncertainty radius stays in-house (D13).
+- Branch/worktree: `claude/geolocate-authority-id-no-point` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a90f41aeb3445d9dc`,
+  base `main` c6f3c10d, merged with `main` db855ad6 (#242) before the push.
+- Outcome: In progress. Pull request open and ready for review; not merged; nothing in it ran against production, a
+  cloud service or a paid model.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/248; code commit 7abd410f.
+- Validation: the new assertions fail on `main`'s `sources.py` and pass on the change (validator file 8 failed and
+  72 passed before, 80 passed after; capture file 2 failed and 4 passed before, 6 passed after; the new record-field
+  file 1 failed before, 1 passed after). Run one file at a time, all passing on the branch merged with `main`:
+  `test_production_e2e.py` (3 passed, 1 xfailed, as on main), `test_geography_prompt_v2.py`, `test_committed_pins.py`,
+  `test_native_canonical_contract.py`, `test_native_canonical_v2_contract.py`, `test_canonical_projection_v2.py`,
+  `test_canonical_materialization_v2.py`, `tests/test_research_harness_publication.py`,
+  `tests/test_research_harness_publication_integrity.py`, `test_source_capture_v2.py`,
+  `test_canonical_evidence_provider_v2.py`. On a throwaway local merge with #243's head `bd549e9e` (nothing pushed)
+  the e2e scan of the fake tables failed on `field_candidate` with `main`'s `sources.py` and passed with the change.
+  Not run: `scripts/ci/verify.sh`, the full suite, any live GEOLocate call, any database query.
+- Durable learnings:
+  - The e2e geography path and its `CHICAGO` pin are on #243, not on `main`, so a fix off `main` cannot change that
+    pin. Whichever of the two merges second must carry the patch in the pull request description (the new Chicago
+    id is `geolocate:79a9389b0ba6bcaf`).
+  - A candidate's `authority_id` is only compared with the candidate's own (`evidence.validate_resolution`) and copied
+    to `authorityId` (`canonical_projection_v2`, `application.projection`); nothing parses a source's id string. A
+    source id can change format without touching the validator or projector pins (`sources.py` is not byte-pinned;
+    `evidence.py`, `engine.py`, `journal.py`, `model_gateway.py` and `canonical_projection.py` are).
+  - Where the matched point can still be read after this change: the candidate in the tool result and the receipt, the
+    stored full response, and the canonical evidence `excerpt` (`"\n".join(candidate_json)`), which is in the
+    snapshot's `run.evidence` and so in the public workspace JSON's `evidence` list. Whether to take it out of that
+    list is not decided here. On the e2e's fake connector no table row held the point after the change (scanned on
+    the throwaway merge); the historian's own placement is in `tool_call.arguments` by code reading, not scanned.
+  - A regression test whose first assertion checks a format hides the one that matters: the first version of the
+    record-field test failed on the old code at the id format, not at the coordinates. Put the scan first.
+- Failed approaches: none beyond the ordering above.
+- Remaining follow-ups: #243's `CHICAGO` pin and scan (patch in #248); whether any database already holds an
+  old-format `geolocate:<lat>,<lon>` id is Not confirmed (`main`'s `SOURCE_READINESS` has no geolocate row, so no
+  production lookup is expected, but no database was queried); whether the public `evidence` list should keep the
+  point is an open decision.
