@@ -23,7 +23,8 @@ BOTH = ("resource.service == 'sqladmin.googleapis.com' && resource.type == 'sqla
         " || resource.name == 'projects/specimen-digitization/instances/specimen-digitization-restore-20260908-r1')")
 CLAIM = ("resource.name == 'projects/_/buckets/specimen-digitization.firebasestorage.app/objects/"
          "application/release-control/first-production-restore.json'")
-# The exact text after the two time bounds of each time-bounded role's live binding, as read on 2026-09-23.
+# Exact suffixes under the owner's 2026-10-02 SQL-condition correction.
+# The previous Instance expressions remain below as historical refusal inputs.
 LIVE_ON_CLONE = (
     " && resource.service == 'sqladmin.googleapis.com' && resource.type == 'sqladmin.googleapis.com/Instance'"
     " && (resource.name == 'projects/specimen-digitization/instances/specimen-digitization-restore-20260908-r1')")
@@ -32,8 +33,8 @@ LIVE_ON_SOURCE_OR_CLONE = (
     " && (resource.name == 'projects/specimen-digitization/instances/specimen-digitization-instance'"
     " || resource.name == 'projects/specimen-digitization/instances/specimen-digitization-restore-20260908-r1')")
 LIVE_PREDICATES = {
-    "specimenDataInitializeTemporary": LIVE_ON_SOURCE_OR_CLONE,
-    "specimenDataInitializerDisposal": LIVE_ON_SOURCE_OR_CLONE,
+    "specimenDataInitializeTemporary": "",
+    "specimenDataInitializerDisposal": "",
     "specimenDataCloneControl": LIVE_ON_CLONE,
     "specimenDataCloneCreate": LIVE_ON_CLONE,
     "specimenDataRestoreAllowanceClaim": (
@@ -65,13 +66,12 @@ def binding(role_id, member, expression=None, title=None):
 
 
 def policy():
-    """The policy the window next reads: the six time-bounded bindings as they expired on 2026-09-13, the three roles
-    G11 made standing, the two inventory ones with their conditions, and two unrelated."""
+    """Synthetic policy carrying the approved SQL suffix correction and unchanged other bindings."""
     return {"version": 3, "etag": "BwFakeEtag0=", "bindings": [
         binding("specimenDataCloneControl", DATA, timed("2026-09-13T22:25:15Z", INSTANCE)),
         binding("specimenDataCloneCreate", DATA, timed("2026-09-13T22:25:15Z", INSTANCE)),
-        binding("specimenDataInitializeTemporary", INIT, timed("2026-09-13T21:40:15Z", BOTH)),
-        binding("specimenDataInitializerDisposal", DATA, timed("2026-09-13T22:20:15Z", BOTH)),
+        binding("specimenDataInitializeTemporary", INIT, timed("2026-09-13T21:40:15Z")),
+        binding("specimenDataInitializerDisposal", DATA, timed("2026-09-13T22:20:15Z")),
         {"role": f"projects/{PROJECT}/roles/specimenDataInventoryProjectRead", "members": [DATA]},
         binding("specimenDataInventorySqlConnect", DATA,
                 "resource.name == 'projects/specimen-digitization/instances/specimen-digitization-instance'"
@@ -613,3 +613,40 @@ def test_execute_accepts_exact_json_roundtrip_and_preserves_unrelated_policy(tmp
     assert fake.role_body == W.role_body() and fake.set_policy == packet["policy"]["after"]
     assert fake.set_policy["auditConfigs"] == retained["auditConfigs"]
     assert standing(fake.set_policy) == standing(retained) and before == retained
+
+
+def test_sql_roles_accept_only_original_identity_and_fixed_time_bounds():
+    packet = W.plan(policy(), START, START - 60)
+    expected = {"specimenDataInitializeTemporary": (INIT, 75),
+                "specimenDataInitializerDisposal": (DATA, 115)}
+    for role_id, (identity, minutes) in expected.items():
+        actual = find(packet["policy"]["after"], role_id)[0]
+        assert actual["members"] == [identity]
+        assert actual["condition"]["expression"] == W.time_bound(START, minutes)
+    assert {key: value for key, value in W.PREDICATES.items() if key not in expected} == {
+        key: value for key, value in LIVE_PREDICATES.items() if key not in expected}
+
+
+@pytest.mark.parametrize("role_id", ["specimenDataInitializeTemporary", "specimenDataInitializerDisposal"])
+def test_previous_sql_instance_predicate_is_not_silently_adopted(role_id):
+    before = with_rest(policy(), role_id, LIVE_ON_SOURCE_OR_CLONE)
+    retained = copy.deepcopy(before)
+    with pytest.raises(ValueError, match="condition is not the approved time-bound shape"):
+        W.plan(before, START, START - 60)
+    assert before == retained
+
+
+def test_previous_sql_contract_packet_is_refused_before_any_dispatch(tmp_path, monkeypatch):
+    old_policy = copy.deepcopy(policy())
+    for role_id in ("specimenDataInitializeTemporary", "specimenDataInitializerDisposal"):
+        with_rest(old_policy, role_id, LIVE_ON_SOURCE_OR_CLONE)
+    monkeypatch.setattr(W, "PREDICATES", {**W.PREDICATES,
+        "specimenDataInitializeTemporary": LIVE_ON_SOURCE_OR_CLONE,
+        "specimenDataInitializerDisposal": LIVE_ON_SOURCE_OR_CLONE})
+    old_packet = W.plan(old_policy, START, START - 60)
+    monkeypatch.undo()
+    fake = FakeCloud(old_policy)
+    with pytest.raises(ValueError, match="closed three-effect plan"):
+        run(tmp_path, fake, old_packet)
+    assert fake.calls == [] and fake.role_body is None and fake.set_policy is None
+    assert not list(tmp_path.glob("*.intent.json")) and run.receipt is None

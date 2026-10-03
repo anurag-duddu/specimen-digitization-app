@@ -289,3 +289,32 @@ clock, and refuses if the live policy differs from the packet.
 > `specimenDataRuntimeAbsence`. The one-time roles,
 > `specimenDataOwnerBootstrap`, the initializer role and
 > `specimenDataInitializerDisposal`, are also revoked after use.
+
+> 2026-10-02 owner correction: standing approval covers the technical work
+> required to make the application live, including the Cloud SQL permission
+> fix and necessary deploy/invoker grants. Only substantial new financial
+> commitments require another owner decision. The shared consumed-expense
+> budget is USD 25; production and LAB model allowances remain USD 5 each.
+> The earlier requirement to ask the owner again for each technical packet
+> is superseded. Every new bounded packet still records its exact source,
+> effects, clocks, native preconditions and cleanup before execution.
+>
+> For a fresh SQL recovery, only `specimenDataInitializeTemporary` and
+> `specimenDataInitializerDisposal` use time-only project conditions, retaining
+> their existing 11 and 4 permissions, single identities and 75/115-minute
+> expiries. This permits those operations across the project's instances
+> during the window; the reviewed executor verifies the complete instance
+> inventory and its application calls stay bound to the exact source and
+> owned clone. This corrects the proposed access contract without claiming
+> that the precise cause of the prior HTTP 403 has been proven.
+>
+> The other six recovery grants, fixed source/clone/claim ownership and
+> 600-second SQL privilege cap remain unchanged. The fresh executor reuses
+> existing roles, adds exactly eight absent owned bindings with one fresh-etag
+> policy CAS, and removes only those exact bindings with native ACK/readback.
+> The legacy `data_setup_window.py` create/renew profile is not executed for
+> this recovery. Consumed packets remain history. A new protected PR/main
+> push starts a fresh A; B is only attempt 2 after that A succeeds, never a
+> relabelled retry of a failed prior A. No third attempt or automatic renewal
+> is authorized by a packet. Main-only workflows, checks, keyless identities,
+> original deadlines and unknown-effect reconciliation remain required.

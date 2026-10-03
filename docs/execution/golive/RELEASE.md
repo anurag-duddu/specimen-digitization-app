@@ -95,6 +95,18 @@ traded for a passing release:
   recovery must be on; the first apply also restores that backup once into a
   clone and checks it (D1). After every apply, the supplemental SQL indexes
   are re-created concurrently and each is checked by definition.
+- 2026-10-02 owner correction: the initializer and disposal custom roles
+  use time-only project conditions for a fresh reviewed recovery, retaining
+  their exact permissions, identities and 75/115-minute bounds. Their
+  capabilities cover project instances during that window; the executor
+  checks the complete native inventory and the protected application keeps
+  exact source/owned-clone calls. Only those two predicates change; clone and
+  claim grants retain their resource restrictions. The fresh eight-binding
+  activation reuses existing roles, uses one etag CAS and exact owned cleanup;
+  the legacy create/renew helper is not invoked. Standing technical approval
+  replaces another technical consent prompt, while protected PR checks and
+  the steward's current-head review remain required. A fresh main push gives
+  a new A attempt; a failed prior A cannot be relabelled B or replayed.
 - No private value (administrator or bootstrap identities, organization or
   collection ids, tokens) appears in a workflow log or artifact, because both
   are public in this repository.
