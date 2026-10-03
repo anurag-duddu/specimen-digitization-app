@@ -54,7 +54,6 @@ def registered_capture_policies(source_pins, registry):
             raise StaleWork("research_capture_policy_source_pin_changed")
         policies[source_id] = policy
     # Unqualified/denied sources are never silently changed to full-body capture.
-    # The actual broker refuses Google until its approved minimal adapter exists.
     return policies
 
 

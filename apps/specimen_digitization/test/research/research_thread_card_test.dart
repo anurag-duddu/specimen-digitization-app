@@ -313,11 +313,12 @@ void main() {
     'gbif': 'GBIF',
     'bugguide': 'BugGuide',
     'mapcarta': 'Mapcarta',
-    'google_maps': 'Google Maps',
     'geolocate': 'GEOLocate',
     'field_museum_ipt': 'Field Museum IPT',
     'field_museum_emudata': 'Field Museum EMu data',
     'unknown_registry_source': 'Research source',
+    // Retired 2026-10-03 (owner G-geo-1); a stored row reads generically.
+    'google_maps': 'Research source',
   }.entries) {
     testWidgets(
       'displays approved source name and scope without raw provenance codes: '

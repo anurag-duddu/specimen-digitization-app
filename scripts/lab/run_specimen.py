@@ -27,8 +27,7 @@ PRICES = {"handwriting-qwen": (0.20, 0.70), "handwriting-muse": (0.30, 1.20)}
 # SAM 3 endpoint into a run's dependencies, so it reaches snapshot.json) and billing ids. Private values
 # such as the administrator's UID come from the file LAB_REDACT_VALUES_FILE names.
 TOKEN_VARIABLES = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "HUGGINGFACEHUB_API_TOKEN", "LOGFIRE_TOKEN",
-                   "LOGFIRE_READ_TOKEN", "SPECIMEN_SAM3_ENDPOINT", "SPECIMEN_SAM3_LAB_TOKEN",
-                   "SPECIMEN_GOOGLE_MAPS_API_KEY", "HF_BILL_TO")
+                   "LOGFIRE_READ_TOKEN", "SPECIMEN_SAM3_ENDPOINT", "SPECIMEN_SAM3_LAB_TOKEN", "HF_BILL_TO")
 SHAPES = re.compile(
     r"hf_[A-Za-z0-9]{16,}|(?<=Bearer )[A-Za-z0-9._~+/=-]+|ya29\.[A-Za-z0-9._-]+"
     r"|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"
@@ -43,7 +42,7 @@ TEXT_SUFFIXES = {".json", ".jsonl", ".md", ".txt", ".log", ".csv", ".html", ".xm
 MIN_VALUE = 3  # a shorter private value is never matched
 VALUE = re.compile(r"[A-Za-z0-9._@:+-]+")  # one value per line; ":" is kept for Cloud SQL connection names
 REPOSITORY = Path(__file__).resolve().parents[2]
-PRIVATE_ROOT = Path.home() / "specimen-release-private"  # PLAN 840: private artifacts, never in a repository
+PRIVATE_ROOT = Path.home() / "specimen-release-private"  # PLAN 871: private artifacts, never in a repository
 # Fields that name a person, redacted by field wherever they appear (PLAN 7.7): the snapshot's uploader,
 # actors and classification_selection.actor_id, and the SQL columns, including SourceAsset.uploaderUid and
 # ProfileVersion.approvedBy.
@@ -180,7 +179,7 @@ def preflight(options, env, loadavg):
 
 def values_file(name):
     """The private values the redactor needs, and any reason to refuse. The file must be under
-    ~/specimen-release-private/ (PLAN 840): its location is checked before any read, and it is read once,
+    ~/specimen-release-private/ (PLAN 871): its location is checked before any read, and it is read once,
     from the resolved path."""
     if not name:
         return set(), ["LAB_REDACT_VALUES_FILE is not set"]
