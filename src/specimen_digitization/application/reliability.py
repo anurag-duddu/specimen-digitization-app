@@ -22,6 +22,18 @@ class AdapterFailure(RuntimeError):
         self.outcome_unknown = outcome_unknown
 
 
+class ReadingStopped(RuntimeError):
+    """A reading stopped by its token limits (#153).
+
+    It is a failed reading with a known outcome: its step completes with no
+    observation, and the run goes on.
+    """
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
 def retry_after(value: str | None, current: datetime | None = None) -> int | None:
     if not value:
         return None

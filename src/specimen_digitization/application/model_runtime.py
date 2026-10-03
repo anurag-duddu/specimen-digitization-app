@@ -17,7 +17,7 @@ from .domain import (
     Region,
     Transcript,
 )
-from .reliability import AdapterFailure
+from .reliability import AdapterFailure, ReadingStopped
 from .storage import LocalBlobs
 
 
@@ -105,6 +105,9 @@ def _model_child(payload):
         else:
             raise ValueError("Unknown trusted model operation")
         return json.dumps({"status": "completed", "value": value}).encode()
+    except ReadingStopped as exc:
+        # A reading stopped by its token limits crosses as a known status (#153).
+        return json.dumps({"status": "stopped", "code": exc.code}).encode()
     except AdapterFailure as exc:
         return json.dumps(
             {
@@ -187,6 +190,8 @@ def invoke_model(
         )
     if body["status"] == "blocked":
         raise OperationalBlock(body["code"])
+    if body["status"] == "stopped":
+        raise ReadingStopped(body["code"])
     if body["status"] != "completed":
         raise OperationalBlock("external_outcome_unknown")
     value = body["value"]
