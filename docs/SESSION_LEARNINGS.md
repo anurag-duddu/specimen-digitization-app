@@ -14053,8 +14053,9 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
   Python assertion) and passes on the fix. 24 projection, first-pass and research-harness canonical test files run one
   at a time, all passed (`test_sqlconnect_projection.py` skipped, 2 tests); `tests/test_deployment_policy.py`
   passed. A differential render of `writes()` from main's file and the fixed file on one fixture state: resolved
-  regions byte-identical, only the unresolved identical region differs. `pre-commit` on the changed files: all
-  hooks passed. Not run: the full suite (CI runs it), anything against Data Connect or production.
+  regions byte-identical, only the unresolved identical region differs. `pre-commit` at commit time: detect-secrets
+  and gitleaks, the two hooks that failed first, passed after the pragma change; the other hooks' results are Not
+  confirmed here. Not run: the full suite (CI runs it), anything against Data Connect or production.
 - Durable learnings:
   - `CANONICAL_PROJECTOR_SHA256` in `research_harness/native_canonical.py` is the SHA-256 of
     `application/projection.py`. Any edit to the projection, even a comment, must re-pin it in the same commit, or
@@ -14070,6 +14071,6 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
     kept running after the call returned and wrote into the same results file as the later foreground run.
 - Failed approaches: updating the hashed_secret in `.secrets.baseline` (blocked by gitleaks, see above).
 - Remaining follow-ups: re-projecting the already-affected production specimen adds a new
-  `TranscriptionVersion` row and handoffs and leaves the old wrong row (no delete operations exist); about 10
-  percent of real slides may contain an unreadable region; whether the research-harness canonical publication
-  path is live is Not confirmed.
+  `TranscriptionVersion` row and handoffs and leaves the old wrong row (no delete operations exist); the production
+  diagnosis estimated roughly 10 percent of real slides have an unreadable region (an estimate from its sample,
+  not checked here); whether the research-harness canonical publication path is live is Not confirmed.
