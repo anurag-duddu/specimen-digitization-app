@@ -36,7 +36,7 @@ LITERAL_ROLES = (SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT, Specialist
 # sha256 of each file's bytes: the v2 files as on main (unchanged), the v3 files as added.
 FILE_SHA256 = {
     "specimen_taxonomy-v2.txt": "832626c5d7082d33a4f249bce2fca2746f959247653e523117d2cdfacb361092",  # pragma: allowlist secret
-    "specimen_taxonomy-v3.txt": "d1f4ed014f04e0819c1fccfdac14987ee505283dec04da504035b829059ee38c",  # pragma: allowlist secret
+    "specimen_taxonomy-v3.txt": "5bde5b017b1f48827088bbaa8633d2444e97327329d7cb9a4db26a8eed398ff4",  # pragma: allowlist secret
     "specimen_geography-v2.txt": "06609acdab2752826f718b292b73a19061d8014b900c646cc4fb5466253d0330",  # pragma: allowlist secret
     "specimen_geography-v3.txt": "3de92fe3d10151e44e9ff0b9e0e8b8d5c2ea1fb75988fb62ae0f6afbc3a56bb0",  # pragma: allowlist secret
     "specimen_temporal-v2.txt": "ec316a45ca2a0b208e2dd842b89691c684639fb9ae1918a181f969f4418f0ac2",  # pragma: allowlist secret
@@ -50,7 +50,7 @@ FILE_SHA256 = {
 }
 # Each role's pin digest on its v3 file (the digest of common-v1.txt, the v3 file and the owned-fields line).
 V3_ROLE_DIGESTS = {
-    SpecialistRole.TAXONOMY: "8c8e6993f24afc74e60316e2d917478dbdb9043f4eb060518a85070007d2fe6d",  # pragma: allowlist secret
+    SpecialistRole.TAXONOMY: "c9e829ef3fadecaf7fc1b2ded0b8dbeb7c810f8e5b290d2ced11ce88ab4b174f",  # pragma: allowlist secret
     SpecialistRole.GEOGRAPHY: "3b0ce24954241b9093c7507cc978b7d055af7b0fd64003846b2eab327719b850",  # pragma: allowlist secret
     SpecialistRole.TEMPORAL: "b83b5ba03709c5beb478c125f2dd9cc434accfdcfca7c4c41805ae79b39a7632",  # pragma: allowlist secret
     SpecialistRole.MEASUREMENT: "f1376cffa6d7a0051e091ef8b9eff6b14779a864300e30d6b03985342d4a650b",  # pragma: allowlist secret
@@ -157,7 +157,10 @@ def test_taxonomy_keeps_waiting_source_for_a_failed_lookup():
     text = flat(block(SpecialistRole.TAXONOMY))
     assert ("If a lookup failed, timed out, was rate limited or refused, or its source is not configured, "
             "return waiting_source as above") in text
-    assert "that is operational, it blocks the record and it is retried" in text
+    assert "that is operational and blocks the record." in text
+    # The engine retries only operational_failed and retry_scheduled fields (engine.py), never a
+    # waiting_source, so the prompt does not say it is retried.
+    assert "retried" not in text
 
 
 def test_geography_keeps_waiting_source_for_a_failed_lookup():

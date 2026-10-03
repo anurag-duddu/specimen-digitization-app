@@ -18,12 +18,37 @@ from pydantic_ai.usage import UsageLimits
 from pydantic_ai_harness import ManagedPrompt, StepPersistence, SubAgent, SubAgents
 from pydantic_ai_harness.step_persistence import StepStore
 
+from specimen_digitization.application.domain import OPERATIONAL, LookupStatus
 from specimen_digitization.provider_privacy import agent_instrumentation
 
-from .contracts import FieldResolution, PromptPin, SpecialistRequest, SpecialistRole, SourceQuery, SourceResult
+from .contracts import (
+    FieldKey, FieldResolution, PromptPin, SpecialistRequest, SpecialistRole, SourceQuery, SourceResult, WorkState,
+)
 from .gateway import EffectModel, ModelGatewayBlocked
 from .package_qualification import SERIALIZATION_VERSION, qualify_packages
 from .telemetry import ResearchTrace, TraceIdentity
+
+
+# A waiting_policy on a field the pinned profile declares missing policy is held for
+# review (committed_pins.UNQUALIFIED_LABEL_FIELDS), and evidence.validate_resolution passes
+# any waiting_policy. So a model could hide a source outage behind it. These three declared
+# fields have a ready source; the twelve literals have none, so there is nothing to hide.
+# Like HumanQuestion, which refuses to turn an outage into review, the output validator
+# refuses a waiting_policy after a lookup of that field ended in a typed failure.
+OUTAGE_GUARDED_FIELDS = frozenset({FieldKey.TAXON, FieldKey.COUNTY, FieldKey.CITY})
+# policy_blocked is not an outage: a refused query or an unqualified source.
+SOURCE_OUTAGES = OPERATIONAL - {LookupStatus.POLICY}
+
+
+def masked_outages(resolutions: Sequence[FieldResolution], results: Sequence[SourceResult]) -> tuple[FieldKey, ...]:
+    """Guarded fields answered waiting_policy though a source's last lookup of the field failed.
+
+    A later completed answer (success, no_match, ambiguous) from the same source clears its failure.
+    It cannot see a model that never called the source."""
+    last = {(item.coverage.source_id, item.coverage.field_key): item.status for item in results}
+    failed = {key for (_, key), status in last.items() if status in SOURCE_OUTAGES}
+    return tuple(item.field_key for item in resolutions if item.work_state == WorkState.WAITING_POLICY
+                 and item.field_key in OUTAGE_GUARDED_FIELDS and item.field_key in failed)
 
 
 class SpecialistOutput(BaseModel):
@@ -309,12 +334,17 @@ class SpecialistHarness:
             fields = tuple(result.field_key for result in output.resolutions)
             if output.role != request.role or len(set(fields)) != len(fields) or set(fields) != set(request.field_keys):
                 raise ModelRetry("specialist_output_does_not_cover_exact_requested_fields")
+            results = tuple(ctx.deps.tool_results.get(request.role, ()))
             try:
                 for resolution in output.resolutions:
-                    validate_resolution(request, resolution,
-                                        tuple(ctx.deps.tool_results.get(request.role, ())))
+                    validate_resolution(request, resolution, results)
             except ValueError:
                 raise ModelRetry("specialist_output_has_invalid_evidence_or_scope") from None
+            masked = masked_outages(output.resolutions, results)
+            if masked:
+                raise ModelRetry("specialist_output_hides_a_failed_lookup_behind_waiting_policy: a lookup for "
+                                 + ", ".join(key.value for key in masked)
+                                 + " failed; return waiting_source for it, which blocks the record")
             return output
 
     async def run_specialist(self, role: SpecialistRole, *,

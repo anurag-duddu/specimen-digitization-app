@@ -17,18 +17,19 @@ import pytest
 
 from specimen_digitization.application.collection_profiles import published_registry
 from specimen_digitization.research_harness import committed_pins, evidence, initial_requests
+from specimen_digitization.research_harness.agents import OUTAGE_GUARDED_FIELDS, SOURCE_OUTAGES, masked_outages
 from specimen_digitization.research_harness.accepted_output import VALIDATOR_SOURCE_SHA256
 from specimen_digitization.research_harness.canonical_materialization_v2 import BLOCKED, TERMINAL, _policy_held
 from specimen_digitization.research_harness.committed_pins import build_committed_pins
 from specimen_digitization.research_harness.contracts import (
     ALL_FIELDS, ROLE_FIELDS, CollectionProfile, FieldKey, FieldResolution, HumanQuestion, ResearchScope,
-    SourceCoverageReceipt, SourceCoverageState, SpecialistRequest, WorkState, digest,
+    SourceCoverageReceipt, SourceCoverageState, SourceResult, SpecialistRequest, WorkState, digest,
 )
 from specimen_digitization.research_harness.evidence import insects_profile, validate_resolution
 from specimen_digitization.research_harness.prompts import resolve_prompt
 from specimen_digitization.research_harness.sources import geolocate_interpretation
 from specimen_digitization.research_harness.status import ResearchStatusV1
-from specimen_digitization.application.domain import FieldValue, ValueState
+from specimen_digitization.application.domain import FieldValue, LookupStatus, ValueState
 
 from test_production_bridge import checkpoint, thread, waiting
 
@@ -181,3 +182,68 @@ def test_the_run_status_waits_on_people_for_a_held_field_and_blocks_for_a_failed
     assert status(thread(failed)) == "blocked"
     # Without the profile's declaration the same waiting_policy is an operational block.
     assert ResearchStatusV1.from_thread(thread(held)).status == "blocked"
+
+
+# ---- the outage guard (agents.masked_outages) -------------------------------------------------
+# evidence.validate_resolution passes any waiting_policy and the pinned profile holds one on a declared
+# field for review, so a model could hide a source outage behind it. The output validator refuses a
+# waiting_policy on taxon, county or city after a lookup of that field ended in a typed failure.
+TYPED_FAILURES = {LookupStatus.RATE_LIMITED, LookupStatus.TIMEOUT, LookupStatus.AUTHENTICATION,
+    LookupStatus.AUTHORIZATION, LookupStatus.PROVIDER, LookupStatus.MALFORMED}
+GUARDED = {FieldKey.TAXON, FieldKey.COUNTY, FieldKey.CITY}
+
+
+def lookup(source, key, status):
+    state = SourceCoverageState.FAILED if status in TYPED_FAILURES else SourceCoverageState.SEARCHED
+    return SourceResult(status=status, coverage=coverage(source, key, state, status.value))
+
+
+def answer(key, state=WorkState.WAITING_POLICY):
+    return FieldResolution(field_key=key, work_state=state, value=FieldValue(), reason="missing_policy")
+
+
+def test_the_guard_covers_the_declared_fields_that_have_a_ready_source_and_only_typed_failures():
+    assert OUTAGE_GUARDED_FIELDS == GUARDED and GUARDED <= DECLARED and not GUARDED & LITERALS
+    assert SOURCE_OUTAGES == TYPED_FAILURES and LookupStatus.POLICY not in SOURCE_OUTAGES
+    ready = {key: [p.id for p in committed_pins._committed_registry().policies if p.ready and key in p.fields]
+             for key in GUARDED}
+    assert all(ready.values())
+
+
+@pytest.mark.parametrize("status", sorted(TYPED_FAILURES))
+@pytest.mark.parametrize("key", sorted(GUARDED))
+def test_a_waiting_policy_after_a_typed_failure_of_its_own_field_is_masked(key, status):
+    assert masked_outages([answer(key)], [lookup("any_source", key, status)]) == (key,)
+
+
+@pytest.mark.parametrize("status", [LookupStatus.SUCCESS, LookupStatus.NO_MATCH, LookupStatus.AMBIGUOUS,
+    LookupStatus.EMPTY, LookupStatus.POLICY])
+@pytest.mark.parametrize("key", sorted(GUARDED))
+def test_a_completed_answer_or_a_refused_probe_masks_nothing(key, status):
+    assert masked_outages([answer(key)], [lookup("any_source", key, status)]) == ()
+
+
+def test_a_later_completed_answer_of_the_same_source_clears_its_failure_and_another_source_does_not():
+    key = FieldKey.TAXON
+    failed, no_match = lookup("gbif", key, LookupStatus.PROVIDER), lookup("gbif", key, LookupStatus.NO_MATCH)
+    assert masked_outages([answer(key)], [failed, no_match]) == ()
+    assert masked_outages([answer(key)], [no_match, failed]) == (key,)
+    # GBIF decides: its failure is not cleared by another source's no_match.
+    assert masked_outages([answer(key)], [failed, lookup("catalogue_of_life", key, LookupStatus.NO_MATCH)]) == (key,)
+
+
+def test_the_guard_looks_only_at_waiting_policy_on_the_failed_field_and_never_at_the_literals():
+    outage = [lookup("gbif", FieldKey.TAXON, LookupStatus.PROVIDER)]
+    assert masked_outages([answer(FieldKey.TAXON, WorkState.WAITING_SOURCE)], outage) == ()
+    assert masked_outages([answer(FieldKey.TAXON, WorkState.OPERATIONAL_FAILED)], outage) == ()
+    assert masked_outages([answer(FieldKey.CITY)], outage) == ()  # another field's failure
+    # A literal has no ready source, so a failure cannot exist for it; were one recorded, it is not guarded.
+    assert masked_outages([answer(FieldKey.HABITAT)], [lookup("any_source", FieldKey.HABITAT, LookupStatus.PROVIDER)]) == ()
+
+
+def test_the_guard_moves_no_pin():
+    """agents.py is hashed by no pin: the acceptance boundary names the validator, engine and journal
+    sources only, so adding the guard leaves every committed pin as it was."""
+    boundary = pins()["sources"]["acceptance_boundary"]
+    assert {key for key in boundary if key.endswith("_sha256")} == {
+        "validator_source_sha256", "engine_source_sha256", "journal_source_sha256"}

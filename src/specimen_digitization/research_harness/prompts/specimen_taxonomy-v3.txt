@@ -30,5 +30,5 @@ no evidence ids, no question, reason "missing_policy:unstructured_label_event_un
 followed by what the readings show and which lookups completed. Never propose a
 taxon the readings do not name. If a lookup failed, timed out, was rate limited or
 refused, or its source is not configured, return waiting_source as above, even
-beside a no_match from another source: that is operational, it blocks the record
-and it is retried. A taxon with an accepted match resolves as above.
+beside a no_match from another source: that is operational and blocks the record.
+A taxon with an accepted match resolves as above.
