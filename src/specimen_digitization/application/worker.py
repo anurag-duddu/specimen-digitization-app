@@ -12,6 +12,7 @@ from uuid import NAMESPACE_URL, uuid5
 from dataclasses import dataclass, field
 import logfire
 from pathlib import Path
+from ..process_logging import configure_process_logging
 from .api import SYNTHETIC_TEXT, SYNTHETIC_COLLECTION, SYNTHETIC_ORG
 from .domain import AuditEvent, Principal, Scope, now
 from .production import (
@@ -629,6 +630,7 @@ def main():
         "--persistence", choices=["sqlite", "sql-emulator"], default="sqlite"
     )
     args = parser.parse_args()
+    configure_process_logging()
     if args.drain:
         _drain_main(parser, args)
         return
