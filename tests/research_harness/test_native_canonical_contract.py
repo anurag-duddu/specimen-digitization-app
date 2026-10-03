@@ -96,7 +96,10 @@ def basis():
     organization, collection, specimen_id, run_id = (ident(v) for v in ("org","collection","specimen","run"))
     principal = Principal(user_id="reviewer-A",scope=Scope(organization_id=organization,collection_id=collection),role="reviewer")
     research_profile = CollectionProfile(id="insects",version="fixture-v1",organization_id=organization,
-        collection_id=collection,ancestry=(),fields=tuple(FieldProfile(field_key=key) for key in ALL_FIELDS),knowledge_version="fixture-v1")
+        collection_id=collection,ancestry=(),knowledge_version="fixture-v1",
+        # verbatim_dts declares its missing policy, as the production profile does.
+        fields=tuple(FieldProfile(field_key=key,missing_policy="verbatim_dts_definition_examples"
+            if key == FieldKey.VERBATIM_DTS else None) for key in ALL_FIELDS))
     pins = {"input_digest":digest("research-input-distinct-from-image"),"profile":research_profile.model_dump(mode="json"),
             "test_only":"No provider/native authority"}
     scope = ResearchScope(organization_id=organization,collection_id=collection,specimen_id=specimen_id,
@@ -628,6 +631,37 @@ def genuine_derivation(basis,kind):
     derived=next(value for value in results if value.field_key==target)
     source=next(value for value in results if value.field_key==derived.derivation.source_field)
     return request,source,derived
+
+
+def helper_resolutions(scope,kind):
+    """The evidence.py helpers' own results for synthetic label text: a written
+    determination date ("date") or one written elevation ("elevation"). Neither
+    helper sets value.evidence_relations."""
+    from specimen_digitization.research_harness.contracts import (
+        EventHypothesis,EventKind,ROLE_FIELDS,SourceFragment,SpecialistRole,SpecialistRequest)
+    from specimen_digitization.research_harness.evidence import (
+        assemble_field,elevation_resolutions,settle_elevation,temporal_resolutions)
+    from specimen_digitization.research_harness.prompts import resolve_prompt
+    from specimen_digitization.research_harness.sources import insects_registry
+    if kind=="date":
+        text,field,role,event_kind="3 IX '46",FieldKey.DATE_IDENTIFIED,SpecialistRole.TEMPORAL,EventKind.DETERMINATION
+    else:
+        text,field,role,event_kind="100 ft",FieldKey.ELEVATION_FROM_FT,SpecialistRole.MEASUREMENT,EventKind.COLLECTING
+    fragment=SourceFragment(id="helper-fragment",scope=scope,asset_id=ident("asset"),asset_generation="1",
+        asset_digest="0"*64,label_id=ident("label"),region_id=ident("region"),observation_id=ident("reading"),
+        reader="independent-fixture-reader",model_id="fake",prompt_digest="0"*64,observation_text=text,
+        observation_digest=hashlib.sha256(text.encode()).hexdigest(),start=0,end=len(text),literal=text,order=0)
+    event=EventHypothesis(id="helper-event",scope=scope,kind=event_kind,fragment_ids=(fragment.id,),
+        evidence_ids=("role-evidence",),reason="Synthetic independently accepted input",status="accepted",
+        validator_version="fixture-v1")
+    assembly=assemble_field(assembly_id="helper-assembly",scope=scope,field_key=field,fragments=(fragment,),event=event)
+    prompt=resolve_prompt(role,profile_digest=scope.profile_digest,source_registry_digest=insects_registry().digest,
+        toolset_digest="0"*64,model_route="harness-deepseek",output_schema_digest="0"*64)
+    request=SpecialistRequest(scope=scope,role=role,field_keys=ROLE_FIELDS[role],prompt=prompt,
+        fragments=(fragment,),events=(event,),assemblies=(assembly,))
+    if kind=="date":
+        return request,temporal_resolutions(request,event_id=event.id)
+    return request,elevation_resolutions(settle_elevation(request,assembly_ids=(assembly.id,)))
 
 
 @pytest.mark.parametrize("kind",["G44","G41-ft","G41-m"])

@@ -76,11 +76,14 @@ def writes(
     reviewer: bool = False,
     *,
     review_proofs: list[ReviewDecisionProof] | None = None,
+    base_record: bool = False,
 ) -> list[Write]:
     """Every row the specimen supports so far, each after the rows it references.
 
     Review decisions and reviewers' transcript decisions are included only for a
-    reviewer's save: their operations admit no other role.
+    reviewer's save: their operations admit no other role. `base_record` writes
+    the record version before any disposition exists: the research harness needs
+    the run's base record at plan.
     """
     result = [_original(specimen, locate)]
     run = specimen.run
@@ -127,7 +130,7 @@ def writes(
     ]
     candidates: dict[str, str | None] = {}
     result += _fields(run, decisions, linkable, candidates)
-    if run.disposition:
+    if run.disposition or base_record:
         result += _record(run, candidates, recorded)
     if reviewer:
         result += _review_decisions(specimen, review_proofs)
@@ -627,7 +630,10 @@ def _record(run: Run, candidates: dict, recorded: set) -> list[Write]:
     reasons = list(run.reasons)
     findings = list(getattr(run, "findings", None) or [])
     disposition = _value(run.disposition)
-    summary = getattr(run, "disposition_summary", None) or "; ".join(reasons) or disposition
+    # record_version.summary is required; a base record has no disposition yet.
+    summary = (
+        getattr(run, "disposition_summary", None) or "; ".join(reasons) or disposition or run.stage
+    )
     content = {
         "disposition": disposition,
         "reasons": reasons,

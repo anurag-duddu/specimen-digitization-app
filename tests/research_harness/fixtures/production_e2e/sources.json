@@ -1,0 +1,14 @@
+{
+  "gbif": {
+    "url": "https://api.gbif.org/v2/species/match?scientificName=Danaus+plexippus&taxonRank=SPECIES&kingdom=Animalia&class=Insecta&checklistKey=7ddf754f-d193-4cc9-b351-99906754a03b&verbose=true",
+    "body": "gbif-species-match.json"
+  },
+  "global_names_verifier": {
+    "url": "https://verifier.globalnames.org/api/v1/verifications/Danaus%20plexippus",
+    "body": "global-names-verification.json"
+  },
+  "catalogue_of_life": {
+    "url": "https://api.checklistbank.org/dataset/316321/nameusage/search?q=Danaus+plexippus&limit=3",
+    "body": "catalogue-of-life-nameusage-search.json"
+  }
+}

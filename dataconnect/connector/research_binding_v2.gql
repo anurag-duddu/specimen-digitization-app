@@ -55,21 +55,14 @@ query GetCanonicalResearchBindingV2($organizationId: UUID!, $collectionId: UUID!
           AND e.value->'command'->'scope'->>'collection_id'=b.collection_id::text
           AND e.value->'command'->'scope'->>'specimen_id'=b.specimen_id::text AND e.value->'command'->'scope'->>'job_id'=b.job_id),
         'hold_reasons',to_jsonb(array_remove(ARRAY[
-          CASE WHEN authority.id IS NULL OR NOT authority.authority_complete OR NOT authority.old_engine_quiescent
-            OR authority.valid_until<=statement_timestamp() OR legacy.revision IS DISTINCT FROM authority.legacy_document_revision
-            OR legacy.payload IS DISTINCT FROM authority.legacy_payload
-            OR authority.ledger_digest IS DISTINCT FROM h.state->'budget_policy'->>'external_ledger_digest'
-            OR authority.import_digest IS DISTINCT FROM h.state->'budget_policy'->>'import_digest'
-            OR authority.proof_digest IS DISTINCT FROM h.state->'budget_policy'->>'import_proof_digest'
-            THEN 'legacy_live_import_not_confirmed' END,
           CASE WHEN (h.state->>'halted')::boolean THEN 'program_halted' END,
           CASE WHEN (h.state->'jobs'->b.job_key->>'paused')::boolean THEN 'job_paused' END,
           CASE WHEN EXISTS (SELECT 1 FROM jsonb_each(h.state->'effects') e WHERE e.value->>'job_key'=b.job_key
             AND e.value->>'status' IN ('sending','held_unknown')) THEN 'unknown_effect' END,
-          CASE WHEN authority.id IS NULL OR authority.ceiling_micro_usd<=0 OR authority.ceiling_micro_usd>12000000
+          CASE WHEN COALESCE((h.state->'budget_policy'->>'ceiling_micro_usd')::bigint NOT BETWEEN 1 AND 12000000
             OR (h.state->'budget_totals'->>'settled_micro_usd')::bigint
-              +(h.state->'budget_totals'->>'held_micro_usd')::bigint+authority.lag_reserve_micro_usd
-              +authority.shared_reserve_micro_usd>authority.ceiling_micro_usd THEN 'budget_unavailable' END
+              +(h.state->'budget_totals'->>'held_micro_usd')::bigint
+              >(h.state->'budget_policy'->>'ceiling_micro_usd')::bigint,true) THEN 'budget_unavailable' END
         ],NULL))),
       'publication_transition', NULL
     )) END AS registrations,
@@ -101,11 +94,6 @@ query GetCanonicalResearchBindingV2($organizationId: UUID!, $collectionId: UUID!
     LEFT JOIN public.pipeline_run run ON run.organization_id=b.organization_id AND run.collection_id=b.collection_id
       AND run.id=b.canonical_run_id AND run.id=s.active_run_id AND run.specimen_id=s.id
     LEFT JOIN public.research_harness_state h ON h.organization_id=b.organization_id AND h.program_key=b.program_key
-    LEFT JOIN public.research_ledger_import_proof_v1 authority ON authority.organization_id=h.organization_id
-      AND authority.program_key=h.program_key AND authority.id::text=h.state->'budget_policy'->>'import_receipt_id'
-    LEFT JOIN public.auxiliary_document legacy ON legacy.organization_id=authority.organization_id
-      AND legacy.collection_id=authority.legacy_collection_id AND legacy.id=authority.legacy_document_id
-      AND legacy.kind=authority.legacy_document_kind AND authority.legacy_document_kind='worker_cursor'
     LEFT JOIN public.research_publication_receipt_v2 p ON p.organization_id=b.organization_id
       AND p.collection_id=b.collection_id AND p.id=b.current_receipt_id AND p.specimen_id=b.specimen_id
     WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
@@ -140,12 +128,6 @@ mutation RegisterCanonicalResearchBindingV2($organizationId: UUID!, $collectionI
       WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3 AND s.revision>=1
         AND r->>'publication_version'='research-publication/v2'
         AND r->>'authority_digest'<>'' AND r->>'current_chain_digest'<>''
-        AND EXISTS (SELECT 1 FROM public.research_ledger_import_proof_v1 proof WHERE proof.organization_id=$1
-          AND proof.program_key=r->>'program_key' AND proof.id=(r->>'import_proof_id')::uuid
-          AND proof.proof_digest=r->>'import_proof_digest' AND proof.authority_complete
-          AND proof.old_engine_quiescent AND proof.valid_until>statement_timestamp()
-          AND proof.id::text=h.state->'budget_policy'->>'import_receipt_id'
-          AND proof.proof_digest=h.state->'budget_policy'->>'import_proof_digest')
         AND s.revision=(r->'base_canonical'->>'record_revision')::integer
         AND s.active_run_id=(r->'base_canonical'->>'canonical_run_id')::uuid
         AND snap.sha256=r->'base_canonical'->>'snapshot_sha256'

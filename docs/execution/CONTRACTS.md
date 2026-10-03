@@ -243,7 +243,7 @@ approved semantics/policy and any required human approval. Risk scores cannot
 override these gates. Deferred requires documented capability limitation,
 exhausted viable approved attempts and retry eligibility. Missing configuration,
 429, timeout, invalid credentials, outage, budget exhaustion and code error are
-operational blocks. No reviewer action may simply waive missing evidence.
+operational blocks. No reviewer action may simply waive missing evidence. 2026-10-03 (coordinator engineering call, ruling 7, citing owner G6): a GEOLocate no_match or ambiguous outcome for a geography field is a scientific result, not an operational block; it reaches Needs human review with that field's GEOLocate receipts (`contracts.HumanQuestion`), the one exception to "human questions need exhausted sources". Every outage stays an operational block.
 
 > 2026-09-23: Superseded for the go-live program, for the lane, by [`docs/execution/golive/PLAN.md` section 2.1](golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1.
 > Two clearance gates above no longer apply: "approved semantics/policy" (the

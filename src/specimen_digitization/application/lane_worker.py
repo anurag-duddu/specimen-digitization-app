@@ -30,15 +30,23 @@ MAX_IDLE_HANDOVERS = 3  # Consecutive hand-overs without progress, then stop.
 RUN_STALLED = "lane_run_not_progressing"
 HANDOVER_STALLED = "lane_handover_without_progress"
 # One record's own hold: the native worker's blocked outcome codes
-# (native_worker.py), raised by the bridge at workflow_bridge.py 52-53. The
-# drain blocks that run and moves on. A step's other errors, save conflicts
-# aside, still end the execution, so an authorization, budget, configuration
-# or storage failure is not recorded against each record in turn.
+# (native_worker.py) and the run's own refusals (workflow_bridge.RECORD_REFUSALS),
+# each raised by the bridge (NativeResearchWorkflow.step). The drain blocks that
+# run and moves on. A step's other errors, save conflicts aside, still end the
+# execution, so an authorization, program budget, configuration or storage
+# failure is not recorded against each record in turn. A run's own research
+# allowance is one state document per run, so its exhaustion is that record's.
 RECORD_HOLDS = frozenset(
     {
         "accepted_output_proof_unavailable",
         "native_publication_requires_reconciliation",
         "native_research_operational_hold",
+        "research_committed_pins_changed",
+        "research_live_admission_unqualified",
+        "research_program_headroom_unavailable",
+        "research_provision_registration_refused",
+        "research_provision_run_unavailable",
+        "research_provision_state_conflict",
         "research_retry_not_completed",
         "research_worker_custody_requires_reconciliation",
     }
