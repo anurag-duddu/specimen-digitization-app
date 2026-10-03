@@ -29,8 +29,9 @@ from .status import ResearchStatusV1, ResearchOutputV1
 from .discovery import ResearchDiscovery, ResearchDiscoveryResult
 
 LOGGER = logging.getLogger(__name__)
-# The repository's fixed-code exception types. Every raise site passes a short
-# code and nothing else, so the code is safe to log (log_code still checks it).
+# The repository's fixed-code exception types: raised with a short code as the
+# only argument. log_code checks that shape before anything is logged, so a
+# message that is not a code is dropped rather than written.
 _FIXED_CODE_ERRORS = (PublicationUnavailable, BindingUnavailable)
 _NO_CACHE = {"Cache-Control":"no-store, private", "Pragma":"no-cache"}
 IdentifierPath = Annotated[str, Path(min_length=1, max_length=100)]

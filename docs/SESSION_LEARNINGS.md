@@ -14161,3 +14161,49 @@ Validation: full Python suite at f3e8e7e6, 9,392 passed, 106 skipped, 0 failed. 
 - Remaining follow-ups: whether the provider forwards property descriptions to the model, and whether the Qwen
   reader's malformed-answer rate falls (2 of 25 retries in the diagnosis), is Not confirmed until live runs; this is
   a reliability change, not a guarantee.
+
+### 2026-10-03 — Lane Q: log the cause of silent failure paths (Claude)
+
+- Task: `lane-q-failure-logging` (Lane Q, PR-OBS; dispatched by the Go-live coordinator from the 2026-10-03 production
+  log scan, items D3 and D5).
+- Branch/worktree: `claude/lane-q-failure-logging` at
+  `/Users/anuragduddu/code-projects/fieldmuseum/specimen-digitization-app/.claude/worktrees/agent-a93300eb597e7b2e3`,
+  from `main` db855ad6, then `origin/main` 9272a188 (PR #243) merged locally.
+- Outcome: In progress. Pull request open and ready for review; not merged. No production access, deploy or paid call.
+- Commits/PRs: https://github.com/anurag-duddu/specimen-digitization-app/pull/251; code commit b1b4b222 (the entry
+  and a comment correction are in the commit after the `origin/main` merge).
+- What changed: the research route's catch-all 503 now logs the exception class and, for `PublicationUnavailable` and
+  `BindingUnavailable`, the fixed code (response unchanged); the workflow's `AdapterFailure`, `OperationalBlock`,
+  unexpected-exception and deadline-override branches each write one WARNING line (run, step, branch, attempt, codes,
+  classes, provider HTTP status); a new `process_logging.py` gives the API and worker a root handler that writes one
+  JSON line per record with `severity`.
+- Validation: written first and failing on the unchanged source: `test_research_host_routes.py` 6 failed, 9 passed;
+  `test_step_failure_logging.py` 8 failed, 2 passed (the 2 are before-and-after guards); `test_process_logging.py` 25
+  failed (23 are the missing module, 2 are the entry points leaving no JSON line). After: 15, 10 and 25 passed. 32
+  related files run one at a time before the `origin/main` merge, all passed (`test_model_runtime.py` 11 passed, 1
+  skipped; `test_http_process_restart.py` 1 skipped); the three changed files re-run after the merge, passed.
+  `pre-commit` on the changed files: all hooks passed. `ruff check` (0.16.9 defaults; the repo has no ruff config):
+  no more findings on the existing changed files than on `origin/main`; new files clean and formatted. Not run: the
+  full suite, any `scripts/ci/verify.sh` gate, a live or paid call.
+- Durable learnings:
+  - No logging was configured anywhere in `src`. Every `LOGGER.warning` (projection stops, registration refusals)
+    reached Cloud Run as a bare stderr line through the standard library's last-resort handler, so Cloud Logging
+    gave it DEFAULT severity. This, not the call sites, is why `severity>=WARNING` showed nothing from the worker.
+  - Under pytest the "before" run showed no stderr line at all for a root-level WARNING, consistent with pytest's own
+    root handlers keeping the last-resort handler from running (inferred, not isolated). A test that proves a
+    severity must therefore go through an installed handler and read `sys.stderr`; `caplog` cannot show it.
+  - The stored blocker hides the cause: an ambiguous provider failure (`AdapterFailure(outcome_unknown=True)`), an
+    unexpected exception before the provider answered, and a deadline overrun all become `external_outcome_unknown`.
+    Only the new WARNING lines distinguish them.
+  - A route class's `get_route_handler` can capture `self.path`, the route template without ids, for a log line;
+    the request path itself carries specimen and collection ids.
+  - Do not log `exc_info` or exception messages from these paths: pydantic validation errors and provider errors can
+    embed input text. A `log_code` shape check keeps free text out even from the code-bearing types.
+  - `tests/test_step_outcome.py`'s `drain_to_parse_failure` is the cheap way to drive a real workflow step into each
+    failure branch (patch `ExtractingAdapters.extract`, or pass a `phase_error`).
+- Failed approaches: an in-test `revoke_after_first` request order for the no-noise guard (the fixture revokes on the
+  second membership read inside the first request); the guard now flips it between two requests.
+- Remaining follow-ups: Not confirmed that Cloud Logging shows `jsonPayload.severity` for these lines in production
+  (check after the next worker execution); trace correlation, Error Reporting format, the same handler for
+  `specimen-sam` and uvicorn's own lines; the early-return blocks (budget, circuit, allowance) still log nothing;
+  not confirmed that every `PublicationUnavailable` raise site passes a fixed code (`log_code` guards the shape).
