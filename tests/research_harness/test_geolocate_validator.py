@@ -8,16 +8,19 @@ import asyncio
 import hashlib
 import inspect
 import json
+import re
 from pathlib import Path
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from specimen_digitization.application.domain import FieldValue, LookupStatus, ValueState
 from specimen_digitization.research_harness import canonical_materialization, canonical_projection_v2, prompts
 from specimen_digitization.research_harness.contracts import (
-    ROLE_FIELDS, EventHypothesis, EventKind, FieldKey, FieldResolution, ResearchScope, SourceCoverageState,
-    SourceFragment, SourceQuery, SpecialistRequest, SpecialistRole, ToolReceipt, WorkState, digest,
+    ROLE_FIELDS, EventHypothesis, EventKind, FieldKey, FieldResolution, HumanQuestion, ResearchScope,
+    SourceCoverageReceipt, SourceCoverageState, SourceFragment, SourceQuery, SpecialistRequest, SpecialistRole,
+    ToolReceipt, WorkState, digest,
 )
 from specimen_digitization.research_harness.evidence import EvidenceError, assemble_field, validate_resolution
 from specimen_digitization.research_harness.prompts import resolve_prompt
@@ -65,10 +68,10 @@ LABEL_321 = "10-6-78-la\nE. slope Mt. McKinley\nDavao Prov.\nMindanao, P.I.\nF.G
 LABEL_330 = "IV-29-68-a\nYepocapa, 4800 ft.\nChimaltenango\nGuatemala, IV-25\n1948, R.D. Mitchell"
 
 
-def geography_request(registry=REGISTRY, fragments=(), events=(), assemblies=()):
+def geography_request(registry=REGISTRY, fragments=(), events=(), assemblies=(), scope=SCOPE):
     prompt = resolve_prompt(SpecialistRole.GEOGRAPHY, profile_digest=PIN, source_registry_digest=registry.digest,
                             toolset_digest=PIN, model_route="harness-deepseek", output_schema_digest=PIN)
-    return SpecialistRequest(scope=SCOPE, role=SpecialistRole.GEOGRAPHY,
+    return SpecialistRequest(scope=scope, role=SpecialistRole.GEOGRAPHY,
                              field_keys=ROLE_FIELDS[SpecialistRole.GEOGRAPHY], prompt=prompt,
                              fragments=tuple(fragments), events=tuple(events), assemblies=tuple(assemblies))
 
@@ -86,13 +89,13 @@ def label_fragments(text):
     return fragments
 
 
-def assembled_request(locality):
-    # The label's locality as an accepted precise_location assembly: the one way label text leaves.
+def assembled_request(locality, field_key=FieldKey.PRECISE_LOCATION):
+    # The label's locality as an accepted assembly (for precise_location, the one way label text leaves).
     [fragment] = label_fragments(locality)
     event = EventHypothesis(id="event", scope=SCOPE, kind=EventKind.COLLECTING, fragment_ids=(fragment.id,),
                             evidence_ids=("role-evidence",), reason="Independently annotated synthetic event",
                             status="accepted", validator_version="gold-v1")
-    assembly = assemble_field(assembly_id="locality", scope=SCOPE, field_key=FieldKey.PRECISE_LOCATION,
+    assembly = assemble_field(assembly_id="locality", scope=SCOPE, field_key=field_key,
                               fragments=[fragment], event=event)
     assert assembly.interpreted_text == locality
     return geography_request(fragments=[fragment], events=[event], assemblies=[assembly])
@@ -265,7 +268,7 @@ def test_invalid_interpretation_is_refused_before_any_effect_or_request():
 def test_yepocapa_is_confirmed_with_gazetteer_coordinates():
     result = lookup("yepocapa-modern.json", FieldKey.CITY, YEPOCAPA, "Yepocapa")
     assert result.status == LookupStatus.SUCCESS and result.coverage.candidate_count == 2
-    assert result.coverage.reason == "GEOLocate confirms 'Yepocapa': 2 of 2 match(es) agree within 10 km of each other"
+    assert result.coverage.reason == "success: GEOLocate confirms 'Yepocapa': 2 of 2 match(es) agree within 10 km of each other"
     [candidate] = candidates(result)
     assert candidate == {
         "field_key": "city", "value": "Yepocapa", "authority_id": "geolocate:14.501946,-90.953956",
@@ -283,10 +286,10 @@ def test_the_province_must_be_the_unit_gazetteer_reports():
     # The label's own spelling is not the modern unit; the historian must correct it.
     misspelled = lookup("yepocapa-modern.json", FieldKey.PROVINCE_STATE, YEPOCAPA, "Chimaltenago")
     assert misspelled.status == LookupStatus.NO_MATCH and misspelled.candidate_json == ()
-    assert misspelled.coverage.reason == "GEOLocate places 'Yepocapa' in CHIMALTENANGO, not 'Chimaltenago'"
+    assert misspelled.coverage.reason == "no_match: GEOLocate places 'Yepocapa' in CHIMALTENANGO, not 'Chimaltenago'"
     apo = lookup("apo-modern.json", FieldKey.PROVINCE_STATE, APO, "Davao del Sur")
     assert apo.status == LookupStatus.NO_MATCH
-    assert apo.coverage.reason == "GEOLocate places 'Mount Apo' in CENTRAL MINDANAO, COTABATO, not 'Davao del Sur'"
+    assert apo.coverage.reason == "no_match: GEOLocate places 'Mount Apo' in CENTRAL MINDANAO, COTABATO, not 'Davao del Sur'"
 
 
 def test_verbatim_label_locality_is_validated_by_the_named_place_only():
@@ -312,7 +315,7 @@ def test_mount_mckinley_has_no_mindanao_match_and_says_so():
         assert result.coverage.state == SourceCoverageState.SEARCHED
         count = result.coverage.candidate_count
         assert result.coverage.reason == (
-            f"GEOLocate returned {count} match(es); none is 'Mount McKinley' within 40 km of the interpreted placement")
+            f"no_match: GEOLocate returned {count} match(es); none is 'Mount McKinley' within 40 km of the interpreted placement")
 
 
 def test_state_is_ignored_outside_the_usa():
@@ -331,7 +334,7 @@ def test_agreeing_points_far_apart_are_ambiguous():
     assert result.status == LookupStatus.AMBIGUOUS
     assert [item["authority_id"] for item in candidates(result)] == [
         "geolocate:6.983300,125.266700", "geolocate:6.233611,125.628333", "geolocate:6.989444,125.269722"]
-    assert result.coverage.reason == "GEOLocate is ambiguous for 'Philippines': agreeing matches lie up to 92 km apart"
+    assert result.coverage.reason == "ambiguous: GEOLocate is ambiguous for 'Philippines': agreeing matches lie up to 92 km apart"
 
 
 def test_usa_control_and_geojson_format():
@@ -497,3 +500,174 @@ def test_the_prompted_success_resolution_carries_the_relations_publication_requi
     assert not publication_accepts_relations(omitted.value)
     assert not publication_accepts_relations(prompted(evidence_relations={"source:other": "supports"}).value)
     assert not publication_accepts_relations(prompted(evidence_relations=dict.fromkeys(evidence, "contradicts")).value)
+
+
+# --- Coordinator ruling 7 (2026-10-03): unresolved geography goes to a person; outages never do ---
+def question(result, field_key, reason):
+    return HumanQuestion(field_key=field_key, question="Which modern place does the label mean?", reason=reason,
+                         coverage=(result.coverage,), evidence_ids=tuple(item.id for item in result.evidence))
+
+
+def test_geolocate_no_match_and_ambiguous_reach_a_person():
+    request = assembled_request(MCKINLEY_LABEL)
+    unmatched = lookup("mckinley-modern.json", FieldKey.PRECISE_LOCATION, MCKINLEY, MCKINLEY_LABEL, request)
+    assert unmatched.status == LookupStatus.NO_MATCH and unmatched.coverage.state == SourceCoverageState.SEARCHED
+    asked = question(unmatched, FieldKey.PRECISE_LOCATION, "scoped_absence")
+    waiting = FieldResolution(
+        field_key=FieldKey.PRECISE_LOCATION, work_state=WorkState.WAITING_HUMAN, question=asked,
+        value=FieldValue(state=ValueState.UNRESOLVED, literal=MCKINLEY_LABEL), evidence_ids=asked.evidence_ids,
+        reason="1946 Philippine expedition label; no Mount McKinley on Mindanao in GEOLocate (9 matches elsewhere)")
+    assert validate_resolution(request, waiting, (unmatched,)) == waiting
+    loose = {**APO, "latitude": 6.611, "longitude": 125.449, "radius_km": 50}
+    ambiguous = lookup("apo-modern.json", FieldKey.COUNTRY, loose, "Philippines")
+    assert ambiguous.status == LookupStatus.AMBIGUOUS
+    assert question(ambiguous, FieldKey.COUNTRY, "semantic_ambiguity").coverage == (ambiguous.coverage,)
+
+
+def timed_out(url, policy):
+    raise httpx.ReadTimeout("slow")
+
+
+PARTLY_QUALIFIED = insects_registry(qualification_overrides={"geolocate": {"qualification_state": "searched"}})
+
+
+async def held_effect(request, tool_id, arguments, invoke):
+    return ToolReceipt(id="receipt", scope=request.scope, tool_id=tool_id, source_id=arguments["source_id"],
+                       field_keys=(arguments["field_key"],), effect_id="effect", attempt_ids=("attempt",),
+                       request_digest=digest(arguments), binding_digest=digest(request.scope),
+                       outcome="timeout", effect_status="held_unknown")
+
+
+@pytest.mark.parametrize("outage", [
+    lambda: lookup_body(b"busy", code=429),
+    lambda: lookup_body(b"forbidden", code=403),
+    lambda: lookup_body(b"error", code=500),
+    lambda: lookup_body(b"not json"),
+    lambda: asyncio.run(SourceBroker(REGISTRY, transport=FixtureSourceTransport(timed_out), effect_dispatch=completed_effect)
+                        .query(geography_request(), query(FieldKey.CITY, YEPOCAPA, "Yepocapa"))),
+    # Not ready: the default registry leaves GEOLocate unqualified.
+    lambda: asyncio.run(SourceBroker(insects_registry(), transport=FixtureSourceTransport(timed_out), effect_dispatch=completed_effect)
+                        .query(geography_request(insects_registry()), query(FieldKey.CITY, YEPOCAPA, "Yepocapa"))),
+    # No adapter: a qualified browser source is still refused.
+    lambda: asyncio.run(SourceBroker(insects_registry(qualification_overrides={"mapcarta": GEOLOCATE_QUALIFICATION}),
+                                     transport=FixtureSourceTransport(timed_out), effect_dispatch=completed_effect).query(
+        geography_request(insects_registry(qualification_overrides={"mapcarta": GEOLOCATE_QUALIFICATION})),
+        SourceQuery(source_id="mapcarta", field_key=FieldKey.CITY, query_text="Yepocapa"))),
+    # A refused query (not place text) is operational too.
+    lambda: lookup_body(b"", interpretation={**YEPOCAPA, "locality": "Yepocapa, 4800 ft."}),
+    lambda: lookup_body(b"unauthorized", code=401),
+    # Not ready although marked searched: the real receipt is SEARCHED with a POLICY status.
+    lambda: asyncio.run(SourceBroker(PARTLY_QUALIFIED, transport=FixtureSourceTransport(timed_out),
+                                     effect_dispatch=completed_effect).query(
+        geography_request(PARTLY_QUALIFIED), query(FieldKey.CITY, YEPOCAPA, "Yepocapa"))),
+    # The durable effect outcome is held unknown.
+    lambda: asyncio.run(SourceBroker(REGISTRY, transport=FixtureSourceTransport(timed_out), effect_dispatch=held_effect)
+                        .query(geography_request(), query(FieldKey.CITY, YEPOCAPA, "Yepocapa"))),
+    # A sensitive specimen is never disclosed to a source.
+    lambda: asyncio.run(SourceBroker(REGISTRY, transport=FixtureSourceTransport(timed_out), effect_dispatch=completed_effect)
+                        .query(geography_request(scope=SCOPE.model_copy(update={"sensitive": True})),
+                               query(FieldKey.CITY, YEPOCAPA, "Yepocapa"))),
+    # No durable effect dispatcher.
+    lambda: asyncio.run(SourceBroker(REGISTRY, transport=FixtureSourceTransport(timed_out))
+                        .query(geography_request(), query(FieldKey.CITY, YEPOCAPA, "Yepocapa"))),
+])
+def test_an_outage_never_produces_a_human_question(outage):
+    result = outage()
+    assert result.status not in {LookupStatus.SUCCESS, LookupStatus.NO_MATCH, LookupStatus.AMBIGUOUS}
+    with pytest.raises(ValidationError, match="exhausted"):
+        question(result, FieldKey.CITY, "scoped_absence")
+
+
+def test_only_geolocate_geography_outcomes_are_loosened():
+    confirmed = lookup("yepocapa-modern.json", FieldKey.CITY, YEPOCAPA, "Yepocapa")
+    with pytest.raises(ValidationError, match="exhausted"):
+        question(confirmed, FieldKey.CITY, "scoped_absence")
+    for source_id, field_key in (("catalogue_of_life", FieldKey.TAXON), ("geolocate", FieldKey.TAXON)):
+        searched = SourceCoverageReceipt(source_id=source_id, field_key=field_key, state=SourceCoverageState.SEARCHED,
+                                         source_version="v", coverage_limit="bounded", reason="no_match: none")
+        with pytest.raises(ValidationError, match="exhausted"):
+            HumanQuestion(field_key=field_key, question="?", reason="scoped_absence", coverage=(searched,))
+
+
+def receipt(source_id="geolocate", state=SourceCoverageState.SEARCHED, reason="no_match: GEOLocate returned 2 match(es)"):
+    return SourceCoverageReceipt(source_id=source_id, field_key=FieldKey.CITY, state=state, source_version="v",
+                                 coverage_limit="bounded", reason=reason)
+
+
+def asks(*coverage):
+    return HumanQuestion(field_key=FieldKey.CITY, question="?", reason="scoped_absence", coverage=coverage)
+
+
+def test_the_loosened_rule_admits_only_typed_geolocate_outcomes_never_mixed():
+    assert asks(receipt()).coverage == (receipt(),)
+    assert asks(receipt(reason="ambiguous: GEOLocate is ambiguous for 'Yepocapa'")).reason == "scoped_absence"
+    refused = [
+        receipt(source_id="mapcarta"),
+        # A spoofed scientific reason on an outage receipt.
+        *(receipt(state=state) for state in (SourceCoverageState.FAILED, SourceCoverageState.INACCESSIBLE,
+                                             SourceCoverageState.UNQUALIFIED, SourceCoverageState.NOT_ATTEMPTED,
+                                             SourceCoverageState.SCHEMA_ONLY)),
+        *(receipt(reason=reason) for reason in ("no_match", "no_match:", "no_match: ", "ambiguous",
+                                                "success: GEOLocate confirms 'Yepocapa'", "policy_blocked: x",
+                                                "Source endpoint/schema/terms/version qualification incomplete")),
+    ]
+    for item in refused:
+        with pytest.raises(ValidationError, match="exhausted"):
+            asks(item)
+    exhausted = SourceCoverageReceipt(
+        source_id="field_museum_ipt", field_key=FieldKey.CITY, state=SourceCoverageState.EXHAUSTED, source_version="v",
+        qualification_digest=PIN, exact_join_attempted=True, query_digest=PIN, receipt_ids=("source:exact",),
+        coverage_limit="Only this pinned publisher occurrence search/term", reason="no_match")
+    assert asks(exhausted).coverage == (exhausted,)
+    with pytest.raises(ValidationError, match="exhausted"):
+        asks(exhausted, receipt())
+    with pytest.raises(ValidationError, match="exhausted"):
+        asks(receipt(), receipt(state=SourceCoverageState.FAILED, reason="timeout"))
+
+
+def test_five_human_questions_echoing_their_receipts_fit_one_response():
+    # The prompt's budget: one GEOLocate lookup per field, reasons under 300 characters, 4096 tokens
+    # per reply. Conservative estimate: two characters per token for hex digests, three otherwise.
+    request = assembled_request(MCKINLEY_LABEL)
+    unmatched = lookup("mckinley-modern.json", FieldKey.PRECISE_LOCATION, MCKINLEY, MCKINLEY_LABEL, request)
+    asked = HumanQuestion(
+        field_key=FieldKey.PRECISE_LOCATION, reason="scoped_absence", coverage=(unmatched.coverage,),
+        question="Which modern place is 'E. slope Mt. McKinley, Davao Prov.'? GEOLocate holds none on Mindanao.",
+        evidence_ids=tuple(item.id for item in unmatched.evidence))
+    waiting = FieldResolution(
+        field_key=FieldKey.PRECISE_LOCATION, work_state=WorkState.WAITING_HUMAN, question=asked,
+        value=FieldValue(state=ValueState.UNRESOLVED, literal=MCKINLEY_LABEL), evidence_ids=asked.evidence_ids,
+        assembly_ids=("locality",), event_id="event", reason="r" * 299).model_dump_json()
+    hex_characters = sum(len(item) for item in re.findall(r"[0-9a-f]{32,}", waiting))
+    tokens = hex_characters / 2 + (len(waiting) - hex_characters) / 3
+    assert 5 * tokens + 100 <= 4096
+
+
+def test_lookup_citing_resolutions_name_the_assemblies_they_read():
+    # The capture takes a lookup's producer from the citing resolution's assemblies; without them
+    # publication refuses the lookup (application/projection.py lookup_evidence_producer_invalid).
+    text = (Path(prompts.__file__).parent / "specimen_geography-v2.txt").read_text(encoding="utf-8")
+    assert ("Every resolution that cites a GEOLocate lookup names, as the common rules ask,\n"
+            "its accepted/rejected assemblies (assembly_ids") in text and "event (event_id)" in text
+    request = assembled_request("Yepocapa", FieldKey.CITY)
+    [assembly] = request.assemblies
+    result = lookup("yepocapa-modern.json", FieldKey.CITY, YEPOCAPA, "Yepocapa", request)
+    [candidate] = candidates(result)
+    evidence = tuple(item.id for item in result.evidence)
+    resolved = FieldResolution(
+        field_key=FieldKey.CITY, work_state=WorkState.RESOLVED, value_layer="settled", evidence_ids=evidence,
+        assembly_ids=(assembly.id,), event_id=assembly.event_id,
+        value=FieldValue(state=ValueState.SUPPORTED, normalized=candidate["value"], authority_id=candidate["authority_id"],
+                         evidence_ids=list(evidence), evidence_relations=dict.fromkeys(evidence, "supports")),
+        reason="1948 label 'Yepocapa'; modern municipality in Chimaltenango; GEOLocate confirms")
+    assert validate_resolution(request, resolved, (result,)) == resolved
+    unmatched_request = assembled_request(MCKINLEY_LABEL)
+    [locality] = unmatched_request.assemblies
+    unmatched = lookup("mckinley-modern.json", FieldKey.PRECISE_LOCATION, MCKINLEY, MCKINLEY_LABEL, unmatched_request)
+    asked = question(unmatched, FieldKey.PRECISE_LOCATION, "scoped_absence")
+    waiting = FieldResolution(
+        field_key=FieldKey.PRECISE_LOCATION, work_state=WorkState.WAITING_HUMAN, question=asked,
+        value=FieldValue(state=ValueState.UNRESOLVED, literal=MCKINLEY_LABEL), evidence_ids=asked.evidence_ids,
+        assembly_ids=(locality.id,), event_id=locality.event_id,
+        reason="1946 label; no Mount McKinley on Mindanao in GEOLocate")
+    assert validate_resolution(unmatched_request, waiting, (unmatched,)) == waiting

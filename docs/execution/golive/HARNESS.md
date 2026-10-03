@@ -542,7 +542,7 @@ lookup to GEOLocate's `glcwrap.aspx` (`fmt=json`, over HTTPS), with at least
 response as evidence (coordinator engineering calls of 2026-10-03). The matched point's coordinates are candidate metadata in
 the tool result and the trace, not record fields (G39), and the research
 thread card does not show them yet; no uncertainty radius is taken from
-GEOLocate (D13). `application/geography_tool.py` stays in the repository with
+GEOLocate (D13). 2026-10-03 (coordinator engineering call, ruling 7, citing owner G6): a GEOLocate no_match or ambiguous outcome for a geography field is a scientific result, not an operational block; it reaches Needs human review with that field's GEOLocate receipts (`contracts.HumanQuestion`), the one exception to "human questions need exhausted sources". Every outage stays an operational block. `application/geography_tool.py` stays in the repository with
 no production caller (only tests import it); the text below records it as
 built.
 
