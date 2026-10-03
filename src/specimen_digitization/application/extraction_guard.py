@@ -2,8 +2,8 @@
 
 `harness.apply_candidates` checks that the extractor's quoted literal occurs in
 the decided transcript. This guard adds three checks on what a literal means,
-each one an owner ruling, and nothing else (no repair, no re-routing, no new
-product rule):
+each resting on a written rule, and nothing else (no repair, no re-routing, no
+new product rule):
 
 - Elevation unit. G41 (docs/execution/golive/PLAN.md:99, LAB.md:131-150) fills
   the unit the label writes; "a unit is never guessed"
@@ -11,11 +11,16 @@ product rule):
   give the unit (docs/execution/golive/HARNESS.md:976-977). A number the label marks
   with the other unit does not belong in this field. A bare number is left alone.
 - Slide-preparation code. G45 (PLAN.md:103, LAB.md:173-179): in a field no lookup
-  checks, a code such as "VI-24-68-7" is not a value of its kind. `verbatim_dts`
-  is not checked: there it is a finding only, under the coordinator's hold
-  (PLAN.md:227).
+  checks, a code such as "VI-24-68-7" is not a value of its kind. Only a value that
+  is such a code (`field_validators._slide_code`) is refused. A piece of a code
+  ("IX" from "IX-17-66-2") is not: what Collection Code may hold is an open owner
+  question, so nothing here refuses it. `verbatim_dts` is not checked: there it is
+  a finding only, under the coordinator's hold (PLAN.md:227).
 - Date. "preparation codes such as 10-6-78-1a or IX-17-66-2 are never dates"
-  (GEOREFERENCING.md:173, HARNESS.md:648), as `date_parser` already decides.
+  (GEOREFERENCING.md:173): `date_parser` says `slide_code`. It also says
+  `part_of_hyphenated_token` for a piece of any other hyphen-joined token
+  (HARNESS.md:648-650); that is the parser's own written rule, and the guard
+  follows the parser on both.
 
 The helpers are the repo's own (`field_validators`), imported unchanged: an edit
 there would change the pinned validator's behaviour without moving its hash.
@@ -24,7 +29,7 @@ there would change the pinned validator's behaviour without moving its hash.
 import re
 
 from .domain import LookupStatus
-from .field_validators import _enclosing_tokens, _slide_code, date_parser
+from .field_validators import _slide_code, date_parser
 
 ELEVATION_UNIT = {
     "elevation_from_m": "m",
@@ -81,12 +86,12 @@ def extraction_refusal(field_key: str, literal: str, text: str) -> str | None:
         # a literal that is a date). None are passed: the extraction child process
         # has no profile snapshot, and this answer does not depend on them.
         result = date_parser(literal, source_text=text)
-        if result.outcome == LookupStatus.NO_MATCH and {
-            "slide_code",
-            "part_of_hyphenated_token",
-        } & set(result.warnings):
-            return "preparation_code_is_not_a_date"
+        if result.outcome == LookupStatus.NO_MATCH:
+            if "slide_code" in result.warnings:
+                return "preparation_code_is_not_a_date"
+            if "part_of_hyphenated_token" in result.warnings:
+                return "part_of_hyphenated_token_is_not_a_date"
     elif field_key in CODE_FREE_FIELDS:
-        if _slide_code(literal.strip()) or _enclosing_tokens(literal, text):
-            return "slide_preparation_code_or_fragment"
+        if _slide_code(literal.strip()):
+            return "slide_preparation_code"
     return None

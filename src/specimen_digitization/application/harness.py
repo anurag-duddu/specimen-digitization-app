@@ -38,9 +38,9 @@ def apply_candidates(
             or candidate.literal not in candidate.source_excerpt
         ):
             continue
-        # A value an owner ruling calls wrong (G41, G45) is not stored: the field
-        # stays unknown and the usual mandatory_unresolved reason sends it to review.
-        # The raw answer is already in the blob.
+        # A value a written rule calls wrong (G41, G45, GEOREFERENCING.md:173) is not
+        # stored: the field stays unknown and the generic mandatory_unresolved reason
+        # sends the record to review. The raw answer is already in the blob.
         if extraction_refusal(candidate.field_key, candidate.literal, transcript.text):
             continue
         evidence = Evidence(

@@ -2,9 +2,8 @@
 
 `harness.apply_candidates` once checked only that the extractor's quoted literal
 occurs in the decided transcript. Real records then showed an elevation read
-from a foot mark in the metres field, a slide-preparation code (or a cut-off
-piece of one) in Collection Code, and a slide code in Date Identified, each
-"Supported". The three rules under test are G41 with GEOREFERENCING.md:172 (a
+from a foot mark in the metres field, a slide-preparation code in Collection
+Code, and a slide code in Date Identified, each "Supported". The three rules under test are G41 with GEOREFERENCING.md:172 (a
 unit is never guessed), G45 (a slide-preparation code in a field no lookup
 checks) and GEOREFERENCING.md:173 (a preparation code is never a date).
 
@@ -15,11 +14,13 @@ label as its excerpt, as the stored answers do; no ids are kept. Position 3's ra
 answer is not kept locally, so its candidates are rebuilt from its stored
 supported fields. Nothing here calls a model.
 
-Three things the guard deliberately does not do are pinned below as they are
-today (the FMNHINS prefix in Collection Code, the "Sp.#1" morphospecies number
-in Habitat, and anything in `verbatim_dts`). They document an open owner
-question or a coordinator hold, not a wanted outcome: when the owner rules,
-flip those assertions in the same change that adds the rule.
+Four things the guard deliberately does not do are pinned below as they are
+today: the FMNHINS prefix in Collection Code, a piece of a slide-preparation
+code ("IX" from "IX-17-66-2") in Collection Code, the "Sp.#1" morphospecies
+number in Habitat, and anything in `verbatim_dts`. They document an open owner
+question (what Collection Code and Habitat may hold) or a coordinator hold, not
+a wanted outcome: when the owner rules, flip those assertions in the same change
+that adds the rule.
 """
 
 from types import SimpleNamespace
@@ -111,7 +112,7 @@ def supported(run, key):
     return run.fields[key].state == ValueState.SUPPORTED
 
 
-def test_position_7_foot_mark_and_cut_off_code_are_not_stored():
+def test_position_7_foot_mark_is_not_stored():
     run = make_run({"label": P7})
     apply(
         run,
@@ -124,15 +125,25 @@ def test_position_7_foot_mark_and_cut_off_code_are_not_stored():
                 ("city", "McKimley"),
                 ("precise_location", "E. Slope Mt."),
                 ("collectors", "H. Hoogstraal"),
-                ("collection_code", "IX"),  # cut from IX-17-66-1 or IX-14-46
                 ("elevation_from_m", "3300"),  # the label writes 3300' (feet)
             ],
         ),
     )
     assert not supported(run, "elevation_from_m")
-    assert not supported(run, "collection_code")
     for key in ("country", "province_state", "collectors", "precise_location"):
         assert supported(run, key), key
+
+
+def test_position_7_a_piece_of_a_slide_code_stays_in_collection_code():
+    # Documents a gap, not a wanted outcome. The extractor cut "IX" from the
+    # top-edge code IX-17-66-1 (or from the date IX-14-46). Refusing a piece of a
+    # hyphen-joined token is not a written owner rule, so the guard leaves it
+    # alone: what Collection Code may hold, pieces of a slide code included, is an
+    # open owner question. If the owner rules, flip this assertion with the rule.
+    run = make_run({"label": P7})
+    apply(run, ("label", [("collection_code", "IX")]))
+    assert supported(run, "collection_code")
+    assert run.fields["collection_code"].literal == "IX"
 
 
 def test_position_2_slide_code_and_foot_mark_are_not_stored():
@@ -300,8 +311,9 @@ def test_a_refused_value_is_not_stored_but_the_raw_answer_is_kept(tmp_path):
 
 
 UNIT = "elevation_unit_conflict"
-CODE = "slide_preparation_code_or_fragment"
+CODE = "slide_preparation_code"
 NOT_A_DATE = "preparation_code_is_not_a_date"
+PART = "part_of_hyphenated_token_is_not_a_date"
 
 # (field, literal, label text, expected refusal or None)
 CASES = {
@@ -395,10 +407,59 @@ CASES = {
     "mm is not metres": ("elevation_from_ft", "4800", "4800 mm", None),
     "unit on the next line": ("elevation_from_m", "3300", "3300\nft", None),
     "both units written for it": ("elevation_from_m", "3300", "3300 ft\n3300 m", None),
-    # --- Slide-preparation codes and fragments (G45), in the four fields.
+    # --- Slide-preparation codes (G45), in the four fields: a value that IS a code.
     "slide code, collection code": ("collection_code", "IX-17-66-2", P2, CODE),
     "slide code, other label": ("collection_code", "IV-29-68-2", P5, CODE),
-    "fragment of a slide code": ("collection_code", "IX", P7, CODE),
+    "a piece of a slide code is left alone": ("collection_code", "IX", P7, None),
+    "a date-shaped piece of a code is left alone": (
+        "habitat",
+        "IV-29-68",
+        "IV-29-68-2",
+        None,
+    ),
+    "a code, then words": (
+        "habitat",
+        "VI-24-68-7 epipsocus",
+        "VI-24-68-7 epipsocus",
+        CODE,
+    ),
+    "numeric slide code": ("collection_code", "10-6-78-1a", "10-6-78-1a", CODE),
+    "words, then a code are not read as a code": (
+        "collectors",
+        "H. Hoogstraal VI-24-68-7",
+        "H. Hoogstraal VI-24-68-7",
+        None,
+    ),
+    "a code written with dots is not read": (
+        "collection_code",
+        "IX.17.66.2",
+        "IX.17.66.2",
+        None,
+    ),
+    "a piece of a hyphenated name is left alone": (
+        "collectors",
+        "Smith",
+        "J. Smith-Jones",
+        None,
+    ),
+    "a piece of a hyphenated habitat is left alone": (
+        "habitat",
+        "alpine",
+        "sub-alpine meadow",
+        None,
+    ),
+    "a piece of a hyphenated method is left alone": (
+        "collection_method",
+        "trap",
+        "light-trap",
+        None,
+    ),
+    "a piece of a hyphenated prefix is left alone": (
+        "collection_code",
+        "FMNH",
+        "FMNH-INS 4486778",
+        None,
+    ),
     "the owner's example, habitat": (
         "habitat",
         "VI-24-68-7",
@@ -407,7 +468,6 @@ CASES = {
     ),
     "the owner's example, collectors": ("collectors", "VI-24-68-7", "VI-24-68-7", CODE),
     "slide code, collection method": ("collection_method", "IX-17-66-1", P7, CODE),
-    "date-shaped part of a code, habitat": ("habitat", "IV-29-68", "IV-29-68-2", CODE),
     "name, collectors": ("collectors", "H. Hoogstraal", P2, None),
     "institution mark, collection code": ("collection_code", "CNHM", P2, None),
     "locality words, habitat": ("habitat", "E. slope", P3_LOCALITY, None),
@@ -415,7 +475,7 @@ CASES = {
     "slide code in a field with its own lookup": ("city", "IX-17-66-2", P2, None),
     # --- verbatim_dts is a finding only (PLAN.md:227): never refused.
     "verbatim_dts holds a slide code": ("verbatim_dts", "IX-17-66-2", P2, None),
-    "verbatim_dts holds a fragment": ("verbatim_dts", "IX", P7, None),
+    "verbatim_dts holds a piece of a code": ("verbatim_dts", "IX", P7, None),
     # --- Dates: a preparation code is never a date (GEOREFERENCING.md:173).
     "slide code, date identified": ("date_identified", "V-4-67-1", P3_LEFT, NOT_A_DATE),
     "slide code, date visited from": (
@@ -431,19 +491,44 @@ CASES = {
         P5,
         NOT_A_DATE,
     ),
+    "a hyphen-written day range is a slide code to the parser": (
+        "date_visited_from",
+        "IV-23-25-48",
+        "IV-23-25-48",
+        NOT_A_DATE,
+    ),
+    # The parser also reads no part of any other hyphen-joined token (HARNESS.md:648-650,
+    # warning part_of_hyphenated_token): not a slide code, the parser's own rule. The
+    # guard follows the parser, so these are refused; no stored value depends on them.
     "part of another joined token": (
         "date_visited_from",
         "1946",
         "6-Sept-1946",
-        NOT_A_DATE,
+        PART,
     ),
-    # The date parser reads no part of a hyphen-joined token (HARNESS.md:648-650),
-    # so a hyphenated year range gives neither end. Kept as the parser decides.
     "end of a hyphenated year range": (
         "date_visited_from",
         "1948",
         "1948-1950",
-        NOT_A_DATE,
+        PART,
+    ),
+    "tail of a written day range": (
+        "date_visited_to",
+        "12 Sept. 1946",
+        "10-12 Sept. 1946",
+        PART,
+    ),
+    "start of a written day range": (
+        "date_visited_from",
+        "10",
+        "Sept. 10-12, 1946",
+        PART,
+    ),
+    "the whole written day range is not refused": (
+        "date_visited_from",
+        "10-12 Sept. 1946",
+        "10-12 Sept. 1946",
+        None,
     ),
     "Roman month date": ("date_visited_from", "IX-14-46", P2, None),
     "Roman month and year, spaced": ("date_visited_from", "XI .46", P3_LOCALITY, None),
@@ -456,6 +541,14 @@ CASES = {
     "specimen number, taxon": ("taxon", "sp 22", P3_LEFT, None),
     "locality text, city": ("city", "Mt. Apo", P3_LOCALITY, None),
     "locality text, precise location": ("precise_location", "E. Slope Mt.", P7, None),
+    # A literal that carries its own wrong unit is not this guard's: the policy's
+    # Decimal reading and the derivations flag it downstream.
+    "own unit in the literal, metres field": (
+        "elevation_from_m",
+        "3300 ft",
+        "3300 ft",
+        None,
+    ),
 }
 
 
