@@ -8,10 +8,12 @@ session (an in-memory connector, production_e2e_support.FakeDataConnect), the
 model (scripted pydantic-ai FunctionModels) and source HTTP (recorded responses).
 Label text is the public synthetic fixture.
 
-Stage 1, the first publications, land: the taxon, researched through the three
-ready taxonomy sources, and precise_location, settled from its label evidence.
-Stage 2, the run reaching its final queue, is expected to fail until the
-blockers named on its test are fixed.
+Stage 1, the publications land: the taxon, researched through the three ready
+taxonomy sources, precise_location, settled from its label evidence, and the
+parties and collection fields. The dates and elevations are not published;
+each carries its mandatory_unresolved field reason. Stage 2, the run reaching
+its final queue, is expected to fail until the blocker named on its test is
+fixed.
 """
 from __future__ import annotations
 
@@ -44,6 +46,8 @@ OTHER_OPERATOR = "offline-e2e-other-operator"
 RESEARCH_OPERATIONS = {"GetCanonicalResearchBindingV2", "RegisterCanonicalResearchBindingV2",
     "GetCanonicalResearchMaterializationInputsV2", "PublishCanonicalResearchV2"}
 COL_XR = "7ddf754f-d193-4cc9-b351-99906754a03b"
+DATES_AND_ELEVATIONS = ("date_visited_from", "date_visited_to", "date_identified", "elevation_from_m",
+    "elevation_to_m", "elevation_from_ft", "elevation_to_ft")
 GBIF_NAME = "Danaus plexippus (Linnaeus, 1758)"
 
 
@@ -149,13 +153,15 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     assert set(binding["semantic_mapping"]["evidence_sources"]) >= {"gbif", "global_names_verifier",
         "catalogue_of_life"}
 
-    # Plan tick 3, a new worker: provisioning returns at once and research runs.
-    # The taxon publishes, then precise_location. The geography fields still
-    # waiting on a source are not offered for publication. The next terminal
-    # field offered, date_identified, has a settled value with no evidence
-    # relation (the evidence.py date helper sets none; the blocker named on the
-    # Stage 2 test), which the V2 projection refuses, so the step ends with an
-    # operational block.
+    # Plan tick 3, a new worker: provisioning returns at once and research runs
+    # all six roles. The taxon publishes, then precise_location, then the
+    # parties and collection fields. Neither the geography fields still waiting
+    # on a source nor the dates and elevations are offered for publication: the
+    # evidence.py date and elevation helpers give a settled value no evidence
+    # relation, which the V2 projection requires, so each of those fields keeps
+    # its base record value and carries the field reason mandatory_unresolved.
+    # The geography fields keep the record processing_blocked, so the step ends
+    # with an operational hold.
     resumed = compose(rig)
     routing = []
 
@@ -165,7 +171,7 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
         routing.append((row["state"], row["work_available_at"]))
         rig.fake.fail_before["PublishCanonicalResearchV2"] = observe
     rig.fake.fail_before["PublishCanonicalResearchV2"] = observe
-    with supervised(), pytest.raises(OperationalBlock, match="native_publication_requires_reconciliation"):
+    with supervised(), pytest.raises(OperationalBlock, match="native_research_operational_hold"):
         resumed.step(rig.principal, rig.specimen_id)
     rig.fake.fail_before.pop("PublishCanonicalResearchV2")
     assert rig.fake.calls.count("RegisterCanonicalResearchBindingV2") == 2
@@ -175,12 +181,14 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     assert len(state["jobs"]) == 1 and len(rig.fake.bindings) == 1 and binding["job_id"] == job_id
 
     # Only terminal checkpoints were offered: no publication was prepared for a
-    # field still waiting on a source.
+    # field still waiting on a source, or for a date or elevation.
     job = list(state["jobs"].values())[0]
     offered = {event["guard"]["checkpoint_id"] for event in state["outbox"].values()
         if event.get("kind") == "canonical_publication_required"}
     waiting = [field["checkpoint"]["id"] for field in job["fields"].values() if field["work_state"] == "waiting_source"]
     assert waiting and offered and not offered & set(waiting)
+    assert {job["fields"][key]["work_state"] for key in DATES_AND_ELEVATIONS} == {"resolved"}
+    assert not offered & {job["fields"][key]["checkpoint"]["id"] for key in DATES_AND_ELEVATIONS}
 
     # The three ready taxonomy sources were fetched once each through the
     # capture broker, offline, and the run's spend is within its allowance.
@@ -193,29 +201,42 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     held = sum(effect["held_micro_usd"] for effect in effects)
     assert held == 0 and 0 < settled <= 500_000
     assert [role for role, _ in rig.model_calls] == ["specimen_taxonomy"] * 4 + [
-        "specimen_geography", "specimen_temporal"]
+        "specimen_geography", "specimen_temporal", "specimen_measurement", "specimen_parties",
+        "specimen_collection"]
 
-    # Two publications: the taxon, from the GBIF exact match, then precise_location.
-    assert len(rig.fake.receipts) == 2
-    receipt, place = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
+    # Eight publications: the taxon, from the GBIF exact match, precise_location,
+    # then the parties and collection fields.
+    receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
+    assert [row["causal_proof"]["changed_field"] for row in receipts] == ["taxon", "precise_location",
+        "collectors", "identified_by_irn", "collection_code", "collection_method", "fmnh_ins_number", "habitat"]
+    receipt, place, last = receipts[0], receipts[1], receipts[-1]
     assert (receipt["used_canonical_revision"], receipt["resulting_canonical_revision"]) == (3, 4)
     assert (place["used_canonical_revision"], place["resulting_canonical_revision"]) == (4, 5)
-    assert binding["current_receipt_id"] == place["id"] and binding["registration_revision"] == 3
-    assert binding["current_canonical_revision"] == 5
+    assert binding["current_receipt_id"] == last["id"] and binding["registration_revision"] == 9
+    assert binding["current_canonical_revision"] == 11
     published = rig.repository.get(rig.principal.scope, rig.specimen_id)
-    assert published.version == 5 and published.run.id == parsed.run.id
+    assert published.version == 11 and published.run.id == parsed.run.id
     taxon = published.run.fields["taxon"]
     assert taxon.state == "supported" and taxon.normalized == GBIF_NAME
     assert taxon.authority_id.startswith(COL_XR + ":")
     # The taxon left the run unfinished and due again (no disposition).
-    assert len(routing) == 2 and routing[1][0] == "running" and routing[1][1] is not None
-    # precise_location's record carries the geography fields still waiting on a
-    # source, which the V2 routing treats as processing_blocked (the last
-    # blocker named on the Stage 2 test).
+    assert len(routing) == 8 and routing[1][0] == "running" and routing[1][1] is not None
+    # From precise_location on, the record carries the geography fields still
+    # waiting on a source, which the V2 routing treats as processing_blocked
+    # (the blocker named on the Stage 2 test).
     assert published.run.stage == "processing_blocked" and published.run.disposition is None
-    assert {f"research_work:{key}:waiting_source" for key in ("country", "province_state", "county",
-        "city")} <= set(published.run.reasons)
+    waiting_reasons = tuple(f"research_work:{key}:waiting_source" for key in ("city", "country", "county",
+        "province_state"))
+    assert set(waiting_reasons) <= set(published.run.reasons)
     assert rig.fake.specimens[rig.specimen_id]["state"] == "processing_blocked"
+    # Each date and elevation carries its field reason, a human review reason
+    # and never an operational one, and keeps its base record value (here the
+    # ordinary parse of the synthetic label's explicit "key: value" line).
+    progress = last["causal_proof"]["progress_receipt"]
+    unresolved = {f"mandatory_unresolved:{key}" for key in DATES_AND_ELEVATIONS}
+    assert unresolved <= set(progress["human_reason_codes"]) and unresolved <= set(published.run.reasons)
+    assert tuple(progress["operational_reason_codes"]) == waiting_reasons
+    assert all(published.run.fields[key] == parsed.run.fields[key] for key in DATES_AND_ELEVATIONS)
     record = rig.fake.tables["record_version"][receipt["native_record_version_id"]]
     assert record["predecessorId"] == base_records[0]["id"] and record["disposition"] is None
     fields = {row["fieldKey"]: row for row in rig.fake.tables["resolved_field"].values()
@@ -253,21 +274,19 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     before = len(rig.fake.calls)
     with supervised():
         blocked = again.step(rig.principal, rig.specimen_id)
-    assert blocked.version == 5 and blocked.run.stage == "processing_blocked"
+    assert blocked.version == 11 and blocked.run.stage == "processing_blocked"
     assert not RESEARCH_OPERATIONS & set(rig.fake.calls[before:])
-    assert len(rig.fake.receipts) == 2
-    assert rig.repository.get(rig.principal.scope, rig.specimen_id).version == 5
-    assert len(rig.model_calls) == 6 and len(rig.source_urls) == 3
+    assert len(rig.fake.receipts) == 8
+    assert rig.repository.get(rig.principal.scope, rig.specimen_id).version == 11
+    assert len(rig.model_calls) == 9 and len(rig.source_urls) == 3
 
 
 @pytest.mark.xfail(strict=True, raises=OperationalBlock, reason=(
-    "Blocked in src outside this test's scope (see the Lane H F report): date_identified's "
-    "settled value carries no evidence relation, because the evidence.py date and elevation "
-    "helpers set none and the validator admits only their exact result "
-    "(canonical_lineage_candidate_evidence_unproved); once they do, the F report's offline run "
-    "stops after nine publications at 'Bounded research aggregate is full' (persistence.py "
-    "MAX_STATE_BYTES); geography stays waiting_source, which the V2 routing treats as "
-    "processing_blocked"))
+    "Blocked outside this test's scope: country, province_state, county and city stay "
+    "waiting_source until Lane G's GEOLocate source is ready, and the V2 routing treats "
+    "waiting_source as processing_blocked, so the first plan tick ends with "
+    "native_research_operational_hold after eight publications. The dates and elevations "
+    "no longer block: each carries its mandatory_unresolved field reason (needs human review)"))
 def test_the_run_reaches_its_final_queue(rig):
     workflow = compose(rig)
     to_plan(workflow, rig)

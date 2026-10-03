@@ -12,8 +12,8 @@ from types import SimpleNamespace
 import pytest
 
 from test_canonical_materialization import materialization, native_basis
-from test_canonical_projection_v2 import settled_case
-from test_native_canonical_contract import ident
+from test_canonical_projection_v2 import retain_checkpoint, settled_case
+from test_native_canonical_contract import helper_resolutions, ident
 from specimen_digitization.application.domain import Disposition, FieldValue, ValueState
 from specimen_digitization.application.storage import digest as canonical_digest
 from specimen_digitization.research_harness.canonical_materialization_v2 import (
@@ -22,7 +22,9 @@ from specimen_digitization.research_harness.canonical_materialization_v2 import 
 )
 from specimen_digitization.research_harness.canonical_projection_v2 import project_canonical_value_v2
 from specimen_digitization.research_harness.compatibility import PublicationUnavailable
-from specimen_digitization.research_harness.contracts import CollectionProfile, FieldKey, SpecialistRequest, WorkState, digest
+from specimen_digitization.research_harness.contracts import (
+    CollectionProfile, FieldCheckpoint, FieldKey, SpecialistRequest, WorkState, digest,
+)
 from specimen_digitization.research_harness.native_canonical_v2 import CanonicalBindingV2
 from specimen_digitization.research_harness.publication import PreparedNativePublication
 from specimen_digitization.research_harness.publication_v2 import CanonicalProgressReceiptV2
@@ -291,6 +293,119 @@ def test_only_the_held_policy_field_is_excused_from_whole_record_grounding(mater
     assert proof.result.run.disposition is None and proof.result.run.stage == "processing_blocked"
     assert proof.progress_receipt.operational_reason_codes == ("canonical_field_grounding_unproved:habitat",)
     assert proof.progress_receipt.human_reason_codes == ("mandatory_unresolved:verbatim_dts",)
+
+
+ELEVATIONS = frozenset({"elevation_from_m", "elevation_to_m", "elevation_from_ft", "elevation_to_ft"})
+
+
+def committed(b, resolutions):
+    """Commit each resolution as its field's current checkpoint, as the native job keeps it."""
+    reg = b.binding.registration.model_copy(deep=True)
+    for resolution in resolutions:
+        retain_checkpoint(reg.job, FieldCheckpoint(scope=b.checkpoint.scope, field_key=resolution.field_key,
+            revision=1, resolution=resolution, prompt_digest=digest("prompt"),
+            model_settings_digest=digest("settings"), source_registry_digest=digest("registry")))
+    b.binding = b.binding.model_copy(update={"registration": reg})
+    b.source.context = replace(b.source.context, lineage_context=replace(b.source.context.lineage_context, job=reg.job))
+    return b
+
+
+def test_a_date_without_evidence_relations_routes_to_review_with_its_field_reason(materialization, monkeypatch):
+    from specimen_digitization.research_harness import canonical_materialization_v2 as module
+    # Every field is resolved. date_identified holds the evidence.py date
+    # helper's value, which names no evidence relation, so it was never
+    # published and is not grounded on the record.
+    b = terminal_routing_case(materialization, monkeypatch, grounded=module.KEYS - {"date_identified"})
+    _, (date,) = helper_resolutions(b.checkpoint.scope, "date")
+    assert date.value.state == ValueState.SUPPORTED and date.value.evidence_relations == {}
+    proof = produce_v2(committed(b, (date,)))
+    assert proof.result.run.disposition == Disposition.REVIEW and proof.result.run.stage == "finalized"
+    assert proof.progress_receipt.disposition == "needs_human_review" and proof.policy_receipt["disposition"] == "needs_human_review"
+    assert proof.progress_receipt.wire_status == "completed" and proof.progress_receipt.exportable is False
+    assert proof.progress_receipt.human_reason_codes == ("mandatory_unresolved:date_identified",)
+    assert proof.progress_receipt.operational_reason_codes == ()
+    assert proof.result.run.reasons == ["mandatory_unresolved:date_identified"]
+    assert proof.progress_receipt.canonical_field_work["date_identified"] == "resolved"
+    # The helper's value is not published: the field keeps its prior record value.
+    assert proof.result.run.fields["date_identified"] == b.prior.run.fields["date_identified"]
+    assert proof.result.run.fields["date_identified"].normalized != date.value.normalized == "1946-09-03"
+
+
+def test_the_date_review_record_reaches_the_native_writer_as_completed_needs_human_review(materialization, monkeypatch):
+    from specimen_digitization.research_harness import canonical_materialization_v2 as module
+    from specimen_digitization.research_harness.native_canonical_v2 import SqlConnectCanonicalResearchWriterV2
+    b = terminal_routing_case(materialization, monkeypatch, grounded=module.KEYS - {"date_identified"})
+    _, (date,) = helper_resolutions(b.checkpoint.scope, "date")
+    proof = produce_v2(committed(b, (date,)))
+    writer = SqlConnectCanonicalResearchWriterV2(None, None, blobs=None, operation_client=object())
+    intent = SimpleNamespace(operation_digest=digest("synthetic operation"), actor_uid=b.principal.user_id,
+        idempotency_key=b.prepared.basis.idempotency_key)
+    payload = writer._materialization_v2(b.principal, b.prepared, b.binding, {"projection": list(b.rows)}, b.prior, proof,
+        intent=intent, bundle=SimpleNamespace(target=b.source.context), projection_services=b.services,
+        captured_evidence=b.evidence)
+    assert payload["state"] == "completed" and payload["snapshot"]["run"]["stage"] == "finalized"
+    assert payload["record"]["disposition"] == "needs_human_review"
+    assert payload["record"]["summary"] == "mandatory_unresolved:date_identified"
+    # The date's resolved field row is the prior record's, unchanged.
+    prior_row = next(row for row in b.rows if row["fieldKey"] == "date_identified")
+    row = next(row for row in payload["fields"] if row["fieldKey"] == "date_identified")
+    assert (row["candidateId"], row["state"]) == (prior_row["candidateId"], prior_row["state"])
+
+
+def test_an_elevation_without_evidence_relations_holds_the_endpoints_derived_from_it(materialization, monkeypatch):
+    from specimen_digitization.research_harness import canonical_materialization_v2 as module
+    from specimen_digitization.research_harness.canonical_projection_v2 import relations_unproved
+    b = terminal_routing_case(materialization, monkeypatch, grounded=module.KEYS - ELEVATIONS)
+    _, elevations = helper_resolutions(b.checkpoint.scope, "elevation")
+    # Only the written endpoint lacks a relation; its derivation record covers
+    # each derived endpoint's evidence, but none can publish before its source.
+    assert [str(item.field_key) for item in elevations if relations_unproved(item)] == ["elevation_from_ft"]
+    proof = produce_v2(committed(b, elevations))
+    assert proof.result.run.disposition == Disposition.REVIEW and proof.result.run.stage == "finalized"
+    assert proof.progress_receipt.wire_status == "completed" and proof.progress_receipt.exportable is False
+    assert proof.progress_receipt.human_reason_codes == tuple(f"mandatory_unresolved:{key}" for key in sorted(ELEVATIONS))
+    assert proof.progress_receipt.operational_reason_codes == ()
+    assert all(proof.result.run.fields[key] == b.prior.run.fields[key] for key in ELEVATIONS)
+    assert all(proof.progress_receipt.canonical_field_work[key] == "resolved" for key in ELEVATIONS)
+
+
+@pytest.mark.parametrize("state", ["waiting_source", "operational_failed"])
+def test_a_real_outage_beside_a_value_without_relations_stays_an_operational_block(materialization, monkeypatch, state):
+    from specimen_digitization.research_harness import canonical_materialization_v2 as module
+    b = terminal_routing_case(materialization, monkeypatch, work={"county": state},
+        grounded=module.KEYS - {"county", "date_identified"})
+    _, (date,) = helper_resolutions(b.checkpoint.scope, "date")
+    proof = produce_v2(committed(b, (date,)))
+    assert proof.result.run.disposition is None and proof.progress_receipt.disposition is None
+    assert proof.result.run.stage == "processing_blocked" and proof.progress_receipt.wire_status == "processing_blocked"
+    assert proof.progress_receipt.exportable is False
+    assert proof.progress_receipt.operational_reason_codes == (f"research_work:county:{state}",)
+    assert proof.progress_receipt.human_reason_codes == ("mandatory_unresolved:date_identified",)
+
+
+def test_the_same_date_with_its_relations_must_be_grounded_by_its_own_publication(materialization, monkeypatch):
+    from specimen_digitization.research_harness import canonical_materialization_v2 as module
+    b = terminal_routing_case(materialization, monkeypatch, grounded=module.KEYS - {"date_identified"})
+    _, (date,) = helper_resolutions(b.checkpoint.scope, "date")
+    value = date.value.model_copy(update={"evidence_relations": dict.fromkeys(date.value.evidence_ids, "supports")})
+    proof = produce_v2(committed(b, (date.model_copy(update={"value": value}),)))
+    assert proof.result.run.disposition is None and proof.result.run.stage == "processing_blocked"
+    assert proof.progress_receipt.operational_reason_codes == ("canonical_field_grounding_unproved:date_identified",)
+    assert proof.progress_receipt.human_reason_codes == ()
+
+
+def test_the_science_rules_do_not_judge_the_prior_value_of_an_unpublished_field(materialization):
+    b = v2_case(materialization, "resolved")
+    profile = CollectionProfile.model_validate(b.binding.registration.job["pins"]["profile"])
+    result = b.prior.model_copy(deep=True)
+    result.run.fields["elevation_from_m"] = FieldValue(state=ValueState.SUPPORTED, literal="180 to 181 m",
+        parsed="180 to 181 m")
+    _, work, _, _ = _work_progress(b.binding.registration, b.checkpoint, result.run)
+    rules = dict(latest_work=work, field_mapping=b.binding.registration.field_mapping, scientific_qualified=frozenset())
+    assert "elevation_invalid:m" in _scientific_reasons(result, profile, 2000000000.0, **rules)
+    held = _scientific_reasons(result, profile, 2000000000.0, **rules, unpublished=frozenset({"elevation_from_m"}))
+    assert "elevation_invalid:m" not in held
+    assert not any(reason.endswith(":elevation_from_m") for reason in held)
 
 
 def test_date_identified_stays_mandatory_and_emu_irn_exception_does_not_fabricate_party(materialization):

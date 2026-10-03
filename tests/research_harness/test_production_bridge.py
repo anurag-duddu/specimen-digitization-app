@@ -34,6 +34,7 @@ from specimen_digitization.research_harness.workflow_bridge import (
     compose_registered_native_workflow, membership_verifier,
 )
 
+from test_native_canonical_contract import helper_resolutions
 from test_provisioning import COLLECTION, ORG, WORKER, plan_specimen
 
 ON = {"SPECIMEN_RESEARCH_HARNESS": "on"}
@@ -307,8 +308,12 @@ def waiting(key, state):
 
 DTS = checkpoint(dts_policy_resolution("synthetic D/T/S text"))
 TAXON = checkpoint(FieldResolution(field_key=FieldKey.TAXON, work_state=WorkState.RESOLVED,
-    value=FieldValue(state=ValueState.SUPPORTED, literal="Synthetic taxon", evidence_ids=["e-taxon"]),
+    value=FieldValue(state=ValueState.SUPPORTED, literal="Synthetic taxon", evidence_ids=["e-taxon"],
+        evidence_relations={"e-taxon": "decides"}),
     evidence_ids=("e-taxon",), reason="synthetic resolved work"))
+# The evidence.py helpers' own values: supported, with no evidence relation.
+DATE = checkpoint(helper_resolutions(RESEARCH_SCOPE, "date")[1][0])
+ELEVATIONS = tuple(checkpoint(item) for item in helper_resolutions(RESEARCH_SCOPE, "elevation")[1])
 
 
 def thread(*checkpoints, locked=()):
@@ -399,5 +404,27 @@ def test_only_terminal_checkpoints_are_offered_for_publication(monkeypatch):
 def test_a_source_outage_ends_the_tick_as_an_operational_block(monkeypatch):
     county = waiting(FieldKey.COUNTY, WorkState.WAITING_SOURCE)
     runtime, outcome = publish(monkeypatch, (DTS, county, TAXON), thread(DTS, county, TAXON))
+    assert runtime.prepared == [FieldKey.TAXON]
+    assert outcome.reason_code is None and outcome.status == "blocked"
+
+
+def test_a_date_without_evidence_relations_is_not_offered_for_publication(monkeypatch):
+    runtime, outcome = publish(monkeypatch, (DATE, TAXON), thread(DATE, TAXON))
+    assert runtime.prepared == [FieldKey.TAXON] and runtime.proofs == ["native-taxon"]
+    assert outcome.checkpoint_ids == ("native-taxon",) and outcome.publication_receipt_ids == ("receipt-taxon",)
+    # Neither a reconciliation hold nor an operational block: the next
+    # publication gives the field its review reason.
+    assert outcome.reason_code is None and outcome.status == "completed"
+
+
+def test_an_elevation_without_evidence_relations_holds_its_derived_endpoints(monkeypatch):
+    runtime, outcome = publish(monkeypatch, (*ELEVATIONS, TAXON), thread(*ELEVATIONS, TAXON))
+    assert runtime.prepared == [FieldKey.TAXON]
+    assert outcome.reason_code is None and outcome.status == "completed"
+
+
+def test_a_source_outage_beside_a_value_without_relations_stays_an_operational_block(monkeypatch):
+    county = waiting(FieldKey.COUNTY, WorkState.WAITING_SOURCE)
+    runtime, outcome = publish(monkeypatch, (DATE, county, TAXON), thread(DATE, county, TAXON))
     assert runtime.prepared == [FieldKey.TAXON]
     assert outcome.reason_code is None and outcome.status == "blocked"

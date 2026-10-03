@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import Field
 
 from .accepted_output import read_accepted_checkpoint_proof
+from .canonical_projection_v2 import relation_unproved_fields
 from .contracts import CollectionProfile, Digest, FrozenRecord, ResearchScope, WorkState, digest
 from .persistence import HeldUnknown, StaleWork
 from .publication import prepare_native_publication
@@ -154,9 +155,16 @@ class NativeResearchWorker:
         # Only committed current checkpoints are eligible. A legacy/historical
         # body or a failed engine run is not scientific publication authority.
         typed = _sources_first(await runtime.journal.load(scope))
+        # A supported value without the evidence relations the V2 projection
+        # requires (today the evidence.py date and elevation helper values), and
+        # any value that depends on one, is not offered: publication would
+        # refuse it. The field keeps its prior record value, and each later
+        # publication gives it the review reason mandatory_unresolved:{key}
+        # (canonical_materialization_v2) instead of an operational block.
+        unpublishable = relation_unproved_fields(item for item in typed if item.resolution.work_state in PUBLISHABLE)
         receipts, checkpoint_ids = [], []
         for checkpoint in typed:
-            if checkpoint.resolution.work_state not in PUBLISHABLE:
+            if checkpoint.resolution.work_state not in PUBLISHABLE or checkpoint.field_key in unpublishable:
                 continue
             job = await asyncio.to_thread(runtime.store.job, runtime.scope)
             native = job["fields"][str(checkpoint.field_key)]["checkpoint"]

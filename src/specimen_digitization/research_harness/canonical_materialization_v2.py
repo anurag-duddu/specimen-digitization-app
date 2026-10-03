@@ -22,7 +22,7 @@ from specimen_digitization.application.storage import digest as canonical_digest
 from .canonical_materialization import KEYS, IRN, ResearchCanonicalPolicyV1, _date_bounds, _raw_grounded, unavailable
 from .canonical_projection_v2 import (CanonicalLineageContextV2, _checkpoint, _literal_grounding, _prior_snapshot,
     _readings, _source_lineage, _value, project_canonical_value_v2, project_tool_input_lineage_v2,
-    validate_checkpoint_resolution_v2)
+    relation_unproved_fields, validate_checkpoint_resolution_v2)
 from .canonical_evidence_provider_v2 import CapturedCanonicalEvidenceV2
 from .contracts import ALL_FIELDS, CollectionProfile, FieldCheckpoint, FieldKey, SourceResult, SpecialistRequest, WorkState, digest
 from .evidence import emu_irn_exception, validate_resolution
@@ -49,6 +49,25 @@ def _policy_held(canonical, profile, field_mapping):
     declared = {field_mapping[str(row.field_key)] for row in profile.fields if row.missing_policy}
     return frozenset(key for key, state in canonical.items()
         if key in declared and state == str(WorkState.WAITING_POLICY))
+
+
+def _relations_unproved(job, field_mapping):
+    """Terminal fields whose committed value cannot publish for want of the
+    evidence relations the V2 projection requires (relation_unproved_fields;
+    today the evidence.py date and elevation helper values).
+
+    The worker does not offer them, so each keeps its prior record value. Like
+    a held policy field, each carries mandatory_unresolved:{key}, a needs human
+    review reason, and neither blocks the record nor needs whole-record grounding.
+    """
+    committed = []
+    for row in job["fields"].values():
+        if row["work_state"] in TERMINAL and row.get("checkpoint") is not None:
+            try:
+                committed.append(FieldCheckpoint.model_validate(row["checkpoint"]["payload"]))
+            except (KeyError, TypeError, ValueError):
+                unavailable("canonical_field_work_mapping_unproved")
+    return frozenset(field_mapping[str(key)] for key in relation_unproved_fields(committed))
 
 
 class ResearchCanonicalPolicyV2(ResearchCanonicalPolicyV1):
@@ -159,7 +178,8 @@ def _qualified_terminal_fields(prior, result, target_proof, contexts, canonical_
     return frozenset(qualified)
 
 
-def _scientific_reasons(result, profile, observed_at, *, latest_work, field_mapping, scientific_qualified):
+def _scientific_reasons(result, profile, observed_at, *, latest_work, field_mapping, scientific_qualified,
+        unpublished=frozenset()):
     """Versioned G1/G6/G42/G43 science rules evaluated on genuine settled fields.
 
     Unfinished work is handled separately; no work state is fabricated. Exact
@@ -167,6 +187,9 @@ def _scientific_reasons(result, profile, observed_at, *, latest_work, field_mapp
     layers before any source-evidence exemption below.
     """
     run = result.run
+    # An unpublished terminal field (_relations_unproved) keeps its prior record
+    # value, which is not its research result: the rules leave it out.
+    latest_work = {key: None if key in unpublished else state for key, state in latest_work.items()}
     reasons = [f"research_human_question:{key}" for key, state in latest_work.items() if state == str(WorkState.WAITING_HUMAN)]
     # This producer is admitted only through its distinct registered enhanced
     # scientific policy. PLAN G1 retires legacy31-34 and blanket138-139 here;
@@ -402,11 +425,15 @@ class CanonicalResearchMaterializerV2:
         # A held field keeps its prior canonical value and carries its field
         # reason; it neither blocks the record nor needs whole-record grounding.
         held = _policy_held(canonical, profile, reg.field_mapping)
+        # So does a terminal field whose value cannot publish for want of
+        # evidence relations, whatever value the record holds for it.
+        unpublished = _relations_unproved(reg.job, reg.field_mapping)
         states = {state for key, state in canonical.items() if key not in held}
         qualified = _qualified_terminal_fields(prior, result, TerminalFieldProofV2(checkpoint, lineage), context.field_lineage_contexts, canonical)
-        human = tuple(dict.fromkeys((*human, *_scientific_reasons(result, profile, observed_at,
-            latest_work=canonical, field_mapping=reg.field_mapping, scientific_qualified=qualified))))
-        ungrounded = KEYS - held - qualified
+        human = tuple(dict.fromkeys((*human, *(f"mandatory_unresolved:{key}" for key in sorted(unpublished)),
+            *_scientific_reasons(result, profile, observed_at, latest_work=canonical, field_mapping=reg.field_mapping,
+                scientific_qualified=qualified, unpublished=unpublished))))
+        ungrounded = KEYS - held - unpublished - qualified
         if not states & UNFINISHED and ungrounded:
             operational += tuple(f"canonical_field_grounding_unproved:{field}" for field in sorted(ungrounded))
         unfinished = bool(states & UNFINISHED)

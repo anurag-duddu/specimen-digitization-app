@@ -15,7 +15,8 @@ from test_production_bridge import TAXON, checkpoint, publish, thread, waiting
 
 def resolved(key, *sources):
     return checkpoint(FieldResolution(field_key=key, work_state=WorkState.RESOLVED,
-        value=FieldValue(state=ValueState.SUPPORTED, literal="180", evidence_ids=["e-label"]),
+        value=FieldValue(state=ValueState.SUPPORTED, literal="180", evidence_ids=["e-label"],
+            evidence_relations={"e-label": "supports"}),
         evidence_ids=("e-label",), reason="synthetic resolved work",
         dependencies=tuple(DependencyPin(field_key=source.field_key, revision=source.revision,
             digest=digest(source.resolution)) for source in sources)))
