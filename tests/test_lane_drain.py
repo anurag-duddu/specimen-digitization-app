@@ -1,6 +1,7 @@
 """The production worker drains the queue (docs/execution/golive/LANE.md, T2)."""
 
 import hashlib
+import logging
 import time
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -816,6 +817,79 @@ def test_a_held_record_is_blocked_and_the_later_records_are_drained(
     later = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
     assert lane.repository.oldest_due(SCOPE, later, limit=10) == []
     assert fence(lane).read()["holder"] is None
+
+
+class PublishesThenHolds(NativeLane):
+    """A save leaves the record stopped, then the worker's blocked outcome follows.
+
+    The default is a publication's own save: canonical_materialization_v2 saves a
+    run whose fields still wait on a source as processing_blocked, with no blocker."""
+
+    def __init__(self, repository, holds, *, blocker=None, stage="processing_blocked"):
+        super().__init__(repository, holds)
+        self.blocker, self.stage = blocker, stage
+
+    async def run_registered(self, principal, ident, *, owner):
+        if ident in self.holds:
+            specimen = self.repository.get(principal.scope, ident)
+            specimen.run.stage, specimen.run.blocker = self.stage, self.blocker
+            self.repository.save(principal, specimen, specimen.version, f"publish:{ident}", ident)
+        return await super().run_registered(principal, ident, owner=owner)
+
+
+def test_a_hold_after_a_publication_blocked_the_record_is_recorded_and_logged(lane, caplog):
+    code = "native_publication_requires_reconciliation"
+    native = PublishesThenHolds(lane.repository, {TEN[2]: code})
+    with caplog.at_level(logging.WARNING, logger="specimen_digitization.application.lane_worker"):
+        summary = drain_the_ten(lane, native)
+    assert summary["status"] == "drained"
+    assert summary["processed"] == list(TEN)
+    held = lane.repository.get(SCOPE, TEN[2])
+    # The publication's save blocked the record; the hold's code reaches it too.
+    assert (held.run.stage, held.run.blocker, held.run.disposition) == ("processing_blocked", code, None)
+    assert (held.audit[-1].action, held.audit[-1].reason) == ("lane_block", code)
+    # The drain's own not-progressing block does not replace it.
+    assert [event.reason for event in held.audit if event.action == "lane_block"] == [code]
+    # The log names the code and the record's last six characters, nothing else.
+    lines = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert lines == [f"record held by the drain: {code} (record ...{TEN[2][-6:]})"]
+    assert TEN[2] not in caplog.text
+    for ident in TEN[:2] + TEN[3:]:
+        run = lane.repository.get(SCOPE, ident).run
+        assert (run.stage, run.disposition) == ("finalized", Disposition.REVIEW)
+
+
+@pytest.mark.parametrize("blocker", ["external_outcome_unknown", "pilot_evidence_review_required"])
+def test_a_hold_keeps_the_blocker_an_already_blocked_record_names(lane, blocker):
+    native = PublishesThenHolds(
+        lane.repository, {TEN[0]: "native_publication_requires_reconciliation"}, blocker=blocker
+    )
+    drain_the_ten(lane, native)
+    held = lane.repository.get(SCOPE, TEN[0])
+    assert (held.run.stage, held.run.blocker) == ("processing_blocked", blocker)
+    assert "lane_block" not in [event.action for event in held.audit]
+
+
+@pytest.mark.parametrize("stage", ["finalized", "paused", "cancelled"])
+def test_a_hold_does_not_touch_a_run_that_has_stopped_another_way(lane, stage):
+    native = PublishesThenHolds(
+        lane.repository, {TEN[0]: "native_publication_requires_reconciliation"}, stage=stage
+    )
+    drain_the_ten(lane, native)
+    held = lane.repository.get(SCOPE, TEN[0])
+    assert (held.run.stage, held.run.blocker) == (stage, None)
+    assert "lane_block" not in [event.action for event in held.audit]
+
+
+def test_the_drains_stall_blocks_leave_a_blocked_record_as_it_is(lane):
+    # Only a record's own hold is recorded on a run that is already blocked.
+    queued(lane.repository, TEN[0], minutes=5, stage="processing_blocked")
+    drain = worker(lane.repository, None, lane.clock)
+    for reason in ("lane_run_not_progressing", "lane_handover_without_progress"):
+        drain._block(principal(), TEN[0], reason)
+    held = lane.repository.get(SCOPE, TEN[0])
+    assert (held.run.stage, held.run.blocker) == ("processing_blocked", None)
+    assert "lane_block" not in [event.action for event in held.audit]
 
 
 @pytest.mark.parametrize(

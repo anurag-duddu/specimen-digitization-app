@@ -8,6 +8,7 @@ the next execution.
 
 from __future__ import annotations
 
+import logging
 import math
 import time
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ from .domain import AuditEvent, Principal, Scope
 from .storage import Conflict, Missing, digest
 from .workflow import OperationalBlock
 
+LOGGER = logging.getLogger(__name__)
 LANE_ROLES = {"operator", "reviewer", "manager", "admin"}
 # A run stops being stepped at any of these; the workflow waits on the rest.
 STOPPED = {"finalized", "processing_blocked", "paused", "cancelled", "retry_scheduled"}
@@ -446,8 +448,10 @@ class DrainWorker:
             except OperationalBlock as exc:
                 if str(exc) not in RECORD_HOLDS:
                     raise
-                # Blocked where people can see it, so it is no longer due.
-                self._block(principal, ident, str(exc))
+                # Blocked where people can see it, so it is no longer due. The
+                # code is logged with a short record suffix and nothing else.
+                LOGGER.warning("record held by the drain: %s (record ...%s)", str(exc), str(ident)[-6:])
+                self._block(principal, ident, str(exc), hold=True)
                 return self.repository.get(principal.scope, ident).run, progressed
             conflicts = 0
             fence.hold(ident, specimen.run.id)
@@ -460,14 +464,27 @@ class DrainWorker:
             before = specimen
         return run, progressed
 
-    def _block(self, principal, ident, reason):
-        """A visible operational block; the run's resume action requests it again."""
+    def _block(self, principal, ident, reason, *, hold=False):
+        """A visible operational block; the run's resume action requests it again.
+
+        A record's own hold (``hold``) is also recorded on a run that is already
+        processing_blocked, as its blocker when it names none: a publication's
+        save blocks the record first, so its later refusal would leave no trace.
+        The stage stays, and a blocker already there (an unknown external
+        outcome, or an earlier hold) is kept."""
         try:
             specimen = self.repository.get(principal.scope, ident)
             run = specimen.run
-            if run.disposition or run.stage in FINISHED:
+            if run.disposition:
                 return
-            run.stage, run.blocker, run.next_retry_at = "processing_blocked", reason, None
+            if run.stage == "processing_blocked":
+                if not hold or run.blocker:
+                    return
+                run.blocker = reason
+            elif run.stage in FINISHED:
+                return
+            else:
+                run.stage, run.blocker, run.next_retry_at = "processing_blocked", reason, None
             specimen.audit.append(
                 AuditEvent(actor=principal.user_id, action="lane_block", reason=reason)
             )
