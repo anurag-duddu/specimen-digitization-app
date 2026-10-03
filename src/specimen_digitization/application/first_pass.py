@@ -186,10 +186,14 @@ def output_problems(output: FirstPassOutput, letters, count: int) -> list[str]:
     problems = []
     if output.selected_reader is not None and output.selected_reader not in letters:
         problems.append(f"selected_reader must be one of {sorted(letters)} or null")
-    if sorted(v.number for v in output.verdicts) != list(range(1, count + 1)):
+    # With no difference listed (the readings differ only in whitespace) there is
+    # nothing to judge: a verdict is for a difference that does not exist, and
+    # first_pass_direct reads verdicts 1..len(differences) only, so none here.
+    verdicts = output.verdicts if count else []
+    if sorted(v.number for v in verdicts) != list(range(1, count + 1)):
         problems.append(f"give exactly one verdict for each difference 1 to {count}")
     allowed = {*letters, *UNRESOLVED_VERDICTS}
-    if any(v.supported not in allowed for v in output.verdicts):
+    if any(v.supported not in allowed for v in verdicts):
         problems.append(f"each verdict's supported must be one of {sorted(allowed)}")
     if set(output.reader_notes) != set(letters):
         problems.append(f"give one note for each reader {sorted(letters)}")

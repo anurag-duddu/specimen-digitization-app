@@ -18,7 +18,10 @@ from specimen_digitization.application.domain import (
     StageCostReservations,
 )
 from specimen_digitization.application import model_runtime
-from specimen_digitization.application.first_pass import synthetic_decision
+from specimen_digitization.application.first_pass import (
+    reading_differences,
+    synthetic_decision,
+)
 from specimen_digitization.application.integrity import (
     EvidenceIntegrityError,
     verify_evidence,
@@ -35,8 +38,8 @@ class ChoosingAdapters(SyntheticAdapters):
     """Synthetic readers that disagree, and a first pass that picks a reading the
     image supports at every difference (G19), or none."""
 
-    def __init__(self, blobs, pick):
-        super().__init__(blobs, SYNTHETIC_TEXT, "taxon: different")
+    def __init__(self, blobs, pick, alternate="taxon: different"):
+        super().__init__(blobs, SYNTHETIC_TEXT, alternate)
         self.pick, self.first_passes = pick, []
 
     def first_pass(self, specimen, region, readings):
@@ -108,6 +111,42 @@ def test_no_selection_hands_every_reading_to_the_harness_as_raw(tmp_path):
     assert {(d.verdict, d.material) for d in transcript.differences} == {
         ("uncertain", True)
     }
+
+
+@pytest.mark.parametrize("pick", [1, None], ids=["a pick", "no pick"])
+def test_a_whitespace_only_pair_is_decided_by_the_first_pass_pick_alone(tmp_path, pick):
+    # No difference is listed for readings that differ only in whitespace, but
+    # they are two stored readings, so the region still gets its first pass
+    # (HARNESS.md section 4). With nothing to judge, G19 holds no difference
+    # against the pick: the model's pick stands verbatim, or the region is
+    # unresolved with every reading handed over raw.
+    spaced = SYNTHETIC_TEXT.replace(": ", " : ")
+    adapters = ChoosingAdapters(
+        LocalBlobs(tmp_path / "blobs"),
+        lambda r: None if pick is None else r[pick].id,
+        alternate=spaced,
+    )
+
+    workflow, principal, specimen_id = start(tmp_path, adapters)
+    specimen = workflow.drain(principal, specimen_id)
+    run, transcript = specimen.run, specimen.run.transcripts[0]
+
+    first, second = [o for o in run.observations if o.region_id == transcript.region_id]
+    assert reading_differences(first.literal_text, second.literal_text) == []
+    assert first.literal_text != second.literal_text
+    assert adapters.first_passes == [transcript.region_id]
+    assert run.blocker is None
+    assert transcript.decision_kind == "first_pass" and transcript.differences == []
+    assert run.first_pass_decisions[0].differences == []
+    chosen = None if pick is None else [first, second][pick]
+    assert transcript.selected_observation_id == (chosen and chosen.id)
+    assert transcript.text == (chosen and chosen.literal_text)
+    assert transcript.resolved is (chosen is not None)
+    assert [(h.observation_id, h.role) for h in transcript.handoffs] == [
+        (o.id, "decided_transcript" if o is chosen else "raw_reading")
+        for o in (first, second)
+    ]
+    verify_evidence(specimen, adapters.blobs)
 
 
 class TamperingAdapters(ChoosingAdapters):
