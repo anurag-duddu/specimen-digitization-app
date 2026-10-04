@@ -224,7 +224,7 @@ def test_one_request_reserves_its_worst_case_within_the_run_allowance():
     model = pins["model"]["specimen_geography"]
     liability = -(-(row["max_input_tokens"] * 200_000 + MAX_OUTPUT_TOKENS * 600_000) // 1_000_000)
     assert model["reservation_micro_usd"] == liability == 108_954
-    assert liability <= committed_run_cost_limit_micros(published()) == 500_000
+    assert liability <= committed_run_cost_limit_micros(published()) == 1_000_000
     assert row["max_input_tokens"] == 2 * 262_144 + 8_192 <= 1_000_000
     assert pins["settings"] == {"max_tokens": MAX_OUTPUT_TOKENS} and model["max_tokens"] == MAX_OUTPUT_TOKENS
 
