@@ -212,7 +212,13 @@ class CountingBackend(SqliteStateBackend):
 
 
 @pytest.fixture
-def opened(tmp_path, worker_context):
+def ordinary_spend():
+    """What the run's ordinary chain had spent when its research state was seeded."""
+    return 0
+
+
+@pytest.fixture
+def opened(tmp_path, worker_context, ordinary_spend):
     specimen = plan_specimen()
     binding = binding_for(specimen)
     scope = binding.durability_scope(principal())
@@ -220,7 +226,10 @@ def opened(tmp_path, worker_context):
     backend.grant(scope)
     store = ResearchStore(backend, binding.program_key)
     snapshot = specimen.run.profile_snapshot
-    store.initialize(scope, research_budget_policy(snapshot))
+    store.initialize(scope, replace(research_budget_policy(snapshot),
+        external_settled_micro_usd=ordinary_spend))
+    # The registered binding names the digest of the policy the state was created with.
+    binding.journal_budget_policy_digest = digest(store._read(scope).state["budget_policy"])
     pins = committed_job_pins(snapshot, organization_id=ORG, collection_id=COLLECTION,
         input_digest=SNAPSHOT_SHA)
     store.create_job(scope, PinnedRuntime(**pins), [str(key) for key in FieldKey],
