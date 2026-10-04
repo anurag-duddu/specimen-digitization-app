@@ -25,6 +25,11 @@ time of the slowest one instead of the sum.
 # (persistence.MAX_LEASE_TTL_SECONDS). 1 restores one role per lease window.
 ROLE_CONCURRENCY = 2
 
+# What engine.ResearchEngine accepts as max_concurrency (its constructor allows 1 or 2). That file
+# is a pinned artifact, so the number is repeated here to refuse an unsupported K before a window's
+# lease is claimed, not after (a test pins the two together).
+ENGINE_MAX_CONCURRENCY = 2
+
 
 def window_size(remaining_micro_usd: int, reservation_micro_usd: int) -> int:
     """The window's width for a run with ``remaining_micro_usd`` left: at most K, and no more
@@ -35,5 +40,9 @@ def window_size(remaining_micro_usd: int, reservation_micro_usd: int) -> int:
     and its role would lose its fields; a narrower window runs those roles one after another
     instead. At least one role always runs: a run that cannot reserve even one request is refused
     by the reservation itself, as it is with K = 1. The width is taken when the window opens;
-    spending inside the window can still leave a later request short, exactly as at K = 1."""
+    spending inside the window can still leave a later request short, exactly as at K = 1.
+
+    A K the engine cannot run is refused here, before the caller claims a lease."""
+    if type(ROLE_CONCURRENCY) is not int or not 1 <= ROLE_CONCURRENCY <= ENGINE_MAX_CONCURRENCY:
+        raise ValueError("research_role_concurrency_unsupported")
     return max(1, min(ROLE_CONCURRENCY, remaining_micro_usd // reservation_micro_usd))

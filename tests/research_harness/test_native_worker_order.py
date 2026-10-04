@@ -29,7 +29,8 @@ def test_a_derived_field_is_offered_after_its_source(monkeypatch):
     # Key order, as the journal loads them.
     typed = (county, from_ft, from_m, to_ft, to_m, TAXON)
     runtime, outcome = publish(monkeypatch, typed, thread(*typed))
-    assert runtime.prepared == [FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M, FieldKey.TAXON,
+    # The specialists in roster order (taxonomy, then measurement), each role's fields sources first.
+    assert runtime.prepared == [FieldKey.TAXON, FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M,
         FieldKey.ELEVATION_FROM_FT, FieldKey.ELEVATION_TO_FT]
     assert len(outcome.publication_receipt_ids) == 5 and "native-county" not in outcome.checkpoint_ids
 
@@ -38,4 +39,5 @@ def test_a_dependency_outside_the_loaded_checkpoints_keeps_journal_order(monkeyp
     absent = resolved(FieldKey.DATE_VISITED_FROM)
     derived = resolved(FieldKey.DATE_VISITED_TO, absent)
     runtime, _ = publish(monkeypatch, (derived, TAXON), thread(derived, TAXON))
-    assert runtime.prepared == [FieldKey.DATE_VISITED_TO, FieldKey.TAXON]
+    # Nothing to wait for: the roles' roster order (taxonomy, then temporal).
+    assert runtime.prepared == [FieldKey.TAXON, FieldKey.DATE_VISITED_TO]

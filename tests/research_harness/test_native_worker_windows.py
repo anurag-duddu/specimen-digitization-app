@@ -12,13 +12,21 @@ import pytest
 
 from specimen_digitization.application.domain import FieldValue, ValueState
 from specimen_digitization.research_harness import native_worker
-from specimen_digitization.research_harness.contracts import FieldKey, FieldResolution, WorkState
+from specimen_digitization.research_harness.contracts import (
+    ROLE_FIELDS, FieldKey, FieldResolution, SpecialistRole, WorkState,
+)
 from specimen_digitization.research_harness.persistence import (
     BudgetPolicy, DurabilityScope, PinnedRuntime, ResearchStore, SqliteStateBackend, StaleWork,
 )
 from specimen_digitization.research_harness.production_runtime import NativeResearchRuntimeFactory
 
 from test_production_bridge import RESEARCH_SCOPE, TAXON, PublishingRuntime, checkpoint, principal, thread
+
+
+def roster_index(key):
+    """Where the key's specialist stands in the roster (the order a pass offers the roles in)."""
+    roles = {field: role for role, fields in ROLE_FIELDS.items() for field in fields}
+    return list(SpecialistRole).index(roles[key])
 
 
 def resolved(key):
@@ -43,7 +51,8 @@ class CountingRuntime(PublishingRuntime):
         def read_state(scope):
             self.reads["state"] += 1
             return SimpleNamespace(state={"outbox": outbox})
-        self.store = SimpleNamespace(job=read_job, _read=read_state)
+        # _job takes the job out of a state already read (no read of its own); job() is a read.
+        self.store = SimpleNamespace(job=read_job, _read=read_state, _job=lambda state, scope: job)
         winners, self.probes = winners or {}, []
 
         async def winning_receipt(principal, specimen_id, *, idempotency_key, request_identity_digest):
@@ -68,14 +77,17 @@ def publish(monkeypatch, runtime, view):
         runtime, principal(), RESEARCH_SCOPE.specimen_id))
 
 
-def test_a_publication_pass_reads_the_job_and_the_outbox_once_not_once_per_checkpoint(monkeypatch):
+def test_a_publication_pass_reads_the_state_once_not_once_per_checkpoint(monkeypatch):
     typed = (resolved(FieldKey.CITY), resolved(FieldKey.COUNTRY), resolved(FieldKey.COUNTY),
         resolved(FieldKey.HABITAT), TAXON)
     runtime = CountingRuntime(typed)
     outcome = publish(monkeypatch, runtime, thread(*typed))
-    # Before: one job read per checkpoint and one more at the end, one outbox read per checkpoint.
-    assert runtime.reads == {"job": 1, "state": 1}
-    assert [field for field, _ in runtime.prepared] == [item.field_key for item in typed]
+    # Before: one job read per checkpoint and one more at the end, one outbox read per checkpoint;
+    # then one read of each, which were two separate reads of the same document.
+    assert runtime.reads == {"state": 1}
+    # The specialists in roster order (taxonomy first), not the journal's key order.
+    assert [field for field, _ in runtime.prepared] == [FieldKey.TAXON, FieldKey.CITY, FieldKey.COUNTRY,
+        FieldKey.COUNTY, FieldKey.HABITAT]
     assert len(outcome.publication_receipt_ids) == 5 and outcome.reason_code is None
     # The record revision every preparation expects is the job's immutable one.
     assert {revision for _, revision in runtime.prepared} == {4}
@@ -94,8 +106,8 @@ def test_a_checkpoint_already_published_is_replayed_from_its_pending_guard_not_p
     runtime = CountingRuntime(typed, outbox=outbox, winners={guard["idempotency_key"]: winner})
     outcome = publish(monkeypatch, runtime, thread(*typed))
     assert [field for field, _ in runtime.prepared] == [FieldKey.CITY]
-    assert outcome.publication_receipt_ids == ("receipt-city", "receipt-replayed")
-    assert runtime.reads == {"job": 1, "state": 1}
+    assert outcome.publication_receipt_ids == ("receipt-replayed", "receipt-city")   # roster order: taxonomy first
+    assert runtime.reads == {"state": 1}
 
 
 def test_two_pending_operations_for_one_checkpoint_are_still_refused(monkeypatch):
@@ -155,10 +167,11 @@ def test_a_pass_over_delivered_checkpoints_reads_no_proof_and_asks_for_no_receip
     runtime = CountingRuntime(typed, outbox=outbox)
     outcome = publish(monkeypatch, runtime, thread(*typed))
     assert runtime.proofs == [] and runtime.probes == [] and runtime.prepared == []
-    assert runtime.reads == {"job": 1, "state": 1}
+    assert runtime.reads == {"state": 1}
     # The outcome is the one a replay gives: every checkpoint, every receipt, in journal order.
-    assert outcome.checkpoint_ids == tuple(f"native-{item.field_key}" for item in typed)
-    assert outcome.publication_receipt_ids == tuple(f"receipt-of-{item.field_key}" for item in typed)
+    in_order = sorted(typed, key=lambda item: roster_index(item.field_key))
+    assert outcome.checkpoint_ids == tuple(f"native-{item.field_key}" for item in in_order)
+    assert outcome.publication_receipt_ids == tuple(f"receipt-of-{item.field_key}" for item in in_order)
     assert outcome.reason_code is None
 
 
@@ -167,9 +180,9 @@ def test_a_pass_publishes_the_new_checkpoints_and_skips_the_delivered_ones(monke
     outbox = {**delivered(FieldKey.COUNTRY), **delivered(FieldKey.HABITAT)}
     runtime = CountingRuntime(typed, outbox=outbox)
     outcome = publish(monkeypatch, runtime, thread(*typed))
-    assert [field for field, _ in runtime.prepared] == [FieldKey.CITY, FieldKey.TAXON]
-    assert runtime.proofs == ["native-city", "native-taxon"] and runtime.probes == []
-    assert outcome.publication_receipt_ids == ("receipt-city", "receipt-of-country", "receipt-taxon",
+    assert [field for field, _ in runtime.prepared] == [FieldKey.TAXON, FieldKey.CITY]
+    assert runtime.proofs == ["native-taxon", "native-city"] and runtime.probes == []
+    assert outcome.publication_receipt_ids == ("receipt-taxon", "receipt-city", "receipt-of-country",
         "receipt-of-habitat")
 
 
@@ -182,9 +195,9 @@ def test_a_publication_not_marked_delivered_is_still_verified(monkeypatch, flag)
     winner = SimpleNamespace(causal=SimpleNamespace(receipt_id="receipt-found"))
     runtime = CountingRuntime(typed, outbox=outbox, winners={"idem-taxon": winner})
     outcome = publish(monkeypatch, runtime, thread(*typed))
-    assert runtime.proofs == ["native-city", "native-taxon"] and runtime.probes == ["idem-city", "idem-taxon"]
+    assert runtime.proofs == ["native-taxon", "native-city"] and runtime.probes == ["idem-taxon", "idem-city"]
     assert [field for field, _ in runtime.prepared] == [FieldKey.CITY]
-    assert outcome.publication_receipt_ids == ("receipt-city", "receipt-found")
+    assert outcome.publication_receipt_ids == ("receipt-found", "receipt-city")
 
 
 @pytest.mark.parametrize("commit", [None, {}, {"id": None}, {"id": ""}, {"id": 7}, "receipt"])

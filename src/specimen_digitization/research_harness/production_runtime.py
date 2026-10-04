@@ -193,13 +193,14 @@ class NativeResearchRuntimeFactory:
         model_factory = self.model_factory or _gateway_models()
         transport = self.source_transport if self.source_transport is not None else BoundedHTTPTransport()
         execution_class = "offline" if type(transport) is FixtureSourceTransport else "live"
+        # Before the claim: an unsupported K fails here with no lease left behind.
+        window = role_windows.window_size(budget["remaining_micro_usd"],
+            max(binding.reservation_micro_usd for binding in bindings.values()))
         lease = await asyncio.to_thread(store.claim, scope, owner, ttl_seconds=ttl_seconds)
         tools, _ = build_captured_research_services_v2(repository=self.repository,
             effect_broker=effects, scope=scope, lease=lease, registry=registry,
             policies=capture_policies, transport=transport, execution_class=execution_class)
-        window = role_windows.window_size(budget["remaining_micro_usd"],
-            max(binding.reservation_micro_usd for binding in bindings.values()))
-        engine = build_research_engine(profile=profile, requests=requests,
+        engine =build_research_engine(profile=profile, requests=requests,
             store=store, scope=scope, lease=lease, blobs=self.blobs, tool_broker=tools,
             bindings=bindings, settings=job["pins"]["settings"], source_pins=source_pins,
             base_model_factory=lambda request:model_factory(request, bindings[request.role]),

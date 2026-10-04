@@ -11,7 +11,9 @@ from pydantic import Field
 
 from .accepted_output import read_accepted_checkpoint_proof
 from .canonical_projection_v2 import relation_unproved_fields
-from .contracts import CollectionProfile, Digest, FrozenRecord, ResearchScope, WorkState, digest
+from .contracts import (
+    ROLE_FIELDS, CollectionProfile, Digest, FrozenRecord, ResearchScope, SpecialistRole, WorkState, digest,
+)
 from .persistence import HeldUnknown, StaleWork
 from .publication import prepare_native_publication
 from .worker import ResearchRetryWorker
@@ -76,6 +78,24 @@ def _sources_first(checkpoints):
     return tuple(ordered)
 
 
+def _publication_order(checkpoints):
+    """The order a pass offers its checkpoints: the specialists in roster order, and within one
+    specialist the journal's key order with a derived value after its source (_sources_first).
+
+    A pass ends at its first refusal. One role per window offered each role's fields in turn; with
+    several roles in a window this order does the same, so a refusal on a later role's field
+    (geography's) never strands an earlier role's committed field (taxonomy's). No role depends on
+    another. If a dependency pin ever names a field of another role, the whole list is ordered
+    sources first instead, so a derived value still follows its source."""
+    items = tuple(checkpoints)
+    role_of = {key: role for role, keys in ROLE_FIELDS.items() for key in keys}
+    if any(role_of[pin.field_key] != role_of[item.field_key]
+           for item in items for pin in item.resolution.dependencies):
+        return _sources_first(items)
+    return tuple(item for role in SpecialistRole
+                 for item in _sources_first([item for item in items if role_of[item.field_key] == role]))
+
+
 class ImmutablePublicationLocatorV2(FrozenRecord):
     contract_version: Literal["native-publication-locator/v2"] = "native-publication-locator/v2"
     original_scope: ResearchScope
@@ -130,10 +150,16 @@ class NativeResearchWorker:
             finally:
                 # A positively known completed role may close its exact lease;
                 # release itself refuses unknown outcomes/costs. Cancellation or
-                # unknown publication never relinquishes custody.
-                if outcome is not None and outcome.reason_code is None:
+                # unknown publication never relinquishes custody. A window that
+                # ended blocked is released as well when nothing is in doubt (no
+                # sending, held_unknown or reserved effect, no publication prepared
+                # and not delivered): a lease left for its whole length would turn
+                # an immediate step of the record into the drain-ending "already
+                # claimed" instead of the record's own hold.
+                if outcome is not None:
                     try:
-                        await asyncio.to_thread(runtime.store.release, runtime.scope, runtime.lease)
+                        await asyncio.to_thread(runtime.store.release, runtime.scope, runtime.lease,
+                            blocked=outcome.reason_code is not None)
                         released = True
                     except (HeldUnknown, StaleWork):
                         pass
@@ -190,7 +216,7 @@ class NativeResearchWorker:
         scope = runtime.binding.research_scope()
         # Only committed current checkpoints are eligible. A legacy/historical
         # body or a failed engine run is not scientific publication authority.
-        typed = _sources_first(await runtime.journal.load(scope))
+        typed = _publication_order(await runtime.journal.load(scope))
         # A supported value without the evidence relations the V2 projection
         # requires (today the evidence.py date and elevation helper values), and
         # any value that depends on one, is not offered: publication would
@@ -198,16 +224,17 @@ class NativeResearchWorker:
         # publication gives it the review reason mandatory_unresolved:{key}
         # (canonical_materialization_v2) instead of an operational block.
         unpublishable = relation_unproved_fields(item for item in typed if item.resolution.work_state in PUBLISHABLE)
-        # The job and the outbox are read once for the whole pass. A publication
+        # The state is read once for the whole pass: the job and the outbox come out of
+        # the same read, one snapshot, not two. A publication
         # rewrites neither a job field nor the job's record_revision (it only marks
         # its own two outbox events delivered), and a checkpoint's own pending guard
         # is created only when this loop prepares that checkpoint, so nothing the
         # loop reads for one checkpoint is changed by publishing another. Every pass
         # walks every earlier checkpoint again, so reading per checkpoint grew with
         # each window of a lease.
-        job = await asyncio.to_thread(runtime.store.job, runtime.scope)
         document = await asyncio.to_thread(runtime.store._read, runtime.scope)
-        events = [event for event in document.state["outbox"].values()
+        job = runtime.store._job(document.state, runtime.scope)
+        events =[event for event in document.state["outbox"].values()
             if event.get("kind") == "canonical_publication_required"]
         receipts, checkpoint_ids = [], []
         for checkpoint in typed:

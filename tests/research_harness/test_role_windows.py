@@ -99,6 +99,26 @@ def test_a_window_is_no_wider_than_the_allowance_can_reserve_for(remaining, rese
     assert role_windows.window_size(remaining, reservation) == window
 
 
+def test_the_engines_cap_is_the_one_the_window_size_is_checked_against():
+    """engine.py (pinned) accepts max_concurrency up to its cap; role_windows names the same number."""
+    cap = role_windows.ENGINE_MAX_CONCURRENCY
+    with pytest.raises(ValueError, match="bounded_concurrency_required"):
+        ResearchEngine(profile=None, requests={}, journal=None, harness_factory=None,
+            model_settings_digest="0" * 64, max_concurrency=cap + 1)
+    # At the cap the constructor gets past that check (and fails on the empty roster instead).
+    with pytest.raises(ValueError, match="explicit_specialist_requests_required"):
+        ResearchEngine(profile=None, requests={}, journal=None, harness_factory=None,
+            model_settings_digest="0" * 64, max_concurrency=cap)
+
+
+@pytest.mark.parametrize("configured", [0, -1, 3, 6, "2", 2.0, True, None])
+def test_a_window_size_the_engine_cannot_run_is_refused_when_a_window_opens(monkeypatch, configured):
+    """open() asks before it claims the lease, so a misconfigured K fails loudly with nothing to clean up."""
+    monkeypatch.setattr(role_windows, "ROLE_CONCURRENCY", configured)
+    with pytest.raises(ValueError, match="research_role_concurrency_unsupported"):
+        role_windows.window_size(500_000, 100_000)
+
+
 def test_the_window_follows_the_constant_when_it_is_changed(monkeypatch):
     monkeypatch.setattr(role_windows, "ROLE_CONCURRENCY", 1)
     assert role_windows.window_size(10 ** 9, 100_000) == 1

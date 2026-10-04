@@ -437,15 +437,26 @@ class ResearchStore:
             return lease
         return self._mutate(scope, reduce)
 
-    def release(self, scope: DurabilityScope, lease: Lease) -> None:
-        """Release only this known completed step; uncertain effects retain custody."""
+    def release(self, scope: DurabilityScope, lease: Lease, *, blocked: bool = False) -> None:
+        """Release only this known completed step; uncertain effects retain custody.
+
+        ``blocked`` is a window that ended blocked (its publication pass refused or could not
+        verify something). It is released too, but custody is kept as well while an effect is only
+        reserved (not yet proven unsent or sent) and while a publication was prepared and not
+        delivered: its outcome is in doubt (its attempt may be marked at the connector, and the next
+        step must reconcile it), so no one else may step in under a fresh lease."""
         def reduce(state, now):
             job = self._lease(state, scope, lease, now)
+            uncertain = {"sending", "held_unknown", "reserved"} if blocked else {"sending", "held_unknown"}
             if any(effect["job_key"] == scope.key and effect["scope"] == scope.identity()
-                and (effect["status"] in {"sending", "held_unknown"}
+                and (effect["status"] in uncertain
                     or effect.get("receipt") is not None and effect["actual_micro_usd"] is None)
                 for effect in state["effects"].values()):
                 raise HeldUnknown("Uncertain effect retains its lease custody")
+            if blocked and any(item.get("kind") == "canonical_publication_required"
+                and item.get("delivered") is False and item.get("guard", {}).get("scope") == scope.identity()
+                for item in state["outbox"].values()):
+                raise HeldUnknown("A publication in doubt retains its lease custody")
             job["lease"] = None
         self._mutate(scope, reduce, lease=lease)
 

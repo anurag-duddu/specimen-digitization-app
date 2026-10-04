@@ -21,18 +21,22 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 
 import production_e2e_support as support
+from specimen_digitization.application.lane_worker import RECORD_HOLDS
 from specimen_digitization.application.workflow import OperationalBlock
 from specimen_digitization.research_harness import engine as engine_mod
-from specimen_digitization.research_harness import native_worker, production_runtime, provisioning
+from specimen_digitization.research_harness import native_worker, production_runtime, provisioning, role_windows
 from specimen_digitization.research_harness.committed_pins import (
     build_committed_pins, committed_run_cost_limit_micros,
 )
 from specimen_digitization.research_harness.agents import SpecialistHarness
 from specimen_digitization.research_harness.native_service import SqlConnectNativeCanonicalServiceV2
-from specimen_digitization.research_harness.persistence import BudgetPolicy, ResearchStore
+from specimen_digitization.research_harness.contracts import ROLE_FIELDS, SpecialistRole
+from specimen_digitization.research_harness.persistence import BudgetPolicy, ResearchStore, StaleWork
 from specimen_digitization.research_harness.workflow_bridge import compose_production_research_workflow
 
-from test_production_e2e import SWITCH_ON, build_rig, no_network, supervised, to_plan  # noqa: F401
+from test_production_e2e import (  # noqa: F401  (no_network is autouse)
+    DATES_AND_ELEVATIONS, SWITCH_ON, build_rig, compose, no_network, supervised, to_plan,
+)
 
 SHIPPED_WINDOW = True  # conftest: this module runs role_windows.ROLE_CONCURRENCY, not one role per window
 TICKS = {}
@@ -92,12 +96,27 @@ def answers_nothing(messages, info):
     return ModelResponse([ToolCallPart(info.output_tools[0].name, {"role": "specimen_geography", "resolutions": []})])
 
 
-def tick(tmp_path, k, *, replace=None, ceiling=None, spent=0, key=None):
+def refusing_from(number):
+    """before_step hook: the connector refuses the ``number``-th publication and every later one."""
+    def install(rig):
+        publish, calls = rig.fake.op_PublishCanonicalResearchV2, []
+
+        def refusing(variables):
+            calls.append(variables["specimenId"])
+            if len(calls) >= number:
+                raise support.ConnectorRefusal("publication refused")
+            return publish(variables)
+        rig.fake.op_PublishCanonicalResearchV2 = refusing
+    return install
+
+
+def tick(tmp_path, k, *, replace=None, ceiling=None, spent=0, before_step=None, key=None):
     """One plan tick of the synthetic specimen with k roles per window; the observed facts.
 
     k None: the production composer as shipped (the window size role_windows.ROLE_CONCURRENCY gives it).
     ceiling: the run's allowance in micro-USD (the published profile's is 500,000).
-    spent: micro-USD of that allowance already used before research starts (settled elsewhere)."""
+    spent: micro-USD of that allowance already used before research starts (settled elsewhere).
+    before_step: called with the rig after the ordinary steps, before the research tick."""
     if key is not None and key in TICKS:
         return TICKS[key]
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -170,6 +189,8 @@ def tick(tmp_path, k, *, replace=None, ceiling=None, spent=0, key=None):
             model_factory=scripted_with(rig, replace=replace),
             source_transport=support.fixture_source_transport(rig.source_urls), blobs=rig.research_blobs)
         to_plan(workflow, rig)
+        if before_step is not None:
+            before_step(rig)
         outcome = "no OperationalBlock"
         with supervised():
             try:
@@ -218,16 +239,24 @@ def test_two_roles_per_window_publish_what_one_role_per_window_publishes(tmp_pat
         assert (facts["stage"], facts["disposition"], facts["outcome"]) == (
             "finalized", "needs_human_review", "no OperationalBlock")
         assert facts["lease_left_set"] is False and facts["duplicates"] == 0
-    # Same twelve publications (order differs: a window publishes what it committed in key order),
-    # same field outcomes, same record, same reasons, same spend, nothing left held.
-    assert sorted(two["publications"]) == sorted(one["publications"]) and len(two["publications"]) == 12
+    # The same twelve publications in the same order (a pass offers the specialists in roster order,
+    # then each one's fields in key order, as one role per window did), same field outcomes, same
+    # record, same reasons, same spend, nothing left held.
+    assert two["publications"] == one["publications"] and len(two["publications"]) == 12
     for key in ("work_states", "published_values", "reasons", "effects", "model_calls", "sources", "settled",
                 "specimen_state"):
         assert two[key] == one[key], key
     assert one["held_after"] == two["held_after"] == 0 and not one["refusals"] and not two["refusals"]
-    # The last publication carries the whole twenty fields' progress in both.
+    # The last publication carries the whole twenty fields' progress in both, and it is a field of
+    # the last window's roles: it comes after both of them committed (so it sees every role's work).
     assert two["final_progress"]["human_reason_codes"] == one["final_progress"]["human_reason_codes"]
     assert not two["final_progress"]["operational_reason_codes"]
+    last_window = tuple(SpecialistRole)[-role_windows.ROLE_CONCURRENCY:]
+    assert two["publications"][-1] in {str(key) for role in last_window for key in ROLE_FIELDS[role]}
+    # The final queue is the one the one-role e2e asserts: review on the held D/T/S field and on the
+    # dates and elevations without evidence relations, and nothing operational.
+    unresolved = {f"mandatory_unresolved:{key}" for key in ("verbatim_dts", *DATES_AND_ELEVATIONS)}
+    assert {reason for reason in two["reasons"] if reason.startswith("mandatory_unresolved:")} == unresolved
     # A pass verifies a checkpoint (proof read) and probes its receipt only when it publishes it: a
     # checkpoint an earlier pass delivered is not walked again, however many windows follow.
     for facts in (one, two):
@@ -321,3 +350,68 @@ def test_the_window_follows_what_is_left_of_the_allowance_not_its_size(tmp_path)
     assert {(run["role_limit"], run["max_concurrency"]) for run in seeded["engine_runs"]} == {(1, 1)}
     assert not seeded["refusals"] and seeded["held_after"] == 0 and seeded["peak_roles"] == 1
     assert (seeded["stage"], seeded["disposition"]) == ("finalized", "needs_human_review")
+
+
+def test_a_refused_publication_leaves_the_earlier_roles_committed_fields_published(tmp_path):
+    """A pass ends at the first refusal. It offers the roster's first role first, so with two roles in
+    a window a refusal on geography's field still finds taxonomy's committed taxon published, as one
+    role per window had it. The publication whose outcome is in doubt keeps the lease."""
+    one = tick(tmp_path / "one", 1, before_step=refusing_from(2))
+    two = tick(tmp_path / "two", None, before_step=refusing_from(2))
+    for facts in (one, two):
+        assert facts["publications"] == ["taxon"]
+        assert facts["outcome"] == "OperationalBlock(native_publication_requires_reconciliation)"
+        assert facts["lease_left_set"] is True
+    assert [len(run["roles"]) for run in two["engine_runs"]] == [2]
+
+
+def test_a_blocked_window_with_nothing_in_doubt_releases_its_lease_so_the_record_can_be_stepped_again(
+        tmp_path, monkeypatch):
+    """The window's publication pass is blocked before any publication was prepared (an accepted-output
+    proof is unavailable): no effect is uncertain, so the lease is released. An immediate step claims
+    again and meets the same record hold (a code the drain holds), not the drain-ending
+    native_research_admission_or_binding_unavailable that "already claimed" gave for up to 900 s."""
+    fault = {"on": True}
+    original = native_worker.read_accepted_checkpoint_proof
+
+    def proof(*args, **kwargs):
+        if fault["on"]:
+            raise StaleWork("accepted_output_proof_unavailable")
+        return original(*args, **kwargs)
+    monkeypatch.setattr(native_worker, "read_accepted_checkpoint_proof", proof)
+    with contextlib.contextmanager(build_rig)(tmp_path) as rig:
+        workflow = compose(rig)
+        to_plan(workflow, rig)
+        with supervised(), pytest.raises(OperationalBlock) as first:
+            workflow.step(rig.principal, rig.specimen_id)
+        assert str(first.value) == "accepted_output_proof_unavailable"
+        _, state = support.research_state(rig.fake, rig.specimen_id)
+        job = list(state["jobs"].values())[0]
+        assert job["lease"] is None and job["fence"] == 1
+        assert not [effect for effect in state["effects"].values()
+                    if effect["status"] in {"sending", "held_unknown", "reserved"}]
+        # Stepped again at once, the fault still there: the record's own hold, again.
+        with supervised(), pytest.raises(OperationalBlock) as again:
+            workflow.step(rig.principal, rig.specimen_id)
+        assert str(again.value) == "accepted_output_proof_unavailable" and str(again.value) in RECORD_HOLDS
+        # The fault gone: the run goes on from the same checkpoints and reaches its final queue.
+        fault["on"] = False
+        with supervised():
+            specimen = workflow.step(rig.principal, rig.specimen_id)
+        assert (specimen.run.stage, specimen.run.disposition) == ("finalized", "needs_human_review")
+        _, state = support.research_state(rig.fake, rig.specimen_id)
+        assert list(state["jobs"].values())[0]["lease"] is None
+
+
+def test_a_window_size_the_engine_cannot_run_fails_before_a_lease_is_claimed(tmp_path, monkeypatch):
+    """A misconfigured K (the engine accepts one or two) must fail loudly when a window opens, with no
+    900 s lease left behind: the check runs before the claim."""
+    monkeypatch.setattr(role_windows, "ROLE_CONCURRENCY", 3)
+    with contextlib.contextmanager(build_rig)(tmp_path) as rig:
+        workflow = compose(rig)
+        to_plan(workflow, rig)
+        with supervised(), pytest.raises(ValueError, match="research_role_concurrency_unsupported"):
+            workflow.step(rig.principal, rig.specimen_id)
+        _, state = support.research_state(rig.fake, rig.specimen_id)
+        job = list(state["jobs"].values())[0]
+        assert job["lease"] is None and job["fence"] == 0 and not state["effects"]
