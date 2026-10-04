@@ -210,6 +210,8 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await scrollAndTap(tester, uiRecordView('Label review'));
+        await pickUiSelect(tester, 'Label', 'Label 1');
         await scrollAndTap(
           tester,
           uiIconButton(RegExp('^How this reading was produced,')),

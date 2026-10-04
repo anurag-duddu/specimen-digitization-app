@@ -17,12 +17,15 @@ class _PopoverHost extends StatefulWidget {
   const _PopoverHost({
     this.placement = PopoverPlacement.below,
     this.paneWidth = 200,
+    this.barrierDismissible = true,
   });
 
   final PopoverPlacement placement;
 
   /// How wide the pane asks to be.
   final double paneWidth;
+
+  final bool barrierDismissible;
 
   @override
   State<_PopoverHost> createState() => _PopoverHostState();
@@ -41,6 +44,7 @@ class _PopoverHostState extends State<_PopoverHost> {
   Widget build(BuildContext context) => Popover(
     controller: controller,
     placement: widget.placement,
+    barrierDismissible: widget.barrierDismissible,
     semanticsLabel: 'Collection menu',
     overlayBuilder: (BuildContext context) => SizedBox(
       width: widget.paneWidth,
@@ -93,6 +97,44 @@ void main() {
             'clause 3 of the control contract: Escape dismisses an overlay '
             'and returns focus to what opened it',
       );
+    });
+
+    testWidgets('platform Back closes the pane and keeps its route', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(uiHarness(child: const _PopoverHost()));
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pumpAndSettle();
+      final FocusNode? trigger = FocusManager.instance.primaryFocus;
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.text('Insects'), findsOneWidget);
+
+      expect(await tester.binding.handlePopRoute(), isTrue);
+      await tester.pumpAndSettle();
+      expect(find.text('Insects'), findsNothing);
+      expect(find.text('Collection'), findsOneWidget);
+      expect(FocusManager.instance.primaryFocus, trigger);
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.text('Insects'), findsOneWidget);
+    });
+
+    testWidgets('outside dismissal can be disabled without disabling toggle', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        uiHarness(child: const _PopoverHost(barrierDismissible: false)),
+      );
+      await tester.tap(find.text('Collection'));
+      await tester.pumpAndSettle();
+      expect(find.text('Insects'), findsOneWidget);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+      expect(find.text('Insects'), findsOneWidget);
+      await tester.tap(find.text('Collection'));
+      await tester.pumpAndSettle();
+      expect(find.text('Insects'), findsNothing);
     });
 
     testWidgets('the pane has a floating surface without a blur layer', (

@@ -106,10 +106,10 @@ List<Specimen> queue(int count) => <Specimen>[
     }),
 ];
 
-/// Wide enough for the checkbox column, narrow enough to stay a single pane.
+/// A wider window, narrow enough to stay a single pane.
 const Size wideQueue = Size(800, 1400);
 
-/// A phone: the column is revealed on a long press rather than kept open.
+/// A phone: the column is revealed on a long press.
 const Size narrowQueue = Size(390, 1200);
 
 Future<void> pumpQueue(
@@ -143,16 +143,15 @@ final Finder rowBoxes = find.descendant(
 
 /// Picks the row whose record is named [title].
 Future<void> pick(WidgetTester tester, String title) async {
-  if (rowBoxes.evaluate().isEmpty) {
-    await tester.tap(uiMenuTrigger('Specimen list actions'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Select specimens'));
-    await tester.pumpAndSettle();
-  }
   final Finder row = find.ancestor(
     of: find.text('fixture-00${title.split(' ').last}'),
     matching: find.byType(SelectableRow),
   );
+  if (rowBoxes.evaluate().isEmpty) {
+    await tester.longPress(row);
+    await tester.pumpAndSettle();
+    return;
+  }
   await tester.tap(find.descendant(of: row, matching: find.byType(UiCheckbox)));
   await tester.pumpAndSettle();
 }
@@ -170,25 +169,52 @@ Future<void> confirm(
 }
 
 void main() {
+  testWidgets('keyboard selection remains available without the list menu', (
+    tester,
+  ) async {
+    final repository = BulkRepository(queue(3));
+    await pumpQueue(tester, repository);
+    expect(uiMenuTrigger('Specimen list actions'), findsNothing);
+    final row = tester.widget<QueueRow>(find.byType(QueueRow).first);
+    row.focusNode!.requestFocus();
+    await tester.pumpAndSettle();
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyS);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+    expect(rowBoxes, findsNWidgets(3));
+    expect(tester.widget<UiCheckbox>(rowBoxes.first).value, isTrue);
+    expect(repository.calls, isEmpty);
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    expect(rowBoxes, findsNothing);
+    expect(repository.calls, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
   group('picking records', () {
-    testWidgets('a wide window reveals checkboxes through list actions', (
-      WidgetTester tester,
-    ) async {
-      await pumpQueue(tester, BulkRepository(queue(4)));
-      expect(rowBoxes, findsNothing);
-      await tester.tap(uiMenuTrigger('Specimen list actions'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Select specimens'));
-      await tester.pumpAndSettle();
-      expect(rowBoxes, findsNWidgets(4));
-      expect(
-        find.textContaining('selected'),
-        findsNothing,
-        reason: 'an empty selection has no bar',
-      );
-    });
+    testWidgets(
+      'a wide window selects by long press and can finish selecting',
+      (WidgetTester tester) async {
+        await pumpQueue(tester, BulkRepository(queue(4)));
+        expect(rowBoxes, findsNothing);
+        expect(uiMenuTrigger('Specimen list actions'), findsNothing);
+        expect(uiIconButton('Done selecting'), findsNothing);
+        await tester.longPress(find.text('fixture-002'));
+        await tester.pumpAndSettle();
+        expect(rowBoxes, findsNWidgets(4));
+        expect(find.text('1 record selected'), findsOneWidget);
+        expect(uiIconButton('Done selecting'), findsOneWidget);
+
+        await tester.tap(uiIconButton('Done selecting'));
+        await tester.pumpAndSettle();
+        expect(rowBoxes, findsNothing);
+        expect(find.textContaining('selected'), findsNothing);
+        expect(uiIconButton('Done selecting'), findsNothing);
+        expect(uiMenuTrigger('Specimen list actions'), findsNothing);
+      },
+    );
 
     testWidgets('a narrow window reveals the column on a long press', (
       WidgetTester tester,

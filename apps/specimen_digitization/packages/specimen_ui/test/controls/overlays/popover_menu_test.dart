@@ -1,6 +1,6 @@
 // `UiPopoverMenu` and `UiMenuTrigger` (10 section 4.3).
 
-import 'dart:ui' show Tristate;
+import 'dart:ui' show PointerDeviceKind, Tristate;
 
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -66,6 +66,117 @@ class _MenuHostState extends State<_MenuHost> {
 
 void main() {
   setUp(chosen.clear);
+
+  for (final PointerDeviceKind kind in <PointerDeviceKind>[
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.touch,
+  ]) {
+    for (final bool sharedTrigger in <bool>[false, true]) {
+      testWidgets(
+        '${sharedTrigger ? 'UiMenuTrigger' : 'a custom menu trigger'} '
+        'closes on a second ${kind.name} press without reopening',
+        (WidgetTester tester) async {
+          await tester.pumpWidget(
+            uiHarness(
+              child: sharedTrigger
+                  ? UiMenuTrigger(
+                      semanticsLabel: 'Record actions',
+                      items: items(),
+                    )
+                  : const _MenuHost(),
+            ),
+          );
+          final Finder trigger = find.bySemanticsLabel('Record actions');
+          final Offset position = tester.getCenter(trigger);
+          final TestGesture first = await tester.startGesture(
+            position,
+            kind: kind,
+          );
+          await first.up();
+          await tester.pumpAndSettle();
+          expect(find.text('Copy record id'), findsOneWidget);
+
+          // A browser sends down and up in separate frames. Dismissal must
+          // not treat the trigger as outside on down, then reopen on up.
+          final TestGesture second = await tester.startGesture(
+            position,
+            kind: kind,
+          );
+          await tester.pump();
+          final bool remainedOpen = find
+              .text('Copy record id')
+              .evaluate()
+              .isNotEmpty;
+          await second.up();
+          await tester.pumpAndSettle();
+          expect(find.text('Copy record id'), findsNothing);
+          expect(
+            remainedOpen,
+            isTrue,
+            reason: 'the trigger is inside its menu',
+          );
+          expect(chosen, isEmpty, reason: 'closing the menu runs no command');
+
+          final TestGesture third = await tester.startGesture(
+            position,
+            kind: kind,
+          );
+          await third.up();
+          await tester.pumpAndSettle();
+          expect(find.text('Copy record id'), findsOneWidget);
+          final TestGesture outside = await tester.startGesture(
+            const Offset(10, 10),
+            kind: kind,
+          );
+          await tester.pump();
+          expect(find.text('Copy record id'), findsNothing);
+          await outside.up();
+          await tester.pumpAndSettle();
+          expect(find.text('Copy record id'), findsNothing);
+        },
+      );
+    }
+  }
+
+  testWidgets('pressing another menu trigger closes only the first menu', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      uiHarness(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            UiMenuTrigger(
+              semanticsLabel: 'First actions',
+              items: <UiMenuItem>[
+                UiMenuItem(label: 'Copy first specimen', onSelected: () {}),
+              ],
+            ),
+            UiMenuTrigger(
+              semanticsLabel: 'Second actions',
+              items: <UiMenuItem>[
+                UiMenuItem(label: 'Copy second specimen', onSelected: () {}),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.tap(find.bySemanticsLabel('First actions'));
+    await tester.pumpAndSettle();
+    expect(find.text('Copy first specimen'), findsOneWidget);
+
+    final TestGesture next = await tester.startGesture(
+      tester.getCenter(find.bySemanticsLabel('Second actions')),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    expect(find.text('Copy first specimen'), findsNothing);
+    await next.up();
+    await tester.pumpAndSettle();
+    expect(find.text('Copy second specimen'), findsOneWidget);
+    expect(find.text('Copy first specimen'), findsNothing);
+  });
 
   testWidgets('it opens on the trigger and closes on an outside tap', (
     WidgetTester tester,

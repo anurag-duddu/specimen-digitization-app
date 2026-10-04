@@ -405,7 +405,9 @@ void main() {
                 await settleImages(tester);
                 expect(
                   tester.widget<UiTabs>(uiTabs('Record view')).selected.value,
-                  segment.index,
+                  WorkbenchSegment.forRegime(
+                    WorkbenchRegime.stacked,
+                  ).indexOf(segment),
                   reason: 'the golden is of the wrong segment',
                 );
               }

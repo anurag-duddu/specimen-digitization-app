@@ -40,13 +40,13 @@ import 'widgets/widgets.dart';
 const Key evidenceScrollKey = ValueKey<String>('workbench-evidence-scroll');
 
 /// The command that puts the identifier on the clipboard.
-const String copyIdentifierLabel = 'Copy the specimen identifier';
+const String copyIdentifierLabel = 'Copy full specimen ID';
 
 /// The control that reloads the record.
 const String refreshLabel = 'Refresh this record';
 
 /// What the toast says once the identifier is on the clipboard.
-const String copiedMessage = 'Specimen identifier copied';
+const String copiedMessage = 'Full specimen ID copied';
 
 /// What the screen says when collection access has not been answered.
 const String noCollectionMessage =
@@ -237,13 +237,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     debugLabel: 'workbench',
     traversalEdgeBehavior: TraversalEdgeBehavior.parentScope,
   );
-  WorkbenchSegment _segment = WorkbenchSegment.readings;
+  WorkbenchSegment _segment = WorkbenchSegment.fields;
 
-  /// Which tab the strip is on, as the index into [WorkbenchSegment.values].
+  /// Which tab the strip is on, as the index into the visible segment list.
   ///
   /// `UiTabs` owns the selection and writes into this, so the strip and the
-  /// panel below it cannot disagree. The index into the visible list is the
-  /// same number as the index into the enum at every pane width.
+  /// panel below it cannot disagree. Keyboard shortcuts keep their logical
+  /// segment indices independently of the order of the visible tabs.
   final ValueNotifier<int> _tab = ValueNotifier<int>(0);
 
   /// How the record is arranged this frame, so a shortcut and a blocker can
@@ -340,19 +340,12 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   @override
   void initState() {
     super.initState();
-    _region = _initialRegion(widget.specimen);
+    _region = null;
     _tab.addListener(_tabChanged);
     _labelDrafts.addListener(_reportNavigationBlocked);
     widget.onExitGuardChanged?.call(_exitGuard, true);
     _reportNavigationBlocked();
     unawaited(_loadRecentReasons());
-  }
-
-  static String? _initialRegion(Specimen specimen) {
-    final regions = specimen.regions;
-    if (regions.isEmpty) return null;
-    final id = textOf(regions.first['region_id'], '');
-    return id.isEmpty ? null : id;
   }
 
   /// The tab strip moved. The panel follows it, and the reviewer feels the
@@ -373,7 +366,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   WorkbenchSegment get _visibleSegment =>
       WorkbenchSegment.forRegime(_regime).contains(_segment)
       ? _segment
-      : WorkbenchSegment.readings;
+      : WorkbenchSegment.fields;
 
   List<String> get _serverActions =>
       (widget.specimen.data['available_actions'] as List? ?? <Object?>[])
@@ -460,10 +453,11 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
             !widget.specimen.regions.any(
               (Json r) => r['region_id'] == _region,
             ))) {
-      _region = _initialRegion(widget.specimen);
+      _region = null;
     }
     if (newRecord) {
-      _historyVisited = _visibleSegment == WorkbenchSegment.history;
+      _moveSegment(WorkbenchSegment.fields);
+      _historyVisited = false;
       _acknowledgedRevision = null;
       _pending = <PendingFieldChange>[];
       _stale = <PendingFieldChange>[];
@@ -600,6 +594,18 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         if (mounted && _region == id) _view.frameSelection();
       });
     }
+  }
+
+  void _focusFieldRegion(String? id) {
+    setState(() => _region = id);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _region != id) return;
+      if (id == null) {
+        _view.fit();
+      } else {
+        _view.frameSelection();
+      }
+    });
   }
 
   void _scrollTo(GlobalKey? key) {
@@ -981,7 +987,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           constraints.maxWidth >=
           measureLabel(
                 context,
-                widget.specimen.id,
+                widget.specimen.displayReference,
                 ui.type.mono.identifier,
               ).width +
               6 * UiDensity.hitBox +
@@ -999,7 +1005,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       // identifiers differ by one character have to be told apart at a glance
       // (blueprint 6.1).
       final Widget identifier = UiLabel(
-        widget.specimen.id,
+        widget.specimen.displayReference,
         style: ui.type.mono.identifier.copyWith(color: ui.color.ink),
       );
       return UiTopBar(
@@ -1162,7 +1168,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   void _moveSegment(WorkbenchSegment next) {
     _segment = next;
     final List<WorkbenchSegment> segments = WorkbenchSegment.forRegime(_regime);
-    _tab.value = segments.contains(next) ? next.index : 0;
+    _tab.value = segments.contains(next) ? segments.indexOf(next) : 0;
   }
 
   Widget _segmentContent(
@@ -1223,6 +1229,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
               ),
           },
           pending: _pending,
+          onFocusRegion: _focusFieldRegion,
           onPendingChanged: (List<PendingFieldChange> next) {
             setState(() => _pending = next);
             _reportNavigationBlocked();
@@ -1437,12 +1444,12 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     selected: _tab,
     semanticsLabel: 'Record view',
     tabs: const <UiTab>[
-      UiTab(label: 'Labels', semanticsLabel: 'Label review'),
       UiTab(label: 'Specimen data', semanticsLabel: 'Structured specimen data'),
+      UiTab(label: 'Labels', semanticsLabel: 'Label review'),
       UiTab(label: 'History', semanticsLabel: 'Review history'),
     ],
     onSelected: (index) =>
-        setState(() => _moveSegment(WorkbenchSegment.values[index])),
+        setState(() => _moveSegment(WorkbenchSegment.forRegime(regime)[index])),
   );
 
   /// Retain label drafts and visited history without exposing hidden controls.

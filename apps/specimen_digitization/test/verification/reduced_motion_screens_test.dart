@@ -123,7 +123,12 @@ void main() {
             location: goldenQueueLocation,
             repository: GoldenQueueRepository(goldenQueue(3)),
           );
-          await tester.tap(find.text('fixture-001'));
+          await tester.tap(
+            find.descendant(
+              of: find.byKey(const ValueKey<String>('queue-row-fixture-001')),
+              matching: find.byType(UiListRow),
+            ),
+          );
           await tester.pump();
           await recordTransition(
             tester,
@@ -145,7 +150,12 @@ void main() {
             location: goldenQueueLocation,
             repository: GoldenQueueRepository(goldenQueue(3)),
           );
-          await tester.tap(find.text('fixture-001'));
+          await tester.tap(
+            find.descendant(
+              of: find.byKey(const ValueKey<String>('queue-row-fixture-001')),
+              matching: find.byType(UiListRow),
+            ),
+          );
           await tester.pump();
           await recordTransition(
             tester,
@@ -166,7 +176,8 @@ void main() {
             brightness: Brightness.light,
             location: goldenSpecimenLocation,
           );
-          await tester.sendKeyEvent(LogicalKeyboardKey.keyF);
+          // Specimen data is the default view; R crosses into Labels.
+          await tester.sendKeyEvent(LogicalKeyboardKey.keyR);
           await tester.pump();
           await recordTransition(tester, signal, 'record segment change');
           expect(

@@ -44,7 +44,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(repo.requests.length, 1);
-      expect(find.text('first'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('queue-row-first')),
+        findsOneWidget,
+      );
       await tester.scrollUntilVisible(
         find.text('Load more records'),
         200,
@@ -60,15 +63,21 @@ void main() {
       );
       await tester.tap(find.bySemanticsLabel('Cleared'));
       await tester.pumpAndSettle();
-      expect(find.text('new'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('queue-row-new')),
+        findsOneWidget,
+      );
       repo.pending.complete(
         const SpecimenPage([
           Specimen({'specimen_id': 'old', 'filename': 'Stale page record'}),
         ]),
       );
       await tester.pumpAndSettle();
-      expect(find.text('old'), findsNothing);
-      expect(find.text('new'), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('queue-row-old')), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('queue-row-new')),
+        findsOneWidget,
+      );
       expect(repo.requests.last['cursor'], 'start');
       await tester.pumpWidget(const SizedBox());
       await session.controller.close();

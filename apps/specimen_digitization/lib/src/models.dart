@@ -104,6 +104,32 @@ class Specimen {
   const Specimen(this.data);
   final Json data;
   String get id => textOf(data['specimen_id'], '');
+
+  /// A readable photograph reference; [id] remains the record's identity.
+  String get displayReference {
+    final filename = textOf(
+      data['filename'],
+      assets.isEmpty ? '' : textOf(assets.first['filename'], ''),
+    ).trim();
+    if (filename.isNotEmpty) {
+      final basename = filename.replaceAll('\\', '/').split('/').last;
+      final stem = basename.replaceFirst(
+        RegExp(r'\.(?:jpe?g|png|webp|tiff?|heic|gif)$', caseSensitive: false),
+        '',
+      );
+      final subject = RegExp(
+        r'^subject_(\d+)$',
+        caseSensitive: false,
+      ).firstMatch(stem);
+      if (stem.isNotEmpty) return '#${subject?.group(1) ?? stem}';
+    }
+    final uuid = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    );
+    return uuid.hasMatch(id) ? '#${id.substring(0, 8)}' : id;
+  }
+
   String get title =>
       textOf(data['display_name'], textOf(data['filename'], id));
   int get revision => (data['revision'] as num?)?.toInt() ?? 0;

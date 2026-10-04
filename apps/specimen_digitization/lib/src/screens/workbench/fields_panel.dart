@@ -1,8 +1,8 @@
 /// The fields segment (screen blueprints, 6.4).
 ///
-/// One `FieldRow` per field, with the verbatim, the interpretation and the
-/// standardized value in separately named slots. Correcting one happens in
-/// place, with the photograph still on screen, and the correction joins a
+/// One concise `FieldRow` per field, with its value state and current value.
+/// The value layers and retained evidence open on demand. Corrections happen
+/// in place, with the photograph still on screen, and the correction joins a
 /// pending set that is saved once with one reason rather than one modal round
 /// trip per field (audit findings H6.2 and H7.2, both severity 4).
 library;
@@ -18,6 +18,7 @@ import '../../review_context.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
 import 'evidence_picker.dart';
+import 'field_presentation.dart';
 import 'pending_changes.dart';
 
 /// The record's fields, their evidence and their corrections.
@@ -57,15 +58,23 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
   String? _editing;
   FieldLayer _layer = FieldLayer.asWritten;
 
+  @override
+  void didUpdateWidget(covariant WorkbenchFields oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.specimen.id != widget.specimen.id) _editing = null;
+  }
+
   PendingFieldChange? _pendingFor(String key) => widget.pending
       .where((PendingFieldChange p) => p.fieldKey == key)
       .firstOrNull;
 
   /// A specimen value may cite several labels, or no retained label.
-  Set<String> _regionsFor(Json field) {
+  Set<String> _regionsFor(Json field, [PendingFieldChange? pending]) {
     final Set<String> regions = <String>{};
     final List<Object?> ids =
-        (field['evidence_ids'] as List?) ?? const <Object?>[];
+        pending?.evidenceIds ??
+        (field['evidence_ids'] as List?) ??
+        const <Object?>[];
     for (final Object? id in ids) {
       final Json? item = widget.specimen.evidence
           .where((Json e) => e['evidence_id'] == id || e['id'] == id)
@@ -79,13 +88,13 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     return regions;
   }
 
-  String? _regionFor(Json field) {
-    final Set<String> regions = _regionsFor(field);
+  String? _regionFor(Json field, [PendingFieldChange? pending]) {
+    final Set<String> regions = _regionsFor(field, pending);
     return regions.length == 1 ? regions.single : null;
   }
 
-  String _sourcesFor(Json field) {
-    final Set<String> regions = _regionsFor(field);
+  String _sourcesFor(Json field, PendingFieldChange? pending) {
+    final Set<String> regions = _regionsFor(field, pending);
     if (regions.isEmpty) {
       return 'No label source recorded';
     }
@@ -97,7 +106,9 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
   }
 
   void _startEdit(Json field, FieldLayer layer) {
-    widget.onFocusRegion?.call(_regionFor(field));
+    widget.onFocusRegion?.call(
+      _regionFor(field, _pendingFor(field['field_key'].toString())),
+    );
     setState(() {
       _editing = field['field_key'].toString();
       _layer = layer;
@@ -194,7 +205,8 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
             onCancel: () => setState(() => _editing = null),
             onDiscard: pending == null ? null : () => _discard(key),
             onCommit: _commit,
-            regionId: _regionFor(field),
+            regionId: _regionFor(field, pending),
+            blockedReason: blocked,
           )
         : _row(context, field, pending, blocked);
 
@@ -249,8 +261,15 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
             ),
           ),
         FieldRow(
-          sourceLabel: _sourcesFor(field),
-          name: textOf(field['display_name'], key),
+          key: ValueKey<String>('field-row:${widget.specimen.id}:$key'),
+          sourceLabel: _sourcesFor(field, pending),
+          sourceDetails: _sourceDetails(context, field, pending),
+          onExpansionChanged: (expanded) {
+            if (expanded) {
+              widget.onFocusRegion?.call(_regionFor(field, pending));
+            }
+          },
+          name: fieldReviewName(field),
           state: state,
           required: field['required'] == true,
           showRequirementMarker: false,
@@ -266,7 +285,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
           // well as the layer, rather than the fortieth "Edit read as".
           editSemanticsLabel: (FieldLayer layer) =>
               'Edit ${layer.label.toLowerCase()} for '
-              '${textOf(field['display_name'], key)}',
+              '${fieldReviewName(field)}',
           findings: findings.isEmpty
               ? null
               : Column(
@@ -276,6 +295,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
                     for (final Json f in findings) _Finding(finding: f),
                   ],
                 ),
+          findingCount: findings.length,
         ),
         if (blocked != null && !knownFieldStates.contains(field['state']))
           const CaveatText(
@@ -283,6 +303,61 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
             why:
                 'The server sent a field state this app does not recognize. '
                 'Refreshing may help. Otherwise update the app.',
+          ),
+      ],
+    );
+  }
+
+  Widget? _sourceDetails(
+    BuildContext context,
+    Json field,
+    PendingFieldChange? pending,
+  ) {
+    final ui = context.ui;
+    final ids =
+        pending?.evidenceIds ??
+        (field['evidence_ids'] as List? ?? const <Object?>[])
+            .whereType<String>()
+            .toList();
+    final retained = widget.specimen.evidence
+        .where(
+          (item) =>
+              ids.contains(item['evidence_id']) || ids.contains(item['id']),
+        )
+        .toList();
+    if (retained.isEmpty) return null;
+    final regions = _regionsFor(field, pending);
+    final name = fieldReviewName(field);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('Evidence for $name', style: ui.type.labelSmall),
+        for (final item in retained)
+          if (item['excerpt'] is String &&
+              (item['excerpt'] as String).trim().isNotEmpty)
+            Padding(
+              padding: EdgeInsets.only(top: ui.space.s1),
+              child: Text(
+                item['excerpt'] as String,
+                style: ui.type.mono.literalDense,
+              ),
+            ),
+        if (widget.onFocusRegion != null && regions.isNotEmpty)
+          Wrap(
+            spacing: ui.space.s2,
+            runSpacing: ui.space.s1,
+            children: [
+              for (final (index, region) in widget.specimen.regions.indexed)
+                if (regions.contains(region['region_id']))
+                  UiButton(
+                    label: 'View Label ${index + 1}',
+                    semanticsLabel: 'View Label ${index + 1} for $name',
+                    variant: UiButtonVariant.ghost,
+                    onPressed: () =>
+                        widget.onFocusRegion!(region['region_id'] as String),
+                  ),
+            ],
           ),
       ],
     );
@@ -296,6 +371,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     String? empty(String? value) =>
         value == null || value.isEmpty ? null : value;
     if (pending != null) {
+      if (pending.state != 'supported') return null;
       return switch (layer) {
         FieldLayer.asWritten => empty(pending.literal),
         FieldLayer.readAs => empty(pending.parsed),
@@ -310,6 +386,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
   }
 
   String? _authorityLine(Json field, PendingFieldChange? pending) {
+    if (pending != null && pending.state != 'supported') return null;
     final String id = textOf(pending?.authorityId ?? field['authority_id'], '');
     if (id.isEmpty || id == 'Not recorded') return null;
     final Json identity = objectOf(field['authority_identity']);
@@ -383,6 +460,7 @@ class _FieldEditor extends StatefulWidget {
     required this.onCommit,
     required this.onDiscard,
     required this.regionId,
+    required this.blockedReason,
   });
 
   final Json field;
@@ -393,6 +471,7 @@ class _FieldEditor extends StatefulWidget {
   final ValueChanged<PendingFieldChange> onCommit;
   final VoidCallback? onDiscard;
   final String? regionId;
+  final String? blockedReason;
 
   @override
   State<_FieldEditor> createState() => _FieldEditorState();
@@ -439,23 +518,23 @@ class _FieldEditorState extends State<_FieldEditor> {
     return _literal.text.trim().isNotEmpty && _evidence.isNotEmpty;
   }
 
-  void _commit() => widget.onCommit(
-    PendingFieldChange(
-      fieldKey: widget.field['field_key'].toString(),
-      displayName: textOf(
-        widget.field['display_name'],
-        widget.field['field_key'].toString(),
+  void _commit() {
+    if (widget.blockedReason != null) return;
+    widget.onCommit(
+      PendingFieldChange(
+        fieldKey: widget.field['field_key'].toString(),
+        displayName: fieldReviewName(widget.field),
+        state: _state,
+        literal: _state == 'supported' ? _literal.text : null,
+        parsed: _parsed.text,
+        normalized: _normalized.text,
+        authorityId: _authority.text,
+        evidenceIds: _evidence.toList(),
+        regionId: widget.regionId,
+        baseLiteral: widget.field['literal_value'] as String?,
       ),
-      state: _state,
-      literal: _state == 'supported' ? _literal.text : null,
-      parsed: _parsed.text,
-      normalized: _normalized.text,
-      authorityId: _authority.text,
-      evidenceIds: _evidence.toList(),
-      regionId: widget.regionId,
-      baseLiteral: widget.field['literal_value'] as String?,
-    ),
-  );
+    );
+  }
 
   /// What the commit control is called, and why it is disabled.
   static const String keepLabel = 'Keep this correction';
@@ -475,10 +554,7 @@ class _FieldEditorState extends State<_FieldEditor> {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final String name = textOf(
-      widget.field['display_name'],
-      widget.field['field_key'].toString(),
-    );
+    final String name = fieldReviewName(widget.field);
     final VoidCallback? discard = widget.onDiscard;
 
     return Surface(
@@ -494,6 +570,10 @@ class _FieldEditorState extends State<_FieldEditor> {
             header: true,
             child: Text('Correct $name', style: ui.type.label),
           ),
+          if (widget.blockedReason != null) ...[
+            SizedBox(height: ui.space.s2),
+            Text(widget.blockedReason!, style: ui.type.bodySmall),
+          ],
           SizedBox(height: ui.space.s3),
           UiSelect<String>(
             label: stateLabel,
@@ -514,9 +594,7 @@ class _FieldEditorState extends State<_FieldEditor> {
           if (_state == 'supported') ...<Widget>[
             UiField(
               label: FieldLayer.asWritten.label,
-              helpText:
-                  'Keep the text exactly as written. Do not add missing '
-                  'evidence.',
+              helpText: fieldCorrectionHelp(widget.field, FieldLayer.asWritten),
               controller: _literal,
               autofocus: widget.layer == FieldLayer.asWritten,
               minLines: 1,
@@ -526,13 +604,17 @@ class _FieldEditorState extends State<_FieldEditor> {
             SizedBox(height: ui.space.s3),
             UiField(
               label: FieldLayer.readAs.label,
+              helpText: fieldCorrectionHelp(widget.field, FieldLayer.readAs),
               controller: _parsed,
               autofocus: widget.layer == FieldLayer.readAs,
             ),
             SizedBox(height: ui.space.s3),
             UiField(
               label: FieldLayer.standardized.label,
-              helpText: 'Needs an authority match and evidence.',
+              helpText: fieldCorrectionHelp(
+                widget.field,
+                FieldLayer.standardized,
+              ),
               controller: _normalized,
               autofocus: widget.layer == FieldLayer.standardized,
             ),
@@ -558,8 +640,10 @@ class _FieldEditorState extends State<_FieldEditor> {
           UiButtonRow(
             primary: UiButton(
               label: keepLabel,
-              disabledReason: keepHint,
-              onPressed: _complete ? _commit : null,
+              disabledReason: widget.blockedReason ?? keepHint,
+              onPressed: _complete && widget.blockedReason == null
+                  ? _commit
+                  : null,
             ),
             secondary: UiButton(
               label: cancelLabel,

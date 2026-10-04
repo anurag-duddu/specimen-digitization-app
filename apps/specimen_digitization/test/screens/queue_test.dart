@@ -238,7 +238,10 @@ void main() {
         }),
       ];
     await pumpQueue(tester, repository);
-    expect(find.text('SD-1'), findsOneWidget);
+    expect(
+      find.text(repository.results.first.displayReference),
+      findsOneWidget,
+    );
 
     await tester.sendKeyEvent(LogicalKeyboardKey.keyJ);
     await tester.pump();
@@ -347,7 +350,9 @@ void main() {
     final Rect paneBounds = tester.getRect(pane);
     final Rect rowBounds = tester.getRect(row);
     final Rect searchBounds = tester.getRect(find.byType(UiSearchField));
-    final Rect idBounds = tester.getRect(find.text('SD-1'));
+    final Rect idBounds = tester.getRect(
+      find.text(repository.results.first.displayReference),
+    );
     expect(paneBounds.width, closeTo(320, 0.01));
     expect(rowBounds.width, closeTo(paneBounds.width - 32, 0.01));
     expect(rowBounds.left, closeTo(searchBounds.left, 0.01));
@@ -514,7 +519,12 @@ void main() {
         const Size(768, 1024),
       );
       expect(stuckSearch(), findsNothing);
-      await tester.tap(find.text('SD-1'));
+      await tester.tap(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('queue-row-SD-1')),
+          matching: find.byType(UiListRow),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.byType(WorkbenchScreen), findsOneWidget);
       // The queue stays mounted beneath the record, and a region a covered

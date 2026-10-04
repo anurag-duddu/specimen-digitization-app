@@ -1,10 +1,9 @@
 /// One field of the record (design system, 7.3 `FieldRow`; UX writing, 1.13;
 /// 10 section 5).
 ///
-/// The verbatim and the interpreted live in separately named slots, always in
-/// the same order, and a missing layer shows an abstention rather than a
-/// blank. Nothing here decides what the layers mean; it only refuses to let
-/// them be confused with one another.
+/// A concise preview names the value's actual state and the layer it comes
+/// from. The original wording, interpretation and standardized value remain
+/// separate when the reviewer opens the field's details.
 library;
 
 import 'package:flutter/widgets.dart';
@@ -45,15 +44,13 @@ class FieldRow extends StatelessWidget {
     this.editSemanticsLabel,
     this.editBlockedReason,
     this.findings,
+    this.findingCount = 0,
     this.sourceLabel,
+    this.sourceDetails,
+    this.onExpansionChanged,
   });
 
   /// The disclosure the three layers sit behind (10 section 5).
-  ///
-  /// Open from medium up, where the pane has the room for three layers per
-  /// field, and closed on a compact window, where twelve fields would
-  /// otherwise be thirty six lines before the first correction
-  /// (11 section 3.1: the arrangement is declared per window class).
   static const String layersTitle = 'Values';
 
   /// The field's name, as the record calls it.
@@ -99,11 +96,20 @@ class FieldRow extends StatelessWidget {
   /// control is dimmed (accessibility, section 3.2).
   final String? editBlockedReason;
 
-  /// Validation findings for this field, rendered under the layers.
+  /// Validation findings for this field, revealed with the details.
   final Widget? findings;
+
+  /// The number of recorded checks needing attention, shown in the preview.
+  final int findingCount;
 
   /// Evidence linkage, shown with the expanded values.
   final String? sourceLabel;
+
+  /// Retained evidence excerpts and actions for inspecting their label sources.
+  final Widget? sourceDetails;
+
+  /// Notifies the host when the reviewer opens or closes this field.
+  final ValueChanged<bool>? onExpansionChanged;
 
   String? _valueOf(FieldLayer layer) => switch (layer) {
     FieldLayer.asWritten => asWritten,
@@ -111,12 +117,21 @@ class FieldRow extends StatelessWidget {
     FieldLayer.standardized => standardized,
   };
 
-  /// The word shown in place of a missing layer.
-  String get _abstention => state == SpecimenStatus.unknown
-      ? state.label
-      : state.isRecordStatus
-      ? 'Not recorded'
-      : state.label;
+  /// A recorded value, with its layer named so normalization is not mistaken
+  /// for original wording. The state remains first when a long value wraps.
+  String get _summary {
+    final layer = FieldLayer.values.reversed.where((layer) {
+      final value = _valueOf(layer);
+      return value != null && value.trim().isNotEmpty;
+    }).firstOrNull;
+    final value = layer == null ? null : _valueOf(layer);
+    return <String>[
+      state.label,
+      if (layer != null) '${layer.label}: $value',
+      if (findingCount > 0)
+        '$findingCount ${findingCount == 1 ? 'check' : 'checks'} to review',
+    ].join(' · ');
+  }
 
   /// The row's own title, with the required marker a reviewer reads.
   String get _title =>
@@ -137,13 +152,14 @@ class FieldRow extends StatelessWidget {
               : required
               ? 'required'
               : 'optional',
-          summary: asWritten == null || state == SpecimenStatus.supported
-              ? asWritten ?? _abstention
-              : '$asWritten · ${state.label}',
+          summary: _summary,
+          onExpansionChanged: onExpansionChanged,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
+              Text('Field state: ${state.label}', style: ui.type.bodySmall),
+              SizedBox(height: ui.space.s2),
               if (sourceLabel != null)
                 Padding(
                   padding: EdgeInsets.only(bottom: ui.space.s2),
@@ -156,6 +172,10 @@ class FieldRow extends StatelessWidget {
                 ),
               if (editBlockedReason != null)
                 Text(editBlockedReason!, style: ui.type.bodySmall),
+              if (sourceDetails != null) ...<Widget>[
+                sourceDetails!,
+                SizedBox(height: ui.space.s3),
+              ],
               for (final FieldLayer layer in FieldLayer.values)
                 _Layer(
                   layer: layer,
@@ -186,13 +206,13 @@ class FieldRow extends StatelessWidget {
                   ],
                 ),
               ],
+              if (findings != null) ...<Widget>[
+                SizedBox(height: ui.space.s2),
+                findings!,
+              ],
             ],
           ),
         ),
-        if (findings != null) ...<Widget>[
-          SizedBox(height: ui.space.s2),
-          findings!,
-        ],
       ],
     );
   }
@@ -206,12 +226,14 @@ class _FieldDisclosure extends StatefulWidget {
     required this.summary,
     required this.requirement,
     required this.child,
+    this.onExpansionChanged,
   });
 
   final String title;
   final String summary;
   final String? requirement;
   final Widget child;
+  final ValueChanged<bool>? onExpansionChanged;
 
   @override
   State<_FieldDisclosure> createState() => _FieldDisclosureState();
@@ -229,7 +251,10 @@ class _FieldDisclosureState extends State<_FieldDisclosure> {
         ? null
         : '${widget.title}, ${widget.requirement}'
               '${_expanded ? '' : '. ${widget.summary}'}',
-    onExpansionChanged: (expanded) => setState(() => _expanded = expanded),
+    onExpansionChanged: (expanded) {
+      setState(() => _expanded = expanded);
+      widget.onExpansionChanged?.call(expanded);
+    },
     child: widget.child,
   );
 }
@@ -323,12 +348,13 @@ class _Abstention extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final UiThemeData ui = context.ui;
-    final String word = state.isRecordStatus ? 'Not recorded' : state.label;
+    final missing = state.isRecordStatus || state == SpecimenStatus.supported;
+    final String word = missing ? 'Not recorded' : state.label;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         UiIcon(
-          state.isRecordStatus ? UiIcons.notPresent : state.iconSpec,
+          missing ? UiIcons.notPresent : state.iconSpec,
           size: UiIconSize.inline,
           color: ui.color.inkSecondary,
         ),

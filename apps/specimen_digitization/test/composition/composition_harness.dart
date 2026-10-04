@@ -237,16 +237,12 @@ final List<CompositionScreen> compositionScreens = <CompositionScreen>[
   CompositionScreen(
     name: 'record',
     pump: _routed(goldenSpecimenLocation),
-    // The photograph and the first literal reading are the compact review's
+    // The photograph and the first field summary are the compact review's
     // initial work; transient notices are not a composition landmark.
     primary: () => find.byType(SourceMatte),
     // The stable inline photograph must be fully visible, then scroll away.
     // Its minimum is based on available page space, not pinned window share.
-    next: () => find
-        .byWidgetPredicate(
-          (widget) => widget is DiffText && widget.reference == null,
-        )
-        .first,
+    next: () => find.byType(FieldRow).first,
   ),
   CompositionScreen(
     name: 'intake',

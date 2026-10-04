@@ -1,4 +1,4 @@
-// The field row: three named slots, an abstention where a value is missing.
+// Field summaries state the value layer and actual state. Details stay optional.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,7 +28,11 @@ void main() {
       );
       expect(find.text('Locality'), findsOneWidget);
       expect(find.byType(UiDisclosure), findsOneWidget);
-      expect(find.text('Chicago, Ills.'), findsOneWidget);
+      expect(
+        find.text('Supported · Standardized: Chicago, Illinois, United States'),
+        findsOneWidget,
+      );
+      expect(find.text('Chicago, Ills.'), findsNothing);
       expect(find.text('Chicago, Illinois'), findsNothing);
       expect(find.text('Chicago, Illinois, United States'), findsNothing);
       for (final FieldLayer layer in FieldLayer.values) {
@@ -39,12 +43,20 @@ void main() {
       for (final FieldLayer layer in FieldLayer.values) {
         expect(find.text(layer.label), findsOneWidget);
       }
+      expect(
+        find.text('Supported · Standardized: Chicago, Illinois, United States'),
+        findsNothing,
+      );
       expect(find.text('Chicago, Ills.'), findsOneWidget);
       expect(find.text('Chicago, Illinois'), findsOneWidget);
       expect(find.text('Chicago, Illinois, United States'), findsOneWidget);
       await tester.tap(find.text('Locality'));
       await tester.pumpAndSettle();
-      expect(find.text('Chicago, Ills.'), findsOneWidget);
+      expect(
+        find.text('Supported · Standardized: Chicago, Illinois, United States'),
+        findsOneWidget,
+      );
+      expect(find.text('Chicago, Ills.'), findsNothing);
       expect(find.text('Chicago, Illinois'), findsNothing);
       expect(find.text('Chicago, Illinois, United States'), findsNothing);
       for (final FieldLayer layer in FieldLayer.values) {
@@ -68,6 +80,9 @@ void main() {
     final double standard = tester.getTopLeft(find.text('Standardized')).dy;
     expect(written, lessThan(read));
     expect(read, lessThan(standard));
+    expect(find.text('Field state: Supported'), findsOneWidget);
+    expect(find.text('Not recorded'), findsNWidgets(3));
+    expect(find.text('Supported'), findsNothing);
   });
 
   testWidgets(
@@ -88,7 +103,9 @@ void main() {
       );
       expect(find.text('Catalog number (required)'), findsOneWidget);
       expect(
-        find.bySemanticsLabel('Catalog number (required). FMNH1001'),
+        find.bySemanticsLabel(
+          'Catalog number (required). Supported · As written: FMNH1001',
+        ),
         findsOneWidget,
       );
       await tester.tap(find.text('Catalog number (required)'));
@@ -124,7 +141,8 @@ void main() {
         );
         expect(find.text('Catalog number'), findsOneWidget);
         expect(find.text('Catalog number (required)'), findsNothing);
-        final collapsedLabel = 'Catalog number, $requirement. FMNH1001';
+        final collapsedLabel =
+            'Catalog number, $requirement. Supported · As written: FMNH1001';
         expect(find.bySemanticsLabel(collapsedLabel), findsOneWidget);
         await tester.tap(find.text('Catalog number'));
         await tester.pumpAndSettle();
@@ -133,12 +151,14 @@ void main() {
           find.bySemanticsLabel('Catalog number, $requirement'),
           findsOneWidget,
         );
+        expect(find.text('Supported · As written: FMNH1001'), findsNothing);
         expect(find.text('FMNH1001'), findsOneWidget);
         expect(find.text('As written'), findsOneWidget);
         await tester.tap(find.text('Catalog number'));
         await tester.pumpAndSettle();
         expect(find.bySemanticsLabel(collapsedLabel), findsOneWidget);
-        expect(find.text('FMNH1001'), findsOneWidget);
+        expect(find.text('Supported · As written: FMNH1001'), findsOneWidget);
+        expect(find.text('FMNH1001'), findsNothing);
         semantics.dispose();
       },
     );
@@ -158,10 +178,10 @@ void main() {
         ),
       ),
     );
-    expect(find.text('illegible · Unreadable'), findsOneWidget);
+    expect(find.text('Unreadable · As written: illegible'), findsOneWidget);
     await tester.tap(find.text('Collector'));
     await tester.pumpAndSettle();
-    expect(find.text('illegible · Unreadable'), findsNothing);
+    expect(find.text('Unreadable · As written: illegible'), findsNothing);
     expect(find.text('illegible'), findsOneWidget);
     expect(
       find.text('Unreadable'),
@@ -211,10 +231,12 @@ void main() {
           standardized: 'Chicago, Illinois, United States',
           authority: 'Matched in the gazetteer, accepted name',
           findings: Text('Two candidates scored the same'),
+          findingCount: 1,
         ),
       ),
     );
-    expect(find.text('Two candidates scored the same'), findsOneWidget);
+    expect(find.text('Two candidates scored the same'), findsNothing);
+    expect(find.textContaining('1 check to review'), findsOneWidget);
     expect(find.text('Matched in the gazetteer, accepted name'), findsNothing);
     await tester.tap(find.text('Locality'));
     await tester.pumpAndSettle();
@@ -226,7 +248,7 @@ void main() {
     await tester.tap(find.text('Locality'));
     await tester.pumpAndSettle();
     expect(find.text('Matched in the gazetteer, accepted name'), findsNothing);
-    expect(find.text('Two candidates scored the same'), findsOneWidget);
+    expect(find.text('Two candidates scored the same'), findsNothing);
   });
 
   testWidgets('renders in both themes and meets the guidelines', (

@@ -373,10 +373,7 @@ void main() {
         location: goldenQueueLocation,
         repository: GoldenQueueRepository(goldenQueue(6)),
       );
-      await tester.tap(uiMenuTrigger('Specimen list actions'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Select specimens'));
-      await tester.pumpAndSettle();
+      await enterSpecimenSelection(tester);
       expect(
         find.descendant(
           of: find.byType(SelectableRow),
@@ -404,10 +401,7 @@ void main() {
         location: goldenQueueLocation,
         repository: GoldenQueueRepository(goldenQueue(6)),
       );
-      await tester.tap(uiMenuTrigger('Specimen list actions'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Select specimens'));
-      await tester.pumpAndSettle();
+      await enterSpecimenSelection(tester);
       await tester.tap(
         find
             .descendant(

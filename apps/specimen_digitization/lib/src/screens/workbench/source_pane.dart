@@ -276,6 +276,9 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
   double _touchStartScale = 1;
   Offset _touchSourcePoint = Offset.zero;
   final ValueNotifier<Offset?> _hoverPosition = ValueNotifier<Offset?>(null);
+  Offset? _hoverGlobalPosition;
+  bool _hoverValidationPending = false;
+  final GlobalKey _canvasRegionKey = GlobalKey();
   final GlobalKey _expandControlKey = GlobalKey();
   final GlobalKey _imageToolsKey = GlobalKey();
   final GlobalKey _labelMenuKey = GlobalKey();
@@ -327,6 +330,7 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
       _isUserAdjusted = false;
       _framed = null;
     }
+    _scheduleHoverValidation();
   }
 
   @override
@@ -394,6 +398,7 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
     _saveViewSnapshot();
     if (mounted) {
       setState(() => _panEnabled = canPan);
+      _scheduleHoverValidation();
     }
   }
 
@@ -481,6 +486,7 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
       _framed = null;
       _saveViewSnapshot();
     });
+    _scheduleHoverValidation();
   }
 
   void frameSelection() {
@@ -640,6 +646,37 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
   }
 
   void _updateHover(PointerHoverEvent event) {
+    _hoverGlobalPosition = event.position;
+    _revalidateHover();
+  }
+
+  // Image geometry can change while the mouse is stationary. Keep the lens
+  // on its screen pixel when it still covers the image, and clear it over
+  // matte or controls. Wait for layout so a moved pane uses its new origin.
+  void _scheduleHoverValidation() {
+    if (_hoverGlobalPosition == null || _hoverValidationPending) return;
+    _hoverValidationPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _hoverValidationPending = false;
+      if (mounted) _revalidateHover();
+    });
+  }
+
+  void _revalidateHover() {
+    final position = _hoverGlobalPosition;
+    final canvas = _canvasRegionKey.currentContext?.findRenderObject();
+    if (position == null ||
+        !_pointerInside ||
+        canvas is! RenderBox ||
+        !canvas.hasSize) {
+      _hoverPosition.value = null;
+      return;
+    }
+    final localPosition = canvas.globalToLocal(position);
+    if (!(Offset.zero & canvas.size).contains(localPosition)) {
+      _hoverPosition.value = null;
+      return;
+    }
     // The controls float over real image pixels. Their measured hit bounds,
     // rather than a guessed toolbar height, exclude those pixels from inspect.
     final overControl =
@@ -652,9 +689,7 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
           final box = key.currentContext?.findRenderObject();
           return box is RenderBox &&
               box.hasSize &&
-              (Offset.zero & box.size).contains(
-                box.globalToLocal(event.position),
-              );
+              (Offset.zero & box.size).contains(box.globalToLocal(position));
         });
     if (_openMenus.isNotEmpty || overControl) {
       _hoverPosition.value = null;
@@ -671,9 +706,7 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
       _transform.value,
       sourceBoxIn(_viewport, _width, _height, _quarterTurns),
     );
-    final Offset? next = source.contains(event.localPosition)
-        ? event.localPosition
-        : null;
+    final Offset? next = source.contains(localPosition) ? localPosition : null;
     _hoverPosition.value = next;
   }
 
@@ -692,23 +725,16 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
   Widget _inspectLens(BuildContext context, Offset pointer) {
     final UiThemeData ui = context.ui;
     final double lensSize = ui.space.targetMin * 2;
-    final double gap = ui.space.s2;
-    final double left = pointer.dx + lensSize + gap <= _viewport.width
-        ? pointer.dx + gap
-        : (pointer.dx - lensSize - gap).clamp(0, _viewport.width - lensSize);
-    final double top = (pointer.dy - lensSize / 2).clamp(
-      0,
-      (_viewport.height - lensSize).clamp(0, double.infinity),
-    );
-    final Offset lensCenter = Offset(left + lensSize / 2, top + lensSize / 2);
+    // The lens is the inspection cursor. Keep its centre on the hovered
+    // pixel even at an image edge; the viewport clips the overhanging circle.
     return Positioned(
-      left: left,
-      top: top,
+      left: pointer.dx - lensSize / 2,
+      top: pointer.dy - lensSize / 2,
       child: IgnorePointer(
         child: RawMagnifier(
           size: Size.square(lensSize),
           magnificationScale: 2,
-          focalPointOffset: pointer - lensCenter,
+          focalPointOffset: Offset.zero,
           decoration: MagnifierDecoration(
             shape: CircleBorder(
               side: BorderSide(
@@ -944,7 +970,10 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
         }
         _viewport = nextViewport;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _frameSelection();
+          if (mounted) {
+            _frameSelection();
+            _revalidateHover();
+          }
         });
         if (_asset['preview_bytes'] == null) {
           return Center(
@@ -979,12 +1008,15 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
                   'Arrow keys pan. Plus and minus zoom. Zero resets. Number keys select a label.',
               child: Listener(
                 onPointerDown: (event) {
+                  _hoverGlobalPosition = null;
+                  _hoverPosition.value = null;
                   if (event.kind != PointerDeviceKind.mouse && _usingMouse) {
                     setState(() => _usingMouse = false);
                   }
                   _canvasFocus.requestFocus();
                 },
                 child: MouseRegion(
+                  key: _canvasRegionKey,
                   onEnter: (event) {
                     if (event.kind == PointerDeviceKind.mouse) {
                       setState(() {
@@ -995,6 +1027,7 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
                   },
                   onHover: _updateHover,
                   onExit: (_) {
+                    _hoverGlobalPosition = null;
                     _hoverPosition.value = null;
                     setState(() => _pointerInside = false);
                   },
@@ -1099,6 +1132,21 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
                           children: <Widget>[
                             Positioned.fill(child: viewer!),
                             if (pointer != null) _inspectLens(context, pointer),
+                            // This annotation precedes image and label hit
+                            // targets without claiming their gestures. The
+                            // controls above it retain their normal cursors.
+                            Positioned.fill(
+                              child: MouseRegion(
+                                key: const ValueKey<String>(
+                                  'source-inspection-cursor',
+                                ),
+                                opaque: false,
+                                hitTestBehavior: HitTestBehavior.translucent,
+                                cursor: pointer == null
+                                    ? MouseCursor.defer
+                                    : SystemMouseCursors.none,
+                              ),
+                            ),
                             Positioned(
                               left: ui.space.s2,
                               right: ui.space.s2,
@@ -1226,7 +1274,7 @@ class _WorkbenchSourcePaneState extends State<WorkbenchSourcePane>
                   ui.space.s2
             : 0.0;
         final reserved = caveatHeight;
-        final photoHeight = widget.fullScreen && c.maxHeight.isFinite
+        final photoHeight = c.maxHeight.isFinite
             ? math.max(
                 sourceImageMinHeight + SourceMatte.insetOf(ui) * 2,
                 c.maxHeight - reserved,

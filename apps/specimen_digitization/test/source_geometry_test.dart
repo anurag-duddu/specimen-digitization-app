@@ -56,6 +56,10 @@ void main() {
     ),
   );
 
+  Future<void> reviewLabels(WidgetTester tester) async {
+    await scrollAndTap(tester, uiRecordView('Label review'));
+  }
+
   group('regionRectIn', () {
     // The rotation mapping is arithmetic, so it is checked as arithmetic
     // rather than by reading numbers off a rendered image.
@@ -123,6 +127,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        await reviewLabels(tester);
         await pickUiSelect(tester, 'Label', 'Label 1');
         final rotated = tester.widget<RotatedBox>(
           find.byType(RotatedBox).first,
@@ -158,9 +163,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    // The first label is initially selected. Explicitly choose the whole
-    // specimen before checking that a label selection frames its region.
-    await pickUiSelect(tester, 'Label', 'All labels');
+    await reviewLabels(tester);
+    // A record opens on the complete photograph. Choosing a label frames
+    // its region without replacing or cropping that photograph.
+    expect(tester.widget<UiSelect<String>>(uiSelect('Label')).value, '');
     final viewer = tester.widget<InteractiveViewer>(
       find.byType(InteractiveViewer),
     );
@@ -204,11 +210,26 @@ void main() {
     );
     await tester.pumpWidget(view('run1', 'region1'));
     await tester.pumpAndSettle();
+    await reviewLabels(tester);
     await pickUiSelect(tester, 'Label', 'Label 1');
     expect(tester.widget<UiSelect<String>>(uiSelect('Label')).value, 'region1');
     await tester.pumpWidget(view('run2', 'region2'));
     await tester.pumpAndSettle();
-    // The new run selects its first valid label instead of retaining the old id.
+    await reviewLabels(tester);
+    // The new run returns to the whole source and clears the old label id.
+    expect(tester.widget<UiSelect<String>>(uiSelect('Label')).value, '');
+    expect(
+      tester.widget<RegionOverlay>(find.byType(RegionOverlay)).selected,
+      isFalse,
+    );
+    expect(
+      tester
+          .widget<InteractiveViewer>(find.byType(InteractiveViewer))
+          .transformationController!
+          .value,
+      Matrix4.identity(),
+    );
+    await pickUiSelect(tester, 'Label', 'Label 1');
     expect(tester.widget<UiSelect<String>>(uiSelect('Label')).value, 'region2');
     expect(
       tester.widget<RegionOverlay>(find.byType(RegionOverlay)).selected,
@@ -244,7 +265,8 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        await pickUiSelect(tester, 'Label', 'All labels');
+        await reviewLabels(tester);
+        expect(tester.widget<UiSelect<String>>(uiSelect('Label')).value, '');
         for (var turn = 0; turn < 4; turn++) {
           final image = find.byWidgetPredicate(
             (w) =>
@@ -323,6 +345,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await reviewLabels(tester);
+      await pickUiSelect(tester, 'Label', 'Label 1');
+      for (final reader in ['Reader A', 'Reader B']) {
+        expect(find.text(reader), findsOneWidget);
+        expect(
+          uiIconButton('How this reading was produced, Label 1, $reader'),
+          findsOneWidget,
+        );
+      }
       for (final literal in ['Chicago 1912', 'Chicago 1917']) {
         // The first reading of a region has nothing to differ from, so it
         // renders plain; the second renders as marked runs.

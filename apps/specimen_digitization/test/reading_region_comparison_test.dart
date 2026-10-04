@@ -51,12 +51,19 @@ Future<void> showReadings(WidgetTester tester, List<Json> observations) async {
     ),
   );
   await tester.pumpAndSettle();
+  await tester.tap(uiRecordView('Label review'));
+  await tester.pumpAndSettle();
 }
 
 Future<void> selectLabel(WidgetTester tester, int number) =>
     selectLabelOption(tester, 'Label $number');
 
 Future<void> selectLabelOption(WidgetTester tester, String label) async {
+  final readings = uiRecordView('Label review');
+  if (readings.evaluate().isNotEmpty) {
+    await tester.tap(readings);
+    await tester.pumpAndSettle();
+  }
   final Finder chooser = uiSelect('Label');
   if (chooser.evaluate().isEmpty) {
     await tester.scrollUntilVisible(

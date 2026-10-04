@@ -152,6 +152,7 @@ class Popover extends StatefulWidget {
 class _PopoverState extends State<Popover> {
   final OverlayPortalController _portal = OverlayPortalController();
   final LayerLink _link = LayerLink();
+  final Object _tapRegionGroup = Object();
   final FocusScopeNode _scope = FocusScopeNode(debugLabel: 'Popover');
   FocusNode? _triggerFocus;
 
@@ -263,36 +264,34 @@ class _PopoverState extends State<Popover> {
       overlayChildBuilder: (BuildContext overlayContext) {
         final _PopoverGeometry geometry = _geometry(ui);
         return Positioned.fill(
-          child: Stack(
-            children: <Widget>[
-              if (widget.barrierDismissible && widget.interactive)
-                Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    excludeFromSemantics: true,
-                    onTap: _close,
-                  ),
-                ),
-              CompositedTransformFollower(
-                link: _link,
-                showWhenUnlinked: false,
-                targetAnchor: Alignment.topLeft,
-                followerAnchor: Alignment.topLeft,
-                // The follower's origin is the overlay's origin: the trigger's
-                // own offset is taken back out, so the layout below works in
-                // the overlay's coordinates while the pane still follows a
-                // trigger that moves.
-                offset: -geometry.trigger.topLeft,
-                child: CustomSingleChildLayout(
-                  delegate: _PopoverLayout(geometry),
-                  child: _pane(context),
-                ),
-              ),
-            ],
+          child: CompositedTransformFollower(
+            link: _link,
+            showWhenUnlinked: false,
+            targetAnchor: Alignment.topLeft,
+            followerAnchor: Alignment.topLeft,
+            // The follower's origin is the overlay's origin: the trigger's
+            // own offset is taken back out, so the layout below works in
+            // the overlay's coordinates while the pane still follows a
+            // trigger that moves.
+            offset: -geometry.trigger.topLeft,
+            child: CustomSingleChildLayout(
+              delegate: _PopoverLayout(geometry),
+              child: _pane(context),
+            ),
           ),
         );
       },
-      child: CompositedTransformTarget(link: _link, child: widget.child),
+      child: CompositedTransformTarget(
+        link: _link,
+        // The trigger and pane are one interaction region. Treating the
+        // trigger as outside closes on pointer down, before its toggle runs
+        // on pointer up, which opens the popover again.
+        child: TapRegion(
+          groupId: _tapRegionGroup,
+          enabled: widget.interactive,
+          child: widget.child,
+        ),
+      ),
     );
   }
 
@@ -383,6 +382,7 @@ class _PopoverState extends State<Popover> {
     );
     if (!widget.interactive) return IgnorePointer(child: content);
     return TapRegion(
+      groupId: _tapRegionGroup,
       onTapOutside: widget.barrierDismissible
           ? (PointerDownEvent _) => _close()
           : null,
