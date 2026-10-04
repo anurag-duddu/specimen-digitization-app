@@ -42,17 +42,19 @@ def approved_content_configured() -> bool:
     return settings is not None and settings.include_content
 
 
-def agent_instrumentation():
+def agent_instrumentation(settings_class=InstrumentationSettings):
     """Agent instrumentation that follows the process's configured capture mode.
 
     Under approved-content the system prompt, messages, tool calls and request
     parameters are recorded (G3); otherwise it records what private_instrumentation
     records. Binary content (image bytes) is never recorded. Provider error bodies
     are kept out by the model wrappers (PrivateProviderModel, the classifier's
-    _CaptureModel), not by these settings.
+    _CaptureModel), not by these settings. ``settings_class`` lets a caller add
+    behaviour to the recording (the research harness caps a repeated input) without
+    duplicating these capture flags.
     """
     content = approved_content_configured()
-    return InstrumentationSettings(
+    return settings_class(
         include_content=content,
         include_binary_content=False,
         include_model_request_parameters=content,

@@ -683,8 +683,9 @@ def _run_drain(args):
                 _execute_drain(args, deadline)
             finally:
                 if not args.check_config:
-                    from ..observability import flush_production_observability
-                    flushed = flush_production_observability(shutdown=True)
+                    from ..observability import FINAL_FLUSH_MILLIS, flush_production_observability
+                    flushed = flush_production_observability(
+                        shutdown=True, maximum_millis=FINAL_FLUSH_MILLIS)
                     if flushed["configured"] and not flushed["complete"]:
                         raise OperationalBlock("drain_trace_export_incomplete")
     except WorkerDeadlineExceeded:
