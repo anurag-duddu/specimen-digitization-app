@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from specimen_digitization.application.domain import FieldValue, LookupStatus, ValueState
 from specimen_digitization.research_harness import canonical_materialization, canonical_projection_v2, prompts
+from specimen_digitization.research_harness.committed_pins import MAX_OUTPUT_TOKENS
 from specimen_digitization.research_harness.contracts import (
     ROLE_FIELDS, EventHypothesis, EventKind, FieldKey, FieldResolution, HumanQuestion, ResearchScope,
     SourceCoverageReceipt, SourceCoverageState, SourceFragment, SourceQuery, SpecialistRequest, SpecialistRole,
@@ -703,8 +704,9 @@ def test_the_loosened_rule_admits_only_typed_geolocate_outcomes_never_mixed():
 
 
 def test_five_human_questions_echoing_their_receipts_fit_one_response():
-    # The prompt's budget: one GEOLocate lookup per field, reasons under 300 characters, 4096 tokens
-    # per reply. Conservative estimate: two characters per token for hex digests, three otherwise.
+    # The prompt's budget: one GEOLocate lookup per field, reasons under 300 characters, and the
+    # pinned output cap (MAX_OUTPUT_TOKENS) per reply. Estimate: two characters per token for hex
+    # digests, three otherwise, plus a 100-token margin.
     request = assembled_request(MCKINLEY_LABEL)
     unmatched = lookup("mckinley-modern.json", FieldKey.PRECISE_LOCATION, MCKINLEY, MCKINLEY_LABEL, request)
     asked = HumanQuestion(
@@ -717,7 +719,15 @@ def test_five_human_questions_echoing_their_receipts_fit_one_response():
         assembly_ids=("locality",), event_id="event", reason="r" * 299).model_dump_json()
     hex_characters = sum(len(item) for item in re.findall(r"[0-9a-f]{32,}", waiting))
     tokens = hex_characters / 2 + (len(waiting) - hex_characters) / 3
-    assert 5 * tokens + 100 <= 4096
+    assert 5 * tokens + 100 <= MAX_OUTPUT_TOKENS
+
+
+def test_the_pinned_output_cap_is_the_budget_the_geography_prompt_states():
+    # The prompt tells the model its five results "fit one response of N tokens"; the pin is what the
+    # provider enforces. They disagreed (the prompt said 4096, the pin 2048), so a full five-field
+    # answer could be cut off mid tool call.
+    stated = re.findall(r"fit one response of ([\d,]+) tokens", geography_request().prompt.text)
+    assert [int(number.replace(",", "")) for number in stated] == [MAX_OUTPUT_TOKENS]
 
 
 def test_lookup_citing_resolutions_name_the_assemblies_they_read():

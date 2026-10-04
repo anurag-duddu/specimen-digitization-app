@@ -239,8 +239,9 @@ def test_drain_cli_restores_caller_after_success_early_setup_and_system_exit(
             if outcome == "worker_exit":
                 raise SystemExit(7)
             return {"status": "drained", "processed": []}
-    def flush(*, shutdown):
-        assert shutdown is True and current_deadline() is not None
+    def flush(*, shutdown, maximum_millis):
+        assert shutdown is True and maximum_millis == observability.FINAL_FLUSH_MILLIS
+        assert current_deadline() is not None
         flushes.append(actor_uid.get())
         return {"configured": False, "complete": True}
     monkeypatch.setattr(lane_worker, "drain_settings", lambda env: SimpleNamespace(

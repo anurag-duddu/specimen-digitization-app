@@ -80,3 +80,62 @@ def test_saved_w3c_parent_links_a_new_research_session(capfire: CaptureLogfire):
     assert len({s["context"]["trace_id"] for s in spans}) == 1
     resumed = [s for s in spans if s["name"] == "research_harness.research"][1]
     assert resumed["parent"]["span_id"] == int(parent.span_id, 16)
+
+
+def _spans(capfire):
+    return [s for s in capfire.exporter.exported_spans_as_dict()
+            if s["attributes"].get("logfire.span_type") == "span"]
+
+
+def test_run_id_is_derived_from_the_job_id_on_every_span(capfire: CaptureLogfire):
+    # provisioning.research_job_id: "<run id>-r<specimen version>"
+    run_id = "4a50f4af-0260-4283-914e-3634c3257426"
+    trace = ResearchTrace(TraceIdentity(specimen_id="specimen-test", job_id=f"{run_id}-r3", generation=1))
+    with trace.span("research"):
+        with trace.span("model", role="specimen_taxonomy"):
+            pass
+    spans = _spans(capfire)
+    assert [s["attributes"]["specimen.run.id"] for s in spans] == [run_id, run_id]
+    # The job id attribute is unchanged and still carries the revision suffix.
+    assert {s["attributes"]["research.job_id"] for s in spans} == {f"{run_id}-r3"}
+
+
+@pytest.mark.parametrize("job_id", ["job-test", "r3", "run-rx", "run-r"])
+def test_a_job_id_without_a_revision_suffix_carries_no_run_id(capfire: CaptureLogfire, job_id):
+    trace = ResearchTrace(TraceIdentity(specimen_id="specimen-test", job_id=job_id, generation=0))
+    with trace.span("research"):
+        pass
+    assert "specimen.run.id" not in _spans(capfire)[0]["attributes"]
+
+
+def test_field_keys_and_cost_are_exported_as_metadata(capfire: CaptureLogfire):
+    trace = ResearchTrace(TraceIdentity(specimen_id="specimen-test", job_id="run-1-r1", generation=0))
+    with trace.span("model", role="specimen_geography", field_keys=("country", "city")) as span:
+        trace.annotate(span, cost_micro_usd=17)
+    attributes = _spans(capfire)[0]["attributes"]
+    field_keys = attributes["research.field_keys"]
+    assert (json.loads(field_keys) if isinstance(field_keys, str) else list(field_keys)) == ["country", "city"]
+    assert attributes["research.cost_micro_usd"] == 17
+
+
+@pytest.mark.parametrize("extra", [
+    {"cost_micro_usd": -1},
+    {"cost_micro_usd": True},
+    {"cost_micro_usd": 1.5},
+    {"cost_micro_usd": "17"},
+    {"cost_micro_usd": 10**15},
+    {"cost_unknown_requests": -1},
+    {"field_keys": ("taxon", "PRIVATE_LABEL_CANARY")},
+    {"field_keys": "taxon"},
+    {"field_keys": ("taxon", "taxon")},
+    {"field_keys": ()},
+])
+def test_unapproved_cost_and_field_key_values_never_enter_the_trace(capfire: CaptureLogfire, extra):
+    trace = ResearchTrace(TraceIdentity(specimen_id="specimen-test", job_id="run-1-r1", generation=0))
+    with pytest.raises(ValueError, match="^invalid_trace_metadata$"):
+        with trace.span("model", **extra):
+            pytest.fail("Unapproved span was opened")
+    with trace.span("model") as span:
+        with pytest.raises(ValueError, match="^invalid_trace_metadata$"):
+            trace.annotate(span, **extra)
+    assert "CANARY" not in json.dumps(capfire.exporter.exported_spans_as_dict())

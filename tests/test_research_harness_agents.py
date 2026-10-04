@@ -123,14 +123,15 @@ def scripted(request, *, delegate=None):
     return FunctionModel(respond), calls
 
 
-def harness(tmp_path, *, delegate=None, limits=HarnessLimits()):
+def harness(tmp_path, *, delegate=None, limits=HarnessLimits(), known_cost=True):
     pinned = requests()
     store, scope, lease, broker = sql_broker(tmp_path)
     tools, journal, calls = FixtureTools(), InMemoryStepStore(), {}
 
     def factory(request):
         wrapped, calls[request.role] = scripted(request, delegate=delegate if request.role == SpecialistRole.TAXONOMY else None)
-        return model(wrapped, request=request, broker=broker, scope=scope, lease=lease)
+        return model(wrapped, request=request, broker=broker, scope=scope, lease=lease,
+                     known_cost=known_cost)
 
     runtime = SpecialistHarness(requests=pinned, model_factory=factory, tool_broker=tools,
                                 step_store_factory=lambda _: journal, limits=limits)
@@ -358,6 +359,153 @@ def test_complete_tree_trace_readback_has_true_effect_and_child_metadata(tmp_pat
     assert "private_label_canary" not in exported
     assert "Owned fields:" not in exported
     assert "model_request_parameters" not in exported
+
+
+@pytest.mark.parametrize("role", list(SpecialistRole))
+def test_each_agent_is_named_and_described_by_role_and_owned_fields_without_reaching_the_model(tmp_path, role):
+    from specimen_digitization.research_harness.agents import specialist_description
+
+    runtime, store, scope, tools, journal, calls = harness(tmp_path)
+    agent = runtime.agents[role]
+    assert agent.name == role.value and runtime.helpers[role].name == role.value
+    description = agent.description
+    assert description == runtime.helpers[role].description == specialist_description(role)
+    assert role.value.removeprefix("specimen_") in description.lower()
+    assert all(key.value in description for key in ROLE_FIELDS[role])
+    asyncio.run(runtime.run_specialist(role))
+    seen = json.dumps([ModelMessagesTypeAdapter.dump_python(messages, mode="json") for messages, _ in calls[role]]
+                      + [[tool.name for tool in info.function_tools] for _, info in calls[role]],
+                      default=str)
+    assert description not in seen and "Proposes values" not in seen
+
+
+def test_delegated_runs_carry_their_own_cost_and_the_specialist_span_the_total(tmp_path, capfire):
+    runtime, store, scope, *_ = harness(tmp_path, delegate=SpecialistRole.GEOGRAPHY)
+    asyncio.run(runtime.run_specialist(SpecialistRole.TAXONOMY))
+    spans = [item for item in capfire.exporter.exported_spans_as_dict()
+             if item["attributes"].get("logfire.span_type") == "span"]
+    agents = {item["attributes"]["gen_ai.agent.name"]: item["attributes"] for item in spans
+              if item["name"].startswith("invoke_agent ")}
+    # Two requests each at 3 micro-USD: a run reports its own, not the helper's it called.
+    assert agents["specimen_taxonomy"]["research.cost_micro_usd"] == 6
+    assert agents["specimen_geography"]["research.cost_micro_usd"] == 6
+    specialist = next(item["attributes"] for item in spans if item["name"] == "research_harness.specialist"
+                      and "research.cost_micro_usd" in item["attributes"])
+    assert specialist["research.cost_micro_usd"] == 12 == store.budget(scope)["settled_micro_usd"]
+    assert {item["attributes"]["research.cost_micro_usd"] for item in spans
+            if item["name"].startswith("chat ") or item["name"] == "research_harness.model"} == {3}
+    assert all("research.cost_unknown_requests" not in item["attributes"] for item in spans)
+
+
+def test_a_cost_the_trace_allowlist_refuses_never_fails_the_request_that_was_paid_for(tmp_path, capfire):
+    from pydantic_ai.models import ModelRequestParameters
+
+    store, scope, lease, broker = sql_broker(tmp_path)
+    request = requests()[SpecialistRole.TAXONOMY]
+    gateway = model(FunctionModel(lambda messages, info: ModelResponse([TextPart("ok")],
+        usage=RequestUsage(input_tokens=1, output_tokens=1))), request=request, broker=broker,
+        scope=scope, lease=lease)
+    # An impossible receipt (far above the reservation): the job halts, the response still returns.
+    gateway.actual_cost = lambda _: 10**10
+    response = asyncio.run(gateway.request([ModelRequest([UserPromptPart("synthetic")])],
+                                           {"max_tokens": 128}, ModelRequestParameters()))
+    assert response.parts[0].content == "ok"
+    spans = [item["attributes"] for item in capfire.exporter.exported_spans_as_dict()
+             if item["name"] == "research_harness.model"]
+    assert len(spans) == 1 and "research.cost_micro_usd" not in spans[0]
+    assert spans[0]["research.field_keys"] is not None
+
+
+@pytest.mark.parametrize("injection", ["annotate_cost", "record_request_cost", "trace_annotate", "run_record_cost"])
+def test_a_telemetry_failure_never_fails_a_request_that_was_paid_for(tmp_path, monkeypatch, injection):
+    from pydantic_ai.models import ModelRequestParameters
+
+    from specimen_digitization.research_harness import agent_trace
+    from specimen_digitization.research_harness import gateway as gateway_module
+    from specimen_digitization.research_harness.telemetry import ResearchTrace
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("PRIVATE_LABEL_CANARY")
+
+    store, scope, lease, broker = sql_broker(tmp_path)
+    request = requests()[SpecialistRole.TAXONOMY]
+    gateway = model(FunctionModel(lambda messages, info: ModelResponse([TextPart("ok")],
+        usage=RequestUsage(input_tokens=1, output_tokens=1))), request=request, broker=broker,
+        scope=scope, lease=lease)
+    if injection == "annotate_cost":
+        monkeypatch.setattr(gateway_module, "annotate_cost", boom)
+    elif injection == "record_request_cost":
+        monkeypatch.setattr(gateway_module, "record_request_cost", boom)
+    elif injection == "trace_annotate":
+        monkeypatch.setattr(ResearchTrace, "annotate", staticmethod(lambda *a, **k: (_ for _ in ()).throw(TypeError("x"))))
+    else:
+        monkeypatch.setattr(agent_trace.RunTrace, "record_cost", boom)
+    with agent_trace.run_scope():
+        response = asyncio.run(gateway.request([ModelRequest([UserPromptPart("synthetic")])],
+                                               {"max_tokens": 128}, ModelRequestParameters()))
+    assert response.parts[0].content == "ok"
+    assert len(gateway.effect_ids) == 1 and store.budget(scope)["settled_micro_usd"] == 3
+
+
+@pytest.mark.parametrize("signal", [asyncio.CancelledError, KeyboardInterrupt, SystemExit, GeneratorExit])
+def test_a_base_exception_in_the_cost_bookkeeping_still_propagates(tmp_path, monkeypatch, signal):
+    """The guard drops Exception only: cancellation and interpreter exits are not telemetry failures."""
+    from types import SimpleNamespace
+
+    from specimen_digitization.research_harness import gateway as gateway_module
+
+    def boom(*args, **kwargs):
+        raise signal()
+
+    store, scope, lease, broker = sql_broker(tmp_path)
+    request = requests()[SpecialistRole.TAXONOMY]
+    gateway = model(FunctionModel(lambda messages, info: ModelResponse([TextPart("ok")])),
+                    request=request, broker=broker, scope=scope, lease=lease)
+    receipt = SimpleNamespace(effect_id="effect-1", actual_micro_usd=3)
+    for name in ("annotate_cost", "record_request_cost"):
+        with monkeypatch.context() as patch:
+            patch.setattr(gateway_module, name, boom)
+            with pytest.raises(signal):
+                gateway._trace_cost(None, receipt)
+
+
+@pytest.mark.parametrize("inject", [False, True])
+def test_a_failing_cap_never_fails_a_paid_specialist_run(tmp_path, monkeypatch, capfire, inject):
+    from types import SimpleNamespace
+
+    from specimen_digitization import observability
+    from specimen_digitization.research_harness import agent_trace
+
+    monkeypatch.setattr(observability, "_configured_settings", observability.ObservabilitySettings(
+        environment="test", service_name="specimen-worker", capture_mode=observability.CaptureMode.APPROVED_CONTENT,
+        head_sample_rate=1.0, distributed_tracing=False))
+    # The synthetic scoped input is small; lower the threshold so the cap's hashing is on its path.
+    monkeypatch.setattr(agent_trace, "REPEATED_INPUT_MIN_BYTES", 10)
+    if inject:
+        def boom(*args, **kwargs):
+            raise RuntimeError("PRIVATE_LABEL_CANARY")
+        monkeypatch.setattr(agent_trace, "hashlib", SimpleNamespace(sha256=boom))
+    runtime, store, scope, *_ = harness(tmp_path)
+    run = asyncio.run(runtime.run_specialist(SpecialistRole.TAXONOMY))
+    assert len(run.resolutions) == 1 and store.budget(scope)["settled_micro_usd"] == 6
+    inputs = [item["attributes"]["gen_ai.input.messages"] for item in capfire.exporter.exported_spans_as_dict()
+              if item["name"].startswith("chat ")]
+    assert len(inputs) == 2 and "Immutable scoped research input" in inputs[0]
+    # Control: without the injected failure the second request's repeat is marked, so the
+    # injected case really reached the cap; with it, pydantic-ai's own text is recorded as it was.
+    assert ("[truncated " in inputs[1]) is (not inject)
+
+
+def test_a_request_the_provider_usage_cannot_price_is_counted_and_never_reported_as_zero(tmp_path, capfire):
+    runtime, store, scope, *_ = harness(tmp_path, known_cost=False)
+    asyncio.run(runtime.run_specialist(SpecialistRole.TAXONOMY))
+    spans = [item["attributes"] for item in capfire.exporter.exported_spans_as_dict()
+             if item["attributes"].get("logfire.span_type") == "span"]
+    assert not [item for item in spans if "research.cost_micro_usd" in item]
+    # Each request, its model span and (two requests) the agent and specialist spans say so.
+    assert {item["research.cost_unknown_requests"] for item in spans
+            if "research.cost_unknown_requests" in item} == {1, 2}
+    assert store.budget(scope)["held_micro_usd"] > 0
 
 
 def test_registered_real_gateway_cannot_use_offline_allowance(tmp_path, monkeypatch):

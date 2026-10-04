@@ -85,7 +85,7 @@ def drain_env(monkeypatch, tmp_path):
         assert options["variables"].instrument is False
         instrument.assert_called_once_with(include_content=True, include_binary_content=False,
             include_model_request_parameters=True, version=5)
-        shutdown.assert_called_once_with(timeout_millis=1000)
+        shutdown.assert_called_once_with(timeout_millis=observability.FINAL_FLUSH_MILLIS)
 
 
 def cli(monkeypatch, *arguments):
