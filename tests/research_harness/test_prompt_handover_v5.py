@@ -41,7 +41,7 @@ V5_FILE_SHA256 = {
     "specimen_temporal-v5.txt": "74ea6c0a60cef4a9d9f5aae613e3d1d657148075a222130a4af537f03d045abb",  # pragma: allowlist secret
     "specimen_measurement-v5.txt": "4b379d922e560f07686a69dc3339d97ac62865185a7381bb0f2702c41f50008e",  # pragma: allowlist secret
     "specimen_parties-v5.txt": "8817dd675d449e29a1639e69666a1a480eea64982f56aafba999744c2388c074",  # pragma: allowlist secret
-    "specimen_collection-v5.txt": "2d378162b59a4058e100ba8692bb9663266f3a9ec3e7da8fd7a1fdc21b6bd05c",  # pragma: allowlist secret
+    "specimen_collection-v5.txt": "2c72cf74c87f6508a69b8651a34b037f9053f9f6cfbb816c146d3a165c1d0835",  # pragma: allowlist secret
 }
 V5_ROLE_DIGESTS = {
     SpecialistRole.TAXONOMY: "2796fe5753bd5d7a0b3d96e45df403e88a66361345098204c23f099682f9591c",  # pragma: allowlist secret
@@ -49,7 +49,7 @@ V5_ROLE_DIGESTS = {
     SpecialistRole.TEMPORAL: "27d17839837773f3bc5c9cac62e3bcaf92386e19f16c097f5bb23e187c13b764",  # pragma: allowlist secret
     SpecialistRole.MEASUREMENT: "cb877c8aca8a1a06a89a3f3ff926f370475c74505d18aa51b46be2f84f8e44fc",  # pragma: allowlist secret
     SpecialistRole.PARTIES: "e033489f1e2f2233ef38c9b51dd62b1b240df457ef28d1f9cf4dc959c6692630",  # pragma: allowlist secret
-    SpecialistRole.COLLECTION: "3fbdbd09a4307083d808c6db071f5b0c42b5d8c2fb60d8369142dfe776e10737",  # pragma: allowlist secret
+    SpecialistRole.COLLECTION: "9a3fdb6bb7ce62c5e0af84021e8c1ed5b17292155864764c5ad98520fe130f59",  # pragma: allowlist secret
 }
 # The roles that carry #257's producer block, and the ones whose own fields can get an assembly from the hand-over.
 CITING_ROLES = (SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY, SpecialistRole.PARTIES, SpecialistRole.COLLECTION)
@@ -174,8 +174,9 @@ def test_the_collection_block_names_the_catalog_rule_and_the_ways_the_extractor_
     text = flat(block(SpecialistRole.COLLECTION))
     assert ("For fmnh_ins_number value.parsed and value.normalized are the catalog digits by the rule above, and a "
             "candidate that rule refuses is not resolved; for the other three they equal value.literal.") in text
-    assert ("The extractor can file a catalog number, or a slide or preparation code, under collection_code and a "
-            "locality or a specimen note under habitat or collection_method") in text
+    assert ("The extractor can file the catalog prefix (FMNHINS), a catalog number, or a slide or preparation code under "
+            "collection_code, and a locality or a specimen note under habitat or collection_method, and the validator "
+            "refuses only the catalog prefix as a collection code and a code-shaped habitat or method") in text
     assert "resolve one only if the readings show that the line is what the field names." in text
     assert "A candidate for verbatim_dts is no assembly: verbatim_dts is unchanged" in text
 

@@ -94,11 +94,12 @@ a literal read from an accepted assembly names the assembly and also these two r
 fields.
 For fmnh_ins_number value.parsed and value.normalized are the catalog digits by the rule
 above, and a candidate that rule refuses is not resolved; for the other three they equal
-value.literal. The extractor can file a catalog number, or a slide or preparation code, under
-collection_code and a locality or a specimen note under habitat or collection_method, and the
-validator refuses only a code-shaped habitat or method and the FMNHINS prefix as a collection
-code: resolve one only if the readings show that the line is what the field names. A candidate
-for verbatim_dts is no assembly: verbatim_dts is unchanged, waiting_policy with its own reason.
+value.literal. The extractor can file the catalog prefix (FMNHINS), a catalog number, or a slide
+or preparation code under collection_code, and a locality or a specimen note under habitat or
+collection_method, and the validator refuses only the catalog prefix as a collection code and a
+code-shaped habitat or method: resolve one only if the readings show that the line is what the
+field names. A candidate for verbatim_dts is no assembly: verbatim_dts is unchanged,
+waiting_policy with its own reason.
 This replaces the sentence above that says the request can hold no accepted assembly for
 fmnh_ins_number, collection_code, habitat and collection_method: for a grounded candidate it
 holds one.

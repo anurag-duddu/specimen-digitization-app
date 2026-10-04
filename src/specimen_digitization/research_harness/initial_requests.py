@@ -242,7 +242,7 @@ class NativeGenerationRequestFactory:
             regions = list(dict.fromkeys(row.region_id for row in cited if row.region_id))
             if not regions:
                 candidates.append(_candidate(key, literal, "ungrounded", "no_extractor_evidence_row_for_the_literal"))
-            for region_id in regions:
+            for region_id in regions[:max(0, MAX_ORGANISER_CANDIDATES - len(candidates))]:
                 candidates.append(NativeGenerationRequestFactory._organiser_candidate(
                     specimen, scope, ref, region_map, key, literal, region_id,
                     decided.get(region_id), [row for row in cited if row.region_id == region_id],
@@ -291,7 +291,7 @@ class NativeGenerationRequestFactory:
                     fragment_id=fragment.id, event_id=assembly.event_id, assembly_id=assembly.id,
                     evidence_ids=assembly.evidence_ids)
         if key not in ASSEMBLY_FIELDS:
-            return _candidate(key, literal, "located", "field_has_no_literal_assembly_path", **where)
+            return _candidate(key, literal, "located", "hand_over_builds_no_assembly_for_the_field", **where)
         if keyed:
             return _candidate(key, literal, "located", "keyed_line_assembly_for_the_field_exists", **where)
         if observation.unreadable_spans:

@@ -327,7 +327,7 @@ def test_the_dates_elevations_taxon_and_geography_are_located_and_get_no_assembl
     reading = built.first_reading[0]
     for key in ("country", "date_visited_from", "elevation_from_ft", "taxon", "verbatim_dts"):
         item = found[FieldKey(key)]
-        assert item.status == "located" and item.reason == "field_has_no_literal_assembly_path", key
+        assert item.status == "located" and item.reason == "hand_over_builds_no_assembly_for_the_field", key
         assert reading.literal_text[item.start:item.end] == item.literal
         assert (item.fragment_id, item.event_id, item.assembly_id) == (None, None, None)
         assert key not in {str(row.field_key) for row in built.graph[2]}
@@ -370,6 +370,17 @@ def test_the_cap_and_the_literal_bound_are_the_contracts():
     with pytest.raises(ValueError):
         OrganiserCandidate(id="x", field_key=FieldKey.HABITAT, literal="x" * 2001, source="extractor",
             status="ungrounded", reason="no_extractor_evidence_row_for_the_literal")
+
+
+def test_the_pass_stops_at_the_cap_the_contract_sets():
+    """Twenty fields quoted in seven regions would be 140 candidates; the contract bounds a request at 100."""
+    keys = [str(key) for key in FieldKey]
+    text = "\n".join(f"tok{index:02d}" for index in range(len(keys)))
+    built = build(tuple(RegionSpec(text) for _ in range(7)),
+        tuple(FieldSpec(key, f"tok{index:02d}", regions=tuple(range(7))) for index, key in enumerate(keys)))
+    assert len(candidates(built)) == MAX_ORGANISER_CANDIDATES
+    for role in SpecialistRole:
+        assert len(request_for(built, role).organiser_candidates) <= MAX_ORGANISER_CANDIDATES
 
 
 # ---------------------------------------------------------------------------- the contract refuses a claimed span
@@ -434,9 +445,9 @@ def test_the_status_fields_of_a_candidate_are_consistent():
         OrganiserCandidate(**common, status="ungrounded", reason="literal_spans_more_than_one_line", start=0, end=3,
             region_id="r", observation_id="o")
     with pytest.raises(ValueError, match="names its region, reading and span"):
-        OrganiserCandidate(**common, status="located", reason="field_has_no_literal_assembly_path")
+        OrganiserCandidate(**common, status="located", reason="hand_over_builds_no_assembly_for_the_field")
     with pytest.raises(ValueError, match="no event or assembly"):
-        OrganiserCandidate(**common, status="located", reason="field_has_no_literal_assembly_path", region_id="r",
+        OrganiserCandidate(**common, status="located", reason="hand_over_builds_no_assembly_for_the_field", region_id="r",
             observation_id="o", start=0, end=3, assembly_id="a")
     with pytest.raises(ValueError, match="names its fragment, event, assembly and evidence"):
         OrganiserCandidate(**common, status="grounded", reason="verbatim_in_one_line_of_the_decided_reading",
