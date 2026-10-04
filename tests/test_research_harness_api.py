@@ -1,8 +1,12 @@
 """Real HTTP, actor ACL and SQL journal proof without any live provider call."""
 
 import asyncio
+import json
+import os
+import re
 from dataclasses import asdict, replace
 from functools import partial
+from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi import FastAPI, HTTPException
@@ -130,6 +134,68 @@ def test_thread_uses_actual_reader_and_no_shared_app_mount(rig):
     assert fields(response)["taxon"]["actions"] == ["retry_field"]
     assert rig.store.budget(rig.actor)["settled_micro_usd"] == 0
     assert rig.client.post(BASE + "/jobs", json={"model":PRIVATE}).status_code == 404
+
+
+SERVER_THREAD = Path(__file__).parent / "fixtures" / "research_harness" / "http" / "server-thread.json"
+
+
+def digests_as_placeholders(body):
+    """Every 64-hex digest becomes a low-entropy placeholder, numbered by first appearance.
+
+    The route emits real digests (profile, prompts); a fixture holding them trips the secret
+    scanners as high-entropy strings. Placeholders keep one digest, one placeholder, and still
+    satisfy the contract's digest pattern, and they do not change when a prompt's text does.
+    """
+    seen = {}
+
+    def replace(match):
+        return seen.setdefault(match[0], f"{len(seen) + 1:02x}" * 32)
+
+    return json.loads(re.sub(r"[a-f0-9]{64}", replace, json.dumps(body)))
+
+
+def test_the_committed_server_thread_fixture_is_what_the_real_route_emits(rig):
+    """The Flutter tests decode this file: the shape the app must accept is the shape the route emits.
+
+    It holds a resolved field, a failed one, two geography questions whose coverage is a searched
+    GEOLocate outcome (the server's own rule, contracts.py _geolocate_unresolved) and pending fields,
+    with every FieldValue carrying the keys the server dumps (layer, derived_from). Synthetic text.
+    Run with SPECIMEN_WRITE_THREAD_FIXTURE=1 to rewrite it. The test rig has no canonical binding, so
+    a waiting_human field keeps the supply_information action that production strips.
+    """
+    from specimen_digitization.research_harness.contracts import (
+        HumanQuestion, SourceCoverageReceipt, SourceCoverageState,
+    )
+
+    def question(key, reason, outcome):
+        evidence = "source:" + digest(str(key))
+        receipt = SourceCoverageReceipt(source_id="geolocate", field_key=key,
+            state=SourceCoverageState.SEARCHED, source_version="geolocatesvcv2-glcwrap-json",
+            coverage_limit="Bounded source assertion; other available strategies remain explicit",
+            reason=outcome, receipt_ids=(evidence,), candidate_count=2)
+        asked = HumanQuestion(field_key=key, question="Which place does the label mean?", reason=reason,
+            coverage=(receipt,), evidence_ids=(evidence,))
+        return FieldResolution(field_key=key, work_state=WorkState.WAITING_HUMAN, question=asked,
+            value=FieldValue(state=ValueState.UNRESOLVED, literal="Synthetic place"),
+            reason="Synthetic reason for the fixture")
+
+    request = rig.requests[SpecialistRole.GEOGRAPHY].model_copy(update={
+        "field_keys": (FieldKey.PROVINCE_STATE, FieldKey.CITY),
+        "field_revisions": {FieldKey.PROVINCE_STATE: 0, FieldKey.CITY: 0}})
+    asyncio.run(rig.journal.commit(request, (
+        question(FieldKey.PROVINCE_STATE, "semantic_ambiguity",
+                 "ambiguous: GEOLocate is ambiguous for 'Synthetic province': agreeing matches lie up to 90 km apart"),
+        question(FieldKey.CITY, "scoped_absence",
+                 "no_match: GEOLocate returned 2 match(es); none is 'Synthetic place' within 10 km of the interpreted placement"),
+    ), receipt_ids=(), model_settings_digest=digest(rig.settings)))
+    produced = digests_as_placeholders(rig.client.get(BASE + "/thread").json())
+    if os.environ.get("SPECIMEN_WRITE_THREAD_FIXTURE") == "1":
+        SERVER_THREAD.write_text(json.dumps(produced, indent=2, ensure_ascii=False) + "\n")
+    committed = json.loads(SERVER_THREAD.read_text())
+    assert committed == produced
+    assert all(len(set(found)) <= 2 for found in re.findall(r"[a-f0-9]{64}", SERVER_THREAD.read_text()))
+    keys = {key for field in committed["fields"] for key in field["value"]}
+    assert {"layer", "derived_from"} <= keys
 
 
 def test_thread_over_http_carries_the_review_of_a_field_that_waits_and_nothing_for_the_rest(rig):
