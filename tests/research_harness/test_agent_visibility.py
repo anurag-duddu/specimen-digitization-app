@@ -201,6 +201,15 @@ def test_each_expert_agent_span_carries_a_readable_description_and_its_owned_fie
     assert len(set(descriptions)) == 6
 
 
+def test_each_chat_span_carries_the_fields_of_the_role_that_made_the_request(tick):
+    seen = 0
+    for role in SpecialistRole:
+        for chat in chats_of(tick, role):
+            assert keys(chat.attrs["research.field_keys"]) == [key.value for key in ROLE_FIELDS[role]], chat.name
+            seen += 1
+    assert seen == len(named(tick, "chat ")) == 10
+
+
 def test_the_specialist_span_names_the_role_fields_too(tick):
     inner = [span for span in named(tick, "research_harness.specialist") if "research.field_keys" in span.attrs]
     assert {span.attrs["research.role"] for span in inner} == {role.value for role in SpecialistRole}

@@ -21,12 +21,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 
 from pydantic_ai.models.instrumented import InstrumentationSettings
+
+LOGGER = logging.getLogger(__name__)
 
 # Shorter texts are never worth a marker, and nothing under this size repeats at scale.
 REPEATED_INPUT_MIN_BYTES = 4_096
@@ -82,14 +85,16 @@ class RunTrace:
                     head = content[:REPEATED_INPUT_HEAD_CHARS]
                     removed = len(encoded) - len(head.encode())
                     part["content"] = (f"{head} ... [truncated {removed} bytes: the same text is recorded "
-                                       "in full on this agent run's first model request and in the "
+                                       "in full on an earlier model request of this agent run and in the "
                                        "agent run's pydantic_ai.all_messages]")
                     changed = True
             if not changed:
                 return messages_json
             return json.dumps(messages, ensure_ascii=False, separators=(",", ":"))
-        except (ValueError, AttributeError, TypeError):
-            # A trace is never worth failing a model request: record what pydantic-ai produced.
+        except Exception as error:
+            # A trace is never worth failing a model request that was paid for: record what
+            # pydantic-ai produced. Only the class is logged, never the message (it may quote text).
+            LOGGER.debug("trace_input_cap_failed: %s", type(error).__name__)
             return messages_json
 
 
@@ -128,20 +133,26 @@ def cost_metadata(costs) -> dict[str, int]:
 def annotate_cost(trace, span, costs) -> None:
     """Put the settled cost of some requests on an application span.
 
-    A value the telemetry allowlist refuses (a cost above any possible reservation) is
-    dropped: a trace attribute never fails a request that has already been paid for.
+    A value the telemetry allowlist refuses (a cost above any possible reservation) and any
+    other failure are dropped: a trace attribute never fails a request that was paid for.
     """
     try:
         trace.annotate(span, **cost_metadata(costs))
-    except ValueError:
-        pass
+    except Exception as error:
+        LOGGER.debug("trace_cost_annotation_failed: %s", type(error).__name__)
 
 
 def record_request_cost(micro_usd: int | None) -> None:
-    """Called by EffectModel for each completed request; a no-op outside an agent run."""
-    run = _RUN.get()
-    if run is not None:
-        run.record_cost(micro_usd)
+    """Called by EffectModel for each completed request; a no-op outside an agent run.
+
+    Never raises: the request has been paid for and its receipt settled.
+    """
+    try:
+        run = _RUN.get()
+        if run is not None:
+            run.record_cost(micro_usd)
+    except Exception as error:
+        LOGGER.debug("trace_cost_record_failed: %s", type(error).__name__)
 
 
 class _CappingSpan:

@@ -62,6 +62,25 @@ def test_a_new_long_text_a_short_text_and_every_other_part_are_never_capped():
     assert json.loads(run.cap_repeated_input(messages_json(user(text(other)))))[0]["parts"][0]["content"] == other
 
 
+def test_a_text_that_differs_only_late_is_a_new_text_and_the_marker_count_is_exact():
+    # Identity is the whole text, not its beginning: a changed input that starts the same
+    # (the first 200 bytes, or 4,000 characters) must be recorded whole, never marked as a repeat.
+    run = A.RunTrace()
+    shared = "Immutable scoped research input: " + "x" * 4_000
+    first, changed, again = shared + "tail-A" * 400, shared + "tail-B" * 400, shared + "tail-A" * 400
+    assert len(shared.encode()) >= 4_000 and first != changed
+    assert run.cap_repeated_input(messages_json(user(text(first)))) == messages_json(user(text(first)))
+    unchanged = messages_json(user(text(changed)))
+    assert run.cap_repeated_input(unchanged) == unchanged
+    marked = json.loads(run.cap_repeated_input(messages_json(user(text(again)))))[0]["parts"][0]["content"]
+    head = again[:A.REPEATED_INPUT_HEAD_CHARS]
+    assert marked.startswith(head + " ... [truncated ")
+    assert f"[truncated {len(again.encode()) - len(head.encode())} bytes:" in marked
+    # And the changed text is itself now seen: its own repeat is marked, with its own count.
+    marked_changed = json.loads(run.cap_repeated_input(unchanged))[0]["parts"][0]["content"]
+    assert f"[truncated {len(changed.encode()) - len(head.encode())} bytes:" in marked_changed
+
+
 def test_a_run_starts_with_nothing_seen_and_a_delegated_run_does_not_share_the_parents():
     with A.run_scope() as parent:
         parent.cap_repeated_input(messages_json(user(text(BIG))))
@@ -100,7 +119,7 @@ def test_cost_metadata_sums_the_priced_requests_and_counts_the_rest():
     assert A.cost_metadata([]) == {}
 
 
-def test_annotate_cost_sets_allowlisted_metadata_and_swallows_only_a_refused_value():
+def test_annotate_cost_sets_allowlisted_metadata_and_drops_a_refused_value():
     from specimen_digitization.research_harness.telemetry import ResearchTrace, TraceIdentity
 
     trace = ResearchTrace(TraceIdentity("specimen-test", "run-1-r1", 0))
@@ -111,13 +130,40 @@ def test_annotate_cost_sets_allowlisted_metadata_and_swallows_only_a_refused_val
     A.annotate_cost(trace, refused, [10**10])
     assert refused.attributes == {}
 
+
+@pytest.mark.parametrize("error", [RuntimeError, TypeError, KeyError, RecursionError, OSError])
+def test_no_trace_failure_escapes_the_cost_helpers_and_only_the_class_is_logged(error, caplog):
+    """A trace is never worth failing a request that was already paid for."""
+    import logging
+
     class Broken:
         @staticmethod
         def annotate(span, **metadata):
-            raise RuntimeError("not a refused value")
+            raise error("PRIVATE_LABEL_CANARY")
 
-    with pytest.raises(RuntimeError):
+    with caplog.at_level(logging.DEBUG, logger=A.__name__):
         A.annotate_cost(Broken(), FakeSpan(), [1])
+    assert caplog.records and all(record.levelno == logging.DEBUG for record in caplog.records)
+    assert error.__name__ in caplog.text and "PRIVATE_LABEL_CANARY" not in caplog.text
+
+    def broken_record(self, micro_usd):
+        raise error("PRIVATE_LABEL_CANARY")
+
+    with pytest.MonkeyPatch.context() as patch, A.run_scope():
+        patch.setattr(A.RunTrace, "record_cost", broken_record)
+        A.record_request_cost(5)
+
+
+@pytest.mark.parametrize("error", [RuntimeError, KeyError, RecursionError, OSError])
+def test_a_failure_inside_the_cap_records_the_attribute_as_it_came(error, monkeypatch):
+    class Broken:
+        @staticmethod
+        def loads(raw):
+            raise error("PRIVATE_LABEL_CANARY")
+
+    monkeypatch.setattr(A, "json", Broken)
+    history = '[{"role":"user","parts":[{"type":"text","content":"x"}]}]'
+    assert A.RunTrace().cap_repeated_input(history) == history
 
 
 class FakeSpan:

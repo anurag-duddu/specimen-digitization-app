@@ -357,7 +357,8 @@ def configure_production_observability(service: str, *, instrument_agents: bool 
 # The flush bounds, in milliseconds. Every caller keeps FLUSH_MILLIS (one second) except the
 # drain, whose last act is logfire.shutdown with FINAL_FLUSH_MILLIS: the last specimen's spans
 # are still queued then (about 350 KB gzip behind a TLS connection that may be cold), and one
-# second false-alarmed drain_trace_export_incomplete on a healthy tail. The ceiling keeps any
+# second would false-alarm drain_trace_export_incomplete on a healthy tail longer than that
+# (shown offline with a sleeping exporter, not observed in production). The ceiling keeps any
 # explicit bound finite.
 FLUSH_MILLIS = 1_000
 FINAL_FLUSH_MILLIS = 10_000

@@ -416,6 +416,64 @@ def test_a_cost_the_trace_allowlist_refuses_never_fails_the_request_that_was_pai
     assert spans[0]["research.field_keys"] is not None
 
 
+@pytest.mark.parametrize("injection", ["annotate_cost", "record_request_cost", "trace_annotate", "run_record_cost"])
+def test_a_telemetry_failure_never_fails_a_request_that_was_paid_for(tmp_path, monkeypatch, injection):
+    from pydantic_ai.models import ModelRequestParameters
+
+    from specimen_digitization.research_harness import agent_trace
+    from specimen_digitization.research_harness import gateway as gateway_module
+    from specimen_digitization.research_harness.telemetry import ResearchTrace
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("PRIVATE_LABEL_CANARY")
+
+    store, scope, lease, broker = sql_broker(tmp_path)
+    request = requests()[SpecialistRole.TAXONOMY]
+    gateway = model(FunctionModel(lambda messages, info: ModelResponse([TextPart("ok")],
+        usage=RequestUsage(input_tokens=1, output_tokens=1))), request=request, broker=broker,
+        scope=scope, lease=lease)
+    if injection == "annotate_cost":
+        monkeypatch.setattr(gateway_module, "annotate_cost", boom)
+    elif injection == "record_request_cost":
+        monkeypatch.setattr(gateway_module, "record_request_cost", boom)
+    elif injection == "trace_annotate":
+        monkeypatch.setattr(ResearchTrace, "annotate", staticmethod(lambda *a, **k: (_ for _ in ()).throw(TypeError("x"))))
+    else:
+        monkeypatch.setattr(agent_trace.RunTrace, "record_cost", boom)
+    with agent_trace.run_scope():
+        response = asyncio.run(gateway.request([ModelRequest([UserPromptPart("synthetic")])],
+                                               {"max_tokens": 128}, ModelRequestParameters()))
+    assert response.parts[0].content == "ok"
+    assert len(gateway.effect_ids) == 1 and store.budget(scope)["settled_micro_usd"] == 3
+
+
+@pytest.mark.parametrize("inject", [False, True])
+def test_a_failing_cap_never_fails_a_paid_specialist_run(tmp_path, monkeypatch, capfire, inject):
+    from types import SimpleNamespace
+
+    from specimen_digitization import observability
+    from specimen_digitization.research_harness import agent_trace
+
+    monkeypatch.setattr(observability, "_configured_settings", observability.ObservabilitySettings(
+        environment="test", service_name="specimen-worker", capture_mode=observability.CaptureMode.APPROVED_CONTENT,
+        head_sample_rate=1.0, distributed_tracing=False))
+    # The synthetic scoped input is small; lower the threshold so the cap's hashing is on its path.
+    monkeypatch.setattr(agent_trace, "REPEATED_INPUT_MIN_BYTES", 10)
+    if inject:
+        def boom(*args, **kwargs):
+            raise RuntimeError("PRIVATE_LABEL_CANARY")
+        monkeypatch.setattr(agent_trace, "hashlib", SimpleNamespace(sha256=boom))
+    runtime, store, scope, *_ = harness(tmp_path)
+    run = asyncio.run(runtime.run_specialist(SpecialistRole.TAXONOMY))
+    assert len(run.resolutions) == 1 and store.budget(scope)["settled_micro_usd"] == 6
+    inputs = [item["attributes"]["gen_ai.input.messages"] for item in capfire.exporter.exported_spans_as_dict()
+              if item["name"].startswith("chat ")]
+    assert len(inputs) == 2 and "Immutable scoped research input" in inputs[0]
+    # Control: without the injected failure the second request's repeat is marked, so the
+    # injected case really reached the cap; with it, pydantic-ai's own text is recorded as it was.
+    assert ("[truncated " in inputs[1]) is (not inject)
+
+
 def test_a_request_the_provider_usage_cannot_price_is_counted_and_never_reported_as_zero(tmp_path, capfire):
     runtime, store, scope, *_ = harness(tmp_path, known_cost=False)
     asyncio.run(runtime.run_specialist(SpecialistRole.TAXONOMY))
