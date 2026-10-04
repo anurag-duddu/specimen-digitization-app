@@ -57,18 +57,19 @@ from production_e2e_support import (
 
 # Region 0 is decided by the first pass (the second reader misreads one letter of the habitat line);
 # region 1 is two agreeing readers. Both hold plain lines, no `field_key:` prefix. The collector's line
-# ends with a sex sign (U+2642, which the recorded labels carry): the extractor quotes the whole region, so
-# its evidence row holds a non-ASCII character, and the value that cites that row must still publish.
+# ends with a sex sign (U+2642, which the recorded labels carry) and its name has an accented letter: the
+# extractor quotes the whole region, so its evidence row holds non-ASCII text, and the value that cites that
+# row, itself non-ASCII, must still publish.
 REGION_TEXTS = (
     "Chicago, Cook County\nIllinois, United States\ngrassland margin",
-    "FMNH INS\n0010001\nSynthetic Collector \u2642\n12 June 1948\n1200 ft\nlight trap",
+    "FMNH INS\n0010001\nSynthetic Coll\u00e9ctor \u2642\n12 June 1948\n1200 ft\nlight trap",
 )
 # (field, literal, region): what the scripted ordinary extractor stores. Each literal is inside its own
 # region's decided text, and the quote is the whole transcript, as the real extractor's is.
 STORED = (
     ("country", "United States", 0), ("province_state", "Illinois", 0), ("county", "Cook", 0),
     ("city", "Chicago", 0), ("habitat", "grassland margin", 0),
-    ("fmnh_ins_number", "0010001", 1), ("collectors", "Synthetic Collector", 1),
+    ("fmnh_ins_number", "0010001", 1), ("collectors", "Synthetic Coll\u00e9ctor", 1),
     ("date_visited_from", "12 June 1948", 1), ("elevation_from_ft", "1200", 1),
     ("collection_method", "light trap", 1),
     # Two lines: the extractor's own quote allows it, trusted code cannot place it in one line.
@@ -328,7 +329,7 @@ def test_the_ordinary_extractor_stored_the_values_and_the_request_graph_now_hold
     assert {str(row.field_key) for row in assemblies} == set(GROUNDED)
     assert len(accepted) == len(assemblies) == len(GROUNDED)
     texts = {str(row.field_key): row.interpreted_text for row in assemblies}
-    assert texts == {"fmnh_ins_number": "0010001", "collectors": "Synthetic Collector",
+    assert texts == {"fmnh_ins_number": "0010001", "collectors": "Synthetic Coll\u00e9ctor",
         "collection_method": "light trap", "habitat": "grassland margin"}
 
 
@@ -358,7 +359,7 @@ def test_a_specialist_following_the_v5_text_resolves_the_grounded_candidates_wit
     assert published[-1] == "identified_by_irn"
     fields = specimen.run.fields
     assert (fields["fmnh_ins_number"].literal, fields["fmnh_ins_number"].normalized) == ("0010001", "0010001")
-    assert fields["collectors"].literal == "Synthetic Collector" and fields["collection_method"].literal == "light trap"
+    assert fields["collectors"].literal == "Synthetic Coll\u00e9ctor" and fields["collection_method"].literal == "light trap"
     for key in RESOLVED_FROM_ASSEMBLY:
         assert fields[key].state == "supported" and fields[key].evidence_relations
     _, state = research_state(rig.fake, rig.specimen_id)
