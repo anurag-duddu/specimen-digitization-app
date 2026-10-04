@@ -47,11 +47,13 @@ void main() {
         expect(find.text('Possibilities found'), findsOneWidget);
         expect(find.text('MOUNT APO'), findsNWidgets(3));
         expect(
-          find.text('CENTRAL MINDANAO · 46 km from the estimated location'),
+          find.text(
+            'CENTRAL MINDANAO · 46 km from where the research expected it',
+          ),
           findsOneWidget,
         );
         expect(
-          find.text('COTABATO · 46 km from the estimated location'),
+          find.text('COTABATO · 46 km from where the research expected it'),
           findsOneWidget,
         );
         expect(find.text('geolocate:a863d52e6ff08fe2'), findsOneWidget);
@@ -102,7 +104,10 @@ void main() {
       'the label lacks it: said only when the research marked it not present',
       (tester) async {
         await _show(tester, unresolvedJson(), 'habitat');
-        expect(find.text('This field is not on the label.'), findsOneWidget);
+        expect(
+          find.text('The research found no value on the label.'),
+          findsOneWidget,
+        );
         expect(find.text('The label names no habitat.'), findsOneWidget);
         expect(find.text('Possibilities found'), findsNothing);
         expect(find.text('Sources checked'), findsNothing);
@@ -117,11 +122,17 @@ void main() {
           find.text('No approved rule settles this field yet.'),
           findsOneWidget,
         );
+        // The reason carries prompt v4's code; the reviewer reads a sentence
+        // and what the readings show, never the code.
         expect(
-          find.textContaining('no approved rule chooses between them'),
+          find.text('The readings show two collection methods.'),
           findsOneWidget,
         );
-        expect(find.text('This field is not on the label.'), findsNothing);
+        expect(find.textContaining('missing_policy'), findsNothing);
+        expect(
+          find.text('The research found no value on the label.'),
+          findsNothing,
+        );
 
         final json = unresolvedJson();
         final habitat = fixtureField(json, 'habitat');
@@ -132,7 +143,10 @@ void main() {
           find.text('No source has settled this field yet.'),
           findsOneWidget,
         );
-        expect(find.text('This field is not on the label.'), findsNothing);
+        expect(
+          find.text('The research found no value on the label.'),
+          findsNothing,
+        );
       },
     );
 
@@ -217,6 +231,62 @@ void main() {
       await _show(tester, json, 'collection_method');
       expect(find.text('What the research found'), findsNothing);
       expect(find.textContaining('some_internal_code'), findsNothing);
+    });
+
+    testWidgets(
+      'the code and prose shape of prompt v4 shows the sentence and the prose',
+      (tester) async {
+        // The exact string #252's collection prompt makes the harness write for
+        // fmnh_ins_number, collection_code, habitat and collection_method.
+        const written =
+            'missing_policy:unstructured_label_event_unqualified The readings show a trip number only.';
+        for (final key in ['habitat', 'collection_method']) {
+          final json = unresolvedJson();
+          reviewOf(json, key)['reason'] = written;
+          await _show(tester, json, key);
+          expect(find.text('What the research found'), findsOneWidget);
+          expect(
+            find.text(
+              'The label is not laid out as named fields, and no approved rule reads a field from such a label yet.',
+            ),
+            findsOneWidget,
+          );
+          expect(
+            find.text('The readings show a trip number only.'),
+            findsOneWidget,
+          );
+          expect(find.textContaining('missing_policy'), findsNothing);
+          expect(find.textContaining('unqualified'), findsNothing);
+        }
+      },
+    );
+
+    group('researchReasonLines', () {
+      const sentence =
+          'The label is not laid out as named fields, and no approved rule reads a field from such a label yet.';
+      final cases = <String?, List<String>>{
+        null: [],
+        '': [],
+        '   ': [],
+        'The label names no habitat.': ['The label names no habitat.'],
+        'missing_policy:unstructured_label_event_unqualified': [sentence],
+        'missing_policy:unstructured_label_event_unqualified The readings show a trip number only.':
+            [sentence, 'The readings show a trip number only.'],
+        'missing_policy:unstructured_label_event_unqualified\nTwo readings differ.':
+            [sentence, 'Two readings differ.'],
+        'missing_policy:some_future_code The readings differ.': [
+          'The readings differ.',
+        ],
+        'missing_policy:some_future_code': [],
+        'specialist_operational_failure': [],
+        'research_work:country:waiting_source': [],
+        'Note: the readings differ.': ['Note: the readings differ.'],
+      };
+      cases.forEach((reason, expected) {
+        test('${reason?.replaceAll('\n', r'\n')}', () {
+          expect(researchReasonLines(reason), expected);
+        });
+      });
     });
 
     testWidgets(
@@ -400,7 +470,10 @@ void main() {
       final review = reviewOf(json, 'habitat');
       review['reason'] = null;
       await _show(tester, json, 'habitat');
-      expect(find.text('This field is not on the label.'), findsOneWidget);
+      expect(
+        find.text('The research found no value on the label.'),
+        findsOneWidget,
+      );
       expect(find.text('What the research found'), findsNothing);
       expect(tester.takeException(), isNull);
     });
@@ -464,18 +537,54 @@ void main() {
     });
 
     testWidgets(
-      'the block adds no control: nothing to focus and no action it cannot offer',
+      'the block adds no control: nothing to press, focus or tap, however it is built',
       (tester) async {
+        final handle = tester.ensureSemantics();
         await _show(tester, unresolvedJson(), 'country');
-        expect(
-          find.descendant(of: _block, matching: find.byType(Pressable)),
-          findsNothing,
+        // No widget that listens for a gesture or takes focus, not only the
+        // library's own Pressable and UiButton.
+        final interactive = find.descendant(
+          of: _block,
+          matching: find.byWidgetPredicate(
+            (widget) =>
+                widget is Pressable ||
+                widget is UiButton ||
+                widget is GestureDetector ||
+                widget is RawGestureDetector ||
+                widget is InkResponse ||
+                widget is FocusableActionDetector ||
+                widget is Focus && widget.canRequestFocus ||
+                widget is MouseRegion && widget.cursor != MouseCursor.defer,
+          ),
         );
-        expect(
-          find.descendant(of: _block, matching: find.byType(UiButton)),
-          findsNothing,
-        );
+        expect(interactive, findsNothing);
+        // And no semantics node under it offers an action a reader could take.
+        const actions = [
+          SemanticsAction.tap,
+          SemanticsAction.longPress,
+          SemanticsAction.focus,
+          SemanticsAction.increase,
+          SemanticsAction.decrease,
+          SemanticsAction.setText,
+        ];
+        void visit(SemanticsNode node) {
+          final data = node.getSemanticsData();
+          for (final action in actions) {
+            expect(
+              data.hasAction(action),
+              isFalse,
+              reason: '${node.label} offers ${action.name}',
+            );
+          }
+          node.visitChildren((child) {
+            visit(child);
+            return true;
+          });
+        }
+
+        visit(tester.getSemantics(_block));
         expect(find.text('Use this match'), findsNothing);
+        handle.dispose();
       },
     );
 

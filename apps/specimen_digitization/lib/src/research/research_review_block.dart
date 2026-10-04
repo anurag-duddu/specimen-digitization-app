@@ -11,7 +11,10 @@ import 'research_models.dart';
 /// waits for a source or a rule can also be a value the label does carry, so
 /// those two say what is known and no more.
 enum ResearchReviewCase {
-  /// The research marked the value as not on the label.
+  /// The research marked the value as not present. Nothing in the server
+  /// assigns that mark today (the prompts return `unresolved`, and the
+  /// harness stops at waiting for a source or a rule), so the owner's first
+  /// case usually reads as [noSource] or [noRule] with the harness's reason.
   labelLacksValue,
 
   /// Public sources searched and none settled the field.
@@ -32,7 +35,7 @@ enum ResearchReviewCase {
   /// The one sentence a reviewer reads first (02 section 4.15: true on its
   /// own, 120 characters or fewer).
   String get headline => switch (this) {
-    labelLacksValue => 'This field is not on the label.',
+    labelLacksValue => 'The research found no value on the label.',
     sourcesCouldNotSettle => 'Public sources could not settle this field.',
     severalPossibilities =>
       'Several possibilities remain. The research could not choose between them.',
@@ -94,16 +97,35 @@ String researchOutcomeLabel(String? outcome) => switch (outcome) {
 const _knownReasonCodes = <String, String>{
   'missing_policy:verbatim_dts_definition_examples':
       'The definition and examples for this field have not been supplied.',
+  'missing_policy:unstructured_label_event_unqualified':
+      'The label is not laid out as named fields, and no approved rule reads a field from such a label yet.',
 };
 
-/// The reason as prose, or null when it is a code with no reader's sentence.
-String? researchReasonText(String? reason) {
-  if (reason == null) return null;
-  final known = _knownReasonCodes[reason];
-  if (known != null) return known;
-  return RegExp(r'^[a-z0-9_]+(?::[a-z0-9_]+)*$').hasMatch(reason)
-      ? null
-      : reason;
+final _wholeReasonCode = RegExp(r'^[a-z0-9_]+(?::[a-z0-9_]+)*$');
+final _leadingReasonCode = RegExp(
+  r'^([a-z0-9_]+:[a-z0-9_]+)(?:\s+([\s\S]*))?$',
+);
+
+/// The reason as lines a reviewer reads, never a machine code.
+///
+/// The harness writes either prose, or a code alone, or (prompt v4) a code
+/// followed by what the readings show: `missing_policy:<code> <prose>`. A known
+/// code becomes one plain sentence, an unknown code is dropped, and prose is
+/// kept as written.
+List<String> researchReasonLines(String? reason) {
+  final text = reason?.trim();
+  if (text == null || text.isEmpty) return const [];
+  if (_wholeReasonCode.hasMatch(text)) {
+    final known = _knownReasonCodes[text];
+    return known == null ? const [] : [known];
+  }
+  final match = _leadingReasonCode.firstMatch(text);
+  if (match == null) return [text];
+  final prose = match[2]?.trim();
+  return [
+    ?_knownReasonCodes[match[1]],
+    if (prose != null && prose.isNotEmpty) prose,
+  ];
 }
 
 final _typedStatusPrefix = RegExp(r'^(?:success|no_match|ambiguous)(?:: )?');
@@ -142,16 +164,16 @@ class ResearchReviewBlock extends StatelessWidget {
     }
     final ui = context.ui;
     final reviewCase = researchReviewCase(field);
-    final reason = researchReasonText(review.reason);
+    final reasonLines = researchReasonLines(review.reason);
     final candidates = review.candidates;
     final children = <Widget>[
       _Heading('Why it is unresolved'),
       // A live region announces when its words change and never again for a
       // rebuild with the same words (06 section 3).
       Announcer(child: Text(reviewCase.headline, style: ui.type.body)),
-      if (reason != null) ...[
+      if (reasonLines.isNotEmpty) ...[
         _Heading('What the research found'),
-        Text(reason, style: _secondary(context)),
+        for (final line in reasonLines) Text(line, style: _secondary(context)),
       ],
       if (candidates.isNotEmpty ||
           reviewCase == ResearchReviewCase.severalPossibilities) ...[
@@ -300,7 +322,7 @@ class _CandidateTile extends StatelessWidget {
     final distance = candidate.distanceKm;
     final where = [
       ...candidate.details,
-      if (distance != null) '$distance km from the estimated location',
+      if (distance != null) '$distance km from where the research expected it',
     ].join(' · ');
     final searched = evidence?.searchedText;
     final from = [

@@ -741,7 +741,7 @@
           "exception": null,
           "derivation": null,
           "measurement": null,
-          "reason": "Two readings of the collection method differ and no approved rule chooses between them."
+          "reason": "missing_policy:unstructured_label_event_unqualified The readings show two collection methods."
         },
         "prompt_digest": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
         "model_settings_digest": "0707070707070707070707070707070707070707070707070707070707070707",
@@ -756,7 +756,7 @@
       "actions": [],
       "review": {
         "question_reason": null,
-        "reason": "Two readings of the collection method differ and no approved rule chooses between them.",
+        "reason": "missing_policy:unstructured_label_event_unqualified The readings show two collection methods.",
         "evidence": [],
         "candidates": [],
         "evidence_not_shown": 0,

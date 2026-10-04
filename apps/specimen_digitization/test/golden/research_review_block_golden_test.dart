@@ -73,7 +73,7 @@ List<ReviewCase> reviewCasesWithCrowded() {
       label: 'Public sources could not settle it',
       field: unresolvedThread().field('province_state')!,
     ),
-    (label: 'The label lacks it', field: unresolvedThread().field('habitat')!),
+    (label: 'Marked not present', field: unresolvedThread().field('habitat')!),
     (
       label: 'Waiting for a source',
       field: unresolvedThread(noSource).field('habitat')!,

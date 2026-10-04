@@ -9,6 +9,7 @@ Offline: no network, no model call, no cost.
 """
 
 import asyncio
+import copy
 import json
 import os
 import re
@@ -23,7 +24,10 @@ from specimen_digitization.research_harness.contracts import (
 from specimen_digitization.research_harness.persistence import (
     CapturedResult, DurableEffectBroker, ImmutableFileBlobs,
 )
-from specimen_digitization.research_harness.thread_view import ResearchThread, ResearchThreadReader
+from specimen_digitization.research_harness import thread_view
+from specimen_digitization.research_harness.thread_view import (
+    ResearchThread, ResearchThreadReader, _field_review,
+)
 from test_geolocate_validator import APO, MCKINLEY, lookup
 from test_research_harness_journal import setup
 
@@ -226,7 +230,8 @@ def fixture_rig(tmp_path):
             value=FieldValue(state=ValueState.NOT_PRESENT), reason="The label names no habitat."),
         FieldResolution(field_key=FieldKey.COLLECTION_METHOD, work_state=WorkState.WAITING_POLICY,
             value=FieldValue(state=ValueState.UNRESOLVED, literal="synthetic method text"),
-            reason="Two readings of the collection method differ and no approved rule chooses between them."),
+            # The shape prompt v4 (#252) writes: a missing_policy code, then what the readings show.
+            reason="missing_policy:unstructured_label_event_unqualified The readings show two collection methods."),
     ])
     return rig
 
@@ -268,3 +273,163 @@ def test_the_committed_unresolved_thread_fixture_is_what_the_real_reader_produce
 @pytest.mark.parametrize("name", ["FieldReview", "ReviewCandidate", "ReviewEvidence"])
 def test_the_review_models_forbid_unknown_keys(name):
     assert ResearchThread.model_json_schema()["$defs"][name]["additionalProperties"] is False
+
+
+# --- The review decorates a read the worker also uses to finalize runs: it never raises (#261 review) ---
+class Captured:
+    """The country checkpoint with its real ambiguous capture, and a private copy of the effects to tamper with."""
+
+    def __init__(self, tmp_path):
+        self.rig = Rig(tmp_path)
+        result, waiting = apo_ambiguous(self.rig)
+        self.effect_id = self.rig.capture(result, FieldKey.COUNTRY)
+        self.rig.commit(SpecialistRole.GEOGRAPHY, [waiting], [self.effect_id])
+        self.checkpoint = self.rig.field(FieldKey.COUNTRY).checkpoint
+        self.effects = copy.deepcopy(self.rig.journal.store._read(self.rig.journal.scope).state["effects"])
+        self.job_key = self.rig.journal.scope.key
+
+    @property
+    def effect(self):
+        return self.effects[self.effect_id]
+
+    @property
+    def payload(self):
+        return self.effect["receipt"]["typed_payload"]
+
+    def edit_candidate(self, **changes):
+        first = json.loads(self.payload["candidate_json"][0])
+        first.update(changes)
+        self.payload["candidate_json"][0] = json.dumps(first)  # json.dumps writes Infinity and NaN, json.loads reads them
+
+    def review(self):
+        return _field_review(self.effects, self.job_key, FieldKey.COUNTRY, self.checkpoint)
+
+
+def test_the_untampered_capture_still_shows_three_possibilities(tmp_path):
+    captured = Captured(tmp_path)
+    assert len(captured.review().candidates) == 3 and captured.review().evidence_not_shown == 0
+
+
+@pytest.mark.parametrize("distance", [float("inf"), float("-inf"), float("nan"), -1, 10**9, 10**400, True, "46"])
+def test_an_implausible_distance_is_left_out_not_raised(tmp_path, distance):
+    captured = Captured(tmp_path)
+    captured.edit_candidate(distance_km=distance)
+    first, *rest = captured.review().candidates
+    assert first.distance_km is None and first.label == "MOUNT APO" and len(rest) == 2
+
+
+@pytest.mark.parametrize("rank", [10**400, 0, -3, True, 2.5])
+def test_an_implausible_rank_is_left_out_not_raised(tmp_path, rank):
+    captured = Captured(tmp_path)
+    captured.edit_candidate(rank=rank)
+    first, *_ = captured.review().candidates
+    assert first.rank is None and first.authority_id == "geolocate:a863d52e6ff08fe2"
+
+
+def test_over_long_source_kind_and_evidence_ids_are_bounded_not_raised(tmp_path):
+    captured = Captured(tmp_path)
+    captured.payload["coverage"]["source_id"] = "s" * 300
+    captured.payload["evidence"][0].update(source_id="t" * 300, kind="k" * 300, id="source:" + "e" * 300)
+    review = captured.review()
+    assert len(review.candidates) == 3 and len(review.evidence) == 1
+    assert {len(item.source_id) for item in review.candidates} == {240}
+    assert {len(item.evidence_id) for item in review.candidates} == {240}
+    [evidence] = review.evidence
+    assert (len(evidence.source_id), len(evidence.kind), len(evidence.evidence_id)) == (240, 240, 240)
+    # The checkpoint cites the original id, which no longer resolves: counted, not hidden.
+    assert review.evidence_not_shown == 1
+
+
+def test_control_characters_never_reach_the_review(tmp_path):
+    captured = Captured(tmp_path)
+    captured.payload["coverage"]["reason"] = "ambiguous: bad\x00\x1b[31m\ttext\nline\x7f"
+    captured.edit_candidate(match_name="A\x07B\r\nC")
+    strings = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            list(map(walk, node.values()))
+        elif isinstance(node, (list, tuple)):
+            list(map(walk, node))
+        elif isinstance(node, str):
+            strings.append(node)
+
+    walk(captured.review().model_dump(mode="json"))
+    assert strings and not any(re.search(r"[\x00-\x1f\x7f]", text) for text in strings)
+    assert "A B C" in {item.label for item in captured.review().candidates}
+
+
+def test_a_review_that_cannot_be_built_falls_back_to_the_reason_only(tmp_path, monkeypatch):
+    captured = Captured(tmp_path)
+    real, calls = thread_view.FieldReview, []
+
+    def flaky(**fields):
+        calls.append(fields)
+        if len(calls) == 1:
+            raise ValueError("a review this build cannot make")
+        return real(**fields)
+
+    monkeypatch.setattr(thread_view, "FieldReview", flaky)
+    review = captured.review()
+    assert len(calls) == 2
+    assert review.reason == captured.checkpoint.resolution.reason and review.question_reason == "semantic_ambiguity"
+    assert review.evidence == review.candidates == () and review.evidence_not_shown == 1
+
+
+def test_a_capture_that_fails_in_an_unforeseen_way_is_skipped(tmp_path, monkeypatch):
+    captured = Captured(tmp_path)
+
+    class Boom:
+        @staticmethod
+        def model_validate(*_):
+            raise RuntimeError("not a validation error")
+
+    monkeypatch.setattr(thread_view, "SourceResult", Boom)
+    review = captured.review()
+    assert review.reason and review.evidence == review.candidates == ()
+
+
+def test_the_same_capture_cited_twice_adds_nothing_the_second_time(tmp_path):
+    captured = Captured(tmp_path)
+    again = captured.rig.store_payload(copy.deepcopy(captured.payload), FieldKey.COUNTRY, tag="again")
+    captured.effects = copy.deepcopy(captured.rig.journal.store._read(captured.rig.journal.scope).state["effects"])
+    cited = captured.checkpoint.model_copy(update={"effect_receipt_ids": (captured.effect_id, again, captured.effect_id)})
+    review = _field_review(captured.effects, captured.job_key, FieldKey.COUNTRY, cited)
+    assert len(review.evidence) == 1 and len(review.candidates) == 3
+    assert review.candidates_not_shown == review.evidence_not_shown == 0
+
+
+# Each guard of the lookup is its own test: removing any one of them must fail exactly one of these,
+# because the guards otherwise back each other up and a single removal passes unnoticed.
+def test_a_capture_filed_under_another_field_is_not_this_fields(tmp_path):
+    """Guard: effect field_keys. The payload says country, the effect says province_state."""
+    captured = Captured(tmp_path)
+    captured.effect["field_keys"] = ["province_state"]
+    assert captured.review().candidates == () and captured.review().evidence == ()
+
+
+def test_a_capture_whose_result_is_for_another_field_is_not_this_fields(tmp_path):
+    """Guard: the result's own coverage field. The effect says country, the payload says province_state."""
+    captured = Captured(tmp_path)
+    captured.payload["coverage"]["field_key"] = "province_state"
+    assert captured.review().candidates == () and captured.review().evidence == ()
+
+
+def test_a_non_lookup_effect_holding_a_lookup_shaped_payload_is_not_read(tmp_path):
+    """Guard: the source_lookup prefix. A model effect never contributes, whatever it holds."""
+    captured = Captured(tmp_path)
+    captured.effect["operation_key"] = "model:specimen_geography"
+    assert captured.review().candidates == () and captured.review().evidence == ()
+
+
+def test_an_effect_of_another_job_is_not_read(tmp_path):
+    """Guard: job_key. The state document holds every job's effects."""
+    captured = Captured(tmp_path)
+    captured.effect["job_key"] = "another-job"
+    assert captured.review().candidates == () and captured.review().evidence == ()
+
+
+def test_an_effect_without_a_receipt_is_not_read(tmp_path):
+    captured = Captured(tmp_path)
+    captured.effect["receipt"] = None
+    assert captured.review().candidates == () and captured.review().evidence == ()
