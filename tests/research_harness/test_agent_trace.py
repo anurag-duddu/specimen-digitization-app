@@ -1,4 +1,5 @@
 """The run-scoped trace state of a specialist agent: cap of a repeated input, request costs."""
+import asyncio
 import json
 
 import pytest
@@ -152,6 +153,28 @@ def test_no_trace_failure_escapes_the_cost_helpers_and_only_the_class_is_logged(
     with pytest.MonkeyPatch.context() as patch, A.run_scope():
         patch.setattr(A.RunTrace, "record_cost", broken_record)
         A.record_request_cost(5)
+
+
+@pytest.mark.parametrize("signal", [asyncio.CancelledError, KeyboardInterrupt, SystemExit, GeneratorExit])
+@pytest.mark.parametrize("helper", ["annotate_cost", "record_request_cost", "cap"])
+def test_a_base_exception_is_never_swallowed_by_the_trace_helpers(helper, signal, monkeypatch):
+    """Only Exception is dropped. Cancellation and interpreter exits must still reach the caller."""
+    def boom(*args, **kwargs):
+        raise signal()
+
+    if helper == "annotate_cost":
+        class Broken:
+            annotate = staticmethod(boom)
+        with pytest.raises(signal):
+            A.annotate_cost(Broken(), FakeSpan(), [1])
+    elif helper == "record_request_cost":
+        monkeypatch.setattr(A.RunTrace, "record_cost", boom)
+        with A.run_scope(), pytest.raises(signal):
+            A.record_request_cost(5)
+    else:
+        monkeypatch.setattr(A, "json", type("Broken", (), {"loads": staticmethod(boom)}))
+        with pytest.raises(signal):
+            A.RunTrace().cap_repeated_input("[]")
 
 
 @pytest.mark.parametrize("error", [RuntimeError, KeyError, RecursionError, OSError])

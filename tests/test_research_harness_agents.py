@@ -447,6 +447,28 @@ def test_a_telemetry_failure_never_fails_a_request_that_was_paid_for(tmp_path, m
     assert len(gateway.effect_ids) == 1 and store.budget(scope)["settled_micro_usd"] == 3
 
 
+@pytest.mark.parametrize("signal", [asyncio.CancelledError, KeyboardInterrupt, SystemExit, GeneratorExit])
+def test_a_base_exception_in_the_cost_bookkeeping_still_propagates(tmp_path, monkeypatch, signal):
+    """The guard drops Exception only: cancellation and interpreter exits are not telemetry failures."""
+    from types import SimpleNamespace
+
+    from specimen_digitization.research_harness import gateway as gateway_module
+
+    def boom(*args, **kwargs):
+        raise signal()
+
+    store, scope, lease, broker = sql_broker(tmp_path)
+    request = requests()[SpecialistRole.TAXONOMY]
+    gateway = model(FunctionModel(lambda messages, info: ModelResponse([TextPart("ok")])),
+                    request=request, broker=broker, scope=scope, lease=lease)
+    receipt = SimpleNamespace(effect_id="effect-1", actual_micro_usd=3)
+    for name in ("annotate_cost", "record_request_cost"):
+        with monkeypatch.context() as patch:
+            patch.setattr(gateway_module, name, boom)
+            with pytest.raises(signal):
+                gateway._trace_cost(None, receipt)
+
+
 @pytest.mark.parametrize("inject", [False, True])
 def test_a_failing_cap_never_fails_a_paid_specialist_run(tmp_path, monkeypatch, capfire, inject):
     from types import SimpleNamespace
