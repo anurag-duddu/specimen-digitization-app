@@ -15,7 +15,6 @@ from __future__ import annotations
 import asyncio
 import collections
 import contextlib
-import json
 
 import pytest
 from pydantic_ai.messages import ModelResponse, ToolCallPart
@@ -60,7 +59,12 @@ def forced_windows(monkeypatch, k):
     monkeypatch.setattr(engine_mod.ResearchEngine, "run", run)
 
 
-def scripted_with(rig, *, replace=None, delay=0.01):
+# Each scripted model response takes this long, so that the first requests of a window's two roles
+# are both in flight (and both reserved) before either answers, however busy the machine is.
+MODEL_DELAY_SECONDS = 0.4
+
+
+def scripted_with(rig, *, replace=None, delay=MODEL_DELAY_SECONDS):
     """The e2e's scripted models, each answering after ``delay`` so that roles overlap in time.
 
     ``replace[role]`` answers in place of the script (a callable (messages, info))."""
