@@ -20,7 +20,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))   # tests/ (the engine tests' stand-ins)
 
-from test_organiser_handover import STORED, FieldSpec, RegionSpec, build  # noqa: E402
+from test_organiser_handover import STORED, FieldSpec, build  # noqa: E402
 from test_research_harness_engine import Harness, Journal, inputs  # noqa: E402
 
 from specimen_digitization.application.domain import FieldValue  # noqa: E402
