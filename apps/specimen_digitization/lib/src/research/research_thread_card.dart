@@ -5,6 +5,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 import 'research_controller.dart';
 import 'research_models.dart';
+import 'research_review_block.dart';
 
 /// A collapsed field disclosure driven entirely by verified host input.
 ///
@@ -253,6 +254,12 @@ class ResearchThreadCard extends StatelessWidget {
                     ),
                   if (resolution.question != null)
                     Text(resolution.question!.text, style: ui.type.body),
+                  if (safeField?.review != null &&
+                      researchReviewApplies(safeField!.workState))
+                    ResearchReviewBlock(
+                      fieldLabel: fieldLabel,
+                      field: safeField,
+                    ),
                   if (resolution.exception != null) ...[
                     Text(
                       'Policy exception: ${resolution.exception!.reason}',
@@ -340,17 +347,7 @@ class ResearchThreadCard extends StatelessWidget {
     ],
   );
 
-  String _sourceDisplayName(String sourceId) => switch (sourceId) {
-    'global_names_verifier' => 'Global Names Verifier',
-    'catalogue_of_life' => 'Catalogue of Life',
-    'gbif' => 'GBIF',
-    'bugguide' => 'BugGuide',
-    'mapcarta' => 'Mapcarta',
-    'geolocate' => 'GEOLocate',
-    'field_museum_ipt' => 'Field Museum IPT',
-    'field_museum_emudata' => 'Field Museum EMu data',
-    _ => 'Research source',
-  };
+  String _sourceDisplayName(String sourceId) => researchSourceName(sourceId);
 
   String _coverageStatus(String state) => switch (state) {
     'not_attempted' => 'Search has not started.',
