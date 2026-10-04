@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from collections.abc import Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -23,9 +24,11 @@ from specimen_digitization.model_gateway import (
 )
 from specimen_digitization.provider_privacy import PrivateProviderModel
 
+from .agent_trace import annotate_cost, record_request_cost
 from .package_qualification import SERIALIZATION_VERSION
 from .telemetry import ResearchTrace, TraceIdentity
 
+LOGGER = logging.getLogger(__name__)
 _RESPONSE = TypeAdapter(ModelResponse)
 _PARAMETERS = TypeAdapter(ModelRequestParameters)
 
@@ -114,6 +117,8 @@ class EffectModel(WrapperModel):
         self.request_guard = request_guard
         self.execution_class = "offline" if offline else "live"
         self.effect_ids: list[str] = []
+        # effect id -> the receipt's settled micro-USD (None: not priced), for the run's trace spans.
+        self.effect_costs: dict[str, int | None] = {}
         self.trace = ResearchTrace(TraceIdentity(scope.specimen_id, scope.job_id, scope.generation))
 
     async def request(self, messages, model_settings, model_request_parameters):
@@ -159,7 +164,7 @@ class EffectModel(WrapperModel):
                 usage=TypeAdapter(type(response.usage)).dump_python(response.usage, mode="json"),
             )
 
-        metadata = {"role": self.role}
+        metadata = {"role": self.role, "field_keys": tuple(self.pins["field_keys"])}
         if "prompt_digest" in self.pins:
             metadata["prompt_digest"] = self.pins["prompt_digest"]
         with self.trace.span("model", **metadata) as span:
@@ -172,8 +177,23 @@ class EffectModel(WrapperModel):
             )
             span.set_attribute("research.effect_id", receipt.effect_id)
             span.set_attribute("research.attempt_id", receipt.attempt_id)
+            self._trace_cost(span, receipt)
         self.effect_ids.append(receipt.effect_id)
         return _RESPONSE.validate_python(receipt.typed_payload)
+
+    def _trace_cost(self, span, receipt) -> None:
+        """The settled cost of this request from its receipt, for the request's trace spans.
+
+        None when the provider's usage cannot price it: the effect stays held for that amount,
+        and the span says "unknown" rather than zero. The request has been paid for and its
+        receipt settled, so nothing here may fail it: telemetry can never fail an effect.
+        """
+        try:
+            self.effect_costs[receipt.effect_id] = receipt.actual_micro_usd
+            annotate_cost(self.trace, span, [receipt.actual_micro_usd])
+            record_request_cost(receipt.actual_micro_usd)
+        except Exception as error:
+            LOGGER.debug("trace_cost_failed: %s", type(error).__name__)
 
     @asynccontextmanager
     async def request_stream(self, *args, **kwargs):
