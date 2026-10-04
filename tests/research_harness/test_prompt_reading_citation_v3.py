@@ -117,10 +117,11 @@ def test_each_v3_file_is_its_v2_file_followed_by_the_blocks(role):
 
 @pytest.mark.parametrize("role", tuple(SpecialistRole))
 def test_the_v3_pin_is_audited_from_the_file_and_the_live_pin_extends_it(role):
-    # The live table moved on to the v4 files (the missing-policy block, test_prompt_missing_policy_v4.py);
-    # the v3 pin digest is the audit record and the live text begins with the v3 text.
+    # The live table moved on to the v4 files (the missing-policy block, test_prompt_missing_policy_v4.py) and then
+    # to the v5 files (the hand-over block, test_prompt_handover_v5.py); the v3 pin digest is the audit record and
+    # the live text begins with the v3 text.
     assert READING_CITATION_PROMPT_VERSION == "specialists-reading-citation-v3-2026-10-03"
-    assert ROLE_PROMPTS[role][0] == f"{role.value}-v4.txt" and ROLE_PROMPTS[role][1] != READING_CITATION_PROMPT_VERSION
+    assert ROLE_PROMPTS[role][0] == f"{role.value}-v5.txt" and ROLE_PROMPTS[role][1] != READING_CITATION_PROMPT_VERSION
     common = (ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
     v3 = (ROOT / f"{role.value}-v3.txt").read_text(encoding="utf-8")
     owned = "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n"

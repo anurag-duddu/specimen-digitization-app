@@ -9,6 +9,10 @@ and to keep waiting_source for a source that failed or is unconfigured. The v3, 
 files stay on disk byte for byte (test_prompt_reading_citation_v3.py pins the v3 files,
 test_geography_prompt_v2.py the v2 and v1 files and the v2 pin digests).
 common-v1.txt is not touched: its digest is pinned there too.
+
+The live table moved on to the v5 files (each the v4 file followed by the hand-over block,
+test_prompt_handover_v5.py), so the v4 files and their pin digests are the audit record here and
+the live text begins with the v4 text.
 """
 import hashlib
 import re
@@ -23,8 +27,8 @@ from specimen_digitization.research_harness.committed_pins import (
 )
 from specimen_digitization.research_harness.contracts import ROLE_FIELDS, FieldKey, SpecialistRole, digest
 from specimen_digitization.research_harness.prompts import (
-    GEOGRAPHY_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION, READING_CITATION_PROMPT_VERSION,
-    RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
+    GEOGRAPHY_PROMPT_VERSION, HANDOVER_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION,
+    READING_CITATION_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 
 ROOT = Path(prompts.__file__).parent
@@ -77,6 +81,13 @@ def pin(role):
                           model_route="harness-deepseek", output_schema_digest=PIN)
 
 
+def v4_text(role):
+    """The v4 pin text (common-v1.txt, the v4 file, the owned-fields line), as it was live."""
+    return ((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
+            + (ROOT / f"{role.value}-v4.txt").read_text(encoding="utf-8")
+            + "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n")
+
+
 def block(role):
     v3 = (ROOT / f"{role.value}-v3.txt").read_bytes()
     v4 = (ROOT / f"{role.value}-v4.txt").read_bytes()
@@ -85,22 +96,21 @@ def block(role):
 
 
 @pytest.mark.parametrize("role", tuple(SpecialistRole))
-def test_each_role_resolves_to_its_v4_file_at_the_missing_policy_version(role):
-    assert ROLE_PROMPTS[role] == (f"{role.value}-v4.txt", MISSING_POLICY_PROMPT_VERSION)
+def test_each_role_has_its_v4_file_at_the_missing_policy_version_and_the_live_table_moved_on(role):
     assert MISSING_POLICY_PROMPT_VERSION == "specialists-missing-policy-v4-2026-10-03"
     assert MISSING_POLICY_PROMPT_VERSION not in {RELATIONS_PROMPT_VERSION, GEOGRAPHY_PROMPT_VERSION,
         READING_CITATION_PROMPT_VERSION}
-    prompt = pin(role)
+    # The live table is the v5 files (test_prompt_handover_v5.py); the v4 pin is audited from the file.
+    assert ROLE_PROMPTS[role] == (f"{role.value}-v5.txt", HANDOVER_PROMPT_VERSION)
+    text = v4_text(role)
+    assert hashlib.sha256(text.encode()).hexdigest() == V4_ROLE_DIGESTS[role]
+    # The v4 text begins with the audited v3 text, which begins with the v2 text; the live text begins with it.
     common = (ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
-    expected = (common + (ROOT / f"{role.value}-v4.txt").read_text(encoding="utf-8")
-                + "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n")
-    assert prompt.version == MISSING_POLICY_PROMPT_VERSION
-    assert prompt.text == expected and prompt.digest == hashlib.sha256(expected.encode()).hexdigest()
-    assert prompt.digest == V4_ROLE_DIGESTS[role]
-    # The v4 text begins with the audited v3 text, which begins with the v2 text.
     v2 = (ROOT / f"{role.value}-v2.txt").read_text(encoding="utf-8")
     v3 = (ROOT / f"{role.value}-v3.txt").read_text(encoding="utf-8")
-    assert prompt.text.startswith(common + v3) and v3.startswith(v2)
+    assert text.startswith(common + v3) and v3.startswith(v2)
+    v4 = (ROOT / f"{role.value}-v4.txt").read_text(encoding="utf-8")
+    assert pin(role).text.startswith(common + v4)
 
 
 @pytest.mark.parametrize(("name", "sha256"), tuple(FILE_SHA256.items()))
@@ -110,11 +120,11 @@ def test_the_v3_files_stay_byte_identical_and_the_v4_files_are_pinned(name, sha2
     assert hashlib.sha256(raw).hexdigest() == sha256
 
 
-def test_the_committed_pins_carry_the_v4_versions_and_digests_and_the_profile_digest():
+def test_the_committed_research_profile_digest_is_the_v4_one_and_the_pins_carry_it():
+    """The v5 prompts move no profile digest: every prompt pin still carries the missing-policy profile's digest
+    (the pins' prompt versions and digests are pinned in test_prompt_handover_v5.py)."""
     profile = published_registry().resolve("insects").profile
     pins = build_committed_pins(profile, organization_id="org", collection_id="coll")
-    assert {role: (row["version"], row["digest"]) for role, row in pins["prompts"].items()} == {
-        str(role): (MISSING_POLICY_PROMPT_VERSION, value) for role, value in V4_ROLE_DIGESTS.items()}
     assert digest(committed_research_profile("org", "coll")) == PROFILE_DIGEST_ORG_COLL
     assert {row["profile_digest"] for row in pins["prompts"].values()} == {PROFILE_DIGEST_ORG_COLL}
     # The digest covers the ids: another organization and collection pin another profile digest.
@@ -286,13 +296,15 @@ def test_the_irn_and_verbatim_dts_texts_are_unchanged_in_the_roles_that_own_them
 # ---- the v3 reading-citation text and this block do not contradict each other ---------------------
 @pytest.mark.parametrize("role", CITING_ROLES)
 def test_the_v3_producer_block_and_the_v4_block_are_both_in_the_live_text_and_in_that_order(role):
-    """#257's producer block is in all four lookup roles; the v4 block is the last text before the owned fields."""
+    """#257's producer block is in all four lookup roles; the v4 block follows it and is the last text of the v4 pin
+    (the live v5 text appends the hand-over block after it)."""
     live = flat(pin(role).text)
     assert "Where the request has no assembly for the field that your interpretation read" in live
     assert "source_observation_id = its observation_id" in live
-    text = pin(role).text
+    text = v4_text(role)
     assert text.index("Producer and literal without an assembly") < text.index("Missing policy (unstructured labels)")
     assert text.endswith(block(role) + "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n")
+    assert pin(role).text.index(block(role)) > pin(role).text.index("Producer and literal without an assembly")
     assert "a waiting_policy value cites no reading" in flat(block(role)) or role in NO_LOOKUP_ROLES
 
 

@@ -31,18 +31,25 @@ READING_CITATION_PROMPT_VERSION = "specialists-reading-citation-v3-2026-10-03"
 # can ground, and waiting_source only for a source that failed or is unconfigured.
 # The v3 files stay on disk unchanged for audit (READING_CITATION_PROMPT_VERSION).
 MISSING_POLICY_PROMPT_VERSION = "specialists-missing-policy-v4-2026-10-03"
+# All six roles, with the hand-over (Lane P W5, 2026-10-04): the request carries the ordinary
+# extractor's field values as organiser_candidates (initial_requests.py), and each v5 file is its
+# v4 file followed by one block that says how to verify a candidate against the raw readings, how
+# a grounded candidate resolves from its accepted assembly, and what to return for one the
+# readings do not support. The v4 files stay on disk unchanged for audit
+# (MISSING_POLICY_PROMPT_VERSION names them).
+HANDOVER_PROMPT_VERSION = "specialists-handover-v5-2026-10-04"
 
 # Role -> (role file, pin version). Each role's text is common-v1.txt, the role
 # file and its owned-fields line. A role moves to a new file and version without
 # changing any other role's text, digest or pin. Superseded files stay on disk
 # for audit.
 ROLE_PROMPTS = MappingProxyType({
-    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v4.txt", MISSING_POLICY_PROMPT_VERSION),
-    SpecialistRole.GEOGRAPHY: ("specimen_geography-v4.txt", MISSING_POLICY_PROMPT_VERSION),
-    SpecialistRole.TEMPORAL: ("specimen_temporal-v4.txt", MISSING_POLICY_PROMPT_VERSION),
-    SpecialistRole.MEASUREMENT: ("specimen_measurement-v4.txt", MISSING_POLICY_PROMPT_VERSION),
-    SpecialistRole.PARTIES: ("specimen_parties-v4.txt", MISSING_POLICY_PROMPT_VERSION),
-    SpecialistRole.COLLECTION: ("specimen_collection-v4.txt", MISSING_POLICY_PROMPT_VERSION),
+    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v5.txt", HANDOVER_PROMPT_VERSION),
+    SpecialistRole.GEOGRAPHY: ("specimen_geography-v5.txt", HANDOVER_PROMPT_VERSION),
+    SpecialistRole.TEMPORAL: ("specimen_temporal-v5.txt", HANDOVER_PROMPT_VERSION),
+    SpecialistRole.MEASUREMENT: ("specimen_measurement-v5.txt", HANDOVER_PROMPT_VERSION),
+    SpecialistRole.PARTIES: ("specimen_parties-v5.txt", HANDOVER_PROMPT_VERSION),
+    SpecialistRole.COLLECTION: ("specimen_collection-v5.txt", HANDOVER_PROMPT_VERSION),
 })
 
 

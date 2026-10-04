@@ -429,6 +429,69 @@ class FieldResolution(FrozenRecord):
         return self
 
 
+# The most organiser candidates one request carries. The ordinary extractor returns at most
+# 100 candidates (application/harness.py ExtractionOutput) and a request carries only its
+# role's fields, so this is never reached by today's pairs; it bounds what a later organiser
+# may add.
+MAX_ORGANISER_CANDIDATES = 100
+# The longest literal a candidate carries: the extractor's own bound (ExtractionCandidate).
+MAX_ORGANISER_LITERAL = 2000
+
+
+class OrganiserCandidate(FrozenRecord):
+    """One proposal for a field's value, handed to a specialist next to the raw readings.
+
+    A candidate is a proposal to verify, never evidence: the evidence is the reading text
+    (``fragments``) and, for a grounded candidate, the accepted assembly built from it. The
+    ``literal`` is what the proposer wrote (``source``: the ordinary extractor today). Where it
+    sits in a reading (``observation_id``, ``region_id``, ``start``, ``end``) is computed by
+    trusted code in initial_requests, never taken from the proposer, and ``SpecialistRequest``
+    re-checks every span against the reading text it cites (a claimed span that is not a
+    verbatim substring cannot be constructed).
+
+    - ``grounded``: the literal is a verbatim substring of exactly one line of the decided
+      reading and an accepted event and assembly (``event_id``, ``assembly_id``) carry it;
+    - ``located``: the same span, but no assembly (``reason`` names why: the field has no
+      literal assembly path, the reading has unreadable spans, ...);
+    - ``ungrounded``: the literal could not be located exactly; a hint only. It has no span,
+      no event and no assembly, and never becomes a value.
+    """
+
+    id: str
+    field_key: FieldKey
+    literal: str = Field(min_length=1, max_length=MAX_ORGANISER_LITERAL)
+    source: str = Field(pattern=r"^[a-z][a-z0-9_]{0,31}$")
+    status: Literal["grounded", "located", "ungrounded"]
+    reason: str = Field(pattern=r"^[a-z][a-z0-9_]{0,95}$")
+    region_id: str | None = None
+    observation_id: str | None = None
+    start: int | None = Field(default=None, strict=True, ge=0)
+    end: int | None = Field(default=None, strict=True, ge=0)
+    fragment_id: str | None = None
+    event_id: str | None = None
+    assembly_id: str | None = None
+    evidence_ids: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def status_matches_fields(self):
+        located = (self.region_id, self.observation_id, self.start, self.end)
+        if self.status == "ungrounded":
+            if (self.observation_id is not None or self.start is not None or self.end is not None
+                or self.fragment_id is not None or self.event_id is not None or self.assembly_id is not None
+                or self.evidence_ids):
+                raise ValueError("An ungrounded candidate carries no span, event, assembly or evidence")
+            return self
+        if any(item is None for item in located) or not self.start < self.end:
+            raise ValueError("A located candidate names its region, reading and span")
+        if self.status == "located" and (self.fragment_id is not None or self.event_id is not None
+                                         or self.assembly_id is not None):
+            raise ValueError("A located candidate has no event or assembly")
+        if self.status == "grounded" and (self.fragment_id is None or self.event_id is None
+                                          or self.assembly_id is None or not self.evidence_ids):
+            raise ValueError("A grounded candidate names its fragment, event, assembly and evidence")
+        return self
+
+
 class SpecialistRequest(FrozenRecord):
     scope: ResearchScope
     role: SpecialistRole
@@ -444,6 +507,7 @@ class SpecialistRequest(FrozenRecord):
     dependencies: tuple[DependencyPin, ...] = ()
     field_revisions: dict[FieldKey, Annotated[int, Field(strict=True, ge=0)]] = Field(default_factory=FrozenFieldRevisions)
     retry_command_id: Digest | None = None
+    organiser_candidates: tuple[OrganiserCandidate, ...] = Field(default=(), max_length=MAX_ORGANISER_CANDIDATES)
 
     @field_validator("field_revisions", mode="after")
     @classmethod
@@ -463,7 +527,39 @@ class SpecialistRequest(FrozenRecord):
         for records in (self.fragments, self.relations, self.events, self.assemblies):
             if any(record.scope != self.scope for record in records):
                 raise ValueError("Evidence graph cannot cross scoped specimens/generations")
+        self._check_organiser_candidates()
         return self
+
+    def _check_organiser_candidates(self) -> None:
+        """A candidate's span is trusted only because it is re-read here from the reading text."""
+        if len({item.id for item in self.organiser_candidates}) != len(self.organiser_candidates):
+            raise ValueError("Organiser candidate identities must be unique")
+        readings = {(item.observation_id, item.region_id): item for item in self.fragments}
+        decided = {item.observation_id for item in self.fragments if item.input_source == "decided_transcript"}
+        fragments = {item.id: item for item in self.fragments}
+        assemblies = {item.id: item for item in self.assemblies}
+        events = {item.id: item for item in self.events}
+        for candidate in self.organiser_candidates:
+            if candidate.field_key not in self.field_keys:
+                raise ValueError("An organiser candidate belongs to a requested owned field")
+            if candidate.status == "ungrounded":
+                continue
+            reading = readings.get((candidate.observation_id, candidate.region_id))
+            if (reading is None or candidate.observation_id not in decided
+                or reading.observation_text[candidate.start:candidate.end] != candidate.literal):
+                raise ValueError("An organiser span must be a verbatim substring of the decided reading it cites")
+            if candidate.status == "located":
+                continue
+            fragment, assembly = fragments.get(candidate.fragment_id), assemblies.get(candidate.assembly_id)
+            event = events.get(candidate.event_id)
+            if (fragment is None or assembly is None or event is None
+                or (fragment.observation_id, fragment.region_id, fragment.start, fragment.end, fragment.literal)
+                    != (candidate.observation_id, candidate.region_id, candidate.start, candidate.end, candidate.literal)
+                or assembly.field_key != candidate.field_key or assembly.event_id != event.id
+                or assembly.fragment_ids != (fragment.id,) or assembly.interpreted_text != candidate.literal
+                or assembly.evidence_ids != candidate.evidence_ids or event.status != "accepted"
+                or fragment.id not in event.fragment_ids):
+                raise ValueError("A grounded organiser candidate names an accepted assembly of its own span")
 
 
 class ToolReceipt(FrozenRecord):

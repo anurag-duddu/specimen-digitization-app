@@ -23,7 +23,7 @@ from specimen_digitization.research_harness.evidence import (
     validate_resolution,
 )
 from specimen_digitization.research_harness.prompts import (
-    MISSING_POLICY_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
+    HANDOVER_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 from specimen_digitization.research_harness.sources import insects_registry
 
@@ -74,9 +74,10 @@ def flat(text):
 @pytest.mark.parametrize("role", FIVE)
 def test_each_v2_file_is_its_v1_text_followed_by_the_relation_rule_and_the_pin_extends_it(role):
     # The v2 files stay on disk as the audit record (their digests: test_geography_prompt_v2.py). The live
-    # pins moved to the v3 files (test_prompt_reading_citation_v3.py) and then to the v4 files, each the v3
-    # file followed by the missing-policy block (test_prompt_missing_policy_v4.py); both extend the v2 text.
-    assert ROLE_PROMPTS[role] == (f"{role.value}-v4.txt", MISSING_POLICY_PROMPT_VERSION)
+    # pins moved to the v3 files (test_prompt_reading_citation_v3.py), then to the v4 files, each the v3
+    # file followed by the missing-policy block (test_prompt_missing_policy_v4.py), then to the v5 files,
+    # each the v4 file followed by the hand-over block (test_prompt_handover_v5.py); all extend the v2 text.
+    assert ROLE_PROMPTS[role] == (f"{role.value}-v5.txt", HANDOVER_PROMPT_VERSION)
     assert RELATIONS_PROMPT_VERSION == "specialists-relations-v2-2026-10-03"
     (ROOT / f"{role.value}-v2.txt").read_bytes().decode("ascii")
     rule = added(role)
