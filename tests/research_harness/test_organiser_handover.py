@@ -432,6 +432,24 @@ def test_the_cap_and_the_literal_bound_are_the_contracts():
             status="ungrounded", reason="no_usable_extractor_row_for_the_literal")
 
 
+def test_a_field_with_many_candidates_keeps_its_best_first_and_says_it_dropped_some():
+    """R2 of the delta review: the cap used to be global and cut in key order, so the last fields of a large run
+    lost every candidate. The cap is per field: the field's own stored value first, then rows citing a decided
+    reading, then the rest, and the last slot is a visible marker when some were dropped."""
+    from specimen_digitization.research_harness.initial_requests import MAX_CANDIDATES_PER_FIELD
+    assert MAX_CANDIDATES_PER_FIELD * len(FieldKey) == MAX_ORGANISER_CANDIDATES
+    regions = tuple(RegionSpec(DECIDED) for _ in range(4))
+    spec = FieldSpec("habitat", "oak woodland margin", regions=(0, 1, 2, 3), readers=(0, 1), shape="reading")
+    built = build(regions, (spec,))
+    found = by_field(built, "habitat")                       # 8 rows stored: 4 decided, 4 the other reader's
+    assert len(found) == MAX_CANDIDATES_PER_FIELD == 5
+    assert [item.status for item in found] == ["grounded", "located", "located", "located", "ungrounded"]
+    assert [item.reason for item in found[1:4]] == ["not_the_stored_field_value"] * 3   # decided readings first
+    assert found[-1].reason == "more_candidates_for_the_field_than_are_handed_over" and found[-1].start is None
+    assert len(built.graph[2]) == 1                          # one assembly: the field's own value
+    request_for(built, SpecialistRole.COLLECTION)            # and the request builds
+
+
 def test_the_pass_stops_at_the_cap_the_contract_sets():
     """Twenty fields quoted in seven regions would be 140 candidates; the contract bounds a request at 100."""
     keys = [str(key) for key in FieldKey]
@@ -440,6 +458,9 @@ def test_the_pass_stops_at_the_cap_the_contract_sets():
         tuple(FieldSpec(key, f"tok{index:02d}", regions=tuple(range(7)), shape="reading")
               for index, key in enumerate(keys)))
     assert len(candidates(built)) == MAX_ORGANISER_CANDIDATES
+    # No field is starved: the cap is per field, so every field keeps candidates (the old global cap cut the
+    # last fields in key order).
+    assert {item.field_key for item in candidates(built)} == set(FieldKey)
     for role in SpecialistRole:
         assert len(request_for(built, role).organiser_candidates) <= MAX_ORGANISER_CANDIDATES
 

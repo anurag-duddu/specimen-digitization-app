@@ -56,6 +56,11 @@ ORGANISER_RULE = "organiser-verbatim-span/v1"
 # - verbatim_dts and identified_by_irn have no resolved path.
 ASSEMBLY_FIELDS = frozenset((FieldKey.FMNH_INS_NUMBER, FieldKey.COLLECTION_CODE, FieldKey.HABITAT,
     FieldKey.COLLECTION_METHOD, FieldKey.COLLECTORS))
+# At most this many candidates of one field are handed over (twenty fields x five = the contract's cap of 100,
+# so the cap never starves a field). The organiser (#262) stores one row per reading: more than five for a field
+# means several labels or readers. The ones kept are, in order: the field's own stored value, the other rows that
+# cite a decided reading, then the rest in stored order; if some are dropped the last slot is a visible marker.
+MAX_CANDIDATES_PER_FIELD = 5
 
 
 class NativeGenerationRequestFactory:
@@ -229,24 +234,37 @@ class NativeGenerationRequestFactory:
         (reason names why). A located span in the DECIDED reading, of the field's own stored value, for an
         ``ASSEMBLY_FIELDS`` field the validator would accept, in a readable reading, also gets an accepted
         event and an assembly through ``assemble_field``, appended to ``fragments``, ``events`` and
-        ``assemblies``. Returns the candidates in field order. Nothing here reads a span, an offset or a
-        status from a model."""
+        ``assemblies``. Returns the candidates in field order, at most ``MAX_CANDIDATES_PER_FIELD`` per field
+        (a marker says when some were dropped). Nothing here reads a span, an offset or a status from a
+        model."""
         decided = {}
         for transcript in specimen.run.transcripts:
             observation = reading_map.get(transcript.selected_observation_id)
             if transcript.resolved and transcript.text and observation is not None:
                 decided[transcript.region_id] = (transcript, observation)
         keyed = tuple(assemblies)  # the exact field-key lines' assemblies, before any hand-over assembly
+        by_field = {}
+        for claim in _claims(specimen, reading_map, decided):
+            by_field.setdefault(claim.key, []).append(claim)
         candidates, seen = [], set()
-        for candidate in _claims(specimen, reading_map, decided):
-            if len(candidates) >= MAX_ORGANISER_CANDIDATES:
-                break
-            built = NativeGenerationRequestFactory._organiser_candidate(
-                specimen, scope, ref, region_map, candidate, decided, fragments, events, assemblies, keyed)
-            if built is not None and built.id not in seen:
-                seen.add(built.id)
-                candidates.append(built)
-        return tuple(candidates)
+        for key, claims in by_field.items():     # in field-key order
+            claims = sorted(claims, key=lambda claim: (not claim.primary, not _cites_decided(claim, decided)))
+            dropped = []
+            if len(claims) > MAX_CANDIDATES_PER_FIELD:
+                claims, dropped = claims[:MAX_CANDIDATES_PER_FIELD - 1], claims[MAX_CANDIDATES_PER_FIELD - 1:]
+            built = [NativeGenerationRequestFactory._organiser_candidate(
+                specimen, scope, ref, region_map, claim, decided, fragments, events, assemblies, keyed)
+                for claim in claims]
+            if dropped and dropped[0].literal.strip():
+                # Visible, never silent: the field has more candidates than are handed over.
+                built.append(_candidate(key, dropped[0].literal.strip()[:MAX_ORGANISER_LITERAL], "ungrounded",
+                    "more_candidates_for_the_field_than_are_handed_over",
+                    region_id=dropped[0].row.region_id if dropped[0].row is not None else None))
+            for item in built:
+                if item is not None and item.id not in seen:
+                    seen.add(item.id)
+                    candidates.append(item)
+        return tuple(candidates[:MAX_ORGANISER_CANDIDATES])
 
     @staticmethod
     def _organiser_candidate(specimen, scope, ref, region_map, claim, decided, fragments, events, assemblies,
@@ -338,6 +356,12 @@ class NativeGenerationRequestFactory:
         assemblies.append(assembly)
         return _candidate(key, literal, "grounded", "verbatim_in_one_line_of_the_decided_reading", **where,
             fragment_id=fragment.id, event_id=event.id, assembly_id=assembly.id, evidence_ids=assembly.evidence_ids)
+
+
+def _cites_decided(claim, decided):
+    """The claim's row cites the decided reading of its region."""
+    entry = decided.get(claim.row.region_id) if claim.row is not None else None
+    return entry is not None and claim.observation is not None and entry[1].id == claim.observation.id
 
 
 @dataclass(frozen=True)

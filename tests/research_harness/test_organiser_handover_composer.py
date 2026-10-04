@@ -12,8 +12,10 @@ assembly resolves the field with evidence, through the real validator and the re
 The label is abstract synthetic text; only its shape comes from the ten recorded snapshots (counts and
 lengths): two regions, two readers each; a short catalog region; the other lines one value each; the
 extractor quotes the whole region transcript, as it does in all 48 recorded rows. The ordinary extractor
-here is the real ``apply_candidates`` (verbatim check, #256's guard, one native evidence row per candidate)
-fed scripted candidates: not a model.
+here is a stand-in that stores each scripted value as the extraction call stores it (a native evidence row
+and a supported field value, built by hand below): not a model, and not ``apply_candidates``, whose
+input schema (``ExtractionCandidate``) #262 changes. The rows are built by hand in BOTH shapes, so this module
+passes on main and on main with #262 merged.
 
 What this proves and what it does not: with the real validators and publication, a scripted specialist that
 does what the v5 text says is accepted; a specialist that resolves a hint, or omits a field the text asks
@@ -36,7 +38,6 @@ from pydantic_ai.models.function import FunctionModel
 import production_e2e_support as support
 import test_unkeyed_label_review as review
 from specimen_digitization.application.domain import Evidence, FieldValue, Observation, Region, ValueState
-from specimen_digitization.application.harness import ExtractionCandidate, ExtractionOutput, apply_candidates
 from specimen_digitization.application.production import SqlConnectRepository, actor_uid
 from specimen_digitization.application.workflow import OperationalBlock, SyntheticAdapters, Workflow
 from specimen_digitization.research_harness import native_canonical_v2, native_worker, prompts
@@ -81,7 +82,7 @@ ELIGIBLE = {"fmnh_ins_number", "collection_code", "habitat", "collection_method"
 
 
 class ExtractorAdapters(SyntheticAdapters):
-    """The ordinary chain's extract step, with scripted candidates through the real apply_candidates.
+    """The ordinary chain's extract step, with scripted values stored by hand in either evidence-row shape.
 
     ``extract`` is hidden from the step's first ``hasattr`` (so the step is not metered as an external,
     billable one: the program ledger and the provider circuit are not modelled here) and visible at the
@@ -102,19 +103,33 @@ class ExtractorAdapters(SyntheticAdapters):
     def _extract(self, specimen):
         if self.rows == "per_reading":
             return self._extract_per_reading(specimen)
-        run = specimen.run
-        decided = {item.region_id: item.text for item in run.transcripts if item.resolved and item.text}
-        candidates = [ExtractionCandidate(field_key=key, region_id=run.regions[region].id, literal=literal,
-            source_excerpt=decided[run.regions[region].id]) for key, literal, region in self.stored]
-        raw = json.dumps({"scripted_extraction": True}).encode()
-        apply_candidates(run, specimen.asset.id, ExtractionOutput(candidates=candidates), self.blobs.put(raw),
-            hashlib.sha256(raw).hexdigest())
+        return self._extract_whole_region(specimen)
 
+    def _extract_whole_region(self, specimen):
+        """Rows exactly as the extraction call stores them today (application/harness.py apply_candidates, before
+        the organiser): one native evidence row per value, `kind="literal"`, source `bounded_extraction_v1`,
+        locator `region:<region id>`, the WHOLE decided transcript as the excerpt and every reader's observation
+        id; the field is SUPPORTED with the literal and cites the row. Built by hand: #262 changes
+        ExtractionCandidate (`region_id` becomes `reading`), so this test must not construct it."""
+        run = specimen.run
+        raw = json.dumps({"scripted_extraction": True}).encode()
+        raw_ref, digest = self.blobs.put(raw), hashlib.sha256(raw).hexdigest()
+        decided = {item.region_id: item for item in run.transcripts if item.resolved and item.text}
+        for key, literal, region in self.stored:
+            region_id = run.regions[region].id
+            transcript = decided[region_id]
+            row = Evidence(kind="literal", asset_id=specimen.asset.id, region_id=region_id,
+                observation_ids=list(transcript.observation_ids), source="bounded_extraction_v1",
+                locator="region:" + region_id, excerpt=transcript.text, raw_ref=raw_ref, digest=digest)
+            run.evidence.append(row)
+            run.fields[key] = FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed=literal,
+                evidence_ids=[row.id], reason="Exact source-supported typed extraction")
 
     def _extract_per_reading(self, specimen):
         """Rows exactly as #262 (the organiser, application/organiser.py) stores them: one row per candidate with the
         locator ``reading:<label>:<observation id>#quote=a-b;literal=c-d``, ONE observation id and the narrow quote as
-        the excerpt. (#262's own code is not imported: this branch reads both shapes and merges in either order.)"""
+        the excerpt. (#262's own code is not imported: this branch reads both shapes, so it composes with #262 in either
+        merge order.)"""
         run = specimen.run
         raw = json.dumps({"scripted_extraction": True}).encode()
         raw_ref, digest = self.blobs.put(raw), hashlib.sha256(raw).hexdigest()
