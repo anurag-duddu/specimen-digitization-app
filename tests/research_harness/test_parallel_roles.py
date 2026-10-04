@@ -92,11 +92,12 @@ def answers_nothing(messages, info):
     return ModelResponse([ToolCallPart(info.output_tools[0].name, {"role": "specimen_geography", "resolutions": []})])
 
 
-def tick(tmp_path, k, *, replace=None, ceiling=None, key=None):
+def tick(tmp_path, k, *, replace=None, ceiling=None, spent=0, key=None):
     """One plan tick of the synthetic specimen with k roles per window; the observed facts.
 
     k None: the production composer as shipped (the window size role_windows.ROLE_CONCURRENCY gives it).
-    ceiling: the run's allowance in micro-USD (the published profile's is 500,000)."""
+    ceiling: the run's allowance in micro-USD (the published profile's is 500,000).
+    spent: micro-USD of that allowance already used before research starts (settled elsewhere)."""
     if key is not None and key in TICKS:
         return TICKS[key]
     tmp_path.mkdir(parents=True, exist_ok=True)
@@ -108,7 +109,7 @@ def tick(tmp_path, k, *, replace=None, ceiling=None, key=None):
             def policy(profile, ordinary_spend_micros=0):
                 # Same shape as production_runtime.research_budget_policy, whatever the run's
                 # ordinary chain has already spent against the limit (zero on the synthetic rig).
-                return BudgetPolicy(ceiling, external_settled_micro_usd=ordinary_spend_micros,
+                return BudgetPolicy(ceiling, external_settled_micro_usd=ordinary_spend_micros + spent,
                     live_authorized=True, hold_reason=None)
             mp.setattr(production_runtime, "research_budget_policy", policy)
             mp.setattr(provisioning, "research_budget_policy", policy)
@@ -309,3 +310,14 @@ def test_an_allowance_for_two_reservations_keeps_the_two_role_window(tmp_path):
     assert [len(run["roles"]) for run in two["engine_runs"]] == [2, 2, 2]
     assert two["peak_held"] == 2 * RESERVATION and not two["refusals"] and two["held_after"] == 0
     assert (two["stage"], two["disposition"]) == ("finalized", "needs_human_review")
+
+
+def test_the_window_follows_what_is_left_of_the_allowance_not_its_size(tmp_path):
+    """An allowance of three reservations with 1.2 of them already spent elsewhere leaves 1.8: one
+    request at a time. The window reads the remaining allowance, which counts spend settled outside
+    the research state (the ordinary chain's spend, when a run's allowance is seeded with it)."""
+    seeded = tick(tmp_path, None, ceiling=3 * RESERVATION, spent=RESERVATION * 6 // 5, key="seeded")
+    assert seeded["ceiling"] == 3 * RESERVATION
+    assert {(run["role_limit"], run["max_concurrency"]) for run in seeded["engine_runs"]} == {(1, 1)}
+    assert not seeded["refusals"] and seeded["held_after"] == 0 and seeded["peak_roles"] == 1
+    assert (seeded["stage"], seeded["disposition"]) == ("finalized", "needs_human_review")
