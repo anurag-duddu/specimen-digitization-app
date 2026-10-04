@@ -1,6 +1,7 @@
 """Trusted model factories with minimal context and whole-effect process deadlines."""
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,6 +18,8 @@ from .domain import (
     Region,
     Transcript,
 )
+from .field_resolution import Reading
+from .organiser import extraction_readings
 from .reliability import AdapterFailure
 from .storage import LocalBlobs
 
@@ -91,6 +94,7 @@ def _model_child(payload):
             run.transcripts = [
                 Transcript.model_validate(t) for t in payload["transcripts"]
             ]
+            run.readings = [Reading(**r) for r in payload["readings"]]
             run.fields = {
                 k: FieldValue.model_validate(v) for k, v in payload["fields"].items()
             }
@@ -152,19 +156,21 @@ def invoke_model(
         )
         step = "first_pass:" + region.id
     else:
-        # Resolved source is authorized extraction context. Raw independent
-        # observations, prior runs, audit logs and authority outputs are excluded.
+        # The organiser reads every reading of every label, decided or raw: the
+        # owner's message of 2026-10-03, which reverses HARNESS.md section 4's old
+        # rule that the extraction call gets the decided text alone. Prior runs,
+        # audit logs, authority outputs and the first pass's notes, differences and
+        # call stay out.
         payload.update(
             transcripts=[
-                # A resolved transcript with its text as its only alternative, and
-                # without its first-pass handoffs, differences and call (HARNESS.md
-                # section 4).
+                # A resolved transcript with its text as its only alternative.
                 t.model_copy(update={"alternatives": [t.text]}).model_dump(
                     mode="json", exclude={"handoffs", "differences", "first_pass_call"}
                 )
                 for t in run.transcripts
                 if t.resolved and t.text
             ],
+            readings=[asdict(r) for r in extraction_readings(run)],
             fields={k: v.model_dump(mode="json") for k, v in run.fields.items()},
         )
     result = run_isolated(

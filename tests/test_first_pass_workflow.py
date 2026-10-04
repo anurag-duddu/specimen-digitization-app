@@ -443,9 +443,13 @@ def test_a_reviewer_changed_transcript_keeps_the_machine_pick_on_record(tmp_path
     verify_evidence(specimen, adapters.blobs)
 
 
-def test_the_extraction_call_gets_the_decided_text_alone(monkeypatch, tmp_path):
-    # A resolved transcript goes to extraction with its text as its only
-    # alternative, and without its handoffs, differences or first-pass call.
+def test_the_extraction_call_gets_every_reading_not_the_first_pass_record(
+    monkeypatch, tmp_path
+):
+    # The organiser reads every reading of every label, decided or raw (owner,
+    # 2026-10-03; HARNESS.md section 4). A resolved transcript still goes with its
+    # text as its only alternative and without its handoffs, differences or
+    # first-pass call: the readings travel in their own list, the decided one first.
     adapters = ChoosingAdapters(LocalBlobs(tmp_path / "blobs"), lambda r: r[1].id)
     workflow, principal, specimen_id = start(tmp_path, adapters)
     specimen = workflow.drain(principal, specimen_id)
@@ -472,3 +476,9 @@ def test_the_extraction_call_gets_the_decided_text_alone(monkeypatch, tmp_path):
     assert transcript["text"] == specimen.run.transcripts[0].text
     assert transcript["alternatives"] == [transcript["text"]]
     assert not {"handoffs", "differences", "first_pass_call"} & set(transcript)
+    other, chosen = [o for o in specimen.run.observations]
+    assert [(r["role"], r["observation_id"], r["text"]) for r in sent["readings"]] == [
+        ("decided_transcript", chosen.id, chosen.literal_text),
+        ("raw_reading", other.id, other.literal_text),
+    ]
+    assert {r["region_id"] for r in sent["readings"]} == {transcript["region_id"]}

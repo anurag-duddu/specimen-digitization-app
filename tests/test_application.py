@@ -510,13 +510,12 @@ def test_extraction_rejects_coerced_value_and_retains_supported_candidates(tmp_p
     row = intake(c)
     scope = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
     s = SQLiteRepository(tmp_path / "state.sqlite3").get(scope, row["specimen_id"])
-    region = s.run.regions[0].id
     before = s.run.fields["country"].model_copy(deep=True)
     output = ExtractionOutput(
         candidates=[
             ExtractionCandidate(
                 field_key="country",
-                region_id=region,
+                reading="1A",
                 literal="Invented",
                 source_excerpt="country: United States",
             )

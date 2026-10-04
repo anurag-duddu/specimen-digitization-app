@@ -1,8 +1,17 @@
 """Initial genuine ordinary snapshot -> immutable registered specialist inputs.
 
-This adapter preserves every retained reader handoff. It never promotes an
-unstructured label/event to accepted science. Only explicit exact field-key
-lines in an actually decided transcript produce deterministic literal assemblies.
+This adapter preserves every retained reader handoff. Today only explicit exact
+field-key lines in an actually decided transcript produce deterministic literal
+assemblies, and this adapter does not read the ordinary run's field values.
+
+The owner's message of 2026-10-03 reverses the rule that an unstructured label is
+never promoted: "maybe the LLM that looks at the raw transcript can organize the
+data into field value pairs and share it with the harness along with the
+transcript ... evidence is always necessary". The ordinary pipeline's organiser
+(application/harness.py, application/organiser.py) now stores each field's
+candidates, each with a verified narrow quote and its reading's label, as
+evidence rows with a `reading:` locator. Handing them to a specialist, and what
+an accepted event may be built from them, is not done here.
 """
 from __future__ import annotations
 

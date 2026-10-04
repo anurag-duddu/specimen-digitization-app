@@ -158,8 +158,34 @@ its region's readings, verbatim, and none when a machine kind selected nothing.
 A machine-selected reading must be one of the region's readings, with `text` its
 literal. A region the run holds a first-pass decision for is recorded as
 `first_pass`, with the pick and call that decision records, and a pick G19
-allows. The legacy extraction call receives a resolved transcript with its text
-as its only alternative, and without its handoffs, differences or call.
+allows.
+
+**The extraction call is the organiser** (owner, 2026-10-03, relayed by the
+coordinator, replacing the earlier rule that this call received the decided text
+alone): "maybe the LLM that looks at the raw transcript can organize the data into
+field value pairs and share it with the harness along with the transcript.
+Because if the data is kinda spread out on different labels it becomes a little
+chaotic. taxa can be on multiple else. So the first agent LLM that interfaces with
+raw VLM transcripts can do this. The reason raw transcript is important is
+because LLM can make mistakes and invent stuff so evidence is always necessary."
+The call (`harness.extract_with_agent`, still one text-only call per specimen on
+the profile's first reader route) receives every non-empty reading of every
+region, named 1A, 1B, 2A ... as the stage-7 harness names them
+(`field_harness.labelled`): a resolved transcript's text as the decided
+transcript, every other reading as a raw reading, and every reading of a region
+with no decided transcript as a raw reading. It does not receive the first-pass
+notes, differences or call. It returns candidates, several per field when the
+labels or the readers differ or repeat, each naming the one reading it quotes with
+a short quote and the literal. `harness.apply_candidates` keeps a candidate only
+when the quote is an exact substring of that reading and the literal an exact
+substring of the quote, runs the extraction guard on that reading's text, computes
+every offset itself and stores one evidence row per candidate; the stored shape
+is in `application/organiser.py`. A field's value stays the ordinary pipeline's,
+and a label's decided transcript stays its verbatim (G19, G27): the value is the
+first candidate quoted from a decided transcript (or from a label with none),
+AMBIGUOUS when two labels, or the two readers of an undecided label, give different
+literals (G32). A candidate quoted from the other reader's reading of a decided
+label is evidence the field cites beside its value, never the value.
 
 ## 5. The Hugging Face routes for the first pass and the harness (T1)
 
