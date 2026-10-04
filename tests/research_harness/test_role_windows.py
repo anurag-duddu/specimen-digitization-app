@@ -16,7 +16,6 @@ from specimen_digitization.research_harness.engine import ResearchEngine
 from specimen_digitization.research_harness.source_readiness import CAPTURE_POLICIES, SOURCE_READINESS
 from specimen_digitization.research_harness.sources import insects_registry
 
-SHIPPED_WINDOW = True  # conftest: read the shipped constant, not the one-role pin
 
 
 def windows(size):

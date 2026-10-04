@@ -38,7 +38,6 @@ from test_production_e2e import (  # noqa: F401  (no_network is autouse)
     DATES_AND_ELEVATIONS, SWITCH_ON, build_rig, compose, no_network, supervised, to_plan,
 )
 
-SHIPPED_WINDOW = True  # conftest: this module runs role_windows.ROLE_CONCURRENCY, not one role per window
 TICKS = {}
 
 
