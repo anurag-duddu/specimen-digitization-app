@@ -10,6 +10,7 @@ from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 from typing import Any, Protocol
 
+from opentelemetry.trace import get_current_span
 from pydantic import BaseModel, ConfigDict
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.capabilities import AbstractCapability, Instrumentation
@@ -21,12 +22,16 @@ from pydantic_ai_harness.step_persistence import StepStore
 from specimen_digitization.application.domain import OPERATIONAL, LookupStatus
 from specimen_digitization.provider_privacy import agent_instrumentation
 
+from .agent_trace import (
+    RepeatCappedInstrumentationSettings, annotate_cost, cost_metadata, current_run, run_scope,
+)
 from .contracts import (
-    FieldKey, FieldResolution, PromptPin, SpecialistRequest, SpecialistRole, SourceQuery, SourceResult, WorkState,
+    ROLE_FIELDS, FieldKey, FieldResolution, PromptPin, SpecialistRequest, SpecialistRole, SourceQuery, SourceResult,
+    WorkState,
 )
 from .gateway import EffectModel, ModelGatewayBlocked
 from .package_qualification import SERIALIZATION_VERSION, qualify_packages
-from .telemetry import ResearchTrace, TraceIdentity
+from .telemetry import ResearchTrace, TraceIdentity, metadata_attributes
 
 
 # A waiting_policy on a field the pinned profile declares missing policy is held for
@@ -60,6 +65,17 @@ class SpecialistOutput(BaseModel):
 def specialist_output_schema_digest() -> str:
     return hashlib.sha256(json.dumps(SpecialistOutput.model_json_schema(), sort_keys=True,
                                     separators=(",", ":")).encode()).hexdigest()
+
+
+def specialist_description(role: SpecialistRole) -> str:
+    """What the Logfire agent view says this specialist is (``gen_ai.agent.description``).
+
+    Derived from the owned-field table. It is not part of any prompt, message or digest.
+    """
+    fields = ", ".join(key.value for key in ROLE_FIELDS[role])
+    return (f"{role.value.removeprefix('specimen_').capitalize()} specialist. Owns {fields}. Proposes "
+            "values from the label readings and the approved sources; the application validates and "
+            "publishes them.")
 
 
 def request_model_pins(request: SpecialistRequest) -> dict[str, Any]:
@@ -194,6 +210,50 @@ class ScopedResearchInput(AbstractCapability[ResearchDeps]):
                                                   ModelRequest([UserPromptPart(content)])])
 
 
+class SpecialistRunTrace(AbstractCapability[ResearchDeps]):
+    """Run id, owned fields and cost on an agent run's span and on each of its model requests.
+
+    It sits inside the Instrumentation capability (which is always outermost), so the
+    current span in ``wrap_run`` is the ``invoke_agent`` span and in ``wrap_model_request``
+    the ``chat`` span. The cost is the settled micro-USD of the effect receipts that
+    EffectModel records for this run's own requests (agent_trace.record_request_cost).
+    All of it is operational metadata under the telemetry allowlist (telemetry._valid);
+    a failure to annotate never fails a run.
+    """
+
+    @staticmethod
+    def _annotate(span, ctx, costs=()):
+        try:
+            if not span.is_recording():
+                return
+            request = ctx.deps.for_agent(ctx.agent.name)
+            attributes = metadata_attributes(field_keys=request.field_keys, **cost_metadata(costs))
+            run_id = ctx.deps.trace(request).identity.run_id
+            if run_id is not None:
+                attributes["specimen.run.id"] = run_id
+            span.set_attributes(attributes)
+        except Exception:
+            pass
+
+    async def wrap_run(self, ctx, *, handler):
+        span = get_current_span()
+        with run_scope() as run:
+            self._annotate(span, ctx)
+            try:
+                return await handler()
+            finally:
+                if run.requests:
+                    self._annotate(span, ctx, run.requests)
+
+    async def wrap_model_request(self, ctx, *, request_context, handler):
+        span, run = get_current_span(), current_run()
+        before = len(run.requests) if run is not None else 0
+        response = await handler(request_context)
+        if run is not None and len(run.requests) > before:
+            self._annotate(span, ctx, run.requests[before:])
+        return response
+
+
 class NativeStepPersistence(StepPersistence):
     """Bind journal identities to native runs while retaining the explicit role.
 
@@ -275,8 +335,11 @@ class SpecialistHarness:
                 PinnedManagedPrompt(request),
                 ScopedResearchInput(),
                 # Prompt, messages and tool calls follow the configured capture
-                # mode (owner G3: harness tracing visible in Logfire).
-                Instrumentation(settings=agent_instrumentation()),
+                # mode (owner G3: harness tracing visible in Logfire). The settings
+                # also cap a model request's repeat of an input the run already
+                # recorded whole (agent_trace.py).
+                Instrumentation(settings=agent_instrumentation(RepeatCappedInstrumentationSettings)),
+                SpecialistRunTrace(),
                 NativeStepPersistence(store=store, agent_name=role.value,
                                 capture_frontier=True,
                                 metadata={"job_id": request.scope.job_id,
@@ -287,7 +350,8 @@ class SpecialistHarness:
             if delegation is not None:
                 capabilities.append(delegation)
             agent = Agent(
-                model, name=role.value, output_type=SpecialistOutput, deps_type=ResearchDeps,
+                model, name=role.value, description=specialist_description(role),
+                output_type=SpecialistOutput, deps_type=ResearchDeps,
                 model_settings=dict(model.expected_settings), retries=1,
                 tool_timeout=self.limits.delegate_timeout_seconds + 1,
                 capabilities=capabilities,
@@ -358,8 +422,9 @@ class SpecialistHarness:
         deps = ResearchDeps(self.requests, self.tool_broker)
         offsets = {key: len(model.effect_ids) for key, model in self.models.items()}
         conversation_id = conversation_id or f"{request.scope.job_id}:{request.scope.generation}:{role.value}"
-        with deps.trace(request).span("specialist", role=role.value,
-                                      prompt_digest=request.prompt.digest):
+        trace = deps.trace(request)
+        with trace.span("specialist", role=role.value, prompt_digest=request.prompt.digest,
+                        field_keys=request.field_keys) as span:
             result = await asyncio.wait_for(
                 self.agents[role].run(
                     _research_input(request), deps=deps, message_history=message_history,
@@ -368,8 +433,11 @@ class SpecialistHarness:
                                              tool_calls_limit=self.limits.tool_calls_limit),
                 ), timeout=self.limits.run_timeout_seconds,
             )
-        effects = tuple(dict.fromkeys(effect for key, model in self.models.items()
-                                      for effect in model.effect_ids[offsets[key]:]))
+            effects = tuple(dict.fromkeys(effect for key, model in self.models.items()
+                                          for effect in model.effect_ids[offsets[key]:]))
+            # Everything this role's run settled, requests of the helpers it delegated to included.
+            annotate_cost(trace, span, [model.effect_costs[effect] for model in self.models.values()
+                                        for effect in effects if effect in model.effect_costs])
         source_results = tuple(item for results in deps.tool_results.values() for item in results)
         return SpecialistRun(result.output.resolutions, result.run_id, result.conversation_id,
                              result.usage, effects, source_results)

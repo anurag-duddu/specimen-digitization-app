@@ -175,8 +175,8 @@ def test_cli_deadline_starts_before_configuration(monkeypatch):
         assert 0 < deadline.remaining() <= 601
         owned_deadline.append(deadline)
         seen.append("configured_inside_original_deadline")
-    def flush(*, shutdown):
-        assert shutdown is True
+    def flush(*, shutdown, maximum_millis):
+        assert shutdown is True and maximum_millis == observability.FINAL_FLUSH_MILLIS
         assert current_deadline() is owned_deadline[0]
         flushed.append("same_original_deadline")
         return {"configured": False, "complete": True}
