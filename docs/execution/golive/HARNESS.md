@@ -180,12 +180,26 @@ a short quote and the literal. `harness.apply_candidates` keeps a candidate only
 when the quote is an exact substring of that reading and the literal an exact
 substring of the quote, runs the extraction guard on that reading's text, computes
 every offset itself and stores one evidence row per candidate; the stored shape
-is in `application/organiser.py`. A field's value stays the ordinary pipeline's,
-and a label's decided transcript stays its verbatim (G19, G27): the value is the
-first candidate quoted from a decided transcript (or from a label with none),
-AMBIGUOUS when two labels, or the two readers of an undecided label, give different
-literals (G32). A candidate quoted from the other reader's reading of a decided
-label is evidence the field cites beside its value, never the value.
+is in `application/organiser.py`. A field's value is settled as
+`field_resolution.Resolver` settles a field no tool checks (G19, G27, G32), whatever
+the order of the model's answer: a label with a decided transcript has the decided
+reading's literal (the other reader's differing literal does not contest it); a label
+with no decided transcript has a value only when every one of its readings states the
+same literal, so a reader that does not state the field, or readers that differ, leave
+it AMBIGUOUS with no literal (none is chosen); labels that all have a value and agree
+leave the field SUPPORTED, any other mix of labels AMBIGUOUS with no literal. Every
+verified candidate's row stays cited by the field, in every state, for the harness to
+check against the raw readings; a candidate quoted from the other reader's reading of
+a decided label is evidence beside the value, never the value. The first version of
+the organiser did not follow the Resolver on a label with no decided transcript (one
+reader's literal was a value; readers that differed gave the first in the model's
+order); `tests/test_organiser.py` now runs the Resolver and `apply_candidates` on every
+combination of one and two labels and compares. A cut-off answer is still not handled
+(the legacy extraction call has no cap handler: it blocks the run as
+`external_outcome_unknown`, as section 3 says), and the answer grows with the readings:
+about 185 output tokens per reading on average and 297 at most in the replay against the
+4,096-token cap, so about seven labels (14 readings at the worst ratio, 22 at the average)
+is where a cut-off becomes possible (INFERRED from the nine replayed specimens).
 
 ## 5. The Hugging Face routes for the first pass and the harness (T1)
 

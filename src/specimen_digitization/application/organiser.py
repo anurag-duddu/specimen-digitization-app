@@ -22,25 +22,35 @@ first agent. This module holds the parts that are not the model call:
   `harness.apply_candidates` from the strings it verified and never claimed by
   the model.
 
-Stored shape, read by `stored_candidates` and by the harness hand-over:
+Stored shape, read by `stored_candidates` (the single read contract, for these rows
+and for the whole-region rows the extraction call wrote before the organiser) and
+by the harness hand-over:
 
-- a label's decided transcript is its verbatim (G19, G27), so only a candidate
-  quoted from a decided transcript, or from a reading of a label with none, sets or
-  contests a field's value. `run.fields[key].literal` is the primary: the first such
-  candidate in the model's order, the decided ones first.
-- two such candidates with the same literal (two labels, or the two readers of an
-  undecided label) leave the field SUPPORTED with a row each; differing literals
-  leave it AMBIGUOUS (G32), the primary literal kept.
+- the field's value follows `field_resolution.Resolver` (G19, G27, G32), label by
+  label and then across labels, whatever the order of the model's answer: a label
+  with a decided transcript has the decided reading's literal; a label with none has
+  a value only when EVERY reading of it states the same literal; labels that all
+  have a value and agree leave the field SUPPORTED with that literal; any other mix
+  (a reader that does not state it, readers or labels that differ) leaves it
+  AMBIGUOUS with NO literal: none is chosen. `harness.apply_candidates` has the rules
+  in full; tests/test_organiser.py runs both on every combination of one and two
+  labels and compares.
 - a candidate quoted from the other reader's reading of a DECIDED label is evidence
   beside the value: it never changes the literal or the state. Where the decided
   transcript has no value for the field, the field stays UNKNOWN and still cites
   that row.
-- `run.fields[key].evidence_ids` lists the field's candidate rows, the value's rows
-  first.
+- `run.fields[key].evidence_ids` lists the row of EVERY verified candidate of the
+  field, whatever its state, the value's rows first, then in label order. The rows
+  are what the harness checks against the raw readings.
 - a row is a candidate row when its source is `bounded_extraction_v1` and its
   locator parses (`parse_locator`). Its `observation_ids` is the one reading it
   quotes. The quote is `excerpt`; the literal is
   `reading_text[literal_start:literal_end]` and lies inside the quote.
+- a row the extraction call wrote before the organiser has the locator
+  `region:<region_id>`, the whole region transcript as its excerpt and every
+  reader's observation ID; only the field's FIRST row carries the field's own
+  literal (later rows of an AMBIGUOUS field carry a literal the run never stored),
+  so `stored_candidates` returns that one, with no label and no spans.
 - offsets are 0-based, end-exclusive character indices (Python `str`) into that
   reading's text, as `initial_requests._graph` counts fragment offsets. When the
   quote or the literal occurs more than once, the first occurrence is meant: any
@@ -158,13 +168,52 @@ def request_text(field_keys: Iterable[str], names: Mapping[str, Reading]) -> str
 
 @dataclass(frozen=True)
 class StoredCandidate:
+    """One candidate as the ordinary run stored it: the same structure for a row the
+    organiser wrote and for a whole-region row the extraction call wrote before it
+    (`legacy`: no label, no spans, the readings of the whole region)."""
+
     field_key: str
-    label: str
-    observation_id: str
     literal: str
     quote: str
     evidence_id: str
-    primary: bool
+    region_id: str | None
+    label: str | None  # 1A, 2B ...; None for a legacy row
+    observation_ids: tuple[str, ...]  # the one reading cited; a legacy row: all the region's
+    quote_span: tuple[int, int] | None  # in that reading's text; None for a legacy row
+    literal_span: tuple[int, int] | None
+    primary: bool  # the first row whose literal is the field's own (None when AMBIGUOUS: never)
+
+    @property
+    def legacy(self) -> bool:
+        return self.label is None
+
+    @property
+    def observation_id(self) -> str | None:
+        """The one reading cited (None for a legacy row, which cites every reader's)."""
+        return self.observation_ids[0] if len(self.observation_ids) == 1 else None
+
+    @property
+    def quote_start(self) -> int | None:
+        return self.quote_span[0] if self.quote_span else None
+
+    @property
+    def literal_start(self) -> int | None:
+        return self.literal_span[0] if self.literal_span else None
+
+    @property
+    def literal_end(self) -> int | None:
+        return self.literal_span[1] if self.literal_span else None
+
+
+def reading_texts_of(run) -> dict[str, str]:
+    """The texts `stored_candidates` needs, from a run: each observation's text under its
+    ID, and each organiser reading's text under `"<label>:<observation id>"`, which is
+    the key that finds a reviewer-edited decided text (it shares the machine-selected
+    observation's ID but not its text)."""
+    texts = {o.id: o.literal_text for o in getattr(run, "observations", None) or []}
+    for name, reading in labelled(extraction_readings(run)).items():
+        texts[f"{name}:{reading.observation_id}"] = reading.text
+    return texts
 
 
 def stored_candidates(
@@ -172,23 +221,60 @@ def stored_candidates(
     evidence: Sequence[Evidence],
     reading_texts: Mapping[str, str],
 ) -> list[StoredCandidate]:
-    """The organiser's candidates as `apply_candidates` stored them, per field in
-    the field's own order. `reading_texts` maps an observation ID to the text the
-    spans index (the observation's literal text). A row whose spans do not fit
-    the text it names is skipped: a stored candidate is never guessed."""
+    """The extraction call's candidates as the ordinary run stored them, per field in the
+    field's own order: the single read contract.
+
+    `reading_texts` maps an observation ID (or `"<label>:<observation id>"`, which wins;
+    see `reading_texts_of`) to the text the spans index. A row whose spans do not fit
+    the text it names is skipped: a stored candidate is never guessed. Rows of every
+    state of field are returned (an AMBIGUOUS field's candidates, a lead under an
+    unknown field), so a field whose literal is None still hands over what each reading
+    states.
+
+    A row from before the organiser (source `bounded_extraction_v1`, locator
+    `region:<region_id>`) is returned only when it is the field's first row and the
+    field's own literal lies in its excerpt: that is the one literal such a row can
+    stand for. It has no label and no spans; its excerpt is the whole region transcript
+    and its observation IDs are every reader's of the region.
+    """
     by_id = {e.id: e for e in evidence}
     found: list[StoredCandidate] = []
     for key, value in fields.items():
         primary_taken = False
-        for evidence_id in value.evidence_ids:
+        for place, evidence_id in enumerate(value.evidence_ids):
             row = by_id.get(evidence_id)
-            location = parse_locator(row.locator) if row else None
-            text = reading_texts.get(location.observation_id) if location else None
+            if row is None or row.source != SOURCE or row.kind != "literal":
+                continue
+            location = parse_locator(row.locator)
+            if location is None:
+                if (
+                    place == 0
+                    and row.region_id
+                    and row.locator == "region:" + row.region_id
+                    and value.literal
+                    and value.literal in row.excerpt
+                ):
+                    found.append(
+                        StoredCandidate(
+                            field_key=key,
+                            literal=value.literal,
+                            quote=row.excerpt,
+                            evidence_id=row.id,
+                            region_id=row.region_id,
+                            label=None,
+                            observation_ids=tuple(row.observation_ids),
+                            quote_span=None,
+                            literal_span=None,
+                            primary=not primary_taken,
+                        )
+                    )
+                    primary_taken = True
+                continue
+            text = reading_texts.get(f"{location.label}:{location.observation_id}")
+            if text is None:
+                text = reading_texts.get(location.observation_id)
             if (
-                row is None
-                or location is None
-                or row.source != SOURCE
-                or text is None
+                text is None
                 or text[location.quote_start : location.quote_end] != row.excerpt
                 or not location.quote_start <= location.literal_start
                 or not location.literal_end <= location.quote_end
@@ -201,11 +287,14 @@ def stored_candidates(
             found.append(
                 StoredCandidate(
                     field_key=key,
-                    label=location.label,
-                    observation_id=location.observation_id,
                     literal=literal,
                     quote=row.excerpt,
                     evidence_id=row.id,
+                    region_id=row.region_id,
+                    label=location.label,
+                    observation_ids=(location.observation_id,),
+                    quote_span=(location.quote_start, location.quote_end),
+                    literal_span=(location.literal_start, location.literal_end),
                     primary=primary,
                 )
             )

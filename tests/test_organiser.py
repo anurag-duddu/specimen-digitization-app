@@ -12,6 +12,7 @@ No label text from a real specimen is kept here. Nothing here calls a model.
 """
 
 import hashlib
+import itertools
 import json
 from types import SimpleNamespace
 
@@ -28,7 +29,12 @@ from specimen_digitization.application.domain import (
     ValueState,
 )
 from specimen_digitization.application.field_harness import labelled
-from specimen_digitization.application.field_resolution import DECIDED, RAW, Reading
+from specimen_digitization.application.field_resolution import (
+    DECIDED,
+    RAW,
+    Reading,
+    Resolver,
+)
 from specimen_digitization.application.harness import (
     ExtractionCandidate,
     ExtractionOutput,
@@ -40,6 +46,7 @@ from specimen_digitization.application.organiser import (
     extraction_readings,
     format_locator,
     parse_locator,
+    reading_texts_of,
     request_text,
     stored_candidates,
 )
@@ -141,12 +148,13 @@ def test_a_taxon_that_differs_between_two_labels_stays_ambiguous_with_both_rows(
         candidate("taxon", "2A", "Genus beta"),
     )
     field = run.fields["taxon"]
-    # G32: two labels that differ do not clear; the first literal stays the value.
-    assert field.state == ValueState.AMBIGUOUS and field.literal == "Genus alpha"
+    # G32: two labels that differ do not clear, and none is chosen: no literal, both
+    # rows cited for the harness to check against the readings.
+    assert field.state == ValueState.AMBIGUOUS and field.literal is None
     assert len(field.evidence_ids) == 2
     found = stored_candidates(run.fields, run.evidence, texts(run))
     assert [(c.label, c.literal, c.primary) for c in found] == [
-        ("1A", "Genus alpha", True),
+        ("1A", "Genus alpha", False),
         ("2A", "Genus beta", False),
     ]
 
@@ -184,16 +192,18 @@ def test_the_other_readers_candidate_alone_is_a_lead_not_a_value():
     assert (lead.label, lead.literal, lead.primary) == ("1B", "J. Q. Collector", False)
 
 
-def test_a_decided_label_and_an_undecided_one_that_differ_are_ambiguous_decided_first():
+def test_a_decided_label_and_an_undecided_one_that_differ_are_ambiguous_in_label_order():
     run = specimen_run()
     apply(
         run,
         candidate("taxon", "4A", "Genus beta"),  # the undecided label, listed first
+        candidate("taxon", "4B", "Genus betta"),
         candidate("taxon", "1A", "sp 22"),
     )
     field = run.fields["taxon"]
-    assert field.state == ValueState.AMBIGUOUS and field.literal == "sp 22"
-    assert [parse_locator(rows(run)[i].locator).label for i in field.evidence_ids] == ["1A", "4A"]
+    assert field.state == ValueState.AMBIGUOUS and field.literal is None
+    labels = [parse_locator(rows(run)[i].locator).label for i in field.evidence_ids]
+    assert labels == ["1A", "4A", "4B"]  # the decided label first, then label order
 
 
 def test_two_readers_that_agree_leave_the_field_supported_with_a_row_each():
@@ -212,39 +222,104 @@ def test_two_readers_that_agree_leave_the_field_supported_with_a_row_each():
     ]
 
 
-def test_a_label_with_no_decided_transcript_still_gives_candidates():
+def test_a_label_with_no_decided_transcript_still_gives_candidates_but_one_reader_is_no_value():
+    # G19, G27 (Resolver._transcribed_one): with no decided transcript every reading
+    # must state the same literal. Only reader B does, so none is chosen; B's row is kept
+    # and cited for the harness.
     run = specimen_run()
     apply(run, candidate("taxon", "4B", "Genus betta"))
     field = run.fields["taxon"]
-    assert field.state == ValueState.SUPPORTED and field.literal == "Genus betta"
+    assert field.state == ValueState.AMBIGUOUS and field.literal is None
     (row,) = (rows(run)[i] for i in field.evidence_ids)
     assert row.region_id == "back" and row.observation_ids == ["o-back-1"]
     assert parse_locator(row.locator).label == "4B"
 
 
-def test_the_two_readers_of_an_undecided_label_that_differ_stay_ambiguous():
-    run = specimen_run()
+def test_the_two_readers_of_an_undecided_label_that_agree_clear_with_a_row_each():
+    run = make_run(("back", [(RAW, "Genus beta\nx"), (RAW, "y\nGenus beta")]))
     apply(
         run,
+        candidate("taxon", "1B", "Genus beta"),
+        candidate("taxon", "1A", "Genus beta"),
+    )
+    field = run.fields["taxon"]
+    assert field.state == ValueState.SUPPORTED and field.literal == "Genus beta"
+    assert [parse_locator(rows(run)[i].locator).label for i in field.evidence_ids] == ["1A", "1B"]
+
+
+@pytest.mark.parametrize("order", [(0, 1), (1, 0)], ids=["A first", "B first"])
+def test_the_two_readers_of_an_undecided_label_that_differ_are_ambiguous_in_any_order(order):
+    # None is chosen (G27): the literal is None and the rows are cited in label order,
+    # whichever reader the model listed first.
+    run = specimen_run()
+    pair = [candidate("taxon", "4A", "Genus beta"), candidate("taxon", "4B", "Genus betta")]
+    apply(run, *(pair[i] for i in order))
+    field = run.fields["taxon"]
+    assert field.state == ValueState.AMBIGUOUS and field.literal is None
+    found = stored_candidates(run.fields, run.evidence, texts(run))
+    assert [(c.label, c.literal, c.primary) for c in found] == [
+        ("4A", "Genus beta", False),
+        ("4B", "Genus betta", False),
+    ]
+
+
+def test_the_models_order_never_changes_a_field():
+    # Every order of the same candidates gives the same state, literal and row order.
+    pairs = [
+        candidate("collectors", "2A", "J. Q. Collector"),
+        candidate("collectors", "2B", "J. Q. Collecter"),
+        candidate("taxon", "1A", "sp 22"),
         candidate("taxon", "4A", "Genus beta"),
         candidate("taxon", "4B", "Genus betta"),
-    )
-    assert run.fields["taxon"].state == ValueState.AMBIGUOUS
-    assert run.fields["taxon"].literal == "Genus beta"
+        candidate("fmnh_ins_number", "3A", "1234567", "FMNHINS\n1234567"),
+        candidate("fmnh_ins_number", "3B", "1234567", "1234567"),
+    ]
+    seen = set()
+    for order in itertools.islice(itertools.permutations(range(len(pairs))), 0, None, 211):
+        run = specimen_run()
+        apply(run, *(pairs[i] for i in order))
+        seen.add(
+            tuple(
+                (
+                    key,
+                    value.state,
+                    value.literal,
+                    tuple(
+                        (c.label, c.literal)
+                        for c in stored_candidates({key: value}, run.evidence, texts(run))
+                    ),
+                )
+                for key, value in run.fields.items()
+                if value.evidence_ids
+            )
+        )
+    assert len(seen) == 1
 
 
-def test_the_primary_is_the_first_decided_candidate_whatever_the_models_order():
+def test_the_primary_is_the_decided_reading_whatever_the_models_order():
     run = specimen_run()
     apply(
         run,
         candidate("collectors", "2B", "J. Q. Collecter"),
         candidate("collectors", "2A", "J. Q. Collector"),
-        candidate("taxon", "4A", "Genus beta"),
     )
     assert run.fields["collectors"].literal == "J. Q. Collector"
     assert run.fields["collectors"].state == ValueState.SUPPORTED
-    # With no decided candidate, the first candidate of an undecided label is the value.
-    assert run.fields["taxon"].literal == "Genus beta"
+
+
+def test_two_different_literals_in_the_one_decided_reading_are_no_value():
+    # A nested span, "Genus alpha" inside "Genus alpha sp. 22", is a second literal of
+    # one reading. The Resolver gives one literal per reading, so there is no single
+    # value here: AMBIGUOUS, none chosen, both rows cited (review E5).
+    run = make_run(("one", [(DECIDED, "Genus alpha sp. 22"), (RAW, "Genus alpha sp. 22")]))
+    apply(
+        run,
+        candidate("taxon", "1A", "Genus alpha sp. 22"),
+        candidate("taxon", "1A", "Genus alpha", "Genus alpha sp. 22"),
+    )
+    field = run.fields["taxon"]
+    assert field.state == ValueState.AMBIGUOUS and field.literal is None
+    assert len(field.evidence_ids) == 2
 
 
 @pytest.mark.parametrize("name", ["2a", " 2A ", "Reading 2A", "reading 2a"])
@@ -271,6 +346,85 @@ def test_a_repeat_of_the_same_span_is_one_row():
     )
     assert len(run.evidence) == 1
     assert len(run.fields["fmnh_ins_number"].evidence_ids) == 1
+
+
+# --- The field rules ARE the stage-7 Resolver's ---------------------------------
+#
+# `apply_candidates` says its field rules are field_resolution.Resolver's (G19, G27,
+# G32), pinned there by tests/test_field_resolution.py:
+# test_fields_no_tool_checks_are_transcribed_as_seen_and_conflicts_go_to_review,
+# test_a_field_no_tool_checks_needs_the_same_text_on_every_label and
+# test_a_label_without_the_field_does_not_count. The first version of the organiser did
+# NOT follow them on a label with no decided transcript (one reader stating the field
+# gave a value; readers that differed gave the first in the model's order). This test
+# runs both on every combination of one and of two labels and compares.
+
+X, Y = "Alpha Smith", "Beta Jones"
+READERS = {"XX": (X, X), "XY": (X, Y), "X-": (X, None), "-X": (None, X),
+           "--": (None, None), "YY": (Y, Y), "Y-": (Y, None), "-Y": (None, Y)}
+LABELS = [(decided, state) for decided in (True, False) for state in READERS]
+
+
+def both(labels):
+    """The Resolver's and the organiser's field for labels [(decided, (a, b))]: reader A
+    (the decided one when the label is) then reader B, a reader that does not state the
+    field having a text without it."""
+    readings, literals, answers = [], {}, []
+    for number, (decided, pair) in enumerate(labels, 1):
+        region = f"r{number}"
+        made = [
+            Reading(region, f"o-{region}-{i}", DECIDED if decided and i == 0 else RAW,
+                    literal or "nothing about it here")
+            for i, literal in enumerate(pair)
+        ]
+        readings += made
+        if any(pair):
+            literals |= {r.observation_id: literal for r, literal in zip(made, pair)}
+    names = list(labelled(readings))
+    for reading, name in zip(readings, names):
+        literal = literals.get(reading.observation_id)
+        if literal:
+            answers.append(candidate("collectors", name, literal))
+    run = SimpleNamespace(
+        evidence=[], fields={"collectors": FieldValue()}, readings=readings
+    )
+    apply(run, *answers)
+    resolved = (
+        Resolver(readings, "asset").transcribed("collectors", literals)
+        if literals
+        else FieldValue()
+    )
+    return resolved, run.fields["collectors"]
+
+
+def settled(value):
+    if value.state != ValueState.SUPPORTED:
+        return value.state, None
+    return value.state, value.literal or value.normalized  # a multi-label value is `normalized`
+
+
+@pytest.mark.parametrize(
+    "labels",
+    [(one,) for one in LABELS] + list(itertools.product(LABELS, repeat=2)),
+    ids=lambda labels: "|".join(f"{'D' if d else 'U'}:{s}" for d, s in labels)
+    if isinstance(labels, tuple) and labels and isinstance(labels[0], tuple)
+    else None,
+)
+def test_a_field_is_settled_as_the_stage_7_resolver_settles_it(labels):
+    chosen = [(decided, READERS[state]) for decided, state in labels]
+    resolved, organised = both(chosen)
+    assert settled(organised) == settled(resolved), labels
+
+
+def test_the_two_cases_the_first_version_got_wrong_follow_the_resolver():
+    # One reader states the field on a label with no decided transcript: AMBIGUOUS, no
+    # literal (it was SUPPORTED). The readers differ: AMBIGUOUS, no literal (it kept the
+    # model's first). Both rows are still cited.
+    for pair in ((X, None), (X, Y), (Y, X)):
+        resolved, organised = both([(False, pair)])
+        assert (resolved.state, resolved.literal) == (ValueState.AMBIGUOUS, None)
+        assert (organised.state, organised.literal) == (ValueState.AMBIGUOUS, None)
+        assert len(organised.evidence_ids) == sum(bool(p) for p in pair)
 
 
 # --- Evidence is always necessary: what trusted code refuses ------------------
@@ -382,10 +536,25 @@ def test_the_guard_runs_on_the_text_of_the_cited_reading():
 
 def test_the_guard_does_not_read_a_reading_that_was_not_cited():
     # A foot mark in another reading of the label does not refuse a metres value the
-    # cited reading writes in metres (a label with no decided transcript: both count).
+    # cited reading writes in metres. (Both readings are raw: one reader alone is no
+    # value, so the row is the evidence here; the guard is what is under test.)
     run = make_run(("label", [(RAW, "3300'"), (RAW, "3300 m")]))
     apply(run, candidate("elevation_from_m", "1B", "3300", "3300 m"))
-    assert run.fields["elevation_from_m"].literal == "3300"
+    assert len(run.evidence) == 1 and parse_locator(run.evidence[0].locator).label == "1B"
+
+
+def test_the_guard_reads_the_reading_not_the_quote():
+    # The prompt asks for narrow quotes, so the unit usually lies outside the quote.
+    # The guard must see the unit in the reading (review F3, mutation M4).
+    run = make_run(("label", [(DECIDED, "Elev. 3300'"), (RAW, "Elev. 3300'")]))
+    apply(run, candidate("elevation_from_m", "1A", "3300", "3300"))
+    assert run.evidence == [] and run.fields["elevation_from_m"] == FieldValue()
+    apply(run, candidate("elevation_from_ft", "1A", "3300", "3300"))
+    assert run.fields["elevation_from_ft"].literal == "3300" and len(run.evidence) == 1
+    # And a date whose slide-code neighbour is outside the quote.
+    dated = make_run(("label", [(DECIDED, "IV-29-68-2"), (RAW, "IV-29-68-2")]))
+    apply(dated, candidate("date_visited_from", "1A", "IV-29-68", "IV-29-68"))
+    assert dated.evidence == []
 
 
 def test_a_refused_candidate_leaves_no_row_but_a_kept_one_survives_beside_it():
@@ -433,8 +602,9 @@ def test_a_candidate_that_differs_from_a_keyed_line_makes_the_field_ambiguous():
     run, line = keyed_run("Elsewhere")
     apply(run, candidate("country", "1A", "Landia", "country: Landia"))
     field = run.fields["country"]
-    assert field.state == ValueState.AMBIGUOUS and field.literal == "Elsewhere"
-    assert len(field.evidence_ids) == 2
+    # None is chosen (G32): the keyed line's row stays first, the candidate's follows.
+    assert field.state == ValueState.AMBIGUOUS and field.literal is None
+    assert len(field.evidence_ids) == 2 and field.evidence_ids[0] == line.id
 
 
 # --- What the organiser reads --------------------------------------------------
@@ -545,6 +715,99 @@ def test_a_stored_candidate_is_never_guessed():
     assert stored_candidates(run.fields, run.evidence, texts(run)) == []
 
 
+def legacy_row(region, observations, whole_text):
+    """A row as the extraction call wrote it before the organiser: the whole region
+    transcript as the excerpt, `region:<id>` as the locator, every reader's ID."""
+    return Evidence(
+        kind="literal",
+        asset_id="asset",
+        region_id=region,
+        observation_ids=observations,
+        source=SOURCE,
+        locator="region:" + region,
+        excerpt=whole_text,
+        raw_ref="raw",
+        digest="d",
+    )
+
+
+def test_stored_candidates_reads_a_whole_region_row_and_an_organiser_row_alike():
+    # The one read contract for both shapes (review F1): the same structure, the
+    # old shape with no label and no spans, every reader's ID, the whole transcript.
+    run = specimen_run()
+    old = legacy_row("locality", ["o-locality-0", "o-locality-1"], LOCALITY_A)
+    run.evidence.append(old)
+    run.fields["country"] = FieldValue(
+        state=ValueState.SUPPORTED, literal="Landia", parsed="Landia", evidence_ids=[old.id]
+    )
+    apply(run, candidate("collectors", "2A", "J. Q. Collector", "Landia\nJ. Q. Collector"))
+    by_key = {c.field_key: c for c in stored_candidates(run.fields, run.evidence, texts(run))}
+
+    legacy, new = by_key["country"], by_key["collectors"]
+    assert (legacy.legacy, new.legacy) == (True, False)
+    assert (legacy.literal, legacy.quote, legacy.region_id) == ("Landia", LOCALITY_A, "locality")
+    assert legacy.label is None and legacy.quote_span is None and legacy.literal_span is None
+    assert legacy.observation_ids == ("o-locality-0", "o-locality-1") and legacy.observation_id is None
+    assert legacy.primary is True and legacy.evidence_id == old.id
+    assert (new.literal, new.label, new.region_id) == ("J. Q. Collector", "2A", "locality")
+    assert new.observation_ids == ("o-locality-0",) and new.observation_id == "o-locality-0"
+    assert LOCALITY_A[slice(*new.literal_span)] == "J. Q. Collector"
+    assert LOCALITY_A[slice(*new.quote_span)] == new.quote == "Landia\nJ. Q. Collector"
+    assert (new.quote_start, new.literal_start, new.literal_end) == (
+        new.quote_span[0], new.literal_span[0], new.literal_span[1]
+    )
+    # Both shapes carry exactly the same attributes.
+    assert type(legacy) is type(new)
+
+
+def test_a_legacy_row_stands_only_for_the_literal_the_field_stored():
+    run = specimen_run()
+    first = legacy_row("locality", ["o-locality-0", "o-locality-1"], LOCALITY_A)
+    second = legacy_row("locality", ["o-locality-0", "o-locality-1"], LOCALITY_A)
+    run.evidence += [first, second]
+    # An AMBIGUOUS field of the old extractor: two rows, one stored literal.
+    run.fields["collectors"] = FieldValue(
+        state=ValueState.AMBIGUOUS, literal="J. Q. Collector", evidence_ids=[first.id, second.id]
+    )
+    # A field whose literal its first row does not hold, and a field with no literal.
+    run.fields["country"] = FieldValue(
+        state=ValueState.SUPPORTED, literal="Elsewhere", evidence_ids=[first.id]
+    )
+    run.fields["city"] = FieldValue(evidence_ids=[first.id])
+    found = stored_candidates(run.fields, run.evidence, texts(run))
+    assert [(c.field_key, c.evidence_id) for c in found] == [("collectors", first.id)]
+
+
+def test_a_reviewer_edited_decided_text_and_its_machine_reading_keep_their_own_rows():
+    # The reviewer's text is cited to the machine-selected observation and shares its
+    # ID, not its text. Two spans at the same offsets are two rows (the label tells
+    # them apart), and the label-qualified text finds the reviewer's row again (E1).
+    run = SimpleNamespace(
+        regions=[SimpleNamespace(id="r1")],
+        observations=[observation("a1", "r1", "Alpha Bravo"), observation("a2", "r1", "Alpha Bravo")],
+        transcripts=[transcript("r1", "Alpha Delta", "a1", "a1", "a2")],
+        evidence=[],
+        fields={"taxon": FieldValue()},
+    )
+    apply(
+        run,
+        candidate("taxon", "1A", "Delta"),
+        candidate("taxon", "1B", "Bravo"),
+        candidate("taxon", "1C", "Bravo"),
+    )
+    assert len(run.evidence) == 3
+    field = run.fields["taxon"]
+    assert field.state == ValueState.SUPPORTED and field.literal == "Delta"
+    both = stored_candidates(run.fields, run.evidence, reading_texts_of(run))
+    assert [(c.label, c.literal, c.primary) for c in both] == [
+        ("1A", "Delta", True),
+        ("1B", "Bravo", False),
+        ("1C", "Bravo", False),
+    ]
+    plain = {o.id: o.literal_text for o in run.observations}
+    assert [c.label for c in stored_candidates(run.fields, run.evidence, plain)] == ["1B", "1C"]
+
+
 def test_the_stored_shape_has_no_typed_field_the_projector_pin_would_hash():
     # domain.py is hashed into CANONICAL_PROJECTOR_SHA256: the organiser stores
     # its candidates in the fields Evidence and FieldValue already have.
@@ -624,6 +887,7 @@ def test_one_call_reads_both_readers_and_the_undecided_label_and_merges_across_l
         "candidates": [
             {"field_key": "taxon", "reading": "1A", "literal": "Genus alpha", "source_excerpt": "Genus alpha"},
             {"field_key": "taxon", "reading": "3B", "literal": "Genus alpha", "source_excerpt": "sp 22 of Genus alpha"},
+            {"field_key": "taxon", "reading": "3A", "literal": "Genus alpha", "source_excerpt": "sp 22 of Genus alpha"},
             {"field_key": "collectors", "reading": "2B", "literal": "J. Q. Collecter", "source_excerpt": "J. Q. Collecter"},
         ],
         "unresolved": ["habitat"],
@@ -638,10 +902,11 @@ def test_one_call_reads_both_readers_and_the_undecided_label_and_merges_across_l
         assert f"Reading {name} (" in sent and text in sent
     assert "Label 3 (no decided transcript)" in sent
     assert "source_transcripts" not in sent
-    # The taxon spread over two labels: one value, a row for each label.
+    # The taxon spread over two labels, both readers of the undecided one agreeing:
+    # one value, a row for each reading, in label order whatever the model's order.
     taxon = run.fields["taxon"]
     assert taxon.state == ValueState.SUPPORTED and taxon.literal == "Genus alpha"
-    assert [parse_locator(rows(run)[i].locator).label for i in taxon.evidence_ids] == ["1A", "3B"]
+    assert [parse_locator(rows(run)[i].locator).label for i in taxon.evidence_ids] == ["1A", "3A", "3B"]
     # The other reader's reading of a decided label is a lead, not the value.
     assert run.fields["collectors"].literal is None
     assert [parse_locator(rows(run)[i].locator).label for i in run.fields["collectors"].evidence_ids] == ["2B"]

@@ -10,8 +10,9 @@ data into field value pairs and share it with the harness along with the
 transcript ... evidence is always necessary". The ordinary pipeline's organiser
 (application/harness.py, application/organiser.py) now stores each field's
 candidates, each with a verified narrow quote and its reading's label, as
-evidence rows with a `reading:` locator. Handing them to a specialist, and what
-an accepted event may be built from them, is not done here.
+evidence rows with a `reading:` locator; `organiser.stored_candidates` is the one
+way to read them (and the whole-region rows written before it). Handing them to a
+specialist, and what an accepted event may be built from them, is not done here.
 """
 from __future__ import annotations
 
