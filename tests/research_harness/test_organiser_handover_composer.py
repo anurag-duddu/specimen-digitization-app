@@ -194,6 +194,7 @@ SENTENCES = {
     "assembly": "assembly_ids = [its assembly_id], event_id = its event_id",
     "evidence": "evidence_ids = the assembly's evidence_ids",
     "literal": "value.literal = the assembly's interpreted_text copied exactly",
+    "parsed": "value.parsed and value.normalized the same text",
     "relations": 'value.evidence_relations mapping each evidence id to "supports"',
     "verbatim": "value.verbatim_by_observation = {the candidate's observation_id: that reading's observation_text, "
                 "copied character for character}",
@@ -222,7 +223,10 @@ def from_assembly(request, candidate, rules, *, omit=()):
     fragment = next(item for item in request.fragments if item.id == candidate.fragment_id)
     written = assembly.interpreted_text
     settled = catalog_literal(written) if candidate.field_key == FieldKey.FMNH_INS_NUMBER else written
-    value = dict(state=ValueState.SUPPORTED, parsed=settled, normalized=settled)
+    value = dict(state=ValueState.SUPPORTED)
+    if rules["parsed"] or candidate.field_key == FieldKey.FMNH_INS_NUMBER:
+        # (The collection block's own fmnh_ins_number sentence asks for the catalog digits in both.)
+        value.update(parsed=settled, normalized=settled)
     if rules["literal"]:
         value["literal"] = written
     if rules["evidence"]:

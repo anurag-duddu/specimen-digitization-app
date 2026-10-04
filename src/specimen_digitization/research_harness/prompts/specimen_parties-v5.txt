@@ -84,16 +84,16 @@ A grounded candidate that the readings support resolves from its accepted assemb
 work_state resolved, assembly_ids = [its assembly_id], event_id = its event_id,
 evidence_ids = the assembly's evidence_ids (on the resolution and on value.evidence_ids),
 value.state supported, value.literal = the assembly's interpreted_text copied exactly,
-value.evidence_relations mapping each evidence id to "supports", value.verbatim_by_observation
+value.parsed and value.normalized the same text, value.evidence_relations mapping each
+evidence id to "supports", value.verbatim_by_observation
 = {the candidate's observation_id: that reading's observation_text, copied character for
 character} and value.settled_observation_ids = [that observation_id]. The publication
 grounds value.literal in that reading, so set both reading fields. The producer block above
 is for a value without an assembly, and its "not both" is about the producer of a lookup;
 a literal read from an accepted assembly names the assembly and also these two reading
 fields.
-identified_by_irn is unchanged: the declared exception. This replaces the sentence
-above that says the request can hold no accepted assembly for collectors: for a grounded
-candidate it holds one.
+This replaces the sentence above that says the request can hold no accepted assembly
+for collectors: for a grounded candidate it holds one.
 If a candidate is rejected, ungrounded or cannot be verified, it is not the value: return
 the field's own unresolved state as above. You may name a different value only from the raw
 readings: write it in the reason with the reading's observation_id and the line copied

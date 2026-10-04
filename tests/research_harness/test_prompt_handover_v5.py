@@ -40,16 +40,16 @@ V5_FILE_SHA256 = {
     "specimen_geography-v5.txt": "a2e76f52524184f098305a035824c29b8be21ef78fc50d18fad2ff2d4ef450fa",  # pragma: allowlist secret
     "specimen_temporal-v5.txt": "74ea6c0a60cef4a9d9f5aae613e3d1d657148075a222130a4af537f03d045abb",  # pragma: allowlist secret
     "specimen_measurement-v5.txt": "4b379d922e560f07686a69dc3339d97ac62865185a7381bb0f2702c41f50008e",  # pragma: allowlist secret
-    "specimen_parties-v5.txt": "8817dd675d449e29a1639e69666a1a480eea64982f56aafba999744c2388c074",  # pragma: allowlist secret
-    "specimen_collection-v5.txt": "2c72cf74c87f6508a69b8651a34b037f9053f9f6cfbb816c146d3a165c1d0835",  # pragma: allowlist secret
+    "specimen_parties-v5.txt": "1780e9ffb6daf78302a0c829e3a8229a01e71169d3d65e0493b4e0bb2a563434",  # pragma: allowlist secret
+    "specimen_collection-v5.txt": "c8ba209301bce7e45af82f4941510bb1ed70276a66bbcea40996670a5ccf6423",  # pragma: allowlist secret
 }
 V5_ROLE_DIGESTS = {
     SpecialistRole.TAXONOMY: "2796fe5753bd5d7a0b3d96e45df403e88a66361345098204c23f099682f9591c",  # pragma: allowlist secret
     SpecialistRole.GEOGRAPHY: "75d60662b5a34b67c6349e1f906c2853326cc901c895681a3363592565e69695",  # pragma: allowlist secret
     SpecialistRole.TEMPORAL: "27d17839837773f3bc5c9cac62e3bcaf92386e19f16c097f5bb23e187c13b764",  # pragma: allowlist secret
     SpecialistRole.MEASUREMENT: "cb877c8aca8a1a06a89a3f3ff926f370475c74505d18aa51b46be2f84f8e44fc",  # pragma: allowlist secret
-    SpecialistRole.PARTIES: "e033489f1e2f2233ef38c9b51dd62b1b240df457ef28d1f9cf4dc959c6692630",  # pragma: allowlist secret
-    SpecialistRole.COLLECTION: "9a3fdb6bb7ce62c5e0af84021e8c1ed5b17292155864764c5ad98520fe130f59",  # pragma: allowlist secret
+    SpecialistRole.PARTIES: "0cdbc65612b2c5b3a0a00db3d690317e9c1a1196947a0febb82357681ebc57e3",  # pragma: allowlist secret
+    SpecialistRole.COLLECTION: "3673d80e2b38677aabd252f5013866e8b3ce9a8f76b1bc51f5323ded5065e120",  # pragma: allowlist secret
 }
 # The roles that carry #257's producer block, and the ones whose own fields can get an assembly from the hand-over.
 CITING_ROLES = (SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY, SpecialistRole.PARTIES, SpecialistRole.COLLECTION)
@@ -153,7 +153,8 @@ def test_a_grounded_candidate_resolves_from_its_assembly_with_the_fields_publica
         "A grounded candidate that the readings support resolves from its accepted assembly:",
         "work_state resolved, assembly_ids = [its assembly_id], event_id = its event_id,",
         "evidence_ids = the assembly's evidence_ids (on the resolution and on value.evidence_ids),",
-        "value.state supported, value.literal = the assembly's interpreted_text copied exactly,",
+        "value.state supported, value.literal = the assembly's interpreted_text copied exactly, value.parsed and "
+        "value.normalized the same text,",
         'value.evidence_relations mapping each evidence id to "supports",',
         "value.verbatim_by_observation = {the candidate's observation_id: that reading's observation_text, copied "
         "character for character} and value.settled_observation_ids = [that observation_id].",
@@ -172,8 +173,8 @@ def test_the_shape_paragraph_is_one_text_in_parties_and_collection():
 
 def test_the_collection_block_names_the_catalog_rule_and_the_ways_the_extractor_errs():
     text = flat(block(SpecialistRole.COLLECTION))
-    assert ("For fmnh_ins_number value.parsed and value.normalized are the catalog digits by the rule above, and a "
-            "candidate that rule refuses is not resolved; for the other three they equal value.literal.") in text
+    assert ("For fmnh_ins_number value.parsed and value.normalized are instead the catalog digits by the rule above, "
+            "and a candidate that rule refuses is not resolved; the other three keep the same text in all three.") in text
     assert ("The extractor can file the catalog prefix (FMNHINS), a catalog number, or a slide or preparation code under "
             "collection_code, and a locality or a specimen note under habitat or collection_method, and the validator "
             "refuses only the catalog prefix as a collection code and a code-shaped habitat or method") in text
@@ -182,10 +183,11 @@ def test_the_collection_block_names_the_catalog_rule_and_the_ways_the_extractor_
 
 
 def test_the_parties_block_says_the_validator_cannot_tell_a_collector_from_another_name():
+    # identified_by_irn stays the v4 block's text ("identified_by_irn is unchanged: the declared exception.").
+    assert "identified_by_irn is unchanged: the declared exception." in flat(pin(SpecialistRole.PARTIES).text)
     text = flat(block(SpecialistRole.PARTIES))
     assert "not a determiner, a preparer or another role, a place or a code" in text
     assert "checks only that the value has no digit and some letters, so whether the line is the collector is your check" in text
-    assert "identified_by_irn is unchanged: the declared exception." in text
 
 
 @pytest.mark.parametrize("role", (SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT))
