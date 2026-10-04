@@ -1,7 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_digitization/src/research/research_models.dart';
 import 'package:specimen_digitization/src/research/research_review_block.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
@@ -34,6 +37,39 @@ Future<void> _show(
     reducedMotion: reducedMotion,
   );
   await openCard(tester);
+}
+
+/// The five fields GEOLocate can settle, as the server names them
+/// (contracts.py `_geolocate_unresolved`).
+const _geographyKeys = [
+  'country',
+  'province_state',
+  'county',
+  'city',
+  'precise_location',
+];
+
+/// The unresolved thread with [key] asking a person, in the shape the server
+/// sends for a geography question: the country field of the fixture, with its
+/// searched GEOLocate coverage, its question and its review, filed under [key].
+Map<String, dynamic> _askAbout(String key) {
+  final json = unresolvedJson();
+  final field =
+      jsonDecode(jsonEncode(fixtureField(json, 'country')))
+          as Map<String, dynamic>;
+  void rekey(Object? node) {
+    if (node is Map<String, dynamic>) {
+      if (node['field_key'] == 'country') node['field_key'] = key;
+      node.values.forEach(rekey);
+    } else if (node is List) {
+      node.forEach(rekey);
+    }
+  }
+
+  rekey(field);
+  final fields = json['fields'] as List;
+  fields[fields.indexWhere((item) => item['field_key'] == key)] = field;
+  return json;
 }
 
 void main() {
@@ -328,6 +364,40 @@ void main() {
         );
       },
     );
+  });
+
+  group('every geography field can ask a person', () {
+    // One test per field, so dropping any one of them from the app's
+    // geography set fails exactly that field's test.
+    for (final key in _geographyKeys) {
+      testWidgets('$key: a searched GEOLocate question decodes and renders', (
+        tester,
+      ) async {
+        final json = _askAbout(key);
+        final coverage =
+            (fixtureField(json, key)['checkpoint']['resolution']['question']
+                    as Map)['coverage']
+                as List;
+        expect((coverage.single as Map)['state'], 'searched');
+        expect((coverage.single as Map)['field_key'], key);
+        final field = unresolvedThread(json).field(key)!;
+        expect(field.workState, ResearchWorkState.waitingHuman);
+        await _show(tester, json, key);
+        expect(
+          find.text(
+            'Three places called Mount Apo lie up to 92 km apart. Which one does the label mean?',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text(_several), findsOneWidget);
+        expect(find.text('MOUNT APO'), findsNWidgets(3));
+        expect(find.textContaining('could not be verified'), findsNothing);
+      });
+    }
+
+    test('each is a field of the thread', () {
+      expect(_geographyKeys.every(researchFieldKeys.contains), isTrue);
+    });
   });
 
   group('case selection', () {
