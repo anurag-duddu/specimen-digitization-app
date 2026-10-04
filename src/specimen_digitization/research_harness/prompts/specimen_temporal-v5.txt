@@ -46,15 +46,21 @@ reading's text. Trusted code computes the span and the status; the extractor sup
 neither. A candidate is a proposal to verify, never evidence. The evidence is the raw
 readings in fragments[] (every line of every reader's reading, each fragment carrying its
 whole observation_text) and, for a grounded candidate, its accepted assembly. The extractor
-read only the decided transcript and can misread a line, invent a value or assign a line to
-the wrong field. Before you rely on a candidate, find its literal in the reading it names,
-read the lines around it and the other reader's reading, and reject it if the readings do
-not support it as the value of that field. Status grounded: the literal is a verbatim
-substring of exactly one line of the decided reading and the request holds an accepted
-assembly for it (assembly_id, event_id and evidence_ids name it in assemblies[], events[]
-and evidence[]). Status located: the same span, but no assembly (reason says why). Status
-ungrounded: the literal could not be found exactly (reason says why); it is a hint only, it
-names no span, assembly or evidence, and it is never a value.
+can misread a line, invent a value or assign a line to the wrong field, and a candidate can
+quote either reader's reading. Before you rely on a candidate, find its literal in the
+reading it names, read the lines around it and the other reader's reading, and reject it if
+the readings do not support it as the value of that field. Status grounded: the literal is
+a verbatim substring of exactly one line of the decided reading and the request holds an
+accepted assembly for it (assembly_id, event_id and evidence_ids name it in assemblies[],
+events[] and evidence[]); only the field's own stored value is grounded, so a field the
+extractor could not settle (its readers or labels differ) has no grounded candidate. Status
+located: a verbatim substring of exactly one line of the reading it cites (the decided
+reading or the other reader's; observation_id says which, and label names it when the
+extractor did), but no assembly (reason says why). A located candidate in the other reader's
+reading, or in a label with no decided transcript, is a hint to check against the decided
+reading, never a value: no assembly is built from a raw reading. Status ungrounded: the
+literal could not be found exactly (reason says why); it is a hint only, it names no span,
+assembly or evidence, and it is never a value.
 date_visited_from, date_visited_to and date_identified: the hand-over builds no
 assembly for a date, however well its candidate is located. The validator accepts a written
 date only as the exact object of the deterministic settlement of an accepted assembly, which

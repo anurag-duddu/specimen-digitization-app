@@ -451,8 +451,10 @@ class OrganiserCandidate(FrozenRecord):
 
     - ``grounded``: the literal is a verbatim substring of exactly one line of the decided
       reading and an accepted event and assembly (``event_id``, ``assembly_id``) carry it;
-    - ``located``: the same span, but no assembly (``reason`` names why: the field has no
-      literal assembly path, the reading has unreadable spans, ...);
+    - ``located``: the literal is a verbatim substring of exactly one line of the reading it
+      cites (the decided reading or another reader's), but no assembly (``reason`` names why:
+      the field has no assembly from the hand-over, the cited reading is not the decided one,
+      the extractor did not settle the field, the validator would refuse the literal, ...);
     - ``ungrounded``: the literal could not be located exactly; a hint only. It has no span,
       no event and no assembly, and never becomes a value.
     """
@@ -465,6 +467,9 @@ class OrganiserCandidate(FrozenRecord):
     reason: str = Field(pattern=r"^[a-z][a-z0-9_]{0,95}$")
     region_id: str | None = None
     observation_id: str | None = None
+    # The reading's name in the organiser's own labelling (1A, 1B, 2A ...) when the stored row names it;
+    # informational only: nothing is placed or checked by it.
+    label: str | None = Field(default=None, pattern=r"^[0-9]+[A-Z]$")
     start: int | None = Field(default=None, strict=True, ge=0)
     end: int | None = Field(default=None, strict=True, ge=0)
     fragment_id: str | None = None
@@ -540,16 +545,19 @@ class SpecialistRequest(FrozenRecord):
         assemblies = {item.id: item for item in self.assemblies}
         events = {item.id: item for item in self.events}
         for candidate in self.organiser_candidates:
-            if candidate.field_key not in self.field_keys:
-                raise ValueError("An organiser candidate belongs to a requested owned field")
+            # The role's own fields, not the request's: a retry or a protected field narrows field_keys
+            # (engine._batches) and the candidates of the role's other fields stay in the request.
+            if candidate.field_key not in ROLE_FIELDS[self.role]:
+                raise ValueError("An organiser candidate belongs to an owned field of the role")
             if candidate.status == "ungrounded":
                 continue
             reading = readings.get((candidate.observation_id, candidate.region_id))
-            if (reading is None or candidate.observation_id not in decided
-                or reading.observation_text[candidate.start:candidate.end] != candidate.literal):
-                raise ValueError("An organiser span must be a verbatim substring of the decided reading it cites")
+            if reading is None or reading.observation_text[candidate.start:candidate.end] != candidate.literal:
+                raise ValueError("An organiser span must be a verbatim substring of the reading it cites")
             if candidate.status == "located":
                 continue
+            if candidate.observation_id not in decided:
+                raise ValueError("A grounded organiser candidate must cite the decided reading")
             fragment, assembly = fragments.get(candidate.fragment_id), assemblies.get(candidate.assembly_id)
             event = events.get(candidate.event_id)
             if (fragment is None or assembly is None or event is None

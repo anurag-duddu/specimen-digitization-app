@@ -45,10 +45,14 @@ from .sources import insects_registry
 ENGINE_VERSION = "research_harness_v1"
 
 # No pinned rule qualifies an event or a field assembly from unstructured label text:
-# initial_requests._graph builds an assembly only from an exact `field_key: value`
-# line of a decided transcript, and no recorded production reading has one (the name
-# below is the reason that module gives an unkeyed event). A field can then be
-# grounded only by a source this deployment offers for it. Declaring the missing
+# initial_requests._graph builds an assembly from an exact `field_key: value` line of a
+# decided transcript (no recorded production reading has one; the name below is the reason
+# that module gives an unkeyed event) and, since the hand-over, from a value the ordinary
+# extractor stored for one of five literal fields (initial_requests.ASSEMBLY_FIELDS) when
+# trusted code finds it verbatim in one line of the decided reading: a proposal verified
+# against the text, not a pinned rule. Every other declared field, and any value that cannot
+# be placed exactly, can be grounded only by a source this deployment offers for it, or not
+# at all. Declaring the missing
 # policy here, as verbatim_dts declares its own, turns a specialist's waiting_policy
 # on a declared field into the existing needs_human_review path with the reason
 # mandatory_unresolved:{field} (canonical_materialization_v2._policy_held, status.py

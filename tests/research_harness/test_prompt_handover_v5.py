@@ -36,20 +36,20 @@ PIN = "0" * 64
 HEADER = "Hand-over (organiser candidates): the request's organiser_candidates are the field\n"
 # sha256 of each v5 file's bytes, and each role's pin digest on it (common-v1.txt, the v5 file, the owned-fields line).
 V5_FILE_SHA256 = {
-    "specimen_taxonomy-v5.txt": "f480f8d3a4d7657e3e2499855cd8f3c14b8e179a53afe0705d387d2307a51341",  # pragma: allowlist secret
-    "specimen_geography-v5.txt": "a2e76f52524184f098305a035824c29b8be21ef78fc50d18fad2ff2d4ef450fa",  # pragma: allowlist secret
-    "specimen_temporal-v5.txt": "74ea6c0a60cef4a9d9f5aae613e3d1d657148075a222130a4af537f03d045abb",  # pragma: allowlist secret
-    "specimen_measurement-v5.txt": "4b379d922e560f07686a69dc3339d97ac62865185a7381bb0f2702c41f50008e",  # pragma: allowlist secret
-    "specimen_parties-v5.txt": "1780e9ffb6daf78302a0c829e3a8229a01e71169d3d65e0493b4e0bb2a563434",  # pragma: allowlist secret
-    "specimen_collection-v5.txt": "c8ba209301bce7e45af82f4941510bb1ed70276a66bbcea40996670a5ccf6423",  # pragma: allowlist secret
+    "specimen_taxonomy-v5.txt": "97190c7e91ec3ee5754424db063180bf6b36a8e1ee7948b77ec8561648774492",  # pragma: allowlist secret
+    "specimen_geography-v5.txt": "e99fdf293a1f5f15ea4d6518dc001226b996f0796247020d30d840e61c65391b",  # pragma: allowlist secret
+    "specimen_temporal-v5.txt": "f3e6047a5d09bd2f76b19663c4e0352a8a74cee68b12e23eceee870119f9103a",  # pragma: allowlist secret
+    "specimen_measurement-v5.txt": "a3c9e8dbeac668e06a1ea5edd9b877545ae121be066eaaddf9311f7f952f9fad",  # pragma: allowlist secret
+    "specimen_parties-v5.txt": "61e51e78ed5b0bfc727e636648f1cbb9ac3e54a629b31f4589ff708e10a0490b",  # pragma: allowlist secret
+    "specimen_collection-v5.txt": "5361549cc2882428279ad5afb0191041cdfa8007bfdb661bbaec0b6463cf8114",  # pragma: allowlist secret
 }
 V5_ROLE_DIGESTS = {
-    SpecialistRole.TAXONOMY: "2796fe5753bd5d7a0b3d96e45df403e88a66361345098204c23f099682f9591c",  # pragma: allowlist secret
-    SpecialistRole.GEOGRAPHY: "75d60662b5a34b67c6349e1f906c2853326cc901c895681a3363592565e69695",  # pragma: allowlist secret
-    SpecialistRole.TEMPORAL: "27d17839837773f3bc5c9cac62e3bcaf92386e19f16c097f5bb23e187c13b764",  # pragma: allowlist secret
-    SpecialistRole.MEASUREMENT: "cb877c8aca8a1a06a89a3f3ff926f370475c74505d18aa51b46be2f84f8e44fc",  # pragma: allowlist secret
-    SpecialistRole.PARTIES: "0cdbc65612b2c5b3a0a00db3d690317e9c1a1196947a0febb82357681ebc57e3",  # pragma: allowlist secret
-    SpecialistRole.COLLECTION: "3673d80e2b38677aabd252f5013866e8b3ce9a8f76b1bc51f5323ded5065e120",  # pragma: allowlist secret
+    SpecialistRole.TAXONOMY: "07637ea23c52783699581f582eb7f7db3d7a2a5000d66852004d0d8b6b975f4d",  # pragma: allowlist secret
+    SpecialistRole.GEOGRAPHY: "9c708ecbc5eb7b5a8763f7a14b76cf4a06e3f4e5d0bf951a3fa542678702418c",  # pragma: allowlist secret
+    SpecialistRole.TEMPORAL: "026b4cd08a2bd2f33639230f604cf65ca93b0fdb2e8433d640ad974c248f2e78",  # pragma: allowlist secret
+    SpecialistRole.MEASUREMENT: "c93c2cf047ad6145d2b0ff7d0c50139287d1955033b07dc446ae126cc9a37a53",  # pragma: allowlist secret
+    SpecialistRole.PARTIES: "684c09bc6a8a3c09b3066d2b2499f5586b0cfe7346f9a5fe34a1ac8bccfd8c16",  # pragma: allowlist secret
+    SpecialistRole.COLLECTION: "2c585e77080c6d136e5e6663e53394114a239c2fd08bb422ad01abb3ea2ddd82",  # pragma: allowlist secret
 }
 # The roles that carry #257's producer block, and the ones whose own fields can get an assembly from the hand-over.
 CITING_ROLES = (SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY, SpecialistRole.PARTIES, SpecialistRole.COLLECTION)
@@ -119,7 +119,15 @@ def test_every_block_opens_with_the_same_account_of_a_candidate(role):
         "A candidate is a proposal to verify, never evidence.",
         "The evidence is the raw readings in fragments[]",
         "and, for a grounded candidate, its accepted assembly.",
-        "can misread a line, invent a value or assign a line to the wrong field.",
+        "can misread a line, invent a value or assign a line to the wrong field, and a candidate can quote "
+        "either reader's reading.",
+        "only the field's own stored value is grounded, so a field the extractor could not settle (its readers or "
+        "labels differ) has no grounded candidate.",
+        "Status located: a verbatim substring of exactly one line of the reading it cites (the decided reading or "
+        "the other reader's; observation_id says which, and label names it when the extractor did), but no "
+        "assembly (reason says why). A located candidate in the other reader's reading, or in a label with no "
+        "decided transcript, is a hint to check against the decided reading, never a value: no assembly is built "
+        "from a raw reading.",
         "find its literal in the reading it names, read the lines around it and the other reader's reading, and "
         "reject it if the readings do not support it as the value of that field.",
         "it is a hint only, it names no span, assembly or evidence, and it is never a value.",

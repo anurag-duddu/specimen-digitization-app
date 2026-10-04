@@ -35,7 +35,7 @@ from pydantic_ai.models.function import FunctionModel
 
 import production_e2e_support as support
 import test_unkeyed_label_review as review
-from specimen_digitization.application.domain import FieldValue, Observation, Region, ValueState
+from specimen_digitization.application.domain import Evidence, FieldValue, Observation, Region, ValueState
 from specimen_digitization.application.harness import ExtractionCandidate, ExtractionOutput, apply_candidates
 from specimen_digitization.application.production import SqlConnectRepository, actor_uid
 from specimen_digitization.application.workflow import OperationalBlock, SyntheticAdapters, Workflow
@@ -87,9 +87,9 @@ class ExtractorAdapters(SyntheticAdapters):
     billable one: the program ledger and the provider circuit are not modelled here) and visible at the
     call, as the rehearsal rig's FakeAdapters does."""
 
-    def __init__(self, blobs, text, stored):
+    def __init__(self, blobs, text, stored, rows="whole_region"):
         super().__init__(blobs, text)
-        self.stored, self._seen = stored, 0
+        self.stored, self._seen, self.rows = stored, 0, rows
 
     def __getattr__(self, name):
         if name != "extract":
@@ -100,6 +100,8 @@ class ExtractorAdapters(SyntheticAdapters):
         return self._extract
 
     def _extract(self, specimen):
+        if self.rows == "per_reading":
+            return self._extract_per_reading(specimen)
         run = specimen.run
         decided = {item.region_id: item.text for item in run.transcripts if item.resolved and item.text}
         candidates = [ExtractionCandidate(field_key=key, region_id=run.regions[region].id, literal=literal,
@@ -107,6 +109,27 @@ class ExtractorAdapters(SyntheticAdapters):
         raw = json.dumps({"scripted_extraction": True}).encode()
         apply_candidates(run, specimen.asset.id, ExtractionOutput(candidates=candidates), self.blobs.put(raw),
             hashlib.sha256(raw).hexdigest())
+
+
+    def _extract_per_reading(self, specimen):
+        """Rows exactly as #262 (the organiser, application/organiser.py) stores them: one row per candidate with the
+        locator ``reading:<label>:<observation id>#quote=a-b;literal=c-d``, ONE observation id and the narrow quote as
+        the excerpt. (#262's own code is not imported: this branch reads both shapes and merges in either order.)"""
+        run = specimen.run
+        raw = json.dumps({"scripted_extraction": True}).encode()
+        raw_ref, digest = self.blobs.put(raw), hashlib.sha256(raw).hexdigest()
+        readings = {item.id: item for item in run.observations}
+        decided = {item.region_id: item for item in run.transcripts if item.resolved and item.text}
+        for key, literal, region in self.stored:
+            reading = readings[decided[run.regions[region].id].selected_observation_id]
+            start = reading.literal_text.index(literal)
+            span = f"{start}-{start + len(literal)}"
+            row = Evidence(kind="literal", asset_id=specimen.asset.id, region_id=reading.region_id,
+                observation_ids=[reading.id], source="bounded_extraction_v1", excerpt=literal,
+                locator=f"reading:{region + 1}A:{reading.id}#quote={span};literal={span}", raw_ref=raw_ref, digest=digest)
+            run.evidence.append(row)
+            run.fields[key] = FieldValue(state=ValueState.SUPPORTED, literal=literal, parsed=literal,
+                evidence_ids=[row.id], reason="Exact source-supported typed extraction")
 
 
 @pytest.fixture(autouse=True)
@@ -144,7 +167,7 @@ def refusals(monkeypatch):
     return caught
 
 
-def build_rig(tmp_path, monkeypatch, stored=STORED, texts=REGION_TEXTS):
+def build_rig(tmp_path, monkeypatch, stored=STORED, texts=REGION_TEXTS, rows="whole_region"):
     # specimen_before_adjudication reads the module's LABEL_TEXT for region 0's readings and, with first_pass,
     # has the second reader misread 'grassland' and the first pass decide for the first reader.
     monkeypatch.setattr(support, "LABEL_TEXT", texts[0])
@@ -155,7 +178,7 @@ def build_rig(tmp_path, monkeypatch, stored=STORED, texts=REGION_TEXTS):
     fake = FakeDataConnect(backend, members=members)
     blobs = GenerationBlobs(tmp_path / "blobs")
     repository = SqlConnectRepository(session=fake, graph_blobs=blobs)
-    ordinary = Workflow(repository, blobs, ExtractorAdapters(blobs, texts[0], stored))
+    ordinary = Workflow(repository, blobs, ExtractorAdapters(blobs, texts[0], stored, rows))
     token = actor_uid.set(WORKER)
     principal = worker_principal()
     specimen = specimen_before_adjudication(blobs, first_pass=True)
@@ -182,6 +205,15 @@ def build_rig(tmp_path, monkeypatch, stored=STORED, texts=REGION_TEXTS):
 @pytest.fixture
 def rig(tmp_path, monkeypatch):
     made, token = build_rig(tmp_path, monkeypatch)
+    yield made
+    actor_uid.reset(token)
+
+
+@pytest.fixture(params=("whole_region", "per_reading"))
+def shaped_rig(request, tmp_path, monkeypatch):
+    """The same label and stored values, the evidence rows in each shape the extraction call stores them in:
+    today's whole-region rows, and #262's per-reading rows."""
+    made, token = build_rig(tmp_path, monkeypatch, rows=request.param)
     yield made
     actor_uid.reset(token)
 
@@ -338,9 +370,11 @@ def test_the_ordinary_extractor_stored_the_values_and_the_request_graph_now_hold
 
 
 # ---------------------------------------------------------------------------- with the hand-over
-def test_a_specialist_following_the_v5_text_resolves_the_grounded_candidates_with_evidence(rig, refusals):
+def test_a_specialist_following_the_v5_text_resolves_the_grounded_candidates_with_evidence(shaped_rig, refusals):
     """FAILS on the stack head: the request has no candidate and no assembly, so fmnh_ins_number, collectors
-    and collection_method end waiting_policy (mandatory_unresolved), as every literal field did."""
+    and collection_method end waiting_policy (mandatory_unresolved), as every literal field did. Run for both
+    stored shapes: whole-region rows, and #262's narrow per-reading rows (B2 of the review)."""
+    rig = shaped_rig
     decisions = []
     parsed, specimen, hold = run(rig, hand_over(review.specialist_factory(rig.model_calls), decisions=decisions))
     assert refusals == [], f"a publication was refused: {refusals}"
@@ -471,3 +505,26 @@ def test_a_hint_is_never_a_value_even_for_a_specialist_that_resolves_it(rig, ref
     job = list(state["jobs"].values())[0]
     assert job["fields"]["collection_code"]["work_state"] == "operational_failed"
     assert "collection_code" not in {row["causal_proof"]["changed_field"] for row in rig.fake.receipts.values()}
+
+
+def test_a_candidate_the_validator_would_refuse_is_never_assembled_so_no_role_fails(tmp_path, monkeypatch, refusals):
+    """S1 of the review. The extractor filed the catalog prefix under collection_code (3 of the 9 recorded
+    specimens). Trusted code used to build an accepted assembly for it; a real model that resolved it got the
+    generic retry message, one retry (retries=1), then its whole collection role failed. The scripted
+    specialist here resolves every grounded candidate WITHOUT checking the validator (as a model cannot), so
+    the rehearsal's earlier 'falls back to waiting_policy' was the scripted model pre-validating, not the
+    engine: with the candidate located instead, nothing is refused and the other fields resolve."""
+    stored = tuple(item for item in STORED if item[0] != "collection_code") + (("collection_code", "FMNH INS", 1),)
+    made, token = build_rig(tmp_path, monkeypatch, stored=stored)
+    try:
+        parsed, specimen, hold = run(made, hand_over(review.specialist_factory(made.model_calls)))
+    finally:
+        actor_uid.reset(token)
+    assert refusals == [] and hold is None, hold
+    assert (specimen.run.stage, specimen.run.disposition) == ("finalized", "needs_human_review")
+    reasons = reasons_of(specimen)
+    assert "mandatory_unresolved:collection_code" in reasons
+    assert not [reason for reason in reasons if reason.startswith(("research_work:", "canonical_"))]
+    _, state = research_state(made.fake, made.specimen_id)
+    fields = list(state["jobs"].values())[0]["fields"]
+    assert fields["collection_code"]["work_state"] == "waiting_policy" and fields["fmnh_ins_number"]["work_state"] == "resolved"
