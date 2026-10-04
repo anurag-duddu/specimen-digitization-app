@@ -12,8 +12,10 @@ import copy
 import hashlib
 import json
 import os
+import random
 import re
 import sqlite3
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +24,16 @@ from uuid import uuid4
 
 CONTRACT_VERSION = "research-durability/v1"
 MAX_STATE_BYTES = 900_000
+# The longest lease claim/heartbeat accept. A lease is never renewed during a window
+# (renewing it would change the stored lease object that publication's SQL compares),
+# so it must outlast a whole window: the research phase of the roles in it and the
+# publication of everything they committed, a few hundred Data Connect round trips.
+MAX_LEASE_TTL_SECONDS = 900
+# A lost compare-and-swap waits a random time before it re-reads: up to 10 ms the first
+# time, doubling each retry, never more than 0.5 s. Specialists in one window lose the swap
+# to each other; with no wait they retry in lockstep.
+CAS_PAUSE_FIRST_SECONDS = 0.01
+CAS_PAUSE_MAX_SECONDS = 0.5
 
 
 def canonical(value: Any) -> bytes:
@@ -352,7 +364,7 @@ class ResearchStore:
         return doc
 
     def _mutate(self, scope: DurabilityScope, reducer: Callable[[dict[str, Any], float], Any], *, lease: Lease | None = None, review_required: bool = False, force_cas: bool = False) -> Any:
-        for _ in range(self.max_cas_retries):
+        for attempt in range(self.max_cas_retries):
             doc = self._read(scope)
             state = copy.deepcopy(doc.state)
             result = reducer(state, doc.server_time)
@@ -365,6 +377,8 @@ class ResearchStore:
                 self.backend.cas(scope, self.program_key, doc.revision, state, valid_until=lease.expires_at if lease else None, review_required=review_required)
                 return result
             except CasConflict:
+                if attempt + 1 < self.max_cas_retries:
+                    time.sleep(random.uniform(0, min(CAS_PAUSE_MAX_SECONDS, CAS_PAUSE_FIRST_SECONDS * 2 ** attempt)))
                 continue
         raise CasConflict("Bounded SQL rebase limit exceeded")
 
@@ -411,8 +425,8 @@ class ResearchStore:
         return copy.deepcopy(self._job(self._read(scope).state, scope))
 
     def claim(self, scope: DurabilityScope, owner: str, *, ttl_seconds: int = 60) -> Lease:
-        if not owner or not 1 <= ttl_seconds <= 300:
-            raise ValueError("Lease TTL must be 1..300 seconds")
+        if not owner or not 1 <= ttl_seconds <= MAX_LEASE_TTL_SECONDS:
+            raise ValueError(f"Lease TTL must be 1..{MAX_LEASE_TTL_SECONDS} seconds")
         def reduce(state, now):
             job = self._job(state, scope)
             if job["paused"] or (job["lease"] and job["lease"]["expires_at"] > now):
@@ -436,8 +450,8 @@ class ResearchStore:
         self._mutate(scope, reduce, lease=lease)
 
     def heartbeat(self, scope: DurabilityScope, lease: Lease, *, ttl_seconds: int = 60) -> Lease:
-        if not 1 <= ttl_seconds <= 300:
-            raise ValueError("Lease TTL must be 1..300 seconds")
+        if not 1 <= ttl_seconds <= MAX_LEASE_TTL_SECONDS:
+            raise ValueError(f"Lease TTL must be 1..{MAX_LEASE_TTL_SECONDS} seconds")
         def reduce(state, now):
             job = self._lease(state, scope, lease, now)
             renewed = Lease(lease.job_key, lease.owner, lease.fence, lease.generation, now + ttl_seconds)

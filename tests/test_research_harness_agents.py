@@ -132,8 +132,11 @@ def harness(tmp_path, *, delegate=None, limits=HarnessLimits()):
         wrapped, calls[request.role] = scripted(request, delegate=delegate if request.role == SpecialistRole.TAXONOMY else None)
         return model(wrapped, request=request, broker=broker, scope=scope, lease=lease)
 
+    # Delegation is opt-in (production never sets it); only the tests that script a
+    # delegate_task call turn it on.
     runtime = SpecialistHarness(requests=pinned, model_factory=factory, tool_broker=tools,
-                                step_store_factory=lambda _: journal, limits=limits)
+                                step_store_factory=lambda _: journal, limits=limits,
+                                delegation=delegate is not None)
     return runtime, store, scope, tools, journal, calls
 
 
@@ -158,6 +161,13 @@ def test_six_specialists_execute_registered_tool_and_typed_output(tmp_path, role
     assert len(records) == 1 and records[0].agent_name == role.value
     snapshot = asyncio.run(journal.latest_snapshot(run_id=records[0].run_id))
     assert snapshot is not None and snapshot.state == "complete"
+    # No specialist delegates unless the harness is built with delegation=True.
+    assert runtime.delegation == {} and runtime.helpers == {}
+
+
+def test_official_delegation_capability_is_scoped_to_the_other_five_roles(tmp_path):
+    runtime, *_ = harness(tmp_path, delegate=SpecialistRole.GEOGRAPHY)
+    assert set(runtime.delegation) == set(SpecialistRole)
     for capability in runtime.delegation.values():
         assert capability.agent_folders is None
         assert capability.inherit_tools is False
