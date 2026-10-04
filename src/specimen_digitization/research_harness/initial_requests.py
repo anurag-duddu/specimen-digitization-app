@@ -124,11 +124,17 @@ class NativeGenerationRequestFactory:
         fragments, evidence, events, assemblies, decisions = [], [], [], [], []
         # A native Evidence UUID remains the identity. Missing native evidence
         # never becomes a fabricated lookup or an accepted label assembly.
+        # The row's identity digests are contracts.digest, the function the publication's evidence
+        # provider re-derives them with (canonical_evidence_provider_v2._capture_contexts). The
+        # application's storage digest escapes non-ASCII text, so it differs for a quote with an
+        # accented letter or a sex sign, and the provider then finds no match for the row and
+        # refuses the value that cites it (canonical_capture_missing_actual_evidence). A value that
+        # cites a native row (a literal read from an assembly) needs the two to agree.
         for item in specimen.run.evidence:
             evidence.append(EvidenceItem(id=item.id, kind=item.kind, source_id=item.source or "native_evidence",
                 locator=item.locator or "native-evidence:"+item.id,
-                response_digest=item.digest or canonical_digest(item.model_dump(mode="json")),
-                source_version="native-evidence-adapter/v1", publisher_assertion_id=canonical_digest(item.model_dump(mode="json")),
+                response_digest=item.digest or digest(item.model_dump(mode="json")),
+                source_version="native-evidence-adapter/v1", publisher_assertion_id=digest(item.model_dump(mode="json")),
                 excerpt=item.excerpt, retrieved_at=item.created_at, role="supports"))
         seen = set()
         for transcript in specimen.run.transcripts:

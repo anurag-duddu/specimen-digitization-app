@@ -383,6 +383,29 @@ def test_the_pass_stops_at_the_cap_the_contract_sets():
         assert len(request_for(built, role).organiser_candidates) <= MAX_ORGANISER_CANDIDATES
 
 
+def test_a_native_evidence_row_with_non_ascii_text_has_the_identity_the_publication_rederives():
+    """A value read from an organiser assembly cites the extractor's native evidence row, and the publication's
+    evidence provider (canonical_evidence_provider_v2._capture_contexts) finds the row again by re-deriving its
+    identity digests with contracts.digest. The application's storage digest escapes non-ASCII text, so a quote
+    with a sex sign (recorded labels carry one) got another identity and the value was refused with
+    canonical_capture_missing_actual_evidence: on a recorded specimen, the record stopped."""
+    from specimen_digitization.application.storage import digest as storage_digest
+    from specimen_digitization.research_harness.contracts import digest
+    text = "FMNH INS 0010001\nSynthetic Collector \u2642\n"
+    built = build((RegionSpec(text),), (FieldSpec("collectors", "Synthetic Collector"),))
+    [row] = built.specimen.run.evidence
+    assert not row.excerpt.isascii()
+    assert storage_digest(row.model_dump(mode="json")) != digest(row)   # the two digests really differ here
+    [item] = built.graph[3]
+    assert item.id == row.id
+    assert item.publisher_assertion_id == digest(row)
+    assert (row.digest or digest(row)) == item.response_digest
+    # With no digest of its own the fallback is the same function.
+    row.digest = None
+    [item] = NativeGenerationRequestFactory._build_graph(built.specimen, built.scope)[3]
+    assert item.response_digest == digest(row) == item.publisher_assertion_id
+
+
 # ---------------------------------------------------------------------------- the contract refuses a claimed span
 def rebuilt(request, **changes):
     return SpecialistRequest(**{**dict(request), **changes})

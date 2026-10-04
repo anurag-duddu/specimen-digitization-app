@@ -56,10 +56,12 @@ from production_e2e_support import (
 )
 
 # Region 0 is decided by the first pass (the second reader misreads one letter of the habitat line);
-# region 1 is two agreeing readers. Both hold plain lines, no `field_key:` prefix.
+# region 1 is two agreeing readers. Both hold plain lines, no `field_key:` prefix. The collector's line
+# ends with a sex sign (U+2642, which the recorded labels carry): the extractor quotes the whole region, so
+# its evidence row holds a non-ASCII character, and the value that cites that row must still publish.
 REGION_TEXTS = (
     "Chicago, Cook County\nIllinois, United States\ngrassland margin",
-    "FMNH INS\n0010001\nSynthetic Collector\n12 June 1948\n1200 ft\nlight trap",
+    "FMNH INS\n0010001\nSynthetic Collector \u2642\n12 June 1948\n1200 ft\nlight trap",
 )
 # (field, literal, region): what the scripted ordinary extractor stores. Each literal is inside its own
 # region's decided text, and the quote is the whole transcript, as the real extractor's is.
