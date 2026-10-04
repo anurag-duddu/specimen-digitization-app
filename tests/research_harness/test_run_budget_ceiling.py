@@ -12,6 +12,7 @@ import threading
 import pytest
 
 from specimen_digitization.application.collection_profiles import published_registry
+from specimen_digitization.application.storage import digest as canonical_digest
 from specimen_digitization.application.workflow import OperationalBlock
 from specimen_digitization.research_harness import production_runtime
 from specimen_digitization.research_harness.committed_pins import build_committed_pins
@@ -251,6 +252,74 @@ def test_an_ordinary_chain_that_spent_the_whole_limit_leaves_the_harness_no_head
     (_, state), _ = e2e.jobs_and_bindings(rig)
     assert state["budget_policy"]["external_settled_micro_usd"] == CEILING
     assert state["effects"] == {} and state["budget_totals"]["remaining_micro_usd"] == 0
+
+
+@pytest.fixture
+def rig_after_40k(tmp_path, monkeypatch):
+    yield from rig_with_ordinary_spend(tmp_path, monkeypatch, 40_000)
+
+
+def test_a_transcription_correction_after_research_researches_again_on_the_stored_seed(rig_after_40k):
+    # A person's transcription decision (api.py, kind "transcription") takes the
+    # same run's parse, plan and lookup out of completed_steps and sets its stage
+    # back to parse; parse is billed again. The research allowance is immutable, so
+    # provisioning for the new revision must keep its stored seed (40,000) rather
+    # than hold the run with research_provision_state_conflict.
+    rig = rig_after_40k
+    workflow = e2e.compose(rig, geolocate=False)
+    e2e.to_plan(workflow, rig)
+    with e2e.supervised(), pytest.raises(OperationalBlock, match="native_research_operational_hold"):
+        workflow.step(rig.principal, rig.specimen_id)
+    specimen = rig.repository.get(rig.principal.scope, rig.specimen_id)
+    first_revision, run = specimen.version, specimen.run
+    run.completed_steps = [step for step in run.completed_steps if step not in {
+        "parse", "plan", "lookup", "resolve", "normalize", "validate", "finalize"}]
+    run.stage, run.disposition, run.blocker = "parse", None, None
+    run.usage.reserved_cost_micros += 20_000  # the re-billed parse, a full reservation
+    corrected = rig.repository.save(rig.principal, specimen, first_revision, "reviewer-correction",
+        canonical_digest({"correction": 1}))
+    assert rig.ordinary.next_step(corrected.run) == "parse"
+    workflow = e2e.compose(rig, geolocate=False)
+    outcome = None
+    for _ in range(3):  # parse, then provisioning and research for the new revision
+        with e2e.supervised():
+            try:
+                stepped = workflow.step(rig.principal, rig.specimen_id)
+                outcome = ("ok", rig.ordinary.next_step(stepped.run))
+            except OperationalBlock as error:
+                outcome = ("block", str(error))
+                break
+    assert outcome != ("block", "research_provision_state_conflict"), outcome
+    assert outcome == ("block", "native_research_operational_hold"), outcome
+    (_, state), binding = e2e.jobs_and_bindings(rig)
+    assert len(state["jobs"]) == 2 and binding["job_id"].endswith(f"-r{corrected.version + 1}")
+    assert state["budget_policy"]["external_settled_micro_usd"] == 40_000
+    totals = state["budget_totals"]
+    assert totals["held_micro_usd"] == 0 and totals["settled_micro_usd"] <= CEILING
+
+
+@pytest.mark.parametrize("ordinary_spend", [250_000])
+def test_open_refuses_a_stored_seed_that_is_not_the_registered_policy(opened, ordinary_spend):
+    # The registered binding names the digest of the policy it was registered with.
+    # A seed rewritten in the stored state (to 0, say) no longer matches it.
+    def lower(state, _now):
+        state["budget_policy"]["external_settled_micro_usd"] = 0
+    opened.store._mutate(opened.scope, lower, force_cas=True)
+    assert opened.store.budget(opened.scope)["settled_micro_usd"] == 0
+    with pytest.raises(HeldUnknown, match="research_live_admission_unqualified"):
+        opened.open(opened.factory())
+
+
+@pytest.mark.parametrize("ordinary_spend", [250_000])
+@pytest.mark.parametrize("seed", [-1, 2.5, True])
+def test_open_refuses_a_malformed_stored_seed_even_when_its_digest_matches(opened, ordinary_spend, seed):
+    # With the registered digest made to match, only the seed's own check refuses.
+    def malform(state, _now):
+        state["budget_policy"]["external_settled_micro_usd"] = seed
+    opened.store._mutate(opened.scope, malform, force_cas=True)
+    opened.binding.journal_budget_policy_digest = digest(opened.store._read(opened.scope).state["budget_policy"])
+    with pytest.raises(HeldUnknown, match="^research_live_admission_unqualified$"):
+        opened.open(opened.factory())
 
 
 def test_an_ordinary_chain_near_the_limit_leaves_no_room_for_one_request(rig_after_980k):

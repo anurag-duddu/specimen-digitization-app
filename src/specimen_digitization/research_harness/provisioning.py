@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
 from uuid import NAMESPACE_URL, uuid5
 
 from specimen_digitization.application import projection
@@ -106,7 +107,8 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
         pins = committed_job_pins(run.profile_snapshot, organization_id=scope.organization_id,
             collection_id=scope.collection_id, input_digest=row["sha256"])
         # At the plan step every paid ordinary step is done, so the run's ordinary
-        # spend is final: the research allowance starts with it counted.
+        # spend is final when the research state is created: the allowance starts
+        # with it counted.
         allowance_policy = research_budget_policy(run.profile_snapshot, run.usage.reserved_cost_micros)
     except (TypeError, ValueError):
         raise HeldUnknown("research_committed_pins_unavailable") from None
@@ -119,6 +121,16 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
     store = ResearchStore(state_backend if state_backend is not None
         else SqlConnectStateBackend(repository), program_key)
     try:
+        existing = await asyncio.to_thread(store.backend.load, scope, program_key)
+        if existing:
+            # The run's allowance is immutable once created, and a later revision of
+            # the same run can carry a larger ordinary spend (a person's transcription
+            # correction rewinds the run to parse, which is billed again). Keep the
+            # stored seed; every other field is still compared strictly by initialize.
+            # So the seed can under-count by the re-billed parse, at most one parse
+            # reservation (20,000 on the published stage costs) per correction.
+            allowance_policy = replace(allowance_policy, external_settled_micro_usd=
+                existing.state["budget_policy"].get("external_settled_micro_usd", 0))
         await asyncio.to_thread(store.initialize, scope, allowance_policy)
         await asyncio.to_thread(store.create_job, scope, PinnedRuntime(**pins),
             [str(key) for key in FieldKey], record_revision=specimen.version)

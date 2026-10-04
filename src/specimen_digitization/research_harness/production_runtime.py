@@ -8,7 +8,7 @@ from uuid import UUID
 from specimen_digitization.application.domain import Principal
 from specimen_digitization.application.storage import digest as canonical_digest
 from .committed_pins import build_committed_pins, committed_run_cost_limit_micros
-from .contracts import CollectionProfile, SpecialistRequest, SpecialistRole
+from .contracts import CollectionProfile, SpecialistRequest, SpecialistRole, digest
 from .discovery_v2 import ResearchDiscoveryV2
 from .gateway import ModelBinding
 from .journal import DurableResearchJournal
@@ -151,6 +151,9 @@ class NativeResearchRuntimeFactory:
         # binding names its digest); every other field must be the committed one.
         spend = document.state["budget_policy"].get("external_settled_micro_usd", 0)
         if type(spend) is not int or spend < 0:
+            raise HeldUnknown("research_live_admission_unqualified")
+        # The stored policy must still be the one the binding was registered with.
+        if digest(document.state["budget_policy"]) != binding.journal_budget_policy_digest:
             raise HeldUnknown("research_live_admission_unqualified")
         # The job keeps the pins committed config gave it at provisioning; a
         # change in config or installed code since then holds the run.

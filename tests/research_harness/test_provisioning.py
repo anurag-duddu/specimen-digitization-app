@@ -389,22 +389,44 @@ def test_a_replay_after_a_lost_registration_keeps_the_seeded_spend(rig):
     assert list(state["jobs"]) == [scope.key]
 
 
-def test_ordinary_spend_that_moved_after_the_state_was_seeded_holds(rig):
-    # The run's allowance is immutable, so a later revision of the same run that
-    # computes another ordinary spend cannot reseed it: it holds, and registers
-    # nothing. (No ordinary step is paid after plan, so this is a fail-closed case.)
+def test_a_later_revision_with_a_larger_ordinary_spend_keeps_the_stored_seed(rig):
+    # A person's transcription correction after research rewinds the same run to
+    # parse (api.py, decision kind "transcription"), and parse is billed again, so
+    # the run's later revision carries a larger ordinary spend. The run's allowance
+    # is immutable (SQL), so provisioning keeps the stored seed instead of holding
+    # the run with research_provision_state_conflict. The seed can then under-count
+    # by the re-billed parse, at most one parse reservation (20,000) a correction.
     rig.specimen.run.usage.reserved_cost_micros = 40_000
     rig.provision()
     later = rig.specimen.model_copy(deep=True)
     later.version += 1
-    later.run.usage.reserved_cost_micros = 41_000
+    later.run.usage.reserved_cost_micros = 60_000
     rig.repository.specimen = later
     rig.writer.binding = None  # The row names the earlier revision.
-    with pytest.raises(HeldUnknown, match="research_provision_state_conflict"):
-        rig.provision(later)
-    assert len(rig.writer.registered) == 1
+    rig.provision(later)
+    first, second = rig.writer.registered
     state = ResearchStore(rig.backend, research_program_key(later.run.id))._read(job_scope(rig, later)).state
-    assert state["budget_policy"]["external_settled_micro_usd"] == 40_000 and len(state["jobs"]) == 1
+    assert state["budget_policy"]["external_settled_micro_usd"] == 40_000 and len(state["jobs"]) == 2
+    # Both bindings name the one stored policy.
+    assert first[0].semantic_mapping["journal_budget_policy_digest"] == digest(state["budget_policy"])
+    assert second[0].semantic_mapping["journal_budget_policy_digest"] == digest(state["budget_policy"])
+    assert second[0].job_id.endswith(f"-r{later.version}")
+
+
+@pytest.mark.parametrize("change", [{"ceiling_micro_usd": 1}, {"external_held_micro_usd": 1},
+    {"external_ledger_digest": "another-ledger"}, {"live_authorized": False, "hold_reason": "held"}])
+def test_only_the_seed_may_differ_from_an_existing_allowance(rig, change):
+    # The stored seed is reused, every other field is compared strictly.
+    scope = job_scope(rig)
+    store = ResearchStore(rig.backend, research_program_key(rig.specimen.run.id))
+    policy = research_budget_policy(rig.specimen.run.profile_snapshot, 999)
+    change = {key: policy.ceiling_micro_usd + value if key == "ceiling_micro_usd" else value
+        for key, value in change.items()}
+    from dataclasses import replace
+    store.initialize(scope, replace(policy, **change))
+    with pytest.raises(HeldUnknown, match="research_provision_state_conflict"):
+        rig.provision()
+    assert rig.writer.registered == []
 
 
 def with_run_limit(specimen, limit):

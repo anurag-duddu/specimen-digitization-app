@@ -228,6 +228,8 @@ def opened(tmp_path, worker_context, ordinary_spend):
     snapshot = specimen.run.profile_snapshot
     store.initialize(scope, replace(research_budget_policy(snapshot),
         external_settled_micro_usd=ordinary_spend))
+    # The registered binding names the digest of the policy the state was created with.
+    binding.journal_budget_policy_digest = digest(store._read(scope).state["budget_policy"])
     pins = committed_job_pins(snapshot, organization_id=ORG, collection_id=COLLECTION,
         input_digest=SNAPSHOT_SHA)
     store.create_job(scope, PinnedRuntime(**pins), [str(key) for key in FieldKey],
