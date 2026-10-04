@@ -181,7 +181,9 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     assert list(state["jobs"].values())[0]["identity"]["job_id"] == job_id and len(state["jobs"]) == 1
     assert binding["active"] and binding["job_id"] == job_id and binding["program_key"] == program
     assert binding["current_receipt_id"] is None and binding["base_record_version_id"] == base_records[0]["id"]
-    assert state["budget_policy"]["ceiling_micro_usd"] == 500_000 and state["budget_policy"]["live_authorized"]
+    assert state["budget_policy"]["ceiling_micro_usd"] == 1_000_000 and state["budget_policy"]["live_authorized"]
+    # The synthetic ordinary chain spent nothing, so nothing is carried into the allowance.
+    assert state["budget_policy"]["external_settled_micro_usd"] == parsed.run.usage.reserved_cost_micros == 0
     assert set(binding["semantic_mapping"]["evidence_sources"]) >= {"gbif", "global_names_verifier",
         "catalogue_of_life"}
 
@@ -231,7 +233,7 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     assert sum(effect["operation_key"].startswith("source_capture_v2:") for effect in effects) == 3
     settled = sum(effect.get("actual_micro_usd") or 0 for effect in effects)
     held = sum(effect["held_micro_usd"] for effect in effects)
-    assert held == 0 and 0 < settled <= 500_000
+    assert held == 0 and 0 < settled <= state["budget_policy"]["ceiling_micro_usd"] == 1_000_000
     assert [role for role, _ in rig.model_calls] == ["specimen_taxonomy"] * 4 + [
         "specimen_geography", "specimen_temporal", "specimen_measurement", "specimen_parties",
         "specimen_collection"]
