@@ -107,7 +107,7 @@ def test_the_slide_pilot_profile_carries_the_specified_settings():
     assert not profile.institutional_policy_approved
     assert not profile.semantics_confirmed
     allowance = profile.processing
-    assert allowance.run_cost_limit_micros == 500_000
+    assert allowance.run_cost_limit_micros == 1_000_000
     assert allowance.stage_cost_micros.cost_micros == {
         "segment": 45_000,
         "transcribe:handwriting-qwen": 20_000,
