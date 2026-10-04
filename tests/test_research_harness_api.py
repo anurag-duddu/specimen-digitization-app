@@ -132,6 +132,32 @@ def test_thread_uses_actual_reader_and_no_shared_app_mount(rig):
     assert rig.client.post(BASE + "/jobs", json={"model":PRIVATE}).status_code == 404
 
 
+def test_thread_over_http_carries_the_review_of_a_field_that_waits_and_nothing_for_the_rest(rig):
+    from specimen_digitization.research_harness.contracts import (
+        HumanQuestion, SourceCoverageReceipt, SourceCoverageState,
+    )
+
+    receipt = SourceCoverageReceipt(source_id="geolocate", field_key=FieldKey.CITY,
+        state=SourceCoverageState.SEARCHED, source_version="v", coverage_limit="bounded",
+        reason="no_match: GEOLocate returned 2 match(es); none is 'Synthetic place'",
+        receipt_ids=("source:" + "c" * 64,))
+    asked = HumanQuestion(field_key=FieldKey.CITY, question="Which town does the label mean?",
+        reason="scoped_absence", coverage=(receipt,), evidence_ids=("source:" + "c" * 64,))
+    waiting = FieldResolution(field_key=FieldKey.CITY, work_state=WorkState.WAITING_HUMAN, question=asked,
+        value=FieldValue(state=ValueState.UNRESOLVED, literal="Synthetic place"),
+        reason="Two readings name different towns")
+    request = rig.requests[SpecialistRole.GEOGRAPHY].model_copy(
+        update={"field_keys": (FieldKey.CITY,), "field_revisions": {FieldKey.CITY: 0}})
+    asyncio.run(rig.journal.commit(request, (waiting,), receipt_ids=(),
+        model_settings_digest=digest(rig.settings)))
+    body = fields(rig.client.get(BASE + "/thread"))
+    assert body["city"]["review"] == {
+        "question_reason": "scoped_absence", "reason": "Two readings name different towns",
+        "evidence": [], "candidates": [], "evidence_not_shown": 1, "candidates_not_shown": 0}
+    assert all(field["review"] is None for key, field in body.items() if key != "city")
+    assert PRIVATE not in str(body)
+
+
 def test_legacy_session_and_routes_survive_explicit_research_mount(rig, tmp_path):
     from specimen_digitization.application.api import create_app
     from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository

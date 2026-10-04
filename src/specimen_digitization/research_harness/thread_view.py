@@ -1,15 +1,147 @@
 """Authorized persisted field progress, independent of package message internals."""
 
 import asyncio
-from typing import Literal
+import json
+import re
+from collections.abc import Mapping
+from typing import Annotated, Any, Literal
 
 from pydantic import Field
 
 from specimen_digitization.application.domain import FieldValue
 
-from .contracts import ALL_FIELDS, FieldCheckpoint, FieldKey, FrozenRecord, ResearchScope, WorkState, digest
+from .contracts import (
+    ALL_FIELDS, FieldCheckpoint, FieldKey, FrozenRecord, ResearchScope, SourceResult, WorkState, digest,
+)
 from .journal import DurableResearchJournal
 from .persistence import StaleWork
+
+# The fields a person decides: the harness stopped without a settled value (a question, a missing
+# source or a missing rule). Resolved, exception and operational states carry no review.
+REVIEW_STATES = frozenset({WorkState.WAITING_HUMAN, WorkState.WAITING_SOURCE, WorkState.WAITING_POLICY})
+MAX_REVIEW_ITEMS = 8
+MAX_REVIEW_TEXT = 240
+MAX_REVIEW_DETAIL = 80
+MAX_REVIEW_REASON = 600
+_ELLIPSIS = "\N{HORIZONTAL ELLIPSIS}"
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]+")
+
+
+def _bounded(value: object, limit: int) -> str | None:
+    """Plain, single-line text of at most ``limit`` characters, or None when there is none."""
+    if not isinstance(value, str):
+        return None
+    text = _CONTROL.sub(" ", value).strip()
+    if not text:
+        return None
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + _ELLIPSIS
+
+
+class ReviewCandidate(FrozenRecord):
+    """One possibility a source returned, as the source named it. Never a value the harness chose.
+
+    ``details`` holds only words the source supplied (an administrative unit, a taxonomic rank, a
+    status); the wording around them belongs to the client.
+    """
+
+    label: str = Field(max_length=MAX_REVIEW_TEXT)
+    details: tuple[Annotated[str, Field(max_length=MAX_REVIEW_DETAIL)], ...] = Field(default=(), max_length=4)
+    distance_km: int | None = Field(default=None, strict=True, ge=0)
+    authority_id: str | None = Field(default=None, max_length=MAX_REVIEW_TEXT)
+    rank: int | None = Field(default=None, strict=True, ge=1)
+    source_id: str = Field(max_length=MAX_REVIEW_TEXT)
+    evidence_id: str | None = Field(default=None, max_length=MAX_REVIEW_TEXT)
+
+
+class ReviewEvidence(FrozenRecord):
+    """One captured source lookup for the field: what was asked and what the source answered."""
+
+    evidence_id: str = Field(max_length=MAX_REVIEW_TEXT)
+    source_id: str = Field(max_length=MAX_REVIEW_TEXT)
+    kind: str = Field(max_length=MAX_REVIEW_TEXT)
+    quote: str | None = Field(default=None, max_length=MAX_REVIEW_TEXT)
+    searched_text: str | None = Field(default=None, max_length=MAX_REVIEW_TEXT)
+    outcome: str | None = Field(default=None, max_length=MAX_REVIEW_TEXT)
+    note: str | None = Field(default=None, max_length=MAX_REVIEW_TEXT)
+
+
+class FieldReview(FrozenRecord):
+    """What the harness found for a field that waits for a person (read-only, bounded).
+
+    ``question_reason`` is the harness's own code for why it asked. ``evidence`` and ``candidates``
+    come from the source lookups this field's checkpoint cites; ``*_not_shown`` counts what the
+    bounds or the journal could not show, so a short list never reads as a complete one.
+    """
+
+    question_reason: Literal["evidence_conflict", "scoped_absence", "semantic_ambiguity"] | None = None
+    reason: str | None = Field(default=None, max_length=MAX_REVIEW_REASON)
+    evidence: tuple[ReviewEvidence, ...] = Field(default=(), max_length=MAX_REVIEW_ITEMS)
+    candidates: tuple[ReviewCandidate, ...] = Field(default=(), max_length=MAX_REVIEW_ITEMS)
+    evidence_not_shown: int = Field(default=0, strict=True, ge=0)
+    candidates_not_shown: int = Field(default=0, strict=True, ge=0)
+
+
+def _candidate(item: Mapping[str, Any], source_id: str, evidence_id: str | None) -> ReviewCandidate | None:
+    label = _bounded(item.get("match_name"), MAX_REVIEW_TEXT) or _bounded(item.get("value"), MAX_REVIEW_TEXT)
+    if label is None:
+        return None
+    # A source's own words, in a fixed order: GEOLocate's unit; Catalogue of Life's rank and status;
+    # Global Names' underlying source. The source's order is ``rank`` only where it is an integer.
+    details = tuple(filter(None, (_bounded(item.get(key), MAX_REVIEW_DETAIL) for key in (
+        "match_admin", "rank", "status", "underlying_source_title") if isinstance(item.get(key), str))))
+    distance, rank = item.get("distance_km"), item.get("rank")
+    return ReviewCandidate(
+        label=label, details=details[:4],
+        distance_km=round(distance) if type(distance) in {int, float} and distance >= 0 else None,
+        authority_id=_bounded(item.get("authority_id"), MAX_REVIEW_TEXT),
+        rank=rank if type(rank) is int and rank >= 1 else None,
+        source_id=source_id, evidence_id=evidence_id)
+
+
+def _field_review(effects: Mapping[str, Any], job_key: str, key: FieldKey, checkpoint: FieldCheckpoint) -> FieldReview:
+    """Resolve what a waiting checkpoint cites from the durable source-lookup captures of its own field.
+
+    Only completed ``source_lookup`` effects of this job and this field are read, and only the typed
+    SourceResult is kept: model captures, other fields' captures and raw response bodies never
+    appear. A capture that no longer validates is skipped; the thread still reads.
+    """
+    resolution, question = checkpoint.resolution, checkpoint.resolution.question
+    cited = set(resolution.evidence_ids) | set(resolution.value.evidence_ids)
+    receipts = list(resolution.source_coverage) + (list(question.coverage) if question else [])
+    cited.update(identifier for receipt in receipts for identifier in receipt.receipt_ids)
+    if question:
+        cited.update(question.evidence_ids)
+    evidence, candidates, resolved = [], [], set()
+    for effect_id in checkpoint.effect_receipt_ids:
+        effect = effects.get(effect_id)
+        try:
+            if (effect is None or effect["job_key"] != job_key or effect["field_keys"] != [str(key)]
+                    or not effect["operation_key"].startswith("source_lookup:") or not effect["receipt"]):
+                continue
+            result = SourceResult.model_validate(effect["receipt"]["typed_payload"])
+            if result.coverage.field_key != key:
+                continue
+            items = [json.loads(item) for item in result.candidate_json]
+        except (KeyError, TypeError, AttributeError, ValueError):
+            continue
+        searched = next((_bounded(item.get("input_literal"), MAX_REVIEW_TEXT) for item in items
+                         if isinstance(item.get("input_literal"), str)), None)
+        for item in result.evidence:
+            if item.id in resolved:
+                continue
+            resolved.add(item.id)
+            evidence.append(ReviewEvidence(
+                evidence_id=_bounded(item.id, MAX_REVIEW_TEXT) or "", source_id=item.source_id, kind=item.kind,
+                quote=_bounded(item.excerpt, MAX_REVIEW_TEXT), searched_text=searched,
+                outcome=result.status.value, note=_bounded(result.coverage.reason, MAX_REVIEW_TEXT)))
+        anchor = result.evidence[0].id if result.evidence else None
+        candidates.extend(filter(None, (_candidate(item, result.coverage.source_id, anchor) for item in items)))
+    return FieldReview(
+        question_reason=question.reason if question else None,
+        reason=_bounded(resolution.reason, MAX_REVIEW_REASON),
+        evidence=tuple(evidence[:MAX_REVIEW_ITEMS]), candidates=tuple(candidates[:MAX_REVIEW_ITEMS]),
+        evidence_not_shown=len(cited - resolved) + max(0, len(evidence) - MAX_REVIEW_ITEMS),
+        candidates_not_shown=max(0, len(candidates) - MAX_REVIEW_ITEMS))
 
 
 class FieldThread(FrozenRecord):
@@ -19,6 +151,7 @@ class FieldThread(FrozenRecord):
     checkpoint: FieldCheckpoint | None = None
     blocker_code: str | None = None
     actions: tuple[Literal["retry_field", "supply_information", "review_proposal"], ...] = ()
+    review: FieldReview | None = None
 
 
 class EffectThread(FrozenRecord):
@@ -101,9 +234,12 @@ class ResearchThreadReader:
             }.get(work_state)
             if blocked_retry:
                 blocker = "research_retry_blocked"
+            review = None
+            if checkpoint is not None and checkpoint.resolution.work_state in REVIEW_STATES:
+                review = _field_review(document.state["effects"], self.journal.scope.key, key, checkpoint)
             fields.append(FieldThread(field_key=key, work_state=work_state,
                 value=checkpoint.resolution.value if checkpoint else FieldValue(),
-                checkpoint=checkpoint, blocker_code=blocker, actions=tuple(actions)))
+                checkpoint=checkpoint, blocker_code=blocker, actions=tuple(actions), review=review))
         used = {effect for checkpoint in checkpoints.values() for effect in checkpoint.effect_receipt_ids}
         effects = []
         for effect in document.state["effects"].values():
