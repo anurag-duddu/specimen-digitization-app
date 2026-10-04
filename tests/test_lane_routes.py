@@ -7,7 +7,8 @@ its reservation instead of blocking as `approved_cost_budget_unavailable`.
 
 The first pass's request is bounded (the coordinator, 2026-10-03): each request
 reserves its input bound, not the route's 1,048,576-token context, so a retried
-first pass still fits the run's 500,000 micro-dollars.
+first pass still fits the run's limit (USD 1 since the owner's ruling of
+2026-10-03, 500,000 micro-dollars before it).
 """
 
 from datetime import datetime, timedelta, timezone
@@ -53,8 +54,13 @@ BOUNDED_CALL = 2 * 6_964
 FIRST_PASS_RESERVATION = 20_000
 # Before the bound, PLAN 4.3 (a) on the context: 1,048,576 in and 4,096 out.
 CONTEXT_RESERVATION = 2 * 159_335
-RUN_CAP = 500_000
+# The published profile's per-run limit, which `queue` copies into each run.
+RUN_CAP = published_registry().resolve("insects").profile.processing.run_cost_limit_micros
 UNBOUNDED = {"first-pass-glm": {"max_input_tokens": None, "max_output_tokens": None}}
+# The same route with a 2,097,152-token context and no bound: each request
+# reserves ceil((2,097,152 x 0.15 + 4,096 x 0.50) million micro-dollars) = 316,621.
+LONG_CONTEXT = {"first-pass-glm": {**UNBOUNDED["first-pass-glm"], "context_tokens": 2_097_152}}
+LONG_CONTEXT_RESERVATION = 2 * 316_621
 
 
 def test_the_pilot_names_a_registered_first_pass_route_priced_and_reserved():
@@ -242,13 +248,30 @@ def test_four_disagreeing_regions_and_a_retried_first_pass_fit_the_run_cap(tmp_p
     assert run.usage.reserved_cost_micros == 20_000 + spent
 
 
-def test_the_context_length_reservation_could_not_retry_a_first_pass(tmp_path):
-    # The pre-bound price: the failed call holds 318,670 and its retry needs as
-    # much again, past the run's 500,000.
+def test_the_pre_bound_price_retries_a_first_pass_within_the_usd_1_run_limit(tmp_path):
+    # At the run's former 500,000 the pre-bound price could not retry: the failed
+    # call holds 318,670 and its retry needs as much again. The published limit is
+    # now USD 1 (the owner, 2026-10-03), and 637,340 fits, so the request bound is
+    # no longer what lets a retry through; it still keeps the reservation small.
+    assert RUN_CAP == 1_000_000 > 2 * CONTEXT_RESERVATION
     registry = with_models(
         published_registry({SYNTHETIC_COLLECTION: "insects"}), **UNBOUNDED
     )
     run, adapters = four_regions_and_a_retried_first_pass(tmp_path, registry)
+    assert run.blocker != "cost_budget_exhausted"
+    assert adapters.reserved[:2] == [("external_outcome_unknown", CONTEXT_RESERVATION)] * 2
+
+
+def test_the_run_limit_blocks_a_retry_whose_reservation_would_cross_it(tmp_path):
+    # The same hazard at the limit USD 1 sets: a first-pass route with a
+    # 2,097,152-token context and no request bound reserves its whole context on
+    # both requests, 633,242 a call. The first call fits under the limit; it fails
+    # and holds that, and its retry needs as much again, past the run's limit.
+    assert LONG_CONTEXT_RESERVATION < RUN_CAP < 2 * LONG_CONTEXT_RESERVATION
+    registry = with_models(
+        published_registry({SYNTHETIC_COLLECTION: "insects"}), **LONG_CONTEXT
+    )
+    run, adapters = four_regions_and_a_retried_first_pass(tmp_path, registry)
     assert run.blocker == "cost_budget_exhausted"
-    assert adapters.reserved == [("external_outcome_unknown", CONTEXT_RESERVATION)]
+    assert adapters.reserved == [("external_outcome_unknown", LONG_CONTEXT_RESERVATION)]
     assert not any(step.startswith("first_pass:") for step in run.completed_steps)
