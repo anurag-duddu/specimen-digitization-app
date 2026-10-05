@@ -37,7 +37,7 @@ from specimen_digitization.application.storage import Conflict, LocalBlobs
 
 from test_lane_drain import NonSensitiveMember
 from test_lane_profile import USER, ProductionLikeAdapters
-from test_lane_trigger import RecordingDispatcher, intake, specimen_with
+from test_lane_trigger import RecordingDispatcher, action, intake, specimen_with
 
 PUBLISHED = (
     Path(__file__).resolve().parents[1]
@@ -141,6 +141,52 @@ def test_a_request_copies_the_allowance_and_the_ledger_collection():
     execution = specimen.run.profile.execution
     assert execution.program_allowance_micros == 5_000_000
     assert execution.program_ledger_collection == SYNTHETIC_COLLECTION
+
+
+def test_reprocessing_preserves_the_retained_profile_and_unknown_costs(tmp_path):
+    app, repository = lab(tmp_path)
+    profiles = published_registry({SYNTHETIC_COLLECTION: "insects"})
+    specimen = specimen_with(Run(profile=Profile(synthetic=False)))
+    queue(specimen, profiles, USER)
+    specimen.run.profile.execution.approved_cost_limit_micros = 500_000
+    specimen.run.profile.execution.price_list["models"].pop("harness-deepseek")
+    specimen.run.stage = "finalized"
+    specimen.run.usage.reserved_cost_micros = 20_000
+    specimen.run.paid_calls = [
+        {
+            "step": "first_pass",
+            "attempt": 1,
+            "outcome": "unknown",
+            "reserved_micros": 20_000,
+            "cost_micros": None,
+        }
+    ]
+    original = repository.create(principal(), specimen, "legacy-run", "legacy-run")
+    before = original.run.model_dump(mode="json")
+
+    response = action(
+        TestClient(app, raise_server_exceptions=False),
+        original.id,
+        "reprocess",
+        "reprocess-with-new-policy",
+    )
+    assert response.status_code == 200, response.text
+    saved = repository.get(SCOPE, original.id)
+    assert saved.run.id != original.run.id
+    assert saved.previous_runs[-1].model_dump(mode="json") == before
+    assert repository.version(SCOPE, original.id, original.version).run.model_dump(
+        mode="json"
+    ) == before
+    execution = saved.run.profile.execution
+    policy = profiles.resolve(SYNTHETIC_COLLECTION).profile.processing
+    assert execution.approved_cost_limit_micros == policy.run_cost_limit_micros == 1_000_000
+    assert execution.program_allowance_micros == 5_000_000
+    assert execution.program_ledger_collection == SYNTHETIC_COLLECTION
+    assert execution.stage_cost_reservations == policy.stage_cost_micros
+    assert execution.price_list == policy.price_list.model_dump(mode="json")
+    assert "harness-deepseek" not in before["profile"]["execution"]["price_list"]["models"]
+    assert saved.previous_runs[-1].usage.actual_cost_micros is None
+    assert repository.documents(SCOPE, LEDGER_KIND) == []
 
 
 def test_a_ledger_collection_bound_twice_refuses_the_request():

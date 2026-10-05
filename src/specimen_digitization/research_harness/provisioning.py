@@ -23,7 +23,7 @@ from specimen_digitization.application import projection
 from specimen_digitization.application.domain import MANDATORY, Principal
 from specimen_digitization.application.production import ProjectionRejected
 from specimen_digitization.application.storage import Conflict, digest as canonical_digest
-from specimen_digitization.application.workflow import OperationalBlock
+from specimen_digitization.application.workflow import OperationalBlock, Workflow
 from .canonical_materialization_v2 import ResearchCanonicalPolicyV2
 from .committed_pins import committed_harness_route
 from .compatibility import PublicationUnavailable
@@ -180,13 +180,18 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
         return
     # No binding row yet (count 0), or a row for an earlier run or revision
     # (no current row): register this run's current revision.
-    if (specimen.asset.sensitive is not False or run.stage not in {"plan", "finalized", "waiting_for_review"}
+    # An ordinary Retry queues the same parsed run without repeating its
+    # completed steps. Its next ordinary step, rather than the queue stage,
+    # proves that it has reached the plan boundary again.
+    at_plan = run.stage == "plan" or (run.stage == "pending" and Workflow.next_step(run) == "plan")
+    if (specimen.asset.sensitive is not False
+        or (not at_plan and run.stage not in {"finalized", "waiting_for_review"})
         or set(run.fields) != set(MANDATORY)
         or committed_harness_route(run.profile_snapshot) is None
         or run.dependencies.get("profile_snapshot_sha256") != canonical_digest(run.profile_snapshot)):
         raise StaleWork("research_provision_run_unavailable")
     proofs, derivation_locks = None, {}
-    if run.stage != "plan":
+    if not at_plan:
         if specimen.scope != principal.scope:
             raise StaleWork("research_provision_derivation_unproved")
         proofs = await asyncio.to_thread(_review_proofs, repository, principal.scope, specimen)

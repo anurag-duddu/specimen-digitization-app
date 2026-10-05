@@ -50,9 +50,9 @@ ALL_TEMPLATES = PLAN_TEMPLATES + ("evidence-digests.template.json",)
 RETIRED_DATA_TEMPLATE_SHA256 = {'data-apply.plan.template.json': '53bb8be429c7d4e562d0519a78b8d7da53ffcd544ae8acaf57cc36443ebf5ef1',
  'data-bootstrap.plan.template.json': '5ab1ded821d4afc9a7d3a529d27e46d242b9d16e0e5301b615a03435eea449da',
  'data-initialize-missing.plan.template.json': 'b18bf7bf21fc0737ff705e4beb4e586aac80ab0ff50f6c53bc9c6591061fc1ff'}
-# Qualification of 15b5e5f1: 61ff24a9 adds scoped operator proof reads;
-# 8566e792 fences sends against canonical saves; 00d05648 adds the scoped
-# derivation queue. Raw templates and production validators remain unchanged.
+# Reviewed proof reads (61ff24a9), send fences (8566e792) and G38 (00d05648),
+# plus the 2026-10-05 native DML response dependencies in four connector files.
+# Raw templates and production validators remain unchanged.
 CURRENT_DATA_SOURCE_FILES = {'dataconnect/connector/artifacts.gql': '4d4da17483f84409419323b44441dfde83719c337d48386e2bc451fb7dee3040',
  'dataconnect/connector/auxiliary.gql': '859dec52ba7f4212da4728ab77634766115914a4c66d10df92d662be9c825114',
  'dataconnect/connector/checksum.gql': '4717f7368643b67d1ac4300ed3a02b1679580e7ba63cb81c6f0eb080bc271633',
@@ -62,11 +62,11 @@ CURRENT_DATA_SOURCE_FILES = {'dataconnect/connector/artifacts.gql': '4d4da17483f
  'dataconnect/connector/paging.gql': 'e1b9a90c5989cb602aaccddd2f19994b73aa0965cc5b28bea5282d59ced5b4bb',
  'dataconnect/connector/projection.gql': '03bf15ba5ed1dd79a398aeb20380853277408ae5dc2409bde1650f538277b8eb',  # pragma: allowlist secret (connector file digest)
  'dataconnect/connector/readiness.gql': 'ae5f7aedbb5c971894fd3a7e2726406bc2463b781a79d833deea5891ac56bfd9',
- 'dataconnect/connector/research_binding_v2.gql': '9fb1c7ba31f0afa1167829e062fbe1af94f3eb01fc0e862cd9bb9101140d76bc',  # pragma: allowlist secret (connector file digest)
- 'dataconnect/connector/research_derivation_work.gql': '5a793e489623562a4e23567bba2da219d412d5b61f8ba999c65a23ca4b9b9e2b',  # pragma: allowlist secret (connector file digest)
- 'dataconnect/connector/research_harness.gql': 'b165de0c1c2d942d27d89387457fb05d7b0ebe4d6877db228ed54cc29237edcc',  # pragma: allowlist secret (connector file digest)
+ 'dataconnect/connector/research_binding_v2.gql': 'd349635f46f2333b4f7260121736b2618b40e096a09413119eb1cf7fd089e89b',  # pragma: allowlist secret (connector file digest)
+ 'dataconnect/connector/research_derivation_work.gql': 'caeaa3bdfb239392ab34518c1a502edd88d863a9b077afcacb0f3f351be79569',  # pragma: allowlist secret (connector file digest)
+ 'dataconnect/connector/research_harness.gql': '080d87f0b8c31635f9255d3424f5610553571b678a6f736af924ada4a0261081',  # pragma: allowlist secret (connector file digest)
  'dataconnect/connector/research_materialization_inputs_v2.gql': '109b1db27593a9a258f699e3c1d2d62a2b6c32f0531f17d310a27808f2efe6fc',  # pragma: allowlist secret (connector file digest)
- 'dataconnect/connector/research_publication_v2.gql': 'b538d2a35460fb2f322100ff953af111dbaaf854d233b25ab44f7cf5c6439ee7',  # pragma: allowlist secret (connector file digest)
+ 'dataconnect/connector/research_publication_v2.gql': '52f222ae86d6fdd68a27cb0abc02025c6c50e11657b115e87b89c17971edc351',  # pragma: allowlist secret (connector file digest)
  'dataconnect/connector/scheduling.gql': 'c12e53ae48fa342deaa2479c4aeca0298b1caf7e2288550d81ec9796f38c51ef',
  'dataconnect/connector/search.gql': '4d344d2acfcc0566719268acff25472975c6136977aa31fde2c8ada29983d681',
  'dataconnect/connector/sensitivity.gql': '521774b8dcef9e0c0c1c43481ae19ad808aafbe08b32c3111e2287313cf1db1f',

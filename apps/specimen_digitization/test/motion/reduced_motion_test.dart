@@ -307,6 +307,7 @@ void main() {
       tester,
       (BuildContext context, bool on) => WorkbenchStatusStrip(
         specimen: record(disposition: on ? 'cleared' : 'needs_human_review'),
+        saved: on,
         blockers: const <ClearanceBlocker>[],
         pending: const <PendingFieldChange>[],
         onGoToBlocker: (ClearanceBlocker _) {},

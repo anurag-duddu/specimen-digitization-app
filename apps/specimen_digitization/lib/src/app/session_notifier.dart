@@ -18,12 +18,18 @@ class AppSessionNotifier extends ChangeNotifier {
       _changes = access.changes.listen((bool signedIn) {
         if (_disposed) return;
         final String identity = access.userId;
-        if (!signedIn || identity != _userId) {
-          pendingLocation = null;
+        if (!signedIn || identity != _userId || signedIn != _signedIn) {
+          // Initial signed-out state and identity restoration retain the public
+          // incoming link. Sign-out and an established account change clear it.
+          if (_signedIn || (_userId?.isNotEmpty ?? false)) {
+            pendingLocation = null;
+          }
           _verificationBlocked = false;
           _verificationEpoch++;
         }
-        _userId = identity;
+        // Firebase exposes an empty UID on sign-out. Retain the established
+        // identity so the next account is never treated as initial restoration.
+        if (identity.isNotEmpty) _userId = identity;
         _signedIn = signedIn;
         notifyListeners();
       });

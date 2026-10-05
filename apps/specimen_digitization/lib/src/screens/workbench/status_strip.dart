@@ -79,9 +79,9 @@ class WorkbenchStatusStrip extends StatefulWidget {
 }
 
 class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
-  /// True after a valid queue disposition changes while this record is open.
-  /// Opening a record at Cleared is not a new decision.
-  bool _settled = false;
+  /// Retains the last acknowledgement across drafts and recovery, so clearing
+  /// those controls cannot repeat the announcement or haptic for an old save.
+  (String, int, String)? _acknowledgedVersion;
 
   /// The last validated status, so a change the poll brings (processing to
   /// blocked, paused or cancelled) is heard once, like a decision is.
@@ -96,10 +96,20 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
     state: record.state,
   );
 
+  static (String, int, String) _versionOf(Specimen record) =>
+      (record.id, record.revision, record.recordVersionId);
+
+  static bool _showsSaved(WorkbenchStatusStrip strip) =>
+      strip.saved &&
+      strip.pending.isEmpty &&
+      strip.staleChanges.isEmpty &&
+      strip.reconciliationMessage == null;
+
   @override
   void initState() {
     super.initState();
     _lastStatus = _statusOf(widget.specimen);
+    if (widget.saved) _acknowledgedVersion = _versionOf(widget.specimen);
   }
 
   @override
@@ -108,33 +118,23 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
     final SpecimenStatus status = _statusOf(widget.specimen);
     if (oldWidget.specimen.id != widget.specimen.id) {
       _lastStatus = status;
-      _settled = false;
+      _acknowledgedVersion = widget.saved ? _versionOf(widget.specimen) : null;
       return;
     }
     final bool statusChanged = status != _lastStatus;
     _lastStatus = status;
-    if (!statusChanged) return;
-    if (widget.reconciliationMessage != null ||
-        widget.staleChanges.isNotEmpty) {
-      // A refreshed disposition does not prove this review save landed.
-      _settled = false;
-      _announce(status.semanticsLabel);
+    final version = _versionOf(widget.specimen);
+    final bool newAcknowledgement =
+        widget.saved && _acknowledgedVersion != version;
+    if (widget.saved) _acknowledgedVersion = version;
+    if (newAcknowledgement && _showsSaved(widget)) {
+      // Only the parent's acknowledged save can confirm a decision. Polling
+      // a run into the queue is a status update, even when it is now cleared.
+      _announce('Saved. ${status.semanticsLabel}');
+      SpecimenHaptics.decisionLanded();
       return;
     }
-    if (!status.isQueue) {
-      // A run update or invalid disposition is not a saved review decision.
-      // Clear a previous decision acknowledgment and announce this state once.
-      _settled = false;
-      _announce(status.semanticsLabel);
-      return;
-    }
-    _settled = true;
-    // Three channels, because motion is never the only one: the saved check,
-    // this announcement, and one medium impact on the two platforms that have
-    // haptics. The reviewer is looking at the screen, so the haptic is
-    // redundancy rather than the message.
-    _announce('Saved. ${status.semanticsLabel}');
-    SpecimenHaptics.decisionLanded();
+    if (statusChanged) _announce(status.semanticsLabel);
   }
 
   void _announce(String spoken) {
@@ -226,10 +226,7 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
             ),
           ),
         UiStatusStrip(
-          disposition:
-              widget.reconciliationMessage == null &&
-                  widget.staleChanges.isEmpty &&
-                  (widget.saved || _settled)
+          disposition: _showsSaved(widget)
               ? Row(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[

@@ -109,10 +109,12 @@ query GetCanonicalResearchBindingV2($organizationId: UUID!, $collectionId: UUID!
 # Every other overwrite is refused, including a current binding that has published.
 # The worker actor may be an operator, reviewer, manager or admin. No latest
 # selection or caller budget.
+# The membership response dependency keeps the checked read and native DML in
+# separate planner steps; independent roots can otherwise be combined as SELECT.
 mutation RegisterCanonicalResearchBindingV2($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $registrationJson: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role canViewSensitive }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && response.query.organizationMember.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role canViewSensitive }
   }
   registered: _execute(sql: """
     WITH args AS (SELECT $5::jsonb AS r), admitted AS (
