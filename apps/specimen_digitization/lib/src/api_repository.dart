@@ -1374,7 +1374,7 @@ class ApiSpecimenRepository
     if (entryKeys.toSet().length != entryKeys.length ||
         entryKeys.any((key) => key.isEmpty || key.length > 200)) {
       throw const ApiFailure(
-        'Every pending decision needs its own stable save key.',
+        'These pending decisions could not be safely submitted. Refresh the record and try again.',
         code: 'invalid_review_batch',
       );
     }
@@ -1432,7 +1432,7 @@ class ApiSpecimenRepository
       saved: 0,
       specimen: specimen,
       cause: const ApiFailure(
-        'The batch answer could not confirm which decisions were saved. Retry with the same keys.',
+        'The server could not confirm which decisions were saved. Refresh and compare, or try saving these choices again.',
         code: 'invalid_batch_ack',
       ),
       retainKeys: true,
