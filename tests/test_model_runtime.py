@@ -111,9 +111,9 @@ def local_model_factory(payload):
                         "candidates": [
                             {
                                 "field_key": "country",
-                                "region_id": payload["transcripts"][0]["region_id"],
+                                "reading": "1A",
                                 "literal": "United States",
-                                "source_excerpt": "United States",
+                                "source_excerpt": "country: United States",
                             }
                         ],
                         "unresolved": [],
@@ -215,9 +215,14 @@ def test_hard_model_factories_independent_observations_extraction_and_restart(
                 json.loads(blobs.get(observation["raw_ref"]))[-1]["model_name"]
                 == "synthetic-model-runtime"
             )
-        assert any(
-            e["source"] == "bounded_extraction_v1" for e in work["run"]["evidence"]
+        extracted = next(
+            e
+            for e in work["run"]["evidence"]
+            if e["source"] == "bounded_extraction_v1"
         )
+        assert extracted["excerpt"] == "country: United States"
+        assert extracted["locator"].startswith("reading:1A:")
+        assert extracted["observation_ids"][0] in {o["id"] for o in observations}
     with TestClient(make_app()) as restarted:
         after = restarted.get(path, headers=HEADERS).json()
         assert after["run"] == work["run"]
