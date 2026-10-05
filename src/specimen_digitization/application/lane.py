@@ -110,6 +110,8 @@ def queue(specimen: Specimen, registry, actor: str) -> None:
     limits["program_ledger_collection"] = ledger
     # The prices the run's calls are costed at (T2c), cleared when there are none.
     limits["price_list"] = policy.price_list and policy.price_list.model_dump(mode="json")
+    # A new run may inherit an archived run's Profile. Keep that policy frozen.
+    run.profile = run.profile.model_copy(deep=True)
     run.profile.execution = run.profile.execution.model_copy(
         update={
             "approved_cost_limit_micros": policy.run_cost_limit_micros,
