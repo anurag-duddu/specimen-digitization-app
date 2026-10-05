@@ -260,6 +260,139 @@ def test_a_retry_after_a_lost_registration_replays_one_job_and_one_binding_id(ri
     assert registration.binding_id == provisioning.binding_id_for(scope)
 
 
+def test_an_ordinary_retry_after_registration_refusal_keeps_the_old_job_and_allowance(rig, tmp_path):
+    """Real API, hold and persisted jobs; native reads/registration/effects stay offline."""
+    from time import monotonic
+
+    from fastapi.testclient import TestClient
+
+    from specimen_digitization.application.api import create_app
+    from specimen_digitization.application.lane import queue
+    from specimen_digitization.application.lane_dispatch import DispatchOutcome
+    from specimen_digitization.application.lane_worker import DrainWorker
+    from specimen_digitization.application.storage import LocalBlobs, SQLiteRepository
+    from specimen_digitization.application.worker_deadline import WorkerDeadline
+    from specimen_digitization.application.workflow import OperationalBlock, SyntheticAdapters
+    from specimen_digitization.research_harness.workflow_bridge import NativeResearchWorkflow
+
+    profiles = published_registry({COLLECTION: "insects"})
+    queue(rig.specimen, profiles, WORKER)
+    run = rig.specimen.run
+    run.stage = "plan"
+    run.completed_steps = ["pin_dependencies", "classify", "quality_check", "segment",
+        *(f"transcribe:{region.id}:{route}" for region in run.regions for route in run.profile.routes),
+        "adjudicate", "parse"]
+    run.usage.reserved_cost_micros = 583_219
+    run.paid_calls = [{"step": "first_pass", "attempt": 1, "outcome": "unknown",
+        "reserved_micros": 318_670, "cost_micros": None}]
+    assert Workflow.next_step(run) == "plan"
+    canonical = SQLiteRepository(tmp_path / "canonical.sqlite")
+    original = canonical.create(rig.principal, rig.specimen, "parsed", "parsed")
+    rig.specimen = rig.repository.specimen = original
+    original_run = original.run.model_dump(mode="json")
+    old_scope = job_scope(rig)
+    program_key = research_program_key(original.run.id)
+    store = ResearchStore(rig.backend, program_key)
+    session = ConnectorSession(REGISTRATION_REFUSALS["row_checks"])
+    rig.repository.session, rig.repository.url = session, CONNECTOR_URL
+    refuse_registration = True
+
+    async def provision(principal, specimen):
+        rig.repository.specimen = specimen
+        kwargs = {} if refuse_registration else {"writer_factory": rig.writer}
+        await provisioning.provision(rig.repository, principal, specimen,
+            state_backend=rig.backend, **kwargs)
+
+    class Native:
+        def __init__(self):
+            self.calls = []
+
+        async def run_registered(self, principal, specimen_id, *, owner):
+            self.calls.append(specimen_id)
+            return SimpleNamespace(status="completed")
+
+    native = Native()
+    workflow = NativeResearchWorkflow(SimpleNamespace(repository=canonical, next_step=Workflow.next_step),
+        native, provision=provision)
+    with WorkerDeadline(monotonic() + 60).scope():
+        with pytest.raises(OperationalBlock, match="^research_provision_registration_refused$"):
+            workflow.step(rig.principal, original.id)
+    assert session.posts == [("GetCanonicalResearchBindingV2", "impersonateQuery"),
+        ("RegisterCanonicalResearchBindingV2", "impersonateMutation")]
+    refused_state = copy.deepcopy(store._read(old_scope).state)
+    refused_job = copy.deepcopy(store.job(old_scope))
+    assert refused_job["record_revision"] == original.version
+    assert refused_job["pins"]["input_digest"] == canonical_digest(original.model_dump(mode="json"))
+    assert refused_job["lease"] is None and native.calls == []
+
+    DrainWorker(canonical, workflow, WORKER, lambda uid: [], execution_id="offline-hold")._block(
+        rig.principal, original.id, "research_provision_registration_refused", hold=True)
+    held = canonical.get(original.scope, original.id)
+    assert held.version == original.version + 1
+    assert held.run.stage == "processing_blocked"
+    assert held.audit[-1].action == "lane_block"
+    assert store._read(old_scope).state == refused_state
+
+    class Dispatcher:
+        calls = 0
+
+        def start(self):
+            self.calls += 1
+            return DispatchOutcome(status="requested")
+
+    dispatcher = Dispatcher()
+    blobs = LocalBlobs(tmp_path / "blobs")
+    reviewer = "offline-reviewer"
+    app = create_app(mode="emulator", repository=canonical, blobs=blobs,
+        adapters=SyntheticAdapters(blobs, "country: Kenya"),
+        identity_verifier=lambda token, check: reviewer,
+        memberships=lambda uid: [{"organization_id": ORG, "collection_id": COLLECTION,
+            "role": "reviewer", "can_view_sensitive": False}],
+        profile_registry=profiles, worker_dispatcher=dispatcher)
+    response = TestClient(app, raise_server_exceptions=False).post(
+        f"/v1/organizations/{ORG}/runs/{original.run.id}/actions",
+        headers={"Authorization": "Bearer offline-token", "Idempotency-Key": "registration-retry"},
+        json={"expected_revision": held.version, "action": "retry", "reason": "Retry after connector repair"})
+    assert response.status_code == 200, response.text
+    retried = canonical.get(original.scope, original.id)
+    assert retried.version == original.version + 2
+    assert (retried.run.id, retried.run.stage, retried.run.blocker) == (original.run.id, "pending", None)
+    assert (retried.audit[-1].action, retried.audit[-1].actor, retried.audit[-1].reason) == (
+        "retry", reviewer, "Retry after connector repair")
+    assert dispatcher.calls == 1 and Workflow.next_step(retried.run) == "plan"
+    unchanged = set(original_run) - {"stage", "blocker", "queued_at", "next_retry_at"}
+    assert {key: retried.run.model_dump(mode="json")[key] for key in unchanged} == {
+        key: original_run[key] for key in unchanged}
+    assert canonical.version(original.scope, original.id, original.version).run.model_dump(
+        mode="json") == original_run
+    assert store._read(old_scope).state == refused_state
+
+    refuse_registration = False
+    with WorkerDeadline(monotonic() + 60).scope():
+        workflow.step(rig.principal, original.id)
+    new_scope = job_scope(rig, retried)
+    [(registration, registered_program, registered_scope)] = rig.writer.registered
+    assert native.calls == [original.id]
+    assert registered_program == program_key and registered_scope == new_scope
+    assert new_scope.key != old_scope.key and registration.binding_id != provisioning.binding_id_for(old_scope)
+    assert registration.input_digest == canonical_digest(retried.model_dump(mode="json"))
+    assert registration.current_canonical.record_revision == retried.version
+    assert store.job(old_scope) == refused_job
+    new_job = store.job(new_scope)
+    assert new_job["record_revision"] == retried.version
+    assert new_job["pins"]["input_digest"] == registration.input_digest != refused_job["pins"]["input_digest"]
+    assert {key: value for key, value in new_job["pins"].items() if key != "input_digest"} == {
+        key: value for key, value in refused_job["pins"].items() if key != "input_digest"}
+    state = store._read(new_scope).state
+    assert set(state["jobs"]) == {old_scope.key, new_scope.key}
+    assert {key: state[key] for key in state if key != "jobs"} == {
+        key: refused_state[key] for key in refused_state if key != "jobs"}
+    assert state["budget_policy"]["ceiling_micro_usd"] == 1_000_000
+    assert state["budget_totals"]["settled_micro_usd"] == 583_219
+    assert state["budget_totals"]["remaining_micro_usd"] == 416_781
+    assert canonical.get(original.scope, original.id).model_dump(mode="json") == retried.model_dump(mode="json")
+
+
 def test_a_refused_base_record_holds_before_any_state(rig):
     rig.repository.refuse = "AppendRecordVersionV2"
     with pytest.raises(HeldUnknown, match="research_base_record_unavailable"):
@@ -329,6 +462,25 @@ def test_a_run_that_cannot_be_researched_is_refused_before_any_write(rig, change
     with pytest.raises(StaleWork, match="research_provision_run_unavailable"):
         rig.provision(specimen)
     assert rig.repository.inserts == [] and rig.writer.registered == []
+
+
+@pytest.mark.parametrize("incomplete", ["pin_dependencies", "classify", "quality_check", "segment",
+    "reader", "adjudicate", "parse", "past_plan"])
+def test_a_pending_run_outside_the_plan_boundary_is_refused_before_any_write(rig, incomplete):
+    run = rig.specimen.run
+    run.stage = "pending"
+    readers = [f"transcribe:{region.id}:{route}" for region in run.regions for route in run.profile.routes]
+    run.completed_steps = ["pin_dependencies", "classify", "quality_check", "segment",
+        *readers, "adjudicate", "parse"]
+    if incomplete == "past_plan":
+        run.completed_steps.append("plan")
+    else:
+        run.completed_steps.remove(readers[-1] if incomplete == "reader" else incomplete)
+    assert Workflow.next_step(run) != "plan"
+    with pytest.raises(StaleWork, match="^research_provision_run_unavailable$"):
+        rig.provision()
+    assert rig.repository.inserts == [] and rig.writer.registered == []
+    assert rig.backend.load(job_scope(rig), research_program_key(run.id)) is None
 
 
 def test_only_the_worker_actor_with_fresh_membership_provisions(rig):
