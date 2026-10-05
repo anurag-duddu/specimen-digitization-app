@@ -19,7 +19,11 @@ class AppSessionNotifier extends ChangeNotifier {
         if (_disposed) return;
         final String identity = access.userId;
         if (!signedIn || identity != _userId) {
-          pendingLocation = null;
+          // Initial signed-out state and identity restoration retain the public
+          // incoming link. Sign-out and an established account change clear it.
+          if (_signedIn || (_userId?.isNotEmpty ?? false)) {
+            pendingLocation = null;
+          }
           _verificationBlocked = false;
           _verificationEpoch++;
         }

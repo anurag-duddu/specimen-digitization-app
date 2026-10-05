@@ -70,6 +70,34 @@ abstract final class AppRoutes {
     return segments[1];
   }
 
+  /// Restores only the collection routes decoded by Flutter web history.
+  /// The normal redirect still checks membership for the restored scope.
+  static Uri? restoreWebHistory(Uri location) {
+    final segments = location.pathSegments;
+    if (segments.length < 4 || segments.first != 'c') return null;
+    if (segments[1].isEmpty ||
+        segments[2].isEmpty ||
+        segments[1].contains('/') ||
+        segments[2].contains('/')) {
+      return null;
+    }
+    final tail = segments.sublist(3);
+    final queue =
+        tail.first == 'queue' &&
+        (tail.length == 1 || (tail.length == 2 && tail.last.isNotEmpty));
+    final intake =
+        tail.first == 'intake' &&
+        (tail.length == 1 ||
+            (tail.length == 2 && tail[1] == 'sources') ||
+            (tail.length == 3 && tail[1] == 'sources' && tail.last.isNotEmpty));
+    if (!queue && !intake) return null;
+    return location.replace(
+      path:
+          '/c/${Uri.encodeComponent('${segments[1]}/${segments[2]}')}/'
+          '${tail.map(Uri.encodeComponent).join('/')}',
+    );
+  }
+
   /// True when [location] is one of the screens shown before a collection.
   static bool isEntryLocation(String location) =>
       location == signIn || location == verify || location == setup;

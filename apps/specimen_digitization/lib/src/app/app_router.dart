@@ -52,6 +52,10 @@ GoRouter buildAppRouter({
       : (controller?.environment ?? EnvironmentBanner.production);
 
   String? redirect(BuildContext context, GoRouterState state) {
+    // Flutter 3.38 web history decodes an encoded slash in the scope key.
+    // Restore its route spelling before the ordinary session/access checks.
+    final restored = AppRoutes.restoreWebHistory(state.uri);
+    if (restored != null) return restored.toString();
     final String location = state.uri.path;
     final bool entry = AppRoutes.isEntryLocation(location);
 
@@ -102,12 +106,16 @@ GoRouter buildAppRouter({
     // A route that belongs to no collection is not a route with a missing
     // collection. Help opens over whatever the reviewer had open and closes
     // back to it.
-    if (AppRoutes.isGlobalLocation(location)) return null;
+    if (AppRoutes.isGlobalLocation(location)) {
+      sessionNotifier.pendingLocation = null;
+      return null;
+    }
 
     final String home = AppRoutes.queueOf(controller.defaultRouteKey!);
     if (entry || location == '/') {
       final String? pending = sessionNotifier.pendingLocation;
-      sessionNotifier.pendingLocation = null;
+      // Scope loading can start overlapping redirects from the entry screen.
+      // Keep the incoming link until navigation leaves that authorized target.
       return pending ?? home;
     }
 
@@ -117,6 +125,9 @@ GoRouter buildAppRouter({
     final bool known = controller.scopes.any(
       (CollectionScope scope) => scope.key == key,
     );
+    if (known && state.uri.toString() != sessionNotifier.pendingLocation) {
+      sessionNotifier.pendingLocation = null;
+    }
     return known ? null : home;
   }
 
