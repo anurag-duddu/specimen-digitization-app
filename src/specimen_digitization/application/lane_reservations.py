@@ -30,6 +30,13 @@ LATER_FRAMING_TOKENS = 256
 PROMPT_FRAMING_TOKENS = 512
 # An image's delimiters and a tiny crop's upscaling.
 IMAGE_SLACK_TOKENS = 256
+# Match the deployed SAM profile: 600s startup at boosted 8 vCPU, 300s
+# request, 10s boosted post-start and 10s shutdown. Idle warming belongs to
+# the cumulative infrastructure budget. Request seconds never refund startup.
+SAM_STARTUP_SECONDS = 600
+SAM_REQUEST_SECONDS = 300
+SAM_BOOST_SECONDS = 10
+SAM_SHUTDOWN_SECONDS = 10
 
 
 def image_tokens(rule: dict, width: int, height: int) -> int:
@@ -126,6 +133,16 @@ def step_reservation(run, step: str):
         if policy.stage_cost_reservations is not None
         else policy.request_cost_reservation_micros
     )
+    if floor and step == "segment" and policy.price_list is not None:
+        from .lane_costs import segmentation_cost
+        service = policy.price_list.get("segmentation")
+        if not service:
+            return None
+        base = segmentation_cost(policy.price_list,
+            SAM_STARTUP_SECONDS + SAM_REQUEST_SECONDS + SAM_SHUTDOWN_SECONDS)
+        boost = ceil((SAM_STARTUP_SECONDS + SAM_BOOST_SECONDS) * service["vcpus"]
+            * service["vcpu_micros_per_million_seconds"] / MILLION)
+        return max(floor, base + boost)
     if floor and step.startswith("transcribe:"):
         return reading_reservation(run, step, floor)
     if floor and step.startswith("first_pass:"):
@@ -134,7 +151,17 @@ def step_reservation(run, step: str):
         if not price or not price.get("context_tokens"):
             return None  # No qualified numeric route price: refuse before call.
         # Each request at its input bound (first_pass.InputBoundModel enforces it).
-        return max(floor, call_micros(price, None))
+        # The byte/image guard bounds payload size, but is not the provider's
+        # tokenizer. Reserve the whole route context, including both requests.
+        return max(floor, call_micros({**price, "max_input_tokens": None}, None))
+    if floor and step == "parse" and policy.price_list is not None:
+        # extract_with_agent uses the first reader route and permits two model
+        # requests. The stage's historical USD .02 floor was not a bound.
+        route = run.profile.routes[0] if run.profile.routes else None
+        price = policy.price_list.get("models", {}).get(route)
+        if not price or not price.get("context_tokens"):
+            return None
+        return max(floor, call_micros({**price, "max_input_tokens": None}, None))
     return floor
 
 

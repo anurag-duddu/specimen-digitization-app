@@ -12,8 +12,10 @@ import copy
 import hashlib
 import json
 import os
+import random
 import re
 import sqlite3
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +24,11 @@ from uuid import uuid4
 
 CONTRACT_VERSION = "research-durability/v1"
 MAX_STATE_BYTES = 900_000
+# One lease covers a complete role window and its publication. Renewing the
+# lease during a window would invalidate the publication's exact lease match.
+MAX_LEASE_TTL_SECONDS = 900
+CAS_PAUSE_FIRST_SECONDS = 0.01
+CAS_PAUSE_MAX_SECONDS = 0.5
 
 
 def canonical(value: Any) -> bytes:
@@ -184,7 +191,7 @@ class StateDocument:
 class StateBackend(Protocol):
     def load(self, scope: DurabilityScope, program_key: str) -> StateDocument | None: ...
     def create(self, scope: DurabilityScope, program_key: str, state: dict[str, Any]) -> None: ...
-    def cas(self, scope: DurabilityScope, program_key: str, revision: int, state: dict[str, Any], *, valid_until: float | None = None, review_required: bool = False) -> None: ...
+    def cas(self, scope: DurabilityScope, program_key: str, revision: int, state: dict[str, Any], *, valid_until: float | None = None, review_required: bool = False, send_authorization: dict | None = None) -> None: ...
 
 
 class SqliteStateBackend:
@@ -244,7 +251,9 @@ class SqliteStateBackend:
             except sqlite3.IntegrityError as exc:
                 raise CasConflict("Program already initialized") from exc
 
-    def cas(self, scope: DurabilityScope, program_key: str, revision: int, state: dict[str, Any], *, valid_until: float | None = None, review_required: bool = False) -> None:
+    def cas(self, scope: DurabilityScope, program_key: str, revision: int, state: dict[str, Any], *, valid_until: float | None = None, review_required: bool = False, send_authorization: dict | None = None) -> None:
+        if send_authorization is not None:
+            raise PermissionError("Canonical dispatch authorization requires native SQL Connect")
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             self._authorize(db, scope)
@@ -296,8 +305,10 @@ class SqlConnectStateBackend:
                 raise CasConflict("Program exists after create") from exc
             raise
 
-    def cas(self, scope: DurabilityScope, program_key: str, revision: int, state: dict[str, Any], *, valid_until: float | None = None, review_required: bool = False) -> None:
+    def cas(self, scope: DurabilityScope, program_key: str, revision: int, state: dict[str, Any], *, valid_until: float | None = None, review_required: bool = False, send_authorization: dict | None = None) -> None:
         variables = dict(self._variables(scope, program_key), expectedRevision=revision, state=state, stateJson=canonical(state).decode(), reviewRequired=review_required, validUntil=datetime.fromtimestamp(valid_until, timezone.utc).isoformat() if valid_until is not None else None)
+        if send_authorization is not None:
+            variables["sendAuthorizationJson"] = canonical(send_authorization).decode()
         try:
             self.repository.execute("CompareResearchHarnessStateV1", variables, mutation=True)
         except Exception as exc:
@@ -345,14 +356,72 @@ class ResearchStore:
         except CasConflict:
             self.initialize(scope, policy)
 
+    def reconcile_ordinary_spend(self, scope: DurabilityScope, cumulative_micros: int) -> None:
+        """Carry later ordinary calls without changing the immutable policy seed.
+
+        Reviewer corrections may repeat a paid parse. A high-water mark makes
+        replay idempotent and never releases a prior known or unknown liability.
+        """
+        if type(cumulative_micros) is not int or cumulative_micros < 0:
+            raise ValueError("Ordinary liability must be nonnegative integer microUSD")
+
+        def reduce(state, _):
+            seed = state["budget_policy"]["external_settled_micro_usd"]
+            state["ordinary_cost_micros"] = max(seed, state.get("ordinary_cost_micros", seed), cumulative_micros)
+        self._mutate(scope, reduce)
+
+    def reserve_ordinary(self, scope: DurabilityScope, key: str, micros: int, cumulative_micros: int) -> None:
+        """CAS one ordinary pre-send liability against the research run's cap.
+
+        Failed canonical saves keep their reservations; only an identical
+        step/attempt replays without adding another hold. Research reserves use
+        this same document and therefore cannot race past the per-run ceiling.
+        """
+        if (type(key) is not str or not key or type(micros) is not int or micros <= 0
+            or type(cumulative_micros) is not int or cumulative_micros < 0):
+            raise ValueError("Invalid ordinary reservation")
+        def reduce(state, _):
+            reservations = state.setdefault("ordinary_reservations", {})
+            if key in reservations:
+                if reservations[key]["reserved_micros"] != micros:
+                    raise HeldUnknown("ordinary_reservation_changed")
+                return
+            seed = state["budget_policy"]["external_settled_micro_usd"]
+            state["ordinary_cost_micros"] = max(seed, state.get("ordinary_cost_micros", seed), cumulative_micros)
+            if state["halted"] or micros > self._budget(state)["remaining_micro_usd"]:
+                raise BudgetExceeded("run_cost_allowance_exhausted")
+            state["ordinary_cost_micros"] += micros
+            reservations[key] = {"reserved_micros": micros, "settled_micros": None}
+        self._mutate(scope, reduce)
+
+    def settle_ordinary(self, scope: DurabilityScope, key: str, micros: int) -> None:
+        """Release only one ordinary attempt's known unused reservation."""
+        if type(micros) is not int or micros < 0:
+            raise ValueError("Invalid ordinary settlement")
+        def reduce(state, _):
+            entry = state.get("ordinary_reservations", {}).get(key)
+            if entry is None:
+                return  # Historical calls remain in the immutable original seed.
+            if entry["settled_micros"] is not None:
+                if entry["settled_micros"] != micros:
+                    raise HeldUnknown("ordinary_settlement_changed")
+                return
+            seed = state["budget_policy"]["external_settled_micro_usd"]
+            state["ordinary_cost_micros"] = max(seed,
+                state["ordinary_cost_micros"] - entry["reserved_micros"] + micros)
+            entry["settled_micros"] = micros
+            if micros > entry["reserved_micros"]:
+                state["halted"] = True  # Keep a provider-contract anomaly in full.
+        self._mutate(scope, reduce)
+
     def _read(self, scope: DurabilityScope) -> StateDocument:
         doc = self.backend.load(scope, self.program_key)
         if doc is None or doc.state.get("contract_version") != CONTRACT_VERSION:
             raise ValueError("Missing or unsupported research state")
         return doc
 
-    def _mutate(self, scope: DurabilityScope, reducer: Callable[[dict[str, Any], float], Any], *, lease: Lease | None = None, review_required: bool = False, force_cas: bool = False) -> Any:
-        for _ in range(self.max_cas_retries):
+    def _mutate(self, scope: DurabilityScope, reducer: Callable[[dict[str, Any], float], Any], *, lease: Lease | None = None, review_required: bool = False, force_cas: bool = False, send_authorization: dict | None = None) -> Any:
+        for attempt in range(self.max_cas_retries):
             doc = self._read(scope)
             state = copy.deepcopy(doc.state)
             result = reducer(state, doc.server_time)
@@ -362,9 +431,12 @@ class ResearchStore:
             if len(canonical(state)) > MAX_STATE_BYTES:
                 raise ValueError("Bounded research aggregate is full; no dispatch authorized")
             try:
-                self.backend.cas(scope, self.program_key, doc.revision, state, valid_until=lease.expires_at if lease else None, review_required=review_required)
+                self.backend.cas(scope, self.program_key, doc.revision, state, valid_until=lease.expires_at if lease else None, review_required=review_required,
+                    **({"send_authorization": send_authorization} if send_authorization is not None else {}))
                 return result
             except CasConflict:
+                if attempt + 1 < self.max_cas_retries:
+                    time.sleep(random.uniform(0, min(CAS_PAUSE_MAX_SECONDS, CAS_PAUSE_FIRST_SECONDS * 2 ** attempt)))
                 continue
         raise CasConflict("Bounded SQL rebase limit exceeded")
 
@@ -386,22 +458,28 @@ class ResearchStore:
             raise StaleWork("Current active generation and lease fence required")
         return job
 
-    def create_job(self, scope: DurabilityScope, pins: PinnedRuntime, field_keys: list[str], *, dependencies: Mapping[str, int] | None = None, record_revision: int = 0) -> dict[str, Any]:
+    def create_job(self, scope: DurabilityScope, pins: PinnedRuntime, field_keys: list[str], *, dependencies: Mapping[str, int] | None = None, record_revision: int = 0, human_locks: Mapping[str, str] | None = None) -> dict[str, Any]:
+        human_locks = dict(human_locks or {})
+        if not set(human_locks) <= set(field_keys) or any(
+                type(proof) is not str or len(proof) != 64 for proof in human_locks.values()):
+            raise ValueError("Human locks require verified field provenance")
         if scope.generation < 1 or not field_keys or len(set(field_keys)) != len(field_keys):
             raise ValueError("A job requires a positive generation and distinct field keys")
         payload = pins.payload()
         def reduce(state, _):
             if scope.key in state["jobs"]:
                 job = self._job(state, scope)
-                if job["pins"] != payload or set(job["fields"]) != set(field_keys):
+                if (job["pins"] != payload or set(job["fields"]) != set(field_keys)
+                    or job.get("human_lock_proofs", {}) != human_locks):
                     raise ValueError("Runtime bindings are immutable for this generation")
                 return copy.deepcopy(job)
             job = {"identity": {k: v for k, v in scope.identity().items() if k != "generation"},
                    "generation": scope.generation, "sensitive": scope.sensitive, "pins": payload,
                    "binding_digest": digest(payload), "fence": 0, "lease": None, "paused": False,
                    "record_revision": record_revision, "dependencies": dict(dependencies or {}),
-                   "trace_context": None,
-                   "fields": {k: {"revision": 0, "locked": False, "checkpoint": None, "work_state": "pending", "reuse": None} for k in field_keys},
+                   "trace_context": None, "human_lock_proofs": human_locks,
+                   "fields": {k: {"revision": 0, "locked": k in human_locks, "checkpoint": None,
+                       "work_state": "waiting_human" if k in human_locks else "pending", "reuse": None} for k in field_keys},
                    "checkpoints": [], "history": []}
             state["jobs"][scope.key] = job
             return copy.deepcopy(job)
@@ -411,8 +489,8 @@ class ResearchStore:
         return copy.deepcopy(self._job(self._read(scope).state, scope))
 
     def claim(self, scope: DurabilityScope, owner: str, *, ttl_seconds: int = 60) -> Lease:
-        if not owner or not 1 <= ttl_seconds <= 300:
-            raise ValueError("Lease TTL must be 1..300 seconds")
+        if not owner or not 1 <= ttl_seconds <= MAX_LEASE_TTL_SECONDS:
+            raise ValueError(f"Lease TTL must be 1..{MAX_LEASE_TTL_SECONDS} seconds")
         def reduce(state, now):
             job = self._job(state, scope)
             if job["paused"] or (job["lease"] and job["lease"]["expires_at"] > now):
@@ -423,21 +501,32 @@ class ResearchStore:
             return lease
         return self._mutate(scope, reduce)
 
-    def release(self, scope: DurabilityScope, lease: Lease) -> None:
-        """Release only this known completed step; uncertain effects retain custody."""
+    def release(self, scope: DurabilityScope, lease: Lease, *, blocked: bool = False) -> None:
+        """Release only this known completed step; uncertain effects retain custody.
+
+        ``blocked`` is a window that ended blocked (its publication pass refused or could not
+        verify something). It is released too, but custody is kept as well while an effect is only
+        reserved (not yet proven unsent or sent) and while a publication was prepared and not
+        delivered: its outcome is in doubt (its attempt may be marked at the connector, and the next
+        step must reconcile it), so no one else may step in under a fresh lease."""
         def reduce(state, now):
             job = self._lease(state, scope, lease, now)
+            uncertain = {"sending", "held_unknown", "reserved"} if blocked else {"sending", "held_unknown"}
             if any(effect["job_key"] == scope.key and effect["scope"] == scope.identity()
-                and (effect["status"] in {"sending", "held_unknown"}
+                and (effect["status"] in uncertain
                     or effect.get("receipt") is not None and effect["actual_micro_usd"] is None)
                 for effect in state["effects"].values()):
                 raise HeldUnknown("Uncertain effect retains its lease custody")
+            if blocked and any(item.get("kind") == "canonical_publication_required"
+                and item.get("delivered") is False and item.get("guard", {}).get("scope") == scope.identity()
+                for item in state["outbox"].values()):
+                raise HeldUnknown("A publication in doubt retains its lease custody")
             job["lease"] = None
         self._mutate(scope, reduce, lease=lease)
 
     def heartbeat(self, scope: DurabilityScope, lease: Lease, *, ttl_seconds: int = 60) -> Lease:
-        if not 1 <= ttl_seconds <= 300:
-            raise ValueError("Lease TTL must be 1..300 seconds")
+        if not 1 <= ttl_seconds <= MAX_LEASE_TTL_SECONDS:
+            raise ValueError(f"Lease TTL must be 1..{MAX_LEASE_TTL_SECONDS} seconds")
         def reduce(state, now):
             job = self._lease(state, scope, lease, now)
             renewed = Lease(lease.job_key, lease.owner, lease.fence, lease.generation, now + ttl_seconds)
@@ -459,8 +548,15 @@ class ResearchStore:
     @staticmethod
     def _budget(state: dict[str, Any]) -> dict[str, Any]:
         policy = state["budget_policy"]
+        values = [policy["ceiling_micro_usd"], policy["external_held_micro_usd"],
+            policy["external_settled_micro_usd"], state.get("ordinary_cost_micros", 0)]
+        for effect in state["effects"].values():
+            values.extend([effect["held_micro_usd"],
+                0 if effect.get("actual_micro_usd") is None else effect["actual_micro_usd"]])
+        if any(type(value) is not int or value < 0 for value in values):
+            raise HeldUnknown("research_budget_state_unavailable")
         held = policy["external_held_micro_usd"]
-        settled = policy["external_settled_micro_usd"]
+        settled = max(policy["external_settled_micro_usd"], state.get("ordinary_cost_micros", 0))
         for effect in state["effects"].values():
             held += effect["held_micro_usd"]
             settled += effect.get("actual_micro_usd") or 0
@@ -529,7 +625,7 @@ class ResearchStore:
     def effect(self, scope: DurabilityScope, effect_id: str) -> dict[str, Any]:
         return copy.deepcopy(self._effect(self._read(scope).state, scope, effect_id))
 
-    def mark_sending(self, scope: DurabilityScope, lease: Lease, effect_id: str) -> dict[str, Any]:
+    def mark_sending(self, scope: DurabilityScope, lease: Lease, effect_id: str, *, send_authorization: dict | None = None) -> dict[str, Any]:
         attempt_id = str(uuid4())
         def reduce(state, now):
             job = self._lease(state, scope, lease, now)
@@ -546,7 +642,7 @@ class ResearchStore:
             effect["attempts"].append(attempt)
             effect["status"] = "sending"
             return copy.deepcopy(attempt)
-        return self._mutate(scope, reduce, lease=lease)
+        return self._mutate(scope, reduce, lease=lease, send_authorization=send_authorization)
 
     def validate_dispatch(self, scope: DurabilityScope, lease: Lease, effect_id: str, attempt_id: str) -> None:
         doc = self._read(scope)
@@ -1205,6 +1301,12 @@ class DurableEffectBroker:
     def __init__(self, store: ResearchStore, blobs: ImmutableBlobs):
         self.store, self.blobs = store, blobs
 
+    async def before_send(self, scope: DurabilityScope, intent: dict) -> None:
+        """An optional shared program reservation, before a send is marked."""
+
+    def send_authorization(self, execution_class):
+        return None
+
     @staticmethod
     def envelope(scope: DurabilityScope, intent: dict[str, Any], attempt: dict[str, Any], result: CapturedResult, *, raw_capture: BlobRef | None = None) -> bytes:
         payload = asdict(result)
@@ -1249,7 +1351,10 @@ class DurableEffectBroker:
             # response. Both already retain the reservation and forbid reissue;
             # only the sending attempt may record its interruption below.
             raise HeldUnknown("Unknown sent effect retains its reservation; no automatic retry")
-        attempt = await asyncio.to_thread(self.store.mark_sending, scope, lease, intent["effect_id"])
+        await self.before_send(scope, intent)
+        authorization = self.send_authorization(execution_class)
+        attempt = await asyncio.to_thread(self.store.mark_sending, scope, lease, intent["effect_id"],
+            **({"send_authorization": authorization} if authorization is not None else {}))
         try:
             await asyncio.to_thread(self.store.validate_dispatch, scope, lease, intent["effect_id"], attempt["attempt_id"])
             result = await dispatch(attempt["attempt_id"], attempt["provider_idempotency_key"])

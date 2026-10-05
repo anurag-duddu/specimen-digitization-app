@@ -4,7 +4,8 @@
 set -euo pipefail
 
 role="${1:-}"
-[[ "$role" == "api" ]] || { printf 'Expected the api image role.\n' >&2; exit 1; }
+[[ "$role" == "api" || "$role" == "worker" || "$role" == "sam" ]] \
+  || { printf 'Expected api, worker or sam image role.\n' >&2; exit 1; }
 : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required}"
 [[ "${GITHUB_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || { printf 'Invalid source SHA.\n' >&2; exit 1; }
 [[ "${GITHUB_RUN_ID:-}" =~ ^[1-9][0-9]*$ && "${GITHUB_RUN_ATTEMPT:-}" =~ ^[1-9][0-9]*$ ]] \
@@ -33,7 +34,7 @@ reference=""
 while IFS= read -r digest; do
   if [[ "$digest" == "$image@sha256:"* ]]; then reference="$digest"; fi
 done <<< "$digests"
-[[ "$reference" =~ /api@sha256:[0-9a-f]{64}$ ]] \
+[[ "$reference" =~ /$role@sha256:[0-9a-f]{64}$ ]] \
   || { printf 'The registry reported no digest for %s.\n' "$tag" >&2; exit 1; }
 
 printf 'image=%s\n' "$reference" >> "$GITHUB_OUTPUT"

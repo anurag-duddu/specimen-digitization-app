@@ -946,10 +946,11 @@ The workflow has three jobs.
    reads.
 2. **`build`** runs in parallel with `data`, in the `runtime-build-production`
    environment, as `specimen-runtime-build`.
-   `scripts/ci/build_runtime_image.sh api` builds the API image from the
-   committed files of the merged commit and checks it offline.
-   `scripts/release/push_image.sh api` pushes it to
-   `us-east4-docker.pkg.dev/specimen-digitization/specimen-runtime/api` under
+   `scripts/ci/build_runtime_image.sh` builds the API, worker and SAM images
+   from the committed files of the merged commit and checks each offline.
+   `scripts/release/push_image.sh` pushes each checked image to its `api`,
+   `worker` or `sam` repository under
+   `us-east4-docker.pkg.dev/specimen-digitization/specimen-runtime/` with
    the tag `sha-<commit>-<run id>-<run attempt>`. The registry does not let a
    tag be overwritten, so the run ID and attempt keep a re-run from colliding
    with its earlier push. The job passes the image on by digest,
@@ -973,7 +974,32 @@ The workflow has three jobs.
      request first, so the public invoker binding is missing. The three checks
      share about three minutes of retries while the new revision starts.
 
-The worker job and the SAM 3 service are added in a follow-up change.
+   - `scripts/release/deploy_models.py` deploys SAM by digest with the committed
+     checkpoint, pinned secrets, 600-second startup probe, maximum one instance,
+     and minimum zero at both the service and revision levels. It moves all
+     traffic to the new revision and removes old revision tags. It defines
+     `specimen-worker` by digest as one task, parallelism one, zero retries,
+     3,600-second task timeout and the ordinary drain's 3,300-second deadline.
+     Both definitions are read back, including source SHA, image, identity,
+     runtime settings and private invocation policies. The deployment starts no
+     worker execution and submits no segmentation request.
+
+A manual run may additionally select `process_queued: true` (default false).
+After deployment verification, `scripts/release/process_worker.py` warms SAM to
+minimum one at both levels and waits for startup, executes the already defined
+worker job with `--wait` and no overrides, then restores both SAM minimums to
+zero in a `finally` block. An additional `always()` workflow step repeats and
+verifies the zero minimum after failure or step timeout. An ordinary push or a
+manual release with the default input never executes the worker. Queue the
+bounded application work before this optional processing run. The coordinator
+checks the resulting specimen records and costs; job success alone is not
+scientific acceptance.
+
+The extra permissions are `run.jobs.getIamPolicy` on the existing runtime
+release role, and the custom `specimenWorkerExecution` role containing only
+`run.jobs.run` and `run.executions.get`, bound to **specimen-worker only** for
+the runtime release identity. The owner setup script maintains these grants.
+There is no job override, deletion, public SAM access or Hosting permission.
 
 ### One-time owner setup
 
@@ -1078,8 +1104,10 @@ The release of a merged commit is complete when all of these hold:
    and "Runtime release";
 2. the public Hosting marker `deployment.json` reports the commit;
 3. the API reports the commit as `source_sha` at `/version`;
-4. the smoke steps passed: the Hosting smoke at the end of "CI/CD" and the API
-   smoke at the end of "Runtime release".
+4. the smoke steps passed: the Hosting smoke at the end of "CI/CD", the API
+   smoke and worker/SAM definition verification at the end of "Runtime release";
+5. when `process_queued` was selected, the worker execution finished and both
+   SAM minimums were verified at zero, followed by application acceptance.
 
 ```bash
 sha="$(git rev-parse origin/main)"

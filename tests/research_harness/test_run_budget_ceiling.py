@@ -149,21 +149,24 @@ def test_research_settlement_halts_the_run_at_the_whole_specimen_ceiling(tmp_pat
         store.reserve_effect(scope, lease, "model:role", {"request": 2}, 1)
 
 
-def test_a_request_that_settles_above_its_reservation_overshoots_by_at_most_the_difference(tmp_path):
-    # What is NOT covered: settlement is measured after the call. A request is
-    # admitted only if ordinary spend + held + settled + its reservation fit, so the
-    # most the ceiling can be crossed by is that request's actual minus its
-    # reservation. It is recorded in full, and the run halts.
+def test_a_request_cannot_send_when_its_context_and_output_bound_would_cross_one_dollar(tmp_path):
     reservation = request_reservation()
-    store, scope, lease = seeded_store(tmp_path, CEILING - reservation)
-    effect = store.reserve_effect(scope, lease, "model:role", {"request": 1}, reservation)
-    excess = 40_000
-    settle(store, scope, lease, effect["effect_id"], reservation + excess)
-    budget = store.budget(scope)
-    assert budget["settled_micro_usd"] == CEILING + excess and budget["held_micro_usd"] == 0
-    assert budget["halted"] is True and budget["remaining_micro_usd"] == 0
+    store, scope, lease = seeded_store(tmp_path, CEILING - reservation + 1)
+    # No paid effect exists: the financial bound is enforced before dispatch.
     with pytest.raises(BudgetExceeded):
-        store.reserve_effect(scope, lease, "model:role", {"request": 2}, 1)
+        store.reserve_effect(scope, lease, "model:role", {"request": 1}, reservation)
+    assert store._read(scope).state["effects"] == {}
+    assert store.budget(scope)["settled_micro_usd"] == CEILING - reservation + 1
+
+
+def test_provider_contract_violation_is_recorded_in_full_and_halts_for_reconciliation(tmp_path):
+    # Defensive accounting is not permission to overspend: this injected
+    # provider-contract violation is impossible under the admitted token bounds.
+    store, scope, lease = seeded_store(tmp_path, 0)
+    effect = store.reserve_effect(scope, lease, "model:broken-provider", {}, 10_000)
+    settle(store, scope, lease, effect["effect_id"], 10_001)
+    assert store.budget(scope)["settled_micro_usd"] == 10_001
+    assert store.budget(scope)["halted"] is True
 
 
 @pytest.mark.parametrize("ordinary_spend", [250_000])
@@ -294,6 +297,7 @@ def test_a_transcription_correction_after_research_researches_again_on_the_store
     (_, state), binding = e2e.jobs_and_bindings(rig)
     assert len(state["jobs"]) == 2 and binding["job_id"].endswith(f"-r{corrected.version + 1}")
     assert state["budget_policy"]["external_settled_micro_usd"] == 40_000
+    assert state["ordinary_cost_micros"] == 60_000
     totals = state["budget_totals"]
     assert totals["held_micro_usd"] == 0 and totals["settled_micro_usd"] <= CEILING
 
@@ -314,9 +318,11 @@ def test_open_refuses_a_stored_seed_that_is_not_the_registered_policy(opened, or
 @pytest.mark.parametrize("seed", [-1, 2.5, True])
 def test_open_refuses_a_malformed_stored_seed_even_when_its_digest_matches(opened, ordinary_spend, seed):
     # With the registered digest made to match, only the seed's own check refuses.
-    def malform(state, _now):
-        state["budget_policy"]["external_settled_micro_usd"] = seed
-    opened.store._mutate(opened.scope, malform, force_cas=True)
+    # Simulate externally malformed persistence; the normal reducer now rejects
+    # this before CAS, so corrupt the offline backend directly.
+    document = opened.store._read(opened.scope)
+    document.state["budget_policy"]["external_settled_micro_usd"] = seed
+    opened.backend.cas(opened.scope, opened.store.program_key, document.revision, document.state)
     opened.binding.journal_budget_policy_digest = digest(opened.store._read(opened.scope).state["budget_policy"])
     with pytest.raises(HeldUnknown, match="^research_live_admission_unqualified$"):
         opened.open(opened.factory())

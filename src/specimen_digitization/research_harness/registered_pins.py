@@ -81,7 +81,7 @@ class RegisteredModelPriceV1:
             != (binding.route_id,binding.model_id,binding.provider,binding.price_version)
             or any(type(getattr(value,key)) is not int or getattr(value,key) < 0 for key in
                 ("input_micro_usd_per_million_tokens", "output_micro_usd_per_million_tokens"))
-            or type(value.max_input_tokens) is not int or not 0 < value.max_input_tokens <= 1_000_000
+            or type(value.max_input_tokens) is not int or not 0 < value.max_input_tokens <= 1_048_576
             or any(type(getattr(value,key)) is not str or len(getattr(value,key)) != 64
                 or any(character not in "0123456789abcdef" for character in getattr(value,key))
                 for key in ("owner_registration_digest", "rate_source_sha256"))
@@ -96,11 +96,11 @@ class RegisteredModelPriceV1:
     def actual_cost(self, response):
         usage = response.usage
         inputs, outputs = getattr(usage,"input_tokens",None), getattr(usage,"output_tokens",None)
-        # Discounts/extra billed dimensions need a separately versioned adapter.
-        # An unknown amount stays held; it is never recorded as zero.
+        # Cache discounts can only lower cost: count all reported input at the
+        # uncached list rate. Extra billed modalities stay unknown and held.
+        # Reported usage above a bound is still counted in full, never clipped.
         if (type(inputs) is not int or type(outputs) is not int or inputs <= 0 or outputs <= 0
-            or inputs > self.max_input_tokens
-            or getattr(usage,"cache_read_tokens",0) != 0 or getattr(usage,"cache_write_tokens",0) != 0
+            or getattr(usage,"cache_write_tokens",0) != 0
             or getattr(usage,"audio_tokens",0) != 0):
             return None
         numerator = inputs*self.input_micro_usd_per_million_tokens + outputs*self.output_micro_usd_per_million_tokens

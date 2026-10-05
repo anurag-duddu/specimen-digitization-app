@@ -121,9 +121,10 @@ def record_segmentation(run, step, *, seconds, outcome="completed", billed_micro
             "vcpus": service.get("vcpus"),
             "memory_gib": service.get("memory_gib"),
         },
-        segmentation_cost(prices, seconds),
+        _reservation(run, step) if billed_micros is None else billed_micros,
         outcome,
         billed_micros,
+        basis="reserved" if billed_micros is None else "billed",
         service="sam3",
     )
 
@@ -182,8 +183,16 @@ def settle_step(repository, principal, specimen, step, reserved, clock=None):
     if not calls or any(c["cost_basis"] == "reserved" for c in calls):
         return
     cost = sum(c["cost_micros"] for c in calls)
-    # The run's own budget settles like the ledger (the coordinator, 2026-09-24).
-    run.usage.reserved_cost_micros += cost - reserved
+    # The run's own budget and shared ledger both replay settlement exactly once.
+    settlements = run.dependencies.setdefault("ordinary_cost_settlements", {})
+    key = f"{step}:{attempt}"
+    envelope = {"reserved_micros": reserved, "settled_micros": cost}
+    if key in settlements:
+        if settlements[key] != envelope:
+            raise ValueError("Ordinary settlement changed")
+    else:
+        run.usage.reserved_cost_micros += cost - reserved
+        settlements[key] = envelope
     if policy.program_allowance_micros is None:
         return
     ledger = ProgramLedger(
@@ -210,9 +219,9 @@ def settle_step(repository, principal, specimen, step, reserved, clock=None):
 def record_step(repository, principal, specimen, step, observations, seconds, reserved, clock=None):
     """The workflow's hook after a paid step: record its calls, then settle.
 
-    A reading reports its tokens on its observation. A completed SAM 3 call
-    reports its measured request seconds, which include waiting for a cold
-    start. A call that reported nothing stays reserved.
+    A reading reports its tokens on its observation. SAM request seconds are diagnostics only: they omit workflow warm-up,
+    startup CPU boost and idle lifecycle billing, so the full service liability
+    remains reserved unless an authoritative billed amount is supplied.
     """
     run = specimen.run
     if run.profile.execution.price_list is None:

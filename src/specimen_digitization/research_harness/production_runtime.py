@@ -13,8 +13,9 @@ from .discovery_v2 import ResearchDiscoveryV2
 from .gateway import ModelBinding
 from .journal import DurableResearchJournal
 from .native_service import SqlConnectNativeCanonicalServiceV2
-from .persistence import (BudgetPolicy, DurableEffectBroker, GcsImmutableBlobs, HeldUnknown,
-    PinnedRuntime, ResearchStore, SqlConnectStateBackend, StaleWork, DurabilityScope, Lease)
+from .persistence import (BudgetPolicy, GcsImmutableBlobs, HeldUnknown,
+    MAX_LEASE_TTL_SECONDS, PinnedRuntime, ResearchStore, SqlConnectStateBackend, StaleWork, DurabilityScope, Lease)
+from . import role_windows
 from .runtime import build_research_engine
 from .sources import BoundedHTTPTransport, FixtureSourceTransport
 from .registered_pins import (registered_registry, registered_capture_policies,
@@ -65,6 +66,7 @@ class NativeResearchRuntime:
     engine: object
     canonical_service: SqlConnectNativeCanonicalServiceV2
     blobs: object
+    role_window: int = 1
 
 
 class NativeResearchRuntimeFactory:
@@ -126,7 +128,7 @@ class NativeResearchRuntimeFactory:
             idempotency_key=operation.idempotency_key,
             request_identity_digest=operation.request_identity_digest)
 
-    async def open(self, principal, specimen_id, *, owner, ttl_seconds=300):
+    async def open(self, principal, specimen_id, *, owner, ttl_seconds=MAX_LEASE_TTL_SECONDS):
         principal = Principal.model_validate(principal.model_dump(mode="json"))
         if principal.role not in WORKER_ROLES:
             raise PermissionError("research_worker_access_denied")
@@ -169,6 +171,7 @@ class NativeResearchRuntimeFactory:
         if (document.state["budget_policy"] != policy
             or document.state.get("halted") is not False or job["paused"]):
             raise HeldUnknown("research_live_admission_unqualified")
+        await asyncio.to_thread(store.reconcile_ordinary_spend, scope, specimen.run.usage.reserved_cost_micros)
         budget = await asyncio.to_thread(store.budget, scope)
         if budget["remaining_micro_usd"] <= 0:
             raise HeldUnknown("research_program_headroom_unavailable")
@@ -199,13 +202,33 @@ class NativeResearchRuntimeFactory:
         from .canonical_materialization_v2 import ResearchCanonicalPolicyV2
         from .native_materialization_services_v2 import build_native_materialization_services_v2
         from .canonical_evidence_provider_v2 import build_captured_research_services_v2
-        effects = DurableEffectBroker(store, self.blobs)
+        from .program_budget import ProgramEffectBroker
+        async def current_binding():
+            current = await self.discovery.binding(principal, specimen_id)
+            # State revision, effects and leases change as this window runs.
+            # Compare canonical authority, not its mutable journal read bundle.
+            keys = ("canonical", "binding_id", "registration_revision", "generation", "job_id",
+                "program_key", "input_digest", "profile_digest", "runtime_binding_digest",
+                "canonical_profile_digest", "policy_digest", "journal_budget_policy_digest",
+                "field_mapping", "human_locks")
+            if any(getattr(binding, key) != getattr(current, key) for key in keys):
+                raise StaleWork("research_canonical_changed_before_dispatch")
+        effects = ProgramEffectBroker(store, self.blobs, repository=self.repository,
+            scope=scope, run=specimen.run, binding_guard=current_binding,
+            send_authorization={"canonical_revision": binding.canonical.record_revision,
+                "canonical_run_id": str(binding.canonical.canonical_run_id),
+                "binding_id": str(binding.binding_id), "job_key": binding.job_key,
+                "generation": binding.generation, "record_version_id": str(binding.canonical.record_version_id),
+                "snapshot_sha256": binding.canonical.snapshot_sha256})
+        await asyncio.to_thread(effects.reconcile, scope)
         scientific_policy = ResearchCanonicalPolicyV2.from_registered_binding(binding)
         services = build_native_materialization_services_v2(
             self.repository, effects, registry, scientific_policy, request_factory)
         model_factory = self.model_factory or _gateway_models()
         transport = self.source_transport if self.source_transport is not None else BoundedHTTPTransport()
         execution_class = "offline" if type(transport) is FixtureSourceTransport else "live"
+        window = role_windows.window_size(budget["remaining_micro_usd"],
+            max(binding.reservation_micro_usd for binding in bindings.values()))
         lease = await asyncio.to_thread(store.claim, scope, owner, ttl_seconds=ttl_seconds)
         tools, _ = build_captured_research_services_v2(repository=self.repository,
             effect_broker=effects, scope=scope, lease=lease, registry=registry,
@@ -214,8 +237,9 @@ class NativeResearchRuntimeFactory:
             store=store, scope=scope, lease=lease, blobs=self.blobs, tool_broker=tools,
             bindings=bindings, settings=job["pins"]["settings"], source_pins=source_pins,
             base_model_factory=lambda request:model_factory(request, bindings[request.role]),
-            actual_cost=prices, request_guard=request_guards, limits=self.limits, max_concurrency=1)
+            actual_cost=prices, request_guard=request_guards, limits=self.limits, max_concurrency=window,
+            effect_broker=effects)
         service = SqlConnectNativeCanonicalServiceV2(self.repository, engine.journal, blobs=self.blobs,
             materializer=services.materializer, evidence_provider=services.evidence_provider,
             projection_services=services.projection_services)
-        return NativeResearchRuntime(principal, binding, store, scope, lease, engine.journal, engine, service, self.blobs)
+        return NativeResearchRuntime(principal, binding, store, scope, lease, engine.journal, engine, service, self.blobs, window)

@@ -294,6 +294,7 @@ resource_command() { # resource_command VERB KIND NAME
     service-account) COMMAND=(gcloud iam service-accounts "$1" "$3" "--project=$PROJECT") ;;
     secret) COMMAND=(gcloud secrets "$1" "$3" "--project=$PROJECT") ;;
     service) COMMAND=(gcloud run services "$1" "$3" "--region=$REGION" "--project=$PROJECT") ;;
+    job) COMMAND=(gcloud run jobs "$1" "$3" "--region=$REGION" "--project=$PROJECT") ;;
     *) die "unknown kind of resource: $2" ;;
   esac
 }
@@ -365,7 +366,9 @@ grant() { # grant KIND NAME MEMBER ROLE [TITLE EXPRESSION [DESCRIPTION]]
   fi
   change "grant $what"
   resource_command add-iam-policy-binding "$kind" "$name"
-  if [ -z "$title" ]; then
+  if [ "$kind" = job ] && [ -z "$title" ]; then
+    run "${COMMAND[@]}" "--member=$member" "--role=$role" --quiet
+  elif [ -z "$title" ]; then
     run "${COMMAND[@]}" "--member=$member" "--role=$role" --condition=None
   else
     condition_file "$title" "$expression" "$description"
@@ -596,11 +599,15 @@ runtime_grants() {
   ensure_role specimenRuntimeRelease 'Specimen runtime release' \
     'Create and update the Cloud Run services and the worker job; no delete, no job runs.' \
     run.services.create run.services.get run.services.update run.services.getIamPolicy \
-    run.jobs.create run.jobs.get run.jobs.update run.operations.get run.revisions.get
-  # The worker job's invokers belong to the follow-up change: no run.jobs permission here.
+    run.jobs.create run.jobs.get run.jobs.update run.jobs.getIamPolicy run.operations.get run.revisions.get
+  # This deployment role reads worker invokers but cannot execute jobs or set
+  # their IAM. The separate execution role below is bound only to specimen-worker.
   ensure_role specimenRuntimeInvokerPolicy 'Specimen runtime invoker policy' \
     'Read and set who may call the API service.' \
     run.services.getIamPolicy run.services.setIamPolicy
+  ensure_role specimenWorkerExecution 'Specimen queued worker execution' \
+    'Run the existing worker without overrides and read its execution outcome.' \
+    run.jobs.run run.executions.get
   ensure_role specimenRuntimeConnector 'Specimen runtime connector' \
     'call the named operations of the connector only, never arbitrary GraphQL' \
     firebasedataconnect.connectors.impersonateQuery firebasedataconnect.connectors.impersonateMutation
@@ -613,6 +620,7 @@ runtime_grants() {
   scope_invoker_policy
   grant project "$PROJECT" "$RELEASE" "$CUSTOM/specimenDataInventoryProjectRead"
   grant repository "$REGISTRY" "$RELEASE" roles/artifactregistry.reader
+  grant job specimen-worker "$RELEASE" "$CUSTOM/specimenWorkerExecution"
   for name in api worker sam; do
     grant service-account "specimen-$name-runtime@$ACCOUNTS" "$RELEASE" roles/iam.serviceAccountUser
   done

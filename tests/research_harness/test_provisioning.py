@@ -453,3 +453,89 @@ def test_a_run_limit_below_one_request_reservation_holds_the_run(rig):
     with pytest.raises(HeldUnknown, match="research_committed_pins_unavailable"):
         rig.provision()
     assert rig.writer.registered == [] and rig.repository.inserts == []
+
+
+def reviewed_candidate():
+    from specimen_digitization.application.domain import AuditEvent, Evidence
+    from specimen_digitization.application.storage import ReviewDecisionProof
+    specimen = plan_specimen()
+    evidence = Evidence(id="candidate-evidence", kind="authority_selection", source="gbif",
+        locator="research-candidate:selection-1", excerpt="Chosen taxon | 123",
+        raw_ref="a" * 64 + ":1", digest="a" * 64)
+    specimen.run.evidence.append(evidence)
+    field = specimen.run.fields["taxon"]
+    field.parsed = field.normalized = "Chosen taxon"
+    field.authority_id = "123"
+    field.evidence_ids.append(evidence.id)
+    field.evidence_relations[evidence.id] = "decides"
+    specimen.run.dependencies["human_review_field_locks"] = {
+        "taxon": {"selection_id": "selection-1", "evidence_id": evidence.id}}
+    event = AuditEvent(actor="real-reviewer", action="review_research_candidate", reason="chosen source",
+        after={"field_key": "taxon", "selection_id": "selection-1", "value": "Chosen taxon",
+            "authority_id": "123", "source_id": "gbif", "effect_id": "effect", "checkpoint_id": "checkpoint",
+            "evidence_ids": [evidence.id]}, base_revision=1, resulting_revision=2)
+    specimen.audit.append(event)
+    proof = ReviewDecisionProof(specimen.id, event, 1, 2, "b" * 64, "c" * 64, "real-server-audit")
+    return specimen, proof
+
+
+def test_only_verified_candidate_audit_and_matching_ordinary_evidence_create_lock():
+    specimen, proof = reviewed_candidate()
+    locks = provisioning.verified_human_locks(specimen, [proof])
+    assert set(locks) == {"taxon"} and len(locks["taxon"]) == 64
+    with pytest.raises(HeldUnknown, match="human_lock_provenance"):
+        provisioning.verified_human_locks(specimen, [])
+
+
+@pytest.mark.parametrize("mutation", ["field", "action", "value", "authority", "source", "selection",
+    "evidence", "locator", "relation", "raw", "duplicate"])
+def test_candidate_lock_provenance_mismatch_fails_closed(mutation):
+    specimen, proof = reviewed_candidate()
+    if mutation in {"field", "action", "value", "authority", "source", "selection", "evidence"}:
+        if mutation == "action":
+            proof.event.action = "process"
+        else:
+            key = {"field": "field_key", "authority": "authority_id", "source": "source_id",
+                "selection": "selection_id", "evidence": "evidence_ids"}.get(mutation, mutation)
+            proof.event.after[key] = [] if mutation == "evidence" else "changed"
+    if mutation == "locator": specimen.run.evidence[-1].locator = "candidate:other"
+    if mutation == "relation": specimen.run.fields["taxon"].evidence_relations.clear()
+    if mutation == "raw": specimen.run.evidence[-1].raw_ref = None
+    with pytest.raises(HeldUnknown, match="human_lock_provenance"):
+        provisioning.verified_human_locks(specimen, [proof, proof] if mutation == "duplicate" else [proof])
+
+
+def test_base_record_projection_receives_repository_verified_review_proofs(monkeypatch):
+    specimen, proof = reviewed_candidate()
+    repository = Repository(specimen)
+    repository._review_proofs = lambda scope, current: ([proof], None)
+    calls = []
+    def writes(*args, **kwargs):
+        calls.append(kwargs)
+        return [SimpleNamespace(operation="AppendRecordVersionV2", variables={"id": "record", "actorUid": WORKER})]
+    monkeypatch.setattr(provisioning.projection, "writes", writes)
+    token = actor_uid.set(WORKER)
+    try:
+        assert provisioning._write_base_record(repository, specimen.scope, specimen, WORKER) == "record"
+    finally:
+        actor_uid.reset(token)
+    assert calls == [{"base_record": True, "review_proofs": [proof]}]
+
+
+def test_new_job_initializes_human_locks_atomically_and_replay_cannot_remove_them(tmp_path):
+    from specimen_digitization.research_harness.persistence import BudgetPolicy, PinnedRuntime
+    specimen, proof = reviewed_candidate()
+    scope = DurabilityScope(ORG, COLLECTION, specimen.id, "future-job", 1, WORKER, False)
+    backend = SqliteStateBackend(tmp_path / "human-locks.sqlite")
+    backend.grant(scope)
+    store = ResearchStore(backend, "research-run:human-locks")
+    store.initialize(scope, BudgetPolicy(1_000_000))
+    pins = PinnedRuntime("input", {}, {}, {}, {}, {}, "fixture")
+    locks = provisioning.verified_human_locks(specimen, [proof])
+    job = store.create_job(scope, pins, ["taxon", "country"], human_locks=locks)
+    assert job["fields"]["taxon"]["locked"] is True
+    assert job["fields"]["country"]["locked"] is False
+    assert job["human_lock_proofs"] == locks
+    assert store.create_job(scope, pins, ["taxon", "country"], human_locks=locks) == job
+    with pytest.raises(ValueError, match="immutable"):
+        store.create_job(scope, pins, ["taxon", "country"])

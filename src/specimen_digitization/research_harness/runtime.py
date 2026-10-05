@@ -41,6 +41,7 @@ def build_research_engine(
     *, profile: CollectionProfile, requests: Mapping[SpecialistRole, SpecialistRequest],
     store, scope, lease, blobs, tool_broker, bindings: Mapping, settings: Mapping,
     base_model_factory, actual_cost=None, request_guard=None, limits=None, max_concurrency: int = 1, source_pins=None,
+    effect_broker=None,
 ):
     """Wire the production interfaces without creating or resetting an allowance.
 
@@ -64,7 +65,7 @@ def build_research_engine(
     if store.job(scope)["pins"] != pins.payload():
         raise StaleWork("runtime_factory_binding_differs_from_persisted_generation")
     journal = DurableResearchJournal(store, scope, lease, blobs)
-    effects = DurableEffectBroker(store, blobs)
+    effects = effect_broker if effect_broker is not None else DurableEffectBroker(store, blobs)
 
     def harness_factory(selected):
         def model_factory(request):

@@ -65,13 +65,14 @@ TOKENIZER_PIN = {
     "chat_template_jinja_sha256": "d959d804d5101b79a49b6ff1bf3c54cd5affa9a5a78c503d925f3090040b31c3",  # pragma: allowlist secret (Hugging Face file digest) gitleaks:allow
 }
 
-# The largest serialized request the guard admits, and its token bound. The
+# The largest serialized request the guard admits, and its local size bound. The
 # tokenizer is byte-level BPE, so every token covers at least one rendered
 # byte, and the chat template adds at most one separator byte per byte of the
 # compact serialization: 2 tokens a byte. 8,192 tokens cover the tool preamble
 # and the per-turn special tokens. 262,144 bytes is a cap, not a measurement.
 # It must stay at least 72 KB: with Lane G's version 2 geography prompt the
-# last geography request is about 69 KB.
+# last geography request is about 69 KB. This estimate is only a payload guard;
+# the financial reservation below uses the provider's entire context window.
 REQUEST_BOUND = {
     "maximum_serialized_bytes": 262_144,
     "tokens_per_utf8_byte_upper_bound": 2,
@@ -168,9 +169,16 @@ def _harness_binding(profile: PublishedProfile):
     # Hugging Face router's deepinfra entry (https://router.huggingface.co/v1/models)
     # and from https://deepinfra.com/deepseek-ai/DeepSeek-V4.1-Flash.
     price = prices.models[route_id]
-    max_input = (REQUEST_BOUND["maximum_serialized_bytes"]
-        * REQUEST_BOUND["tokens_per_utf8_byte_upper_bound"] + REQUEST_BOUND["fixed_overhead_tokens"])
-    if max_input > min(price.context_tokens or 1_000_000, 1_000_000):
+    # A tokenizer/template heuristic cannot prove the billable input bound.
+    # Reserve the full documented provider context, including schemas/history,
+    # plus the enforced generation cap. Provider page checked 2026-10-05: the
+    # window is 1,048,576, standard list rates remain USD 0.20 / 0.60 above
+    # current promotional rates. No priority tier or automatic retry is sent.
+    max_input = price.context_tokens
+    if type(max_input) is not int or max_input != 1_048_576:
+        raise ValueError("research_committed_context_bound_unavailable")
+    if (REQUEST_BOUND["maximum_serialized_bytes"] * REQUEST_BOUND["tokens_per_utf8_byte_upper_bound"]
+            + REQUEST_BOUND["fixed_overhead_tokens"] > max_input):
         raise ValueError("research_committed_request_bound_exceeds_context")
     # Each request reserves its worst case, rounded up as RegisteredModelPriceV1 does.
     reservation = (max_input * price.input_micros_per_million
