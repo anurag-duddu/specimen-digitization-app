@@ -627,6 +627,9 @@ runtime_grants() {
   ensure_role specimenWorkerExecution 'Specimen queued worker execution' \
     'Run the existing worker without overrides and read its execution outcome.' \
     run.jobs.run run.executions.get
+  ensure_role specimenWorkerRead 'Specimen worker readiness read' \
+    'Read only the deployed specimen worker definition for API readiness.' \
+    run.jobs.get
   ensure_role specimenRuntimeConnector 'Specimen runtime connector' \
     'call the named operations of the connector only, never arbitrary GraphQL' \
     firebasedataconnect.connectors.impersonateQuery firebasedataconnect.connectors.impersonateMutation
@@ -640,6 +643,7 @@ runtime_grants() {
   grant project "$PROJECT" "$RELEASE" "$CUSTOM/specimenDataInventoryProjectRead"
   grant repository "$REGISTRY" "$RELEASE" roles/artifactregistry.reader
   grant job specimen-worker "$RELEASE" "$CUSTOM/specimenWorkerExecution"
+  grant job specimen-worker "$API" "$CUSTOM/specimenWorkerRead"
   for name in api worker sam; do
     grant service-account "specimen-$name-runtime@$ACCOUNTS" "$RELEASE" roles/iam.serviceAccountUser
   done

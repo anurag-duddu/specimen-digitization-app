@@ -19,6 +19,13 @@ merge. The runtime workflow must follow a successful data release on that same
 SHA. Local files and offline tests do not establish object availability or live
 worker access.
 
+The API's worker-readiness check has a separate `specimenWorkerRead` role with
+only `run.jobs.get`, bound only on the existing `specimen-worker` job to the API
+runtime identity. This permits checking the deployed job definition against the
+API's embedded source provenance, drain arguments and harness switch; it grants
+no execution, override, update, list or IAM capability. The API must still obtain
+a matching live read before advertising processing readiness.
+
 A run with zero headroom or a financial halt can open a `publication_only`
 runtime. It exposes the genuine lease, journal and canonical publication service
 with `role_window=0`, and an engine whose `run()` always refuses. It constructs
@@ -45,6 +52,17 @@ and immutable settled-input proofs, then imports every genuine human lock and
 input lock into the new job. The saved specimen keeps its lifecycle, values and
 review status. Missing or stale commands cannot use this exception. Normal
 `plan` provisioning retains its existing rules.
+
+The workflow intercepts a current queued command before ordinary finalized-run
+handling. It verifies the original repository-proven `review_derive_rest` save,
+provisions the current binding, and invokes only the derivation worker. A
+terminal worker result must match the freshly read bound job before
+`FinishResearchDerivationV1` retires scheduling metadata. Only the helper's
+verified affected-count/readback permits the drain to count progress without a
+canonical revision increase. Completed and blocked proposal work both preserve
+scientific fields and review status. Unknown outcomes retain custody and cannot
+fall through to an ordinary canonical block save. Historical commands from an
+older queue revision or run do not intercept later ordinary work.
 
 Composition depends on the Geo adapter/manifest and the source-capture forwarding
 of `georeferencing_adapter`. The root integrator owns the native-worker sequence,

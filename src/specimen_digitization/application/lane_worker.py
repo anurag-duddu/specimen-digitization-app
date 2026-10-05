@@ -460,6 +460,9 @@ class DrainWorker:
             fence.hold(ident, specimen.run.id)
             run = specimen.run
             if specimen.version == before.version:
+                completed = getattr(self.workflow, "completed_side_work", None)
+                if callable(completed) and completed(specimen) is True:
+                    return run, True  # Verified native queue retirement, no scientific save.
                 return run, progressed  # Leased or otherwise waiting.
             progressed = True
             if run.disposition or run.stage in STOPPED or self._stopped(stop):

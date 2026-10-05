@@ -73,12 +73,13 @@ ROLES = {
         "run.services.create", "run.services.get", "run.services.getIamPolicy", "run.services.update"],
     "specimenRuntimeInvokerPolicy": ["run.services.getIamPolicy", "run.services.setIamPolicy"],  # no run.jobs
     "specimenWorkerExecution": ["run.executions.get", "run.jobs.run"],
+    "specimenWorkerRead": ["run.jobs.get"],
     "specimenRuntimeConnector": [
         "firebasedataconnect.connectors.impersonateMutation", "firebasedataconnect.connectors.impersonateQuery"],
     "specimenApiUserLookup": ["firebaseauth.users.get"],
 }
 NEW_ROLES = ("specimenDataBootstrapRows", "specimenRuntimeInvokerPolicy", "specimenWorkerExecution",
-             "specimenGeoreferenceDatasets")
+             "specimenGeoreferenceDatasets", "specimenWorkerRead")
 MAPS_KEY = "specimen-google-maps-key"  # retired: the owner took Google Maps out of the pipeline
 LIVE_PINS = (  # member, secret, version: the nine pinned reads live on 2026-10-03, the retired Maps key among them
     (API, "specimen-worker-logfire", 1), (API, "specimen-source-registry", 1), (API, "specimen-collection-bindings", 1),
@@ -738,9 +739,13 @@ EXPECTED = [
                 "Read and set who may call the API service."),
     role_create("specimenWorkerExecution", "Specimen queued worker execution",
                 "Run the existing worker without overrides and read its execution outcome."),
+    role_create("specimenWorkerRead", "Specimen worker readiness read",
+                "Read only the deployed specimen worker definition for API readiness."),
     project_grant(RELEASE, "specimenRuntimeInvokerPolicy"),
     ["gcloud", "run", "jobs", "add-iam-policy-binding", "specimen-worker", "--region=us-east4",
      f"--project={PROJECT}", f"--member={RELEASE}", f"--role={CUSTOM}specimenWorkerExecution", "--quiet"],
+    ["gcloud", "run", "jobs", "add-iam-policy-binding", "specimen-worker", "--region=us-east4",
+     f"--project={PROJECT}", f"--member={API}", f"--role={CUSTOM}specimenWorkerRead", "--quiet"],
     *RESEARCH_GRANTS,
     SAM_LISTS_BUCKET,
     *(provider_update(name) for name in PROVIDERS),
@@ -776,6 +781,14 @@ def test_georeferencing_grant_is_exact_manifest_and_create_read_only():
     assert "startsWith" not in GEO["expression"] and len(GEO["expression"]) < 2048
 
 
+def test_api_worker_readiness_grant_is_only_one_job_and_get_permission(fresh):
+    harness, run = fresh
+    assert ROLES["specimenWorkerRead"] == ["run.jobs.get"]
+    assert {grant for grant in grants(run) if grant[2] == CUSTOM + "specimenWorkerRead"} == {
+        ("job/specimen-worker", API, CUSTOM + "specimenWorkerRead", None, None)}
+    assert harness.state()["roles"]["specimenWorkerRead"]["permissions"] == ["run.jobs.get"]
+
+
 def test_shellcheck_passes():
     shellcheck = shutil.which("shellcheck")
     if shellcheck is None:
@@ -808,7 +821,7 @@ def test_dry_run_prints_every_change_and_makes_none(tmp_path, shell):
     assert f"from the artifact file ({len(content)} bytes)" in run.out
     shown = run.out + run.err + json.dumps(run.calls)
     assert "PRIVATE-MARKER" not in shown and base64.b64encode(content).decode()[:40] not in shown
-    assert "Dry run: nothing was changed. 24 step(s) would change:" in run.out
+    assert "Dry run: nothing was changed. 26 step(s) would change:" in run.out
     assert run.printed.count(SAM_LISTS_BUCKET) == 1
     assert "--all" not in run.out
     for name in RETIRE:
@@ -819,7 +832,7 @@ def test_dry_run_prints_every_change_and_makes_none(tmp_path, shell):
         "== Clean-up", "== Data release", "== Cloud SQL", "== Runtime release", "== Manual runs", "== GitHub",
         "== GitHub", "== Retire later", "== Releases", "== Summary =="]
     assert run.sleeps == [] and run.summary.splitlines()[-1] == SAFE
-    assert "  Setup: WOULD RUN (24 change(s))" in run.summary
+    assert "  Setup: WOULD RUN (26 change(s))" in run.summary
     assert "Setup is complete" not in run.out and "State:" not in run.summary
     assert "the three database roles once (later releases only use the firebaseowner role)" in headings[2]
 
@@ -832,7 +845,7 @@ def test_apply_makes_each_change_once_and_a_second_run_makes_none(tmp_path, shel
     assert run.ran == EXPECTED and run.printed == EXPECTED
     assert run.conditions() == {name: given(held) for name, held in EXPECTED_CONDITIONS.items()}
     assert provider_update("specimen-data-release")[-1] == f"--attribute-condition={DATA_PROVIDER_AFTER}"
-    assert "23 step(s) changed:" in run.out
+    assert "25 step(s) changed:" in run.out
     assert run.ran.count(SAM_LISTS_BUCKET) == 1
 
     after = harness.state()
@@ -862,7 +875,7 @@ def test_apply_makes_each_change_once_and_a_second_run_makes_none(tmp_path, shel
             "Run this script again after the merge.") in run.out
     assert run.starts == [] and run.sleeps == []
     assert run.summary.split("Stages:\n", 1)[1].splitlines()[:5] == [
-        "  Setup: PASS (23 changed, 39 already in place)",
+        "  Setup: PASS (25 changed, 39 already in place)",
         "  Data release: SKIPPED (the simple workflows are not on main yet)",
         "  Runtime release: SKIPPED (the simple workflows are not on main yet)",
         "  Web app: SKIPPED (the simple workflows are not on main yet)",
@@ -961,7 +974,7 @@ def test_failed_change_does_not_stop_the_later_steps_and_the_next_run_retries_it
     run = harness.run()
     assert run.code == 1 and run.ran == EXPECTED  # every step was tried, in order
     assert "FAILED: 1 step(s) did not go through:\n  - make specimen-data-release@specimen-digitization.iam" in run.out
-    assert "22 step(s) changed:" in run.out and "Stopped before the end" not in run.err
+    assert "24 step(s) changed:" in run.out and "Stopped before the end" not in run.err
     assert "the service refused this change" in run.err
     harness.save({**harness.state(), "fail": []})
     again = harness.run()
@@ -996,6 +1009,7 @@ def grants(run):
 # What the script grants beyond the committed standing table, and the two rows of the table it leaves alone.
 SAM_LISTING = (f"bucket/{BUCKET}", SAM, "roles/storage.legacyBucketReader", None, None)
 ADDED = {("job/specimen-worker", RELEASE, CUSTOM + "specimenWorkerExecution", None, None),
+         ("job/specimen-worker", API, CUSTOM + "specimenWorkerRead", None, None),
          (f"bucket/{BUCKET}", DATA, CUSTOM + "specimenGeoreferenceDatasets", GEO["title"], GEO["expression"]),
          (f"project/{PROJECT}", DATA, CUSTOM + "specimenDataBootstrapRows", None, None),
          (f"project/{PROJECT}", RELEASE, CUSTOM + "specimenRuntimeInvokerPolicy", None, None),
@@ -1100,7 +1114,7 @@ def test_fresh_project_gets_every_role_and_pins_every_secret_read(fresh, setting
     assert [argv[4] for argv in run.ran if argv[:4] == ["gcloud", "iam", "roles", "create"]] == [
         "specimenDataSchemaPublish", "specimenDataStorageRules", "specimenDataInventoryProjectRead",
         "specimenDataInventorySqlConnect", "specimenDataBootstrapRows", "specimenGeoreferenceDatasets", "specimenRuntimeRelease",
-        "specimenRuntimeInvokerPolicy", "specimenWorkerExecution", "specimenRuntimeConnector", "specimenApiUserLookup"]
+        "specimenRuntimeInvokerPolicy", "specimenWorkerExecution", "specimenWorkerRead", "specimenRuntimeConnector", "specimenApiUserLookup"]
     assert run.conditions()["condition-1-specimen_source_inventory_only.yaml"] == SQL  # with its live description
     granted = grants(run)
     # Strict, against the settings: the API runtime reads exactly its secrets at their pinned versions, and the
@@ -1345,7 +1359,7 @@ def test_first_morning_waits_for_new_access_retries_once_and_rebuilds_the_site(t
         f"web app: PASS {RUNS}400", f"web app: the site now serves commit {COMMIT}",
         "web app: the site now points at the API"]
     assert run.ran[-3:] == [NARROW, UNWIDEN, RERUN] and run.ran.index(START_RUNTIME) == len(run.ran) - 4
-    assert stages(run) == ["  Setup: PASS (25 changed, 39 already in place)", f"  Data release: PASS {RUNS}502",
+    assert stages(run) == ["  Setup: PASS (27 changed, 39 already in place)", f"  Data release: PASS {RUNS}502",
                            f"  Runtime release: PASS {RUNS}503",
                            f"  Web app: PASS {RUNS}400 (the site points at the API)"]
     assert "To read the log" not in run.summary and "--redeploy-web" not in run.summary
@@ -1399,7 +1413,7 @@ def test_dry_run_prints_the_starts_and_starts_nothing(tmp_path):
     assert run.writes == [] and run.sleeps == [] and harness.state() == state
     assert run.printed == [*EXPECTED, START_DATA, START_RUNTIME, RERUN]
     assert "  Would wait 120 seconds for the new access to take effect" in run.out.splitlines()
-    assert stages(run) == ["  Setup: WOULD RUN (23 change(s))", "  Data release: WOULD RUN",
+    assert stages(run) == ["  Setup: WOULD RUN (25 change(s))", "  Data release: WOULD RUN",
                            "  Runtime release: WOULD RUN", f"  Web app: WOULD RUN {RUNS}400"]
     # A build would run, so the site is not read now: the check would follow that build.
     assert "web app: after that build the live site would be checked for the API address" in run.out.splitlines()
@@ -1592,7 +1606,7 @@ def test_setup_only_before_the_merge_applies_the_setup_and_touches_no_workflow(t
     assert not [call for call in run.calls if call["tool"] == "gh" and call["argv"][0] in ("workflow", "run")]
     assert run.sleeps == [] and not [call for call in run.calls if call["tool"] == "curl"]
     assert run.summary.split("Stages:\n", 1)[1].splitlines()[:5] == [
-        "  Setup: PASS (23 changed, 39 already in place)", "  Data release: SKIPPED (--setup-only)",
+        "  Setup: PASS (25 changed, 39 already in place)", "  Data release: SKIPPED (--setup-only)",
         "  Runtime release: SKIPPED (--setup-only)", "  Web app: SKIPPED (--setup-only)",
         "State: SETUP DONE, RELEASES NOT STARTED (--setup-only)"]
     assert run.summary.split("Next steps:\n", 1)[1].splitlines() == [
