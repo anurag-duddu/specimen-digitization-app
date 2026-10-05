@@ -114,6 +114,8 @@ class SqlConnectNativeOperationClient:
         if not isinstance(body.get("data"),dict):
             fail("native_canonical_connector_response_invalid")
         data = body["data"]
+        from .native_json import decode_native_json
+        data = decode_native_json(operation, data)
         if operation in {"GetCanonicalResearchBindingV1","GetResearchPublicationReceiptV1","GetResearchPublicationIntentV1"}:
             self._access_data(data,operation)
         return data
