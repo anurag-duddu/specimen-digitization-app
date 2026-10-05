@@ -10,15 +10,19 @@ from __future__ import annotations
 import asyncio
 import copy
 import hashlib
+import inspect
 import json
 import os
 import random
 import re
 import sqlite3
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Event
 from typing import Any, Awaitable, Callable, Mapping, Protocol
 from uuid import uuid4
 
@@ -75,6 +79,75 @@ class DurabilityScope:
     @property
     def key(self) -> str:
         return digest({k: v for k, v in self.identity().items() if k != "generation"})
+
+
+@dataclass(frozen=True)
+class _LockedSourceRead:
+    broker: Any
+    scope: DurabilityScope
+    operation_key: str
+    request_digest: str
+    field_key: str
+    verify_current: Callable[[], None]
+    closed: Event = field(default_factory=Event, compare=False)
+
+
+_locked_source_read: ContextVar[_LockedSourceRead | None] = ContextVar(
+    "research_trusted_locked_source_read", default=None)
+
+
+@contextmanager
+def _trusted_locked_source_read(broker, scope, operation_key, logical_request, *,
+                                field_key, source_id, command_digest, verify_current):
+    """Internal capture-only authority, never a serialized/model tool argument.
+
+    The capture broker supplies a callback which re-reads the genuine human
+    command, queue revision and anchor proofs. Only its exact logical read may
+    cross a human lock. Context propagates through asyncio.to_thread; no grant
+    is persisted or survives this call. Publication still refuses locked fields.
+    """
+    if not isinstance(logical_request, dict):
+        raise PermissionError("Trusted locked read requires the complete source request")
+    contract = logical_request.get("contract_version")
+    arguments_key = {"research-source-request-envelope/v2": "arguments",
+                     "research-pinned-dataset-request/v1": "query"}.get(contract)
+    arguments = logical_request.get(arguments_key) if arguments_key else None
+    request_digest = digest(logical_request)
+    if (not isinstance(broker, DurableEffectBroker) or not isinstance(scope, DurabilityScope)
+        or source_id not in {"georeference_history", "geolocate"}
+        or not isinstance(field_key, str) or not field_key
+        or not isinstance(command_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", command_digest)
+        or logical_request.get("trusted_derivation_command_digest") != command_digest
+        or logical_request.get("tool_id") != "source_lookup"
+        or not isinstance(arguments, dict) or arguments.get("source_id") != source_id
+        or arguments.get("field_key") != field_key
+        or operation_key != "source_capture_v2:" + request_digest or not callable(verify_current)
+        or _locked_source_read.get() is not None):
+        raise PermissionError("Trusted locked read is not the exact bound source capture")
+    permit = _LockedSourceRead(broker, scope, operation_key, request_digest, field_key, verify_current)
+    token = _locked_source_read.set(permit)
+    try:
+        yield
+    finally:
+        permit.closed.set()
+        _locked_source_read.reset(token)
+
+
+def _revalidate_locked_source_read(store, scope):
+    permit = _locked_source_read.get()
+    if permit is None:
+        return
+    if permit.closed.is_set() or permit.broker.store is not store or permit.scope != scope:
+        raise PermissionError("Trusted locked read belongs to another store or scope")
+    # Keep external proof reads out of CAS reducers; mark_sending also retains
+    # the canonical SQL send fence in the same transaction as the effect CAS.
+    result = permit.verify_current()
+    if inspect.isawaitable(result):
+        if inspect.iscoroutine(result):
+            result.close()
+        raise TypeError("Trusted locked read requires synchronous proof verification")
+    if result is not None:
+        raise PermissionError("Trusted locked read proof must raise on denial, not return a flag")
 
 
 @dataclass(frozen=True)
@@ -568,13 +641,17 @@ class ResearchStore:
     def budget(self, scope: DurabilityScope) -> dict[str, Any]:
         return self._budget(self._read(scope).state)
 
-    @staticmethod
-    def _field_admission(job: dict[str, Any], field_keys: tuple[str, ...] | list[str]) -> None:
+    def _field_admission(self, job: dict[str, Any], field_keys: tuple[str, ...] | list[str], *,
+                         scope=None, operation_key=None, request_digest=None) -> None:
         served = set(field_keys or job["fields"])
         if any(key not in job["fields"] for key in served):
             raise PermissionError("Effect serves fields outside the pinned job")
         if any(job["fields"][key]["locked"] for key in served):
-            raise StaleWork("Effect serves a human-locked field")
+            permit = _locked_source_read.get()
+            if (permit is None or permit.closed.is_set() or permit.broker.store is not self or permit.scope != scope
+                or permit.operation_key != operation_key or permit.request_digest != request_digest
+                or tuple(field_keys) != (permit.field_key,)):
+                raise StaleWork("Effect serves a human-locked field")
 
     def reserve_effect(self, scope: DurabilityScope, lease: Lease, operation_key: str, request: Any, reservation_micro_usd: int, *, execution_class: str = "offline", field_keys: tuple[str, ...] = ()) -> dict[str, Any]:
         if not operation_key or type(reservation_micro_usd) is not int or reservation_micro_usd <= 0:
@@ -583,6 +660,7 @@ class ResearchStore:
             raise ValueError("Explicit offline or live dispatch class required")
         if execution_class == "live":
             self.require_live_authority(scope)
+        _revalidate_locked_source_read(self, scope)
         request_hash = digest(request)
         def reduce(state, now):
             job = self._job(state, scope)
@@ -595,9 +673,11 @@ class ResearchStore:
                 if old["execution_class"] != execution_class or old["reservation_micro_usd"] != reservation_micro_usd or old.get("field_keys", []) != list(field_keys):
                     raise ValueError("Existing logical effect policy changed")
                 if old["status"] == "reserved":
-                    self._field_admission(job, field_keys)
+                    self._field_admission(job, field_keys, scope=scope,
+                        operation_key=operation_key, request_digest=request_hash)
                 return copy.deepcopy(old)
-            self._field_admission(job, field_keys)
+            self._field_admission(job, field_keys, scope=scope,
+                operation_key=operation_key, request_digest=request_hash)
             self._lease(state, scope, lease, now)
             budget = self._budget(state)
             if state["halted"] or reservation_micro_usd > budget["remaining_micro_usd"]:
@@ -626,13 +706,15 @@ class ResearchStore:
         return copy.deepcopy(self._effect(self._read(scope).state, scope, effect_id))
 
     def mark_sending(self, scope: DurabilityScope, lease: Lease, effect_id: str, *, send_authorization: dict | None = None) -> dict[str, Any]:
+        _revalidate_locked_source_read(self, scope)
         attempt_id = str(uuid4())
         def reduce(state, now):
             job = self._lease(state, scope, lease, now)
             if state["halted"]:
                 raise BudgetExceeded("Shared program halted; reserved holds remain unresolved")
             effect = self._effect(state, scope, effect_id)
-            self._field_admission(job, effect["field_keys"])
+            self._field_admission(job, effect["field_keys"], scope=scope,
+                operation_key=effect["operation_key"], request_digest=effect["request_digest"])
             if effect["status"] != "reserved":
                 raise HeldUnknown("Only a proven-unsent reserved intent can dispatch")
             attempt = {"attempt_id": attempt_id, "provider_idempotency_key": effect_id,
@@ -645,12 +727,14 @@ class ResearchStore:
         return self._mutate(scope, reduce, lease=lease, send_authorization=send_authorization)
 
     def validate_dispatch(self, scope: DurabilityScope, lease: Lease, effect_id: str, attempt_id: str) -> None:
+        _revalidate_locked_source_read(self, scope)
         doc = self._read(scope)
         job = self._lease(doc.state, scope, lease, doc.server_time)
         if doc.state["halted"]:
             raise BudgetExceeded("Shared program halted before dispatch")
         effect = self._effect(doc.state, scope, effect_id)
-        self._field_admission(job, effect["field_keys"])
+        self._field_admission(job, effect["field_keys"], scope=scope,
+            operation_key=effect["operation_key"], request_digest=effect["request_digest"])
         if effect["status"] != "sending" or effect["attempts"][-1]["attempt_id"] != attempt_id:
             raise HeldUnknown("Current dispatch attempt required")
 
@@ -1337,6 +1421,11 @@ class DurableEffectBroker:
     async def execute(self, scope: DurabilityScope, lease: Lease, operation_key: str, request: Any,
                       reservation_micro_usd: int, dispatch: Callable[[str, str], Awaitable[CapturedResult]],
                       *, execution_class: str = "offline", field_keys: tuple[str, ...] = ()) -> EffectReceipt:
+        permit = _locked_source_read.get()
+        if permit is not None and (permit.closed.is_set() or permit.broker is not self or permit.scope != scope
+            or permit.operation_key != operation_key or permit.request_digest != digest(request)
+            or tuple(field_keys) != (permit.field_key,)):
+            raise PermissionError("Trusted locked read cannot authorize a different effect")
         intent = await asyncio.to_thread(self.store.reserve_effect, scope, lease, operation_key, request, reservation_micro_usd, execution_class=execution_class, field_keys=field_keys)
         if intent["receipt"]:
             receipt = intent["receipt"]
