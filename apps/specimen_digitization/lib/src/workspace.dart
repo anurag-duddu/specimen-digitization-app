@@ -902,8 +902,8 @@ class WorkspaceController extends ChangeNotifier {
   /// supports it. Other corrections retain the ordered decision path. The
   /// screen moves only after the server's acknowledged record is read back.
   ///
-  /// Returns how many of [changes] the server accepted.
-  Future<int> mutateBatch(
+  /// Returns both the acknowledged count and the verified readback, if any.
+  Future<ReviewBatchSaveOutcome> mutateBatch(
     List<Json> changes,
     String reason, {
     bool Function(Specimen current, Json change)? stillApplies,
@@ -911,7 +911,7 @@ class WorkspaceController extends ChangeNotifier {
     final Specimen? current = _selected;
     final CollectionScope? scope = _scope;
     if (current == null || scope == null || _mutating || changes.isEmpty) {
-      return 0;
+      return const ReviewBatchSaveOutcome(saved: 0);
     }
     final int generation = _recordGeneration;
     final int mutationEpoch = _mutationEpoch;
@@ -941,18 +941,26 @@ class WorkspaceController extends ChangeNotifier {
         stillApplies: stillApplies,
         keyFor: keyFor,
       );
-      if (_disposed || generation != _recordGeneration) return result.saved;
+      if (_disposed || generation != _recordGeneration) {
+        return const ReviewBatchSaveOutcome(saved: 0);
+      }
       if (result.saved > 0) _selected = result.specimen;
       for (final String payload in payloads.take(result.saved)) {
         _mutationKeys.remove(payload);
       }
-      return result.saved;
+      return ReviewBatchSaveOutcome(
+        saved: result.saved,
+        confirmed: result.saved > 0 ? result.specimen : null,
+      );
     } on ReviewBatchFailure catch (failure) {
-      if (_disposed || generation != _recordGeneration) return failure.saved;
-      // What landed, landed. The screen shows the record the server has now
-      // rather than the one the reviewer opened, and the caller reports the
-      // corrections that are still outstanding.
-      if (failure.saved > 0) _selected = failure.specimen;
+      if (_disposed || generation != _recordGeneration) {
+        return const ReviewBatchSaveOutcome(saved: 0);
+      }
+      // Ordinary verified prefixes can advance the screen. A candidate
+      // acknowledgement without a proven readback keeps the original view.
+      if (failure.saved > 0 && !failure.retainKeys) {
+        _selected = failure.specimen;
+      }
       // The key of the call that failed is deliberately retained: its answer
       // is uncertain, so a retry has to reconcile rather than record twice.
       if (!failure.retainKeys) {
@@ -961,11 +969,19 @@ class WorkspaceController extends ChangeNotifier {
         }
       }
       _recordFailure(failure.cause);
-      return failure.saved;
+      return ReviewBatchSaveOutcome(
+        saved: failure.saved,
+        confirmed: failure.saved > 0 && !failure.retainKeys
+            ? failure.specimen
+            : null,
+        requiresReconciliation: failure.retainKeys,
+      );
     } catch (error) {
-      if (_disposed || generation != _recordGeneration) return 0;
+      if (_disposed || generation != _recordGeneration) {
+        return const ReviewBatchSaveOutcome(saved: 0);
+      }
       _recordFailure(error);
-      return 0;
+      return const ReviewBatchSaveOutcome(saved: 0);
     } finally {
       if (!_disposed && mutationEpoch == _mutationEpoch) {
         _mutating = false;

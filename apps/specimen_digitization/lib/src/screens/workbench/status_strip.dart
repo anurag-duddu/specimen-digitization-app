@@ -26,6 +26,7 @@ class WorkbenchStatusStrip extends StatefulWidget {
     required this.onGoToBlocker,
     this.saved = false,
     this.conflictVersion,
+    this.reconciliationMessage,
     this.onRefresh,
     this.staleChanges = const <PendingFieldChange>[],
   });
@@ -50,6 +51,9 @@ class WorkbenchStatusStrip extends StatefulWidget {
 
   /// The version another reviewer saved, when one arrived under this one.
   final int? conflictVersion;
+
+  /// A server acknowledgement whose current projection is not yet verified.
+  final String? reconciliationMessage;
 
   /// Reloads the record so the reviewer can compare.
   final VoidCallback? onRefresh;
@@ -141,6 +145,23 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
+        if (widget.reconciliationMessage != null)
+          Padding(
+            padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
+            child: Semantics(
+              liveRegion: true,
+              container: true,
+              child: UiBanner(
+                message: widget.reconciliationMessage!,
+                tone: UiBannerTone.needsReview,
+                icon: UiIcons.syncProblem,
+                actionLabel: widget.onRefresh == null
+                    ? null
+                    : ConflictBanner.action,
+                onAction: widget.onRefresh,
+              ),
+            ),
+          ),
         // Height and opacity, deliberately no shake and deliberately no
         // haptic: this is a paragraph the reviewer has to read and act on,
         // and a buzz adds urgency without adding information
@@ -194,7 +215,8 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
             ),
           ),
         UiStatusStrip(
-          disposition: (widget.saved || _settled)
+          disposition:
+              widget.reconciliationMessage == null && (widget.saved || _settled)
               ? Row(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[

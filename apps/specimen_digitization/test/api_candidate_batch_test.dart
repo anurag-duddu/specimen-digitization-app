@@ -195,7 +195,9 @@ void main() {
               current.revision == 18 &&
               {'county', 'city'}.contains(change['target_id']),
         );
-        expect(saved, 2);
+        expect(saved.saved, 2);
+        expect(saved.confirmed?.revision, 19);
+        expect(saved.requiresReconciliation, isFalse);
         expect(controller.selected?.revision, 19);
         expect(controller.selected?.recordVersionId, 'run:19');
         expect(controller.error, isNull);
@@ -356,9 +358,19 @@ void main() {
     try {
       await controller.checkAccess();
       await controller.openSpecimen('s1');
-      expect(await controller.mutateBatch(choices(), 'Evidence reviewed'), 0);
+      final uncertain = await controller.mutateBatch(
+        choices(),
+        'Evidence reviewed',
+      );
+      expect(uncertain.saved, 0);
+      expect(uncertain.requiresReconciliation, isTrue);
       expect(controller.selected?.revision, 18);
-      expect(await controller.mutateBatch(choices(), 'Evidence reviewed'), 2);
+      final confirmed = await controller.mutateBatch(
+        choices(),
+        'Evidence reviewed',
+      );
+      expect(confirmed.saved, 2);
+      expect(confirmed.confirmed?.revision, 19);
       expect(controller.selected?.revision, 19);
       expect(posts, hasLength(2));
       expect(
@@ -414,9 +426,9 @@ void main() {
   );
 
   test(
-    'partial and malformed acknowledgements cannot become full success',
+    'mixed and malformed acknowledgements cannot become a saved prefix',
     () async {
-      for (final corrupt in [false, true]) {
+      for (final shape in ['applied-first', 'refused-first', 'corrupt']) {
         var reads = 0;
         final repo = repository((request) async {
           if (request.method == 'GET') {
@@ -425,9 +437,13 @@ void main() {
           }
           final result = answerFor(
             request,
-            outcomes: corrupt ? null : ['applied', 'refused'],
+            outcomes: switch (shape) {
+              'applied-first' => ['applied', 'refused'],
+              'refused-first' => ['refused', 'applied'],
+              _ => null,
+            },
           );
-          if (corrupt) {
+          if (shape == 'corrupt') {
             (result['results'] as List)[1]['idempotency_key'] = 'wrong-key';
           }
           return http.Response(jsonEncode(result), 200);
@@ -445,11 +461,11 @@ void main() {
             isA<ReviewBatchFailure>().having(
               (failure) => failure.saved,
               'saved',
-              corrupt ? 0 : 1,
+              0,
             ),
           ),
         );
-        expect(reads, corrupt ? 0 : 1);
+        expect(reads, 0);
         repo.close();
       }
     },
@@ -483,6 +499,135 @@ void main() {
     );
     repo.close();
   });
+
+  test('a lost readback also keeps the known committed count', () async {
+    final repo = repository(
+      (request) async => request.method == 'POST'
+          ? http.Response(jsonEncode(answerFor(request)), 200)
+          : throw http.ClientException('readback unavailable'),
+    );
+    final SpecimenRepository typed = repo;
+    await expectLater(
+      typed.reviewBatch(
+        scope,
+        original,
+        choices(),
+        'Evidence reviewed',
+        'batch',
+      ),
+      throwsA(
+        isA<ReviewBatchFailure>()
+            .having((failure) => failure.saved, 'known committed', 2)
+            .having((failure) => failure.retainKeys, 'retry keys', isTrue)
+            .having((failure) => failure.specimen.revision, 'old view', 18),
+      ),
+    );
+    repo.close();
+  });
+
+  test(
+    'workspace preserves known commits and keys until a newer readback',
+    () async {
+      final session = _TestSession();
+      final posts = <http.Request>[];
+      var revision = 18;
+      var readAfterPost = 0;
+      final repo = repository((request) async {
+        final path = request.url.path;
+        if (path == '/v1/session') {
+          return http.Response(
+            jsonEncode({
+              'user_id': session.userId,
+              'mode': 'synthetic',
+              'memberships': [
+                {
+                  'organization_id': 'org',
+                  'collection_id': 'collection',
+                  'role': 'reviewer',
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        if (path.endsWith('/collections')) {
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {'collection_id': 'collection'},
+              ],
+            }),
+            200,
+          );
+        }
+        if (path.endsWith('/specimens')) {
+          return http.Response(
+            jsonEncode({
+              'items': [workspace(revision)],
+            }),
+            200,
+          );
+        }
+        if (path.endsWith('/specimens/s1/workspace')) {
+          if (posts.isNotEmpty) readAfterPost++;
+          return http.Response(
+            jsonEncode(workspace(readAfterPost == 1 ? 18 : revision)),
+            200,
+          );
+        }
+        if (path.endsWith('/decisions:batch')) {
+          posts.add(request);
+          revision = 19;
+          return http.Response(jsonEncode(answerFor(request)), 200);
+        }
+        fail('Unexpected request: ${request.method} $path');
+      }, expectedUserId: () => session.userId);
+      final controller = WorkspaceController(
+        repository: repo,
+        session: session,
+        pollInterval: const Duration(days: 1),
+      );
+      try {
+        await controller.checkAccess();
+        await controller.openSpecimen('s1');
+        final first = await controller.mutateBatch(
+          choices(),
+          'Evidence reviewed',
+        );
+        expect(first.saved, 2);
+        expect(first.confirmed, isNull);
+        expect(first.requiresReconciliation, isTrue);
+        expect(controller.selected?.revision, 18);
+        final retry = await controller.mutateBatch(
+          choices(),
+          'Evidence reviewed',
+        );
+        expect(retry.saved, 2);
+        expect(retry.confirmed?.revision, 19);
+        expect(retry.requiresReconciliation, isFalse);
+        expect(controller.selected?.revision, 19);
+        expect(posts, hasLength(2));
+        expect(
+          posts.first.headers['Idempotency-Key'],
+          posts.last.headers['Idempotency-Key'],
+        );
+        final firstEntries = objects(
+          (jsonDecode(posts.first.body) as Json)['decisions'],
+        );
+        final retryEntries = objects(
+          (jsonDecode(posts.last.body) as Json)['decisions'],
+        );
+        expect(
+          firstEntries.map((entry) => entry['idempotency_key']).toList(),
+          retryEntries.map((entry) => entry['idempotency_key']).toList(),
+        );
+      } finally {
+        controller.dispose();
+        repo.close();
+        await session.controller.close();
+      }
+    },
+  );
 
   test(
     'uncertain retry reuses the same batch key despite a new prefix',

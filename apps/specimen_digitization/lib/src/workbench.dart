@@ -135,7 +135,7 @@ class ReviewWorkbench extends StatefulWidget {
   final Future<bool> Function(Json change) onChange;
 
   /// Saves several corrections as one reviewer action under one reason, and
-  /// answers how many the server acknowledged (pass criterion 7.2).
+  /// distinguishes acknowledged decisions from a verified current record.
   ///
   /// `stillApplies` is asked before each call, against the record the call
   /// before it produced. It is how the batch keeps the guarantee the one at a
@@ -146,7 +146,7 @@ class ReviewWorkbench extends StatefulWidget {
   /// Optional, so a component test can pump the workbench with the one change
   /// callback alone; where it is absent the corrections go one at a time and
   /// the screen moves once per correction, which is what shipped before.
-  final Future<int> Function(
+  final Future<ReviewBatchSaveOutcome> Function(
     List<Json> changes,
     String reason,
     bool Function(Specimen current, Json change) stillApplies,
@@ -277,6 +277,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   int? _conflictVersion;
   bool _savingLocally = false;
   int? _acknowledgedRevision;
+  String? _reconciliationMessage;
   String? _announcement;
 
   /// What this screen has asked of the frame around it (13 section 3.4).
@@ -478,6 +479,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       _moveSegment(WorkbenchSegment.fields);
       _historyVisited = false;
       _acknowledgedRevision = null;
+      _reconciliationMessage = null;
       _pending = <PendingFieldChange>[];
       _stale = <PendingFieldChange>[];
       _conflictVersion = null;
@@ -784,16 +786,20 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     if (reason == null || !mounted) return;
     _rememberReason(reason);
 
-    final int saved = await _sendBatch(batch, reason);
+    final ReviewBatchSaveOutcome outcome = await _sendBatch(batch, reason);
     if (!mounted) return;
-    if (saved == batch.length) {
+    if (outcome.requiresReconciliation) {
+      _announce(_reconciliationMessage ?? 'Refresh and compare this save.');
+      return;
+    }
+    if (outcome.saved == batch.length && outcome.confirmed != null) {
       _announce(
-        '${pendingChangesLabel(saved)} saved. '
+        '${pendingChangesLabel(outcome.saved)} saved. '
         'Version ${widget.specimen.revision}.',
       );
       return;
     }
-    await _reportFailedSave(batch.length - saved);
+    await _reportFailedSave(batch.length - outcome.saved);
   }
 
   /// Sends every pending correction under one reason.
@@ -810,10 +816,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// reached this widget by then; the batch path hands the same check to the
   /// repository, which applies it against the record each call produced.
   ///
-  /// Returns how many corrections the server acknowledged, and clears exactly
-  /// those from the pending list.
-  Future<int> _sendBatch(List<PendingFieldChange> batch, String reason) async {
-    final Future<int> Function(
+  /// Clears only a verified prefix. Uncertain candidate groups retain every
+  /// draft and stable retry key, even when the server acknowledged a commit.
+  Future<ReviewBatchSaveOutcome> _sendBatch(
+    List<PendingFieldChange> batch,
+    String reason,
+  ) async {
+    final Future<ReviewBatchSaveOutcome> Function(
       List<Json>,
       String,
       bool Function(Specimen, Json),
@@ -827,21 +836,27 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         // it from the original batch against a newer revision automatically.
         if (!_pending.contains(change) || blockedReason('field') != null) break;
         final bool landed = await _send(change.toChange(reason));
-        if (!mounted) return saved;
+        if (!mounted) return const ReviewBatchSaveOutcome(saved: 0);
         if (!landed) break;
         saved++;
       }
-      return saved;
+      return ReviewBatchSaveOutcome(
+        saved: saved,
+        confirmed: saved > 0 ? widget.specimen : null,
+      );
     }
 
-    if (_savingLocally || widget.busy) return 0;
+    if (_savingLocally || widget.busy) {
+      return const ReviewBatchSaveOutcome(saved: 0);
+    }
+    final Specimen original = widget.specimen;
     final Map<String, PendingFieldChange> drafts = <String, PendingFieldChange>{
       for (final PendingFieldChange change in batch) change.fieldKey: change,
     };
     _setSavingLocally(true);
-    int saved = 0;
+    ReviewBatchSaveOutcome outcome = const ReviewBatchSaveOutcome(saved: 0);
     try {
-      saved = await send(
+      outcome = await send(
         <Json>[
           for (final PendingFieldChange change in batch)
             change.toChange(reason),
@@ -855,16 +870,50 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       // Let the acknowledged record reach this widget before anything reads
       // its version, exactly as the one at a time path does.
       if (mounted) await WidgetsBinding.instance.endOfFrame;
-      return mounted ? saved : 0;
+      if (!mounted) return const ReviewBatchSaveOutcome(saved: 0);
+      final Specimen? confirmed = outcome.confirmed;
+      if (confirmed != null &&
+          outcome.saved > 0 &&
+          (confirmed.id != original.id ||
+              confirmed.revision <= original.revision ||
+              widget.specimen.id != confirmed.id ||
+              widget.specimen.revision != confirmed.revision ||
+              widget.specimen.recordVersionId != confirmed.recordVersionId)) {
+        outcome = ReviewBatchSaveOutcome(
+          saved: outcome.saved,
+          requiresReconciliation: true,
+        );
+      }
+      return outcome;
     } catch (_) {
-      return 0;
+      outcome = const ReviewBatchSaveOutcome(saved: 0);
+      return outcome;
     } finally {
       _setSavingLocally(false);
       if (mounted) {
         setState(() {
-          if (saved > 0) _acknowledgedRevision = widget.specimen.revision;
+          final bool verified =
+              outcome.confirmed != null && !outcome.requiresReconciliation;
+          if (verified && outcome.saved > 0) {
+            _acknowledgedRevision = widget.specimen.revision;
+            _reconciliationMessage = null;
+          } else if (outcome.requiresReconciliation) {
+            _acknowledgedRevision = null;
+            _reconciliationMessage = outcome.saved > 0
+                ? 'The server recorded ${outcome.saved} '
+                      '${outcome.saved == 1 ? 'decision' : 'decisions'}, '
+                      'but the current record could not be reopened. Your '
+                      'choices remain staged. Refresh and compare, or retry '
+                      'with the same choices.'
+                : 'The batch result could not be confirmed. Your choices '
+                      'remain staged. Refresh and compare, or retry with '
+                      'the same choices.';
+          }
           final Set<String> landed = <String>{
-            for (final PendingFieldChange change in batch.take(saved))
+            for (final PendingFieldChange change
+                in verified
+                    ? batch.take(outcome.saved)
+                    : <PendingFieldChange>[])
               change.fieldKey,
           };
           _pending.removeWhere(
@@ -892,6 +941,13 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   void _refresh() async {
     if (!await _confirmUnsaved() || !mounted) return;
     setState(() => _conflictVersion = null);
+    widget.onRefresh();
+  }
+
+  void _refreshForReconciliation() {
+    if (widget.busy || _savingLocally) return;
+    // A verification refresh must not ask the reviewer to discard the exact
+    // drafts and keys needed to compare or retry an uncertain batch.
     widget.onRefresh();
   }
 
@@ -1558,13 +1614,19 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   /// Where the record stands, and what is holding a decision up.
   Widget _statusStrip(BuildContext context) => WorkbenchStatusStrip(
     specimen: widget.specimen,
-    saved: _acknowledgedRevision == widget.specimen.revision && !_hasUnsaved,
+    saved:
+        _reconciliationMessage == null &&
+        _acknowledgedRevision == widget.specimen.revision &&
+        !_hasUnsaved,
     blockers: blockersFor(widget.specimen),
     pending: _pending,
     staleChanges: _stale,
     onGoToBlocker: _goToBlocker,
     conflictVersion: _conflictVersion,
-    onRefresh: _refresh,
+    reconciliationMessage: _reconciliationMessage,
+    onRefresh: _reconciliationMessage == null
+        ? _refresh
+        : _refreshForReconciliation,
   );
 
   Widget _contextHeader(BuildContext context, WorkbenchRegime regime) {
@@ -1572,6 +1634,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         _pending.isNotEmpty ||
         _stale.isNotEmpty ||
         _conflictVersion != null ||
+        _reconciliationMessage != null ||
         _acknowledgedRevision == widget.specimen.revision;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,

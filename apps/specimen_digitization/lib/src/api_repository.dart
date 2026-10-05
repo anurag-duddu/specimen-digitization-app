@@ -1519,6 +1519,20 @@ class ApiSpecimenRepository
             ),
       );
     }
+    if (applied != changes.length) {
+      // One specimen's candidate-bearing group is one CAS. A mixed answer
+      // cannot identify a saved prefix; even [refused, applied] must leave
+      // every original choice and key intact for reconciliation.
+      throw ReviewBatchFailure(
+        saved: 0,
+        specimen: specimen,
+        cause: const ApiFailure(
+          'The server returned a mixed result for one record. Refresh and compare.',
+          code: 'batch_partial_unexpected',
+        ),
+        retainKeys: true,
+      );
+    }
     final Specimen reloaded;
     try {
       reloaded = await this.specimen(scope, specimen.id);
@@ -1536,19 +1550,6 @@ class ApiSpecimenRepository
         saved: applied,
         specimen: specimen,
         cause: error,
-        retainKeys: true,
-      );
-    }
-    if (applied != changes.length) {
-      throw ReviewBatchFailure(
-        saved: applied,
-        specimen: reloaded,
-        cause:
-            refusal ??
-            const ApiFailure(
-              'The server returned a partial result for one record. Refresh it.',
-              code: 'batch_partial_unexpected',
-            ),
         retainKeys: true,
       );
     }

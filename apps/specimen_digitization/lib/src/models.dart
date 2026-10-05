@@ -545,6 +545,24 @@ extension ReviewBatch on SpecimenRepository {
 /// applied rather than because it finished.
 typedef ReviewBatchResult = ({Specimen specimen, int saved, bool stopped});
 
+/// What the workspace can safely tell the review screen after a batch.
+///
+/// [saved] counts decisions the server explicitly acknowledged. A count alone
+/// does not prove that the current record was reopened: only [confirmed] does.
+/// When [requiresReconciliation] is true, the original drafts and keys must
+/// remain available for a same-key retry or a fresh comparison.
+class ReviewBatchSaveOutcome {
+  const ReviewBatchSaveOutcome({
+    required this.saved,
+    this.confirmed,
+    this.requiresReconciliation = false,
+  });
+
+  final int saved;
+  final Specimen? confirmed;
+  final bool requiresReconciliation;
+}
+
 /// A batch that stopped part way through.
 ///
 /// Carries the record as the server now has it, so the screen can still show
@@ -561,7 +579,8 @@ class ReviewBatchFailure implements Exception {
   /// How many of the changes the server accepted before it stopped.
   final int saved;
 
-  /// The record after the last change that landed.
+  /// The last verified record. A committed decision without readback retains
+  /// the original record here and sets [retainKeys].
   final Specimen specimen;
 
   /// What the failing call threw.
