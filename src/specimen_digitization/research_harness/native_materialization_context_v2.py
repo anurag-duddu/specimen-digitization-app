@@ -246,11 +246,10 @@ def _transcription_contexts(prior, native_inputs, scope, projection_services, re
     return tuple(proofs)
 
 
-def _sibling_winner(context, checkpoint, intent, native_inputs):
-    from .publication_v2 import NativeCausalReceiptV2
+def _sibling_winner(context, checkpoint, intent, retained_history):
     native, _ = _checkpoint(context, checkpoint)
     key = context.field_mapping[str(checkpoint.field_key)]
-    winners = [NativeCausalReceiptV2.model_validate(row) for row in native_inputs["retained_history"]]
+    winners = retained_history()
     matches = [row for row in winners if row.changed_field == key
         and row.checkpoint_outbox_key == "checkpoint/" + native["id"]]
     if not matches:
@@ -264,7 +263,7 @@ def _sibling_winner(context, checkpoint, intent, native_inputs):
     return winner
 
 
-def _consumed_sources(context, checkpoint, intent, native_inputs, prior, *, target=True):
+def _consumed_sources(context, checkpoint, intent, native_inputs, prior, *, retained_history, target=True):
     rows = native_inputs["projection_rows"]
     bases = intent.dependency_sources
     if not target:
@@ -275,7 +274,7 @@ def _consumed_sources(context, checkpoint, intent, native_inputs, prior, *, targ
         current = _one(rows["resolved_fields"], lambda row:
             row.get("recordVersionId") == str(context.prior_record_version_id)
             and row.get("fieldKey") == canonical_key, "canonical_native_sibling_projection_unavailable")
-        winner = _sibling_winner(context, checkpoint, intent, native_inputs)
+        winner = _sibling_winner(context, checkpoint, intent, retained_history)
         if winner is None:
             hold("canonical_native_sibling_winning_receipt_unavailable")
         if current.get("candidateId") is not None:
@@ -380,6 +379,21 @@ class NativeMaterializationInputBundleV2:
             requests.append(accepted.acceptance.original_request)
         transcription = _transcription_contexts(prior, native_inputs, preparation.prepared.basis.scope,
             projection_services, requests)
+
+        # This synchronous input bundle owns one fresh history. Validate every
+        # receipt once, only when the first eligible sibling reaches its lookup;
+        # checkpoint/mapping failures must still precede history validation.
+        # Nothing is retained across bundles, actors, revisions or publications.
+        winners = None
+
+        def retained_history():
+            nonlocal winners
+            if winners is None:
+                from .publication_v2 import NativeCausalReceiptV2
+                winners = tuple(NativeCausalReceiptV2.model_validate(row)
+                    for row in native_inputs["retained_history"])
+            return winners
+
         contexts, originals = [], {}
         for cp in all_cp:
             key = str(cp.field_key)
@@ -423,10 +437,10 @@ class NativeMaterializationInputBundleV2:
                 transcription_proofs=transcription, accepted_checkpoint_proof=accepted)
             _prior_snapshot(prior, context)
             proof = _accepted_original(context, cp, accepted)
-            if cp is not target_cp and _sibling_winner(context, cp, intent, native_inputs) is None:
+            if cp is not target_cp and _sibling_winner(context, cp, intent, retained_history) is None:
                 continue
             consumed = _consumed_sources(context, cp, intent, native_inputs, prior,
-                target=cp is target_cp)
+                retained_history=retained_history, target=cp is target_cp)
             context = replace(context, consumed_sources=consumed)
             _source_lineage(context, prior, proof.original_checkpoint, consumed)
             originals[key] = proof
