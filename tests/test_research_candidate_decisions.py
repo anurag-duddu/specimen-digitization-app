@@ -36,6 +36,7 @@ from specimen_digitization.research_harness.prompts import resolve_prompt
 from specimen_digitization.research_harness.runtime import runtime_pins
 from specimen_digitization.research_harness.thread_view import ResearchThreadReader
 from test_decisions_batch import BATCH, HEADERS, PREFIX, REASON, client, processed
+from test_derivation_proposal_reads import build_computed
 
 
 class RetainedResearch:
@@ -191,6 +192,163 @@ def reopen(review):
 def research_base(review):
     return (PREFIX + f"/collections/{SYNTHETIC_COLLECTION}/specimens/{review.record['specimen_id']}"
         + "/research")
+
+
+@pytest.fixture
+def derived_review(tmp_path):
+    """Real saved human proofs and local computed receipts; discovery is explicit fixture."""
+    from specimen_digitization.application.domain import AuditEvent, Principal
+    from specimen_digitization.application.production import actor_uid
+    from specimen_digitization.research_harness.derivation_contracts import (
+        DerivationCommand, derivation_input_digest,
+    )
+    from specimen_digitization.research_harness.human_review import CandidateReviewContext
+    from specimen_digitization.research_harness.thread_view import candidate_selection_id
+    from test_derivation_contracts import command_data
+    from test_derivation_inputs import Case
+
+    actor = actor_uid.set("B")
+    try:
+        case = Case(tmp_path / "canonical")
+        case.manual()
+        while case.current.version < 5:
+            pending = case.current.model_copy(deep=True)
+            pending.run.fields["city"] = FieldValue(literal="Original city reading", state="unresolved")
+            case.save(pending)
+        inputs = case.collect()
+        info = case.repo.version_info(case.current.scope, case.current.id, case.current.version)
+        command = DerivationCommand.model_validate(command_data() | {
+            "canonical_run_id": case.current.run.id, "source_snapshot_sha256": info["sha256"],
+            "inputs": inputs, "input_digest": derivation_input_digest(inputs)})
+        queued = case.current.model_copy(deep=True)
+        queued.run.dependencies["research_derivation_request"] = command.model_dump(mode="json")
+        queued.audit.append(AuditEvent(actor="A", action="review_derive_rest", reason="Queue fixture",
+            after={"request_id": command.id}))
+        case.save(queued)
+        rig, document, job, result, effect = build_computed(tmp_path / "computed", command)
+        job["record_revision"] = command.queued_revision
+        job["dependencies"].update(derivation_request_id=command.id,
+            derivation_result={**result, "request_id": command.id, "status": "completed"})
+        payload = document.state["effects"][effect]["receipt"]["typed_payload"]
+        item = json.loads(payload["candidate_json"][0])
+        token = candidate_selection_id(rig.journal.scope.key, FieldKey.CITY, effect, item)
+        decision = SimpleNamespace(kind="research_candidate", target_id="city",
+            after={"selection_id": token}, evidence_ids=[], before={})
+        binding = SimpleNamespace(canonical=SimpleNamespace(record_revision=case.current.version,
+            canonical_run_id=case.current.run.id), field_mapping={key: str(key) for key in FieldKey},
+            research_locks={FieldKey.COUNTRY}, research_scope=lambda: rig.scope)
+
+        async def bound_state(*_):
+            return binding, rig.journal.store, rig.journal.scope, document, job
+
+        discovery = SimpleNamespace(bound_state=bound_state)
+        principal = Principal(user_id="B", role="reviewer", scope=case.current.scope)
+
+        def load(decisions=None, **changes):
+            return asyncio.run(CandidateReviewContext.load(discovery, principal, case.current,
+                [decision] if decisions is None else decisions,
+                **({"repository": case.repo, "blobs": case.blobs, "capture_blobs": rig.capture_blobs} | changes)))
+
+        yield SimpleNamespace(case=case, command=command, job=job, document=document,
+            metadata=item, payload=payload, binding=binding, decision=decision, load=load,
+            capture_blobs=rig.capture_blobs)
+    finally:
+        actor_uid.reset(actor)
+
+
+def test_genuine_derived_choice_preserves_original_literal_and_exact_source_metadata(derived_review):
+    from specimen_digitization.application.domain import AuditEvent
+    from specimen_digitization.application.projection import _human_research_choices
+
+    review = derived_review
+    context = review.load()
+    pending = review.case.current.model_copy(deep=True)
+    literal = pending.run.fields["city"].literal
+    after = context.apply(pending, "city", review.case.blobs, "Reviewed deterministic proposal")
+    field = pending.run.fields["city"]
+    assert field.literal == literal
+    assert field.normalized == field.parsed == review.metadata["value"]
+    assert field.layer == after["value_layer"] == "derived"
+    assert field.derived_from == after["derived_from"] == ["country"]
+    assert after["derivation_metadata"] == review.metadata
+    assert field.source_observation_id is None and field.settled_observation_ids == []
+    evidence = next(e for e in pending.run.evidence if e.id == after["evidence_ids"][0])
+    retained = json.loads(review.case.blobs.get(evidence.raw_ref))
+    assert retained["source_candidate"] == review.metadata
+    assert "derivation_metadata" not in retained  # Original source envelope remains stable.
+    pending.audit.append(AuditEvent(actor="A", action="review_research_candidate", reason="Reviewed", after=after))
+    saved = review.case.save(pending)
+    proofs, _ = review.case.repo._review_proofs(saved.scope, saved)
+    assert _human_research_choices(saved, proofs)["city"] == after
+
+
+@pytest.mark.parametrize("attack", ["no_repository", "no_blobs", "no_capture_blobs", "missing_command", "queued_revision",
+    "source_snapshot", "request_id", "record_revision", "unfinished", "checkpoint", "stale_input",
+    "forged_proof", "target", "metadata_revision", "metadata_evidence", "sensitive", "blocked",
+    "extra_checkpoint", "command_reason"])
+def test_derived_choices_fail_before_application_when_saved_input_or_request_proof_changes(derived_review, attack):
+    from specimen_digitization.application.storage import Conflict
+    from specimen_digitization.research_harness.derivation_contracts import derivation_input_digest
+    from specimen_digitization.research_harness.thread_view import candidate_selection_id
+
+    review = derived_review
+    command = review.case.current.run.dependencies["research_derivation_request"]
+    changes = {}
+    if attack in {"no_repository", "no_blobs", "no_capture_blobs"}:
+        changes[attack.removeprefix("no_")] = None
+    elif attack == "missing_command":
+        review.case.current.run.dependencies.pop("research_derivation_request")
+    elif attack == "queued_revision":
+        review.case.current.version += 1
+        review.binding.canonical.record_revision += 1
+    elif attack == "source_snapshot":
+        command["source_snapshot_sha256"] = "f" * 64
+    elif attack == "request_id":
+        review.job["dependencies"]["derivation_request_id"] = "f" * 64
+    elif attack == "record_revision":
+        review.job["record_revision"] += 1
+    elif attack == "unfinished":
+        review.job["dependencies"]["derivation_result"]["status"] = "running"
+    elif attack == "checkpoint":
+        review.job["dependencies"]["derivation_result"]["checkpoint_ids"] = []
+    elif attack == "extra_checkpoint":
+        review.job["dependencies"]["derivation_result"]["checkpoint_ids"].append("f" * 64)
+    elif attack == "blocked":
+        command["status"] = "blocked"
+    elif attack == "command_reason":
+        command["reason"] = "Another request with the same saved inputs"
+    elif attack == "stale_input":
+        review.case.current.run.fields["country"].normalized = "Changed since request"
+    elif attack == "sensitive":
+        review.case.current.asset.sensitive = True
+    elif attack == "forged_proof":
+        command["inputs"][0]["provenance_blob_ref"] = review.case.blobs.put(b"forged proof")
+        command["input_digest"] = derivation_input_digest(command["inputs"])
+    elif attack == "target":
+        command["requested_fields"] = ["county"]
+    else:
+        if attack == "metadata_revision":
+            review.metadata["input_revisions"][0][1] -= 1
+        else:
+            review.metadata["evidence_ids"].append("invented-input-evidence")
+        review.payload["candidate_json"] = [json.dumps(review.metadata)]
+        effect = next(key for key, value in review.document.state["effects"].items()
+                      if value.get("receipt", {}).get("typed_payload") is review.payload)
+        review.decision.after["selection_id"] = candidate_selection_id(
+            next(iter(review.document.state["jobs"])), FieldKey.CITY, effect, review.metadata)
+    before = review.case.current.model_dump(mode="json")
+    with pytest.raises((ValueError, Conflict)):
+        review.load(**changes)
+    assert review.case.current.model_dump(mode="json") == before
+
+
+@pytest.mark.parametrize("derived_first", [True, False])
+def test_a_derived_group_cannot_change_its_own_input_in_either_decision_order(derived_review, derived_first):
+    review = derived_review
+    edit = SimpleNamespace(kind="field", target_id="country")
+    decisions = [review.decision, edit] if derived_first else [edit, review.decision]
+    with pytest.raises(ValueError, match="Save derivation input changes separately"):
+        review.load(decisions)
 
 
 def test_two_candidates_are_one_canonical_cas_with_server_retained_values_and_provenance(review):
@@ -604,3 +762,24 @@ def test_explicit_authority_choice_supersedes_prior_research_marker_and_audits_e
     selected = [evidence[ident] for ident in event["after"]["evidence_ids"]
         if evidence[ident]["kind"] == "authority_selection"]
     assert selected and selected[-1]["locator"] == "candidate:" + identifier
+
+
+def test_internally_consistent_other_rule_cannot_be_accepted(derived_review, monkeypatch):
+    from specimen_digitization.research_harness import derivation_contracts
+
+    monkeypatch.setattr(derivation_contracts, "DERIVATION_RULE_VERSION", "retrospective-georeferencing-next")
+    before = derived_review.case.current.model_dump(mode="json")
+    with pytest.raises(ValueError):
+        derived_review.load()
+    assert derived_review.case.current.model_dump(mode="json") == before
+
+
+def test_derived_acceptance_requires_intact_original_capture_bytes(derived_review):
+    class CorruptCapture:
+        def get(self, reference):
+            return derived_review.capture_blobs.get(reference) + b"corrupt"
+
+    before = derived_review.case.current.model_dump(mode="json")
+    with pytest.raises(ValueError, match="retained_spatial_derivation_capture_unproved"):
+        derived_review.load(capture_blobs=CorruptCapture())
+    assert derived_review.case.current.model_dump(mode="json") == before

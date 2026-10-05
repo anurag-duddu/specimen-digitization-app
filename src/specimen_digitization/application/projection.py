@@ -547,6 +547,8 @@ def _tool_call(run: Run, record, decisions: dict, recorded: set) -> Write:
 
 def _derivation(value, relations: dict) -> str:
     """Lookup only when a source decides the value; Google supports, never decides (G26)."""
+    if value.layer == "derived":
+        return "derived"
     if value.normalized and "decides" in relations.values():
         return "lookup"
     if value.normalized:
@@ -579,8 +581,25 @@ def _human_research_choices(specimen: Specimen, proofs: list[ReviewDecisionProof
         if len(matches) != 1 or value is None:
             raise ValueError("human_research_candidate_provenance_invalid")
         [choice] = matches
+        layer = choice.get("value_layer", "settled")
+        dependencies = choice.get("derived_from", [])
+        if layer == "derived":
+            from specimen_digitization.research_harness.candidate_selection import DerivedCandidateMetadata
+
+            try:
+                metadata = DerivedCandidateMetadata.model_validate(choice.get("derivation_metadata"))
+            except ValueError:
+                raise ValueError("human_research_candidate_provenance_invalid") from None
+            if (choice.get("source_id") != "georeference_spatial" or str(metadata.field_key) != key
+                    or metadata.value != choice.get("value") or metadata.authority_id != choice.get("authority_id")
+                    or [str(item) for item in metadata.input_fields] != dependencies):
+                raise ValueError("human_research_candidate_provenance_invalid")
+        elif (layer != "settled" or dependencies or choice.get("source_id") == "georeference_spatial"
+                or choice.get("derivation_metadata") is not None):
+            raise ValueError("human_research_candidate_provenance_invalid")
         evidence = [item for item in specimen.run.evidence if item.id == marker["evidence_id"]]
         if (_value(value.state) != "supported" or value.parsed != choice.get("value")
+                or value.layer != layer or value.derived_from != dependencies
                 or value.normalized != choice.get("value") or value.authority_id != choice.get("authority_id")
                 or value.precision != choice.get("precision") or value.century_rule != choice.get("century_rule")
                 or not isinstance(choice.get("value"), str) or not choice["value"].strip()

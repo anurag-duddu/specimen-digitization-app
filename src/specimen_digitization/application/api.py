@@ -451,6 +451,9 @@ def create_app(
     research_binding_repository=None,
     research_store_factory=None,
     research_version="v1",
+    research_derivation_ready=None,
+    schedule_derivation=None,
+    research_capture_blobs=None,
 ) -> FastAPI:
     if mode not in {"synthetic", "emulator", "production"}:
         raise ValueError("Explicit application mode required")
@@ -2206,7 +2209,8 @@ def create_app(
         # Every candidate-bearing record is one transaction, even when ordinary
         # edits accompany the choices. Resolve all selections before any edit.
         context = asyncio.run(CandidateReviewContext.load(app.state.research_discovery,
-            p, specimen, decisions))
+            p, specimen, decisions, repository=repository, blobs=blobs,
+            capture_blobs=research_capture_blobs))
         for item in decisions:
             specimen = apply_decision(organization_id, specimen_id, item, background_tasks,
                 user=user, idempotency_key=request_key,
@@ -2732,6 +2736,16 @@ def create_app(
     app.include_router(create_research_router(
         DiscoveredResearchService(discovery), verified_principal_dependency=research_principal,
     ))
+    from ..research_harness.derivation_api import create_derivation_router
+    from ..research_harness.derivation_service import ResearchDerivationService
+    derivation = ResearchDerivationService(repository=repository, blobs=blobs,
+        discovery=discovery, load_specimen=load_research_specimen,
+        ready=research_derivation_ready, schedule_derivation=schedule_derivation,
+        capture_blobs=research_capture_blobs,
+        wake_worker=worker_dispatcher.start if worker_dispatcher is not None else None)
+    app.include_router(create_derivation_router(derivation,
+        verified_principal_dependency=research_principal))
+    app.state.research_derivation = derivation
     app.state.research_discovery = discovery
     app.state.workflow = workflow
     return app

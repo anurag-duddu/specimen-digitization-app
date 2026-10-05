@@ -7,6 +7,7 @@ never needs worker capture IAM or issues source/model calls.
 from __future__ import annotations
 
 import asyncio
+import copy
 import hashlib
 import json
 from dataclasses import dataclass
@@ -14,7 +15,7 @@ from typing import Literal
 
 from specimen_digitization.application.domain import Evidence, ValueState
 from specimen_digitization.application.storage import Conflict, canonical_json, digest
-from .candidate_selection import retained_candidate
+from .candidate_selection import DerivedCandidateMetadata, retained_candidate
 from .canonical_binding import BindingUnavailable, CanonicalIdentity
 from .compatibility import PublicationUnavailable
 from .contracts import FieldKey, FrozenRecord, ResearchScope
@@ -35,7 +36,7 @@ class CandidateReviewContext:
     selections: dict[str, dict]
 
     @classmethod
-    async def load(cls, discovery, principal, specimen, decisions):
+    async def load(cls, discovery, principal, specimen, decisions, *, repository=None, blobs=None, capture_blobs=None):
         if principal.role not in {"reviewer", "manager", "admin"}:
             raise PermissionError("research_access_denied")
         try:
@@ -67,6 +68,64 @@ class CandidateReviewContext:
                     document, scope.key, field_key, decision.after["selection_id"])
             except StaleWork:
                 raise Conflict("Research candidate state changed; reopen the record") from None
+        derived = [choice for choice in selections.values() if choice["source_id"] == "georeference_spatial"]
+        if derived:
+            # The source envelope proves a computation, while the current saved
+            # command and original human saves prove which inputs it may use.
+            from .derivation_contracts import DERIVATION_RULE_VERSION, DerivationCommand
+            from .derivation_inputs import verify_settled_inputs
+
+            if repository is None or blobs is None:
+                raise ValueError("Derived choices require original saved input proofs")
+            command = DerivationCommand.model_validate(
+                specimen.run.dependencies.get("research_derivation_request"))
+            job = document.state["jobs"][scope.key]
+            result = job.get("dependencies", {}).get("derivation_result")
+            if (specimen.version != command.queued_revision
+                    or command.status == "blocked"
+                    or specimen.run.id != command.canonical_run_id
+                    or specimen.asset.sensitive is not False or job.get("sensitive") is not False
+                    or job.get("record_revision") != command.queued_revision
+                    or job.get("dependencies", {}).get("derivation_request_id") != command.id
+                    or not isinstance(result, dict) or result.get("request_id") != command.id
+                    or result.get("status") != "completed"
+                    or not isinstance(result.get("checkpoint_ids"), list)
+                    or any(choice["checkpoint_id"] not in result["checkpoint_ids"] for choice in derived)):
+                raise Conflict("Derived choices belong to another request or record revision")
+            checkpoints = result["checkpoint_ids"]
+            current_checkpoints = {job["fields"][str(key)].get("checkpoint", {}).get("id")
+                for key in command.requested_fields if job["fields"].get(str(key), {}).get("checkpoint")}
+            if (any(not isinstance(identifier, str) for identifier in checkpoints)
+                    or len(checkpoints) > len(command.requested_fields)
+                    or len(set(checkpoints)) != len(checkpoints)
+                    or not set(checkpoints) <= current_checkpoints):
+                raise Conflict("Derived choices require the current committed target checkpoints")
+            inputs = tuple(item.field_key for item in command.inputs)
+            revisions = tuple((item.field_key, item.revision) for item in command.inputs)
+            protected = {binding.field_mapping[key] for key in command.human_locked_fields}
+            if any(item.kind in {"field", "research_candidate"} and item.target_id in protected for item in decisions):
+                raise ValueError("Save derivation input changes separately and request fresh proposals")
+            source = await asyncio.to_thread(repository.version_info,
+                specimen.scope, specimen.id, command.source_revision)
+            if source["sha256"] != command.source_snapshot_sha256:
+                raise Conflict("Derived choices no longer match the saved source snapshot")
+            await asyncio.to_thread(verify_settled_inputs, repository, specimen, blobs, command.inputs)
+            for choice in derived:
+                metadata = DerivedCandidateMetadata.model_validate(choice["source_candidate"])
+                evidence_ids = {item["id"] for item in choice["source_result"]["evidence"]}
+                evidence_ids.update(identifier for item in command.inputs for identifier in item.evidence_ids)
+                if metadata.rule_version != DERIVATION_RULE_VERSION:
+                    raise ValueError("Derived choice does not match the supported computation rule")
+                if (metadata.field_key not in command.requested_fields
+                        or metadata.input_fields != inputs or metadata.input_revisions != revisions
+                        or not set(metadata.evidence_ids) <= evidence_ids):
+                    raise ValueError("Derived choice does not match the exact saved inputs and targets")
+                if capture_blobs is None:
+                    raise ValueError("Derived choices require the immutable computation capture")
+                from .source_capture_v2 import verify_spatial_derivation_capture
+
+                await asyncio.to_thread(verify_spatial_derivation_capture, document, scope.key,
+                    metadata.field_key, command, choice, capture_blobs)
         journal = DurableResearchJournal(store, scope, Lease(scope.key, "human-review-read", 0, scope.generation, 0))
         thread = await ResearchThreadReader(journal).read(binding.research_scope())
         return cls(binding, document, thread, selections)
@@ -91,8 +150,10 @@ class CandidateReviewContext:
         field.parsed = field.normalized = choice["value"]
         field.authority_id = choice["authority_id"]
         field.authority_identity = None
-        field.layer = "settled"
-        field.derived_from = []
+        derived = choice["source_id"] == "georeference_spatial"
+        metadata = DerivedCandidateMetadata.model_validate(choice["source_candidate"]) if derived else None
+        field.layer = "derived" if derived else "settled"
+        field.derived_from = [str(key) for key in metadata.input_fields] if derived else []
         field.settled_observation_ids = []
         field.precision = choice["source_candidate"].get("precision") if choice["source_candidate"].get("precision") in {"day", "month", "year"} else None
         century_rule = choice["source_candidate"].get("century_rule")
@@ -105,11 +166,15 @@ class CandidateReviewContext:
         # must import it when a later job is requested; old V2 binding goes stale.
         locks = specimen.run.dependencies.setdefault("human_review_field_locks", {})
         locks[field_key] = {"selection_id": choice["selection_id"], "evidence_id": evidence.id}
-        return {"field_key": field_key, "selection_id": choice["selection_id"],
+        after = {"field_key": field_key, "selection_id": choice["selection_id"],
             "value": choice["value"], "authority_id": choice["authority_id"],
             "source_id": choice["source_id"], "effect_id": choice["effect_id"],
             "checkpoint_id": choice["checkpoint_id"], "evidence_ids": [evidence.id],
-            "precision": field.precision, "century_rule": field.century_rule}
+            "precision": field.precision, "century_rule": field.century_rule,
+            "value_layer": field.layer, "derived_from": list(field.derived_from)}
+        if derived:
+            after["derivation_metadata"] = copy.deepcopy(choice["source_candidate"])
+        return after
 
     def retain_report(self, specimen, blobs, *, request_key, request_digest, actor):
         fields = []

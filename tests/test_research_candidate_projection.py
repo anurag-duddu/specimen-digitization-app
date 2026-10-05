@@ -12,7 +12,8 @@ from test_projection_decisions import base, rows
 
 
 def selected_specimen(origin, *, field_key="country", selected_value="Philippines",
-                      authority="geolocate:a863d52e6ff08fe2", source="geolocate", precision=None):
+                      authority="geolocate:a863d52e6ff08fe2", source="geolocate", precision=None,
+                      derivation=None):
     specimen = base()
     specimen.version = 3
     field = FieldValue(state=ValueState.UNRESOLVED)
@@ -34,6 +35,9 @@ def selected_specimen(origin, *, field_key="country", selected_value="Philippine
     field.authority_id = authority
     field.precision = precision
     field.layer = "settled"
+    if derivation is not None:
+        field.layer = "derived"
+        field.derived_from = list(derivation["input_fields"])
     field.evidence_ids = [evidence.id]
     field.evidence_relations = {evidence.id: "decides"}
     specimen.run.dependencies["human_review_field_locks"] = {
@@ -44,6 +48,9 @@ def selected_specimen(origin, *, field_key="country", selected_value="Philippine
             "precision": precision, "century_rule": None,
             "checkpoint_id": "checkpoint", "evidence_ids": [evidence.id]},
         base_revision=3, resulting_revision=4)
+    if derivation is not None:
+        event.after.update(value_layer="derived", derived_from=list(field.derived_from),
+                           derivation_metadata=derivation)
     specimen.audit.append(event)
     specimen.version = 4
     snapshots = {}
@@ -204,3 +211,55 @@ def test_worker_projection_recovers_transient_candidate_write_with_the_same_huma
     assert first == ProjectionResult(False, "AppendFieldCandidateV2")
     assert second == ProjectionResult(True)
     assert any(operation == "AppendResolvedFieldV2" for operation, _ in session.calls)
+
+
+@pytest.mark.parametrize("origin", ["missing", "single", "readers"])
+def test_proved_derived_choice_preserves_layer_inputs_and_every_original_reader(origin):
+    from test_candidate_selection import derived_metadata
+
+    metadata = derived_metadata()
+    specimen, proofs = selected_specimen(origin, source="georeference_spatial",
+        authority=metadata["authority_id"], derivation=metadata)
+    before = specimen.model_dump(mode="json")
+    saved = writes(specimen, locate, size, "reviewer-uid", reviewer=True, review_proofs=proofs)
+    future = writes(specimen, locate, size, "worker-uid", reviewer=False, review_proofs=proofs)
+    candidates = rows(saved, "AppendFieldCandidateV2")
+    human, = [item for item in candidates if item["literalValue"] is None]
+    assert human["derivation"] == "derived"
+    assert human["normalizedValue"] == human["parsedValue"] == "Philippines"
+    assert human["inputSource"] is human["sourceObservationId"] is human["sourceTranscriptionId"] is None
+    assert all(item["derivation"] == "literal" and item["normalizedValue"] is None
+               for item in candidates if item["literalValue"] is not None)
+    assert rows(saved, "AppendResolvedFieldV2")[0]["candidateId"] == human["id"]
+    assert rows(future, "AppendFieldCandidateV2") == candidates
+    assert specimen.run.fields["country"].derived_from == ["province_state"]
+    assert specimen.model_dump(mode="json") == before
+
+
+@pytest.mark.parametrize("change", ["stored_layer", "stored_inputs", "audit_layer", "audit_inputs",
+                                    "metadata_value", "metadata_authority", "metadata_field", "source"])
+def test_proved_derived_choice_cannot_lose_or_change_its_dependency_metadata(change):
+    from test_candidate_selection import derived_metadata
+
+    metadata = derived_metadata()
+    specimen, proofs = selected_specimen("readers", source="georeference_spatial",
+        authority=metadata["authority_id"], derivation=metadata)
+    if change == "stored_layer":
+        specimen.run.fields["country"].layer = "settled"
+    elif change == "stored_inputs":
+        specimen.run.fields["country"].derived_from = ["city"]
+    else:
+        event = proofs[0].event.model_copy(deep=True)
+        if change == "audit_layer":
+            event.after["value_layer"] = "settled"
+        elif change == "audit_inputs":
+            event.after["derived_from"] = ["city"]
+        elif change == "source":
+            event.after["source_id"] = "geolocate"
+        else:
+            key = {"metadata_field": "field_key", "metadata_value": "value",
+                   "metadata_authority": "authority_id"}[change]
+            event.after["derivation_metadata"][key] = "city" if key == "field_key" else "changed"
+        proofs = [replace(proofs[0], event=event)]
+    with pytest.raises(ValueError, match="human_research_candidate_provenance_invalid"):
+        writes(specimen, locate, size, "reviewer-uid", reviewer=True, review_proofs=proofs)

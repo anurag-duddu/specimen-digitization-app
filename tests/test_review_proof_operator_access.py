@@ -109,7 +109,7 @@ def retained(tmp_path):
             raw_ref=raw_ref, digest=raw_ref)
         value.run.evidence.append(evidence)
         value.run.fields["country"] = FieldValue(state="supported", literal="P.I.",
-            parsed="Philippines", normalized="Philippines",
+            parsed="Philippines", normalized="Philippines", layer="settled",
             authority_id="geolocate:a863d52e6ff08fe2", evidence_ids=[evidence.id],
             evidence_relations={evidence.id: "decides"})
         value.run.dependencies["human_review_field_locks"] = {
