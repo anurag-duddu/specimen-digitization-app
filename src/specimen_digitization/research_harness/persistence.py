@@ -27,7 +27,11 @@ from typing import Any, Awaitable, Callable, Mapping, Protocol
 from uuid import uuid4
 
 CONTRACT_VERSION = "research-durability/v1"
-MAX_STATE_BYTES = 900_000
+# One corrected specimen retains both immutable research jobs, effects, journal
+# and publication outbox in this aggregate. The bounded two-revision rehearsal
+# reaches 1,027,331 bytes; 1.5 MB leaves room for that complete replay without
+# discarding earlier proof or cost. Longer histories still need archival.
+MAX_STATE_BYTES = 1_500_000
 # One lease covers a complete role window and its publication. Renewing the
 # lease during a window would invalidate the publication's exact lease match.
 MAX_LEASE_TTL_SECONDS = 900

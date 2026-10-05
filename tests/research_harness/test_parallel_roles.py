@@ -218,6 +218,14 @@ def tick(tmp_path, k, *, replace=None, ceiling=None, spent=0, before_step=None, 
             "stage": specimen.run.stage, "disposition": specimen.run.disposition, "outcome": outcome,
             "run_lineage": tuple(run_lineage),
             "effect_fields": {effect["effect_id"]: tuple(effect["field_keys"]) for effect in effects},
+            "date_elevation_proofs": {key: {
+                "accepted": bool(job["fields"][key]["checkpoint"].get("accepted_output_proof")),
+                "evidence_ids": tuple(job["fields"][key]["checkpoint"]["payload"]["resolution"]["evidence_ids"]),
+                "relations": job["fields"][key]["checkpoint"]["payload"]["resolution"]["value"]["evidence_relations"],
+                "assembly_ids": tuple(job["fields"][key]["checkpoint"]["payload"]["resolution"]["assembly_ids"]),
+                "event_id": job["fields"][key]["checkpoint"]["payload"]["resolution"]["event_id"],
+                "measurement": job["fields"][key]["checkpoint"]["payload"]["resolution"]["measurement"],
+            } for key in DATES_AND_ELEVATIONS if job["fields"][key]["checkpoint"] is not None},
             "reasons": sorted(specimen.run.reasons),
             "publications": [row["causal_proof"]["changed_field"] for row in receipts],
             "published_values": {key: field.normalized for key, field in specimen.run.fields.items()},
@@ -248,16 +256,16 @@ def tick(tmp_path, k, *, replace=None, ceiling=None, spent=0, before_step=None, 
 def test_two_roles_per_window_publish_what_one_role_per_window_publishes(tmp_path):
     one = tick(tmp_path / "one", 1, key="k1")
     two = tick(tmp_path / "two", None, key="shipped")
-    # The synthetic label reaches its final queue either way (needs human review on the
-    # held verbatim_dts and the dates and elevations without evidence relations).
+    # The synthetic label reaches its final queue either way. Qualified date and
+    # elevation relations publish; the held verbatim_dts remains for review.
     for facts in (one, two):
         assert (facts["stage"], facts["disposition"], facts["outcome"]) == (
             "finalized", "needs_human_review", "no OperationalBlock")
         assert facts["lease_left_set"] is False and facts["duplicates"] == 0
-    # The same twelve publications in the same order (a pass offers the specialists in roster order,
+    # The same nineteen publications in the same order (a pass offers the specialists in roster order,
     # then each one's fields in key order, as one role per window did), same field outcomes, same
     # record, same reasons, same spend, nothing left held.
-    assert two["publications"] == one["publications"] and len(two["publications"]) == 12
+    assert two["publications"] == one["publications"] and len(two["publications"]) == 19
     for key in ("work_states", "published_values", "reasons", "effects", "model_calls", "sources", "settled",
                 "specimen_state"):
         assert two[key] == one[key], key
@@ -268,14 +276,37 @@ def test_two_roles_per_window_publish_what_one_role_per_window_publishes(tmp_pat
     assert not two["final_progress"]["operational_reason_codes"]
     last_window = tuple(SpecialistRole)[-role_windows.ROLE_CONCURRENCY:]
     assert two["publications"][-1] in {str(key) for role in last_window for key in ROLE_FIELDS[role]}
-    # The final queue is the one the one-role e2e asserts: review on the held D/T/S field and on the
-    # dates and elevations without evidence relations, and nothing operational.
-    unresolved = {f"mandatory_unresolved:{key}" for key in ("verbatim_dts", *DATES_AND_ELEVATIONS)}
+    # The final queue retains only the held D/T/S mandatory field, not the
+    # qualified date/elevation fields, and has no operational reason.
+    unresolved = {"mandatory_unresolved:verbatim_dts"}
     assert {reason for reason in two["reasons"] if reason.startswith("mandatory_unresolved:")} == unresolved
+    expected_values = {"date_identified": "2020-06-02", "date_visited_from": "2020-06-01",
+        "date_visited_to": "2020-06-01", "elevation_from_m": "180.00", "elevation_to_m": "181.00",
+        "elevation_from_ft": "590.55", "elevation_to_ft": "593.83"}
+    for facts in (one, two):
+        assert set(DATES_AND_ELEVATIONS) <= set(facts["publications"])
+        assert set(facts["date_elevation_proofs"]) == set(DATES_AND_ELEVATIONS)
+        assert {key: facts["published_values"][key] for key in DATES_AND_ELEVATIONS} == expected_values
+        assert all(facts["work_states"][key] == "resolved" for key in DATES_AND_ELEVATIONS)
+        for key, proof in facts["date_elevation_proofs"].items():
+            assert proof["accepted"] and len(proof["evidence_ids"]) == len(proof["assembly_ids"]) == 1
+            assert proof["relations"] == {proof["evidence_ids"][0]: "supports"}
+            assert proof["event_id"]
+            if key.startswith("elevation_"):
+                assert proof["measurement"]["original_unit"] == "m"
+                assert proof["measurement"]["original_quantity"] == "180"
+                assert proof["measurement"]["original_to_quantity"] == "181"
+                assert proof["measurement"]["derived_unit"] == key.rsplit("_", 1)[-1]
+            else:
+                assert proof["measurement"] is None
+        assert (facts["date_elevation_proofs"]["date_visited_from"]["event_id"]
+                == facts["date_elevation_proofs"]["date_visited_to"]["event_id"])
+        assert (facts["date_elevation_proofs"]["date_identified"]["event_id"]
+                != facts["date_elevation_proofs"]["date_visited_from"]["event_id"])
     # A pass verifies a checkpoint (proof read) and probes its receipt only when it publishes it: a
     # checkpoint an earlier pass delivered is not walked again, however many windows follow.
     for facts in (one, two):
-        assert facts["proof_reads"] == 12 and facts["receipt_probes"] == 0
+        assert facts["proof_reads"] == 19 and facts["receipt_probes"] == 0
     # Concurrency really happened: two roles at once, in three lease windows instead of six.
     assert (one["peak_roles"], two["peak_roles"]) == (1, 2)
     assert [len(run["roles"]) for run in one["engine_runs"]] == [1] * 6

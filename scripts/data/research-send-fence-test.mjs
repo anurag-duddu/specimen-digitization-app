@@ -1,6 +1,6 @@
 // Synthetic-only qualification against the real local PostgreSQL connector.
 import assert from 'node:assert/strict';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {execFileSync, spawn} from 'node:child_process';
 import {setTimeout as delay} from 'node:timers/promises';
 
@@ -129,3 +129,32 @@ assert.equal(finished.read.specimen.workAvailableAt, null);
 const retained = ok(await raw(`query { specimenSnapshots(where:{organizationId:{eq:"${org}"},collectionId:{eq:"${coll}"},specimenId:{eq:"${specimen}"}},orderBy:{revision:ASC}) {revision sha256} }`));
 assert.deepEqual(retained.specimenSnapshots, [{revision: 1, sha256: hex}, {revision: 2, sha256: hex}]);
 console.log('PASS scoped reviewer side-work scheduling and native terminal proof retirement without a scientific snapshot revision');
+
+// A corrected specimen retains two complete research revisions. The measured
+// synthetic Python aggregate is 1,027,331 bytes and its duplicated native
+// mutation envelope is 2,121,679 bytes. Exercise a larger but still bounded
+// payload through this real connector and PostgreSQL, preserving exact JSON
+// bytes alongside the Any projection. The state contains only synthetic data.
+const largeBefore = ok(await op('ReadResearchHarnessStateV1', vars)).read.researchHarnessState;
+const largeState = JSON.parse(JSON.stringify(largeBefore.state));
+largeState.jobs['synthetic-key'].syntheticCapturePadding = '';
+const targetStateBytes = 1_499_998;
+const remaining = targetStateBytes - Buffer.byteLength(JSON.stringify(largeState));
+assert.ok(remaining > 0);
+largeState.jobs['synthetic-key'].syntheticCapturePadding = 'x'.repeat(remaining);
+const largeJson = JSON.stringify(largeState);
+assert.equal(Buffer.byteLength(largeJson), targetStateBytes);
+const expectedDigest = createHash('sha256').update(largeJson).digest('hex');
+const largeVariables = {...compare, expectedRevision: largeBefore.revision,
+  state: largeState, stateJson: largeJson, sendAuthorizationJson: null};
+const encodedMutationBytes = Buffer.byteLength(JSON.stringify({operationName: 'CompareResearchHarnessStateV1',
+  variables: largeVariables, extensions: {}}));
+assert.ok(encodedMutationBytes > 3_000_000 && encodedMutationBytes < 4_000_000);
+ok(await op('CompareResearchHarnessStateV1', largeVariables));
+const largeAfter = ok(await op('ReadResearchHarnessStateV1', vars)).read.researchHarnessState;
+assert.equal(largeAfter.revision, largeBefore.revision + 1);
+assert.equal(largeAfter.stateJson, largeJson);
+assert.equal(createHash('sha256').update(largeAfter.stateJson).digest('hex'),
+  expectedDigest);
+assert.deepEqual(largeAfter.state, largeState);
+console.log(`PASS bounded ${targetStateBytes}-byte native state round-trip, ${encodedMutationBytes}-byte mutation and exact Any/JSON proof sha256=${expectedDigest}`);
