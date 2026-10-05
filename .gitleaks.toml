@@ -597,3 +597,21 @@ regexTarget = "line"
 regexes = [
   '''^\s*"dataset_key": "7931dcab-94f1-46ce-8092-56e4335423de",?\s*$''',
 ]
+
+[[rules.allowlists]]
+description = "Exact scanner SHA-1 identifiers of verified public historical-source response SHA256 values; see SECRET_SCAN_REVIEW.md"
+condition = "AND"
+paths = ['''(?:^|/)\.secrets\.baseline$''']
+regexTarget = "line"
+regexes = [
+  '''^\s*"hashed_secret": "39721f55c2ea50bb2c82a0084d350501ec9312e9",?\s*$''', # pragma: allowlist secret (public response checksum scanner identifier)
+  '''^\s*"hashed_secret": "140d0550dc4f03f859ef80dc0006aff6a6a9650f",?\s*$''', # pragma: allowlist secret (public response checksum scanner identifier)
+  '''^\s*"hashed_secret": "a956785b2e7855cc3ee1f13939665753f730b678",?\s*$''', # pragma: allowlist secret (public response checksum scanner identifier)
+  '''^\s*"hashed_secret": "6ecb27dc235d2e4ecdd2749da5ca326b849fca67",?\s*$''', # pragma: allowlist secret (public response checksum scanner identifier)
+  '''^\s*"hashed_secret": "4380b86136974bbc07062f75b6618381ad19d0a3",?\s*$''', # pragma: allowlist secret (public response checksum scanner identifier)
+  '''^\s*"hashed_secret": "b6a66d66949086121d7520558071e7b2b446d23e",?\s*$''', # pragma: allowlist secret (public response checksum scanner identifier)
+  '''^\s*"hashed_secret": "d305e5e120e8a3a9768ce42d4e507f7ffd1f52b4",?\s*$''', # pragma: allowlist secret (public response checksum scanner identifier)
+  '''^\s*"hashed_secret": "c40451d35701ed1415105b060f985d05e4d9dba5",?\s*$''', # pragma: allowlist secret (public response checksum scanner identifier)
+  '''^\s*"hashed_secret": "1bac6e1315f867dad8cada8d8e892d1dcd5e735a",?\s*$''', # pragma: allowlist secret (public response checksum scanner identifier)
+  '''^\s*"hashed_secret": "b0cddc32cafe2e41ae160cea04ba22b04ab96b86",?\s*$''', # pragma: allowlist secret (public response checksum scanner identifier)
+]
