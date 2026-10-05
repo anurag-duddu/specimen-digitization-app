@@ -111,7 +111,7 @@ def local_model_factory(payload):
                         "candidates": [
                             {
                                 "field_key": "country",
-                                "region_id": payload["transcripts"][0]["region_id"],
+                                "reading": "1A",
                                 "literal": "United States",
                                 "source_excerpt": "United States",
                             }
@@ -218,6 +218,15 @@ def test_hard_model_factories_independent_observations_extraction_and_restart(
         assert any(
             e["source"] == "bounded_extraction_v1" for e in work["run"]["evidence"]
         )
+        # The child was handed every reading, named: its candidate quotes reading 1A
+        # (the decided one) and the row says so, with the spans the code computed.
+        (row,) = [
+            e for e in work["run"]["evidence"] if e["source"] == "bounded_extraction_v1"
+        ]
+        assert row["locator"].startswith("reading:1A:")
+        assert row["observation_ids"] == [
+            t["selected_observation_id"] for t in work["run"]["transcripts"]
+        ]
     with TestClient(make_app()) as restarted:
         after = restarted.get(path, headers=HEADERS).json()
         assert after["run"] == work["run"]

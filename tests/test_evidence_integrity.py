@@ -200,7 +200,7 @@ def test_source_supported_extraction_retains_verifiable_raw_digest(tmp_path):
             candidates=[
                 ExtractionCandidate(
                     field_key="country",
-                    region_id=specimen.run.regions[0].id,
+                    reading="1A",
                     literal="United States",
                     source_excerpt="country: United States",
                 )

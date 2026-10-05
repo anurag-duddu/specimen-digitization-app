@@ -36,6 +36,8 @@ from specimen_digitization.application.domain import (
     Transcript,
     ValueState,
 )
+from specimen_digitization.application.field_harness import labelled
+from specimen_digitization.application.field_resolution import DECIDED, Reading
 from specimen_digitization.application.harness import (
     ExtractionCandidate,
     ExtractionOutput,
@@ -70,20 +72,15 @@ P7 = (
 
 
 def make_run(labels):
-    """The three attributes `apply_candidates` reads. The worker's extraction child
-    builds the same shape (model_runtime._model_child): it has no profile snapshot,
-    so the guard must not read one."""
+    """The attributes `apply_candidates` reads. The worker's extraction child builds
+    the same shape (model_runtime._model_child): it has no profile snapshot, so the
+    guard must not read one. Each label is one decided reading, named 1A, 2A ... in
+    order."""
     return SimpleNamespace(
         evidence=[],
         fields={key: FieldValue() for key in MANDATORY},
-        transcripts=[
-            Transcript(
-                region_id=region,
-                text=text,
-                observation_ids=["o-" + region],
-                alternatives=[],
-                resolved=True,
-            )
+        readings=[
+            Reading(region, "o-" + region, DECIDED, text)
             for region, text in labels.items()
         ],
     )
@@ -91,10 +88,11 @@ def make_run(labels):
 
 def candidates(run, region, pairs):
     """The extractor quoted the whole label as its excerpt, as the stored answers do."""
-    text = next(t.text for t in run.transcripts if t.region_id == region)
+    names = labelled(run.readings)
+    name, reading = next((n, r) for n, r in names.items() if r.region_id == region)
     return [
         ExtractionCandidate(
-            field_key=key, region_id=region, literal=literal, source_excerpt=text
+            field_key=key, reading=name, literal=literal, source_excerpt=reading.text
         )
         for key, literal in pairs
     ]
@@ -273,7 +271,7 @@ def test_a_refused_value_is_not_stored_but_the_raw_answer_is_kept(tmp_path):
         "candidates": [
             {
                 "field_key": key,
-                "region_id": "label",
+                "reading": "1A",
                 "literal": literal,
                 "source_excerpt": P7,
             }
