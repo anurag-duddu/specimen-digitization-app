@@ -545,6 +545,16 @@ extension ReviewBatch on SpecimenRepository {
 /// applied rather than because it finished.
 typedef ReviewBatchResult = ({Specimen specimen, int saved, bool stopped});
 
+/// The exact canonical version named by an all-applied candidate-batch ACK.
+/// It is useful only when a later, scoped read returns this same identity.
+typedef ReviewBatchAcknowledgement = ({
+  String specimenId,
+  int baseRevision,
+  String baseRecordVersionId,
+  int revision,
+  String recordVersionId,
+});
+
 /// What the workspace can safely tell the review screen after a batch.
 ///
 /// [saved] counts decisions the server explicitly acknowledged. A count alone
@@ -556,11 +566,13 @@ class ReviewBatchSaveOutcome {
     required this.saved,
     this.confirmed,
     this.requiresReconciliation = false,
+    this.acknowledgement,
   });
 
   final int saved;
   final Specimen? confirmed;
   final bool requiresReconciliation;
+  final ReviewBatchAcknowledgement? acknowledgement;
 }
 
 /// A batch that stopped part way through.
@@ -574,9 +586,11 @@ class ReviewBatchFailure implements Exception {
     required this.specimen,
     required this.cause,
     this.retainKeys = false,
+    this.acknowledgement,
   });
 
-  /// How many of the changes the server accepted before it stopped.
+  /// How many decisions the wire conclusively acknowledged. An impossible
+  /// mixed candidate result has no confirmed prefix and reports zero here.
   final int saved;
 
   /// The last verified record. A committed decision without readback retains
@@ -589,6 +603,9 @@ class ReviewBatchFailure implements Exception {
   /// Keep decision keys when a committed save's readback could not be proved.
   /// A retry can then reconcile the original server action.
   final bool retainKeys;
+
+  /// Exact all-applied response identity, absent for malformed or unknown ACKs.
+  final ReviewBatchAcknowledgement? acknowledgement;
 
   @override
   String toString() => cause.toString();

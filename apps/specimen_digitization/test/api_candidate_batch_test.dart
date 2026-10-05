@@ -1,21 +1,31 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:specimen_digitization/src/api_repository.dart';
 import 'package:specimen_digitization/src/auth.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/screens/workbench/fields_panel.dart';
 import 'package:specimen_digitization/src/screens/workbench/pending_changes.dart';
+import 'package:specimen_digitization/src/screens/workbench/status_strip.dart';
+import 'package:specimen_digitization/src/widgets/widgets.dart';
+import 'package:specimen_digitization/src/workbench.dart';
 import 'package:specimen_digitization/src/workspace.dart';
+
+import 'ui_finders.dart';
+import 'workbench_harness.dart';
 
 class _TestSession implements SessionAccess {
   final controller = StreamController<bool>.broadcast();
+  String principal = 'synthetic-reviewer';
   @override
   bool get signedIn => true;
   @override
-  String get userId => 'synthetic-reviewer';
+  String get userId => principal;
   @override
   String get displayName => 'Synthetic reviewer';
   @override
@@ -81,6 +91,17 @@ Json workspace(int revision) => {
   'fields': <String, dynamic>{},
 };
 
+Json reviewWorkspace(int revision) => {
+  ...workspace(revision),
+  'available_actions': ['field'],
+  'operational_state': 'completed',
+  'disposition': 'needs_human_review',
+  'fields': {
+    'county': {'value_state': 'unknown', 'literal': null},
+    'city': {'value_state': 'unknown', 'literal': null},
+  },
+};
+
 Json answerFor(
   http.Request request, {
   List<String>? outcomes,
@@ -120,6 +141,7 @@ Json answerFor(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
   test(
     'normal workspace Save sends two opaque choices in one CAS batch',
@@ -777,6 +799,306 @@ void main() {
     expect(paths.where((path) => path.endsWith('/decisions:batch')), isEmpty);
     repo.close();
   });
+
+  for (final firstReadback in [
+    'stale',
+    'network',
+    'unknown',
+    'wrong-version',
+    'changed-account',
+    'edited',
+  ]) {
+    testWidgets(
+      'real $firstReadback outcome handles two choices on scoped refresh',
+      (tester) async {
+        useWindow(tester, largeWindow);
+        final session = _TestSession();
+        var serverRevision = 18;
+        var detailReadsAfterCommit = 0;
+        var posts = 0;
+        Future<void>? refresh;
+        ReviewBatchSaveOutcome? initialOutcome;
+        final repo = repository((request) async {
+          final path = request.url.path;
+          if (path == '/v1/session') {
+            return http.Response(
+              jsonEncode({
+                'user_id': session.userId,
+                'mode': 'synthetic',
+                'memberships': [
+                  {
+                    'organization_id': 'org',
+                    'collection_id': 'collection',
+                    'role': 'reviewer',
+                  },
+                ],
+              }),
+              200,
+            );
+          }
+          if (path.endsWith('/collections')) {
+            return http.Response(
+              jsonEncode({
+                'items': [
+                  {'collection_id': 'collection'},
+                ],
+              }),
+              200,
+            );
+          }
+          if (path.endsWith('/specimens')) {
+            return http.Response(
+              jsonEncode({
+                'items': [workspace(serverRevision)],
+              }),
+              200,
+            );
+          }
+          if (path.endsWith('/specimens/s1/workspace')) {
+            if (posts > 0) detailReadsAfterCommit++;
+            if (detailReadsAfterCommit == 1 && firstReadback != 'unknown') {
+              if (firstReadback == 'network') {
+                throw http.ClientException('first readback unavailable');
+              }
+              return http.Response(jsonEncode(reviewWorkspace(18)), 200);
+            }
+            if (firstReadback == 'wrong-version' && posts > 0) {
+              return http.Response(
+                jsonEncode({
+                  ...reviewWorkspace(19),
+                  'record_version_id': 'unrelated:19',
+                  'disposition': 'cleared',
+                }),
+                200,
+              );
+            }
+            if (firstReadback == 'unknown' && posts > 0) {
+              return http.Response(
+                jsonEncode({...reviewWorkspace(19), 'disposition': 'cleared'}),
+                200,
+              );
+            }
+            return http.Response(
+              jsonEncode(reviewWorkspace(serverRevision)),
+              200,
+            );
+          }
+          if (path.endsWith('/decisions:batch')) {
+            posts++;
+            serverRevision = 19;
+            final answer = answerFor(request);
+            if (firstReadback == 'unknown') {
+              (answer['results'] as List)[1]['idempotency_key'] = 'invalid';
+            }
+            return http.Response(jsonEncode(answer), 200);
+          }
+          fail('Unexpected request: ${request.method} $path');
+        }, expectedUserId: () => session.userId);
+        final controller = WorkspaceController(
+          repository: repo,
+          session: session,
+          pollInterval: const Duration(days: 1),
+        );
+        try {
+          await controller.checkAccess();
+          await controller.openSpecimen('s1');
+          expect(controller.selected?.revision, 18);
+          await tester.pumpWidget(
+            workbenchHost(
+              AnimatedBuilder(
+                animation: controller,
+                builder: (context, _) => controller.selected == null
+                    ? const SizedBox.shrink()
+                    : ReviewWorkbench(
+                        specimen: controller.selected!,
+                        reviewerId: session.userId,
+                        onChange: (change) async => false,
+                        onChangeBatch: (changes, reason, stillApplies) async {
+                          final result = await controller.mutateBatch(
+                            changes,
+                            reason,
+                            stillApplies: stillApplies,
+                          );
+                          initialOutcome ??= result;
+                          return result;
+                        },
+                        verifyBatchReadback:
+                            controller.isAcknowledgedBatchReadback,
+                        onRetry: (reason) async {},
+                        onRefresh: () {
+                          refresh = controller.refresh();
+                        },
+                      ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Specimen data'));
+          await tester.pumpAndSettle();
+          tester
+              .widget<WorkbenchFields>(find.byType(WorkbenchFields))
+              .onPendingChanged([
+                PendingFieldChange(
+                  fieldKey: 'county',
+                  displayName: 'County',
+                  state: 'supported',
+                  candidateSelectionId: 'a' * 64,
+                  baseLiteral: null,
+                ),
+                PendingFieldChange(
+                  fieldKey: 'city',
+                  displayName: 'City',
+                  state: 'supported',
+                  candidateSelectionId: 'b' * 64,
+                  baseLiteral: null,
+                ),
+              ]);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Save 2 pending changes').last);
+          await tester.pumpAndSettle();
+          await tester.enterText(uiField('Reason'), 'Compared both sources');
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.descendant(
+              of: find.byType(ReasonForm),
+              matching: uiButton('Save 2 pending changes'),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(posts, 1);
+          final known = firstReadback != 'unknown';
+          expect(initialOutcome?.saved, known ? 2 : 0);
+          expect(initialOutcome?.confirmed, isNull);
+          expect(initialOutcome?.acknowledgement?.revision, known ? 19 : null);
+          expect(
+            initialOutcome?.acknowledgement?.recordVersionId,
+            known ? 'run:19' : null,
+          );
+          expect(controller.selected?.revision, 18);
+          if (known) {
+            expect(
+              controller.isAcknowledgedBatchReadback(
+                initialOutcome!.acknowledgement!,
+                controller.selected!,
+              ),
+              isFalse,
+            );
+          }
+          expect(
+            tester
+                .widget<WorkbenchFields>(find.byType(WorkbenchFields))
+                .pending,
+            hasLength(2),
+          );
+          expect(
+            tester
+                .widget<WorkbenchStatusStrip>(find.byType(WorkbenchStatusStrip))
+                .saved,
+            isFalse,
+          );
+          if (firstReadback == 'edited') {
+            tester
+                .widget<WorkbenchFields>(find.byType(WorkbenchFields))
+                .onPendingChanged([
+                  PendingFieldChange(
+                    fieldKey: 'county',
+                    displayName: 'County',
+                    state: 'supported',
+                    candidateSelectionId: 'a' * 64,
+                    baseLiteral: null,
+                  ),
+                  PendingFieldChange(
+                    fieldKey: 'city',
+                    displayName: 'City',
+                    state: 'supported',
+                    candidateSelectionId: 'c' * 64,
+                    baseLiteral: null,
+                  ),
+                ]);
+            await tester.pumpAndSettle();
+          }
+          if (firstReadback == 'changed-account') {
+            session.principal = 'different-reviewer';
+          }
+          await tester.tap(find.text('Refresh and compare'));
+          await refresh;
+          await tester.pumpAndSettle();
+          if (firstReadback == 'changed-account') {
+            expect(controller.selected, isNull);
+            expect(controller.scopesVerified, isFalse);
+            expect(posts, 1);
+            return;
+          }
+          expect(controller.selected?.revision, 19);
+          expect(
+            controller.selected?.recordVersionId,
+            firstReadback == 'wrong-version' ? 'unrelated:19' : 'run:19',
+          );
+          expect(
+            controller.selected?.fields.map((field) => field['literal_value']),
+            everyElement(isNull),
+            reason: 'candidate review preserves original label literals',
+          );
+          final reconciled = !{
+            'unknown',
+            'wrong-version',
+            'changed-account',
+          }.contains(firstReadback);
+          if (known) {
+            expect(
+              controller.isAcknowledgedBatchReadback(
+                initialOutcome!.acknowledgement!,
+                controller.selected!,
+              ),
+              reconciled,
+            );
+          }
+          expect(posts, 1, reason: 'refresh reconciles the original CAS');
+          expect(
+            tester
+                .widget<WorkbenchFields>(find.byType(WorkbenchFields))
+                .pending,
+            isEmpty,
+          );
+          final status = tester.widget<WorkbenchStatusStrip>(
+            find.byType(WorkbenchStatusStrip),
+          );
+          if (reconciled && firstReadback != 'edited') {
+            expect(status.reconciliationMessage, isNull);
+            expect(status.saved, isTrue);
+            expect(status.staleChanges, isEmpty);
+          } else {
+            expect(status.saved, isFalse);
+            if (firstReadback == 'edited') {
+              expect(status.reconciliationMessage, isNull);
+              expect(status.staleChanges, hasLength(1));
+              expect(status.staleChanges.single.candidateSelectionId, 'c' * 64);
+            } else if (firstReadback != 'changed-account') {
+              expect(status.reconciliationMessage, contains('did not confirm'));
+              expect(status.staleChanges, hasLength(2));
+              expect(find.text('Review current fields'), findsOneWidget);
+              expect(find.text('Saved'), findsNothing);
+            }
+          }
+          final oldTokenRetry = await controller.mutateBatch(
+            choices(),
+            'Compared both sources',
+          );
+          expect(oldTokenRetry.saved, 0);
+          expect(
+            posts,
+            1,
+            reason: 'old selection IDs must not be rebased to Q19',
+          );
+        } finally {
+          await tester.pumpWidget(const SizedBox());
+          controller.dispose();
+          repo.close();
+          await session.controller.close();
+        }
+      },
+    );
+  }
 
   test(
     'artifact-required readback retains a committed two-choice count',

@@ -27,6 +27,7 @@ class WorkbenchStatusStrip extends StatefulWidget {
     this.saved = false,
     this.conflictVersion,
     this.reconciliationMessage,
+    this.reconciliationActionLabel,
     this.onRefresh,
     this.staleChanges = const <PendingFieldChange>[],
   });
@@ -55,7 +56,10 @@ class WorkbenchStatusStrip extends StatefulWidget {
   /// A server acknowledgement whose current projection is not yet verified.
   final String? reconciliationMessage;
 
-  /// Reloads the record so the reviewer can compare.
+  /// The recovery action for this stage of reconciliation.
+  final String? reconciliationActionLabel;
+
+  /// Runs the labelled refresh or current-field comparison action.
   final VoidCallback? onRefresh;
 
   /// The glossary word the version fact is an instance of, so its definition
@@ -110,6 +114,13 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
     final bool statusChanged = status != _lastStatus;
     _lastStatus = status;
     if (!statusChanged) return;
+    if (widget.reconciliationMessage != null ||
+        widget.staleChanges.isNotEmpty) {
+      // A refreshed disposition does not prove this review save landed.
+      _settled = false;
+      _announce(status.semanticsLabel);
+      return;
+    }
     if (!status.isQueue) {
       // A run update or invalid disposition is not a saved review decision.
       // Clear a previous decision acknowledgment and announce this state once.
@@ -157,7 +168,7 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
                 icon: UiIcons.syncProblem,
                 actionLabel: widget.onRefresh == null
                     ? null
-                    : ConflictBanner.action,
+                    : widget.reconciliationActionLabel ?? ConflictBanner.action,
                 onAction: widget.onRefresh,
               ),
             ),
@@ -216,7 +227,9 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
           ),
         UiStatusStrip(
           disposition:
-              widget.reconciliationMessage == null && (widget.saved || _settled)
+              widget.reconciliationMessage == null &&
+                  widget.staleChanges.isEmpty &&
+                  (widget.saved || _settled)
               ? Row(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[

@@ -334,6 +334,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
                     reason,
                     stillApplies: stillApplies,
                   ),
+              verifyBatchReadback: controller.isAcknowledgedBatchReadback,
               onRetry: (String reason) => controller.mutate(null, reason),
               onRefresh: () => controller.refresh(),
               onBack: _backToQueue,

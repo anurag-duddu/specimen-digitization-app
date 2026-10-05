@@ -104,6 +104,30 @@ class _DeferredPage {
   final SpecimenPage page;
 }
 
+class _AwaitingBatchReadback {
+  const _AwaitingBatchReadback({
+    required this.acknowledgement,
+    required this.specimenId,
+    required this.baseRevision,
+    required this.baseRecordVersionId,
+    required this.selectionTokens,
+    required this.scope,
+    required this.userId,
+    required this.recordGeneration,
+    required this.mutationEpoch,
+  });
+
+  final ReviewBatchAcknowledgement? acknowledgement;
+  final String specimenId;
+  final int baseRevision;
+  final String baseRecordVersionId;
+  final Set<(String, String)> selectionTokens;
+  final CollectionScope scope;
+  final String userId;
+  final int recordGeneration;
+  final int mutationEpoch;
+}
+
 /// Everything the collection screens read and act on.
 ///
 /// A `ChangeNotifier` rather than screen state, because the router's redirect,
@@ -192,6 +216,34 @@ class WorkspaceController extends ChangeNotifier {
   bool _disposed = false;
 
   final Map<String, String> _mutationKeys = <String, String>{};
+  _AwaitingBatchReadback? _awaitingBatchReadback;
+
+  /// Proves that a scoped, current read returned the exact all-applied batch
+  /// version after an earlier readback failed. A matching revision alone is
+  /// insufficient: the record-version ID, account, collection and route must
+  /// still be the ones that owned the original decision.
+  bool isAcknowledgedBatchReadback(
+    ReviewBatchAcknowledgement acknowledgement,
+    Specimen record,
+  ) {
+    final pending = _awaitingBatchReadback;
+    return pending != null &&
+        pending.acknowledgement == acknowledgement &&
+        pending.specimenId == acknowledgement.specimenId &&
+        pending.baseRevision == acknowledgement.baseRevision &&
+        pending.baseRecordVersionId == acknowledgement.baseRecordVersionId &&
+        pending.recordGeneration == _recordGeneration &&
+        pending.mutationEpoch == _mutationEpoch &&
+        identical(pending.scope, _scope) &&
+        pending.userId == session.userId &&
+        session.signedIn &&
+        _scopesVerified &&
+        identical(record, _selected) &&
+        _selectedId == record.id &&
+        record.id == acknowledgement.specimenId &&
+        record.revision == acknowledgement.revision &&
+        record.recordVersionId == acknowledgement.recordVersionId;
+  }
 
   /// The collections this account may open.
   List<CollectionScope> get scopes =>
@@ -374,6 +426,7 @@ class WorkspaceController extends ChangeNotifier {
     _holds = 0;
     _deferredPage = null;
     _mutationKeys.clear();
+    _awaitingBatchReadback = null;
     _loading = true;
     _loadingMore = false;
     _mutating = false;
@@ -441,6 +494,7 @@ class WorkspaceController extends ChangeNotifier {
     _scope = null;
     _items = <Specimen>[];
     _selected = null;
+    _awaitingBatchReadback = null;
     _listGeneration++;
     _recordGeneration++;
     _notify();
@@ -485,6 +539,7 @@ class WorkspaceController extends ChangeNotifier {
     _items = <Specimen>[];
     _selected = null;
     _selectedId = null;
+    _awaitingBatchReadback = null;
     _nextCursor = null;
     _seenCursors.clear();
     _updatedAt = null;
@@ -712,6 +767,7 @@ class WorkspaceController extends ChangeNotifier {
     _selectedId = id;
     _selected = null;
     _recordLoading = true;
+    _awaitingBatchReadback = null;
     _error = null;
     final int generation = ++_recordGeneration;
     _notify();
@@ -735,6 +791,7 @@ class WorkspaceController extends ChangeNotifier {
     _selectedId = null;
     _selected = null;
     _recordLoading = false;
+    _awaitingBatchReadback = null;
     _recordGeneration++;
     _notify();
   }
@@ -913,8 +970,34 @@ class WorkspaceController extends ChangeNotifier {
     if (current == null || scope == null || _mutating || changes.isEmpty) {
       return const ReviewBatchSaveOutcome(saved: 0);
     }
+    final awaiting = _awaitingBatchReadback;
+    if (awaiting != null &&
+        awaiting.specimenId == current.id &&
+        identical(awaiting.scope, scope) &&
+        awaiting.userId == session.userId &&
+        (current.revision != awaiting.baseRevision ||
+            current.recordVersionId != awaiting.baseRecordVersionId) &&
+        changes.any(
+          (change) => awaiting.selectionTokens.contains((
+            textOf(change['target_id']),
+            textOf(change['selection_id']),
+          )),
+        )) {
+      _recordFailure(
+        const ApiFailure(
+          'These source choices belong to an older record. Compare the current sources and choose again.',
+          code: 'stale_research_choice',
+        ),
+      );
+      _notify();
+      return const ReviewBatchSaveOutcome(
+        saved: 0,
+        requiresReconciliation: true,
+      );
+    }
     final int generation = _recordGeneration;
     final int mutationEpoch = _mutationEpoch;
+    final String userId = session.userId;
     final String prefix =
         'review-batch-${DateTime.now().microsecondsSinceEpoch}';
     // One key per decision, memoised on the original record version. The API
@@ -941,10 +1024,17 @@ class WorkspaceController extends ChangeNotifier {
         stillApplies: stillApplies,
         keyFor: keyFor,
       );
-      if (_disposed || generation != _recordGeneration) {
+      if (_disposed ||
+          generation != _recordGeneration ||
+          mutationEpoch != _mutationEpoch ||
+          session.userId != userId ||
+          !session.signedIn ||
+          !identical(scope, _scope) ||
+          !_scopesVerified) {
         return const ReviewBatchSaveOutcome(saved: 0);
       }
       if (result.saved > 0) _selected = result.specimen;
+      if (result.saved > 0) _awaitingBatchReadback = null;
       for (final String payload in payloads.take(result.saved)) {
         _mutationKeys.remove(payload);
       }
@@ -953,7 +1043,13 @@ class WorkspaceController extends ChangeNotifier {
         confirmed: result.saved > 0 ? result.specimen : null,
       );
     } on ReviewBatchFailure catch (failure) {
-      if (_disposed || generation != _recordGeneration) {
+      if (_disposed ||
+          generation != _recordGeneration ||
+          mutationEpoch != _mutationEpoch ||
+          session.userId != userId ||
+          !session.signedIn ||
+          !identical(scope, _scope) ||
+          !_scopesVerified) {
         return const ReviewBatchSaveOutcome(saved: 0);
       }
       // Ordinary verified prefixes can advance the screen. A candidate
@@ -968,6 +1064,24 @@ class WorkspaceController extends ChangeNotifier {
           _mutationKeys.remove(payload);
         }
       }
+      if (failure.retainKeys &&
+          changes.any((change) => change['kind'] == 'research_candidate')) {
+        _awaitingBatchReadback = _AwaitingBatchReadback(
+          acknowledgement: failure.acknowledgement,
+          specimenId: current.id,
+          baseRevision: current.revision,
+          baseRecordVersionId: current.recordVersionId,
+          selectionTokens: <(String, String)>{
+            for (final change in changes)
+              if (change['kind'] == 'research_candidate')
+                (textOf(change['target_id']), textOf(change['selection_id'])),
+          },
+          scope: scope,
+          userId: userId,
+          recordGeneration: generation,
+          mutationEpoch: mutationEpoch,
+        );
+      }
       _recordFailure(failure.cause);
       return ReviewBatchSaveOutcome(
         saved: failure.saved,
@@ -975,9 +1089,16 @@ class WorkspaceController extends ChangeNotifier {
             ? failure.specimen
             : null,
         requiresReconciliation: failure.retainKeys,
+        acknowledgement: failure.acknowledgement,
       );
     } catch (error) {
-      if (_disposed || generation != _recordGeneration) {
+      if (_disposed ||
+          generation != _recordGeneration ||
+          mutationEpoch != _mutationEpoch ||
+          session.userId != userId ||
+          !session.signedIn ||
+          !identical(scope, _scope) ||
+          !_scopesVerified) {
         return const ReviewBatchSaveOutcome(saved: 0);
       }
       _recordFailure(error);
@@ -1193,6 +1314,7 @@ class WorkspaceController extends ChangeNotifier {
       _scope = null;
       _items = <Specimen>[];
       _selected = null;
+      _awaitingBatchReadback = null;
       _selectedId = null;
       _nextCursor = null;
       _seenCursors.clear();

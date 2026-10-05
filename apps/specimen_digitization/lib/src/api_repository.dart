@@ -1551,6 +1551,13 @@ class ApiSpecimenRepository
         specimen: specimen,
         cause: error,
         retainKeys: true,
+        acknowledgement: (
+          specimenId: specimen.id,
+          baseRevision: specimen.revision,
+          baseRecordVersionId: specimen.recordVersionId,
+          revision: savedRevision!,
+          recordVersionId: savedVersion!,
+        ),
       );
     }
     return (specimen: reloaded, saved: applied, stopped: false);
