@@ -318,33 +318,73 @@ def test_four_regions_and_a_sam_retry_fit_the_run_cap(tmp_path, monkeypatch):
     adapters = ServedSam(
         LocalBlobs(tmp_path / "blobs"), ["timeout", "lab"], regions=4
     )
+    exposure = {name: [] for name in ("segment", "transcribe", "first_pass")}
+
+    def observe_dispatch(name):
+        original = getattr(adapters, name)
+
+        def observed(specimen, *args):
+            exposure[name].append(specimen.run.usage.reserved_cost_micros)
+            return original(specimen, *args)
+
+        monkeypatch.setattr(adapters, name, observed)
+
+    for name in exposure:
+        observe_dispatch(name)
     c = lane(tmp_path, monkeypatch, adapters)
     run = drain(c)
     assert run.stage == "retry_scheduled", run.blocker
+    assert run.usage.reserved_cost_micros == 182_321
+    assert run.usage.actual_cost_micros is None
     at(c, datetime.fromisoformat(run.next_retry_at) + timedelta(seconds=5))
     run = drain(c)
     steps = [f"first_pass:{region.id}" for region in run.regions]
     assert len(steps) == 4 and set(steps) <= set(run.completed_steps), run.blocker
+    assert [run.attempts[step] for step in steps] == [1] * 4
+    assert {"adjudicate", "parse"} <= set(run.completed_steps), run.blocker
     assert run.stage == "finalized", run.blocker
     reserved = {
         (call["step"], call["attempt"]): call["reserved_micros"] for call in run.paid_calls
     }
-    # Every paid attempt's reservation, as if none had settled: 2 x 45,000 for
-    # SAM 3, 8 x 20,000 for the readings, 4 x 20,000 for the first passes (this
-    # emulator's parse makes no paid call).
-    assert [r for (step, _), r in reserved.items() if step == "segment"] == [45_000] * 2
-    assert sum(reserved.values()) == 330_000 <= RUN_CAP
-    # Settled: the timed-out attempt's 45,000 stays held, the rest is what was spent.
+    # Full startup/request SAM liability and both full-context first-pass requests.
+    assert [r for (step, _), r in reserved.items() if step == "segment"] == [182_321] * 2
+    assert [r for (step, _), r in reserved.items() if step.startswith("transcribe:")] == [20_000] * 8
+    assert [r for (step, _), r in reserved.items() if step in steps] == [318_670] * 4
+    # Historical reservations are not simultaneous exposure: known calls settle
+    # before the next dispatch, while both unbilled SAM attempts stay held.
+    assert sum(reserved.values()) == 2 * 182_321 + 8 * 20_000 + 4 * 318_670 == 1_799_322
+    segments = [call for call in run.paid_calls if call["step"] == "segment"]
+    assert [(call["attempt"], call["outcome"], call["cost_basis"], call["cost_micros"])
+        for call in segments] == [(1, "failed", "reserved", 182_321),
+                                 (2, "completed", "reserved", 182_321)]
+    readers = [call for call in run.paid_calls if call["step"].startswith("transcribe:")]
+    assert [(call["outcome"], call["cost_basis"], call["cost_micros"])
+        for call in readers] == [("completed", "computed", 0)] * 8
+    first_passes = [call for call in run.paid_calls if call["step"] in steps]
+    assert [(call["outcome"], call["cost_basis"], call["cost_micros"])
+        for call in first_passes] == [("completed", "computed", 330)] * 4
     spent = sum(
         call["cost_micros"] for call in run.paid_calls if call["cost_basis"] == "computed"
     )
-    assert run.usage.reserved_cost_micros == 45_000 + spent
-    # The worst case on the published reservations: all three SAM 3 attempts,
-    # the eight readings, four first passes and one retried, and a paid parse.
+    assert spent == 4 * 330 == 1_320
+    assert run.usage.reserved_cost_micros == 2 * 182_321 + spent == 365_962
+    assert run.usage.actual_cost_micros is None
+    # Observe the real workflow after admission and before every paid dispatch.
+    assert exposure["segment"] == [182_321, 364_642]
+    assert exposure["transcribe"] == [384_642] * 8
+    assert exposure["first_pass"] == [683_312, 683_642, 683_972, 684_302]
+    assert RUN_CAP == 1_000_000
+    assert all(value <= RUN_CAP for values in exposure.values() for value in values)
+    # This emulator's parse makes no paid call; a production parse still fits
+    # after those known settlements, without clearing either SAM hold.
+    assert step_reservation(run, "parse") == 58_164
+    assert run.usage.reserved_cost_micros + step_reservation(run, "parse") == 424_126 < RUN_CAP
+    # All hypothetical maximum attempts staying unknown cannot fit this cap.
+    # Admission must depend on actual retained exposure, not promise all retries.
     worst = (
         run.profile.execution.max_attempts * step_reservation(run, "segment")
         + sum(r for (step, _), r in reserved.items() if step.startswith("transcribe:"))
         + 5 * step_reservation(run, steps[0])
         + step_reservation(run, "parse")
     )
-    assert worst == 3 * 45_000 + 8 * 20_000 + 5 * 20_000 + 20_000 == 415_000 <= RUN_CAP
+    assert worst == 3 * 182_321 + 8 * 20_000 + 5 * 318_670 + 58_164 == 2_358_477 > RUN_CAP
