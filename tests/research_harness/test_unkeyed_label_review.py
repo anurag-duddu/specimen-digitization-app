@@ -35,6 +35,7 @@ from __future__ import annotations
 import json
 import re
 import time
+from collections import Counter
 from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 
@@ -427,9 +428,14 @@ def test_parties_runs_last_so_the_always_terminal_irn_publishes_the_final_state(
     (identified_by_irn) predates its result, so the record cannot finalize."""
     assert list(SpecialistRole)[-2:] == [SpecialistRole.COLLECTION, SpecialistRole.PARTIES]
     parsed, specimen, hold = run_research(unkeyed, specialist_factory(unkeyed.model_calls), transport(unkeyed.source_urls))
+    # The worker completes roster windows in order, while two independent
+    # specialists inside each window may call their models in either order.
     roles = [role for role, _ in unkeyed.model_calls]
-    assert roles == ["specimen_taxonomy", "specimen_geography", "specimen_geography", "specimen_temporal",
-        "specimen_measurement", "specimen_collection", "specimen_parties"]
+    assert len(roles) == 7
+    assert Counter(roles[:3]) == {"specimen_taxonomy": 1, "specimen_geography": 2}
+    assert Counter(roles[3:5]) == {"specimen_temporal": 1, "specimen_measurement": 1}
+    assert Counter(roles[5:]) == {"specimen_collection": 1, "specimen_parties": 1}
+    assert [turn for role, turn in unkeyed.model_calls if role == "specimen_geography"] == [1, 2]
     receipts = sorted(unkeyed.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
     assert receipts[-1]["causal_proof"]["changed_field"] == "identified_by_irn"
     assert hold is None and specimen.run.stage == "finalized"

@@ -20,6 +20,7 @@ import json
 import logging
 import re
 import time
+from collections import Counter
 from types import SimpleNamespace
 
 import pytest
@@ -137,6 +138,25 @@ def jobs_and_bindings(rig):
     return loaded, binding
 
 
+def assert_model_calls_in_roster_windows(calls, *, geolocate):
+    """Two independent specialists may interleave, but the next window waits for both."""
+    expected_windows = (
+        {"specimen_taxonomy": 4, "specimen_geography": 2 if geolocate else 1},
+        {"specimen_temporal": 1, "specimen_measurement": 1},
+        {"specimen_parties": 1, "specimen_collection": 1},
+    )
+    offset = 0
+    turns = {}
+    for expected in expected_windows:
+        segment = calls[offset:offset + sum(expected.values())]
+        assert Counter(role for role, _ in segment) == Counter(expected)
+        for role, turn in segment:
+            turns.setdefault(role, []).append(turn)
+        offset += len(segment)
+    assert offset == len(calls)
+    assert all(observed == list(range(1, len(observed) + 1)) for observed in turns.values())
+
+
 def test_first_publication_lands_through_the_production_entry_point(rig):
     # The geography historian makes no GEOLocate lookup here, so this stage
     # covers the abstaining historian: the geography waits on a source and the
@@ -226,9 +246,7 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     settled = sum(effect.get("actual_micro_usd") or 0 for effect in effects)
     held = sum(effect["held_micro_usd"] for effect in effects)
     assert held == 0 and 0 < settled <= state["budget_policy"]["ceiling_micro_usd"] == 1_000_000
-    assert [role for role, _ in rig.model_calls] == ["specimen_taxonomy"] * 4 + [
-        "specimen_geography", "specimen_temporal", "specimen_measurement", "specimen_collection",
-        "specimen_parties"]
+    assert_model_calls_in_roster_windows(rig.model_calls, geolocate=False)
 
     # Every supported field publishes once; geography still waits for a source.
     receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
@@ -247,10 +265,12 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     taxon = published.run.fields["taxon"]
     assert taxon.state == "supported" and taxon.normalized == GBIF_NAME
     assert taxon.authority_id.startswith(COL_XR + ":")
-    # The taxon left the run unfinished and due again (no disposition).
-    assert len(routing) == len(receipts) and routing[1][0] == "running" and routing[1][1] is not None
-    # From precise_location on, the record carries the geography fields still
-    # waiting on a source, which the V2 routing treats as processing_blocked.
+    # Taxonomy and geography finish the first role window before publication.
+    # The first publication leaves a due running record; it also projects the
+    # geography fields waiting on a source, so every later offer sees the hold.
+    assert len(routing) == len(receipts)
+    assert routing[0][0] == "running" and routing[0][1] is not None
+    assert all(state == "processing_blocked" and due is None for state, due in routing[1:])
     assert published.run.stage == "processing_blocked" and published.run.disposition is None
     waiting_reasons = tuple(f"research_work:{key}:waiting_source" for key in ("city", "country", "county",
         "province_state"))
@@ -322,8 +342,7 @@ def test_the_run_reaches_its_final_queue(rig):
     # offline capture effect of its own field.
     url = json.loads((FIXTURES / "sources.json").read_text())["geolocate"]["url"]
     assert len(rig.source_urls) == 7 and rig.source_urls.count(url) == 4
-    assert [role for role, _ in rig.model_calls] == ["specimen_taxonomy"] * 4 + ["specimen_geography"] * 2 + [
-        "specimen_temporal", "specimen_measurement", "specimen_collection", "specimen_parties"]
+    assert_model_calls_in_roster_windows(rig.model_calls, geolocate=True)
     _, state = research_state(rig.fake, rig.specimen_id)
     captures = {key: effect for key, effect in state["effects"].items()
         if effect["operation_key"].startswith("source_capture_v2:")}
