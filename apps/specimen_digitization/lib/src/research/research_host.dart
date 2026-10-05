@@ -19,11 +19,20 @@ class ResearchHost extends StatefulWidget {
     required this.collection,
     required this.specimen,
     this.readOnly = false,
+    this.builder,
   });
   final ApiSpecimenRepository repository;
   final CollectionScope collection;
   final Specimen specimen;
   final bool readOnly;
+
+  /// Places research beside a field while retaining one record-bound controller.
+  /// The supplied function creates only that field's lazy disclosure.
+  final Widget Function(
+    BuildContext context,
+    Widget Function(String fieldKey) researchForField,
+  )?
+  builder;
 
   @override
   State<ResearchHost> createState() => _ResearchHostState();
@@ -51,7 +60,9 @@ class _ResearchHostState extends State<ResearchHost> {
       if (mounted) {
         setState(() {
           _denied = true;
-          _message = 'Research access is unavailable. Check collection access.';
+          _message = failure.status == 401
+              ? 'Sign in again to view research.'
+              : 'Research access is unavailable for this collection.';
         });
       }
     });
@@ -132,6 +143,8 @@ class _ResearchHostState extends State<ResearchHost> {
 
   @override
   Widget build(BuildContext context) {
+    final builder = widget.builder;
+    if (builder != null) return builder(context, _researchForField);
     final controller = _controller;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -169,6 +182,49 @@ class _ResearchHostState extends State<ResearchHost> {
                   : null,
             ),
       ],
+    );
+  }
+
+  Widget _researchForField(String fieldKey) {
+    if (!researchFieldKeys.contains(fieldKey)) return const SizedBox.shrink();
+    final controller = _controller;
+    if (controller == null) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Research', style: context.ui.type.label),
+          Text(_message ?? 'Checking this record’s research.'),
+          if (_message != null && !_denied)
+            UiButton(
+              label: 'Refresh research',
+              variant: UiButtonVariant.ghost,
+              onPressed: () {
+                setState(() => _message = null);
+                _discover();
+              },
+            ),
+        ],
+      );
+    }
+    return ResearchThreadCard(
+      key: ValueKey('research:${widget.specimen.id}:$fieldKey'),
+      scope: controller.scope,
+      recordRevision: controller.recordRevision,
+      fieldKey: fieldKey,
+      fieldLabel: vocabularyLabel(fieldKey),
+      field: controller.thread?.field(fieldKey),
+      paused: controller.thread?.paused ?? false,
+      hasUnknownState: controller.thread?.hasUnknownState ?? false,
+      readOnly: controller.readOnly,
+      message: controller.message,
+      networkState: controller.networkState,
+      fieldCentered: true,
+      onLoad: () => controller.ensureLoaded(),
+      onRefresh: () => controller.refresh(),
+      onRetry: controller.canRetry(fieldKey)
+          ? () => controller.retryField(fieldKey)
+          : null,
     );
   }
 }

@@ -18,7 +18,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/app/routes.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/widgets/queue_row.dart';
-import 'package:specimen_digitization/src/widgets/field_row.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 import 'package:specimen_digitization/src/workspace.dart';
 
@@ -266,11 +265,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Specimen data'));
       await tester.pumpAndSettle();
-      final row = find.byType(FieldRow).first;
-      final disclosure = find.descendant(
-        of: row,
-        matching: find.byType(UiDisclosure),
-      );
+      final row = fieldReviewRows().first;
+      final disclosure = row;
       await scrollAndTap(
         tester,
         find
@@ -284,10 +280,10 @@ void main() {
 
       // Unknown is a state with a name, not a blank and not a zero
       // (design/00-north-star.md, principle 2).
-      expect(words.where((String w) => w == 'Unknown'), isNotEmpty);
-      expect(words.where((String w) => w == 'As written'), isNotEmpty);
+      expect(words.where((String w) => w.contains('Unknown')), isNotEmpty);
+      expect(words.where((String w) => w == 'As written'), isEmpty);
       expect(
-        find.descendant(of: row, matching: find.text('Unknown')),
+        find.descendant(of: row, matching: find.textContaining('Unknown')),
         findsWidgets,
       );
 

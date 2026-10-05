@@ -471,19 +471,6 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     await tester.pumpAndSettle();
-    expect(
-      find.text('This field cannot be edited in this version of the app.'),
-      findsOneWidget,
-    );
-    // The rest of the caveat sits behind "Why" and must still be reachable.
-    await tester.tap(find.text('Why').last);
-    await tester.pumpAndSettle();
-    expect(
-      find.textContaining(
-        'The server sent a field state this app does not recognize.',
-      ),
-      findsOneWidget,
-    );
     expect(uiIconButton(RegExp(r'^Edit as written')), findsNothing);
     // The state the server sent is still shown, never swallowed.
     expect(
@@ -504,7 +491,16 @@ void main() {
           .first,
     );
     await tester.pumpAndSettle();
-    expect(find.text('Field state: State unknown'), findsOneWidget);
+    expect(
+      find.text('The server sent a field state this app does not recognize'),
+      findsOneWidget,
+    );
+    final correction = tester.widget<UiButton>(uiButton('Correct value'));
+    expect(correction.onPressed, isNull);
+    expect(
+      correction.disabledReason,
+      'The server sent a field state this app does not recognize',
+    );
     expect(uiIconButton(RegExp(r'^Edit as written')), findsNothing);
   });
 

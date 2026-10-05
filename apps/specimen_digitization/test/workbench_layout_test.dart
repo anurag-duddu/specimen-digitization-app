@@ -409,13 +409,9 @@ void main() {
         await tester.pumpAndSettle();
         final Finder finding = find.text('A supported country is required');
         expect(finding, findsNothing);
-        expect(find.text('Unknown · 1 check to review'), findsOneWidget);
-        expect(find.text('Required'), findsOneWidget);
+        expect(find.text('Needs review · Unknown · Required'), findsOneWidget);
         expect(find.text('Country'), findsOneWidget);
-        final Finder disclosure = find.descendant(
-          of: find.byType(FieldRow).first,
-          matching: find.byType(UiDisclosure),
-        );
+        final Finder disclosure = uiDisclosure('Country');
         final Finder header = find.descendant(
           of: disclosure,
           matching: find.byWidgetPredicate(
@@ -429,9 +425,9 @@ void main() {
         await tester.ensureVisible(finding);
         await tester.pumpAndSettle();
         expect(finding, findsOneWidget);
-        final Finder edit = uiIconButton('Edit as written for Country');
+        final Finder edit = uiButton('Correct value');
         expect(edit, findsOneWidget);
-        expect(tester.widget<UiIconButton>(edit).onPressed, isNotNull);
+        expect(tester.widget<UiButton>(edit).onPressed, isNotNull);
         // The finding and correction remain together in the field details.
         await scrollAndTap(tester, edit);
         expect(find.text('Correct Country'), findsOneWidget);

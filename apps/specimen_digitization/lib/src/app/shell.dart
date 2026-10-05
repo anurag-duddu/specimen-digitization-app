@@ -14,7 +14,6 @@ import 'package:specimen_ui/specimen_ui.dart';
 
 import '../administrator_contact.dart';
 import '../models.dart';
-import '../vocabulary.dart';
 import '../widgets/widgets.dart';
 import '../workspace.dart';
 import 'routes.dart';
@@ -955,17 +954,29 @@ class _BlockerNotice extends StatelessWidget {
     final AdministratorContact contact = AdministratorContact.of(
       scope?.notifier?.scope,
     );
-    final String named = blockers
-        .map((dynamic blocker) => vocabularyLabel(blocker.toString()))
-        .join(', ');
+    final explanations = blockers
+        .map(
+          (dynamic blocker) => switch (blocker.toString()) {
+            'worker_readiness_not_verified' =>
+              'An operator must confirm that processing is ready.',
+            'institutional_policy_unapproved' =>
+              'An administrator must approve the collection policy.',
+            'mandatory_semantics_unconfirmed' ||
+            'field_semantics_unconfirmed' =>
+              'An administrator must confirm the collection’s field rules.',
+            _ => 'An operator must review the processing setup.',
+          },
+        )
+        .toSet()
+        .join(' ');
     // Height and opacity, so the screen below does not snap down the moment
     // the repository answers (04 section 4, row 10).
     return MotionReveal(
       visible: blockers.isNotEmpty,
       child: UiBanner(
-        message: 'Processing is blocked: $named.',
+        message: 'Processing awaits collection setup.',
         tone: UiBannerTone.blocked,
-        detail: 'A person has to review it. ${contact.sentence}',
+        detail: '$explanations ${contact.sentence}',
         detailLabel: 'Show who unblocks it',
       ),
     );

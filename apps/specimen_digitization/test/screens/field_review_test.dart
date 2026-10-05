@@ -121,25 +121,38 @@ Future<void> expandField(WidgetTester tester, String name) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> openReviewEditor(WidgetTester tester, String name) async {
+  Finder correct() => find.descendant(
+    of: uiDisclosure(name),
+    matching: uiButton('Correct value'),
+  );
+  if (correct().evaluate().isEmpty) await expandField(tester, name);
+  await tester.ensureVisible(correct());
+  await tester.pumpAndSettle();
+  await tester.tap(correct());
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets(
     'field previews name real states and layers without open detail',
     (tester) async {
       await showFields(tester);
-      expect(find.text('Required'), findsOneWidget);
-      expect(find.text('Optional'), findsOneWidget);
+      expect(find.text('Location'), findsOneWidget);
+      expect(find.text('Required'), findsNothing);
+      expect(find.text('Optional'), findsNothing);
       expect(find.text('Elevation from (m)'), findsOneWidget);
       expect(find.text('Elevation to (ft)'), findsOneWidget);
       expect(
-        find.text('Supported · Standardized: United States of America'),
+        find.text('Supported · United States of America · Required'),
         findsOneWidget,
       );
-      expect(find.text('Supported · Read as: 304.8'), findsOneWidget);
+      expect(find.text('Supported · 304.8 · Required'), findsOneWidget);
       expect(
-        find.text('Ambiguous · Read as: Chicago, Illinois · 1 check to review'),
+        find.text('Needs review · Ambiguous · Chicago, Illinois · Required'),
         findsOneWidget,
       );
-      expect(find.text('Unknown'), findsOneWidget);
+      expect(find.text('Needs review · Unknown'), findsOneWidget);
       expect(find.text('As written'), findsNothing);
       expect(find.text('U.S.A. · 304.8 m'), findsNothing);
       expect(find.text('Two locality candidates remain'), findsNothing);
@@ -155,13 +168,20 @@ void main() {
     await showFields(tester, onFocusRegion: focused.add);
     await expandField(tester, 'Country');
     expect(focused, ['r1']);
-    expect(find.text('Field state: Supported'), findsOneWidget);
+    expect(find.text('Current value · Standardized'), findsOneWidget);
     expect(find.text('Sources: Label 1'), findsOneWidget);
     expect(find.text('Evidence for Country'), findsOneWidget);
     expect(find.text('U.S.A. · 304.8 m'), findsOneWidget);
+    await expandField(tester, 'Value details');
     expect(find.text('U.S.A.'), findsOneWidget);
     expect(find.text('United States'), findsOneWidget);
-    expect(find.text('United States of America'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: uiDisclosure('Value details'),
+        matching: find.text('United States of America'),
+      ),
+      findsOneWidget,
+    );
     for (final layer in FieldLayer.values) {
       expect(find.text(layer.label), findsOneWidget);
     }
@@ -214,7 +234,7 @@ void main() {
       ),
       size: const Size(900, 1600),
     );
-    await openFieldEditor(tester, 0);
+    await openReviewEditor(tester, 'Country');
     expect(find.text('Correct Country'), findsOneWidget);
     expect(
       find.text(
@@ -268,9 +288,12 @@ void main() {
       ],
       onFocusRegion: focused.add,
     );
-    final row = find.byType(FieldRow).first;
+    final row = uiDisclosure('Country');
     expect(
-      find.descendant(of: row, matching: find.text('Unknown')),
+      find.descendant(
+        of: row,
+        matching: find.text('Needs review · Unknown · Required'),
+      ),
       findsOneWidget,
     );
     await expandField(tester, 'Country');
@@ -294,12 +317,17 @@ void main() {
     });
     await showFields(tester, record: record);
     expect(
-      find.text('State unknown · Standardized: United States of America'),
+      find.text(
+        'Needs review · State unknown · United States of America · Required',
+      ),
       findsOneWidget,
     );
     await expandField(tester, 'Country');
-    expect(find.text('Field state: State unknown'), findsOneWidget);
-    expect(uiIconButton(RegExp('^Edit ')), findsNothing);
+    expect(find.text('Current value · Standardized'), findsOneWidget);
+    expect(
+      tester.widget<UiButton>(uiButton('Correct value')).onPressed,
+      isNull,
+    );
     expect(find.text('United States of America'), findsOneWidget);
     expect(
       find.text('The server sent a field state this app does not recognize'),
@@ -355,7 +383,7 @@ void main() {
     expect(source().selectedRegionId, 'r1');
     expect(source().labelReviewActive, isFalse);
     expect(tabs().selected.value, 0);
-    await openFieldEditor(tester, 0);
+    await openReviewEditor(tester, 'Country');
     expect(find.text('Correct Country'), findsOneWidget);
     expect(source().selectedRegionId, 'r1');
     expect(tabs().selected.value, 0);
@@ -403,7 +431,7 @@ void main() {
       ),
       size: const Size(900, 1600),
     );
-    await openFieldEditor(tester, 0);
+    await openReviewEditor(tester, 'Country');
     expect(uiButton('Keep this correction'), findsOneWidget);
     await tester.enterText(uiField('As written'), 'USA draft');
     await tester.pumpAndSettle();
@@ -444,8 +472,9 @@ void main() {
       await tester.pumpAndSettle();
       expect(uiButton('View Label 2').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
-      await openFieldEditor(tester, 1);
+      await openReviewEditor(tester, 'Elevation from (m)');
       expect(find.text('Correct Elevation from (m)'), findsOneWidget);
+      await expandField(tester, 'Interpretation and standardization');
       expect(
         find.text('Check the unit and range endpoint against the field name.'),
         findsOneWidget,
@@ -479,7 +508,7 @@ void main() {
         ),
         size: const Size(900, 1600),
       );
-      await openFieldEditor(tester, 0);
+      await openReviewEditor(tester, 'Country');
       await tester.enterText(uiField('As written'), 'USA draft');
       await tester.pumpAndSettle();
       change(() => record = Specimen({...specimen.data, 'revision': 2}));
@@ -499,7 +528,7 @@ void main() {
       expect(find.text('Correct Country'), findsNothing);
       expect(uiField('As written'), findsNothing);
       expect(
-        find.text('Supported · Standardized: United States of America'),
+        find.text('Supported · United States of America · Required'),
         findsOneWidget,
       );
       expect(tester.takeException(), isNull);

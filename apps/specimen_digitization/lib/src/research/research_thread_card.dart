@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
+import '../widgets/evidence_drawer.dart';
 import 'research_controller.dart';
 import 'research_models.dart';
 
@@ -26,6 +27,7 @@ class ResearchThreadCard extends StatelessWidget {
     this.onLoad,
     this.onRefresh,
     this.onRetry,
+    this.fieldCentered = false,
   });
   final ResearchScope scope;
   final int recordRevision;
@@ -40,6 +42,9 @@ class ResearchThreadCard extends StatelessWidget {
   final VoidCallback? onLoad;
   final VoidCallback? onRefresh;
   final VoidCallback? onRetry;
+
+  /// Concise presentation inside a specimen field, without repeating its form.
+  final bool fieldCentered;
 
   bool get _bound =>
       researchFieldKeys.contains(fieldKey) &&
@@ -79,7 +84,11 @@ class ResearchThreadCard extends StatelessWidget {
     if (networkState == ResearchNetworkState.error) {
       return 'Research unavailable';
     }
-    if (field == null) return 'Load this field’s research when needed';
+    if (field == null) {
+      return networkState == ResearchNetworkState.ready
+          ? 'No research recorded for this field'
+          : 'Load this field’s research when needed';
+    }
     final prefix = paused ? 'Paused · ' : '';
     return '$prefix${field!.workState.label}'
         '${field!.blockerCode == 'research_retry_blocked' ? ' · Retry blocked' : ''}';
@@ -210,7 +219,9 @@ class ResearchThreadCard extends StatelessWidget {
                     'This research view is read-only.',
                     style: ui.type.bodySmall,
                   ),
-                if (safeField != null) ...[
+                if (fieldCentered && safeField != null)
+                  ..._fieldResult(context, safeField),
+                if (!fieldCentered && safeField != null) ...[
                   Text(safeField.workState.label, style: ui.type.body),
                   if (safeField.blockerCode != null &&
                       !(safeField.workState ==
@@ -230,7 +241,7 @@ class ResearchThreadCard extends StatelessWidget {
                   _layer(context, 'Read as', safeField.value.parsed),
                   _layer(context, 'Standardized', safeField.value.normalized),
                 ],
-                if (resolution != null) ...[
+                if (!fieldCentered && resolution != null) ...[
                   Text(
                     'Research layer: ${(switch (resolution.valueLayer) {
                       'settled' => 'Settled',
@@ -279,9 +290,10 @@ class ResearchThreadCard extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    if (safeField?.workState ==
-                            ResearchWorkState.operationalFailed ||
-                        (safeField?.actions.contains('retry_field') ?? false))
+                    if ((!fieldCentered &&
+                            safeField?.workState ==
+                                ResearchWorkState.operationalFailed ||
+                        (safeField?.actions.contains('retry_field') ?? false)))
                       retry.intrinsicWidth(context) <= constraints.maxWidth
                           ? retry
                           : UiButton(
@@ -339,6 +351,122 @@ class ResearchThreadCard extends StatelessWidget {
       Text(value ?? 'Not recorded', style: context.ui.type.body),
     ],
   );
+
+  List<Widget> _fieldResult(BuildContext context, ResearchFieldThread field) {
+    final ui = context.ui;
+    final resolution = field.checkpoint?.resolution;
+    final value = field.value;
+    final current = [
+      value.normalized,
+      value.parsed,
+      value.literal,
+    ].whereType<String>().where((item) => item.trim().isNotEmpty).firstOrNull;
+    return [
+      Text(field.workState.label, style: ui.type.label),
+      if (current != null) ...[
+        Text('Research value', style: ui.type.bodySmall),
+        Text(current, style: ui.type.body),
+      ] else
+        Text('No supported value yet.', style: ui.type.bodySmall),
+      if (resolution?.question != null)
+        Text(resolution!.question!.text, style: ui.type.body)
+      else if (resolution != null)
+        Text(_reviewExplanation(resolution), style: ui.type.bodySmall),
+      if (resolution?.exception != null)
+        Text(
+          'This field has a recorded policy exception. '
+          'Its conditions are available in research details.',
+          style: ui.type.bodySmall,
+        ),
+      if (resolution != null && resolution.sourceCoverage.isNotEmpty)
+        UiDisclosure(
+          title: 'Sources searched',
+          summary:
+              '${resolution.sourceCoverage.length} '
+              '${resolution.sourceCoverage.length == 1 ? 'source' : 'sources'}',
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final coverage in resolution.sourceCoverage)
+                Padding(
+                  padding: EdgeInsets.only(bottom: ui.space.s2),
+                  child: Text(
+                    '${_sourceDisplayName(coverage.sourceId)}: '
+                    '${_coverageStatus(coverage.state)}',
+                    style: ui.type.bodySmall,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      if (current != null)
+        UiDisclosure(
+          title: 'Value provenance',
+          summary: switch (resolution?.valueLayer) {
+            'settled' => 'Resolved from evidence',
+            'derived' => 'Derived from other fields',
+            _ => 'Recorded label interpretation',
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (value.literal?.trim().isNotEmpty ?? false)
+                _layer(context, 'As written', value.literal),
+              if (value.parsed?.trim().isNotEmpty ?? false)
+                _layer(context, 'Read as', value.parsed),
+              if (value.normalized?.trim().isNotEmpty ?? false)
+                _layer(context, 'Standardized', value.normalized),
+              if (resolution != null && resolution.evidenceIds.isNotEmpty)
+                Text(
+                  '${resolution.evidenceIds.length} retained '
+                  '${resolution.evidenceIds.length == 1 ? 'evidence reference' : 'evidence references'}',
+                  style: ui.type.bodySmall,
+                ),
+            ],
+          ),
+        ),
+      EvidenceDrawer(
+        title: 'Research details',
+        section: fieldLabel,
+        payload: {
+          'field_key': field.fieldKey,
+          'work_state': field.workState.name,
+          'value': field.value.json,
+          'blocker_code': field.blockerCode,
+          'actions': field.actions,
+          if (field.checkpoint != null) 'checkpoint': field.checkpoint!.json,
+        },
+      ),
+    ];
+  }
+
+  String _reviewExplanation(ResearchResolution resolution) {
+    final reason = resolution.reason.trim();
+    // Machine reasons remain in the audit payload, never guessed into science.
+    if (reason.contains(' ') &&
+        !RegExp(r'[_{}\[\]]|[a-f0-9]{32,}').hasMatch(reason)) {
+      return reason;
+    }
+    return switch (resolution.workState) {
+      ResearchWorkState.pending => 'Research has not started for this field.',
+      ResearchWorkState.researching => 'Research is in progress.',
+      ResearchWorkState.resolved => 'Research recorded a value for this field.',
+      ResearchWorkState.waitingSource =>
+        'A supporting source is needed before research can continue.',
+      ResearchWorkState.waitingPolicy =>
+        'Research is waiting for the collection’s policy decision.',
+      ResearchWorkState.retryScheduled => 'A research retry is queued.',
+      ResearchWorkState.operationalFailed =>
+        'Research was interrupted. The current value has not been resolved.',
+      ResearchWorkState.waitingHuman => 'A reviewer decision is needed.',
+      ResearchWorkState.nonblockingException =>
+        'Research recorded an exception for this field.',
+      ResearchWorkState.cancelled => 'Research was cancelled for this field.',
+      ResearchWorkState.unknown => 'Research status is unavailable.',
+    };
+  }
 
   String _sourceDisplayName(String sourceId) => switch (sourceId) {
     'global_names_verifier' => 'Global Names Verifier',

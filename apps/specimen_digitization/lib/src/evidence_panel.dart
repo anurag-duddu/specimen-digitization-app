@@ -12,7 +12,6 @@ import 'package:specimen_ui/specimen_ui.dart';
 import 'models.dart';
 import 'review_context.dart';
 import 'risk_assessment.dart';
-import 'screens/workbench/moments.dart';
 import 'vocabulary.dart';
 import 'widgets/widgets.dart';
 
@@ -132,11 +131,21 @@ class EvidencePanel extends StatelessWidget {
     required this.load,
     required this.onChange,
     required this.canReview,
+    this.fieldKey,
+    this.includeReviewDetails = true,
+    this.includeAuthorities = true,
+    this.excludedFieldKeys = const {},
   });
   final Specimen specimen;
   final Future<Json> Function(ArtifactRequest) load;
   final Future<void> Function(Json) onChange;
   final bool canReview;
+
+  /// Limits authority alternatives to the field being reviewed.
+  final String? fieldKey;
+  final bool includeReviewDetails;
+  final bool includeAuthorities;
+  final Set<String> excludedFieldKeys;
 
   Future<void> _select(
     BuildContext context,
@@ -179,13 +188,8 @@ class EvidencePanel extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
         Text(
-          '${vocabularyLabel(textOf(result['status']))} · Source '
-          '${textOf(result['source_id'])} · ${textOf(result['source_version'])}',
-          style: line,
-        ),
-        Text(
-          'Retrieved ${relativeInstant(result['retrieved_at'])} · Adapter '
-          '${textOf(result['adapter_version'])}',
+          '${vocabularyLabel(textOf(result['status']))} · '
+          '${vocabularyLabel(textOf(result['source_id'], 'Saved authority evidence'))}',
           style: line,
         ),
         Text('As written: ${textOf(result['literal'])}', style: ui.type.body),
@@ -195,8 +199,6 @@ class EvidencePanel extends StatelessWidget {
             'seconds',
             style: line,
           ),
-        for (final Object? reason in result['reasons'] as List? ?? <Object?>[])
-          Text(vocabularyLabel(reason.toString()), style: line),
         SizedBox(height: ui.space.s2),
         for (final Json candidate in candidates)
           Padding(
@@ -248,19 +250,26 @@ class EvidencePanel extends StatelessWidget {
     final UiThemeData ui = context.ui;
     final Json run = objectOf(specimen.data['run']);
     final Json phases = objectOf(run['phase_results']);
-    final Json authorities = objectOf(run['authority_results']);
+    final authorities =
+        objects(objectOf(run['authority_results']).values.toList())
+            .where(
+              (metadata) =>
+                  !excludedFieldKeys.contains(metadata['field_key']) &&
+                  (fieldKey == null || metadata['field_key'] == fieldKey),
+            )
+            .toList();
     final Json risk = objectOf(run['review_risk']);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        if (risk.isNotEmpty)
+        if (includeReviewDetails && risk.isNotEmpty)
           ReviewRiskPanel(
             risk: risk,
             policy: objectOf(run['risk_policy_snapshot']),
           ),
-        if (phases.isNotEmpty) ...<Widget>[
+        if (includeReviewDetails && phases.isNotEmpty) ...<Widget>[
           SizedBox(height: ui.space.s4),
           Semantics(
             container: true,
@@ -286,15 +295,15 @@ class EvidencePanel extends StatelessWidget {
                 ),
               ),
         ],
-        if (authorities.isNotEmpty) ...<Widget>[
+        if (includeAuthorities && authorities.isNotEmpty) ...<Widget>[
           SizedBox(height: ui.space.s4),
           Semantics(
             container: true,
             header: true,
-            child: Text('Authority evidence', style: ui.type.title),
+            child: Text('Saved authority matches', style: ui.type.label),
           ),
           SizedBox(height: ui.space.s2),
-          for (final Object? value in authorities.values)
+          for (final Object? value in authorities)
             Builder(
               builder: (BuildContext context) {
                 final Json metadata = objectOf(value);
@@ -310,7 +319,6 @@ class EvidencePanel extends StatelessWidget {
                       children: <Widget>[
                         Text(
                           '${vocabularyLabel(textOf(metadata['field_key']))} · '
-                          '${metadata['tool_id']} · '
                           '${vocabularyLabel(textOf(metadata['status']))}',
                           style: ui.type.label,
                         ),

@@ -34,7 +34,7 @@ class ResearchFailure implements Exception {
     ResearchFailureKind.invalidResponse =>
       'Research could not be verified. Refresh the current record.',
     ResearchFailureKind.unavailable =>
-      'Research could not be loaded. Check your connection and refresh.',
+      'Research is unavailable right now. Refresh to try again.',
   };
   @override
   String toString() => message;

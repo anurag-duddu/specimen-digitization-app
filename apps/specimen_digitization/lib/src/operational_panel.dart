@@ -47,12 +47,14 @@ class ProcessingDisclosure extends StatelessWidget {
     required this.canOperate,
     required this.busy,
     required this.onAction,
+    this.initiallyExpanded = false,
   });
 
   final Specimen specimen;
   final bool canOperate;
   final bool busy;
   final Future<void> Function(Json) onAction;
+  final bool initiallyExpanded;
 
   /// The disclosure's own title, fixed so the strip and its tests agree.
   static const String title = 'Processing';
@@ -78,10 +80,11 @@ class ProcessingDisclosure extends StatelessWidget {
         : 'Step $stage';
     final String summary = blocker.isEmpty || blocker == 'Not recorded'
         ? step
-        : '$step. Blocked: ${vocabularyLabel(blocker)}.$retry';
+        : 'Processing needs attention.$retry';
 
     return UiDisclosure(
       title: title,
+      initiallyExpanded: initiallyExpanded,
       summary: summary,
       child: ProcessingDetail(
         specimen: specimen,
