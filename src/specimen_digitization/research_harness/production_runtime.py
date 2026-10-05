@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import asdict, dataclass, replace
+from types import MappingProxyType, SimpleNamespace
 from uuid import UUID
 
 from specimen_digitization.application.domain import Principal
@@ -56,6 +57,20 @@ def _gateway_models():
 
 
 @dataclass(frozen=True)
+class NativeDerivationServices:
+    """Worker-only inputs; the context must come from its verified human command.
+
+    The broker is the durable capture wrapper, never its unjournaled inner
+    source adapter. Each new effect still reserves and proves canonical send
+    authority; no model tool can construct the trusted command context.
+    """
+    broker: object
+    requests: object
+    adapter: object
+    context: object
+
+
+@dataclass(frozen=True)
 class NativeResearchRuntime:
     principal: Principal
     binding: object
@@ -67,6 +82,25 @@ class NativeResearchRuntime:
     canonical_service: SqlConnectNativeCanonicalServiceV2
     blobs: object
     role_window: int = 1
+    publication_only: bool = False
+    derivation_services: NativeDerivationServices | None = None
+
+
+@dataclass(frozen=True)
+class PublicationOnlyEngine:
+    """A recovery runtime has no model factory, tool broker or send capability."""
+    journal: DurableResearchJournal
+    reason_code: str = "research_program_headroom_unavailable"
+
+    async def run(self, *args, **kwargs):
+        raise HeldUnknown(self.reason_code)
+
+
+def _georeferencing_adapter(repository):
+    from .dataset_reader import GcsPinnedDatasetReader
+    from .georeferencing import GeoreferencingAdapter
+
+    return GeoreferencingAdapter(GcsPinnedDatasetReader(repository.graph_blobs))
 
 
 class NativeResearchRuntimeFactory:
@@ -128,7 +162,26 @@ class NativeResearchRuntimeFactory:
             idempotency_key=operation.idempotency_key,
             request_identity_digest=operation.request_identity_digest)
 
-    async def open(self, principal, specimen_id, *, owner, ttl_seconds=MAX_LEASE_TTL_SECONDS):
+    async def _publication_runtime(self, principal, binding, store, scope, *, owner,
+                                   ttl_seconds, registry, request_factory):
+        from .canonical_materialization_v2 import ResearchCanonicalPolicyV2
+        from .native_materialization_services_v2 import build_native_materialization_services_v2
+
+        # This constructor only attaches immutable capture readers and the
+        # reviewed projector. It cannot dispatch a source or reserve a model.
+        policy = ResearchCanonicalPolicyV2.from_registered_binding(binding)
+        services = build_native_materialization_services_v2(self.repository,
+            SimpleNamespace(blobs=self.blobs), registry, policy, request_factory)
+        lease = await asyncio.to_thread(store.claim, scope, owner, ttl_seconds=ttl_seconds)
+        journal = DurableResearchJournal(store, scope, lease, self.blobs)
+        service = SqlConnectNativeCanonicalServiceV2(self.repository, journal, blobs=self.blobs,
+            materializer=services.materializer, evidence_provider=services.evidence_provider,
+            projection_services=services.projection_services)
+        return NativeResearchRuntime(principal, binding, store, scope, lease, journal,
+            PublicationOnlyEngine(journal), service, self.blobs, 0, True)
+
+    async def open(self, principal, specimen_id, *, owner, ttl_seconds=MAX_LEASE_TTL_SECONDS,
+                   derivation_context=None):
         principal = Principal.model_validate(principal.model_dump(mode="json"))
         if principal.role not in WORKER_ROLES:
             raise PermissionError("research_worker_access_denied")
@@ -169,12 +222,10 @@ class NativeResearchRuntimeFactory:
         if job["pins"] != committed:
             raise HeldUnknown("research_committed_pins_changed")
         if (document.state["budget_policy"] != policy
-            or document.state.get("halted") is not False or job["paused"]):
+            or type(document.state.get("halted")) is not bool or job["paused"]):
             raise HeldUnknown("research_live_admission_unqualified")
         await asyncio.to_thread(store.reconcile_ordinary_spend, scope, specimen.run.usage.reserved_cost_micros)
         budget = await asyncio.to_thread(store.budget, scope)
-        if budget["remaining_micro_usd"] <= 0:
-            raise HeldUnknown("research_program_headroom_unavailable")
         source_pins = job["pins"]["sources"]
         registry = registered_registry(source_pins)
         if self.registry is not None and registry.digest != self.registry.digest:
@@ -183,6 +234,9 @@ class NativeResearchRuntimeFactory:
         from .initial_requests import NativeGenerationRequestFactory
         request_factory = self.request_factory or NativeGenerationRequestFactory(
             self.repository, verify_access=self.verify_access, registry=registry)
+        if budget["remaining_micro_usd"] <= 0 or budget["halted"]:
+            return await self._publication_runtime(principal, binding, store, scope, owner=owner,
+                ttl_seconds=ttl_seconds, registry=registry, request_factory=request_factory)
         raw_requests = await request_factory(principal, binding, job)
         requests = {SpecialistRole(role):SpecialistRequest.model_validate(
             request.model_dump(mode="json")) for role,request in raw_requests.items()}
@@ -224,15 +278,30 @@ class NativeResearchRuntimeFactory:
         scientific_policy = ResearchCanonicalPolicyV2.from_registered_binding(binding)
         services = build_native_materialization_services_v2(
             self.repository, effects, registry, scientific_policy, request_factory)
-        model_factory = self.model_factory or _gateway_models()
         transport = self.source_transport if self.source_transport is not None else BoundedHTTPTransport()
         execution_class = "offline" if type(transport) is FixtureSourceTransport else "live"
         window = role_windows.window_size(budget["remaining_micro_usd"],
             max(binding.reservation_micro_usd for binding in bindings.values()))
+        geo = ({"georeferencing_adapter": _georeferencing_adapter(self.repository)}
+            if any(policy.id in {"georeference_history", "georeference_spatial"}
+                for policy in registry.policies) else {})
+        if derivation_context is not None and not geo:
+            raise HeldUnknown("research_georeferencing_source_unregistered")
+        model_factory = None if derivation_context is not None else (self.model_factory or _gateway_models())
         lease = await asyncio.to_thread(store.claim, scope, owner, ttl_seconds=ttl_seconds)
         tools, _ = build_captured_research_services_v2(repository=self.repository,
             effect_broker=effects, scope=scope, lease=lease, registry=registry,
-            policies=capture_policies, transport=transport, execution_class=execution_class)
+            policies=capture_policies, transport=transport, execution_class=execution_class, **geo)
+        if derivation_context is not None:
+            journal = DurableResearchJournal(store, scope, lease, self.blobs)
+            service = SqlConnectNativeCanonicalServiceV2(self.repository, journal, blobs=self.blobs,
+                materializer=services.materializer, evidence_provider=services.evidence_provider,
+                projection_services=services.projection_services)
+            derivation = NativeDerivationServices(tools, MappingProxyType(requests),
+                geo["georeferencing_adapter"], derivation_context)
+            return NativeResearchRuntime(principal, binding, store, scope, lease, journal,
+                PublicationOnlyEngine(journal, "research_derivation_model_dispatch_forbidden"),
+                service, self.blobs, 0, False, derivation)
         engine = build_research_engine(profile=profile, requests=requests,
             store=store, scope=scope, lease=lease, blobs=self.blobs, tool_broker=tools,
             bindings=bindings, settings=job["pins"]["settings"], source_pins=source_pins,

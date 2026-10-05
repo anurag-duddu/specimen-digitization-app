@@ -74,6 +74,21 @@ readonly WATCH_POLLS=180
 readonly OBJECTS="projects/_/buckets/$BUCKET/objects/"
 readonly APP_TITLE=specimen_application_objects
 readonly APP_EXPRESSION="resource.name.startsWith(\"${OBJECTS}application/sha256/\")"
+# Exact immutable dataset objects committed in application/georef_datasets.py.
+# The data workflow can create missing generations and read them back, never
+# list, delete, replace an existing object, or write another application object.
+readonly GEO_TITLE=specimen_georeference_datasets
+readonly GEO_EXPRESSION="resource.name in [\
+\"${OBJECTS}application/sha256/7a9189637a5af9677a92e765b9448bdfe425383fae8e39a6808a96b8fe8f19d0\",\
+\"${OBJECTS}application/sha256/155424cb1ede34d2b0e4e92b51b5c359164e3d0834507166d1b28969389e2e5c\",\
+\"${OBJECTS}application/sha256/0f6f645d310b4aa02fffc0cba0f3ad130a5fd2303d953e5f8931ba48817b0c6c\",\
+\"${OBJECTS}application/sha256/37d8bc68715f937fc2a568d9e88245aa6323a46cc4c2e56a5836fa89febe8536\",\
+\"${OBJECTS}application/sha256/7a8dc145e57ea42c26b35393a281f248ff35e70aaf794eed20c989ff2d718759\",\
+\"${OBJECTS}application/sha256/24965821b5541833efb63ced996ac9a508feb049ec02442727f28cbdf15dfe96\",\
+\"${OBJECTS}application/sha256/8eeef6a9a525a81a647dcaac85e1337b990fc527c4a0e9c70556d5b0905be087\",\
+\"${OBJECTS}application/sha256/fa77b9f17db2e419acaae714a935f7812be4409e2983675d34020e8426a3e189\",\
+\"${OBJECTS}application/sha256/2ece3d44a5c6a2afb385ffbf3a6b88d83e4d3a3e7eed9a52cb3be1bc59e289fc\",\
+\"${OBJECTS}application/sha256/f178eda98c46329380bdbb43f0637b4c43535bc843de6a0b8b960193b8f4363f\"]"
 # The research harness's three prefixes (SPECIMEN_RESEARCH_HARNESS=on): the worker alone creates and gets there.
 readonly RESEARCH_TITLE=specimen_research_objects
 readonly RESEARCH_EXPRESSION="resource.name.startsWith(\"${OBJECTS}research-capture/\") || resource.name.startsWith(\"${OBJECTS}research-journal/\") || resource.name.startsWith(\"${OBJECTS}research-media/\")"
@@ -573,6 +588,10 @@ data_release_grants() {
   grant project "$PROJECT" "$DATA" "$CUSTOM/specimenDataInventorySqlConnect" "$SQL_TITLE" "$SQL_EXPRESSION" "$SQL_DESCRIPTION"
   grant project "$PROJECT" "$DATA" "$CUSTOM/specimenDataBootstrapRows"
   pinned_secret "$DATA" specimen-worker-actor-uid 1
+  ensure_role specimenGeoreferenceDatasets 'Specimen immutable georeferencing datasets' \
+    'Create and verify only the committed georeferencing objects; no list, overwrite or delete.' \
+    storage.objects.create storage.objects.get
+  grant bucket "$BUCKET" "$DATA" "$CUSTOM/specimenGeoreferenceDatasets" "$GEO_TITLE" "$GEO_EXPRESSION"
   note 'specimenDataSourceBackup is not granted: the release takes no backups.'
 }
 

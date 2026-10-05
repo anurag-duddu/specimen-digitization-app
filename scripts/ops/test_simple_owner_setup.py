@@ -55,6 +55,7 @@ DATA_PROVIDER_AFTER = (
     " && attribute.release_plane == 'specimen-data-release'")
 # Each custom role's exact permissions, sorted as the script passes them.
 ROLES = {
+    "specimenGeoreferenceDatasets": ["storage.objects.create", "storage.objects.get"],
     "specimenDataSchemaPublish": [
         "firebasedataconnect.connectors.create", "firebasedataconnect.connectors.get",
         "firebasedataconnect.connectors.update", "firebasedataconnect.operations.get",
@@ -76,7 +77,8 @@ ROLES = {
         "firebasedataconnect.connectors.impersonateMutation", "firebasedataconnect.connectors.impersonateQuery"],
     "specimenApiUserLookup": ["firebaseauth.users.get"],
 }
-NEW_ROLES = ("specimenDataBootstrapRows", "specimenRuntimeInvokerPolicy", "specimenWorkerExecution")
+NEW_ROLES = ("specimenDataBootstrapRows", "specimenRuntimeInvokerPolicy", "specimenWorkerExecution",
+             "specimenGeoreferenceDatasets")
 MAPS_KEY = "specimen-google-maps-key"  # retired: the owner took Google Maps out of the pipeline
 LIVE_PINS = (  # member, secret, version: the nine pinned reads live on 2026-10-03, the retired Maps key among them
     (API, "specimen-worker-logfire", 1), (API, "specimen-source-registry", 1), (API, "specimen-collection-bindings", 1),
@@ -493,6 +495,24 @@ def provider(environment, workflow, plane, event=PUSH):
             f"'{REPOSITORY}/.github/workflows/{workflow}@refs/heads/main' && attribute.release_plane == '{plane}'")
 
 
+# Keep the self-contained setup's allowlist exact; no application-prefix grant
+# belongs to the data publisher. Integration also compares this to the manifest.
+GEO_SHA256 = (
+    "7a9189637a5af9677a92e765b9448bdfe425383fae8e39a6808a96b8fe8f19d0",  # pragma: allowlist secret (public file digest)
+    "155424cb1ede34d2b0e4e92b51b5c359164e3d0834507166d1b28969389e2e5c",  # pragma: allowlist secret (public file digest)
+    "0f6f645d310b4aa02fffc0cba0f3ad130a5fd2303d953e5f8931ba48817b0c6c",  # pragma: allowlist secret (public file digest)
+    "37d8bc68715f937fc2a568d9e88245aa6323a46cc4c2e56a5836fa89febe8536",  # pragma: allowlist secret (public file digest)
+    "7a8dc145e57ea42c26b35393a281f248ff35e70aaf794eed20c989ff2d718759",  # pragma: allowlist secret (public file digest)
+    "24965821b5541833efb63ced996ac9a508feb049ec02442727f28cbdf15dfe96",  # pragma: allowlist secret (public file digest)
+    "8eeef6a9a525a81a647dcaac85e1337b990fc527c4a0e9c70556d5b0905be087",  # pragma: allowlist secret (public file digest)
+    "fa77b9f17db2e419acaae714a935f7812be4409e2983675d34020e8426a3e189",  # pragma: allowlist secret (public file digest)
+    "2ece3d44a5c6a2afb385ffbf3a6b88d83e4d3a3e7eed9a52cb3be1bc59e289fc",  # pragma: allowlist secret (public file digest)
+    "f178eda98c46329380bdbb43f0637b4c43535bc843de6a0b8b960193b8f4363f",  # pragma: allowlist secret (public file digest)
+)
+GEO = condition("specimen_georeference_datasets", "resource.name in [" + ",".join(
+    f'"projects/_/buckets/{BUCKET}/objects/application/sha256/{sha}"' for sha in GEO_SHA256) + "]")
+
+
 PR21 = "PR21 finite IAM access; project_time_only; SQL privilege separately capped at 600 seconds after signed parity."
 APP = condition("specimen_application_objects", 'resource.name.startsWith("projects/_/buckets/'
                 'specimen-digitization.firebasestorage.app/objects/application/sha256/")')
@@ -682,7 +702,7 @@ def provider_update(name):
 RESEARCH_GRANTS = [
     ["gcloud", "storage", "buckets", "add-iam-policy-binding", f"gs://{BUCKET}", f"--member={WORKER}",
      f"--role=roles/storage.{role}", f"--condition-from-file=condition-{number}-specimen_research_objects.yaml"]
-    for number, role in ((6, "objectViewer"), (7, "objectCreator"))]
+    for number, role in ((7, "objectViewer"), (8, "objectCreator"))]
 # The SAM 3 checkpoint mount lists the bucket (follow-up change #236): no condition, and no object read in the role.
 SAM_LISTS_BUCKET = ["gcloud", "storage", "buckets", "add-iam-policy-binding", f"gs://{BUCKET}", f"--member={SAM}",
                     "--role=roles/storage.legacyBucketReader", "--condition=None"]
@@ -706,6 +726,11 @@ EXPECTED = [
     project_grant(DATA, "specimenDataBootstrapRows"),
     ["gcloud", "secrets", "add-iam-policy-binding", "specimen-worker-actor-uid", f"--project={PROJECT}",
      f"--member={DATA}", f"--role={ACCESSOR}", "--condition-from-file=condition-5-specimen_worker_actor_uid_v1.yaml"],
+    role_create("specimenGeoreferenceDatasets", "Specimen immutable georeferencing datasets",
+                "Create and verify only the committed georeferencing objects; no list, overwrite or delete."),
+    ["gcloud", "storage", "buckets", "add-iam-policy-binding", f"gs://{BUCKET}", f"--member={DATA}",
+     f"--role={CUSTOM}specimenGeoreferenceDatasets",
+     "--condition-from-file=condition-6-specimen_georeference_datasets.yaml"],
     ["gcloud", "sql", "users", "assign-roles", "specimen-data-release@specimen-digitization.iam",
      "--instance=specimen-digitization-instance", "--type=CLOUD_IAM_SERVICE_ACCOUNT",
      "--database-roles=cloudsqlsuperuser", "--project=specimen-digitization"],
@@ -725,7 +750,8 @@ EXPECTED = [
 EXPECTED_CONDITIONS = {
     **{f"condition-{number}-specimen_pr21_{role}.yaml": held for number, (role, held) in enumerate(EXPIRED.items(), 1)},
     "condition-5-specimen_worker_actor_uid_v1.yaml": pin("specimen-worker-actor-uid", 1),
-    "condition-6-specimen_research_objects.yaml": RESEARCH, "condition-7-specimen_research_objects.yaml": RESEARCH}
+    "condition-6-specimen_georeference_datasets.yaml": GEO,
+    "condition-7-specimen_research_objects.yaml": RESEARCH, "condition-8-specimen_research_objects.yaml": RESEARCH}
 
 
 def given(held):
@@ -740,6 +766,14 @@ def test_script_is_ascii_executable_and_parses():
     assert "set -euo pipefail" in SCRIPT.read_text()
     for shell in SHELLS:
         assert subprocess.run([shell, "-n", str(SCRIPT)], capture_output=True, check=False).returncode == 0, shell
+
+
+def test_georeferencing_grant_is_exact_manifest_and_create_read_only():
+    manifest = pytest.importorskip("specimen_digitization.application.georef_datasets").MANIFEST
+    assert set(GEO_SHA256) == {entry.sha256 for entry in manifest}
+    assert len(GEO_SHA256) == len(manifest) == 10
+    assert ROLES["specimenGeoreferenceDatasets"] == ["storage.objects.create", "storage.objects.get"]
+    assert "startsWith" not in GEO["expression"] and len(GEO["expression"]) < 2048
 
 
 def test_shellcheck_passes():
@@ -774,7 +808,7 @@ def test_dry_run_prints_every_change_and_makes_none(tmp_path, shell):
     assert f"from the artifact file ({len(content)} bytes)" in run.out
     shown = run.out + run.err + json.dumps(run.calls)
     assert "PRIVATE-MARKER" not in shown and base64.b64encode(content).decode()[:40] not in shown
-    assert "Dry run: nothing was changed. 22 step(s) would change:" in run.out
+    assert "Dry run: nothing was changed. 24 step(s) would change:" in run.out
     assert run.printed.count(SAM_LISTS_BUCKET) == 1
     assert "--all" not in run.out
     for name in RETIRE:
@@ -785,7 +819,7 @@ def test_dry_run_prints_every_change_and_makes_none(tmp_path, shell):
         "== Clean-up", "== Data release", "== Cloud SQL", "== Runtime release", "== Manual runs", "== GitHub",
         "== GitHub", "== Retire later", "== Releases", "== Summary =="]
     assert run.sleeps == [] and run.summary.splitlines()[-1] == SAFE
-    assert "  Setup: WOULD RUN (22 change(s))" in run.summary
+    assert "  Setup: WOULD RUN (24 change(s))" in run.summary
     assert "Setup is complete" not in run.out and "State:" not in run.summary
     assert "the three database roles once (later releases only use the firebaseowner role)" in headings[2]
 
@@ -798,7 +832,7 @@ def test_apply_makes_each_change_once_and_a_second_run_makes_none(tmp_path, shel
     assert run.ran == EXPECTED and run.printed == EXPECTED
     assert run.conditions() == {name: given(held) for name, held in EXPECTED_CONDITIONS.items()}
     assert provider_update("specimen-data-release")[-1] == f"--attribute-condition={DATA_PROVIDER_AFTER}"
-    assert "21 step(s) changed:" in run.out
+    assert "23 step(s) changed:" in run.out
     assert run.ran.count(SAM_LISTS_BUCKET) == 1
 
     after = harness.state()
@@ -828,7 +862,7 @@ def test_apply_makes_each_change_once_and_a_second_run_makes_none(tmp_path, shel
             "Run this script again after the merge.") in run.out
     assert run.starts == [] and run.sleeps == []
     assert run.summary.split("Stages:\n", 1)[1].splitlines()[:5] == [
-        "  Setup: PASS (21 changed, 39 already in place)",
+        "  Setup: PASS (23 changed, 39 already in place)",
         "  Data release: SKIPPED (the simple workflows are not on main yet)",
         "  Runtime release: SKIPPED (the simple workflows are not on main yet)",
         "  Web app: SKIPPED (the simple workflows are not on main yet)",
@@ -927,12 +961,12 @@ def test_failed_change_does_not_stop_the_later_steps_and_the_next_run_retries_it
     run = harness.run()
     assert run.code == 1 and run.ran == EXPECTED  # every step was tried, in order
     assert "FAILED: 1 step(s) did not go through:\n  - make specimen-data-release@specimen-digitization.iam" in run.out
-    assert "20 step(s) changed:" in run.out and "Stopped before the end" not in run.err
+    assert "22 step(s) changed:" in run.out and "Stopped before the end" not in run.err
     assert "the service refused this change" in run.err
     harness.save({**harness.state(), "fail": []})
     again = harness.run()
-    assert again.code == 0 and again.ran == [EXPECTED[8]] and "1 step(s) changed:" in again.out
-    assert EXPECTED[8][:4] == ["gcloud", "sql", "users", "assign-roles"]
+    assert again.code == 0 and again.ran == [EXPECTED[10]] and "1 step(s) changed:" in again.out
+    assert EXPECTED[10][:4] == ["gcloud", "sql", "users", "assign-roles"]
 
 
 @pytest.mark.parametrize("change, message", [
@@ -962,6 +996,7 @@ def grants(run):
 # What the script grants beyond the committed standing table, and the two rows of the table it leaves alone.
 SAM_LISTING = (f"bucket/{BUCKET}", SAM, "roles/storage.legacyBucketReader", None, None)
 ADDED = {("job/specimen-worker", RELEASE, CUSTOM + "specimenWorkerExecution", None, None),
+         (f"bucket/{BUCKET}", DATA, CUSTOM + "specimenGeoreferenceDatasets", GEO["title"], GEO["expression"]),
          (f"project/{PROJECT}", DATA, CUSTOM + "specimenDataBootstrapRows", None, None),
          (f"project/{PROJECT}", RELEASE, CUSTOM + "specimenRuntimeInvokerPolicy", None, None),
          ("secret/specimen-worker-actor-uid", DATA, ACCESSOR, *list(pin("specimen-worker-actor-uid", 1).values())[:2]),
@@ -1064,7 +1099,7 @@ def test_fresh_project_gets_every_role_and_pins_every_secret_read(fresh, setting
     assert {name: sorted(role["permissions"]) for name, role in harness.state()["roles"].items()} == ROLES
     assert [argv[4] for argv in run.ran if argv[:4] == ["gcloud", "iam", "roles", "create"]] == [
         "specimenDataSchemaPublish", "specimenDataStorageRules", "specimenDataInventoryProjectRead",
-        "specimenDataInventorySqlConnect", "specimenDataBootstrapRows", "specimenRuntimeRelease",
+        "specimenDataInventorySqlConnect", "specimenDataBootstrapRows", "specimenGeoreferenceDatasets", "specimenRuntimeRelease",
         "specimenRuntimeInvokerPolicy", "specimenWorkerExecution", "specimenRuntimeConnector", "specimenApiUserLookup"]
     assert run.conditions()["condition-1-specimen_source_inventory_only.yaml"] == SQL  # with its live description
     granted = grants(run)
@@ -1135,7 +1170,11 @@ def test_the_worker_alone_gets_create_and_get_on_the_three_research_prefixes_and
     # Nothing the script grants anywhere else names a research prefix.
     assert not [grant for grant in granted - research if "research-" in (grant[4] or "")]
     # Besides SAM 3's mount listing, the bucket grants are object get and create alone: no list, delete or admin role.
-    assert {grant[2] for grant in bucket_rows} - {"roles/storage.legacyBucketReader"} == {viewer, creator}
+    assert {grant[2] for grant in bucket_rows} - {"roles/storage.legacyBucketReader"} == {
+        viewer, creator, CUSTOM + "specimenGeoreferenceDatasets"}
+    assert {grant for grant in bucket_rows if grant[2] == CUSTOM + "specimenGeoreferenceDatasets"} == {
+        (f"bucket/{BUCKET}", DATA, CUSTOM + "specimenGeoreferenceDatasets", GEO["title"], GEO["expression"])}
+    assert ROLES["specimenGeoreferenceDatasets"] == ["storage.objects.create", "storage.objects.get"]
     on_bucket = harness.state()["policies"][f"bucket/{BUCKET}"]
     held = [row for row in on_bucket if row["condition"] and "research-" in row["condition"]["expression"]]
     assert sorted(held, key=lambda row: row["role"]) == [binding(creator, [WORKER], RESEARCH),
@@ -1306,7 +1345,7 @@ def test_first_morning_waits_for_new_access_retries_once_and_rebuilds_the_site(t
         f"web app: PASS {RUNS}400", f"web app: the site now serves commit {COMMIT}",
         "web app: the site now points at the API"]
     assert run.ran[-3:] == [NARROW, UNWIDEN, RERUN] and run.ran.index(START_RUNTIME) == len(run.ran) - 4
-    assert stages(run) == ["  Setup: PASS (23 changed, 39 already in place)", f"  Data release: PASS {RUNS}502",
+    assert stages(run) == ["  Setup: PASS (25 changed, 39 already in place)", f"  Data release: PASS {RUNS}502",
                            f"  Runtime release: PASS {RUNS}503",
                            f"  Web app: PASS {RUNS}400 (the site points at the API)"]
     assert "To read the log" not in run.summary and "--redeploy-web" not in run.summary
@@ -1360,7 +1399,7 @@ def test_dry_run_prints_the_starts_and_starts_nothing(tmp_path):
     assert run.writes == [] and run.sleeps == [] and harness.state() == state
     assert run.printed == [*EXPECTED, START_DATA, START_RUNTIME, RERUN]
     assert "  Would wait 120 seconds for the new access to take effect" in run.out.splitlines()
-    assert stages(run) == ["  Setup: WOULD RUN (21 change(s))", "  Data release: WOULD RUN",
+    assert stages(run) == ["  Setup: WOULD RUN (23 change(s))", "  Data release: WOULD RUN",
                            "  Runtime release: WOULD RUN", f"  Web app: WOULD RUN {RUNS}400"]
     # A build would run, so the site is not read now: the check would follow that build.
     assert "web app: after that build the live site would be checked for the API address" in run.out.splitlines()
@@ -1553,7 +1592,7 @@ def test_setup_only_before_the_merge_applies_the_setup_and_touches_no_workflow(t
     assert not [call for call in run.calls if call["tool"] == "gh" and call["argv"][0] in ("workflow", "run")]
     assert run.sleeps == [] and not [call for call in run.calls if call["tool"] == "curl"]
     assert run.summary.split("Stages:\n", 1)[1].splitlines()[:5] == [
-        "  Setup: PASS (21 changed, 39 already in place)", "  Data release: SKIPPED (--setup-only)",
+        "  Setup: PASS (23 changed, 39 already in place)", "  Data release: SKIPPED (--setup-only)",
         "  Runtime release: SKIPPED (--setup-only)", "  Web app: SKIPPED (--setup-only)",
         "State: SETUP DONE, RELEASES NOT STARTED (--setup-only)"]
     assert run.summary.split("Next steps:\n", 1)[1].splitlines() == [

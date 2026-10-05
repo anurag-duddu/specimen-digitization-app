@@ -192,11 +192,16 @@ def test_open_still_holds_a_seeded_allowance_that_differs_in_another_field(opene
 
 
 @pytest.mark.parametrize("ordinary_spend", [CEILING, CEILING + 250_000])
-def test_open_holds_a_run_whose_ordinary_spend_left_no_headroom(opened, ordinary_spend):
+def test_open_selects_publication_recovery_when_ordinary_spend_left_no_headroom(opened, ordinary_spend, monkeypatch):
     # The second value is a run whose ordinary limit was larger than this ceiling
-    # (an API image newer than the worker's): it holds the same way.
-    with pytest.raises(HeldUnknown, match="^research_program_headroom_unavailable$"):
-        opened.open(opened.factory())
+    # (an API image newer than the worker's): it also cannot dispatch.
+    built = opened.factory()
+    recovered = object()
+    async def publication_only(*args, **kwargs):
+        return recovered
+    monkeypatch.setattr(built, "_publication_runtime", publication_only)
+    assert opened.open(built) is recovered
+    assert opened.store._read(opened.scope).state["effects"] == {}
 
 
 def rig_with_ordinary_spend(tmp_path, monkeypatch, spend):

@@ -299,6 +299,53 @@ def test_open_holds_when_the_allowance_is_not_the_committed_one(opened, monkeypa
     assert opened.store._read(opened.scope).state["budget_policy"] == asdict(policy)
 
 
+@pytest.mark.parametrize("ordinary,halted", [(1_000_000, False), (1_000_000, True), (0, True)])
+def test_exhausted_or_halted_runtime_can_publish_without_constructing_senders(opened, monkeypatch, ordinary, halted):
+    from specimen_digitization.research_harness import production_runtime as module
+    from specimen_digitization.research_harness import native_materialization_services_v2 as services_module
+    from specimen_digitization.research_harness.canonical_materialization_v2 import ResearchCanonicalPolicyV2
+
+    opened.specimen.run.usage.reserved_cost_micros = ordinary
+    opened.store._mutate(opened.scope, lambda state, now: state.update(halted=halted))
+    built = opened.factory()  # Its request factory raises if called.
+    def forbidden(*args, **kwargs):
+        pytest.fail("publication recovery constructed a provider")
+    monkeypatch.setattr(module, "_gateway_models", forbidden)
+    monkeypatch.setattr(module, "_georeferencing_adapter", forbidden)
+    monkeypatch.setattr(module, "build_research_engine", forbidden)
+    monkeypatch.setattr(module, "BoundedHTTPTransport", forbidden)
+    monkeypatch.setattr(ResearchCanonicalPolicyV2, "from_registered_binding", lambda binding: "reviewed-policy")
+    captures = []
+    def materialization(repository, objects, registry, policy, request_factory):
+        assert vars(objects) == {"blobs": built.blobs}
+        assert policy == "reviewed-policy" and request_factory is built.request_factory
+        captures.append(objects)
+        return SimpleNamespace(materializer=object(), evidence_provider=object(), projection_services=object())
+    monkeypatch.setattr(services_module, "build_native_materialization_services_v2", materialization)
+    runtime = opened.open(built)
+    assert runtime.publication_only is True and runtime.role_window == 0
+    assert runtime.engine.journal is runtime.journal and len(captures) == 1
+    assert runtime.canonical_service is not None and runtime.lease.owner == "offline-owner"
+    with pytest.raises(HeldUnknown, match="research_program_headroom_unavailable"):
+        asyncio.run(runtime.engine.run(role_limit=1))
+    state = opened.store._read(opened.scope).state
+    assert state["halted"] is halted and state["effects"] == {}
+    assert opened.store.budget(opened.scope)["remaining_micro_usd"] == 1_000_000 - ordinary
+
+
+@pytest.mark.parametrize("change", ["paused", "invalid_halt"])
+def test_publication_recovery_preserves_admission_holds(opened, monkeypatch, change):
+    opened.specimen.run.usage.reserved_cost_micros = 1_000_000
+    def mutate(state, now):
+        if change == "paused":
+            state["jobs"][opened.scope.key]["paused"] = True
+        else:
+            state["halted"] = "unknown"
+    opened.store._mutate(opened.scope, mutate)
+    with pytest.raises(HeldUnknown, match="research_live_admission_unqualified"):
+        opened.open(opened.factory())
+
+
 SYSTEMIC = "native_research_admission_or_binding_unavailable"
 
 
