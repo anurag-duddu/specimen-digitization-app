@@ -38,6 +38,14 @@ budget accounting and canonical send fence. An exhausted/halted run still gets
 publication-only recovery and cannot start a new derivation effect. G9/G30 holds
 and the requirement for a verified human command remain in force.
 
+After the worker verifies the genuine human enqueue audit, provisioning also
+accepts that command on `finalized` or `waiting_for_review` records. It rechecks
+the queued/current revision, run ID, nonblank reason, original snapshot digest
+and immutable settled-input proofs, then imports every genuine human lock and
+input lock into the new job. The saved specimen keeps its lifecycle, values and
+review status. Missing or stale commands cannot use this exception. Normal
+`plan` provisioning retains its existing rules.
+
 Composition depends on the Geo adapter/manifest and the source-capture forwarding
 of `georeferencing_adapter`. The root integrator owns the native-worker sequence,
 human-command validation and final combined-source checks. This note records

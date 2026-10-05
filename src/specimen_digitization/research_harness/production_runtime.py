@@ -287,6 +287,8 @@ class NativeResearchRuntimeFactory:
                 for policy in registry.policies) else {})
         if derivation_context is not None and not geo:
             raise HeldUnknown("research_georeferencing_source_unregistered")
+        if derivation_context is not None:
+            geo["derivation_context"] = derivation_context
         model_factory = None if derivation_context is not None else (self.model_factory or _gateway_models())
         lease = await asyncio.to_thread(store.claim, scope, owner, ttl_seconds=ttl_seconds)
         tools, _ = build_captured_research_services_v2(repository=self.repository,

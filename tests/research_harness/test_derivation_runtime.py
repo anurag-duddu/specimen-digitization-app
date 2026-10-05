@@ -39,6 +39,7 @@ def test_command_runtime_retains_registered_inputs_and_guarded_capture_but_no_mo
     def captured(**kwargs):
         constructed.append(kwargs)
         assert kwargs["georeferencing_adapter"] is adapter
+        assert kwargs["derivation_context"] is trusted_context
         assert isinstance(kwargs["effect_broker"], ProgramEffectBroker)
         assert kwargs["effect_broker"].binding_guard is not None
         assert kwargs["effect_broker"].send_authorization("live") is not None

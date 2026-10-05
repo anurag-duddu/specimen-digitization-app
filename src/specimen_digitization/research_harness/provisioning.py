@@ -112,6 +112,42 @@ def verified_human_locks(specimen, proofs):
     return result
 
 
+def _derivation_human_locks(repository, specimen, proofs):
+    """Narrow admission for reviewed records with a proved saved G38 command.
+
+    The worker independently verifies the command's human enqueue audit before
+    provisioning. Here the current queue/run and immutable input provenance
+    are checked again; merely changing a lifecycle stage grants no work.
+    """
+    from .derivation_contracts import DerivationCommand
+    from .derivation_inputs import genuine_human_locked_fields, verify_settled_inputs
+
+    try:
+        command = DerivationCommand.model_validate(
+            specimen.run.dependencies.get("research_derivation_request"))
+        if (command.status not in {"queued", "running"}
+            or command.queued_revision != specimen.version
+            or command.canonical_run_id != specimen.run.id):
+            raise ValueError("Current queued command required")
+        info = repository.version_info(specimen.scope, specimen.id, command.source_revision)
+        if info.get("sha256") != command.source_snapshot_sha256:
+            raise ValueError("Immutable source snapshot required")
+        verify_settled_inputs(repository, specimen, repository.graph_blobs, command.inputs, proofs=proofs)
+        keys = set(genuine_human_locked_fields(repository, specimen, proofs=proofs))
+        keys.update(item.field_key for item in command.inputs)
+        if keys != set(command.human_locked_fields):
+            raise ValueError("Current human locks required")
+        # The proof helper already establishes every input's original review,
+        # unchanged field digest and immutable provenance bytes. Preserve that
+        # custody in the new job even for ordinary/manual human corrections.
+        return {str(key): digest({"kind": "verified_derivation_human_lock/v1",
+            "request_id": command.id, "input_digest": command.input_digest,
+            "field_key": str(key), "field_digest": digest(specimen.run.fields[str(key)])})
+            for key in keys}
+    except (ValueError, TypeError, KeyError, AttributeError):
+        raise StaleWork("research_provision_derivation_unproved") from None
+
+
 def _write_base_record(repository, scope, specimen, actor, *, review_proofs=None) -> str:
     """Write the rows the base record references, then the record; replays are no-ops."""
     if review_proofs is None:
@@ -144,11 +180,17 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
         return
     # No binding row yet (count 0), or a row for an earlier run or revision
     # (no current row): register this run's current revision.
-    if (specimen.asset.sensitive is not False or run.stage != "plan"
+    if (specimen.asset.sensitive is not False or run.stage not in {"plan", "finalized", "waiting_for_review"}
         or set(run.fields) != set(MANDATORY)
         or committed_harness_route(run.profile_snapshot) is None
         or run.dependencies.get("profile_snapshot_sha256") != canonical_digest(run.profile_snapshot)):
         raise StaleWork("research_provision_run_unavailable")
+    proofs, derivation_locks = None, {}
+    if run.stage != "plan":
+        if specimen.scope != principal.scope:
+            raise StaleWork("research_provision_derivation_unproved")
+        proofs = await asyncio.to_thread(_review_proofs, repository, principal.scope, specimen)
+        derivation_locks = await asyncio.to_thread(_derivation_human_locks, repository, specimen, proofs)
     data = await asyncio.to_thread(repository.execute, "GetSnapshot",
         dict(repository.variables(principal.scope), id=specimen.id, revision=specimen.version))
     row = data.get("specimenSnapshot")
@@ -167,8 +209,10 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
         allowance_policy = research_budget_policy(run.profile_snapshot, run.usage.reserved_cost_micros)
     except (TypeError, ValueError):
         raise HeldUnknown("research_committed_pins_unavailable") from None
-    proofs = await asyncio.to_thread(_review_proofs, repository, principal.scope, specimen)
+    if proofs is None:
+        proofs = await asyncio.to_thread(_review_proofs, repository, principal.scope, specimen)
     human_locks = verified_human_locks(specimen, proofs)
+    human_locks = {**derivation_locks, **human_locks}
     try:
         record_id = await asyncio.to_thread(_write_base_record, repository, principal.scope,
             specimen, principal.user_id, review_proofs=proofs)
