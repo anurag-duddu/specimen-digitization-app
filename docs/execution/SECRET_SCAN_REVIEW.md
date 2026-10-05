@@ -407,3 +407,29 @@ to the existing Gitleaks AND allowlist. No source path exclusion, detector,
 threshold or filter change. Raw templates remain unchanged and rejected as
 current initialization inputs; the no-credential test retains all original
 assertions with the old digest explicitly explained by its pinned origin.
+
+## 2026-10-05 Lane P retained-template source qualification
+
+Reviewed the three changed connector inputs at frozen source
+`15b5e5f1b2d816ff5507097b55bf9ed7efd0fe56` against the last synthetic
+fixture qualification at `db855ad6`. Each SHA-256 below was recomputed from
+its complete committed source file, and the fixture's existing exact-map
+assertion independently checks those bytes. These are public source content
+digests, not credentials or release authority.
+
+| Public source file | SHA-256 | Source change |
+|---|---|---|
+| `dataconnect/connector/projection.gql` | `03bf15ba5ed1dd79a398aeb20380853277408ae5dc2409bde1650f538277b8eb` | `61ff24a9`: scoped operator original-save proof read; review mutations retain reviewer authority. | <!-- pragma: allowlist secret (public connector source digest) -->
+| `dataconnect/connector/research_harness.gql` | `b165de0c1c2d942d27d89387457fb05d7b0ebe4d6877db228ed54cc29237edcc` | `8566e792`: canonical specimen lock and current binding checks before send authorization. | <!-- pragma: allowlist secret (public connector source digest) -->
+| `dataconnect/connector/research_derivation_work.gql` | `5a793e489623562a4e23567bba2da219d412d5b61f8ba999c65a23ca4b9b9e2b` | `00d05648`: reviewer queue and operator completion with exact scoped canonical proof. | <!-- pragma: allowlist secret (public connector source digest) -->
+
+Detect-secrets initially reported the three new fixture literals. Each now
+carries the existing fixture convention's inline `pragma: allowlist secret`
+with an explicit connector-digest explanation. The baseline contains no new
+finding or exclusion: its semantic changes are line numbers in
+`scripts/ci/test_release_plan_templates.py` and removal of exactly two obsolete
+findings for that fixture's replaced projection and harness hashes. Every
+other baseline finding, label, detector, threshold and filter is unchanged;
+unrelated JSON ordering was preserved. Gitleaks configuration is unchanged.
+Frozen raw plan templates and their digest/rejection assertions stay intact.
+The current October 3 workflows do not consume these retired plans.
