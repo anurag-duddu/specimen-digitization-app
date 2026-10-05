@@ -1038,11 +1038,17 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           _stale.removeWhere(
             (PendingFieldChange p) => landed.contains(p.fieldKey),
           );
-          // A quiet refresh can install the exact committed readback while
-          // this save is still waiting for its own GET. Its widget update is
-          // intentionally ignored during the save; check the scoped current
-          // selection once the acknowledgement ticket exists.
-          if (outcome.requiresReconciliation && _hasVerifiedBatchReadback()) {
+          // A quiet refresh can replace this record while the save's own GET
+          // is still in flight. Its widget update is ignored during the save.
+          // Once the ticket exists, confirm only an exact scoped ACK; move
+          // unproven choices aside if the current version differs from their
+          // base. An unchanged base retains the original retry identity.
+          final bool currentMovedFromBase =
+              widget.specimen.id == original.id &&
+              (widget.specimen.revision != original.revision ||
+                  widget.specimen.recordVersionId != original.recordVersionId);
+          if (outcome.requiresReconciliation &&
+              (currentMovedFromBase || _hasVerifiedBatchReadback())) {
             final bool reconciled = _reconcileRefreshedBatch();
             if (reconciled) {
               outcome = ReviewBatchSaveOutcome(

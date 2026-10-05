@@ -1174,192 +1174,250 @@ void main() {
     );
   }
 
-  testWidgets(
-    'quiet Q+1 refresh before failed save readback reconciles exact batch',
-    (tester) async {
-      useWindow(tester, largeWindow);
-      final session = _TestSession();
-      final blockedReadback = Completer<http.Response>();
-      final readbackStarted = Completer<void>();
-      var serverRevision = 18;
-      var posts = 0;
-      var blockedOnce = false;
-      ReviewBatchSaveOutcome? repositoryOutcome;
-      final repo = repository((request) async {
-        final path = request.url.path;
-        if (path == '/v1/session') {
-          return http.Response(
-            jsonEncode({
-              'user_id': session.userId,
-              'mode': 'synthetic',
-              'memberships': [
-                {
-                  'organization_id': 'org',
-                  'collection_id': 'collection',
-                  'role': 'reviewer',
-                },
-              ],
-            }),
-            200,
-          );
-        }
-        if (path.endsWith('/collections')) {
-          return http.Response(
-            jsonEncode({
-              'items': [
-                {'collection_id': 'collection'},
-              ],
-            }),
-            200,
-          );
-        }
-        if (path.endsWith('/specimens')) {
-          return http.Response(
-            jsonEncode({
-              'items': [workspace(serverRevision)],
-            }),
-            200,
-          );
-        }
-        if (path.endsWith('/specimens/s1/workspace')) {
-          if (posts > 0 && !blockedOnce) {
-            blockedOnce = true;
-            readbackStarted.complete();
-            return blockedReadback.future;
+  for (final quietCase in [
+    'matching-ack',
+    'different-version',
+    'malformed-ack',
+  ]) {
+    final quietRevision = quietCase == 'different-version' ? 20 : 19;
+    final malformedAck = quietCase == 'malformed-ack';
+    testWidgets(
+      'quiet $quietCase refresh before failed save answer checks batch',
+      (tester) async {
+        useWindow(tester, largeWindow);
+        final session = _TestSession();
+        final blockedReadback = Completer<http.Response>();
+        final blockedPostAnswer = Completer<http.Response>();
+        final inFlightStarted = Completer<void>();
+        var serverRevision = 18;
+        var posts = 0;
+        var blockedOnce = false;
+        http.Request? postedRequest;
+        ReviewBatchSaveOutcome? repositoryOutcome;
+        final repo = repository((request) async {
+          final path = request.url.path;
+          if (path == '/v1/session') {
+            return http.Response(
+              jsonEncode({
+                'user_id': session.userId,
+                'mode': 'synthetic',
+                'memberships': [
+                  {
+                    'organization_id': 'org',
+                    'collection_id': 'collection',
+                    'role': 'reviewer',
+                  },
+                ],
+              }),
+              200,
+            );
           }
-          return http.Response(
-            jsonEncode(reviewWorkspace(serverRevision)),
-            200,
-          );
-        }
-        if (path.endsWith('/decisions:batch')) {
-          posts++;
-          serverRevision = 19;
-          return http.Response(jsonEncode(answerFor(request)), 200);
-        }
-        fail('Unexpected request: ${request.method} $path');
-      }, expectedUserId: () => session.userId);
-      final controller = WorkspaceController(
-        repository: repo,
-        session: session,
-        pollInterval: const Duration(days: 1),
-      );
-      try {
-        await controller.checkAccess();
-        await controller.openSpecimen('s1');
-        await tester.pumpWidget(
-          workbenchHost(
-            AnimatedBuilder(
-              animation: controller,
-              builder: (context, _) => controller.selected == null
-                  ? const SizedBox.shrink()
-                  : ReviewWorkbench(
-                      specimen: controller.selected!,
-                      reviewerId: session.userId,
-                      onChange: (change) async => false,
-                      onChangeBatch: (changes, reason, stillApplies) async {
-                        final result = await controller.mutateBatch(
-                          changes,
-                          reason,
-                          stillApplies: stillApplies,
-                        );
-                        repositoryOutcome = result;
-                        return result;
-                      },
-                      verifyBatchReadback:
-                          controller.isAcknowledgedBatchReadback,
-                      onRetry: (reason) async {},
-                      onRefresh: () => unawaited(controller.refresh()),
-                    ),
+          if (path.endsWith('/collections')) {
+            return http.Response(
+              jsonEncode({
+                'items': [
+                  {'collection_id': 'collection'},
+                ],
+              }),
+              200,
+            );
+          }
+          if (path.endsWith('/specimens')) {
+            return http.Response(
+              jsonEncode({
+                'items': [workspace(serverRevision)],
+              }),
+              200,
+            );
+          }
+          if (path.endsWith('/specimens/s1/workspace')) {
+            if (!malformedAck && posts > 0 && !blockedOnce) {
+              blockedOnce = true;
+              inFlightStarted.complete();
+              return blockedReadback.future;
+            }
+            return http.Response(
+              jsonEncode(reviewWorkspace(serverRevision)),
+              200,
+            );
+          }
+          if (path.endsWith('/decisions:batch')) {
+            posts++;
+            postedRequest = request;
+            serverRevision = 19;
+            if (malformedAck) {
+              inFlightStarted.complete();
+              return blockedPostAnswer.future;
+            }
+            return http.Response(jsonEncode(answerFor(request)), 200);
+          }
+          fail('Unexpected request: ${request.method} $path');
+        }, expectedUserId: () => session.userId);
+        final controller = WorkspaceController(
+          repository: repo,
+          session: session,
+          pollInterval: const Duration(days: 1),
+        );
+        try {
+          await controller.checkAccess();
+          await controller.openSpecimen('s1');
+          await tester.pumpWidget(
+            workbenchHost(
+              AnimatedBuilder(
+                animation: controller,
+                builder: (context, _) => controller.selected == null
+                    ? const SizedBox.shrink()
+                    : ReviewWorkbench(
+                        specimen: controller.selected!,
+                        reviewerId: session.userId,
+                        onChange: (change) async => false,
+                        onChangeBatch: (changes, reason, stillApplies) async {
+                          final result = await controller.mutateBatch(
+                            changes,
+                            reason,
+                            stillApplies: stillApplies,
+                          );
+                          repositoryOutcome = result;
+                          return result;
+                        },
+                        verifyBatchReadback:
+                            controller.isAcknowledgedBatchReadback,
+                        onRetry: (reason) async {},
+                        onRefresh: () => unawaited(controller.refresh()),
+                      ),
+              ),
             ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Specimen data'));
-        await tester.pumpAndSettle();
-        tester
-            .widget<WorkbenchFields>(find.byType(WorkbenchFields))
-            .onPendingChanged([
-              PendingFieldChange(
-                fieldKey: 'county',
-                displayName: 'County',
-                state: 'supported',
-                candidateSelectionId: 'a' * 64,
-                baseLiteral: null,
-              ),
-              PendingFieldChange(
-                fieldKey: 'city',
-                displayName: 'City',
-                state: 'supported',
-                candidateSelectionId: 'b' * 64,
-                baseLiteral: null,
-              ),
-            ]);
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Save 2 pending changes').last);
-        await tester.pumpAndSettle();
-        await tester.enterText(uiField('Reason'), 'Compared both sources');
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.descendant(
-            of: find.byType(ReasonForm),
-            matching: uiButton('Save 2 pending changes'),
-          ),
-        );
-        await tester.pump();
-        await readbackStarted.future;
-        expect(posts, 1);
-        expect(controller.selected?.revision, 18);
-
-        // The poll completes with the committed detail while the save's
-        // readback is still in flight and its ticket has not been installed.
-        await controller.refresh(quiet: true);
-        await tester.pump();
-        expect(controller.selected?.revision, 19);
-        expect(controller.selected?.recordVersionId, 'run:19');
-        blockedReadback.complete(
-          http.Response(jsonEncode(reviewWorkspace(18)), 200),
-        );
-        await tester.pumpAndSettle();
-        expect(repositoryOutcome?.saved, 2);
-        expect(repositoryOutcome?.requiresReconciliation, isTrue);
-        expect(
-          controller.isAcknowledgedBatchReadback(
-            repositoryOutcome!.acknowledgement!,
-            controller.selected!,
-          ),
-          isTrue,
-        );
-        final reconciled = tester.widget<WorkbenchStatusStrip>(
-          find.byType(WorkbenchStatusStrip),
-        );
-        expect(reconciled.saved, isTrue);
-        expect(reconciled.reconciliationMessage, isNull);
-        expect(reconciled.staleChanges, isEmpty);
-        expect(
-          tester.widget<WorkbenchFields>(find.byType(WorkbenchFields)).pending,
-          isEmpty,
-        );
-        expect(find.textContaining('Version 18.'), findsNothing);
-
-        await controller.refresh();
-        await tester.pumpAndSettle();
-        expect(controller.selected?.revision, 19);
-        expect(
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Specimen data'));
+          await tester.pumpAndSettle();
           tester
-              .widget<WorkbenchStatusStrip>(find.byType(WorkbenchStatusStrip))
-              .saved,
-          isTrue,
-        );
-        expect(posts, 1);
-      } finally {
-        await tester.pumpWidget(const SizedBox());
-        controller.dispose();
-        repo.close();
-        await session.controller.close();
-      }
-    },
-  );
+              .widget<WorkbenchFields>(find.byType(WorkbenchFields))
+              .onPendingChanged([
+                PendingFieldChange(
+                  fieldKey: 'county',
+                  displayName: 'County',
+                  state: 'supported',
+                  candidateSelectionId: 'a' * 64,
+                  baseLiteral: null,
+                ),
+                PendingFieldChange(
+                  fieldKey: 'city',
+                  displayName: 'City',
+                  state: 'supported',
+                  candidateSelectionId: 'b' * 64,
+                  baseLiteral: null,
+                ),
+              ]);
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Save 2 pending changes').last);
+          await tester.pumpAndSettle();
+          await tester.enterText(uiField('Reason'), 'Compared both sources');
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.descendant(
+              of: find.byType(ReasonForm),
+              matching: uiButton('Save 2 pending changes'),
+            ),
+          );
+          await tester.pump();
+          await inFlightStarted.future;
+          expect(posts, 1);
+          expect(controller.selected?.revision, 18);
+
+          // The poll completes before the save's readback and ticket. Q+2 must
+          // remain unproven even though its original label literals are equal.
+          serverRevision = quietRevision;
+          await controller.refresh(quiet: true);
+          await tester.pump();
+          expect(controller.selected?.revision, quietRevision);
+          expect(controller.selected?.recordVersionId, 'run:$quietRevision');
+          expect(
+            controller.selected?.fields.map((field) => field['literal_value']),
+            everyElement(isNull),
+            reason:
+                'unchanged label literals cannot prove candidate acceptance',
+          );
+          if (malformedAck) {
+            final answer = answerFor(postedRequest!);
+            (answer['results'] as List)[1]['idempotency_key'] = 'invalid';
+            blockedPostAnswer.complete(http.Response(jsonEncode(answer), 200));
+          } else {
+            blockedReadback.complete(
+              http.Response(jsonEncode(reviewWorkspace(18)), 200),
+            );
+          }
+          await tester.pumpAndSettle();
+          expect(repositoryOutcome?.saved, malformedAck ? 0 : 2);
+          expect(repositoryOutcome?.requiresReconciliation, isTrue);
+          if (malformedAck) {
+            expect(repositoryOutcome?.acknowledgement, isNull);
+          } else {
+            expect(
+              controller.isAcknowledgedBatchReadback(
+                repositoryOutcome!.acknowledgement!,
+                controller.selected!,
+              ),
+              quietCase == 'matching-ack',
+            );
+          }
+          final reconciled = tester.widget<WorkbenchStatusStrip>(
+            find.byType(WorkbenchStatusStrip),
+          );
+          expect(reconciled.saved, quietCase == 'matching-ack');
+          if (quietCase == 'matching-ack') {
+            expect(reconciled.reconciliationMessage, isNull);
+            expect(reconciled.staleChanges, isEmpty);
+          } else {
+            expect(
+              reconciled.reconciliationMessage,
+              contains('did not confirm'),
+            );
+            expect(reconciled.staleChanges, hasLength(2));
+            expect(
+              reconciled.staleChanges.map(
+                (choice) => choice.candidateSelectionId,
+              ),
+              containsAll(['a' * 64, 'b' * 64]),
+            );
+            expect(find.text('Review current fields'), findsOneWidget);
+            expect(find.text('Saved'), findsNothing);
+          }
+          expect(
+            tester
+                .widget<WorkbenchFields>(find.byType(WorkbenchFields))
+                .pending,
+            isEmpty,
+          );
+          expect(find.textContaining('Version 18.'), findsNothing);
+
+          await controller.refresh();
+          await tester.pumpAndSettle();
+          expect(controller.selected?.revision, quietRevision);
+          expect(
+            tester
+                .widget<WorkbenchStatusStrip>(find.byType(WorkbenchStatusStrip))
+                .saved,
+            quietCase == 'matching-ack',
+          );
+          if (quietCase != 'matching-ack') {
+            final retry = await controller.mutateBatch(
+              choices(),
+              'Compared both sources',
+            );
+            expect(retry.saved, 0);
+            expect(find.text('Saved'), findsNothing);
+          }
+          expect(posts, 1);
+        } finally {
+          await tester.pumpWidget(const SizedBox());
+          controller.dispose();
+          repo.close();
+          await session.controller.close();
+        }
+      },
+    );
+  }
 
   test(
     'artifact-required readback retains a committed two-choice count',
