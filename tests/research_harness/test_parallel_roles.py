@@ -119,7 +119,7 @@ def tick(tmp_path, k, *, replace=None, ceiling=None, spent=0, before_step=None, 
     if key is not None and key in TICKS:
         return TICKS[key]
     tmp_path.mkdir(parents=True, exist_ok=True)
-    timeline, engine_runs, reservations, refusals = [], [], [], []
+    timeline, engine_runs, reservations, refusals, run_lineage = [], [], [], [], []
     with pytest.MonkeyPatch.context() as mp, contextlib.contextmanager(build_rig)(tmp_path) as rig:
         if k is not None:
             forced_windows(mp, k)
@@ -148,7 +148,10 @@ def tick(tmp_path, k, *, replace=None, ceiling=None, spent=0, before_step=None, 
         async def run_specialist(self, role, **kwargs):
             began = next(clock)
             try:
-                return await original_specialist(self, role, **kwargs)
+                outcome = await original_specialist(self, role, **kwargs)
+                run_lineage.append((role, outcome.model_effect_ids,
+                    tuple(item.coverage.field_key for item in outcome.source_results)))
+                return outcome
             finally:
                 timeline.append(("specialist", str(role), began, next(clock)))
         mp.setattr(SpecialistHarness, "run_specialist", run_specialist)
@@ -213,6 +216,8 @@ def tick(tmp_path, k, *, replace=None, ceiling=None, spent=0, before_step=None, 
         spans = [(item[2], item[3]) for item in timeline]
         facts = {
             "stage": specimen.run.stage, "disposition": specimen.run.disposition, "outcome": outcome,
+            "run_lineage": tuple(run_lineage),
+            "effect_fields": {effect["effect_id"]: tuple(effect["field_keys"]) for effect in effects},
             "reasons": sorted(specimen.run.reasons),
             "publications": [row["causal_proof"]["changed_field"] for row in receipts],
             "published_values": {key: field.normalized for key, field in specimen.run.fields.items()},
@@ -280,6 +285,17 @@ def test_two_roles_per_window_publish_what_one_role_per_window_publishes(tmp_pat
     assert {(run["role_limit"], run["max_concurrency"]) for run in two["engine_runs"]} == {(2, 2)}
     assert [sorted(role.removeprefix("specimen_") for role in run["roles"]) for run in two["engine_runs"]] == [
         ["geography", "taxonomy"], ["measurement", "temporal"], ["collection", "parties"]]
+
+
+def test_overlapping_roles_keep_only_their_own_model_and_source_receipts(tmp_path):
+    """The two simultaneous model responses must not exchange checkpoint lineage."""
+    facts = tick(tmp_path, None)
+    assert facts["peak_roles"] == 2 and len(facts["run_lineage"]) == len(SpecialistRole)
+    for role, model_effect_ids, source_fields in facts["run_lineage"]:
+        owned = tuple(str(key) for key in ROLE_FIELDS[role])
+        assert model_effect_ids
+        assert all(facts["effect_fields"][effect_id] == owned for effect_id in model_effect_ids)
+        assert all(field in ROLE_FIELDS[role] for field in source_fields)
 
 
 def test_a_window_reserves_two_requests_at_a_time_inside_the_run_allowance(tmp_path):

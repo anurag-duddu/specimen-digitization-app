@@ -177,7 +177,7 @@ class SourceRegistry:
     def allowed(self, request: SpecialistRequest, *, qualified_only: bool = True) -> tuple[SourcePolicy, ...]:
         return tuple(policy for policy in self._policies if request.role in policy.roles
                      and set(request.field_keys) & set(policy.fields)
-                     and policy.source_type != "computed_local"
+                     and policy.source_type not in {"computed_local", "local_dataset"}
                      and (not qualified_only or policy.ready))
 
 
@@ -664,8 +664,7 @@ class SourceBroker:
         self.trusted_results: list[SourceResult] = []
 
     def available_sources(self, request: SpecialistRequest) -> tuple[str, ...]:
-        return tuple(item.id for item in self.registry.allowed(request)
-            if item.source_type != "local_dataset" or self.georeferencing_adapter is not None)
+        return tuple(item.id for item in self.registry.allowed(request))
 
     async def query_source(self, request: SpecialistRequest, query: SourceQuery, *,
                            trusted_anchor: bool = False) -> SourceResult:
@@ -687,6 +686,9 @@ class SourceBroker:
             raise ValueError("Source lookup escaped specialist field scope")
         if request.prompt.source_registry_digest != self.registry.digest:
             raise ValueError("Source registry differs from durable prompt/job pin")
+        if policy.source_type == "local_dataset" and not trusted_anchor:
+            return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED,
+                "Pinned historical dataset is reserved for the trusted derivation worker")
         if query.source_id == "bugguide" and not query.north_american:
             return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED, "BugGuide applicability requires established US/Canada evidence")
         if not policy.ready:

@@ -28,7 +28,7 @@ from specimen_digitization.research_harness.contracts import (
 )
 from specimen_digitization.research_harness.initial_requests import ASSEMBLY_FIELDS
 from specimen_digitization.research_harness.prompts import (
-    HANDOVER_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION,
+    GEOGRAPHY_SOURCE_PROMPT_VERSION, HANDOVER_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION,
     ROLE_PROMPTS, resolve_prompt,
 )
 
@@ -53,6 +53,7 @@ V5_ROLE_DIGESTS = {
     SpecialistRole.COLLECTION: "d8178716cb2f581fb33fc038c24b89c6f109ce6ae0be1b3c4c40b2883169c0b3",  # pragma: allowlist secret
 }
 V6_ROLE_DIGESTS = {
+    SpecialistRole.GEOGRAPHY: "2627afa2841b834bc705daa57394eadd0d8d792807618655ca4b3569d880e13b",  # pragma: allowlist secret
     SpecialistRole.TEMPORAL: "30744762b50a9ada2ea145bd24f8392b260696ccf94b6953a9b06bd71ead99cf",  # pragma: allowlist secret
     SpecialistRole.MEASUREMENT: "fe0cb50517fbfe284f4e2ce7493a5769e266349031d519c5a5a82d47b42b824d",  # pragma: allowlist secret
 }
@@ -79,11 +80,12 @@ def block(role):
 
 
 # ---------------------------------------------------------------------------- the table, the files, the pins
-def test_one_table_names_four_active_v5_files_and_two_qualified_v6_files():
+def test_one_table_names_three_active_v5_files_and_three_v6_files():
     assert HANDOVER_PROMPT_VERSION == "specialists-handover-v5-2026-10-04"
     assert HANDOVER_PROMPT_VERSION != MISSING_POLICY_PROMPT_VERSION
     assert QUALIFIED_PROMPT_VERSION == "specialists-qualified-event-v6-2026-10-04"
     assert dict(ROLE_PROMPTS) == {role: (f"{role.value}-v{6 if role in V6_ROLE_DIGESTS else 5}.txt",
+        GEOGRAPHY_SOURCE_PROMPT_VERSION if role == SpecialistRole.GEOGRAPHY else
         QUALIFIED_PROMPT_VERSION if role in V6_ROLE_DIGESTS else HANDOVER_PROMPT_VERSION)
         for role in SpecialistRole}
 
@@ -123,7 +125,8 @@ def test_the_committed_pins_carry_the_active_versions_and_digests():
     pins = build_committed_pins(published_registry().resolve("insects").profile, organization_id="org",
         collection_id="coll")
     assert {role: (row["version"], row["digest"]) for role, row in pins["prompts"].items()} == {
-        str(role): (QUALIFIED_PROMPT_VERSION, V6_ROLE_DIGESTS[role]) if role in V6_ROLE_DIGESTS else
+        str(role): (GEOGRAPHY_SOURCE_PROMPT_VERSION, V6_ROLE_DIGESTS[role]) if role == SpecialistRole.GEOGRAPHY else
+            (QUALIFIED_PROMPT_VERSION, V6_ROLE_DIGESTS[role]) if role in V6_ROLE_DIGESTS else
             (HANDOVER_PROMPT_VERSION, V5_ROLE_DIGESTS[role]) for role in SpecialistRole}
 
 

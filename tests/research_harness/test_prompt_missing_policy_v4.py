@@ -27,7 +27,7 @@ from specimen_digitization.research_harness.committed_pins import (
 )
 from specimen_digitization.research_harness.contracts import ROLE_FIELDS, FieldKey, SpecialistRole, digest
 from specimen_digitization.research_harness.prompts import (
-    GEOGRAPHY_PROMPT_VERSION, HANDOVER_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION,
+    GEOGRAPHY_PROMPT_VERSION, GEOGRAPHY_SOURCE_PROMPT_VERSION, HANDOVER_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION,
     READING_CITATION_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 
@@ -101,8 +101,9 @@ def test_each_role_has_its_v4_file_at_the_missing_policy_version_and_the_live_ta
     assert MISSING_POLICY_PROMPT_VERSION not in {RELATIONS_PROMPT_VERSION, GEOGRAPHY_PROMPT_VERSION,
         READING_CITATION_PROMPT_VERSION}
     # The live table is the v5 files (test_prompt_handover_v5.py); the v4 pin is audited from the file.
-    qualified = role in {SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT}
+    qualified = role in {SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT, SpecialistRole.GEOGRAPHY}
     assert ROLE_PROMPTS[role] == (f"{role.value}-v{6 if qualified else 5}.txt",
+        GEOGRAPHY_SOURCE_PROMPT_VERSION if role == SpecialistRole.GEOGRAPHY else
         QUALIFIED_PROMPT_VERSION if qualified else HANDOVER_PROMPT_VERSION)
     text = v4_text(role)
     assert hashlib.sha256(text.encode()).hexdigest() == V4_ROLE_DIGESTS[role]

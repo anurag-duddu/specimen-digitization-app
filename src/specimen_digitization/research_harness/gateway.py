@@ -6,7 +6,8 @@ import hashlib
 import json
 import logging
 from collections.abc import Callable, Mapping
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Protocol
@@ -31,6 +32,55 @@ from .telemetry import ResearchTrace, TraceIdentity
 LOGGER = logging.getLogger(__name__)
 _RESPONSE = TypeAdapter(ModelResponse)
 _PARAMETERS = TypeAdapter(ModelRequestParameters)
+
+
+@dataclass
+class ModelRunEffects:
+    """One specialist invocation's completed model effects, including helpers.
+
+    A delegated task inherits this object through context propagation, while
+    concurrent root specialists receive distinct objects. Only the invoking
+    role's own effects can enter its scientific checkpoint; helper costs stay
+    visible here and in the shared program ledger.
+    """
+
+    scope: tuple[str, str, str, str, int]
+    entries: list[tuple[str, str, tuple[str, ...], int | None]]
+    active: bool = True
+
+    def owned(self, role: str, field_keys: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(effect for effect, served_role, served_fields, _ in self.entries
+            if served_role == role and served_fields == field_keys))
+
+    def costs(self) -> tuple[int | None, ...]:
+        return tuple(cost for _, _, _, cost in self.entries)
+
+
+_MODEL_RUN_EFFECTS: ContextVar[ModelRunEffects | None] = ContextVar(
+    "specimen_model_run_effects", default=None)
+
+
+@contextmanager
+def capture_model_run_effects(scope):
+    """Open a private causal collection for one root run and its awaited helpers."""
+    identity = tuple(getattr(scope, key) for key in
+        ("organization_id", "collection_id", "specimen_id", "job_id", "generation"))
+    collection = ModelRunEffects(identity, [])
+    token = _MODEL_RUN_EFFECTS.set(collection)
+    try:
+        yield collection
+    finally:
+        collection.active = False
+        _MODEL_RUN_EFFECTS.reset(token)
+
+
+def record_model_run_effect(scope, role: str, field_keys: tuple[str, ...], receipt) -> None:
+    """Attach an actual completed effect to the currently executing root run."""
+    collection = _MODEL_RUN_EFFECTS.get()
+    if collection is not None and collection.active and collection.scope == tuple(
+            getattr(scope, key) for key in
+            ("organization_id", "collection_id", "specimen_id", "job_id", "generation")):
+        collection.entries.append((receipt.effect_id, role, field_keys, receipt.actual_micro_usd))
 
 
 class ModelEffectBroker(Protocol):
@@ -179,6 +229,8 @@ class EffectModel(WrapperModel):
             span.set_attribute("research.attempt_id", receipt.attempt_id)
             self._trace_cost(span, receipt)
         self.effect_ids.append(receipt.effect_id)
+        record_model_run_effect(self.scope, self.role,
+            tuple(self.pins["field_keys"]), receipt)
         return _RESPONSE.validate_python(receipt.typed_payload)
 
     def _trace_cost(self, span, receipt) -> None:

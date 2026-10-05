@@ -24,7 +24,7 @@ from specimen_digitization.research_harness.contracts import (
     ROLE_FIELDS, FieldResolution, HumanQuestion, SourceFragment, SpecialistRole,
 )
 from specimen_digitization.research_harness.prompts import (
-    HANDOVER_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION, READING_CITATION_PROMPT_VERSION,
+    GEOGRAPHY_SOURCE_PROMPT_VERSION, HANDOVER_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION, READING_CITATION_PROMPT_VERSION,
     ROLE_PROMPTS, resolve_prompt,
 )
 
@@ -122,8 +122,9 @@ def test_the_v3_pin_is_audited_from_the_file_and_the_live_pin_extends_it(role):
     # to the v5 files (the hand-over block, test_prompt_handover_v5.py); the v3 pin digest is the audit record and
     # the live text begins with the v3 text.
     assert READING_CITATION_PROMPT_VERSION == "specialists-reading-citation-v3-2026-10-03"
-    qualified = role in {SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT}
+    qualified = role in {SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT, SpecialistRole.GEOGRAPHY}
     assert ROLE_PROMPTS[role] == (f"{role.value}-v{6 if qualified else 5}.txt",
+        GEOGRAPHY_SOURCE_PROMPT_VERSION if role == SpecialistRole.GEOGRAPHY else
         QUALIFIED_PROMPT_VERSION if qualified else HANDOVER_PROMPT_VERSION)
     common = (ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
     v3 = (ROOT / f"{role.value}-v3.txt").read_text(encoding="utf-8")

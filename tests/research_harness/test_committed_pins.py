@@ -274,7 +274,10 @@ def test_a_profile_without_a_registered_harness_route_has_no_pins():
 
 
 def test_the_pins_fit_one_state_document_per_run_with_room_to_spare():
-    assert len(canonical(pins_for())) < MAX_STATE_BYTES // 8
+    # Geography v6 adds qualified historical-source instructions. Keep more
+    # than six sevenths of the hard state-document limit available for the
+    # twenty checkpoint/effect rows; the runtime limit itself is unchanged.
+    assert len(canonical(pins_for())) < MAX_STATE_BYTES // 7
 
 
 def test_twenty_publications_of_a_full_run_fit_one_state_document(tmp_path):

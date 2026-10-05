@@ -341,6 +341,8 @@ class SourceCaptureEffectsV2:
             or self.scope.sensitive != request.scope.sensitive):
             raise PermissionError("source_capture_scope_denied")
         trusted = self._locked_anchor(request, query)
+        if trusted is None:
+            raise PermissionError("Pinned historical lookup requires a trusted locked anchor")
         logical = {"contract_version": "research-pinned-dataset-request/v1",
                    "tool_id": "source_lookup", "query": query.model_dump(mode="json"),
                    "scope": request.scope.model_dump(mode="json"), "original_request_digest": digest(request),
