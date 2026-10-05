@@ -328,7 +328,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   bool _labelDraft = false;
   final LabelDraftController _labelDrafts = LabelDraftController();
   late final Future<bool> Function() _exitGuard = _confirmUnsaved;
-  bool get _hasUnsaved => _labelDrafts.hasChanges || _pending.isNotEmpty;
+  bool get _hasUnsaved =>
+      _labelDrafts.hasChanges || _pending.isNotEmpty || _stale.isNotEmpty;
   bool? _reportedNavigationBlocked;
   bool _navigationNotificationPending = false;
 
@@ -381,6 +382,10 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     setState(() {
       _labelDraft = false;
       _pending = <PendingFieldChange>[];
+      _stale = <PendingFieldChange>[];
+      _pendingBatchReconciliation = null;
+      _reconciliationMessage = null;
+      _conflictVersion = null;
     });
     _reportNavigationBlocked();
     return true;
@@ -528,7 +533,8 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     }
     if ((oldWidget.specimen.revision != widget.specimen.revision ||
             oldWidget.specimen.recordVersionId !=
-                widget.specimen.recordVersionId) &&
+                widget.specimen.recordVersionId ||
+            _hasVerifiedBatchReadback()) &&
         !_savingLocally) {
       final bool acknowledged = _reconcileRefreshedBatch();
       _reapplyPending();
@@ -543,23 +549,36 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     final split = reapply(_pending, widget.specimen);
     _pending = split.keep;
     if (split.stale.isNotEmpty) {
-      _stale = split.stale;
+      for (final draft in split.stale) {
+        _retainStale(draft);
+      }
       _conflictVersion = widget.specimen.revision;
     }
     _reportNavigationBlocked();
   }
 
-  bool _reconcileRefreshedBatch() {
+  void _retainStale(PendingFieldChange draft) {
+    if (!_stale.any((existing) => _sameStagedBatchChoice(existing, draft))) {
+      _stale.add(draft);
+    }
+  }
+
+  bool _hasVerifiedBatchReadback() {
     final ticket = _pendingBatchReconciliation;
-    if (ticket == null) return false;
-    final ack = ticket.acknowledgement;
-    final bool proven =
+    final ack = ticket?.acknowledgement;
+    return ticket != null &&
         ack != null &&
         ticket.reviewerId == widget.reviewerId &&
         ack.specimenId == ticket.specimenId &&
         ack.baseRevision == ticket.baseRevision &&
         ack.baseRecordVersionId == ticket.baseRecordVersionId &&
         widget.verifyBatchReadback?.call(ack, widget.specimen) == true;
+  }
+
+  bool _reconcileRefreshedBatch() {
+    final ticket = _pendingBatchReconciliation;
+    if (ticket == null) return false;
+    final bool proven = _hasVerifiedBatchReadback();
     for (final original in ticket.drafts) {
       final current = _pending
           .where((draft) => draft.fieldKey == original.fieldKey)
@@ -567,7 +586,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       if (current != null) {
         _pending.remove(current);
         if (!proven || !_sameStagedBatchChoice(current, original)) {
-          _stale.add(current);
+          _retainStale(current);
         }
       }
       if (proven) {
@@ -957,24 +976,25 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       // Let the acknowledged record reach this widget before anything reads
       // its version, exactly as the one at a time path does.
       if (mounted) await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return const ReviewBatchSaveOutcome(saved: 0);
-      final Specimen? confirmed = outcome.confirmed;
-      if (confirmed != null &&
-          outcome.saved > 0 &&
-          (confirmed.id != original.id ||
-              confirmed.revision <= original.revision ||
-              widget.specimen.id != confirmed.id ||
-              widget.specimen.revision != confirmed.revision ||
-              widget.specimen.recordVersionId != confirmed.recordVersionId)) {
-        outcome = ReviewBatchSaveOutcome(
-          saved: outcome.saved,
-          requiresReconciliation: true,
-        );
+      if (!mounted) {
+        outcome = const ReviewBatchSaveOutcome(saved: 0);
+      } else {
+        final Specimen? confirmed = outcome.confirmed;
+        if (confirmed != null &&
+            outcome.saved > 0 &&
+            (confirmed.id != original.id ||
+                confirmed.revision <= original.revision ||
+                widget.specimen.id != confirmed.id ||
+                widget.specimen.revision != confirmed.revision ||
+                widget.specimen.recordVersionId != confirmed.recordVersionId)) {
+          outcome = ReviewBatchSaveOutcome(
+            saved: outcome.saved,
+            requiresReconciliation: true,
+          );
+        }
       }
-      return outcome;
     } catch (_) {
       outcome = const ReviewBatchSaveOutcome(saved: 0);
-      return outcome;
     } finally {
       _setSavingLocally(false);
       if (mounted) {
@@ -1018,10 +1038,27 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
           _stale.removeWhere(
             (PendingFieldChange p) => landed.contains(p.fieldKey),
           );
+          // A quiet refresh can install the exact committed readback while
+          // this save is still waiting for its own GET. Its widget update is
+          // intentionally ignored during the save; check the scoped current
+          // selection once the acknowledgement ticket exists.
+          if (outcome.requiresReconciliation && _hasVerifiedBatchReadback()) {
+            final bool reconciled = _reconcileRefreshedBatch();
+            if (reconciled) {
+              outcome = ReviewBatchSaveOutcome(
+                saved: outcome.saved,
+                confirmed: widget.specimen,
+              );
+            }
+          }
           _reapplyPending();
+          if (outcome.confirmed != null && _pending.isEmpty && _stale.isEmpty) {
+            _conflictVersion = null;
+          }
         });
       }
     }
+    return outcome;
   }
 
   Future<void> _reportFailedSave(int keptCount) async {

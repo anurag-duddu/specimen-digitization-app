@@ -816,6 +816,9 @@ void main() {
         var serverRevision = 18;
         var detailReadsAfterCommit = 0;
         var posts = 0;
+        String? countyLiteral;
+        bool? navigationBlocked;
+        Future<bool> Function()? exitGuard;
         Future<void>? refresh;
         ReviewBatchSaveOutcome? initialOutcome;
         final repo = repository((request) async {
@@ -879,7 +882,17 @@ void main() {
               );
             }
             return http.Response(
-              jsonEncode(reviewWorkspace(serverRevision)),
+              jsonEncode({
+                ...reviewWorkspace(serverRevision),
+                if (countyLiteral != null)
+                  'fields': {
+                    ...reviewWorkspace(serverRevision)['fields'] as Json,
+                    'county': {
+                      'value_state': 'unknown',
+                      'literal': countyLiteral,
+                    },
+                  },
+              }),
               200,
             );
           }
@@ -924,6 +937,12 @@ void main() {
                         },
                         verifyBatchReadback:
                             controller.isAcknowledgedBatchReadback,
+                        onExitGuardChanged: (guard, active) {
+                          exitGuard = active ? guard : null;
+                        },
+                        onNavigationBlockedChanged: (blocked) {
+                          navigationBlocked = blocked;
+                        },
                         onRetry: (reason) async {},
                         onRefresh: () {
                           refresh = controller.refresh();
@@ -1090,6 +1109,61 @@ void main() {
             1,
             reason: 'old selection IDs must not be rebased to Q19',
           );
+          if (firstReadback == 'edited') {
+            expect(navigationBlocked, isTrue);
+            final keepEditing = exitGuard!();
+            await tester.pumpAndSettle();
+            expect(find.text('Discard unsaved corrections?'), findsOneWidget);
+            await tester.tap(uiButton('Keep editing'));
+            await tester.pumpAndSettle();
+            expect(await keepEditing, isFalse);
+            expect(
+              tester
+                  .widget<WorkbenchStatusStrip>(
+                    find.byType(WorkbenchStatusStrip),
+                  )
+                  .staleChanges
+                  .single
+                  .candidateSelectionId,
+              'c' * 64,
+            );
+
+            // A later edit going stale must preserve the earlier quarantined
+            // choice as well; both remain guarded until explicitly discarded.
+            tester
+                .widget<WorkbenchFields>(find.byType(WorkbenchFields))
+                .onPendingChanged([
+                  PendingFieldChange(
+                    fieldKey: 'county',
+                    displayName: 'County',
+                    state: 'supported',
+                    candidateSelectionId: 'd' * 64,
+                    baseLiteral: null,
+                  ),
+                ]);
+            await tester.pumpAndSettle();
+            countyLiteral = 'Changed by another reviewer';
+            serverRevision = 20;
+            await controller.refresh();
+            await tester.pumpAndSettle();
+            final later = tester.widget<WorkbenchStatusStrip>(
+              find.byType(WorkbenchStatusStrip),
+            );
+            expect(
+              later.staleChanges.map((change) => change.candidateSelectionId),
+              containsAll(['c' * 64, 'd' * 64]),
+            );
+            expect(later.staleChanges, hasLength(2));
+            expect(navigationBlocked, isTrue);
+            final discard = exitGuard!();
+            await tester.pumpAndSettle();
+            expect(find.text('Discard unsaved corrections?'), findsOneWidget);
+            await tester.tap(uiButton('Discard changes'));
+            await tester.pumpAndSettle();
+            expect(await discard, isTrue);
+            expect(find.byType(WorkbenchStatusStrip), findsNothing);
+            expect(navigationBlocked, isFalse);
+          }
         } finally {
           await tester.pumpWidget(const SizedBox());
           controller.dispose();
@@ -1099,6 +1173,193 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    'quiet Q+1 refresh before failed save readback reconciles exact batch',
+    (tester) async {
+      useWindow(tester, largeWindow);
+      final session = _TestSession();
+      final blockedReadback = Completer<http.Response>();
+      final readbackStarted = Completer<void>();
+      var serverRevision = 18;
+      var posts = 0;
+      var blockedOnce = false;
+      ReviewBatchSaveOutcome? repositoryOutcome;
+      final repo = repository((request) async {
+        final path = request.url.path;
+        if (path == '/v1/session') {
+          return http.Response(
+            jsonEncode({
+              'user_id': session.userId,
+              'mode': 'synthetic',
+              'memberships': [
+                {
+                  'organization_id': 'org',
+                  'collection_id': 'collection',
+                  'role': 'reviewer',
+                },
+              ],
+            }),
+            200,
+          );
+        }
+        if (path.endsWith('/collections')) {
+          return http.Response(
+            jsonEncode({
+              'items': [
+                {'collection_id': 'collection'},
+              ],
+            }),
+            200,
+          );
+        }
+        if (path.endsWith('/specimens')) {
+          return http.Response(
+            jsonEncode({
+              'items': [workspace(serverRevision)],
+            }),
+            200,
+          );
+        }
+        if (path.endsWith('/specimens/s1/workspace')) {
+          if (posts > 0 && !blockedOnce) {
+            blockedOnce = true;
+            readbackStarted.complete();
+            return blockedReadback.future;
+          }
+          return http.Response(
+            jsonEncode(reviewWorkspace(serverRevision)),
+            200,
+          );
+        }
+        if (path.endsWith('/decisions:batch')) {
+          posts++;
+          serverRevision = 19;
+          return http.Response(jsonEncode(answerFor(request)), 200);
+        }
+        fail('Unexpected request: ${request.method} $path');
+      }, expectedUserId: () => session.userId);
+      final controller = WorkspaceController(
+        repository: repo,
+        session: session,
+        pollInterval: const Duration(days: 1),
+      );
+      try {
+        await controller.checkAccess();
+        await controller.openSpecimen('s1');
+        await tester.pumpWidget(
+          workbenchHost(
+            AnimatedBuilder(
+              animation: controller,
+              builder: (context, _) => controller.selected == null
+                  ? const SizedBox.shrink()
+                  : ReviewWorkbench(
+                      specimen: controller.selected!,
+                      reviewerId: session.userId,
+                      onChange: (change) async => false,
+                      onChangeBatch: (changes, reason, stillApplies) async {
+                        final result = await controller.mutateBatch(
+                          changes,
+                          reason,
+                          stillApplies: stillApplies,
+                        );
+                        repositoryOutcome = result;
+                        return result;
+                      },
+                      verifyBatchReadback:
+                          controller.isAcknowledgedBatchReadback,
+                      onRetry: (reason) async {},
+                      onRefresh: () => unawaited(controller.refresh()),
+                    ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Specimen data'));
+        await tester.pumpAndSettle();
+        tester
+            .widget<WorkbenchFields>(find.byType(WorkbenchFields))
+            .onPendingChanged([
+              PendingFieldChange(
+                fieldKey: 'county',
+                displayName: 'County',
+                state: 'supported',
+                candidateSelectionId: 'a' * 64,
+                baseLiteral: null,
+              ),
+              PendingFieldChange(
+                fieldKey: 'city',
+                displayName: 'City',
+                state: 'supported',
+                candidateSelectionId: 'b' * 64,
+                baseLiteral: null,
+              ),
+            ]);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Save 2 pending changes').last);
+        await tester.pumpAndSettle();
+        await tester.enterText(uiField('Reason'), 'Compared both sources');
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: find.byType(ReasonForm),
+            matching: uiButton('Save 2 pending changes'),
+          ),
+        );
+        await tester.pump();
+        await readbackStarted.future;
+        expect(posts, 1);
+        expect(controller.selected?.revision, 18);
+
+        // The poll completes with the committed detail while the save's
+        // readback is still in flight and its ticket has not been installed.
+        await controller.refresh(quiet: true);
+        await tester.pump();
+        expect(controller.selected?.revision, 19);
+        expect(controller.selected?.recordVersionId, 'run:19');
+        blockedReadback.complete(
+          http.Response(jsonEncode(reviewWorkspace(18)), 200),
+        );
+        await tester.pumpAndSettle();
+        expect(repositoryOutcome?.saved, 2);
+        expect(repositoryOutcome?.requiresReconciliation, isTrue);
+        expect(
+          controller.isAcknowledgedBatchReadback(
+            repositoryOutcome!.acknowledgement!,
+            controller.selected!,
+          ),
+          isTrue,
+        );
+        final reconciled = tester.widget<WorkbenchStatusStrip>(
+          find.byType(WorkbenchStatusStrip),
+        );
+        expect(reconciled.saved, isTrue);
+        expect(reconciled.reconciliationMessage, isNull);
+        expect(reconciled.staleChanges, isEmpty);
+        expect(
+          tester.widget<WorkbenchFields>(find.byType(WorkbenchFields)).pending,
+          isEmpty,
+        );
+        expect(find.textContaining('Version 18.'), findsNothing);
+
+        await controller.refresh();
+        await tester.pumpAndSettle();
+        expect(controller.selected?.revision, 19);
+        expect(
+          tester
+              .widget<WorkbenchStatusStrip>(find.byType(WorkbenchStatusStrip))
+              .saved,
+          isTrue,
+        );
+        expect(posts, 1);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        controller.dispose();
+        repo.close();
+        await session.controller.close();
+      }
+    },
+  );
 
   test(
     'artifact-required readback retains a committed two-choice count',
