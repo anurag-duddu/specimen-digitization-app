@@ -36,6 +36,7 @@ WorkbenchStatusStrip strip(
   List<PendingFieldChange> pending = const <PendingFieldChange>[],
   List<PendingFieldChange> staleChanges = const <PendingFieldChange>[],
   int? conflictVersion,
+  String? reconciliationMessage,
   VoidCallback? onRefresh,
 }) => WorkbenchStatusStrip(
   specimen: specimen,
@@ -44,6 +45,7 @@ WorkbenchStatusStrip strip(
   pending: pending,
   staleChanges: staleChanges,
   conflictVersion: conflictVersion,
+  reconciliationMessage: reconciliationMessage,
   onRefresh: onRefresh,
   onGoToBlocker: (ClearanceBlocker _) {},
 );
@@ -149,6 +151,28 @@ void main() {
     expect(find.text('Saved'), findsNothing);
   });
 
+  for (final recovery in ['pending', 'stale', 'reconciliation']) {
+    testWidgets('$recovery feedback suppresses an acknowledged Saved label', (
+      tester,
+    ) async {
+      await pumpComponent(
+        tester,
+        strip(
+          record(),
+          saved: true,
+          pending: recovery == 'pending' ? const [correction] : const [],
+          staleChanges: recovery == 'stale' ? const [correction] : const [],
+          reconciliationMessage: recovery == 'reconciliation'
+              ? 'Refresh and compare this save.'
+              : null,
+        ),
+        size: phone,
+      );
+      expect(find.text('Saved'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   // Status changes remain audible once even without a permanent status chip.
   // A move the poll brings must not use the Saved cue for a decision.
   group('announcements', () {
@@ -191,7 +215,7 @@ void main() {
       expect(heard(tester), isEmpty, reason: 'once, not on every poll');
     });
 
-    testWidgets('a decision is announced as saved', (
+    testWidgets('completed processing is announced without a fabricated save', (
       WidgetTester tester,
     ) async {
       await pumpComponent(tester, announcing(live('running')), size: medium);
@@ -201,7 +225,14 @@ void main() {
         announcing(live('completed', disposition: 'needs_human_review')),
         size: medium,
       );
-      expect(heard(tester), <String>['Saved. Queue: needs review']);
+      expect(heard(tester), <String>['Queue: needs review']);
+      expect(find.text('Saved'), findsNothing);
+      await pumpComponent(
+        tester,
+        announcing(live('completed', disposition: 'needs_human_review')),
+        size: medium,
+      );
+      expect(heard(tester), isEmpty);
     });
   });
 }

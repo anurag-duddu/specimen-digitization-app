@@ -24,13 +24,29 @@ Specimen _record(
   'disposition': disposition,
 });
 
-Widget _strip(Specimen specimen) => Builder(
+const _correction = PendingFieldChange(
+  fieldKey: 'city',
+  displayName: 'City',
+  state: 'supported',
+  literal: 'Chicago',
+);
+
+Widget _strip(
+  Specimen specimen, {
+  bool saved = false,
+  List<PendingFieldChange> pending = const [],
+  List<PendingFieldChange> staleChanges = const [],
+  String? reconciliationMessage,
+}) => Builder(
   builder: (BuildContext context) => MediaQuery(
     data: MediaQuery.of(context).copyWith(supportsAnnounce: true),
     child: WorkbenchStatusStrip(
       specimen: specimen,
+      saved: saved,
       blockers: const <ClearanceBlocker>[],
-      pending: const <PendingFieldChange>[],
+      pending: pending,
+      staleChanges: staleChanges,
+      reconciliationMessage: reconciliationMessage,
       onGoToBlocker: (ClearanceBlocker _) {},
     ),
   ),
@@ -121,6 +137,16 @@ void main() {
 
           await pumpComponent(
             tester,
+            _strip(_record('completed', disposition: 'needs_human_review')),
+            size: size,
+            platform: platform,
+          );
+          expect(_heard(tester), <String>['Queue: needs review']);
+          expect(find.text('Saved'), findsNothing);
+          expect(haptics, isEmpty);
+
+          await pumpComponent(
+            tester,
             _strip(_record('paused', id: 'another-record')),
             size: size,
             platform: platform,
@@ -147,7 +173,10 @@ void main() {
 
         await pumpComponent(
           tester,
-          _strip(_record('completed', disposition: 'cleared', revision: 4)),
+          _strip(
+            _record('completed', disposition: 'cleared', revision: 4),
+            saved: true,
+          ),
           platform: platform,
         );
         expect(_heard(tester), <String>['Saved. Queue: cleared']);
@@ -157,7 +186,10 @@ void main() {
         // Canonical whitespace does not make a second decision.
         await pumpComponent(
           tester,
-          _strip(_record('completed', disposition: ' cleared ', revision: 4)),
+          _strip(
+            _record('completed', disposition: ' cleared ', revision: 4),
+            saved: true,
+          ),
           platform: platform,
         );
         expect(_heard(tester), isEmpty);
@@ -173,6 +205,109 @@ void main() {
         expect(haptics, hasLength(1));
       },
     );
+
+    _testOn(
+      platform,
+      '${platform.name}: acknowledged same-disposition save cues once per version',
+      (tester) async {
+        final record = _record('completed', disposition: 'needs_human_review');
+        await pumpComponent(tester, _strip(record), platform: platform);
+        expect(_heard(tester), isEmpty);
+        await pumpComponent(
+          tester,
+          _strip(record, saved: true),
+          platform: platform,
+        );
+        expect(_heard(tester), <String>['Saved. Queue: needs review']);
+        expect(find.text('Saved'), findsOneWidget);
+        expect(haptics, <Object?>['HapticFeedbackType.mediumImpact']);
+        await pumpComponent(
+          tester,
+          _strip(record, saved: true),
+          platform: platform,
+        );
+        expect(_heard(tester), isEmpty, reason: 'polling repeats no ACK cue');
+        expect(haptics, hasLength(1));
+        await pumpComponent(
+          tester,
+          _strip(record, pending: const [_correction]),
+          platform: platform,
+        );
+        expect(_heard(tester), isEmpty);
+        expect(find.text('Saved'), findsNothing);
+        await pumpComponent(
+          tester,
+          _strip(record, saved: true),
+          platform: platform,
+        );
+        expect(_heard(tester), isEmpty, reason: 'discard is not another save');
+        expect(haptics, hasLength(1));
+        await pumpComponent(
+          tester,
+          _strip(
+            _record(
+              'completed',
+              disposition: 'needs_human_review',
+              revision: 4,
+            ),
+            saved: true,
+          ),
+          platform: platform,
+        );
+        expect(_heard(tester), <String>['Saved. Queue: needs review']);
+        expect(haptics, hasLength(2));
+        await pumpComponent(
+          tester,
+          _strip(
+            _record('completed', id: 'new-record', disposition: 'cleared'),
+          ),
+          platform: platform,
+        );
+        expect(_heard(tester), isEmpty);
+        expect(find.text('Saved'), findsNothing);
+        expect(haptics, hasLength(2));
+      },
+    );
+
+    for (final recovery in ['pending', 'stale', 'reconciliation']) {
+      _testOn(
+        platform,
+        '${platform.name}: $recovery suppresses save announcements and haptics',
+        (tester) async {
+          final record = _record(
+            'completed',
+            disposition: 'needs_human_review',
+          );
+          await pumpComponent(tester, _strip(record), platform: platform);
+          expect(_heard(tester), isEmpty);
+          await pumpComponent(
+            tester,
+            _strip(
+              record,
+              saved: true,
+              pending: recovery == 'pending' ? const [_correction] : const [],
+              staleChanges: recovery == 'stale'
+                  ? const [_correction]
+                  : const [],
+              reconciliationMessage: recovery == 'reconciliation'
+                  ? 'Refresh and compare this save.'
+                  : null,
+            ),
+            platform: platform,
+          );
+          expect(_heard(tester), isEmpty);
+          expect(find.text('Saved'), findsNothing);
+          expect(haptics, isEmpty);
+          await pumpComponent(
+            tester,
+            _strip(record, saved: true),
+            platform: platform,
+          );
+          expect(_heard(tester), isEmpty, reason: 'recovery is not a new ACK');
+          expect(haptics, isEmpty);
+        },
+      );
+    }
   }
 
   _testOn(
