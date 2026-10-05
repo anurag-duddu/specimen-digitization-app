@@ -15,10 +15,10 @@ two-line catalog region, a few one-line values, the extractor quoting the whole 
   request is built: a span that is not a verbatim substring cannot be constructed;
 - a candidate that cannot be located exactly is an ungrounded hint: no span, no event, no
   assembly, and nothing in the request lets a model resolve a value from it;
-- the dates, the elevations, taxon and the geography fields get no assembly from the hand-over
-  (initial_requests.ASSEMBLY_FIELDS says why);
-- what did not move: the SpecialistOutput schema digest, evidence.py and the files the projector
-  pin hashes (application/domain.py among them).
+- taxon and geography fields get no assembly from the hand-over; date and elevation
+  qualification is a separate, narrower two-reader rule (initial_requests.ASSEMBLY_FIELDS says why);
+- the current schema and source pins are explicit, including the later derived-review
+  schema and candidate-selection projector changes.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ from specimen_digitization.application.domain import (
     Asset, Evidence, FieldValue, Observation, ReaderHandoff, Region, Run, Scope, Specimen, Transcript, ValueState,
 )
 from specimen_digitization.research_harness import evidence as evidence_module
-from specimen_digitization.research_harness.agents import specialist_output_schema_digest
+from specimen_digitization.research_harness.agents import SpecialistOutput, specialist_output_schema_digest
 from specimen_digitization.research_harness.contracts import (
     MAX_ORGANISER_CANDIDATES, ROLE_FIELDS, EventKind, FieldKey, FieldResolution, OrganiserCandidate,
     ResearchScope, SpecialistRequest, SpecialistRole, WorkState,
@@ -893,20 +893,24 @@ def test_the_contract_rechecks_every_non_ungrounded_span_not_only_a_grounded_one
     assert rebuilt(request, organiser_candidates=(item,)).organiser_candidates == (item,)
 
 
-# ---------------------------------------------------------------------------- what did not move
+# ---------------------------------------------------------------------------- current schema and source pins
 def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def test_the_output_schema_and_the_pinned_files_did_not_move():
-    """A typed field on FieldValue, Evidence or Run would move the projector pin (application/domain.py) and
-    SpecialistOutput's schema digest, and re-digest every prompt pin. The hand-over adds none."""
+def test_the_output_schema_and_pinned_files_match_the_current_contract():
+    """The organiser adds no domain fields; later derived review and candidate selection deliberately
+    changed the output schema and projector, whose current pins must match exact source bytes."""
     from specimen_digitization.application import active_graph, projection, storage
     from specimen_digitization.research_harness.accepted_output import VALIDATOR_SOURCE_SHA256
+    from specimen_digitization.research_harness.native_canonical import CANONICAL_PROJECTOR_SHA256
     assert specialist_output_schema_digest() == (
-        "79c8fd8dcd1c707745025db3970a82db9082787017e922c3eecba0e09199da24")  # pragma: allowlist secret
+        "f504ce2d07dd25476381a5fa220121e1dc77cc81a297a16e721c8e95d40770fc")  # pragma: allowlist secret
+    assert SpecialistOutput.model_json_schema()["$defs"]["HumanQuestion"]["properties"]["reason"]["enum"] == [
+        "evidence_conflict", "scoped_absence", "semantic_ambiguity", "derived_proposal"]
     assert sha(evidence_module.__file__) == VALIDATOR_SOURCE_SHA256
-    assert sha(projection.__file__) == "2c37115f0542da507b7102454211d57f9cacb5ae6eafa6698e292b9c9a9aba6a"  # pragma: allowlist secret
+    assert sha(projection.__file__) == CANONICAL_PROJECTOR_SHA256 == (
+        "aecca227a5ff12948971852bc09b30cc85ec368a67f3a0d0f01195405a07571e")  # pragma: allowlist secret
     assert sha(domain.__file__) == "688b93cd47a8a7df577734c67bbb17f434dc492fc29e269c873d46901aa5c67f"  # pragma: allowlist secret
     assert sha(storage.__file__) == "3c9511b52160da2ae7b529b5262431f3b5a76b8fb228f98e34689a833f41be88"  # pragma: allowlist secret
     assert sha(active_graph.__file__) == "9f22032c3443a564f034d92fc41eda616bbee6f36de6002653bd14aacc892d47"  # pragma: allowlist secret
