@@ -1,9 +1,11 @@
 # G38 side work changes scheduling metadata, never a scientific snapshot/value.
 # The immutable command is admitted by the preceding reviewer snapshot CAS.
+# Response checks sequence membership, native DML and readback without changing
+# the existing role, revision or affected-row requirements.
 mutation ScheduleResearchDerivationV1($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $queuedRevision: Int!, $canonicalRunId: UUID!, $queuedSnapshotSha256: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['reviewer', 'manager', 'admin']") { active role }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && response.query.organizationMember.active == true && this.role in ['reviewer', 'manager', 'admin']") { active role }
   }
   scheduled: _execute(sql: """
     UPDATE public.specimen s SET state='pending',work_available_at=clock_timestamp()
@@ -14,7 +16,7 @@ mutation ScheduleResearchDerivationV1($organizationId: UUID!, $collectionId: UUI
       AND snap.specimen_id=s.id AND snap.revision=s.revision AND snap.sha256=$6
     """, params: [$organizationId,$collectionId,$specimenId,$queuedRevision,$canonicalRunId,$queuedSnapshotSha256])
     @check(expr: "this == 1", message: "derivation schedule revision changed")
-  read: query { specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) { revision state activeRunId workAvailableAt } }
+  read: query @check(expr: "response.scheduled == 1") { specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) { revision state activeRunId workAvailableAt } }
 }
 
 # Only proved terminal progress for this exact command retires its queue item.
@@ -22,7 +24,7 @@ mutation ScheduleResearchDerivationV1($organizationId: UUID!, $collectionId: UUI
 mutation FinishResearchDerivationV1($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $queuedRevision: Int!, $canonicalRunId: UUID!, $programKey: String!, $jobKey: String!, $requestId: String!) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
-    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && response.query.organizationMember.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role }
   }
   finished: _execute(sql: """
     UPDATE public.specimen s SET state='completed',work_available_at=NULL
@@ -40,5 +42,5 @@ mutation FinishResearchDerivationV1($organizationId: UUID!, $collectionId: UUID!
       AND h.state->'jobs'->$7->'dependencies'->'derivation_result'->>'status' IN ('completed','blocked')
     """, params: [$organizationId,$collectionId,$specimenId,$queuedRevision,$canonicalRunId,$programKey,$jobKey,$requestId])
     @check(expr: "this == 1", message: "derivation completion proof changed")
-  read: query { specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) { revision state activeRunId workAvailableAt } }
+  read: query @check(expr: "response.finished == 1") { specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) { revision state activeRunId workAvailableAt } }
 }

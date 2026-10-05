@@ -62,6 +62,7 @@ node scripts/data/connector-test.mjs
 PSQL_BIN="$pg_bin/psql" SPECIMEN_TEST_PG_PORT="$pg_port" node scripts/data/projection-test.mjs
 node scripts/data/bootstrap-test.mjs
 node scripts/data/worker-membership-test.mjs
+node scripts/data/research-registration-test.mjs
 PSQL_BIN="$pg_bin/psql" SPECIMEN_TEST_PG_PORT="$pg_port" node scripts/data/research-send-fence-test.mjs
 node scripts/data/pilot-ledger-test.mjs
 node scripts/data/sensitivity-test.mjs
