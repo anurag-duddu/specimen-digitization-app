@@ -5,10 +5,11 @@ pins the dependencies again after it, so the route `classify` keeps is the one
 pinned for the first pass. Readings that differ then reach the first pass with
 its reservation instead of blocking as `approved_cost_budget_unavailable`.
 
-The first pass's request is bounded (the coordinator, 2026-10-03): each request
-reserves its input bound, not the route's 1,048,576-token context, so a retried
-first pass still fits the run's limit (USD 1 since the owner's ruling of
-2026-10-03, 500,000 micro-dollars before it).
+The first pass retains its payload guard, while financial qualification in
+bbd6e620 reserves both requests at the whole provider context. Unknown calls
+remain fully held; successful calls settle to reported usage. The current
+held-plus-settled liability must stay inside the USD 1 run limit, including
+each new request's reservation before dispatch.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -47,13 +48,16 @@ from test_lane_trigger import RecordingDispatcher, intake
 
 SCOPE = Scope(organization_id=SYNTHETIC_ORG, collection_id=SYNTHETIC_COLLECTION)
 GLM = {"model_id": "zai-org/GLM-5.3-Flash", "provider": "deepinfra"}
-# Each of the call's two requests at its bound, 32,768 in and 4,096 out at 0.15
-# and 0.50 dollars a million: 6,964 micro-dollars, so the call's 13,928 is under
-# the stage's 20,000 floor, and the floor is the reservation.
+# The configured payload estimate would price each request at 6,964 microUSD.
+# That estimate is not a qualified provider-token liability bound.
 BOUNDED_CALL = 2 * 6_964
-FIRST_PASS_RESERVATION = 20_000
-# Before the bound, PLAN 4.3 (a) on the context: 1,048,576 in and 4,096 out.
+FIRST_PASS_RESERVATION = 318_670
+# Two full-context requests: ceil((1,048,576 x 0.15) + (4,096 x 0.50)).
 CONTEXT_RESERVATION = 2 * 159_335
+# SAM's complete startup/request/shutdown liability and the first reader's
+# two full-context extraction requests, independently priced from the profile.
+SAM_RESERVATION = 182_321
+PARSE_RESERVATION = 58_164
 # The published profile's per-run limit, which `queue` copies into each run.
 RUN_CAP = published_registry().resolve("insects").profile.processing.run_cost_limit_micros
 UNBOUNDED = {"first-pass-glm": {"max_input_tokens": None, "max_output_tokens": None}}
@@ -87,12 +91,13 @@ def first_pass_run(registry=None):
     return run, "first_pass:" + run.regions[0].id
 
 
-def test_the_first_pass_reserves_its_request_bound_not_its_routes_context():
+def test_the_first_pass_reserves_full_context_despite_its_payload_bound():
     run, step = first_pass_run()
     price = run.profile.execution.price_list["models"]["first-pass-glm"]
     assert call_micros(price, None) == BOUNDED_CALL
+    assert price["max_input_tokens"] == 32_768
     assert step_reservation(run, step) == FIRST_PASS_RESERVATION
-    # The pre-bound price reserved the route's whole context on both requests.
+    # Removing the payload bound cannot reduce the full-context liability.
     unbounded = with_models(
         published_registry({SYNTHETIC_COLLECTION: "insects"}), **UNBOUNDED
     )
@@ -110,7 +115,7 @@ class DisagreeingReaders(ProductionLikeAdapters):
     def __init__(self, blobs, fail=0, regions=1):
         super().__init__(blobs, SYNTHETIC_TEXT, SYNTHETIC_TEXT + " 1946")
         self.fail, self.regions = int(fail), regions
-        self.pins, self.reserved = [], []
+        self.pins, self.reserved, self.exposure = [], [], []
 
     def segment(self, specimen):
         if self.regions == 1:
@@ -138,6 +143,7 @@ class DisagreeingReaders(ProductionLikeAdapters):
         self.reserved.append(
             (run.blocker, step_reservation(run, "first_pass:" + region.id))
         )
+        self.exposure.append(run.usage.reserved_cost_micros)
         if self.fail:
             self.fail -= 1
             raise AdapterFailure("first_pass_rate_limited", LookupStatus.RATE_LIMITED)
@@ -209,6 +215,8 @@ def test_a_first_pass_that_reported_nothing_stays_reserved(tmp_path):
         call["cost_basis"],
         call["cost_micros"],
     ) == ("first-pass-glm", "failed", "reserved", FIRST_PASS_RESERVATION)
+    assert run.usage.reserved_cost_micros == SAM_RESERVATION + FIRST_PASS_RESERVATION == 500_991
+    assert run.usage.actual_cost_micros is None
 
 
 def four_regions_and_a_retried_first_pass(tmp_path, registry=None):
@@ -235,24 +243,31 @@ def test_four_disagreeing_regions_and_a_retried_first_pass_fit_the_run_cap(tmp_p
     assert [(c["outcome"], c["cost_basis"]) for c in first_passes] == [
         ("failed", "reserved")
     ] + [("completed", "computed")] * 4
-    # Every paid attempt's reservation, as if none had settled, fits the cap:
-    # 45,000 for SAM 3, 8 x 20,000 for the readings, 5 x 20,000 for the first
-    # passes (this emulator's parse makes no paid call).
+    # Historical reservations include amounts later settled; only the current
+    # held-plus-settled liability is tested against the cap at the next dispatch.
     reserved = {(c["step"], c["attempt"]): c["reserved_micros"] for c in run.paid_calls}
-    assert sum(r for (step, _), r in reserved.items() if step in steps) == 100_000
-    assert sum(reserved.values()) == 305_000 <= RUN_CAP
-    # Production's parse is a paid call (ProductionAdapters.extract): 20,000 more.
-    assert sum(reserved.values()) + step_reservation(run, "parse") == 325_000 <= RUN_CAP
-    # Settled: the failed call's 20,000 stays held, the rest is what was spent.
+    assert reserved[("segment", 1)] == SAM_RESERVATION
+    assert sum(r for (step, _), r in reserved.items() if step in steps) == 1_593_350
+    assert sum(reserved.values()) == 1_935_671
+    assert adapters.exposure == [500_991, 819_661, 819_991, 820_321, 820_651]
+    assert max(adapters.exposure) < RUN_CAP == 1_000_000
+    # SAM has no billing receipt and the failed model call reported no usage;
+    # both remain fully held even after later first passes settle at 330 each.
+    held = sum(c["cost_micros"] for c in run.paid_calls if c["cost_basis"] == "reserved")
+    assert held == SAM_RESERVATION + FIRST_PASS_RESERVATION == 500_991
     spent = sum(c["cost_micros"] for c in run.paid_calls if c["cost_basis"] == "computed")
-    assert run.usage.reserved_cost_micros == 20_000 + spent
+    assert spent == 1_320
+    assert run.usage.reserved_cost_micros == held + spent == 502_311
+    assert run.usage.actual_cost_micros is None
+    # This emulator's parse makes no paid call. A subsequent production parse
+    # must still reserve its complete two-request liability before dispatch.
+    assert step_reservation(run, "parse") == PARSE_RESERVATION
+    assert run.usage.reserved_cost_micros + PARSE_RESERVATION == 560_475 <= RUN_CAP
 
 
-def test_the_pre_bound_price_retries_a_first_pass_within_the_usd_1_run_limit(tmp_path):
-    # At the run's former 500,000 the pre-bound price could not retry: the failed
-    # call holds 318,670 and its retry needs as much again. The published limit is
-    # now USD 1 (the owner, 2026-10-03), and 637,340 fits, so the request bound is
-    # no longer what lets a retry through; it still keeps the reservation small.
+def test_removing_the_payload_bound_keeps_the_full_context_retry_liability(tmp_path):
+    # The failed call holds 318,670 and its retry needs as much again. Removing
+    # the payload bound leaves those liabilities and the USD 1 limit intact.
     assert RUN_CAP == 1_000_000 > 2 * CONTEXT_RESERVATION
     registry = with_models(
         published_registry({SYNTHETIC_COLLECTION: "insects"}), **UNBOUNDED
@@ -275,3 +290,6 @@ def test_the_run_limit_blocks_a_retry_whose_reservation_would_cross_it(tmp_path)
     assert run.blocker == "cost_budget_exhausted"
     assert adapters.reserved == [("external_outcome_unknown", LONG_CONTEXT_RESERVATION)]
     assert not any(step.startswith("first_pass:") for step in run.completed_steps)
+    assert run.usage.reserved_cost_micros == SAM_RESERVATION + LONG_CONTEXT_RESERVATION == 815_563
+    assert run.usage.actual_cost_micros is None
+    assert run.usage.reserved_cost_micros + LONG_CONTEXT_RESERVATION > RUN_CAP

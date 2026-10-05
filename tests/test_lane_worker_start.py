@@ -151,7 +151,9 @@ def test_production_app_passes_the_lane_wiring(monkeypatch):
 
     config = lane_config(SPECIMEN_WORKER_JOB=JOB)
     captured = {}
-    monkeypatch.setattr(runtime_config, "build_provenance", lambda required: {})
+    provenance = {"source_sha": "a" * 40, "contract_version": "api-runtime-v1"}
+    bucket = object()
+    monkeypatch.setattr(runtime_config, "build_provenance", lambda required: provenance)
     monkeypatch.setattr(
         firebase_admin,
         "get_app",
@@ -165,7 +167,7 @@ def test_production_app_passes_the_lane_wiring(monkeypatch):
     monkeypatch.setattr(runtime_health, "install_health", lambda *_, **__: None)
     monkeypatch.setattr(runtime_health, "cloud_probe", lambda *_: None)
     monkeypatch.setattr(runtime_health, "DependencyReadiness", lambda *_: None)
-    monkeypatch.setattr(cli, "GcsBlobs", lambda **_: object())
+    monkeypatch.setattr(cli, "GcsBlobs", lambda **_: SimpleNamespace(bucket=bucket))
     monkeypatch.setattr(
         cli,
         "SqlConnectRepository",
@@ -182,6 +184,13 @@ def test_production_app_passes_the_lane_wiring(monkeypatch):
     assert isinstance(captured["worker_dispatcher"], CloudRunJobDispatcher)
     assert not captured["source_registry"]
     assert captured["source_reader"] is None
+    ready = captured["research_derivation_ready"]
+    assert ready.config is config and ready.source_sha == provenance["source_sha"]
+    assert ready.dispatcher is captured["worker_dispatcher"]
+    from specimen_digitization.research_harness.derivation_work_queue import schedule_derivation
+    assert captured["schedule_derivation"].func is schedule_derivation
+    assert captured["schedule_derivation"].args == (captured["repository"],)
+    assert captured["research_capture_blobs"].bucket is bucket
 
 
 def test_source_import_is_intake_and_queues_each_new_specimen(tmp_path):
