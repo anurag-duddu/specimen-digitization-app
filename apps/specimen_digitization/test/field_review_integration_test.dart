@@ -89,7 +89,7 @@ void main() {
               return {};
             },
             fieldResearchHost: (buildFields) =>
-                buildFields((key) => Text('Research context for $key')),
+                buildFields((key, _) => Text('Research context for $key')),
           ),
         ),
       );

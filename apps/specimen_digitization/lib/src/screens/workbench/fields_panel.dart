@@ -14,6 +14,7 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart' hide FieldLayer;
 
 import '../../models.dart';
+import '../../research/research_models.dart';
 import '../../review_context.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
@@ -58,7 +59,11 @@ class WorkbenchFields extends StatefulWidget {
 
   /// Research for one field, revealed with that field's supporting evidence.
   /// The host owns loading, permissions and any actual research actions.
-  final Widget Function(String fieldKey)? researchForField;
+  final Widget Function(
+    String fieldKey,
+    ValueChanged<ResearchReviewCandidate>? onSelectCandidate,
+  )?
+  researchForField;
 
   @override
   State<WorkbenchFields> createState() => _WorkbenchFieldsState();
@@ -146,6 +151,47 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     widget.onPendingChanged(<PendingFieldChange>[
       for (final PendingFieldChange p in widget.pending)
         if (p.fieldKey != fieldKey) p,
+    ]);
+    setState(() => _editing = null);
+  }
+
+  void _stageResearchCandidate(
+    String fieldKey,
+    ResearchReviewCandidate candidate,
+  ) {
+    final selectionId = candidate.selectionId;
+    final selectionValue = candidate.selectionValue;
+    if (widget.fieldBlockedReason != null ||
+        selectionId == null ||
+        selectionId.isEmpty ||
+        selectionValue == null ||
+        selectionValue.isEmpty) {
+      return;
+    }
+    final field = widget.specimen.fields
+        .where((item) => item['field_key'] == fieldKey)
+        .firstOrNull;
+    if (field == null) return;
+    widget.onPendingChanged(<PendingFieldChange>[
+      for (final existing in widget.pending)
+        if (existing.fieldKey != fieldKey) existing,
+      PendingFieldChange(
+        fieldKey: fieldKey,
+        displayName: fieldReviewName(field),
+        state: textOf(field['state'], 'unknown'),
+        literal: field['literal_value'] as String?,
+        parsed: field['parsed_value'] as String?,
+        normalized: field['normalized'] as String?,
+        authorityId: textOf(field['authority_id'], ''),
+        evidenceIds: (field['evidence_ids'] as List? ?? const <Object?>[])
+            .whereType<String>()
+            .toList(),
+        regionId: _regionFor(field),
+        baseLiteral: field['literal_value'] as String?,
+        candidateSelectionId: selectionId,
+        candidateLabel: candidate.label,
+        candidateValue: selectionValue,
+      ),
     ]);
     setState(() => _editing = null);
   }
@@ -483,7 +529,10 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
               ],
               if (widget.researchForField != null) ...<Widget>[
                 SizedBox(height: ui.space.s2),
-                widget.researchForField!(key),
+                widget.researchForField!(
+                  key,
+                  (candidate) => _stageResearchCandidate(key, candidate),
+                ),
               ],
             ],
           ),

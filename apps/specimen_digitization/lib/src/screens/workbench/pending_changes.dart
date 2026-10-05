@@ -25,6 +25,9 @@ class PendingFieldChange {
     this.evidenceIds = const <String>[],
     this.regionId,
     this.baseLiteral,
+    this.candidateSelectionId,
+    this.candidateLabel,
+    this.candidateValue,
   });
 
   /// The field's key on the wire.
@@ -60,9 +63,20 @@ class PendingFieldChange {
   /// re-apply after the record moves under the reviewer (blueprint 6.7).
   final String? baseLiteral;
 
+  /// Opaque server receipt for accepting a displayed research candidate.
+  final String? candidateSelectionId;
+
+  /// Source label shown in the candidate card.
+  final String? candidateLabel;
+
+  /// Exact value the server says this candidate would set for this field.
+  final String? candidateValue;
+
   /// One line naming what this change does, for the reason sheet and the
   /// pending list.
-  String get summary => state == 'supported'
+  String get summary => candidateSelectionId != null
+      ? '$displayName candidate set to "${candidateValue ?? ''}"'
+      : state == 'supported'
       ? '$displayName becomes "${literal ?? ''}"'
       : '$displayName is recorded as ${state.replaceAll('_', ' ')}';
 
@@ -70,23 +84,32 @@ class PendingFieldChange {
   ///
   /// The wire takes one decision per call, so a batch is this map once per
   /// change, sent in sequence under one reason.
-  Json toChange(String reason) => <String, dynamic>{
-    'kind': 'field_correction',
-    'target_id': fieldKey,
-    'value': state == 'supported' ? literal : null,
-    'state': state,
-    'parsed': state == 'supported' && (parsed?.isNotEmpty ?? false)
-        ? parsed
-        : null,
-    'normalized': state == 'supported' && (normalized?.isNotEmpty ?? false)
-        ? normalized
-        : null,
-    'authority_id': state == 'supported' && (authorityId?.isNotEmpty ?? false)
-        ? authorityId
-        : null,
-    'reason': reason,
-    'evidence_ids': evidenceIds,
-  };
+  Json toChange(String reason) => candidateSelectionId != null
+      ? <String, dynamic>{
+          'kind': 'research_candidate',
+          'target_id': fieldKey,
+          'selection_id': candidateSelectionId,
+          'reason': reason,
+        }
+      : <String, dynamic>{
+          'kind': 'field_correction',
+          'target_id': fieldKey,
+          'value': state == 'supported' ? literal : null,
+          'state': state,
+          'parsed': state == 'supported' && (parsed?.isNotEmpty ?? false)
+              ? parsed
+              : null,
+          'normalized':
+              state == 'supported' && (normalized?.isNotEmpty ?? false)
+              ? normalized
+              : null,
+          'authority_id':
+              state == 'supported' && (authorityId?.isNotEmpty ?? false)
+              ? authorityId
+              : null,
+          'reason': reason,
+          'evidence_ids': evidenceIds,
+        };
 
   @override
   bool operator ==(Object other) =>
@@ -97,11 +120,21 @@ class PendingFieldChange {
       other.parsed == parsed &&
       other.normalized == normalized &&
       other.authorityId == authorityId &&
+      other.candidateSelectionId == candidateSelectionId &&
+      other.candidateValue == candidateValue &&
       listEquals(other.evidenceIds, evidenceIds);
 
   @override
-  int get hashCode =>
-      Object.hash(fieldKey, state, literal, parsed, normalized, authorityId);
+  int get hashCode => Object.hash(
+    fieldKey,
+    state,
+    literal,
+    parsed,
+    normalized,
+    authorityId,
+    candidateSelectionId,
+    candidateValue,
+  );
 }
 
 /// The chip's word for a count of pending changes.

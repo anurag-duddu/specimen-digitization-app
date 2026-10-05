@@ -1295,12 +1295,15 @@ class ApiSpecimenRepository
                   'identifier': change['identifier'],
                   'field_key': change['target_id'],
                 }
+              : kind == 'research_candidate'
+              ? {'selection_id': change['selection_id']}
               : {'confirmed': true},
           // Transcription decisions preserve the transcript's observation
           // provenance. The endpoint does not retain new evidence citations.
-          'evidence_ids': kind == 'transcription_adjudication'
-              ? <String>[]
-              : change['evidence_ids'] ?? [],
+          if (kind != 'research_candidate')
+            'evidence_ids': kind == 'transcription_adjudication'
+                ? <String>[]
+                : change['evidence_ids'] ?? [],
         },
       },
     );

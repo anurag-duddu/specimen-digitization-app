@@ -1,8 +1,10 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
+import 'package:specimen_digitization/src/research/research_models.dart';
 import 'package:specimen_digitization/src/screens/workbench/blockers.dart';
 import 'package:specimen_digitization/src/screens/workbench/fields_panel.dart';
+import 'package:specimen_digitization/src/screens/workbench/pending_changes.dart';
 import 'package:specimen_digitization/src/screens/workbench/workbench_layout.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
@@ -44,7 +46,9 @@ Future<void> showOverview(
   Specimen specimen = record,
   ValueChanged<String?>? onFocus,
   List<ClearanceBlocker> issues = const [],
-  Widget Function(String)? researchForField,
+  Widget Function(String, ValueChanged<ResearchReviewCandidate>?)?
+  researchForField,
+  ValueChanged<List<PendingFieldChange>>? onPendingChanged,
 }) => pumpComponent(
   tester,
   SingleChildScrollView(
@@ -52,8 +56,9 @@ Future<void> showOverview(
       specimen: specimen,
       anchors: const {},
       pending: const [],
-      onPendingChanged: (_) =>
-          fail('Inspecting fields must not stage a correction'),
+      onPendingChanged:
+          onPendingChanged ??
+          (_) => fail('Inspecting fields must not stage a correction'),
       onFocusRegion: onFocus,
       issues: issues,
       researchForField: researchForField,
@@ -78,6 +83,57 @@ Future<void> open(WidgetTester tester, String title) async {
 }
 
 void main() {
+  testWidgets('candidate selection stages exact source value for normal save', (
+    tester,
+  ) async {
+    const specimen = Specimen({
+      'specimen_id': 'candidate-review',
+      'regions': [
+        {'region_id': 'label-one'},
+      ],
+      'fields': [
+        {
+          'field_key': 'country',
+          'state': 'unresolved',
+          'literal_value': 'P.I.',
+          'source_region_id': 'label-one',
+        },
+      ],
+    });
+    List<PendingFieldChange> pending = const [];
+    await showOverview(
+      tester,
+      specimen: specimen,
+      onPendingChanged: (changes) => pending = changes,
+      researchForField: (key, onSelect) => UiButton(
+        label: 'Test select $key',
+        onPressed: () => onSelect?.call(
+          ResearchReviewCandidate.fromJson({
+            'label': 'Mindanao',
+            'source_id': 'geolocate',
+            'evidence_id': 'evidence-1',
+            'selection_id': 'server-receipt',
+            'selection_value': 'Philippines',
+          }),
+        ),
+      ),
+    );
+    await open(tester, 'Country');
+    await tester.tap(find.text('Test select country'));
+    await tester.pump();
+    expect(pending, hasLength(1));
+    expect(pending.single.candidateLabel, 'Mindanao');
+    expect(pending.single.candidateValue, 'Philippines');
+    expect(pending.single.literal, 'P.I.');
+    expect(pending.single.baseLiteral, 'P.I.');
+    expect(pending.single.toChange('review this candidate'), {
+      'kind': 'research_candidate',
+      'target_id': 'country',
+      'selection_id': 'server-receipt',
+      'reason': 'review this candidate',
+    });
+  });
+
   testWidgets(
     'domain groups ignore wire ordering and unresolved fields lead their group',
     (tester) async {
@@ -160,7 +216,7 @@ void main() {
           diagnosticRuleId: 'internal-country-rule',
         ),
       ],
-      researchForField: (key) => Text('Research detail for $key'),
+      researchForField: (key, _) => Text('Research detail for $key'),
     );
     expect(find.text('Check the country against the label.'), findsNothing);
     expect(find.text('Research detail for country'), findsNothing);

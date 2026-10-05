@@ -30,7 +30,11 @@ class ResearchHost extends StatefulWidget {
   /// The supplied function creates only that field's lazy disclosure.
   final Widget Function(
     BuildContext context,
-    Widget Function(String fieldKey) researchForField,
+    Widget Function(
+      String fieldKey,
+      ValueChanged<ResearchReviewCandidate>? onSelectCandidate,
+    )
+    researchForField,
   )?
   builder;
 
@@ -185,7 +189,10 @@ class _ResearchHostState extends State<ResearchHost> {
     );
   }
 
-  Widget _researchForField(String fieldKey) {
+  Widget _researchForField(
+    String fieldKey,
+    ValueChanged<ResearchReviewCandidate>? onSelectCandidate,
+  ) {
     if (!researchFieldKeys.contains(fieldKey)) return const SizedBox.shrink();
     final controller = _controller;
     if (controller == null) {
@@ -220,6 +227,7 @@ class _ResearchHostState extends State<ResearchHost> {
       message: controller.message,
       networkState: controller.networkState,
       fieldCentered: true,
+      onSelectCandidate: onSelectCandidate,
       onLoad: () => controller.ensureLoaded(),
       onRefresh: () => controller.refresh(),
       onRetry: controller.canRetry(fieldKey)

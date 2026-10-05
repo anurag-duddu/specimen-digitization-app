@@ -17,6 +17,7 @@ import 'large_record.dart';
 import 'models.dart';
 import 'reason_codes.dart';
 import 'region_editor.dart';
+import 'research/research_models.dart';
 import 'review_context.dart';
 import 'screens/workbench/blockers.dart';
 import 'screens/workbench/decision_bar.dart';
@@ -79,7 +80,11 @@ const String backToQueueLabel = 'Back to specimens';
 const String notInQueueMessage = 'This record is not in the loaded queue.';
 
 /// One field's research, backed by the host's shared record controller.
-typedef FieldResearchBuilder = Widget Function(String fieldKey);
+typedef FieldResearchBuilder =
+    Widget Function(
+      String fieldKey,
+      ValueChanged<ResearchReviewCandidate>? onSelectCandidate,
+    );
 
 /// Wraps the field overview in a single research lifecycle.
 typedef FieldReviewHost =
@@ -1302,11 +1307,12 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         WorkbenchFields(
           specimen: widget.specimen,
           issues: issues,
-          researchForField: (fieldKey) => Column(
+          researchForField: (fieldKey, onSelectCandidate) => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (researchForField != null) researchForField(fieldKey),
+              if (researchForField != null)
+                researchForField(fieldKey, onSelectCandidate),
               if (widget.loadArtifact != null)
                 EvidencePanel(
                   key: ValueKey(

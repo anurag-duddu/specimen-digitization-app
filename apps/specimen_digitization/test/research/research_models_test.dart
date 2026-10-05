@@ -5,6 +5,80 @@ import 'research_fixture.dart';
 
 void main() {
   test(
+    'review candidates preserve display labels and exact selectable values',
+    () {
+      final json = researchFixture('failed-thread');
+      final taxon = fixtureField(json, 'taxon');
+      taxon['work_state'] = 'waiting_human';
+      taxon['checkpoint']['resolution']['work_state'] = 'waiting_human';
+      taxon['actions'] = ['review_proposal'];
+      taxon['review'] = {
+        'question_reason': 'semantic_ambiguity',
+        'reason': 'Two retained source possibilities remain.',
+        'question': {
+          'field_key': 'taxon',
+          'question': 'Which retained source candidate is supported?',
+          'reason': 'semantic_ambiguity',
+          'coverage': [
+            {
+              'source_id': 'gbif',
+              'field_key': 'taxon',
+              'state': 'exhausted',
+              'source_version': 'test-v1',
+              'qualification_digest': 'a' * 64,
+              'exact_join_attempted': true,
+              'query_digest': 'b' * 64,
+              'receipt_ids': ['coverage-receipt'],
+              'candidate_count': 2,
+              'coverage_limit': 'bounded test scope',
+              'reason': 'Search completed within the fixture scope',
+            },
+          ],
+          'evidence_ids': ['source-evidence'],
+        },
+        'evidence': [
+          {
+            'evidence_id': 'source-evidence',
+            'source_id': 'geolocate',
+            'kind': 'lookup',
+            'searched_text': 'Mindanao',
+            'outcome': 'ambiguous',
+          },
+        ],
+        'candidates': [
+          {
+            'label': 'Mindanao',
+            'source_id': 'geolocate',
+            'selection_id': 'candidate-receipt',
+            'selection_value': 'Philippines',
+            'evidence_id': 'source-evidence',
+          },
+          {
+            'label': 'Philippines',
+            'source_id': 'geolocate',
+            'selection_id': null,
+            'selection_value': null,
+          },
+        ],
+        'evidence_not_shown': 0,
+        'candidates_not_shown': 0,
+      };
+      taxon['checkpoint']['resolution']['question'] = taxon['review'].remove(
+        'question',
+      );
+      final field = ResearchThread.fromJson(
+        json,
+        expectedScope: trustedResearchScope(),
+      ).field('taxon')!;
+      expect(field.review!.candidates.first.label, 'Mindanao');
+      expect(field.review!.candidates.first.selectionValue, 'Philippines');
+      expect(field.review!.candidates.first.selectionId, 'candidate-receipt');
+      expect(field.review!.candidates.last.selectionId, isNull);
+      expect(field.review!.evidence.single.evidenceId, 'source-evidence');
+    },
+  );
+
+  test(
     'frozen thread preserves value layers, evidence and retained queued failure',
     () {
       final failed = fixtureThread();

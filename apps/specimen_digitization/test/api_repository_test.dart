@@ -147,6 +147,44 @@ void main() {
   );
 
   test(
+    'research candidate review submits only the opaque selection receipt',
+    () async {
+      Json? body;
+      final repo = repository((r) async {
+        if (r.method == 'POST') {
+          body = jsonDecode(r.body) as Json;
+          expect(r.headers['Idempotency-Key'], 'candidate-decision');
+          return http.Response('{}', 200);
+        }
+        return http.Response(jsonEncode(fixture['workspace_response']), 200);
+      });
+      await repo.review(
+        scope,
+        const Specimen({
+          'specimen_id': 's1',
+          'revision': 18,
+          'latest_record_version_id': 'r1:18',
+        }),
+        {
+          'kind': 'research_candidate',
+          'target_id': 'country',
+          'selection_id': 'opaque-selection-receipt',
+          'reason': 'The source evidence supports this value',
+          'evidence_ids': ['client-evidence-must-not-be-forwarded'],
+        },
+        'candidate-decision',
+      );
+      expect(body?['expected_revision'], 18);
+      expect(body?['base_record_version_id'], 'r1:18');
+      expect(body?['kind'], 'research_candidate');
+      expect(body?['target_id'], 'country');
+      expect(body?['after'], {'selection_id': 'opaque-selection-receipt'});
+      expect(body?.containsKey('evidence_ids'), false);
+      expect(body?.containsKey('disposition'), false);
+    },
+  );
+
+  test(
     'stale response stays a conflict and does not trigger automatic retry',
     () async {
       var calls = 0;

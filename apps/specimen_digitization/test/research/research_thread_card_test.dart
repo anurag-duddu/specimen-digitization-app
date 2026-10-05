@@ -43,6 +43,8 @@ Future<void> pumpResearchCard(
 ResearchThreadCard readyCard({
   ResearchFieldThread? field,
   VoidCallback? onRetry,
+  ValueChanged<ResearchReviewCandidate>? onSelectCandidate,
+  bool fieldCentered = false,
   bool paused = false,
   bool unknown = false,
   bool readOnly = false,
@@ -58,10 +60,92 @@ ResearchThreadCard readyCard({
   hasUnknownState: unknown,
   readOnly: readOnly,
   onRetry: onRetry,
+  onSelectCandidate: onSelectCandidate,
+  fieldCentered: fieldCentered,
   onRefresh: () {},
 );
 
 void main() {
+  testWidgets('selectable possibility returns its verified source candidate', (
+    tester,
+  ) async {
+    final json = researchFixture('failed-thread');
+    final taxon = fixtureField(json, 'taxon');
+    taxon['work_state'] = 'waiting_human';
+    taxon['checkpoint']['resolution']['work_state'] = 'waiting_human';
+    taxon['actions'] = ['review_proposal'];
+    taxon['review'] = {
+      'question_reason': 'semantic_ambiguity',
+      'reason': 'Two source possibilities remain.',
+      'question': {
+        'field_key': 'taxon',
+        'question': 'Which retained source candidate is supported?',
+        'reason': 'semantic_ambiguity',
+        'coverage': [
+          {
+            'source_id': 'gbif',
+            'field_key': 'taxon',
+            'state': 'exhausted',
+            'source_version': 'test-v1',
+            'qualification_digest': 'a' * 64,
+            'exact_join_attempted': true,
+            'query_digest': 'b' * 64,
+            'receipt_ids': ['coverage-receipt'],
+            'candidate_count': 1,
+            'coverage_limit': 'bounded test scope',
+            'reason': 'Search completed within the fixture scope',
+          },
+        ],
+        'evidence_ids': ['source-evidence'],
+      },
+      'evidence': [
+        {
+          'evidence_id': 'source-evidence',
+          'source_id': 'geolocate',
+          'kind': 'lookup',
+          'outcome': 'ambiguous',
+        },
+      ],
+      'candidates': [
+        {
+          'label': 'Mindanao',
+          'source_id': 'geolocate',
+          'selection_id': 'verified-selection',
+          'selection_value': 'Philippines',
+          'evidence_id': 'source-evidence',
+        },
+      ],
+      'evidence_not_shown': 0,
+      'candidates_not_shown': 0,
+    };
+    taxon['checkpoint']['resolution']['question'] = taxon['review'].remove(
+      'question',
+    );
+    final field = ResearchThread.fromJson(
+      json,
+      expectedScope: trustedResearchScope(),
+    ).field('taxon')!;
+    ResearchReviewCandidate? selected;
+    await pumpResearchCard(
+      tester,
+      readyCard(
+        field: field,
+        fieldCentered: true,
+        onSelectCandidate: (candidate) => selected = candidate,
+      ),
+    );
+    await tester.tap(find.text('Research'));
+    await tester.pumpAndSettle();
+    expect(find.text('Mindanao'), findsOneWidget);
+    expect(find.text('Proposed field value'), findsOneWidget);
+    expect(find.text('Philippines'), findsOneWidget);
+    await tester.tap(find.text('Use this possibility'));
+    await tester.pump();
+    expect(selected?.selectionId, 'verified-selection');
+    expect(selected?.label, 'Mindanao');
+    expect(selected?.selectionValue, 'Philippines');
+  });
+
   testWidgets('collapsed disclosure is lazy and touch reveal requests once', (
     tester,
   ) async {

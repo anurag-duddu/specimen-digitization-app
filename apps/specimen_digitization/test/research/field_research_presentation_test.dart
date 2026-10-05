@@ -99,7 +99,10 @@ void main() {
         collection: collection,
         specimen: specimen,
         builder: (context, researchForField) => Column(
-          children: [researchForField('country'), researchForField('taxon')],
+          children: [
+            researchForField('country', null),
+            researchForField('taxon', null),
+          ],
         ),
       ),
     );

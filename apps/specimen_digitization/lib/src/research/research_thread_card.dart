@@ -6,6 +6,7 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../widgets/evidence_drawer.dart';
 import 'research_controller.dart';
 import 'research_models.dart';
+import 'research_review_block.dart';
 
 /// A collapsed field disclosure driven entirely by verified host input.
 ///
@@ -27,6 +28,7 @@ class ResearchThreadCard extends StatelessWidget {
     this.onLoad,
     this.onRefresh,
     this.onRetry,
+    this.onSelectCandidate,
     this.fieldCentered = false,
   });
   final ResearchScope scope;
@@ -42,6 +44,7 @@ class ResearchThreadCard extends StatelessWidget {
   final VoidCallback? onLoad;
   final VoidCallback? onRefresh;
   final VoidCallback? onRetry;
+  final ValueChanged<ResearchReviewCandidate>? onSelectCandidate;
 
   /// Concise presentation inside a specimen field, without repeating its form.
   final bool fieldCentered;
@@ -372,6 +375,19 @@ class ResearchThreadCard extends StatelessWidget {
         Text(resolution!.question!.text, style: ui.type.body)
       else if (resolution != null)
         Text(_reviewExplanation(resolution), style: ui.type.bodySmall),
+      if (field.review != null && researchReviewApplies(field.workState))
+        ResearchReviewBlock(
+          fieldLabel: fieldLabel,
+          field: field,
+          canSelectCandidates:
+              !readOnly &&
+              !paused &&
+              networkState == ResearchNetworkState.ready &&
+              !hasUnknownState &&
+              field.workState == ResearchWorkState.waitingHuman &&
+              field.actions.contains('review_proposal'),
+          onSelectCandidate: onSelectCandidate,
+        ),
       if (resolution?.exception != null)
         Text(
           'This field has a recorded policy exception. '
