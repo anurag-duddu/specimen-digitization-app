@@ -13,6 +13,7 @@ import 'derivation_request_sheet.dart';
 import 'research_controller.dart';
 import 'research_models.dart';
 import 'research_repository.dart';
+import 'research_review_block.dart';
 import 'research_thread_card.dart';
 
 /// Production research uses the same authenticated transport as the record.
@@ -297,6 +298,24 @@ class _ResearchHostState extends State<ResearchHost> {
     };
   }
 
+  Widget? _derivationReview(
+    String fieldKey,
+    ValueChanged<ResearchReviewCandidate>? onSelectCandidate,
+  ) {
+    final controller = _derivationController;
+    if (controller?.hasCurrentResult != true) return null;
+    final proposals = controller!.result!.proposalsFor(fieldKey);
+    if (proposals.isEmpty) return null;
+    return ResearchReviewBlock(
+      fieldLabel: vocabularyLabel(fieldKey),
+      field: null,
+      onSelectCandidate: onSelectCandidate,
+      derivationProposals: proposals,
+      canSelectDerivationProposals:
+          !widget.readOnly && controller.state == DerivationNetworkState.ready,
+    );
+  }
+
   Widget _researchForField(
     String fieldKey,
     ValueChanged<ResearchReviewCandidate>? onSelectCandidate,
@@ -327,6 +346,11 @@ class _ResearchHostState extends State<ResearchHost> {
                   liveRegion: true,
                   child: Text(status, style: context.ui.type.bodySmall),
                 ),
+              ],
+              if (_derivationReview(fieldKey, onSelectCandidate)
+                  case final review?) ...[
+                SizedBox(height: context.ui.space.s2),
+                review,
               ],
               if (derivation?.canRequest ?? false) ...[
                 SizedBox(height: context.ui.space.s2),
@@ -371,6 +395,11 @@ class _ResearchHostState extends State<ResearchHost> {
         children: [
           Text('Research', style: context.ui.type.label),
           Text(_message ?? 'Checking this record’s research.'),
+          if (_derivationReview(fieldKey, onSelectCandidate)
+              case final review?) ...[
+            SizedBox(height: context.ui.space.s2),
+            review,
+          ],
           if (_message != null && !_denied)
             UiButton(
               label: 'Refresh research',

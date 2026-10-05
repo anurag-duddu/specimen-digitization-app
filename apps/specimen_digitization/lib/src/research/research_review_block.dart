@@ -148,10 +148,9 @@ String? _sourceNote(String? note) {
 
 /// The harness's findings for one field that waits for a person.
 ///
-/// Read-only: the server installs no way to answer a question or choose a
-/// possibility, so nothing here is pressable. The layout follows the width it
-/// is given, never the platform: possibilities stack in one column below the
-/// medium window class and sit in two from it.
+/// Displays retained server candidates and derivation suggestions. The layout
+/// follows the width it is given, never the platform: possibilities stack in
+/// one column below the medium window class and sit in two from it.
 class ResearchReviewBlock extends StatelessWidget {
   const ResearchReviewBlock({
     super.key,
@@ -164,7 +163,9 @@ class ResearchReviewBlock extends StatelessWidget {
   });
 
   final String fieldLabel;
-  final ResearchFieldThread field;
+
+  /// Null when only retained derivation suggestions are available.
+  final ResearchFieldThread? field;
   final bool canSelectCandidates;
   final ValueChanged<ResearchReviewCandidate>? onSelectCandidate;
   final List<ResearchDerivationProposal> derivationProposals;
@@ -175,13 +176,16 @@ class ResearchReviewBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final review = field.review;
-    final applies = review != null && researchReviewApplies(field.workState);
+    final review = field?.review;
+    final applies =
+        field != null &&
+        review != null &&
+        researchReviewApplies(field!.workState);
     if (!applies && derivationProposals.isEmpty) {
       return const SizedBox.shrink();
     }
     final ui = context.ui;
-    final reviewCase = applies ? researchReviewCase(field) : null;
+    final reviewCase = applies ? researchReviewCase(field!) : null;
     final reasonLines = applies
         ? researchReasonLines(review.reason)
         : const <String>[];
@@ -264,10 +268,10 @@ class ResearchReviewBlock extends StatelessWidget {
   Widget _candidates(BuildContext context, BoxConstraints constraints) {
     final ui = context.ui;
     final candidates =
-        field.review?.candidates ?? const <ResearchReviewCandidate>[];
+        field?.review?.candidates ?? const <ResearchReviewCandidate>[];
     final evidence = {
       for (final item
-          in field.review?.evidence ?? const <ResearchReviewEvidence>[])
+          in field?.review?.evidence ?? const <ResearchReviewEvidence>[])
         item.evidenceId: item,
     };
     final tiles = [

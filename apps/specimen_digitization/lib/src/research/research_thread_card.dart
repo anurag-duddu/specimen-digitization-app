@@ -251,6 +251,17 @@ class ResearchThreadCard extends StatelessWidget {
                   ),
                 if (fieldCentered && safeField != null)
                   ..._fieldResult(context, safeField),
+                if (fieldCentered &&
+                    safeField == null &&
+                    derivationProposals.isNotEmpty)
+                  ResearchReviewBlock(
+                    fieldLabel: fieldLabel,
+                    field: null,
+                    onSelectCandidate: onSelectCandidate,
+                    derivationProposals: derivationProposals,
+                    canSelectDerivationProposals:
+                        canSelectDerivationProposals && !readOnly,
+                  ),
                 if (fillRestAvailable && fieldCentered)
                   UiButton(
                     label: 'Fill the rest',
