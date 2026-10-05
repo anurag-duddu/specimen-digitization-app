@@ -62,6 +62,11 @@ def production_app(config=None):
         connector=config.connector,
         graph_blobs=blobs,
     )
+    from functools import partial
+    from .derivation_readiness import DeployedDerivationWorker
+    from ..research_harness.derivation_work_queue import schedule_derivation
+    from ..research_harness.persistence import GcsImmutableBlobs
+    wiring = lane_wiring(config)
     app = create_app(
         mode="production",
         repository=repository,
@@ -71,7 +76,10 @@ def production_app(config=None):
         memberships=repository.memberships,
         origins=list(config.origins),
         research_version="v2",
-        **lane_wiring(config),
+        research_derivation_ready=DeployedDerivationWorker(config, provenance, wiring['worker_dispatcher']),
+        schedule_derivation=partial(schedule_derivation, repository),
+        research_capture_blobs=GcsImmutableBlobs(blobs.bucket),
+        **wiring,
     )
     install_health(
         app,

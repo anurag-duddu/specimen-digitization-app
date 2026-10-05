@@ -27,6 +27,8 @@ ok(await raw(`mutation {
   collectionMember_insert(data:{${scope},uid:"worker",active:true,role:"operator",canViewSensitive:false})
   viewerOrg:organizationMember_insert(data:{organizationId:"${org}",uid:"viewer",active:true})
   viewerCollection:collectionMember_insert(data:{${scope},uid:"viewer",active:true,role:"viewer",canViewSensitive:false})
+  reviewOrg:organizationMember_insert(data:{organizationId:"${org}",uid:"reviewer",active:true})
+  reviewCollection:collectionMember_insert(data:{${scope},uid:"reviewer",active:true,role:"reviewer",canViewSensitive:false})
   specimen_insert(data:{${scope},id:"${specimen}",revision:1,state:"running",sensitive:false,createdBy:"worker"})
   profileVersion_insert(data:{${scope},id:"${profile}",profileKey:"synthetic",version:"1",configObject:"{}",configSha256:"${hex}"})
   pipelineRun_insert(data:{${scope},id:"${run}",specimenId:"${specimen}",profileVersionId:"${profile}",pinnedVersions:{},inputSha256:"${hex}"})
@@ -91,3 +93,39 @@ assert.equal(current.read.researchHarnessState.revision, 2);
 ok(await op('CompareResearchHarnessStateV1', {...compare, expectedRevision: 2, sendAuthorizationJson: null}));
 assert.equal(ok(await op('ReadResearchHarnessStateV1', vars)).read.researchHarnessState.revision, 3);
 console.log('PASS native exact-seven-key send guard, operator/sensitive denial, concurrent human row lock, rollback and receipt-only recovery');
+
+ok(await raw(`mutation {
+  specimenSnapshot_insert(data:{${scope},specimenId:"${specimen}",revision:2,contractVersion:"synthetic",snapshot:{},sha256:"${hex}"})
+  canonicalResearchBindingV2_update(key:{${scope},specimenId:"${specimen}"},data:{currentCanonicalRevision:2})
+}`));
+const schedule = {organizationId: org, collectionId: coll, specimenId: specimen, actorUid: 'reviewer',
+  queuedRevision: 2, canonicalRunId: run, queuedSnapshotSha256: hex};
+denied(await op('ScheduleResearchDerivationV1', {...schedule, actorUid: 'worker'}));
+denied(await op('ScheduleResearchDerivationV1', {...schedule, queuedRevision: 1}));
+denied(await op('ScheduleResearchDerivationV1', {...schedule, queuedSnapshotSha256: 'b'.repeat(64)}));
+const scheduled = ok(await op('ScheduleResearchDerivationV1', schedule));
+assert.equal(scheduled.scheduled, 1);
+assert.equal(scheduled.read.specimen.revision, 2);
+assert.equal(scheduled.read.specimen.state, 'pending');
+assert.ok(scheduled.read.specimen.workAvailableAt);
+const finish = {organizationId: org, collectionId: coll, specimenId: specimen, actorUid: 'worker',
+  queuedRevision: 2, canonicalRunId: run, programKey: vars.programKey, jobKey: 'synthetic-key', requestId: hex};
+denied(await op('FinishResearchDerivationV1', finish));
+const progress = {...state, jobs: {'synthetic-key': {identity: {specimen_id: specimen},
+  dependencies: {derivation_request_id: hex, derivation_result: {request_id: hex, status: 'running'}}}}};
+ok(await op('CompareResearchHarnessStateV1', {...compare, expectedRevision: 3, state: progress,
+  stateJson: JSON.stringify(progress), sendAuthorizationJson: null}));
+denied(await op('FinishResearchDerivationV1', finish));
+progress.jobs['synthetic-key'].dependencies.derivation_result.status = 'completed';
+ok(await op('CompareResearchHarnessStateV1', {...compare, expectedRevision: 4, state: progress,
+  stateJson: JSON.stringify(progress), sendAuthorizationJson: null}));
+denied(await op('FinishResearchDerivationV1', {...finish, requestId: 'b'.repeat(64)}));
+denied(await op('FinishResearchDerivationV1', {...finish, actorUid: 'viewer'}));
+const finished = ok(await op('FinishResearchDerivationV1', finish));
+assert.equal(finished.finished, 1);
+assert.equal(finished.read.specimen.revision, 2);
+assert.equal(finished.read.specimen.state, 'completed');
+assert.equal(finished.read.specimen.workAvailableAt, null);
+const retained = ok(await raw(`query { specimenSnapshots(where:{organizationId:{eq:"${org}"},collectionId:{eq:"${coll}"},specimenId:{eq:"${specimen}"}},orderBy:{revision:ASC}) {revision sha256} }`));
+assert.deepEqual(retained.specimenSnapshots, [{revision: 1, sha256: hex}, {revision: 2, sha256: hex}]);
+console.log('PASS scoped reviewer side-work scheduling and native terminal proof retirement without a scientific snapshot revision');

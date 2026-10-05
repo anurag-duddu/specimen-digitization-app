@@ -1,0 +1,44 @@
+# G38 side work changes scheduling metadata, never a scientific snapshot/value.
+# The immutable command is admitted by the preceding reviewer snapshot CAS.
+mutation ScheduleResearchDerivationV1($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $queuedRevision: Int!, $canonicalRunId: UUID!, $queuedSnapshotSha256: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['reviewer', 'manager', 'admin']") { active role }
+  }
+  scheduled: _execute(sql: """
+    UPDATE public.specimen s SET state='pending',work_available_at=clock_timestamp()
+    FROM public.specimen_snapshot snap
+    WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
+      AND s.revision=$4 AND s.active_run_id=$5 AND NOT s.sensitive
+      AND snap.organization_id=s.organization_id AND snap.collection_id=s.collection_id
+      AND snap.specimen_id=s.id AND snap.revision=s.revision AND snap.sha256=$6
+    """, params: [$organizationId,$collectionId,$specimenId,$queuedRevision,$canonicalRunId,$queuedSnapshotSha256])
+    @check(expr: "this == 1", message: "derivation schedule revision changed")
+  read: query { specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) { revision state activeRunId workAvailableAt } }
+}
+
+# Only proved terminal progress for this exact command retires its queue item.
+# Proposals and the prior review disposition remain at the same canonical Q.
+mutation FinishResearchDerivationV1($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $queuedRevision: Int!, $canonicalRunId: UUID!, $programKey: String!, $jobKey: String!, $requestId: String!) @auth(level: NO_ACCESS) @transaction {
+  query @redact {
+    organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+    collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin']") { active role }
+  }
+  finished: _execute(sql: """
+    UPDATE public.specimen s SET state='completed',work_available_at=NULL
+    FROM public.canonical_research_binding_v2 b,public.research_harness_state h
+    WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
+      AND s.revision=$4 AND s.active_run_id=$5 AND NOT s.sensitive
+      AND b.organization_id=s.organization_id AND b.collection_id=s.collection_id AND b.specimen_id=s.id
+      AND b.active AND b.publication_version='research-publication/v2'
+      AND b.current_canonical_revision=s.revision AND b.canonical_run_id=s.active_run_id
+      AND b.program_key=$6 AND b.job_key=$7
+      AND h.organization_id=s.organization_id AND h.program_key=b.program_key
+      AND h.state->'jobs'->$7->'identity'->>'specimen_id'=s.id::text
+      AND h.state->'jobs'->$7->'dependencies'->>'derivation_request_id'=$8
+      AND h.state->'jobs'->$7->'dependencies'->'derivation_result'->>'request_id'=$8
+      AND h.state->'jobs'->$7->'dependencies'->'derivation_result'->>'status' IN ('completed','blocked')
+    """, params: [$organizationId,$collectionId,$specimenId,$queuedRevision,$canonicalRunId,$programKey,$jobKey,$requestId])
+    @check(expr: "this == 1", message: "derivation completion proof changed")
+  read: query { specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) { revision state activeRunId workAvailableAt } }
+}
