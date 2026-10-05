@@ -20,6 +20,9 @@ class ResearchThreadCard extends StatelessWidget {
     required this.fieldKey,
     required this.fieldLabel,
     this.field,
+    this.historical = false,
+    this.canonicalRevision,
+    this.reviewSavedRevision,
     this.networkState = ResearchNetworkState.idle,
     this.paused = false,
     this.hasUnknownState = false,
@@ -36,6 +39,9 @@ class ResearchThreadCard extends StatelessWidget {
   final String fieldKey;
   final String fieldLabel;
   final ResearchFieldThread? field;
+  final bool historical;
+  final int? canonicalRevision;
+  final int? reviewSavedRevision;
   final ResearchNetworkState networkState;
   final bool paused;
   final bool hasUnknownState;
@@ -69,6 +75,7 @@ class ResearchThreadCard extends StatelessWidget {
       !_denied &&
       !_unknown &&
       !paused &&
+      !historical &&
       !readOnly &&
       networkState == ResearchNetworkState.ready &&
       (field?.canRetry ?? false) &&
@@ -93,7 +100,7 @@ class ResearchThreadCard extends StatelessWidget {
           : 'Load this field’s research when needed';
     }
     final prefix = paused ? 'Paused · ' : '';
-    return '$prefix${field!.workState.label}'
+    return '${historical ? 'Historical report · ' : ''}$prefix${field!.workState.label}'
         '${field!.blockerCode == 'research_retry_blocked' ? ' · Retry blocked' : ''}';
   }
 
@@ -102,6 +109,9 @@ class ResearchThreadCard extends StatelessWidget {
       return 'Research could not be verified. Refresh the current record.';
     }
     if (_denied) return 'Research access is unavailable.';
+    if (historical) {
+      return 'This historical report no longer has current review selection tokens.';
+    }
     if (networkState == ResearchNetworkState.error) {
       return 'Refresh research before retrying this field.';
     }
@@ -221,6 +231,13 @@ class ResearchThreadCard extends StatelessWidget {
                   Text(
                     'This research view is read-only.',
                     style: ui.type.bodySmall,
+                  ),
+                if (historical)
+                  Text(
+                    _historicalBanner,
+                    style: ui.type.bodySmall.copyWith(
+                      color: ui.color.inkSecondary,
+                    ),
                   ),
                 if (fieldCentered && safeField != null)
                   ..._fieldResult(context, safeField),
@@ -382,6 +399,7 @@ class ResearchThreadCard extends StatelessWidget {
           canSelectCandidates:
               !readOnly &&
               !paused &&
+              !historical &&
               networkState == ResearchNetworkState.ready &&
               !hasUnknownState &&
               field.workState == ResearchWorkState.waitingHuman &&
@@ -456,6 +474,19 @@ class ResearchThreadCard extends StatelessWidget {
         },
       ),
     ];
+  }
+
+  String get _historicalBanner {
+    final String? canonical = canonicalRevision == null
+        ? null
+        : 'record revision $canonicalRevision';
+    final String? saved = reviewSavedRevision == null
+        ? null
+        : 'review saved at revision $reviewSavedRevision';
+    final String revisions = [?canonical, ?saved].join('; ');
+    return revisions.isEmpty
+        ? 'Historical research report. Candidate actions are unavailable because current selection tokens were removed after review was saved.'
+        : 'Historical research report for $revisions. Candidate actions are unavailable because current selection tokens were removed after review was saved.';
   }
 
   String _reviewExplanation(ResearchResolution resolution) {

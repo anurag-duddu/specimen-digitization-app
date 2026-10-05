@@ -105,6 +105,51 @@ void main() {
     },
   );
 
+  test(
+    'historical report metadata is parsed and suppresses fresh retry tokens',
+    () {
+      final current = fixtureThread();
+      expect(current.historical, isFalse);
+      expect(current.canonicalRevision, isNull);
+      expect(current.reviewSavedRevision, isNull);
+
+      final json = researchFixture('failed-thread')
+        ..['historical'] = true
+        ..['canonical_revision'] = 41
+        ..['review_saved_revision'] = 42;
+      final historical = ResearchThread.fromJson(
+        json,
+        expectedScope: trustedResearchScope(),
+      );
+      expect(historical.historical, isTrue);
+      expect(historical.canonicalRevision, 41);
+      expect(historical.reviewSavedRevision, 42);
+      expect(historical.canRetry('taxon'), isFalse);
+    },
+  );
+
+  test(
+    'historical report metadata rejects invalid types and negative revisions',
+    () {
+      for (final edit in <void Function(Map<String, dynamic>)>[
+        (json) => json['historical'] = 'true',
+        (json) => json['canonical_revision'] = '41',
+        (json) => json['canonical_revision'] = -1,
+        (json) => json['review_saved_revision'] = 42.0,
+      ]) {
+        final json = researchFixture('failed-thread');
+        edit(json);
+        expect(
+          () => ResearchThread.fromJson(
+            json,
+            expectedScope: trustedResearchScope(),
+          ),
+          throwsA(isA<ResearchContractException>()),
+        );
+      }
+    },
+  );
+
   for (final key in [
     'organization_id',
     'collection_id',
