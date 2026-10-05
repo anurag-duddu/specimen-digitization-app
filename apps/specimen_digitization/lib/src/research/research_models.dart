@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'derivation_models.dart';
+
 /// A sanitized rejection of an incompatible research response.
 class ResearchContractException implements Exception {
   const ResearchContractException();
@@ -166,6 +168,25 @@ class ResearchReviewCandidate {
     final json = _object(value);
     _validate('ReviewCandidate', json);
     return ResearchReviewCandidate._(_freezeMap(json));
+  }
+
+  /// Adapts a retained proposal only for the existing opaque-token save path.
+  /// Its label and exact field value are both the server's full proposed value.
+  factory ResearchReviewCandidate.fromDerivationProposal(
+    ResearchDerivationProposal proposal,
+  ) {
+    final selectionId = proposal.selectionId;
+    if (selectionId == null || selectionId.isEmpty) {
+      throw const ResearchContractException();
+    }
+    return ResearchReviewCandidate._(
+      Map<String, Object?>.unmodifiable({
+        'label': proposal.value,
+        'source_id': 'georeference_spatial',
+        'selection_id': selectionId,
+        'selection_value': proposal.value,
+      }),
+    );
   }
   final Map<String, Object?> json;
   String get label => json['label'] as String;

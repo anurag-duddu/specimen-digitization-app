@@ -6,6 +6,10 @@ import 'package:specimen_ui/specimen_ui.dart';
 import '../api_repository.dart';
 import '../models.dart';
 import '../vocabulary.dart';
+import 'derivation_controller.dart';
+import 'derivation_models.dart';
+import 'derivation_repository.dart';
+import 'derivation_request_sheet.dart';
 import 'research_controller.dart';
 import 'research_models.dart';
 import 'research_repository.dart';
@@ -19,12 +23,16 @@ class ResearchHost extends StatefulWidget {
     required this.collection,
     required this.specimen,
     this.readOnly = false,
+    this.refreshRecord,
     this.builder,
   });
   final ApiSpecimenRepository repository;
   final CollectionScope collection;
   final Specimen specimen;
   final bool readOnly;
+
+  /// Reloads the open record after the queued canonical review save.
+  final Future<void> Function()? refreshRecord;
 
   /// Places research beside a field while retaining one record-bound controller.
   /// The supplied function creates only that field's lazy disclosure.
@@ -44,6 +52,7 @@ class ResearchHost extends StatefulWidget {
 
 class _ResearchHostState extends State<ResearchHost> {
   ResearchController? _controller;
+  ResearchDerivationController? _derivationController;
   StreamSubscription<ApiFailure>? _access;
   int _epoch = 0;
   String? _message;
@@ -122,6 +131,26 @@ class _ResearchHostState extends State<ResearchHost> {
         accessFailures: widget.repository.accessFailures,
       );
       controller.addListener(_changed);
+      final derivationRepository = ApiResearchDerivationRepository(
+        request: widget.repository.request,
+      );
+      var derivationController = _derivationController;
+      if (derivationController == null) {
+        derivationController = ResearchDerivationController(
+          repository: derivationRepository,
+          collection: widget.collection,
+          specimen: specimen,
+          readOnly: widget.readOnly,
+          accessFailures: widget.repository.accessFailures,
+        )..addListener(_changed);
+        _derivationController = derivationController;
+      } else {
+        derivationController.bind(
+          collection: widget.collection,
+          specimen: specimen,
+          readOnly: widget.readOnly,
+        );
+      }
       setState(() {
         _controller = controller;
         _message = null;
@@ -141,6 +170,9 @@ class _ResearchHostState extends State<ResearchHost> {
   void dispose() {
     _epoch++;
     _clear();
+    _derivationController?.removeListener(_changed);
+    _derivationController?.dispose();
+    _derivationController = null;
     unawaited(_access?.cancel());
     super.dispose();
   }
@@ -192,6 +224,61 @@ class _ResearchHostState extends State<ResearchHost> {
     );
   }
 
+  Future<void> _loadFieldResearch(String fieldKey) async {
+    final controller = _controller;
+    if (controller == null) return;
+    unawaited(controller.ensureLoaded());
+    if (fieldKey == 'country') {
+      unawaited(_derivationController?.loadCapability());
+    }
+  }
+
+  Future<void> _requestLocationSuggestions() async {
+    final derivation = _derivationController;
+    final capability = derivation?.capability;
+    if (!mounted ||
+        derivation == null ||
+        capability == null ||
+        !derivation.canRequest) {
+      return;
+    }
+    final choice = await showResearchDerivationRequest(
+      context,
+      eligibleFields: capability.eligibleFields,
+    );
+    if (!mounted || choice == null || !derivation.canRequest) return;
+    await derivation.request(
+      fields: choice.fields,
+      reason: choice.reason,
+      refreshRecord: widget.refreshRecord ?? () async {},
+    );
+  }
+
+  String? _derivationStatus(ResearchDerivationController? controller) {
+    if (controller == null) return null;
+    if (controller.state == DerivationNetworkState.loading) {
+      return 'Checking location suggestions.';
+    }
+    if (controller.state == DerivationNetworkState.submitting) {
+      return 'Saving your request.';
+    }
+    final result = controller.result;
+    if (result?.stale == true) {
+      return 'The record changed. Refresh this record before reviewing suggestions.';
+    }
+    if (controller.state == DerivationNetworkState.error) {
+      return controller.message;
+    }
+    return switch (result?.status) {
+      'queued' => 'Your location request is waiting to start.',
+      'running' => 'Your location request is in progress.',
+      'blocked' => 'No suggestions are ready. Your saved values are unchanged.',
+      'completed' when result!.proposals.isEmpty =>
+        'No additional location suggestions were prepared.',
+      _ => null,
+    };
+  }
+
   Widget _researchForField(
     String fieldKey,
     ValueChanged<ResearchReviewCandidate>? onSelectCandidate,
@@ -217,25 +304,69 @@ class _ResearchHostState extends State<ResearchHost> {
         ],
       );
     }
+    final thread = controller.thread;
+    final field = thread?.field(fieldKey);
+    final derivation = _derivationController;
+    final historical = thread?.historical ?? false;
+    final currentEditable =
+        !widget.readOnly &&
+        !controller.readOnly &&
+        thread != null &&
+        !thread.historical &&
+        !thread.paused &&
+        controller.networkState == ResearchNetworkState.ready &&
+        !thread.hasUnknownState;
     return ResearchThreadCard(
       key: ValueKey('research:${widget.specimen.id}:$fieldKey'),
       scope: controller.scope,
       recordRevision: controller.recordRevision,
       fieldKey: fieldKey,
       fieldLabel: vocabularyLabel(fieldKey),
-      field: controller.thread?.field(fieldKey),
-      historical: controller.thread?.historical ?? false,
-      canonicalRevision: controller.thread?.canonicalRevision,
-      reviewSavedRevision: controller.thread?.reviewSavedRevision,
-      paused: controller.thread?.paused ?? false,
-      hasUnknownState: controller.thread?.hasUnknownState ?? false,
+      field: field,
+      historical: historical,
+      canonicalRevision: thread?.canonicalRevision,
+      reviewSavedRevision: thread?.reviewSavedRevision,
+      paused: thread?.paused ?? false,
+      hasUnknownState: thread?.hasUnknownState ?? false,
       readOnly: controller.readOnly,
       message: controller.message,
       networkState: controller.networkState,
       fieldCentered: true,
       onSelectCandidate: onSelectCandidate,
-      onLoad: () => controller.ensureLoaded(),
-      onRefresh: () => controller.refresh(),
+      derivationProposals: historical
+          ? const <ResearchDerivationProposal>[]
+          : derivation?.result?.proposalsFor(fieldKey) ??
+                const <ResearchDerivationProposal>[],
+      canSelectDerivationProposals:
+          currentEditable &&
+          derivation?.state == DerivationNetworkState.ready &&
+          derivation?.result?.stale != true,
+      fillRestAvailable:
+          fieldKey == 'country' &&
+          currentEditable &&
+          field?.review != null &&
+          field?.workState == ResearchWorkState.waitingHuman &&
+          (derivation?.canRequest ?? false),
+      fillRestLoading: derivation?.state == DerivationNetworkState.submitting,
+      fillRestStatus: fieldKey == 'country'
+          ? _derivationStatus(derivation)
+          : null,
+      onFillRest: _requestLocationSuggestions,
+      onRefreshDerivation:
+          fieldKey == 'country' &&
+              derivation?.accepted != null &&
+              derivation?.state == DerivationNetworkState.ready
+          ? () => unawaited(
+              derivation!.refreshResult(
+                refreshRecord: widget.refreshRecord ?? () async {},
+              ),
+            )
+          : null,
+      onLoad: () => unawaited(_loadFieldResearch(fieldKey)),
+      onRefresh: () {
+        unawaited(controller.refresh());
+        if (fieldKey == 'country') unawaited(derivation?.loadCapability());
+      },
       onRetry: controller.canRetry(fieldKey)
           ? () => controller.retryField(fieldKey)
           : null,

@@ -273,6 +273,7 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
                           controller.repository as ApiSpecimenRepository,
                       collection: scope,
                       specimen: specimen,
+                      refreshRecord: () => controller.refresh(),
                       builder: (context, researchForField) =>
                           buildFields(researchForField),
                     )

@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../widgets/evidence_drawer.dart';
+import 'derivation_models.dart';
 import 'research_controller.dart';
 import 'research_models.dart';
 import 'research_review_block.dart';
@@ -32,6 +33,13 @@ class ResearchThreadCard extends StatelessWidget {
     this.onRefresh,
     this.onRetry,
     this.onSelectCandidate,
+    this.derivationProposals = const <ResearchDerivationProposal>[],
+    this.canSelectDerivationProposals = false,
+    this.fillRestAvailable = false,
+    this.fillRestLoading = false,
+    this.fillRestStatus,
+    this.onFillRest,
+    this.onRefreshDerivation,
     this.fieldCentered = false,
   });
   final ResearchScope scope;
@@ -51,6 +59,13 @@ class ResearchThreadCard extends StatelessWidget {
   final VoidCallback? onRefresh;
   final VoidCallback? onRetry;
   final ValueChanged<ResearchReviewCandidate>? onSelectCandidate;
+  final List<ResearchDerivationProposal> derivationProposals;
+  final bool canSelectDerivationProposals;
+  final bool fillRestAvailable;
+  final bool fillRestLoading;
+  final String? fillRestStatus;
+  final VoidCallback? onFillRest;
+  final VoidCallback? onRefreshDerivation;
 
   /// Concise presentation inside a specimen field, without repeating its form.
   final bool fieldCentered;
@@ -241,6 +256,30 @@ class ResearchThreadCard extends StatelessWidget {
                   ),
                 if (fieldCentered && safeField != null)
                   ..._fieldResult(context, safeField),
+                if (fillRestAvailable && fieldCentered)
+                  UiButton(
+                    label: 'Fill the rest',
+                    busyLabel: 'Saving request',
+                    variant: UiButtonVariant.secondary,
+                    leading: UiIcons.search,
+                    onPressed: fillRestLoading ? null : onFillRest,
+                    loading: fillRestLoading,
+                    disabledReason: fillRestLoading
+                        ? 'Saving the request.'
+                        : 'Location suggestions are unavailable for this record.',
+                  ),
+                if (fillRestStatus != null)
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(fillRestStatus!, style: ui.type.bodySmall),
+                  ),
+                if (onRefreshDerivation != null)
+                  UiButton(
+                    label: 'Refresh suggestion status',
+                    variant: UiButtonVariant.ghost,
+                    onPressed: fillRestLoading ? null : onRefreshDerivation,
+                    leading: UiIcons.reload,
+                  ),
                 if (!fieldCentered && safeField != null) ...[
                   Text(safeField.workState.label, style: ui.type.body),
                   if (safeField.blockerCode != null &&
@@ -392,7 +431,8 @@ class ResearchThreadCard extends StatelessWidget {
         Text(resolution!.question!.text, style: ui.type.body)
       else if (resolution != null)
         Text(_reviewExplanation(resolution), style: ui.type.bodySmall),
-      if (field.review != null && researchReviewApplies(field.workState))
+      if ((field.review != null && researchReviewApplies(field.workState)) ||
+          derivationProposals.isNotEmpty)
         ResearchReviewBlock(
           fieldLabel: fieldLabel,
           field: field,
@@ -405,6 +445,8 @@ class ResearchThreadCard extends StatelessWidget {
               field.workState == ResearchWorkState.waitingHuman &&
               field.actions.contains('review_proposal'),
           onSelectCandidate: onSelectCandidate,
+          derivationProposals: derivationProposals,
+          canSelectDerivationProposals: canSelectDerivationProposals,
         ),
       if (resolution?.exception != null)
         Text(

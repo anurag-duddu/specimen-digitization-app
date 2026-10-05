@@ -1,6 +1,8 @@
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
+import '../vocabulary.dart';
+import 'derivation_models.dart';
 import 'research_models.dart';
 
 /// Why a field waits for a person, in the owner's three cases and the two
@@ -150,12 +152,16 @@ class ResearchReviewBlock extends StatelessWidget {
     required this.field,
     this.canSelectCandidates = false,
     this.onSelectCandidate,
+    this.derivationProposals = const <ResearchDerivationProposal>[],
+    this.canSelectDerivationProposals = false,
   });
 
   final String fieldLabel;
   final ResearchFieldThread field;
   final bool canSelectCandidates;
   final ValueChanged<ResearchReviewCandidate>? onSelectCandidate;
+  final List<ResearchDerivationProposal> derivationProposals;
+  final bool canSelectDerivationProposals;
 
   /// Two columns from the width Material 3 calls medium.
   static const double twoColumnMinWidth = WindowClass.mediumMin;
@@ -163,18 +169,23 @@ class ResearchReviewBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final review = field.review;
-    if (review == null || !researchReviewApplies(field.workState)) {
+    final applies = review != null && researchReviewApplies(field.workState);
+    if (!applies && derivationProposals.isEmpty) {
       return const SizedBox.shrink();
     }
     final ui = context.ui;
-    final reviewCase = researchReviewCase(field);
-    final reasonLines = researchReasonLines(review.reason);
-    final candidates = review.candidates;
+    final reviewCase = applies ? researchReviewCase(field) : null;
+    final reasonLines = applies
+        ? researchReasonLines(review.reason)
+        : const <String>[];
+    final candidates = review?.candidates ?? const <ResearchReviewCandidate>[];
     final children = <Widget>[
-      _Heading('Why it is unresolved'),
-      // A live region announces when its words change and never again for a
-      // rebuild with the same words (06 section 3).
-      Announcer(child: Text(reviewCase.headline, style: ui.type.body)),
+      if (applies) ...[
+        _Heading('Why it is unresolved'),
+        // A live region announces when its words change and never again for a
+        // rebuild with the same words (06 section 3).
+        Announcer(child: Text(reviewCase!.headline, style: ui.type.body)),
+      ],
       if (reasonLines.isNotEmpty) ...[
         _Heading('What the research found'),
         for (final line in reasonLines) Text(line, style: _secondary(context)),
@@ -192,15 +203,16 @@ class ResearchReviewBlock extends StatelessWidget {
             builder: (context, constraints) =>
                 _candidates(context, constraints),
           ),
-        if (review.candidatesNotShown > 0)
+        if ((review?.candidatesNotShown ?? 0) > 0)
           Text(
-            review.candidatesNotShown == 1
+            review!.candidatesNotShown == 1
                 ? '1 more possibility is not shown.'
                 : '${review.candidatesNotShown} more possibilities are not shown.',
             style: _secondary(context),
           ),
       ],
-      if (review.evidence.isNotEmpty || review.evidenceNotShown > 0) ...[
+      if (review != null &&
+          (review.evidence.isNotEmpty || review.evidenceNotShown > 0)) ...[
         _Heading('Sources checked'),
         for (final item in review.evidence) _evidence(context, item),
         if (review.evidenceNotShown > 0)
@@ -211,10 +223,21 @@ class ResearchReviewBlock extends StatelessWidget {
             style: _secondary(context),
           ),
       ],
+      if (derivationProposals.isNotEmpty) ...[
+        _Heading('Location suggestions'),
+        for (final proposal in derivationProposals)
+          _DerivationProposalTile(
+            proposal: proposal,
+            selectable: canSelectDerivationProposals,
+            onSelect: onSelectCandidate,
+          ),
+      ],
     ];
     return Semantics(
       container: true,
-      label: '$fieldLabel: ${reviewCase.headline}',
+      label: applies
+          ? '$fieldLabel: ${reviewCase!.headline}'
+          : '$fieldLabel location suggestions',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -233,9 +256,12 @@ class ResearchReviewBlock extends StatelessWidget {
 
   Widget _candidates(BuildContext context, BoxConstraints constraints) {
     final ui = context.ui;
-    final candidates = field.review!.candidates;
+    final candidates =
+        field.review?.candidates ?? const <ResearchReviewCandidate>[];
     final evidence = {
-      for (final item in field.review!.evidence) item.evidenceId: item,
+      for (final item
+          in field.review?.evidence ?? const <ResearchReviewEvidence>[])
+        item.evidenceId: item,
     };
     final tiles = [
       for (var i = 0; i < candidates.length; i++)
@@ -292,6 +318,55 @@ class ResearchReviewBlock extends StatelessWidget {
             style: ui.type.body,
           ),
           for (final line in lines) Text(line, style: _secondary(context)),
+        ],
+      ),
+    );
+  }
+}
+
+class _DerivationProposalTile extends StatelessWidget {
+  const _DerivationProposalTile({
+    required this.proposal,
+    required this.selectable,
+    required this.onSelect,
+  });
+
+  final ResearchDerivationProposal proposal;
+  final bool selectable;
+  final ValueChanged<ResearchReviewCandidate>? onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final ui = context.ui;
+    final sources = proposal.inputFields.map(vocabularyLabel).join(' and ');
+    final candidate = proposal.selectable
+        ? ResearchReviewCandidate.fromDerivationProposal(proposal)
+        : null;
+    return Surface(
+      hairline: true,
+      radius: ui.shape.inner,
+      padding: EdgeInsetsDirectional.all(ui.space.s3),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(proposal.value, style: ui.type.title),
+          SizedBox(height: ui.space.s1),
+          Text('Based on the reviewed $sources.', style: ui.type.bodySmall),
+          if (onSelect != null) ...[
+            SizedBox(height: ui.space.s2),
+            UiButton(
+              label: 'Use this suggestion',
+              variant: UiButtonVariant.secondary,
+              onPressed: selectable && candidate != null
+                  ? () => onSelect!(candidate)
+                  : null,
+              disabledReason: selectable
+                  ? 'This suggestion is not available for review.'
+                  : 'Refresh research before reviewing this suggestion.',
+              leading: UiIcons.check,
+            ),
+          ],
         ],
       ),
     );
