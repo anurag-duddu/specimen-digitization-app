@@ -80,10 +80,8 @@ class PendingFieldChange {
       ? '$displayName becomes "${literal ?? ''}"'
       : '$displayName is recorded as ${state.replaceAll('_', ' ')}';
 
-  /// The payload the repository's `review` accepts for one field decision.
-  ///
-  /// The wire takes one decision per call, so a batch is this map once per
-  /// change, sent in sequence under one reason.
+  /// The payload for one pending decision. The API sends candidate-bearing
+  /// changes together under one reason and one canonical record revision.
   Json toChange(String reason) => candidateSelectionId != null
       ? <String, dynamic>{
           'kind': 'research_candidate',

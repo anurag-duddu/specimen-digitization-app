@@ -1,16 +1,11 @@
 // Pass criterion 7.2: five corrections on one record, one reason, one
 // reviewer action.
 //
-// `reviewBatch` is the fan out path the workbench still takes: one call per
-// correction, carrying one reason, one idempotency key prefix, and the
-// revision the call before it produced, with the screen moved once on the last
-// result rather than five times. These tests hold that behaviour.
-//
-// The API no longer requires it. `POST /decisions:batch` takes several
-// decisions in one call, including several addressed at one record, and
-// `tests/test_decisions_batch.py` covers that shape directly. Moving the
-// workbench onto it is a separate change in workbench-owned files; until then
-// this path is what ships there, so it stays tested as it is.
+// Repositories without the candidate-batch capability keep this ordered path:
+// one call per ordinary correction, one reason, and the revision returned by
+// the preceding call. The API repository uses one server CAS for a batch that
+// includes retained research candidates; api_candidate_batch_test.dart proves
+// that route through the statically typed workspace repository.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

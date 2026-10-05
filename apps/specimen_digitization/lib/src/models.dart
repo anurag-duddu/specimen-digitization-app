@@ -449,48 +449,45 @@ class BulkDecisionReport {
       results.where((BulkDecisionResult row) => row.outcome == outcome).length;
 }
 
-/// One reviewer action that the wire can only take one decision at a time.
-///
-/// An extension rather than a method on [SpecimenRepository] because every
-/// repository in this client `implements` that interface rather than
-/// extending it, so a default body on the interface would reach none of
-/// them. The moment the API publishes a batch endpoint this becomes a method
-/// on the interface and `ApiSpecimenRepository` overrides it with one call.
+/// An optional repository capability for one atomic, candidate-bearing save.
+/// Repositories implementing only [SpecimenRepository] retain the sequential
+/// review behavior below.
+abstract interface class CandidateReviewBatchRepository {
+  Future<ReviewBatchResult> reviewCandidateBatch(
+    CollectionScope scope,
+    Specimen specimen,
+    List<Json> changes,
+    String reason,
+    String keyPrefix, {
+    bool Function(Specimen current, Json change)? stillApplies,
+    String Function(Specimen current, Json change, int index)? keyFor,
+  });
+}
+
+/// One reviewer action spanning pending changes on one record.
 extension ReviewBatch on SpecimenRepository {
   /// Sends [changes] as one reviewer action under one [reason].
   ///
-  /// Pass criterion 7.2 asks for five corrections on one record to save with
-  /// one round trip and one reason. One reason and one reviewer action are
-  /// what this delivers today. One round trip is not, and cannot be from the
-  /// client: the review API takes one decision per call, so five corrections
-  /// are five calls. Until it grows a batch endpoint this sends them in
-  /// order, threading the record forward so each call carries the revision
-  /// the one before it produced, and returns only the last result so the
-  /// caller moves the screen once rather than five times.
+  /// A candidate-bearing batch uses the server's one-CAS path when the
+  /// repository supports it. Other changes retain the sequential review path.
   ///
-  /// [keyPrefix] is one prefix for the whole batch, so a reader of the
-  /// server's idempotency log can see which calls were one reviewer action.
-  /// Every call inside it is `<keyPrefix>-<index>` by default.
+  /// [keyPrefix] supplies default per-decision keys. The API derives the
+  /// candidate batch's HTTP key from the stable complete set of decision
+  /// keys, including on a retry with a new local prefix.
   ///
-  /// [keyFor] overrides that per call, and the workspace supplies one: a call
-  /// that is being retried after an uncertain answer has to carry the key it
-  /// carried the first time, or the server records the decision twice. The
-  /// prefix names the batch; the key identifies the decision.
+  /// [keyFor] overrides each decision key; the workspace memoizes it against
+  /// the original record and body for uncertain retries.
   ///
-  /// [stillApplies] is asked before each call, against the record the call
-  /// before it produced. A batch cannot re-read the screen between its own
-  /// calls, so this is how it keeps the guarantee the one at a time path gets
-  /// for free: a correction whose field moved under the reviewer is never
-  /// sent automatically against a newer revision. The batch stops there and
-  /// reports how many landed, with `stopped` true.
+  /// [stillApplies] checks every candidate-bearing change against the same
+  /// original record before dispatch. The ordinary path checks before each
+  /// sequential call against the result of the preceding call.
   ///
-  /// A result that is not a newer version of the same record is refused, the
-  /// same rule `WorkspaceController.mutate` applies to a single decision: the
-  /// server has not confirmed a save until it answers with one.
+  /// An acknowledged batch must read back a newer version of the same record
+  /// before the screen treats the result as a fresh projection.
   ///
-  /// The batch stops at the first failure and throws [ReviewBatchFailure].
-  /// Whatever landed before it stays landed, which is what the wire does; the
-  /// caller reports how many of the changes are still outstanding.
+  /// A failure throws [ReviewBatchFailure] with the count the wire actually
+  /// acknowledged. The ordinary path can partially save; a candidate group
+  /// is one canonical save and never claims full success from a partial ack.
   Future<ReviewBatchResult> reviewBatch(
     CollectionScope scope,
     Specimen specimen,
@@ -500,6 +497,18 @@ extension ReviewBatch on SpecimenRepository {
     bool Function(Specimen current, Json change)? stillApplies,
     String Function(Specimen current, Json change, int index)? keyFor,
   }) async {
+    if (changes.any((change) => change['kind'] == 'research_candidate') &&
+        this is CandidateReviewBatchRepository) {
+      return (this as CandidateReviewBatchRepository).reviewCandidateBatch(
+        scope,
+        specimen,
+        changes,
+        reason,
+        keyPrefix,
+        stillApplies: stillApplies,
+        keyFor: keyFor,
+      );
+    }
     Specimen current = specimen;
     for (final (int index, Json change) in changes.indexed) {
       if (stillApplies != null && !stillApplies(current, change)) {
@@ -546,6 +555,7 @@ class ReviewBatchFailure implements Exception {
     required this.saved,
     required this.specimen,
     required this.cause,
+    this.retainKeys = false,
   });
 
   /// How many of the changes the server accepted before it stopped.
@@ -556,6 +566,10 @@ class ReviewBatchFailure implements Exception {
 
   /// What the failing call threw.
   final Object cause;
+
+  /// Keep decision keys when a committed save's readback could not be proved.
+  /// A retry can then reconcile the original server action.
+  final bool retainKeys;
 
   @override
   String toString() => cause.toString();
