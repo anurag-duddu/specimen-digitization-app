@@ -266,8 +266,8 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     assert taxon.state == "supported" and taxon.normalized == GBIF_NAME
     assert taxon.authority_id.startswith(COL_XR + ":")
     # Taxonomy and geography finish the first role window before publication.
-    # The first publication leaves a due running record; it also projects the
-    # geography fields waiting on a source, so every later offer sees the hold.
+    # The first offer observes the still-due running record before publication.
+    # Its publication projects geography's waiting fields, so later offers see the hold.
     assert len(routing) == len(receipts)
     assert routing[0][0] == "running" and routing[0][1] is not None
     assert all(state == "processing_blocked" and due is None for state, due in routing[1:])

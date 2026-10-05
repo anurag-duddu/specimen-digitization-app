@@ -628,11 +628,19 @@ def test_a_specialist_reading_the_text_writes_a_name_printed_in_capitals_as_a_ca
 @pytest.mark.parametrize("printed", ["CAMPONOTUS SP.", "cf. Danaus plexippus", "Danaus?"])
 def test_a_specialist_that_sends_the_printed_name_holds_the_record_and_no_request_is_sent(printed_taxon, printed):
     """The hazard the rules prevent (probe M, and N4 for a name in doubt): a name in capitals or in doubt sent as
-    printed. The query builder raises before any HTTP request, no response is captured, and the record is held
-    whatever the specialist answers afterwards."""
+    printed. The query builder raises before any GBIF HTTP request. The unknown
+    source effect retains its hold, so the concurrent geography results cannot
+    be published and the record remains at plan."""
     rig = printed_taxon(printed)
     parsed, specimen, hold = run_research(rig, specialist_factory(rig.model_calls, taxon_lookup=True,
         taxon_printed=printed, follow_lookup_rule=False), transport(rig.source_urls))
-    assert isinstance(hold, OperationalBlock) and str(hold) == "research_worker_custody_requires_reconciliation"
+    assert isinstance(hold, OperationalBlock) and str(hold) == "native_publication_requires_reconciliation"
     assert specimen.run.stage == "plan" and specimen.run.disposition is None
     assert not [url for url in rig.source_urls if "gbif" in url]
+    assert not rig.fake.receipts
+    _, state = research_state(rig.fake, rig.specimen_id)
+    job = next(iter(state["jobs"].values()))
+    assert job["fields"]["taxon"]["work_state"] == "operational_failed"
+    held = [effect for effect in state["effects"].values() if effect["field_keys"] == ["taxon"]
+        and effect["operation_key"].startswith("source_capture_v2:")]
+    assert len(held) == 1 and held[0]["status"] == "held_unknown" and held[0]["held_micro_usd"] > 0
