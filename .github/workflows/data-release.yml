@@ -56,3 +56,5 @@ jobs:
           # The owner's first-rows artifact, the only GitHub secret this workflow reads. scripts/ops/owner_setup.sh sets it.
           DATA_BOOTSTRAP_ARTIFACT_B64: ${{ secrets.DATA_BOOTSTRAP_ARTIFACT_B64 }}
         run: uv run python scripts/release/data_release.py
+      - name: Publish the ten pinned georeferencing datasets
+        run: uv run python scripts/release/georef_datasets.py
