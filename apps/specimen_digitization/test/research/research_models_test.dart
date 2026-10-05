@@ -1,11 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/research/research_models.dart';
+import 'package:specimen_digitization/src/research/research_review_block.dart';
 
 import 'research_fixture.dart';
 
 void main() {
   test(
-    'review candidates preserve display labels and exact selectable values',
+    'review candidates preserve exact values and explain derived proposals',
     () {
       final json = researchFixture('failed-thread');
       final taxon = fixtureField(json, 'taxon');
@@ -13,12 +14,12 @@ void main() {
       taxon['checkpoint']['resolution']['work_state'] = 'waiting_human';
       taxon['actions'] = ['review_proposal'];
       taxon['review'] = {
-        'question_reason': 'semantic_ambiguity',
+        'question_reason': 'derived_proposal',
         'reason': 'Two retained source possibilities remain.',
         'question': {
           'field_key': 'taxon',
           'question': 'Which retained source candidate is supported?',
-          'reason': 'semantic_ambiguity',
+          'reason': 'derived_proposal',
           'coverage': [
             {
               'source_id': 'gbif',
@@ -75,6 +76,11 @@ void main() {
       expect(field.review!.candidates.first.selectionId, 'a' * 64);
       expect(field.review!.candidates.last.selectionId, isNull);
       expect(field.review!.evidence.single.evidenceId, 'source-evidence');
+      expect(researchReviewCase(field), ResearchReviewCase.derivedProposal);
+      expect(
+        ResearchReviewCase.derivedProposal.headline,
+        'A proposed value is ready for review. It has not been applied.',
+      );
     },
   );
 

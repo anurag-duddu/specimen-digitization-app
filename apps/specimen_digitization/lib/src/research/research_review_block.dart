@@ -28,6 +28,9 @@ enum ResearchReviewCase {
   /// Readings or sources disagree and none was chosen.
   evidenceDisagrees,
 
+  /// A retained computed value awaiting a person's decision.
+  derivedProposal,
+
   /// Waiting for an approved rule.
   noRule,
 
@@ -43,6 +46,8 @@ enum ResearchReviewCase {
       'Several possibilities remain. The research could not choose between them.',
     evidenceDisagrees =>
       'The readings or sources disagree. The research could not choose between them.',
+    derivedProposal =>
+      'A proposed value is ready for review. It has not been applied.',
     noRule => 'No approved rule settles this field yet.',
     noSource => 'No source has settled this field yet.',
   };
@@ -64,6 +69,8 @@ ResearchReviewCase researchReviewCase(ResearchFieldThread field) {
       return ResearchReviewCase.evidenceDisagrees;
     case 'scoped_absence':
       return ResearchReviewCase.sourcesCouldNotSettle;
+    case 'derived_proposal':
+      return ResearchReviewCase.derivedProposal;
   }
   if (field.value.state == 'not_present') {
     return ResearchReviewCase.labelLacksValue;
