@@ -62,6 +62,7 @@ class _ResearchHostState extends State<ResearchHost> {
   void initState() {
     super.initState();
     _subscribe();
+    _createDerivationController();
     _discover();
   }
 
@@ -87,23 +88,50 @@ class _ResearchHostState extends State<ResearchHost> {
     _controller = null;
   }
 
+  void _disposeDerivationController() {
+    _derivationController?.removeListener(_changed);
+    _derivationController?.dispose();
+    _derivationController = null;
+  }
+
+  void _createDerivationController() {
+    _derivationController = ResearchDerivationController(
+      repository: ApiResearchDerivationRepository(
+        request: widget.repository.request,
+      ),
+      collection: widget.collection,
+      specimen: widget.specimen,
+      readOnly: widget.readOnly,
+      accessFailures: widget.repository.accessFailures,
+    )..addListener(_changed);
+  }
+
   @override
   void didUpdateWidget(ResearchHost oldWidget) {
     super.didUpdateWidget(oldWidget);
     final replaced = !identical(oldWidget.repository, widget.repository);
-    if (replaced ||
+    final recordChanged =
         oldWidget.collection.key != widget.collection.key ||
         oldWidget.specimen.id != widget.specimen.id ||
         oldWidget.specimen.revision != widget.specimen.revision ||
         oldWidget.specimen.recordVersionId != widget.specimen.recordVersionId ||
-        oldWidget.readOnly != widget.readOnly) {
+        oldWidget.readOnly != widget.readOnly;
+    if (replaced || recordChanged) {
       _epoch++;
       _clear();
       _message = null;
       if (replaced) {
+        _disposeDerivationController();
         unawaited(_access?.cancel());
         _denied = false;
         _subscribe();
+        _createDerivationController();
+      } else {
+        _derivationController?.bind(
+          collection: widget.collection,
+          specimen: widget.specimen,
+          readOnly: widget.readOnly,
+        );
       }
       if (!_denied) _discover();
     }
@@ -131,26 +159,7 @@ class _ResearchHostState extends State<ResearchHost> {
         accessFailures: widget.repository.accessFailures,
       );
       controller.addListener(_changed);
-      final derivationRepository = ApiResearchDerivationRepository(
-        request: widget.repository.request,
-      );
-      var derivationController = _derivationController;
-      if (derivationController == null) {
-        derivationController = ResearchDerivationController(
-          repository: derivationRepository,
-          collection: widget.collection,
-          specimen: specimen,
-          readOnly: widget.readOnly,
-          accessFailures: widget.repository.accessFailures,
-        )..addListener(_changed);
-        _derivationController = derivationController;
-      } else {
-        derivationController.bind(
-          collection: widget.collection,
-          specimen: specimen,
-          readOnly: widget.readOnly,
-        );
-      }
+      if (_derivationController == null) _createDerivationController();
       setState(() {
         _controller = controller;
         _message = null;
@@ -170,9 +179,7 @@ class _ResearchHostState extends State<ResearchHost> {
   void dispose() {
     _epoch++;
     _clear();
-    _derivationController?.removeListener(_changed);
-    _derivationController?.dispose();
-    _derivationController = null;
+    _disposeDerivationController();
     unawaited(_access?.cancel());
     super.dispose();
   }
@@ -225,12 +232,17 @@ class _ResearchHostState extends State<ResearchHost> {
   }
 
   Future<void> _loadFieldResearch(String fieldKey) async {
+    if (fieldKey == 'country') {
+      final derivation = _derivationController;
+      if (derivation != null &&
+          (derivation.capability == null ||
+              derivation.state == DerivationNetworkState.error)) {
+        unawaited(derivation.loadCapability());
+      }
+    }
     final controller = _controller;
     if (controller == null) return;
     unawaited(controller.ensureLoaded());
-    if (fieldKey == 'country') {
-      unawaited(_derivationController?.loadCapability());
-    }
   }
 
   Future<void> _requestLocationSuggestions() async {
@@ -266,9 +278,15 @@ class _ResearchHostState extends State<ResearchHost> {
     if (result?.stale == true) {
       return 'The record changed. Refresh this record before reviewing suggestions.';
     }
+    final capability = controller.capability;
+    if (capability != null &&
+        (!capability.available || capability.eligibleFields.isEmpty)) {
+      return 'Location suggestions are not available for this record.';
+    }
     if (controller.state == DerivationNetworkState.error) {
       return controller.message;
     }
+    if (controller.message != null) return controller.message;
     return switch (result?.status) {
       'queued' => 'Your location request is waiting to start.',
       'running' => 'Your location request is in progress.',
@@ -286,6 +304,67 @@ class _ResearchHostState extends State<ResearchHost> {
     if (!researchFieldKeys.contains(fieldKey)) return const SizedBox.shrink();
     final controller = _controller;
     if (controller == null) {
+      if (fieldKey == 'country') {
+        final derivation = _derivationController;
+        return UiDisclosure(
+          title: 'Research',
+          summary: 'Check the saved location for suggestions',
+          hideSummaryWhenExpanded: true,
+          onExpansionChanged: (expanded) {
+            if (expanded) unawaited(_loadFieldResearch(fieldKey));
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                _message ?? 'Research history is not available right now.',
+                style: context.ui.type.bodySmall,
+              ),
+              if (_derivationStatus(derivation) case final status?) ...[
+                SizedBox(height: context.ui.space.s2),
+                Semantics(
+                  liveRegion: true,
+                  child: Text(status, style: context.ui.type.bodySmall),
+                ),
+              ],
+              if (derivation?.canRequest ?? false) ...[
+                SizedBox(height: context.ui.space.s2),
+                UiButton(
+                  label: 'Fill the rest',
+                  busyLabel: 'Saving request',
+                  variant: UiButtonVariant.secondary,
+                  leading: UiIcons.search,
+                  onPressed: _requestLocationSuggestions,
+                  loading:
+                      derivation?.state == DerivationNetworkState.submitting,
+                ),
+              ],
+              if (derivation?.accepted != null &&
+                  derivation?.state == DerivationNetworkState.ready)
+                UiButton(
+                  label: 'Refresh suggestion status',
+                  variant: UiButtonVariant.ghost,
+                  onPressed: () => unawaited(
+                    derivation!.refreshResult(
+                      refreshRecord: widget.refreshRecord ?? () async {},
+                    ),
+                  ),
+                  leading: UiIcons.reload,
+                ),
+              if (_message != null && !_denied)
+                UiButton(
+                  label: 'Refresh research',
+                  variant: UiButtonVariant.ghost,
+                  onPressed: () {
+                    setState(() => _message = null);
+                    _discover();
+                  },
+                ),
+            ],
+          ),
+        );
+      }
       return Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -308,14 +387,6 @@ class _ResearchHostState extends State<ResearchHost> {
     final field = thread?.field(fieldKey);
     final derivation = _derivationController;
     final historical = thread?.historical ?? false;
-    final currentEditable =
-        !widget.readOnly &&
-        !controller.readOnly &&
-        thread != null &&
-        !thread.historical &&
-        !thread.paused &&
-        controller.networkState == ResearchNetworkState.ready &&
-        !thread.hasUnknownState;
     return ResearchThreadCard(
       key: ValueKey('research:${widget.specimen.id}:$fieldKey'),
       scope: controller.scope,
@@ -333,20 +404,16 @@ class _ResearchHostState extends State<ResearchHost> {
       networkState: controller.networkState,
       fieldCentered: true,
       onSelectCandidate: onSelectCandidate,
-      derivationProposals: historical
-          ? const <ResearchDerivationProposal>[]
-          : derivation?.result?.proposalsFor(fieldKey) ??
-                const <ResearchDerivationProposal>[],
+      derivationProposals: derivation?.hasCurrentResult == true
+          ? derivation!.result!.proposalsFor(fieldKey)
+          : const <ResearchDerivationProposal>[],
       canSelectDerivationProposals:
-          currentEditable &&
+          !widget.readOnly &&
+          derivation?.hasCurrentResult == true &&
           derivation?.state == DerivationNetworkState.ready &&
           derivation?.result?.stale != true,
       fillRestAvailable:
-          fieldKey == 'country' &&
-          currentEditable &&
-          field?.review != null &&
-          field?.workState == ResearchWorkState.waitingHuman &&
-          (derivation?.canRequest ?? false),
+          fieldKey == 'country' && (derivation?.canRequest ?? false),
       fillRestLoading: derivation?.state == DerivationNetworkState.submitting,
       fillRestStatus: fieldKey == 'country'
           ? _derivationStatus(derivation)

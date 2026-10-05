@@ -59,16 +59,26 @@ class ResearchDerivationController extends ChangeNotifier {
   DerivationNetworkState get state => _state;
   String? get message => _message;
 
+  /// True only when retained suggestions still target this exact record version.
+  bool get hasCurrentResult =>
+      _result != null &&
+      !_result!.stale &&
+      _result!.canonicalRevision == _specimen.revision;
+
   bool get canRequest =>
       !_disposed &&
       !_accessDenied &&
       !_readOnly &&
       _state == DerivationNetworkState.ready &&
       (_capability?.appliesTo(_specimen.revision) ?? false) &&
-      (_result == null ||
-          (!_result!.stale &&
-              (_result!.status == 'completed' ||
-                  _result!.status == 'blocked')));
+      (_accepted == null
+          ? _result == null ||
+                (_result!.stale &&
+                    _result!.canonicalRevision == _specimen.revision)
+          : _result != null &&
+                hasCurrentResult &&
+                (_result!.status == 'completed' ||
+                    _result!.status == 'blocked'));
 
   bool _current(int epoch) => !_disposed && !_accessDenied && epoch == _epoch;
 
@@ -95,10 +105,15 @@ class ResearchDerivationController extends ChangeNotifier {
     if (!sameRecord) {
       _accepted = null;
       _result = null;
+    } else if (_result != null &&
+        _result!.canonicalRevision != specimen.revision) {
+      _result = null;
+      _message =
+          'The record changed. Refresh this request before reviewing suggestions.';
     }
     _state = _accessDenied
         ? DerivationNetworkState.denied
-        : sameRecord && _accepted != null && _result != null
+        : sameRecord && _accepted != null
         ? DerivationNetworkState.ready
         : DerivationNetworkState.idle;
     notifyListeners();
@@ -115,7 +130,7 @@ class ResearchDerivationController extends ChangeNotifier {
     final collection = _collection;
     final specimen = _specimen;
     _capability = null;
-    _message = null;
+    if (_accepted == null || _result != null) _message = null;
     _state = DerivationNetworkState.loading;
     notifyListeners();
     try {
@@ -219,6 +234,7 @@ class ResearchDerivationController extends ChangeNotifier {
         throw const ResearchFailure(ResearchFailureKind.invalidResponse);
       }
       _result = result;
+      if (result.stale) _accepted = null;
       _state = DerivationNetworkState.ready;
       _message = result.stale
           ? 'The record changed. Refresh this record before reviewing suggestions.'

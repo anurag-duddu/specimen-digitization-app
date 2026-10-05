@@ -206,12 +206,7 @@ class ResearchThreadCard extends StatelessWidget {
           summary: _summary,
           hideSummaryWhenExpanded: true,
           onExpansionChanged: (expanded) {
-            if (expanded &&
-                _bound &&
-                !_denied &&
-                networkState == ResearchNetworkState.idle) {
-              onLoad?.call();
-            }
+            if (expanded && _bound && !_denied) onLoad?.call();
           },
           child: LayoutBuilder(
             builder: (context, constraints) {

@@ -56,11 +56,11 @@ class FakeDerivationRepository implements ResearchDerivationRepository {
   }
 }
 
-ResearchDerivationCapability cap({bool available = true}) =>
+ResearchDerivationCapability cap({bool available = true, int revision = 7}) =>
     ResearchDerivationCapability.fromJson({
       'contract_version': 'research-derivation-capability/v1',
       'available': available,
-      'canonical_revision': 7,
+      'canonical_revision': revision,
       'eligible_fields': available ? ['county'] : <String>[],
     });
 
@@ -156,6 +156,66 @@ void main() {
       expect(controller.message, contains('record changed'));
       expect(reloaded, 1);
       expect(controller.canRequest, isFalse);
+    },
+  );
+
+  test(
+    'queued result stays current at Q and becomes nonselectable after Q advances',
+    () async {
+      final repository = FakeDerivationRepository(
+        capabilityResponse: cap(),
+        readResult: result(status: 'completed', revision: 8),
+      );
+      final controller = ResearchDerivationController(
+        repository: repository,
+        collection: collection,
+        specimen: specimen,
+      );
+      addTearDown(controller.dispose);
+      await controller.loadCapability();
+      await controller.request(
+        fields: const ['county'],
+        reason: 'Review the place.',
+        refreshRecord: () async {},
+      );
+      final accepted = controller.accepted;
+      expect(accepted?.queuedRevision, 8);
+
+      final queuedRecord = Specimen({
+        'specimen_id': 'specimen',
+        'revision': 8,
+        'latest_record_version_id': 'run:8',
+      });
+      controller.bind(collection: collection, specimen: queuedRecord);
+      expect(controller.result?.canonicalRevision, 8);
+      expect(controller.hasCurrentResult, isTrue);
+      expect(controller.accepted?.requestId, accepted?.requestId);
+
+      final laterRecord = Specimen({
+        'specimen_id': 'specimen',
+        'revision': 9,
+        'latest_record_version_id': 'run:9',
+      });
+      controller.bind(collection: collection, specimen: laterRecord);
+      expect(controller.result, isNull);
+      expect(controller.hasCurrentResult, isFalse);
+      expect(controller.accepted?.requestId, accepted?.requestId);
+      expect(controller.message, contains('record changed'));
+      expect(controller.canRequest, isFalse);
+
+      repository.capabilityResponse = cap(revision: 9);
+      repository.readResult = result(
+        status: 'completed',
+        revision: 9,
+        stale: true,
+      );
+      await controller.loadCapability();
+      expect(controller.canRequest, isFalse);
+      await controller.refreshResult(refreshRecord: () async {});
+      expect(controller.accepted, isNull);
+      expect(controller.result?.stale, isTrue);
+      expect(controller.hasCurrentResult, isFalse);
+      expect(controller.canRequest, isTrue);
     },
   );
 

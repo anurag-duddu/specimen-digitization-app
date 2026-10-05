@@ -9,6 +9,7 @@ import 'package:specimen_digitization/src/research/research_models.dart';
 import 'package:specimen_digitization/src/research/research_repository.dart';
 import 'package:specimen_digitization/src/research/research_thread_card.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
+import 'package:specimen_ui/specimen_ui.dart';
 
 import 'research_fixture.dart';
 
@@ -118,7 +119,11 @@ Future<void> pumpHost(
   await tester.pump();
 }
 
-Map<String, dynamic> countryReviewThread() {
+Map<String, dynamic> countryReviewThread({
+  bool historical = false,
+  bool includeCountryReview = true,
+  bool includeHistoricalCandidate = false,
+}) {
   final json = researchFixture('failed-thread')..['scope'] = trusted.json;
   for (final field in json['fields'] as List) {
     if (field['checkpoint'] != null) {
@@ -160,6 +165,28 @@ Map<String, dynamic> countryReviewThread() {
     'evidence_not_shown': 0,
     'candidates_not_shown': 0,
   };
+  if (includeHistoricalCandidate) {
+    country['review']['candidates'] = [
+      {
+        'label': 'Old retained place',
+        'source_id': 'geolocate',
+        'selection_id': 'f' * 64,
+        'selection_value': 'Old source value',
+      },
+    ];
+  }
+  if (!includeCountryReview) {
+    country['review'] = null;
+    country['actions'] = [];
+    country['checkpoint'] = null;
+    country['work_state'] = 'pending';
+    country['blocker_code'] = null;
+  }
+  if (historical) {
+    json['historical'] = true;
+    json['canonical_revision'] = 1;
+    json['review_saved_revision'] = 2;
+  }
   return json;
 }
 
@@ -178,12 +205,13 @@ Map<String, dynamic> derivationResult({
   required String requestId,
   String status = 'running',
   int revision = 2,
+  int sourceRevision = 1,
   bool includeProposal = false,
 }) => {
   'contract_version': 'research-derivation-result/v1',
   'request_id': requestId,
-  'source_revision': 1,
-  'queued_revision': 2,
+  'source_revision': sourceRevision,
+  'queued_revision': sourceRevision + 1,
   'status': status,
   'canonical_revision': revision,
   'stale': false,
@@ -377,23 +405,18 @@ void main() {
   );
 
   testWidgets(
-    'reviewer chooses eligible fields and reason; retained value uses the existing candidate callback',
+    'repository replacement after revocation uses the fresh derivation transport',
     (tester) async {
-      final requestId = 'a' * 64;
-      final calls = <String>[];
-      var reloads = 0;
-      ResearchReviewCandidate? selected;
-      final api = HostApi((path) async {
+      final requestId = 'b' * 64;
+      HostApi makeApi() => HostApi((path) async {
         if (path.endsWith('/research/current')) return discovery();
         if (path.endsWith('/research/jobs/job/generations/1/thread')) {
           return countryReviewThread();
         }
         if (path.endsWith('/research/derivations/capability')) {
-          calls.add('capability');
           return derivationCapability();
         }
         if (path.endsWith('/research/derivations')) {
-          calls.add('enqueue');
           return {
             'contract_version': 'research-derivation-accepted/v1',
             'request_id': requestId,
@@ -404,28 +427,300 @@ void main() {
           };
         }
         if (path.endsWith('/research/derivations/$requestId')) {
-          calls.add('result');
+          return derivationResult(requestId: requestId);
+        }
+        return {};
+      });
+
+      final oldApi = makeApi();
+      final newApi = makeApi();
+      addTearDown(oldApi.close);
+      addTearDown(newApi.close);
+      Widget builder(
+        BuildContext context,
+        Widget Function(String, ValueChanged<ResearchReviewCandidate>?)
+        researchForField,
+      ) => researchForField('country', (_) {});
+
+      await pumpHost(tester, oldApi, item(), builder: builder);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Research'));
+      await tester.pumpAndSettle();
+      expect(find.text('Fill the rest'), findsOneWidget);
+      expect(
+        oldApi.paths.any(
+          (path) => path.endsWith('/research/derivations/capability'),
+        ),
+        isTrue,
+      );
+
+      oldApi.failures.add(const ApiFailure('Denied', status: 403));
+      await tester.pumpAndSettle();
+      expect(find.byType(ResearchThreadCard), findsNothing);
+
+      final oldApiPathCount = oldApi.paths.length;
+      await pumpHost(tester, newApi, item(), builder: builder);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Research'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Fill the rest'), findsOneWidget);
+      expect(
+        newApi.paths.any(
+          (path) => path.endsWith('/research/derivations/capability'),
+        ),
+        isTrue,
+      );
+      expect(oldApi.paths, hasLength(oldApiPathCount));
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'current capability enables a request beside a historical report without a field review',
+    (tester) async {
+      final requestId = 'c' * 64;
+      final api = HostApi((path) async {
+        if (path.endsWith('/research/current')) return discovery(null, 2);
+        if (path.endsWith('/research/jobs/job/generations/1/thread')) {
+          return countryReviewThread(
+            historical: true,
+            includeCountryReview: false,
+          );
+        }
+        if (path.endsWith('/research/derivations/capability')) {
+          return derivationCapability(revision: 2);
+        }
+        if (path.endsWith('/research/derivations')) {
+          return {
+            'contract_version': 'research-derivation-accepted/v1',
+            'request_id': requestId,
+            'source_revision': 2,
+            'queued_revision': 3,
+            'status': 'queued',
+            'canonical_run_id': canonicalRunId,
+          };
+        }
+        if (path.endsWith('/research/derivations/$requestId')) {
           return derivationResult(
             requestId: requestId,
             status: 'completed',
+            sourceRevision: 2,
+            revision: 3,
             includeProposal: true,
           );
         }
         return {};
       });
       addTearDown(api.close);
+      await pumpHost(
+        tester,
+        api,
+        item(null, 2),
+        builder: (context, researchForField) =>
+            researchForField('country', (_) {}),
+      );
+      await tester.pumpAndSettle();
+
+      final countryCard = find.byKey(
+        const ValueKey('research:33333333-3333-4333-8333-333333333333:country'),
+      );
+      await tester.tap(
+        find.descendant(of: countryCard, matching: find.text('Research')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Historical research report for'),
+        findsOneWidget,
+      );
+      expect(find.text('Fill the rest'), findsOneWidget);
+      expect(find.text('Use this possibility'), findsNothing);
+
+      await tester.tap(find.text('Fill the rest'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byType(TextField),
+        'Review the remaining place information.',
+      );
+      await tester.tap(find.text('Request suggestions'));
+      await tester.pumpAndSettle();
+
+      final post = api.calls.singleWhere((call) => call['method'] == 'POST');
+      expect(post['body']['expected_record_revision'], 2);
+      expect(post['body']['requested_fields'], isNotEmpty);
+      expect(find.text('Synthetic County'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'historical field candidates stay disabled while current capability is available',
+    (tester) async {
+      final api = HostApi((path) async {
+        if (path.endsWith('/research/current')) return discovery(null, 2);
+        if (path.endsWith('/research/jobs/job/generations/1/thread')) {
+          return countryReviewThread(
+            historical: true,
+            includeHistoricalCandidate: true,
+          );
+        }
+        if (path.endsWith('/research/derivations/capability')) {
+          return derivationCapability(revision: 2);
+        }
+        return {};
+      });
+      addTearDown(api.close);
+      ResearchReviewCandidate? selected;
+      await pumpHost(
+        tester,
+        api,
+        item(null, 2),
+        builder: (context, researchForField) =>
+            researchForField('country', (candidate) => selected = candidate),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Research'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Fill the rest'), findsOneWidget);
+      expect(find.text('Old retained place'), findsOneWidget);
+      final oldChoice = tester.widget<UiButton>(
+        find.ancestor(
+          of: find.text('Use this possibility'),
+          matching: find.byType(UiButton),
+        ),
+      );
+      expect(oldChoice.onPressed, isNull);
+      await tester.tap(find.text('Use this possibility'), warnIfMissed: false);
+      expect(selected, isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'current capability can be checked when no research binding is available',
+    (tester) async {
+      final requestId = 'd' * 64;
+      final api = HostApi((path) async {
+        if (path.endsWith('/research/current')) {
+          throw const ResearchFailure(ResearchFailureKind.unavailable);
+        }
+        if (path.endsWith('/research/derivations/capability')) {
+          return derivationCapability();
+        }
+        if (path.endsWith('/research/derivations')) {
+          return {
+            'contract_version': 'research-derivation-accepted/v1',
+            'request_id': requestId,
+            'source_revision': 1,
+            'queued_revision': 2,
+            'status': 'queued',
+            'canonical_run_id': canonicalRunId,
+          };
+        }
+        if (path.endsWith('/research/derivations/$requestId')) {
+          return derivationResult(requestId: requestId);
+        }
+        return {};
+      });
+      addTearDown(api.close);
+      await pumpHost(
+        tester,
+        api,
+        item(),
+        builder: (context, researchForField) =>
+            researchForField('country', (_) {}),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Research'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ResearchThreadCard), findsNothing);
+      expect(find.text('Fill the rest'), findsOneWidget);
+      await tester.tap(find.text('Fill the rest'));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byType(TextField),
+        'Review the saved location.',
+      );
+      await tester.tap(find.text('Request suggestions'));
+      await tester.pumpAndSettle();
+      expect(
+        api.calls.any(
+          (call) =>
+              call['method'] == 'POST' &&
+              call['body']['expected_record_revision'] == 1,
+        ),
+        isTrue,
+      );
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'reviewer chooses eligible fields and reason; retained value uses the existing candidate callback',
+    (tester) async {
+      final requestId = 'a' * 64;
+      final calls = <String>[];
+      var reloads = 0;
+      var currentRevision = 1;
+      ResearchReviewCandidate? selected;
+      final api = HostApi((path) async {
+        if (path.endsWith('/research/current')) {
+          return discovery(null, currentRevision);
+        }
+        if (path.endsWith('/research/jobs/job/generations/1/thread')) {
+          return countryReviewThread();
+        }
+        if (path.endsWith('/research/derivations/capability')) {
+          calls.add('capability');
+          return derivationCapability(revision: currentRevision);
+        }
+        if (path.endsWith('/research/derivations')) {
+          calls.add('enqueue');
+          return {
+            'contract_version': 'research-derivation-accepted/v1',
+            'request_id': requestId,
+            'source_revision': currentRevision,
+            'queued_revision': currentRevision + 1,
+            'status': 'queued',
+            'canonical_run_id': canonicalRunId,
+          };
+        }
+        if (path.endsWith('/research/derivations/$requestId')) {
+          calls.add('result');
+          return derivationResult(
+            requestId: requestId,
+            status: 'completed',
+            sourceRevision: currentRevision,
+            revision: currentRevision + 1,
+            includeProposal: true,
+          );
+        }
+        return {};
+      });
+      addTearDown(api.close);
+      Widget builder(
+        BuildContext context,
+        Widget Function(String, ValueChanged<ResearchReviewCandidate>?)
+        researchForField,
+      ) => Column(
+        children: [
+          researchForField('country', (_) {}),
+          researchForField('county', (candidate) => selected = candidate),
+        ],
+      );
+      late Future<void> Function() refreshRecord;
+      refreshRecord = () async {
+        reloads++;
+      };
 
       await pumpHost(
         tester,
         api,
         item(),
-        refreshRecord: () async => reloads++,
-        builder: (context, researchForField) => Column(
-          children: [
-            researchForField('country', (_) {}),
-            researchForField('county', (candidate) => selected = candidate),
-          ],
-        ),
+        refreshRecord: refreshRecord,
+        builder: builder,
       );
       await tester.pumpAndSettle();
       final countryCard = find.byKey(
@@ -461,6 +756,19 @@ void main() {
         'reason': 'Review the remaining place information.',
         'requested_fields': ['county'],
       });
+      expect(find.text('Synthetic County'), findsNothing);
+
+      // The backend result targets Q+1. It becomes selectable only after the
+      // host refresh supplies that exact canonical record revision.
+      currentRevision = 2;
+      await pumpHost(
+        tester,
+        api,
+        item(null, currentRevision),
+        builder: builder,
+        refreshRecord: refreshRecord,
+      );
+      await tester.pumpAndSettle();
 
       final countyCard = find.byKey(
         const ValueKey('research:33333333-3333-4333-8333-333333333333:county'),
