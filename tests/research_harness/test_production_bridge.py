@@ -439,9 +439,16 @@ TAXON = checkpoint(FieldResolution(field_key=FieldKey.TAXON, work_state=WorkStat
     value=FieldValue(state=ValueState.SUPPORTED, literal="Synthetic taxon", evidence_ids=["e-taxon"],
         evidence_relations={"e-taxon": "decides"}),
     evidence_ids=("e-taxon",), reason="synthetic resolved work"))
-# The evidence.py helpers' own values: supported, with no evidence relation.
-DATE = checkpoint(helper_resolutions(RESEARCH_SCOPE, "date")[1][0])
-ELEVATIONS = tuple(checkpoint(item) for item in helper_resolutions(RESEARCH_SCOPE, "elevation")[1])
+# Deliberately malformed relation-less checkpoints. The helpers now provide
+# supports relations, so these exercise the publication hold rather than
+# describing a valid helper result.
+def without_relations(resolution):
+    return resolution.model_copy(update={"value": resolution.value.model_copy(update={"evidence_relations": {}})})
+
+
+DATE = checkpoint(without_relations(helper_resolutions(RESEARCH_SCOPE, "date")[1][0]))
+ELEVATIONS = tuple(checkpoint(without_relations(item) if item.field_key == FieldKey.ELEVATION_FROM_FT else item)
+                   for item in helper_resolutions(RESEARCH_SCOPE, "elevation")[1])
 
 
 def thread(*checkpoints, locked=()):
@@ -460,7 +467,9 @@ def status(view, declared=DECLARED):
     return ResearchStatusV1.from_thread(view, missing_policy_fields=declared).status
 
 
-def test_the_production_profile_declares_a_missing_policy_only_for_verbatim_dts():
+def test_the_insects_profile_helper_declares_a_missing_policy_only_for_verbatim_dts():
+    # The committed job profile adds fifteen more declarations on top of this helper's
+    # (committed_pins.committed_research_profile; test_unqualified_label_policy.py).
     assert DECLARED == {FieldKey.VERBATIM_DTS}
 
 

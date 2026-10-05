@@ -23,7 +23,7 @@ from specimen_digitization.research_harness.evidence import (
     validate_resolution,
 )
 from specimen_digitization.research_harness.prompts import (
-    READING_CITATION_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
+    HANDOVER_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 from specimen_digitization.research_harness.sources import insects_registry
 
@@ -74,8 +74,12 @@ def flat(text):
 @pytest.mark.parametrize("role", FIVE)
 def test_each_v2_file_is_its_v1_text_followed_by_the_relation_rule_and_the_pin_extends_it(role):
     # The v2 files stay on disk as the audit record (their digests: test_geography_prompt_v2.py). The live
-    # pins moved to the v3 files, each the v2 file followed by two blocks (test_prompt_reading_citation_v3.py).
-    assert ROLE_PROMPTS[role] == (f"{role.value}-v3.txt", READING_CITATION_PROMPT_VERSION)
+    # pins moved to the v3 files (test_prompt_reading_citation_v3.py), then to the v4 files, each the v3
+    # file followed by the missing-policy block (test_prompt_missing_policy_v4.py), then to the v5 files,
+    # each the v4 file followed by the hand-over block (test_prompt_handover_v5.py); all extend the v2 text.
+    version = 6 if role in SETTLED else 5
+    assert ROLE_PROMPTS[role] == (f"{role.value}-v{version}.txt",
+        QUALIFIED_PROMPT_VERSION if version == 6 else HANDOVER_PROMPT_VERSION)
     assert RELATIONS_PROMPT_VERSION == "specialists-relations-v2-2026-10-03"
     (ROOT / f"{role.value}-v2.txt").read_bytes().decode("ascii")
     rule = added(role)
@@ -130,10 +134,9 @@ def settled_request(role, field_key, text):
                              fragments=(fragment,), events=(event,), assemblies=(assembly,))
 
 
-def test_why_option_b_a_settled_value_with_an_added_relation_is_refused():
-    """The premise of the temporal and measurement text. If the evidence.py helpers
-    start giving relations (option (a)), this fails: those two roles then move to
-    the role lines that ask for "supports"."""
+def test_settled_date_and_elevation_require_the_exact_helper_relations():
+    """The settlement helpers now provide supports relations for native evidence.
+    A model cannot omit them while claiming the same deterministic settlement."""
     dates = settled_request(SpecialistRole.TEMPORAL, FieldKey.DATE_VISITED_FROM, "2020-06-01")
     elevations = settled_request(SpecialistRole.MEASUREMENT, FieldKey.ELEVATION_FROM_M, "180 m")
     settled = [(dates, item) for item in temporal_resolutions(dates, event_id="event")] + [
@@ -141,9 +144,9 @@ def test_why_option_b_a_settled_value_with_an_added_relation_is_refused():
     assert {str(item.field_key) for _, item in settled} == {"date_visited_from", "date_visited_to",
         "elevation_from_m", "elevation_to_m", "elevation_from_ft", "elevation_to_ft"}
     for request, item in settled:
-        assert item.value.evidence_ids and item.value.evidence_relations == {}
+        assert item.value.evidence_ids
+        assert item.value.evidence_relations == dict.fromkeys(item.value.evidence_ids, "supports")
         assert validate_resolution(request, item) == item
-        related = item.model_copy(update={"value": item.value.model_copy(update={
-            "evidence_relations": dict.fromkeys(item.value.evidence_ids, "supports")})})
+        related = item.model_copy(update={"value": item.value.model_copy(update={"evidence_relations": {}})})
         with pytest.raises(EvidenceError, match="differs from (exact )?deterministic"):
             validate_resolution(request, related)

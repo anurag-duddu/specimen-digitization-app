@@ -28,9 +28,10 @@ MEASUREMENT_RULE = "decimal-elevation-v1"
 DECIMAL_PRECISION = 80
 INVERSE_PRECISION = 34
 _NUMBER = r"[+-]?\d{1,40}(?:\.\d{1,20})?"
-_UNIT = r"ft|feet|foot|m|metres?|meters?"
+_UNIT = r"(?:ft|feet|foot)\.?|m\.?|metres?|meters?|'"
 _MEASUREMENT = re.compile(
-    rf"^\s*(?P<qual>~|≈|c\.?|ca\.?|about|approx\.?)?\s*"
+    rf"^\s*(?:(?:elev(?:ation)?|alt(?:itude)?)\.?\s*[:=]?\s*)?"
+    rf"(?P<qual>~|≈|c\.?|ca\.?|about|approx\.?)?\s*"
     rf"(?P<first>{_NUMBER})\s*(?P<firstunit>{_UNIT})?\s*"
     rf"(?:(?P<sep>to|[-–—])\s*(?P<last>{_NUMBER})\s*(?P<lastunit>{_UNIT})?)?"
     rf"\s*(?:[±]\s*(?P<uncertainty>{_NUMBER})\s*(?P<uncunit>{_UNIT})?)?\s*$",
@@ -110,6 +111,7 @@ def temporal_resolutions(request: SpecialistRequest, *, event_id: str, source_re
                          parsed=first.canonical, normalized=first.canonical, precision=first.precision,
                          century_rule=first.century_rule, verbatim_by_observation=verbatims,
                          settled_observation_ids=list(verbatims), evidence_ids=list(evidence_ids),
+                         evidence_relations=dict.fromkeys(evidence_ids, "supports"),
                          reason="Event-scoped deterministic date interpretation"),
         event_id=event_id, assembly_ids=tuple(item.id for item in assertions),
         evidence_ids=evidence_ids, reason="G24/G29 date at written precision",
@@ -131,7 +133,9 @@ def temporal_resolutions(request: SpecialistRequest, *, event_id: str, source_re
             field_key=FieldKey.DATE_VISITED_TO, work_state=WorkState.RESOLVED, value_layer="settled",
             value=FieldValue(state=ValueState.SUPPORTED, literal=last.literal, parsed=last.canonical,
                              normalized=last.canonical, precision=last.precision, century_rule=last.century_rule,
-                             evidence_ids=list(end_evidence), reason="Written collecting range endpoint"),
+                             evidence_ids=list(end_evidence),
+                             evidence_relations=dict.fromkeys(end_evidence, "supports"),
+                             reason="Written collecting range endpoint"),
             evidence_ids=end_evidence, assembly_ids=tuple(item.id for item in explicit_to), event_id=event_id,
             reason="Preserved written range endpoint",
         )
@@ -180,7 +184,7 @@ def _decimal(text: str) -> Decimal:
 def _unit(text: str | None) -> Literal["ft", "m"] | None:
     if text is None:
         return None
-    return "ft" if text.casefold() in {"ft", "feet", "foot"} else "m"
+    return "ft" if text.casefold().rstrip(".") in {"ft", "feet", "foot", "'"} else "m"
 
 
 def parse_measurement(text: str, *, vertical_datum: str = "unknown", precision: str = "unknown") -> ParsedMeasurement:
@@ -403,7 +407,9 @@ def elevation_resolutions(settled: SettledMeasurement) -> tuple[FieldResolution,
             state=ValueState.SUPPORTED,
             literal=first.literal if len(verbatims) == 1 and len(settled.fragment_ids) == 1 and written else None,
             parsed=unrounded, normalized=display_decimal(Decimal(unrounded)),
-            evidence_ids=list(settled.evidence_ids), verbatim_by_observation=verbatims,
+            evidence_ids=list(settled.evidence_ids),
+            evidence_relations=dict.fromkeys(settled.evidence_ids, "supports"),
+            verbatim_by_observation=verbatims,
             settled_observation_ids=list(verbatims),
             input_source_by_observation={item.observation_id: item.input_source for item in settled.fragments},
             reason="Validated same-event written assertion" if written else "G41 exact derivation from settled quantity",

@@ -8,14 +8,10 @@ session (an in-memory connector, production_e2e_support.FakeDataConnect), the
 model (scripted pydantic-ai FunctionModels) and source HTTP (recorded responses).
 Label text is the public synthetic fixture.
 
-Stage 1, the publications land: the taxon, researched through the three ready
-taxonomy sources, precise_location, settled from its label evidence, and the
-parties and collection fields. Its geography historian makes no GEOLocate
-lookup, so the geography fields wait on a source. The dates and elevations are
-not published; each carries its mandatory_unresolved field reason. Stage 2,
-with the historian's GEOLocate lookups: the country, state, county and city
-publish with their GEOLocate evidence, and the run reaches its final queue,
-needs_human_review, on the mandatory_unresolved field reasons.
+The taxonomy, exact label, temporal, measurement, collection, and parties
+fields publish with cited evidence. Without GEOLocate, the remaining geography
+fields wait on a source. With recorded GEOLocate lookups they publish too, and
+the run reaches human review for the unchanged verbatim DTS field.
 """
 from __future__ import annotations
 
@@ -188,12 +184,8 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
         "catalogue_of_life"}
 
     # Plan tick 3, a new worker: provisioning returns at once and research runs
-    # all six roles. The taxon publishes, then precise_location, then the
-    # parties and collection fields. Neither the geography fields still waiting
-    # on a source nor the dates and elevations are offered for publication: the
-    # evidence.py date and elevation helpers give a settled value no evidence
-    # relation, which the V2 projection requires, so each of those fields keeps
-    # its base record value and carries the field reason mandatory_unresolved.
+    # all six roles. The taxon, precise location, exact temporal and elevation
+    # values, collection and parties fields publish. Geography still waits.
     # The geography fields, with no GEOLocate lookup, keep the record
     # processing_blocked, so the step ends with an operational hold.
     resumed = compose(rig, geolocate=False)
@@ -215,14 +207,14 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     assert len(state["jobs"]) == 1 and len(rig.fake.bindings) == 1 and binding["job_id"] == job_id
 
     # Only terminal checkpoints were offered: no publication was prepared for a
-    # field still waiting on a source, or for a date or elevation.
+    # field still waiting on a source.
     job = list(state["jobs"].values())[0]
     offered = {event["guard"]["checkpoint_id"] for event in state["outbox"].values()
         if event.get("kind") == "canonical_publication_required"}
     waiting = [field["checkpoint"]["id"] for field in job["fields"].values() if field["work_state"] == "waiting_source"]
     assert waiting and offered and not offered & set(waiting)
     assert {job["fields"][key]["work_state"] for key in DATES_AND_ELEVATIONS} == {"resolved"}
-    assert not offered & {job["fields"][key]["checkpoint"]["id"] for key in DATES_AND_ELEVATIONS}
+    assert {job["fields"][key]["checkpoint"]["id"] for key in DATES_AND_ELEVATIONS} <= offered
 
     # The three ready taxonomy sources were fetched once each through the
     # capture broker, offline, and the run's spend is within its allowance.
@@ -235,26 +227,28 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     held = sum(effect["held_micro_usd"] for effect in effects)
     assert held == 0 and 0 < settled <= state["budget_policy"]["ceiling_micro_usd"] == 1_000_000
     assert [role for role, _ in rig.model_calls] == ["specimen_taxonomy"] * 4 + [
-        "specimen_geography", "specimen_temporal", "specimen_measurement", "specimen_parties",
-        "specimen_collection"]
+        "specimen_geography", "specimen_temporal", "specimen_measurement", "specimen_collection",
+        "specimen_parties"]
 
-    # Eight publications: the taxon, from the GBIF exact match, precise_location,
-    # then the parties and collection fields.
+    # Every supported field publishes once; geography still waits for a source.
     receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
-    assert [row["causal_proof"]["changed_field"] for row in receipts] == ["taxon", "precise_location",
-        "collectors", "identified_by_irn", "collection_code", "collection_method", "fmnh_ins_number", "habitat"]
+    changed = [row["causal_proof"]["changed_field"] for row in receipts]
+    assert len(changed) == len(set(changed)) == 15
+    assert set(changed) == {"taxon", "precise_location", "collection_code", "collection_method",
+        "fmnh_ins_number", "habitat", "collectors", "identified_by_irn", *DATES_AND_ELEVATIONS}
+    assert changed[:2] == ["taxon", "precise_location"]
     receipt, place, last = receipts[0], receipts[1], receipts[-1]
     assert (receipt["used_canonical_revision"], receipt["resulting_canonical_revision"]) == (3, 4)
     assert (place["used_canonical_revision"], place["resulting_canonical_revision"]) == (4, 5)
-    assert binding["current_receipt_id"] == last["id"] and binding["registration_revision"] == 9
-    assert binding["current_canonical_revision"] == 11
+    assert binding["current_receipt_id"] == last["id"] and binding["registration_revision"] == len(receipts) + 1
+    assert binding["current_canonical_revision"] == parsed.version + len(receipts)
     published = rig.repository.get(rig.principal.scope, rig.specimen_id)
-    assert published.version == 11 and published.run.id == parsed.run.id
+    assert published.version == parsed.version + len(receipts) and published.run.id == parsed.run.id
     taxon = published.run.fields["taxon"]
     assert taxon.state == "supported" and taxon.normalized == GBIF_NAME
     assert taxon.authority_id.startswith(COL_XR + ":")
     # The taxon left the run unfinished and due again (no disposition).
-    assert len(routing) == 8 and routing[1][0] == "running" and routing[1][1] is not None
+    assert len(routing) == len(receipts) and routing[1][0] == "running" and routing[1][1] is not None
     # From precise_location on, the record carries the geography fields still
     # waiting on a source, which the V2 routing treats as processing_blocked.
     assert published.run.stage == "processing_blocked" and published.run.disposition is None
@@ -262,14 +256,13 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
         "province_state"))
     assert set(waiting_reasons) <= set(published.run.reasons)
     assert rig.fake.specimens[rig.specimen_id]["state"] == "processing_blocked"
-    # Each date and elevation carries its field reason, a human review reason
-    # and never an operational one, and keeps its base record value (here the
-    # ordinary parse of the synthetic label's explicit "key: value" line).
+    # Exact supported date/elevation values no longer carry unresolved reasons.
     progress = last["causal_proof"]["progress_receipt"]
     unresolved = {f"mandatory_unresolved:{key}" for key in DATES_AND_ELEVATIONS}
-    assert unresolved <= set(progress["human_reason_codes"]) and unresolved <= set(published.run.reasons)
+    assert not unresolved & set(progress["human_reason_codes"])
+    assert not unresolved & set(published.run.reasons)
     assert tuple(progress["operational_reason_codes"]) == waiting_reasons
-    assert all(published.run.fields[key] == parsed.run.fields[key] for key in DATES_AND_ELEVATIONS)
+    assert all(published.run.fields[key].state == "supported" for key in DATES_AND_ELEVATIONS)
     record = rig.fake.tables["record_version"][receipt["native_record_version_id"]]
     assert record["predecessorId"] == base_records[0]["id"] and record["disposition"] is None
     fields = {row["fieldKey"]: row for row in rig.fake.tables["resolved_field"].values()
@@ -307,10 +300,10 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     before = len(rig.fake.calls)
     with supervised():
         blocked = again.step(rig.principal, rig.specimen_id)
-    assert blocked.version == 11 and blocked.run.stage == "processing_blocked"
+    assert blocked.version == published.version and blocked.run.stage == "processing_blocked"
     assert not RESEARCH_OPERATIONS & set(rig.fake.calls[before:])
-    assert len(rig.fake.receipts) == 8
-    assert rig.repository.get(rig.principal.scope, rig.specimen_id).version == 11
+    assert len(rig.fake.receipts) == len(receipts)
+    assert rig.repository.get(rig.principal.scope, rig.specimen_id).version == published.version
     assert len(rig.model_calls) == 9 and len(rig.source_urls) == 3
 
 
@@ -330,7 +323,7 @@ def test_the_run_reaches_its_final_queue(rig):
     url = json.loads((FIXTURES / "sources.json").read_text())["geolocate"]["url"]
     assert len(rig.source_urls) == 7 and rig.source_urls.count(url) == 4
     assert [role for role, _ in rig.model_calls] == ["specimen_taxonomy"] * 4 + ["specimen_geography"] * 2 + [
-        "specimen_temporal", "specimen_measurement", "specimen_parties", "specimen_collection"]
+        "specimen_temporal", "specimen_measurement", "specimen_collection", "specimen_parties"]
     _, state = research_state(rig.fake, rig.specimen_id)
     captures = {key: effect for key, effect in state["effects"].items()
         if effect["operation_key"].startswith("source_capture_v2:")}
@@ -342,14 +335,15 @@ def test_the_run_reaches_its_final_queue(rig):
         assert {tuple(captures[effect]["field_keys"]) for effect in job["fields"][key]["checkpoint"]["receipt_ids"]
             if effect in captures} == {(name,) for name in GEOGRAPHY}
 
-    # Twelve publications: the taxon, the geography with precise_location, then
-    # the parties and collection fields.
+    # Each supported field publishes once, including exact dates and elevation.
     receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
-    assert [row["causal_proof"]["changed_field"] for row in receipts] == ["taxon", "city", "country",
-        "county", "precise_location", "province_state", "collectors", "identified_by_irn", "collection_code",
-        "collection_method", "fmnh_ins_number", "habitat"]
+    changed = [row["causal_proof"]["changed_field"] for row in receipts]
+    assert len(changed) == len(set(changed)) == 19
+    assert set(changed) == {"taxon", "city", "country", "county", "precise_location",
+        "province_state", "collection_code", "collection_method", "fmnh_ins_number", "habitat",
+        "collectors", "identified_by_irn", *DATES_AND_ELEVATIONS}
     published = rig.repository.get(rig.principal.scope, rig.specimen_id)
-    assert published.version == specimen.version == parsed.version + 12
+    assert published.version == specimen.version == parsed.version + len(receipts)
     by_field = {row["causal_proof"]["changed_field"]: row for row in receipts}
 
     # G39: the matched point is candidate metadata in the tool result and the trace, not a record
@@ -383,10 +377,9 @@ def test_the_run_reaches_its_final_queue(rig):
         calls = [row for row in rig.fake.tables["tool_call"].values() if row["evidenceId"] == evidence["id"]]
         assert [(row["fieldKeys"], row["outcome"]) for row in calls] == [([key], "success")]
 
-    # The final queue: needs human review on the field reasons of verbatim_dts
-    # and the held dates and elevations, with no operational reason.
+    # The final queue retains the verbatim DTS review reason only.
     assert specimen.run.stage == "finalized" and specimen.run.disposition == "needs_human_review"
-    unresolved = {f"mandatory_unresolved:{key}" for key in ("verbatim_dts", *DATES_AND_ELEVATIONS)}
+    unresolved = {"mandatory_unresolved:verbatim_dts"}
     assert {reason for reason in specimen.run.reasons if reason.startswith("mandatory_unresolved:")} == unresolved
     progress = receipts[-1]["causal_proof"]["progress_receipt"]
     assert unresolved <= set(progress["human_reason_codes"]) and not progress["operational_reason_codes"]
@@ -434,11 +427,13 @@ def test_a_region_decided_by_the_first_pass_publishes(first_pass_rig):
 
     # Every research publication landed from the first-pass-decided transcript.
     receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
-    assert [row["causal_proof"]["changed_field"] for row in receipts] == ["taxon", "city", "country",
-        "county", "precise_location", "province_state", "collectors", "identified_by_irn", "collection_code",
-        "collection_method", "fmnh_ins_number", "habitat"]
+    changed = [row["causal_proof"]["changed_field"] for row in receipts]
+    assert len(changed) == len(set(changed)) == 19
+    assert set(changed) == {"taxon", "city", "country", "county", "precise_location",
+        "province_state", "collection_code", "collection_method", "fmnh_ins_number", "habitat",
+        "collectors", "identified_by_irn", *DATES_AND_ELEVATIONS}
     published = rig.repository.get(rig.principal.scope, rig.specimen_id)
-    assert published.version == specimen.version == parsed.version + 12
+    assert published.version == specimen.version == parsed.version + len(receipts)
     assert published.run.fields["taxon"].normalized == GBIF_NAME
     taxon = next(row for row in rig.fake.tables["evidence_item"].values() if row["source"] == "gbif")
     [call] = [row for row in rig.fake.tables["tool_call"].values() if row["evidenceId"] == taxon["id"]]
@@ -447,7 +442,7 @@ def test_a_region_decided_by_the_first_pass_publishes(first_pass_rig):
     sources = {row["researchFieldKey"]: row["readingSources"]
         for row in rig.fake.tables["canonical_value_lineage_v2"].values() if row["readingSources"]}
     assert set(sources) == {"precise_location", "collectors", "collection_code", "collection_method",
-        "fmnh_ins_number", "habitat"}
+        "fmnh_ins_number", "habitat", *DATES_AND_ELEVATIONS}
     assert all(item["inputSource"] == "decided_transcript" and item["transcriptionVersionId"] == version["id"]
         for items in sources.values() for item in items)
     assert specimen.run.stage == "finalized" and specimen.run.disposition == "needs_human_review"
@@ -514,7 +509,7 @@ def test_a_refused_publication_logs_its_cause_and_the_drain_records_the_hold(rig
     assert set(lines) == {"native_worker", "lane_worker"}
     short = rig.specimen_id[-6:]
     assert lines["native_worker"] == ("native publication failed: PublicationUnavailable "
-        f"code=native_v2_commit_outcome_unknown field=collectors (record ...{short})")
+        f"code=native_v2_commit_outcome_unknown field=date_identified (record ...{short})")
     assert lines["lane_worker"] == f"record held by the drain: {code} (record ...{short})"
     assert rig.specimen_id not in caplog.text and "publication refused" not in caplog.text
     assert not any(value in caplog.text for value in LABEL_VALUES.values())

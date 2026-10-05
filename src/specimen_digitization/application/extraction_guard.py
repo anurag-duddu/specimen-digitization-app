@@ -1,9 +1,10 @@
 """A value the owner's written rules call wrong is not stored at extraction.
 
-`harness.apply_candidates` checks that the extractor's quoted literal occurs in
-the decided transcript. This guard adds three checks on what a literal means,
-each resting on a written rule, and nothing else (no repair, no re-routing, no
-new product rule):
+`harness.apply_candidates` checks that the organiser's quote occurs in the
+reading it cites and its literal in the quote. This guard adds three checks on
+what a literal means, each resting on a written rule, and nothing else (no
+repair, no re-routing, no new product rule). It reads the text of the CITED
+reading, decided or raw, since that is the text the literal was taken from:
 
 - Elevation unit. G41 (docs/execution/golive/PLAN.md:99, LAB.md:131-150) fills
   the unit the label writes; "a unit is never guessed"
@@ -80,7 +81,7 @@ def _written_units(literal: str, text: str) -> list[str]:
 
 
 def extraction_refusal(field_key: str, literal: str, text: str) -> str | None:
-    """Why `literal`, copied from the decided transcript `text`, is refused as a
+    """Why `literal`, copied from the cited reading's `text`, is refused as a
     value of `field_key`; None when no rule above refuses it, and when unsure."""
     if unit := ELEVATION_UNIT.get(field_key):
         units = _written_units(literal, text)

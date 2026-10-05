@@ -310,13 +310,18 @@ def committed(b, resolutions):
     return b
 
 
+def without_relations(resolution):
+    """An intentionally invalid checkpoint, unlike the current helper's exact output."""
+    return resolution.model_copy(update={"value": resolution.value.model_copy(update={"evidence_relations": {}})})
+
+
 def test_a_date_without_evidence_relations_routes_to_review_with_its_field_reason(materialization, monkeypatch):
     from specimen_digitization.research_harness import canonical_materialization_v2 as module
-    # Every field is resolved. date_identified holds the evidence.py date
-    # helper's value, which names no evidence relation, so it was never
-    # published and is not grounded on the record.
+    # Every field is resolved. This checkpoint drops the relation the helper
+    # now gives, so it cannot be grounded on the record.
     b = terminal_routing_case(materialization, monkeypatch, grounded=module.KEYS - {"date_identified"})
-    _, (date,) = helper_resolutions(b.checkpoint.scope, "date")
+    _, (correct,) = helper_resolutions(b.checkpoint.scope, "date")
+    date = without_relations(correct)
     assert date.value.state == ValueState.SUPPORTED and date.value.evidence_relations == {}
     proof = produce_v2(committed(b, (date,)))
     assert proof.result.run.disposition == Disposition.REVIEW and proof.result.run.stage == "finalized"
@@ -335,7 +340,8 @@ def test_the_date_review_record_reaches_the_native_writer_as_completed_needs_hum
     from specimen_digitization.research_harness import canonical_materialization_v2 as module
     from specimen_digitization.research_harness.native_canonical_v2 import SqlConnectCanonicalResearchWriterV2
     b = terminal_routing_case(materialization, monkeypatch, grounded=module.KEYS - {"date_identified"})
-    _, (date,) = helper_resolutions(b.checkpoint.scope, "date")
+    _, (correct,) = helper_resolutions(b.checkpoint.scope, "date")
+    date = without_relations(correct)
     proof = produce_v2(committed(b, (date,)))
     writer = SqlConnectCanonicalResearchWriterV2(None, None, blobs=None, operation_client=object())
     intent = SimpleNamespace(operation_digest=digest("synthetic operation"), actor_uid=b.principal.user_id,
@@ -356,7 +362,9 @@ def test_an_elevation_without_evidence_relations_holds_the_endpoints_derived_fro
     from specimen_digitization.research_harness import canonical_materialization_v2 as module
     from specimen_digitization.research_harness.canonical_projection_v2 import relations_unproved
     b = terminal_routing_case(materialization, monkeypatch, grounded=module.KEYS - ELEVATIONS)
-    _, elevations = helper_resolutions(b.checkpoint.scope, "elevation")
+    _, correct = helper_resolutions(b.checkpoint.scope, "elevation")
+    elevations = tuple(without_relations(item) if item.field_key == FieldKey.ELEVATION_FROM_FT else item
+                       for item in correct)
     # Only the written endpoint lacks a relation; its derivation record covers
     # each derived endpoint's evidence, but none can publish before its source.
     assert [str(item.field_key) for item in elevations if relations_unproved(item)] == ["elevation_from_ft"]
@@ -374,7 +382,8 @@ def test_a_real_outage_beside_a_value_without_relations_stays_an_operational_blo
     from specimen_digitization.research_harness import canonical_materialization_v2 as module
     b = terminal_routing_case(materialization, monkeypatch, work={"county": state},
         grounded=module.KEYS - {"county", "date_identified"})
-    _, (date,) = helper_resolutions(b.checkpoint.scope, "date")
+    _, (correct,) = helper_resolutions(b.checkpoint.scope, "date")
+    date = without_relations(correct)
     proof = produce_v2(committed(b, (date,)))
     assert proof.result.run.disposition is None and proof.progress_receipt.disposition is None
     assert proof.result.run.stage == "processing_blocked" and proof.progress_receipt.wire_status == "processing_blocked"

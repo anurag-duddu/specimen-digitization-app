@@ -54,6 +54,65 @@ def canonical_json(value: object) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
 
 
+SETTLEMENT_UTILITY_VERSION = "deterministic-settlement-v1"
+
+
+def local_settlement_result(request: SpecialistRequest, tool_id: str, arguments: dict) -> SourceResult:
+    """Return the validator's exact event/assembly settlement, with no model authority.
+
+    The same pure adapter is replayed at publication. It accepts only immutable
+    identifiers already in this role's request and never raw model-supplied text,
+    source authority, evidence relation or revision.
+    """
+    from .evidence import elevation_resolutions, settle_elevation, temporal_resolutions
+
+    if tool_id == "settle_temporal":
+        if request.role != SpecialistRole.TEMPORAL or set(arguments) != {"field_key", "event_id"}:
+            raise ValueError("Temporal settlement requires its exact owned event")
+        field_key = FieldKey(arguments["field_key"])
+        event_id = arguments["event_id"]
+        if field_key not in request.field_keys or not isinstance(event_id, str):
+            raise ValueError("Temporal settlement exceeds scoped request")
+        source_revision = request.field_revisions.get(FieldKey.DATE_VISITED_FROM, 0)
+        resolutions = temporal_resolutions(request, event_id=event_id, source_revision=source_revision)
+        if resolutions[0].field_key != field_key:
+            raise ValueError("Temporal event does not establish the requested field")
+        assembly_ids = tuple(item.id for item in request.assemblies if item.event_id == event_id)
+        if not assembly_ids or any(item.field_key not in request.field_keys
+                                   for item in request.assemblies if item.event_id == event_id):
+            raise ValueError("Temporal event has no complete scoped assembly")
+    elif tool_id == "settle_elevation":
+        if request.role != SpecialistRole.MEASUREMENT or set(arguments) != {
+            "field_key", "event_id", "assembly_ids"}:
+            raise ValueError("Elevation settlement requires exact owned assemblies")
+        field_key = FieldKey(arguments["field_key"])
+        event_id, ids = arguments["event_id"], arguments["assembly_ids"]
+        if (field_key not in request.field_keys or not isinstance(event_id, str)
+            or not isinstance(ids, list) or not ids or any(not isinstance(item, str) for item in ids)):
+            raise ValueError("Elevation settlement exceeds scoped request")
+        assemblies = tuple(item for item in request.assemblies
+                           if item.event_id == event_id and item.field_key in request.field_keys)
+        if (not assemblies or tuple(ids) != tuple(item.id for item in assemblies)
+            or assemblies[0].field_key != field_key):
+            raise ValueError("Elevation settlement needs every assembly in immutable request order")
+        # G41 always derives from a written From quantity of the matching unit,
+        # even when the organiser's original proposal named a To slot.
+        from .evidence import parse_measurement
+        first = parse_measurement(assemblies[0].interpreted_text)
+        source_key = FieldKey(f"elevation_from_{first.from_unit}")
+        source_revision = request.field_revisions.get(source_key, 0)
+        settled = settle_elevation(request, assembly_ids=ids, source_revision=source_revision)
+        resolutions = elevation_resolutions(settled)
+    else:
+        raise ValueError("Unknown settlement utility")
+    return SourceResult(status=LookupStatus.SUCCESS,
+        coverage=SourceCoverageReceipt(source_id=tool_id, field_key=field_key,
+            state=SourceCoverageState.SEARCHED, source_version=SETTLEMENT_UTILITY_VERSION,
+            coverage_limit="Exact deterministic assembly settlement; no external source authority",
+            reason="exact_settlement"),
+        candidate_json=(canonical_json({"resolutions": [item.model_dump(mode="json") for item in resolutions]}),))
+
+
 def _source_json(raw: bytes):
     def unique(pairs):
         result = {}
@@ -803,6 +862,8 @@ class SourceBroker:
 
     async def invoke_utility(self, request: SpecialistRequest, tool_id: str, arguments: dict) -> SourceResult:
         from .evidence import catalog_literal, parse_measurement, parse_temporal
+        if tool_id in {"settle_temporal", "settle_elevation"}:
+            return local_settlement_result(request, tool_id, arguments)
         allowed = {"parse_measurement": SpecialistRole.MEASUREMENT,
                    "parse_temporal": SpecialistRole.TEMPORAL,
                    "catalog_number": SpecialistRole.COLLECTION}

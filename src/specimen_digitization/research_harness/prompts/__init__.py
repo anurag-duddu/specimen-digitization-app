@@ -24,18 +24,36 @@ RELATIONS_PROMPT_VERSION = "specialists-relations-v2-2026-10-03"
 # human question cites its evidence only on the question. The v2 files stay on disk
 # unchanged for audit (GEOGRAPHY_PROMPT_VERSION and RELATIONS_PROMPT_VERSION name them).
 READING_CITATION_PROMPT_VERSION = "specialists-reading-citation-v3-2026-10-03"
+# All six roles, for the fields the committed research profile declares missing
+# policy "unstructured_label_event_unqualified" (committed_pins.py). Each v4 file is
+# its v3 file followed by one block that tells the role to return waiting_policy,
+# never waiting_source, for an owned declared field that no assembly and no source
+# can ground, and waiting_source only for a source that failed or is unconfigured.
+# The v3 files stay on disk unchanged for audit (READING_CITATION_PROMPT_VERSION).
+MISSING_POLICY_PROMPT_VERSION = "specialists-missing-policy-v4-2026-10-03"
+# All six roles, with the hand-over (Lane P W5, 2026-10-04): the request carries the ordinary
+# extractor's field values as organiser_candidates (initial_requests.py), and each v5 file is its
+# v4 file followed by one block that says how to verify a candidate against the raw readings, how
+# a grounded candidate resolves from its accepted assembly, and what to return for one the
+# readings do not support. The v4 files stay on disk unchanged for audit
+# (MISSING_POLICY_PROMPT_VERSION names them).
+HANDOVER_PROMPT_VERSION = "specialists-handover-v5-2026-10-04"
+# Temporal and measurement now have a qualified two-reader event/unit route to
+# exact local settlement. Their v6 files append the superseding instructions;
+# all v5 files remain unchanged for replay and audit.
+QUALIFIED_PROMPT_VERSION = "specialists-qualified-event-v6-2026-10-04"
 
 # Role -> (role file, pin version). Each role's text is common-v1.txt, the role
 # file and its owned-fields line. A role moves to a new file and version without
 # changing any other role's text, digest or pin. Superseded files stay on disk
 # for audit.
 ROLE_PROMPTS = MappingProxyType({
-    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v3.txt", READING_CITATION_PROMPT_VERSION),
-    SpecialistRole.GEOGRAPHY: ("specimen_geography-v3.txt", READING_CITATION_PROMPT_VERSION),
-    SpecialistRole.TEMPORAL: ("specimen_temporal-v3.txt", READING_CITATION_PROMPT_VERSION),
-    SpecialistRole.MEASUREMENT: ("specimen_measurement-v3.txt", READING_CITATION_PROMPT_VERSION),
-    SpecialistRole.PARTIES: ("specimen_parties-v3.txt", READING_CITATION_PROMPT_VERSION),
-    SpecialistRole.COLLECTION: ("specimen_collection-v3.txt", READING_CITATION_PROMPT_VERSION),
+    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v5.txt", HANDOVER_PROMPT_VERSION),
+    SpecialistRole.GEOGRAPHY: ("specimen_geography-v5.txt", HANDOVER_PROMPT_VERSION),
+    SpecialistRole.TEMPORAL: ("specimen_temporal-v6.txt", QUALIFIED_PROMPT_VERSION),
+    SpecialistRole.MEASUREMENT: ("specimen_measurement-v6.txt", QUALIFIED_PROMPT_VERSION),
+    SpecialistRole.PARTIES: ("specimen_parties-v5.txt", HANDOVER_PROMPT_VERSION),
+    SpecialistRole.COLLECTION: ("specimen_collection-v5.txt", HANDOVER_PROMPT_VERSION),
 })
 
 
