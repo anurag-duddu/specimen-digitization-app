@@ -227,6 +227,12 @@ class NativeResearchWorker:
                 # tuple. End this known window and reopen before another effect;
                 # never reuse or weaken the old immutable send authorization.
                 return prior
+            if getattr(runtime, "publication_only", False):
+                job = await asyncio.to_thread(runtime.store.job, runtime.scope)
+                pending = any(field["work_state"] == "pending" and not field["locked"]
+                    for field in job["fields"].values())
+                return prior.model_copy(update={"status": "blocked",
+                    "reason_code": "research_program_headroom_unavailable"}) if pending else prior
             # One lease window: the next role_window pending specialists, at once.
             await runtime.engine.run(role_limit=runtime.role_window)
         return await self._publish_committed(runtime, principal, specimen_id)

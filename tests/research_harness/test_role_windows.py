@@ -39,7 +39,7 @@ def test_the_worker_asks_the_engine_for_the_runtime_s_window_of_roles(monkeypatc
     async def run(**kwargs):
         calls.append(kwargs)
 
-    async def publish(self, runtime, principal, specimen_id):
+    async def publish(self, runtime, principal, specimen_id, *, publication_progress=None):
         return SimpleNamespace(reason_code=None)
     monkeypatch.setattr(native_worker.NativeResearchWorker, "_publish_committed", publish)
     runtime = SimpleNamespace(binding=SimpleNamespace(research_scope=lambda: "scope"), scope="durable",

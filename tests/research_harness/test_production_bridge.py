@@ -445,7 +445,8 @@ class PublishingRuntime:
         job = {"record_revision": 4, "pins": {"profile": RESEARCH_PROFILE.model_dump(mode="json")},
             "fields": {str(key): {"checkpoint": {"id": f"native-{key}", "scope": RESEARCH_SCOPE.model_dump(mode="json"),
                 "payload": {"field_key": str(key)}}} for key in FieldKey}}
-        self.store = SimpleNamespace(job=lambda scope: job, _read=lambda scope: SimpleNamespace(state={"outbox": {}}))
+        self.store = SimpleNamespace(job=lambda scope: job,
+            _read=lambda scope: SimpleNamespace(state={"outbox": {}}), _job=lambda state, scope: job)
         self.canonical_service = SimpleNamespace(publish_checkpoint=self._publish)
 
     async def _load(self, scope):
