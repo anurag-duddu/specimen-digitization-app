@@ -74,23 +74,34 @@ void main() {
       'sensitive': scope.sensitive,
     });
     final read = Completer<Json>();
-    final api = _FieldHostApi(
-      (path) async => path.endsWith('/research/current')
-          ? {
-              'contract_version': 'canonical-binding/v2',
-              'canonical': {
-                'organization_id': collection.organizationId,
-                'collection_id': collection.collectionId,
-                'specimen_id': specimen.id,
-                'record_revision': specimen.revision,
-                'host_record_version_id': specimen.recordVersionId,
-                'sensitive': scope.sensitive,
-              },
-              'scope': scope.json,
-              'capabilities': {'read': true},
-            }
-          : read.future,
-    );
+    final api = _FieldHostApi((path) async {
+      if (path.endsWith('/research/current')) {
+        return {
+          'contract_version': 'canonical-binding/v2',
+          'canonical': {
+            'organization_id': collection.organizationId,
+            'collection_id': collection.collectionId,
+            'specimen_id': specimen.id,
+            'record_revision': specimen.revision,
+            'host_record_version_id': specimen.recordVersionId,
+            'sensitive': scope.sensitive,
+          },
+          'scope': scope.json,
+          'capabilities': {'read': true},
+        };
+      }
+      if (path.endsWith('/research/derivations/capability')) {
+        return {
+          'contract_version': 'research-derivation-capability/v1',
+          'available': false,
+          'blocked_reason': 'worker_unavailable',
+          'canonical_revision': specimen.revision,
+          'eligible_fields': <String>[],
+        };
+      }
+      if (path.endsWith('/thread')) return read.future;
+      throw StateError('Unexpected research path: $path');
+    });
     addTearDown(api.close);
     await _pump(
       tester,
@@ -113,11 +124,21 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Research').last);
     await tester.pump();
-    expect(api.paths, hasLength(2));
-    expect(api.paths.last, endsWith('/thread'));
+    expect(api.paths, hasLength(3));
+    expect(
+      api.paths.where((path) => path.endsWith('/research/current')),
+      hasLength(1),
+    );
+    expect(
+      api.paths.where(
+        (path) => path.endsWith('/research/derivations/capability'),
+      ),
+      hasLength(1),
+    );
+    expect(api.paths.where((path) => path.endsWith('/thread')), hasLength(1));
     read.complete(researchFixture('failed-thread'));
     await tester.pumpAndSettle();
-    expect(api.paths, hasLength(2));
+    expect(api.paths, hasLength(3));
     expect(find.byType(ResearchThreadCard), findsNWidgets(2));
     await tester.pumpWidget(const SizedBox());
   });
