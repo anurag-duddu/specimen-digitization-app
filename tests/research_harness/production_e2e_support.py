@@ -204,6 +204,12 @@ class FakeDataConnect:
         except _AlreadyExists as exists:
             return FakeResponse({"errors": [{"message": f'duplicate key value violates unique constraint "{exists}_pkey"',
                 "extensions": {"code": "ALREADY_EXISTS"}}]})
+        # Match the four real native HTTP reads: exact JSON is transported as
+        # text, rather than letting Any erase integral floating-point values.
+        from specimen_digitization.research_harness.native_json import NATIVE_JSON_READS
+        field = NATIVE_JSON_READS.get(name)
+        if field is not None and data[field] is not None:
+            data = {**data, field: {"exact_json": canonical(data[field]).decode()}}
         return FakeResponse({"data": wire(data)})
 
     # ---- membership ------------------------------------------------------

@@ -169,7 +169,8 @@ class SqlConnectRepository:
             raise Conflict(
                 "SQL Connect transaction rejected; reload current revision and membership"
             )
-        return body.get("data", {})
+        from ..research_harness.native_json import decode_native_json
+        return decode_native_json(operation, body.get("data", {}))
 
     @staticmethod
     def variables(scope):

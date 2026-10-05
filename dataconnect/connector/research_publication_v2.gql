@@ -9,6 +9,8 @@ query GetResearchPublicationReceiptV2($organizationId: UUID!, $collectionId: UUI
   collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) { active role canViewSensitive }
   specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) { sensitive }
   retained: _selectFirst(sql: """
+    SELECT row_to_json(native_exact)::text AS exact_json FROM (
+
     WITH pair AS (
       SELECT p, q FROM (SELECT * FROM public.research_publication_receipt_v2
         WHERE organization_id=$1 AND collection_id=$2 AND actor_uid=$4 AND idempotency_key=$5) p
@@ -41,7 +43,8 @@ query GetResearchPublicationReceiptV2($organizationId: UUID!, $collectionId: UUI
       AND f.record_version_id=(pair.p).native_record_version_id) AS fields,
     CASE WHEN a.id IS NULL THEN NULL ELSE jsonb_build_object('actorUid',a.actor_uid,'revision',a.revision,'requestSha256',a.request_sha256) END AS audit,
     CASE WHEN o.id IS NULL THEN NULL ELSE jsonb_build_object('aggregateRevision',o.aggregate_revision,'deduplicationKey',o.deduplication_key) END AS outbox,
-    intent.payload AS intent, prep.payload AS preparation, (pair.p).causal_proof AS causal,
+    CASE WHEN intent.payload_json::jsonb=intent.payload THEN intent.payload_json::json END AS intent,
+    CASE WHEN prep.payload_json::jsonb=prep.payload THEN prep.payload_json::json END AS preparation, (pair.p).causal_proof AS causal,
     CASE WHEN attempt.id IS NULL THEN NULL ELSE jsonb_build_object('id',attempt.id,'preparation_id',attempt.preparation_id,'operation_digest',attempt.operation_digest,'preparation_digest',attempt.preparation_digest,'admission_digest',attempt.admission_digest) END AS attempt, (pair.p).prepack_proof AS prepack
     FROM pair JOIN public.specimen s ON s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
     JOIN public.organization_member om ON om.organization_id=$1 AND om.uid=$4 AND om.active
@@ -62,6 +65,8 @@ query GetResearchPublicationReceiptV2($organizationId: UUID!, $collectionId: UUI
       AND o.id=(pair.p).outbox_id AND o.aggregate_revision=(pair.p).resulting_canonical_revision AND o.deduplication_key=(pair.p).operation_digest
     WHERE ((pair.p).id IS NOT NULL OR (pair.q).idempotency_key IS NOT NULL)
       AND $6<>''
+
+    ) native_exact
     """, params: [$organizationId,$collectionId,$specimenId,$actorUid,$idempotencyKey,$operationDigest])
 }
 
@@ -666,12 +671,14 @@ query GetResearchPublicationIntentV2($organizationId: UUID!, $collectionId: UUID
   collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) { active role canViewSensitive }
   specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) { sensitive }
   intent: _selectFirst(sql: """
-    SELECT i.payload AS original,
+    SELECT row_to_json(native_exact)::text AS exact_json FROM (
+
+    SELECT CASE WHEN i.payload_json::jsonb=i.payload THEN i.payload_json::json END AS original,
       (SELECT count(*) FROM public.research_publication_preparation_v2 p WHERE p.organization_id=$1
         AND p.collection_id=$2 AND p.intent_id=i.id) AS preparation_count,
       CASE WHEN (SELECT count(*) FROM public.research_publication_preparation_v2 p WHERE p.organization_id=$1
         AND p.collection_id=$2 AND p.intent_id=i.id)<=20 THEN
-        (SELECT COALESCE(jsonb_agg(p.payload ORDER BY p.ordinal),'[]'::jsonb) FROM public.research_publication_preparation_v2 p
+        (SELECT COALESCE(json_agg(CASE WHEN p.payload_json::jsonb=p.payload THEN p.payload_json::json END ORDER BY p.ordinal),'[]'::json) FROM public.research_publication_preparation_v2 p
           WHERE p.organization_id=$1 AND p.collection_id=$2 AND p.intent_id=i.id) ELSE NULL END AS preparations,
       CASE WHEN a.id IS NULL THEN NULL ELSE jsonb_build_object('id',a.id,'preparation_id',a.preparation_id,
         'operation_digest',a.operation_digest,'preparation_digest',a.preparation_digest,'admission_digest',a.admission_digest) END AS attempt
@@ -684,6 +691,8 @@ query GetResearchPublicationIntentV2($organizationId: UUID!, $collectionId: UUID
       AND a.collection_id=i.collection_id AND a.intent_id=i.id
     WHERE i.organization_id=$1 AND i.collection_id=$2 AND i.specimen_id=$3
       AND i.actor_uid=$4 AND i.idempotency_key=$5 AND $6<>''
+
+    ) native_exact
     """, params: [$organizationId,$collectionId,$specimenId,$actorUid,$idempotencyKey,$requestIdentityDigest])
 }
 

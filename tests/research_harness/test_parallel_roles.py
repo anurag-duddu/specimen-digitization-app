@@ -320,7 +320,7 @@ def test_two_roles_per_window_publish_what_one_role_per_window_publishes(tmp_pat
 
 def test_overlapping_roles_keep_only_their_own_model_and_source_receipts(tmp_path):
     """The two simultaneous model responses must not exchange checkpoint lineage."""
-    facts = tick(tmp_path, None)
+    facts = tick(tmp_path, None, key="shipped")
     assert facts["peak_roles"] == 2 and len(facts["run_lineage"]) == len(SpecialistRole)
     for role, model_effect_ids, source_fields in facts["run_lineage"]:
         owned = tuple(str(key) for key in ROLE_FIELDS[role])

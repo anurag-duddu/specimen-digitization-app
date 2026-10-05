@@ -433,3 +433,24 @@ other baseline finding, label, detector, threshold and filter is unchanged;
 unrelated JSON ordering was preserved. Gitleaks configuration is unchanged.
 Frozen raw plan templates and their digest/rejection assertions stay intact.
 The current October 3 workflows do not consume these retired plans.
+
+
+## 2026-10-05 exact V2 JSON read transport fingerprints
+
+The three current synthetic release-fixture source hashes were recomputed after
+the scoped V2 read-only JSON transport repair based on `5ec8cdb3`. They identify
+public connector source bytes; they confer no deployment or execution authority.
+
+| Public source file | SHA-256 |
+|---|---|
+| `dataconnect/connector/research_binding_v2.gql` | `b3df20fe6d7614ae6e536199b1874f307d6e6f7a6c98d36d8d43b40d3e2d9b44` | <!-- pragma: allowlist secret (public connector source digest) -->
+| `dataconnect/connector/research_materialization_inputs_v2.gql` | `f64b587a1311667fa6694f228dae34e52f806915ae945fc281fa35a52717f884` | <!-- pragma: allowlist secret (public connector source digest) -->
+| `dataconnect/connector/research_publication_v2.gql` | `4ac91175ed2d13f68ffdbd55b5d5e0c3918e36c4f9ba7ca86bd79b74d8895412` | <!-- pragma: allowlist secret (public connector source digest) -->
+
+The normal pinned detect-secrets hook refreshed 30 line locations in
+`scripts/ci/test_release_plan_templates.py`, canonical JSON ordering and its
+generated timestamp. Parsed before/after comparison confirms exactly the same
+finding sets, types, verification/non-secret labels, plugins, thresholds and
+filters: zero finding additions or removals. The existing inline public-digest
+annotations cover these three literals. No Gitleaks configuration, path exclusion,
+raw retired template or current-source/stale-source rejection guard changed.
