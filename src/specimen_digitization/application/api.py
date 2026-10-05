@@ -361,6 +361,8 @@ def summary(specimen: Specimen, role: str = "viewer") -> dict:
             action for action in result["available_actions"]
             if action not in {"retry", "resume", "reprocess", "restore_version"}
         ]
+    if run.dependencies.get("human_review_field_locks"):
+        result["available_actions"] = [action for action in result["available_actions"] if action != "reprocess"]
     if has_active_lease(run):
         result["available_actions"] = [action for action in result["available_actions"] if action != "restore_version"]
     if "evidence_pilot" in run.dependencies:
@@ -722,16 +724,32 @@ def create_app(
 
     @app.get("/v1/session")
     def session(user=Depends(identity)):
+        members = member_rows(user)
+        blockers = []
+        if mode != "synthetic":
+            # These are configuration blockers, not a live worker health check.
+            # Reading a session must never start a job to establish readiness.
+            if worker_dispatcher is None:
+                blockers.append("worker_readiness_not_verified")
+            for collection_id in {m["collection_id"] for m in members}:
+                resolution = registry.resolve(collection_id)
+                profile = resolution.profile
+                if profile is None or profile.processing is None:
+                    blockers.append("collection_processing_unconfigured")
+                # PLAN 4.1 / G1 applies to the selected harness profile. It does
+                # not grant institutional approval or change the stored flags.
+                if profile is not None and not (
+                    profile.harness_route or profile.institutional_policy_approved
+                ):
+                    blockers.append("institutional_policy_unapproved")
         return {
             "user_id": user,
             "mode": mode,
-            "memberships": member_rows(user),
+            "memberships": members,
             "persistence": "sqlite"
             if isinstance(repository, SQLiteRepository)
             else "sql_connect",
-            "runtime_blockers": []
-            if mode == "synthetic"
-            else ["worker_readiness_not_verified", "institutional_policy_unapproved"],
+            "runtime_blockers": sorted(set(blockers)),
             "synthetic_token_required": mode == "synthetic",
         }
 
@@ -1847,17 +1865,20 @@ def create_app(
         run.phase_results = {}
         run.review_risk = {}
 
-    @app.post(prefix + "/specimens/{specimen_id}/decisions")
-    def decision(
+    def apply_decision(
         organization_id: str,
         specimen_id: str,
         body: DecisionInput,
         background_tasks: BackgroundTasks,
         user=Depends(identity),
         idempotency_key: str = Header(default=""),
+        review_context=None,
+        pending_specimen=None,
     ):
         p, s = find(user, organization_id, specimen_id)
         principal(user, organization_id, p.scope.collection_id, review=True)
+        if pending_specimen is not None:
+            s = pending_specimen
         pilot = "evidence_pilot" in s.run.dependencies
         pilot_blocker = s.run.blocker
         pilot_risk = dict(s.run.review_risk)
@@ -1880,7 +1901,16 @@ def create_app(
             "run_sha256": before_digest,
             "history_url": f"/v1/organizations/{organization_id}/specimens/{s.id}/history/{s.version}?run_sha256={before_digest}&run_id={s.run.id}",
         }
-        if body.kind == "field":
+        audit_after = body.after
+        if body.kind == "research_candidate":
+            if review_context is None or body.target_id not in s.run.fields:
+                raise ValueError("A current research review context is required")
+            audit_after = review_context.apply(s, body.target_id, blobs, body.reason)
+            # Human selection terminates automatic work for this revision. The
+            # old binding is superseded by the ordinary canonical CAS below.
+            s.run.stage = "finalized"
+            s.run.lease_until = None
+        elif body.kind == "field":
             if body.target_id not in s.run.fields:
                 raise ValueError("Unknown field")
             if any(e not in {x.id for x in s.run.evidence} for e in body.evidence_ids):
@@ -1889,6 +1919,11 @@ def create_app(
                 dict(body.after, evidence_ids=body.evidence_ids)
             )
             s.run.fields[body.target_id] = field
+            audit_after = {**field.model_dump(mode="json"), "field_key": body.target_id,
+                           "evidence_ids": list(field.evidence_ids)}
+            superseded = s.run.dependencies.get("human_review_field_locks", {}).pop(body.target_id, None)
+            if superseded is not None:
+                audit_after["superseded_research_selection_id"] = superseded["selection_id"]
             invalidate_authorities(s.run, body.target_id)
             s.run.human_approved = False
             if body.target_id == "taxon" or any(
@@ -1925,6 +1960,11 @@ def create_app(
                 raise ValueError("Supported literal text required")
             if state != "supported" and text is not None:
                 raise ValueError("An abstention carries null text, not a placeholder")
+            # Reparsing explicitly supersedes the prior source-dependent field
+            # selections. Their audit, evidence and historical report remain.
+            superseded = s.run.dependencies.pop("human_review_field_locks", {})
+            audit_after = {**body.after, "region_id": body.target_id,
+                "superseded_research_fields": sorted(superseded)}
             invalidate_authorities(s.run)
             transcript.text = text
             transcript.resolved = state == "supported"
@@ -1999,6 +2039,12 @@ def create_app(
             )
             field.normalized = candidate.name
             field.evidence_ids.append(evidence.id)
+            superseded = s.run.dependencies.get("human_review_field_locks", {}).pop(body.target_id, None)
+            audit_after = {**body.after, "field_key": body.target_id,
+                "value": field.normalized, "authority_id": field.authority_id,
+                "evidence_ids": list(field.evidence_ids)}
+            if superseded is not None:
+                audit_after["superseded_research_selection_id"] = superseded["selection_id"]
             s.run.human_approved = False
         elif body.kind == "taxonomy_resolution":
             if not s.run.lookups or s.run.lookups[-1].status.value not in {
@@ -2033,6 +2079,11 @@ def create_app(
             s.run.fields["taxon"].normalized = choice["scientificName"]
             s.run.fields["taxon"].authority_id = selected
             s.run.fields["taxon"].evidence_ids.append(evidence.id)
+            superseded = s.run.dependencies.get("human_review_field_locks", {}).pop("taxon", None)
+            audit_after = {"field_key": "taxon", "value": choice["scientificName"],
+                "authority_id": selected, "evidence_ids": list(s.run.fields["taxon"].evidence_ids)}
+            if superseded is not None:
+                audit_after["superseded_research_selection_id"] = superseded["selection_id"]
             s.run.human_approved = False
         elif body.kind == "capability_defer":
             reason_code = body.after.get("capability_reason")
@@ -2115,9 +2166,11 @@ def create_app(
                 action="review_" + body.kind,
                 reason=body.reason,
                 before=before,
-                after=body.after,
+                after=audit_after,
             )
         )
+        if pending_specimen is not None:
+            return s
         s = save_recoverably(
             repository,
             p,
@@ -2129,6 +2182,57 @@ def create_app(
         schedule_local(p, s, background_tasks)
         return render_workspace(s, p, mutation_committed=True)
 
+    def candidate_decisions(organization_id, specimen_id, decisions, background_tasks, user, request_key):
+        from ..research_harness.human_review import CandidateReviewContext, REPORT_KEY
+        p, specimen = find(user, organization_id, specimen_id)
+        principal(user, organization_id, p.scope.collection_id, review=True)
+        request_digest = digest([item.model_dump(mode="json") for item in decisions])
+        base_revision = decisions[0].expected_revision
+        # Read the immutable result revision too: a later edit may have replaced
+        # its report pointer, but cannot erase the original retry receipt.
+        replay = specimen
+        if specimen.version > base_revision + 1:
+            replay = repository.version(p.scope, specimen_id, base_revision + 1)
+            sensitivity_access(user, p, replay.asset.sensitive)
+        retained = replay.run.dependencies.get(REPORT_KEY, {})
+        if retained.get("request_key") == request_key and retained.get("actor") == user:
+            if retained.get("request_digest") != request_digest:
+                raise Conflict("Idempotency key reused with different request")
+            saved = repository.save(p, replay, base_revision,
+                "research-review:" + request_key, request_digest)
+            return render_workspace(saved, p, mutation_committed=True)
+        if specimen.version != base_revision:
+            raise Conflict("Record changed; reopen before selecting a candidate")
+        # Every candidate-bearing record is one transaction, even when ordinary
+        # edits accompany the choices. Resolve all selections before any edit.
+        context = asyncio.run(CandidateReviewContext.load(app.state.research_discovery,
+            p, specimen, decisions))
+        for item in decisions:
+            specimen = apply_decision(organization_id, specimen_id, item, background_tasks,
+                user=user, idempotency_key=request_key,
+                review_context=context, pending_specimen=specimen)
+        if specimen.run.stage not in {"finalized", "processing_blocked"}:
+            finalize(specimen.run)
+        context.retain_report(specimen, blobs, request_key=request_key,
+            request_digest=request_digest, actor=user)
+        asyncio.run(context.recheck(app.state.research_discovery, p, specimen_id))
+        # Do not schedule a worker from a human choice. A later explicit process
+        # action needs a fresh validated binding and imported human locks.
+        saved = repository.save(p, specimen, base_revision,
+            "research-review:" + request_key, request_digest)
+        return render_workspace(saved, p, mutation_committed=True)
+
+    @app.post(prefix + "/specimens/{specimen_id}/decisions")
+    def decision(organization_id: str, specimen_id: str, body: DecisionInput,
+                 background_tasks: BackgroundTasks, user=Depends(identity),
+                 idempotency_key: str = Header(default="")):
+        key(idempotency_key)
+        if body.kind == "research_candidate":
+            return candidate_decisions(organization_id, specimen_id, [body],
+                background_tasks, user, idempotency_key)
+        return apply_decision(organization_id, specimen_id, body, background_tasks,
+            user=user, idempotency_key=idempotency_key)
+
     @app.post(prefix + "/decisions:batch")
     def decisions_batch(
         organization_id: str,
@@ -2139,8 +2243,8 @@ def create_app(
     ):
         """Several review decisions in one call, with one outcome per decision.
 
-        The single-decision endpoint above is unchanged and remains the way one
-        decision is taken. This exists because a reviewer acting on a selection
+        Candidate-bearing decisions on one specimen use one canonical CAS;
+        ordinary-only groups retain sequential saves. This exists because a reviewer acting on a selection
         is one action, and sending it as one call per record makes the count on
         the confirmation a promise the wire cannot keep: some calls land, some
         do not, and nothing reports which.
@@ -2183,6 +2287,8 @@ def create_app(
             if seen != (item.expected_revision, item.base_record_version_id):
                 raise ValueError("Decisions on one record share one base version")
 
+        candidate_records = {item.specimen_id for item in body.decisions if item.kind == "research_candidate"}
+        candidate_saved = {}
         current = dict(base)
         stopped: set[str] = set()
         results: list[dict] = []
@@ -2198,23 +2304,38 @@ def create_app(
                 continue
             revision, version_id = current[item.specimen_id]
             try:
-                saved = decision(
-                    organization_id,
-                    item.specimen_id,
-                    DecisionInput(
-                        expected_revision=revision,
-                        reason=body.reason,
-                        base_record_version_id=version_id,
-                        kind=item.kind,
-                        target_id=item.target_id,
-                        before=item.before,
-                        after=item.after,
-                        evidence_ids=item.evidence_ids,
-                    ),
-                    background_tasks,
-                    user=user,
-                    idempotency_key=entry_keys[index],
-                )
+                if item.specimen_id in candidate_records:
+                    if item.specimen_id not in candidate_saved:
+                        group = [DecisionInput(
+                            expected_revision=member.expected_revision, reason=body.reason,
+                            base_record_version_id=member.base_record_version_id, kind=member.kind,
+                            target_id=member.target_id, before=member.before, after=member.after,
+                            evidence_ids=member.evidence_ids)
+                            for member in body.decisions if member.specimen_id == item.specimen_id]
+                        candidate_saved[item.specimen_id] = candidate_decisions(organization_id,
+                            item.specimen_id, group, background_tasks, user,
+                            digest({"batch_key": idempotency_key, "specimen_id": item.specimen_id,
+                                "entry_keys": [entry_keys[i] for i, member in enumerate(body.decisions)
+                                    if member.specimen_id == item.specimen_id]}))
+                    saved = candidate_saved[item.specimen_id]
+                else:
+                    saved = decision(
+                        organization_id,
+                        item.specimen_id,
+                        DecisionInput(
+                            expected_revision=revision,
+                            reason=body.reason,
+                            base_record_version_id=version_id,
+                            kind=item.kind,
+                            target_id=item.target_id,
+                            before=item.before,
+                            after=item.after,
+                            evidence_ids=item.evidence_ids,
+                        ),
+                        background_tasks,
+                        user=user,
+                        idempotency_key=entry_keys[index],
+                    )
             except WorkspaceTooLarge as oversized:
                 # The decision was committed and only the rendered record was
                 # too large to return. Reporting it as refused would tell the
@@ -2440,6 +2561,8 @@ def create_app(
                     s.run.stage = "paused" if body.action == "pause" else "cancelled"
                     s.run.disposition = None
                 elif body.action == "reprocess":
+                    if s.run.dependencies.get("human_review_field_locks"):
+                        raise Conflict("Reprocessing cannot discard retained human field selections")
                     s.previous_runs.append(s.run)
                     s.run = Run(
                         profile=s.run.profile,
@@ -2593,6 +2716,15 @@ def create_app(
         discovery_result_model = ResearchDiscoveryResult
     else:
         raise ValueError("explicit_research_publication_version_required")
+    from ..research_harness.human_review import HistoricalResearchDiscovery, HistoricalReviewDiscovery
+    def load_research_specimen(p, specimen_id):
+        current_principal, specimen = find(p.user_id, p.scope.organization_id, specimen_id)
+        if current_principal.scope != p.scope or current_principal.role != p.role:
+            raise PermissionError("research_access_denied")
+        return specimen
+    discovery = HistoricalReviewDiscovery(discovery, load_specimen=load_research_specimen,
+        blobs=blobs, contract_version="canonical-binding/" + research_version)
+    discovery_result_model = discovery_result_model | HistoricalResearchDiscovery
     app.include_router(create_research_discovery_router(
         discovery, verified_principal_dependency=research_principal,
         result_model=discovery_result_model,

@@ -1,10 +1,10 @@
 {
   "contract_version": "research-thread-v1",
   "scope": {
-    "organization_id": "org",
-    "collection_id": "insects",
-    "specimen_id": "specimen",
-    "job_id": "job",
+    "organization_id": "org-test",
+    "collection_id": "collection-test",
+    "specimen_id": "specimen-test",
+    "job_id": "job-test",
     "generation": 1,
     "input_digest": "0101010101010101010101010101010101010101010101010101010101010101",
     "profile_digest": "0202020202020202020202020202020202020202020202020202020202020202",
@@ -72,10 +72,10 @@
     },
     {
       "field_key": "country",
-      "work_state": "resolved",
+      "work_state": "waiting_human",
       "value": {
-        "state": "supported",
-        "literal": "Synthetic country",
+        "state": "ambiguous",
+        "literal": "Synthetic locality text",
         "parsed": null,
         "normalized": null,
         "authority_id": null,
@@ -96,10 +96,10 @@
       },
       "checkpoint": {
         "scope": {
-          "organization_id": "org",
-          "collection_id": "insects",
-          "specimen_id": "specimen",
-          "job_id": "job",
+          "organization_id": "org-test",
+          "collection_id": "collection-test",
+          "specimen_id": "specimen-test",
+          "job_id": "job-test",
           "generation": 1,
           "input_digest": "0101010101010101010101010101010101010101010101010101010101010101",
           "profile_digest": "0202020202020202020202020202020202020202020202020202020202020202",
@@ -109,10 +109,10 @@
         "revision": 1,
         "resolution": {
           "field_key": "country",
-          "work_state": "resolved",
+          "work_state": "waiting_human",
           "value": {
-            "state": "supported",
-            "literal": "Synthetic country",
+            "state": "ambiguous",
+            "literal": "Synthetic locality text",
             "parsed": null,
             "normalized": null,
             "authority_id": null,
@@ -132,39 +132,124 @@
             "century_rule": null
           },
           "value_layer": "verbatim",
-          "evidence_ids": [
-            "synthetic-country-evidence"
-          ],
+          "evidence_ids": [],
           "assembly_ids": [],
           "rejected_assembly_ids": [],
           "event_id": null,
           "dependencies": [],
           "source_coverage": [],
-          "question": null,
+          "question": {
+            "field_key": "country",
+            "question": "Three places called Mount Apo lie up to 92 km apart. Which one does the label mean?",
+            "reason": "semantic_ambiguity",
+            "coverage": [
+              {
+                "source_id": "geolocate",
+                "field_key": "country",
+                "state": "searched",
+                "source_version": "geolocatesvcv2-glcwrap-json",
+                "qualification_digest": "0303030303030303030303030303030303030303030303030303030303030303",
+                "exact_join_attempted": false,
+                "exact_join_proven": false,
+                "query_digest": "0404040404040404040404040404040404040404040404040404040404040404",
+                "receipt_ids": [
+                  "source:0505050505050505050505050505050505050505050505050505050505050505"
+                ],
+                "candidate_count": 5,
+                "coverage_limit": "Bounded source assertion; other available strategies remain explicit",
+                "reason": "ambiguous: GEOLocate is ambiguous for 'Philippines': agreeing matches lie up to 92 km apart"
+              }
+            ],
+            "evidence_ids": [
+              "source:0505050505050505050505050505050505050505050505050505050505050505"
+            ]
+          },
           "exception": null,
           "derivation": null,
           "measurement": null,
-          "reason": "offline_accepted_evidence"
+          "reason": "Three Mount Apo matches agree on the name and lie far apart"
         },
-        "prompt_digest": "0303030303030303030303030303030303030303030303030303030303030303",
-        "model_settings_digest": "0404040404040404040404040404040404040404040404040404040404040404",
-        "source_registry_digest": "0505050505050505050505050505050505050505050505050505050505050505",
-        "effect_receipt_ids": [],
+        "prompt_digest": "0606060606060606060606060606060606060606060606060606060606060606",
+        "model_settings_digest": "0707070707070707070707070707070707070707070707070707070707070707",
+        "source_registry_digest": "0808080808080808080808080808080808080808080808080808080808080808",
+        "effect_receipt_ids": [
+          "0909090909090909090909090909090909090909090909090909090909090909",
+          "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+        ],
         "retry_command_id": null,
         "reused_from_scope_digest": null,
         "reused_from_checkpoint_digest": null,
         "trace_id": null
       },
-      "blocker_code": null,
-      "actions": [],
-      "review": null
+      "blocker_code": "human_decision_required",
+      "actions": [
+        "supply_information"
+      ],
+      "review": {
+        "question_reason": "semantic_ambiguity",
+        "reason": "Three Mount Apo matches agree on the name and lie far apart",
+        "evidence": [
+          {
+            "evidence_id": "source:0505050505050505050505050505050505050505050505050505050505050505",
+            "source_id": "geolocate",
+            "kind": "qualified_source",
+            "quote": null,
+            "searched_text": "Mount Apo",
+            "outcome": "ambiguous",
+            "note": "ambiguous: GEOLocate is ambiguous for 'Philippines': agreeing matches lie up to 92 km apart"
+          }
+        ],
+        "candidates": [
+          {
+            "label": "MOUNT APO",
+            "details": [
+              "CENTRAL MINDANAO"
+            ],
+            "distance_km": 46,
+            "authority_id": "geolocate:a863d52e6ff08fe2",
+            "rank": 1,
+            "source_id": "geolocate",
+            "evidence_id": "source:0505050505050505050505050505050505050505050505050505050505050505",
+            "selection_id": "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b",
+            "selection_value": "Philippines"
+          },
+          {
+            "label": "MOUNT APO",
+            "details": [
+              "RPP3"
+            ],
+            "distance_km": 46,
+            "authority_id": "geolocate:a71cd5741681e8fa",
+            "rank": 2,
+            "source_id": "geolocate",
+            "evidence_id": "source:0505050505050505050505050505050505050505050505050505050505050505",
+            "selection_id": "0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c",
+            "selection_value": "Philippines"
+          },
+          {
+            "label": "MOUNT APO",
+            "details": [
+              "COTABATO"
+            ],
+            "distance_km": 46,
+            "authority_id": "geolocate:3e5a153ca95eedd5",
+            "rank": 3,
+            "source_id": "geolocate",
+            "evidence_id": "source:0505050505050505050505050505050505050505050505050505050505050505",
+            "selection_id": "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d",
+            "selection_value": "Philippines"
+          }
+        ],
+        "evidence_not_shown": 0,
+        "candidates_not_shown": 0
+      }
     },
     {
       "field_key": "province_state",
       "work_state": "waiting_human",
       "value": {
         "state": "unresolved",
-        "literal": "Synthetic place",
+        "literal": "Synthetic locality text",
         "parsed": null,
         "normalized": null,
         "authority_id": null,
@@ -185,10 +270,10 @@
       },
       "checkpoint": {
         "scope": {
-          "organization_id": "org",
-          "collection_id": "insects",
-          "specimen_id": "specimen",
-          "job_id": "job",
+          "organization_id": "org-test",
+          "collection_id": "collection-test",
+          "specimen_id": "specimen-test",
+          "job_id": "job-test",
           "generation": 1,
           "input_digest": "0101010101010101010101010101010101010101010101010101010101010101",
           "profile_digest": "0202020202020202020202020202020202020202020202020202020202020202",
@@ -201,7 +286,7 @@
           "work_state": "waiting_human",
           "value": {
             "state": "unresolved",
-            "literal": "Synthetic place",
+            "literal": "Synthetic locality text",
             "parsed": null,
             "normalized": null,
             "authority_id": null,
@@ -229,39 +314,42 @@
           "source_coverage": [],
           "question": {
             "field_key": "province_state",
-            "question": "Which place does the label mean?",
-            "reason": "semantic_ambiguity",
+            "question": "No gazetteer holds Mount McKinley on Mindanao. Which province does the label mean?",
+            "reason": "scoped_absence",
             "coverage": [
               {
                 "source_id": "geolocate",
                 "field_key": "province_state",
                 "state": "searched",
                 "source_version": "geolocatesvcv2-glcwrap-json",
-                "qualification_digest": null,
+                "qualification_digest": "0303030303030303030303030303030303030303030303030303030303030303",
                 "exact_join_attempted": false,
                 "exact_join_proven": false,
-                "query_digest": null,
+                "query_digest": "0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e0e",
                 "receipt_ids": [
-                  "source:0606060606060606060606060606060606060606060606060606060606060606"
+                  "source:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
                 ],
-                "candidate_count": 2,
+                "candidate_count": 9,
                 "coverage_limit": "Bounded source assertion; other available strategies remain explicit",
-                "reason": "ambiguous: GEOLocate is ambiguous for 'Synthetic province': agreeing matches lie up to 90 km apart"
+                "reason": "no_match: GEOLocate returned 9 match(es); none is 'Mount McKinley' within 40 km of the interpreted placement"
               }
             ],
             "evidence_ids": [
-              "source:0606060606060606060606060606060606060606060606060606060606060606"
+              "source:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f"
             ]
           },
           "exception": null,
           "derivation": null,
           "measurement": null,
-          "reason": "Synthetic reason for the fixture"
+          "reason": "No Mount McKinley on Mindanao in GEOLocate (nine matches elsewhere)"
         },
-        "prompt_digest": "0303030303030303030303030303030303030303030303030303030303030303",
-        "model_settings_digest": "0404040404040404040404040404040404040404040404040404040404040404",
-        "source_registry_digest": "0505050505050505050505050505050505050505050505050505050505050505",
-        "effect_receipt_ids": [],
+        "prompt_digest": "0606060606060606060606060606060606060606060606060606060606060606",
+        "model_settings_digest": "0707070707070707070707070707070707070707070707070707070707070707",
+        "source_registry_digest": "0808080808080808080808080808080808080808080808080808080808080808",
+        "effect_receipt_ids": [
+          "0909090909090909090909090909090909090909090909090909090909090909",
+          "0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+        ],
         "retry_command_id": null,
         "reused_from_scope_digest": null,
         "reused_from_checkpoint_digest": null,
@@ -272,11 +360,21 @@
         "supply_information"
       ],
       "review": {
-        "question_reason": "semantic_ambiguity",
-        "reason": "Synthetic reason for the fixture",
-        "evidence": [],
+        "question_reason": "scoped_absence",
+        "reason": "No Mount McKinley on Mindanao in GEOLocate (nine matches elsewhere)",
+        "evidence": [
+          {
+            "evidence_id": "source:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+            "source_id": "geolocate",
+            "kind": "qualified_source",
+            "quote": null,
+            "searched_text": null,
+            "outcome": "no_match",
+            "note": "no_match: GEOLocate returned 9 match(es); none is 'Mount McKinley' within 40 km of the interpreted placement"
+          }
+        ],
         "candidates": [],
-        "evidence_not_shown": 1,
+        "evidence_not_shown": 0,
         "candidates_not_shown": 0
       }
     },
@@ -311,10 +409,10 @@
     },
     {
       "field_key": "city",
-      "work_state": "waiting_human",
+      "work_state": "pending",
       "value": {
-        "state": "unresolved",
-        "literal": "Synthetic place",
+        "state": "unknown",
+        "literal": null,
         "parsed": null,
         "normalized": null,
         "authority_id": null,
@@ -333,102 +431,10 @@
         "precision": null,
         "century_rule": null
       },
-      "checkpoint": {
-        "scope": {
-          "organization_id": "org",
-          "collection_id": "insects",
-          "specimen_id": "specimen",
-          "job_id": "job",
-          "generation": 1,
-          "input_digest": "0101010101010101010101010101010101010101010101010101010101010101",
-          "profile_digest": "0202020202020202020202020202020202020202020202020202020202020202",
-          "sensitive": false
-        },
-        "field_key": "city",
-        "revision": 1,
-        "resolution": {
-          "field_key": "city",
-          "work_state": "waiting_human",
-          "value": {
-            "state": "unresolved",
-            "literal": "Synthetic place",
-            "parsed": null,
-            "normalized": null,
-            "authority_id": null,
-            "authority_identity": null,
-            "evidence_ids": [],
-            "reason": "No supported source value",
-            "input_source": null,
-            "source_region_id": null,
-            "source_observation_id": null,
-            "verbatim_by_observation": {},
-            "input_source_by_observation": {},
-            "settled_observation_ids": [],
-            "layer": null,
-            "derived_from": [],
-            "evidence_relations": {},
-            "precision": null,
-            "century_rule": null
-          },
-          "value_layer": "verbatim",
-          "evidence_ids": [],
-          "assembly_ids": [],
-          "rejected_assembly_ids": [],
-          "event_id": null,
-          "dependencies": [],
-          "source_coverage": [],
-          "question": {
-            "field_key": "city",
-            "question": "Which place does the label mean?",
-            "reason": "scoped_absence",
-            "coverage": [
-              {
-                "source_id": "geolocate",
-                "field_key": "city",
-                "state": "searched",
-                "source_version": "geolocatesvcv2-glcwrap-json",
-                "qualification_digest": null,
-                "exact_join_attempted": false,
-                "exact_join_proven": false,
-                "query_digest": null,
-                "receipt_ids": [
-                  "source:0707070707070707070707070707070707070707070707070707070707070707"
-                ],
-                "candidate_count": 2,
-                "coverage_limit": "Bounded source assertion; other available strategies remain explicit",
-                "reason": "no_match: GEOLocate returned 2 match(es); none is 'Synthetic place' within 10 km of the interpreted placement"
-              }
-            ],
-            "evidence_ids": [
-              "source:0707070707070707070707070707070707070707070707070707070707070707"
-            ]
-          },
-          "exception": null,
-          "derivation": null,
-          "measurement": null,
-          "reason": "Synthetic reason for the fixture"
-        },
-        "prompt_digest": "0303030303030303030303030303030303030303030303030303030303030303",
-        "model_settings_digest": "0404040404040404040404040404040404040404040404040404040404040404",
-        "source_registry_digest": "0505050505050505050505050505050505050505050505050505050505050505",
-        "effect_receipt_ids": [],
-        "retry_command_id": null,
-        "reused_from_scope_digest": null,
-        "reused_from_checkpoint_digest": null,
-        "trace_id": null
-      },
-      "blocker_code": "human_decision_required",
-      "actions": [
-        "supply_information"
-      ],
-      "review": {
-        "question_reason": "scoped_absence",
-        "reason": "Synthetic reason for the fixture",
-        "evidence": [],
-        "candidates": [],
-        "evidence_not_shown": 1,
-        "candidates_not_shown": 0
-      }
+      "checkpoint": null,
+      "blocker_code": null,
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "precise_location",
@@ -577,9 +583,9 @@
     },
     {
       "field_key": "habitat",
-      "work_state": "pending",
+      "work_state": "waiting_source",
       "value": {
-        "state": "unknown",
+        "state": "not_present",
         "literal": null,
         "parsed": null,
         "normalized": null,
@@ -599,17 +605,82 @@
         "precision": null,
         "century_rule": null
       },
-      "checkpoint": null,
-      "blocker_code": null,
+      "checkpoint": {
+        "scope": {
+          "organization_id": "org-test",
+          "collection_id": "collection-test",
+          "specimen_id": "specimen-test",
+          "job_id": "job-test",
+          "generation": 1,
+          "input_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+          "profile_digest": "0202020202020202020202020202020202020202020202020202020202020202",
+          "sensitive": false
+        },
+        "field_key": "habitat",
+        "revision": 1,
+        "resolution": {
+          "field_key": "habitat",
+          "work_state": "waiting_source",
+          "value": {
+            "state": "not_present",
+            "literal": null,
+            "parsed": null,
+            "normalized": null,
+            "authority_id": null,
+            "authority_identity": null,
+            "evidence_ids": [],
+            "reason": "No supported source value",
+            "input_source": null,
+            "source_region_id": null,
+            "source_observation_id": null,
+            "verbatim_by_observation": {},
+            "input_source_by_observation": {},
+            "settled_observation_ids": [],
+            "layer": null,
+            "derived_from": [],
+            "evidence_relations": {},
+            "precision": null,
+            "century_rule": null
+          },
+          "value_layer": "verbatim",
+          "evidence_ids": [],
+          "assembly_ids": [],
+          "rejected_assembly_ids": [],
+          "event_id": null,
+          "dependencies": [],
+          "source_coverage": [],
+          "question": null,
+          "exception": null,
+          "derivation": null,
+          "measurement": null,
+          "reason": "The label names no habitat."
+        },
+        "prompt_digest": "1010101010101010101010101010101010101010101010101010101010101010",
+        "model_settings_digest": "0707070707070707070707070707070707070707070707070707070707070707",
+        "source_registry_digest": "0808080808080808080808080808080808080808080808080808080808080808",
+        "effect_receipt_ids": [],
+        "retry_command_id": null,
+        "reused_from_scope_digest": null,
+        "reused_from_checkpoint_digest": null,
+        "trace_id": null
+      },
+      "blocker_code": "source_prerequisite",
       "actions": [],
-      "review": null
+      "review": {
+        "question_reason": null,
+        "reason": "The label names no habitat.",
+        "evidence": [],
+        "candidates": [],
+        "evidence_not_shown": 0,
+        "candidates_not_shown": 0
+      }
     },
     {
       "field_key": "collection_method",
-      "work_state": "pending",
+      "work_state": "waiting_policy",
       "value": {
-        "state": "unknown",
-        "literal": null,
+        "state": "unresolved",
+        "literal": "synthetic method text",
         "parsed": null,
         "normalized": null,
         "authority_id": null,
@@ -628,10 +699,75 @@
         "precision": null,
         "century_rule": null
       },
-      "checkpoint": null,
-      "blocker_code": null,
+      "checkpoint": {
+        "scope": {
+          "organization_id": "org-test",
+          "collection_id": "collection-test",
+          "specimen_id": "specimen-test",
+          "job_id": "job-test",
+          "generation": 1,
+          "input_digest": "0101010101010101010101010101010101010101010101010101010101010101",
+          "profile_digest": "0202020202020202020202020202020202020202020202020202020202020202",
+          "sensitive": false
+        },
+        "field_key": "collection_method",
+        "revision": 1,
+        "resolution": {
+          "field_key": "collection_method",
+          "work_state": "waiting_policy",
+          "value": {
+            "state": "unresolved",
+            "literal": "synthetic method text",
+            "parsed": null,
+            "normalized": null,
+            "authority_id": null,
+            "authority_identity": null,
+            "evidence_ids": [],
+            "reason": "No supported source value",
+            "input_source": null,
+            "source_region_id": null,
+            "source_observation_id": null,
+            "verbatim_by_observation": {},
+            "input_source_by_observation": {},
+            "settled_observation_ids": [],
+            "layer": null,
+            "derived_from": [],
+            "evidence_relations": {},
+            "precision": null,
+            "century_rule": null
+          },
+          "value_layer": "verbatim",
+          "evidence_ids": [],
+          "assembly_ids": [],
+          "rejected_assembly_ids": [],
+          "event_id": null,
+          "dependencies": [],
+          "source_coverage": [],
+          "question": null,
+          "exception": null,
+          "derivation": null,
+          "measurement": null,
+          "reason": "missing_policy:unstructured_label_event_unqualified The readings show two collection methods."
+        },
+        "prompt_digest": "1010101010101010101010101010101010101010101010101010101010101010",
+        "model_settings_digest": "0707070707070707070707070707070707070707070707070707070707070707",
+        "source_registry_digest": "0808080808080808080808080808080808080808080808080808080808080808",
+        "effect_receipt_ids": [],
+        "retry_command_id": null,
+        "reused_from_scope_digest": null,
+        "reused_from_checkpoint_digest": null,
+        "trace_id": null
+      },
+      "blocker_code": "policy_prerequisite",
       "actions": [],
-      "review": null
+      "review": {
+        "question_reason": null,
+        "reason": "missing_policy:unstructured_label_event_unqualified The readings show two collection methods.",
+        "evidence": [],
+        "candidates": [],
+        "evidence_not_shown": 0,
+        "candidates_not_shown": 0
+      }
     },
     {
       "field_key": "date_visited_from",
@@ -751,7 +887,7 @@
     },
     {
       "field_key": "taxon",
-      "work_state": "operational_failed",
+      "work_state": "pending",
       "value": {
         "state": "unknown",
         "literal": null,
@@ -773,69 +909,9 @@
         "precision": null,
         "century_rule": null
       },
-      "checkpoint": {
-        "scope": {
-          "organization_id": "org",
-          "collection_id": "insects",
-          "specimen_id": "specimen",
-          "job_id": "job",
-          "generation": 1,
-          "input_digest": "0101010101010101010101010101010101010101010101010101010101010101",
-          "profile_digest": "0202020202020202020202020202020202020202020202020202020202020202",
-          "sensitive": false
-        },
-        "field_key": "taxon",
-        "revision": 1,
-        "resolution": {
-          "field_key": "taxon",
-          "work_state": "operational_failed",
-          "value": {
-            "state": "unknown",
-            "literal": null,
-            "parsed": null,
-            "normalized": null,
-            "authority_id": null,
-            "authority_identity": null,
-            "evidence_ids": [],
-            "reason": "No supported source value",
-            "input_source": null,
-            "source_region_id": null,
-            "source_observation_id": null,
-            "verbatim_by_observation": {},
-            "input_source_by_observation": {},
-            "settled_observation_ids": [],
-            "layer": null,
-            "derived_from": [],
-            "evidence_relations": {},
-            "precision": null,
-            "century_rule": null
-          },
-          "value_layer": "verbatim",
-          "evidence_ids": [],
-          "assembly_ids": [],
-          "rejected_assembly_ids": [],
-          "event_id": null,
-          "dependencies": [],
-          "source_coverage": [],
-          "question": null,
-          "exception": null,
-          "derivation": null,
-          "measurement": null,
-          "reason": "specialist_operational_failure"
-        },
-        "prompt_digest": "0808080808080808080808080808080808080808080808080808080808080808",
-        "model_settings_digest": "0404040404040404040404040404040404040404040404040404040404040404",
-        "source_registry_digest": "0505050505050505050505050505050505050505050505050505050505050505",
-        "effect_receipt_ids": [],
-        "retry_command_id": null,
-        "reused_from_scope_digest": null,
-        "reused_from_checkpoint_digest": null,
-        "trace_id": null
-      },
-      "blocker_code": "research_operational_failure",
-      "actions": [
-        "retry_field"
-      ],
+      "checkpoint": null,
+      "blocker_code": null,
+      "actions": [],
       "review": null
     },
     {
@@ -898,7 +974,7 @@
     }
   ],
   "effects": [],
-  "resolved_count": 1,
+  "resolved_count": 0,
   "exception_count": 0,
   "trace_ids": []
 }

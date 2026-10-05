@@ -11,6 +11,9 @@ class ResearchStatusV1(FrozenRecord):
     scope: ResearchScope
     status: Literal["blocked", "waiting_input", "pending", "completed"]
     paused: bool = Field(strict=True)
+    historical: bool = Field(default=False, exclude_if=lambda value: value is False)
+    canonical_revision: int | None = Field(default=None, exclude_if=lambda value: value is None)
+    review_saved_revision: int | None = Field(default=None, exclude_if=lambda value: value is None)
     resolved_count: int = Field(strict=True, ge=0)
     exception_count: int = Field(strict=True, ge=0)
     field_count: int = Field(strict=True, ge=0)
@@ -36,6 +39,8 @@ class ResearchStatusV1(FrozenRecord):
             else "pending" if not states <= {WorkState.RESOLVED, WorkState.NONBLOCKING_EXCEPTION}
             else "completed")
         return cls(scope=thread.scope, status=status, paused=thread.paused,
+            historical=thread.historical, canonical_revision=thread.canonical_revision,
+            review_saved_revision=thread.review_saved_revision,
             resolved_count=thread.resolved_count, exception_count=thread.exception_count,
             field_count=len(thread.fields))
 
