@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -13,10 +15,12 @@ import '../widget_test.dart' show TestRepository, TestSession, fixture;
 class RouteRepository extends TestRepository {
   final List<(String, String)> opened = [];
   int scopeReads = 0;
+  Completer<List<CollectionScope>>? scopeGate;
 
   @override
   Future<List<CollectionScope>> scopes() async {
     scopeReads++;
+    if (scopeGate != null) return scopeGate!.future;
     return super.scopes();
   }
 
@@ -38,6 +42,12 @@ class RestoringSession extends TestSession {
     _uid = uid;
     signedIn = true;
     controller.add(true);
+  }
+
+  @override
+  Future<void> signOut() async {
+    _uid = '';
+    await super.signOut();
   }
 }
 
@@ -136,6 +146,41 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     },
   );
+
+  for (final restoredUser in ['different-user', 'fixture-user']) {
+    testWidgets(
+      'sign-out then restored account does not reopen the old record: $restoredUser',
+      (tester) async {
+        final session = RestoringSession()..restore();
+        final repository = RouteRepository();
+        await mount(tester, engineWritten, session, repository);
+        await tester.pumpAndSettle();
+        expect(repository.opened, [('org/insects', 'fixture-001')]);
+        await session.signOut();
+        await tester.pumpAndSettle();
+        expect(session.userId, isEmpty);
+        expect(locationOf(tester), AppRoutes.signIn);
+        expect(find.byType(WorkbenchScreen), findsNothing);
+        repository.scopeGate = Completer<List<CollectionScope>>();
+        session.restore(restoredUser);
+        await tester.pump();
+        session.controller.add(
+          true,
+        ); // Overlapping auth and collection refresh.
+        await tester.pump();
+        expect(repository.opened, [('org/insects', 'fixture-001')]);
+        repository.scopeGate!.complete(await TestRepository().scopes());
+        await tester.pumpAndSettle();
+        expect(
+          locationOf(tester),
+          AppRoutes.queueOf(encodeCollectionKey('org/insects')),
+        );
+        expect(repository.opened, [('org/insects', 'fixture-001')]);
+        expect(find.byType(WorkbenchScreen), findsNothing);
+        await tester.pumpWidget(const SizedBox());
+      },
+    );
+  }
 
   for (final signOut in [false, true]) {
     test(
