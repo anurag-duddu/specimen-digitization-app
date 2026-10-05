@@ -225,6 +225,14 @@ class NativeResearchRuntimeFactory:
             or type(document.state.get("halted")) is not bool or job["paused"]):
             raise HeldUnknown("research_live_admission_unqualified")
         await asyncio.to_thread(store.reconcile_ordinary_spend, scope, specimen.run.usage.reserved_cost_micros)
+        from .program_budget import ProgramEffectBroker
+        # Recovery must carry every historical paid/unknown attempt into the
+        # shared program ledger even when this run cannot send again. This
+        # finance-only broker has no binding guard or send authorization and
+        # constructs no model gateway, source transport or capture services.
+        accounting = ProgramEffectBroker(store, self.blobs, repository=self.repository,
+            scope=scope, run=specimen.run)
+        await asyncio.to_thread(accounting.reconcile, scope)
         budget = await asyncio.to_thread(store.budget, scope)
         source_pins = job["pins"]["sources"]
         registry = registered_registry(source_pins)
@@ -256,7 +264,6 @@ class NativeResearchRuntimeFactory:
         from .canonical_materialization_v2 import ResearchCanonicalPolicyV2
         from .native_materialization_services_v2 import build_native_materialization_services_v2
         from .canonical_evidence_provider_v2 import build_captured_research_services_v2
-        from .program_budget import ProgramEffectBroker
         async def current_binding():
             current = await self.discovery.binding(principal, specimen_id)
             # State revision, effects and leases change as this window runs.
@@ -274,7 +281,6 @@ class NativeResearchRuntimeFactory:
                 "binding_id": str(binding.binding_id), "job_key": binding.job_key,
                 "generation": binding.generation, "record_version_id": str(binding.canonical.record_version_id),
                 "snapshot_sha256": binding.canonical.snapshot_sha256})
-        await asyncio.to_thread(effects.reconcile, scope)
         scientific_policy = ResearchCanonicalPolicyV2.from_registered_binding(binding)
         services = build_native_materialization_services_v2(
             self.repository, effects, registry, scientific_policy, request_factory)
