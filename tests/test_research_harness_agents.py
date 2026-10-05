@@ -426,13 +426,20 @@ def test_tree_cancellation_preserves_child_unknown_effect_and_parent_receipt(tmp
 
 
 def test_complete_tree_trace_readback_has_true_effect_and_child_metadata(tmp_path, capfire):
-    runtime, *_ = harness(tmp_path, delegate=SpecialistRole.GEOGRAPHY)
+    runtime, store, scope, *_ = harness(tmp_path, delegate=SpecialistRole.GEOGRAPHY)
     result = asyncio.run(runtime.run_specialist(SpecialistRole.TAXONOMY))
     spans = capfire.exporter.exported_spans_as_dict()
     model_spans = [item for item in spans if item["name"] == "research_harness.model"]
     assert len(model_spans) == 4
     observed = {item["attributes"]["research.effect_id"] for item in model_spans}
-    assert observed == set(result.model_effect_ids)
+    owned = {item["attributes"]["research.effect_id"] for item in model_spans
+             if item["attributes"]["research.role"] == SpecialistRole.TAXONOMY.value}
+    delegated = observed - owned
+    assert len(observed) == 4 and len(owned) == len(delegated) == 2
+    # Telemetry and the shared ledger retain the helper's work; only the
+    # invoking specialist's own receipts enter its scientific checkpoint.
+    assert owned == set(result.model_effect_ids) and not delegated & set(result.model_effect_ids)
+    assert store.budget(scope)["settled_micro_usd"] == 12 and store.budget(scope)["held_micro_usd"] == 0
     assert {item["attributes"]["research.role"] for item in model_spans} == {
         "specimen_taxonomy", "specimen_geography",
     }

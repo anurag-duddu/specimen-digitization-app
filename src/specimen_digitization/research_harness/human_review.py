@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from specimen_digitization.application.domain import Evidence, ValueState
-from specimen_digitization.application.storage import Conflict, canonical_json, digest
+from specimen_digitization.application.storage import Conflict, Missing, canonical_json, digest
 from .candidate_selection import DerivedCandidateMetadata, retained_candidate
 from .canonical_binding import BindingUnavailable, CanonicalIdentity
 from .compatibility import PublicationUnavailable
@@ -224,12 +224,18 @@ class HistoricalReviewDiscovery:
         return getattr(self.current, name)
 
     async def report(self, principal, specimen_id):
-        specimen = await asyncio.to_thread(self.load_specimen, principal, specimen_id)
+        try:
+            specimen = await asyncio.to_thread(self.load_specimen, principal, specimen_id)
+        except Missing:
+            raise BindingUnavailable("historical_research_report_unavailable") from None
         metadata = specimen.run.dependencies.get(REPORT_KEY)
         if (not isinstance(metadata, dict) or metadata.get("run_id") != specimen.run.id
                 or metadata.get("review_saved_revision", specimen.version + 1) > specimen.version):
             raise BindingUnavailable("historical_research_report_unavailable")
-        raw = await asyncio.to_thread(self.blobs.get_bounded, metadata["blob_ref"], REPORT_LIMIT)
+        try:
+            raw = await asyncio.to_thread(self.blobs.get_bounded, metadata["blob_ref"], REPORT_LIMIT)
+        except Missing:
+            raise BindingUnavailable("historical_research_report_integrity") from None
         if len(raw) != metadata["size_bytes"] or hashlib.sha256(raw).hexdigest() != metadata["sha256"]:
             raise BindingUnavailable("historical_research_report_integrity")
         payload = json.loads(raw)
@@ -243,11 +249,25 @@ class HistoricalReviewDiscovery:
             raise BindingUnavailable("historical_research_report_scope")
         return specimen, thread, canonical
 
+    async def _report_or_original(self, principal, specimen_id, original):
+        """An absent historical report cannot replace the current binding failure.
+
+        Corrupt reports, denied access and unexpected storage failures retain
+        their own fail-closed outcome; only genuine absence restores the original
+        fixed-code cause for private operator diagnostics.
+        """
+        try:
+            return await self.report(principal, specimen_id)
+        except BindingUnavailable as error:
+            if type(error) is BindingUnavailable and error.args == ("historical_research_report_unavailable",):
+                raise original from None
+            raise
+
     async def discover(self, principal, specimen_id):
         try:
             return await self.current.discover(principal, specimen_id)
-        except (BindingUnavailable, PublicationUnavailable):
-            specimen, thread, canonical = await self.report(principal, specimen_id)
+        except (BindingUnavailable, PublicationUnavailable) as original:
+            specimen, thread, canonical = await self._report_or_original(principal, specimen_id, original)
             locks = specimen.run.dependencies.get("human_review_field_locks", {})
             return HistoricalResearchDiscovery(contract_version=self.contract_version,
                 canonical=canonical, scope=thread.scope,
@@ -258,8 +278,8 @@ class HistoricalReviewDiscovery:
     async def service(self, principal, locator):
         try:
             return await self.current.service(principal, locator)
-        except (BindingUnavailable, PublicationUnavailable):
-            _, thread, _ = await self.report(principal, locator.specimen_id)
+        except (BindingUnavailable, PublicationUnavailable) as original:
+            _, thread, _ = await self._report_or_original(principal, locator.specimen_id, original)
             if (thread.scope.job_id, thread.scope.generation) != (locator.job_id, locator.generation):
                 raise StaleWork("research_state_changed")
             return self

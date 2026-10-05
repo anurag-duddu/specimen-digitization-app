@@ -219,9 +219,9 @@ def test_profile_has_exact_exception_and_dts_retains_verbatim():
     assert dts.value.literal == "unknown literal meaning" and dts.work_state == WorkState.WAITING_POLICY
 
 
-def test_registry_selected_eight_is_distinct_from_qualified_capability():
+def test_registry_selected_sources_are_distinct_from_qualified_capability():
     registry = insects_registry()
-    assert len(registry.policies) == 8 and "google_maps" not in {item.id for item in registry.policies}
+    assert len(registry.policies) == 13 and "google_maps" not in {item.id for item in registry.policies}
     assert SourceBroker(registry).available_sources(request(SpecialistRole.TAXONOMY)) == ()
     with pytest.raises(ValueError, match="expand"):
         insects_registry(qualification_overrides={"gbif": {"allowed_hosts": ("evil.example",)}})
@@ -229,6 +229,15 @@ def test_registry_selected_eight_is_distinct_from_qualified_capability():
                 "https://user:password@api.gbif.org/v2/species/match", "http://api.gbif.org/v2/species/match"):
         with pytest.raises(ValueError):
             validate_destination(registry.get("gbif"), bad)
+    assert {item.id for item in registry.policies} == {
+        "global_names_verifier", "catalogue_of_life", "gbif", "bugguide", "mapcarta", "geolocate",
+        "georeference_history", "georeference_spatial", "tgn", "wikidata", "nga",
+        "field_museum_ipt", "field_museum_emudata",
+    }
+    for source_id in ("georeference_history", "georeference_spatial"):
+        qualified = qualified_registry(source_id)
+        assert source_id not in {item.id for item in qualified.allowed(
+            request(SpecialistRole.GEOGRAPHY, registry=qualified))}
 
 
 def test_HISTORY_COVERAGE_missing_adapter_is_source_prerequisite():
