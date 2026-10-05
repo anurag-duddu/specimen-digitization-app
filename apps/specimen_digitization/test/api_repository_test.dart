@@ -168,7 +168,7 @@ void main() {
         {
           'kind': 'research_candidate',
           'target_id': 'country',
-          'selection_id': 'opaque-selection-receipt',
+          'selection_id': 'd' * 64,
           'reason': 'The source evidence supports this value',
           'evidence_ids': ['client-evidence-must-not-be-forwarded'],
         },
@@ -178,7 +178,7 @@ void main() {
       expect(body?['base_record_version_id'], 'r1:18');
       expect(body?['kind'], 'research_candidate');
       expect(body?['target_id'], 'country');
-      expect(body?['after'], {'selection_id': 'opaque-selection-receipt'});
+      expect(body?['after'], {'selection_id': 'd' * 64});
       expect(body?.containsKey('evidence_ids'), false);
       expect(body?.containsKey('disposition'), false);
     },

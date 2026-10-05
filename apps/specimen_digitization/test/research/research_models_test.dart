@@ -49,7 +49,7 @@ void main() {
           {
             'label': 'Mindanao',
             'source_id': 'geolocate',
-            'selection_id': 'candidate-receipt',
+            'selection_id': 'a' * 64,
             'selection_value': 'Philippines',
             'evidence_id': 'source-evidence',
           },
@@ -72,7 +72,7 @@ void main() {
       ).field('taxon')!;
       expect(field.review!.candidates.first.label, 'Mindanao');
       expect(field.review!.candidates.first.selectionValue, 'Philippines');
-      expect(field.review!.candidates.first.selectionId, 'candidate-receipt');
+      expect(field.review!.candidates.first.selectionId, 'a' * 64);
       expect(field.review!.candidates.last.selectionId, isNull);
       expect(field.review!.evidence.single.evidenceId, 'source-evidence');
     },

@@ -112,7 +112,7 @@ void main() {
             'label': 'Mindanao',
             'source_id': 'geolocate',
             'evidence_id': 'evidence-1',
-            'selection_id': 'server-receipt',
+            'selection_id': 'e' * 64,
             'selection_value': 'Philippines',
           }),
         ),
@@ -129,7 +129,7 @@ void main() {
     expect(pending.single.toChange('review this candidate'), {
       'kind': 'research_candidate',
       'target_id': 'country',
-      'selection_id': 'server-receipt',
+      'selection_id': 'e' * 64,
       'reason': 'review this candidate',
     });
   });

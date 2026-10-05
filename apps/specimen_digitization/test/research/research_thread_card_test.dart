@@ -116,7 +116,7 @@ void main() {
         {
           'label': 'Mindanao',
           'source_id': 'geolocate',
-          'selection_id': 'verified-selection',
+          'selection_id': 'b' * 64,
           'selection_value': 'Philippines',
           'evidence_id': 'source-evidence',
         },
@@ -147,7 +147,7 @@ void main() {
     expect(find.text('Philippines'), findsOneWidget);
     await tester.tap(find.text('Use this possibility'));
     await tester.pump();
-    expect(selected?.selectionId, 'verified-selection');
+    expect(selected?.selectionId, 'b' * 64);
     expect(selected?.label, 'Mindanao');
     expect(selected?.selectionValue, 'Philippines');
   });
@@ -171,7 +171,7 @@ void main() {
         {
           'label': 'Mindanao',
           'source_id': 'geolocate',
-          'selection_id': 'stripped-current-token',
+          'selection_id': 'c' * 64,
           'selection_value': 'Philippines',
         },
       ],
