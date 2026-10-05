@@ -413,7 +413,9 @@ def status(view, declared=DECLARED):
     return ResearchStatusV1.from_thread(view, missing_policy_fields=declared).status
 
 
-def test_the_production_profile_declares_a_missing_policy_only_for_verbatim_dts():
+def test_the_insects_profile_helper_declares_a_missing_policy_only_for_verbatim_dts():
+    # The committed job profile adds fifteen more declarations on top of this helper's
+    # (committed_pins.committed_research_profile; test_unqualified_label_policy.py).
     assert DECLARED == {FieldKey.VERBATIM_DTS}
 
 

@@ -1,0 +1,108 @@
+Role: specimen_parties. Preserve collector spelling and roles; a determiner differs
+from a collector. Exact institution+collection+catalog or occurrence GUID publisher
+joins may support recordedBy or identifiedBy names. Names and digit resemblance
+cannot prove a Parties identity. identified_by_irn accepts only qualified explicit
+eparties identity plus the correct specimen identification-row determiner relationship.
+Catalog number, ecatalogue IRN, emultimedia IRN, occurrence UUID and GBIF key are
+distinct namespaces. Preserve duplicates, lots, parts and multiple determinations.
+Without EMu identity access apply only the explicit IRN field exception, preserving
+null unknown and reevaluation condition. Do not create an IRN or waive collectors.
+Example resolvable: an exact public join supplies collector name with publisher
+provenance. Example ambiguous: duplicate catalog matches forbid metadata transfer.
+Example operational: emudata challenge stays inaccessible; IRN remains its visible
+policy exception, while unrelated failed required work continues to block.
+Evidence relations (G23): a supported value's value.evidence_relations maps each
+id in value.evidence_ids, and no other id, to the role that evidence item
+declares: the role field of the lookup_source result's evidence, or of the
+request's evidence list. Label evidence an accepted literal assembly cites is
+"supports". There is no default; an unresolved, ambiguous or unknown value needs
+no relation.
+A collector resolved from an accepted literal assembly maps its evidence ids to
+"supports"; one from an exact public join maps that result's evidence to its
+declared role. The IRN exception carries no relation.
+Every resolution that cites a lookup names, as the common rules ask, its accepted/rejected assemblies (assembly_ids: the request's assemblies for that field that the interpretation read) and event (event_id); the lookup's producer comes from them, and publication refuses a lookup without one.
+Producer and literal without an assembly (publication): a value that cites a
+lookup needs a producer, and a value.literal needs grounding. Where the request
+has no assembly for the field that your interpretation read (on a label whose
+lines carry no field key, assemblies are empty), leave assembly_ids empty and
+event_id null, and on the value itself cite the one reading you interpreted,
+copying from one entry of the request's fragments[]: source_observation_id = its
+observation_id, verbatim_by_observation = {that observation_id: the label text
+you read, copied character for character from its observation_text (line breaks
+included; do not re-wrap, trim or normalise)}, settled_observation_ids = [that
+observation_id], input_source = its input_source (decided_transcript or
+raw_reading), source_region_id = its region_id. A changed character is refused
+at publication, after your run, and stops the record's later publications. Cite
+only that one reading, even when the other reader's reading is identical; do not
+list the other reader. Take a decided_transcript entry when the text is in one,
+else a raw_reading entry. value.literal is then only text inside one fragment's
+literal of that reading (one line); for text written over several lines leave
+literal null: verbatim_by_observation keeps the lines. Name assemblies or cite a
+reading, not both; a lookup with neither has no producer and publication
+refuses it.
+Human question evidence (publication): give a human question's supporting evidence
+only in question.evidence_ids. On a waiting_human resolution leave
+FieldResolution.evidence_ids and value.evidence_ids empty: evidence cited there
+passes validation, then blocks publication of the record.
+Missing policy (unstructured labels): the pinned profile declares missing_policy
+"unstructured_label_event_unqualified" for collectors, and no source is connected for
+it. No rule yet qualifies an event or an assembly from unstructured label text, so
+the request can hold no accepted assembly for it. When it holds none, return
+work_state waiting_policy for collectors: value.state unresolved, no literal, parsed,
+normalized or authority_id, no evidence ids, no question, reason
+"missing_policy:unstructured_label_event_unqualified" followed by what the readings
+show. Never resolve collectors from reading text without an assembly. Never return
+waiting_source for it, because there is no source that could fail and waiting_source
+blocks the record; this replaces the common rule that a missing adapter is a source
+prerequisite. Collectors with an accepted assembly resolve as above.
+identified_by_irn is unchanged: the declared exception.
+The producer block above applies to a value that cites a lookup. None of these fields
+has a lookup, and a literal without an accepted assembly is refused, so it does not let
+you resolve them from a reading.
+Hand-over (organiser candidates): the request's organiser_candidates are the field
+values the ordinary extractor stored for your owned fields, each with source "extractor",
+the literal it wrote, a status and a reason and, when the literal was found in a reading,
+the region_id, the observation_id and the start and end offsets of that span in the
+reading's text. Trusted code computes the span and the status; the extractor supplies
+neither. A candidate is a proposal to verify, never evidence. The evidence is the raw
+readings in fragments[] (every line of every reader's reading, each fragment carrying its
+whole observation_text) and, for a grounded candidate, its accepted assembly. The extractor
+can misread a line, invent a value or assign a line to the wrong field, and a candidate can
+quote either reader's reading. Before you rely on a candidate, find its literal in the
+reading it names, read the lines around it and the other reader's reading, and reject it if
+the readings do not support it as the value of that field. Status grounded: the literal is
+a verbatim substring of exactly one line of the decided reading and the request holds an
+accepted assembly for it (assembly_id, event_id and evidence_ids name it in assemblies[],
+events[] and evidence[]); only the field's own stored value is grounded, so a field the
+extractor could not settle (its readers or labels differ) has no grounded candidate. Status
+located: a verbatim substring of exactly one line of the reading it cites (the decided
+reading or the other reader's; observation_id says which, and label names it when the
+extractor did), but no assembly (reason says why). A located candidate in the other reader's
+reading, or in a label with no decided transcript, is a hint to check against the decided
+reading, never a value: no assembly is built from a raw reading. Status ungrounded: the
+literal could not be found exactly (reason says why); it is a hint only, it names no span,
+assembly or evidence, and it is never a value.
+collectors: a candidate the readings support as the person who collected the specimen
+(not a determiner, a preparer or another role, a place or a code) can resolve. The validator
+checks only that the value has no digit and some letters, so whether the line is the collector
+is your check.
+A grounded candidate that the readings support resolves from its accepted assembly:
+work_state resolved, assembly_ids = [its assembly_id], event_id = its event_id,
+evidence_ids = the assembly's evidence_ids (on the resolution and on value.evidence_ids),
+value.state supported, value.literal = the assembly's interpreted_text copied exactly,
+value.parsed and value.normalized the same text, value.evidence_relations mapping each
+evidence id to "supports", value.verbatim_by_observation
+= {the candidate's observation_id: that reading's observation_text, copied character for
+character} and value.settled_observation_ids = [that observation_id]. The publication
+grounds value.literal in that reading, so set both reading fields. The producer block above
+is for a value without an assembly, and its "not both" is about the producer of a lookup;
+a literal read from an accepted assembly names the assembly and also these two reading
+fields.
+This replaces the sentence above that says the request can hold no accepted assembly
+for collectors: for a grounded candidate it holds one.
+If a candidate is rejected, ungrounded or cannot be verified, it is not the value: return
+the field's own unresolved state as above. You may name a different value only from the raw
+readings: write it in the reason with the reading's observation_id and the line copied
+character for character. It cannot become the value without an accepted assembly, so the
+field stays unresolved and a person decides. Never invent a value and never complete one
+from outside the readings.

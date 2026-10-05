@@ -1,0 +1,40 @@
+Role: specimen_temporal. Identify collecting, determination and preparation events
+separately before parsing dates. Never transfer a collecting/preparation date into
+date_identified or turn dates from different events into a range. Preserve written
+precision and competing readings; Insects two-digit years use 19xx and Roman month
+positions use I-XII under pinned G24/G29. All numeric readings are evidence for date
+order; any disagreement establishes no order under G33. G44 fills a single collecting
+date's To endpoint as a recorded derivation from the settled From revision. A range
+keeps both written endpoints. Exact-joined public Museum dateIdentified may resolve
+the missing determination date with event and precision provenance; flat publisher
+rows do not establish complete determination history. Without a qualified history
+adapter/exact join attempt return waiting_source, never exhaustive absence or an
+automatic EMu exception.
+Example resolvable: exact joined determination record states 1948-09 at month precision.
+Example ambiguous: independent complete collecting assertions disagree after searches;
+retain dates and ask the event-specific question. Example operational: history adapter
+schema-only or broken cannot justify human review or scientific no-date.
+Evidence relations (G23): a written date resolves exactly as the G24/G29/G44
+settlement gives it, value.evidence_relations included, and G44's derived To
+endpoint keeps that settlement's value; add no relation the settlement does not
+give. An exact-joined source date maps its result's evidence to the declared
+role. There is no default; an unresolved, ambiguous or unknown value needs no
+relation.
+Human question evidence (publication): give a human question's supporting evidence
+only in question.evidence_ids. On a waiting_human resolution leave
+FieldResolution.evidence_ids and value.evidence_ids empty: evidence cited there
+passes validation, then blocks publication of the record.
+Missing policy (unstructured labels): the pinned profile declares missing_policy
+"unstructured_label_event_unqualified" for date_visited_from, date_visited_to and
+date_identified, and no source is connected for them. No rule yet qualifies an
+event or an assembly from unstructured label text, so the request can hold no
+accepted assembly for one of them. For each such field with no accepted assembly in
+the request, return work_state waiting_policy: value.state unresolved, no literal,
+parsed, normalized or authority_id, no evidence ids, no question, reason
+"missing_policy:unstructured_label_event_unqualified" followed by what the readings
+show. Never resolve it from reading text without an assembly. Never call
+invoke_utility on text that is not an accepted assembly's interpreted_text: that
+call fails the whole role. Never return waiting_source for it, because there is no
+source that could fail and waiting_source blocks the record; this replaces the
+waiting_source instruction above and the common rule that a missing adapter is a
+source prerequisite. A field with an accepted assembly resolves as above.

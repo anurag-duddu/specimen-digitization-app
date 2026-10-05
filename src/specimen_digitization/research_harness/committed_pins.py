@@ -29,7 +29,7 @@ from specimen_digitization.application.collection_profiles import (
 from specimen_digitization.model_gateway import HUGGINGFACE_ROUTES
 from .accepted_output import VALIDATOR_SOURCE_SHA256, VALIDATOR_VERSION, validation_boundary_pins
 from .agents import specialist_output_schema_digest
-from .contracts import SourceQuery, SourceResult, SpecialistRole, digest
+from .contracts import CollectionProfile, FieldKey, SourceQuery, SourceResult, SpecialistRole, digest
 from .evidence import insects_profile
 from .gateway import ModelBinding, ModelGatewayBlocked
 from .local_utility_proof_v2 import UTILITY_ROLES, UTILITY_VERSION
@@ -43,6 +43,51 @@ from .source_readiness import CAPTURE_POLICIES, SOURCE_READINESS
 from .sources import insects_registry
 
 ENGINE_VERSION = "research_harness_v1"
+
+# No pinned rule qualifies an event or a field assembly from unstructured label text:
+# initial_requests._graph builds an assembly from an exact `field_key: value` line of a
+# decided transcript (no recorded production reading has one; the name below is the reason
+# that module gives an unkeyed event) and, since the hand-over, from a value the ordinary
+# extractor stored for one of five literal fields (initial_requests.ASSEMBLY_FIELDS) when
+# trusted code finds it verbatim in one line of the decided reading: a proposal verified
+# against the text, not a pinned rule. Every other declared field, and any value that cannot
+# be placed exactly, can be grounded only by a source this deployment offers for it, or not
+# at all. Declaring the missing
+# policy here, as verbatim_dts declares its own, turns a specialist's waiting_policy
+# on a declared field into the existing needs_human_review path with the reason
+# mandatory_unresolved:{field} (canonical_materialization_v2._policy_held, status.py
+# and the connector's disposition check, none of which names a field). A
+# waiting_source is not held: a failed, rate-limited or unconfigured source still
+# blocks the record. The v4 role prompts tell a specialist which of the two to return.
+UNQUALIFIED_LABEL_POLICY = "unstructured_label_event_unqualified"
+# The twelve fields that no source this deployment offers can ground, so nothing can
+# fail for them and a specialist's waiting_policy on one is unambiguous ...
+UNQUALIFIED_LABEL_LITERAL_FIELDS = (
+    FieldKey.DATE_VISITED_FROM, FieldKey.DATE_VISITED_TO, FieldKey.DATE_IDENTIFIED,
+    FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M, FieldKey.ELEVATION_FROM_FT,
+    FieldKey.ELEVATION_TO_FT, FieldKey.COLLECTORS, FieldKey.FMNH_INS_NUMBER,
+    FieldKey.COLLECTION_CODE, FieldKey.HABITAT, FieldKey.COLLECTION_METHOD)
+# ... and the three that have a source but, for a label that names nothing to look up
+# or a lookup that completes without a match, no other end state: county (GEOLocate
+# confirms a county only inside the USA, so outside it no receipt exists to back a
+# human question), city (only a place the label names can be queried) and taxon (a
+# completed GBIF search with no match cannot become a human question). Their prompts
+# keep waiting_source for a lookup that failed, timed out or was refused.
+# country, province_state and precise_location are not declared: a GEOLocate no_match
+# or ambiguous result on them is already a human question.
+UNQUALIFIED_LABEL_LOOKUP_FIELDS = (FieldKey.COUNTY, FieldKey.CITY, FieldKey.TAXON)
+UNQUALIFIED_LABEL_FIELDS = frozenset((*UNQUALIFIED_LABEL_LITERAL_FIELDS, *UNQUALIFIED_LABEL_LOOKUP_FIELDS))
+
+
+def committed_research_profile(organization_id: str, collection_id: str) -> CollectionProfile:
+    """The research profile every committed job pins: insects_profile, plus the
+    missing policy of each field no unstructured label can ground."""
+    base = insects_profile(organization_id, collection_id)
+    return insects_profile(organization_id, collection_id, overrides=tuple(
+        row.model_copy(update={"missing_policy": UNQUALIFIED_LABEL_POLICY})
+        for row in base.fields if row.field_key in UNQUALIFIED_LABEL_FIELDS))
+
+
 # Each request writes at most 4,096 output tokens: the gateway's own cap (gateway.ModelBinding)
 # and the budget the geography prompt and test_five_human_questions_echoing_their_receipts_fit_one_response
 # state. 2,048 (HARNESS.md G30, written for the single-agent field harness) can truncate a
@@ -239,7 +284,7 @@ def build_committed_pins(profile, *, organization_id: str, collection_id: str) -
     if binding.reservation_micro_usd > committed_run_cost_limit_micros(profile):
         raise ValueError("research_committed_reservation_exceeds_run_limit")
     roles = tuple(SpecialistRole)
-    research_profile = insects_profile(organization_id, collection_id)
+    research_profile = committed_research_profile(organization_id, collection_id)
     toolset, schema = _toolset_digest(), specialist_output_schema_digest()
     prompts = {str(role): resolve_prompt(role, profile_digest=digest(research_profile),
         source_registry_digest=registry.digest, toolset_digest=toolset,
