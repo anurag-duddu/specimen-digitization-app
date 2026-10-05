@@ -40,6 +40,8 @@ from specimen_digitization.application.harness import (
     ExtractionCandidate,
     ExtractionOutput,
 )
+from specimen_digitization.application.field_harness import labelled
+from specimen_digitization.application.organiser import extraction_readings
 from specimen_digitization.application.policy import evaluate
 from specimen_digitization.application.storage import LocalBlobs
 
@@ -91,10 +93,17 @@ def make_run(labels):
 
 def candidates(run, region, pairs):
     """The extractor quoted the whole label as its excerpt, as the stored answers do."""
-    text = next(t.text for t in run.transcripts if t.region_id == region)
+    reading_label, reading = next(
+        (label, reading)
+        for label, reading in labelled(extraction_readings(run)).items()
+        if reading.region_id == region
+    )
     return [
         ExtractionCandidate(
-            field_key=key, region_id=region, literal=literal, source_excerpt=text
+            field_key=key,
+            reading=reading_label,
+            literal=literal,
+            source_excerpt=reading.text,
         )
         for key, literal in pairs
     ]
@@ -257,6 +266,8 @@ def test_a_refused_value_is_not_stored_but_the_raw_answer_is_kept(tmp_path):
             resolved=True,
         )
     ]
+    reading_label = next(iter(labelled(extraction_readings(run))))
+    assert reading_label == "1A"
     run.dependencies = {
         "prompts": {
             PromptName.STRUCTURED_EXTRACTION.value: ResolvedPrompt(
@@ -273,7 +284,7 @@ def test_a_refused_value_is_not_stored_but_the_raw_answer_is_kept(tmp_path):
         "candidates": [
             {
                 "field_key": key,
-                "region_id": "label",
+                "reading": reading_label,
                 "literal": literal,
                 "source_excerpt": P7,
             }
