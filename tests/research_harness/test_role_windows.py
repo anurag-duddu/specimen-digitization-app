@@ -1,7 +1,7 @@
 """The committed window size K, and why K roles can share one lease window.
 
 The roles of a window run at once, so they must be independent: disjoint fields,
-disjoint sources, one run budget. The worker hands the engine K roles per lease
+disjoint model HTTP sources, one run budget. The worker hands the engine K roles per lease
 and the engine runs K of them at once.
 """
 import asyncio
@@ -11,10 +11,13 @@ from types import SimpleNamespace
 import pytest
 
 from specimen_digitization.research_harness import native_worker, role_windows
-from specimen_digitization.research_harness.contracts import ROLE_FIELDS, SpecialistRole
+from specimen_digitization.research_harness.contracts import (
+    ROLE_FIELDS, FieldKey, ResearchScope, SourceQuery, SpecialistRequest, SpecialistRole,
+)
 from specimen_digitization.research_harness.engine import ResearchEngine
+from specimen_digitization.research_harness.prompts import resolve_prompt
 from specimen_digitization.research_harness.source_readiness import CAPTURE_POLICIES, SOURCE_READINESS
-from specimen_digitization.research_harness.sources import insects_registry
+from specimen_digitization.research_harness.sources import FixtureSourceTransport, SourceBroker, insects_registry
 
 
 
@@ -66,7 +69,7 @@ def test_the_shipped_windows_pair_independent_roles_in_roster_order():
 
 
 def runnable_sources(role):
-    """The sources a role's lookup can run: qualified in the committed readiness, with full capture."""
+    """Model HTTP lookups: qualified and fully captured; worker-only local adapters are separate."""
     registry = insects_registry(qualification_overrides=SOURCE_READINESS)
     return {policy.id for policy in registry.policies
             if role in policy.roles and set(ROLE_FIELDS[role]) & set(policy.fields) and policy.ready
@@ -74,15 +77,42 @@ def runnable_sources(role):
 
 
 def test_no_two_roles_can_run_the_same_source():
-    """Roles in a window never share a source, so the per-source request spacing (GEOLocate's 3 s)
+    """Roles in a window never share an HTTP source, so per-source request spacing (GEOLocate's 3 s)
     and the source-capture gate (one in-flight capture per field) are never contended across roles."""
     assert runnable_sources(SpecialistRole.TAXONOMY) == {"gbif", "global_names_verifier", "catalogue_of_life"}
-    assert runnable_sources(SpecialistRole.GEOGRAPHY) == {"geolocate"}
+    # a3b4c5da qualified the historical APIs; c9ae7d1c enabled their geography-v6 use.
+    assert runnable_sources(SpecialistRole.GEOGRAPHY) == {"geolocate", "tgn", "wikidata", "nga"}
     for role in (SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT, SpecialistRole.PARTIES,
                  SpecialistRole.COLLECTION):
         assert runnable_sources(role) == set(), role
     for first, second in combinations(SpecialistRole, 2):
         assert not runnable_sources(first) & runnable_sources(second), (first, second)
+
+
+@pytest.mark.parametrize("source_id", ["tgn", "wikidata", "nga"])
+@pytest.mark.parametrize("role", [role for role in SpecialistRole if role != SpecialistRole.GEOGRAPHY])
+def test_qualified_historical_source_refuses_another_role_before_effect_or_transport(source_id, role):
+    registry = insects_registry(qualification_overrides=SOURCE_READINESS)
+    scope = ResearchScope(organization_id="org", collection_id="collection", specimen_id="specimen",
+        job_id="job", generation=1, input_digest="1" * 64, profile_digest="2" * 64, sensitive=False)
+    prompt = resolve_prompt(role, profile_digest=scope.profile_digest,
+        source_registry_digest=registry.digest, toolset_digest="3" * 64,
+        model_route="fixture", output_schema_digest="4" * 64)
+    request = SpecialistRequest(scope=scope, role=role, field_keys=ROLE_FIELDS[role], prompt=prompt)
+    calls = []
+
+    async def unexpected_call(*args, **kwargs):
+        calls.append((args, kwargs))
+        pytest.fail("cross-role lookup reached effect dispatch or transport")
+
+    broker = SourceBroker(registry, transport=FixtureSourceTransport(unexpected_call),
+        effect_dispatch=unexpected_call)
+    assert registry.get(source_id).ready
+    assert source_id not in broker.available_sources(request)
+    query = SourceQuery(source_id=source_id, field_key=FieldKey.CITY, query_text="Yepocapa")
+    with pytest.raises(ValueError, match="Source lookup escaped specialist field scope"):
+        asyncio.run(broker.query_source(request, query))
+    assert calls == []
 
 
 @pytest.mark.parametrize("remaining,reservation,window", [
