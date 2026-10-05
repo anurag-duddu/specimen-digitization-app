@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import threading
 from datetime import datetime, timezone
 
 import pytest
@@ -301,24 +302,105 @@ def test_actual_240_serialized_tool_history_reads_and_continues_on_251(tmp_path)
     assert store.budget(scope)["settled_micro_usd"] == 3
 
 
+class ManualClockLoop(asyncio.SelectorEventLoop):
+    """Event loop whose clock moves only when a test calls ``advance``.
+
+    ``wait_for``, ``asyncio.timeout`` and anyio deadlines all read ``loop.time()``, so
+    a test can let a timeout expire at one chosen point of the scenario instead of
+    racing a wall-clock budget against the speed of the machine. Real seconds that
+    pass while the loop waits for an executor thread do not count.
+    """
+
+    def __init__(self):
+        self._manual_now = 0.0
+        super().__init__()
+
+    def time(self):
+        return self._manual_now
+
+    def advance(self, seconds):
+        self._manual_now += seconds
+
+
+def run_on_manual_clock(scenario, *, real_seconds_limit=60):
+    """Run ``scenario(loop)`` on a ManualClockLoop; fail instead of hanging.
+
+    A frozen clock turns a timeout that never fires into a deadlock, so a watchdog
+    thread (real time, not loop time) cancels the scenario after ``real_seconds_limit``.
+    """
+    with asyncio.Runner(loop_factory=ManualClockLoop) as runner:
+        loop = runner.get_loop()
+        tripped = threading.Event()
+
+        async def guarded():
+            main = asyncio.current_task()
+
+            def trip():
+                tripped.set()
+                loop.call_soon_threadsafe(main.cancel)
+
+            watchdog = threading.Timer(real_seconds_limit, trip)
+            watchdog.daemon = True
+            watchdog.start()
+            try:
+                return await scenario(loop)
+            except asyncio.CancelledError:
+                if tripped.is_set():
+                    raise AssertionError(f"scenario still waiting after {real_seconds_limit} s of real time"
+                                         " although its timeout was advanced to expiry") from None
+                raise
+            finally:
+                watchdog.cancel()
+
+        return runner.run(guarded())
+
+
 def test_child_timeout_retains_hold_and_parent_finishes_independently(tmp_path):
-    limits = HarnessLimits(delegate_timeout_seconds=0.03, run_timeout_seconds=3)
-    runtime, store, scope, _, journal, _ = harness(tmp_path, delegate=SpecialistRole.GEOGRAPHY,
-                                                 limits=limits)
+    # The delegation budget is a timeout on the child's whole run. Before the child's
+    # model is called it needs three durable SQL writes (reserve, mark sending,
+    # validate dispatch), so a wall-clock budget as small as 30 ms could expire before
+    # the model call on a loaded machine (child_calls == 0). Here the loop clock moves
+    # only when the test advances it, and it does so only after the child is provably
+    # inside its model call; no real-time speed can change the outcome.
+    limits = HarnessLimits(delegate_timeout_seconds=10, run_timeout_seconds=100)
+    runtime, store, scope, _, journal, calls = harness(tmp_path, delegate=SpecialistRole.GEOGRAPHY,
+                                                      limits=limits)
     child_calls = []
 
-    async def stuck(messages, info):
-        child_calls.append(1)
-        await asyncio.Event().wait()
+    async def scenario(loop):
+        child_started, never = asyncio.Event(), asyncio.Event()
 
-    runtime.models[SpecialistRole.GEOGRAPHY].wrapped.wrapped = FunctionModel(stuck)
-    result = asyncio.run(runtime.run_specialist(SpecialistRole.TAXONOMY))
+        async def stuck(messages, info):
+            child_calls.append(1)
+            child_started.set()
+            await never.wait()
+
+        runtime.models[SpecialistRole.GEOGRAPHY].wrapped.wrapped = FunctionModel(stuck)
+        running = asyncio.create_task(runtime.run_specialist(SpecialistRole.TAXONOMY))
+        await child_started.wait()
+        # Only the 10 s delegation budget expires: the parent's tool timeout is 11 s
+        # and its run timeout 100 s on the same clock.
+        loop.advance(limits.delegate_timeout_seconds + 0.5)
+        return await running
+
+    result = run_on_manual_clock(scenario)
     assert result.resolutions[0].work_state == WorkState.WAITING_SOURCE
     assert len(child_calls) == 1
     assert store.budget(scope)["held_micro_usd"] == 10
     assert store.budget(scope)["settled_micro_usd"] == 6
     records = asyncio.run(journal.list_runs())
     assert {item.agent_name for item in records} == {"specimen_taxonomy", "specimen_geography"}
+    # The child was interrupted inside its dispatch, so its hold is kept as unknown
+    # (not refunded, and not a never-sent reservation); the parent's two requests settled.
+    effects = list(store._read(scope).state["effects"].values())
+    assert sorted(effect["status"] for effect in effects) == ["completed", "completed", "held_unknown"]
+    child_effect = next(effect for effect in effects if effect["status"] == "held_unknown")
+    assert child_effect["held_micro_usd"] == 10
+    assert child_effect["reason_code"] == "dispatch_or_capture_interrupted"
+    # The parent's second request saw the delegation timeout as an ordinary tool result.
+    parent_returns = [part.content for message in calls[SpecialistRole.TAXONOMY][1][0]
+                      for part in message.parts if getattr(part, "part_kind", None) == "tool-return"]
+    assert parent_returns == ["specialist_operational_failure"]
 
 
 def test_tree_cancellation_preserves_child_unknown_effect_and_parent_receipt(tmp_path):

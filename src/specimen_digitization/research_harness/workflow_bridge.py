@@ -137,6 +137,15 @@ def compose_production_research_workflow(ordinary, *, repository, environ, actor
     if not research_harness_enabled(environ):
         raise ValueError("research_harness_switch_off")
     verify_access = membership_verifier(repository)
+    from .program_budget import research_liability_micros
+
+    def retained_cost(principal, specimen):
+        if committed_harness_route(specimen.run.profile_snapshot) is None:
+            return 0
+        return research_liability_micros(repository, principal, specimen,
+            state_backend=state_backend)
+
+    ordinary.retained_cost = retained_cost
 
     async def authorize(principal, specimen, binding):
         return await authorize_live_research(principal, specimen, binding,
