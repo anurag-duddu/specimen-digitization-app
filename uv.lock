@@ -1878,6 +1878,7 @@ dependencies = [
     { name = "pillow" },
     { name = "pydantic-ai-harness" },
     { name = "pydantic-ai-slim", extra = ["huggingface"] },
+    { name = "pydantic-evals", extra = ["logfire"] },
     { name = "pydantic-graph" },
     { name = "uvicorn" },
 ]
@@ -1892,7 +1893,6 @@ raw = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "pydantic-evals", extra = ["logfire"] },
     { name = "pytest" },
     { name = "pytest-asyncio" },
 ]
@@ -1906,6 +1906,7 @@ requires-dist = [
     { name = "pillow-heif", marker = "extra == 'heic'", specifier = "==1.7.0" },
     { name = "pydantic-ai-harness", specifier = "==0.36.0" },
     { name = "pydantic-ai-slim", extras = ["huggingface"], specifier = "==2.51.0" },
+    { name = "pydantic-evals", extras = ["logfire"], specifier = "==2.51.0" },
     { name = "pydantic-graph", specifier = "==2.51.0" },
     { name = "rawpy", marker = "extra == 'raw'", specifier = "==0.27.1" },
     { name = "uvicorn", specifier = ">=0.30,<1" },
@@ -1914,7 +1915,6 @@ provides-extras = ["heic", "raw"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "pydantic-evals", extras = ["logfire"], specifier = "==2.51.0" },
     { name = "pytest", specifier = ">=8,<10" },
     { name = "pytest-asyncio", specifier = ">=1,<2" },
 ]
