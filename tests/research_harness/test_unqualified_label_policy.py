@@ -42,7 +42,7 @@ LOOKUPS = {FieldKey.COUNTY, FieldKey.CITY, FieldKey.TAXON}
 DECLARED = LITERALS | LOOKUPS
 NOT_DECLARED = {FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.PRECISE_LOCATION,
     FieldKey.IDENTIFIED_BY_IRN}
-EVIDENCE_PY_SHA256 = "107372f206b6c0874c43a69f2052a44dc9746de1b618878c9c92f140f9355340"  # pragma: allowlist secret
+EVIDENCE_PY_SHA256 = "dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400"  # pragma: allowlist secret
 
 
 def pins():
@@ -99,16 +99,21 @@ def test_the_policy_name_is_the_reason_the_request_factory_gives_an_unqualified_
         committed_pins.UNQUALIFIED_LABEL_LITERAL_FIELDS) == 12
 
 
-def test_no_source_can_ground_a_literal_but_county_city_and_taxon_each_have_one():
-    """The twelve literals have no source this deployment offers, so a source cannot fail for them
-    and waiting_policy is unambiguous. Each lookup field has a ready source, so the prompt keeps
-    waiting_source for a lookup that failed."""
+def test_literal_policy_excludes_worker_only_derivation_and_geography_has_qualified_sources():
+    """A computed elevation proposal requires trusted settled inputs and human review.
+
+    It is not a specialist lookup that can make an unqualified label operationally fail.
+    """
     registry = committed_pins._committed_registry()
     ready = {key: [policy.id for policy in registry.policies if policy.ready and key in policy.fields]
              for key in ALL_FIELDS}
-    assert {key: ready[key] for key in LITERALS} == {key: [] for key in LITERALS}
+    assert {key: ready[key] for key in LITERALS if not str(key).startswith("elevation_")} == {
+        key: [] for key in LITERALS if not str(key).startswith("elevation_")}
+    assert {key: ready[key] for key in LITERALS if str(key).startswith("elevation_")} == {
+        key: ["georeference_spatial"] for key in LITERALS if str(key).startswith("elevation_")}
     assert set(ready[FieldKey.TAXON]) == {"gbif", "global_names_verifier", "catalogue_of_life"}
-    assert ready[FieldKey.COUNTY] == ready[FieldKey.CITY] == ["geolocate"]
+    assert ready[FieldKey.COUNTY] == ready[FieldKey.CITY] == [
+        "geolocate", "georeference_history", "georeference_spatial", "tgn", "wikidata", "nga"]
 
 
 def coverage(source, key, state, reason):

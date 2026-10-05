@@ -150,6 +150,7 @@ def test_every_fixture_is_a_recorded_live_response():
 def test_registry_admits_only_the_glcwrap_json_endpoint_and_drops_google_maps():
     assert [item.id for item in REGISTRY.policies] == [
         "global_names_verifier", "catalogue_of_life", "gbif", "bugguide", "mapcarta", "geolocate",
+        "georeference_history", "georeference_spatial", "tgn", "wikidata", "nga",
         "field_museum_ipt", "field_museum_emudata"]
     policy = REGISTRY.get("geolocate")
     assert policy.ready and not policy.paid and not policy.credentials_required

@@ -15,7 +15,7 @@ import re
 import threading
 import time
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import Protocol
 from urllib.parse import urlencode, urlsplit
@@ -145,7 +145,7 @@ class SourcePolicy(FrozenRecord):
     source_release: str | None = None
     credentials_required: bool = False
     paid: bool = False
-    max_response_bytes: int = Field(default=150_000, gt=0, le=1_000_000)
+    max_response_bytes: int = Field(default=150_000, gt=0, le=2_000_000)
     timeout_seconds: float = Field(default=15, gt=0, le=30)
     result_limit: int = Field(default=3, strict=True, ge=1, le=5)
     purpose_policy: str = "insects-research-v1"
@@ -177,11 +177,12 @@ class SourceRegistry:
     def allowed(self, request: SpecialistRequest, *, qualified_only: bool = True) -> tuple[SourcePolicy, ...]:
         return tuple(policy for policy in self._policies if request.role in policy.roles
                      and set(request.field_keys) & set(policy.fields)
+                     and policy.source_type != "computed_local"
                      and (not qualified_only or policy.ready))
 
 
 def insects_registry(*, qualification_overrides: Mapping[str, dict] | None = None) -> SourceRegistry:
-    """All eight owner-selected sources; no unqualified site grants a tool."""
+    """Owner-selected sources, including worker-only computed adapters."""
     taxonomy = (SpecialistRole.TAXONOMY,)
     geography = (SpecialistRole.GEOGRAPHY,)
     geo_fields = (FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.COUNTY,
@@ -200,6 +201,26 @@ def insects_registry(*, qualification_overrides: Mapping[str, dict] | None = Non
          (r"/(?:[0-9]+|[A-Z][A-Za-z0-9_]*)",), "browser", "CC BY-SA/ODbL with exceptions", "https://mapcarta.com/About_Mapcarta", "upstream attribution; no map/photo screenshot storage", "mapcarta-upstream", "supports"),
         ("geolocate", geography, geo_fields, ("geo-locate.org", "www.geo-locate.org"),
          (r"/webservices/geolocatesvcv2/glcwrap\.aspx",), "public_api", "keyless public web service; no published terms", "https://geo-locate.org/developers/default.html", "full response retained as evidence (coordinator engineering call 2026-10-03 under the owner standing technical approval; revisit if GEOLocate publishes terms)", "geolocate", "candidate"),
+        ("georeference_history", geography, geo_fields, (), (), "local_dataset",
+         "pinned dataset-specific attribution", "docs/execution/golive/GEOREFERENCE_ADAPTER.md",
+         "retain exact manifest digest, source record and computed search result", "pinned-historical-gazetteer", "candidate"),
+        ("georeference_spatial", (SpecialistRole.GEOGRAPHY, SpecialistRole.MEASUREMENT),
+         geo_fields + (FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M,
+                       FieldKey.ELEVATION_FROM_FT, FieldKey.ELEVATION_TO_FT), (), (), "computed_local",
+         "derived from pinned open datasets", "docs/execution/golive/GEOREFERENCE_ADAPTER.md",
+         "retain dataset IDs, revisions, calculation and tool receipt", "retrospective-georeferencing", "derived_candidate"),
+        ("tgn", geography, geo_fields, ("services.getty.edu", "vocab.getty.edu"),
+         (r"/vocab/reconcile/", r"/sparql\.json"), "public_api", "ODC-By 1.0",
+         "https://www.getty.edu/research/tools/vocabularies/obtain/", "retain all three source exchanges with attribution",
+         "getty-tgn", "candidate"),
+        ("wikidata", geography, geo_fields, ("www.wikidata.org",),
+         (r"/w/api\.php",), "public_api", "CC0",
+         "https://www.wikidata.org/wiki/Wikidata:Copyright", "retain all returned entity exchanges",
+         "wikidata", "candidate"),
+        ("nga", geography, geo_fields, ("geonames.nga.mil",),
+         (r"/geon-ags/rest/services/RESEARCH/GIS_OUTPUT/MapServer/[01]/query",), "public_api",
+         "NGA GNS public general use; credit NGA; third-party coordinates separately sourced", "https://geonames.nga.mil/gns/html/gns_services.html",
+         "retain all returned feature and unit exchanges", "nga-gns", "candidate"),
         ("field_museum_ipt", museum_roles, _METADATA_FIELDS, ("fmipt.fieldmuseum.org", "api.gbif.org"),
          (r"/ipt/eml.do", r"/ipt/resource.do", r"/v1/occurrence/search", r"/v1/occurrence/[0-9]+/verbatim"), "public_publisher_metadata", "CC0 dataset; images excluded", "https://fmipt.fieldmuseum.org/ipt/eml.do?r=fmnh_insects&v=12.64", "bounded exact publisher metadata; no archive/media", "field-museum-insects", "publisher_assertion"),
         ("field_museum_emudata", museum_roles, _METADATA_FIELDS + (FieldKey.IDENTIFIED_BY_IRN,), ("emudata.fieldmuseum.org",),
@@ -214,6 +235,7 @@ def insects_registry(*, qualification_overrides: Mapping[str, dict] | None = Non
                               fields=fields, allowed_hosts=hosts, allowed_path_patterns=paths,
                               source_type=kind, license=license, terms_locator=terms,
                               retention=retention, publisher_id=publisher, authority_role=authority,
+                              max_response_bytes=2_000_000 if source_id in {"tgn", "wikidata", "nga"} else 150_000,
                               purpose_policy=PUBLIC_METADATA_POLICY if source_id == "field_museum_ipt" else "insects-research-v1")
         if source_id in overrides:
             # Qualification changes readiness/version only; never grants host/role/field.
@@ -357,6 +379,52 @@ def geolocate_place_text_defect(request: SpecialistRequest, place: GeolocateInte
     if not set(_fold_words(place.locality)) <= named and place.locality not in assembled:
         return ("GEOLocate locality must use only the words of place and the named units, "
                 "or the exact text of an accepted precise_location assembly")
+    return None
+
+
+def historical_place_name_defect(request: SpecialistRequest, name: str,
+                                 trusted_results: Sequence[SourceResult] = ()) -> str | None:
+    """Admit one place name from reading or retained source, never a label clause.
+
+    The same conservative marker and date exclusions used for GEOLocate apply
+    before a tier-one GET. Modernized names may enter only from a result this
+    broker already captured in the current request scope.
+    """
+    if type(name) is not str or name != name.strip() or not name or len(name) > 200:
+        return "Historical query needs one trimmed place name"
+    words = set(_fold_words(name))
+    markers = {word for clause in CLAUSES for word in _fold_words(clause)}
+    marked = {word for item in request.assemblies if item.field_key == FieldKey.COLLECTORS
+              for word in _fold_words(item.interpreted_text)}
+    safe_texts = []
+    for item in request.assemblies:
+        if item.field_key in {FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.COUNTY,
+                              FieldKey.CITY, FieldKey.PRECISE_LOCATION}:
+            safe_texts.append(item.interpreted_text)
+    for fragment in request.fragments:
+        for clause in re.split(r"[,;]", fragment.literal):
+            clause_words = set(_fold_words(clause))
+            if clause_words & markers or clause_words & MONTHS or any(
+                character.isdigit() for word in clause_words for character in word):
+                marked |= clause_words
+            else:
+                safe_texts.append(clause)
+    for result in trusted_results:
+        if result.receipt is None or result.receipt.scope != request.scope:
+            continue
+        for item in result.candidate_json:
+            candidate = json.loads(item)
+            for key in ("name", "value", "match_name"):
+                if type(candidate.get(key)) is str:
+                    safe_texts.append(candidate[key])
+            for alias in candidate.get("names", ()):
+                if type(alias) is str:
+                    safe_texts.append(alias)
+    if (not words or any(character.isdigit() for word in words for character in word)
+        or words & MONTHS or words & (markers | marked)):
+        return "Historical name must contain place text only"
+    if not any(words <= set(_fold_words(text)) for text in safe_texts):
+        return "Historical name is absent from trusted place reading or prior captured result"
     return None
 
 
@@ -537,7 +605,8 @@ class BoundedHTTPTransport:
 
     async def _read(self, client, url, policy):
         async with client.stream("GET", url, follow_redirects=False, timeout=policy.timeout_seconds,
-                                 headers={"Accept": "application/json", "Accept-Encoding": "identity"}) as response:
+                                 headers={"Accept": "application/json", "Accept-Encoding": "identity",
+                                          "User-Agent": "FieldMuseumSpecimenResearch/1.0 (https://github.com/anurag-duddu/specimen-digitization-app)"}) as response:
             if 300 <= response.status_code < 400:
                 raise ValueError("Source redirects require separately qualified destination")
             if response.headers.get("content-encoding", "identity") not in {"", "identity"}:
@@ -583,10 +652,11 @@ class SourceBroker:
     """Capabilities enforced in code. Every actual source call needs effect dispatch."""
 
     def __init__(self, registry: SourceRegistry, *, transport: SourceTransport | None = None,
-                 effect_dispatch: EffectDispatch | None = None):
+                 effect_dispatch: EffectDispatch | None = None, georeferencing_adapter=None):
         self.registry = registry
         self.transport = transport or BoundedHTTPTransport()
         self.effect_dispatch = effect_dispatch
+        self.georeferencing_adapter = georeferencing_adapter
         if type(self.transport) is BoundedHTTPTransport and effect_dispatch is not None and type(effect_dispatch) is not DurableSourceEffects:
             raise ValueError("Actual HTTP source calls require the durable live effect adapter")
         if effect_dispatch is not None and hasattr(effect_dispatch, "validate_transport"):
@@ -594,17 +664,20 @@ class SourceBroker:
         self.trusted_results: list[SourceResult] = []
 
     def available_sources(self, request: SpecialistRequest) -> tuple[str, ...]:
-        return tuple(item.id for item in self.registry.allowed(request))
+        return tuple(item.id for item in self.registry.allowed(request)
+            if item.source_type != "local_dataset" or self.georeferencing_adapter is not None)
 
-    async def query_source(self, request: SpecialistRequest, query: SourceQuery) -> SourceResult:
-        return await self.query(request, query)
+    async def query_source(self, request: SpecialistRequest, query: SourceQuery, *,
+                           trusted_anchor: bool = False) -> SourceResult:
+        return await self.query(request, query, trusted_anchor=trusted_anchor)
 
     async def dispatch(self, request: SpecialistRequest, tool_id: str, arguments: dict) -> SourceResult:
         if tool_id != "source_lookup":
             raise ValueError("Tool is outside source capability")
         return await self.query(request, SourceQuery.model_validate(arguments))
 
-    async def query(self, request: SpecialistRequest, query: SourceQuery) -> SourceResult:
+    async def query(self, request: SpecialistRequest, query: SourceQuery, *,
+                    trusted_anchor: bool = False) -> SourceResult:
         if type(self.transport) is BoundedHTTPTransport and self.effect_dispatch is not None and type(self.effect_dispatch) is not DurableSourceEffects:
             raise ValueError("Actual HTTP source calls require the durable live effect adapter")
         if self.effect_dispatch is not None and hasattr(self.effect_dispatch, "validate_transport"):
@@ -618,12 +691,41 @@ class SourceBroker:
             return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED, "BugGuide applicability requires established US/Canada evidence")
         if not policy.ready:
             return self._unavailable(policy, query, policy.qualification_state, "Source endpoint/schema/terms/version qualification incomplete")
-        if policy.source_type not in {"public_api", "public_publisher_metadata"}:
+        if policy.source_type not in {"public_api", "public_publisher_metadata", "local_dataset"}:
             return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED, "Approved managed browser or licensed credentialed adapter prerequisite")
         if request.scope.sensitive:
             return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED, "No sensitive source disclosure authorization")
         if self.effect_dispatch is None:
             return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED, "Durable effect dispatcher required before source execution")
+        if query.source_id in {"tgn", "wikidata", "nga", "georeference_history"}:
+            try:
+                name = (json.loads(query.query_text)["name"] if query.source_id == "georeference_history"
+                        else query.query_text)
+            except (TypeError, ValueError, KeyError):
+                return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED,
+                    "Historical source needs a typed place-only query")
+            if not trusted_anchor or query.source_id != "georeference_history":
+                defect = historical_place_name_defect(request, name, self.trusted_results)
+                if defect:
+                    return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED, defect)
+        if policy.source_type == "local_dataset":
+            if (query.source_id != "georeference_history" or self.georeferencing_adapter is None
+                or not hasattr(self.effect_dispatch, "local_lookup")):
+                return self._unavailable(policy, query, SourceCoverageState.FAILED,
+                    "Pinned historical dataset reader or durable capture is unavailable")
+
+            async def local_invoke() -> str:
+                return result_envelope(self.georeferencing_adapter.history_query(request, query))
+
+            receipt = await self.effect_dispatch.local_lookup(request, query, local_invoke)
+            if (receipt.scope != request.scope or receipt.source_id != query.source_id
+                or receipt.field_keys != (query.field_key,) or receipt.result_json is None):
+                raise ValueError("Pinned historical receipt escaped scoped query")
+            result = SourceResult.model_validate({**json.loads(receipt.result_json), "receipt": receipt})
+            if result.coverage.source_id != policy.id or result.coverage.field_key != query.field_key:
+                raise ValueError("Pinned historical result escaped scoped query")
+            self.trusted_results.append(result)
+            return result
         if query.source_id == "geolocate":
             # Checked before effect dispatch: a request that cannot be sent must never hold an effect.
             try:
@@ -655,9 +757,106 @@ class SourceBroker:
             source_id=policy.id, field_key=query.field_key, state=state,
             source_version=policy.version, coverage_limit="No qualified exact scientific search completed", reason=reason))
 
+    def derive_spatial_from_trusted_inputs(self, request: SpecialistRequest, *, field_key: FieldKey,
+            country: str, validation: SourceResult, settled_inputs: tuple,
+            requested_fields: tuple[FieldKey, ...], verbatim_locality: str,
+            label_has_elevation: bool | None, tool_call_id: str) -> SourceResult:
+        """Compute one proposal from a captured GEOLocate answer and current inputs.
+
+        The captured broker verifies the command, current field revisions and
+        effect before it calls this adapter. This pure method still refuses an
+        unreceipted or cross-specimen validator result. It is intentionally not
+        exposed through the specialist's model tool roster.
+        """
+        from .georeferencing import derivation_source_result
+
+        if (self.georeferencing_adapter is None or field_key not in request.field_keys
+            or field_key not in requested_fields or len(requested_fields) != len(set(requested_fields))
+            or request.scope.sensitive or validation.receipt is None
+            or validation.receipt.scope != request.scope
+            or validation.receipt.source_id != "geolocate"
+            or validation.receipt.source_id != validation.coverage.source_id
+            or validation.coverage.field_key not in {item.field_key for item in settled_inputs}
+            or validation.receipt.field_keys != (validation.coverage.field_key,)
+            or validation.receipt.effect_status != "completed"
+            or validation.receipt.result_json != result_envelope(validation.model_copy(update={"receipt": None}))
+            or tool_call_id != validation.receipt.id):
+            raise ValueError("Spatial derivation requires a current captured validator and target field")
+        result = self.georeferencing_adapter.derive_rest(
+            country=country, validation=validation, settled_inputs=settled_inputs,
+            requested_fields=requested_fields, verbatim_locality=verbatim_locality,
+            label_has_elevation=label_has_elevation, tool_call_id=tool_call_id)
+        return derivation_source_result(result, field_key)
+
+    async def _historical_gazetteer(self, policy: SourcePolicy, query: SourceQuery) -> SourceResult:
+        """Run the bounded tier-one chain through the admitted capture transport.
+
+        Every follow-up identifier comes from the preceding parsed response in
+        `historical_gazetteers`; every GET is captured before its bytes reach
+        that parser. A candidate is historian context, never a settled field.
+        """
+        from .historical_gazetteers import lookup
+
+        async def fetch(url: str, params: dict[str, str]) -> tuple[int, bytes]:
+            final_url = url + "?" + urlencode(params)
+            validate_destination(policy, final_url)
+            return await self.transport.get(final_url, policy=policy)
+
+        outcome = await lookup(query.source_id, query.query_text, fetch)
+        evidence = []
+        for ordinal, exchange in enumerate(outcome.exchanges, 1):
+            if exchange.response_body is None or exchange.response_digest is None:
+                continue
+            final_url = exchange.url + "?" + urlencode(exchange.params)
+            evidence.append(EvidenceItem(
+                id="source-exchange:" + digest({"source_id": query.source_id,
+                    "query": query.model_dump(mode="json"), "ordinal": ordinal,
+                    "sha256": exchange.response_digest}),
+                kind="historical_gazetteer_exchange", source_id=query.source_id,
+                locator=final_url, response_digest=exchange.response_digest,
+                source_version=policy.source_release or policy.version,
+                publisher_assertion_id=f"{policy.publisher_id}:{ordinal}",
+                retrieved_at=now(), role="supports"))
+        status = outcome.status
+        reason = outcome.reason or str(status)
+        # A search returned at its cap cannot prove that no other namesakes
+        # exist. The source may still offer all retained candidates to compare.
+        if query.source_id == "tgn" and len(outcome.places) >= 10:
+            status, reason = LookupStatus.AMBIGUOUS, "reconciliation hit ten-result cap"
+        if query.source_id == "wikidata" and len(outcome.places) >= 7:
+            status, reason = LookupStatus.AMBIGUOUS, "search hit seven-result cap"
+        candidates = tuple(canonical_json({**asdict(place),
+            "field_key": str(query.field_key), "value": place.name,
+            "authority_id": f"{query.source_id}:{place.record_id}",
+            "authority_role": "historical_candidate", "input_literal": query.query_text,
+            "match_details": {"names": place.names, "kinds": [asdict(item) for item in place.kinds],
+                              "country": asdict(place.country) if place.country else None,
+                              "parents": [asdict(item) for item in place.parents],
+                              "valid_from": place.valid_from, "valid_to": place.valid_to},
+            "settlement_allowed": False, "validation_required": "geolocate"})
+            for place in outcome.places)
+        if status in {LookupStatus.AUTHENTICATION, LookupStatus.AUTHORIZATION}:
+            state = SourceCoverageState.INACCESSIBLE
+        elif status in {LookupStatus.PROVIDER, LookupStatus.MALFORMED,
+                        LookupStatus.TIMEOUT, LookupStatus.RATE_LIMITED, LookupStatus.EMPTY}:
+            state = SourceCoverageState.FAILED
+        elif status == LookupStatus.POLICY:
+            state = SourceCoverageState.UNQUALIFIED
+        else:
+            state = SourceCoverageState.SEARCHED
+        return SourceResult(status=status, evidence=tuple(evidence), candidate_json=candidates,
+            coverage=SourceCoverageReceipt(source_id=query.source_id, field_key=query.field_key,
+                state=state, source_version=policy.source_release or policy.version,
+                qualification_digest=digest(policy), query_digest=digest(query),
+                receipt_ids=tuple(item.id for item in evidence), candidate_count=len(candidates),
+                coverage_limit="At most three captured responses and bounded returned candidates; names require modern validation",
+                reason=f"{status}: {reason}"))
+
     async def _execute(self, policy, request, query):
         if query.source_id == "field_museum_ipt":
             return await self._museum(policy, query)
+        if query.source_id in {"tgn", "wikidata", "nga"}:
+            return await self._historical_gazetteer(policy, query)
         try:
             if query.source_id == "gbif":
                 parsed = scientific_name(query.query_text)

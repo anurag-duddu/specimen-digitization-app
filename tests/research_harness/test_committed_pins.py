@@ -99,11 +99,12 @@ def test_a_created_job_holds_the_pins_a_rebuild_produces(tmp_path):
     store.create_job(scope, PinnedRuntime(input_digest="a" * 64, **pins_for()), [str(key) for key in ALL_FIELDS])
 
 
-def test_the_three_taxonomy_apis_and_geolocate_are_ready():
+def test_qualified_taxonomy_and_geography_sources_are_pinned():
     pins = pins_for()
     registry = registered_pins.registered_registry(pins["sources"])
-    assert {policy.id for policy in registry.policies if policy.ready} == set(TAXONOMY_APIS) | {"geolocate"}
-    assert set(SOURCE_READINESS) == set(TAXONOMY_APIS) | {"geolocate"}
+    geography = {"geolocate", "georeference_history", "georeference_spatial", "tgn", "wikidata", "nga"}
+    assert {policy.id for policy in registry.policies if policy.ready} == set(TAXONOMY_APIS) | geography
+    assert set(SOURCE_READINESS) == set(TAXONOMY_APIS) | geography
     # Lane G's qualification, read from sources.py so the two cannot drift.
     assert SOURCE_READINESS["geolocate"] == sources.GEOLOCATE_QUALIFICATION
     assert set(sources.GEOLOCATE_QUALIFICATION) == registered_pins._READINESS
@@ -116,6 +117,10 @@ def test_the_three_taxonomy_apis_and_geolocate_are_ready():
     capture = registered_pins.registered_capture_policies(pins["sources"], registry)
     assert capture["geolocate"].kind == "full_response" and capture["geolocate"].maximum_responses == 1
     assert capture["geolocate"].source_policy_digest == digest(geolocate)
+    assert {capture[key].kind for key in ("tgn", "wikidata", "nga")} == {"full_response"}
+    assert {capture[key].maximum_responses for key in ("tgn", "wikidata", "nga")} == {3}
+    assert capture["georeference_history"].kind == "pinned_dataset"
+    assert capture["georeference_spatial"].kind == "computed"
 
 
 def test_readiness_rows_hold_the_committed_canary_schemas_and_a_repository_reference():
@@ -298,12 +303,13 @@ def test_twenty_publications_of_a_full_run_fit_one_state_document(tmp_path):
     assert size < MAX_STATE_BYTES // 2, size
 
 
-def test_pins_hold_the_live_eight_row_registry_without_google_maps():
+def test_pins_hold_the_live_thirteen_row_registry_without_google_maps():
     # registered_pins.registered_registry requires exactly the installed rows;
-    # after Google Maps was removed (owner G-geo-1, #237) that is eight.
+    # after G34/G38 the eight original rows gain three gazetteers and two
+    # locally computed sources; Google Maps remains excluded.
     installed = [policy.id for policy in sources.insects_registry().policies]
     pins = pins_for()
     ids = [row["id"] for row in pins["sources"]["registry_policies"]]
-    assert ids == installed and len(ids) == 8
+    assert ids == installed and len(ids) == 13
     assert "google_maps" not in ids and "google_maps" not in pins["sources"]["capture_policies"]
     registered_pins.registered_registry(pins["sources"])

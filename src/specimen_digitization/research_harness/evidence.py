@@ -555,6 +555,30 @@ def validate_resolution(request: SpecialistRequest, resolution: FieldResolution,
                 actual.append(item.coverage)
             if not claimed or any(item not in actual for item in claimed):
                 raise EvidenceError("Human question claims source exhaustion without actual tool receipts")
+            if resolution.question and resolution.question.reason == "derived_proposal":
+                matches = [item for item in tool_results if item.coverage == claimed[0]
+                    and item.status == LookupStatus.SUCCESS
+                    and item.coverage.source_id == "georeference_spatial"
+                    and item.coverage.reason == "computed_proposal"]
+                if len(matches) != 1 or len(matches[0].candidate_json) != 1:
+                    raise EvidenceError("Derived review lacks one retained successful proposal")
+                result = matches[0]
+                try:
+                    candidate = json.loads(result.candidate_json[0])
+                except (ValueError, TypeError):
+                    raise EvidenceError("Derived proposal candidate is malformed") from None
+                if (candidate.get("field_key") != str(resolution.field_key)
+                    or candidate.get("value_layer") != "derived"
+                    or candidate.get("human_review_required") is not True
+                    or candidate.get("automatic_settlement_allowed") is not False
+                    or not candidate.get("value")
+                    or not any(item.kind == "computed_derivation_result"
+                        and item.source_id == "georeference_spatial"
+                        and item.id in candidate.get("evidence_ids", ())
+                        and item.id in resolution.question.evidence_ids
+                        for item in result.evidence)):
+                    raise EvidenceError("Derived review candidate is not a captured human proposal")
+                return resolution
             if any(item.status == LookupStatus.SUCCESS and any(
                 json.loads(candidate).get("field_key") == str(resolution.field_key) for candidate in item.candidate_json
             ) for item in tool_results):

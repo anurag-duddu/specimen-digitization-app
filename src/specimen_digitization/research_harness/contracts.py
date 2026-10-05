@@ -375,12 +375,24 @@ def _geolocate_unresolved(item: SourceCoverageReceipt, field_key: FieldKey) -> b
 class HumanQuestion(FrozenRecord):
     field_key: FieldKey
     question: str = Field(min_length=1)
-    reason: Literal["evidence_conflict", "scoped_absence", "semantic_ambiguity"]
+    reason: Literal["evidence_conflict", "scoped_absence", "semantic_ambiguity", "derived_proposal"]
     coverage: tuple[SourceCoverageReceipt, ...] = Field(min_length=1)
     evidence_ids: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def no_operational_review(self):
+        if self.reason == "derived_proposal":
+            if (len(self.coverage) != 1
+                or self.coverage[0].field_key != self.field_key
+                or self.coverage[0].source_id != "georeference_spatial"
+                or self.coverage[0].source_version != "retrospective-georeferencing-v1"
+                or self.coverage[0].state != SourceCoverageState.SEARCHED
+                or self.coverage[0].reason != "computed_proposal"
+                or not self.coverage[0].receipt_ids
+                or not self.evidence_ids
+                or not set(self.coverage[0].receipt_ids) <= set(self.evidence_ids)):
+                raise ValueError("Derived review requires one captured computed proposal")
+            return self
         # Either every strategy is exhausted, or every claim is a GEOLocate scientific outcome; never mixed.
         if not (all(item.state == SourceCoverageState.EXHAUSTED for item in self.coverage)
                 or all(_geolocate_unresolved(item, self.field_key) for item in self.coverage)):
