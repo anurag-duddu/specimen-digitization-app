@@ -89,9 +89,12 @@ readonly GEO_EXPRESSION="resource.name in [\
 \"${OBJECTS}application/sha256/fa77b9f17db2e419acaae714a935f7812be4409e2983675d34020e8426a3e189\",\
 \"${OBJECTS}application/sha256/2ece3d44a5c6a2afb385ffbf3a6b88d83e4d3a3e7eed9a52cb3be1bc59e289fc\",\
 \"${OBJECTS}application/sha256/f178eda98c46329380bdbb43f0637b4c43535bc843de6a0b8b960193b8f4363f\"]"
-# The research harness's three prefixes (SPECIMEN_RESEARCH_HARNESS=on): the worker alone creates and gets there.
+# The worker creates/reads all three research prefixes. API verification gets
+# only immutable captures, after application authorization of the native binding.
 readonly RESEARCH_TITLE=specimen_research_objects
 readonly RESEARCH_EXPRESSION="resource.name.startsWith(\"${OBJECTS}research-capture/\") || resource.name.startsWith(\"${OBJECTS}research-journal/\") || resource.name.startsWith(\"${OBJECTS}research-media/\")"
+readonly CAPTURE_READ_TITLE=specimen_api_research_capture
+readonly CAPTURE_READ_EXPRESSION="resource.name.startsWith(\"${OBJECTS}research-capture/\")"
 readonly SLIDES_TITLE=specimen_source_slides
 readonly SLIDES_EXPRESSION="resource.name.startsWith(\"${OBJECTS}microscopic-slides/\") || api.getAttribute(\"storage.googleapis.com/objectListPrefix\", \"\").startsWith(\"microscopic-slides/\")"
 readonly SQL_TITLE=specimen_source_inventory_only
@@ -630,6 +633,9 @@ runtime_grants() {
   ensure_role specimenWorkerRead 'Specimen worker readiness read' \
     'Read only the deployed specimen worker definition for API readiness.' \
     run.jobs.get
+  ensure_role specimenResearchCaptureRead 'Specimen API immutable capture read' \
+    'Read scoped immutable source captures for API verification; no list, create or delete.' \
+    storage.objects.get
   ensure_role specimenRuntimeConnector 'Specimen runtime connector' \
     'call the named operations of the connector only, never arbitrary GraphQL' \
     firebasedataconnect.connectors.impersonateQuery firebasedataconnect.connectors.impersonateMutation
@@ -657,9 +663,12 @@ runtime_grants() {
     grant bucket "$BUCKET" "$name" roles/storage.objectCreator "$APP_TITLE" "$APP_EXPRESSION"
   done
   # The research harness creates objects with a generation match and reads them back; it never lists or deletes.
-  # So the worker, and no other account, gets create and get on its three prefixes.
+  # The worker alone gets create and get on all three prefixes.
   grant bucket "$BUCKET" "$WORKER" roles/storage.objectViewer "$RESEARCH_TITLE" "$RESEARCH_EXPRESSION"
   grant bucket "$BUCKET" "$WORKER" roles/storage.objectCreator "$RESEARCH_TITLE" "$RESEARCH_EXPRESSION"
+  # Review acceptance verifies original command/capture bytes. The API can only
+  # get captures; journals/media stay unreadable and no research object is writable.
+  grant bucket "$BUCKET" "$API" "$CUSTOM/specimenResearchCaptureRead" "$CAPTURE_READ_TITLE" "$CAPTURE_READ_EXPRESSION"
   grant bucket "$BUCKET" "$API" roles/storage.objectViewer "$SLIDES_TITLE" "$SLIDES_EXPRESSION"
   # Versions as pinned in scripts/ci/runtime_settings.py. The worker reads no Google Maps key
   # any more (the owner took Maps out of the pipeline): that read is neither granted nor removed here.

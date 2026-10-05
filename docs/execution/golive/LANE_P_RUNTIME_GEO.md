@@ -26,6 +26,15 @@ API's embedded source provenance, drain arguments and harness switch; it grants
 no execution, override, update, list or IAM capability. The API must still obtain
 a matching live read before advertising processing readiness.
 
+API acceptance also needs the original immutable capture envelope, including its
+command digest. `specimenResearchCaptureRead` contains only
+`storage.objects.get` and is bound to the API runtime on `research-capture/`
+objects in the existing specimen bucket. The API first authorizes the current
+native binding, then reads and verifies the exact capture. This grant permits no
+listing, creation, deletion, journal or research-media reads. Worker research
+grants remain unchanged; source configuration alone does not establish live
+capture access.
+
 A run with zero headroom or a financial halt can open a `publication_only`
 runtime. It exposes the genuine lease, journal and canonical publication service
 with `role_window=0`, and an engine whose `run()` always refuses. It constructs
