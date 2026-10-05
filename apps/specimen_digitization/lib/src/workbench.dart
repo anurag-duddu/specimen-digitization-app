@@ -78,6 +78,13 @@ const String backToQueueLabel = 'Back to specimens';
 /// keys and the compact swipe, which have no control to carry it.
 const String notInQueueMessage = 'This record is not in the loaded queue.';
 
+/// One field's research, backed by the host's shared record controller.
+typedef FieldResearchBuilder = Widget Function(String fieldKey);
+
+/// Wraps the field overview in a single research lifecycle.
+typedef FieldReviewHost =
+    Widget Function(Widget Function(FieldResearchBuilder) buildFields);
+
 class ReviewWorkbench extends StatefulWidget {
   const ReviewWorkbench({
     super.key,
@@ -110,8 +117,10 @@ class ReviewWorkbench extends StatefulWidget {
     this.active = true,
     this.account,
     this.researchPanel,
+    this.fieldResearchHost,
   });
   final Widget? researchPanel;
+  final FieldReviewHost? fieldResearchHost;
   final Specimen specimen;
   final Future<Json> Function(Specimen, ArtifactRequest)?
   loadHistoricalArtifact;
@@ -232,6 +241,11 @@ class ReviewWorkbench extends StatefulWidget {
 }
 
 class _ReviewWorkbenchState extends State<ReviewWorkbench> {
+  final GlobalKey _processingAnchor = GlobalKey();
+  final GlobalKey _requirementsAnchor = GlobalKey();
+  int _requirementsReveal = 0;
+  int _processingReveal = 0;
+  int _detailsReveal = 0;
   final FocusNode _showQueueFocus = FocusNode(debugLabel: 'Specimens sidebar');
   final FocusScopeNode _workbenchFocus = FocusScopeNode(
     debugLabel: 'workbench',
@@ -620,17 +634,29 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
   }
 
   void _goToBlocker(ClearanceBlocker blocker) {
-    setState(() => _moveSegment(blocker.segment));
+    setState(() {
+      _moveSegment(
+        blocker.isTargeted ? blocker.segment : WorkbenchSegment.fields,
+      );
+      if (blocker.isOperational) {
+        _processingReveal++;
+        _detailsReveal++;
+      } else if (!blocker.isTargeted) {
+        _requirementsReveal++;
+      }
+    });
     final String? region = blocker.regionId;
     if (region != null) _region = region;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final String? field = blocker.fieldKey;
       _scrollTo(
-        field != null
+        blocker.isOperational
+            ? _processingAnchor
+            : field != null
             ? _fieldAnchors[field]
             : region != null
             ? _regionAnchors[region]
-            : null,
+            : _requirementsAnchor,
       );
     });
   }
@@ -1202,25 +1228,99 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
       declarationsBlocked: blockedReason('reading_metadata') != null,
       loadArtifact: widget.loadArtifact,
     ),
-    WorkbenchSegment.fields => Column(
+    WorkbenchSegment.fields =>
+      widget.fieldResearchHost?.call(
+            (researchForField) => _fieldsContent(context, researchForField),
+          ) ??
+          _fieldsContent(context, null),
+    WorkbenchSegment.history => _history(
+      _historyKey,
+      active: _visibleSegment == WorkbenchSegment.history,
+    ),
+  };
+
+  Widget _fieldsContent(
+    BuildContext context,
+    FieldResearchBuilder? researchForField,
+  ) {
+    final issues = blockersFor(widget.specimen);
+    final recordIssues = issues.where((issue) => !issue.isTargeted).toList();
+    return Column(
       key: const ValueKey<String>('fields'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        for (final blocker in blockersFor(widget.specimen).where(
-          (b) => b.segment == WorkbenchSegment.fields && b.fieldKey == null,
-        ))
+        if (recordIssues.isNotEmpty)
           Padding(
             padding: EdgeInsets.only(bottom: context.ui.space.s2),
-            child: Text(
-              blocker.message,
-              style: context.ui.type.bodySmall.copyWith(
-                color: context.ui.color.status.needsReview.content,
+            child: KeyedSubtree(
+              key: _requirementsAnchor,
+              child: UiDisclosure(
+                key: ValueKey('record-requirements:$_requirementsReveal'),
+                initiallyExpanded: _requirementsReveal > 0,
+                title: 'Record review requirements',
+                summary:
+                    'Some requirements still need attention before clearance.',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final issue in recordIssues)
+                      Padding(
+                        padding: EdgeInsets.only(bottom: context.ui.space.s2),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(issue.message, style: context.ui.type.body),
+                            if (issue.detail != null)
+                              Text(
+                                issue.detail!,
+                                style: context.ui.type.bodySmall,
+                              ),
+                          ],
+                        ),
+                      ),
+                    if (recordIssues.any((issue) => issue.isOperational))
+                      UiButton(
+                        label: 'View processing details',
+                        variant: UiButtonVariant.ghost,
+                        onPressed: () {
+                          setState(() {
+                            _processingReveal++;
+                            _detailsReveal++;
+                          });
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) _scrollTo(_processingAnchor);
+                          });
+                        },
+                      ),
+                  ],
+                ),
               ),
             ),
           ),
         WorkbenchFields(
           specimen: widget.specimen,
+          issues: issues,
+          researchForField: (fieldKey) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (researchForField != null) researchForField(fieldKey),
+              if (widget.loadArtifact != null)
+                EvidencePanel(
+                  key: ValueKey(
+                    'field-evidence:${widget.specimen.id}:${widget.specimen.revision}:$fieldKey',
+                  ),
+                  specimen: widget.specimen,
+                  load: widget.loadArtifact!,
+                  onChange: _send,
+                  canReview: blockedReason('authority_resolution') == null,
+                  fieldKey: fieldKey,
+                  includeReviewDetails: false,
+                ),
+            ],
+          ),
           anchors: <String, GlobalKey>{
             for (final Json f in widget.specimen.fields)
               textOf(f['field_key'], ''): _anchor(
@@ -1238,42 +1338,80 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
         ),
         SizedBox(height: context.ui.space.s6),
         if (widget.researchPanel != null) ...[
-          widget.researchPanel!,
+          UiDisclosure(
+            title: 'Additional field research',
+            child: widget.researchPanel!,
+          ),
           SizedBox(height: context.ui.space.s6),
         ],
-        if (widget.loadArtifact != null)
-          EvidencePanel(
-            key: ValueKey<String>(
-              'evidence:${widget.specimen.id}:${widget.specimen.revision}',
-            ),
-            specimen: widget.specimen,
-            load: widget.loadArtifact!,
-            onChange: _send,
-            canReview: blockedReason('authority_resolution') == null,
-          ),
-        SizedBox(height: context.ui.space.s6),
         UiDisclosure(
-          title: 'Image and processing details',
-          child: ReviewContext(specimen: widget.specimen),
-        ),
-        SizedBox(height: context.ui.space.s4),
-        // The run internals, one closed disclosure, where the blocker that
-        // names them sends the reviewer. An operator's concern rather than a
-        // reviewer's, which is why it is not on the status strip and not a
-        // row of the page (audit finding H8.2; 13 section 4.1).
-        ProcessingDisclosure(
-          specimen: widget.specimen,
-          canOperate: widget.canOperate,
-          busy: widget.busy,
-          onAction: _send,
+          key: ValueKey('review-details:$_detailsReveal'),
+          title: 'Review details',
+          summary: 'Processing and audit information',
+          initiallyExpanded: _detailsReveal > 0,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.loadArtifact != null)
+                EvidencePanel(
+                  key: ValueKey<String>(
+                    'evidence:${widget.specimen.id}:${widget.specimen.revision}',
+                  ),
+                  specimen: widget.specimen,
+                  load: widget.loadArtifact!,
+                  onChange: _send,
+                  canReview: blockedReason('authority_resolution') == null,
+                  excludedFieldKeys: {
+                    for (final field in widget.specimen.fields)
+                      textOf(field['field_key'], ''),
+                  },
+                ),
+              SizedBox(height: context.ui.space.s6),
+              if (issues.isNotEmpty)
+                EvidenceDrawer(
+                  title: 'Technical review details',
+                  payload: {
+                    'validation_findings': widget.specimen.findings,
+                    'reason_codes': widget.specimen.data['reason_codes'],
+                    'issues': [
+                      for (final issue in issues)
+                        {
+                          'reason_code': issue.rawCode,
+                          'rule_id': issue.diagnosticRuleId,
+                          'field_key': issue.fieldKey,
+                          'region_id': issue.regionId,
+                          'message': issue.message,
+                        },
+                    ],
+                  },
+                ),
+              UiDisclosure(
+                title: 'Image and processing details',
+                child: ReviewContext(specimen: widget.specimen),
+              ),
+              SizedBox(height: context.ui.space.s4),
+              // The run internals, one closed disclosure, where the blocker that
+              // names them sends the reviewer. An operator's concern rather than a
+              // reviewer's, which is why it is not on the status strip and not a
+              // row of the page (audit finding H8.2; 13 section 4.1).
+              KeyedSubtree(
+                key: _processingAnchor,
+                child: ProcessingDisclosure(
+                  key: ValueKey('processing:$_processingReveal'),
+                  initiallyExpanded: _processingReveal > 0,
+                  specimen: widget.specimen,
+                  canOperate: widget.canOperate,
+                  busy: widget.busy,
+                  onAction: _send,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
-    ),
-    WorkbenchSegment.history => _history(
-      _historyKey,
-      active: _visibleSegment == WorkbenchSegment.history,
-    ),
-  };
+    );
+  }
 
   Widget _history(Key key, {bool active = true}) => AuditHistoryPanel(
     key: key,

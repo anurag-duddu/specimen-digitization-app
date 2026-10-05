@@ -1,4 +1,5 @@
 import 'package:specimen_digitization/src/widgets/field_row.dart';
+import 'package:specimen_digitization/src/screens/workbench/fields_panel.dart';
 import 'package:specimen_digitization/src/widgets/selection_bar.dart';
 // Finders for the design system's controls.
 //
@@ -210,11 +211,64 @@ bool modalIsSheet(WidgetTester tester) {
 
 /// Expands the requested field when necessary, then opens its real layer editor.
 /// A previously expanded row stays open; repeated corrections must not close it.
+Finder fieldReviewRows() => find.byWidgetPredicate(
+  (widget) =>
+      widget is UiDisclosure &&
+      widget.key is ValueKey<String> &&
+      (widget.key! as ValueKey<String>).value.startsWith('field-row:'),
+);
+
 Future<void> openFieldEditor(
   WidgetTester tester,
   int index, {
   String layer = 'as written',
 }) async {
+  final panels = find.byType(WorkbenchFields);
+  if (panels.evaluate().isNotEmpty) {
+    final panel = tester.widget<WorkbenchFields>(panels.first);
+    final field = panel.specimen.fields[index];
+    final row = find.byKey(
+      ValueKey<String>('field-row:${panel.specimen.id}:${field['field_key']}'),
+    );
+    final correct = find.descendant(
+      of: row,
+      matching: uiButton('Correct value'),
+    );
+    if (correct.evaluate().isEmpty) {
+      final header = find
+          .descendant(
+            of: row,
+            matching: find.byWidgetPredicate(
+              (widget) => widget is Pressable && widget.onPressed != null,
+            ),
+          )
+          .first;
+      await tester.ensureVisible(header);
+      await tester.pumpAndSettle();
+      await tester.tap(header);
+      await tester.pumpAndSettle();
+    }
+    await tester.ensureVisible(correct);
+    await tester.pumpAndSettle();
+    await tester.tap(correct);
+    await tester.pumpAndSettle();
+    if (layer != 'as written') {
+      final advanced = uiDisclosure('Interpretation and standardization');
+      final header = find
+          .descendant(
+            of: advanced,
+            matching: find.byWidgetPredicate(
+              (widget) => widget is Pressable && widget.onPressed != null,
+            ),
+          )
+          .first;
+      await tester.ensureVisible(header);
+      await tester.pumpAndSettle();
+      await tester.tap(header);
+      await tester.pumpAndSettle();
+    }
+    return;
+  }
   final Finder row = find.byType(FieldRow).at(index);
   final Finder disclosure = find.descendant(
     of: row,

@@ -110,7 +110,7 @@ void main() {
     expect(find.byType(WorkbenchScreen), findsOneWidget);
     expect(locationOf(tester), endsWith('/queue/$goldenSpecimenId'));
     expect(tester.widget<UiTabs>(uiTabs('Record view')).selected.value, 0);
-    expect(find.byType(FieldRow), findsWidgets);
+    expect(fieldReviewRows(), findsWidgets);
     expect(
       tester
           .widget<WorkbenchSourcePane>(find.byType(WorkbenchSourcePane))
@@ -122,12 +122,12 @@ void main() {
     // F, H and R move between the three evidence panels.
     await press(tester, LogicalKeyboardKey.keyF);
     expect(tester.widget<UiTabs>(uiTabs('Record view')).selected.value, 0);
-    expect(find.byType(FieldRow), findsWidgets);
+    expect(fieldReviewRows(), findsWidgets);
     await press(tester, LogicalKeyboardKey.keyH);
     expect(tester.widget<UiTabs>(uiTabs('Record view')).selected.value, 2);
     await press(tester, LogicalKeyboardKey.keyR);
     expect(tester.widget<UiTabs>(uiTabs('Record view')).selected.value, 1);
-    expect(find.byType(FieldRow), findsNothing);
+    expect(fieldReviewRows(), findsNothing);
     expect(tester.widget<UiSelect<String>>(uiSelect('Label')).value, isEmpty);
     expect(
       tester

@@ -267,12 +267,14 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
                   controller.repository is SpecimenHistoryRepository
                   ? controller.restoreVersion
                   : null,
-              researchPanel: controller.repository is ApiSpecimenRepository
-                  ? ResearchHost(
+              fieldResearchHost: controller.repository is ApiSpecimenRepository
+                  ? (buildFields) => ResearchHost(
                       repository:
                           controller.repository as ApiSpecimenRepository,
                       collection: scope,
                       specimen: specimen,
+                      builder: (context, researchForField) =>
+                          buildFields(researchForField),
                     )
                   : null,
               loadHistoricalRevision:

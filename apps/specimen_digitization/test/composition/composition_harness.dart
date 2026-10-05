@@ -15,6 +15,7 @@
 // a gate than it does in a golden is not possible.
 
 import 'dart:async';
+import '../ui_finders.dart';
 
 import 'package:flutter/cupertino.dart' show CupertinoTabBar;
 import 'package:flutter/material.dart' show NavigationBar;
@@ -242,7 +243,7 @@ final List<CompositionScreen> compositionScreens = <CompositionScreen>[
     primary: () => find.byType(SourceMatte),
     // The stable inline photograph must be fully visible, then scroll away.
     // Its minimum is based on available page space, not pinned window share.
-    next: () => find.byType(FieldRow).first,
+    next: () => fieldReviewRows().first,
   ),
   CompositionScreen(
     name: 'intake',

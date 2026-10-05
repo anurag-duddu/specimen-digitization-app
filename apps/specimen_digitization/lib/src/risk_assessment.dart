@@ -68,70 +68,67 @@ class ReviewRiskPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
+    final ui = context.ui;
     return Surface(
       radius: ui.shape.tile,
       hairline: true,
-      padding: EdgeInsetsDirectional.all(ui.space.s4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Semantics(
-            container: true,
-            header: true,
-            child: Text(heading, style: ui.type.title),
-          ),
-          if (risk['calibrated'] != true)
-            const CaveatText(
-              label: 'Not calibrated',
-              why:
-                  'A risk score orders the queue. It is not a probability that '
-                  'the record is wrong. Scores never override coverage, evidence '
-                  'or validation checks.',
-            ),
-          Text(
-            scope,
-            style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
-          ),
-          SizedBox(height: ui.space.s2),
-          RiskAssessmentDetails(risk: risk, meter: true),
-          if (policy.isNotEmpty)
-            EvidenceDrawer(
-              title: 'Published risk policy resolution and definition',
-              payload: policy,
-            ),
-          for (final scopeKey in ['labels', 'fields'])
-            if (objects(risk[scopeKey]).isNotEmpty) ...[
-              SizedBox(height: ui.space.s2),
-              Text(
-                scopeKey == 'labels'
-                    ? 'Label assessments'
-                    : 'Field assessments',
-                style: ui.type.label,
+      child: UiDisclosure(
+        title: heading,
+        summary: riskMeasured(risk)
+            ? 'Queue priority available'
+            : RiskMeter.absence,
+        hideSummaryWhenExpanded: true,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(scope, style: ui.type.bodySmall),
+            if (risk['calibrated'] != true)
+              const CaveatText(
+                label: 'Not calibrated',
+                why:
+                    'A risk score orders the queue. It is not a probability that '
+                    'the record is wrong. Scores never override coverage, evidence '
+                    'or validation checks.',
               ),
-              for (final item in objects(risk[scopeKey]))
+            SizedBox(height: ui.space.s2),
+            RiskAssessmentDetails(risk: risk, meter: true),
+            if (policy.isNotEmpty)
+              EvidenceDrawer(
+                title: 'Policy technical details',
+                payload: policy,
+              ),
+            for (final scopeKey in ['labels', 'fields'])
+              for (final (index, item) in objects(risk[scopeKey]).indexed)
                 UiDisclosure(
                   key: ValueKey(
                     '${item['scope']}:${item['target_id']}:${item['input_sha256']}',
                   ),
-                  title:
-                      '${textOf(item['target_id'])} · ${riskComposite(item)}',
-                  summary:
-                      'Assessment: ${vocabularyLabel(textOf(item['status']))}',
-                  // No meter here: a data tile is a frosted pane, and one per
-                  // assessment in a scrolling list is the expensive way to
-                  // fail the glass budget (09 section 3.3).
+                  title: scopeKey == 'labels'
+                      ? 'Label ${index + 1}'
+                      : _fieldAssessmentLabel(item, index),
+                  summary: riskMeasured(item)
+                      ? 'Queue priority available'
+                      : RiskMeter.absence,
+                  hideSummaryWhenExpanded: true,
                   child: RiskAssessmentDetails(risk: item),
                 ),
-            ],
-        ],
+          ],
+        ),
       ),
     );
   }
+
+  String _fieldAssessmentLabel(Json item, int index) {
+    final target = textOf(item['target_id'], '');
+    final label = vocabularyLabel(target);
+    return RegExp(r'^[a-z][a-z_]*$').hasMatch(target)
+        ? label
+        : 'Field ${index + 1}';
+  }
 }
 
-/// One assessment: its score, its policy, its components and its absences.
+/// Scientific signals are readable; execution metadata stays in audit details.
 class RiskAssessmentDetails extends StatelessWidget {
   const RiskAssessmentDetails({
     super.key,
@@ -140,34 +137,23 @@ class RiskAssessmentDetails extends StatelessWidget {
   });
 
   final Json risk;
-
-  /// True for the record's own assessment, which draws the score on a data
-  /// tile with its arc. False for an assessment inside a list, where the
-  /// score is a line of text (10 section 5).
   final bool meter;
 
   @override
   Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final reference = objectOf(risk['policy_reference']);
+    final ui = context.ui;
     final details = {...risk}
       ..remove('labels')
       ..remove('fields');
-    final TextStyle line = ui.type.bodySmall.copyWith(
-      color: ui.color.inkSecondary,
-    );
-    final List<String> components = riskComponents(risk);
-
+    final line = ui.type.bodySmall.copyWith(color: ui.color.inkSecondary);
+    final components = riskComponents(risk);
+    final unmeasured = risk['unmeasured'] as List? ?? const [];
     return Semantics(
       container: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            '${vocabularyLabel(textOf(risk['scope'], 'specimen'))} · ${textOf(risk['target_id'])}',
-            style: line,
-          ),
           if (meter)
             RiskMeter(
               composite: risk['composite'] as num?,
@@ -180,40 +166,19 @@ class RiskAssessmentDetails extends StatelessWidget {
             Text(riskComposite(risk), style: ui.type.title),
             for (final component in components) Text(component, style: line),
           ],
-          if (risk['status'] != null)
+          if (!riskMeasured(risk))
             Text(
-              'Assessment status: ${vocabularyLabel(textOf(risk['status']))}',
+              'An overall priority score is unavailable until the assessment is complete.',
               style: line,
             ),
-          Text(
-            'Policy ${textOf(reference['id'], textOf(risk['policy_id']))} · Version ${textOf(reference['version'], textOf(risk['policy_version']))}',
-            style: line,
-          ),
-          Text(
-            'Policy checksum: ${textOf(reference['digest'], textOf(risk['policy_digest']))}',
-            style: ui.type.mono.digest.copyWith(color: ui.color.inkSecondary),
-          ),
-          if (risk['policy_resolution_status'] != null)
+          if (unmeasured.isNotEmpty)
             Text(
-              'Policy resolution: ${vocabularyLabel(textOf(risk['policy_resolution_status']))} · ${vocabularyLabel(textOf(risk['policy_resolution_reason']))}',
+              '${unmeasured.length} '
+              '${unmeasured.length == 1 ? 'signal has' : 'signals have'} '
+              'not been measured.',
               style: line,
             ),
-          Text(
-            'Registry ${textOf(risk['registry_version'])} · Features ${textOf(risk['feature_version'])}',
-            style: line,
-          ),
-          for (final reason in risk['reasons'] as List? ?? [])
-            Text('Reason: ${vocabularyLabel(reason.toString())}', style: line),
-          if (risk['unmeasured'] is List &&
-              (risk['unmeasured'] as List).isNotEmpty)
-            Text(
-              'Not measured: ${(risk['unmeasured'] as List).map((s) => vocabularyLabel(s.toString())).join(', ')}',
-              style: line,
-            ),
-          EvidenceDrawer(
-            title: 'Risk components, versions and calibration',
-            payload: details,
-          ),
+          EvidenceDrawer(title: 'Technical details', payload: details),
         ],
       ),
     );

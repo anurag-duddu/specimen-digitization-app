@@ -150,11 +150,11 @@ void main() {
         final repository = GoldenQueueRepository(goldenQueue(3))
           ..blockers = ['storage_unavailable'];
         await _pump(tester, platform, repository: repository);
-        final blocker = find.textContaining('Processing is blocked:');
+        final blocker = find.text('Processing awaits collection setup.');
         expect(blocker.hitTestable(), findsOneWidget);
         await _tap(tester, uiControl('Show who unblocks it'));
         expect(
-          find.textContaining('A person has to review it.'),
+          find.textContaining('An operator must review the processing setup.'),
           findsOneWidget,
         );
         expect(find.byType(QueueRow), findsNWidgets(3));

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/models.dart';
 import 'package:specimen_digitization/src/risk_assessment.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
+import 'package:specimen_digitization/src/widgets/risk_meter.dart';
 
 void main() {
   final fixture =
@@ -26,6 +27,7 @@ void main() {
             home: Scaffold(
               body: SingleChildScrollView(
                 child: ReviewRiskPanel(
+                  key: ValueKey('risk-policy:${entry.key}'),
                   risk: risk,
                   policy: run['risk_policy_snapshot'],
                 ),
@@ -35,18 +37,34 @@ void main() {
         );
         expect(find.text('Not measured'), findsOneWidget);
         expect(
+          find.textContaining(risk['policy_reference']['digest'] as String),
+          findsNothing,
+        );
+        expect(find.text('0 of 100'), findsNothing);
+        await tester.tap(find.text('Review risk'));
+        await tester.pumpAndSettle();
+        expect(
+          find.descendant(
+            of: find.byType(RiskMeter),
+            matching: find.text('Not measured'),
+          ),
+          findsOneWidget,
+        );
+        expect(
           find.textContaining(
             'numeral disagreement · Count 1 · Weight ${entry.value} · Contribution ${entry.value}',
           ),
           findsOneWidget,
         );
+        await tester.tap(find.text('Technical details').first);
+        await tester.pumpAndSettle();
         expect(
-          find.text('Policy checksum: ${risk['policy_reference']['digest']}'),
+          find.textContaining(risk['policy_reference']['digest'] as String),
           findsOneWidget,
         );
-        expect(find.text('0 of 100'), findsNothing);
-        final label = (risk['labels'] as List).first as Json;
-        final target = find.text('${label['target_id']} · Not measured');
+        await tester.tap(find.text('Close'));
+        await tester.pumpAndSettle();
+        final target = find.text('Label 1');
         await tester.ensureVisible(target);
         await tester.pumpAndSettle();
         await tester.tap(target);
@@ -57,7 +75,10 @@ void main() {
           ),
           findsNWidgets(2),
         );
-        expect(find.textContaining('Not measured:'), findsNWidgets(2));
+        expect(
+          find.textContaining('signals have not been measured.'),
+          findsWidgets,
+        );
       }
     },
   );

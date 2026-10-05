@@ -1,6 +1,6 @@
 /// The fields segment (screen blueprints, 6.4).
 ///
-/// One concise `FieldRow` per field, with its value state and current value.
+/// One concise review row per field, with its value state and current value.
 /// The value layers and retained evidence open on demand. Corrections happen
 /// in place, with the photograph still on screen, and the correction joins a
 /// pending set that is saved once with one reason rather than one modal round
@@ -17,6 +17,7 @@ import '../../models.dart';
 import '../../review_context.dart';
 import '../../vocabulary.dart';
 import '../../widgets/widgets.dart';
+import 'blockers.dart';
 import 'evidence_picker.dart';
 import 'field_presentation.dart';
 import 'pending_changes.dart';
@@ -31,6 +32,8 @@ class WorkbenchFields extends StatefulWidget {
     required this.onPendingChanged,
     this.onFocusRegion,
     this.fieldBlockedReason,
+    this.issues = const <ClearanceBlocker>[],
+    this.researchForField,
   });
 
   final Specimen specimen;
@@ -49,6 +52,13 @@ class WorkbenchFields extends StatefulWidget {
 
   /// Why correcting a field is unavailable, or null when it is not.
   final String? fieldBlockedReason;
+
+  /// Human-readable review issues, attached to their corresponding field.
+  final List<ClearanceBlocker> issues;
+
+  /// Research for one field, revealed with that field's supporting evidence.
+  /// The host owns loading, permissions and any actual research actions.
+  final Widget Function(String fieldKey)? researchForField;
 
   @override
   State<WorkbenchFields> createState() => _WorkbenchFieldsState();
@@ -71,6 +81,16 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
   /// A specimen value may cite several labels, or no retained label.
   Set<String> _regionsFor(Json field, [PendingFieldChange? pending]) {
     final Set<String> regions = <String>{};
+    void retain(Object? region) {
+      if (region is String &&
+          widget.specimen.regions.any((Json r) => r['region_id'] == region)) {
+        regions.add(region);
+      }
+    }
+
+    // Direct source locators remain useful even when no Evidence citation
+    // was materialized. They are view links, never correction citations.
+    if (pending == null) retain(field['source_region_id']);
     final List<Object?> ids =
         pending?.evidenceIds ??
         (field['evidence_ids'] as List?) ??
@@ -79,12 +99,9 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
       final Json? item = widget.specimen.evidence
           .where((Json e) => e['evidence_id'] == id || e['id'] == id)
           .firstOrNull;
-      final Object? region = item?['region_id'];
-      if (region is String &&
-          widget.specimen.regions.any((Json r) => r['region_id'] == region)) {
-        regions.add(region);
-      }
+      retain(item?['region_id']);
     }
+    if (pending != null && regions.isEmpty) retain(pending.regionId);
     return regions;
   }
 
@@ -133,15 +150,43 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     setState(() => _editing = null);
   }
 
+  List<ClearanceBlocker> _issuesFor(String key) {
+    final supplied = widget.issues.where((issue) => issue.fieldKey == key);
+    if (supplied.isNotEmpty) return supplied.toList();
+    // Standalone panel consumers still get the same presentation adapter as
+    // the workbench; raw findings never become primary field copy here.
+    return blockersFor(
+      widget.specimen,
+    ).where((issue) => issue.fieldKey == key).toList();
+  }
+
+  bool _needsReview(Json field) => fieldNeedsReview(
+    _pendingFor(field['field_key'].toString())?.state ??
+        field['state'] as String?,
+    hasIssues: _issuesFor(field['field_key'].toString()).isNotEmpty,
+  );
+
   @override
   Widget build(BuildContext context) {
     final List<Json> fields = widget.specimen.fields;
-    final requiredFields = fields
-        .where((field) => field['required'] == true)
-        .toList(growable: false);
-    final optionalFields = fields
-        .where((field) => field['required'] != true)
-        .toList(growable: false);
+    final groups = <String, List<Json>>{
+      for (final group in fieldReviewGroups)
+        group:
+            fields.where((field) => fieldReviewGroup(field) == group).toList()
+              ..sort((left, right) {
+                final attention = (_needsReview(left) ? 0 : 1).compareTo(
+                  _needsReview(right) ? 0 : 1,
+                );
+                if (attention != 0) return attention;
+                final order = fieldReviewOrder(
+                  left,
+                ).compareTo(fieldReviewOrder(right));
+                return order != 0
+                    ? order
+                    : fieldReviewName(left).compareTo(fieldReviewName(right));
+              }),
+    };
+    final reviewCount = fields.where(_needsReview).length;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -151,38 +196,71 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
           const CaveatText(
             label: 'No fields recorded yet.',
             why: 'Required field checks have not run for this record.',
-          ),
-        if (requiredFields.isNotEmpty)
-          _group(context, 'Required', requiredFields),
-        if (requiredFields.isNotEmpty && optionalFields.isNotEmpty)
-          SizedBox(height: context.ui.space.s4),
-        if (optionalFields.isNotEmpty)
-          _group(context, 'Optional', optionalFields),
-      ],
-    );
-  }
-
-  Widget _group(BuildContext context, String title, List<Json> fields) =>
-      Column(
-        key: ValueKey<String>('field-group:$title'),
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
+          )
+        else ...<Widget>[
           Padding(
             padding: EdgeInsetsDirectional.fromSTEB(
               context.ui.space.s3,
               0,
               context.ui.space.s3,
-              context.ui.space.s2,
+              context.ui.space.s3,
             ),
-            child: Semantics(
-              header: true,
-              child: Text(title, style: context.ui.type.label),
+            child: Text(
+              reviewCount == 0
+                  ? 'Open a field to inspect its value and evidence.'
+                  : '${reviewCount == 1 ? '1 field needs' : '$reviewCount fields need'} review. Open a field to inspect its evidence or correct its value.',
+              style: context.ui.type.bodySmall.copyWith(
+                color: context.ui.color.inkSecondary,
+              ),
             ),
           ),
-          for (final field in fields) _field(context, field),
+          for (final entry in groups.entries)
+            if (entry.value.isNotEmpty) ...<Widget>[
+              _group(context, entry.key, entry.value),
+              SizedBox(height: context.ui.space.s3),
+            ],
         ],
-      );
+      ],
+    );
+  }
+
+  Widget _group(BuildContext context, String title, List<Json> fields) {
+    final reviewCount = fields.where(_needsReview).length;
+    return Column(
+      key: ValueKey<String>('field-group:$title'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Padding(
+          padding: EdgeInsetsDirectional.fromSTEB(
+            context.ui.space.s3,
+            0,
+            context.ui.space.s3,
+            context.ui.space.s1,
+          ),
+          child: Semantics(
+            header: true,
+            child: Wrap(
+              spacing: context.ui.space.s2,
+              runSpacing: context.ui.space.s1,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: <Widget>[
+                Text(title, style: context.ui.type.label),
+                if (reviewCount > 0)
+                  Text(
+                    '$reviewCount to review',
+                    style: context.ui.type.labelSmall.copyWith(
+                      color: context.ui.color.status.needsReview.content,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        for (final field in fields) _field(context, field),
+      ],
+    );
+  }
 
   Widget _field(BuildContext context, Json field) {
     final String key = field['field_key'].toString();
@@ -211,7 +289,8 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
         : _row(context, field, pending, blocked);
 
     return KeyedSubtree(
-      key: anchor,
+      key:
+          anchor ?? ValueKey<String>('field-anchor:${widget.specimen.id}:$key'),
       child: Padding(
         padding: EdgeInsetsDirectional.only(bottom: context.ui.space.s2),
         child: content,
@@ -225,14 +304,32 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     PendingFieldChange? pending,
     String? blocked,
   ) {
-    final UiThemeData ui = context.ui;
-    final String key = field['field_key'].toString();
-    final List<Json> findings = widget.specimen.findings
-        .where((Json f) => f['field_key'] == key)
-        .toList();
-    final SpecimenStatus state = SpecimenStatus.fromWire(
+    final ui = context.ui;
+    final key = field['field_key'].toString();
+    final name = fieldReviewName(field);
+    final issues = _issuesFor(key);
+    final state = SpecimenStatus.fromWire(
       pending?.state ?? field['state'] as String?,
     );
+    final needsReview = fieldNeedsReview(
+      pending?.state ?? field['state'] as String?,
+      hasIssues: issues.isNotEmpty,
+    );
+    final layers = <FieldLayer, String?>{
+      for (final layer in FieldLayer.values)
+        layer: _layerValue(field, pending, layer),
+    };
+    final currentLayer = FieldLayer.values.reversed
+        .where((layer) => layers[layer] != null)
+        .firstOrNull;
+    final value = currentLayer == null ? null : layers[currentLayer];
+    final summary = <String>[
+      if (needsReview) 'Needs review',
+      state.label,
+      ?value,
+      if (field['required'] == true) 'Required',
+    ].join(' · ');
+    final authority = _authorityLine(field, pending);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -240,70 +337,157 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
       children: <Widget>[
         if (pending != null)
           Padding(
-            padding: EdgeInsetsDirectional.only(bottom: ui.space.s1),
-            child: Row(
-              children: <Widget>[
-                UiIcon(
-                  UiIcons.editReason,
-                  size: UiIconSize.inline,
-                  color: ui.color.status.needsReview.content,
-                ),
-                SizedBox(width: ui.space.s1),
-                Expanded(
-                  child: Text(
-                    'Not saved yet: ${pending.summary}',
-                    style: ui.type.bodySmall.copyWith(
-                      color: ui.color.status.needsReview.content,
-                    ),
-                  ),
-                ),
-              ],
+            padding: EdgeInsetsDirectional.fromSTEB(
+              ui.space.s3,
+              0,
+              ui.space.s3,
+              ui.space.s1,
+            ),
+            child: Text(
+              'Not saved yet: ${pending.summary}',
+              style: ui.type.bodySmall.copyWith(
+                color: ui.color.status.needsReview.content,
+              ),
             ),
           ),
-        FieldRow(
+        UiDisclosure(
           key: ValueKey<String>('field-row:${widget.specimen.id}:$key'),
-          sourceLabel: _sourcesFor(field, pending),
-          sourceDetails: _sourceDetails(context, field, pending),
+          title: name,
+          summary: summary,
+          semanticsLabel:
+              '$name${field['required'] == true ? ', required' : ', optional'}. $summary',
           onExpansionChanged: (expanded) {
             if (expanded) {
               widget.onFocusRegion?.call(_regionFor(field, pending));
             }
           },
-          name: fieldReviewName(field),
-          state: state,
-          required: field['required'] == true,
-          showRequirementMarker: false,
-          asWritten: _layerValue(field, pending, FieldLayer.asWritten),
-          readAs: _layerValue(field, pending, FieldLayer.readAs),
-          standardized: _layerValue(field, pending, FieldLayer.standardized),
-          authority: _authorityLine(field, pending),
-          onEdit: blocked != null
-              ? null
-              : (FieldLayer layer) => _startEdit(field, layer),
-          editBlockedReason: blocked,
-          // A reader that lands on the pencil directly hears the field as
-          // well as the layer, rather than the fortieth "Edit read as".
-          editSemanticsLabel: (FieldLayer layer) =>
-              'Edit ${layer.label.toLowerCase()} for '
-              '${fieldReviewName(field)}',
-          findings: findings.isEmpty
-              ? null
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    for (final Json f in findings) _Finding(finding: f),
-                  ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              if (value != null) ...<Widget>[
+                Text(
+                  'Current value · ${currentLayer!.label}',
+                  style: ui.type.labelSmall.copyWith(
+                    color: ui.color.inkSecondary,
+                  ),
                 ),
-          findingCount: findings.length,
-        ),
-        if (blocked != null && !knownFieldStates.contains(field['state']))
-          const CaveatText(
-            label: 'This field cannot be edited in this version of the app.',
-            why:
-                'The server sent a field state this app does not recognize. '
-                'Refreshing may help. Otherwise update the app.',
+                SizedBox(height: ui.space.s1),
+                Text(value, style: ui.type.body),
+                if (pending == null && field['layer'] == 'derived') ...<Widget>[
+                  SizedBox(height: ui.space.s1),
+                  Text(
+                    _derivationLine(field),
+                    style: ui.type.bodySmall.copyWith(
+                      color: ui.color.inkSecondary,
+                    ),
+                  ),
+                ],
+                SizedBox(height: ui.space.s2),
+              ] else ...<Widget>[
+                Text(
+                  switch (state) {
+                    SpecimenStatus.notPresent =>
+                      'This field is not present on the label.',
+                    SpecimenStatus.notApplicable =>
+                      'This field does not apply to the specimen.',
+                    SpecimenStatus.unreadable =>
+                      'The label text could not be read.',
+                    SpecimenStatus.ambiguous =>
+                      'More than one interpretation remains possible.',
+                    SpecimenStatus.unresolved =>
+                      'The available evidence has not settled this field.',
+                    _ => 'No value has been recorded for this field.',
+                  },
+                  style: ui.type.bodySmall.copyWith(
+                    color: ui.color.inkSecondary,
+                  ),
+                ),
+                SizedBox(height: ui.space.s2),
+              ],
+              for (final issue in issues)
+                Padding(
+                  padding: EdgeInsets.only(bottom: ui.space.s2),
+                  child: Text(
+                    issue.message,
+                    style: ui.type.bodySmall.copyWith(
+                      color: ui.color.status.needsReview.content,
+                    ),
+                  ),
+                ),
+              Text(
+                _sourcesFor(field, pending),
+                style: ui.type.bodySmall.copyWith(color: ui.color.inkSecondary),
+              ),
+              if (_sourceDetails(context, field, pending)
+                  case final details?) ...<Widget>[
+                SizedBox(height: ui.space.s2),
+                details,
+              ],
+              SizedBox(height: ui.space.s3),
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: UiButton(
+                  label: 'Correct value',
+                  semanticsLabel: 'Correct value for $name',
+                  variant: UiButtonVariant.secondary,
+                  disabledReason: blocked,
+                  onPressed: blocked == null
+                      ? () => _startEdit(field, FieldLayer.asWritten)
+                      : null,
+                ),
+              ),
+              if (blocked != null) ...<Widget>[
+                SizedBox(height: ui.space.s1),
+                Text(
+                  blocked,
+                  style: ui.type.bodySmall.copyWith(
+                    color: ui.color.inkSecondary,
+                  ),
+                ),
+              ],
+              if (layers.values.any((value) => value != null) ||
+                  authority != null) ...<Widget>[
+                SizedBox(height: ui.space.s2),
+                UiDisclosure(
+                  title: 'Value details',
+                  summary:
+                      'Original wording, interpretation and standardization',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: <Widget>[
+                      for (final layer in FieldLayer.values)
+                        if (layers[layer] case final text?)
+                          Padding(
+                            padding: EdgeInsets.only(bottom: ui.space.s2),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Text(
+                                  layer.label,
+                                  style: ui.type.labelSmall.copyWith(
+                                    color: ui.color.inkSecondary,
+                                  ),
+                                ),
+                                Text(text, style: ui.type.body),
+                              ],
+                            ),
+                          ),
+                      if (authority != null)
+                        Text(authority, style: ui.type.bodySmall),
+                    ],
+                  ),
+                ),
+              ],
+              if (widget.researchForField != null) ...<Widget>[
+                SizedBox(height: ui.space.s2),
+                widget.researchForField!(key),
+              ],
+            ],
           ),
+        ),
       ],
     );
   }
@@ -325,24 +509,31 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
               ids.contains(item['evidence_id']) || ids.contains(item['id']),
         )
         .toList();
-    if (retained.isEmpty) return null;
     final regions = _regionsFor(field, pending);
+    final verbatim = pending == null
+        ? objectOf(field['verbatim_by_observation']).values
+              .whereType<String>()
+              .where((text) => text.trim().isNotEmpty)
+              .toSet()
+              .toList()
+        : const <String>[];
+    if (retained.isEmpty && regions.isEmpty && verbatim.isEmpty) return null;
     final name = fieldReviewName(field);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text('Evidence for $name', style: ui.type.labelSmall),
+        for (final text in verbatim)
+          Padding(
+            padding: EdgeInsets.only(top: ui.space.s1),
+            child: Text(text, style: ui.type.bodySmall),
+          ),
         for (final item in retained)
-          if (item['excerpt'] is String &&
-              (item['excerpt'] as String).trim().isNotEmpty)
-            Padding(
-              padding: EdgeInsets.only(top: ui.space.s1),
-              child: Text(
-                item['excerpt'] as String,
-                style: ui.type.mono.literalDense,
-              ),
-            ),
+          Padding(
+            padding: EdgeInsets.only(top: ui.space.s1),
+            child: Text(evidenceDisplaySummary(item), style: ui.type.bodySmall),
+          ),
         if (widget.onFocusRegion != null && regions.isNotEmpty)
           Wrap(
             spacing: ui.space.s2,
@@ -359,8 +550,49 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
                   ),
             ],
           ),
+        if (retained.any((item) => _hasRawEvidenceDetails(item)))
+          UiDisclosure(
+            title: 'Evidence details',
+            summary: 'Retained source response',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                for (final item in retained)
+                  if (_hasRawEvidenceDetails(item))
+                    Padding(
+                      padding: EdgeInsets.only(top: ui.space.s1),
+                      child: Text(
+                        item['excerpt'] as String,
+                        style: ui.type.mono.literalDense,
+                      ),
+                    ),
+              ],
+            ),
+          ),
       ],
     );
+  }
+
+  bool _hasRawEvidenceDetails(Json item) =>
+      item['excerpt'] is String &&
+      (item['excerpt'] as String).trim().isNotEmpty &&
+      item['excerpt'] != evidenceDisplaySummary(item);
+
+  String _derivationLine(Json field) {
+    final keys = (field['derived_from'] as List? ?? const <Object>[])
+        .whereType<String>();
+    final names = <String>[
+      for (final key in keys)
+        if (widget.specimen.fields
+                .where((value) => value['field_key'] == key)
+                .firstOrNull
+            case final source?)
+          fieldReviewName(source),
+    ];
+    return names.isEmpty
+        ? 'Derived from other specimen fields'
+        : 'Derived from ${names.join(', ')}';
   }
 
   String? _layerValue(
@@ -369,7 +601,7 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     FieldLayer layer,
   ) {
     String? empty(String? value) =>
-        value == null || value.isEmpty ? null : value;
+        value == null || value.trim().isEmpty ? null : value;
     if (pending != null) {
       if (pending.state != 'supported') return null;
       return switch (layer) {
@@ -394,57 +626,6 @@ class _WorkbenchFieldsState extends State<WorkbenchFields> {
     return source.isEmpty || source == 'Not recorded'
         ? 'Authority match $id'
         : 'Authority match $id from ${vocabularyLabel(source)}';
-  }
-}
-
-/// One validation finding, in the error role, attached to its field.
-class _Finding extends StatelessWidget {
-  const _Finding({required this.finding});
-
-  final Json finding;
-
-  @override
-  Widget build(BuildContext context) {
-    final UiThemeData ui = context.ui;
-    final Color error = ui.color.status.blocked.content;
-    final String message = textOf(
-      finding['message'],
-      vocabularyLabel(textOf(finding['reason_code'], 'Validation finding')),
-    );
-    return Semantics(
-      liveRegion: true,
-      container: true,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Padding(
-            padding: EdgeInsetsDirectional.only(top: ui.space.s1),
-            child: UiIcon(UiIcons.error, size: UiIconSize.inline, color: error),
-          ),
-          SizedBox(width: ui.space.s1),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Text(message, style: ui.type.bodySmall.copyWith(color: error)),
-                Text(
-                  <String>[
-                        vocabularyLabel(textOf(finding['severity'], 'finding')),
-                        textOf(finding['rule_id'], ''),
-                      ]
-                      .where((String s) => s.isNotEmpty && s != 'Not recorded')
-                      .join(' · '),
-                  style: ui.type.bodySmall.copyWith(
-                    color: ui.color.inkSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -602,29 +783,43 @@ class _FieldEditorState extends State<_FieldEditor> {
               onChanged: (String _) => setState(() {}),
             ),
             SizedBox(height: ui.space.s3),
-            UiField(
-              label: FieldLayer.readAs.label,
-              helpText: fieldCorrectionHelp(widget.field, FieldLayer.readAs),
-              controller: _parsed,
-              autofocus: widget.layer == FieldLayer.readAs,
-            ),
-            SizedBox(height: ui.space.s3),
-            UiField(
-              label: FieldLayer.standardized.label,
-              helpText: fieldCorrectionHelp(
-                widget.field,
-                FieldLayer.standardized,
+            UiDisclosure(
+              title: 'Interpretation and standardization',
+              summary: 'Keep these values separate from the label wording',
+              initiallyExpanded: widget.layer != FieldLayer.asWritten,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  UiField(
+                    label: FieldLayer.readAs.label,
+                    helpText: fieldCorrectionHelp(
+                      widget.field,
+                      FieldLayer.readAs,
+                    ),
+                    controller: _parsed,
+                    autofocus: widget.layer == FieldLayer.readAs,
+                  ),
+                  SizedBox(height: ui.space.s3),
+                  UiField(
+                    label: FieldLayer.standardized.label,
+                    helpText: fieldCorrectionHelp(
+                      widget.field,
+                      FieldLayer.standardized,
+                    ),
+                    controller: _normalized,
+                    autofocus: widget.layer == FieldLayer.standardized,
+                  ),
+                  SizedBox(height: ui.space.s3),
+                  UiField(
+                    label: 'Authority identifier',
+                    helpText: 'Use a match from the authority evidence below.',
+                    controller: _authority,
+                  ),
+                ],
               ),
-              controller: _normalized,
-              autofocus: widget.layer == FieldLayer.standardized,
             ),
             SizedBox(height: ui.space.s3),
-            UiField(
-              label: 'Authority identifier',
-              helpText: 'Use a match from the authority evidence below.',
-              controller: _authority,
-            ),
-            SizedBox(height: ui.space.s4),
             EvidencePicker(
               choices: widget.choices,
               selected: _evidence,

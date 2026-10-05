@@ -7,6 +7,8 @@
 /// them, named in human terms.
 library;
 
+import 'dart:convert';
+
 import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
@@ -25,6 +27,124 @@ class EvidenceChoice {
   final String label;
 }
 
+/// A readable excerpt without treating a retained lookup payload as prose.
+///
+/// Known candidate values are displayed as reported, without claiming a match
+/// is accepted. Unknown structured formats keep their raw body in audit details.
+String evidenceDisplaySummary(Json evidence) {
+  final excerpt = textOf(evidence['excerpt'], '').trim();
+  final source = _evidenceSourceName(
+    textOf(evidence['source'], textOf(evidence['source_id'], '')),
+  );
+  if (excerpt.isEmpty || excerpt == 'Not recorded') {
+    return source ?? 'Retained evidence';
+  }
+  final structured = excerpt.startsWith('{') || excerpt.startsWith('[');
+  if (!structured) {
+    if (_opaqueIdentifier(excerpt)) return source ?? 'Retained evidence';
+    return _shortEvidenceText(excerpt);
+  }
+  final values = <String>[];
+  void add(Object? item) {
+    if (item is List) {
+      for (final child in item) {
+        add(child);
+      }
+    } else if (item is Map) {
+      for (final key in _candidateTextKeys) {
+        final value = item[key];
+        if (value is String &&
+            value.trim().isNotEmpty &&
+            !_opaqueIdentifier(value) &&
+            !value.trim().startsWith('{') &&
+            !value.trim().startsWith('[')) {
+          final text = _shortEvidenceText(value.trim());
+          if (!values.contains(text)) values.add(text);
+          break;
+        }
+      }
+      for (final key in [
+        'candidate',
+        'candidates',
+        'match',
+        'result',
+        'results',
+      ]) {
+        if (item[key] is Map || item[key] is List) add(item[key]);
+      }
+    }
+  }
+
+  try {
+    add(jsonDecode(excerpt));
+  } on FormatException {
+    // Canonical capture may retain one JSON candidate per line.
+    for (final line in const LineSplitter().convert(excerpt)) {
+      try {
+        add(jsonDecode(line));
+      } on FormatException {
+        // Older canonical records stored Python dict repr. Parse only named
+        // string properties; never evaluate or rewrite the retained payload.
+        for (final key in _candidateTextKeys) {
+          final match = RegExp(
+            "['\"]${RegExp.escape(key)}['\"]\\s*:\\s*'((?:\\\\.|[^'\\\\])*)'",
+          ).firstMatch(line);
+          if (match != null) {
+            final value = match.group(1)!;
+            if (value.trim().isNotEmpty && !_opaqueIdentifier(value)) {
+              final text = _shortEvidenceText(
+                value.replaceAll(r"\'", "'").replaceAll(r'\n', ' '),
+              );
+              if (!values.contains(text)) values.add(text);
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+  if (values.isEmpty) return source ?? 'Retained source evidence';
+  final summary = values.take(3).join(' · ');
+  final extra = values.length > 3 ? ' · ${values.length - 3} more' : '';
+  return '${source == null ? '' : '$source · '}$summary$extra';
+}
+
+const _candidateTextKeys = [
+  'value',
+  'matched_name',
+  'matchedName',
+  'scientificName',
+  'scientific_name',
+  'canonicalName',
+  'canonical_name',
+  'name',
+  'label',
+  'display_name',
+  'formatted_address',
+];
+
+bool _opaqueIdentifier(String value) => RegExp(
+  r'^(?:[a-f0-9]{32,}|[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12})$',
+  caseSensitive: false,
+).hasMatch(value.trim());
+
+String _shortEvidenceText(String value) {
+  final text = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+  return text.length <= 160 ? text : '${text.substring(0, 157)}…';
+}
+
+String? _evidenceSourceName(String source) => switch (source) {
+  'global_names_verifier' => 'Global Names Verifier',
+  'catalogue_of_life' => 'Catalogue of Life',
+  'gbif' => 'GBIF',
+  'bugguide' => 'BugGuide',
+  'mapcarta' => 'Mapcarta',
+  'geolocate' => 'GEOLocate',
+  'field_museum_ipt' => 'Field Museum IPT',
+  'field_museum_emudata' => 'Field Museum EMu data',
+  _ => null,
+};
+
 /// Only retained Evidence identifiers accepted by the field decision API.
 /// Observation and region IDs are source locators, not valid citations.
 List<EvidenceChoice> evidenceChoices(Specimen specimen) {
@@ -40,7 +160,7 @@ List<EvidenceChoice> evidenceChoices(Specimen specimen) {
     if (id.isEmpty || id == 'Not recorded') continue;
     if (choices.any((EvidenceChoice c) => c.id == id)) continue;
     final String where = regionNames[e['region_id']] ?? 'Record';
-    final String excerpt = textOf(e['excerpt'], '');
+    final String excerpt = evidenceDisplaySummary(e);
     choices.add(
       EvidenceChoice(
         id: id,

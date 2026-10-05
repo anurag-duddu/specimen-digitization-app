@@ -205,7 +205,7 @@ void main() {
     await tester.pump();
     expect(find.byType(ResearchThreadCard), findsNothing);
     expect(
-      find.text('Research access is unavailable. Check collection access.'),
+      find.text('Research access is unavailable for this collection.'),
       findsOneWidget,
     );
     await tester.pumpWidget(const SizedBox());
