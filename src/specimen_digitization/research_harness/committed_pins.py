@@ -112,12 +112,14 @@ TOKENIZER_PIN = {
 # tokenizer is byte-level BPE, so every token covers at least one rendered
 # byte, and the chat template adds at most one separator byte per byte of the
 # compact serialization: 2 tokens a byte. 8,192 tokens cover the tool preamble
-# and the per-turn special tokens. 262,144 bytes is a cap, not a measurement.
-# It must stay at least 72 KB: with Lane G's version 2 geography prompt the
-# last geography request is about 69 KB. This estimate is only a payload guard;
-# the financial reservation below uses the provider's entire context window.
+# and the per-turn special tokens. Geography v6's offline six-role fixture
+# reaches 266,902 bytes after four GEOLocate tool results. A 500,000-byte cap
+# admits that dialogue while bounding rendered input to 1,008,192 tokens,
+# below the pinned 1,048,576-token context (including the 4,096-token output).
+# This estimate is only a payload guard; the financial reservation below
+# still covers the provider's entire input context plus the output cap.
 REQUEST_BOUND = {
-    "maximum_serialized_bytes": 262_144,
+    "maximum_serialized_bytes": 500_000,
     "tokens_per_utf8_byte_upper_bound": 2,
     "fixed_overhead_tokens": 8_192,
 }

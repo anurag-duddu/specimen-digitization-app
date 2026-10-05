@@ -244,6 +244,55 @@ def test_the_request_bound_admits_the_largest_geography_request():
     assert TOKENIZER_PIN["hf_commit"] == "2cba9e42aa026125f3ed06c6d98c1db82f7ca027"  # pragma: allowlist secret (pinned commit id)
 
 
+def _text_dialogue_with_serialized_bytes(size):
+    messages = [{"parts": [{"part_kind": "user-prompt", "content": ""}]}]
+    settings = {"max_tokens": MAX_OUTPUT_TOKENS}
+    def serialized_size():
+        return len(json.dumps({"messages": messages, "parameters": {}, "settings": settings},
+            sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode())
+    messages[0]["parts"][0]["content"] = "x" * (size - serialized_size())
+    assert serialized_size() == size
+    return messages, {}, settings
+
+
+def test_the_larger_dialogue_bound_preserves_full_context_financial_reservations(monkeypatch):
+    current = pins_for()
+    row = current["sources"]["model_prices"]["specimen_geography"]
+    bound = current["sources"]["model_request_bounds"]["specimen_geography"]
+    assert bound["maximum_serialized_bytes"] == 500_000
+    maximum_input = (bound["maximum_serialized_bytes"]
+        * bound["tokens_per_utf8_byte_upper_bound"] + bound["fixed_overhead_tokens"])
+    assert maximum_input == 1_008_192
+    assert maximum_input + MAX_OUTPUT_TOKENS <= row["max_input_tokens"] == 1_048_576
+    monkeypatch.setitem(REQUEST_BOUND, "maximum_serialized_bytes", 262_144)
+    previous = pins_for()
+    assert current["model"] == previous["model"]
+    assert current["sources"]["model_prices"] == previous["sources"]["model_prices"]
+    assert current["model"]["specimen_geography"]["reservation_micro_usd"] == 212_173
+    assert bound != previous["sources"]["model_request_bounds"]["specimen_geography"]
+
+
+def test_dialogue_admission_still_checks_the_exact_byte_ceiling_and_context(monkeypatch):
+    pins = pins_for()
+    guard = registered_pins.registered_model_request_guards(
+        pins["sources"], bindings_of(pins))[SpecialistRole.GEOGRAPHY]
+    # Same serialized size as the offline v6 dialogue, then both sides of the
+    # enforced cap. The actual six-role dialogue is covered by agent_visibility.
+    for size in (266_902, 500_000):
+        assert guard(*_text_dialogue_with_serialized_bytes(size))
+    with pytest.raises(HeldUnknown, match="research_input_liability_bound_exceeded"):
+        guard(*_text_dialogue_with_serialized_bytes(500_001))
+    monkeypatch.setitem(REQUEST_BOUND, "maximum_serialized_bytes", 262_144)
+    old = pins_for()
+    old_guard = registered_pins.registered_model_request_guards(
+        old["sources"], bindings_of(old))[SpecialistRole.GEOGRAPHY]
+    with pytest.raises(HeldUnknown, match="research_input_liability_bound_exceeded"):
+        old_guard(*_text_dialogue_with_serialized_bytes(266_902))
+    monkeypatch.setitem(REQUEST_BOUND, "maximum_serialized_bytes", 520_193)
+    with pytest.raises(ValueError, match="research_committed_request_bound_exceeds_context"):
+        pins_for()
+
+
 def test_the_gateway_digest_is_read_from_the_installed_file(tmp_path, monkeypatch):
     installed = Path(model_gateway.__file__).read_bytes()
     bound = pins_for()["sources"]["model_request_bounds"]["specimen_temporal"]
