@@ -10,7 +10,7 @@ import copy
 import hashlib
 import json
 import math
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from typing import Literal
 
 from pydantic import Field
@@ -21,11 +21,11 @@ from specimen_digitization.application.georef_boundaries import extent
 from specimen_digitization.application.georef_geometry import inside
 from .contracts import (
     ROLE_FIELDS, FieldCheckpoint, FieldKey, FieldResolution, FrozenRecord, HumanQuestion, SourceQuery, SourceResult,
-    SpecialistRequest, SpecialistRole, ToolReceipt, WorkState, digest,
+    SpecialistRequest, SpecialistRole, WorkState, digest,
 )
 from .georeferencing import ELEVATION_FIELDS, VERSION, SettledLocationInput
 from .persistence import BlobRef, HeldUnknown, StaleWork
-from .source_capture_v2 import OPERATION_PREFIX
+from .source_capture_v2 import OPERATION_PREFIX, verify_spatial_derivation_result
 
 COMMAND_KEY = "research_derivation_request"
 RESULT_KEY = "derivation_result"
@@ -63,61 +63,20 @@ def _source_receipt(runtime, request, result, source_id, field_key):
 
 
 def _spatial_capture(runtime, command, effect_id):
-    """Read the core broker's immutable computed-spatial capture, including its command."""
-    effect = runtime.store.effect(runtime.scope, effect_id)
-    saved = effect.get("receipt")
-    if not saved or not saved.get("raw_capture"):
-        raise StaleWork("derivation_spatial_capture_unproved")
-    reference = BlobRef(**saved["raw_capture"])
-    if (not reference.generation or not 0 < reference.byte_size <= 1_000_000):
-        raise StaleWork("derivation_spatial_capture_unproved")
-    raw = runtime.blobs.get(reference)
-    if len(raw) != reference.byte_size or hashlib.sha256(raw).hexdigest() != reference.sha256:
-        raise StaleWork("derivation_spatial_capture_unproved")
-    envelope = json.loads(raw)
-    expected_keys = {"contract_version", "original_request", "logical_request", "effect_id",
-        "attempt_id", "binding_digest", "validation_receipt", "settled_inputs", "semantic_result"}
-    if not isinstance(envelope, dict) or set(envelope) != expected_keys:
-        raise StaleWork("derivation_spatial_capture_unproved")
-    request = SpecialistRequest.model_validate(envelope["original_request"])
-    logical = envelope["logical_request"]
-    inputs = [asdict(SettledLocationInput(item.field_key, item.value, item.evidence_ids,
-        item.revision, item.authority_id)) for item in command.inputs]
-    receipt = ToolReceipt.model_validate(envelope["validation_receipt"])
-    if (envelope["contract_version"] != "research-computed-spatial-capture/v1"
-            or envelope["effect_id"] != effect_id or envelope["binding_digest"] != effect["binding_digest"]
-            or envelope["attempt_id"] != saved["attempt_id"]
-            or envelope["semantic_result"] != saved["typed_payload"]
-            or digest(envelope["settled_inputs"]) != digest(inputs)
-            or logical.get("contract_version") != "research-computed-spatial-request/v1"
-            or logical.get("tool_id") != "source_lookup" or logical.get("source_id") != "georeference_spatial"
-            or logical.get("trusted_derivation_command_digest") != digest(command)
-            or logical.get("original_request_digest") != digest(request)
-            or logical.get("scope") != request.scope.model_dump(mode="json")
-            or logical.get("requested_fields") != [str(key) for key in command.requested_fields]
-            or digest(logical.get("settled_inputs")) != digest(inputs)
-            or logical.get("validation_receipt_id") != receipt.id
-            or logical.get("validation_result_digest") != receipt.result_digest
-            or logical.get("prompt_digest") != request.prompt.digest
-            or logical.get("source_registry_digest") != request.prompt.source_registry_digest
-            or effect["request_digest"] != digest(logical)
-            or effect["operation_key"] != OPERATION_PREFIX + digest(logical)
-            or request.scope.sensitive
-            or any(getattr(request.scope, key) != value for key, value in runtime.scope.identity().items())
-            or request.field_keys != (FieldKey(logical.get("field_key")),)
-            or effect["field_keys"] != [logical.get("field_key")]
-            or logical.get("field_revision") != request.field_revisions.get(request.field_keys[0])
-            or request.field_keys[0] not in command.requested_fields):
-        raise StaleWork("derivation_spatial_capture_unproved")
-    validation = SourceResult.model_validate(json.loads(receipt.result_json or "null"))
-    validation = validation.model_copy(update={"receipt": receipt})
-    _source_receipt(runtime, request, validation, "geolocate", validation.coverage.field_key)
-    if (receipt.id != "effect:" + receipt.effect_id or validation.status != LookupStatus.SUCCESS
-            or len(validation.candidate_json) != 1
-            or not any(item.field_key == validation.coverage.field_key
-                and json.loads(validation.candidate_json[0]).get("value") == item.value for item in command.inputs)):
-        raise StaleWork("derivation_validation_tool_unproved")
-    return request, receipt.id
+    """Use the shared immutable source-chain proof for every spatial outcome."""
+    document = runtime.store._read(runtime.scope)
+    try:
+        effect = document.state["effects"][effect_id]
+        field_key, = effect["field_keys"]
+        verify_spatial_derivation_result(document, runtime.scope.key, field_key,
+            command, effect_id, runtime.blobs)
+        # The shared verifier proved these exact immutable bytes. Extract the
+        # original request only to bind the journal's pre-checkpoint revision.
+        envelope = json.loads(runtime.blobs.get(BlobRef(**effect["receipt"]["raw_capture"])))
+        request = SpecialistRequest.model_validate(envelope["original_request"])
+        return request, envelope["validation_receipt"]["id"]
+    except (KeyError, TypeError, ValueError, OSError):
+        raise StaleWork("derivation_spatial_capture_unproved") from None
 
 
 def _request(runtime, field_key):
@@ -161,7 +120,7 @@ def _resolution(command, field_key, result, *, validation_tool_id=None):
             raise StaleWork("derivation_proposal_inputs_changed")
         return FieldResolution(field_key=field_key, work_state=WorkState.WAITING_HUMAN,
             value=FieldValue(state=ValueState.UNKNOWN, reason="Derived proposal requires human review"),
-            evidence_ids=evidence_ids, source_coverage=(result.coverage,),
+            evidence_ids=(), source_coverage=(result.coverage,),
             question=HumanQuestion(field_key=field_key,
                 question="Review the derived proposal and its settled inputs before choosing a value.",
                 reason="derived_proposal", coverage=(result.coverage,), evidence_ids=evidence_ids),
@@ -331,9 +290,12 @@ def _progress(runtime, command, *, status=None, checkpoint_ids=(), blocked_reaso
                    for key in command.requested_fields
                    if job["fields"].get(str(key), {}).get("checkpoint") is not None}
 
-        def validate_ids(ids):
+        def validate_ids(ids, *, completed=False):
             if len(set(ids)) != len(ids) or not set(ids) <= set(current):
                 raise StaleWork("derivation_checkpoint_unproved")
+            if completed and (len(current) != len(command.requested_fields)
+                    or set(ids) != set(current)):
+                raise StaleWork("derivation_completion_incomplete")
             for identifier in ids:
                 key, checkpoint = current[identifier]
                 if (checkpoint.get("scope") != runtime.scope.identity()
@@ -352,7 +314,7 @@ def _progress(runtime, command, *, status=None, checkpoint_ids=(), blocked_reaso
                     raise StaleWork("derivation_checkpoint_unproved")
 
         if previous is not None:
-            validate_ids(previous["checkpoint_ids"])
+            validate_ids(previous["checkpoint_ids"], completed=previous["status"] == "completed")
         if previous is not None and previous["status"] in {"completed", "blocked"}:
             if status is not None and previous != {
                     "request_id": command.id, "status": status,
@@ -363,7 +325,7 @@ def _progress(runtime, command, *, status=None, checkpoint_ids=(), blocked_reaso
         ids = tuple(previous["checkpoint_ids"]) if status is None and previous is not None else tuple(checkpoint_ids)
         if previous is not None and not set(previous["checkpoint_ids"]) <= set(ids):
             raise StaleWork("derivation_progress_cannot_forget_checkpoints")
-        validate_ids(ids)
+        validate_ids(ids, completed=selected == "completed")
         outcome = DerivationWorkerOutcome(request_id=command.id, status=selected,
             checkpoint_ids=ids, blocked_reason=blocked_reason)
         result = outcome.model_dump(mode="json")
@@ -553,6 +515,15 @@ class ResearchDerivationWorker:
         loaded = {item.field_key: item for item in await runtime.journal.load(request.scope)}
         document = await asyncio.to_thread(runtime.store._read, runtime.scope)
         job = runtime.store._job(document.state, runtime.scope)
+        identifiers = progress["checkpoint_ids"]
+        current = {job["fields"][str(key)]["checkpoint"]["id"]
+            for key in command.requested_fields
+            if job["fields"].get(str(key), {}).get("checkpoint") is not None}
+        if len(set(identifiers)) != len(identifiers) or not set(identifiers) <= current:
+            raise StaleWork("derivation_checkpoint_unproved")
+        if progress.get("status") == "completed" and (len(current) != len(command.requested_fields)
+                or set(identifiers) != current):
+            raise StaleWork("derivation_completion_incomplete")
         for key in command.requested_fields:
             native = job["fields"][str(key)]["checkpoint"]
             if native is None or native["id"] not in progress["checkpoint_ids"]:

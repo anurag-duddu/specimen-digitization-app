@@ -2,7 +2,7 @@
 import asyncio
 import hashlib
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from types import SimpleNamespace
 
 import pytest
@@ -236,9 +236,74 @@ def full_worker(tmp_path, adapter):
     return SimpleNamespace(worker=worker, runtime=runtime, context=context, principal=principal, broker=broker)
 
 
-def test_full_capture_no_match_retains_checkpoint_and_replays_without_new_effect(full_worker):
+@pytest.fixture
+def native_worker(full_worker, tmp_path):
+    """Actual captured broker and locked source reads over synthetic offline provider bytes."""
+    from specimen_digitization.research_harness.contracts import SpecialistRequest, SpecialistRole, digest
+    from specimen_digitization.research_harness.journal import DurableResearchJournal
+    from specimen_digitization.research_harness.prompts import resolve_prompt
+    from specimen_digitization.research_harness.source_capture_v2 import CaptureSourceBrokerV2, RegisteredCapturePolicyV2
+    from specimen_digitization.research_harness.sources import FixtureSourceTransport, insects_registry
+    from specimen_digitization.research_harness.source_readiness import SOURCE_READINESS
+
     case = full_worker
-    case.broker.spatial_status = LookupStatus.NO_MATCH
+    scope = case.runtime.scope
+    registry = insects_registry(qualification_overrides={key: SOURCE_READINESS[key]
+        for key in ("geolocate", "georeference_history", "georeference_spatial")})
+    policies = {identifier: RegisteredCapturePolicyV2(source_id=identifier,
+        source_policy_digest=digest(registry.get(identifier)), kind=kind,
+        owner_registration_digest=digest("offline-test-owner"),
+        owner_registration_origin="synthetic offline test registration", maximum_responses=1)
+        for identifier, kind in (("geolocate", "full_response"),
+            ("georeference_history", "pinned_dataset"), ("georeference_spatial", "computed"))}
+    profile = {"version": "fixture"}
+    prompt = resolve_prompt(SpecialistRole.GEOGRAPHY, profile_digest=digest(profile),
+        source_registry_digest=registry.digest, toolset_digest="f" * 64, model_route="test", output_schema_digest="0" * 64)
+    request = SpecialistRequest(scope=ResearchScope(**scope.identity(), sensitive=False,
+        input_digest="d" * 64, profile_digest=digest(profile)), role=SpecialistRole.GEOGRAPHY,
+        field_keys=(FieldKey.COUNTRY, FieldKey.CITY, FieldKey.PROVINCE_STATE), prompt=prompt,
+        field_revisions={FieldKey.COUNTRY: 0, FieldKey.CITY: 0, FieldKey.PROVINCE_STATE: 0})
+    backend = SqliteStateBackend(tmp_path / "native.sqlite")
+    backend.grant(scope, role="reviewer")
+    store = ResearchStore(backend, "native-fixture-program")
+    store.initialize(scope, BudgetPolicy(100))
+    pins = PinnedRuntime("d" * 64, profile, {str(prompt.role): prompt.model_dump(mode="json")},
+        {"registry_digest": registry.digest,
+            "registry_policies": [policy.model_dump(mode="json") for policy in registry.policies],
+            "capture_policies": {key: policy.model_dump(mode="json") for key, policy in policies.items()}},
+        {str(prompt.role): {"route": "test"}}, {"max_tokens": 128}, "specialist_harness_v2")
+    store.create_job(scope, pins, ["country", "city", "province_state"], record_revision=5)
+    def lock_inputs(state, now):
+        job = store._job(state, scope)
+        for key in ("country", "city"):
+            job["fields"][key]["locked"] = True
+    store._mutate(scope, lock_inputs)
+    lease = store.claim(scope, "native-fixture-owner", ttl_seconds=300)
+    blobs = ImmutableFileBlobs(tmp_path / "native-captures")
+    calls = []
+    response = json.dumps({"engineVersion": "synthetic-offline-v1", "numResults": 1,
+        "resultSet": {"type": "FeatureCollection", "crs": {"type": "EPSG", "properties": {"code": 4326}},
+            "features": [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [.5, .5]},
+                "properties": {"parsePattern": "TestTown", "precision": "high", "score": 100,
+                    "debug": "|:Adm=TestProvince|"}}]}}).encode()
+    async def read(url, policy):
+        assert policy.id == "geolocate"
+        calls.append(url)
+        return 200, response
+    native = CaptureSourceBrokerV2(registry, policies, DurableEffectBroker(store, blobs), scope, lease,
+        transport=FixtureSourceTransport(read), execution_class="offline",
+        georeferencing_adapter=case.runtime.derivation_services.adapter, derivation_context=case.context)
+    case.runtime.store, case.runtime.lease, case.runtime.blobs = store, lease, blobs
+    case.runtime.journal = DurableResearchJournal(store, scope, lease, blobs)
+    case.runtime.derivation_services.broker = native
+    case.runtime.derivation_services.requests = {SpecialistRole.GEOGRAPHY: request}
+    case.broker, case.calls, case.response = native, calls, response
+    return case
+
+
+def test_full_capture_no_match_retains_checkpoint_and_replays_without_new_effect(native_worker):
+    case = native_worker
+    del case.runtime.derivation_services.adapter.field_levels["GT"][FieldKey.PROVINCE_STATE]
     result = asyncio.run(case.worker.consume(case.runtime, case.principal, case.context))
     assert result.status == "completed" and len(result.checkpoint_ids) == 1
     job = case.runtime.store.job(case.runtime.scope)
@@ -272,8 +337,8 @@ def test_history_ambiguity_is_durably_blocked_without_validation(full_worker):
     assert case.broker.calls == ["georeference_history"]
 
 
-def test_full_success_is_review_only_and_recovery_acknowledges_committed_checkpoint(full_worker):
-    case = full_worker
+def test_full_success_is_review_only_and_recovery_acknowledges_committed_checkpoint(native_worker):
+    case = native_worker
     result = asyncio.run(case.worker.consume(case.runtime, case.principal, case.context))
     job = case.runtime.store.job(case.runtime.scope)
     checkpoint = job["fields"]["province_state"]["checkpoint"]
@@ -281,10 +346,90 @@ def test_full_success_is_review_only_and_recovery_acknowledges_committed_checkpo
     resolution = checkpoint["payload"]["resolution"]
     assert resolution["work_state"] == "waiting_human"
     assert resolution["question"]["reason"] == "derived_proposal"
+    assert resolution["evidence_ids"] == []
+    assert resolution["question"]["evidence_ids"]
+    assert any(identifier.startswith("computed:") for identifier in resolution["question"]["evidence_ids"])
     assert resolution["value"]["parsed"] is None and resolution["value"]["state"] == "unknown"
     assert job["fields"]["city"]["revision"] == job["fields"]["country"]["revision"] == 0
+    assert job["fields"]["city"]["locked"] is job["fields"]["country"]["locked"] is True
+    assert len(case.calls) == 1
+    effects = case.runtime.store._read(case.runtime.scope).state["effects"]
+    assert len(effects) == 3 and all(item["receipt"]["raw_capture"] for item in effects.values())
+    spatial = next(item["receipt"]["typed_payload"] for item in effects.values()
+        if item["receipt"]["typed_payload"]["coverage"]["source_id"] == "georeference_spatial")
+    assert resolution["question"]["evidence_ids"] == [item["id"] for item in spatial["evidence"]]
     assert all(event["kind"] != "canonical_publication_required"
         for event in case.runtime.store._read(case.runtime.scope).state["outbox"].values())
+    assert asyncio.run(case.worker.consume(case.runtime, case.principal, case.context)) == result
+    assert len(case.calls) == 1
+
+
+@pytest.mark.parametrize("status", [LookupStatus.AMBIGUOUS, LookupStatus.PROVIDER])
+def test_actual_captured_spatial_gaps_replay_without_proposals(native_worker, monkeypatch, status):
+    from specimen_digitization.application.domain import FieldValue
+
+    case = native_worker
+    if status == LookupStatus.AMBIGUOUS:
+        from specimen_digitization.application import georef_curated
+        hypothesis = replace(georef_curated.PLACES[0], country="GT", names=("Unconfirmed hill",))
+        monkeypatch.setattr(georef_curated, "PLACES", (hypothesis,))
+        case.context.specimen.run.fields[FieldKey.PRECISE_LOCATION] = FieldValue(literal="Unconfirmed hill")
+    else:
+        original = case.broker.derive_spatial_from_trusted_inputs
+        async def dataset_disappears(*args, **kwargs):
+            # Inject a dataset read failure after the captured validator succeeds.
+            tool = case.runtime.derivation_services.adapter
+            tool._dumps.clear()
+            def missing(entry):
+                raise OSError("Synthetic offline dataset unavailable")
+            monkeypatch.setattr(tool, "read_dataset", missing)
+            return await original(*args, **kwargs)
+        monkeypatch.setattr(case.broker, "derive_spatial_from_trusted_inputs", dataset_disappears)
+    result = asyncio.run(case.worker.consume(case.runtime, case.principal, case.context))
+    assert result.status == "completed" and len(result.checkpoint_ids) == 1
+    document = case.runtime.store._read(case.runtime.scope)
+    captured = next(effect["receipt"]["typed_payload"] for effect in document.state["effects"].values()
+        if effect["receipt"]["typed_payload"]["coverage"]["source_id"] == "georeference_spatial")
+    assert captured["status"] == str(status)
+    resolution = case.runtime.store.job(case.runtime.scope)["fields"]["province_state"]["checkpoint"]["payload"]["resolution"]
+    assert resolution["question"] is None and resolution["value"]["parsed"] is None
+    assert resolution["work_state"] == ("operational_failed" if status == LookupStatus.PROVIDER else "waiting_source")
+    assert asyncio.run(case.worker.consume(case.runtime, case.principal, case.context)) == result
+    assert len(case.calls) == 1
+
+
+def test_completion_without_target_checkpoints_is_refused(runtime):
+    with pytest.raises(StaleWork, match="derivation_completion_incomplete"):
+        _progress(runtime, command(), status="completed")
+    assert runtime.store.job(runtime.scope)["dependencies"] == {}
+
+
+@pytest.mark.parametrize("partial", [False, True])
+def test_persisted_incomplete_completion_cannot_acknowledge_queue(native_worker, partial):
+    case = native_worker
+    command = case.context.command
+    checkpoint_ids = []
+    if partial:
+        result = asyncio.run(case.worker.consume(case.runtime, case.principal, case.context))
+        checkpoint_ids = list(result.checkpoint_ids)
+        # A retained checkpoint for one requested field is insufficient for two.
+        command = command.model_copy(update={"requested_fields": (FieldKey.PROVINCE_STATE, FieldKey.COUNTY)})
+        case.context = replace(case.context, command=command)
+        case.runtime.derivation_services.context = case.context
+    def incomplete(state, now):
+        job = case.runtime.store._lease(state, case.runtime.scope, case.runtime.lease, now)
+        job["dependencies"]["derivation_request_id"] = command.id
+        job["dependencies"]["derivation_result"] = {"request_id": command.id,
+            "status": "completed", "checkpoint_ids": checkpoint_ids, "blocked_reason": None}
+    case.runtime.store._mutate(case.runtime.scope, incomplete, lease=case.runtime.lease)
+    before = case.runtime.store._read(case.runtime.scope)
+    calls = list(case.calls)
+    with pytest.raises(StaleWork, match="derivation_completion_incomplete"):
+        asyncio.run(case.worker.consume(case.runtime, case.principal, case.context))
+    assert case.calls == calls and case.runtime.store._read(case.runtime.scope).state == before.state
+    with pytest.raises(StaleWork, match="derivation_completion_incomplete"):
+        asyncio.run(case.worker._validate_retained(case.runtime, command,
+            {"status": "completed", "checkpoint_ids": checkpoint_ids}))
 
 
 @pytest.mark.parametrize("name,changed", [("record_revision", 6), ("canonical_run_id", "new-run")])
@@ -313,9 +458,8 @@ def test_uncertain_or_cancelled_worker_retains_lease_custody(full_worker, monkey
     assert case.runtime.store.job(case.runtime.scope)["lease"] == before
 
 
-def test_missing_spatial_tool_receipt_cannot_write_a_checkpoint(full_worker, monkeypatch):
-    case = full_worker
-    case.broker.spatial_status = LookupStatus.NO_MATCH
+def test_missing_spatial_tool_receipt_cannot_write_a_checkpoint(native_worker, monkeypatch):
+    case = native_worker
     original = case.broker.derive_spatial_from_trusted_inputs
     async def without_receipt(*args, **kwargs):
         result = await original(*args, **kwargs)
@@ -326,11 +470,10 @@ def test_missing_spatial_tool_receipt_cannot_write_a_checkpoint(full_worker, mon
     assert case.runtime.store.job(case.runtime.scope)["fields"]["province_state"]["checkpoint"] is None
 
 
-def test_lost_checkpoint_ack_recovery_validates_and_reuses_without_more_source_work(full_worker, monkeypatch):
+def test_lost_checkpoint_ack_recovery_validates_and_reuses_without_more_source_work(native_worker, monkeypatch):
     from specimen_digitization.research_harness import derivation_worker
 
-    case = full_worker
-    case.broker.spatial_status = LookupStatus.NO_MATCH
+    case = native_worker
     original = derivation_worker._progress
     def lost_ack(*args, **kwargs):
         if kwargs.get("status") == "running" and kwargs.get("checkpoint_ids"):
@@ -339,51 +482,60 @@ def test_lost_checkpoint_ack_recovery_validates_and_reuses_without_more_source_w
     monkeypatch.setattr(derivation_worker, "_progress", lost_ack)
     with pytest.raises(OSError):
         asyncio.run(case.worker.consume(case.runtime, case.principal, case.context))
-    prior = list(case.broker.calls)
+    prior = list(case.calls)
     checkpoint = case.runtime.store.job(case.runtime.scope)["fields"]["province_state"]["checkpoint"]
     assert checkpoint is not None
     monkeypatch.setattr(derivation_worker, "_progress", original)
     result = asyncio.run(case.worker.consume(case.runtime, case.principal, case.context))
     assert result.status == "completed" and result.checkpoint_ids == (checkpoint["id"],)
-    assert case.broker.calls == prior
+    assert case.calls == prior
 
 
-def test_terminal_replay_checks_full_journal_integrity(full_worker):
-    case = full_worker
-    case.broker.spatial_status = LookupStatus.NO_MATCH
+def test_terminal_replay_checks_full_journal_integrity(native_worker):
+    case = native_worker
     asyncio.run(case.worker.consume(case.runtime, case.principal, case.context))
     def corrupt(state, now):
         job = case.runtime.store._lease(state, case.runtime.scope, case.runtime.lease, now)
         job["fields"]["province_state"]["checkpoint"]["payload"]["prompt_digest"] = "8" * 64
     case.runtime.store._mutate(case.runtime.scope, corrupt, lease=case.runtime.lease)
-    prior = list(case.broker.calls)
+    prior = list(case.calls)
     with pytest.raises(StaleWork, match="checkpoint_native_typed_binding_mismatch"):
         asyncio.run(case.worker.consume(case.runtime, case.principal, case.context))
-    assert case.broker.calls == prior
+    assert case.calls == prior
 
 
-def test_computed_capture_for_another_command_cannot_checkpoint(full_worker, monkeypatch):
-    case = full_worker
-    case.broker.spatial_status = LookupStatus.NO_MATCH
-    original = case.broker.capture
-    async def wrong_command(request, query, result, **kwargs):
-        if query.source_id == "georeference_spatial":
-            kwargs["logical"] = {**kwargs["logical"], "trusted_derivation_command_digest": "9" * 64}
-        return await original(request, query, result, **kwargs)
-    monkeypatch.setattr(case.broker, "capture", wrong_command)
+def test_retained_capture_cannot_verify_another_command(native_worker):
+    from specimen_digitization.research_harness.derivation_worker import _spatial_capture
+
+    case = native_worker
+    asyncio.run(case.worker.consume(case.runtime, case.principal, case.context))
+    document = case.runtime.store._read(case.runtime.scope)
+    effect_id = next(key for key, effect in document.state["effects"].items()
+        if effect["receipt"]["typed_payload"]["coverage"]["source_id"] == "georeference_spatial")
+    other = case.context.command.model_copy(update={"reason": "Another immutable request"})
     with pytest.raises(StaleWork, match="derivation_spatial_capture_unproved"):
-        asyncio.run(case.worker.consume(case.runtime, case.principal, case.context))
-    assert case.runtime.store.job(case.runtime.scope)["fields"]["province_state"]["checkpoint"] is None
+        _spatial_capture(case.runtime, other, effect_id)
+    assert case.runtime.store._read(case.runtime.scope).state == document.state
 
 
-def test_changed_immutable_computation_bytes_cannot_checkpoint(full_worker, monkeypatch):
-    case = full_worker
-    case.broker.spatial_status = LookupStatus.NO_MATCH
+@pytest.mark.parametrize("capture", ["spatial", "validator", "provider"])
+def test_changed_immutable_source_chain_bytes_cannot_checkpoint(native_worker, monkeypatch, capture):
+    case = native_worker
     original = case.broker.derive_spatial_from_trusted_inputs
     blobs = case.runtime.blobs
     async def changed_capture(*args, **kwargs):
         result = await original(*args, **kwargs)
-        case.runtime.blobs = SimpleNamespace(get=lambda reference: blobs.get(reference) + b" ")
+        from specimen_digitization.research_harness.persistence import BlobRef
+        effects = case.runtime.store._read(case.runtime.scope).state["effects"].values()
+        source = "georeference_spatial" if capture == "spatial" else "geolocate"
+        saved = next(effect["receipt"] for effect in effects
+            if effect["receipt"]["typed_payload"]["coverage"]["source_id"] == source)
+        target = saved["raw_capture"]
+        if capture == "provider":
+            envelope = json.loads(blobs.get(BlobRef(**target)))
+            target = envelope["responses"][0]["body"]
+        case.runtime.blobs = SimpleNamespace(get=lambda reference:
+            blobs.get(reference) + (b" " if reference.locator == target["locator"] else b""))
         return result
     monkeypatch.setattr(case.broker, "derive_spatial_from_trusted_inputs", changed_capture)
     with pytest.raises(StaleWork, match="derivation_spatial_capture_unproved"):
