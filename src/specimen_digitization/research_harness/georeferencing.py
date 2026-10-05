@@ -436,7 +436,12 @@ def derivation_source_result(result: DerivationResult, field_key: FieldKey) -> S
     status = result.status
     if not proposals and status == LookupStatus.SUCCESS:
         status = dict(result.unresolved_statuses).get(str(field_key), LookupStatus.NO_MATCH)
+    review_required = bool(proposals) and status == LookupStatus.SUCCESS
+    if review_required:
+        reason = "computed_proposal"
     candidates = tuple(_json({**asdict(proposal), "field_key": str(field_key),
+                               **({"human_review_required": True,
+                                   "automatic_settlement_allowed": False} if review_required else {}),
                                "evidence_ids": tuple(dict.fromkeys((*proposal.evidence_ids,
                                                                     *((computed.id,) if computed else ())))),
                                "georeference": asdict(result.georeference) if result.georeference else None})

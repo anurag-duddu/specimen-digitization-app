@@ -11,10 +11,12 @@ from specimen_digitization.application.domain import LookupStatus
 from specimen_digitization.application import georef_nga as nga
 from specimen_digitization.application import georef_tgn as tgn
 from specimen_digitization.application import georef_wikidata as wikidata
+from specimen_digitization.research_harness.compatibility import PublicationUnavailable
 from specimen_digitization.research_harness.historical_gazetteers import (
     MAX_BODY_BYTES,
     lookup,
 )
+from specimen_digitization.research_harness.persistence import HeldUnknown, StaleWork
 
 FIXTURES = Path(__file__).parent / "fixtures" / "georeferencing"
 
@@ -294,7 +296,7 @@ async def test_no_references_skips_auxiliary_call(source):
 
 
 @pytest.mark.asyncio
-async def test_invalid_filtered_name_and_timeout_have_distinct_statuses():
+async def test_invalid_filtered_name_blocks_fetch_but_timeout_reaches_broker():
     calls = []
 
     async def fetch(url, params):
@@ -303,10 +305,52 @@ async def test_invalid_filtered_name_and_timeout_have_distinct_statuses():
 
     blocked = await lookup("nga", "3 Sept.\n1946", fetch)
     assert blocked.status is LookupStatus.POLICY and blocked.exchanges == ()
-    timed_out = await lookup("nga", "Mount Apo", fetch)
-    assert timed_out.status is LookupStatus.TIMEOUT and len(timed_out.exchanges) == 1
-    assert timed_out.exchanges[0].failure == "timeout"
+    with pytest.raises(TimeoutError):
+        await lookup("nga", "Mount Apo", fetch)
     assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("source", "reading"),
+    [
+        ("tgn", "Mount McKinley"),
+        ("wikidata", "Davao Province"),
+        ("nga", "Yepocapa"),
+    ],
+)
+@pytest.mark.parametrize("failed_stage", [1, 2])
+@pytest.mark.parametrize(
+    "error_type",
+    [
+        HeldUnknown,
+        StaleWork,
+        PermissionError,
+        PublicationUnavailable,
+        TimeoutError,
+        ValueError,
+        TypeError,
+        KeyError,
+    ],
+)
+async def test_durable_fetch_failure_propagates_unchanged(
+    source, reading, failed_stage, error_type
+):
+    fixture_fetch = FixtureFetch(source, reading)
+    calls = []
+    failure = error_type("durable capture or receipt uncertain")
+
+    async def fetch(url, params):
+        calls.append((url, params))
+        if len(calls) == failed_stage:
+            raise failure
+        return await fixture_fetch(url, params)
+
+    with pytest.raises(error_type) as raised:
+        await lookup(source, reading, fetch)
+    assert raised.value is failure
+    assert len(calls) == failed_stage
+    assert len(fixture_fetch.calls) == failed_stage - 1
 
 
 @pytest.mark.asyncio

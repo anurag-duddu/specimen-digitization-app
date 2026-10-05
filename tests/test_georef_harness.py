@@ -235,6 +235,21 @@ def test_unresolved_field_keeps_computed_georeference_in_tool_result(adapter):
     metadata = json.loads(envelope.candidate_json[0])
     assert metadata["settlement_allowed"] is False and "value" not in metadata
     assert metadata["georeference"]["uncertainty_m"] > 300
+    assert envelope.coverage.reason != "computed_proposal"
+    assert "human_review_required" not in metadata
+
+
+def test_computed_proposal_is_human_selectable_but_never_auto_settled(adapter):
+    tool, _ = adapter
+    envelope = geo.derivation_source_result(derive(tool), FieldKey.PROVINCE_STATE)
+    assert envelope.status == LookupStatus.SUCCESS
+    assert envelope.coverage.state == SourceCoverageState.SEARCHED
+    assert envelope.coverage.reason == "computed_proposal"
+    candidate = json.loads(envelope.candidate_json[0])
+    assert candidate["value"]
+    assert candidate["human_review_required"] is True
+    assert candidate["automatic_settlement_allowed"] is False
+    assert candidate.get("settlement_allowed") is not False
 
 
 def test_computed_evidence_binds_source_coverage_and_preserves_provider_evidence(adapter):

@@ -88,6 +88,9 @@ source. Follow-up IDs come only from the previous parsed source answer; missing
 requested records remain ambiguous and unexpected IDs are refused. Ordered
 `Exchange` entries retain query, status, body and digest. No partial or failed
 source answer is silently treated as an exhausted gazetteer.
+Durable fetch, capture and receipt exceptions propagate to the owning broker,
+including timeouts with uncertain outcomes. Only local parser errors are
+classified here; the orchestrator cannot settle or refund a failed effect.
 
 The validator result must confirm the most specific settled footprint anchor's
 field and value. An ambiguous selection is not a successful validation: the
@@ -97,3 +100,41 @@ coverage returns no-match; missing or corrupt pinned objects remain operational
 failures. `DerivationResult.unresolved_statuses` preserves that distinction.
 Even without a field proposal, the tool envelope retains a metadata-only
 georeference candidate marked `settlement_allowed: false` with no field value.
+
+Actual successful computed proposals carry `human_review_required: true` and
+`automatic_settlement_allowed: false`, with coverage reason `computed_proposal`.
+They remain selectable through the ordinary human candidate-review route.
+The non-settling metadata marker is reserved for candidates without a proposed
+field value; it must not suppress a genuine editable proposal.
+
+## Queued worker integration
+
+`ResearchDerivationWorker(runtime_factory, input_blobs=ordinary_provenance_blobs)`
+consumes a queued API command through
+`await worker.run_registered(principal, specimen_id, owner=..., command=...)`.
+The optional command must equal the canonical saved command. The worker reads
+the repository's original human-review proofs, verifies the source snapshot and
+exact queued revision, and opens the runtime with a trusted `DerivationContext`.
+The runtime must return model-disabled `derivation_services` containing the
+captured broker, all specialist requests, adapter and that same context.
+
+The captured broker's `validate_locked_anchor` performs finite history and
+GEOLocate reads for the settled anchor. The context rechecks the canonical
+command, proofs and locks at admission and execution. Reading a locked input
+does not authorize an input-field checkpoint or unlock. A unique exact pinned
+place or a retained genuine source selection supplies only the point for a new
+GEOLocate query. Original ambiguous selections remain ambiguous. The qualified
+footprint's bounded query radius does not replace the final uncertainty circle.
+This worker requires a human-settled PH/GT country and a mapped administrative
+anchor; an unsupported input set or unqualified historical seed remains blocked.
+
+The broker's `derive_spatial_from_trusted_inputs` captures each target result
+with the complete immutable command digest. Successful proposals become
+`WAITING_HUMAN` checkpoints with reason `derived_proposal`; the field value stays
+unresolved until ordinary human review. Scientific gaps and operational failures
+retain their actual source states. Progress lives only in the scoped native
+job's `derivation_result` under lease-fenced CAS. Replay validates retained
+checkpoints and source receipts before acknowledging them. Cancellation and
+unknown effect outcomes retain custody. This module never publishes canonical
+values or advances the canonical revision; the root queue integration owns
+metadata-only scheduling and completion.
