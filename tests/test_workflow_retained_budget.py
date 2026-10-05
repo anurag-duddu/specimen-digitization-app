@@ -78,3 +78,19 @@ def test_unreadable_state_blocks_before_send(tmp_path, monkeypatch):
     result = workflow.step(principal, specimen.id)
     assert adapters.calls == 0
     assert result.run.blocker == "research_budget_state_unavailable"
+
+
+def test_atomic_shared_reservation_refusal_blocks_before_ordinary_intent(tmp_path, monkeypatch):
+    workflow, principal, specimen, adapters = make_workflow(
+        tmp_path, monkeypatch, lambda principal, specimen: 0)
+
+    def concurrent_reservation(principal, specimen, step, cost):
+        assert step == "segment" and cost == 20_000
+        raise OperationalBlock("cost_budget_exhausted")
+
+    workflow.reserve_retained_cost = concurrent_reservation
+    result = workflow.step(principal, specimen.id)
+    assert adapters.calls == 0
+    assert result.run.blocker == "cost_budget_exhausted"
+    assert result.run.usage.reserved_cost_micros == 200_000
+    assert result.run.attempts == {}

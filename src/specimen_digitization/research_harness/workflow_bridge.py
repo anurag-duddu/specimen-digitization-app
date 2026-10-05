@@ -137,7 +137,10 @@ def compose_production_research_workflow(ordinary, *, repository, environ, actor
     if not research_harness_enabled(environ):
         raise ValueError("research_harness_switch_off")
     verify_access = membership_verifier(repository)
-    from .program_budget import research_liability_micros
+    from .program_budget import (
+        research_liability_micros, reserve_ordinary_liability, settle_ordinary_liability,
+    )
+    from .persistence import BudgetExceeded
 
     def retained_cost(principal, specimen):
         if committed_harness_route(specimen.run.profile_snapshot) is None:
@@ -146,6 +149,27 @@ def compose_production_research_workflow(ordinary, *, repository, environ, actor
             state_backend=state_backend)
 
     ordinary.retained_cost = retained_cost
+
+    def reserve_retained_cost(principal, specimen, step, cost):
+        if committed_harness_route(specimen.run.profile_snapshot) is None:
+            return
+        try:
+            reserve_ordinary_liability(repository, principal, specimen, step, cost,
+                state_backend=state_backend)
+        except BudgetExceeded:
+            raise OperationalBlock("cost_budget_exhausted") from None
+        except HeldUnknown:
+            raise OperationalBlock("research_budget_state_unavailable") from None
+
+    ordinary.reserve_retained_cost = reserve_retained_cost
+
+    def settle_retained_cost(principal, specimen, step):
+        if committed_harness_route(specimen.run.profile_snapshot) is None:
+            return
+        settle_ordinary_liability(repository, principal, specimen, step,
+            state_backend=state_backend)
+
+    ordinary.settle_retained_cost = settle_retained_cost
 
     async def authorize(principal, specimen, binding):
         return await authorize_live_research(principal, specimen, binding,

@@ -136,7 +136,9 @@ class NativeResearchWorker:
                 replayed.append(str(winner.causal.receipt_id))
         from .contracts import SpecialistRole
         receipts, checkpoints = list(replayed), []
-        maximum = 1 if retry_command_id is not None else len(SpecialistRole)
+        # A retained pre-publication can consume one window without running a
+        # role: its canonical commit requires reopening the exact send binding.
+        maximum = 1 if retry_command_id is not None else len(SpecialistRole) + 1
         for _ in range(maximum):
             self._deadline_check()
             runtime = await self.runtime_factory.open(principal, specimen_id, owner=owner)
@@ -215,14 +217,21 @@ class NativeResearchWorker:
                 return NativeResearchWorkerOutcomeV2(scope=scope, status="blocked",
                     reason_code="research_retry_not_completed")
         else:
-            prior = await self._publish_committed(runtime, principal, specimen_id)
+            publications = []
+            prior = await self._publish_committed(runtime, principal, specimen_id,
+                publication_progress=publications)
             if prior.reason_code is not None:
+                return prior
+            if publications:
+                # Publishing an already-paid checkpoint advances the canonical
+                # tuple. End this known window and reopen before another effect;
+                # never reuse or weaken the old immutable send authorization.
                 return prior
             # One lease window: the next role_window pending specialists, at once.
             await runtime.engine.run(role_limit=runtime.role_window)
         return await self._publish_committed(runtime, principal, specimen_id)
 
-    async def _publish_committed(self, runtime, principal, specimen_id):
+    async def _publish_committed(self, runtime, principal, specimen_id, *, publication_progress=None):
         scope = runtime.binding.research_scope()
         # Only committed current checkpoints are eligible. A legacy/historical
         # body or a failed engine run is not scientific publication authority.
@@ -297,6 +306,8 @@ class NativeResearchWorker:
                     checkpoint_ids=tuple(checkpoint_ids), publication_receipt_ids=tuple(receipts),
                     reason_code="native_publication_requires_reconciliation")
             receipts.append(str(published.causal.receipt_id))
+            if publication_progress is not None:
+                publication_progress.append(str(published.causal.receipt_id))
         thread = await self._thread(runtime)
         from .status import ResearchStatusV1
         profile = CollectionProfile.model_validate(job["pins"]["profile"])

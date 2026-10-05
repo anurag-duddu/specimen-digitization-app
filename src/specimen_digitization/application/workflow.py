@@ -132,12 +132,16 @@ class Workflow:
         authority_cost_reservations=None,
         admission=None,
         retained_cost=None,
+        reserve_retained_cost=None,
+        settle_retained_cost=None,
     ):
         self.repository, self.blobs, self.adapters = repository, blobs, adapters
         self.admission = admission
         # Other durable stages can retain paid/unknown liabilities on this run.
         # Consult them before sending, without duplicating them in ordinary usage.
         self.retained_cost = retained_cost
+        self.reserve_retained_cost = reserve_retained_cost
+        self.settle_retained_cost = settle_retained_cost
         if hasattr(repository, "graph_blobs") and repository.graph_blobs is None:
             repository.graph_blobs = blobs
         self.clock = clock or (lambda: datetime.now(timezone.utc))
@@ -291,6 +295,11 @@ class Workflow:
             > policy.approved_cost_limit_micros
         ):
             issue = "cost_budget_exhausted"
+        if issue is None and billable and not run.profile.synthetic and self.reserve_retained_cost is not None:
+            try:
+                self.reserve_retained_cost(principal, specimen, step, cost)
+            except OperationalBlock as error:
+                issue = str(error)
         if issue:
             run.blocker = issue
             run.stage = "processing_blocked"
@@ -807,6 +816,8 @@ class Workflow:
                 cost,
                 self.clock,
             )
+            if self.settle_retained_cost is not None:
+                self.settle_retained_cost(principal, specimen, step)
         if external and run.blocker != "external_outcome_unknown":
             run.lease_until = None
             run.usage.reserved_active_seconds = max(

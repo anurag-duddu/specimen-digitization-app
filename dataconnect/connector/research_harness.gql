@@ -25,12 +25,55 @@ mutation ReadResearchHarnessStateV1($organizationId: UUID!, $collectionId: UUID!
 
 # Native conditional update and checked affected-row count are the concurrency
 # gate. State and shared reservations commit together; reducers may safely rebase.
-mutation CompareResearchHarnessStateV1($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $programKey: String!, $sensitive: Boolean!, $expectedRevision: Int!, $state: Any!, $stateJson: String!, $validUntil: Timestamp, $reviewRequired: Boolean) @auth(level: NO_ACCESS) @transaction {
+mutation CompareResearchHarnessStateV1($organizationId: UUID!, $collectionId: UUID!, $specimenId: UUID!, $actorUid: String!, $programKey: String!, $sensitive: Boolean!, $expectedRevision: Int!, $state: Any!, $stateJson: String!, $validUntil: Timestamp, $reviewRequired: Boolean, $sendAuthorizationJson: String) @auth(level: NO_ACCESS) @transaction {
   query @redact {
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
     collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && this.role in ['operator', 'reviewer', 'manager', 'admin'] && (vars.reviewRequired != true || this.role in ['reviewer', 'manager', 'admin']) && (!vars.sensitive || this.canViewSensitive) && (vars.validUntil == null || vars.validUntil > request.time)", message: "membership or lease denied") { active role canViewSensitive }
     specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) @check(expr: "this != null && this.sensitive == vars.sensitive && (!this.sensitive || response.query.collectionMember.canViewSensitive)") { sensitive }
     researchHarnessState(key: {organizationId: $organizationId, programKey: $programKey}) @check(expr: "this.revision == vars.expectedRevision && this.contractVersion == 'research-durability/v1' && vars.state.contract_version == this.contractVersion && vars.state.program_key == vars.programKey && vars.state.budget_policy == this.state.budget_policy && (!this.state.halted || vars.state.halted) && vars.state.effects.size() >= this.state.effects.size() && (vars.state.effects.size() == this.state.effects.size() || (!this.state.halted && vars.state.budget_totals.held_micro_usd + vars.state.budget_totals.settled_micro_usd <= this.state.budget_policy.ceiling_micro_usd))", message: "revision or cumulative budget conflict") { revision contractVersion state }
   }
+  # Serialize a new send with canonical human saves. A later save supersedes
+  # already authorized in-flight work; its publication still needs its own CAS.
+  # Non-send lifecycle/settlement updates can omit the optional authority tuple.
+  canonicalSendAuthorization: _execute(sql: """
+      WITH locked_specimen AS MATERIALIZED (
+        SELECT s.revision,s.active_run_id,s.sensitive
+        FROM public.specimen s
+        JOIN public.organization_member om ON om.organization_id=s.organization_id
+          AND om.uid=$4 AND om.active
+        JOIN public.collection_member cm ON cm.organization_id=s.organization_id
+          AND cm.collection_id=s.collection_id AND cm.uid=$4 AND cm.active
+          AND cm.role IN ('operator','reviewer','manager','admin')
+          AND (NOT s.sensitive OR cm.can_view_sensitive)
+        WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
+          AND s.sensitive=$5
+        FOR UPDATE OF s
+      )
+      , admitted AS (
+      SELECT s.revision FROM locked_specimen s
+      WHERE $7::jsonb IS NULL OR EXISTS (
+        SELECT 1 FROM public.canonical_research_binding_v2 b
+        JOIN public.specimen_snapshot snap ON snap.organization_id=b.organization_id
+          AND snap.collection_id=b.collection_id AND snap.specimen_id=b.specimen_id
+          AND snap.revision=s.revision
+        WHERE b.organization_id=$1 AND b.collection_id=$2 AND b.specimen_id=$3
+          AND b.active AND b.program_key=$6
+          AND b.publication_version='research-publication/v2'
+          AND s.revision=($7::jsonb->>'canonical_revision')::integer
+          AND s.active_run_id=($7::jsonb->>'canonical_run_id')::uuid
+          AND b.canonical_run_id=s.active_run_id
+          AND b.current_canonical_revision=s.revision
+          AND b.binding_id=($7::jsonb->>'binding_id')::uuid
+          AND b.job_key=($7::jsonb->>'job_key')
+          AND b.generation=($7::jsonb->>'generation')::integer
+          AND b.current_record_version_id=($7::jsonb->>'record_version_id')::uuid
+          AND b.current_snapshot_sha256=($7::jsonb->>'snapshot_sha256')
+          AND snap.sha256=b.current_snapshot_sha256
+      ))
+      UPDATE public.specimen s SET revision=s.revision
+      WHERE s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
+        AND EXISTS (SELECT 1 FROM admitted)
+      """, params: [$organizationId,$collectionId,$specimenId,$actorUid,$sensitive,$programKey,$sendAuthorizationJson])
+      @check(expr: "this == 1", message: "canonical send authorization stale")
   researchHarnessState_updateMany(where: {organizationId: {eq: $organizationId}, programKey: {eq: $programKey}, revision: {eq: $expectedRevision}}, data: {revision_expr: "vars.expectedRevision + 1", state: $state, stateJson: $stateJson, updatedAt_expr: "request.time"}) @check(expr: "this == 1", message: "revision conflict")
 }
