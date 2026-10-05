@@ -415,11 +415,30 @@ def derivation_source_result(result: DerivationResult, field_key: FieldKey) -> S
     fields and grants no publication authority.
     """
     proposals = [proposal for proposal in result.proposals if proposal.field_key == field_key]
+    evidence = result.evidence
+    computed = None
+    if result.georeference is not None:
+        # Bind the complete computation, including every proposal's settled
+        # input revisions, dataset IDs, retained source evidence and tool call.
+        # Hash the pre-envelope result to avoid a self-referential evidence ID.
+        payload = asdict(result)
+        payload["evidence"] = [item.model_dump(mode="json") for item in result.evidence]
+        computation_digest = digest({"rule_version": VERSION, "derivation_result": payload})
+        computed = EvidenceItem(
+            id="computed:" + computation_digest, kind="computed_derivation_result",
+            source_id=SPATIAL_SOURCE, source_version=VERSION,
+            locator=f"computed://{SPATIAL_SOURCE}/{computation_digest}",
+            response_digest=computation_digest, publisher_assertion_id=f"{SPATIAL_SOURCE}:{VERSION}",
+            excerpt="Deterministic georeferencing result; computed evidence, not a provider response.",
+            role="supports")
+        evidence = (*evidence, computed)
     reason = dict(result.unresolved).get(str(field_key), result.reason)
     status = result.status
     if not proposals and status == LookupStatus.SUCCESS:
         status = dict(result.unresolved_statuses).get(str(field_key), LookupStatus.NO_MATCH)
     candidates = tuple(_json({**asdict(proposal), "field_key": str(field_key),
+                               "evidence_ids": tuple(dict.fromkeys((*proposal.evidence_ids,
+                                                                    *((computed.id,) if computed else ())))),
                                "georeference": asdict(result.georeference) if result.georeference else None})
                        for proposal in proposals)
     if not candidates and result.georeference is not None:
@@ -434,11 +453,11 @@ def derivation_source_result(result: DerivationResult, field_key: FieldKey) -> S
         state = SourceCoverageState.FAILED
     else:
         state = SourceCoverageState.SEARCHED if result.georeference else SourceCoverageState.NOT_ATTEMPTED
-    return SourceResult(status=status, evidence=result.evidence, candidate_json=candidates,
+    return SourceResult(status=status, evidence=evidence, candidate_json=candidates,
                         coverage=SourceCoverageReceipt(
                             source_id=SPATIAL_SOURCE, field_key=field_key, source_version=VERSION,
                             state=state,
-                            qualification_digest=digest(VERSION), receipt_ids=tuple(item.id for item in result.evidence),
+                            qualification_digest=digest(VERSION), receipt_ids=tuple(item.id for item in evidence),
                             candidate_count=len(proposals),
                             coverage_limit="Whole-circle qualified containment or complete pinned DEM coverage",
                             reason=reason))

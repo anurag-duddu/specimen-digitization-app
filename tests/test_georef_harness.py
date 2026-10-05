@@ -237,6 +237,43 @@ def test_unresolved_field_keeps_computed_georeference_in_tool_result(adapter):
     assert metadata["georeference"]["uncertainty_m"] > 300
 
 
+def test_computed_evidence_binds_source_coverage_and_preserves_provider_evidence(adapter):
+    tool, _ = adapter
+    result = derive(tool)
+    envelope = geo.derivation_source_result(result, FieldKey.PROVINCE_STATE)
+    [computed] = [item for item in envelope.evidence if item.source_id == geo.SPATIAL_SOURCE]
+    assert computed.kind == "computed_derivation_result"
+    assert computed.source_id == envelope.coverage.source_id
+    assert computed.source_version == envelope.coverage.source_version == geo.VERSION
+    assert computed.id in envelope.coverage.receipt_ids
+    assert computed.id in json.loads(envelope.candidate_json[0])["evidence_ids"]
+    assert "not a provider response" in computed.excerpt
+    assert tuple(item for item in envelope.evidence if item != computed) == result.evidence
+    assert geo.derivation_source_result(result, FieldKey.PROVINCE_STATE) == envelope
+    # All per-field envelopes refer to the same complete multi-field computation.
+    other = geo.derivation_source_result(result, FieldKey.ELEVATION_FROM_M)
+    assert computed in other.evidence
+
+
+@pytest.mark.parametrize("changed", ["input_revision", "dataset", "tool_call", "source_evidence"])
+def test_computed_source_digest_changes_with_derivation_custody(adapter, changed):
+    tool, _ = adapter
+    result = derive(tool)
+    if changed == "source_evidence":
+        different = replace(result, evidence=(result.evidence[0].model_copy(update={"response_digest": "1" * 64}),
+                                               *result.evidence[1:]))
+    else:
+        first, *rest = result.proposals
+        patch = {"input_revision": {"input_revisions": (("city", 5),)},
+                 "dataset": {"dataset_ids": ("changed-dataset",)},
+                 "tool_call": {"tool_call_id": "different-tool-call"}}[changed]
+        different = replace(result, proposals=(replace(first, **patch), *rest))
+    def computation(value):
+        envelope = geo.derivation_source_result(value, FieldKey.PROVINCE_STATE)
+        return next(item.response_digest for item in envelope.evidence if item.source_id == geo.SPATIAL_SOURCE)
+    assert computation(result) != computation(different)
+
+
 def test_input_revisions_and_duplicate_field_pins_are_required(adapter):
     tool, _ = adapter
     with pytest.raises(ValueError, match="settled value"):
