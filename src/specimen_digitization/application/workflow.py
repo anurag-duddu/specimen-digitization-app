@@ -131,9 +131,17 @@ class Workflow:
         authority_tools=None,
         authority_cost_reservations=None,
         admission=None,
+        retained_cost=None,
+        reserve_retained_cost=None,
+        settle_retained_cost=None,
     ):
         self.repository, self.blobs, self.adapters = repository, blobs, adapters
         self.admission = admission
+        # Other durable stages can retain paid/unknown liabilities on this run.
+        # Consult them before sending, without duplicating them in ordinary usage.
+        self.retained_cost = retained_cost
+        self.reserve_retained_cost = reserve_retained_cost
+        self.settle_retained_cost = settle_retained_cost
         if hasattr(repository, "graph_blobs") and repository.graph_blobs is None:
             repository.graph_blobs = blobs
         self.clock = clock or (lambda: datetime.now(timezone.utc))
@@ -244,6 +252,17 @@ class Workflow:
         from .lane_reservations import step_reservation
 
         cost = 0 if run.profile.synthetic or not billable else step_reservation(run, step)
+        retained_cost = 0
+        retained_cost_issue = None
+        if billable and not run.profile.synthetic and self.retained_cost is not None:
+            try:
+                retained_cost = self.retained_cost(principal, specimen)
+                if type(retained_cost) is not int or retained_cost < 0:
+                    raise ValueError("invalid retained cost")
+            except Exception:
+                # A missing research state returns zero; an unreadable or malformed
+                # state cannot establish headroom for another paid call.
+                retained_cost_issue = "research_budget_state_unavailable"
         issue = None
         if run.usage.steps >= policy.max_steps:
             issue = "step_budget_exhausted"
@@ -267,13 +286,20 @@ class Workflow:
             and (cost is None or policy.approved_cost_limit_micros is None)
         ):
             issue = "approved_cost_budget_unavailable"
+        elif retained_cost_issue:
+            issue = retained_cost_issue
         elif (
             cost is not None
             and policy.approved_cost_limit_micros is not None
-            and run.usage.reserved_cost_micros + cost
+            and run.usage.reserved_cost_micros + retained_cost + cost
             > policy.approved_cost_limit_micros
         ):
             issue = "cost_budget_exhausted"
+        if issue is None and billable and not run.profile.synthetic and self.reserve_retained_cost is not None:
+            try:
+                self.reserve_retained_cost(principal, specimen, step, cost)
+            except OperationalBlock as error:
+                issue = str(error)
         if issue:
             run.blocker = issue
             run.stage = "processing_blocked"
@@ -790,6 +816,8 @@ class Workflow:
                 cost,
                 self.clock,
             )
+            if self.settle_retained_cost is not None:
+                self.settle_retained_cost(principal, specimen, step)
         if external and run.blocker != "external_outcome_unknown":
             run.lease_until = None
             run.usage.reserved_active_seconds = max(

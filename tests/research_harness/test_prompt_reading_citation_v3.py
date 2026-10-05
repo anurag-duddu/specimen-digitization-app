@@ -24,7 +24,8 @@ from specimen_digitization.research_harness.contracts import (
     ROLE_FIELDS, FieldResolution, HumanQuestion, SourceFragment, SpecialistRole,
 )
 from specimen_digitization.research_harness.prompts import (
-    READING_CITATION_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
+    GEOGRAPHY_SOURCE_PROMPT_VERSION, HANDOVER_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION, READING_CITATION_PROMPT_VERSION,
+    ROLE_PROMPTS, resolve_prompt,
 )
 
 ROOT = Path(prompts.__file__).parent
@@ -116,15 +117,20 @@ def test_each_v3_file_is_its_v2_file_followed_by_the_blocks(role):
 
 
 @pytest.mark.parametrize("role", tuple(SpecialistRole))
-def test_the_table_and_the_pin_resolve_to_the_v3_file(role):
-    assert ROLE_PROMPTS[role] == (f"{role.value}-v3.txt", READING_CITATION_PROMPT_VERSION)
+def test_the_v3_pin_is_audited_from_the_file_and_the_live_pin_extends_it(role):
+    # The live table moved on to the v4 files (the missing-policy block, test_prompt_missing_policy_v4.py) and then
+    # to the v5 files (the hand-over block, test_prompt_handover_v5.py); the v3 pin digest is the audit record and
+    # the live text begins with the v3 text.
     assert READING_CITATION_PROMPT_VERSION == "specialists-reading-citation-v3-2026-10-03"
-    prompt = pin(role)
-    expected = ((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
-                + (ROOT / f"{role.value}-v3.txt").read_text(encoding="utf-8")
-                + "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n")
-    assert prompt.text == expected and prompt.version == READING_CITATION_PROMPT_VERSION
-    assert prompt.digest == hashlib.sha256(expected.encode()).hexdigest() == V3_PIN_DIGESTS[role]
+    qualified = role in {SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT, SpecialistRole.GEOGRAPHY}
+    assert ROLE_PROMPTS[role] == (f"{role.value}-v{6 if qualified else 5}.txt",
+        GEOGRAPHY_SOURCE_PROMPT_VERSION if role == SpecialistRole.GEOGRAPHY else
+        QUALIFIED_PROMPT_VERSION if qualified else HANDOVER_PROMPT_VERSION)
+    common = (ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
+    v3 = (ROOT / f"{role.value}-v3.txt").read_text(encoding="utf-8")
+    owned = "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n"
+    assert hashlib.sha256((common + v3 + owned).encode()).hexdigest() == V3_PIN_DIGESTS[role]
+    assert pin(role).text.startswith(common + v3)
 
 
 @pytest.mark.parametrize("role", (SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY, SpecialistRole.PARTIES,

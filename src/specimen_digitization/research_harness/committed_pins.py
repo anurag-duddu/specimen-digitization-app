@@ -29,10 +29,11 @@ from specimen_digitization.application.collection_profiles import (
 from specimen_digitization.model_gateway import HUGGINGFACE_ROUTES
 from .accepted_output import VALIDATOR_SOURCE_SHA256, VALIDATOR_VERSION, validation_boundary_pins
 from .agents import specialist_output_schema_digest
-from .contracts import SourceQuery, SourceResult, SpecialistRole, digest
+from .contracts import CollectionProfile, FieldKey, SourceQuery, SourceResult, SpecialistRole, digest
 from .evidence import insects_profile
 from .gateway import ModelBinding, ModelGatewayBlocked
 from .local_utility_proof_v2 import UTILITY_ROLES, UTILITY_VERSION
+from .sources import SETTLEMENT_UTILITY_VERSION
 from .package_qualification import SERIALIZATION_VERSION
 from .persistence import HeldUnknown, PinnedRuntime, StaleWork
 from .prompts import resolve_prompt
@@ -43,6 +44,48 @@ from .source_readiness import CAPTURE_POLICIES, SOURCE_READINESS
 from .sources import insects_registry
 
 ENGINE_VERSION = "research_harness_v1"
+
+# The organiser qualifies a narrow exact event or assembly from a keyed line,
+# a same-line literal proposed by the ordinary extractor, or a unanimous explicit
+# collection/determination date or measured elevation in both raw readers. Every
+# other declared field, and any value that cannot be placed exactly, needs a
+# qualified source or honest review. Declaring the missing
+# policy here, as verbatim_dts declares its own, turns a specialist's waiting_policy
+# on a declared field into the existing needs_human_review path with the reason
+# mandatory_unresolved:{field} (canonical_materialization_v2._policy_held, status.py
+# and the connector's disposition check, none of which names a field). A
+# waiting_source is not held: a failed, rate-limited or unconfigured source still
+# blocks the record. The v4 role prompts tell a specialist which of the two to return.
+UNQUALIFIED_LABEL_POLICY = "unstructured_label_event_unqualified"
+# These twelve fields have no external source configured in this deployment;
+# exact qualified label evidence can still settle some of them. An unqualified
+# remainder therefore has an explicit review path ...
+UNQUALIFIED_LABEL_LITERAL_FIELDS = (
+    FieldKey.DATE_VISITED_FROM, FieldKey.DATE_VISITED_TO, FieldKey.DATE_IDENTIFIED,
+    FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M, FieldKey.ELEVATION_FROM_FT,
+    FieldKey.ELEVATION_TO_FT, FieldKey.COLLECTORS, FieldKey.FMNH_INS_NUMBER,
+    FieldKey.COLLECTION_CODE, FieldKey.HABITAT, FieldKey.COLLECTION_METHOD)
+# ... and the three that have a source but, for a label that names nothing to look up
+# or a lookup that completes without a match, no other end state: county (GEOLocate
+# confirms a county only inside the USA, so outside it no receipt exists to back a
+# human question), city (only a place the label names can be queried) and taxon (a
+# completed GBIF search with no match cannot become a human question). Their prompts
+# keep waiting_source for a lookup that failed, timed out or was refused.
+# country, province_state and precise_location are not declared: a GEOLocate no_match
+# or ambiguous result on them is already a human question.
+UNQUALIFIED_LABEL_LOOKUP_FIELDS = (FieldKey.COUNTY, FieldKey.CITY, FieldKey.TAXON)
+UNQUALIFIED_LABEL_FIELDS = frozenset((*UNQUALIFIED_LABEL_LITERAL_FIELDS, *UNQUALIFIED_LABEL_LOOKUP_FIELDS))
+
+
+def committed_research_profile(organization_id: str, collection_id: str) -> CollectionProfile:
+    """The research profile every committed job pins: insects_profile, plus the
+    missing policy of each field no unstructured label can ground."""
+    base = insects_profile(organization_id, collection_id)
+    return insects_profile(organization_id, collection_id, overrides=tuple(
+        row.model_copy(update={"missing_policy": UNQUALIFIED_LABEL_POLICY})
+        for row in base.fields if row.field_key in UNQUALIFIED_LABEL_FIELDS))
+
+
 # Each request writes at most 4,096 output tokens: the gateway's own cap (gateway.ModelBinding)
 # and the budget the geography prompt and test_five_human_questions_echoing_their_receipts_fit_one_response
 # state. 2,048 (HARNESS.md G30, written for the single-agent field harness) can truncate a
@@ -65,15 +108,18 @@ TOKENIZER_PIN = {
     "chat_template_jinja_sha256": "d959d804d5101b79a49b6ff1bf3c54cd5affa9a5a78c503d925f3090040b31c3",  # pragma: allowlist secret (Hugging Face file digest) gitleaks:allow
 }
 
-# The largest serialized request the guard admits, and its token bound. The
+# The largest serialized request the guard admits, and its local size bound. The
 # tokenizer is byte-level BPE, so every token covers at least one rendered
 # byte, and the chat template adds at most one separator byte per byte of the
 # compact serialization: 2 tokens a byte. 8,192 tokens cover the tool preamble
-# and the per-turn special tokens. 262,144 bytes is a cap, not a measurement.
-# It must stay at least 72 KB: with Lane G's version 2 geography prompt the
-# last geography request is about 69 KB.
+# and the per-turn special tokens. Geography v6's offline six-role fixture
+# reaches 266,902 bytes after four GEOLocate tool results. A 500,000-byte cap
+# admits that dialogue while bounding rendered input to 1,008,192 tokens,
+# below the pinned 1,048,576-token context (including the 4,096-token output).
+# This estimate is only a payload guard; the financial reservation below
+# still covers the provider's entire input context plus the output cap.
 REQUEST_BOUND = {
-    "maximum_serialized_bytes": 262_144,
+    "maximum_serialized_bytes": 500_000,
     "tokens_per_utf8_byte_upper_bound": 2,
     "fixed_overhead_tokens": 8_192,
 }
@@ -152,6 +198,7 @@ def _toolset_digest() -> str:
         "tools": ["lookup_source", "invoke_utility"],
         "utility_roles": {name: str(role) for name, role in sorted(UTILITY_ROLES.items())},
         "utility_version": UTILITY_VERSION,
+        "settlement_utility_version": SETTLEMENT_UTILITY_VERSION,
         "source_query_schema": SourceQuery.model_json_schema(),
         "source_result_schema": SourceResult.model_json_schema()})
 
@@ -168,9 +215,16 @@ def _harness_binding(profile: PublishedProfile):
     # Hugging Face router's deepinfra entry (https://router.huggingface.co/v1/models)
     # and from https://deepinfra.com/deepseek-ai/DeepSeek-V4.1-Flash.
     price = prices.models[route_id]
-    max_input = (REQUEST_BOUND["maximum_serialized_bytes"]
-        * REQUEST_BOUND["tokens_per_utf8_byte_upper_bound"] + REQUEST_BOUND["fixed_overhead_tokens"])
-    if max_input > min(price.context_tokens or 1_000_000, 1_000_000):
+    # A tokenizer/template heuristic cannot prove the billable input bound.
+    # Reserve the full documented provider context, including schemas/history,
+    # plus the enforced generation cap. Provider page checked 2026-10-05: the
+    # window is 1,048,576, standard list rates remain USD 0.20 / 0.60 above
+    # current promotional rates. No priority tier or automatic retry is sent.
+    max_input = price.context_tokens
+    if type(max_input) is not int or max_input != 1_048_576:
+        raise ValueError("research_committed_context_bound_unavailable")
+    if (REQUEST_BOUND["maximum_serialized_bytes"] * REQUEST_BOUND["tokens_per_utf8_byte_upper_bound"]
+            + REQUEST_BOUND["fixed_overhead_tokens"] > max_input):
         raise ValueError("research_committed_request_bound_exceeds_context")
     # Each request reserves its worst case, rounded up as RegisteredModelPriceV1 does.
     reservation = (max_input * price.input_micros_per_million
@@ -239,7 +293,7 @@ def build_committed_pins(profile, *, organization_id: str, collection_id: str) -
     if binding.reservation_micro_usd > committed_run_cost_limit_micros(profile):
         raise ValueError("research_committed_reservation_exceeds_run_limit")
     roles = tuple(SpecialistRole)
-    research_profile = insects_profile(organization_id, collection_id)
+    research_profile = committed_research_profile(organization_id, collection_id)
     toolset, schema = _toolset_digest(), specialist_output_schema_digest()
     prompts = {str(role): resolve_prompt(role, profile_digest=digest(research_profile),
         source_registry_digest=registry.digest, toolset_digest=toolset,

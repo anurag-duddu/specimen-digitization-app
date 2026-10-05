@@ -252,7 +252,10 @@ def test_no_request_is_reported_unknown_when_every_receipt_has_a_cost(tick):
 def test_the_run_id_is_on_every_app_agent_and_chat_span_and_matches_the_job_id(tick):
     harness = named(tick, "research_harness.")
     pydantic = named(tick, "invoke_agent ") + named(tick, "chat ")
-    assert len(harness) == 51 and len(pydantic) == 16
+    # Six roles now run in three two-role windows; each window opens one
+    # research control span. Every specialist, model and effect span remains.
+    assert len(named(tick, "research_harness.research")) == 3
+    assert len(harness) == 48 and len(pydantic) == 16
     for span in harness + pydantic:
         assert span.attrs["specimen.run.id"] == tick.run_id, span.name
     assert {span.attrs["research.job_id"] for span in harness} == {tick.job_id}

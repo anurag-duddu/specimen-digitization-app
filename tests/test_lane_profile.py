@@ -320,7 +320,9 @@ def test_production_app_passes_the_published_registries(monkeypatch):
         )
     )
     captured = {}
-    monkeypatch.setattr(runtime_config, "build_provenance", lambda required: {})
+    provenance = {"source_sha": "a" * 40, "contract_version": "api-runtime-v1"}
+    bucket = object()
+    monkeypatch.setattr(runtime_config, "build_provenance", lambda required: provenance)
     monkeypatch.setattr(
         firebase_admin,
         "get_app",
@@ -334,7 +336,7 @@ def test_production_app_passes_the_published_registries(monkeypatch):
     monkeypatch.setattr(runtime_health, "install_health", lambda *_, **__: None)
     monkeypatch.setattr(runtime_health, "cloud_probe", lambda *_: None)
     monkeypatch.setattr(runtime_health, "DependencyReadiness", lambda *_: None)
-    monkeypatch.setattr(cli, "GcsBlobs", lambda **_: object())
+    monkeypatch.setattr(cli, "GcsBlobs", lambda **_: SimpleNamespace(bucket=bucket))
     monkeypatch.setattr(
         cli,
         "SqlConnectRepository",
@@ -348,6 +350,8 @@ def test_production_app_passes_the_published_registries(monkeypatch):
     registry = captured["profile_registry"]
     assert registry.resolve(COLLECTION_UUID).profile.id == "zoology_insects_slides"
     assert captured["risk_registry"].version == published_risk_registry().version
+    assert captured["research_derivation_ready"].source_sha == provenance["source_sha"]
+    assert captured["research_capture_blobs"].bucket is bucket
 
 
 def test_a_regions_correction_keeps_every_field_and_its_group(tmp_path):

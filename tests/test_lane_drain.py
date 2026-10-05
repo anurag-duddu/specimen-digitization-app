@@ -212,6 +212,22 @@ def fence(lane, holder="exec-b"):
     return CollectionFence(lane.repository, SCOPE, WORKER, holder, clock=lane.clock)
 
 
+def test_collection_fence_outlives_a_long_native_research_step(lane):
+    class NativeLengthWorkflow(ScriptedWorkflow):
+        def step(self, principal, ident):
+            self.clock.sleep(901)
+            # A second job cannot take another specimen after the old 300 s
+            # fence would have expired, while a valid native step continues.
+            assert fence(lane, holder="exec-b").acquire() is None
+            return super().step(principal, ident)
+
+    queued(lane.repository, "native-long", minutes=30)
+    workflow = NativeLengthWorkflow(lane.repository, lane.clock)
+    summary = worker(lane.repository, workflow, lane.clock).run()
+    assert summary["processed"] == ["native-long"]
+    assert fence(lane, holder="exec-b").acquire() is not None
+
+
 def test_due_work_comes_oldest_request_first_and_never_sensitive(lane):
     queued(lane.repository, "c-newest", minutes=1)
     queued(lane.repository, "a-oldest", minutes=30)
@@ -345,7 +361,7 @@ def test_a_worker_that_loses_its_fence_leaves_the_collection(lane):
     class StallingWorkflow(ScriptedWorkflow):
         def step(self, principal, ident):
             specimen = super().step(principal, ident)
-            self.clock.sleep(301)  # Stalled past the lease; another execution takes over.
+            self.clock.sleep(3661)  # Past the task-covering fence; another execution takes over.
             assert fence(lane, "exec-other").acquire() is not None
             return specimen
 

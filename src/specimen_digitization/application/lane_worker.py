@@ -254,7 +254,7 @@ class DrainWorker:
         sleep=None,
         continuation=None,
         deadline_seconds=3600,
-        lease_seconds=300,
+        lease_seconds=None,
         max_steps_per_run=500,
     ):
         self.repository, self.workflow = repository, workflow
@@ -265,7 +265,10 @@ class DrainWorker:
         # Starts the next execution of the job, with no overrides.
         self.continuation = continuation
         self.window_seconds = deadline_seconds - CLOSING_SECONDS
-        self.lease_seconds = lease_seconds
+        # A native research step spans multiple bounded role windows. The
+        # collection fence must outlive the whole task, not only one window,
+        # so a second execution cannot start another record while it runs.
+        self.lease_seconds = deadline_seconds + 60 if lease_seconds is None else lease_seconds
         self.max_steps_per_run = max_steps_per_run
 
     @staticmethod
@@ -457,6 +460,9 @@ class DrainWorker:
             fence.hold(ident, specimen.run.id)
             run = specimen.run
             if specimen.version == before.version:
+                completed = getattr(self.workflow, "completed_side_work", None)
+                if callable(completed) and completed(specimen) is True:
+                    return run, True  # Verified native queue retirement, no scientific save.
                 return run, progressed  # Leased or otherwise waiting.
             progressed = True
             if run.disposition or run.stage in STOPPED or self._stopped(stop):

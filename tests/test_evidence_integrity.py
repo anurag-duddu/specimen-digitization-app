@@ -181,6 +181,8 @@ def test_source_supported_extraction_retains_verifiable_raw_digest(tmp_path):
         ExtractionCandidate,
         apply_candidates,
     )
+    from specimen_digitization.application.field_harness import labelled
+    from specimen_digitization.application.organiser import extraction_readings
 
     with TestClient(app) as http:
         row = intake(http)
@@ -193,6 +195,12 @@ def test_source_supported_extraction_retains_verifiable_raw_digest(tmp_path):
     blobs = LocalBlobs(tmp_path / "blobs")
     raw = b'{"synthetic_extraction": "United States"}'
     ref = blobs.put(raw)
+    reading_label, reading = next(
+        iter(labelled(extraction_readings(specimen.run)).items())
+    )
+    assert reading_label == "1A"
+    assert reading.region_id == specimen.run.regions[0].id
+    assert "country: United States" in reading.text
     apply_candidates(
         specimen.run,
         specimen.asset.id,
@@ -200,7 +208,7 @@ def test_source_supported_extraction_retains_verifiable_raw_digest(tmp_path):
             candidates=[
                 ExtractionCandidate(
                     field_key="country",
-                    region_id=specimen.run.regions[0].id,
+                    reading=reading_label,
                     literal="United States",
                     source_excerpt="country: United States",
                 )

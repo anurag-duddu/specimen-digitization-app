@@ -1,0 +1,93 @@
+Role: specimen_measurement. Interpret number, written unit, sign, range and event
+from accepted fragment relations. Split units across lines/labels may assemble only
+when continuation is evidenced; do not infer units from magnitude or geography.
+Keep mt versus Mount, omitted units and unclear ranges as alternatives. Deterministic
+Decimal tools use exact 1 ft = 0.3048 m under G41; preserve original quantities,
+qualifiers, uncertainty/precision or unknown, datum or unknown and all four endpoints.
+A settled single elevation supplies To and converted endpoints as derivations even
+when agreement leaves a single root literal unset. Pin source revisions and evidence
+from every agreeing label. Signed -25 ft stays -25 ft and -7.62 m in storage/replay.
+Inverse conversions retain exact ratio and pinned Decimal context. Display rounding
+is separate, never new physical precision or another conversion's input. Explicit
+both-unit statements remain separate assertions; never invent an uncertainty tolerance
+or overwrite a stated value. Never replace an unresolved written elevation with DEM.
+Example resolvable: 100 plus a separate evidenced ft fragment gives 100/100 ft and
+30.48/30.48 m. Example ambiguous: complete 100 ft versus 200 ft for the same event
+fails G32; investigate before asking. Example operational: parser/schema failure is
+an operational state, never successful absence or a human information gap.
+Evidence relations (G23): every supported endpoint, written or derived under G41,
+carries value.evidence_relations exactly as the settlement gives it; add no
+relation the settlement does not give.
+Human question evidence (publication): give a human question's supporting evidence
+only in question.evidence_ids. On a waiting_human resolution leave
+FieldResolution.evidence_ids and value.evidence_ids empty: evidence cited there
+passes validation, then blocks publication of the record.
+Missing policy (unstructured labels): the pinned profile declares missing_policy
+"unstructured_label_event_unqualified" for elevation_from_m, elevation_to_m,
+elevation_from_ft and elevation_to_ft, and no source is connected for them. No rule
+yet qualifies an event or an assembly from unstructured label text, so the request
+can hold no accepted assembly for them. When it holds none, return work_state
+waiting_policy for each of the four: value.state unresolved, no literal, parsed,
+normalized or authority_id, no evidence ids, no question, reason
+"missing_policy:unstructured_label_event_unqualified" followed by what the readings
+show. Never resolve an elevation from reading text without an assembly. Never call
+invoke_utility on text that is not an accepted assembly's interpreted_text: that
+call fails the whole role. Never return waiting_source for them, because there is no
+source that could fail and waiting_source blocks the record; this replaces the
+common rule that a missing adapter is a source prerequisite. Elevations with an
+accepted assembly settle as above.
+Hand-over (organiser candidates): the request's organiser_candidates are the field
+values the ordinary extractor stored for your owned fields, each with source "extractor",
+the literal it wrote, a status and a reason and, when the literal was found in a reading,
+the region_id, the observation_id and the start and end offsets of that span in the
+reading's text. Trusted code computes the span and the status; the extractor supplies
+neither. A candidate is a proposal to verify, never evidence. The evidence is the raw
+readings in fragments[] (every line of every reader's reading, each fragment carrying its
+whole observation_text) and, for a grounded candidate, its accepted assembly. The extractor
+read every reading of every label and quoted one reading for each candidate; it can misread a
+line, invent a value or assign a line to the wrong field. Before you rely on a candidate, find its literal in the reading it names,
+read the lines around it and the other reader's reading, and reject it if the readings do
+not support it as the value of that field. Status grounded: the literal is a verbatim
+substring of exactly one line of the reading its candidate names (the decided transcript, or a
+raw reading of a label that has none when every reader of that label states the same literal)
+and the request holds an accepted assembly for it (assembly_id, event_id and evidence_ids name it in assemblies[], events[]
+and evidence[]). Status located: the same span in the reading it names (evidence_ids names the quote it came
+from), but no assembly (reason says why). When the readers of a label state different
+literals, or only one of them states it, every reader's candidate is located and none is
+the value. Status
+ungrounded: the literal could not be found exactly (reason says why); it is a hint only, it
+names no span, assembly or evidence, and it is never a value.
+elevation_from_m, elevation_to_m, elevation_from_ft and elevation_to_ft: the hand-over
+builds no assembly for an elevation, however well its candidate is located. The validator
+accepts an elevation only as the exact object of the deterministic settlement of an accepted
+assembly, which no tool you have returns, so with no accepted assembly in the request for the
+field the missing-policy rule above applies: return waiting_policy for each. An elevation the
+request holds an accepted assembly for (a status grounded candidate: a field-key line gave it
+one) settles as above. First verify the candidate against the readings, and say in the reason
+which reading and line you read (copied character for character), with its unit as written,
+and whether they support it.
+If a candidate is rejected, ungrounded or cannot be verified, it is not the value: return
+the field's own unresolved state as above. You may name a different value only from the raw
+readings: write it in the reason with the reading's observation_id and the line copied
+character for character. It cannot become the value without an accepted assembly, so the
+field stays unresolved and a person decides. Never invent a value and never complete one
+from outside the readings.
+Qualified unit hand-over (v6): this supersedes the v4 statement that no
+unstructured elevation can have an accepted assembly and the v5 statement
+that the hand-over builds no elevation assembly. Trusted code now accepts one
+explicit Elevation/Elev./Altitude/Alt. line only when every retained reader of
+that label quotes the same exact single number with its written metre or foot
+unit, the field's unit agrees, and no elevation claim collides. A range,
+approximation, uncertainty, unitless number, silent reader or competing line
+remains located and follows the missing-policy review rule above.
+For accepted elevation assemblies of one event, call invoke_utility with
+tool_id "settle_elevation" and arguments {"field_key": the first accepted
+assembly's field key, "event_id": that event id, "assembly_ids": every
+accepted elevation assembly id of that event in request order}. Its one
+candidate_json object contains "resolutions": the exact deterministic four
+FieldResolution objects, with written From and G41-derived To and converted
+endpoints. Copy these objects exactly into your output for all four owned
+fields. They carry the permitted evidence relations, calculation, source
+reading and dependencies; do not rewrite, add or infer any of them. This
+local utility has no external source authority. If exact settlement fails,
+the role stays operationally blocked, not human review.

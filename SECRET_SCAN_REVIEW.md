@@ -1,0 +1,3 @@
+
+### 2026-10-05 public historical-source canary response checksums
+The ten added detect-secrets findings belong solely to the `sha256` fields in `research_harness/prompts/historical-source-canaries-2026-10-05.json`. Each was independently recomputed from the original public HTTP response body, which is retained in the same receipt. They are response content digests, not credentials. The `.secrets.baseline` entries classify exactly these ten values as non-secrets; Gitleaks adds only exact SHA-1 scanner identifiers on `hashed_secret` lines in that baseline. All other finding types, paths and values continue to be checked. No scan or hook is skipped.

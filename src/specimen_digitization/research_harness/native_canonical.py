@@ -48,7 +48,7 @@ def fail(code: str = "native_canonical_binding_unavailable"):
 
 
 
-CANONICAL_PROJECTOR_SHA256 = "2c37115f0542da507b7102454211d57f9cacb5ae6eafa6698e292b9c9a9aba6a"  # pragma: allowlist secret (projector source digest)
+CANONICAL_PROJECTOR_SHA256 = "aecca227a5ff12948971852bc09b30cc85ec368a67f3a0d0f01195405a07571e"  # pragma: allowlist secret (projector source digest)
 ACCESS_DENIED = "native_canonical_access_denied"
 
 

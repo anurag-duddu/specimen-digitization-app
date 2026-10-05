@@ -31,6 +31,7 @@ committed data cannot give.
 """
 from __future__ import annotations
 
+from .contracts import digest
 from .sources import GEOLOCATE_QUALIFICATION
 
 _ORIGIN = "repo:src/specimen_digitization/research_harness/source_readiness.py"
@@ -58,6 +59,42 @@ SOURCE_READINESS = {
         "source_release": "316321",
     },
     "geolocate": GEOLOCATE_QUALIFICATION,
+    # These two deterministic adapters are source-code qualified. The dataset
+    # reader verifies every object against the committed manifest at use time;
+    # an unavailable/corrupt object is PROVIDER, never an exhausted search.
+    "georeference_history": {
+        "qualification_state": "searched",
+        "qualification_receipt": _ORIGIN + "#SOURCE_READINESS.georeference_history",
+        "schema_digest": digest(("country", "name", "collected_on", "candidate", "dataset_sha256")),
+        "source_release": "retrospective-georeferencing-v1",
+    },
+    "georeference_spatial": {
+        "qualification_state": "searched",
+        "qualification_receipt": _ORIGIN + "#SOURCE_READINESS.georeference_spatial",
+        "schema_digest": digest(("settled_input_revisions", "geolocate_receipt", "dataset_ids", "computed_proposals")),
+        "source_release": "retrospective-georeferencing-v1",
+    },
+    "tgn": {
+        "qualification_state": "searched",
+        "qualification_receipt": "src/specimen_digitization/research_harness/prompts/historical-source-canaries-2026-10-05.json#entries.tgn",
+        "schema_digest": digest(("reconcile:ids", "sparql:place,parent,type,point", "sparql:names",
+                                 "2026-10-05-Manila-10-hit-cap")),
+        "source_release": "public-api-canary-2026-10-05:8ecb3be9385209f8",
+    },
+    "wikidata": {
+        "qualification_state": "searched",
+        "qualification_receipt": "src/specimen_digitization/research_harness/prompts/historical-source-canaries-2026-10-05.json#entries.wikidata",
+        "schema_digest": digest(("wbsearchentities:search", "wbgetentities:labels,aliases,descriptions,claims",
+                                 "wbgetentities:referenced-labels", "2026-10-05-Yepocapa")),
+        "source_release": "public-api-canary-2026-10-05:a994442cd80b28a9",
+    },
+    "nga": {
+        "qualification_state": "searched",
+        "qualification_receipt": "src/specimen_digitization/research_harness/prompts/historical-source-canaries-2026-10-05.json#entries.nga",
+        "schema_digest": digest(("GNS names:ufi,uni,full_name,full_nm_nd,nt,fc,desig_cd,adm1,lat_dd,long_dd,term_dt_f,name_rank",
+                                 "GNS units:adm1,adm1_name", "2026-10-05-Yepocapa")),
+        "source_release": "public-api-canary-2026-10-05:49e4b583d9555c86",
+    },
 }
 
 CAPTURE_POLICIES = {
@@ -65,6 +102,11 @@ CAPTURE_POLICIES = {
     "global_names_verifier": ("full_response", 1),
     "catalogue_of_life": ("full_response", 1),
     "geolocate": ("full_response", 1),
+    "georeference_history": ("pinned_dataset", 1),
+    "georeference_spatial": ("computed", 1),
+    "tgn": ("full_response", 3),
+    "wikidata": ("full_response", 3),
+    "nga": ("full_response", 3),
     "google_maps": ("denied", 1),
     "bugguide": ("denied", 1),
     "mapcarta": ("denied", 1),

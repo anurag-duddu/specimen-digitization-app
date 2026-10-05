@@ -505,6 +505,8 @@ def test_extraction_rejects_coerced_value_and_retains_supported_candidates(tmp_p
         ExtractionCandidate,
         apply_candidates,
     )
+    from specimen_digitization.application.field_harness import labelled
+    from specimen_digitization.application.organiser import extraction_readings
 
     c = client(tmp_path)
     row = intake(c)
@@ -512,11 +514,15 @@ def test_extraction_rejects_coerced_value_and_retains_supported_candidates(tmp_p
     s = SQLiteRepository(tmp_path / "state.sqlite3").get(scope, row["specimen_id"])
     region = s.run.regions[0].id
     before = s.run.fields["country"].model_copy(deep=True)
+    reading_label, reading = next(iter(labelled(extraction_readings(s.run)).items()))
+    assert reading_label == "1A"
+    assert reading.region_id == region
+    assert "country: United States" in reading.text
     output = ExtractionOutput(
         candidates=[
             ExtractionCandidate(
                 field_key="country",
-                region_id=region,
+                reading=reading_label,
                 literal="Invented",
                 source_excerpt="country: United States",
             )

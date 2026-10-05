@@ -38,7 +38,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "collection_code",
@@ -66,7 +67,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "country",
@@ -154,7 +156,8 @@
         "trace_id": null
       },
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "province_state",
@@ -267,7 +270,15 @@
       "blocker_code": "human_decision_required",
       "actions": [
         "supply_information"
-      ]
+      ],
+      "review": {
+        "question_reason": "semantic_ambiguity",
+        "reason": "Synthetic reason for the fixture",
+        "evidence": [],
+        "candidates": [],
+        "evidence_not_shown": 1,
+        "candidates_not_shown": 0
+      }
     },
     {
       "field_key": "county",
@@ -295,7 +306,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "city",
@@ -408,7 +420,15 @@
       "blocker_code": "human_decision_required",
       "actions": [
         "supply_information"
-      ]
+      ],
+      "review": {
+        "question_reason": "scoped_absence",
+        "reason": "Synthetic reason for the fixture",
+        "evidence": [],
+        "candidates": [],
+        "evidence_not_shown": 1,
+        "candidates_not_shown": 0
+      }
     },
     {
       "field_key": "precise_location",
@@ -436,7 +456,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "elevation_from_m",
@@ -464,7 +485,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "elevation_to_m",
@@ -492,7 +514,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "elevation_from_ft",
@@ -520,7 +543,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "elevation_to_ft",
@@ -548,7 +572,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "habitat",
@@ -576,7 +601,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "collection_method",
@@ -604,7 +630,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "date_visited_from",
@@ -632,7 +659,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "date_visited_to",
@@ -660,7 +688,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "collectors",
@@ -688,7 +717,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "verbatim_dts",
@@ -716,7 +746,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "taxon",
@@ -804,7 +835,8 @@
       "blocker_code": "research_operational_failure",
       "actions": [
         "retry_field"
-      ]
+      ],
+      "review": null
     },
     {
       "field_key": "identified_by_irn",
@@ -832,7 +864,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     },
     {
       "field_key": "date_identified",
@@ -860,7 +893,8 @@
       },
       "checkpoint": null,
       "blocker_code": null,
-      "actions": []
+      "actions": [],
+      "review": null
     }
   ],
   "effects": [],

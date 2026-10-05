@@ -4,8 +4,10 @@ import 'package:flutter/widgets.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import '../widgets/evidence_drawer.dart';
+import 'derivation_models.dart';
 import 'research_controller.dart';
 import 'research_models.dart';
+import 'research_review_block.dart';
 
 /// A collapsed field disclosure driven entirely by verified host input.
 ///
@@ -19,6 +21,9 @@ class ResearchThreadCard extends StatelessWidget {
     required this.fieldKey,
     required this.fieldLabel,
     this.field,
+    this.historical = false,
+    this.canonicalRevision,
+    this.reviewSavedRevision,
     this.networkState = ResearchNetworkState.idle,
     this.paused = false,
     this.hasUnknownState = false,
@@ -27,6 +32,14 @@ class ResearchThreadCard extends StatelessWidget {
     this.onLoad,
     this.onRefresh,
     this.onRetry,
+    this.onSelectCandidate,
+    this.derivationProposals = const <ResearchDerivationProposal>[],
+    this.canSelectDerivationProposals = false,
+    this.fillRestAvailable = false,
+    this.fillRestLoading = false,
+    this.fillRestStatus,
+    this.onFillRest,
+    this.onRefreshDerivation,
     this.fieldCentered = false,
   });
   final ResearchScope scope;
@@ -34,6 +47,9 @@ class ResearchThreadCard extends StatelessWidget {
   final String fieldKey;
   final String fieldLabel;
   final ResearchFieldThread? field;
+  final bool historical;
+  final int? canonicalRevision;
+  final int? reviewSavedRevision;
   final ResearchNetworkState networkState;
   final bool paused;
   final bool hasUnknownState;
@@ -42,6 +58,14 @@ class ResearchThreadCard extends StatelessWidget {
   final VoidCallback? onLoad;
   final VoidCallback? onRefresh;
   final VoidCallback? onRetry;
+  final ValueChanged<ResearchReviewCandidate>? onSelectCandidate;
+  final List<ResearchDerivationProposal> derivationProposals;
+  final bool canSelectDerivationProposals;
+  final bool fillRestAvailable;
+  final bool fillRestLoading;
+  final String? fillRestStatus;
+  final VoidCallback? onFillRest;
+  final VoidCallback? onRefreshDerivation;
 
   /// Concise presentation inside a specimen field, without repeating its form.
   final bool fieldCentered;
@@ -66,6 +90,7 @@ class ResearchThreadCard extends StatelessWidget {
       !_denied &&
       !_unknown &&
       !paused &&
+      !historical &&
       !readOnly &&
       networkState == ResearchNetworkState.ready &&
       (field?.canRetry ?? false) &&
@@ -90,7 +115,7 @@ class ResearchThreadCard extends StatelessWidget {
           : 'Load this field’s research when needed';
     }
     final prefix = paused ? 'Paused · ' : '';
-    return '$prefix${field!.workState.label}'
+    return '${historical ? 'Historical report · ' : ''}$prefix${field!.workState.label}'
         '${field!.blockerCode == 'research_retry_blocked' ? ' · Retry blocked' : ''}';
   }
 
@@ -99,6 +124,9 @@ class ResearchThreadCard extends StatelessWidget {
       return 'Research could not be verified. Refresh the current record.';
     }
     if (_denied) return 'Research access is unavailable.';
+    if (historical) {
+      return 'This historical report no longer has current review selection tokens.';
+    }
     if (networkState == ResearchNetworkState.error) {
       return 'Refresh research before retrying this field.';
     }
@@ -178,12 +206,7 @@ class ResearchThreadCard extends StatelessWidget {
           summary: _summary,
           hideSummaryWhenExpanded: true,
           onExpansionChanged: (expanded) {
-            if (expanded &&
-                _bound &&
-                !_denied &&
-                networkState == ResearchNetworkState.idle) {
-              onLoad?.call();
-            }
+            if (expanded && _bound && !_denied) onLoad?.call();
           },
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -219,8 +242,50 @@ class ResearchThreadCard extends StatelessWidget {
                     'This research view is read-only.',
                     style: ui.type.bodySmall,
                   ),
+                if (historical)
+                  Text(
+                    _historicalBanner,
+                    style: ui.type.bodySmall.copyWith(
+                      color: ui.color.inkSecondary,
+                    ),
+                  ),
                 if (fieldCentered && safeField != null)
                   ..._fieldResult(context, safeField),
+                if (fieldCentered &&
+                    safeField == null &&
+                    derivationProposals.isNotEmpty)
+                  ResearchReviewBlock(
+                    fieldLabel: fieldLabel,
+                    field: null,
+                    onSelectCandidate: onSelectCandidate,
+                    derivationProposals: derivationProposals,
+                    canSelectDerivationProposals:
+                        canSelectDerivationProposals && !readOnly,
+                  ),
+                if (fillRestAvailable && fieldCentered)
+                  UiButton(
+                    label: 'Fill the rest',
+                    busyLabel: 'Saving request',
+                    variant: UiButtonVariant.secondary,
+                    leading: UiIcons.search,
+                    onPressed: fillRestLoading ? null : onFillRest,
+                    loading: fillRestLoading,
+                    disabledReason: fillRestLoading
+                        ? 'Saving the request.'
+                        : 'Location suggestions are unavailable for this record.',
+                  ),
+                if (fillRestStatus != null)
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(fillRestStatus!, style: ui.type.bodySmall),
+                  ),
+                if (onRefreshDerivation != null)
+                  UiButton(
+                    label: 'Refresh suggestion status',
+                    variant: UiButtonVariant.ghost,
+                    onPressed: fillRestLoading ? null : onRefreshDerivation,
+                    leading: UiIcons.reload,
+                  ),
                 if (!fieldCentered && safeField != null) ...[
                   Text(safeField.workState.label, style: ui.type.body),
                   if (safeField.blockerCode != null &&
@@ -372,6 +437,23 @@ class ResearchThreadCard extends StatelessWidget {
         Text(resolution!.question!.text, style: ui.type.body)
       else if (resolution != null)
         Text(_reviewExplanation(resolution), style: ui.type.bodySmall),
+      if ((field.review != null && researchReviewApplies(field.workState)) ||
+          derivationProposals.isNotEmpty)
+        ResearchReviewBlock(
+          fieldLabel: fieldLabel,
+          field: field,
+          canSelectCandidates:
+              !readOnly &&
+              !paused &&
+              !historical &&
+              networkState == ResearchNetworkState.ready &&
+              !hasUnknownState &&
+              field.workState == ResearchWorkState.waitingHuman &&
+              field.actions.contains('review_proposal'),
+          onSelectCandidate: onSelectCandidate,
+          derivationProposals: derivationProposals,
+          canSelectDerivationProposals: canSelectDerivationProposals,
+        ),
       if (resolution?.exception != null)
         Text(
           'This field has a recorded policy exception. '
@@ -440,6 +522,19 @@ class ResearchThreadCard extends StatelessWidget {
         },
       ),
     ];
+  }
+
+  String get _historicalBanner {
+    final String? canonical = canonicalRevision == null
+        ? null
+        : 'record revision $canonicalRevision';
+    final String? saved = reviewSavedRevision == null
+        ? null
+        : 'review saved at revision $reviewSavedRevision';
+    final String revisions = [?canonical, ?saved].join('; ');
+    return revisions.isEmpty
+        ? 'Historical research report. Candidate actions are unavailable because current selection tokens were removed after review was saved.'
+        : 'Historical research report for $revisions. Candidate actions are unavailable because current selection tokens were removed after review was saved.';
   }
 
   String _reviewExplanation(ResearchResolution resolution) {

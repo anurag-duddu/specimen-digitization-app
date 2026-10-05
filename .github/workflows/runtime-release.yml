@@ -5,6 +5,11 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      process_queued:
+        description: Warm SAM and drain already queued specimens, then return SAM to zero
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -34,16 +39,18 @@ jobs:
         run: scripts/release/wait_for_data.sh
 
   build:
-    name: Build and push the API image
+    name: Build and push API, worker and SAM images
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     environment: runtime-build-production
     permissions:
       contents: read
       id-token: write
     outputs:
       image: ${{ steps.push.outputs.image }}
+      worker: ${{ steps.worker.outputs.image }}
+      sam: ${{ steps.sam.outputs.image }}
     steps:
       - name: Check out the merged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -60,15 +67,23 @@ jobs:
       - name: Push the image and report its digest
         id: push
         run: scripts/release/push_image.sh api
-
-  # The SAM and worker jobs are added here in a follow-up pull request,
-  # once their pending values in scripts/ci/runtime_settings.py are settled.
+      - name: Build and check the worker image offline
+        run: scripts/ci/build_runtime_image.sh worker
+      - name: Push the checked worker image
+        id: worker
+        run: scripts/release/push_image.sh worker
+      - name: Build and check the SAM image offline
+        run: scripts/ci/build_runtime_image.sh sam
+      - name: Push the checked SAM image
+        id: sam
+        run: scripts/release/push_image.sh sam
 
   release:
-    name: Deploy the API and smoke it
+    name: Deploy and verify API, SAM and worker
+    if: github.ref == 'refs/heads/main'
     needs: [data, build]
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     environment: runtime-production
     permissions:
       contents: read
@@ -97,3 +112,15 @@ jobs:
         run: uv run python scripts/release/deploy_api.py "$IMAGE"
       - name: Smoke the public API
         run: scripts/release/smoke_api.sh
+      - name: Deploy private SAM at minimum zero and define the worker job
+        env:
+          SAM_IMAGE: ${{ needs.build.outputs.sam }}
+          WORKER_IMAGE: ${{ needs.build.outputs.worker }}
+        run: uv run python scripts/release/deploy_models.py "$SAM_IMAGE" "$WORKER_IMAGE"
+      - name: Warm SAM and process the queued work
+        if: github.event_name == 'workflow_dispatch' && inputs.process_queued
+        timeout-minutes: 70
+        run: uv run python scripts/release/process_worker.py process
+      - name: Restore and verify SAM minimum zero
+        if: always() && github.event_name == 'workflow_dispatch' && inputs.process_queued
+        run: uv run python scripts/release/process_worker.py cool

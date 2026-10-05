@@ -164,16 +164,17 @@ def test_a_model_call_costs_its_tokens_at_the_route_price():
     assert run.usage.actual_cost_micros == 550
 
 
-def test_sam3_costs_its_measured_seconds_at_the_service_size():
+def test_sam3_request_seconds_do_not_refund_unmeasured_lifecycle():
     run = priced_run()
     record_segmentation(run, "segment", seconds=25.2)
     [call] = run.paid_calls
     # 25.2 s x (4 vCPU x 24 + 8 GiB x 2.5) micro-dollars a second, plus one
     # request at 0.4: 2,923.6, rounded up.
-    assert call["cost_micros"] == 2_924
+    assert call["cost_micros"] == step_reservation(run, "segment")
+    assert call["cost_basis"] == "reserved"
     assert (call["kind"], call["service"]) == ("service", "sam3")
     assert call["usage"] == {"seconds": 25.2, "vcpus": 4, "memory_gib": 8}
-    assert run.usage.actual_cost_micros == 2_924
+    assert run.usage.actual_cost_micros is None
 
 
 def test_a_tool_call_costs_per_request():
@@ -320,7 +321,8 @@ def test_the_workflow_records_every_reading_and_segmentation(tmp_path):
         "handwriting-qwen": 550,
         "handwriting-muse": 900,
     }
-    assert run.usage.actual_cost_micros == sum(c["cost_micros"] for c in run.paid_calls)
+    assert run.usage.actual_cost_micros is None
+    assert run.usage.reserved_cost_micros == sum(c["cost_micros"] for c in run.paid_calls)
 
 
 def test_a_failed_call_is_recorded_with_its_attempt(tmp_path):
@@ -333,13 +335,13 @@ def test_a_failed_call_is_recorded_with_its_attempt(tmp_path):
     segments = [call for call in run.paid_calls if call["step"] == "segment"]
     assert [(c["attempt"], c["outcome"], c["cost_basis"]) for c in segments] == [
         (1, "failed", "reserved"),
-        (2, "completed", "computed"),
+        (2, "completed", "reserved"),
     ]
     # SAM 3's busy answer reported no usage, so it stays reserved at its full
     # amount; the calls that reported usage settle to what they cost.
-    assert segments[0]["cost_micros"] == 45_000
+    assert segments[0]["cost_micros"] == 164_121
     completed = sum(c["cost_micros"] for c in run.paid_calls if c["outcome"] == "completed")
-    assert ledger_total(app) == 45_000 + completed
+    assert ledger_total(app) == 164_121 + completed
 
 
 def ledger_total(app):
@@ -352,10 +354,11 @@ def test_a_settled_step_gives_back_the_rest_of_its_reservation(tmp_path):
     app, principal, row = lab(tmp_path)
     run = app.state.workflow.drain(principal, row["specimen_id"]).run
     assert "parse" in run.completed_steps, run.blocker
-    # SAM 3 and two readings reserved 45,000 + 2 x 20,000, then the run's
-    # budget and the ledger alike settled to what their calls cost.
-    assert run.usage.reserved_cost_micros == run.usage.actual_cost_micros < 85_000
-    assert ledger_total(app) == run.usage.actual_cost_micros
+    # Model token usage refunds unused reservations; unmeasured SAM lifecycle
+    # cost stays fully held in both the run and program ledger.
+    assert run.usage.actual_cost_micros is None
+    assert run.usage.reserved_cost_micros == 164_121 + 550 + 900
+    assert ledger_total(app) == run.usage.reserved_cost_micros
     assert run.program_allowance["reserved_total_micros"] == ledger_total(app)
 
 
@@ -365,8 +368,8 @@ def test_an_unknown_outcome_stays_fully_reserved(tmp_path):
     assert run.blocker == "external_outcome_unknown"
     [call] = run.paid_calls
     assert (call["step"], call["outcome"]) == ("segment", "unknown")
-    assert (call["cost_micros"], call["cost_basis"], call["usage"]) == (45_000, "reserved", None)
-    assert ledger_total(app) == 45_000
+    assert (call["cost_micros"], call["cost_basis"], call["usage"]) == (164_121, "reserved", None)
+    assert ledger_total(app) == 164_121
 
 
 def test_a_call_that_would_cross_the_cap_is_refused_however_little_was_spent(
@@ -474,3 +477,21 @@ def test_a_cost_above_the_reservation_counts_in_full_on_the_run_too(tmp_path):
 
 def test_the_runs_budget_settles_without_a_program_allowance(tmp_path):
     assert settled_run(tmp_path, allowance=False).usage.reserved_cost_micros == 550
+
+
+def test_sam_explicit_billed_total_can_settle_lifecycle():
+    run = priced_run()
+    record_segmentation(run, "segment", seconds=25.2, billed_micros=12_345)
+    [call] = run.paid_calls
+    assert (call["cost_micros"], call["cost_basis"]) == (12_345, "billed")
+    assert run.usage.actual_cost_micros == 12_345
+
+
+def test_replayed_settlement_cannot_subtract_the_runs_other_held_liability(tmp_path):
+    run = settled_run(tmp_path)
+    run.usage.reserved_cost_micros += 182_321  # Unknown SAM lifecycle remains held.
+    specimen = specimen_with(run)
+    principal = Principal(user_id=USER, scope=SCOPE, role="reviewer")
+    repository = NonSensitiveMember(tmp_path / "state.sqlite3")
+    settle_step(repository, principal, specimen, QWEN, 20_000)
+    assert run.usage.reserved_cost_micros == 182_321 + 550

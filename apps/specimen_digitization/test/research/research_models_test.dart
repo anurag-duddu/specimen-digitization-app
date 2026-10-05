@@ -1,9 +1,89 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:specimen_digitization/src/research/research_models.dart';
+import 'package:specimen_digitization/src/research/research_review_block.dart';
 
 import 'research_fixture.dart';
 
 void main() {
+  test(
+    'review candidates preserve exact values and explain derived proposals',
+    () {
+      final json = researchFixture('failed-thread');
+      final taxon = fixtureField(json, 'taxon');
+      taxon['work_state'] = 'waiting_human';
+      taxon['checkpoint']['resolution']['work_state'] = 'waiting_human';
+      taxon['actions'] = ['review_proposal'];
+      taxon['review'] = {
+        'question_reason': 'derived_proposal',
+        'reason': 'Two retained source possibilities remain.',
+        'question': {
+          'field_key': 'taxon',
+          'question': 'Which retained source candidate is supported?',
+          'reason': 'derived_proposal',
+          'coverage': [
+            {
+              'source_id': 'gbif',
+              'field_key': 'taxon',
+              'state': 'exhausted',
+              'source_version': 'test-v1',
+              'qualification_digest': 'a' * 64,
+              'exact_join_attempted': true,
+              'query_digest': 'b' * 64,
+              'receipt_ids': ['coverage-receipt'],
+              'candidate_count': 2,
+              'coverage_limit': 'bounded test scope',
+              'reason': 'Search completed within the fixture scope',
+            },
+          ],
+          'evidence_ids': ['source-evidence'],
+        },
+        'evidence': [
+          {
+            'evidence_id': 'source-evidence',
+            'source_id': 'geolocate',
+            'kind': 'lookup',
+            'searched_text': 'Mindanao',
+            'outcome': 'ambiguous',
+          },
+        ],
+        'candidates': [
+          {
+            'label': 'Mindanao',
+            'source_id': 'geolocate',
+            'selection_id': 'a' * 64,
+            'selection_value': 'Philippines',
+            'evidence_id': 'source-evidence',
+          },
+          {
+            'label': 'Philippines',
+            'source_id': 'geolocate',
+            'selection_id': null,
+            'selection_value': null,
+          },
+        ],
+        'evidence_not_shown': 0,
+        'candidates_not_shown': 0,
+      };
+      taxon['checkpoint']['resolution']['question'] = taxon['review'].remove(
+        'question',
+      );
+      final field = ResearchThread.fromJson(
+        json,
+        expectedScope: trustedResearchScope(),
+      ).field('taxon')!;
+      expect(field.review!.candidates.first.label, 'Mindanao');
+      expect(field.review!.candidates.first.selectionValue, 'Philippines');
+      expect(field.review!.candidates.first.selectionId, 'a' * 64);
+      expect(field.review!.candidates.last.selectionId, isNull);
+      expect(field.review!.evidence.single.evidenceId, 'source-evidence');
+      expect(researchReviewCase(field), ResearchReviewCase.derivedProposal);
+      expect(
+        ResearchReviewCase.derivedProposal.headline,
+        'A proposed value is ready for review. It has not been applied.',
+      );
+    },
+  );
+
   test(
     'frozen thread preserves value layers, evidence and retained queued failure',
     () {
@@ -28,6 +108,51 @@ void main() {
         () => failed.field('country')!.value.json['literal'] = 'changed',
         throwsUnsupportedError,
       );
+    },
+  );
+
+  test(
+    'historical report metadata is parsed and suppresses fresh retry tokens',
+    () {
+      final current = fixtureThread();
+      expect(current.historical, isFalse);
+      expect(current.canonicalRevision, isNull);
+      expect(current.reviewSavedRevision, isNull);
+
+      final json = researchFixture('failed-thread')
+        ..['historical'] = true
+        ..['canonical_revision'] = 41
+        ..['review_saved_revision'] = 42;
+      final historical = ResearchThread.fromJson(
+        json,
+        expectedScope: trustedResearchScope(),
+      );
+      expect(historical.historical, isTrue);
+      expect(historical.canonicalRevision, 41);
+      expect(historical.reviewSavedRevision, 42);
+      expect(historical.canRetry('taxon'), isFalse);
+    },
+  );
+
+  test(
+    'historical report metadata rejects invalid types and negative revisions',
+    () {
+      for (final edit in <void Function(Map<String, dynamic>)>[
+        (json) => json['historical'] = 'true',
+        (json) => json['canonical_revision'] = '41',
+        (json) => json['canonical_revision'] = -1,
+        (json) => json['review_saved_revision'] = 42.0,
+      ]) {
+        final json = researchFixture('failed-thread');
+        edit(json);
+        expect(
+          () => ResearchThread.fromJson(
+            json,
+            expectedScope: trustedResearchScope(),
+          ),
+          throwsA(isA<ResearchContractException>()),
+        );
+      }
     },
   );
 

@@ -13,6 +13,7 @@ import os
 from uuid import uuid4
 
 from specimen_digitization.application.workflow import OperationalBlock
+from specimen_digitization.application.storage import ReviewDecisionProof, digest as snapshot_digest
 from .committed_pins import committed_harness_route
 from .enablement import research_harness_enabled
 from .native_worker import NativeResearchWorker
@@ -42,12 +43,24 @@ class NativeResearchWorkflow:
     def __init__(self, ordinary, native_worker, *, provision=None):
         self.ordinary, self.native_worker, self.provision = ordinary, native_worker, provision
         self.owner = "native-research-worker:" + uuid4().hex
+        self._completed_side_work = None
 
     def __getattr__(self, name):
         return getattr(self.ordinary, name)
 
     def step(self, principal, specimen_id):
+        self._completed_side_work = None
         specimen = self.ordinary.repository.get(principal.scope, specimen_id)
+        if "research_derivation_request" in specimen.run.dependencies:
+            from .derivation_contracts import DerivationCommand
+            try:
+                command = DerivationCommand.model_validate(specimen.run.dependencies["research_derivation_request"])
+            except ValueError:
+                raise OperationalBlock("research_derivation_requires_reconciliation") from None
+            # A later ordinary human save retires the old scheduling metadata.
+            # Retained historical commands cannot intercept that later work.
+            if command.queued_revision == specimen.version and command.canonical_run_id == specimen.run.id:
+                return self._derivation_step(principal, specimen)
         if specimen.run.stage in {"finalized", "paused", "cancelled", "processing_blocked"}:
             return specimen
         if "evidence_pilot" in specimen.run.dependencies:
@@ -75,6 +88,80 @@ class NativeResearchWorkflow:
         # Each publication saves the specimen through the native writer; the
         # research layer never manufactures a second Specimen/save writer.
         return self.ordinary.repository.get(principal.scope, specimen_id)
+
+    def completed_side_work(self, specimen):
+        """Only this step's proved metadata completion counts without a save."""
+        return self._completed_side_work == snapshot_digest(specimen.model_dump(mode="json"))
+
+    def _derivation_step(self, principal, specimen):
+        from specimen_digitization.application.worker_deadline import current_deadline
+        deadline = current_deadline()
+        if deadline is None:
+            raise OperationalBlock("native_research_worker_supervisor_required")
+        deadline.check()
+        try:
+            if (specimen.run.stage in {"paused", "cancelled", "processing_blocked"}
+                or "evidence_pilot" in specimen.run.dependencies):
+                raise StaleWork("derivation_lifecycle_unavailable")
+            completed = asyncio.run(self._derive(principal, specimen))
+        except Exception:
+            # This is deliberately outside RECORD_HOLDS: neither an unknown
+            # side-work outcome nor its queue status may cause a canonical
+            # lane-block save that would invalidate Q or erase its custody.
+            raise OperationalBlock("research_derivation_requires_reconciliation") from None
+        deadline.check()
+        self._completed_side_work = snapshot_digest(completed.model_dump(mode="json"))
+        return self.ordinary.repository.get(principal.scope, specimen.id)
+
+    @staticmethod
+    def _prove_derivation_enqueue(repository, principal, specimen, command):
+        """Require the original authenticated reviewer save, not audit text."""
+        proofs, _ = repository._review_proofs(principal.scope, specimen)
+        info = repository.version_info(principal.scope, specimen.id, command.queued_revision)
+        expected_before = {"revision": command.source_revision, "run_id": command.canonical_run_id}
+        expected_after = {"request_id": command.id, "input_digest": command.input_digest,
+            "requested_fields": [str(key) for key in command.requested_fields]}
+        matches = [proof for proof in proofs if isinstance(proof, ReviewDecisionProof)
+            and proof.specimen_id == specimen.id and proof.base_revision == command.source_revision
+            and proof.resulting_revision == command.queued_revision
+            and proof.prior_sha256 == command.source_snapshot_sha256
+            and proof.snapshot_sha256 == info.get("sha256") and proof.server_audit_id
+            and proof.event.action == "review_derive_rest" and proof.event.actor == command.actor_uid
+            and proof.event.reason == command.reason and proof.event.before == expected_before
+            and proof.event.after == expected_after]
+        if (info.get("revision") != command.queued_revision
+            or info.get("run_id") != command.canonical_run_id or len(matches) != 1):
+            raise StaleWork("derivation_enqueue_provenance_unproved")
+
+    async def _derive(self, principal, specimen):
+        from .derivation_worker import ResearchDerivationWorker
+        from .derivation_work_queue import finish_derivation
+        from .contracts import digest
+
+        repository = self.ordinary.repository
+        factory = self.native_worker.runtime_factory
+        worker = ResearchDerivationWorker(factory, input_blobs=repository.graph_blobs)
+        # Fresh typed command/Q/run/input proof verification happens before
+        # provisioning, and again inside the worker before each captured send.
+        context = await asyncio.to_thread(worker._verify, principal, specimen.id)
+        command, current = context.command, context.specimen
+        await asyncio.to_thread(self._prove_derivation_enqueue, repository, principal, current, command)
+        if self.provision is None:
+            raise StaleWork("derivation_provisioner_unavailable")
+        await self.provision(principal, current)
+        outcome = await worker.run_registered(principal, current.id, owner=self.owner, command=command)
+        if outcome.request_id != command.id or outcome.status not in {"completed", "blocked"}:
+            raise HeldUnknown("derivation_completion_unproved")
+        binding, store, scope, _, job = await factory.discovery.bound_state(principal, current.id)
+        if (binding.canonical.record_revision != command.queued_revision
+            or str(binding.canonical.canonical_run_id) != command.canonical_run_id
+            or job["dependencies"].get("derivation_request_id") != command.id
+            or digest(job["dependencies"].get("derivation_result")) != digest(outcome.model_dump(mode="json"))):
+            raise StaleWork("derivation_completion_unproved")
+        # The helper verifies affected-count=1 and native readback of the same
+        # Q/run with completed metadata and no due time. No scientific save.
+        await asyncio.to_thread(finish_derivation, repository, principal, current, command, scope, store.program_key)
+        return current
 
     async def _research(self, principal, specimen):
         if self.provision is not None:
@@ -137,6 +224,39 @@ def compose_production_research_workflow(ordinary, *, repository, environ, actor
     if not research_harness_enabled(environ):
         raise ValueError("research_harness_switch_off")
     verify_access = membership_verifier(repository)
+    from .program_budget import (
+        research_liability_micros, reserve_ordinary_liability, settle_ordinary_liability,
+    )
+    from .persistence import BudgetExceeded
+
+    def retained_cost(principal, specimen):
+        if committed_harness_route(specimen.run.profile_snapshot) is None:
+            return 0
+        return research_liability_micros(repository, principal, specimen,
+            state_backend=state_backend)
+
+    ordinary.retained_cost = retained_cost
+
+    def reserve_retained_cost(principal, specimen, step, cost):
+        if committed_harness_route(specimen.run.profile_snapshot) is None:
+            return
+        try:
+            reserve_ordinary_liability(repository, principal, specimen, step, cost,
+                state_backend=state_backend)
+        except BudgetExceeded:
+            raise OperationalBlock("cost_budget_exhausted") from None
+        except HeldUnknown:
+            raise OperationalBlock("research_budget_state_unavailable") from None
+
+    ordinary.reserve_retained_cost = reserve_retained_cost
+
+    def settle_retained_cost(principal, specimen, step):
+        if committed_harness_route(specimen.run.profile_snapshot) is None:
+            return
+        settle_ordinary_liability(repository, principal, specimen, step,
+            state_backend=state_backend)
+
+    ordinary.settle_retained_cost = settle_retained_cost
 
     async def authorize(principal, specimen, binding):
         return await authorize_live_research(principal, specimen, binding,

@@ -14,6 +14,8 @@ DEPLOY_SCRIPT = ROOT / "scripts/ci/deploy_hosting.sh"
 APPROVED_DEPLOY_SCRIPTS = {
     DEPLOY_SCRIPT,
     ROOT / "scripts/release/deploy_api.py",
+    ROOT / "scripts/release/deploy_models.py",
+    ROOT / "scripts/release/process_worker.py",
     # Retired (scripts/ci/RETIRED.md): no workflow calls these two any more. They
     # stay listed only until the follow-up pull request deletes the files.
     ROOT / "scripts/ci/deploy_runtime.py",
@@ -255,8 +257,15 @@ def test_release_workflow_starts_from_main_or_a_manual_run_and_one_runs_at_a_tim
     # No pull request, fork, schedule or other workflow can start a release.
     assert set(workflow["on"]) == {"push", "workflow_dispatch"}
     assert workflow["on"]["push"] == {"branches": ["main"]}
-    # A manual run takes no inputs, so it releases the commit exactly as a merge does.
-    assert workflow["on"]["workflow_dispatch"] == ""
+    # Manual releases take no deployment configuration. The one runtime input
+    # explicitly opts into processing already queued work after the release.
+    if plane == "data":
+        assert workflow["on"]["workflow_dispatch"] == ""
+    else:
+        inputs = workflow["on"]["workflow_dispatch"]["inputs"]
+        assert set(inputs) == {"process_queued"}
+        assert inputs["process_queued"]["type"] == "boolean"
+        assert inputs["process_queued"]["default"] == "false"
     assert workflow.get("permissions") == {"contents": "read"}
     assert workflow.get("concurrency") == {"group": f"specimen-{plane}-release", "cancel-in-progress": "false"}
 

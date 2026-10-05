@@ -163,9 +163,14 @@ def test_only_the_build_and_the_release_get_cloud_credentials_each_in_its_own_en
 def test_each_job_runs_exactly_its_reviewed_steps_and_the_yaml_only_calls_scripts():
     assert steps("data") == ["actions/checkout", "scripts/release/wait_for_data.sh"]
     assert steps("build") == ["actions/checkout", "google-github-actions/auth", "scripts/ci/build_runtime_image.sh api",
-                              "scripts/release/push_image.sh api"]
+                              "scripts/release/push_image.sh api", "scripts/ci/build_runtime_image.sh worker",
+                              "scripts/release/push_image.sh worker", "scripts/ci/build_runtime_image.sh sam",
+                              "scripts/release/push_image.sh sam"]
     assert steps("release") == ["actions/checkout", "astral-sh/setup-uv", "uv sync --frozen", "google-github-actions/auth",
-                                'uv run python scripts/release/deploy_api.py "$IMAGE"', "scripts/release/smoke_api.sh"]
+                                'uv run python scripts/release/deploy_api.py "$IMAGE"', "scripts/release/smoke_api.sh",
+                                'uv run python scripts/release/deploy_models.py "$SAM_IMAGE" "$WORKER_IMAGE"',
+                                "uv run python scripts/release/process_worker.py process",
+                                "uv run python scripts/release/process_worker.py cool"]
     for name in ("wait_for_data.sh", "push_image.sh", "smoke_api.sh"):
         path = ROOT / "scripts/release" / name
         assert os.access(path, os.X_OK) and "set -euo pipefail" in path.read_text()
@@ -173,13 +178,15 @@ def test_each_job_runs_exactly_its_reviewed_steps_and_the_yaml_only_calls_script
 
 
 def test_the_image_digest_and_the_github_token_reach_only_the_steps_that_use_them():
-    assert JOBS["build"]["outputs"] == {"image": "${{ steps.push.outputs.image }}"}
+    assert JOBS["build"]["outputs"] == {"image": "${{ steps.push.outputs.image }}",
+        "worker": "${{ steps.worker.outputs.image }}", "sam": "${{ steps.sam.outputs.image }}"}
     env = {job: [step.get("env", {}) for step in JOBS[job]["steps"]] for job in JOBS}
     assert all("env" not in JOBS[job] for job in JOBS) and "env" not in WORKFLOW
     assert env["data"] == [{}, {"GH_TOKEN": "${{ github.token }}"}]
-    assert env["build"] == [{}, {}, {}, {}]
-    assert env["release"] == [{}, {}, {}, {}, {"IMAGE": "${{ needs.build.outputs.image }}"}, {}]
-    assert [step.get("id") for step in JOBS["build"]["steps"]] == [None, None, None, "push"]
+    assert env["build"] == [{}] * 8
+    assert env["release"] == [{}, {}, {}, {}, {"IMAGE": "${{ needs.build.outputs.image }}"}, {},
+        {"SAM_IMAGE": "${{ needs.build.outputs.sam }}", "WORKER_IMAGE": "${{ needs.build.outputs.worker }}"}, {}, {}]
+    assert [step.get("id") for step in JOBS["build"]["steps"]] == [None, None, None, "push", None, "worker", None, "sam"]
     # No cloud token passes through the YAML: push_image.sh asks gcloud for one from the sign-in step's credential file.
     assert "token_format" not in TEXT and "access_token" not in TEXT and "REGISTRY_TOKEN" not in TEXT
     assert all(step["with"] == {"persist-credentials": "false"}
@@ -437,7 +444,7 @@ def test_a_failed_push_or_another_role_reports_no_image(fake):
     assert script("push_image.sh", "api").returncode != 0 and not (fake / "output").exists()
     (fake / "push.fails").unlink()
     (fake / "docker.args").unlink()
-    for role in ("worker", "sam", ""):
+    for role in ("unknown", ""):
         assert script("push_image.sh", role).returncode == 1
     assert lines(fake, "docker.args") == [] and not (fake / "output").exists()
 

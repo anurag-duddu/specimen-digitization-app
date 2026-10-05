@@ -504,7 +504,7 @@ class SqlConnectRepository:
         return self._commit(principal, specimen, expected_revision, key, digest)
 
     def _review_proofs(self, scope, specimen):
-        """Prove original events under the current verified reviewer's authority."""
+        """Read original proofs under the current scoped operator/reviewer authority."""
         if not specimen.audit_offset and not any(
             event.action.startswith("review_") for event in specimen.audit
         ):
@@ -635,7 +635,8 @@ class SqlConnectRepository:
         """
         try:
             base = self.variables(scope)
-            review_proofs, review_conflict_check = self._review_proofs(scope, specimen) if reviewer else (None, None)
+            needs_human_proofs = reviewer or bool(specimen.run.dependencies.get("human_review_field_locks"))
+            review_proofs, review_conflict_check = self._review_proofs(scope, specimen) if needs_human_proofs else (None, None)
             written = self._projected.setdefault(specimen.id, set())
             self._projected.move_to_end(specimen.id)
             while len(self._projected) > PROJECTED_SPECIMENS:

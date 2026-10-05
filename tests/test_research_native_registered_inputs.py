@@ -56,7 +56,14 @@ def test_actual_cost_requires_known_usage_and_covers_reservation():
     cost = registered_model_prices(pins,{"collection":binding})["collection"]
     assert cost(SimpleNamespace(usage=SimpleNamespace(input_tokens=1_000,output_tokens=1_000))) == 3
     assert cost(SimpleNamespace(usage=SimpleNamespace(input_tokens=0,output_tokens=0))) is None
-    assert cost(SimpleNamespace(usage=SimpleNamespace(input_tokens=1_000,output_tokens=1_000,cache_read_tokens=1))) is None
+    assert cost(SimpleNamespace(usage=SimpleNamespace())) is None
+    # Cache reads never discount the full reported input at the registered list rate.
+    for cached in (1, 1_000):
+        assert cost(SimpleNamespace(usage=SimpleNamespace(
+            input_tokens=1_000,output_tokens=1_000,cache_read_tokens=cached))) == 3
+    # Actual usage above the registered input bound and reservation counts in full.
+    assert cost(SimpleNamespace(usage=SimpleNamespace(
+        input_tokens=2_000_000,output_tokens=1_000))) == 2_002 > binding.reservation_micro_usd
     changed = deepcopy(pins)
     changed["model_prices"]["collection"]["input_micro_usd_per_million_tokens"] = True
     with pytest.raises(HeldUnknown, match="unqualified"):
@@ -64,6 +71,27 @@ def test_actual_cost_requires_known_usage_and_covers_reservation():
     small = ModelBinding(binding.route_id,binding.model_id,binding.provider,128,1,binding.price_version)
     with pytest.raises(HeldUnknown, match="below_registered_liability"):
         registered_model_prices(pins,{"collection":small})
+
+
+@pytest.mark.parametrize("field", ["input_tokens", "output_tokens"])
+@pytest.mark.parametrize("invalid", [None, 0, -1, True, 1.0, "1"])
+def test_actual_cost_keeps_invalid_or_missing_token_usage_unknown(field, invalid):
+    binding = ModelBinding("harness-deepseek", "deepseek-ai/DeepSeek-V4.1-Flash",
+        "deepinfra",128,1_000,"fixture-price-v1")
+    cost = registered_model_prices(price_pins(binding),{"collection":binding})["collection"]
+    usage = {"input_tokens":1_000, "output_tokens":1_000, field:invalid}
+    assert cost(SimpleNamespace(usage=SimpleNamespace(**usage))) is None
+    del usage[field]
+    assert cost(SimpleNamespace(usage=SimpleNamespace(**usage))) is None
+
+
+@pytest.mark.parametrize("modality", ["cache_write_tokens", "audio_tokens"])
+def test_actual_cost_keeps_unpriced_billed_modalities_unknown(modality):
+    binding = ModelBinding("harness-deepseek", "deepseek-ai/DeepSeek-V4.1-Flash",
+        "deepinfra",128,1_000,"fixture-price-v1")
+    cost = registered_model_prices(price_pins(binding),{"collection":binding})["collection"]
+    usage = {"input_tokens":1_000, "output_tokens":1_000, modality:1}
+    assert cost(SimpleNamespace(usage=SimpleNamespace(**usage))) is None
 
 
 def request_bound(binding):

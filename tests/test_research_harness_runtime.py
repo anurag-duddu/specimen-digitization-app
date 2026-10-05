@@ -3,12 +3,16 @@
 import asyncio
 import hashlib
 from dataclasses import asdict
+from types import SimpleNamespace
 
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.usage import RequestUsage
 
-from specimen_digitization.application.domain import FieldValue
+from specimen_digitization.application.domain import FieldValue, Scope
+from specimen_digitization.application.lane_allowance import ProgramLedger, LEDGER_KIND
+from specimen_digitization.application.storage import SQLiteRepository
+from specimen_digitization.research_harness.program_budget import ProgramEffectBroker
 from specimen_digitization.research_harness.agents import SpecialistOutput, specialist_output_schema_digest
 from specimen_digitization.research_harness.contracts import (
     ALL_FIELDS, ROLE_FIELDS, CollectionProfile, FieldProfile, FieldResolution,
@@ -87,14 +91,26 @@ def test_all_six_agents_use_persisted_journals_and_reopen_without_effects(tmp_pa
                 usage=RequestUsage(input_tokens=1, output_tokens=1))
         return FunctionModel(respond)
 
+    repository = SQLiteRepository(tmp_path / "program.sqlite")
+    program_scope = Scope(organization_id=scope.organization_id, collection_id=scope.collection_id)
+    ledger = ProgramLedger(repository, program_scope)
+    repository.put_document(program_scope, LEDGER_KIND, ledger.ident,
+        {"sensitive": False, "reserved_total_micros": 0}, 0)
+    blobs = ImmutableFileBlobs(tmp_path / "blobs")
+    broker = ProgramEffectBroker(store, blobs, repository=repository, scope=durable,
+        run=SimpleNamespace(profile=SimpleNamespace(execution=SimpleNamespace(
+            program_allowance_micros=1_000, program_ledger_collection=scope.collection_id))))
     engine = build_research_engine(profile=profile, requests=requests, store=store, scope=durable,
         lease=lease, blobs=ImmutableFileBlobs(tmp_path / "blobs"), tool_broker=SourceBroker(registry),
-        bindings=bindings, settings=settings, base_model_factory=base_model, actual_cost=lambda response:3)
+        bindings=bindings, settings=settings, base_model_factory=base_model, actual_cost=lambda response:3,
+        effect_broker=broker)
     result = asyncio.run(engine.run())
     assert len(result.checkpoints) == 20 and not result.clearance_eligible
     assert all(item.work_state in {WorkState.WAITING_SOURCE, WorkState.WAITING_POLICY} for item in result.fields.values()), {str(k):str(v.work_state) for k,v in result.fields.items()}
     assert len(calls) == 12
     assert store.budget(durable)["settled_micro_usd"] == 36
+    assert ledger.read()["reserved_total_micros"] == 36
+    assert len(ledger.read()["research_effects"]) == 12
     assert store.budget(durable)["held_micro_usd"] == 0
     thread = asyncio.run(ResearchThreadReader(engine.journal).read(scope))
     assert len(thread.fields) == 20 and len(thread.effects) == 12

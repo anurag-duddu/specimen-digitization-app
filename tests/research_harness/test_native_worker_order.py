@@ -1,9 +1,9 @@
-"""The worker offers a derived field's publication after its source field's.
+"""The worker offers roster roles in order, with derived fields after their sources.
 
 The journal lists fields in key order, so elevation_from_ft comes before
-elevation_from_m; the V2 projection refuses a derived value whose source is not
-yet on the record. Offline: the runtime is test_production_bridge's recording
-stand-in.
+elevation_from_m. Within a role the source must publish first; an actual
+cross-role dependency takes precedence over roster order. Offline: the runtime
+is test_production_bridge's recording stand-in.
 """
 from specimen_digitization.application.domain import FieldValue, ValueState
 from specimen_digitization.research_harness.contracts import (
@@ -29,13 +29,23 @@ def test_a_derived_field_is_offered_after_its_source(monkeypatch):
     # Key order, as the journal loads them.
     typed = (county, from_ft, from_m, to_ft, to_m, TAXON)
     runtime, outcome = publish(monkeypatch, typed, thread(*typed))
-    assert runtime.prepared == [FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M, FieldKey.TAXON,
+    # Taxonomy is the first roster role; measurement still publishes each
+    # source before its derived feet value, despite the journal's key order.
+    assert runtime.prepared == [FieldKey.TAXON, FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M,
         FieldKey.ELEVATION_FROM_FT, FieldKey.ELEVATION_TO_FT]
     assert len(outcome.publication_receipt_ids) == 5 and "native-county" not in outcome.checkpoint_ids
 
 
-def test_a_dependency_outside_the_loaded_checkpoints_keeps_journal_order(monkeypatch):
+def test_a_dependency_outside_the_loaded_checkpoints_keeps_roster_order(monkeypatch):
     absent = resolved(FieldKey.DATE_VISITED_FROM)
     derived = resolved(FieldKey.DATE_VISITED_TO, absent)
     runtime, _ = publish(monkeypatch, (derived, TAXON), thread(derived, TAXON))
-    assert runtime.prepared == [FieldKey.DATE_VISITED_TO, FieldKey.TAXON]
+    assert runtime.prepared == [FieldKey.TAXON, FieldKey.DATE_VISITED_TO]
+
+
+def test_a_loaded_cross_role_dependency_precedes_its_earlier_roster_role(monkeypatch):
+    country = resolved(FieldKey.COUNTRY)
+    taxon = resolved(FieldKey.TAXON, country)
+    runtime, outcome = publish(monkeypatch, (taxon, country), thread(taxon, country))
+    assert runtime.prepared == [FieldKey.COUNTRY, FieldKey.TAXON]
+    assert len(outcome.publication_receipt_ids) == 2

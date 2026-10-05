@@ -10,18 +10,33 @@ from __future__ import annotations
 import asyncio
 import copy
 import hashlib
+import inspect
 import json
 import os
+import random
 import re
 import sqlite3
+import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Event
 from typing import Any, Awaitable, Callable, Mapping, Protocol
 from uuid import uuid4
 
 CONTRACT_VERSION = "research-durability/v1"
-MAX_STATE_BYTES = 900_000
+# One corrected specimen retains both immutable research jobs, effects, journal
+# and publication outbox in this aggregate. The bounded two-revision rehearsal
+# reaches 1,027,331 bytes; 1.5 MB leaves room for that complete replay without
+# discarding earlier proof or cost. Longer histories still need archival.
+MAX_STATE_BYTES = 1_500_000
+# One lease covers a complete role window and its publication. Renewing the
+# lease during a window would invalidate the publication's exact lease match.
+MAX_LEASE_TTL_SECONDS = 900
+CAS_PAUSE_FIRST_SECONDS = 0.01
+CAS_PAUSE_MAX_SECONDS = 0.5
 
 
 def canonical(value: Any) -> bytes:
@@ -68,6 +83,75 @@ class DurabilityScope:
     @property
     def key(self) -> str:
         return digest({k: v for k, v in self.identity().items() if k != "generation"})
+
+
+@dataclass(frozen=True)
+class _LockedSourceRead:
+    broker: Any
+    scope: DurabilityScope
+    operation_key: str
+    request_digest: str
+    field_key: str
+    verify_current: Callable[[], None]
+    closed: Event = field(default_factory=Event, compare=False)
+
+
+_locked_source_read: ContextVar[_LockedSourceRead | None] = ContextVar(
+    "research_trusted_locked_source_read", default=None)
+
+
+@contextmanager
+def _trusted_locked_source_read(broker, scope, operation_key, logical_request, *,
+                                field_key, source_id, command_digest, verify_current):
+    """Internal capture-only authority, never a serialized/model tool argument.
+
+    The capture broker supplies a callback which re-reads the genuine human
+    command, queue revision and anchor proofs. Only its exact logical read may
+    cross a human lock. Context propagates through asyncio.to_thread; no grant
+    is persisted or survives this call. Publication still refuses locked fields.
+    """
+    if not isinstance(logical_request, dict):
+        raise PermissionError("Trusted locked read requires the complete source request")
+    contract = logical_request.get("contract_version")
+    arguments_key = {"research-source-request-envelope/v2": "arguments",
+                     "research-pinned-dataset-request/v1": "query"}.get(contract)
+    arguments = logical_request.get(arguments_key) if arguments_key else None
+    request_digest = digest(logical_request)
+    if (not isinstance(broker, DurableEffectBroker) or not isinstance(scope, DurabilityScope)
+        or source_id not in {"georeference_history", "geolocate"}
+        or not isinstance(field_key, str) or not field_key
+        or not isinstance(command_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", command_digest)
+        or logical_request.get("trusted_derivation_command_digest") != command_digest
+        or logical_request.get("tool_id") != "source_lookup"
+        or not isinstance(arguments, dict) or arguments.get("source_id") != source_id
+        or arguments.get("field_key") != field_key
+        or operation_key != "source_capture_v2:" + request_digest or not callable(verify_current)
+        or _locked_source_read.get() is not None):
+        raise PermissionError("Trusted locked read is not the exact bound source capture")
+    permit = _LockedSourceRead(broker, scope, operation_key, request_digest, field_key, verify_current)
+    token = _locked_source_read.set(permit)
+    try:
+        yield
+    finally:
+        permit.closed.set()
+        _locked_source_read.reset(token)
+
+
+def _revalidate_locked_source_read(store, scope):
+    permit = _locked_source_read.get()
+    if permit is None:
+        return
+    if permit.closed.is_set() or permit.broker.store is not store or permit.scope != scope:
+        raise PermissionError("Trusted locked read belongs to another store or scope")
+    # Keep external proof reads out of CAS reducers; mark_sending also retains
+    # the canonical SQL send fence in the same transaction as the effect CAS.
+    result = permit.verify_current()
+    if inspect.isawaitable(result):
+        if inspect.iscoroutine(result):
+            result.close()
+        raise TypeError("Trusted locked read requires synchronous proof verification")
+    if result is not None:
+        raise PermissionError("Trusted locked read proof must raise on denial, not return a flag")
 
 
 @dataclass(frozen=True)
@@ -184,7 +268,7 @@ class StateDocument:
 class StateBackend(Protocol):
     def load(self, scope: DurabilityScope, program_key: str) -> StateDocument | None: ...
     def create(self, scope: DurabilityScope, program_key: str, state: dict[str, Any]) -> None: ...
-    def cas(self, scope: DurabilityScope, program_key: str, revision: int, state: dict[str, Any], *, valid_until: float | None = None, review_required: bool = False) -> None: ...
+    def cas(self, scope: DurabilityScope, program_key: str, revision: int, state: dict[str, Any], *, valid_until: float | None = None, review_required: bool = False, send_authorization: dict | None = None) -> None: ...
 
 
 class SqliteStateBackend:
@@ -244,7 +328,9 @@ class SqliteStateBackend:
             except sqlite3.IntegrityError as exc:
                 raise CasConflict("Program already initialized") from exc
 
-    def cas(self, scope: DurabilityScope, program_key: str, revision: int, state: dict[str, Any], *, valid_until: float | None = None, review_required: bool = False) -> None:
+    def cas(self, scope: DurabilityScope, program_key: str, revision: int, state: dict[str, Any], *, valid_until: float | None = None, review_required: bool = False, send_authorization: dict | None = None) -> None:
+        if send_authorization is not None:
+            raise PermissionError("Canonical dispatch authorization requires native SQL Connect")
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             self._authorize(db, scope)
@@ -296,8 +382,10 @@ class SqlConnectStateBackend:
                 raise CasConflict("Program exists after create") from exc
             raise
 
-    def cas(self, scope: DurabilityScope, program_key: str, revision: int, state: dict[str, Any], *, valid_until: float | None = None, review_required: bool = False) -> None:
+    def cas(self, scope: DurabilityScope, program_key: str, revision: int, state: dict[str, Any], *, valid_until: float | None = None, review_required: bool = False, send_authorization: dict | None = None) -> None:
         variables = dict(self._variables(scope, program_key), expectedRevision=revision, state=state, stateJson=canonical(state).decode(), reviewRequired=review_required, validUntil=datetime.fromtimestamp(valid_until, timezone.utc).isoformat() if valid_until is not None else None)
+        if send_authorization is not None:
+            variables["sendAuthorizationJson"] = canonical(send_authorization).decode()
         try:
             self.repository.execute("CompareResearchHarnessStateV1", variables, mutation=True)
         except Exception as exc:
@@ -345,14 +433,72 @@ class ResearchStore:
         except CasConflict:
             self.initialize(scope, policy)
 
+    def reconcile_ordinary_spend(self, scope: DurabilityScope, cumulative_micros: int) -> None:
+        """Carry later ordinary calls without changing the immutable policy seed.
+
+        Reviewer corrections may repeat a paid parse. A high-water mark makes
+        replay idempotent and never releases a prior known or unknown liability.
+        """
+        if type(cumulative_micros) is not int or cumulative_micros < 0:
+            raise ValueError("Ordinary liability must be nonnegative integer microUSD")
+
+        def reduce(state, _):
+            seed = state["budget_policy"]["external_settled_micro_usd"]
+            state["ordinary_cost_micros"] = max(seed, state.get("ordinary_cost_micros", seed), cumulative_micros)
+        self._mutate(scope, reduce)
+
+    def reserve_ordinary(self, scope: DurabilityScope, key: str, micros: int, cumulative_micros: int) -> None:
+        """CAS one ordinary pre-send liability against the research run's cap.
+
+        Failed canonical saves keep their reservations; only an identical
+        step/attempt replays without adding another hold. Research reserves use
+        this same document and therefore cannot race past the per-run ceiling.
+        """
+        if (type(key) is not str or not key or type(micros) is not int or micros <= 0
+            or type(cumulative_micros) is not int or cumulative_micros < 0):
+            raise ValueError("Invalid ordinary reservation")
+        def reduce(state, _):
+            reservations = state.setdefault("ordinary_reservations", {})
+            if key in reservations:
+                if reservations[key]["reserved_micros"] != micros:
+                    raise HeldUnknown("ordinary_reservation_changed")
+                return
+            seed = state["budget_policy"]["external_settled_micro_usd"]
+            state["ordinary_cost_micros"] = max(seed, state.get("ordinary_cost_micros", seed), cumulative_micros)
+            if state["halted"] or micros > self._budget(state)["remaining_micro_usd"]:
+                raise BudgetExceeded("run_cost_allowance_exhausted")
+            state["ordinary_cost_micros"] += micros
+            reservations[key] = {"reserved_micros": micros, "settled_micros": None}
+        self._mutate(scope, reduce)
+
+    def settle_ordinary(self, scope: DurabilityScope, key: str, micros: int) -> None:
+        """Release only one ordinary attempt's known unused reservation."""
+        if type(micros) is not int or micros < 0:
+            raise ValueError("Invalid ordinary settlement")
+        def reduce(state, _):
+            entry = state.get("ordinary_reservations", {}).get(key)
+            if entry is None:
+                return  # Historical calls remain in the immutable original seed.
+            if entry["settled_micros"] is not None:
+                if entry["settled_micros"] != micros:
+                    raise HeldUnknown("ordinary_settlement_changed")
+                return
+            seed = state["budget_policy"]["external_settled_micro_usd"]
+            state["ordinary_cost_micros"] = max(seed,
+                state["ordinary_cost_micros"] - entry["reserved_micros"] + micros)
+            entry["settled_micros"] = micros
+            if micros > entry["reserved_micros"]:
+                state["halted"] = True  # Keep a provider-contract anomaly in full.
+        self._mutate(scope, reduce)
+
     def _read(self, scope: DurabilityScope) -> StateDocument:
         doc = self.backend.load(scope, self.program_key)
         if doc is None or doc.state.get("contract_version") != CONTRACT_VERSION:
             raise ValueError("Missing or unsupported research state")
         return doc
 
-    def _mutate(self, scope: DurabilityScope, reducer: Callable[[dict[str, Any], float], Any], *, lease: Lease | None = None, review_required: bool = False, force_cas: bool = False) -> Any:
-        for _ in range(self.max_cas_retries):
+    def _mutate(self, scope: DurabilityScope, reducer: Callable[[dict[str, Any], float], Any], *, lease: Lease | None = None, review_required: bool = False, force_cas: bool = False, send_authorization: dict | None = None) -> Any:
+        for attempt in range(self.max_cas_retries):
             doc = self._read(scope)
             state = copy.deepcopy(doc.state)
             result = reducer(state, doc.server_time)
@@ -362,9 +508,12 @@ class ResearchStore:
             if len(canonical(state)) > MAX_STATE_BYTES:
                 raise ValueError("Bounded research aggregate is full; no dispatch authorized")
             try:
-                self.backend.cas(scope, self.program_key, doc.revision, state, valid_until=lease.expires_at if lease else None, review_required=review_required)
+                self.backend.cas(scope, self.program_key, doc.revision, state, valid_until=lease.expires_at if lease else None, review_required=review_required,
+                    **({"send_authorization": send_authorization} if send_authorization is not None else {}))
                 return result
             except CasConflict:
+                if attempt + 1 < self.max_cas_retries:
+                    time.sleep(random.uniform(0, min(CAS_PAUSE_MAX_SECONDS, CAS_PAUSE_FIRST_SECONDS * 2 ** attempt)))
                 continue
         raise CasConflict("Bounded SQL rebase limit exceeded")
 
@@ -386,22 +535,28 @@ class ResearchStore:
             raise StaleWork("Current active generation and lease fence required")
         return job
 
-    def create_job(self, scope: DurabilityScope, pins: PinnedRuntime, field_keys: list[str], *, dependencies: Mapping[str, int] | None = None, record_revision: int = 0) -> dict[str, Any]:
+    def create_job(self, scope: DurabilityScope, pins: PinnedRuntime, field_keys: list[str], *, dependencies: Mapping[str, int] | None = None, record_revision: int = 0, human_locks: Mapping[str, str] | None = None) -> dict[str, Any]:
+        human_locks = dict(human_locks or {})
+        if not set(human_locks) <= set(field_keys) or any(
+                type(proof) is not str or len(proof) != 64 for proof in human_locks.values()):
+            raise ValueError("Human locks require verified field provenance")
         if scope.generation < 1 or not field_keys or len(set(field_keys)) != len(field_keys):
             raise ValueError("A job requires a positive generation and distinct field keys")
         payload = pins.payload()
         def reduce(state, _):
             if scope.key in state["jobs"]:
                 job = self._job(state, scope)
-                if job["pins"] != payload or set(job["fields"]) != set(field_keys):
+                if (job["pins"] != payload or set(job["fields"]) != set(field_keys)
+                    or job.get("human_lock_proofs", {}) != human_locks):
                     raise ValueError("Runtime bindings are immutable for this generation")
                 return copy.deepcopy(job)
             job = {"identity": {k: v for k, v in scope.identity().items() if k != "generation"},
                    "generation": scope.generation, "sensitive": scope.sensitive, "pins": payload,
                    "binding_digest": digest(payload), "fence": 0, "lease": None, "paused": False,
                    "record_revision": record_revision, "dependencies": dict(dependencies or {}),
-                   "trace_context": None,
-                   "fields": {k: {"revision": 0, "locked": False, "checkpoint": None, "work_state": "pending", "reuse": None} for k in field_keys},
+                   "trace_context": None, "human_lock_proofs": human_locks,
+                   "fields": {k: {"revision": 0, "locked": k in human_locks, "checkpoint": None,
+                       "work_state": "waiting_human" if k in human_locks else "pending", "reuse": None} for k in field_keys},
                    "checkpoints": [], "history": []}
             state["jobs"][scope.key] = job
             return copy.deepcopy(job)
@@ -411,8 +566,8 @@ class ResearchStore:
         return copy.deepcopy(self._job(self._read(scope).state, scope))
 
     def claim(self, scope: DurabilityScope, owner: str, *, ttl_seconds: int = 60) -> Lease:
-        if not owner or not 1 <= ttl_seconds <= 300:
-            raise ValueError("Lease TTL must be 1..300 seconds")
+        if not owner or not 1 <= ttl_seconds <= MAX_LEASE_TTL_SECONDS:
+            raise ValueError(f"Lease TTL must be 1..{MAX_LEASE_TTL_SECONDS} seconds")
         def reduce(state, now):
             job = self._job(state, scope)
             if job["paused"] or (job["lease"] and job["lease"]["expires_at"] > now):
@@ -423,21 +578,32 @@ class ResearchStore:
             return lease
         return self._mutate(scope, reduce)
 
-    def release(self, scope: DurabilityScope, lease: Lease) -> None:
-        """Release only this known completed step; uncertain effects retain custody."""
+    def release(self, scope: DurabilityScope, lease: Lease, *, blocked: bool = False) -> None:
+        """Release only this known completed step; uncertain effects retain custody.
+
+        ``blocked`` is a window that ended blocked (its publication pass refused or could not
+        verify something). It is released too, but custody is kept as well while an effect is only
+        reserved (not yet proven unsent or sent) and while a publication was prepared and not
+        delivered: its outcome is in doubt (its attempt may be marked at the connector, and the next
+        step must reconcile it), so no one else may step in under a fresh lease."""
         def reduce(state, now):
             job = self._lease(state, scope, lease, now)
+            uncertain = {"sending", "held_unknown", "reserved"} if blocked else {"sending", "held_unknown"}
             if any(effect["job_key"] == scope.key and effect["scope"] == scope.identity()
-                and (effect["status"] in {"sending", "held_unknown"}
+                and (effect["status"] in uncertain
                     or effect.get("receipt") is not None and effect["actual_micro_usd"] is None)
                 for effect in state["effects"].values()):
                 raise HeldUnknown("Uncertain effect retains its lease custody")
+            if blocked and any(item.get("kind") == "canonical_publication_required"
+                and item.get("delivered") is False and item.get("guard", {}).get("scope") == scope.identity()
+                for item in state["outbox"].values()):
+                raise HeldUnknown("A publication in doubt retains its lease custody")
             job["lease"] = None
         self._mutate(scope, reduce, lease=lease)
 
     def heartbeat(self, scope: DurabilityScope, lease: Lease, *, ttl_seconds: int = 60) -> Lease:
-        if not 1 <= ttl_seconds <= 300:
-            raise ValueError("Lease TTL must be 1..300 seconds")
+        if not 1 <= ttl_seconds <= MAX_LEASE_TTL_SECONDS:
+            raise ValueError(f"Lease TTL must be 1..{MAX_LEASE_TTL_SECONDS} seconds")
         def reduce(state, now):
             job = self._lease(state, scope, lease, now)
             renewed = Lease(lease.job_key, lease.owner, lease.fence, lease.generation, now + ttl_seconds)
@@ -459,8 +625,15 @@ class ResearchStore:
     @staticmethod
     def _budget(state: dict[str, Any]) -> dict[str, Any]:
         policy = state["budget_policy"]
+        values = [policy["ceiling_micro_usd"], policy["external_held_micro_usd"],
+            policy["external_settled_micro_usd"], state.get("ordinary_cost_micros", 0)]
+        for effect in state["effects"].values():
+            values.extend([effect["held_micro_usd"],
+                0 if effect.get("actual_micro_usd") is None else effect["actual_micro_usd"]])
+        if any(type(value) is not int or value < 0 for value in values):
+            raise HeldUnknown("research_budget_state_unavailable")
         held = policy["external_held_micro_usd"]
-        settled = policy["external_settled_micro_usd"]
+        settled = max(policy["external_settled_micro_usd"], state.get("ordinary_cost_micros", 0))
         for effect in state["effects"].values():
             held += effect["held_micro_usd"]
             settled += effect.get("actual_micro_usd") or 0
@@ -472,13 +645,17 @@ class ResearchStore:
     def budget(self, scope: DurabilityScope) -> dict[str, Any]:
         return self._budget(self._read(scope).state)
 
-    @staticmethod
-    def _field_admission(job: dict[str, Any], field_keys: tuple[str, ...] | list[str]) -> None:
+    def _field_admission(self, job: dict[str, Any], field_keys: tuple[str, ...] | list[str], *,
+                         scope=None, operation_key=None, request_digest=None) -> None:
         served = set(field_keys or job["fields"])
         if any(key not in job["fields"] for key in served):
             raise PermissionError("Effect serves fields outside the pinned job")
         if any(job["fields"][key]["locked"] for key in served):
-            raise StaleWork("Effect serves a human-locked field")
+            permit = _locked_source_read.get()
+            if (permit is None or permit.closed.is_set() or permit.broker.store is not self or permit.scope != scope
+                or permit.operation_key != operation_key or permit.request_digest != request_digest
+                or tuple(field_keys) != (permit.field_key,)):
+                raise StaleWork("Effect serves a human-locked field")
 
     def reserve_effect(self, scope: DurabilityScope, lease: Lease, operation_key: str, request: Any, reservation_micro_usd: int, *, execution_class: str = "offline", field_keys: tuple[str, ...] = ()) -> dict[str, Any]:
         if not operation_key or type(reservation_micro_usd) is not int or reservation_micro_usd <= 0:
@@ -487,6 +664,7 @@ class ResearchStore:
             raise ValueError("Explicit offline or live dispatch class required")
         if execution_class == "live":
             self.require_live_authority(scope)
+        _revalidate_locked_source_read(self, scope)
         request_hash = digest(request)
         def reduce(state, now):
             job = self._job(state, scope)
@@ -499,9 +677,11 @@ class ResearchStore:
                 if old["execution_class"] != execution_class or old["reservation_micro_usd"] != reservation_micro_usd or old.get("field_keys", []) != list(field_keys):
                     raise ValueError("Existing logical effect policy changed")
                 if old["status"] == "reserved":
-                    self._field_admission(job, field_keys)
+                    self._field_admission(job, field_keys, scope=scope,
+                        operation_key=operation_key, request_digest=request_hash)
                 return copy.deepcopy(old)
-            self._field_admission(job, field_keys)
+            self._field_admission(job, field_keys, scope=scope,
+                operation_key=operation_key, request_digest=request_hash)
             self._lease(state, scope, lease, now)
             budget = self._budget(state)
             if state["halted"] or reservation_micro_usd > budget["remaining_micro_usd"]:
@@ -529,14 +709,16 @@ class ResearchStore:
     def effect(self, scope: DurabilityScope, effect_id: str) -> dict[str, Any]:
         return copy.deepcopy(self._effect(self._read(scope).state, scope, effect_id))
 
-    def mark_sending(self, scope: DurabilityScope, lease: Lease, effect_id: str) -> dict[str, Any]:
+    def mark_sending(self, scope: DurabilityScope, lease: Lease, effect_id: str, *, send_authorization: dict | None = None) -> dict[str, Any]:
+        _revalidate_locked_source_read(self, scope)
         attempt_id = str(uuid4())
         def reduce(state, now):
             job = self._lease(state, scope, lease, now)
             if state["halted"]:
                 raise BudgetExceeded("Shared program halted; reserved holds remain unresolved")
             effect = self._effect(state, scope, effect_id)
-            self._field_admission(job, effect["field_keys"])
+            self._field_admission(job, effect["field_keys"], scope=scope,
+                operation_key=effect["operation_key"], request_digest=effect["request_digest"])
             if effect["status"] != "reserved":
                 raise HeldUnknown("Only a proven-unsent reserved intent can dispatch")
             attempt = {"attempt_id": attempt_id, "provider_idempotency_key": effect_id,
@@ -546,15 +728,17 @@ class ResearchStore:
             effect["attempts"].append(attempt)
             effect["status"] = "sending"
             return copy.deepcopy(attempt)
-        return self._mutate(scope, reduce, lease=lease)
+        return self._mutate(scope, reduce, lease=lease, send_authorization=send_authorization)
 
     def validate_dispatch(self, scope: DurabilityScope, lease: Lease, effect_id: str, attempt_id: str) -> None:
+        _revalidate_locked_source_read(self, scope)
         doc = self._read(scope)
         job = self._lease(doc.state, scope, lease, doc.server_time)
         if doc.state["halted"]:
             raise BudgetExceeded("Shared program halted before dispatch")
         effect = self._effect(doc.state, scope, effect_id)
-        self._field_admission(job, effect["field_keys"])
+        self._field_admission(job, effect["field_keys"], scope=scope,
+            operation_key=effect["operation_key"], request_digest=effect["request_digest"])
         if effect["status"] != "sending" or effect["attempts"][-1]["attempt_id"] != attempt_id:
             raise HeldUnknown("Current dispatch attempt required")
 
@@ -1205,6 +1389,12 @@ class DurableEffectBroker:
     def __init__(self, store: ResearchStore, blobs: ImmutableBlobs):
         self.store, self.blobs = store, blobs
 
+    async def before_send(self, scope: DurabilityScope, intent: dict) -> None:
+        """An optional shared program reservation, before a send is marked."""
+
+    def send_authorization(self, execution_class):
+        return None
+
     @staticmethod
     def envelope(scope: DurabilityScope, intent: dict[str, Any], attempt: dict[str, Any], result: CapturedResult, *, raw_capture: BlobRef | None = None) -> bytes:
         payload = asdict(result)
@@ -1235,6 +1425,11 @@ class DurableEffectBroker:
     async def execute(self, scope: DurabilityScope, lease: Lease, operation_key: str, request: Any,
                       reservation_micro_usd: int, dispatch: Callable[[str, str], Awaitable[CapturedResult]],
                       *, execution_class: str = "offline", field_keys: tuple[str, ...] = ()) -> EffectReceipt:
+        permit = _locked_source_read.get()
+        if permit is not None and (permit.closed.is_set() or permit.broker is not self or permit.scope != scope
+            or permit.operation_key != operation_key or permit.request_digest != digest(request)
+            or tuple(field_keys) != (permit.field_key,)):
+            raise PermissionError("Trusted locked read cannot authorize a different effect")
         intent = await asyncio.to_thread(self.store.reserve_effect, scope, lease, operation_key, request, reservation_micro_usd, execution_class=execution_class, field_keys=field_keys)
         if intent["receipt"]:
             receipt = intent["receipt"]
@@ -1249,7 +1444,10 @@ class DurableEffectBroker:
             # response. Both already retain the reservation and forbid reissue;
             # only the sending attempt may record its interruption below.
             raise HeldUnknown("Unknown sent effect retains its reservation; no automatic retry")
-        attempt = await asyncio.to_thread(self.store.mark_sending, scope, lease, intent["effect_id"])
+        await self.before_send(scope, intent)
+        authorization = self.send_authorization(execution_class)
+        attempt = await asyncio.to_thread(self.store.mark_sending, scope, lease, intent["effect_id"],
+            **({"send_authorization": authorization} if authorization is not None else {}))
         try:
             await asyncio.to_thread(self.store.validate_dispatch, scope, lease, intent["effect_id"], attempt["attempt_id"])
             result = await dispatch(attempt["attempt_id"], attempt["provider_idempotency_key"])

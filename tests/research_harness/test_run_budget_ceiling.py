@@ -7,6 +7,8 @@ same limit, so the research ceiling leaves only the remainder. Everything here
 is offline: a real SQLite research state, the committed pins, scripted models
 and recorded source responses. Nothing calls a model or the network.
 """
+import asyncio
+import copy
 import threading
 
 import pytest
@@ -18,8 +20,8 @@ from specimen_digitization.research_harness import production_runtime
 from specimen_digitization.research_harness.committed_pins import build_committed_pins
 from specimen_digitization.research_harness.contracts import digest
 from specimen_digitization.research_harness.persistence import (
-    BlobRef, BudgetExceeded, CapturedResult, DurabilityScope, HeldUnknown, PinnedRuntime, ResearchStore,
-    SqliteStateBackend,
+    MAX_STATE_BYTES, BlobRef, BudgetExceeded, CapturedResult, DurabilityScope, DurableEffectBroker,
+    HeldUnknown, ImmutableFileBlobs, PinnedRuntime, ResearchStore, SqliteStateBackend, canonical,
 )
 from specimen_digitization.research_harness.production_runtime import research_budget_policy
 
@@ -40,7 +42,7 @@ def request_reservation():
     return pins["model"]["specimen_geography"]["reservation_micro_usd"]
 
 
-def seeded_store(tmp_path, spend):
+def seeded_store(tmp_path, spend, *, fields=("taxon",)):
     """A research state seeded with the ordinary spend, and a job whose lease is held."""
     scope = DurabilityScope("org-c1", "col-c1", "spec-c1", "job-c1", 1, "actor-c1", False)
     backend = SqliteStateBackend(tmp_path / "state.sqlite3")
@@ -48,7 +50,7 @@ def seeded_store(tmp_path, spend):
     store = ResearchStore(backend, "research-run:c1")
     store.initialize(scope, research_budget_policy(profile_snapshot(), spend))
     store.create_job(scope, PinnedRuntime(input_digest="a" * 64, profile={}, prompts={}, sources={},
-        model={}, settings={"max_tokens": 2048}, engine_version="c1"), ["taxon"])
+        model={}, settings={"max_tokens": 2048}, engine_version="c1"), list(fields))
     return store, scope, store.claim(scope, "owner-c1", ttl_seconds=300)
 
 
@@ -149,21 +151,24 @@ def test_research_settlement_halts_the_run_at_the_whole_specimen_ceiling(tmp_pat
         store.reserve_effect(scope, lease, "model:role", {"request": 2}, 1)
 
 
-def test_a_request_that_settles_above_its_reservation_overshoots_by_at_most_the_difference(tmp_path):
-    # What is NOT covered: settlement is measured after the call. A request is
-    # admitted only if ordinary spend + held + settled + its reservation fit, so the
-    # most the ceiling can be crossed by is that request's actual minus its
-    # reservation. It is recorded in full, and the run halts.
+def test_a_request_cannot_send_when_its_context_and_output_bound_would_cross_one_dollar(tmp_path):
     reservation = request_reservation()
-    store, scope, lease = seeded_store(tmp_path, CEILING - reservation)
-    effect = store.reserve_effect(scope, lease, "model:role", {"request": 1}, reservation)
-    excess = 40_000
-    settle(store, scope, lease, effect["effect_id"], reservation + excess)
-    budget = store.budget(scope)
-    assert budget["settled_micro_usd"] == CEILING + excess and budget["held_micro_usd"] == 0
-    assert budget["halted"] is True and budget["remaining_micro_usd"] == 0
+    store, scope, lease = seeded_store(tmp_path, CEILING - reservation + 1)
+    # No paid effect exists: the financial bound is enforced before dispatch.
     with pytest.raises(BudgetExceeded):
-        store.reserve_effect(scope, lease, "model:role", {"request": 2}, 1)
+        store.reserve_effect(scope, lease, "model:role", {"request": 1}, reservation)
+    assert store._read(scope).state["effects"] == {}
+    assert store.budget(scope)["settled_micro_usd"] == CEILING - reservation + 1
+
+
+def test_provider_contract_violation_is_recorded_in_full_and_halts_for_reconciliation(tmp_path):
+    # Defensive accounting is not permission to overspend: this injected
+    # provider-contract violation is impossible under the admitted token bounds.
+    store, scope, lease = seeded_store(tmp_path, 0)
+    effect = store.reserve_effect(scope, lease, "model:broken-provider", {}, 10_000)
+    settle(store, scope, lease, effect["effect_id"], 10_001)
+    assert store.budget(scope)["settled_micro_usd"] == 10_001
+    assert store.budget(scope)["halted"] is True
 
 
 @pytest.mark.parametrize("ordinary_spend", [250_000])
@@ -189,11 +194,16 @@ def test_open_still_holds_a_seeded_allowance_that_differs_in_another_field(opene
 
 
 @pytest.mark.parametrize("ordinary_spend", [CEILING, CEILING + 250_000])
-def test_open_holds_a_run_whose_ordinary_spend_left_no_headroom(opened, ordinary_spend):
+def test_open_selects_publication_recovery_when_ordinary_spend_left_no_headroom(opened, ordinary_spend, monkeypatch):
     # The second value is a run whose ordinary limit was larger than this ceiling
-    # (an API image newer than the worker's): it holds the same way.
-    with pytest.raises(HeldUnknown, match="^research_program_headroom_unavailable$"):
-        opened.open(opened.factory())
+    # (an API image newer than the worker's): it also cannot dispatch.
+    built = opened.factory()
+    recovered = object()
+    async def publication_only(*args, **kwargs):
+        return recovered
+    monkeypatch.setattr(built, "_publication_runtime", publication_only)
+    assert opened.open(built) is recovered
+    assert opened.store._read(opened.scope).state["effects"] == {}
 
 
 def rig_with_ordinary_spend(tmp_path, monkeypatch, spend):
@@ -293,9 +303,51 @@ def test_a_transcription_correction_after_research_researches_again_on_the_store
     assert outcome == ("block", "native_research_operational_hold"), outcome
     (_, state), binding = e2e.jobs_and_bindings(rig)
     assert len(state["jobs"]) == 2 and binding["job_id"].endswith(f"-r{corrected.version + 1}")
+    # A complete second job with its retained predecessor exceeded the former
+    # 900,000-byte aggregate cap during publication. Nothing is archived away.
+    assert 900_000 < len(canonical(state)) < MAX_STATE_BYTES
     assert state["budget_policy"]["external_settled_micro_usd"] == 40_000
+    assert state["ordinary_cost_micros"] == 60_000
     totals = state["budget_totals"]
     assert totals["held_micro_usd"] == 0 and totals["settled_micro_usd"] <= CEILING
+
+
+def test_oversized_aggregate_refuses_a_new_effect_before_dispatch(tmp_path):
+    store, scope, lease = seeded_store(tmp_path, 0, fields=("taxon", "city", "county"))
+    known = store.reserve_effect(scope, lease, "model:known", {"fixture": "known"}, 50,
+        field_keys=("taxon",))
+    settle(store, scope, lease, known["effect_id"], 7)
+    unknown = store.reserve_effect(scope, lease, "model:unknown", {"fixture": "unknown"}, 50,
+        field_keys=("city",))
+    store.mark_sending(scope, lease, unknown["effect_id"])
+    store.hold_unknown(scope, unknown["effect_id"], "fixture_unknown")
+    before = store._read(scope).state
+    assert before["effects"][known["effect_id"]]["status"] == "completed"
+    assert before["effects"][unknown["effect_id"]]["status"] == "held_unknown"
+    assert before["budget_totals"]["settled_micro_usd"] == 7
+    assert before["budget_totals"]["held_micro_usd"] == 50
+    trial = copy.deepcopy(before)
+    trial["media"]["synthetic_padding"] = ""
+    padding = MAX_STATE_BYTES - len(canonical(trial)) - 2
+    assert padding > 0
+    store._mutate(scope, lambda state, now: state["media"].update(
+        synthetic_padding="x" * padding), lease=lease)
+    near_full = store._read(scope).state
+    assert len(canonical(near_full)) == MAX_STATE_BYTES - 2
+    sent = []
+
+    async def dispatch(attempt_id, provider_key):
+        sent.append(attempt_id)
+        return CapturedResult(typed_payload={"unexpected": True}, actual_micro_usd=1)
+
+    broker = DurableEffectBroker(store, ImmutableFileBlobs(tmp_path / "blobs"))
+    with pytest.raises(ValueError, match="Bounded research aggregate is full"):
+        asyncio.run(broker.execute(scope, lease, "model:county", {"fixture": "oversize"}, 1,
+            dispatch, execution_class="offline", field_keys=("county",)))
+    after = store._read(scope).state
+    assert not sent and after == near_full
+    assert set(after["effects"]) == {known["effect_id"], unknown["effect_id"]}
+    assert after["budget_totals"] == before["budget_totals"]
 
 
 @pytest.mark.parametrize("ordinary_spend", [250_000])
@@ -314,9 +366,11 @@ def test_open_refuses_a_stored_seed_that_is_not_the_registered_policy(opened, or
 @pytest.mark.parametrize("seed", [-1, 2.5, True])
 def test_open_refuses_a_malformed_stored_seed_even_when_its_digest_matches(opened, ordinary_spend, seed):
     # With the registered digest made to match, only the seed's own check refuses.
-    def malform(state, _now):
-        state["budget_policy"]["external_settled_micro_usd"] = seed
-    opened.store._mutate(opened.scope, malform, force_cas=True)
+    # Simulate externally malformed persistence; the normal reducer now rejects
+    # this before CAS, so corrupt the offline backend directly.
+    document = opened.store._read(opened.scope)
+    document.state["budget_policy"]["external_settled_micro_usd"] = seed
+    opened.backend.cas(opened.scope, opened.store.program_key, document.revision, document.state)
     opened.binding.journal_budget_policy_digest = digest(opened.store._read(opened.scope).state["budget_policy"])
     with pytest.raises(HeldUnknown, match="^research_live_admission_unqualified$"):
         opened.open(opened.factory())

@@ -151,3 +151,45 @@ still enforced in code: `APPROVED_LIMIT_MICROS` and the v3 ledger checks in
 `src/specimen_digitization/release_budget.py`, and the human-review scope digests
 in `scripts/ci/mint_release_packet.py`. [`golive/RELEASE.md`](golive/RELEASE.md)
 tracks their removal.
+
+
+## Implementation correction, 2026-10-05 (Lane P)
+
+The standing USD 1 specimen-run ceiling, USD 5 production model allowance and
+USD 25 cumulative project ceiling are unchanged. Research requests now reserve
+the full documented provider context plus the enforced 4,096-token output cap,
+not the local serialized-byte estimate. At the pinned DeepInfra standard rates,
+one DeepSeek V4.1 Flash request reserves 212,173 microUSD. At most two specialist
+requests run concurrently; each settles before its reservation becomes reusable.
+A missing context bound blocks the request before dispatch. Provider usage that
+violates the bound is retained in full and halts further work for reconciliation;
+it is never capped or presented as evidence that overspending is allowed.
+
+Research attempts reserve on the same persistent production ProgramLedger as
+ordinary readers, SAM, first pass and parsing. Durable attempt identities make
+replay and settlement idempotent. Historical research actuals and unknown holds
+are carried forward, even when they exhaust the allowance. Ordinary ledger
+updates preserve these attempt records and every prior liability. Reviewer
+corrections reconcile ordinary liability into the research
+state; they never reset the original allowance seed or research liabilities.
+Ordinary pre-send reservations CAS this same research-state document before
+provider calls, so simultaneous ordinary and research steps cannot each spend
+the same remaining USD 1 allowance. Step/attempt replay retains one hold; an
+unconfirmed canonical save never releases it. A complete computed/billed
+paid-call receipt settles only its own attempt; unknown/SAM holds stay intact.
+
+First-pass and parse reservations cover both allowed provider requests at the
+full route context. SAM's reservation covers its committed 600-second startup,
+8-vCPU startup boost, 300-second request, post-start boost and shutdown bounds.
+Explicit warming and idle infrastructure remain part of the USD 25 project
+ceiling. Workflow processing restores SAM's service and revision minimums to
+zero even after failure. A Cloud Billing alert monitors the cumulative project
+budget; it is not represented as an automatic hard billing cutoff.
+
+SAM request-duration telemetry does not measure workflow warm-up, startup CPU
+boost, or the complete billed instance lifecycle. Every unbilled SAM call now
+retains its full conservative reservation in the run and cumulative program
+ledger even when segmentation succeeds; request seconds remain diagnostic. Only
+an explicit authoritative billed total can settle that reservation. The optional
+processing workflow's warm idle time also remains part of the USD25 cumulative
+infrastructure ceiling; it must not be silently called measured model spend.

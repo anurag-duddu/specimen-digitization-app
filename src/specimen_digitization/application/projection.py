@@ -8,6 +8,7 @@ and counts a primary-key conflict as already written.
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -129,7 +130,8 @@ def writes(
         for record in getattr(run, "tool_calls", None) or []
     ]
     candidates: dict[str, str | None] = {}
-    result += _fields(run, decisions, linkable, candidates)
+    human_choices = _human_research_choices(specimen, review_proofs)
+    result += _fields(run, decisions, linkable, candidates, human_choices=human_choices)
     if run.disposition or base_record:
         result += _record(run, candidates, recorded)
     if reviewer:
@@ -545,6 +547,8 @@ def _tool_call(run: Run, record, decisions: dict, recorded: set) -> Write:
 
 def _derivation(value, relations: dict) -> str:
     """Lookup only when a source decides the value; Google supports, never decides (G26)."""
+    if value.layer == "derived":
+        return "derived"
     if value.normalized and "decides" in relations.values():
         return "lookup"
     if value.normalized:
@@ -552,10 +556,69 @@ def _derivation(value, relations: dict) -> str:
     return "parsed" if value.parsed else "literal"
 
 
-def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[Write]:
+def _human_research_choices(specimen: Specimen, proofs: list[ReviewDecisionProof] | None) -> dict:
+    """Only repository-proved human choices can add a settled candidate without a reader pick."""
+    markers = specimen.run.dependencies.get("human_review_field_locks", {})
+    if not markers:
+        return {}
+    if not isinstance(markers, dict):
+        raise ValueError("human_research_candidate_provenance_invalid")
+    choices = {}
+    for key, marker in markers.items():
+        value = specimen.run.fields.get(key)
+        if (not isinstance(marker, dict) or set(marker) != {"selection_id", "evidence_id"}
+                or not isinstance(marker["selection_id"], str)
+                or not re.fullmatch(r"[a-f0-9]{64}", marker["selection_id"])):
+            raise ValueError("human_research_candidate_provenance_invalid")
+        matches = []
+        for proof in proofs or ():
+            after = proof.event.after
+            if (proof.specimen_id == specimen.id and proof.event.action == "review_research_candidate"
+                    and isinstance(after, dict) and after.get("field_key") == key
+                    and after.get("selection_id") == marker["selection_id"]
+                    and after.get("evidence_ids") == [marker["evidence_id"]]):
+                matches.append(after)
+        if len(matches) != 1 or value is None:
+            raise ValueError("human_research_candidate_provenance_invalid")
+        [choice] = matches
+        layer = choice.get("value_layer", "settled")
+        dependencies = choice.get("derived_from", [])
+        if layer == "derived":
+            from specimen_digitization.research_harness.candidate_selection import DerivedCandidateMetadata
+
+            try:
+                metadata = DerivedCandidateMetadata.model_validate(choice.get("derivation_metadata"))
+            except ValueError:
+                raise ValueError("human_research_candidate_provenance_invalid") from None
+            if (choice.get("source_id") != "georeference_spatial" or str(metadata.field_key) != key
+                    or metadata.value != choice.get("value") or metadata.authority_id != choice.get("authority_id")
+                    or [str(item) for item in metadata.input_fields] != dependencies):
+                raise ValueError("human_research_candidate_provenance_invalid")
+        elif (layer != "settled" or dependencies or choice.get("source_id") == "georeference_spatial"
+                or choice.get("derivation_metadata") is not None):
+            raise ValueError("human_research_candidate_provenance_invalid")
+        evidence = [item for item in specimen.run.evidence if item.id == marker["evidence_id"]]
+        if (_value(value.state) != "supported" or value.parsed != choice.get("value")
+                or value.layer != layer or value.derived_from != dependencies
+                or value.normalized != choice.get("value") or value.authority_id != choice.get("authority_id")
+                or value.precision != choice.get("precision") or value.century_rule != choice.get("century_rule")
+                or not isinstance(choice.get("value"), str) or not choice["value"].strip()
+                or marker["evidence_id"] not in value.evidence_ids
+                or value.evidence_relations.get(marker["evidence_id"]) != "decides"
+                or len(evidence) != 1 or evidence[0].kind != "authority_selection"
+                or evidence[0].source != choice.get("source_id")
+                or evidence[0].locator != "research-candidate:" + marker["selection_id"]
+                or not evidence[0].raw_ref or not evidence[0].digest):
+            raise ValueError("human_research_candidate_provenance_invalid")
+        choices[key] = choice
+    return choices
+
+
+def _fields(run: Run, decisions: dict, linkable: set, candidates: dict, *, human_choices: dict | None = None) -> list[Write]:
     """A candidate per verbatim value; the settling one carries the value and evidence."""
     result = []
     for key, value in run.fields.items():
+        human_choice = (human_choices or {}).get(key)
         verbatim = getattr(value, "verbatim_by_observation", None) or {}
         source = getattr(value, "input_source", None)
         if verbatim:
@@ -564,8 +627,14 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[
         elif value.literal is not None:
             reading = getattr(value, "source_observation_id", None)
             entries = [(value.literal, source, reading if source == "raw_reading" else None)]
+        elif human_choice is not None:
+            entries = []
         else:
             continue
+        if human_choice is not None:
+            # A person selected the source value, not one of the readers. Preserve every original
+            # literal candidate and add a separate settled candidate without transcription ancestry.
+            entries.append((None, None, None))
         region = getattr(value, "source_region_id", None)
         precision = getattr(value, "precision", None)
         century_rule = getattr(value, "century_rule", None)
@@ -580,8 +649,10 @@ def _fields(run: Run, decisions: dict, linkable: set, candidates: dict) -> list[
         confirmed = getattr(value, "source_observation_id", None) if verbatim else None
         candidates[key] = None
         for text, entry_source, reading in entries:
-            candidate = derived_id("candidate", run.id, key, reading or "-", content)
-            settles = not verbatim or (confirmed is not None and reading == confirmed)
+            human_entry = human_choice is not None and text is None
+            candidate = (derived_id("candidate", run.id, key, "human", human_choice["selection_id"], content)
+                         if human_entry else derived_id("candidate", run.id, key, reading or "-", content))
+            settles = human_entry if human_choice is not None else not verbatim or (confirmed is not None and reading == confirmed)
             if settles:
                 candidates[key] = candidate
             result.append(

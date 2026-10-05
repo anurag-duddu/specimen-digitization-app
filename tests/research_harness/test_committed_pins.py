@@ -99,11 +99,12 @@ def test_a_created_job_holds_the_pins_a_rebuild_produces(tmp_path):
     store.create_job(scope, PinnedRuntime(input_digest="a" * 64, **pins_for()), [str(key) for key in ALL_FIELDS])
 
 
-def test_the_three_taxonomy_apis_and_geolocate_are_ready():
+def test_qualified_taxonomy_and_geography_sources_are_pinned():
     pins = pins_for()
     registry = registered_pins.registered_registry(pins["sources"])
-    assert {policy.id for policy in registry.policies if policy.ready} == set(TAXONOMY_APIS) | {"geolocate"}
-    assert set(SOURCE_READINESS) == set(TAXONOMY_APIS) | {"geolocate"}
+    geography = {"geolocate", "georeference_history", "georeference_spatial", "tgn", "wikidata", "nga"}
+    assert {policy.id for policy in registry.policies if policy.ready} == set(TAXONOMY_APIS) | geography
+    assert set(SOURCE_READINESS) == set(TAXONOMY_APIS) | geography
     # Lane G's qualification, read from sources.py so the two cannot drift.
     assert SOURCE_READINESS["geolocate"] == sources.GEOLOCATE_QUALIFICATION
     assert set(sources.GEOLOCATE_QUALIFICATION) == registered_pins._READINESS
@@ -116,6 +117,10 @@ def test_the_three_taxonomy_apis_and_geolocate_are_ready():
     capture = registered_pins.registered_capture_policies(pins["sources"], registry)
     assert capture["geolocate"].kind == "full_response" and capture["geolocate"].maximum_responses == 1
     assert capture["geolocate"].source_policy_digest == digest(geolocate)
+    assert {capture[key].kind for key in ("tgn", "wikidata", "nga")} == {"full_response"}
+    assert {capture[key].maximum_responses for key in ("tgn", "wikidata", "nga")} == {3}
+    assert capture["georeference_history"].kind == "pinned_dataset"
+    assert capture["georeference_spatial"].kind == "computed"
 
 
 def test_readiness_rows_hold_the_committed_canary_schemas_and_a_repository_reference():
@@ -223,9 +228,9 @@ def test_one_request_reserves_its_worst_case_within_the_run_allowance():
     row = pins["sources"]["model_prices"]["specimen_geography"]
     model = pins["model"]["specimen_geography"]
     liability = -(-(row["max_input_tokens"] * 200_000 + MAX_OUTPUT_TOKENS * 600_000) // 1_000_000)
-    assert model["reservation_micro_usd"] == liability == 108_954
+    assert model["reservation_micro_usd"] == liability == 212_173
     assert liability <= committed_run_cost_limit_micros(published()) == 1_000_000
-    assert row["max_input_tokens"] == 2 * 262_144 + 8_192 <= 1_000_000
+    assert row["max_input_tokens"] == 1_048_576
     assert pins["settings"] == {"max_tokens": MAX_OUTPUT_TOKENS} and model["max_tokens"] == MAX_OUTPUT_TOKENS
 
 
@@ -237,6 +242,55 @@ def test_the_request_bound_admits_the_largest_geography_request():
     assert bound["chat_template_source_sha256"] == TOKENIZER_PIN["chat_template_jinja_sha256"] == (
         "d959d804d5101b79a49b6ff1bf3c54cd5affa9a5a78c503d925f3090040b31c3")  # pragma: allowlist secret (pinned digest)
     assert TOKENIZER_PIN["hf_commit"] == "2cba9e42aa026125f3ed06c6d98c1db82f7ca027"  # pragma: allowlist secret (pinned commit id)
+
+
+def _text_dialogue_with_serialized_bytes(size):
+    messages = [{"parts": [{"part_kind": "user-prompt", "content": ""}]}]
+    settings = {"max_tokens": MAX_OUTPUT_TOKENS}
+    def serialized_size():
+        return len(json.dumps({"messages": messages, "parameters": {}, "settings": settings},
+            sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode())
+    messages[0]["parts"][0]["content"] = "x" * (size - serialized_size())
+    assert serialized_size() == size
+    return messages, {}, settings
+
+
+def test_the_larger_dialogue_bound_preserves_full_context_financial_reservations(monkeypatch):
+    current = pins_for()
+    row = current["sources"]["model_prices"]["specimen_geography"]
+    bound = current["sources"]["model_request_bounds"]["specimen_geography"]
+    assert bound["maximum_serialized_bytes"] == 500_000
+    maximum_input = (bound["maximum_serialized_bytes"]
+        * bound["tokens_per_utf8_byte_upper_bound"] + bound["fixed_overhead_tokens"])
+    assert maximum_input == 1_008_192
+    assert maximum_input + MAX_OUTPUT_TOKENS <= row["max_input_tokens"] == 1_048_576
+    monkeypatch.setitem(REQUEST_BOUND, "maximum_serialized_bytes", 262_144)
+    previous = pins_for()
+    assert current["model"] == previous["model"]
+    assert current["sources"]["model_prices"] == previous["sources"]["model_prices"]
+    assert current["model"]["specimen_geography"]["reservation_micro_usd"] == 212_173
+    assert bound != previous["sources"]["model_request_bounds"]["specimen_geography"]
+
+
+def test_dialogue_admission_still_checks_the_exact_byte_ceiling_and_context(monkeypatch):
+    pins = pins_for()
+    guard = registered_pins.registered_model_request_guards(
+        pins["sources"], bindings_of(pins))[SpecialistRole.GEOGRAPHY]
+    # Same serialized size as the offline v6 dialogue, then both sides of the
+    # enforced cap. The actual six-role dialogue is covered by agent_visibility.
+    for size in (266_902, 500_000):
+        assert guard(*_text_dialogue_with_serialized_bytes(size))
+    with pytest.raises(HeldUnknown, match="research_input_liability_bound_exceeded"):
+        guard(*_text_dialogue_with_serialized_bytes(500_001))
+    monkeypatch.setitem(REQUEST_BOUND, "maximum_serialized_bytes", 262_144)
+    old = pins_for()
+    old_guard = registered_pins.registered_model_request_guards(
+        old["sources"], bindings_of(old))[SpecialistRole.GEOGRAPHY]
+    with pytest.raises(HeldUnknown, match="research_input_liability_bound_exceeded"):
+        old_guard(*_text_dialogue_with_serialized_bytes(266_902))
+    monkeypatch.setitem(REQUEST_BOUND, "maximum_serialized_bytes", 520_193)
+    with pytest.raises(ValueError, match="research_committed_request_bound_exceeds_context"):
+        pins_for()
 
 
 def test_the_gateway_digest_is_read_from_the_installed_file(tmp_path, monkeypatch):
@@ -269,7 +323,10 @@ def test_a_profile_without_a_registered_harness_route_has_no_pins():
 
 
 def test_the_pins_fit_one_state_document_per_run_with_room_to_spare():
-    assert len(canonical(pins_for())) < MAX_STATE_BYTES // 8
+    # Geography v6 adds qualified historical-source instructions. Keep more
+    # than six sevenths of the hard state-document limit available for the
+    # twenty checkpoint/effect rows; the runtime limit itself is unchanged.
+    assert len(canonical(pins_for())) < MAX_STATE_BYTES // 7
 
 
 def test_twenty_publications_of_a_full_run_fit_one_state_document(tmp_path):
@@ -298,12 +355,13 @@ def test_twenty_publications_of_a_full_run_fit_one_state_document(tmp_path):
     assert size < MAX_STATE_BYTES // 2, size
 
 
-def test_pins_hold_the_live_eight_row_registry_without_google_maps():
+def test_pins_hold_the_live_thirteen_row_registry_without_google_maps():
     # registered_pins.registered_registry requires exactly the installed rows;
-    # after Google Maps was removed (owner G-geo-1, #237) that is eight.
+    # after G34/G38 the eight original rows gain three gazetteers and two
+    # locally computed sources; Google Maps remains excluded.
     installed = [policy.id for policy in sources.insects_registry().policies]
     pins = pins_for()
     ids = [row["id"] for row in pins["sources"]["registry_policies"]]
-    assert ids == installed and len(ids) == 8
+    assert ids == installed and len(ids) == 13
     assert "google_maps" not in ids and "google_maps" not in pins["sources"]["capture_policies"]
     registered_pins.registered_registry(pins["sources"])

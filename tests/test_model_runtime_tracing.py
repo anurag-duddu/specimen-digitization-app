@@ -161,7 +161,7 @@ def test_fresh_model_children_export_linked_private_spans_before_return(
             assert attrs["specimen.model.operation"] == "extract"
             content = (
                 prompts["structured-field-extraction"]["text"].strip(),
-                "source_transcripts",
+                "Reading 1A (decided transcript):",
                 SYNTHETIC_TEXT,
             )
         for text in content:

@@ -8,9 +8,12 @@ main 2f85b429 before any v2 was wired.
 
 All six roles then move to v3 files, each its v2 file followed by the reading
 citation and human question evidence blocks (Lane P G3, 2026-10-03;
-tests/research_harness/test_prompt_reading_citation_v3.py checks that text). The v2
-files stay byte-identical on disk; their file and role digests are pinned below as
-the audit record, and the live pins are v3.
+tests/research_harness/test_prompt_reading_citation_v3.py checks that text), and to
+v4 files, each its v3 file followed by the missing-policy block (Lane P F6;
+tests/research_harness/test_prompt_missing_policy_v4.py), and to v5 files, each its v4
+file followed by the hand-over block (Lane P W5; test_prompt_handover_v5.py). The v2, v3
+and v4 files stay byte-identical on disk; the v2 file and role digests are pinned below as
+the audit record, and the live pins are v5.
 """
 
 import hashlib
@@ -23,8 +26,8 @@ import pytest
 from specimen_digitization.research_harness import prompts
 from specimen_digitization.research_harness.contracts import FieldKey, ROLE_FIELDS, SpecialistRole
 from specimen_digitization.research_harness.prompts import (
-    GEOGRAPHY_PROMPT_VERSION, PROMPT_VERSION, READING_CITATION_PROMPT_VERSION, RELATIONS_PROMPT_VERSION,
-    ROLE_PROMPTS, resolve_prompt,
+    GEOGRAPHY_PROMPT_VERSION, GEOGRAPHY_SOURCE_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION, PROMPT_VERSION,
+    READING_CITATION_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 from specimen_digitization.research_harness.sources import insects_registry
 
@@ -70,7 +73,8 @@ QUERY_KEYS = ("country", "state", "county", "locality", "place", "latitude", "lo
 REQUIRED_QUERY_KEYS = {"country", "locality", "place", "latitude", "longitude", "radius_km", "value"}
 V2 = ROOT / "specimen_geography-v2.txt"
 # The geography file the table resolves now; every v2 property below holds of it because it is the v2 file
-# followed by two blocks (test_prompt_reading_citation_v3.py).
+# followed by the v3 blocks, the v4 block and the v5 block (test_prompt_reading_citation_v3.py,
+# test_prompt_missing_policy_v4.py, test_prompt_handover_v5.py).
 LIVE = ROOT / ROLE_PROMPTS[SpecialistRole.GEOGRAPHY][0]
 
 
@@ -92,7 +96,7 @@ def test_v2_prompt_files_stay_byte_identical(name, sha256):
 def test_the_table_names_every_role_and_an_existing_file():
     assert set(ROLE_PROMPTS) == set(SpecialistRole)
     assert all((ROOT / name).is_file() for name, _ in ROLE_PROMPTS.values())
-    assert ROLE_PROMPTS[SpecialistRole.GEOGRAPHY] == ("specimen_geography-v3.txt", READING_CITATION_PROMPT_VERSION)
+    assert ROLE_PROMPTS[SpecialistRole.GEOGRAPHY] == ("specimen_geography-v6.txt", GEOGRAPHY_SOURCE_PROMPT_VERSION)
 
 
 def test_geography_v2_stays_the_audited_historian_prompt_with_its_owned_fields():
@@ -103,15 +107,23 @@ def test_geography_v2_stays_the_audited_historian_prompt_with_its_owned_fields()
     assert all(str(key) in expected for key in ROLE_FIELDS[SpecialistRole.GEOGRAPHY])
 
 
-def test_geography_resolves_to_its_v3_file_with_its_owned_fields():
+def test_geography_resolves_to_its_v6_file_with_its_owned_fields():
     prompt = pin(SpecialistRole.GEOGRAPHY)
     expected = ((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n" + LIVE.read_text(encoding="utf-8")
                 + "\nOwned fields: country, province_state, county, city, precise_location.\n")
+    assert LIVE.name == "specimen_geography-v6.txt"
     assert prompt.text == expected
-    assert prompt.version == READING_CITATION_PROMPT_VERSION == "specialists-reading-citation-v3-2026-10-03"
+    assert prompt.version == GEOGRAPHY_SOURCE_PROMPT_VERSION == "geography-qualified-sources-v6-2026-10-05"
+    assert MISSING_POLICY_PROMPT_VERSION == "specialists-missing-policy-v4-2026-10-03" != prompt.version
     assert prompt.digest == hashlib.sha256(expected.encode()).hexdigest()
     assert prompt.digest not in {GEOGRAPHY_V1_DIGEST, GEOGRAPHY_V2_DIGEST}
     assert all(str(key) in prompt.text for key in ROLE_FIELDS[SpecialistRole.GEOGRAPHY])
+    # The v3 file (the reading citation) and the v4 file (the missing-policy block) are the audited bases the v5
+    # file extends.
+    v3 = (ROOT / "specimen_geography-v3.txt").read_text(encoding="utf-8")
+    v4 = (ROOT / "specimen_geography-v4.txt").read_text(encoding="utf-8")
+    assert LIVE.read_text(encoding="utf-8").startswith(v4) and v4.startswith(v3)
+    assert READING_CITATION_PROMPT_VERSION != prompt.version
 
 
 @pytest.mark.parametrize("role", tuple(RELATION_DIGESTS))
@@ -126,7 +138,7 @@ def test_the_other_five_roles_keep_their_audited_v2_files_the_v1_text_plus_the_r
     # The v1 files on disk still give the v1 pin digests.
     assert hashlib.sha256((common + v1 + owned).encode()).hexdigest() == V1_ROLE_DIGESTS[role] != RELATION_DIGESTS[role]
     assert PROMPT_VERSION == "specialists-v1-2026-09-29"
-    # The live pin is the v2 text plus the v3 blocks.
+    # The live pin is the v2 text plus the v3 blocks, the v4 block and the v5 block.
     assert pin(role).text.startswith(common + v2) and pin(role).digest != RELATION_DIGESTS[role]
 
 

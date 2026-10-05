@@ -158,8 +158,75 @@ its region's readings, verbatim, and none when a machine kind selected nothing.
 A machine-selected reading must be one of the region's readings, with `text` its
 literal. A region the run holds a first-pass decision for is recorded as
 `first_pass`, with the pick and call that decision records, and a pick G19
-allows. The legacy extraction call receives a resolved transcript with its text
-as its only alternative, and without its handoffs, differences or call.
+allows.
+
+**The extraction call is the organiser** (owner, 2026-10-03, relayed by the
+coordinator, replacing the earlier rule that this call received the decided text
+alone): "maybe the LLM that looks at the raw transcript can organize the data into
+field value pairs and share it with the harness along with the transcript.
+Because if the data is kinda spread out on different labels it becomes a little
+chaotic. taxa can be on multiple else. So the first agent LLM that interfaces with
+raw VLM transcripts can do this. The reason raw transcript is important is
+because LLM can make mistakes and invent stuff so evidence is always necessary."
+The call (`harness.extract_with_agent`, still one text-only call per specimen on
+the profile's first reader route) receives every non-empty reading of every
+region, named 1A, 1B, 2A ... as the stage-7 harness names them
+(`field_harness.labelled`): a resolved transcript's text as the decided
+transcript, every other reading as a raw reading, and every reading of a region
+with no decided transcript as a raw reading. It does not receive the first-pass
+notes, differences or call. It returns candidates, several per field when the
+labels or the readers differ or repeat, each naming the one reading it quotes with
+a short quote and the literal. `harness.apply_candidates` keeps a candidate only
+when the quote is an exact substring of that reading and the literal an exact
+substring of the quote, runs the extraction guard on that reading's text, computes
+every offset itself and stores one evidence row per candidate; the stored shape
+is in `application/organiser.py`. A field's value is settled as
+`field_resolution.Resolver` settles a field no tool checks (G19, G27, G32), whatever
+the order of the model's answer: a label with a decided transcript has the decided
+reading's literal (the other reader's differing literal does not contest it); a label
+with no decided transcript has a value only when every one of its readings states the
+same literal, so a reader that does not state the field, or readers that differ, leave
+it AMBIGUOUS with no literal (none is chosen); labels that all have a value and agree
+leave the field SUPPORTED, any other mix of labels AMBIGUOUS with no literal. Every
+verified candidate's row stays cited by the field, in every state, for the harness to
+check against the raw readings; a candidate quoted from the other reader's reading of
+a decided label is evidence beside the value, never the value. The first version of
+the organiser did not follow the Resolver on a label with no decided transcript (one
+reader's literal was a value; readers that differed gave the first in the model's
+order); `tests/test_organiser.py` now runs the Resolver and `apply_candidates` on every
+combination of one and two labels and compares. A cut-off answer is still not handled
+(the legacy extraction call has no cap handler: it blocks the run as
+`external_outcome_unknown`, as section 3 says), and the answer grows with the readings:
+about 185 output tokens per reading on average and 297 at most in the replay against the
+4,096-token cap, so about seven labels (14 readings at the worst ratio, 22 at the average)
+is where a cut-off becomes possible (INFERRED from the nine replayed specimens).
+
+**Lane P hand-over and exact local settlement (source, 2026-10-04).** The
+ordinary organiser's verified candidate rows retain a quote from each named
+reader, including readers of labels the first pass did not decide. The research
+request re-finds each candidate's unique literal span in that reading, presents
+at most five candidates per field with an explicit truncation marker, and never
+uses stored offsets to place a value. Its five simple literal fields may form
+an assembly from a decided reading or unanimous raw readers. An explicit
+collection-date or determination-date line may form a date assembly only when
+every retained reader of one label quotes the same unambiguous date and no
+competing event claim exists. A collection date may settle From and G44's
+derived To; it never fills dateIdentified. An explicit Elevation/Elev./Altitude/Alt.
+line may form one elevation assembly only for an exact single quantity with a
+written metre or foot unit, unanimous readers and no competing measurement.
+Ranges, unitless or approximate quantities, ambiguous date order, silent
+readers, unreadable spans and collisions remain candidates for review. These
+rules do not assign a field from the model's candidate alone.
+
+The temporal and measurement specialists' v6 prompts call scoped local
+`settle_temporal` and `settle_elevation` utilities on the accepted event and
+assembly IDs. Those utilities return the exact validator-generated
+`FieldResolution` objects, including G44/G41 derivations and native evidence
+relations. Publication replays the utilities from the immutable request; a
+changed relation, authority, value or assembly fails closed. They are local
+computations, not outside source authority. Geography and taxonomy still need
+their qualified lookups, and fields with no qualified assembly or source remain
+unresolved under the pinned missing-policy rule.
 
 ## 5. The Hugging Face routes for the first pass and the harness (T1)
 

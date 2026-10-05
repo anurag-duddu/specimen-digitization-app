@@ -82,11 +82,14 @@ def test_the_run_reaches_its_final_queue_on_a_sam3_region(sam3_rig):
     # Every field the harness can settle published, the first one included; the
     # run was not held on its first publication (canonical_capture_native_crop_unproved).
     receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
-    assert [row["causal_proof"]["changed_field"] for row in receipts] == ["taxon", "city", "country",
-        "county", "precise_location", "province_state", "collectors", "identified_by_irn", "collection_code",
-        "collection_method", "fmnh_ins_number", "habitat"]
+    changed = [row["causal_proof"]["changed_field"] for row in receipts]
+    assert len(changed) == len(set(changed)) == 19
+    assert set(changed) == {"taxon", "city", "country", "county", "precise_location", "province_state",
+        "collection_code", "collection_method", "fmnh_ins_number", "habitat", "collectors",
+        "identified_by_irn", "date_visited_from", "date_visited_to", "date_identified", "elevation_from_m",
+        "elevation_to_m", "elevation_from_ft", "elevation_to_ft"}
     published = rig.repository.get(rig.principal.scope, rig.specimen_id)
-    assert published.version == specimen.version == parsed.version + 12
+    assert published.version == specimen.version == parsed.version + len(receipts)
     url = json.loads((FIXTURES / "sources.json").read_text())["geolocate"]["url"]
     assert rig.source_urls.count(url) == len(GEOGRAPHY)
     _, state = research_state(rig.fake, rig.specimen_id)

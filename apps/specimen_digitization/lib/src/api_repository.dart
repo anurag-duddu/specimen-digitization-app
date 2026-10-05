@@ -22,6 +22,7 @@ const Duration apiRequestTimeout = Duration(seconds: 30);
 class ApiSpecimenRepository
     implements
         SpecimenRepository,
+        CandidateReviewBatchRepository,
         SpecimenHistoryRepository,
         SourceRepository,
         AccessFailureSource {
@@ -1264,48 +1265,302 @@ class ApiSpecimenRepository
         },
         if (path == 'decisions') ...{
           'base_record_version_id': specimen.data['latest_record_version_id'],
-          'kind': kind == 'field_correction'
-              ? 'field'
-              : kind == 'transcription_adjudication'
-              ? 'transcription'
-              : kind,
-          'target_id': change['target_id'] ?? '',
-          'after': kind == 'field_correction'
-              ? {
-                  'literal': change['value'],
-                  if (change.containsKey('parsed')) 'parsed': change['parsed'],
-                  if (change.containsKey('normalized'))
-                    'normalized': change['normalized'],
-                  if (change.containsKey('authority_id'))
-                    'authority_id': change['authority_id'],
-                  'state': change['state'],
-                  'reason': change['reason'],
-                }
-              : kind == 'transcription_adjudication'
-              ? {'text': change['value'], 'state': change['state']}
-              : kind == 'reading_metadata'
-              ? {
-                  'language_candidates': change['language_candidates'],
-                  'script_candidates': change['script_candidates'],
-                  'language_relation': change['language_relation'],
-                }
-              : kind == 'authority_resolution'
-              ? {
-                  'tool_id': change['tool_id'],
-                  'identifier': change['identifier'],
-                  'field_key': change['target_id'],
-                }
-              : {'confirmed': true},
-          // Transcription decisions preserve the transcript's observation
-          // provenance. The endpoint does not retain new evidence citations.
-          'evidence_ids': kind == 'transcription_adjudication'
-              ? <String>[]
-              : change['evidence_ids'] ?? [],
+          ..._decisionWire(change),
         },
       },
     );
     _checkAccess(epoch, userId);
     return this.specimen(scope, specimen.id);
+  }
+
+  Json _decisionWire(Json change) {
+    final kind = change['kind'];
+    return <String, dynamic>{
+      'kind': kind == 'field_correction'
+          ? 'field'
+          : kind == 'transcription_adjudication'
+          ? 'transcription'
+          : kind,
+      'target_id': change['target_id'] ?? '',
+      'after': kind == 'field_correction'
+          ? {
+              'literal': change['value'],
+              if (change.containsKey('parsed')) 'parsed': change['parsed'],
+              if (change.containsKey('normalized'))
+                'normalized': change['normalized'],
+              if (change.containsKey('authority_id'))
+                'authority_id': change['authority_id'],
+              'state': change['state'],
+              'reason': change['reason'],
+            }
+          : kind == 'transcription_adjudication'
+          ? {'text': change['value'], 'state': change['state']}
+          : kind == 'reading_metadata'
+          ? {
+              'language_candidates': change['language_candidates'],
+              'script_candidates': change['script_candidates'],
+              'language_relation': change['language_relation'],
+            }
+          : kind == 'authority_resolution'
+          ? {
+              'tool_id': change['tool_id'],
+              'identifier': change['identifier'],
+              'field_key': change['target_id'],
+            }
+          : kind == 'research_candidate'
+          ? {'selection_id': change['selection_id']}
+          : {'confirmed': true},
+      // Candidate authority and evidence are resolved from the retained
+      // server receipt. The client sends only its opaque selection identifier.
+      if (kind != 'research_candidate')
+        'evidence_ids': kind == 'transcription_adjudication'
+            ? <String>[]
+            : change['evidence_ids'] ?? [],
+    };
+  }
+
+  @override
+  Future<ReviewBatchResult> reviewCandidateBatch(
+    CollectionScope scope,
+    Specimen specimen,
+    List<Json> changes,
+    String reason,
+    String keyPrefix, {
+    bool Function(Specimen current, Json change)? stillApplies,
+    String Function(Specimen current, Json change, int index)? keyFor,
+  }) async {
+    if (changes.isEmpty) return (specimen: specimen, saved: 0, stopped: false);
+    final epoch = _accessEpoch;
+    final userId = expectedUserId?.call();
+    _checkAccess(epoch, userId);
+    if (reason.trim().isEmpty ||
+        specimen.id.isEmpty ||
+        specimen.revision < 1 ||
+        specimen.recordVersionId.isEmpty ||
+        changes.length > bulkDecisionLimit) {
+      throw const ApiFailure(
+        'Reopen the current record and provide one reason before saving.',
+        code: 'invalid_review_batch',
+      );
+    }
+    final bodies = <Json>[
+      for (final change in changes)
+        <String, dynamic>{...change, 'reason': reason},
+    ];
+    const supported = <String>{
+      'research_candidate',
+      'field_correction',
+      'approve',
+      'coverage',
+    };
+    if (!bodies.any((body) => body['kind'] == 'research_candidate') ||
+        bodies.any((body) => !supported.contains(body['kind']))) {
+      throw const ApiFailure(
+        'Save source or transcription changes before choosing research candidates.',
+        code: 'invalid_review_batch',
+      );
+    }
+    // Every pending change was staged against the same original record. No
+    // decision may be sent if even one is stale on that original view.
+    for (final body in bodies) {
+      if (stillApplies != null && !stillApplies(specimen, body)) {
+        return (specimen: specimen, saved: 0, stopped: true);
+      }
+    }
+    final entryKeys = <String>[
+      for (final (index, body) in bodies.indexed)
+        keyFor?.call(specimen, body, index) ?? '$keyPrefix-$index',
+    ];
+    if (entryKeys.toSet().length != entryKeys.length ||
+        entryKeys.any((key) => key.isEmpty || key.length > 200)) {
+      throw const ApiFailure(
+        'These pending decisions could not be safely submitted. Refresh the record and try again.',
+        code: 'invalid_review_batch',
+      );
+    }
+    final expectedKinds = <String>[
+      for (final body in bodies) _decisionWire(body)['kind'] as String,
+    ];
+    final batchKey = crypto.sha256
+        .convert(
+          utf8.encode(
+            jsonEncode(<String, dynamic>{
+              'scope': scope.key,
+              'specimen_id': specimen.id,
+              'revision': specimen.revision,
+              'record_version_id': specimen.recordVersionId,
+              'reason': reason,
+              'entry_keys': entryKeys,
+            }),
+          ),
+        )
+        .toString();
+    final Json answer;
+    try {
+      _checkAccess(epoch, userId);
+      answer = await request(
+        'POST',
+        '${_root(scope)}/decisions:batch',
+        key: batchKey,
+        body: <String, dynamic>{
+          'reason': reason,
+          'decisions': <Json>[
+            for (final (index, body) in bodies.indexed)
+              <String, dynamic>{
+                'specimen_id': specimen.id,
+                'expected_revision': specimen.revision,
+                'base_record_version_id': specimen.recordVersionId,
+                ..._decisionWire(body),
+                'idempotency_key': entryKeys[index],
+              },
+          ],
+        },
+      );
+      _checkAccess(epoch, userId);
+    } catch (error) {
+      // The server may have committed before the response was lost. The
+      // workspace keeps these decision keys for an identical retry.
+      throw ReviewBatchFailure(
+        saved: 0,
+        specimen: specimen,
+        cause: error,
+        retainKeys: true,
+      );
+    }
+
+    ReviewBatchFailure invalidAck() => ReviewBatchFailure(
+      saved: 0,
+      specimen: specimen,
+      cause: const ApiFailure(
+        'The server could not confirm which decisions were saved. Refresh and compare, or try saving these choices again.',
+        code: 'invalid_batch_ack',
+      ),
+      retainKeys: true,
+    );
+    final rawRows = answer['results'];
+    if (rawRows is! List ||
+        rawRows.length != changes.length ||
+        answer['requested'] is! int ||
+        answer['requested'] != changes.length) {
+      throw invalidAck();
+    }
+    var applied = 0;
+    var refused = 0;
+    var skipped = 0;
+    int? savedRevision;
+    String? savedVersion;
+    ApiFailure? refusal;
+    for (final (index, raw) in rawRows.indexed) {
+      if (raw is! Map) throw invalidAck();
+      final row = Json.from(raw);
+      if (row['index'] is! int ||
+          row['index'] != index ||
+          row['specimen_id'] != specimen.id ||
+          row['kind'] != expectedKinds[index] ||
+          row['idempotency_key'] != entryKeys[index]) {
+        throw invalidAck();
+      }
+      switch (row['outcome']) {
+        case 'applied':
+          final revision = row['revision'];
+          final version = row['record_version_id'];
+          if (revision is! int ||
+              revision != specimen.revision + 1 ||
+              version is! String ||
+              version.isEmpty ||
+              (savedRevision != null && savedRevision != revision) ||
+              (savedVersion != null && savedVersion != version)) {
+            throw invalidAck();
+          }
+          savedRevision = revision;
+          savedVersion = version;
+          applied++;
+          break;
+        case 'refused':
+          final error = row['error'];
+          if (error is! Map ||
+              error['code'] is! String ||
+              (error['code'] as String).isEmpty) {
+            throw invalidAck();
+          }
+          refusal ??= ApiFailure(
+            textOf(error['message'], 'The review decision was refused.'),
+            code: error['code'] as String,
+            status: error['status'] is int ? error['status'] as int : null,
+          );
+          refused++;
+          break;
+        case 'skipped':
+          skipped++;
+          break;
+        default:
+          throw invalidAck();
+      }
+    }
+    if (answer['applied'] is! int ||
+        answer['refused'] is! int ||
+        answer['skipped'] is! int ||
+        answer['applied'] != applied ||
+        answer['refused'] != refused ||
+        answer['skipped'] != skipped ||
+        applied + refused + skipped != changes.length ||
+        (applied == 0 && refused == 0)) {
+      throw invalidAck();
+    }
+    if (applied == 0) {
+      throw ReviewBatchFailure(
+        saved: 0,
+        specimen: specimen,
+        cause:
+            refusal ??
+            const ApiFailure(
+              'The server did not apply any pending decision.',
+              code: 'batch_refused',
+            ),
+      );
+    }
+    if (applied != changes.length) {
+      // One specimen's candidate-bearing group is one CAS. A mixed answer
+      // cannot identify a saved prefix; even [refused, applied] must leave
+      // every original choice and key intact for reconciliation.
+      throw ReviewBatchFailure(
+        saved: 0,
+        specimen: specimen,
+        cause: const ApiFailure(
+          'The server returned a mixed result for one record. Refresh and compare.',
+          code: 'batch_partial_unexpected',
+        ),
+        retainKeys: true,
+      );
+    }
+    final Specimen reloaded;
+    try {
+      reloaded = await this.specimen(scope, specimen.id);
+      _checkAccess(epoch, userId);
+      if (reloaded.id != specimen.id ||
+          reloaded.revision != savedRevision ||
+          reloaded.recordVersionId != savedVersion) {
+        throw const ApiFailure(
+          'The saved record version could not be read back. Refresh before continuing.',
+          code: 'batch_readback_mismatch',
+        );
+      }
+    } catch (error) {
+      throw ReviewBatchFailure(
+        saved: applied,
+        specimen: specimen,
+        cause: error,
+        retainKeys: true,
+        acknowledgement: (
+          specimenId: specimen.id,
+          baseRevision: specimen.revision,
+          baseRecordVersionId: specimen.recordVersionId,
+          revision: savedRevision!,
+          recordVersionId: savedVersion!,
+        ),
+      );
+    }
+    return (specimen: reloaded, saved: applied, stopped: false);
   }
 
   @override

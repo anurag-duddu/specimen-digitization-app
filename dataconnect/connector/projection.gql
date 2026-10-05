@@ -275,12 +275,14 @@ mutation AppendReviewDecisionV1($organizationId: UUID!, $collectionId: UUID!, $i
   reviewDecision_insert(data: {organizationId: $organizationId, collectionId: $collectionId, id: $id, specimenId: $specimenId, actorUid: $actorUid, baseRevision: $baseRevision, resultingRevision: $resultingRevision, reason: $reason, correction: $correction})
 }
 
-# Additive original-save proof under the CURRENT verified reviewer's authority.
+# Read-only original-save proof under the CURRENT verified operator-or-reviewer authority.
+# Operators preserve genuine human locks while projecting a later worker save;
+# this grants no review mutation and keeps the same collection/sensitive checks.
 # The historical author need not remain an active member. Event-content and
 # first-appearance proof is supplied by the attested backend, not guessed Any CEL.
 query GetReviewSaveProofV1($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $specimenId: UUID!, $decisionId: UUID!, $decisionActorUid: String!, $baseRevision: Int!, $resultingRevision: Int!) @auth(level: NO_ACCESS) {
   organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active") { active }
-  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['reviewer', 'manager', 'admin'] && vars.baseRevision >= 1 && vars.resultingRevision == vars.baseRevision + 1") { active role canViewSensitive }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active && this.role in ['operator', 'reviewer', 'manager', 'admin'] && vars.baseRevision >= 1 && vars.resultingRevision == vars.baseRevision + 1") { active role canViewSensitive }
   specimen(key: {organizationId: $organizationId, collectionId: $collectionId, id: $specimenId}) @check(expr: "this != null && this.revision >= vars.resultingRevision && (!this.sensitive || response.collectionMember.canViewSensitive)") { revision sensitive }
   prior: specimenSnapshot(key: {organizationId: $organizationId, collectionId: $collectionId, specimenId: $specimenId, revision: $baseRevision}) { revision snapshot sha256 contractVersion }
   target: specimenSnapshot(key: {organizationId: $organizationId, collectionId: $collectionId, specimenId: $specimenId, revision: $resultingRevision}) { revision snapshot sha256 contractVersion }

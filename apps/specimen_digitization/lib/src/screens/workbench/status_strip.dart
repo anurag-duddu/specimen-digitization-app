@@ -26,6 +26,8 @@ class WorkbenchStatusStrip extends StatefulWidget {
     required this.onGoToBlocker,
     this.saved = false,
     this.conflictVersion,
+    this.reconciliationMessage,
+    this.reconciliationActionLabel,
     this.onRefresh,
     this.staleChanges = const <PendingFieldChange>[],
   });
@@ -51,7 +53,13 @@ class WorkbenchStatusStrip extends StatefulWidget {
   /// The version another reviewer saved, when one arrived under this one.
   final int? conflictVersion;
 
-  /// Reloads the record so the reviewer can compare.
+  /// A server acknowledgement whose current projection is not yet verified.
+  final String? reconciliationMessage;
+
+  /// The recovery action for this stage of reconciliation.
+  final String? reconciliationActionLabel;
+
+  /// Runs the labelled refresh or current-field comparison action.
   final VoidCallback? onRefresh;
 
   /// The glossary word the version fact is an instance of, so its definition
@@ -106,6 +114,13 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
     final bool statusChanged = status != _lastStatus;
     _lastStatus = status;
     if (!statusChanged) return;
+    if (widget.reconciliationMessage != null ||
+        widget.staleChanges.isNotEmpty) {
+      // A refreshed disposition does not prove this review save landed.
+      _settled = false;
+      _announce(status.semanticsLabel);
+      return;
+    }
     if (!status.isQueue) {
       // A run update or invalid disposition is not a saved review decision.
       // Clear a previous decision acknowledgment and announce this state once.
@@ -141,6 +156,23 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
+        if (widget.reconciliationMessage != null)
+          Padding(
+            padding: EdgeInsetsDirectional.only(bottom: ui.space.s2),
+            child: Semantics(
+              liveRegion: true,
+              container: true,
+              child: UiBanner(
+                message: widget.reconciliationMessage!,
+                tone: UiBannerTone.needsReview,
+                icon: UiIcons.syncProblem,
+                actionLabel: widget.onRefresh == null
+                    ? null
+                    : widget.reconciliationActionLabel ?? ConflictBanner.action,
+                onAction: widget.onRefresh,
+              ),
+            ),
+          ),
         // Height and opacity, deliberately no shake and deliberately no
         // haptic: this is a paragraph the reviewer has to read and act on,
         // and a buzz adds urgency without adding information
@@ -194,7 +226,10 @@ class _WorkbenchStatusStripState extends State<WorkbenchStatusStrip> {
             ),
           ),
         UiStatusStrip(
-          disposition: (widget.saved || _settled)
+          disposition:
+              widget.reconciliationMessage == null &&
+                  widget.staleChanges.isEmpty &&
+                  (widget.saved || _settled)
               ? Row(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[

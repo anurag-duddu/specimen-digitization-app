@@ -74,9 +74,27 @@ readonly WATCH_POLLS=180
 readonly OBJECTS="projects/_/buckets/$BUCKET/objects/"
 readonly APP_TITLE=specimen_application_objects
 readonly APP_EXPRESSION="resource.name.startsWith(\"${OBJECTS}application/sha256/\")"
-# The research harness's three prefixes (SPECIMEN_RESEARCH_HARNESS=on): the worker alone creates and gets there.
+# Exact immutable dataset objects committed in application/georef_datasets.py.
+# The data workflow can create missing generations and read them back, never
+# list, delete, replace an existing object, or write another application object.
+readonly GEO_TITLE=specimen_georeference_datasets
+readonly GEO_EXPRESSION="resource.name in [\
+\"${OBJECTS}application/sha256/7a9189637a5af9677a92e765b9448bdfe425383fae8e39a6808a96b8fe8f19d0\",\
+\"${OBJECTS}application/sha256/155424cb1ede34d2b0e4e92b51b5c359164e3d0834507166d1b28969389e2e5c\",\
+\"${OBJECTS}application/sha256/0f6f645d310b4aa02fffc0cba0f3ad130a5fd2303d953e5f8931ba48817b0c6c\",\
+\"${OBJECTS}application/sha256/37d8bc68715f937fc2a568d9e88245aa6323a46cc4c2e56a5836fa89febe8536\",\
+\"${OBJECTS}application/sha256/7a8dc145e57ea42c26b35393a281f248ff35e70aaf794eed20c989ff2d718759\",\
+\"${OBJECTS}application/sha256/24965821b5541833efb63ced996ac9a508feb049ec02442727f28cbdf15dfe96\",\
+\"${OBJECTS}application/sha256/8eeef6a9a525a81a647dcaac85e1337b990fc527c4a0e9c70556d5b0905be087\",\
+\"${OBJECTS}application/sha256/fa77b9f17db2e419acaae714a935f7812be4409e2983675d34020e8426a3e189\",\
+\"${OBJECTS}application/sha256/2ece3d44a5c6a2afb385ffbf3a6b88d83e4d3a3e7eed9a52cb3be1bc59e289fc\",\
+\"${OBJECTS}application/sha256/f178eda98c46329380bdbb43f0637b4c43535bc843de6a0b8b960193b8f4363f\"]"
+# The worker creates/reads all three research prefixes. API verification gets
+# only immutable captures, after application authorization of the native binding.
 readonly RESEARCH_TITLE=specimen_research_objects
 readonly RESEARCH_EXPRESSION="resource.name.startsWith(\"${OBJECTS}research-capture/\") || resource.name.startsWith(\"${OBJECTS}research-journal/\") || resource.name.startsWith(\"${OBJECTS}research-media/\")"
+readonly CAPTURE_READ_TITLE=specimen_api_research_capture
+readonly CAPTURE_READ_EXPRESSION="resource.name.startsWith(\"${OBJECTS}research-capture/\")"
 readonly SLIDES_TITLE=specimen_source_slides
 readonly SLIDES_EXPRESSION="resource.name.startsWith(\"${OBJECTS}microscopic-slides/\") || api.getAttribute(\"storage.googleapis.com/objectListPrefix\", \"\").startsWith(\"microscopic-slides/\")"
 readonly SQL_TITLE=specimen_source_inventory_only
@@ -294,6 +312,7 @@ resource_command() { # resource_command VERB KIND NAME
     service-account) COMMAND=(gcloud iam service-accounts "$1" "$3" "--project=$PROJECT") ;;
     secret) COMMAND=(gcloud secrets "$1" "$3" "--project=$PROJECT") ;;
     service) COMMAND=(gcloud run services "$1" "$3" "--region=$REGION" "--project=$PROJECT") ;;
+    job) COMMAND=(gcloud run jobs "$1" "$3" "--region=$REGION" "--project=$PROJECT") ;;
     *) die "unknown kind of resource: $2" ;;
   esac
 }
@@ -365,7 +384,9 @@ grant() { # grant KIND NAME MEMBER ROLE [TITLE EXPRESSION [DESCRIPTION]]
   fi
   change "grant $what"
   resource_command add-iam-policy-binding "$kind" "$name"
-  if [ -z "$title" ]; then
+  if [ "$kind" = job ] && [ -z "$title" ]; then
+    run "${COMMAND[@]}" "--member=$member" "--role=$role" --quiet
+  elif [ -z "$title" ]; then
     run "${COMMAND[@]}" "--member=$member" "--role=$role" --condition=None
   else
     condition_file "$title" "$expression" "$description"
@@ -570,6 +591,10 @@ data_release_grants() {
   grant project "$PROJECT" "$DATA" "$CUSTOM/specimenDataInventorySqlConnect" "$SQL_TITLE" "$SQL_EXPRESSION" "$SQL_DESCRIPTION"
   grant project "$PROJECT" "$DATA" "$CUSTOM/specimenDataBootstrapRows"
   pinned_secret "$DATA" specimen-worker-actor-uid 1
+  ensure_role specimenGeoreferenceDatasets 'Specimen immutable georeferencing datasets' \
+    'Create and verify only the committed georeferencing objects; no list, overwrite or delete.' \
+    storage.objects.create storage.objects.get
+  grant bucket "$BUCKET" "$DATA" "$CUSTOM/specimenGeoreferenceDatasets" "$GEO_TITLE" "$GEO_EXPRESSION"
   note 'specimenDataSourceBackup is not granted: the release takes no backups.'
 }
 
@@ -596,11 +621,21 @@ runtime_grants() {
   ensure_role specimenRuntimeRelease 'Specimen runtime release' \
     'Create and update the Cloud Run services and the worker job; no delete, no job runs.' \
     run.services.create run.services.get run.services.update run.services.getIamPolicy \
-    run.jobs.create run.jobs.get run.jobs.update run.operations.get run.revisions.get
-  # The worker job's invokers belong to the follow-up change: no run.jobs permission here.
+    run.jobs.create run.jobs.get run.jobs.update run.jobs.getIamPolicy run.operations.get run.revisions.get
+  # This deployment role reads worker invokers but cannot execute jobs or set
+  # their IAM. The separate execution role below is bound only to specimen-worker.
   ensure_role specimenRuntimeInvokerPolicy 'Specimen runtime invoker policy' \
     'Read and set who may call the API service.' \
     run.services.getIamPolicy run.services.setIamPolicy
+  ensure_role specimenWorkerExecution 'Specimen queued worker execution' \
+    'Run the existing worker without overrides and read its execution outcome.' \
+    run.jobs.run run.executions.get
+  ensure_role specimenWorkerRead 'Specimen worker readiness read' \
+    'Read only the deployed specimen worker definition for API readiness.' \
+    run.jobs.get
+  ensure_role specimenResearchCaptureRead 'Specimen API immutable capture read' \
+    'Read scoped immutable source captures for API verification; no list, create or delete.' \
+    storage.objects.get
   ensure_role specimenRuntimeConnector 'Specimen runtime connector' \
     'call the named operations of the connector only, never arbitrary GraphQL' \
     firebasedataconnect.connectors.impersonateQuery firebasedataconnect.connectors.impersonateMutation
@@ -613,6 +648,8 @@ runtime_grants() {
   scope_invoker_policy
   grant project "$PROJECT" "$RELEASE" "$CUSTOM/specimenDataInventoryProjectRead"
   grant repository "$REGISTRY" "$RELEASE" roles/artifactregistry.reader
+  grant job specimen-worker "$RELEASE" "$CUSTOM/specimenWorkerExecution"
+  grant job specimen-worker "$API" "$CUSTOM/specimenWorkerRead"
   for name in api worker sam; do
     grant service-account "specimen-$name-runtime@$ACCOUNTS" "$RELEASE" roles/iam.serviceAccountUser
   done
@@ -626,9 +663,12 @@ runtime_grants() {
     grant bucket "$BUCKET" "$name" roles/storage.objectCreator "$APP_TITLE" "$APP_EXPRESSION"
   done
   # The research harness creates objects with a generation match and reads them back; it never lists or deletes.
-  # So the worker, and no other account, gets create and get on its three prefixes.
+  # The worker alone gets create and get on all three prefixes.
   grant bucket "$BUCKET" "$WORKER" roles/storage.objectViewer "$RESEARCH_TITLE" "$RESEARCH_EXPRESSION"
   grant bucket "$BUCKET" "$WORKER" roles/storage.objectCreator "$RESEARCH_TITLE" "$RESEARCH_EXPRESSION"
+  # Review acceptance verifies original command/capture bytes. The API can only
+  # get captures; journals/media stay unreadable and no research object is writable.
+  grant bucket "$BUCKET" "$API" "$CUSTOM/specimenResearchCaptureRead" "$CAPTURE_READ_TITLE" "$CAPTURE_READ_EXPRESSION"
   grant bucket "$BUCKET" "$API" roles/storage.objectViewer "$SLIDES_TITLE" "$SLIDES_EXPRESSION"
   # Versions as pinned in scripts/ci/runtime_settings.py. The worker reads no Google Maps key
   # any more (the owner took Maps out of the pipeline): that read is neither granted nor removed here.

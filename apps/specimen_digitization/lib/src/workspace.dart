@@ -104,6 +104,30 @@ class _DeferredPage {
   final SpecimenPage page;
 }
 
+class _AwaitingBatchReadback {
+  const _AwaitingBatchReadback({
+    required this.acknowledgement,
+    required this.specimenId,
+    required this.baseRevision,
+    required this.baseRecordVersionId,
+    required this.selectionTokens,
+    required this.scope,
+    required this.userId,
+    required this.recordGeneration,
+    required this.mutationEpoch,
+  });
+
+  final ReviewBatchAcknowledgement? acknowledgement;
+  final String specimenId;
+  final int baseRevision;
+  final String baseRecordVersionId;
+  final Set<(String, String)> selectionTokens;
+  final CollectionScope scope;
+  final String userId;
+  final int recordGeneration;
+  final int mutationEpoch;
+}
+
 /// Everything the collection screens read and act on.
 ///
 /// A `ChangeNotifier` rather than screen state, because the router's redirect,
@@ -192,6 +216,34 @@ class WorkspaceController extends ChangeNotifier {
   bool _disposed = false;
 
   final Map<String, String> _mutationKeys = <String, String>{};
+  _AwaitingBatchReadback? _awaitingBatchReadback;
+
+  /// Proves that a scoped, current read returned the exact all-applied batch
+  /// version after an earlier readback failed. A matching revision alone is
+  /// insufficient: the record-version ID, account, collection and route must
+  /// still be the ones that owned the original decision.
+  bool isAcknowledgedBatchReadback(
+    ReviewBatchAcknowledgement acknowledgement,
+    Specimen record,
+  ) {
+    final pending = _awaitingBatchReadback;
+    return pending != null &&
+        pending.acknowledgement == acknowledgement &&
+        pending.specimenId == acknowledgement.specimenId &&
+        pending.baseRevision == acknowledgement.baseRevision &&
+        pending.baseRecordVersionId == acknowledgement.baseRecordVersionId &&
+        pending.recordGeneration == _recordGeneration &&
+        pending.mutationEpoch == _mutationEpoch &&
+        identical(pending.scope, _scope) &&
+        pending.userId == session.userId &&
+        session.signedIn &&
+        _scopesVerified &&
+        identical(record, _selected) &&
+        _selectedId == record.id &&
+        record.id == acknowledgement.specimenId &&
+        record.revision == acknowledgement.revision &&
+        record.recordVersionId == acknowledgement.recordVersionId;
+  }
 
   /// The collections this account may open.
   List<CollectionScope> get scopes =>
@@ -374,6 +426,7 @@ class WorkspaceController extends ChangeNotifier {
     _holds = 0;
     _deferredPage = null;
     _mutationKeys.clear();
+    _awaitingBatchReadback = null;
     _loading = true;
     _loadingMore = false;
     _mutating = false;
@@ -441,6 +494,7 @@ class WorkspaceController extends ChangeNotifier {
     _scope = null;
     _items = <Specimen>[];
     _selected = null;
+    _awaitingBatchReadback = null;
     _listGeneration++;
     _recordGeneration++;
     _notify();
@@ -485,6 +539,7 @@ class WorkspaceController extends ChangeNotifier {
     _items = <Specimen>[];
     _selected = null;
     _selectedId = null;
+    _awaitingBatchReadback = null;
     _nextCursor = null;
     _seenCursors.clear();
     _updatedAt = null;
@@ -712,6 +767,7 @@ class WorkspaceController extends ChangeNotifier {
     _selectedId = id;
     _selected = null;
     _recordLoading = true;
+    _awaitingBatchReadback = null;
     _error = null;
     final int generation = ++_recordGeneration;
     _notify();
@@ -735,6 +791,7 @@ class WorkspaceController extends ChangeNotifier {
     _selectedId = null;
     _selected = null;
     _recordLoading = false;
+    _awaitingBatchReadback = null;
     _recordGeneration++;
     _notify();
   }
@@ -898,14 +955,12 @@ class WorkspaceController extends ChangeNotifier {
 
   /// Saves several corrections as one reviewer action under one reason.
   ///
-  /// Pass criterion 7.2. The wire takes one decision per call, so this is
-  /// still several calls; what it is not is several screen updates. The
-  /// record is replaced once, from the last result, so a reviewer saving
-  /// five corrections sees the version move once instead of five times, and
-  /// the whole batch shares one idempotency key prefix.
+  /// Candidate-bearing changes use one server save when the repository
+  /// supports it. Other corrections retain the ordered decision path. The
+  /// screen moves only after the server's acknowledged record is read back.
   ///
-  /// Returns how many of [changes] the server accepted.
-  Future<int> mutateBatch(
+  /// Returns both the acknowledged count and the verified readback, if any.
+  Future<ReviewBatchSaveOutcome> mutateBatch(
     List<Json> changes,
     String reason, {
     bool Function(Specimen current, Json change)? stillApplies,
@@ -913,17 +968,42 @@ class WorkspaceController extends ChangeNotifier {
     final Specimen? current = _selected;
     final CollectionScope? scope = _scope;
     if (current == null || scope == null || _mutating || changes.isEmpty) {
-      return 0;
+      return const ReviewBatchSaveOutcome(saved: 0);
+    }
+    final awaiting = _awaitingBatchReadback;
+    if (awaiting != null &&
+        awaiting.specimenId == current.id &&
+        identical(awaiting.scope, scope) &&
+        awaiting.userId == session.userId &&
+        (current.revision != awaiting.baseRevision ||
+            current.recordVersionId != awaiting.baseRecordVersionId) &&
+        changes.any(
+          (change) => awaiting.selectionTokens.contains((
+            textOf(change['target_id']),
+            textOf(change['selection_id']),
+          )),
+        )) {
+      _recordFailure(
+        const ApiFailure(
+          'These source choices belong to an older record. Compare the current sources and choose again.',
+          code: 'stale_research_choice',
+        ),
+      );
+      _notify();
+      return const ReviewBatchSaveOutcome(
+        saved: 0,
+        requiresReconciliation: true,
+      );
     }
     final int generation = _recordGeneration;
     final int mutationEpoch = _mutationEpoch;
+    final String userId = session.userId;
     final String prefix =
         'review-batch-${DateTime.now().microsecondsSinceEpoch}';
-    // One key per decision, memoised on the record version it was sent
-    // against, exactly as `mutate` does for a single decision: a call retried
-    // after an uncertain answer carries the key it carried the first time, so
-    // the server reconciles rather than recording twice. The prefix names the
-    // batch, the key identifies the decision, and the two jobs stay separate.
+    // One key per decision, memoised on the original record version. The API
+    // derives its candidate-batch key from these stable keys, so a retry after
+    // an uncertain response reconciles the same canonical save even though
+    // this local prefix is new. Ordinary decisions keep their own keys.
     final List<String> payloads = <String>[];
     String keyFor(Specimen atVersion, Json body, int index) {
       final String payload = '${atVersion.id}:${atVersion.revision}:$body';
@@ -944,29 +1024,85 @@ class WorkspaceController extends ChangeNotifier {
         stillApplies: stillApplies,
         keyFor: keyFor,
       );
-      if (_disposed || generation != _recordGeneration) return result.saved;
+      if (_disposed ||
+          generation != _recordGeneration ||
+          mutationEpoch != _mutationEpoch ||
+          session.userId != userId ||
+          !session.signedIn ||
+          !identical(scope, _scope) ||
+          !_scopesVerified) {
+        return const ReviewBatchSaveOutcome(saved: 0);
+      }
       if (result.saved > 0) _selected = result.specimen;
+      if (result.saved > 0) _awaitingBatchReadback = null;
       for (final String payload in payloads.take(result.saved)) {
         _mutationKeys.remove(payload);
       }
-      return result.saved;
+      return ReviewBatchSaveOutcome(
+        saved: result.saved,
+        confirmed: result.saved > 0 ? result.specimen : null,
+      );
     } on ReviewBatchFailure catch (failure) {
-      if (_disposed || generation != _recordGeneration) return failure.saved;
-      // What landed, landed. The screen shows the record the server has now
-      // rather than the one the reviewer opened, and the caller reports the
-      // corrections that are still outstanding.
-      if (failure.saved > 0) _selected = failure.specimen;
+      if (_disposed ||
+          generation != _recordGeneration ||
+          mutationEpoch != _mutationEpoch ||
+          session.userId != userId ||
+          !session.signedIn ||
+          !identical(scope, _scope) ||
+          !_scopesVerified) {
+        return const ReviewBatchSaveOutcome(saved: 0);
+      }
+      // Ordinary verified prefixes can advance the screen. A candidate
+      // acknowledgement without a proven readback keeps the original view.
+      if (failure.saved > 0 && !failure.retainKeys) {
+        _selected = failure.specimen;
+      }
       // The key of the call that failed is deliberately retained: its answer
       // is uncertain, so a retry has to reconcile rather than record twice.
-      for (final String payload in payloads.take(failure.saved)) {
-        _mutationKeys.remove(payload);
+      if (!failure.retainKeys) {
+        for (final String payload in payloads.take(failure.saved)) {
+          _mutationKeys.remove(payload);
+        }
+      }
+      if (failure.retainKeys &&
+          changes.any((change) => change['kind'] == 'research_candidate')) {
+        _awaitingBatchReadback = _AwaitingBatchReadback(
+          acknowledgement: failure.acknowledgement,
+          specimenId: current.id,
+          baseRevision: current.revision,
+          baseRecordVersionId: current.recordVersionId,
+          selectionTokens: <(String, String)>{
+            for (final change in changes)
+              if (change['kind'] == 'research_candidate')
+                (textOf(change['target_id']), textOf(change['selection_id'])),
+          },
+          scope: scope,
+          userId: userId,
+          recordGeneration: generation,
+          mutationEpoch: mutationEpoch,
+        );
       }
       _recordFailure(failure.cause);
-      return failure.saved;
+      return ReviewBatchSaveOutcome(
+        saved: failure.saved,
+        confirmed: failure.saved > 0 && !failure.retainKeys
+            ? failure.specimen
+            : null,
+        requiresReconciliation: failure.retainKeys,
+        acknowledgement: failure.acknowledgement,
+      );
     } catch (error) {
-      if (_disposed || generation != _recordGeneration) return 0;
+      if (_disposed ||
+          generation != _recordGeneration ||
+          mutationEpoch != _mutationEpoch ||
+          session.userId != userId ||
+          !session.signedIn ||
+          !identical(scope, _scope) ||
+          !_scopesVerified) {
+        return const ReviewBatchSaveOutcome(saved: 0);
+      }
       _recordFailure(error);
-      return 0;
+      return const ReviewBatchSaveOutcome(saved: 0);
     } finally {
       if (!_disposed && mutationEpoch == _mutationEpoch) {
         _mutating = false;
@@ -1178,6 +1314,7 @@ class WorkspaceController extends ChangeNotifier {
       _scope = null;
       _items = <Specimen>[];
       _selected = null;
+      _awaitingBatchReadback = null;
       _selectedId = null;
       _nextCursor = null;
       _seenCursors.clear();

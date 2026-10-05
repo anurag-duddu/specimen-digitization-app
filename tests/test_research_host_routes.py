@@ -3,6 +3,7 @@
 import asyncio
 import logging
 from copy import deepcopy
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -15,6 +16,7 @@ from specimen_digitization.research_harness.canonical_binding import CanonicalBi
 from specimen_digitization.research_harness.compatibility import PublicationUnavailable
 from specimen_digitization.research_harness.contracts import FieldKey, digest
 from specimen_digitization.research_harness.discovery import ScopedCanonicalReadStore
+from specimen_digitization.research_harness.human_review import REPORT_KEY
 
 ORG = "11111111-1111-4111-8111-111111111111"
 COLLECTION = "22222222-2222-4222-8222-222222222222"
@@ -310,6 +312,85 @@ async def test_unavailable_binding_503_logs_class_and_fixed_code(host, caplog):
     assert record.levelno == logging.WARNING
     assert "BindingUnavailable" in text and "canonical_binding_unavailable" in text
     assert_no_request_ids(text)
+    assert actor_uid.get() is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ("current", "thread"))
+async def test_absent_historical_report_preserves_the_original_fixed_code(host, caplog, route):
+    app, native, _, _ = host
+    native.error = PublicationUnavailable("native_v2_registration_missing_or_ambiguous")
+    app.state.research_discovery.load_specimen = lambda *_: SimpleNamespace(
+        version=7, run=SimpleNamespace(id=RUN, dependencies={}))
+    url = CURRENT if route == "current" else (
+        CURRENT.removesuffix("/current") + "/jobs/test-opaque-job/generations/2/thread")
+    caplog.set_level(logging.DEBUG, logger=API_LOGGER)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://fixture") as client:
+        reply = await client.get(url, headers={"Authorization": "Bearer actor-one"})
+    assert_private_503(reply)
+    (record,) = api_records(caplog)
+    assert record.levelno == logging.WARNING
+    assert "PublicationUnavailable" in record.getMessage()
+    assert "native_v2_registration_missing_or_ambiguous" in record.getMessage()
+    assert "historical_research_report_unavailable" not in record.getMessage()
+    assert_no_request_ids(record.getMessage())
+    assert actor_uid.get() is None
+
+
+@pytest.mark.asyncio
+async def test_corrupt_historical_report_keeps_its_own_integrity_failure(host, caplog):
+    app, native, _, _ = host
+    native.error = PublicationUnavailable("native_v2_registration_missing_or_ambiguous")
+    app.state.research_discovery.load_specimen = lambda *_: SimpleNamespace(version=7,
+        run=SimpleNamespace(id=RUN, dependencies={REPORT_KEY: {
+            "run_id": RUN, "review_saved_revision": 7, "blob_ref": "invalid",
+            "size_bytes": 1, "sha256": "0" * 64}}))
+    caplog.set_level(logging.DEBUG, logger=API_LOGGER)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://fixture") as client:
+        reply = await client.get(CURRENT, headers={"Authorization": "Bearer actor-one"})
+    assert_private_503(reply)
+    (record,) = api_records(caplog)
+    assert record.levelno == logging.WARNING
+    assert "BindingUnavailable" in record.getMessage()
+    assert "historical_research_report_integrity" in record.getMessage()
+    assert "native_v2_registration_missing_or_ambiguous" not in record.getMessage()
+    assert_no_request_ids(record.getMessage())
+    assert actor_uid.get() is None
+
+
+@pytest.mark.asyncio
+async def test_historical_fallback_never_swallows_current_access_denial(host, caplog):
+    app, native, _, _ = host
+    native.error = PublicationUnavailable("native_v2_registration_missing_or_ambiguous")
+
+    def denied(*_):
+        raise PermissionError("private membership detail")
+
+    app.state.research_discovery.load_specimen = denied
+    caplog.set_level(logging.DEBUG, logger=API_LOGGER)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://fixture") as client:
+        reply = await client.get(CURRENT, headers={"Authorization": "Bearer actor-one"})
+    assert reply.status_code == 403 and reply.json() == {"detail": "research_access_denied"}
+    assert api_records(caplog) == [] and actor_uid.get() is None
+
+
+@pytest.mark.asyncio
+async def test_historical_fallback_keeps_unexpected_storage_failure_opaque(host, caplog):
+    app, native, _, _ = host
+    native.error = PublicationUnavailable("native_v2_registration_missing_or_ambiguous")
+
+    def broken(*_):
+        raise RuntimeError("private stored label and path")
+
+    app.state.research_discovery.load_specimen = broken
+    caplog.set_level(logging.DEBUG, logger=API_LOGGER)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://fixture") as client:
+        reply = await client.get(CURRENT, headers={"Authorization": "Bearer actor-one"})
+    assert_private_503(reply)
+    (record,) = api_records(caplog)
+    assert record.levelno == logging.ERROR and "RuntimeError" in record.getMessage()
+    assert "private stored" not in record.getMessage()
+    assert_no_request_ids(record.getMessage())
     assert actor_uid.get() is None
 
 

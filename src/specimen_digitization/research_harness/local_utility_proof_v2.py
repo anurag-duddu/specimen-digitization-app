@@ -17,11 +17,12 @@ from .contracts import (
     SpecialistRequest, SpecialistRole, digest,
 )
 from .evidence import catalog_literal, parse_measurement, parse_temporal, validate_assembly
-from .sources import canonical_json
+from .sources import SETTLEMENT_UTILITY_VERSION, canonical_json, local_settlement_result
 
 UTILITY_VERSION = "deterministic-domain-v1"
 UTILITY_ROLES = {"parse_measurement": SpecialistRole.MEASUREMENT,
-    "parse_temporal": SpecialistRole.TEMPORAL, "catalog_number": SpecialistRole.COLLECTION}
+    "parse_temporal": SpecialistRole.TEMPORAL, "catalog_number": SpecialistRole.COLLECTION,
+    "settle_temporal": SpecialistRole.TEMPORAL, "settle_elevation": SpecialistRole.MEASUREMENT}
 
 
 @dataclass(frozen=True)
@@ -35,13 +36,15 @@ class LocalUtilityReplayProofV2:
     assembly_ids: tuple[str, ...]
     utility_version: str = UTILITY_VERSION
     parser_source_sha256: str = VALIDATOR_SOURCE_SHA256
+    arguments: dict | None = None
 
     def as_receipt(self):
         # This is a policy replay proof, deliberately not a ToolReceipt/effect.
         return {"contract_version":self.contract_version,
             "original_request_digest":self.original_request_digest,
             "result_digest":self.result_digest, "tool_id":self.tool_id,
-            "arguments":{"field_key":self.field_key,"text":self.text},
+            "arguments":self.arguments if self.arguments is not None else
+                {"field_key":self.field_key,"text":self.text},
             "assembly_ids":list(self.assembly_ids),"utility_version":self.utility_version,
             "parser_source_sha256":self.parser_source_sha256}
 
@@ -59,6 +62,8 @@ def verify_local_utility_v2(request: SpecialistRequest, result: SourceResult) ->
     if (result.receipt is not None or tool_id not in UTILITY_ROLES
             or request.role != UTILITY_ROLES[tool_id] or field_key not in request.field_keys):
         hold()
+    if tool_id in {"settle_temporal", "settle_elevation"}:
+        return _verify_settlement(request, result)
     expected_coverage = SourceCoverageReceipt(source_id=tool_id,field_key=field_key,
         state=SourceCoverageState.SEARCHED,source_version=UTILITY_VERSION,
         coverage_limit="Deterministic local utility; settlement validates graph/G32",reason="exact_parse")
@@ -88,6 +93,39 @@ def verify_local_utility_v2(request: SpecialistRequest, result: SourceResult) ->
     text, assembly_ids = next(iter(matches.items()))
     return LocalUtilityReplayProofV2("research-local-utility-replay/v2",digest(request),
         digest(result),tool_id,str(field_key),text,tuple(assembly_ids))
+
+
+def _verify_settlement(request: SpecialistRequest, result: SourceResult) -> LocalUtilityReplayProofV2:
+    """Recompute one exact settlement from immutable event/assembly identities."""
+    def hold():
+        raise PublicationUnavailable("canonical_local_utility_unproved")
+
+    tool_id, field_key = result.coverage.source_id, result.coverage.field_key
+    if result.receipt is not None or result.evidence or len(result.candidate_json) != 1:
+        hold()
+    matches = []
+    event_ids = dict.fromkeys(item.event_id for item in request.assemblies)
+    for event_id in event_ids:
+        assemblies = tuple(item for item in request.assemblies if item.event_id == event_id)
+        if not assemblies:
+            continue
+        if tool_id == "settle_temporal":
+            arguments = {"field_key": str(field_key), "event_id": event_id}
+        else:
+            arguments = {"field_key": str(field_key), "event_id": event_id,
+                         "assembly_ids": [item.id for item in assemblies]}
+        try:
+            expected = local_settlement_result(request, tool_id, arguments)
+        except (ValueError, TypeError, KeyError):
+            continue
+        if expected == result:
+            matches.append((arguments, tuple(item.id for item in assemblies)))
+    if len(matches) != 1:
+        hold()
+    arguments, assembly_ids = matches[0]
+    return LocalUtilityReplayProofV2("research-local-utility-replay/v2", digest(request),
+        digest(result), tool_id, str(field_key), "", assembly_ids,
+        utility_version=SETTLEMENT_UTILITY_VERSION, arguments=arguments)
 
 
 def local_utility_replays_v2(request, results, *, accepted_checkpoint_proof):

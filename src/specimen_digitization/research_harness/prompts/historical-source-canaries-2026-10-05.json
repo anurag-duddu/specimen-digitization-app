@@ -1,0 +1,897 @@
+{
+  "contract_version": "historical-public-place-canaries/v1",
+  "evidence_class": "actual public endpoint and parser canary; no specimen, model, worker or production execution proof",
+  "maximum_calls_per_lookup": 3,
+  "maximum_response_bytes": 2000000,
+  "documentation": {
+    "tgn": [
+      "https://www.getty.edu/research-conservation/tools-databases/vocabularies/data-services/",
+      "https://www.getty.edu/research/tools/vocabularies/obtain/getty_vocabularies_openrefine_tutorial.pdf"
+    ],
+    "wikidata": [
+      "https://www.wikidata.org/wiki/Help:Data_access",
+      "https://www.wikidata.org/wiki/Wikidata:Licensing",
+      "https://foundation.wikimedia.org/wiki/Policy:User-Agent_policy"
+    ],
+    "nga": [
+      "https://geonames.nga.mil/gns/html/gns_services.html",
+      "https://geonames.nga.mil/geonames/GNSHome/reference.html"
+    ]
+  },
+  "constraints": [
+    "Only filtered public place names, then returned authority identifiers; no specimen fields or identifiers.",
+    "Every full HTTP response retained and SHA256 checked here.",
+    "Candidates, alternate names and cross-country matches remain ambiguous; no automatic geographic settlement.",
+    "Ten-hit Getty response is bounded search, never an exhaustive absence claim.",
+    "Current source records do not themselves prove historical boundaries or specimen location.",
+    "NGA public GNS use terms are preserved as source terms; no invented named license."
+  ],
+  "entries": {
+    "wikidata": [
+      {
+        "source": "wikidata",
+        "query": "Yepocapa",
+        "retrieved_at": "2026-10-05T03:38:54.753207+00:00",
+        "user_agent": "FieldMuseumSpecimenResearch/1.0 (https://github.com/anurag-duddu/specimen-digitization-app)",
+        "scope": "public place only; endpoint/parser canary, not specimen runtime proof",
+        "outcome": {
+          "status": "success",
+          "reason": null,
+          "places": [
+            {
+              "source": "wikidata",
+              "record_id": "Q1523937",
+              "name": "Yepocapa",
+              "names": [
+                "San Pedro Yepocapa"
+              ],
+              "description": "municipality of Chimaltenango Department, Guatemala",
+              "kinds": [
+                {
+                  "id": "Q1872284",
+                  "name": "municipality of Guatemala",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": {
+                "id": "Q774",
+                "name": "Guatemala",
+                "start": null,
+                "end": null
+              },
+              "iso_code": null,
+              "parents": [
+                {
+                  "id": "Q1002552",
+                  "name": "Chimaltenango",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "point": [
+                14.5,
+                -90.95
+              ],
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": "CC0-1.0"
+            },
+            {
+              "source": "wikidata",
+              "record_id": "Q25173824",
+              "name": "Yepocapa",
+              "names": [],
+              "description": null,
+              "kinds": [
+                {
+                  "id": "Q486972",
+                  "name": "human settlement",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": {
+                "id": "Q774",
+                "name": "Guatemala",
+                "start": null,
+                "end": null
+              },
+              "iso_code": null,
+              "parents": [
+                {
+                  "id": "Q1523937",
+                  "name": "Yepocapa",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "point": [
+                14.50195,
+                -90.95396
+              ],
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": "CC0-1.0"
+            },
+            {
+              "source": "wikidata",
+              "record_id": "Q12645389",
+              "name": "Yepocapa Southwestern Cakchiquel",
+              "names": [],
+              "description": null,
+              "kinds": [
+                {
+                  "id": "Q33384",
+                  "name": "dialect",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": null,
+              "iso_code": null,
+              "parents": [],
+              "point": null,
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": "CC0-1.0"
+            }
+          ]
+        },
+        "exchanges": [
+          {
+            "url": "https://www.wikidata.org/w/api.php",
+            "params": {
+              "action": "wbsearchentities",
+              "search": "Yepocapa",
+              "language": "en",
+              "uselang": "en",
+              "type": "item",
+              "limit": "7",
+              "format": "json"
+            },
+            "final_url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Yepocapa&language=en&uselang=en&type=item&limit=7&format=json",
+            "status": 200,
+            "content_type": "application/json; charset=utf-8",
+            "sha256": "aef004cc944468d2580113a98b07b05796b6a70b2c93263e2c3369be3fba96ce",
+            "byte_size": 1230,
+            "response_body_utf8": "{\"searchinfo\":{\"search\":\"Yepocapa\"},\"search\":[{\"id\":\"Q1523937\",\"title\":\"Q1523937\",\"pageid\":1460970,\"concepturi\":\"http://www.wikidata.org/entity/Q1523937\",\"repository\":\"wikidata\",\"url\":\"//www.wikidata.org/wiki/Q1523937\",\"display\":{\"label\":{\"value\":\"Yepocapa\",\"language\":\"en\"},\"description\":{\"value\":\"municipality of Chimaltenango Department, Guatemala\",\"language\":\"en\"}},\"label\":\"Yepocapa\",\"description\":\"municipality of Chimaltenango Department, Guatemala\",\"match\":{\"type\":\"label\",\"language\":\"en\",\"text\":\"Yepocapa\"}},{\"id\":\"Q25173824\",\"title\":\"Q25173824\",\"pageid\":27132645,\"concepturi\":\"http://www.wikidata.org/entity/Q25173824\",\"repository\":\"wikidata\",\"url\":\"//www.wikidata.org/wiki/Q25173824\",\"display\":{\"label\":{\"value\":\"Yepocapa\",\"language\":\"en\"}},\"label\":\"Yepocapa\",\"match\":{\"type\":\"label\",\"language\":\"en\",\"text\":\"Yepocapa\"}},{\"id\":\"Q12645389\",\"title\":\"Q12645389\",\"pageid\":13961874,\"concepturi\":\"http://www.wikidata.org/entity/Q12645389\",\"repository\":\"wikidata\",\"url\":\"//www.wikidata.org/wiki/Q12645389\",\"display\":{\"label\":{\"value\":\"Yepocapa Southwestern Cakchiquel\",\"language\":\"en\"}},\"label\":\"Yepocapa Southwestern Cakchiquel\",\"match\":{\"type\":\"label\",\"language\":\"en\",\"text\":\"Yepocapa Southwestern Cakchiquel\"}}],\"success\":1}"
+          },
+          {
+            "url": "https://www.wikidata.org/w/api.php",
+            "params": {
+              "action": "wbgetentities",
+              "ids": "Q1523937|Q25173824|Q12645389",
+              "props": "labels|aliases|descriptions|claims",
+              "languages": "en|es|mul",
+              "format": "json"
+            },
+            "final_url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q1523937%7CQ25173824%7CQ12645389&props=labels%7Caliases%7Cdescriptions%7Cclaims&languages=en%7Ces%7Cmul&format=json",
+            "status": 200,
+            "content_type": "application/json; charset=utf-8",
+            "sha256": "8cae4c2417a341c887d7a98fcf03651a2fdb37ca6570fec6117dea87e7418c48",
+            "byte_size": 18856,
+            "response_body_utf8": "{\"entities\":{\"Q1523937\":{\"type\":\"item\",\"id\":\"Q1523937\",\"labels\":{\"en\":{\"language\":\"en\",\"value\":\"Yepocapa\"},\"es\":{\"language\":\"es\",\"value\":\"Yepocapa\"}},\"descriptions\":{\"en\":{\"language\":\"en\",\"value\":\"municipality of Chimaltenango Department, Guatemala\"},\"es\":{\"language\":\"es\",\"value\":\"Municipio del departamento de Chimaltenango, Guatemala\"}},\"aliases\":{\"es\":[{\"language\":\"es\",\"value\":\"San Pedro Yepocapa\"}]},\"claims\":{\"P17\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P17\",\"hash\":\"afb436d6b79428439dac84ef269024219b8ea5c6\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":774,\"id\":\"Q774\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"q1523937$4682B876-130B-49A8-A20A-2C17A1954DE8\",\"rank\":\"normal\",\"references\":[{\"hash\":\"c456dc5cd2117249948c288206ff3f8b1bf574f0\",\"snaks\":{\"P143\":[{\"snaktype\":\"value\",\"property\":\"P143\",\"hash\":\"e17507043402fe54ae6c4d65cc51f46cec987de9\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":8449,\"id\":\"Q8449\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}]},\"snaks-order\":[\"P143\"]}]}],\"P625\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P625\",\"hash\":\"f5265165d6bd74d4b9b4694149babccce83c034e\",\"datavalue\":{\"value\":{\"latitude\":14.5,\"longitude\":-90.95,\"altitude\":null,\"precision\":0.016666666666667,\"globe\":\"http://www.wikidata.org/entity/Q2\"},\"type\":\"globecoordinate\"},\"datatype\":\"globe-coordinate\"},\"type\":\"statement\",\"id\":\"Q1523937$60458911-9EBB-48CC-B62B-7C68A6E0960D\",\"rank\":\"normal\",\"references\":[{\"hash\":\"d4bd87b862b12d99d26e86472d44f26858dee639\",\"snaks\":{\"P143\":[{\"snaktype\":\"value\",\"property\":\"P143\",\"hash\":\"f30cbd35620c4ea6d0633aaf0210a8916130469b\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":8447,\"id\":\"Q8447\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}]},\"snaks-order\":[\"P143\"]}]}],\"P646\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P646\",\"hash\":\"334dae87b6c66b8717d474845e1f270e6a2f0bc0\",\"datavalue\":{\"value\":\"/m/078xpf\",\"type\":\"string\"},\"datatype\":\"external-id\"},\"type\":\"statement\",\"id\":\"Q1523937$14EC31AA-60F6-4CC0-9DE2-3787A5040805\",\"rank\":\"normal\",\"references\":[{\"hash\":\"2b00cb481cddcac7623114367489b5c194901c4a\",\"snaks\":{\"P248\":[{\"snaktype\":\"value\",\"property\":\"P248\",\"hash\":\"a94b740202b097dd33355e0e6c00e54b9395e5e0\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":15241312,\"id\":\"Q15241312\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}],\"P577\":[{\"snaktype\":\"value\",\"property\":\"P577\",\"hash\":\"fde79ecb015112d2f29229ccc1ec514ed3e71fa2\",\"datavalue\":{\"value\":{\"time\":\"+2013-10-28T00:00:00Z\",\"timezone\":0,\"before\":0,\"after\":0,\"precision\":11,\"calendarmodel\":\"http://www.wikidata.org/entity/Q1985727\"},\"type\":\"time\"},\"datatype\":\"time\"}]},\"snaks-order\":[\"P248\",\"P577\"]}]}],\"P31\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P31\",\"hash\":\"1aa89ebc08ed50c9e4f2c273d51c4bbdc5889e2d\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":1872284,\"id\":\"Q1872284\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q1523937$4CF4562D-5362-40A4-A1C2-D0876D7FC9FA\",\"rank\":\"normal\"}],\"P47\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P47\",\"hash\":\"56a78874ae3639bec905da7d4592f180e74fba89\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":1254201,\"id\":\"Q1254201\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q1523937$EAB759C7-1103-4660-B27C-0A3C5DEE2B71\",\"rank\":\"normal\",\"references\":[{\"hash\":\"fa278ebfc458360e5aed63d5058cca83c46134f1\",\"snaks\":{\"P143\":[{\"snaktype\":\"value\",\"property\":\"P143\",\"hash\":\"e4f6d9441d0600513c4533c672b5ab472dc73694\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":328,\"id\":\"Q328\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}]},\"snaks-order\":[\"P143\"]}]},{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P47\",\"hash\":\"f86d1c8a1573bfcc99fb073c9c1b6c2f4dde0605\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":404550,\"id\":\"Q404550\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q1523937$D66680B5-E6C2-4410-80BA-41A2356C92B3\",\"rank\":\"normal\"},{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P47\",\"hash\":\"5b982e4f9fccaf7c8d2eb1cf1ea9892c7548791d\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":2608214,\"id\":\"Q2608214\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q1523937$01729d17-447b-a1c4-ff55-0503ad655f7e\",\"rank\":\"normal\"},{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P47\",\"hash\":\"85079368181f55c9e18e9d3a490a685b632db5d7\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":2608585,\"id\":\"Q2608585\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q1523937$661226aa-4b4f-3c79-3640-5a971571d578\",\"rank\":\"normal\"},{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P47\",\"hash\":\"ece4cd0be0e9288ba7b0adf71b89e9fb31e788a5\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":1523949,\"id\":\"Q1523949\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q1523937$87bc8440-451a-99c8-523e-583ade06b93f\",\"rank\":\"normal\"},{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P47\",\"hash\":\"c80765f2f9a75ed58ad14acc2b6ae90ebeec73b0\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":780771,\"id\":\"Q780771\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q1523937$1570E6C8-57DB-4FCE-A36D-B58AC5544820\",\"rank\":\"normal\"}],\"P856\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P856\",\"hash\":\"e5ce187dd8ba408845b9bceab187461b1841c67a\",\"datavalue\":{\"value\":\"http://www.inforpressca.com/sanpedroyepocapa/\",\"type\":\"string\"},\"datatype\":\"url\"},\"type\":\"statement\",\"id\":\"Q1523937$A66CC6CE-F1A7-4F59-9945-2E0610B7FAF6\",\"rank\":\"normal\",\"references\":[{\"hash\":\"d5847b9b6032aa8b13dae3c2dfd9ed5d114d21b3\",\"snaks\":{\"P143\":[{\"snaktype\":\"value\",\"property\":\"P143\",\"hash\":\"5a343e7e758a4282a01316d3e959b6e653b767fc\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":11920,\"id\":\"Q11920\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}]},\"snaks-order\":[\"P143\"]}]}],\"P131\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P131\",\"hash\":\"4f5375843f357e8c7887256b96df614dfbbd88ea\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":1002552,\"id\":\"Q1002552\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q1523937$FB98DE90-BA22-4D9F-9A3E-6934D390D32A\",\"rank\":\"normal\",\"references\":[{\"hash\":\"d4bd87b862b12d99d26e86472d44f26858dee639\",\"snaks\":{\"P143\":[{\"snaktype\":\"value\",\"property\":\"P143\",\"hash\":\"f30cbd35620c4ea6d0633aaf0210a8916130469b\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":8447,\"id\":\"Q8447\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}]},\"snaks-order\":[\"P143\"]}]}],\"P2044\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P2044\",\"hash\":\"80cc0e5efd15e192d8f7cdb63bbe230f2a77ea00\",\"datavalue\":{\"value\":{\"amount\":\"+1403\",\"unit\":\"http://www.wikidata.org/entity/Q11573\"},\"type\":\"quantity\"},\"datatype\":\"quantity\"},\"type\":\"statement\",\"id\":\"Q1523937$D221BA30-61A3-469D-99C9-B856A4B3F22F\",\"rank\":\"normal\",\"references\":[{\"hash\":\"d5847b9b6032aa8b13dae3c2dfd9ed5d114d21b3\",\"snaks\":{\"P143\":[{\"snaktype\":\"value\",\"property\":\"P143\",\"hash\":\"5a343e7e758a4282a01316d3e959b6e653b767fc\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":11920,\"id\":\"Q11920\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}]},\"snaks-order\":[\"P143\"]}]}],\"P2046\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P2046\",\"hash\":\"50be6aac653aaf5fc35125f7d52b67d3577d2040\",\"datavalue\":{\"value\":{\"amount\":\"+217\",\"unit\":\"http://www.wikidata.org/entity/Q712226\"},\"type\":\"quantity\"},\"datatype\":\"quantity\"},\"type\":\"statement\",\"id\":\"Q1523937$66DCB0AD-8C4E-4091-852A-572BEEAE722B\",\"rank\":\"normal\",\"references\":[{\"hash\":\"d5847b9b6032aa8b13dae3c2dfd9ed5d114d21b3\",\"snaks\":{\"P143\":[{\"snaktype\":\"value\",\"property\":\"P143\",\"hash\":\"5a343e7e758a4282a01316d3e959b6e653b767fc\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":11920,\"id\":\"Q11920\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}]},\"snaks-order\":[\"P143\"]}]}],\"P417\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P417\",\"hash\":\"d573ad1ce68d486f9dc7a4a960d76759b79adf81\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":33923,\"id\":\"Q33923\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q1523937$118dc1be-489b-a707-df03-50c59b071f4a\",\"rank\":\"normal\"}],\"P281\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P281\",\"hash\":\"886f6b4ad8794cb851e221ad11e5bb4f055ee59e\",\"datavalue\":{\"value\":\"04012\",\"type\":\"string\"},\"datatype\":\"string\"},\"type\":\"statement\",\"id\":\"Q1523937$601BC5B3-A349-4D8B-ACDD-C1AB4C948E46\",\"rank\":\"normal\",\"references\":[{\"hash\":\"14d2400e3b1d36332748dc330276f099eeaa8800\",\"snaks\":{\"P143\":[{\"snaktype\":\"value\",\"property\":\"P143\",\"hash\":\"39224a9c2e8ce5424defbd16603d25771956c7fc\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":1551807,\"id\":\"Q1551807\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}]},\"snaks-order\":[\"P143\"]}]}],\"P1566\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P1566\",\"hash\":\"da25c8c66437d0bf7f454f8e523412875dba0c97\",\"datavalue\":{\"value\":\"3587635\",\"type\":\"string\"},\"datatype\":\"external-id\"},\"type\":\"statement\",\"id\":\"Q1523937$353A6294-20B2-4021-9B48-1BE1D4CA43CA\",\"rank\":\"normal\",\"references\":[{\"hash\":\"88694a0f4d1486770c269f7db16a1982f74da69d\",\"snaks\":{\"P248\":[{\"snaktype\":\"value\",\"property\":\"P248\",\"hash\":\"1b3ef912a2bd61e18dd43abd184337eb010b2e96\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":830106,\"id\":\"Q830106\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}]},\"snaks-order\":[\"P248\"]}]}],\"P6766\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P6766\",\"hash\":\"00d8dc181ac3699d8a36908a5544a11905bec4cb\",\"datavalue\":{\"value\":\"421197601\",\"type\":\"string\"},\"datatype\":\"external-id\"},\"type\":\"statement\",\"id\":\"Q1523937$13387052-EFF0-43E4-9E1A-538B9D369C1A\",\"rank\":\"normal\"}],\"P7471\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P7471\",\"hash\":\"fa73d41ac5e6031a92634b5430eb7fad519dfdda\",\"datavalue\":{\"value\":\"30888\",\"type\":\"string\"},\"datatype\":\"external-id\"},\"type\":\"statement\",\"id\":\"Q1523937$38F236BA-4952-46E1-B28A-68E58143EF80\",\"rank\":\"normal\",\"references\":[{\"hash\":\"cd265fa9f8591b5905bba6f0b4fd1d62328dc775\",\"snaks\":{\"P248\":[{\"snaktype\":\"value\",\"property\":\"P248\",\"hash\":\"c2f50f16b9b3f2fb15e6f376ad31872737d27fc1\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":16958215,\"id\":\"Q16958215\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}],\"P813\":[{\"snaktype\":\"value\",\"property\":\"P813\",\"hash\":\"4cc18df9c2293cccb3c32fe5fa19a669b1875932\",\"datavalue\":{\"value\":{\"time\":\"+2021-04-25T00:00:00Z\",\"timezone\":0,\"before\":0,\"after\":0,\"precision\":11,\"calendarmodel\":\"http://www.wikidata.org/entity/Q1985727\"},\"type\":\"time\"},\"datatype\":\"time\"}],\"P854\":[{\"snaktype\":\"value\",\"property\":\"P854\",\"hash\":\"f41baedd414e0500ea077cc9f6af295ff25e1d30\",\"datavalue\":{\"value\":\"https://www.inaturalist.org/places/inaturalist-places.csv.zip\",\"type\":\"string\"},\"datatype\":\"url\"}]},\"snaks-order\":[\"P248\",\"P813\",\"P854\"]}]}],\"P190\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P190\",\"hash\":\"595a954d102daf2f61ccebf50a99b42bbb2cc4df\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":326948,\"id\":\"Q326948\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q1523937$3c709f83-4e0e-2205-875a-1e820040977c\",\"rank\":\"normal\"}],\"P1448\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P1448\",\"hash\":\"8624733631cd0ad70f02fa5b375e4229a25469b7\",\"datavalue\":{\"value\":{\"text\":\"San Pedro Yepocapa\",\"language\":\"es\"},\"type\":\"monolingualtext\"},\"datatype\":\"monolingualtext\"},\"type\":\"statement\",\"id\":\"Q1523937$1c6047d7-4479-7e5a-b5f9-bac90cad5352\",\"rank\":\"normal\"}],\"P1082\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P1082\",\"hash\":\"cba94b8f65fd3f3f9923d6b503c6d95146098ee2\",\"datavalue\":{\"value\":{\"amount\":\"+42996\",\"unit\":\"1\"},\"type\":\"quantity\"},\"datatype\":\"quantity\"},\"type\":\"statement\",\"qualifiers\":{\"P459\":[{\"snaktype\":\"value\",\"property\":\"P459\",\"hash\":\"0ab08b7d55934af957c91b76076456293d70bc28\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":2369019,\"id\":\"Q2369019\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}],\"P585\":[{\"snaktype\":\"value\",\"property\":\"P585\",\"hash\":\"2158d4b68f82b8f36f47c98bd3609a99913faa59\",\"datavalue\":{\"value\":{\"time\":\"+2022-00-00T00:00:00Z\",\"timezone\":0,\"before\":0,\"after\":0,\"precision\":9,\"calendarmodel\":\"http://www.wikidata.org/entity/Q1985727\"},\"type\":\"time\"},\"datatype\":\"time\"}]},\"qualifiers-order\":[\"P459\",\"P585\"],\"id\":\"Q1523937$3adfe54c-4c0f-5870-a65e-f191ee0fd5bf\",\"rank\":\"normal\"}],\"P402\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P402\",\"hash\":\"d80e7aa0010c92fb4ffc9410cfae6c8cd36a73b6\",\"datavalue\":{\"value\":\"4487288\",\"type\":\"string\"},\"datatype\":\"external-id\"},\"type\":\"statement\",\"id\":\"Q1523937$63BFD6DF-DB52-4C8A-A925-DEFA7C865911\",\"rank\":\"normal\"}]}},\"Q25173824\":{\"type\":\"item\",\"id\":\"Q25173824\",\"labels\":{\"en\":{\"language\":\"en\",\"value\":\"Yepocapa\"}},\"descriptions\":{},\"aliases\":{},\"claims\":{\"P17\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P17\",\"hash\":\"afb436d6b79428439dac84ef269024219b8ea5c6\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":774,\"id\":\"Q774\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q25173824$71A7B1E6-69F3-4FFF-9FBF-ACF380112D64\",\"rank\":\"normal\",\"references\":[{\"hash\":\"8ff3e4551fb33893b236651a793904eb50167562\",\"snaks\":{\"P248\":[{\"snaktype\":\"value\",\"property\":\"P248\",\"hash\":\"7648f66055f57f6227dd1f872bc4ed26c70da7c6\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":1194038,\"id\":\"Q1194038\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}],\"P577\":[{\"snaktype\":\"value\",\"property\":\"P577\",\"hash\":\"a372c95b03a3464736c5fd1d7ed86176f0c04973\",\"datavalue\":{\"value\":{\"time\":\"+2018-06-11T00:00:00Z\",\"timezone\":0,\"before\":0,\"after\":0,\"precision\":11,\"calendarmodel\":\"http://www.wikidata.org/entity/Q1985727\"},\"type\":\"time\"},\"datatype\":\"time\"}],\"P2326\":[{\"snaktype\":\"value\",\"property\":\"P2326\",\"hash\":\"5c3308c34a5d043be5a9bc5e2065a999b88afee0\",\"datavalue\":{\"value\":\"-1143758\",\"type\":\"string\"},\"datatype\":\"external-id\"}]},\"snaks-order\":[\"P248\",\"P577\",\"P2326\"]}]}],\"P625\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P625\",\"hash\":\"8d5c7ebb112e475f78dd7d0cbb2f0e27853b8342\",\"datavalue\":{\"value\":{\"latitude\":14.50195,\"longitude\":-90.95396,\"altitude\":null,\"precision\":1.0e-5,\"globe\":\"http://www.wikidata.org/entity/Q2\"},\"type\":\"globecoordinate\"},\"datatype\":\"globe-coordinate\"},\"type\":\"statement\",\"id\":\"Q25173824$F652EE00-79E3-4431-89B0-EB0615BD2E59\",\"rank\":\"normal\",\"references\":[{\"hash\":\"88694a0f4d1486770c269f7db16a1982f74da69d\",\"snaks\":{\"P248\":[{\"snaktype\":\"value\",\"property\":\"P248\",\"hash\":\"1b3ef912a2bd61e18dd43abd184337eb010b2e96\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":830106,\"id\":\"Q830106\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}]},\"snaks-order\":[\"P248\"]}]}],\"P1566\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P1566\",\"hash\":\"2609ea0f7e66626970954b8c4b933c1081f97426\",\"datavalue\":{\"value\":\"3587636\",\"type\":\"string\"},\"datatype\":\"external-id\"},\"type\":\"statement\",\"id\":\"Q25173824$09E9017A-42B0-4E62-A6E3-0D546D8C37BE\",\"rank\":\"normal\",\"references\":[{\"hash\":\"88694a0f4d1486770c269f7db16a1982f74da69d\",\"snaks\":{\"P248\":[{\"snaktype\":\"value\",\"property\":\"P248\",\"hash\":\"1b3ef912a2bd61e18dd43abd184337eb010b2e96\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":830106,\"id\":\"Q830106\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"}]},\"snaks-order\":[\"P248\"]}]}],\"P2326\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P2326\",\"hash\":\"5c3308c34a5d043be5a9bc5e2065a999b88afee0\",\"datavalue\":{\"value\":\"-1143758\",\"type\":\"string\"},\"datatype\":\"external-id\"},\"type\":\"statement\",\"id\":\"Q25173824$FDB95E0E-475E-4FC0-95C5-FA8910E5D219\",\"rank\":\"normal\"}],\"P131\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P131\",\"hash\":\"69b66811562121aea0e55ccf37a3a526ef9dafef\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":1523937,\"id\":\"Q1523937\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q25173824$FA3D68A8-0B3C-4B9B-A30A-1DB67A7ED149\",\"rank\":\"normal\"}],\"P31\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P31\",\"hash\":\"ab8d8c977b5e1d15b7397f573738abbb020ccc7d\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":486972,\"id\":\"Q486972\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q25173824$64CB1C07-8179-4E8B-9167-63F079DF3AAB\",\"rank\":\"normal\"}]}},\"Q12645389\":{\"type\":\"item\",\"id\":\"Q12645389\",\"labels\":{\"en\":{\"language\":\"en\",\"value\":\"Yepocapa Southwestern Cakchiquel\"}},\"descriptions\":{},\"aliases\":{},\"claims\":{\"P31\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P31\",\"hash\":\"b0e46d00702a2d52bc5af776bdecb3b08f0e5370\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":33384,\"id\":\"Q33384\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q12645389$BF1F4BB1-7BA6-4AB1-BEBB-C214A4C6A008\",\"rank\":\"normal\",\"references\":[{\"hash\":\"08c79f292a7067aeb29fe56e257a2d28b6d90ff3\",\"snaks\":{\"P854\":[{\"snaktype\":\"value\",\"property\":\"P854\",\"hash\":\"93e49c8e4490ead3962f56757a1f003a97dbc1c6\",\"datavalue\":{\"value\":\"https://iso639-3.sil.org/sites/iso639-3/files/change_requests/2008/2008-053.pdf\",\"type\":\"string\"},\"datatype\":\"url\"}]},\"snaks-order\":[\"P854\"]}]}],\"P220\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P220\",\"hash\":\"53117fd719eb9cbcbc5c4713048937525a372162\",\"datavalue\":{\"value\":\"cbm\",\"type\":\"string\"},\"datatype\":\"external-id\"},\"type\":\"statement\",\"qualifiers\":{\"P582\":[{\"snaktype\":\"value\",\"property\":\"P582\",\"hash\":\"274f21c998e353048c7484d9fbe49aa78b428566\",\"datavalue\":{\"value\":{\"time\":\"+2009-01-16T00:00:00Z\",\"timezone\":0,\"before\":0,\"after\":0,\"precision\":11,\"calendarmodel\":\"http://www.wikidata.org/entity/Q1985727\"},\"type\":\"time\"},\"datatype\":\"time\"}]},\"qualifiers-order\":[\"P582\"],\"id\":\"Q12645389$10CBC711-B5A4-4FB2-9668-D0BA4B9DEBB8\",\"rank\":\"normal\"}],\"P1394\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P1394\",\"hash\":\"e24a2d1f3af9c91a267828206a5f0706d2b96fcb\",\"datavalue\":{\"value\":\"kaqc1271\",\"type\":\"string\"},\"datatype\":\"external-id\"},\"type\":\"statement\",\"id\":\"Q12645389$5d75cb0c-4a72-4130-4b6a-c711513cc30c\",\"rank\":\"normal\"}],\"P279\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P279\",\"hash\":\"23a0aac05b080e349bfdc0c83e6b5029d08a9442\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":35115,\"id\":\"Q35115\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q12645389$c33ee29c-4c1c-9338-39eb-e4990ca82fc0\",\"rank\":\"normal\"}],\"P4913\":[{\"mainsnak\":{\"snaktype\":\"value\",\"property\":\"P4913\",\"hash\":\"af030189d32c32128c950e1fee6dba4feabfb91f\",\"datavalue\":{\"value\":{\"entity-type\":\"item\",\"numeric-id\":35115,\"id\":\"Q35115\"},\"type\":\"wikibase-entityid\"},\"datatype\":\"wikibase-item\"},\"type\":\"statement\",\"id\":\"Q12645389$4c249ea2-4718-7932-a06b-0edd64d62be0\",\"rank\":\"normal\"}],\"P305\":[{\"mainsnak\":{\"snaktype\":\"novalue\",\"property\":\"P305\",\"hash\":\"5d076c384bed20da8c4e826e55b6b30f7fc49428\",\"datatype\":\"external-id\"},\"type\":\"statement\",\"id\":\"Q12645389$29E9D073-4CCD-47A9-B3C0-DFBB94C769D4\",\"rank\":\"normal\"}]}}},\"success\":1}"
+          },
+          {
+            "url": "https://www.wikidata.org/w/api.php",
+            "params": {
+              "action": "wbgetentities",
+              "ids": "Q1002552|Q1872284|Q33384|Q486972|Q774",
+              "props": "labels",
+              "languages": "en|mul",
+              "format": "json"
+            },
+            "final_url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q1002552%7CQ1872284%7CQ33384%7CQ486972%7CQ774&props=labels&languages=en%7Cmul&format=json",
+            "status": 200,
+            "content_type": "application/json; charset=utf-8",
+            "sha256": "842cc6a2cf175cb9a2c7da50e628a8a11a8dcbe9385b00dc6d931091f75a9fe4",
+            "byte_size": 522,
+            "response_body_utf8": "{\"entities\":{\"Q1002552\":{\"type\":\"item\",\"id\":\"Q1002552\",\"labels\":{\"en\":{\"language\":\"en\",\"value\":\"Chimaltenango\"}}},\"Q1872284\":{\"type\":\"item\",\"id\":\"Q1872284\",\"labels\":{\"en\":{\"language\":\"en\",\"value\":\"municipality of Guatemala\"}}},\"Q33384\":{\"type\":\"item\",\"id\":\"Q33384\",\"labels\":{\"en\":{\"language\":\"en\",\"value\":\"dialect\"}}},\"Q486972\":{\"type\":\"item\",\"id\":\"Q486972\",\"labels\":{\"en\":{\"language\":\"en\",\"value\":\"human settlement\"}}},\"Q774\":{\"type\":\"item\",\"id\":\"Q774\",\"labels\":{\"en\":{\"language\":\"en\",\"value\":\"Guatemala\"}}}},\"success\":1}"
+          }
+        ]
+      }
+    ],
+    "nga": [
+      {
+        "source": "nga",
+        "query": "Yepocapa",
+        "retrieved_at": "2026-10-05T03:39:02.716333+00:00",
+        "user_agent": "FieldMuseumSpecimenResearch/1.0 (https://github.com/anurag-duddu/specimen-digitization-app)",
+        "scope": "public place only; endpoint/parser canary, not specimen runtime proof",
+        "outcome": {
+          "status": "success",
+          "reason": null,
+          "places": [
+            {
+              "source": "nga",
+              "record_id": "-1143758",
+              "name": "Yepocapa",
+              "names": [
+                "Municipio de Yepocapa",
+                "Municipio de San Pedro Yepocapa"
+              ],
+              "description": null,
+              "kinds": [
+                {
+                  "id": "A.ADM2",
+                  "name": null,
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": {
+                "id": "GT",
+                "name": null,
+                "start": null,
+                "end": null
+              },
+              "iso_code": null,
+              "parents": [
+                {
+                  "id": "GT-04",
+                  "name": "Chimaltenango",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "point": [
+                14.467246,
+                -90.974157
+              ],
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": null
+            },
+            {
+              "source": "nga",
+              "record_id": "-1143757",
+              "name": "Yepocapa",
+              "names": [
+                "San Pedro Yepocapa"
+              ],
+              "description": null,
+              "kinds": [
+                {
+                  "id": "P.PPLA2",
+                  "name": null,
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": {
+                "id": "GT",
+                "name": null,
+                "start": null,
+                "end": null
+              },
+              "iso_code": null,
+              "parents": [
+                {
+                  "id": "GT-04",
+                  "name": "Chimaltenango",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "point": [
+                14.501946,
+                -90.953956
+              ],
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": null
+            }
+          ]
+        },
+        "exchanges": [
+          {
+            "url": "https://geonames.nga.mil/geon-ags/rest/services/RESEARCH/GIS_OUTPUT/MapServer/0/query",
+            "params": {
+              "where": "UPPER(full_name) = UPPER('Yepocapa') OR UPPER(full_nm_nd) = UPPER('Yepocapa')",
+              "outFields": "ufi,uni,full_name,full_nm_nd,nt,fc,desig_cd,adm1,lat_dd,long_dd,term_dt_f,name_rank",
+              "returnGeometry": "false",
+              "orderByFields": "ufi,uni",
+              "f": "json"
+            },
+            "final_url": "https://geonames.nga.mil/geon-ags/rest/services/RESEARCH/GIS_OUTPUT/MapServer/0/query?where=UPPER%28full_name%29+%3D+UPPER%28%27Yepocapa%27%29+OR+UPPER%28full_nm_nd%29+%3D+UPPER%28%27Yepocapa%27%29&outFields=ufi%2Cuni%2Cfull_name%2Cfull_nm_nd%2Cnt%2Cfc%2Cdesig_cd%2Cadm1%2Clat_dd%2Clong_dd%2Cterm_dt_f%2Cname_rank&returnGeometry=false&orderByFields=ufi%2Cuni&f=json",
+            "status": 200,
+            "content_type": "application/json;charset=UTF-8",
+            "sha256": "d2f032fb5232489590b60e7aa5d752681792f2b76a3ca40898d5a705f97848e6",
+            "byte_size": 1916,
+            "response_body_utf8": "{\"displayFieldName\":\"full_name\",\"fieldAliases\":{\"ufi\":\"Unique Feature Identifier\",\"uni\":\"Unique Name Identifier\",\"full_name\":\"Full Name\",\"full_nm_nd\":\"Full Name (no diacritics)\",\"nt\":\"Name Type Code\",\"fc\":\"Feature Class Code\",\"desig_cd\":\"Feature Designation Code\",\"adm1\":\"First-Order Administrative Subdivision Code \",\"lat_dd\":\"Latitude (DD)\",\"long_dd\":\"Longitude (DD)\",\"term_dt_f\":\"Termination Date (feature)\",\"name_rank\":\"Name Rank\"},\"fields\":[{\"name\":\"ufi\",\"type\":\"esriFieldTypeInteger\",\"alias\":\"Unique Feature Identifier\"},{\"name\":\"uni\",\"type\":\"esriFieldTypeInteger\",\"alias\":\"Unique Name Identifier\"},{\"name\":\"full_name\",\"type\":\"esriFieldTypeString\",\"alias\":\"Full Name\",\"length\":255},{\"name\":\"full_nm_nd\",\"type\":\"esriFieldTypeString\",\"alias\":\"Full Name (no diacritics)\",\"length\":255},{\"name\":\"nt\",\"type\":\"esriFieldTypeString\",\"alias\":\"Name Type Code\",\"length\":2},{\"name\":\"fc\",\"type\":\"esriFieldTypeString\",\"alias\":\"Feature Class Code\",\"length\":1},{\"name\":\"desig_cd\",\"type\":\"esriFieldTypeString\",\"alias\":\"Feature Designation Code\",\"length\":6},{\"name\":\"adm1\",\"type\":\"esriFieldTypeString\",\"alias\":\"First-Order Administrative Subdivision Code \",\"length\":255},{\"name\":\"lat_dd\",\"type\":\"esriFieldTypeDouble\",\"alias\":\"Latitude (DD)\"},{\"name\":\"long_dd\",\"type\":\"esriFieldTypeDouble\",\"alias\":\"Longitude (DD)\"},{\"name\":\"term_dt_f\",\"type\":\"esriFieldTypeDate\",\"alias\":\"Termination Date (feature)\",\"length\":8},{\"name\":\"name_rank\",\"type\":\"esriFieldTypeInteger\",\"alias\":\"Name Rank\"}],\"features\":[{\"attributes\":{\"ufi\":-1143758,\"uni\":19180816,\"full_name\":\"Yepocapa\",\"full_nm_nd\":\"Yepocapa\",\"nt\":\"N\",\"fc\":\"A\",\"desig_cd\":\"ADM2\",\"adm1\":\"GT-04\",\"lat_dd\":14.467246,\"long_dd\":-90.974157,\"term_dt_f\":null,\"name_rank\":1}},{\"attributes\":{\"ufi\":-1143757,\"uni\":-1685958,\"full_name\":\"Yepocapa\",\"full_nm_nd\":\"Yepocapa\",\"nt\":\"N\",\"fc\":\"P\",\"desig_cd\":\"PPLA2\",\"adm1\":\"GT-04\",\"lat_dd\":14.501946,\"long_dd\":-90.953956,\"term_dt_f\":null,\"name_rank\":1}}]}"
+          },
+          {
+            "url": "https://geonames.nga.mil/geon-ags/rest/services/RESEARCH/GIS_OUTPUT/MapServer/0/query",
+            "params": {
+              "where": "ufi IN (-1143758, -1143757)",
+              "outFields": "ufi,uni,full_name,full_nm_nd,nt,fc,desig_cd,adm1,lat_dd,long_dd,term_dt_f,name_rank",
+              "returnGeometry": "false",
+              "orderByFields": "ufi,uni",
+              "f": "json"
+            },
+            "final_url": "https://geonames.nga.mil/geon-ags/rest/services/RESEARCH/GIS_OUTPUT/MapServer/0/query?where=ufi+IN+%28-1143758%2C+-1143757%29&outFields=ufi%2Cuni%2Cfull_name%2Cfull_nm_nd%2Cnt%2Cfc%2Cdesig_cd%2Cadm1%2Clat_dd%2Clong_dd%2Cterm_dt_f%2Cname_rank&returnGeometry=false&orderByFields=ufi%2Cuni&f=json",
+            "status": 200,
+            "content_type": "application/json;charset=UTF-8",
+            "sha256": "e4ec2421d1d573942a1b594a607dd86383cf556ee675b8cfc162482996aaea93",
+            "byte_size": 2663,
+            "response_body_utf8": "{\"displayFieldName\":\"full_name\",\"fieldAliases\":{\"ufi\":\"Unique Feature Identifier\",\"uni\":\"Unique Name Identifier\",\"full_name\":\"Full Name\",\"full_nm_nd\":\"Full Name (no diacritics)\",\"nt\":\"Name Type Code\",\"fc\":\"Feature Class Code\",\"desig_cd\":\"Feature Designation Code\",\"adm1\":\"First-Order Administrative Subdivision Code \",\"lat_dd\":\"Latitude (DD)\",\"long_dd\":\"Longitude (DD)\",\"term_dt_f\":\"Termination Date (feature)\",\"name_rank\":\"Name Rank\"},\"fields\":[{\"name\":\"ufi\",\"type\":\"esriFieldTypeInteger\",\"alias\":\"Unique Feature Identifier\"},{\"name\":\"uni\",\"type\":\"esriFieldTypeInteger\",\"alias\":\"Unique Name Identifier\"},{\"name\":\"full_name\",\"type\":\"esriFieldTypeString\",\"alias\":\"Full Name\",\"length\":255},{\"name\":\"full_nm_nd\",\"type\":\"esriFieldTypeString\",\"alias\":\"Full Name (no diacritics)\",\"length\":255},{\"name\":\"nt\",\"type\":\"esriFieldTypeString\",\"alias\":\"Name Type Code\",\"length\":2},{\"name\":\"fc\",\"type\":\"esriFieldTypeString\",\"alias\":\"Feature Class Code\",\"length\":1},{\"name\":\"desig_cd\",\"type\":\"esriFieldTypeString\",\"alias\":\"Feature Designation Code\",\"length\":6},{\"name\":\"adm1\",\"type\":\"esriFieldTypeString\",\"alias\":\"First-Order Administrative Subdivision Code \",\"length\":255},{\"name\":\"lat_dd\",\"type\":\"esriFieldTypeDouble\",\"alias\":\"Latitude (DD)\"},{\"name\":\"long_dd\",\"type\":\"esriFieldTypeDouble\",\"alias\":\"Longitude (DD)\"},{\"name\":\"term_dt_f\",\"type\":\"esriFieldTypeDate\",\"alias\":\"Termination Date (feature)\",\"length\":8},{\"name\":\"name_rank\",\"type\":\"esriFieldTypeInteger\",\"alias\":\"Name Rank\"}],\"features\":[{\"attributes\":{\"ufi\":-1143758,\"uni\":-1685959,\"full_name\":\"Municipio de Yepocapa\",\"full_nm_nd\":\"Municipio de Yepocapa\",\"nt\":\"N\",\"fc\":\"A\",\"desig_cd\":\"ADM2\",\"adm1\":\"GT-04\",\"lat_dd\":14.467246,\"long_dd\":-90.974157,\"term_dt_f\":null,\"name_rank\":2}},{\"attributes\":{\"ufi\":-1143758,\"uni\":-1683370,\"full_name\":\"Municipio de San Pedro Yepocapa\",\"full_nm_nd\":\"Municipio de San Pedro Yepocapa\",\"nt\":\"V\",\"fc\":\"A\",\"desig_cd\":\"ADM2\",\"adm1\":\"GT-04\",\"lat_dd\":14.467246,\"long_dd\":-90.974157,\"term_dt_f\":null,\"name_rank\":null}},{\"attributes\":{\"ufi\":-1143758,\"uni\":19180816,\"full_name\":\"Yepocapa\",\"full_nm_nd\":\"Yepocapa\",\"nt\":\"N\",\"fc\":\"A\",\"desig_cd\":\"ADM2\",\"adm1\":\"GT-04\",\"lat_dd\":14.467246,\"long_dd\":-90.974157,\"term_dt_f\":null,\"name_rank\":1}},{\"attributes\":{\"ufi\":-1143757,\"uni\":-1685958,\"full_name\":\"Yepocapa\",\"full_nm_nd\":\"Yepocapa\",\"nt\":\"N\",\"fc\":\"P\",\"desig_cd\":\"PPLA2\",\"adm1\":\"GT-04\",\"lat_dd\":14.501946,\"long_dd\":-90.953956,\"term_dt_f\":null,\"name_rank\":1}},{\"attributes\":{\"ufi\":-1143757,\"uni\":-1683369,\"full_name\":\"San Pedro Yepocapa\",\"full_nm_nd\":\"San Pedro Yepocapa\",\"nt\":\"V\",\"fc\":\"P\",\"desig_cd\":\"PPLA2\",\"adm1\":\"GT-04\",\"lat_dd\":14.501946,\"long_dd\":-90.953956,\"term_dt_f\":null,\"name_rank\":null}}]}"
+          },
+          {
+            "url": "https://geonames.nga.mil/geon-ags/rest/services/RESEARCH/GIS_OUTPUT/MapServer/1/query",
+            "params": {
+              "where": "adm1 IN ('GT-04')",
+              "outFields": "adm1,adm1_name",
+              "orderByFields": "adm1",
+              "f": "json"
+            },
+            "final_url": "https://geonames.nga.mil/geon-ags/rest/services/RESEARCH/GIS_OUTPUT/MapServer/1/query?where=adm1+IN+%28%27GT-04%27%29&outFields=adm1%2Cadm1_name&orderByFields=adm1&f=json",
+            "status": 200,
+            "content_type": "application/json;charset=UTF-8",
+            "sha256": "5ae7ffad712428c6ae5d8c80eb93d6086bab1616006d29e1e842af43194a607c",
+            "byte_size": 326,
+            "response_body_utf8": "{\"displayFieldName\":\"adm1_name\",\"fieldAliases\":{\"adm1\":\"adm1\",\"adm1_name\":\"adm1_name\"},\"fields\":[{\"name\":\"adm1\",\"type\":\"esriFieldTypeString\",\"alias\":\"adm1\",\"length\":10},{\"name\":\"adm1_name\",\"type\":\"esriFieldTypeString\",\"alias\":\"adm1_name\",\"length\":255}],\"features\":[{\"attributes\":{\"adm1\":\"GT-04\",\"adm1_name\":\"Chimaltenango\"}}]}"
+          }
+        ]
+      }
+    ],
+    "tgn": [
+      {
+        "source": "tgn",
+        "query": "Yepocapa",
+        "retrieved_at": "2026-10-05T03:38:54.326389+00:00",
+        "user_agent": "FieldMuseumSpecimenResearch/1.0 (https://github.com/anurag-duddu/specimen-digitization-app)",
+        "scope": "public place only; endpoint/parser canary, not specimen runtime proof",
+        "outcome": {
+          "status": "no_match",
+          "reason": null,
+          "places": []
+        },
+        "exchanges": [
+          {
+            "url": "https://services.getty.edu/vocab/reconcile/",
+            "params": {
+              "queries": "{\"q0\": {\"query\": \"Yepocapa\", \"type\": \"/tgn\", \"limit\": 10}}"
+            },
+            "final_url": "https://services.getty.edu/vocab/reconcile/?queries=%7B%22q0%22%3A+%7B%22query%22%3A+%22Yepocapa%22%2C+%22type%22%3A+%22%2Ftgn%22%2C+%22limit%22%3A+10%7D%7D",
+            "status": 200,
+            "content_type": "application/json",
+            "sha256": "02cd36a31197ba31a70b5f6c0e9885f7dd5c844a9f1166210e284e24408dfb2f",
+            "byte_size": 21,
+            "response_body_utf8": "{\"q0\":{\"result\":[]}}\n"
+          }
+        ]
+      },
+      {
+        "source": "tgn",
+        "query": "Manila",
+        "retrieved_at": "2026-10-05T03:39:42.034039+00:00",
+        "user_agent": "FieldMuseumSpecimenResearch/1.0 (https://github.com/anurag-duddu/specimen-digitization-app)",
+        "scope": "public place only; endpoint/parser canary, not specimen runtime proof",
+        "outcome": {
+          "status": "success",
+          "reason": null,
+          "places": [
+            {
+              "source": "tgn",
+              "record_id": "2004369",
+              "name": "Manila",
+              "names": [
+                "Fort Madison"
+              ],
+              "description": null,
+              "kinds": [
+                {
+                  "id": "aat:300008347",
+                  "name": "inhabited places",
+                  "start": null,
+                  "end": null
+                },
+                {
+                  "id": "aat:300387210",
+                  "name": "rural communities",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": {
+                "id": "7012149",
+                "name": "United States",
+                "start": null,
+                "end": null
+              },
+              "iso_code": null,
+              "parents": [
+                {
+                  "id": "2000012",
+                  "name": "Clarke",
+                  "start": null,
+                  "end": null
+                },
+                {
+                  "id": "7002659",
+                  "name": "Alabama",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "point": [
+                31.5,
+                -87.7167
+              ],
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": "ODC-By-1.0"
+            },
+            {
+              "source": "tgn",
+              "record_id": "2490445",
+              "name": "Manila",
+              "names": [
+                "Veto"
+              ],
+              "description": null,
+              "kinds": [
+                {
+                  "id": "aat:300008347",
+                  "name": "inhabited places",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": {
+                "id": "7012149",
+                "name": "United States",
+                "start": null,
+                "end": null
+              },
+              "iso_code": null,
+              "parents": [
+                {
+                  "id": "2000023",
+                  "name": "Dallas",
+                  "start": null,
+                  "end": null
+                },
+                {
+                  "id": "7002659",
+                  "name": "Alabama",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "point": [
+                32.4333,
+                -86.9167
+              ],
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": "ODC-By-1.0"
+            },
+            {
+              "source": "tgn",
+              "record_id": "2040158",
+              "name": "Manila",
+              "names": [],
+              "description": null,
+              "kinds": [
+                {
+                  "id": "aat:300008347",
+                  "name": "inhabited places",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": {
+                "id": "7012149",
+                "name": "United States",
+                "start": null,
+                "end": null
+              },
+              "iso_code": null,
+              "parents": [
+                {
+                  "id": "2000804",
+                  "name": "Johnson",
+                  "start": null,
+                  "end": null
+                },
+                {
+                  "id": "7007255",
+                  "name": "Kentucky",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "point": [
+                37.8333,
+                -82.9
+              ],
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": "ODC-By-1.0"
+            },
+            {
+              "source": "tgn",
+              "record_id": "2490447",
+              "name": "Manila",
+              "names": [],
+              "description": null,
+              "kinds": [
+                {
+                  "id": "aat:300008347",
+                  "name": "inhabited places",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": {
+                "id": "7012149",
+                "name": "United States",
+                "start": null,
+                "end": null
+              },
+              "iso_code": null,
+              "parents": [
+                {
+                  "id": "2001229",
+                  "name": "Pettis",
+                  "start": null,
+                  "end": null
+                },
+                {
+                  "id": "7007523",
+                  "name": "Missouri",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "point": [
+                38.55,
+                -93.3333
+              ],
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": "ODC-By-1.0"
+            },
+            {
+              "source": "tgn",
+              "record_id": "2015946",
+              "name": "Manila",
+              "names": [],
+              "description": null,
+              "kinds": [
+                {
+                  "id": "aat:300387016",
+                  "name": "transport points",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": {
+                "id": "7012149",
+                "name": "United States",
+                "start": null,
+                "end": null
+              },
+              "iso_code": null,
+              "parents": [
+                {
+                  "id": "2000192",
+                  "name": "Adams",
+                  "start": null,
+                  "end": null
+                },
+                {
+                  "id": "7007158",
+                  "name": "Colorado",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "point": [
+                39.75,
+                -104.5167
+              ],
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": "ODC-By-1.0"
+            },
+            {
+              "source": "tgn",
+              "record_id": "2008870",
+              "name": "Manila",
+              "names": [
+                "Big Lake Island",
+                "Cinda"
+              ],
+              "description": null,
+              "kinds": [
+                {
+                  "id": "aat:300008347",
+                  "name": "inhabited places",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": {
+                "id": "7012149",
+                "name": "United States",
+                "start": null,
+                "end": null
+              },
+              "iso_code": null,
+              "parents": [
+                {
+                  "id": "2000151",
+                  "name": "Mississippi",
+                  "start": null,
+                  "end": null
+                },
+                {
+                  "id": "7016172",
+                  "name": "Arkansas",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "point": [
+                35.8667,
+                -90.1667
+              ],
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": "ODC-By-1.0"
+            },
+            {
+              "source": "tgn",
+              "record_id": "2012592",
+              "name": "Manila",
+              "names": [],
+              "description": null,
+              "kinds": [
+                {
+                  "id": "aat:300008347",
+                  "name": "inhabited places",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": {
+                "id": "7012149",
+                "name": "United States",
+                "start": null,
+                "end": null
+              },
+              "iso_code": null,
+              "parents": [
+                {
+                  "id": "2000181",
+                  "name": "Humboldt",
+                  "start": null,
+                  "end": null
+                },
+                {
+                  "id": "7007157",
+                  "name": "California",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "point": [
+                40.85,
+                -124.15
+              ],
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": "ODC-By-1.0"
+            },
+            {
+              "source": "tgn",
+              "record_id": "2490446",
+              "name": "Manila",
+              "names": [],
+              "description": null,
+              "kinds": [
+                {
+                  "id": "aat:300008347",
+                  "name": "inhabited places",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": {
+                "id": "7012149",
+                "name": "United States",
+                "start": null,
+                "end": null
+              },
+              "iso_code": null,
+              "parents": [
+                {
+                  "id": "2000099",
+                  "name": "Navajo",
+                  "start": null,
+                  "end": null
+                },
+                {
+                  "id": "7006451",
+                  "name": "Arizona",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "point": [
+                34.95,
+                -110.4
+              ],
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": "ODC-By-1.0"
+            },
+            {
+              "source": "tgn",
+              "record_id": "2119100",
+              "name": "Manila",
+              "names": [],
+              "description": null,
+              "kinds": [
+                {
+                  "id": "aat:300008347",
+                  "name": "inhabited places",
+                  "start": null,
+                  "end": null
+                },
+                {
+                  "id": "aat:300387210",
+                  "name": "rural communities",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": {
+                "id": "7012149",
+                "name": "United States",
+                "start": null,
+                "end": null
+              },
+              "iso_code": null,
+              "parents": [
+                {
+                  "id": "2002255",
+                  "name": "Boone",
+                  "start": null,
+                  "end": null
+                },
+                {
+                  "id": "7013961",
+                  "name": "West Virginia",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "point": [
+                37.9833,
+                -81.9333
+              ],
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": "ODC-By-1.0"
+            },
+            {
+              "source": "tgn",
+              "record_id": "2109049",
+              "name": "Manila",
+              "names": [],
+              "description": null,
+              "kinds": [
+                {
+                  "id": "aat:300008347",
+                  "name": "inhabited places",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "country": {
+                "id": "7012149",
+                "name": "United States",
+                "start": null,
+                "end": null
+              },
+              "iso_code": null,
+              "parents": [
+                {
+                  "id": "2002105",
+                  "name": "Daggett",
+                  "start": null,
+                  "end": null
+                },
+                {
+                  "id": "7007827",
+                  "name": "Utah",
+                  "start": null,
+                  "end": null
+                }
+              ],
+              "point": [
+                40.9833,
+                -109.7167
+              ],
+              "valid_from": null,
+              "valid_to": null,
+              "replaces": [],
+              "replaced_by": [],
+              "license": "ODC-By-1.0"
+            }
+          ]
+        },
+        "exchanges": [
+          {
+            "url": "https://services.getty.edu/vocab/reconcile/",
+            "params": {
+              "queries": "{\"q0\": {\"query\": \"Manila\", \"type\": \"/tgn\", \"limit\": 10}}"
+            },
+            "final_url": "https://services.getty.edu/vocab/reconcile/?queries=%7B%22q0%22%3A+%7B%22query%22%3A+%22Manila%22%2C+%22type%22%3A+%22%2Ftgn%22%2C+%22limit%22%3A+10%7D%7D",
+            "status": 200,
+            "content_type": "application/json",
+            "sha256": "e92bcd895a19edca80e55b897d50e5944a41f23323d6666c1ffc637f54a4a4a4",
+            "byte_size": 2250,
+            "response_body_utf8": "{\"q0\":{\"result\":[{\"id\":\"tgn/2004369\",\"match\":false,\"name\":\"Manila\",\"score\":27.648628,\"type\":[{\"id\":\"/ulan\",\"name\":\"ULAN search\"},{\"id\":\"/tgn\",\"name\":\"TGN search\"},{\"id\":\"/aat\",\"name\":\"AAT search\"},{\"id\":\"/all\",\"name\":\"Search all Vocabs\"}]},{\"id\":\"tgn/2490445\",\"match\":false,\"name\":\"Manila\",\"score\":27.648628,\"type\":[{\"id\":\"/ulan\",\"name\":\"ULAN search\"},{\"id\":\"/tgn\",\"name\":\"TGN search\"},{\"id\":\"/aat\",\"name\":\"AAT search\"},{\"id\":\"/all\",\"name\":\"Search all Vocabs\"}]},{\"id\":\"tgn/2040158\",\"match\":false,\"name\":\"Manila\",\"score\":27.648628,\"type\":[{\"id\":\"/ulan\",\"name\":\"ULAN search\"},{\"id\":\"/tgn\",\"name\":\"TGN search\"},{\"id\":\"/aat\",\"name\":\"AAT search\"},{\"id\":\"/all\",\"name\":\"Search all Vocabs\"}]},{\"id\":\"tgn/2490447\",\"match\":false,\"name\":\"Manila\",\"score\":27.648628,\"type\":[{\"id\":\"/ulan\",\"name\":\"ULAN search\"},{\"id\":\"/tgn\",\"name\":\"TGN search\"},{\"id\":\"/aat\",\"name\":\"AAT search\"},{\"id\":\"/all\",\"name\":\"Search all Vocabs\"}]},{\"id\":\"tgn/2015946\",\"match\":false,\"name\":\"Manila\",\"score\":27.648628,\"type\":[{\"id\":\"/ulan\",\"name\":\"ULAN search\"},{\"id\":\"/tgn\",\"name\":\"TGN search\"},{\"id\":\"/aat\",\"name\":\"AAT search\"},{\"id\":\"/all\",\"name\":\"Search all Vocabs\"}]},{\"id\":\"tgn/2008870\",\"match\":false,\"name\":\"Manila\",\"score\":27.648628,\"type\":[{\"id\":\"/ulan\",\"name\":\"ULAN search\"},{\"id\":\"/tgn\",\"name\":\"TGN search\"},{\"id\":\"/aat\",\"name\":\"AAT search\"},{\"id\":\"/all\",\"name\":\"Search all Vocabs\"}]},{\"id\":\"tgn/2012592\",\"match\":false,\"name\":\"Manila\",\"score\":27.648628,\"type\":[{\"id\":\"/ulan\",\"name\":\"ULAN search\"},{\"id\":\"/tgn\",\"name\":\"TGN search\"},{\"id\":\"/aat\",\"name\":\"AAT search\"},{\"id\":\"/all\",\"name\":\"Search all Vocabs\"}]},{\"id\":\"tgn/2490446\",\"match\":false,\"name\":\"Manila\",\"score\":27.648628,\"type\":[{\"id\":\"/ulan\",\"name\":\"ULAN search\"},{\"id\":\"/tgn\",\"name\":\"TGN search\"},{\"id\":\"/aat\",\"name\":\"AAT search\"},{\"id\":\"/all\",\"name\":\"Search all Vocabs\"}]},{\"id\":\"tgn/2119100\",\"match\":false,\"name\":\"Manila\",\"score\":27.648628,\"type\":[{\"id\":\"/ulan\",\"name\":\"ULAN search\"},{\"id\":\"/tgn\",\"name\":\"TGN search\"},{\"id\":\"/aat\",\"name\":\"AAT search\"},{\"id\":\"/all\",\"name\":\"Search all Vocabs\"}]},{\"id\":\"tgn/2109049\",\"match\":false,\"name\":\"Manila\",\"score\":27.648628,\"type\":[{\"id\":\"/ulan\",\"name\":\"ULAN search\"},{\"id\":\"/tgn\",\"name\":\"TGN search\"},{\"id\":\"/aat\",\"name\":\"AAT search\"},{\"id\":\"/all\",\"name\":\"Search all Vocabs\"}]}]}}\n"
+          },
+          {
+            "url": "https://vocab.getty.edu/sparql.json",
+            "params": {
+              "query": "PREFIX gvp: <http://vocab.getty.edu/ontology#>\nPREFIX xl: <http://www.w3.org/2008/05/skos-xl#>\nPREFIX dct: <http://purl.org/dc/terms/>\nPREFIX foaf: <http://xmlns.com/foaf/0.1/>\nPREFIX wgs: <http://www.w3.org/2003/01/geo/wgs84_pos#>\nPREFIX tgn: <http://vocab.getty.edu/tgn/>\nSELECT ?place ?name ?type ?typeName ?preferredType ?lat ?long ?parent\n       ?ancestor ?ancestorName ?ancestorType ?ancestorParent\nWHERE {\n  VALUES ?place { tgn:2004369 tgn:2490445 tgn:2040158 tgn:2490447 tgn:2015946 tgn:2008870 tgn:2012592 tgn:2490446 tgn:2119100 tgn:2109049 }\n  { ?place gvp:prefLabelGVP/xl:literalForm ?name . }\n  UNION { ?place gvp:placeType ?type . ?type gvp:prefLabelGVP/xl:literalForm ?typeName . }\n  UNION { ?place gvp:placeTypePreferred ?preferredType . }\n  UNION { ?place foaf:focus ?focus . ?focus wgs:lat ?lat ; wgs:long ?long . }\n  UNION { ?place gvp:broaderPreferred ?parent . }\n  UNION {\n    ?place gvp:broaderPreferredExtended ?ancestor .\n    FILTER(?ancestor != ?place)\n    ?ancestor gvp:prefLabelGVP/xl:literalForm ?ancestorName .\n    OPTIONAL { ?ancestor gvp:placeTypePreferred ?ancestorType . }\n    OPTIONAL { ?ancestor gvp:broaderPreferred ?ancestorParent . }\n  }\n}"
+            },
+            "final_url": "https://vocab.getty.edu/sparql.json?query=PREFIX+gvp%3A+%3Chttp%3A%2F%2Fvocab.getty.edu%2Fontology%23%3E%0APREFIX+xl%3A+%3Chttp%3A%2F%2Fwww.w3.org%2F2008%2F05%2Fskos-xl%23%3E%0APREFIX+dct%3A+%3Chttp%3A%2F%2Fpurl.org%2Fdc%2Fterms%2F%3E%0APREFIX+foaf%3A+%3Chttp%3A%2F%2Fxmlns.com%2Ffoaf%2F0.1%2F%3E%0APREFIX+wgs%3A+%3Chttp%3A%2F%2Fwww.w3.org%2F2003%2F01%2Fgeo%2Fwgs84_pos%23%3E%0APREFIX+tgn%3A+%3Chttp%3A%2F%2Fvocab.getty.edu%2Ftgn%2F%3E%0ASELECT+%3Fplace+%3Fname+%3Ftype+%3FtypeName+%3FpreferredType+%3Flat+%3Flong+%3Fparent%0A+++++++%3Fancestor+%3FancestorName+%3FancestorType+%3FancestorParent%0AWHERE+%7B%0A++VALUES+%3Fplace+%7B+tgn%3A2004369+tgn%3A2490445+tgn%3A2040158+tgn%3A2490447+tgn%3A2015946+tgn%3A2008870+tgn%3A2012592+tgn%3A2490446+tgn%3A2119100+tgn%3A2109049+%7D%0A++%7B+%3Fplace+gvp%3AprefLabelGVP%2Fxl%3AliteralForm+%3Fname+.+%7D%0A++UNION+%7B+%3Fplace+gvp%3AplaceType+%3Ftype+.+%3Ftype+gvp%3AprefLabelGVP%2Fxl%3AliteralForm+%3FtypeName+.+%7D%0A++UNION+%7B+%3Fplace+gvp%3AplaceTypePreferred+%3FpreferredType+.+%7D%0A++UNION+%7B+%3Fplace+foaf%3Afocus+%3Ffocus+.+%3Ffocus+wgs%3Alat+%3Flat+%3B+wgs%3Along+%3Flong+.+%7D%0A++UNION+%7B+%3Fplace+gvp%3AbroaderPreferred+%3Fparent+.+%7D%0A++UNION+%7B%0A++++%3Fplace+gvp%3AbroaderPreferredExtended+%3Fancestor+.%0A++++FILTER%28%3Fancestor+%21%3D+%3Fplace%29%0A++++%3Fancestor+gvp%3AprefLabelGVP%2Fxl%3AliteralForm+%3FancestorName+.%0A++++OPTIONAL+%7B+%3Fancestor+gvp%3AplaceTypePreferred+%3FancestorType+.+%7D%0A++++OPTIONAL+%7B+%3Fancestor+gvp%3AbroaderPreferred+%3FancestorParent+.+%7D%0A++%7D%0A%7D",
+            "status": 200,
+            "content_type": "application/sparql-results+json;charset=utf-8",
+            "sha256": "20bc8b9a71f2dba44f0ba391b63389c1b08592ba0a328b36b755d815f186b8c4",
+            "byte_size": 41898,
+            "response_body_utf8": "{\n  \"head\" : {\n    \"vars\" : [ \"place\", \"name\", \"type\", \"typeName\", \"preferredType\", \"lat\", \"long\", \"parent\", \"ancestor\", \"ancestorName\", \"ancestorType\", \"ancestorParent\" ]\n  },\n  \"results\" : {\n    \"bindings\" : [ {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2004369\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490445\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2040158\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490447\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2015946\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2008870\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2012592\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490446\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2119100\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2109049\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2004369\"\n      },\n      \"type\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      },\n      \"typeName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"inhabited places\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2004369\"\n      },\n      \"type\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300387210\"\n      },\n      \"typeName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"rural communities\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490445\"\n      },\n      \"type\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      },\n      \"typeName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"inhabited places\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2040158\"\n      },\n      \"type\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      },\n      \"typeName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"inhabited places\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490447\"\n      },\n      \"type\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      },\n      \"typeName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"inhabited places\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2015946\"\n      },\n      \"type\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300387016\"\n      },\n      \"typeName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"transport points\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2008870\"\n      },\n      \"type\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      },\n      \"typeName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"inhabited places\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2012592\"\n      },\n      \"type\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      },\n      \"typeName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"inhabited places\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490446\"\n      },\n      \"type\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      },\n      \"typeName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"inhabited places\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2119100\"\n      },\n      \"type\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      },\n      \"typeName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"inhabited places\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2119100\"\n      },\n      \"type\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300387210\"\n      },\n      \"typeName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"rural communities\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2109049\"\n      },\n      \"type\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      },\n      \"typeName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"inhabited places\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2004369\"\n      },\n      \"preferredType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490445\"\n      },\n      \"preferredType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2040158\"\n      },\n      \"preferredType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490447\"\n      },\n      \"preferredType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2015946\"\n      },\n      \"preferredType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300387016\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2008870\"\n      },\n      \"preferredType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2012592\"\n      },\n      \"preferredType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490446\"\n      },\n      \"preferredType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2119100\"\n      },\n      \"preferredType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2109049\"\n      },\n      \"preferredType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300008347\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2004369\"\n      },\n      \"lat\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"31.5\"\n      },\n      \"long\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"-87.7167\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490445\"\n      },\n      \"lat\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"32.4333\"\n      },\n      \"long\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"-86.9167\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2040158\"\n      },\n      \"lat\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"37.8333\"\n      },\n      \"long\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"-82.9\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490447\"\n      },\n      \"lat\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"38.55\"\n      },\n      \"long\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"-93.3333\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2015946\"\n      },\n      \"lat\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"39.75\"\n      },\n      \"long\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"-104.5167\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2008870\"\n      },\n      \"lat\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"35.8667\"\n      },\n      \"long\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"-90.1667\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2012592\"\n      },\n      \"lat\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"40.85\"\n      },\n      \"long\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"-124.15\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490446\"\n      },\n      \"lat\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"34.95\"\n      },\n      \"long\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"-110.4\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2119100\"\n      },\n      \"lat\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"37.9833\"\n      },\n      \"long\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"-81.9333\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2109049\"\n      },\n      \"lat\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"40.9833\"\n      },\n      \"long\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#decimal\",\n        \"type\" : \"literal\",\n        \"value\" : \"-109.7167\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2004369\"\n      },\n      \"parent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2000012\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490445\"\n      },\n      \"parent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2000023\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2040158\"\n      },\n      \"parent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2000804\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490447\"\n      },\n      \"parent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2001229\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2015946\"\n      },\n      \"parent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2000192\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2008870\"\n      },\n      \"parent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2000151\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2012592\"\n      },\n      \"parent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2000181\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490446\"\n      },\n      \"parent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2000099\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2119100\"\n      },\n      \"parent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2002255\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2109049\"\n      },\n      \"parent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2002105\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2004369\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"World\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300386699\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2004369\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7002659\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"Alabama\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000776\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2004369\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"North and Central America\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128176\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2004369\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2000012\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Clarke\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000771\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7002659\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2004369\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"United States\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128207\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490445\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"World\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300386699\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490445\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7002659\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"Alabama\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000776\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490445\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"North and Central America\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128176\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490445\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"United States\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128207\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490445\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2000023\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Dallas\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000771\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7002659\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2040158\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"World\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300386699\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2040158\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"North and Central America\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128176\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2040158\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"United States\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128207\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2040158\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2000804\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Johnson\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000771\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7007255\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2040158\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7007255\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"Kentucky\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000776\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490447\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"World\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300386699\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490447\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"North and Central America\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128176\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490447\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"United States\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128207\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490447\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2001229\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Pettis\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000771\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7007523\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490447\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7007523\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"Missouri\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000776\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2015946\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"World\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300386699\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2015946\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2000192\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Adams\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000771\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7007158\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2015946\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"North and Central America\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128176\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2015946\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"United States\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128207\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2015946\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7007158\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"Colorado\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000776\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2008870\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"World\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300386699\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2008870\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"North and Central America\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128176\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2008870\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7016172\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"Arkansas\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000776\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2008870\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"United States\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128207\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2008870\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2000151\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Mississippi\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000771\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7016172\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2012592\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"World\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300386699\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2012592\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"North and Central America\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128176\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2012592\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"United States\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128207\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2012592\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2000181\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Humboldt\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000771\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7007157\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2012592\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7007157\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"California\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000776\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490446\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"World\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300386699\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490446\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"North and Central America\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128176\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490446\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7006451\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"Arizona\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000776\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490446\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"United States\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128207\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490446\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2000099\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Navajo\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000771\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7006451\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2119100\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"World\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300386699\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2119100\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"North and Central America\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128176\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2119100\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2002255\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Boone\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000771\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7013961\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2119100\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"United States\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128207\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2119100\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7013961\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"West Virginia\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000776\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2109049\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"World\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300386699\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2109049\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"North and Central America\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128176\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7029392\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2109049\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2002105\"\n      },\n      \"ancestorName\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Daggett\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000771\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7007827\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2109049\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"United States\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300128207\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/1000001\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2109049\"\n      },\n      \"ancestor\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7007827\"\n      },\n      \"ancestorName\" : {\n        \"xml:lang\" : \"en\",\n        \"type\" : \"literal\",\n        \"value\" : \"Utah\"\n      },\n      \"ancestorType\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/aat/300000776\"\n      },\n      \"ancestorParent\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/7012149\"\n      }\n    } ]\n  }\n}"
+          },
+          {
+            "url": "https://vocab.getty.edu/sparql.json",
+            "params": {
+              "query": "PREFIX gvp: <http://vocab.getty.edu/ontology#>\nPREFIX xl: <http://www.w3.org/2008/05/skos-xl#>\nPREFIX dct: <http://purl.org/dc/terms/>\nPREFIX foaf: <http://xmlns.com/foaf/0.1/>\nPREFIX wgs: <http://www.w3.org/2003/01/geo/wgs84_pos#>\nPREFIX tgn: <http://vocab.getty.edu/tgn/>\nSELECT ?place ?name ?language ?preferred\nWHERE {\n  VALUES ?place { tgn:2004369 tgn:2490445 tgn:2040158 tgn:2490447 tgn:2015946 tgn:2008870 tgn:2012592 tgn:2490446 tgn:2119100 tgn:2109049 }\n  { ?place xl:prefLabel ?term . BIND(true AS ?preferred) }\n  UNION { ?place xl:altLabel ?term . BIND(false AS ?preferred) }\n  ?term xl:literalForm ?name .\n  OPTIONAL { ?term dct:language ?language . }\n}"
+            },
+            "final_url": "https://vocab.getty.edu/sparql.json?query=PREFIX+gvp%3A+%3Chttp%3A%2F%2Fvocab.getty.edu%2Fontology%23%3E%0APREFIX+xl%3A+%3Chttp%3A%2F%2Fwww.w3.org%2F2008%2F05%2Fskos-xl%23%3E%0APREFIX+dct%3A+%3Chttp%3A%2F%2Fpurl.org%2Fdc%2Fterms%2F%3E%0APREFIX+foaf%3A+%3Chttp%3A%2F%2Fxmlns.com%2Ffoaf%2F0.1%2F%3E%0APREFIX+wgs%3A+%3Chttp%3A%2F%2Fwww.w3.org%2F2003%2F01%2Fgeo%2Fwgs84_pos%23%3E%0APREFIX+tgn%3A+%3Chttp%3A%2F%2Fvocab.getty.edu%2Ftgn%2F%3E%0ASELECT+%3Fplace+%3Fname+%3Flanguage+%3Fpreferred%0AWHERE+%7B%0A++VALUES+%3Fplace+%7B+tgn%3A2004369+tgn%3A2490445+tgn%3A2040158+tgn%3A2490447+tgn%3A2015946+tgn%3A2008870+tgn%3A2012592+tgn%3A2490446+tgn%3A2119100+tgn%3A2109049+%7D%0A++%7B+%3Fplace+xl%3AprefLabel+%3Fterm+.+BIND%28true+AS+%3Fpreferred%29+%7D%0A++UNION+%7B+%3Fplace+xl%3AaltLabel+%3Fterm+.+BIND%28false+AS+%3Fpreferred%29+%7D%0A++%3Fterm+xl%3AliteralForm+%3Fname+.%0A++OPTIONAL+%7B+%3Fterm+dct%3Alanguage+%3Flanguage+.+%7D%0A%7D",
+            "status": 200,
+            "content_type": "application/sparql-results+json;charset=utf-8",
+            "sha256": "ac40b2c8289fcc005b3685aa84884da7ac91e8d0cb8415b0819ec2fafca734c6",
+            "byte_size": 4951,
+            "response_body_utf8": "{\n  \"head\" : {\n    \"vars\" : [ \"place\", \"name\", \"language\", \"preferred\" ]\n  },\n  \"results\" : {\n    \"bindings\" : [ {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2004369\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      },\n      \"preferred\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#boolean\",\n        \"type\" : \"literal\",\n        \"value\" : \"true\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490445\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      },\n      \"preferred\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#boolean\",\n        \"type\" : \"literal\",\n        \"value\" : \"true\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2040158\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      },\n      \"preferred\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#boolean\",\n        \"type\" : \"literal\",\n        \"value\" : \"true\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490447\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      },\n      \"preferred\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#boolean\",\n        \"type\" : \"literal\",\n        \"value\" : \"true\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2015946\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      },\n      \"preferred\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#boolean\",\n        \"type\" : \"literal\",\n        \"value\" : \"true\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2008870\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      },\n      \"preferred\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#boolean\",\n        \"type\" : \"literal\",\n        \"value\" : \"true\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2012592\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      },\n      \"preferred\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#boolean\",\n        \"type\" : \"literal\",\n        \"value\" : \"true\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490446\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      },\n      \"preferred\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#boolean\",\n        \"type\" : \"literal\",\n        \"value\" : \"true\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2119100\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      },\n      \"preferred\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#boolean\",\n        \"type\" : \"literal\",\n        \"value\" : \"true\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2109049\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Manila\"\n      },\n      \"preferred\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#boolean\",\n        \"type\" : \"literal\",\n        \"value\" : \"true\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2004369\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Fort Madison\"\n      },\n      \"preferred\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#boolean\",\n        \"type\" : \"literal\",\n        \"value\" : \"false\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2490445\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Veto\"\n      },\n      \"preferred\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#boolean\",\n        \"type\" : \"literal\",\n        \"value\" : \"false\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2008870\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Big Lake Island\"\n      },\n      \"preferred\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#boolean\",\n        \"type\" : \"literal\",\n        \"value\" : \"false\"\n      }\n    }, {\n      \"place\" : {\n        \"type\" : \"uri\",\n        \"value\" : \"http://vocab.getty.edu/tgn/2008870\"\n      },\n      \"name\" : {\n        \"type\" : \"literal\",\n        \"value\" : \"Cinda\"\n      },\n      \"preferred\" : {\n        \"datatype\" : \"http://www.w3.org/2001/XMLSchema#boolean\",\n        \"type\" : \"literal\",\n        \"value\" : \"false\"\n      }\n    } ]\n  }\n}"
+          }
+        ]
+      }
+    ]
+  }
+}

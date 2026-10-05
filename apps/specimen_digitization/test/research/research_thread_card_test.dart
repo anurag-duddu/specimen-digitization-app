@@ -43,9 +43,14 @@ Future<void> pumpResearchCard(
 ResearchThreadCard readyCard({
   ResearchFieldThread? field,
   VoidCallback? onRetry,
+  ValueChanged<ResearchReviewCandidate>? onSelectCandidate,
+  bool fieldCentered = false,
   bool paused = false,
   bool unknown = false,
   bool readOnly = false,
+  bool historical = false,
+  int? canonicalRevision,
+  int? reviewSavedRevision,
   ResearchNetworkState state = ResearchNetworkState.ready,
 }) => ResearchThreadCard(
   scope: trustedResearchScope(),
@@ -53,15 +58,181 @@ ResearchThreadCard readyCard({
   fieldKey: 'taxon',
   fieldLabel: 'Taxon',
   field: field ?? fixtureThread().field('taxon'),
+  historical: historical,
+  canonicalRevision: canonicalRevision,
+  reviewSavedRevision: reviewSavedRevision,
   networkState: state,
   paused: paused,
   hasUnknownState: unknown,
   readOnly: readOnly,
   onRetry: onRetry,
+  onSelectCandidate: onSelectCandidate,
+  fieldCentered: fieldCentered,
   onRefresh: () {},
 );
 
 void main() {
+  testWidgets('selectable possibility returns its verified source candidate', (
+    tester,
+  ) async {
+    final json = researchFixture('failed-thread');
+    final taxon = fixtureField(json, 'taxon');
+    taxon['work_state'] = 'waiting_human';
+    taxon['checkpoint']['resolution']['work_state'] = 'waiting_human';
+    taxon['actions'] = ['review_proposal'];
+    taxon['review'] = {
+      'question_reason': 'semantic_ambiguity',
+      'reason': 'Two source possibilities remain.',
+      'question': {
+        'field_key': 'taxon',
+        'question': 'Which retained source candidate is supported?',
+        'reason': 'semantic_ambiguity',
+        'coverage': [
+          {
+            'source_id': 'gbif',
+            'field_key': 'taxon',
+            'state': 'exhausted',
+            'source_version': 'test-v1',
+            'qualification_digest': 'a' * 64,
+            'exact_join_attempted': true,
+            'query_digest': 'b' * 64,
+            'receipt_ids': ['coverage-receipt'],
+            'candidate_count': 1,
+            'coverage_limit': 'bounded test scope',
+            'reason': 'Search completed within the fixture scope',
+          },
+        ],
+        'evidence_ids': ['source-evidence'],
+      },
+      'evidence': [
+        {
+          'evidence_id': 'source-evidence',
+          'source_id': 'geolocate',
+          'kind': 'lookup',
+          'outcome': 'ambiguous',
+        },
+      ],
+      'candidates': [
+        {
+          'label': 'Mindanao',
+          'source_id': 'geolocate',
+          'selection_id': 'b' * 64,
+          'selection_value': 'Philippines',
+          'evidence_id': 'source-evidence',
+        },
+      ],
+      'evidence_not_shown': 0,
+      'candidates_not_shown': 0,
+    };
+    taxon['checkpoint']['resolution']['question'] = taxon['review'].remove(
+      'question',
+    );
+    final field = ResearchThread.fromJson(
+      json,
+      expectedScope: trustedResearchScope(),
+    ).field('taxon')!;
+    ResearchReviewCandidate? selected;
+    await pumpResearchCard(
+      tester,
+      readyCard(
+        field: field,
+        fieldCentered: true,
+        onSelectCandidate: (candidate) => selected = candidate,
+      ),
+    );
+    await tester.tap(find.text('Research'));
+    await tester.pumpAndSettle();
+    expect(find.text('Mindanao'), findsOneWidget);
+    expect(find.text('Proposed field value'), findsOneWidget);
+    expect(find.text('Philippines'), findsOneWidget);
+    await tester.tap(find.text('Use this possibility'));
+    await tester.pump();
+    expect(selected?.selectionId, 'b' * 64);
+    expect(selected?.label, 'Mindanao');
+    expect(selected?.selectionValue, 'Philippines');
+  });
+
+  testWidgets('historical report shows its saved revisions and disables choice', (
+    tester,
+  ) async {
+    final json = researchFixture('failed-thread')
+      ..['historical'] = true
+      ..['canonical_revision'] = 41
+      ..['review_saved_revision'] = 42;
+    final taxon = fixtureField(json, 'taxon');
+    taxon['work_state'] = 'waiting_human';
+    taxon['checkpoint']['resolution']['work_state'] = 'waiting_human';
+    taxon['actions'] = ['review_proposal'];
+    taxon['review'] = {
+      'question_reason': 'semantic_ambiguity',
+      'reason': 'Two source possibilities remain.',
+      'evidence': [],
+      'candidates': [
+        {
+          'label': 'Mindanao',
+          'source_id': 'geolocate',
+          'selection_id': 'c' * 64,
+          'selection_value': 'Philippines',
+        },
+      ],
+      'evidence_not_shown': 0,
+      'candidates_not_shown': 0,
+    };
+    final resolution = taxon['checkpoint']['resolution'] as Map;
+    resolution['question'] = {
+      'field_key': 'taxon',
+      'question': 'Which retained source candidate is supported?',
+      'reason': 'semantic_ambiguity',
+      'coverage': [
+        {
+          'source_id': 'gbif',
+          'field_key': 'taxon',
+          'state': 'exhausted',
+          'source_version': 'test-v1',
+          'qualification_digest': 'a' * 64,
+          'exact_join_attempted': true,
+          'query_digest': 'b' * 64,
+          'receipt_ids': ['coverage-receipt'],
+          'candidate_count': 1,
+          'coverage_limit': 'bounded test scope',
+          'reason': 'Search completed within the fixture scope',
+        },
+      ],
+    };
+    final thread = ResearchThread.fromJson(
+      json,
+      expectedScope: trustedResearchScope(),
+    );
+    var selections = 0;
+    await pumpResearchCard(
+      tester,
+      readyCard(
+        field: thread.field('taxon'),
+        fieldCentered: true,
+        historical: thread.historical,
+        canonicalRevision: thread.canonicalRevision,
+        reviewSavedRevision: thread.reviewSavedRevision,
+        onSelectCandidate: (_) => selections++,
+      ),
+    );
+    expect(find.textContaining('Historical report ·'), findsOneWidget);
+    await tester.tap(find.text('Research'));
+    await tester.pumpAndSettle();
+    expect(
+      find.textContaining('record revision 41; review saved at revision 42'),
+      findsOneWidget,
+    );
+    final button = tester.widget<UiButton>(
+      find.widgetWithText(UiButton, 'Use this possibility'),
+    );
+    expect(button.onPressed, isNull);
+    expect(
+      button.disabledReason,
+      'This field is read-only or the research result is no longer actionable.',
+    );
+    expect(selections, 0);
+  });
+
   testWidgets('collapsed disclosure is lazy and touch reveal requests once', (
     tester,
   ) async {

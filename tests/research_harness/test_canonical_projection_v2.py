@@ -145,8 +145,12 @@ def test_actual_science_producers_project_complete_original_derivation_and_disti
     assert dependency["sourceCandidateId"] == str(b.context.consumed_sources[0].canonical_candidate_id)
     assert lineage["selectedObservationId"] is None and lineage["selectedTranscriptionId"] is None
     associations = [row.variables for row in output.target_writes if row.operation == "AppendCanonicalValueEvidenceV2"]
-    assert associations and all(row["associationKind"] == "original_derivation_record" and row["originalRelation"] is None for row in associations)
-    assert not any(row.operation == "AppendCandidateEvidenceLineageV2" for row in output.target_writes)
+    assert associations and all(row["associationKind"] == "original_derivation_record" and
+        row["originalRelation"] == b.checkpoint.resolution.value.evidence_relations[row["researchEvidenceId"]]
+        for row in associations)
+    candidate_evidence = [row.variables for row in output.target_writes
+                          if row.operation == "AppendCandidateEvidenceLineageV2"]
+    assert candidate_evidence and {row["relation"] for row in candidate_evidence} == {"supports"}
     fields = [row.variables for row in output.record_writes if row.operation == "AppendResolvedFieldV2"]
     assert len(fields) == 20 and len({row["fieldKey"] for row in fields}) == 20
     assert all({key: row[key] for key in ("candidateId", "state", "fieldGroup")} ==
@@ -272,12 +276,15 @@ def test_the_relation_rule_names_the_supported_value_the_projection_refuses(mate
 def test_a_derived_value_is_covered_by_its_record_but_held_with_a_source_lacking_relations(basis, kind):
     b = projection_case(basis, kind)
     source = b.context.consumed_sources[0].checkpoint
-    # The real helpers' settled source names no relation; the derivation record
-    # covers the derived value's evidence, so the projection admits it.
-    assert relations_unproved(source.resolution) and not relations_unproved(b.checkpoint.resolution)
+    # The real helper now gives native evidence a supports relation, and both
+    # the written source and derived value are publishable.
+    assert not relations_unproved(source.resolution) and not relations_unproved(b.checkpoint.resolution)
     project(b)
-    # With that source loaded it is held too: a source that cannot publish
-    # never reaches the record.
+    # If a checkpoint drops that source relation, the derived field still
+    # cannot publish beside it.
+    bad = source.resolution.model_copy(update={"value": source.resolution.value.model_copy(update={
+        "evidence_relations": {}})})
+    source = source.model_copy(update={"resolution": bad})
     assert relation_unproved_fields((b.checkpoint, source)) == {source.field_key, b.checkpoint.field_key}
     assert relation_unproved_fields((b.checkpoint,)) == frozenset()
 

@@ -19,17 +19,41 @@ from pydantic_ai.usage import UsageLimits
 from pydantic_ai_harness import ManagedPrompt, StepPersistence, SubAgent, SubAgents
 from pydantic_ai_harness.step_persistence import StepStore
 
+from specimen_digitization.application.domain import OPERATIONAL, LookupStatus
 from specimen_digitization.provider_privacy import agent_instrumentation
 
 from .agent_trace import (
     RepeatCappedInstrumentationSettings, annotate_cost, cost_metadata, current_run, run_scope,
 )
 from .contracts import (
-    ROLE_FIELDS, FieldResolution, PromptPin, SpecialistRequest, SpecialistRole, SourceQuery, SourceResult,
+    ROLE_FIELDS, FieldKey, FieldResolution, PromptPin, SpecialistRequest, SpecialistRole, SourceQuery, SourceResult,
+    WorkState,
 )
-from .gateway import EffectModel, ModelGatewayBlocked
+from .gateway import EffectModel, ModelGatewayBlocked, capture_model_run_effects
 from .package_qualification import SERIALIZATION_VERSION, qualify_packages
 from .telemetry import ResearchTrace, TraceIdentity, metadata_attributes
+
+
+# A waiting_policy on a field the pinned profile declares missing policy is held for
+# review (committed_pins.UNQUALIFIED_LABEL_FIELDS), and evidence.validate_resolution passes
+# any waiting_policy. So a model could hide a source outage behind it. These three declared
+# fields have a ready source; the twelve literals have none, so there is nothing to hide.
+# Like HumanQuestion, which refuses to turn an outage into review, the output validator
+# refuses a waiting_policy after a lookup of that field ended in a typed failure.
+OUTAGE_GUARDED_FIELDS = frozenset({FieldKey.TAXON, FieldKey.COUNTY, FieldKey.CITY})
+# policy_blocked is not an outage: a refused query or an unqualified source.
+SOURCE_OUTAGES = OPERATIONAL - {LookupStatus.POLICY}
+
+
+def masked_outages(resolutions: Sequence[FieldResolution], results: Sequence[SourceResult]) -> tuple[FieldKey, ...]:
+    """Guarded fields answered waiting_policy though a source's last lookup of the field failed.
+
+    A later completed answer (success, no_match, ambiguous) from the same source clears its failure.
+    It cannot see a model that never called the source."""
+    last = {(item.coverage.source_id, item.coverage.field_key): item.status for item in results}
+    failed = {key for (_, key), status in last.items() if status in SOURCE_OUTAGES}
+    return tuple(item.field_key for item in resolutions if item.work_state == WorkState.WAITING_POLICY
+                 and item.field_key in OUTAGE_GUARDED_FIELDS and item.field_key in failed)
 
 
 class SpecialistOutput(BaseModel):
@@ -378,12 +402,17 @@ class SpecialistHarness:
             fields = tuple(result.field_key for result in output.resolutions)
             if output.role != request.role or len(set(fields)) != len(fields) or set(fields) != set(request.field_keys):
                 raise ModelRetry("specialist_output_does_not_cover_exact_requested_fields")
+            results = tuple(ctx.deps.tool_results.get(request.role, ()))
             try:
                 for resolution in output.resolutions:
-                    validate_resolution(request, resolution,
-                                        tuple(ctx.deps.tool_results.get(request.role, ())))
+                    validate_resolution(request, resolution, results)
             except ValueError:
                 raise ModelRetry("specialist_output_has_invalid_evidence_or_scope") from None
+            masked = masked_outages(output.resolutions, results)
+            if masked:
+                raise ModelRetry("specialist_output_hides_a_failed_lookup_behind_waiting_policy: a lookup for "
+                                 + ", ".join(key.value for key in masked)
+                                 + " failed; return waiting_source for it, which blocks the record")
             return output
 
     async def run_specialist(self, role: SpecialistRole, *,
@@ -391,24 +420,23 @@ class SpecialistHarness:
                              conversation_id: str | None = None) -> SpecialistRun:
         request = self.requests[role]
         deps = ResearchDeps(self.requests, self.tool_broker)
-        offsets = {key: len(model.effect_ids) for key, model in self.models.items()}
         conversation_id = conversation_id or f"{request.scope.job_id}:{request.scope.generation}:{role.value}"
         trace = deps.trace(request)
-        with trace.span("specialist", role=role.value, prompt_digest=request.prompt.digest,
-                        field_keys=request.field_keys) as span:
-            result = await asyncio.wait_for(
-                self.agents[role].run(
-                    _research_input(request), deps=deps, message_history=message_history,
-                    conversation_id=conversation_id,
-                    usage_limits=UsageLimits(request_limit=self.limits.request_limit,
-                                             tool_calls_limit=self.limits.tool_calls_limit),
-                ), timeout=self.limits.run_timeout_seconds,
-            )
-            effects = tuple(dict.fromkeys(effect for key, model in self.models.items()
-                                          for effect in model.effect_ids[offsets[key]:]))
-            # Everything this role's run settled, requests of the helpers it delegated to included.
-            annotate_cost(trace, span, [model.effect_costs[effect] for model in self.models.values()
-                                        for effect in effects if effect in model.effect_costs])
-        source_results = tuple(item for results in deps.tool_results.values() for item in results)
+        with capture_model_run_effects(request.scope) as collected:
+            with trace.span("specialist", role=role.value, prompt_digest=request.prompt.digest,
+                            field_keys=request.field_keys) as span:
+                result = await asyncio.wait_for(
+                    self.agents[role].run(
+                        _research_input(request), deps=deps, message_history=message_history,
+                        conversation_id=conversation_id,
+                        usage_limits=UsageLimits(request_limit=self.limits.request_limit,
+                                                 tool_calls_limit=self.limits.tool_calls_limit),
+                    ), timeout=self.limits.run_timeout_seconds,
+                )
+                effects = collected.owned(role.value, tuple(key.value for key in request.field_keys))
+                # Trace every causally delegated request's cost. The scientific
+                # checkpoint retains only this specialist's own-field receipts.
+                annotate_cost(trace, span, collected.costs())
+        source_results = tuple(deps.tool_results.get(role, ()))
         return SpecialistRun(result.output.resolutions, result.run_id, result.conversation_id,
                              result.usage, effects, source_results)

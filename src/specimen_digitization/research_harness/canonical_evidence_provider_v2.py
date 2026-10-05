@@ -762,10 +762,12 @@ class CanonicalEvidenceProviderV2:
 
 
 def build_captured_research_services_v2(*, repository, effect_broker, scope, lease, registry,
-                                      policies, transport, execution_class="live", reservation_micro_usd=1):
+                                      policies, transport, execution_class="live", reservation_micro_usd=1,
+                                      georeferencing_adapter=None, derivation_context=None):
     """Concrete factory seam for I1/I3; no mounting, lease creation or fallback."""
     broker = CaptureSourceBrokerV2(registry, policies, effect_broker, scope, lease, transport=transport,
-        execution_class=execution_class, reservation_micro_usd=reservation_micro_usd)
+        execution_class=execution_class, reservation_micro_usd=reservation_micro_usd,
+        georeferencing_adapter=georeferencing_adapter, derivation_context=derivation_context)
     provider = CanonicalEvidenceProviderV2.from_service(repository, effect_broker, registry)
     return broker, provider
 
