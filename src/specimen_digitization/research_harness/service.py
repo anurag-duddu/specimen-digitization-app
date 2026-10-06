@@ -136,7 +136,8 @@ class ResearchService:
             if binding is not None:
                 if field.field_key in binding.research_locks:
                     changes = {"actions": ()}
-                    if field.checkpoint is None:
+                    # Verified carried decisions already have their required human state.
+                    if field.checkpoint is None and field.preserved_human is None:
                         changes.update(work_state=WorkState.WAITING_POLICY,
                                        blocker_code="policy_prerequisite")
                     field = field.model_copy(update=changes)

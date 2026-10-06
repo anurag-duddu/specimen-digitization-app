@@ -45,14 +45,20 @@ QUALIFIED_PROMPT_VERSION = "specialists-qualified-event-v6-2026-10-04"
 # Geography v6 supersedes model-selected placement and activates the qualified
 # historical roster while reserving G38 computed geometry for the trusted worker.
 GEOGRAPHY_SOURCE_PROMPT_VERSION = "geography-qualified-sources-v6-2026-10-05"
+# Geography v7 clarifies that correcting a query never clears refused same-field
+# source history. The v6 file stays unchanged for frozen jobs and audit.
+GEOGRAPHY_HISTORY_PROMPT_VERSION = "geography-source-history-v7-2026-10-06"
+# Taxonomy v6 excludes genus-free morphocodes from the lookup-first instruction;
+# the declared missing-policy path and historical v5 bytes stay intact.
+TAXONOMY_QUERY_PROMPT_VERSION = "taxonomy-scientific-name-v6-2026-10-06"
 
 # Role -> (role file, pin version). Each role's text is common-v1.txt, the role
 # file and its owned-fields line. A role moves to a new file and version without
 # changing any other role's text, digest or pin. Superseded files stay on disk
 # for audit.
 ROLE_PROMPTS = MappingProxyType({
-    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v5.txt", HANDOVER_PROMPT_VERSION),
-    SpecialistRole.GEOGRAPHY: ("specimen_geography-v6.txt", GEOGRAPHY_SOURCE_PROMPT_VERSION),
+    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v6.txt", TAXONOMY_QUERY_PROMPT_VERSION),
+    SpecialistRole.GEOGRAPHY: ("specimen_geography-v7.txt", GEOGRAPHY_HISTORY_PROMPT_VERSION),
     SpecialistRole.TEMPORAL: ("specimen_temporal-v6.txt", QUALIFIED_PROMPT_VERSION),
     SpecialistRole.MEASUREMENT: ("specimen_measurement-v6.txt", QUALIFIED_PROMPT_VERSION),
     SpecialistRole.PARTIES: ("specimen_parties-v5.txt", HANDOVER_PROMPT_VERSION),

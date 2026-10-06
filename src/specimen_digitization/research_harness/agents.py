@@ -432,6 +432,21 @@ class SpecialistHarness:
                 for resolution in output.resolutions:
                     validate_resolution(request, resolution, results)
             except ValueError as error:
+                if (request.role == SpecialistRole.GEOGRAPHY
+                    and resolution.work_state == WorkState.WAITING_HUMAN
+                    and str(error) in {"Human source coverage lacks exact scoped completed receipt",
+                                       "Human source coverage differs from captured semantic receipt"}):
+                    from .sources import result_envelope
+                    blocked_history = any(item.coverage.field_key == resolution.field_key and (
+                        item.status in OPERATIONAL or item.receipt is None
+                        or item.receipt.scope != request.scope or item.receipt.effect_status != "completed"
+                        or item.receipt.field_keys != (resolution.field_key,)
+                        or item.receipt.result_json != result_envelope(item)) for item in results)
+                    if blocked_history:
+                        raise ModelRetry(f"specialist_output_has_invalid_evidence_or_scope: field={resolution.field_key}; "
+                            "source_history_blocks_human_review; return work_state waiting_source with value.state unresolved, "
+                            "no parsed/normalized/authority_id and no human question. Preserve all lookup history; "
+                            "a corrected query does not erase an earlier refused, failed or unreceipted lookup") from None
                 reason = ("exact_source_candidate_required" if str(error) ==
                     "Value is not one of the trusted source-supported candidates" else "invalid_evidence_or_scope")
                 raise ModelRetry(f"specialist_output_has_invalid_evidence_or_scope: field={resolution.field_key}; {reason}; "

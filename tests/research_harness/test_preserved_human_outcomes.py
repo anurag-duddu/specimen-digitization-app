@@ -22,7 +22,7 @@ from specimen_digitization.research_harness.contracts import (
 from specimen_digitization.application.domain import FieldValue
 from specimen_digitization.research_harness.journal import DurableResearchJournal
 from specimen_digitization.research_harness.persistence import (
-    BudgetPolicy, DurabilityScope, PinnedRuntime, ResearchStore, SqliteStateBackend,
+    BudgetPolicy, DurabilityScope, PinnedRuntime, ResearchStore, SqliteStateBackend, StaleWork,
 )
 from specimen_digitization.research_harness.prompts import resolve_prompt
 from specimen_digitization.research_harness.service import ResearchService
@@ -244,6 +244,134 @@ def test_engine_schedules_eighteen_actual_offline_checkpoint_commits_not_two_hum
     thread = asyncio.run(ResearchThreadReader(journal).read(scope))
     assert thread.resolved_count == 18 and thread.preserved_human_count == 2
     assert ResearchOutputV1.from_thread(thread).status.status == "waiting_input"
+
+
+def canonical_carried_service(carried, native_basis, *, extra_locks=()):
+    """Actual locally produced named-save proof through the current V2 reader.
+
+    The native envelope, projection and import authority are synthetic fixtures;
+    this exercises the service contract, never an executed native transaction.
+    """
+    from test_native_canonical_contract import ident
+    from specimen_digitization.research_harness.discovery_v2 import CanonicalReadBindingV2
+    from specimen_digitization.research_harness.native_canonical_v2 import CanonicalBindingV2
+    from specimen_digitization.research_harness.publication_v2 import genesis_digest
+    from specimen_digitization.research_harness.service import ResearchLocator
+
+    document = carried.store._read(carried.durable)
+    job = carried.store._job(document.state, carried.durable)
+    # Reuse the named native fixture's inventory rather than inventing a model
+    # checkpoint. Saved human provenance still comes from CarryCase's reader.
+    identity = native_basis.binding.canonical.model_dump(mode="json")
+    identity.update(record_revision=carried.case.current.version,
+        canonical_run_id=carried.case.current.run.id,
+        host_record_version_id=carried.case.current.run.id + ":synthetic-native",
+        snapshot_sha256=carried.scope.input_digest)
+    registration = native_basis.binding.registration.model_dump(mode="json")
+    registration.update(base_canonical=identity, current_canonical=identity, job=job,
+        job_id=carried.scope.job_id, job_key=carried.durable.key,
+        generation=carried.scope.generation, input_digest=carried.scope.input_digest,
+        profile_digest=carried.scope.profile_digest, runtime_binding_digest=job["binding_digest"],
+        source_sha256=carried.case.current.asset.sha256, program_key=carried.store.program_key,
+        human_locks={canonical: job["fields"][key]["locked"] or key in extra_locks
+            for key, canonical in registration["field_mapping"].items()},
+        read_bundle={"state_revision":document.revision, "server_time":document.server_time,
+            "job_key":carried.durable.key, "job":job, "halted":document.state["halted"],
+            "paused":job["paused"], "effects":{}, "outbox":{}, "hold_reasons":[]})
+    row = {"canonical":{**identity, "organization_id":carried.scope.organization_id,
+        "collection_id":carried.scope.collection_id, "specimen_id":carried.scope.specimen_id,
+        "sensitive":carried.scope.sensitive}, "registrations":[registration],
+        "snapshot":{"snapshot":carried.case.current.model_dump(mode="json"),
+            "sha256":carried.scope.input_digest, "revision":carried.case.current.version,
+            "contractVersion":"0.1"}, "projection":native_basis.raw["projection"],
+        "active_registration_count":1, "causal":{"contract_version":"research-publication/v2",
+            "authority_digest":digest("synthetic read-only carry fixture authority"),
+            "import_proof_id":ident("synthetic read-only carry fixture import"),
+            "import_proof_digest":digest("synthetic read-only carry fixture import"),
+            "head_receipt_id":None, "head_chain_digest":genesis_digest(registration["binding_id"],
+                native_basis.binding.canonical.model_validate(identity)),
+            "causal_chain":[], "causal_count":0}}
+    binding = CanonicalReadBindingV2(CanonicalBindingV2.from_native(
+        carried.case.principal.scope, carried.case.current.id, row))
+    locator = ResearchLocator(**carried.durable.identity())
+    async def resolve(principal, requested):
+        assert requested == locator
+        return binding.durability_scope(principal)
+    async def current(principal, specimen_id):
+        assert specimen_id == carried.case.current.id
+        assert binding.durability_scope(principal) == carried.durable
+        return binding
+    def no_retry(*args, **kwargs):
+        pytest.fail("read-only carry fixture must not admit retries")
+    service = ResearchService(store=carried.store, resolve_scope=resolve,
+        retry_admission=no_retry, canonical_binding=current)
+    return service, locator, binding
+
+
+def test_canonical_service_preserves_verified_humans_after_native_lock_overlay(carried, native_basis):
+    before = asyncio.run(ResearchThreadReader(carried.journal).read(carried.scope))
+    service, locator, binding = canonical_carried_service(carried, native_basis)
+    assert set(map(str, binding.research_locks)) == {"city", "elevation_from_m"}
+    response = asyncio.run(service.thread(carried.case.principal, locator))
+    # Validate the wire payload: model_copy and an existing model instance
+    # can otherwise hide the contradictory state/blocker introduced by the overlay.
+    thread = ResearchThread.model_validate(response.model_dump(mode="json"))
+    assert thread.preserved_human_base == before.preserved_human_base
+    assert len(thread.fields) == 20 and thread.preserved_human_count == 2
+    assert thread.resolved_count == thread.exception_count == 0
+    assert thread.effects == () and all(row.checkpoint is None for row in thread.fields)
+    assert sum(row.work_state == WorkState.PENDING for row in thread.fields) == 18
+    for key, outcome in carried.verified.outcomes.items():
+        row = next(field for field in thread.fields if str(field.field_key) == key)
+        assert row.preserved_human == outcome and row.value == outcome.value
+        assert row.work_state == WorkState.WAITING_HUMAN
+        assert row.blocker_code == "preserved_human_decision"
+        assert row.actions == () and row.review is None
+    output = ResearchOutputV1.from_thread(thread)
+    assert output.preserved_human_base == before.preserved_human_base
+    assert {str(row.field_key):row for row in output.preserved_human_outcomes} == carried.verified.outcomes
+    assert output.checkpoints == ()
+
+
+@pytest.mark.parametrize("stored_lock", [False, True])
+def test_canonical_service_ordinary_lock_without_checkpoint_still_waits_for_policy(carried, native_basis, stored_lock):
+    if stored_lock:
+        carried.store._mutate(carried.durable, lambda state, _: state["jobs"][carried.durable.key]["fields"]["country"].update(locked=True))
+    before = asyncio.run(ResearchThreadReader(carried.journal).read(carried.scope))
+    prior = next(row for row in before.fields if row.field_key == "country")
+    assert prior.work_state == (WorkState.WAITING_POLICY if stored_lock else WorkState.PENDING)
+    service, locator, binding = canonical_carried_service(carried, native_basis, extra_locks=("country",))
+    assert "country" in binding.research_locks
+    response = asyncio.run(service.thread(carried.case.principal, locator))
+    row = next(field for field in response.fields if field.field_key == "country")
+    assert row.preserved_human is None and row.checkpoint is None
+    assert row.value == prior.value and row.work_state == WorkState.WAITING_POLICY
+    assert row.blocker_code == "policy_prerequisite" and row.actions == ()
+
+
+@pytest.mark.parametrize("mutation,exception,reason", [
+    ("malformed_outcome", ValueError, "preserved_human_field_provenance_unavailable"),
+    ("missing_pin", ValueError, "preserved_human_field_provenance_unavailable"),
+    ("unverified_value", StaleWork, "preserved_human_current_proof_changed"),
+    ("unverified_origin", ValueError, "review_decision_provenance_invalid"),
+])
+def test_canonical_service_rejects_malformed_or_unverified_carry_before_overlay(carried, native_basis, mutation, exception, reason):
+    if mutation == "unverified_origin":
+        carried.case.session.audit[1]["actorUid"] = "foreign"
+    else:
+        def tamper(state, _):
+            job = state["jobs"][carried.durable.key]
+            if mutation == "malformed_outcome":
+                job["fields"]["city"]["work_state"] = "waiting_policy"
+            elif mutation == "missing_pin":
+                job["pins"]["sources"].pop("human_field_carry")
+                job["binding_digest"] = digest(job["pins"])
+            else:
+                job["preserved_human_outcomes"]["city"]["value"]["reason"] = "unverified replacement"
+        carried.store._mutate(carried.durable, tamper)
+    service, locator, _ = canonical_carried_service(carried, native_basis)
+    with pytest.raises(exception, match=reason):
+        asyncio.run(service.thread(carried.case.principal, locator))
 
 
 @pytest.mark.parametrize("carried", ["deterministic-wire"], indirect=True)

@@ -26,7 +26,7 @@ import pytest
 from specimen_digitization.research_harness import prompts
 from specimen_digitization.research_harness.contracts import FieldKey, ROLE_FIELDS, SpecialistRole
 from specimen_digitization.research_harness.prompts import (
-    GEOGRAPHY_PROMPT_VERSION, GEOGRAPHY_SOURCE_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION, PROMPT_VERSION,
+    GEOGRAPHY_PROMPT_VERSION, GEOGRAPHY_HISTORY_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION, PROMPT_VERSION,
     READING_CITATION_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 from specimen_digitization.research_harness.sources import insects_registry
@@ -96,7 +96,7 @@ def test_v2_prompt_files_stay_byte_identical(name, sha256):
 def test_the_table_names_every_role_and_an_existing_file():
     assert set(ROLE_PROMPTS) == set(SpecialistRole)
     assert all((ROOT / name).is_file() for name, _ in ROLE_PROMPTS.values())
-    assert ROLE_PROMPTS[SpecialistRole.GEOGRAPHY] == ("specimen_geography-v6.txt", GEOGRAPHY_SOURCE_PROMPT_VERSION)
+    assert ROLE_PROMPTS[SpecialistRole.GEOGRAPHY] == ("specimen_geography-v7.txt", GEOGRAPHY_HISTORY_PROMPT_VERSION)
 
 
 def test_geography_v2_stays_the_audited_historian_prompt_with_its_owned_fields():
@@ -107,13 +107,13 @@ def test_geography_v2_stays_the_audited_historian_prompt_with_its_owned_fields()
     assert all(str(key) in expected for key in ROLE_FIELDS[SpecialistRole.GEOGRAPHY])
 
 
-def test_geography_resolves_to_its_v6_file_with_its_owned_fields():
+def test_geography_resolves_to_its_v7_file_with_its_owned_fields():
     prompt = pin(SpecialistRole.GEOGRAPHY)
     expected = ((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n" + LIVE.read_text(encoding="utf-8")
                 + "\nOwned fields: country, province_state, county, city, precise_location.\n")
-    assert LIVE.name == "specimen_geography-v6.txt"
+    assert LIVE.name == "specimen_geography-v7.txt"
     assert prompt.text == expected
-    assert prompt.version == GEOGRAPHY_SOURCE_PROMPT_VERSION == "geography-qualified-sources-v6-2026-10-05"
+    assert prompt.version == GEOGRAPHY_HISTORY_PROMPT_VERSION == "geography-source-history-v7-2026-10-06"
     assert MISSING_POLICY_PROMPT_VERSION == "specialists-missing-policy-v4-2026-10-03" != prompt.version
     assert prompt.digest == hashlib.sha256(expected.encode()).hexdigest()
     assert prompt.digest not in {GEOGRAPHY_V1_DIGEST, GEOGRAPHY_V2_DIGEST}
