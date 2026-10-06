@@ -13,7 +13,7 @@ from .contracts import (
 )
 
 VALIDATOR_VERSION = "validate_resolution/v2"
-VALIDATOR_SOURCE_SHA256 = "0ef47dcb9ddc09e5233faec40fb9b22f4090dd8fd1aa8a5ededabbb4e67473b7"  # pragma: allowlist secret
+VALIDATOR_SOURCE_SHA256 = "e7e0d101ff0780c314345b1c476649702d076271869bc325736d7914c717a3ff"  # pragma: allowlist secret
 HISTORICAL_VALIDATOR_SOURCE_SHA256 = "dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400"  # pragma: allowlist secret
 JOURNAL_TRANSFORM_VERSION = "sibling-dependency-revision/v1"
 MAX_ACCEPTED_PROOF_BYTES = 2_000_000
@@ -46,7 +46,7 @@ class AcceptedOutputProofV1(FrozenRecord):
     engine_source_sha256: Digest
     journal_source_sha256: Digest
     validator_version: Literal["validate_resolution/v1", "validate_resolution/v2"] = VALIDATOR_VERSION
-    validator_source_sha256: Literal["dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400", "0ef47dcb9ddc09e5233faec40fb9b22f4090dd8fd1aa8a5ededabbb4e67473b7"] = VALIDATOR_SOURCE_SHA256  # pragma: allowlist secret
+    validator_source_sha256: Literal["dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400", "e7e0d101ff0780c314345b1c476649702d076271869bc325736d7914c717a3ff"] = VALIDATOR_SOURCE_SHA256  # pragma: allowlist secret
 
     @model_validator(mode="after")
     def exact_acceptance(self):

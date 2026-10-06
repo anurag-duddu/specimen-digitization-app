@@ -283,6 +283,47 @@ def test_query_and_producer_cannot_escape_exact_complete_assertion(mutation):
         validate_resolution(request, resolution, (result,))
 
 
+@pytest.mark.parametrize('missing', ('both','region','input_source'))
+def test_three_field_raw_producer_and_either_optional_declaration_remain_valid(missing):
+    request=request_for();result=result_for(request,'Epipocus');resolution=resolution_for(request,(result,))
+    if missing in {'both','region'}:resolution.value.source_region_id=None
+    if missing in {'both','input_source'}:resolution.value.input_source=None
+    before=resolution.model_dump(mode='json')
+    assert validate_resolution(request,resolution,(result,)) == resolution
+    assert resolution.model_dump(mode='json') == before  # No invented metadata.
+
+
+@pytest.mark.parametrize('global_route', (None,'decided_transcript','raw_reading'))
+def test_per_observation_route_override_uses_the_canonical_effective_declaration(global_route):
+    request=request_for();result=result_for(request,'Epipocus');resolution=resolution_for(request,(result,))
+    resolution.value.input_source=global_route
+    resolution.value.input_source_by_observation={'raw':'raw_reading'}
+    assert validate_resolution(request,resolution,(result,)) == resolution
+
+
+@pytest.mark.parametrize('mutation', ('region','global_route','per_observation_route','ambiguous_region',
+    'ambiguous_route','ambiguous_body','ambiguous_asset','ambiguous_reader'))
+def test_optional_metadata_never_waives_provided_or_original_identity_contradictions(mutation):
+    request=request_for();result=result_for(request,'Epipocus');resolution=resolution_for(request,(result,))
+    resolution.value.source_region_id=None;resolution.value.input_source=None
+    if mutation=='region':resolution.value.source_region_id='foreign'
+    elif mutation=='global_route':resolution.value.input_source='decided_transcript'
+    elif mutation=='per_observation_route':resolution.value.input_source_by_observation={'raw':'decided_transcript'}
+    else:
+        changed=request.fragments[0].model_copy(update={'id':'other-original-fragment'})
+        if mutation=='ambiguous_region':changed=changed.model_copy(update={'region_id':'foreign'})
+        elif mutation=='ambiguous_route':changed=changed.model_copy(update={'input_source':'decided_transcript'})
+        elif mutation=='ambiguous_body':
+            text='Epipocus\nDifferent original body'
+            changed=changed.model_copy(update={'observation_text':text,'observation_digest':hashlib.sha256(text.encode()).hexdigest()})
+        elif mutation=='ambiguous_asset':changed=changed.model_copy(update={'asset_id':'foreign'})
+        elif mutation=='ambiguous_reader':changed=changed.model_copy(update={'reader':'foreign'})
+        request=SpecialistRequest.model_validate({**request.model_dump(mode='json'),
+            'fragments':[f.model_dump(mode='json') for f in (*request.fragments,changed)]})
+    with pytest.raises(EvidenceError,match='identity is not uniquely proved'):
+        validate_resolution(request,resolution,(result,))
+
+
 def test_unresolved_disagreement_is_preserved_without_fabricated_settlement():
     request = request_for((('raw','Epipocus','raw_reading'), ('decided','Epipsocus','decided_transcript')))
     resolution = FieldResolution(field_key=FieldKey.TAXON, work_state=WorkState.WAITING_SOURCE,

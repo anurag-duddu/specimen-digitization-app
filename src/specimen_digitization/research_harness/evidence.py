@@ -572,10 +572,20 @@ def _taxon_assertions(request: SpecialistRequest, resolution: FieldResolution):
             and item.start <= candidate.start < candidate.end <= item.end])
     value = resolution.value
     if value.source_observation_id is not None:
-        declared = [item for item in request.fragments if
-            item.observation_id == value.source_observation_id
-            and item.region_id == value.source_region_id
-            and item.input_source == value.input_source
+        selected = [item for item in request.fragments if item.observation_id == value.source_observation_id]
+        identities = {(item.region_id, item.input_source, item.observation_text, item.observation_digest,
+            item.asset_id, item.asset_generation, item.asset_digest, item.label_id,
+            item.reader, item.model_id, item.prompt_digest) for item in selected}
+        # These optional fields are declarations to verify, not defaults from
+        # which to invent a raw/decided route. Every original fragment of the
+        # explicitly selected reading must prove one consistent identity.
+        route = value.input_source_by_observation.get(value.source_observation_id, value.input_source)
+        if (len(identities) != 1 or any(item.scope != request.scope for item in selected)
+            or value.source_region_id is not None and value.source_region_id != selected[0].region_id
+            or route is not None and route != selected[0].input_source):
+            raise EvidenceError("G32 taxon declared reading identity is not uniquely proved")
+        declared = [item for item in selected if
+            item.scope == request.scope
             and value.verbatim_by_observation.get(item.observation_id) in {item.literal, item.observation_text}
             and not item.unreadable]
         producer = [(item.literal, [item]) for item in declared if name_fragment(item)]

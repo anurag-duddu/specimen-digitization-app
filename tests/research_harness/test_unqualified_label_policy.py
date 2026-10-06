@@ -42,7 +42,7 @@ LOOKUPS = {FieldKey.COUNTY, FieldKey.CITY, FieldKey.TAXON}
 DECLARED = LITERALS | LOOKUPS
 NOT_DECLARED = {FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.PRECISE_LOCATION,
     FieldKey.IDENTIFIED_BY_IRN}
-EVIDENCE_PY_SHA256 = "0ef47dcb9ddc09e5233faec40fb9b22f4090dd8fd1aa8a5ededabbb4e67473b7"  # pragma: allowlist secret
+EVIDENCE_PY_SHA256 = "e7e0d101ff0780c314345b1c476649702d076271869bc325736d7914c717a3ff"  # pragma: allowlist secret
 
 
 def pins():
