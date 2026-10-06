@@ -287,6 +287,7 @@ def sqlite_search(
         + " ORDER BY created_at,id LIMIT ?"
     )
     with repository.connect() as db:
+        db.create_function("display_reference", 2, display_reference, deterministic=True)
         rows = db.execute(query, (*values, limit)).fetchall()
     result = []
     for values in rows:

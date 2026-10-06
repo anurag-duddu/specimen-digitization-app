@@ -461,9 +461,6 @@ class SQLiteRepository:
     def connect(self):
         db = sqlite3.connect(self.path, timeout=10)
         db.execute("PRAGMA journal_mode=WAL")
-        from .search import display_reference
-
-        db.create_function("display_reference", 2, display_reference, deterministic=True)
         return db
 
     def get(self, scope: Scope, specimen_id: str) -> Specimen:
