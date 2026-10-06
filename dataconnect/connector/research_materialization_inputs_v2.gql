@@ -103,7 +103,11 @@ query GetCanonicalResearchMaterializationInputsV2($organizationId: UUID!, $colle
     ), selected AS (
       SELECT i.id AS intent_id,
         CASE WHEN i.payload_json::jsonb=i.payload THEN i.payload_json::json END AS intent,
-        CASE WHEN prep.payload_json::jsonb=prep.payload THEN prep.payload_json::json END AS preparation,
+        CASE WHEN (SELECT count(*) FROM json_each(prep.payload_json::json) e WHERE e.key='preparation_digest')=1
+          AND prep.payload_json::jsonb->'preparation_digest'=to_jsonb(prep.preparation_digest)
+          AND (prep.payload_json::jsonb-'preparation_digest')=prep.payload
+        THEN (SELECT json_object_agg(e.key,e.value) FROM json_each(prep.payload_json::json) e
+          WHERE e.key<>'preparation_digest') END AS preparation,
         prep.id AS preparation_id, prep.preparation_digest,
         h.state_json::json AS state, h.state_json, h.revision AS state_revision, h.contract_version AS state_contract,
         b.job_key, b.job_id, b.generation
@@ -124,7 +128,11 @@ query GetCanonicalResearchMaterializationInputsV2($organizationId: UUID!, $colle
         'outer_intent',json_build_object('original',sel.intent,
           'preparation_count',(SELECT count(*)::int FROM public.research_publication_preparation_v2 pp
             WHERE pp.organization_id=$1 AND pp.collection_id=$2 AND pp.intent_id=sel.intent_id),
-          'preparations',(SELECT CASE WHEN count(*)<=20 THEN json_agg(CASE WHEN pp.payload_json::jsonb=pp.payload THEN pp.payload_json::json END ORDER BY pp.ordinal) ELSE NULL END
+          'preparations',(SELECT CASE WHEN count(*)<=20 THEN json_agg(CASE WHEN (SELECT count(*) FROM json_each(pp.payload_json::json) e WHERE e.key='preparation_digest')=1
+          AND pp.payload_json::jsonb->'preparation_digest'=to_jsonb(pp.preparation_digest)
+          AND (pp.payload_json::jsonb-'preparation_digest')=pp.payload
+        THEN (SELECT json_object_agg(e.key,e.value) FROM json_each(pp.payload_json::json) e
+          WHERE e.key<>'preparation_digest') END ORDER BY pp.ordinal) ELSE NULL END
             FROM public.research_publication_preparation_v2 pp WHERE pp.organization_id=$1 AND pp.collection_id=$2 AND pp.intent_id=sel.intent_id),
           'attempt',(SELECT json_build_object('id',a.id,'preparation_id',a.preparation_id,'operation_digest',a.operation_digest,
             'preparation_digest',a.preparation_digest,'admission_digest',a.admission_digest)

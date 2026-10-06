@@ -62,6 +62,23 @@ class SpecialistOutput(BaseModel):
     resolutions: tuple[FieldResolution, ...]
 
 
+def utility_model_view(result: SourceResult) -> SourceResult:
+    """Compact presentation only; the broker's exact result remains proof authority."""
+    if (result.coverage.source_id not in {"settle_temporal", "settle_elevation"}
+        or result.status != LookupStatus.SUCCESS):
+        return result
+    if len(result.candidate_json) != 1:
+        raise ValueError("Unexpected deterministic utility envelope")
+    payload = json.loads(result.candidate_json[0])
+    if not isinstance(payload, dict) or set(payload) != {"resolutions"}:
+        raise ValueError("Unexpected deterministic utility envelope")
+    resolutions = tuple(FieldResolution.model_validate(item) for item in payload["resolutions"])
+    compact = json.dumps({"resolutions": [item.model_dump(mode="json",
+        exclude_defaults=True, exclude_none=True) for item in resolutions]},
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+    return result.model_copy(update={"candidate_json": (compact,)})
+
+
 def specialist_output_schema_digest() -> str:
     return hashlib.sha256(json.dumps(SpecialistOutput.model_json_schema(), sort_keys=True,
                                     separators=(",", ":")).encode()).hexdigest()
@@ -384,13 +401,21 @@ class SpecialistHarness:
                                  arguments: dict[str, Any]) -> SourceResult:
             """Run a scoped deterministic utility from the approved tool registry."""
             request = ctx.deps.for_agent(ctx.agent.name)
+            from .evidence import EvidenceError
+            from .sources import UtilityInputError
             with ctx.deps.trace(request).span("tool", role=request.role.value):
                 try:
                     result = await ctx.deps.tool_broker.invoke_utility(request, tool_id, arguments)
+                    view = utility_model_view(result)
+                except (UtilityInputError, EvidenceError):
+                    # Correct a model argument within the existing one-retry
+                    # budget; a missing assertion never becomes a settled value.
+                    raise ModelRetry("research_utility_invalid_input: use only an accepted assembly for the requested field and its event; "
+                        "if that field has no accepted assembly, return the declared unresolved missing-policy result") from None
                 except Exception:
                     raise RuntimeError("research_utility_tool_failed") from None
             ctx.deps.tool_results.setdefault(request.role, []).append(result)
-            return result
+            return view
 
     @staticmethod
     def _register_output_validation(agent):
@@ -406,8 +431,11 @@ class SpecialistHarness:
             try:
                 for resolution in output.resolutions:
                     validate_resolution(request, resolution, results)
-            except ValueError:
-                raise ModelRetry("specialist_output_has_invalid_evidence_or_scope") from None
+            except ValueError as error:
+                reason = ("exact_source_candidate_required" if str(error) ==
+                    "Value is not one of the trusted source-supported candidates" else "invalid_evidence_or_scope")
+                raise ModelRetry(f"specialist_output_has_invalid_evidence_or_scope: field={resolution.field_key}; {reason}; "
+                    "copy the deciding candidate value and both evidence-id lists exactly") from None
             masked = masked_outages(output.resolutions, results)
             if masked:
                 raise ModelRetry("specialist_output_hides_a_failed_lookup_behind_waiting_policy: a lookup for "

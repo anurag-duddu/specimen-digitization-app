@@ -2,6 +2,7 @@
 // A compiler success or a fake operation client does not prove this transaction.
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
 
 const host = process.env.FIREBASE_DATACONNECT_EMULATOR_HOST;
 assert.match(host, /^127\.0\.0\.1:\d+$/);
@@ -41,7 +42,7 @@ const state = {budget_policy: policy, jobs: {'synthetic-key': {
   identity: {organization_id: org, collection_id: coll, specimen_id: specimen, job_id: 'synthetic-job'},
   record_revision: 1, generation: 1, pins: {input_digest: hex,
     sources: {registry_policies: Array.from({length: 13}, () => ({timeout_seconds: 15}))}},
-  fields: {}, binding_digest: hex}}, effects: {}, outbox: {}, journal: {}, halted: false};
+  fields: {}, lease: {owner: 'synthetic-owner', fence: 1, expires_at: 4102444800}, binding_digest: hex}}, effects: {}, outbox: {}, journal: {}, halted: false};
 // JavaScript has one number type. The actual stored String deliberately keeps
 // the 15.0 spelling whose Python pin digest differs from Any's 15.
 const stateText = value => JSON.stringify(value).replaceAll('"timeout_seconds":15', '"timeout_seconds":15.0');
@@ -137,21 +138,40 @@ ok(await raw(`mutation($text:String!) { researchHarnessState_update(
   {text: stateText(state)}));
 assert.equal(ok(await query('GetCanonicalResearchBindingV2', {actorUid: 'missing-worker'})).binding, null);
 
-// Minimal inert retained rows exercise the real materialization and immutable
-// intent read SQL; typed scientific admission is covered by the Python tests.
+// Exercise the real append mutation: it stores the complete submitted String,
+// but removes preparation_digest from the JSONB scientific body. These minimal
+// native admission fixtures do not replace the Python typed scientific tests.
 const intentId = randomUUID(), preparationId = randomUUID();
-const intentText = '{"original_prepared":{"basis":{"field_key":"country"}},"typed_number":15.0}';
-const preparationText = '{"anchor":{"record_revision":1,"record_version_id":"' + record + '"},"typed_number":15.0}';
-ok(await raw(`mutation($intent:Any!,$intentText:String!,$preparation:Any!,$preparationText:String!) @transaction {
+const intentText = JSON.stringify({original_prepared: {basis: {field_key: 'country'}},
+  binding_id: binding, typed_number: 15}).replace('"typed_number":15', '"typed_number":15.0');
+ok(await raw(`mutation($intent:Any!,$intentText:String!) {
   researchPublicationIntentV2_insert(data:{${scope},actorUid:"worker",idempotencyKey:"synthetic-typed-json",
     id:"${intentId}",specimenId:"${specimen}",operationDigest:"${hex}",scientificIntentDigest:"${hex}",
     requestIdentityDigest:"${hex}",payload:$intent,payloadJson:$intentText})
-  researchPublicationPreparationV2_insert(data:{${scope},id:"${preparationId}",intentId:"${intentId}",ordinal:1,
-    preparationDigest:"${hex}",admissionDigest:"${hex}",payload:$preparation,payloadJson:$preparationText})
-}`, {intent: JSON.parse(intentText), intentText, preparation: JSON.parse(preparationText), preparationText}));
+}`, {intent: JSON.parse(intentText), intentText}));
+const preparationBody = {contract_version: 'research-publication-preparation/v2', id: preparationId,
+  intent_id: intentId, ordinal: 1, prior_preparation_id: null, prior_preparation_digest: null,
+  admission_digest: hex, scientific_intent_digest: hex, authority_digest: hex,
+  state_revision: 1, expected_state: state, anchor: canonical, anchor_receipt_id: null,
+  anchor_chain_digest: hex, anchor_registration_revision: 1,
+  prepared: {basis: {lease: state.jobs['synthetic-key'].lease}}, typed_number: 15, fraction: 15.25};
+const preparationText = stateText({...preparationBody, preparation_digest: hex})
+  .replace('"typed_number":15', '"typed_number":15.0');
+assert.equal(ok(await call('/connectors/specimen-server:impersonateMutation',
+  {operationName: 'RetainResearchPublicationPreparationV2', variables: {...variables,
+    preparationJson: preparationText}})).retainedPreparation, 1);
+const storedPreparation = ok(await raw(`query { researchPublicationPreparationV2(
+  key:{${scope},id:"${preparationId}"}) { payload payloadJson preparationDigest admissionDigest } }`))
+  .researchPublicationPreparationV2;
+assert.equal(storedPreparation.payloadJson, preparationText);
+assert.deepEqual(storedPreparation.payload, preparationBody);
+assert.equal(storedPreparation.preparationDigest, hex);
+assert.equal(storedPreparation.admissionDigest, hex);
+assert.equal(Object.hasOwn(storedPreparation.payload, 'preparation_digest'), false);
 const retainedVariables = {idempotencyKey: 'synthetic-typed-json', requestIdentityDigest: hex};
 const exactIntent = exactRow(await query('GetResearchPublicationIntentV2', retainedVariables), 'intent');
-assert.equal((exactIntent.text.match(/"typed_number":15\.0/g) ?? []).length, 2);
+assert.equal((exactIntent.text.match(/"typed_number"\s*:\s*15\.0/g) ?? []).length, 2);
+assert.deepEqual(exactIntent.row.preparations, [preparationBody]);
 const materialization = exactRow(await query('GetCanonicalResearchMaterializationInputsV2',
   {...retainedVariables, preparationId}), 'binding');
 const exactState = materialization.row.materialization_inputs.private_state_integrity;
@@ -241,3 +261,71 @@ assert.deepEqual(exactChain.row.causal.causal_chain, [JSON.parse(proofText)]);
 assert.match(exactChain.text, /"typed_number"\s*:\s*15\.0/);
 assert.deepEqual(await current(), replaced, 'retained proof reads must not mutate the current specimen or state');
 console.log('PASS positive named receipt and binding causal-chain JSONB decimal transport with unchanged current state');
+
+// Test all four projections against the real retained row. The mutations below
+// are isolated synthetic corruption probes, never a repair of production data.
+async function preparationReads() {
+  const intent = exactRow(await query('GetResearchPublicationIntentV2', retainedVariables), 'intent');
+  const materialization = exactRow(await query('GetCanonicalResearchMaterializationInputsV2',
+    {...retainedVariables, preparationId}), 'binding');
+  const receipt = exactRow(await query('GetResearchPublicationReceiptV2',
+    {idempotencyKey: 'synthetic-typed-json', operationDigest: hex}), 'retained');
+  return {intent, materialization, receipt};
+}
+async function replacePreparation(text, projected = preparationBody, nativeDigest = hex) {
+  assert.equal(ok(await raw(`mutation($text:String!,$projected:String!,$digest:String!) @transaction {
+    changed:_execute(sql:"""UPDATE public.research_publication_preparation_v2
+      SET payload_json=$1,payload=$2::jsonb,preparation_digest=$3
+      WHERE organization_id='${org}'::uuid AND collection_id='${coll}'::uuid AND id='${preparationId}'::uuid""",
+      params:[$text,$projected,$digest]) @check(expr:"this == 1")
+  }`, {text, projected: JSON.stringify(projected), digest: nativeDigest})).changed, 1);
+}
+const goodReads = await preparationReads();
+for (const [name, text, projected, nativeDigest] of [
+  ['missing metadata', JSON.stringify(preparationBody)],
+  ['foreign metadata', preparationText.replace(`"preparation_digest":"${hex}"`, `"preparation_digest":"${'b'.repeat(64)}"`)],
+  ['non-string metadata', preparationText.replace(`"preparation_digest":"${hex}"`, '"preparation_digest":1')],
+  ['duplicate metadata', preparationText.replace(/}$/, `,"preparation_digest":"${hex}"}`)],
+  ['changed text body', preparationText.replace('"typed_number":15.0', '"typed_number":16.0')],
+  ['changed projected body', preparationText, {...preparationBody, fraction: 16.25}],
+  ['changed native digest', preparationText, preparationBody, 'b'.repeat(64)],
+]) {
+  await replacePreparation(text, projected, nativeDigest);
+  const reads = await preparationReads();
+  assert.deepEqual(reads.intent.row.preparations, [null], name);
+  assert.equal(reads.receipt.row.preparation, null, name);
+  const inputs = reads.materialization.row.materialization_inputs;
+  assert.deepEqual(inputs.outer_intent.preparations, [null], name);
+  assert.equal(inputs.preparation_snapshot.identity, null, name);
+  assert.deepEqual(await current(), replaced, `${name} read changed current state`);
+}
+await replacePreparation(preparationText);
+const restored = await preparationReads();
+for (const reads of [goodReads, restored]) {
+  assert.deepEqual(reads.intent.row.preparations, [preparationBody]);
+  assert.deepEqual(reads.receipt.row.preparation, preparationBody);
+  assert.deepEqual(reads.materialization.row.materialization_inputs.outer_intent.preparations, [preparationBody]);
+  assert.deepEqual(reads.materialization.row.materialization_inputs.preparation_snapshot.identity, canonical);
+}
+// A duplicate scientific member must remain visible to the actual strict HTTP
+// decoder; using JSONB to strip metadata would silently erase this corruption.
+await replacePreparation(preparationText.replace('"typed_number":15.0', '"typed_number":15.0,"typed_number":15.0'));
+const duplicateReads = await preparationReads();
+const strictProof = execFileSync(process.env.DATA_TEST_PYTHON || '.venv/bin/python', ['-c', `
+import json,sys
+from specimen_digitization.research_harness.native_json import decode_native_json
+from specimen_digitization.research_harness.compatibility import PublicationUnavailable
+for operation,alias,text in json.load(sys.stdin):
+    try: decode_native_json(operation,{alias:{"exact_json":text}})
+    except PublicationUnavailable as exc: assert str(exc)=="native_v2_exact_json_unavailable"
+    else: raise AssertionError("duplicate preparation body was erased")
+print("PASS strict native decoder refuses retained duplicate preparation body on all three named reads")
+`], {input: JSON.stringify([
+  ['GetResearchPublicationIntentV2', 'intent', duplicateReads.intent.text],
+  ['GetCanonicalResearchMaterializationInputsV2', 'binding', duplicateReads.materialization.text],
+  ['GetResearchPublicationReceiptV2', 'retained', duplicateReads.receipt.text],
+]), encoding: 'utf8', env: {...process.env, PYTHONPATH: `${process.cwd()}/src`, PYTHONDONTWRITEBYTECODE: '1'}});
+console.log(strictProof.trim());
+await replacePreparation(preparationText);
+assert.deepEqual(await current(), replaced);
+console.log('PASS real retained preparation on all four projections; seven custody refusals, exact decimals and preserved duplicate-body refusal');
