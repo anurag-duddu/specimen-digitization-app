@@ -626,11 +626,12 @@ def test_a_specialist_reading_the_text_writes_a_name_printed_in_capitals_as_a_ca
 
 
 @pytest.mark.parametrize("printed", ["CAMPONOTUS SP.", "cf. Danaus plexippus", "Danaus?"])
-def test_a_specialist_that_sends_the_printed_name_holds_the_record_and_no_request_is_sent(printed_taxon, printed):
-    """The hazard the rules prevent (probe M, and N4 for a name in doubt): a name in capitals or in doubt sent as
-    printed. The query builder raises before any GBIF HTTP request. The unknown
-    source effect retains its hold, so the concurrent geography results cannot
-    be published and the record remains at plan."""
+def test_unsendable_printed_taxon_is_refused_before_source_effect_reservation(printed_taxon, printed):
+    """A name in capitals or in doubt cannot be sent as printed (probe M/N4).
+
+    The query builder refuses it before HTTP or effect reservation. Publication
+    remains held, but an unsendable request has no source effect or reservation.
+    """
     rig = printed_taxon(printed)
     parsed, specimen, hold = run_research(rig, specialist_factory(rig.model_calls, taxon_lookup=True,
         taxon_printed=printed, follow_lookup_rule=False), transport(rig.source_urls))
@@ -643,4 +644,4 @@ def test_a_specialist_that_sends_the_printed_name_holds_the_record_and_no_reques
     assert job["fields"]["taxon"]["work_state"] == "operational_failed"
     held = [effect for effect in state["effects"].values() if effect["field_keys"] == ["taxon"]
         and effect["operation_key"].startswith("source_capture_v2:")]
-    assert len(held) == 1 and held[0]["status"] == "held_unknown" and held[0]["held_micro_usd"] > 0
+    assert held == []
