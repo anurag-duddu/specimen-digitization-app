@@ -12,8 +12,9 @@ from .contracts import (
     SpecialistRequest, digest,
 )
 
-VALIDATOR_VERSION = "validate_resolution/v1"
-VALIDATOR_SOURCE_SHA256 = "dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400"  # pragma: allowlist secret
+VALIDATOR_VERSION = "validate_resolution/v2"
+VALIDATOR_SOURCE_SHA256 = "0ef47dcb9ddc09e5233faec40fb9b22f4090dd8fd1aa8a5ededabbb4e67473b7"  # pragma: allowlist secret
+HISTORICAL_VALIDATOR_SOURCE_SHA256 = "dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400"  # pragma: allowlist secret
 JOURNAL_TRANSFORM_VERSION = "sibling-dependency-revision/v1"
 MAX_ACCEPTED_PROOF_BYTES = 2_000_000
 
@@ -44,13 +45,18 @@ class AcceptedOutputProofV1(FrozenRecord):
     model_settings_digest: Digest
     engine_source_sha256: Digest
     journal_source_sha256: Digest
-    validator_version: Literal["validate_resolution/v1"] = VALIDATOR_VERSION
-    validator_source_sha256: Literal["dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400"] = VALIDATOR_SOURCE_SHA256
+    validator_version: Literal["validate_resolution/v1", "validate_resolution/v2"] = VALIDATOR_VERSION
+    validator_source_sha256: Literal["dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400", "0ef47dcb9ddc09e5233faec40fb9b22f4090dd8fd1aa8a5ededabbb4e67473b7"] = VALIDATOR_SOURCE_SHA256  # pragma: allowlist secret
 
     @model_validator(mode="after")
     def exact_acceptance(self):
         from .evidence import validate_resolution
 
+        if (self.validator_version, self.validator_source_sha256) not in {
+            (VALIDATOR_VERSION, VALIDATOR_SOURCE_SHA256),
+            ("validate_resolution/v1", HISTORICAL_VALIDATOR_SOURCE_SHA256),
+        }:
+            raise ValueError("accepted_output_validator_pair_unqualified")
         if str(UUID(self.native_run_id)) != self.native_run_id:
             raise ValueError("accepted_output_native_run_identity_invalid")
         keys = tuple(item.field_key for item in self.resolutions)
@@ -170,12 +176,17 @@ def read_accepted_checkpoint_proof(store, scope, blobs, checkpoint_id: str) -> A
     except (ValidationError, ValueError, TypeError, OSError):
         raise StaleWork("accepted_output_capture_unavailable") from None
     source_boundary = job["pins"]["sources"].get("acceptance_boundary")
+    # Historical proof provenance is joined to its immutable job, not relabelled
+    # as today's producer. Installed bytes and today's stronger semantics still
+    # qualify every read; unknown or crossed version/hash pairs never decode.
+    boundary = validation_boundary_pins()
     expected = {"contract_version":"research-acceptance-boundary/v1",
-        "validator_version":VALIDATOR_VERSION, "validator_source_sha256":VALIDATOR_SOURCE_SHA256,
+        "validator_version":proof.acceptance.validator_version,
+        "validator_source_sha256":proof.acceptance.validator_source_sha256,
         "engine_source_sha256":proof.acceptance.engine_source_sha256,
         "journal_source_sha256":proof.acceptance.journal_source_sha256}
     if source_boundary is None and document.state["budget_policy"].get("live_authorized") is not True:
-        source_boundary = {**expected, **validation_boundary_pins()}
+        source_boundary = {**expected, **boundary}
     if source_boundary != expected:
         raise StaleWork("accepted_output_source_boundary_unqualified")
     if (canonical(proof.model_dump(mode="json")) != raw

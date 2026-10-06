@@ -42,7 +42,7 @@ LOOKUPS = {FieldKey.COUNTY, FieldKey.CITY, FieldKey.TAXON}
 DECLARED = LITERALS | LOOKUPS
 NOT_DECLARED = {FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.PRECISE_LOCATION,
     FieldKey.IDENTIFIED_BY_IRN}
-EVIDENCE_PY_SHA256 = "dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400"  # pragma: allowlist secret
+EVIDENCE_PY_SHA256 = "0ef47dcb9ddc09e5233faec40fb9b22f4090dd8fd1aa8a5ededabbb4e67473b7"  # pragma: allowlist secret
 
 
 def pins():
@@ -74,7 +74,7 @@ def test_the_other_four_fields_declare_none_and_the_irn_keeps_its_exception():
                for key, row in rows.items())
 
 
-def test_evidence_py_still_declares_verbatim_dts_alone_and_its_validator_pin_is_unchanged():
+def test_evidence_py_declares_verbatim_dts_alone_and_its_current_validator_pin_is_exact():
     default = insects_profile(ORG, COLLECTION)
     assert declared(default) == {FieldKey.VERBATIM_DTS: "verbatim_dts_definition_examples"}
     source = Path(evidence.__file__).read_bytes()

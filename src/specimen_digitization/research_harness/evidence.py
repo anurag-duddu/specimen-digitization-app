@@ -518,6 +518,135 @@ def _candidate_matches(resolution: FieldResolution, candidate: dict) -> bool:
             and (candidate.get("event_id") in {None, resolution.event_id}))
 
 
+def _taxon_assertions(request: SpecialistRequest, resolution: FieldResolution):
+    """Bind complete names to field assertions and their retained reader counterparts.
+
+    A title-case word elsewhere on a label is not a taxon assertion. Explicit
+    taxon assemblies/spans, or the declared producer's complete name line,
+    establish its location. Other readings of that same line must then be
+    reconciled; an omitted/shifted/partial counterpart cannot clear the field.
+    """
+    from specimen_digitization.application.lookup import scientific_name
+
+    def complete(text):
+        name = scientific_name(text)
+        # The existing parser retains morphology/annotation in the assertion,
+        # while qualifying only its written scientific name for lookup. A
+        # genus-only query cannot stand in for a complete species assertion.
+        return name.query if name and name.genus and name.partly_read is None else None
+
+    def name_fragment(item):
+        start = item.observation_text.rfind("\n", 0, item.start) + 1
+        prefix = item.observation_text[start:item.start].strip().rstrip(":").strip()
+        if prefix in {str(key) for key in ALL_FIELDS if key != FieldKey.TAXON}:
+            return False
+        return complete(item.literal)
+
+    fragments = {item.id:item for item in request.fragments}
+    assertions, anchors, qualified, assembled = set(), [], {}, []
+    def add(text, items):
+        assertions.add(text)
+        for item in items:
+            anchors.append(item)
+            qualified.setdefault((item.region_id, item.observation_id, item.order), set()).add(text)
+    for assembly in request.assemblies:
+        if assembly.field_key != FieldKey.TAXON:
+            continue
+        validate_assembly(request, assembly)
+        if not complete(assembly.interpreted_text):
+            raise EvidenceError("G32 taxon assertion is not a complete scientific name")
+        parts = [fragments[key] for key in assembly.fragment_ids]
+        # The validated assembly is one complete assertion. Its genus/epithet
+        # word spans never become independent names or extra source queries.
+        leads = [min((item for item in parts if item.observation_id == observation), key=lambda item:item.start)
+            for observation in dict.fromkeys(item.observation_id for item in parts)]
+        add(assembly.interpreted_text, leads)
+        assembled.append((assembly.interpreted_text, parts, leads))
+    for candidate in request.organiser_candidates:
+        if candidate.field_key != FieldKey.TAXON or candidate.status == "ungrounded":
+            continue
+        if not complete(candidate.literal):
+            raise EvidenceError("G32 located taxon assertion is not a complete scientific name")
+        add(candidate.literal, [item for item in request.fragments if
+            item.observation_id == candidate.observation_id and item.region_id == candidate.region_id
+            and item.start <= candidate.start < candidate.end <= item.end])
+    value = resolution.value
+    if value.source_observation_id is not None:
+        declared = [item for item in request.fragments if
+            item.observation_id == value.source_observation_id
+            and item.region_id == value.source_region_id
+            and item.input_source == value.input_source
+            and value.verbatim_by_observation.get(item.observation_id) in {item.literal, item.observation_text}
+            and not item.unreadable]
+        producer = [(item.literal, [item]) for item in declared if name_fragment(item)]
+        producer.extend((text, leads) for text, parts, leads in assembled if
+            any(item in declared for item in parts) and all(not item.unreadable
+                and (item.observation_id != value.source_observation_id or item in declared) for item in parts))
+        # A producer may contain locality and an order as well as the genus.
+        # Only the complete assertion actually queried supplies its anchor.
+        if not producer:
+            raise EvidenceError("G32 taxon deciding query lacks an exact declared reading")
+        return assertions, anchors, producer, name_fragment, complete, qualified
+    if not anchors:
+        raise EvidenceError("G32 taxon deciding query lacks an explicit field assertion")
+    return assertions, anchors, [], name_fragment, complete, qualified
+
+
+def _validate_taxon_inputs(request, resolution, matching):
+    deciding = [(result, candidate) for result, candidate in matching
+        if result.coverage.source_id == "gbif" and candidate.get("authority_role") == "decides"]
+    assertions, anchors, producer, name_fragment, complete, qualified = _taxon_assertions(request, resolution)
+    queries = {candidate.get("input_literal") for _, candidate in deciding}
+    if producer:
+        producer = [(text, leads) for text, leads in producer if text in queries or complete(text) in queries]
+        if not producer:
+            raise EvidenceError("G32 taxon deciding query differs from its declared reading")
+        assertions.update(text for text, _ in producer)
+        anchors.extend(item for _, leads in producer for item in leads)
+    for anchor in anchors:
+        # The factory's line ordinal is relative to its immutable observation.
+        # Explicit spans still name the containing line; never search unrelated
+        # capitalized words or reinterpret locality as taxonomic evidence.
+        readings = {item.observation_id for item in request.fragments if item.region_id == anchor.region_id}
+        for observation in readings:
+            explicit = qualified.get((anchor.region_id, observation, anchor.order))
+            if explicit:
+                assertions.update(explicit)
+                continue
+            counterparts = [item for item in request.fragments if
+                item.region_id == anchor.region_id and item.observation_id == observation
+                and item.order == anchor.order and item.granularity == "line"]
+            if observation == anchor.observation_id:
+                continue
+            # A span/assembled fixture can lack line nodes. An exactly matching
+            # complete span is sufficient; a different unqualified span is not.
+            if not counterparts:
+                counterparts = [item for item in request.fragments if
+                    item.region_id == anchor.region_id and item.observation_id == observation
+                    and item.order == anchor.order and item.literal in assertions]
+            if len(counterparts) != 1 or counterparts[0].unreadable or not name_fragment(counterparts[0]):
+                raise EvidenceError("G32 taxon reader counterpart is not a complete qualified assertion")
+            if counterparts[0].literal != anchor.literal:
+                # An ordinal alone cannot designate a taxon after reader lines
+                # move. Without an explicit field span, the other complete-name
+                # lines must retain their exact order/text. Their words supply
+                # alignment custody only; they are never added as taxon values.
+                def context(observation_id):
+                    return tuple(item.literal for item in request.fragments if
+                        item.region_id == anchor.region_id and item.observation_id == observation_id
+                        and item.granularity == "line" and item.order != anchor.order
+                        and name_fragment(item))
+                if context(anchor.observation_id) != context(observation):
+                    raise EvidenceError("G32 taxon reader alignment is not independently qualified")
+            assertions.add(counterparts[0].literal)
+    qualified_queries = {text for literal in assertions for text in (literal, complete(literal)) if text}
+    if not queries or not queries <= qualified_queries:
+        raise EvidenceError("G32 taxon deciding query is not an exact grounded assertion")
+    for literal in assertions:
+        if not any(candidate.get("input_literal") in {literal, complete(literal)} for _, candidate in deciding):
+            raise EvidenceError("G32 each independent taxon assertion needs its own deciding source settlement")
+
+
 def validate_resolution(request: SpecialistRequest, resolution: FieldResolution, tool_results: Sequence[SourceResult] = ()) -> FieldResolution:
     """Reject false model clearances using only actual broker outputs and immutable inputs."""
     if resolution.field_key not in request.field_keys:
@@ -631,13 +760,7 @@ def validate_resolution(request: SpecialistRequest, resolution: FieldResolution,
         ):
             raise EvidenceError("G23 taxonomy requires qualified GBIF deciding assertion")
         if resolution.field_key == FieldKey.TAXON:
-            assertions = [item for item in request.assemblies if item.field_key == FieldKey.TAXON]
-            for assembly in assertions:
-                validate_assembly(request, assembly)
-                if not any(candidate.get("input_literal") == assembly.interpreted_text
-                           and candidate.get("authority_id") == resolution.value.authority_id
-                           and result.coverage.source_id == "gbif" for result, candidate in matching):
-                    raise EvidenceError("G32 each independent taxon assertion needs its own deciding source settlement")
+            _validate_taxon_inputs(request, resolution, matching)
         if resolution.field_key == FieldKey.DATE_IDENTIFIED and not any(
             result.coverage.exact_join_proven and candidate.get("event_kind") == "determination"
             and candidate.get("precision") == resolution.value.precision
