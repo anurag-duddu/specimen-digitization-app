@@ -11,6 +11,7 @@ import copy
 import hashlib
 import json
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Literal
 
 from specimen_digitization.application.domain import Evidence, ValueState
@@ -18,7 +19,7 @@ from specimen_digitization.application.storage import Conflict, Missing, canonic
 from .candidate_selection import DerivedCandidateMetadata, retained_candidate
 from .canonical_binding import BindingUnavailable, CanonicalIdentity
 from .compatibility import PublicationUnavailable
-from .contracts import FieldKey, FrozenRecord, ResearchScope
+from .contracts import FieldKey, FrozenRecord, ResearchScope, WorkState
 from .discovery import DiscoveryCapabilities
 from .journal import DurableResearchJournal
 from .persistence import Lease, StaleWork
@@ -68,6 +69,11 @@ class CandidateReviewContext:
                     document, scope.key, field_key, decision.after["selection_id"])
             except StaleWork:
                 raise Conflict("Research candidate state changed; reopen the record") from None
+            except (KeyError, TypeError, AttributeError):
+                # This pure parser reads the already loaded receipt document.
+                # Malformed receipt shapes cannot confer selection authority;
+                # normalize only here so storage/auth failures still propagate.
+                raise ValueError("Retained research candidate receipt is malformed") from None
         derived = [choice for choice in selections.values() if choice["source_id"] == "georeference_spatial"]
         if derived:
             # The source envelope proves a computation, while the current saved
@@ -197,6 +203,116 @@ class CandidateReviewContext:
             "run_id": specimen.run.id, "source_revision": specimen.version,
             "review_saved_revision": specimen.version + 1,
             "request_key": request_key, "request_digest": request_digest, "actor": actor}
+
+
+class QualifiedProposalService:
+    """Offer only choices the installed canonical review path can resolve now.
+
+    The journal reader supplies display context, not selection authority. Every
+    token is checked by CandidateReviewContext against the current actor,
+    canonical binding, accepted checkpoint and retained source capture before
+    this read advertises the existing canonical decision action. POST repeats
+    that validation independently and commits through its own canonical CAS.
+    """
+
+    def __init__(self, service, *, discovery, repository, blobs, capture_blobs,
+                 load_specimen):
+        self.service = service
+        self.discovery = discovery
+        self.repository = repository
+        self.blobs = blobs
+        self.capture_blobs = capture_blobs
+        self.load_specimen = load_specimen
+
+    async def thread(self, principal, locator):
+        thread = await self.service.thread(principal, locator)
+        # An unqualified journal projection may still contain a token. Never
+        # return that token to a viewer, stale report or failed proof check.
+        fields = []
+        for field in thread.fields:
+            review = field.review
+            if review is not None:
+                review = review.model_copy(update={"candidates": tuple(
+                    candidate.model_copy(update={"selection_id": None, "selection_value": None})
+                    for candidate in review.candidates)})
+            fields.append(field.model_copy(update={"review": review,
+                "actions": tuple(action for action in field.actions
+                                 if action not in {"supply_information", "review_proposal"})}))
+        if (thread.historical or thread.paused
+                or principal.role not in {"reviewer", "manager", "admin"}):
+            return thread.model_copy(update={"fields": tuple(fields)})
+
+        pending = [(index, field) for index, field in enumerate(thread.fields)
+                   if (field.work_state == WorkState.WAITING_HUMAN
+                       and field.checkpoint is not None and field.review is not None
+                       and field.preserved_human is None
+                       and any(candidate.selection_id for candidate in field.review.candidates))]
+        if not pending:
+            return thread.model_copy(update={"fields": tuple(fields)})
+
+        specimen = await asyncio.to_thread(self.load_specimen, principal, locator.specimen_id)
+        binding = await self.discovery.binding(principal, locator.specimen_id)
+        if (specimen.id != locator.specimen_id or specimen.scope != principal.scope
+                or specimen.version != binding.canonical.record_revision
+                or specimen.run.id != str(binding.canonical.canonical_run_id)
+                or specimen.asset.sensitive is not binding.canonical.sensitive
+                or binding.research_scope() != thread.scope):
+            raise StaleWork("research_state_changed")
+
+        for index, field in pending:
+            target = binding.field_mapping.get(field.field_key)
+            if (not isinstance(target, str) or not target
+                    or sum(value == target for value in binding.field_mapping.values()) != 1):
+                continue
+            qualified = []
+            for candidate in field.review.candidates:
+                token = candidate.selection_id
+                if token is None:
+                    qualified.append(candidate.model_copy(update={
+                        "selection_id": None, "selection_value": None}))
+                    continue
+                probe = SimpleNamespace(kind="research_candidate", target_id=target,
+                    after={"selection_id": token}, before={}, evidence_ids=())
+                try:
+                    context = await CandidateReviewContext.load(self.discovery, principal,
+                        specimen, [probe], repository=self.repository, blobs=self.blobs,
+                        capture_blobs=self.capture_blobs)
+                except (Conflict, StaleWork, ValueError):
+                    # A bad individual capture cannot grant an action or hide
+                    # the rest of the field's display-only source context.
+                    context = None
+                if context is not None:
+                    if (not binding.same_snapshot(context.binding)
+                            or context.thread.scope != thread.scope):
+                        raise StaleWork("research_state_changed")
+                    choice = context.selections.get(target)
+                    current_field = next((item for item in context.thread.fields
+                        if item.field_key == field.field_key), None)
+                    if (choice is not None and current_field is not None
+                            and current_field.checkpoint == field.checkpoint
+                            and current_field.work_state == WorkState.WAITING_HUMAN
+                            and choice["selection_id"] == token
+                            and choice["field_key"] == str(field.field_key)
+                            and choice["value"] == candidate.selection_value
+                            and choice["source_id"] == candidate.source_id
+                            and choice["evidence_id"] == candidate.evidence_id
+                            and choice["authority_id"] == candidate.authority_id):
+                        qualified.append(candidate)
+                        continue
+                qualified.append(candidate.model_copy(update={
+                    "selection_id": None, "selection_value": None}))
+            if any(candidate.selection_id is not None for candidate in qualified):
+                visible = fields[index]
+                fields[index] = visible.model_copy(update={
+                    "actions": (*visible.actions, "review_proposal"),
+                    "review": visible.review.model_copy(update={"candidates": tuple(qualified)}),
+                })
+        if not binding.same_snapshot(await self.discovery.binding(principal, locator.specimen_id)):
+            raise StaleWork("research_state_changed")
+        return thread.model_copy(update={"fields": tuple(fields)})
+
+    async def retry_field(self, *args):
+        return await self.service.retry_field(*args)
 
 
 class HistoricalResearchDiscovery(FrozenRecord):

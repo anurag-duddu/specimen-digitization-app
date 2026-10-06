@@ -78,6 +78,12 @@ class NativeResearchWorkflow:
         deadline.check()
         try:
             outcome = asyncio.run(self._research(principal, specimen))
+            if (outcome.status == "blocked" and outcome.reason_code is None
+                    and outcome.publication_receipt_ids):
+                published = asyncio.run(self._published_field_hold(principal, specimen, outcome))
+                if published is not None:
+                    deadline.check()
+                    return published
         except (PermissionError, HeldUnknown, StaleWork) as error:
             if str(error) in RECORD_REFUSALS:
                 raise OperationalBlock(str(error)) from None
@@ -88,6 +94,56 @@ class NativeResearchWorkflow:
         # Each publication saves the specimen through the native writer; the
         # research layer never manufactures a second Specimen/save writer.
         return self.ordinary.repository.get(principal.scope, specimen_id)
+
+    async def _published_field_hold(self, principal, before, outcome):
+        """Keep a proved native blocked save current, without an administrative save.
+
+        Field/source/policy holds are already in that publication's progress.
+        An extra lane_block would advance Q outside its native receipt chain and
+        make the report unavailable. A status string alone is not this proof.
+        Explicit operational failures still take the existing exception path.
+        """
+        from .canonical_binding import BindingUnavailable
+        from .compatibility import PublicationUnavailable
+        from .discovery_v2 import CanonicalReadBindingV2
+
+        try:
+            binding = await self.native_worker.runtime_factory.discovery.binding(principal, before.id)
+        except (BindingUnavailable, PublicationUnavailable):
+            raise StaleWork("research_published_hold_unproved") from None
+        if not isinstance(binding, CanonicalReadBindingV2):
+            return None
+        native, bundle = binding.native, binding.read_bundle
+        if (binding.research_scope() != outcome.scope or not native.causal_chain
+                or str(native.head_receipt_id) not in outcome.publication_receipt_ids
+                or str(native.canonical.canonical_run_id) != before.run.id
+                or bundle.halted or bundle.paused or bundle.hold_reasons
+                or bundle.job.get("lease") is not None
+                or any(effect.get("status") in {"reserved", "sending", "held_unknown"}
+                    or effect.get("actual_micro_usd") is None for effect in bundle.effects.values())):
+            return None
+        head = native.causal_chain[-1]
+        current = await asyncio.to_thread(self.ordinary.repository.get, principal.scope, before.id)
+        info = await asyncio.to_thread(self.ordinary.repository.version_info,
+            principal.scope, current.id, current.version)
+        progress = head.progress_receipt
+        if (current.id != before.id or current.scope != principal.scope
+                or current.run.id != before.run.id or current.version <= before.version
+                or current.version != native.canonical.record_revision
+                or current.asset.sha256 != binding.source_sha256 or current.asset.sensitive is not native.sensitive
+                or current.run.stage != "processing_blocked" or current.run.disposition is not None
+                or current.run.blocker is not None or head.receipt_id != native.head_receipt_id
+                or head.actor_uid != principal.user_id
+                or head.resulting != native.canonical or progress.run_stage != "processing_blocked"
+                or progress.wire_status != "processing_blocked" or progress.disposition is not None
+                or progress.exportable or info.get("revision") != current.version
+                or info.get("run_id") != current.run.id
+                or info.get("sha256") != native.canonical.snapshot_sha256
+                or info.get("run_sha256") != snapshot_digest(current.run.model_dump(mode="json"))):
+            return None
+        # The actual native save advanced Q, so the drain already sees progress.
+        # No metadata-only completion or queue retirement needs to be invented.
+        return current
 
     def completed_side_work(self, specimen):
         """Only this step's proved metadata completion counts without a save."""
