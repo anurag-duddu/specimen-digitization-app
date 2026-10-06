@@ -37,6 +37,13 @@ else
   docker run --rm --platform linux/amd64 --network none --read-only --cap-drop ALL --security-opt no-new-privileges "$image" --version | \
     python3 -c 'import json,sys; assert json.load(sys.stdin)["source_sha"] == sys.argv[1]' "$source_sha"
 fi
+if [[ "$target" != "sam" ]]; then
+  # Both application images install without dev dependencies. Exercise the
+  # actual research package/API qualification with the image's configured UID.
+  docker run --rm --platform linux/amd64 --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+    --entrypoint python "$image" -c \
+    'from specimen_digitization.research_harness.package_qualification import qualify_packages; qualify_packages()'
+fi
 if [[ "$target" != "api" ]]; then
   # The preparation process writes only synthetic fixtures as root. Verification
   # uses the image's configured UID with the volume read-only and no network.
