@@ -636,7 +636,7 @@ class SqlConnectRepository:
         """
         try:
             base = self.variables(scope)
-            needs_human_proofs = reviewer or bool(specimen.run.dependencies.get("human_review_field_locks"))
+            needs_human_proofs = reviewer or bool(specimen.run.dependencies.get("human_review_field_locks")) or bool(specimen.run.dependencies.get("preserved_human_fields"))
             review_proofs, review_conflict_check = self._review_proofs(scope, specimen) if needs_human_proofs else (None, None)
             written = self._projected.setdefault(specimen.id, set())
             self._projected.move_to_end(specimen.id)
@@ -650,6 +650,14 @@ class SqlConnectRepository:
                 )
                 if w.operation == "AppendReviewDecisionV2" or w.key not in written
             ]
+            if specimen.run.dependencies.get("preserved_human_fields"):
+                from .human_field_carry import verify, adapt_projection
+                verified = verify(self, specimen, self.graph_blobs, proofs=review_proofs)
+                # Adapt before filtering the complete composed record/candidate
+                # graph; every replay derives the same fresh-run row identities.
+                rows = adapt_projection(writes(specimen, self.locate, self._sized,
+                    base["actorUid"], reviewer, review_proofs=review_proofs), specimen, verified)
+                pending = [w for w in rows if w.operation == "AppendReviewDecisionV2" or w.key not in written]
         except Exception as error:
             LOGGER.warning(
                 "Projection for specimen %s not computed: %s", specimen.id, error

@@ -535,8 +535,17 @@ class ResearchStore:
             raise StaleWork("Current active generation and lease fence required")
         return job
 
-    def create_job(self, scope: DurabilityScope, pins: PinnedRuntime, field_keys: list[str], *, dependencies: Mapping[str, int] | None = None, record_revision: int = 0, human_locks: Mapping[str, str] | None = None) -> dict[str, Any]:
+    def create_job(self, scope: DurabilityScope, pins: PinnedRuntime, field_keys: list[str], *, dependencies: Mapping[str, int] | None = None, record_revision: int = 0, human_locks: Mapping[str, str] | None = None, preserved_human_outcomes: Mapping[str, Any] | None = None) -> dict[str, Any]:
         human_locks = dict(human_locks or {})
+        preserved = copy.deepcopy(dict(preserved_human_outcomes or {}))
+        if preserved:
+            from specimen_digitization.application.human_field_carry import PreservedHumanFieldOutcome, contract_pin
+            if pins.sources.get("human_field_carry") != contract_pin() or not set(preserved) <= set(human_locks):
+                raise ValueError("Preserved outcomes require current verified carry provenance")
+            for key, raw in preserved.items():
+                value = PreservedHumanFieldOutcome.model_validate(raw)
+                if str(value.field_key) != key or human_locks[key] != value.proof_digest:
+                    raise ValueError("Preserved outcome proof mismatch")
         if not set(human_locks) <= set(field_keys) or any(
                 type(proof) is not str or len(proof) != 64 for proof in human_locks.values()):
             raise ValueError("Human locks require verified field provenance")
@@ -547,7 +556,8 @@ class ResearchStore:
             if scope.key in state["jobs"]:
                 job = self._job(state, scope)
                 if (job["pins"] != payload or set(job["fields"]) != set(field_keys)
-                    or job.get("human_lock_proofs", {}) != human_locks):
+                    or job.get("human_lock_proofs", {}) != human_locks
+                    or job.get("preserved_human_outcomes", {}) != preserved):
                     raise ValueError("Runtime bindings are immutable for this generation")
                 return copy.deepcopy(job)
             job = {"identity": {k: v for k, v in scope.identity().items() if k != "generation"},
@@ -558,6 +568,8 @@ class ResearchStore:
                    "fields": {k: {"revision": 0, "locked": k in human_locks, "checkpoint": None,
                        "work_state": "waiting_human" if k in human_locks else "pending", "reuse": None} for k in field_keys},
                    "checkpoints": [], "history": []}
+            if preserved:
+                job["preserved_human_outcomes"] = preserved
             state["jobs"][scope.key] = job
             return copy.deepcopy(job)
         return self._mutate(scope, reduce)

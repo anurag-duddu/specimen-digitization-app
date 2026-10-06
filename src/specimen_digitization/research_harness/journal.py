@@ -47,6 +47,9 @@ class DurableResearchJournal:
             self._check_scope(request.scope)
             document = self.store._read(self.scope)
             job = self.store._lease(document.state, self.scope, self.lease, document.server_time)
+            preserved = self._verified_preserved(job)
+            if any(str(pin.field_key) in preserved for pin in request.dependencies):
+                raise StaleWork("preserved_human_native_dependency_unsupported")
             pins = job["pins"]
             role = str(request.role)
             for key in request.field_keys:
@@ -94,6 +97,26 @@ class DurableResearchJournal:
         await asyncio.to_thread(self._check_scope, scope)
         job = await asyncio.to_thread(self.store.job, self.scope)
         return tuple(FieldKey(key) for key,value in job["fields"].items() if value["locked"])
+
+    async def preserved_human_outcomes(self, scope: ResearchScope):
+        await asyncio.to_thread(self._check_scope, scope)
+        job = await asyncio.to_thread(self.store.job, self.scope)
+        return await asyncio.to_thread(self._verified_preserved, job)
+
+    def _verified_preserved(self, job):
+        from specimen_digitization.application.human_field_carry import job_outcomes, verify
+        from specimen_digitization.application.domain import Scope
+        outcomes = job_outcomes(job)
+        if outcomes:
+            repository = getattr(self.store.backend, "repository", None)
+            if repository is None:
+                raise StaleWork("preserved_human_server_reader_unavailable")
+            current = repository.get(Scope(organization_id=self.scope.organization_id,
+                collection_id=self.scope.collection_id), self.scope.specimen_id)
+            verified = verify(repository, current, repository.graph_blobs)
+            if verified.outcomes != outcomes:
+                raise StaleWork("preserved_human_current_proof_changed")
+        return outcomes
 
     async def trace_context(self, scope: ResearchScope) -> TraceParent | None:
         await asyncio.to_thread(self._check_scope, scope)
@@ -173,6 +196,9 @@ class DurableResearchJournal:
             raise ValueError("journal_field_coverage_mismatch")
         available = {item.field_key:item for item in await self.load(request.scope)}
         dependencies = {pin.field_key:pin for pin in request.dependencies}
+        preserved = await self.preserved_human_outcomes(request.scope)
+        if any(str(pin.field_key) in preserved for pin in request.dependencies):
+            raise StaleWork("preserved_human_native_dependency_unsupported")
         for pin in request.dependencies:
             current = available.get(pin.field_key)
             if current is None or current.revision != pin.revision or digest(current.resolution) != pin.digest:

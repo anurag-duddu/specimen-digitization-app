@@ -59,7 +59,7 @@ CURRENT_DATA_SOURCE_FILES = {'dataconnect/connector/artifacts.gql': '4d4da17483f
  'dataconnect/connector/checksum.gql': '4717f7368643b67d1ac4300ed3a02b1679580e7ba63cb81c6f0eb080bc271633',
  'dataconnect/connector/connector.yaml': '112dd6af54062562a6c76b7034b46a54635e13fdcc6b5441e738a3f0e3596ebe',
  'dataconnect/connector/history_restore.gql': 'b10726add6208ac4ff5484788404150d6751133a70f8a00ddfa528972dcaa365',
- 'dataconnect/connector/operations.gql': '65ac18159fbed968f058e86df1f7e62b6a6274da40e7a8639ac78efb1d221264',
+ 'dataconnect/connector/operations.gql': '3fd83f66a637e554b1d6b2c8c76c38e1ba95c2769bf001510acf7533ab7980be',  # pragma: allowlist secret (public connector source digest)
  'dataconnect/connector/paging.gql': 'e1b9a90c5989cb602aaccddd2f19994b73aa0965cc5b28bea5282d59ced5b4bb',
  'dataconnect/connector/projection.gql': '03bf15ba5ed1dd79a398aeb20380853277408ae5dc2409bde1650f538277b8eb',  # pragma: allowlist secret (connector file digest)
  'dataconnect/connector/readiness.gql': 'ae5f7aedbb5c971894fd3a7e2726406bc2463b781a79d833deea5891ac56bfd9',

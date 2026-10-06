@@ -760,6 +760,17 @@ class SqlConnectCanonicalResearchWriterV2(SqlConnectCanonicalResearchWriter):
             fail("native_v2_genuine_projection_receipt_unproved")
         ordinary=services.projector(result,services.locate,services.size,principal.user_id)
         old_projection=services.projector(prior,services.locate,services.size,principal.user_id)
+        if prior.run.dependencies.get("preserved_human_fields"):
+            from specimen_digitization.application.human_field_carry import adapt_projection, VerifiedHumanCarries
+            verified = bundle.human_carries
+            if not isinstance(verified, VerifiedHumanCarries) or not verified.matches(prior):
+                fail("preserved_human_current_base_unproved")
+            old_projection = adapt_projection(old_projection, prior, verified)
+            # Other-field publication does not modify the protected outcomes;
+            # bind the adapter separately to the actual result graph.
+            result_verified = VerifiedHumanCarries(result.id, result.run.id, result.version,
+                canonical_digest(result.model_dump(mode="json")), verified.outcomes)
+            ordinary = adapt_projection(ordinary, result, result_verified)
         superseded={w.variables["id"] for w in ordinary
             if w.operation=="AppendFieldCandidateV2" and w.variables["fieldKey"]==key}
         # Genuine V2 maps candidate-less/derived values with the complete original
@@ -868,6 +879,10 @@ class SqlConnectCanonicalResearchWriterV2(SqlConnectCanonicalResearchWriter):
             or prior.asset.sha256!=reg.source_sha256 or canonical_digest(prior.run.profile_snapshot)!=reg.canonical_profile_digest):
             fail("native_v2_snapshot_binding_invalid")
         services=self.projection_services or CanonicalProjectionServicesV1.from_repository(self.repository);services.verify()
+        human_carries = None
+        if prior.run.dependencies.get("preserved_human_fields"):
+            from specimen_digitization.application.human_field_carry import verify as verify_carries
+            human_carries = await asyncio.to_thread(verify_carries, self.repository, prior, self.repository.graph_blobs)
         from .canonical_evidence_provider_v2 import CapturedCanonicalEvidenceV2
         from .canonical_materialization_v2 import NativeMaterializationInputBundleV2
         accepted=await self._accepted_originals_v2(inputs)
@@ -904,7 +919,8 @@ class SqlConnectCanonicalResearchWriterV2(SqlConnectCanonicalResearchWriter):
         bundle=NativeMaterializationInputBundleV2.from_native_inputs(
             native_inputs=copy.deepcopy(inputs.native_inputs),current_binding=binding,intent=intent,
             preparation=preparation,prior=prior.model_copy(deep=True),accepted_checkpoint_proofs=accepted,
-            captured_tools=captured,projection_services=services,active_graph_bytes=graph_bytes)
+            captured_tools=captured,projection_services=services,active_graph_bytes=graph_bytes,
+            human_carries=human_carries)
         materialized=await self.materializer.materialize_v2(principal,p,binding,prior.model_copy(deep=True),
             bundle=bundle,prior_projection=tuple(copy.deepcopy(raw["projection"])),
             captured_evidence=captured,projection_services=services)

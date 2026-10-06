@@ -109,6 +109,7 @@ class MaterializationRequestV2:
     # Actual separately loaded native original contexts for terminal siblings.
     field_lineage_contexts: tuple[TerminalFieldProofV2, ...] = ()
     decision_lookup_ids: frozenset[str] | None = None
+    human_carries: object = None
 
 
 def _work_progress(reg, checkpoint, run, *, decision_lookup_ids=None, profile=None):
@@ -375,6 +376,15 @@ class CanonicalResearchMaterializerV2:
                 or lineage.prior_projection != tuple(prior_projection)):
             unavailable("canonical_v2_private_native_context_unproved")
         _prior_snapshot(prior, lineage)
+        from specimen_digitization.application.human_field_carry import KEY as CARRY_KEY, VerifiedHumanCarries, job_outcomes
+        preserved = {}
+        if prior.run.dependencies.get(CARRY_KEY):
+            verified = context.human_carries
+            if not isinstance(verified, VerifiedHumanCarries) or not verified.matches(prior):
+                unavailable("preserved_human_current_base_unproved")
+            preserved = job_outcomes(reg.job)
+            if preserved != verified.outcomes or any(not reg.human_locks[k] for k in preserved):
+                unavailable("preserved_human_job_outcome_mismatch")
         _, original = _checkpoint(lineage, checkpoint)
         if context.request.scope != original.scope or original.resolution.work_state not in {WorkState.RESOLVED, WorkState.WAITING_HUMAN, WorkState.NONBLOCKING_EXCEPTION}:
             unavailable("canonical_operational_or_policy_work_not_publishable")
@@ -433,7 +443,11 @@ class CanonicalResearchMaterializerV2:
         human = tuple(dict.fromkeys((*human, *(f"mandatory_unresolved:{key}" for key in sorted(unpublished)),
             *_scientific_reasons(result, profile, observed_at, latest_work=canonical, field_mapping=reg.field_mapping,
                 scientific_qualified=qualified, unpublished=unpublished))))
-        ungrounded = KEYS - held - unpublished - qualified
+        ungrounded = KEYS - held - unpublished - qualified - set(preserved)
+        if preserved:
+            human = tuple(reason for reason in human if reason not in {
+                f"research_human_question:{k}" for k in preserved})
+            human += tuple(f"preserved_human_decision:{k}" for k in sorted(preserved))
         if not states & UNFINISHED and ungrounded:
             operational += tuple(f"canonical_field_grounding_unproved:{field}" for field in sorted(ungrounded))
         unfinished = bool(states & UNFINISHED)

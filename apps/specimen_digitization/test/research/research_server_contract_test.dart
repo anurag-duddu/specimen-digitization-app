@@ -17,6 +17,21 @@ import 'research_fixture.dart';
 
 Map<String, dynamic> _serverThread() => researchFixture('server-thread');
 
+// The backend integrator owns this fixture and its offline actual-route emitter.
+Map<String, dynamic> _preservedServerThread() =>
+    researchFixture('server-preserved-human-thread');
+
+ResearchThread _decodePreserved(Map<String, dynamic> json) =>
+    ResearchThread.fromJson(
+      json,
+      expectedScope: ResearchScope.fromJson(_preservedServerThread()['scope']),
+    );
+
+Map<String, dynamic> _preservedOutcome(
+  Map<String, dynamic> json, [
+  String key = 'city',
+]) => fixtureField(json, key)['preserved_human'] as Map<String, dynamic>;
+
 ResearchThread _decode(Map<String, dynamic> json) => ResearchThread.fromJson(
   json,
   expectedScope: ResearchScope.fromJson(json['scope']),
@@ -76,6 +91,147 @@ void _askAboutHabitat(
 }
 
 void main() {
+  test('decodes preserved human outcomes from the actual server route', () {
+    final json = _preservedServerThread();
+    final thread = _decodePreserved(json);
+    expect(thread.fields, hasLength(20));
+    expect(thread.resolvedCount, 0);
+    expect(thread.exceptionCount, 0);
+    expect(thread.preservedHumanCount, 2);
+    expect(thread.effects, isEmpty);
+    expect(thread.fields.where((field) => field.checkpoint != null), isEmpty);
+    // This response starts fresh research: pending rows are not native results.
+    expect(
+      thread.fields.where(
+        (field) => field.workState == ResearchWorkState.pending,
+      ),
+      hasLength(18),
+    );
+    final base = thread.preservedHumanBase!;
+    expect(base.outcomesJson, json['preserved_human_base']['outcomes_json']);
+    expect(base.registrationRecordRevision, 4);
+    expect(base.registrationSnapshotSha256, thread.scope.inputDigest);
+    expect(base.outcomeCount, 2);
+    for (final key in ['city', 'elevation_from_m']) {
+      final field = thread.field(key)!;
+      final outcome = field.preservedHumanOutcome!;
+      final wire = _preservedOutcome(json, key);
+      expect(field.workState, ResearchWorkState.waitingHuman);
+      expect(field.checkpoint, isNull);
+      expect(field.review, isNull);
+      expect(field.actions, isEmpty);
+      expect(thread.canRetry(key), isFalse);
+      expect(field.value.state, 'unknown');
+      expect(field.value.literal, isNull);
+      expect(field.value.parsed, isNull);
+      expect(field.value.normalized, isNull);
+      expect(outcome.value.json, field.value.json);
+      expect(field.preservedHumanOutcomesJson, base.outcomesJson);
+      expect(outcome.originalValue.state, 'unknown');
+      expect(
+        outcome.originalValue.json['reason'],
+        key == 'city' ? 'slope is not a city' : 'feet are not asserted metres',
+      );
+      expect(outcome.reason, 'checked original label');
+      expect(outcome.actor, 'A');
+      expect(outcome.createdAt, wire['created_at']);
+      expect(outcome.originEventId, wire['origin_event_id']);
+      expect(outcome.originRunId, wire['origin_run_id']);
+      expect(outcome.originRevision, key == 'city' ? 3 : 2);
+      expect(outcome.freshRunRevision, 4);
+      expect(outcome.canonicalRunId, base.canonicalRunId);
+      expect(outcome.sourceSha256, base.sourceSha256);
+      expect(outcome.originalEvidenceIds, isEmpty);
+      expect(field.value.evidenceIds, hasLength(1));
+      expect(field.value.json['evidence_relations'], {
+        field.value.evidenceIds.single: 'decides',
+      });
+    }
+  });
+
+  group('actual-route preserved outcome contradictions are refused', () {
+    void rejects(String name, void Function(Map<String, dynamic>) change) {
+      test(name, () {
+        final json = _preservedServerThread();
+        change(json);
+        expect(
+          () => _decodePreserved(json),
+          throwsA(isA<ResearchContractException>()),
+        );
+      });
+    }
+
+    rejects('response scope differs from the trusted fixture binding', (json) {
+      json['scope']['specimen_id'] = 'other';
+    });
+    rejects('carry belongs to another scoped specimen', (json) {
+      _preservedOutcome(json)['specimen_id'] = 'other';
+    });
+    rejects('current field value differs from the carry', (json) {
+      fixtureField(json, 'city')['value']['normalized'] = 'Replacement';
+    });
+    rejects('original event differs from the bound outcome map', (json) {
+      _preservedOutcome(json)['origin_event_id'] = 'another-original-event';
+    });
+    rejects('original run is the fresh run', (json) {
+      final outcome = _preservedOutcome(json);
+      outcome['origin_run_id'] = outcome['canonical_run_id'];
+    });
+    rejects('registration base differs from the scoped input', (json) {
+      json['preserved_human_base']['registration_snapshot_sha256'] = 'a' * 64;
+    });
+    rejects('registration predates the carry transition', (json) {
+      json['preserved_human_base']['registration_record_revision'] = 3;
+    });
+    rejects('exact outcome text changes', (json) {
+      json['preserved_human_base']['outcomes_json'] += ' ';
+    });
+    rejects('exact outcome text is missing', (json) {
+      (json['preserved_human_base'] as Map).remove('outcomes_json');
+    });
+    rejects('native checkpoint accompanies a preserved decision', (json) {
+      final checkpoint =
+          fixtureField(_serverThread(), 'city')['checkpoint']
+              as Map<String, dynamic>;
+      checkpoint['scope'] = json['scope'];
+      checkpoint['resolution']['value'] = fixtureField(json, 'city')['value'];
+      // The checkpoint itself is valid; exclusivity with the carry must fail.
+      expect(
+        ResearchCheckpoint.fromJson(
+          checkpoint,
+          expectedScope: ResearchScope.fromJson(json['scope']),
+          expectedFieldKey: 'city',
+        ).resolution.workState,
+        ResearchWorkState.waitingHuman,
+      );
+      fixtureField(json, 'city')['checkpoint'] = checkpoint;
+    });
+    for (final action in [
+      'retry_field',
+      'supply_information',
+      'review_proposal',
+    ]) {
+      rejects('native $action action accompanies a preserved decision', (json) {
+        fixtureField(json, 'city')['actions'] = [action];
+      });
+    }
+    rejects('native source review accompanies a preserved decision', (json) {
+      fixtureField(json, 'city')['review'] = <String, dynamic>{};
+    });
+    rejects('retained count omits a carried field', (json) {
+      json['preserved_human_count'] = 1;
+    });
+    rejects('resolved native count includes human decisions', (json) {
+      json['resolved_count'] = 2;
+    });
+    rejects('exception native count includes human decisions', (json) {
+      json['exception_count'] = 2;
+    });
+    rejects('unprotected waitingHuman still lacks a native checkpoint', (json) {
+      fixtureField(json, 'habitat')['work_state'] = 'waiting_human';
+    });
+  });
+
   test('decodes the thread the real route emits', () {
     final json = _serverThread();
     final thread = _decode(json);

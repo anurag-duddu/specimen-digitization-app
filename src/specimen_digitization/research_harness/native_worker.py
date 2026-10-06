@@ -259,6 +259,11 @@ class NativeResearchWorker:
         # each window of a lease.
         document = await asyncio.to_thread(runtime.store._read, runtime.scope)
         job = runtime.store._job(document.state, runtime.scope)
+        if job.get("preserved_human_outcomes") and not any(
+                field["work_state"] == "pending" and not field["locked"] for field in job["fields"].values()) and not any(
+                cp.resolution.work_state in PUBLISHABLE and cp.field_key not in unpublishable for cp in typed):
+            return NativeResearchWorkerOutcomeV2(scope=scope, status="blocked",
+                reason_code="preserved_human_progress_requires_native_publication")
         events = [event for event in document.state["outbox"].values()
             if event.get("kind") == "canonical_publication_required"]
         receipts, checkpoint_ids = [], []

@@ -1,6 +1,7 @@
 """Checkpointed application workflow; external engines can dispatch one step at a time."""
 
 from __future__ import annotations
+import copy
 import hashlib
 import json
 import logging
@@ -197,6 +198,18 @@ class Workflow:
             raise OperationalBlock("evidence_pilot_worker_required")
         if run.stage in {"finalized", "paused", "cancelled", "processing_blocked"}:
             return specimen
+        revision = specimen.version
+        from .human_field_carry import KEY as CARRY_KEY, verify as verify_carries
+        if run.dependencies.get(CARRY_KEY) or any(e.kind == "ordinary_human_field_carry" for e in run.evidence):
+            try:
+                # specimen is still the authoritative persisted base here; later
+                # worker staging must not be compared wholesale to this snapshot.
+                verify_carries(self.repository, specimen, self.blobs)
+            except (ValueError, AttributeError, KeyError, OSError):
+                run.blocker = "preserved_human_field_provenance_unavailable"
+                run.stage = "processing_blocked"
+                return self.repository.save(principal, specimen, revision,
+                    f"human-carry-block:{revision}", digest({"human_carry_block": revision}))
         if self.admission is not None:
             self.admission.admit(specimen)
         if run.stage == "retry_scheduled":
@@ -205,9 +218,10 @@ class Workflow:
                 and datetime.fromisoformat(run.next_retry_at) > self.clock()
             ):
                 return specimen
-            run.blocker = None
-            run.next_retry_at = None
-        revision = specimen.version
+            # An unknown effect is never cleared by a scheduling timestamp.
+            if run.blocker != "external_outcome_unknown":
+                run.blocker = None
+                run.next_retry_at = None
         step = self.next_step(run)
         # Persist intent before network/model work. Crash with intent but no result is
         # blocked for explicit replay: provider calls may not support deduplication.
@@ -394,6 +408,7 @@ class Workflow:
         observed = len(run.observations)
         try:
             if step == "pin_dependencies":
+                retained_carries = copy.deepcopy(run.dependencies.get(CARRY_KEY, {}))
                 run.dependencies = (
                     self.adapters.pin_dependencies(run)
                     if hasattr(self.adapters, "pin_dependencies")
@@ -402,6 +417,10 @@ class Workflow:
                         "synthetic": run.profile.synthetic,
                     }
                 )
+                if CARRY_KEY in run.dependencies and run.dependencies[CARRY_KEY] != retained_carries:
+                    raise OperationalBlock("preserved_human_field_provenance_unavailable")
+                if retained_carries:
+                    run.dependencies[CARRY_KEY] = retained_carries
                 if self.classifier is not None and hasattr(self.classifier, "pin"):
                     run.dependencies["classifier"] = self.classifier.pin(run)
                 run.dependencies["authority_pins"] = self.authority_pins()
@@ -544,9 +563,22 @@ class Workflow:
                         )
                     )
             elif step == "parse":
-                self.parse(run, specimen.asset.id, self.blobs)
+                proposal = specimen.model_copy(deep=True) if run.dependencies.get(CARRY_KEY) else specimen
+                self.parse(proposal.run, specimen.asset.id, self.blobs)
                 if hasattr(self.adapters, "extract"):
-                    self.adapters.extract(specimen)
+                    self.adapters.extract(proposal)
+                if proposal is not specimen:
+                    from .human_field_carry import manifests
+                    protected = set(manifests(specimen))
+                    run.fields.update({k: v for k, v in proposal.run.fields.items() if k not in protected})
+                    run.evidence = proposal.run.evidence
+                    run.usage = proposal.run.usage
+                    # New model evidence remains an honest proposal. Verify on
+                    # the fresh persisted base, then only protected proposed bytes.
+                    base = self.repository.version(principal.scope, specimen.id, revision)
+                    verified = verify_carries(self.repository, base, self.blobs)
+                    if any(run.fields[k] != v.value for k, v in verified.outcomes.items()):
+                        raise OperationalBlock("preserved_human_field_provenance_unavailable")
             elif step == "plan":
                 run.authority_plan = plan_authorities(specimen)
             elif step.startswith("authority:"):

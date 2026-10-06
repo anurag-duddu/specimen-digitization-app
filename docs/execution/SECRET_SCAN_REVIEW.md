@@ -454,3 +454,29 @@ finding sets, types, verification/non-secret labels, plugins, thresholds and
 filters: zero finding additions or removals. The existing inline public-digest
 annotations cover these three literals. No Gitleaks configuration, path exclusion,
 raw retired template or current-source/stale-source rejection guard changed.
+
+
+## 2026-10-06 preserved-human actual-route fixture hashes
+
+The deterministic offline Save/Reprocess HTTP route generator in
+`tests/research_harness/test_preserved_human_outcomes.py` emits the two exact
+`tests/fixtures/research_harness/http/server-preserved-human-thread.json` and
+`server-preserved-human-output.json` responses. This synthetic case contains
+two preserved Unknown human decisions and eighteen pending native fields; it
+confers no provider, native execution, source-science or paid acceptance.
+
+Pinned detect-secrets 1.5.0 identified eight Hex High Entropy findings per
+fixture. Each finding was independently matched to a named 64-character
+SHA-256 response digest, and its exact SHA-1 scanner identifier was recomputed.
+Only these sixteen exact path/type/hash findings were added as non-secrets to
+`.secrets.baseline`; all earlier entries, detectors, thresholds and filters
+remain intact. The raw response bytes and genuine outcome hash recipe remain
+unchanged. No fixture path or hash-field pattern is excluded.
+
+Gitleaks flagged the resulting scanner metadata. The existing rule-local AND
+allowlist now includes only the eight corresponding exact `hashed_secret`
+identifier lines inside `.secrets.baseline`. Default rules and every prior
+exception remain unchanged. Other values, paths and adjacent credential-shaped
+fields remain scanned. Private provenance/rejection-control receipts are
+retained by Lane P; completion of those controls is recorded separately in
+SESSION_LEARNINGS, rather than asserted here before execution.

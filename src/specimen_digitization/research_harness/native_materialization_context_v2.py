@@ -342,11 +342,12 @@ class NativeMaterializationInputBundleV2:
     native_inputs_digest: str
     normalization_version: str
     original_request_proofs: Mapping[str, OriginalRequestProofV2]
+    human_carries: object = None
 
     @classmethod
     def from_native_inputs(cls, *, native_inputs, current_binding, intent, preparation,
             prior: Specimen, accepted_checkpoint_proofs, captured_tools=(), projection_services,
-            active_graph_bytes: bytes | None = None):
+            active_graph_bytes: bytes | None = None, human_carries=None):
         from .canonical_materialization_v2 import MaterializationRequestV2, TerminalFieldProofV2
         if (not isinstance(prior, Specimen) or set(native_inputs) != INPUT_KEYS
                 or native_inputs["contract_version"] != "research-native-materialization-inputs/v2"
@@ -448,5 +449,5 @@ class NativeMaterializationInputBundleV2:
         target_context = contexts[0][1]
         target = MaterializationRequestV2(digest(preparation.prepared), current_binding.canonical.snapshot_sha256,
             target_context.original_request, target_context.tool_results, target_context,
-            tuple(TerminalFieldProofV2(cp, context) for cp, context in contexts[1:]))
-        return cls(target, digest(native_inputs), NORMALIZATION_VERSION, originals)
+            tuple(TerminalFieldProofV2(cp, context) for cp, context in contexts[1:]), human_carries=human_carries)
+        return cls(target, digest(native_inputs), NORMALIZATION_VERSION, originals, human_carries)

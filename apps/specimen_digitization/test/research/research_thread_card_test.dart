@@ -1,10 +1,16 @@
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:specimen_digitization/src/research/derivation_models.dart';
 import 'package:specimen_digitization/src/research/research_controller.dart';
 import 'package:specimen_digitization/src/research/research_models.dart';
+import 'package:specimen_digitization/src/research/research_review_block.dart';
 import 'package:specimen_digitization/src/research/research_thread_card.dart';
 import 'package:specimen_digitization/src/theme/app_theme.dart';
+import 'package:specimen_digitization/src/widgets/evidence_drawer.dart';
 import 'package:specimen_ui/specimen_ui.dart';
 
 import 'research_fixture.dart';
@@ -71,7 +77,475 @@ ResearchThreadCard readyCard({
   onRefresh: () {},
 );
 
+// Local widget variations over the frozen DTO. This helper does not emit a
+// server-route fixture or establish server authority for the varied values.
+ResearchFieldThread preservedWidgetField({
+  String fieldKey = 'city',
+  String state = 'unknown',
+  String? literal,
+  String? parsed,
+  String? normalized,
+  String reason = 'The saved review deliberately leaves this field unknown.',
+  String fieldReason = 'The label does not support a value.',
+  String actor = 'ordinary-reviewer',
+  String originRunId = 'original-run',
+  String originEventId = 'genuine-review-event',
+  String? authorityIdentityJson,
+}) {
+  final threadJson = researchFixture('server-preserved-human-thread');
+  final scope = ResearchScope.fromJson(threadJson['scope']);
+  final base = threadJson['preserved_human_base'] as Map<String, dynamic>;
+  final original = <String, dynamic>{
+    ...fixtureField(threadJson, fieldKey)['value'] as Map<String, dynamic>,
+    'state': state,
+    'literal': literal,
+    'parsed': parsed,
+    'normalized': normalized,
+    'reason': fieldReason,
+    'evidence_ids': <String>[],
+    'evidence_relations': <String, String>{},
+    if (authorityIdentityJson != null)
+      'authority_identity': {'raw_numeric_marker': 'widget-numeric-marker'},
+  };
+  final evidenceId = 'recorded-human-carry-$fieldKey';
+  final current = <String, dynamic>{
+    ...original,
+    'evidence_ids': [evidenceId],
+    'evidence_relations': {evidenceId: 'decides'},
+  };
+  final varied = <String, dynamic>{
+    'field_key': fieldKey,
+    'work_state': 'waiting_human',
+    'value': current,
+    'checkpoint': null,
+    'blocker_code': 'preserved_human_decision',
+    'actions': <String>[],
+    'preserved_human': {
+      'contract_version': 'preserved-human-field/v1',
+      'field_key': fieldKey,
+      'value': current,
+      'original_value': original,
+      'organization_id': scope.organizationId,
+      'collection_id': scope.collectionId,
+      'specimen_id': scope.specimenId,
+      'canonical_run_id': base['canonical_run_id'],
+      'fresh_run_revision': 32,
+      'origin_run_id': originRunId,
+      'origin_event_id': originEventId,
+      'origin_revision': 31,
+      'actor': actor,
+      'reason': reason,
+      'created_at': '2026-10-06T14:05:00Z',
+      'original_evidence_ids': <String>[],
+      'carry_digest': 'b' * 64,
+      'proof_digest': 'c' * 64,
+      'source_sha256': base['source_sha256'],
+    },
+  };
+  final target = fixtureField(threadJson, fieldKey);
+  target
+    ..clear()
+    ..addAll(varied);
+  final outcomes = <String, dynamic>{
+    for (final field
+        in (threadJson['fields'] as List).cast<Map<String, dynamic>>())
+      if (field['preserved_human'] != null)
+        field['field_key'] as String: field['preserved_human'],
+  };
+  var raw = jsonEncode(_canonicalWidgetValue(outcomes));
+  if (authorityIdentityJson != null) {
+    // Insert numeric metadata as exact text before creating display
+    // projections, so web decoding cannot redefine the raw provenance.
+    raw = raw.replaceAll(
+      '{"raw_numeric_marker":"widget-numeric-marker"}',
+      authorityIdentityJson,
+    );
+  }
+  final projections = jsonDecode(raw) as Map<String, dynamic>;
+  for (final field
+      in (threadJson['fields'] as List).cast<Map<String, dynamic>>()) {
+    final projected = projections[field['field_key']];
+    if (projected != null) {
+      field['preserved_human'] = projected;
+      field['value'] = (projected as Map<String, dynamic>)['value'];
+    }
+  }
+  base
+    ..['registration_record_revision'] = 32
+    ..['outcomes_json'] = raw
+    ..['outcome_digest'] = sha256.convert(utf8.encode(raw)).toString();
+  return ResearchThread.fromJson(
+    threadJson,
+    expectedScope: scope,
+  ).field(fieldKey)!;
+}
+
+Object? _canonicalWidgetValue(Object? value) {
+  if (value is Map) {
+    final keys = value.keys.cast<String>().toList()..sort();
+    return {for (final key in keys) key: _canonicalWidgetValue(value[key])};
+  }
+  if (value is List) return value.map(_canonicalWidgetValue).toList();
+  return value;
+}
+
+ResearchThreadCard preservedWidgetCard({
+  ResearchFieldThread? field,
+  int recordRevision = 32,
+  bool fieldCentered = false,
+  bool historical = false,
+  bool readOnly = false,
+  bool paused = false,
+  ResearchNetworkState state = ResearchNetworkState.ready,
+  VoidCallback? onRetry,
+  ValueChanged<ResearchReviewCandidate>? onSelectCandidate,
+  List<ResearchDerivationProposal> proposals = const [],
+  bool canSelectProposals = false,
+}) {
+  final retained = field ?? preservedWidgetField();
+  return ResearchThreadCard(
+    scope: retained.scope,
+    recordRevision: recordRevision,
+    fieldKey: retained.fieldKey,
+    fieldLabel: retained.fieldKey == 'city' ? 'City' : 'Elevation',
+    field: retained,
+    fieldCentered: fieldCentered,
+    historical: historical,
+    readOnly: readOnly,
+    paused: paused,
+    networkState: state,
+    onRetry: onRetry,
+    onSelectCandidate: onSelectCandidate,
+    derivationProposals: proposals,
+    canSelectDerivationProposals: canSelectProposals,
+    onRefresh: () {},
+  );
+}
+
+ResearchDerivationProposal preservedWidgetProposal() =>
+    ResearchDerivationProposal.fromJson({
+      'field_key': 'city',
+      'value': 'Separately grounded city proposal',
+      'value_layer': 'derived',
+      'input_fields': ['country'],
+      'input_revisions': [
+        ['country', 32],
+      ],
+      'evidence_ids': ['grounded-proposal-evidence'],
+      'authority_id': 'proposal-authority',
+      'dataset_ids': ['proposal-dataset'],
+      'tool_call_id': 'synthetic-proposal-call',
+      'rule_version': 'proposal-rule/v1',
+      'selection_id': 'e' * 64,
+    });
+
 void main() {
+  for (final fieldKey in ['city', 'elevation_from_m']) {
+    for (final centered in [false, true]) {
+      testWidgets('server-route preserved $fieldKey decision stays human in '
+          '${centered ? 'field' : 'full'} presentation', (tester) async {
+        var retries = 0;
+        var selections = 0;
+        final json = researchFixture('server-preserved-human-thread');
+        final scope = ResearchScope.fromJson(json['scope']);
+        final thread = ResearchThread.fromJson(json, expectedScope: scope);
+        final field = thread.field(fieldKey)!;
+        final outcome = field.preservedHumanOutcome!;
+        await pumpResearchCard(
+          tester,
+          preservedWidgetCard(
+            field: field,
+            recordRevision:
+                thread.preservedHumanBase!.registrationRecordRevision,
+            fieldCentered: centered,
+            onRetry: () => retries++,
+            onSelectCandidate: (_) => selections++,
+          ),
+        );
+        expect(find.text('Preserved human decision'), findsOneWidget);
+        await tester.tap(find.text('Research'));
+        await tester.pump();
+        expect(find.text('Preserved human decision'), findsOneWidget);
+        expect(
+          find.text('Unknown. Preserved from the saved review'),
+          findsOneWidget,
+        );
+        expect(find.text('checked original label'), findsOneWidget);
+        expect(
+          find.text(
+            fieldKey == 'city'
+                ? 'slope is not a city'
+                : 'feet are not asserted metres',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text(outcome.actor), findsOneWidget);
+        expect(find.text(outcome.createdAt), findsOneWidget);
+        for (final misleading in [
+          'Research value',
+          'No supported value yet.',
+          'Needs information',
+          'Why it is unresolved',
+          'Sources searched',
+          'Sources checked',
+          'No source has settled this field yet.',
+          'Public sources could not settle this field.',
+          'Research details',
+          'Retry field',
+          'Retry',
+          'Use this possibility',
+        ]) {
+          expect(find.text(misleading), findsNothing);
+        }
+        expect(find.byType(ResearchReviewBlock), findsNothing);
+        expect(find.textContaining('research blocker'), findsNothing);
+        final drawer = tester.widget<EvidenceDrawer>(
+          find.byType(EvidenceDrawer),
+        );
+        expect(
+          (drawer.payload as Map)['outcomes_json'],
+          (json['preserved_human_base'] as Map)['outcomes_json'],
+        );
+        expect((drawer.payload as Map).containsKey('preserved_human'), isFalse);
+        await tester.ensureVisible(find.text('Saved review history'));
+        await tester.tap(find.text('Saved review history'));
+        await tester.pump();
+        expect(find.text(outcome.originRunId), findsOneWidget);
+        expect(find.text(outcome.originEventId), findsOneWidget);
+        expect(
+          find.text('Review saved at revision ${outcome.originRevision}'),
+          findsOneWidget,
+        );
+        await tester.ensureVisible(find.text('Preservation in this run'));
+        await tester.tap(find.text('Preservation in this run'));
+        await tester.pump();
+        expect(find.text(outcome.canonicalRunId), findsOneWidget);
+        expect(
+          find.text('Preserved at revision ${outcome.freshRunRevision}.'),
+          findsOneWidget,
+        );
+        expect(find.text(outcome.proofDigest), findsOneWidget);
+        expect(retries, 0);
+        expect(selections, 0);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  testWidgets('saved supported value keeps its layers and distinct reasons', (
+    tester,
+  ) async {
+    final field = preservedWidgetField(
+      state: 'supported',
+      literal: 'Original literal value',
+      parsed: 'Original parsed value',
+      normalized: 'Original normalized value',
+    );
+    await pumpResearchCard(tester, preservedWidgetCard(field: field));
+    await tester.tap(find.text('Research'));
+    await tester.pump();
+    expect(find.text('Original normalized value'), findsOneWidget);
+    expect(find.text('Review reason'), findsOneWidget);
+    expect(find.text('Saved field reason'), findsOneWidget);
+    await tester.tap(find.text('Saved review history'));
+    await tester.pump();
+    expect(find.text('Original literal value'), findsOneWidget);
+    expect(find.text('Original parsed value'), findsOneWidget);
+    expect(find.text('Original normalized value'), findsNWidgets(2));
+    expect(find.text('Research value'), findsNothing);
+    expect(find.text('Resolved from evidence'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bounded saved text declares excerpts and keeps full details', (
+    tester,
+  ) async {
+    final reason = 'Human reason ' * 100;
+    final actor = 'reviewer' * 100;
+    final event = 'event' * 100;
+    final run = 'run' * 100;
+    final value = 'Supported value ' * 100;
+    final field = preservedWidgetField(
+      state: 'supported',
+      normalized: value,
+      reason: reason,
+      actor: actor,
+      originEventId: event,
+      originRunId: run,
+    );
+    await pumpResearchCard(
+      tester,
+      preservedWidgetCard(field: field, fieldCentered: true),
+      width: 320,
+      scale: 2,
+    );
+    await tester.tap(find.text('Research'));
+    await tester.pump();
+    for (final label in ['Saved field value', 'Review reason', 'Saved by']) {
+      expect(
+        find.text('$label (excerpt; full text in saved review details)'),
+        findsOneWidget,
+      );
+    }
+    await tester.ensureVisible(find.text('Saved review history'));
+    await tester.tap(find.text('Saved review history'));
+    await tester.pump();
+    for (final label in ['Original run', 'Review event']) {
+      expect(
+        find.text('$label (excerpt; full text in saved review details)'),
+        findsOneWidget,
+      );
+    }
+    final drawer = tester.widget<EvidenceDrawer>(find.byType(EvidenceDrawer));
+    final raw = (drawer.payload as Map)['outcomes_json'] as String;
+    final retained = (jsonDecode(raw) as Map)['city'] as Map;
+    expect(retained['reason'], reason);
+    expect(retained['actor'], actor);
+    expect(retained['origin_event_id'], event);
+    expect(retained['origin_run_id'], run);
+    expect((retained['value'] as Map)['normalized'], value);
+    final semantics = tester.ensureSemantics();
+    try {
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    } finally {
+      semantics.dispose();
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('saved provenance export retains exact raw numeric metadata', (
+    tester,
+  ) async {
+    const authorityIdentityJson =
+        '{"floating":1.0,"integer":1,"large_integer":9007199254740993}';
+    final field = preservedWidgetField(
+      state: 'supported',
+      normalized: 'A saved human value',
+      authorityIdentityJson: authorityIdentityJson,
+    );
+    final raw = field.preservedHumanOutcomesJson!;
+    await pumpResearchCard(
+      tester,
+      preservedWidgetCard(field: field, fieldCentered: true),
+    );
+    await tester.tap(find.text('Research'));
+    await tester.pump();
+    expect(find.text('A saved human value'), findsOneWidget);
+    final drawer = tester.widget<EvidenceDrawer>(find.byType(EvidenceDrawer));
+    final payload = drawer.payload as Map;
+    expect(payload.keys, ['outcomes_json']);
+    expect(payload['outcomes_json'], raw);
+    final pretty = EvidenceDrawer.pretty(payload);
+    final copiedRaw = (jsonDecode(pretty) as Map)['outcomes_json'] as String;
+    expect(utf8.encode(copiedRaw), utf8.encode(raw));
+    expect(copiedRaw, contains('"floating":1.0'));
+    expect(copiedRaw, contains('"integer":1'));
+    expect(copiedRaw, contains('"large_integer":9007199254740993'));
+    expect(pretty, isNot(contains('9007199254740992')));
+    expect(payload.containsKey('preserved_human'), isFalse);
+    expect(payload.containsKey('original_value'), isFalse);
+  });
+
+  testWidgets('isolated field does not export projected metadata as original', (
+    tester,
+  ) async {
+    final json = researchFixture('server-preserved-human-thread');
+    final scope = ResearchScope.fromJson(json['scope']);
+    final isolated = ResearchFieldThread.fromJson(
+      fixtureField(json, 'city'),
+      scope,
+    );
+    expect(isolated.preservedHumanOutcomesJson, isNull);
+    await pumpResearchCard(tester, preservedWidgetCard(field: isolated));
+    await tester.tap(find.text('Research'));
+    await tester.pump();
+    expect(
+      find.text('Unknown. Preserved from the saved review'),
+      findsOneWidget,
+    );
+    expect(find.byType(EvidenceDrawer), findsNothing);
+    expect(
+      find.text('Full saved provenance is unavailable for this view.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'separate suggestion requires an explicit ordinary review choice',
+    (tester) async {
+      final proposal = preservedWidgetProposal();
+      ResearchReviewCandidate? selected;
+      await pumpResearchCard(
+        tester,
+        preservedWidgetCard(
+          fieldCentered: true,
+          proposals: [proposal],
+          canSelectProposals: true,
+          onSelectCandidate: (candidate) => selected = candidate,
+        ),
+      );
+      await tester.tap(find.text('Research'));
+      await tester.pump();
+      expect(selected, isNull);
+      expect(
+        find.text('Unknown. Preserved from the saved review'),
+        findsOneWidget,
+      );
+      final block = tester.widget<ResearchReviewBlock>(
+        find.byType(ResearchReviewBlock),
+      );
+      expect(block.field, isNull);
+      expect(block.canSelectCandidates, isFalse);
+      block.onSelectCandidate!(
+        ResearchReviewCandidate.fromJson({
+          'label': 'Native source possibility',
+          'source_id': 'gbif',
+          'selection_id': proposal.selectionId,
+          'selection_value': proposal.value,
+        }),
+      );
+      expect(selected, isNull);
+      await tester.ensureVisible(find.text('Use this suggestion'));
+      await tester.tap(find.text('Use this suggestion'));
+      await tester.pump();
+      expect(selected?.selectionId, proposal.selectionId);
+      expect(selected?.selectionValue, proposal.value);
+      expect(
+        find.text('Unknown. Preserved from the saved review'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('historical carry keeps separate suggestions read-only', (
+    tester,
+  ) async {
+    var selections = 0;
+    await pumpResearchCard(
+      tester,
+      preservedWidgetCard(
+        historical: true,
+        fieldCentered: true,
+        proposals: [preservedWidgetProposal()],
+        canSelectProposals: true,
+        onSelectCandidate: (_) => selections++,
+      ),
+    );
+    await tester.tap(find.text('Research'));
+    await tester.pump();
+    final button = tester.widget<UiButton>(
+      find.widgetWithText(UiButton, 'Use this suggestion'),
+    );
+    expect(button.onPressed, isNull);
+    expect(selections, 0);
+    expect(
+      find.text('Unknown. Preserved from the saved review'),
+      findsOneWidget,
+    );
+    expect(find.text('Research value'), findsNothing);
+  });
+
   testWidgets('selectable possibility returns its verified source candidate', (
     tester,
   ) async {

@@ -148,13 +148,16 @@ def _derivation_human_locks(repository, specimen, proofs):
         raise StaleWork("research_provision_derivation_unproved") from None
 
 
-def _write_base_record(repository, scope, specimen, actor, *, review_proofs=None) -> str:
+def _write_base_record(repository, scope, specimen, actor, *, review_proofs=None, human_carries=None) -> str:
     """Write the rows the base record references, then the record; replays are no-ops."""
     if review_proofs is None:
         review_proofs = _review_proofs(repository, scope, specimen)
     base = repository.variables(scope)
     rows = [write for write in projection.writes(specimen, repository.locate, repository._sized,
         actor, base_record=True, review_proofs=review_proofs) if write.operation != "AppendReviewDecisionV2"]
+    if human_carries is not None:
+        from specimen_digitization.application.human_field_carry import adapt_projection
+        rows = adapt_projection(rows, specimen, human_carries)
     records = [write for write in rows if write.operation == "AppendRecordVersionV2"]
     if len(records) != 1:
         raise HeldUnknown("research_base_record_unavailable")
@@ -170,6 +173,13 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
     if principal.role not in WORKER_ROLES or principal.user_id != worker_actor(actor_uid):
         raise PermissionError("research_worker_actor_required")
     await (verify_access or membership_verifier(repository))(principal, False)
+    from specimen_digitization.application.human_field_carry import KEY as CARRY_KEY, verify as verify_carries
+    human_carries = None
+    if run.dependencies.get(CARRY_KEY):
+        try:
+            human_carries = await asyncio.to_thread(verify_carries, repository, specimen, repository.graph_blobs)
+        except (ValueError, AttributeError, KeyError, OSError):
+            raise HeldUnknown("preserved_human_field_provenance_unavailable") from None
     writer = writer_factory(repository, None, blobs=None)
     variables = writer._variables(principal, specimen.id)
     try:
@@ -218,9 +228,11 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
         proofs = await asyncio.to_thread(_review_proofs, repository, principal.scope, specimen)
     human_locks = verified_human_locks(specimen, proofs)
     human_locks = {**derivation_locks, **human_locks}
+    if human_carries is not None:
+        human_locks.update({k: v.proof_digest for k, v in human_carries.outcomes.items()})
     try:
         record_id = await asyncio.to_thread(_write_base_record, repository, principal.scope,
-            specimen, principal.user_id, review_proofs=proofs)
+            specimen, principal.user_id, review_proofs=proofs, human_carries=human_carries)
     except (ProjectionRejected, OperationalBlock, Conflict, OSError):
         # The connector refused a row or the call failed; the next tick replays.
         raise HeldUnknown("research_base_record_unavailable") from None
@@ -236,7 +248,9 @@ async def provision(repository, principal, specimen, *, actor_uid=None, verify_a
         await asyncio.to_thread(store.initialize, scope, allowance_policy)
         await asyncio.to_thread(store.reconcile_ordinary_spend, scope, run.usage.reserved_cost_micros)
         await asyncio.to_thread(store.create_job, scope, PinnedRuntime(**pins),
-            [str(key) for key in FieldKey], record_revision=specimen.version, human_locks=human_locks)
+            [str(key) for key in FieldKey], record_revision=specimen.version, human_locks=human_locks,
+            preserved_human_outcomes={} if human_carries is None else {
+                k: v.model_dump(mode="json") for k, v in human_carries.outcomes.items()})
     except ValueError:
         # The run's state or job exists with a different allowance or pins.
         raise HeldUnknown("research_provision_state_conflict") from None
