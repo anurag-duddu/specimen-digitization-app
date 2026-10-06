@@ -394,7 +394,7 @@ class CanonicalResearchMaterializerV2:
             accepted_checkpoint_proof=lineage.accepted_checkpoint_proof)
         for tool in context.tool_results:
             if tool.receipt is None:
-                continue  # Exact local parser replay above; no external effect is fabricated.
+                continue  # Accepted empty refusal or exact utility replay above; no invented effect.
             if (tool.receipt.scope != original.scope or tool.receipt.effect_status != "completed"
                     or tool.receipt.result_json != result_envelope(tool) or tool.receipt.effect_id not in original.effect_receipt_ids):
                 unavailable("canonical_source_result_unproved")

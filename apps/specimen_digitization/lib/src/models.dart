@@ -9,6 +9,22 @@ abstract interface class AccessFailureSource {
 }
 
 typedef Json = Map<String, dynamic>;
+
+/// Routes a queue query to its stable UUID or filename-derived display key.
+Map<String, String> specimenSearchFilter(String rawQuery) {
+  final String query = rawQuery.trim();
+  if (query.isEmpty) return const <String, String>{};
+  if (RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    caseSensitive: false,
+  ).hasMatch(query)) {
+    return <String, String>{'specimen_id': query};
+  }
+  final String reference = query.replaceFirst(RegExp(r'^#'), '');
+  if (reference.isEmpty) return const <String, String>{};
+  return <String, String>{'display_reference': reference};
+}
+
 const knownFieldStates = {
   'supported',
   'unknown',

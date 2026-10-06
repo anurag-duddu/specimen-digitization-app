@@ -337,11 +337,10 @@ class WorkspaceController extends ChangeNotifier {
   /// records does not (motion catalog, rows 14 and 24).
   int get listGeneration => _listGeneration;
 
-  /// The filters as the repository wants them. Unchanged from before the
-  /// redesign: same keys, same string values.
+  /// The exact UUID or filename-derived reference and active queue filters.
   Map<String, String> get activeFilters => <String, String>{
     ..._filters,
-    if (_query.trim().isNotEmpty) 'specimen_id': _query.trim(),
+    ...specimenSearchFilter(_query),
     if (_disposition.isNotEmpty)
       (queueDispositionValues.contains(_disposition) ? 'disposition' : 'state'):
           _disposition,

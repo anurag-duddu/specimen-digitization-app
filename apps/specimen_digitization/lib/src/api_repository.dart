@@ -579,7 +579,7 @@ class ApiSpecimenRepository
   }) async => (await specimenPage(
     scope,
     filters: {
-      if (query.isNotEmpty) 'specimen_id': query,
+      ...specimenSearchFilter(query),
       if (status.isNotEmpty)
         (['cleared', 'needs_human_review', 'deferred'].contains(status)
                 ? 'disposition'
@@ -596,6 +596,7 @@ class ApiSpecimenRepository
   }) async {
     const allowed = {
       'specimen_id',
+      'display_reference',
       'asset_id',
       'active_run_id',
       'batch_id',
