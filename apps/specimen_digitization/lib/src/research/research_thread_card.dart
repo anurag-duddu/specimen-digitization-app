@@ -93,6 +93,7 @@ class ResearchThreadCard extends StatelessWidget {
       !historical &&
       !readOnly &&
       networkState == ResearchNetworkState.ready &&
+      field?.preservedHumanOutcome == null &&
       (field?.canRetry ?? false) &&
       onRetry != null;
   bool get _refreshEnabled => _bound && !_busy && !_denied && onRefresh != null;
@@ -115,7 +116,10 @@ class ResearchThreadCard extends StatelessWidget {
           : 'Load this field’s research when needed';
     }
     final prefix = paused ? 'Paused · ' : '';
-    return '${historical ? 'Historical report · ' : ''}$prefix${field!.workState.label}'
+    final label = field!.preservedHumanOutcome == null
+        ? field!.workState.label
+        : 'Preserved human decision';
+    return '${historical ? 'Historical report · ' : ''}$prefix$label'
         '${field!.blockerCode == 'research_retry_blocked' ? ' · Retry blocked' : ''}';
   }
 
@@ -286,7 +290,11 @@ class ResearchThreadCard extends StatelessWidget {
                     onPressed: fillRestLoading ? null : onRefreshDerivation,
                     leading: UiIcons.reload,
                   ),
-                if (!fieldCentered && safeField != null) ...[
+                if (!fieldCentered && safeField?.preservedHumanOutcome != null)
+                  ..._preservedHumanResult(context, safeField!),
+                if (!fieldCentered &&
+                    safeField != null &&
+                    safeField.preservedHumanOutcome == null) ...[
                   Text(safeField.workState.label, style: ui.type.body),
                   if (safeField.blockerCode != null &&
                       !(safeField.workState ==
@@ -355,10 +363,12 @@ class ResearchThreadCard extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    if ((!fieldCentered &&
-                            safeField?.workState ==
-                                ResearchWorkState.operationalFailed ||
-                        (safeField?.actions.contains('retry_field') ?? false)))
+                    if (safeField?.preservedHumanOutcome == null &&
+                        ((!fieldCentered &&
+                                safeField?.workState ==
+                                    ResearchWorkState.operationalFailed ||
+                            (safeField?.actions.contains('retry_field') ??
+                                false))))
                       retry.intrinsicWidth(context) <= constraints.maxWidth
                           ? retry
                           : UiButton(
@@ -418,6 +428,9 @@ class ResearchThreadCard extends StatelessWidget {
   );
 
   List<Widget> _fieldResult(BuildContext context, ResearchFieldThread field) {
+    if (field.preservedHumanOutcome != null) {
+      return _preservedHumanResult(context, field);
+    }
     final ui = context.ui;
     final resolution = field.checkpoint?.resolution;
     final value = field.value;
@@ -523,6 +536,176 @@ class ResearchThreadCard extends StatelessWidget {
       ),
     ];
   }
+
+  List<Widget> _preservedHumanResult(
+    BuildContext context,
+    ResearchFieldThread field,
+  ) {
+    final ui = context.ui;
+    final outcome = field.preservedHumanOutcome!;
+    final outcomesJson = field.preservedHumanOutcomesJson;
+    final value = outcome.value;
+    final current = [
+      value.normalized,
+      value.parsed,
+      value.literal,
+    ].whereType<String>().where((item) => item.trim().isNotEmpty).firstOrNull;
+    final savedFieldReason = outcome.originalValue.json['reason'] as String?;
+    final proposals = derivationProposals
+        .where((proposal) => proposal.fieldKey == fieldKey)
+        .toList(growable: false);
+    final canSelectProposal =
+        canSelectDerivationProposals &&
+        !readOnly &&
+        !paused &&
+        !historical &&
+        !_unknown &&
+        networkState == ResearchNetworkState.ready &&
+        onSelectCandidate != null;
+    return [
+      Text('Preserved human decision', style: ui.type.label),
+      if (value.state == 'unknown')
+        Text('Unknown — preserved from the saved review', style: ui.type.body)
+      else if (current != null)
+        _savedLayer(context, 'Saved field value', current)
+      else
+        Text(
+          '${_savedStateLabel(value.state)} — preserved from the saved review',
+          style: ui.type.body,
+        ),
+      _savedLayer(context, 'Review reason', outcome.reason),
+      if (savedFieldReason != null && savedFieldReason != outcome.reason)
+        _savedLayer(context, 'Saved field reason', savedFieldReason),
+      _savedLayer(context, 'Saved by', outcome.actor, limit: 240),
+      _savedLayer(context, 'Saved at', outcome.createdAt, limit: 240),
+      UiDisclosure(
+        title: 'Saved review history',
+        summary: 'Review revision ${outcome.originRevision}',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _savedLayer(
+              context,
+              'Original run',
+              outcome.originRunId,
+              limit: 240,
+            ),
+            _savedLayer(
+              context,
+              'Review event',
+              outcome.originEventId,
+              limit: 240,
+            ),
+            Text(
+              'Review saved at revision ${outcome.originRevision}',
+              style: ui.type.bodySmall,
+            ),
+            if (value.literal != null)
+              _savedLayer(context, 'As written', value.literal!),
+            if (value.parsed != null)
+              _savedLayer(context, 'Read as', value.parsed!),
+            if (value.normalized != null)
+              _savedLayer(context, 'Standardized', value.normalized!),
+          ],
+        ),
+      ),
+      UiDisclosure(
+        title: 'Preservation in this run',
+        summary: 'Revalidated for this report',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _savedLayer(
+              context,
+              'Preserved in run',
+              outcome.canonicalRunId,
+              limit: 240,
+            ),
+            Text(
+              'Preserved at revision '
+              '${outcome.freshRunRevision}.',
+              style: ui.type.bodySmall,
+            ),
+            _layer(
+              context,
+              'Preservation proof reference',
+              outcome.proofDigest,
+            ),
+          ],
+        ),
+      ),
+      if (proposals.isNotEmpty) ...[
+        Text(
+          'Suggestions remain separate from the saved decision. '
+          'A new review decision is required to change it.',
+          style: ui.type.bodySmall,
+        ),
+        ResearchReviewBlock(
+          fieldLabel: fieldLabel,
+          field: null,
+          derivationProposals: proposals,
+          canSelectDerivationProposals: canSelectProposal,
+          onSelectCandidate: onSelectCandidate == null
+              ? null
+              : (candidate) {
+                  if (canSelectProposal &&
+                      candidate.sourceId == 'georeference_spatial' &&
+                      proposals.any(
+                        (proposal) =>
+                            proposal.selectable &&
+                            proposal.selectionId == candidate.selectionId &&
+                            proposal.value == candidate.selectionValue,
+                      )) {
+                    onSelectCandidate!(candidate);
+                  }
+                },
+        ),
+      ],
+      if (outcomesJson != null)
+        EvidenceDrawer(
+          title: 'Saved review details',
+          section: fieldLabel,
+          payload: {'outcomes_json': outcomesJson},
+        )
+      else
+        Text(
+          'Full saved provenance is unavailable for this view.',
+          style: ui.type.bodySmall,
+        ),
+    ];
+  }
+
+  Widget _savedLayer(
+    BuildContext context,
+    String label,
+    String value, {
+    int limit = 600,
+  }) {
+    final characters = value.runes;
+    final excerpt = characters.length > limit;
+    final fullDetails = field?.preservedHumanOutcomesJson != null;
+    return _layer(
+      context,
+      excerpt
+          ? fullDetails
+                ? '$label (excerpt; full text in saved review details)'
+                : '$label (excerpt; full saved provenance unavailable)'
+          : label,
+      excerpt ? '${String.fromCharCodes(characters.take(limit))}…' : value,
+    );
+  }
+
+  String _savedStateLabel(String state) => switch (state) {
+    'supported' => 'Supported',
+    'unresolved' => 'Unresolved',
+    'unreadable' => 'Unreadable',
+    'ambiguous' => 'Ambiguous',
+    'not_present' => 'Not present',
+    'not_applicable' => 'Not applicable',
+    _ => 'Unknown',
+  };
 
   String get _historicalBanner {
     final String? canonical = canonicalRevision == null
