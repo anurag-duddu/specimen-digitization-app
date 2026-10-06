@@ -1882,6 +1882,10 @@ def create_app(
         principal(user, organization_id, p.scope.collection_id, review=True)
         if pending_specimen is not None:
             s = pending_specimen
+        else:
+            # Arbitrary nested dependency JSON must never alias an immutable
+            # repository/read-cache snapshot when a human edit supersedes it.
+            s = s.model_copy(deep=True)
         pilot = "evidence_pilot" in s.run.dependencies
         pilot_blocker = s.run.blocker
         pilot_risk = dict(s.run.review_risk)
@@ -1922,8 +1926,12 @@ def create_app(
                 dict(body.after, evidence_ids=body.evidence_ids)
             )
             s.run.fields[body.target_id] = field
+            from .human_field_carry import KEY as CARRY_KEY
+            removed_carry = s.run.dependencies.get(CARRY_KEY, {}).pop(body.target_id, None)
             audit_after = {**field.model_dump(mode="json"), "field_key": body.target_id,
                            "evidence_ids": list(field.evidence_ids)}
+            if removed_carry is not None:
+                audit_after["superseded_human_carry_digest"] = digest(removed_carry)
             superseded = s.run.dependencies.get("human_review_field_locks", {}).pop(body.target_id, None)
             if superseded is not None:
                 audit_after["superseded_research_selection_id"] = superseded["selection_id"]
@@ -2535,9 +2543,22 @@ def create_app(
             if m["organization_id"] != organization_id:
                 continue
             p = principal(user, organization_id, m["collection_id"], write=True)
+            if body.action == "reprocess" and callable(getattr(repository, "execute", None)):
+                from .human_field_carry import replay_reprocess
+                request_key = key(idempotency_key)
+                # Receipt-first reconciliation also works after active_run_id
+                # changed. Scope/sensitivity remain the normal record reader's.
+                replayed = replay_reprocess(repository, p.scope, run_id, request_key,
+                    body.expected_revision, digest(body.model_dump()), blobs)
+                if replayed is not None:
+                    current = repository.get(p.scope, replayed.id)
+                    sensitivity_access(user, p, current.asset.sensitive)
+                    sensitivity_access(user, p, replayed.asset.sensitive)
+                    return summary(replayed, p.role)
             for s in exact_records(p, user, active_run_id=run_id):
                 if s.run.id != run_id:
                     continue
+                s = s.model_copy(deep=True)
                 if "evidence_pilot" in s.run.dependencies:
                     raise Conflict("Evidence pilot permits retained-evidence corrections only")
                 if s.run.blocker == "external_outcome_unknown" and body.action in {"retry", "resume", "reprocess"}:
@@ -2567,18 +2588,20 @@ def create_app(
                 elif body.action == "reprocess":
                     if s.run.dependencies.get("human_review_field_locks"):
                         raise Conflict("Reprocessing cannot discard retained human field selections")
+                    from .human_field_carry import prepare, install
+                    next_run = Run(profile=s.run.profile,
+                        classification_selection=s.run.classification_selection)
+                    action_event = AuditEvent(actor=user, action=body.action, reason=body.reason)
+                    carries = prepare(repository, s, next_run.id, action_event, blobs)
                     s.previous_runs.append(s.run)
-                    s.run = Run(
-                        profile=s.run.profile,
-                        classification_selection=s.run.classification_selection,
-                    )
+                    s.run = next_run
+                    install(s, carries, blobs)
                 else:
                     raise ValueError("Unsupported action")
                 if body.action in {"retry", "resume", "reprocess"}:
                     request_processing(s, user)
-                s.audit.append(
-                    AuditEvent(actor=user, action=body.action, reason=body.reason)
-                )
+                s.audit.append(action_event if body.action == "reprocess" else
+                    AuditEvent(actor=user, action=body.action, reason=body.reason))
                 saved = repository.save(
                     p,
                     s,
@@ -2586,6 +2609,11 @@ def create_app(
                     "action:" + key(idempotency_key),
                     digest(body.model_dump()),
                 )
+                if body.action == "reprocess" and saved.run.dependencies.get("preserved_human_fields"):
+                    from .human_field_carry import verify
+                    # Prove the ACTUAL immutable save/audit before dispatch. Never
+                    # amend that snapshot to insert a claimed server audit ID.
+                    verify(repository, saved, blobs)
                 schedule_local(p, saved, background_tasks)
                 return summary(saved, p.role)
         raise Missing(run_id)

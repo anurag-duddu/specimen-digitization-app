@@ -388,6 +388,14 @@ regexes = [
   '''^\s*"hashed_secret": "fc4e1fa5de53a87641a83b1638a96d4b39d1608e",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "fd31e2657e78aaa50a381820b2b1534c051a849f",?\s*$''', # pragma: allowlist secret
   '''^\s*"hashed_secret": "ffd6850610f4e64cfcd930c7d9bb00a003d4c444",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "7a057d95db35eff30a4161a67d0189933263338a",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "9190af6d34dd9c875524174e176dbdb758a77a42",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "ad32c44679093759d0f160c19a05779817121749",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "b4b7ac3a945635e878eeede2a15d8f93c073f56c",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "d3e71aeab7091d9895af9b671a9cd08cfcd92c2c",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "e103551f85c1522bdea76af230ff0da27b2b0bab",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "e82eaadf581e727684a689c58a9e0b0791fe073c",?\s*$''', # pragma: allowlist secret
+  '''^\s*"hashed_secret": "f18471ba2bf67eef2209240ea7e4e18a2aa6efc6",?\s*$''', # pragma: allowlist secret
 ]
 
 [[rules.allowlists]]

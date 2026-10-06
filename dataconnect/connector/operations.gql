@@ -50,6 +50,14 @@ query GetReceipt($organizationId: UUID!, $collectionId: UUID!, $actorUid: String
 
   requestReceipt(key: {organizationId: $organizationId, collectionId: $collectionId, actorUid: $actorUid, operation: $operation, idempotencyKey: $idempotencyKey}) { specimenId revision requestSha256 specimen @check(optional: true, expr: "!this.sensitive || response.collectionMember.canViewSensitive") { sensitive } }
 }
+query GetReprocessActionReceiptsV1($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $idempotencyKey: String!, $resultingRevision: Int!) @auth(level: NO_ACCESS) {
+  organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }
+  collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && vars.idempotencyKey.startsWith('action:') && vars.resultingRevision >= 2") { active role canViewSensitive }
+  requestReceipts(where: {organizationId: {eq: $organizationId}, collectionId: {eq: $collectionId}, actorUid: {eq: $actorUid}, idempotencyKey: {eq: $idempotencyKey}, operation: {startsWith: "save:"}, revision: {eq: $resultingRevision}}, limit: 2) {
+    specimenId revision requestSha256 operation
+    specimen @check(optional: true, expr: "this != null && (!this.sensitive || response.collectionMember.canViewSensitive)") { sensitive }
+  }
+}
 query GetSnapshot($organizationId: UUID!, $collectionId: UUID!, $actorUid: String!, $id: UUID!, $revision: Int!) @auth(level: NO_ACCESS) {
 
     organizationMember(key: {organizationId: $organizationId, uid: $actorUid}) @check(expr: "this.active == true") { active }

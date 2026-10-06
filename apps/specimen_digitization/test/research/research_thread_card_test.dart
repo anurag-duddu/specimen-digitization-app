@@ -267,7 +267,7 @@ void main() {
         await tester.pump();
         expect(find.text('Preserved human decision'), findsOneWidget);
         expect(
-          find.text('Unknown — preserved from the saved review'),
+          find.text('Unknown. Preserved from the saved review'),
           findsOneWidget,
         );
         expect(find.text('checked original label'), findsOneWidget);
@@ -461,7 +461,7 @@ void main() {
     await tester.tap(find.text('Research'));
     await tester.pump();
     expect(
-      find.text('Unknown — preserved from the saved review'),
+      find.text('Unknown. Preserved from the saved review'),
       findsOneWidget,
     );
     expect(find.byType(EvidenceDrawer), findsNothing);
@@ -489,7 +489,7 @@ void main() {
       await tester.pump();
       expect(selected, isNull);
       expect(
-        find.text('Unknown — preserved from the saved review'),
+        find.text('Unknown. Preserved from the saved review'),
         findsOneWidget,
       );
       final block = tester.widget<ResearchReviewBlock>(
@@ -512,7 +512,7 @@ void main() {
       expect(selected?.selectionId, proposal.selectionId);
       expect(selected?.selectionValue, proposal.value);
       expect(
-        find.text('Unknown — preserved from the saved review'),
+        find.text('Unknown. Preserved from the saved review'),
         findsOneWidget,
       );
     },
@@ -540,7 +540,7 @@ void main() {
     expect(button.onPressed, isNull);
     expect(selections, 0);
     expect(
-      find.text('Unknown — preserved from the saved review'),
+      find.text('Unknown. Preserved from the saved review'),
       findsOneWidget,
     );
     expect(find.text('Research value'), findsNothing);

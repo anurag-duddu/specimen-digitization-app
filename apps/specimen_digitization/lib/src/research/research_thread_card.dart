@@ -565,12 +565,12 @@ class ResearchThreadCard extends StatelessWidget {
     return [
       Text('Preserved human decision', style: ui.type.label),
       if (value.state == 'unknown')
-        Text('Unknown — preserved from the saved review', style: ui.type.body)
+        Text('Unknown. Preserved from the saved review', style: ui.type.body)
       else if (current != null)
         _savedLayer(context, 'Saved field value', current)
       else
         Text(
-          '${_savedStateLabel(value.state)} — preserved from the saved review',
+          '${_savedStateLabel(value.state)}. Preserved from the saved review',
           style: ui.type.body,
         ),
       _savedLayer(context, 'Review reason', outcome.reason),

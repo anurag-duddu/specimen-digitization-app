@@ -50,6 +50,30 @@ const receipt=ok(await op('GetReceipt',{...scope,operation:'save',idempotencyKey
 assert.equal(receipt.revision,2);
 assert.equal(receipt.requestSha256,save.requestSha256);
 console.log('PASS idempotency receipt committed with snapshot');
+const actionId = randomUUID(), actionKey = `action:${randomUUID()}`;
+ok(await op('CreateSpecimen', {...create, id: actionId, idempotencyKey: randomUUID()}, true));
+const actionSave = {...save, id: actionId, operation: `save:${actionId}`, idempotencyKey: actionKey,
+  snapshot: {id: actionId, version: 2, literal: 'retained human fixture'}};
+ok(await op('SaveSpecimen', actionSave, true));
+const actionRead = {...scope, idempotencyKey: actionKey, resultingRevision: 2};
+const actionRows = ok(await op('GetReprocessActionReceiptsV1', actionRead)).requestReceipts;
+assert.equal(actionRows.length, 1);
+assert.equal(actionRows[0].specimenId.replaceAll('-', ''), actionId.replaceAll('-', ''));
+assert.equal(actionRows[0].operation, `save:${actionId}`);
+assert.equal(actionRows[0].requestSha256, actionSave.requestSha256);
+assert.deepEqual(ok(await op('GetReprocessActionReceiptsV1', {...actionRead, idempotencyKey: 'action:missing'})).requestReceipts, []);
+assert.deepEqual(ok(await op('GetReprocessActionReceiptsV1', {...actionRead, resultingRevision: 3})).requestReceipts, []);
+denied(await op('GetReprocessActionReceiptsV1', {...actionRead, resultingRevision: 1}));
+denied(await op('GetReprocessActionReceiptsV1', {...actionRead, idempotencyKey: 'not-an-action'}));
+denied(await op('GetReprocessActionReceiptsV1', {...actionRead, actorUid: 'outsider'}));
+denied(await op('GetReprocessActionReceiptsV1', actionRead, false, {unauthenticated: true}));
+denied(await op('GetReprocessActionReceiptsV1', actionRead, false, {authClaims: {sub: 'reviewer'}}));
+ok(await raw(`mutation @transaction {
+ organizationMember_insert(data:{organizationId:"${org}",uid:"other-reviewer",active:true})
+ collectionMember_insert(data:{organizationId:"${org}",collectionId:"${collection}",uid:"other-reviewer",active:true,role:"reviewer",canViewSensitive:true})
+}`));
+assert.deepEqual(ok(await op('GetReprocessActionReceiptsV1', {...actionRead, actorUid: 'other-reviewer'})).requestReceipts, []);
+console.log('PASS bounded action receipt exact key/revision/actor and NO_ACCESS authorization');
 denied(await op('GetSpecimen',{...scope,id},false,{unauthenticated:true}));
 denied(await op('GetSpecimen',{...scope,id},false,{authClaims:{sub:'reviewer'}}));
 console.log('PASS client access denied, including valid user');
@@ -74,13 +98,23 @@ assert.equal(events.auditEvents.length,3); assert.equal(events.outboxEvents.leng
 console.log('PASS one audit and outbox per committed revision, none for rejected CAS');
 ok(await raw(`mutation { collectionMember_update(key:{organizationId:"${org}",collectionId:"${collection}",uid:"reviewer"},data:{canViewSensitive:false}) }`));
 denied(await op('GetSpecimen',{...scope,id}));
+denied(await op('GetReprocessActionReceiptsV1', actionRead));
 assert.deepEqual(ok(await op('ListSpecimens',{...scope,limit:20,offset:0,includeSensitive:false})).specimens,[]);
 denied(await op('ListSpecimens',{...scope,limit:20,offset:0,includeSensitive:true}));
 console.log('PASS sensitive record read/list gates');
 ok(await raw(`mutation { organizationMember_update(key:{organizationId:"${org}",uid:"reviewer"},data:{active:false}) }`));
 denied(await op('GetReceipt',{...scope,operation:'save',idempotencyKey:save.idempotencyKey}));
+denied(await op('GetReprocessActionReceiptsV1', actionRead));
 console.log('PASS organization revocation rechecked');
 ok(await raw(`mutation { organizationMember_update(key:{organizationId:"${org}",uid:"reviewer"},data:{active:true}) collectionMember_update(key:{organizationId:"${org}",collectionId:"${collection}",uid:"reviewer"},data:{canViewSensitive:true}) }`));
+ok(await raw(`mutation { collectionMember_update(key:{organizationId:"${org}",collectionId:"${collection}",uid:"reviewer"},data:{active:false}) }`));
+denied(await op('GetReprocessActionReceiptsV1', actionRead));
+ok(await raw(`mutation { collectionMember_update(key:{organizationId:"${org}",collectionId:"${collection}",uid:"reviewer"},data:{active:true}) }`));
+for (let n = 0; n < 2; n++) {
+  ok(await raw(`mutation { requestReceipt_insert(data:{organizationId:"${org}",collectionId:"${collection}",actorUid:"reviewer",operation:"save:${randomUUID()}",idempotencyKey:"${actionKey}",specimenId:"${actionId}",revision:2,requestSha256:"${actionSave.requestSha256}"}) }`));
+}
+assert.equal(ok(await op('GetReprocessActionReceiptsV1', actionRead)).requestReceipts.length, 2);
+console.log('PASS action receipt sensitive/revoked membership refusal and fixed ambiguity limit2');
 if(process.env.DATA_RESTART_PROOF) {
  const {writeFile}=await import('node:fs/promises');
  await writeFile(process.env.DATA_RESTART_PROOF,JSON.stringify({scope,id}));
@@ -104,3 +138,5 @@ const otherCollection=randomUUID();
 ok(await raw(`mutation { collection_insert(data:{organizationId:"${org}",id:"${otherCollection}",name:"Other synthetic collection"}) collectionMember_insert(data:{organizationId:"${org}",collectionId:"${otherCollection}",uid:"reviewer",active:true,role:"reviewer",canViewSensitive:true}) }`));
 denied(await op('AppendSourceAsset',{...asset,id:randomUUID(),collectionId:otherCollection,objectName:randomUUID()},true));
 console.log('PASS composite foreign key rejects cross-collection specimen reference');
+assert.deepEqual(ok(await op('GetReprocessActionReceiptsV1', {...actionRead, collectionId: otherCollection})).requestReceipts, []);
+console.log('PASS action receipt cannot cross an otherwise authorized collection scope');

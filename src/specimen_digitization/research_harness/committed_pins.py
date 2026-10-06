@@ -305,6 +305,8 @@ def build_committed_pins(profile, *, organization_id: str, collection_id: str) -
         "acceptance_boundary": _acceptance_boundary(),
         "model_prices": {str(role): price_row for role in roles},
         "model_request_bounds": {str(role): bound_row for role in roles}}
+    from specimen_digitization.application.human_field_carry import contract_pin
+    sources["human_field_carry"] = contract_pin()
     # Normalised exactly as create_job stores them; input_digest is the job's own.
     pins = PinnedRuntime(input_digest="", profile=research_profile.model_dump(mode="json"),
         prompts=prompts, sources=sources,

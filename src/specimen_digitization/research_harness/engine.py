@@ -63,6 +63,7 @@ class EngineResult:
     clearance_eligible: bool
     exception_count: int
     resolved_count: int
+    preserved_human_outcomes: Mapping[str, object] | None = None
 
 
 def _pending(key: FieldKey) -> FieldResolution:
@@ -196,7 +197,13 @@ class ResearchEngine:
                 checkpoints[checkpoint.field_key] = checkpoint
                 fields[checkpoint.field_key] = checkpoint.resolution
         protected = set(await self.journal.protected_fields(self.scope))
-        for key in protected - set(checkpoints):
+        reader = getattr(self.journal, "preserved_human_outcomes", None)
+        preserved = {} if reader is None else await reader(self.scope)
+        for key in preserved:
+            fields.pop(FieldKey(key), None)
+        if any(str(pin.field_key) in preserved for request in self.requests.values() for pin in request.dependencies):
+            raise ValueError("preserved_human_native_dependency_unsupported")
+        for key in protected - set(checkpoints) - {FieldKey(k) for k in preserved}:
             fields[key] = FieldResolution(field_key=key, work_state=WorkState.WAITING_POLICY,
                 value=FieldValue(), reason="canonical_human_decision_pending")
         retry = set(retry_fields)
@@ -328,14 +335,15 @@ class ResearchEngine:
             else:
                 await run_batches()
 
-        required = tuple(fields[item.field_key] for item in self.profile.fields if item.mandatory)
+        required = tuple(fields[item.field_key] for item in self.profile.fields if item.mandatory and str(item.field_key) not in preserved)
         blocked = any(item.work_state in _BLOCKING_STATES for item in required)
-        input_needed = any(item.work_state == WorkState.WAITING_HUMAN for item in required)
-        eligible = all(item.work_state in _SAFE_TERMINATIONS for item in required)
+        input_needed = bool(preserved) or any(item.work_state == WorkState.WAITING_HUMAN for item in required)
+        eligible = not preserved and all(item.work_state in _SAFE_TERMINATIONS for item in required)
         status = RunStatus.BLOCKED if blocked else RunStatus.WAITING_INPUT if input_needed else RunStatus.COMPLETE
         return EngineResult(
             scope=self.scope, fields=fields, checkpoints=tuple(checkpoints[key] for key in ALL_FIELDS if key in checkpoints),
             status=status, clearance_eligible=eligible,
             exception_count=sum(item.work_state == WorkState.NONBLOCKING_EXCEPTION for item in fields.values()),
             resolved_count=sum(item.work_state == WorkState.RESOLVED for item in fields.values()),
+            preserved_human_outcomes=preserved,
         )

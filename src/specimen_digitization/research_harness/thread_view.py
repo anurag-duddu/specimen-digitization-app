@@ -1,13 +1,14 @@
 """Authorized persisted field progress, independent of package message internals."""
 
 import asyncio
+import hashlib
 import json
 import math
 import re
 from collections.abc import Mapping
 from typing import Annotated, Any, Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from specimen_digitization.application.domain import FieldValue, LookupStatus
 
@@ -292,6 +293,53 @@ def _field_review(effects: Mapping[str, Any], job_key: str, key: FieldKey, check
         return _reason_only(checkpoint)
 
 
+from specimen_digitization.application.human_field_carry import PreservedHumanFieldOutcome
+
+
+class PreservedHumanBase(FrozenRecord):
+    contract_version: Literal["preserved-human-base/v2"] = "preserved-human-base/v2"
+    canonical_run_id: str
+    registration_record_revision: int = Field(strict=True, ge=1, le=9007199254740991)
+    registration_snapshot_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    source_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    outcome_count: int = Field(strict=True, ge=1, le=20)
+    outcome_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    # Clients hash these exact UTF-8 bytes; JS-decoded numeric projections are
+    # never reserialized to establish lossless provenance.
+    outcomes_json: str = Field(min_length=2, max_length=4 * 1024 * 1024)
+
+
+def preserved_outcomes_json(outcomes):
+    def finite(item):
+        if isinstance(item, float) and not math.isfinite(item):
+            raise ValueError("nonfinite")
+        if isinstance(item, dict):
+            if any(not isinstance(k, str) for k in item):
+                raise ValueError("nonstring_json_key")
+            for value in item.values():
+                finite(value)
+        elif isinstance(item, (list, tuple)):
+            for value in item:
+                finite(value)
+    try:
+        for outcome in outcomes.values():
+            finite(outcome.model_dump(mode="python"))
+        text = json.dumps({k: v.model_dump(mode="json") for k, v in sorted(outcomes.items())},
+            sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+        if len(text.encode("utf-8")) > 4 * 1024 * 1024:
+            raise ValueError("oversized")
+        return text
+    except (ValueError, TypeError, UnicodeError):
+        raise ValueError("preserved_human_outcome_json_invalid") from None
+
+
+def preserved_base_matches(base, outcomes):
+    text = preserved_outcomes_json(outcomes)
+    return (base is not None and base.outcomes_json == text
+        and base.outcome_count == len(outcomes)
+        and base.outcome_digest == hashlib.sha256(text.encode("utf-8")).hexdigest())
+
+
 class FieldThread(FrozenRecord):
     field_key: FieldKey
     work_state: WorkState
@@ -300,6 +348,16 @@ class FieldThread(FrozenRecord):
     blocker_code: str | None = None
     actions: tuple[Literal["retry_field", "supply_information", "review_proposal"], ...] = ()
     review: FieldReview | None = None
+    preserved_human: PreservedHumanFieldOutcome | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="after")
+    def valid_preserved_human(self):
+        carry = self.preserved_human
+        if carry is not None and (carry.field_key != self.field_key or carry.value != self.value
+                or self.work_state != WorkState.WAITING_HUMAN or self.checkpoint is not None
+                or self.actions or self.review is not None or self.blocker_code != "preserved_human_decision"):
+            raise ValueError("preserved_human_thread_field_mismatch")
+        return self
 
 
 class EffectThread(FrozenRecord):
@@ -321,10 +379,33 @@ class ResearchThread(FrozenRecord):
     effects: tuple[EffectThread, ...]
     resolved_count: int
     exception_count: int
+    preserved_human_count: int = Field(default=0, strict=True, ge=0, le=20, exclude_if=lambda value: value == 0)
+    preserved_human_base: PreservedHumanBase | None = Field(default=None, exclude_if=lambda value: value is None)
     trace_ids: tuple[str, ...] = ()
     historical: bool = Field(default=False, exclude_if=lambda value: not value)
     canonical_revision: int | None = Field(default=None, strict=True, ge=0, exclude_if=lambda value: value is None)
     review_saved_revision: int | None = Field(default=None, strict=True, ge=0, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="after")
+    def valid_preserved_base(self):
+        carries = {str(f.field_key): f.preserved_human for f in self.fields if f.preserved_human is not None}
+        if not carries:
+            if self.preserved_human_count or self.preserved_human_base is not None:
+                raise ValueError("preserved_human_thread_base_mismatch")
+            return self
+        base = self.preserved_human_base
+        if (base is None or len(self.fields) != 20 or {f.field_key for f in self.fields} != set(ALL_FIELDS)
+                or self.preserved_human_count != len(carries) or base.outcome_count != len(carries)
+                or base.registration_snapshot_sha256 != self.scope.input_digest
+                or not preserved_base_matches(base, carries)
+                or any((v.organization_id, v.collection_id, v.specimen_id) != (
+                    self.scope.organization_id, self.scope.collection_id, self.scope.specimen_id)
+                    or v.canonical_run_id != base.canonical_run_id or v.source_sha256 != base.source_sha256
+                    or v.fresh_run_revision > base.registration_record_revision for v in carries.values())
+                or self.resolved_count != sum(f.checkpoint is not None and f.work_state == WorkState.RESOLVED for f in self.fields)
+                or self.exception_count != sum(f.checkpoint is not None and f.work_state == WorkState.NONBLOCKING_EXCEPTION for f in self.fields)):
+            raise ValueError("preserved_human_thread_base_mismatch")
+        return self
 
 
 class ResearchThreadReader:
@@ -337,13 +418,35 @@ class ResearchThreadReader:
         checkpoints = {item.field_key:item for item in await self.journal.load(scope)}
         document = await asyncio.to_thread(self.journal.store._read, self.journal.scope)
         job = self.journal.store._job(document.state, self.journal.scope)
+        from specimen_digitization.application.human_field_carry import job_outcomes
+        preserved_reader = getattr(self.journal, "preserved_human_outcomes", None)
+        if preserved_reader is None and job.get("preserved_human_outcomes"):
+            raise StaleWork("preserved_human_server_reader_unavailable")
+        preserved = {} if preserved_reader is None else await preserved_reader(scope)
+        if preserved != job_outcomes(job):
+            raise StaleWork("preserved_human_thread_state_changed")
+        carry_base = None
+        if preserved:
+            runs = {v.canonical_run_id for v in preserved.values()}
+            sources = {v.source_sha256 for v in preserved.values()}
+            if len(runs) != 1 or len(sources) != 1 or any(
+                    (v.organization_id, v.collection_id, v.specimen_id) != (
+                        scope.organization_id, scope.collection_id, scope.specimen_id)
+                    or v.fresh_run_revision > job["record_revision"] for v in preserved.values()):
+                raise StaleWork("preserved_human_thread_base_mismatch")
+            carry_base = PreservedHumanBase(canonical_run_id=next(iter(runs)),
+                registration_record_revision=job["record_revision"],
+                registration_snapshot_sha256=scope.input_digest,
+                source_sha256=next(iter(sources)), outcome_count=len(preserved),
+                outcome_digest=digest({k: v.model_dump(mode="json") for k, v in sorted(preserved.items())}),
+                outcomes_json=preserved_outcomes_json(preserved))
         fields = []
         for key in ALL_FIELDS:
             checkpoint = checkpoints.get(key)
             work_state = checkpoint.resolution.work_state if checkpoint else WorkState.PENDING
             stored = job["fields"].get(str(key), {})
             if stored.get("locked") and checkpoint is None:
-                work_state = WorkState.WAITING_POLICY
+                work_state = WorkState.WAITING_HUMAN if str(key) in preserved else WorkState.WAITING_POLICY
             command_id = stored.get("retry_command_id")
             if command_id is not None:
                 command = document.state["outbox"].get("retry/" + command_id, {}).get("command", {})
@@ -385,6 +488,8 @@ class ResearchThreadReader:
             }.get(work_state)
             if blocked_retry:
                 blocker = "research_retry_blocked"
+            if str(key) in preserved:
+                blocker = "preserved_human_decision"
             review = None
             if checkpoint is not None and checkpoint.resolution.work_state in REVIEW_STATES:
                 review = _field_review(document.state["effects"], self.journal.scope.key, key, checkpoint, job=job)
@@ -393,8 +498,9 @@ class ResearchThreadReader:
                         candidate.model_copy(update={"selection_id": None, "selection_value": None})
                         for candidate in review.candidates)})
             fields.append(FieldThread(field_key=key, work_state=work_state,
-                value=checkpoint.resolution.value if checkpoint else FieldValue(),
-                checkpoint=checkpoint, blocker_code=blocker, actions=tuple(actions), review=review))
+                value=preserved[str(key)].value if str(key) in preserved else checkpoint.resolution.value if checkpoint else FieldValue(),
+                checkpoint=checkpoint, blocker_code=blocker, actions=tuple(actions), review=review,
+                preserved_human=preserved.get(str(key))))
         used = {effect for checkpoint in checkpoints.values() for effect in checkpoint.effect_receipt_ids}
         effects = []
         for effect in document.state["effects"].values():
@@ -415,5 +521,6 @@ class ResearchThreadReader:
             + ((saved_trace["trace_id"],) if saved_trace else ())))
         return ResearchThread(scope=scope, paused=job["paused"], fields=tuple(fields),
             effects=tuple(effects), trace_ids=trace_ids,
-            resolved_count=sum(item.work_state == WorkState.RESOLVED for item in fields),
-            exception_count=sum(item.work_state == WorkState.NONBLOCKING_EXCEPTION for item in fields))
+            resolved_count=sum(item.checkpoint is not None and item.work_state == WorkState.RESOLVED for item in fields),
+            exception_count=sum(item.checkpoint is not None and item.work_state == WorkState.NONBLOCKING_EXCEPTION for item in fields),
+            preserved_human_count=len(preserved), preserved_human_base=carry_base)

@@ -983,20 +983,23 @@ Map<String, Object?> _freezeMap(
   ),
 );
 Object? _freeze(Object? value, {bool allowNonfiniteProjection = false}) {
-  if (value is Map)
+  if (value is Map) {
     return _freezeMap(
       _object(value),
       allowNonfiniteProjection: allowNonfiniteProjection,
     );
-  if (value is List)
+  }
+  if (value is List) {
     return List<Object?>.unmodifiable(
       value.map(
         (item) =>
             _freeze(item, allowNonfiniteProjection: allowNonfiniteProjection),
       ),
     );
-  if (value is double && !value.isFinite && !allowNonfiniteProjection)
+  }
+  if (value is double && !value.isFinite && !allowNonfiniteProjection) {
     _invalid();
+  }
   if (value == null || value is String || value is num || value is bool) {
     return value;
   }
@@ -1082,8 +1085,9 @@ void _validateNode(
               entry.key == 'authority_identity') {
             // Only a validated v2 carry has this approximate numeric view;
             // exact numeric tokens remain in its raw outcome-map text.
-            if (entry.value != null)
+            if (entry.value != null) {
               _freeze(_object(entry.value), allowNonfiniteProjection: true);
+            }
           } else {
             _validateNode(
               _object(properties[entry.key]),
