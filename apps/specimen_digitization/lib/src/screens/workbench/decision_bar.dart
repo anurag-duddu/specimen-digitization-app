@@ -20,6 +20,7 @@ class WorkbenchDecisionBar extends StatelessWidget {
     required this.approveBlockedReason,
     required this.pendingCount,
     required this.onSavePending,
+    this.saveBlockedReason,
     this.onNext,
     this.onPrevious,
     this.nextDisabledReason,
@@ -45,6 +46,9 @@ class WorkbenchDecisionBar extends StatelessWidget {
 
   /// Sends them, as one reviewer action under one reason.
   final VoidCallback onSavePending;
+
+  /// Why pending corrections cannot be saved on this version, or null.
+  final String? saveBlockedReason;
 
   /// Moves to the next specimen. Null where there is none to move to.
   final VoidCallback? onNext;
@@ -129,7 +133,8 @@ class WorkbenchDecisionBar extends StatelessWidget {
               label: saveLabel(pendingCount),
               leading: UiIcons.save,
               loading: busy,
-              onPressed: onSavePending,
+              disabledReason: saveBlockedReason,
+              onPressed: saveBlockedReason == null ? onSavePending : null,
             )
           : needsCoverage
           ? coverage
