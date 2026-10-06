@@ -739,6 +739,15 @@ class SourceBroker:
                 raise ValueError("Pinned historical result escaped scoped query")
             self.trusted_results.append(result)
             return result
+        if query.source_id == "gbif":
+            # The adapter needs a genus before it can build a request. Refuse
+            # locally before reserving an effect that cannot retain a response.
+            parsed = scientific_name(query.query_text)
+            if parsed is None or not parsed.genus:
+                return self._unavailable(policy, query, SourceCoverageState.UNQUALIFIED,
+                    "GBIF requires an actual genus or full scientific name from specimen evidence; "
+                    "do not invent a genus. If none is evidenced, abstain with waiting_policy and an unresolved value "
+                    "under the declared missing-policy rule.")
         if query.source_id == "geolocate":
             # Checked before effect dispatch: a request that cannot be sent must never hold an effect.
             try:

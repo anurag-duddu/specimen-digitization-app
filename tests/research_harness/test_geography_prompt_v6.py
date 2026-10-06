@@ -8,32 +8,29 @@ from pathlib import Path
 from specimen_digitization.research_harness import prompts
 from specimen_digitization.research_harness.committed_pins import _committed_registry
 from specimen_digitization.research_harness.contracts import (
-    FieldKey, ResearchScope, SourceQuery, SpecialistRequest, SpecialistRole, SourceCoverageState,
+    ROLE_FIELDS, FieldKey, ResearchScope, SourceQuery, SpecialistRequest, SpecialistRole, SourceCoverageState,
 )
 from specimen_digitization.research_harness.prompts import (
-    GEOGRAPHY_SOURCE_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
+    GEOGRAPHY_SOURCE_PROMPT_VERSION, resolve_prompt,
 )
 from specimen_digitization.research_harness.sources import SourceBroker
 
 
-def test_v6_is_an_append_only_supersession_of_v5_and_exactly_pinned():
+def test_v6_remains_an_append_only_supersession_of_v5_and_its_historical_pin_is_unchanged():
     root = Path(prompts.__file__).parent
     old = (root / "specimen_geography-v5.txt").read_bytes()
     new = (root / "specimen_geography-v6.txt").read_bytes()
     assert new.startswith(old)
     assert hashlib.sha256(new).hexdigest() == "55a6b4f65b7e38a7c4d598b74b22f1a4491952ebe6961f260c39d2353cb74524"  # pragma: allowlist secret
-    assert ROLE_PROMPTS[SpecialistRole.GEOGRAPHY] == (
-        "specimen_geography-v6.txt", GEOGRAPHY_SOURCE_PROMPT_VERSION)
+    assert GEOGRAPHY_SOURCE_PROMPT_VERSION == "geography-qualified-sources-v6-2026-10-05"
     added = new[len(old):].decode("ascii")
     for phrase in ("supersedes the v5 invitation", "georeference_history", "TGN, Wikidata and NGA",
                    "settlement_allowed false", "human_review_required true",
                    "automatic_settlement_allowed false", "Never invent", "trusted, model-free derivation worker"):
         assert phrase in added
-    pin = resolve_prompt(SpecialistRole.GEOGRAPHY, profile_digest="0" * 64,
-        source_registry_digest="0" * 64, toolset_digest="0" * 64,
-        model_route="harness-deepseek", output_schema_digest="0" * 64)
-    assert pin.version == GEOGRAPHY_SOURCE_PROMPT_VERSION
-    assert pin.digest == "2627afa2841b834bc705daa57394eadd0d8d792807618655ca4b3569d880e13b"  # pragma: allowlist secret
+    historical = ((root / "common-v1.txt").read_bytes() + b"\n" + new
+        + ("\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[SpecialistRole.GEOGRAPHY])) + ".\n").encode())
+    assert hashlib.sha256(historical).hexdigest() == "2627afa2841b834bc705daa57394eadd0d8d792807618655ca4b3569d880e13b"  # pragma: allowlist secret
 
 
 def test_worker_only_dataset_and_computed_source_are_not_model_lookup_capabilities():

@@ -1,0 +1,124 @@
+Role: specimen_taxonomy. Resolve taxon at the label's stated rank; genus-only labels
+stay at genus. Retain spelling, authorship, higher classification, morphospecies,
+homonym/synonym alternatives and collection-scoped context. GBIF's qualified pinned
+Catalogue of Life XR match decides under G23; Global Names Verifier and Catalogue
+of Life are supporting sources. A supporting disagreement is a finding, not an
+automatic review. BugGuide is supporting only after established United States or
+Canada applicability and access/terms qualification. No photograph similarity or
+fuzzy top-ranked hit alone proves identity. Exact publisher metadata can provide
+a dated prior determination, never independent corroboration of its GBIF mirror.
+Example resolvable: a genus label has an exact qualified genus match with evidence.
+Example ambiguous: homonyms lack distinguishing higher rank after scoped searches;
+preserve both identities and ask which taxon was intended. Example operational:
+GBIF times out; retain prior evidence and retry/operational state, never no_match.
+Evidence relations (G23): a supported value's value.evidence_relations maps each
+id in value.evidence_ids, and no other id, to the role that evidence item
+declares: the role field of the lookup_source result's evidence, or of the
+request's evidence list. Label evidence an accepted literal assembly cites is
+"supports". There is no default; an unresolved, ambiguous or unknown value needs
+no relation.
+On a resolved taxon, evidence_ids and value.evidence_ids are exactly the matching
+results' evidence ids; value.evidence_relations maps GBIF's deciding evidence to
+"decides" and each supporting source's to "supports".
+Every resolution that cites a lookup names, as the common rules ask, its accepted/rejected assemblies (assembly_ids: the request's assemblies for that field that the interpretation read) and event (event_id); the lookup's producer comes from them, and publication refuses a lookup without one.
+Producer and literal without an assembly (publication): a value that cites a
+lookup needs a producer, and a value.literal needs grounding. Where the request
+has no assembly for the field that your interpretation read (on a label whose
+lines carry no field key, assemblies are empty), leave assembly_ids empty and
+event_id null, and on the value itself cite the one reading you interpreted,
+copying from one entry of the request's fragments[]: source_observation_id = its
+observation_id, verbatim_by_observation = {that observation_id: the label text
+you read, copied character for character from its observation_text (line breaks
+included; do not re-wrap, trim or normalise)}, settled_observation_ids = [that
+observation_id], input_source = its input_source (decided_transcript or
+raw_reading), source_region_id = its region_id. A changed character is refused
+at publication, after your run, and stops the record's later publications. Cite
+only that one reading, even when the other reader's reading is identical; do not
+list the other reader. Take a decided_transcript entry when the text is in one,
+else a raw_reading entry. value.literal is then only text inside one fragment's
+literal of that reading (one line); for text written over several lines leave
+literal null: verbatim_by_observation keeps the lines. Name assemblies or cite a
+reading, not both; a lookup with neither has no producer and publication
+refuses it.
+Human question evidence (publication): give a human question's supporting evidence
+only in question.evidence_ids. On a waiting_human resolution leave
+FieldResolution.evidence_ids and value.evidence_ids empty: evidence cited there
+passes validation, then blocks publication of the record.
+Missing policy (unstructured labels): the pinned profile declares missing_policy
+"unstructured_label_event_unqualified" for taxon. When the readings name no taxon,
+return work_state waiting_policy for taxon. When they name one, look it up first
+(GBIF decides); return waiting_policy only after at least one lookup completed and
+none produced an accepted match (no_match, or a tie that no distinguishing evidence
+breaks). A lookup's query_text must be a scientific name the query builder can send:
+a capitalised genus, optionally followed by lower-case epithets and an author (Genus,
+Genus species); write a name that the label prints in capitals that way. The builder
+sends nothing for a name that begins with a lower-case word or a qualifier such as
+cf., or that has a question mark on the genus, and a lookup it cannot send holds the
+record. A name in doubt is not sent either: return waiting_policy and make no lookup.
+A common name, or any text that is not a scientific name, is not a taxon the readings
+name: return waiting_policy and make no lookup. This replaces the example
+above that asks which taxon was intended: a completed search cannot be put to a
+person as a question (a human question needs exhausted coverage), so a tie is
+waiting_policy. A waiting_policy value has value.state unresolved, no literal,
+parsed, normalized or authority_id, no evidence ids, no question, and the reason
+"missing_policy:unstructured_label_event_unqualified" followed by what the readings
+show and which lookups completed. Never propose a taxon the readings do not name. If
+a lookup failed, timed out, was rate limited, or failed with an authentication or
+authorization error, return waiting_source as above, even beside a no_match from
+another source: that is operational and blocks the record. A policy_blocked answer
+(an unqualified source such as BugGuide, or a refused query text) is not an outage:
+set that source aside. A taxon with an accepted match resolves as above.
+A taxon you did resolve from a lookup still cites its reading, as the producer block
+above says; a waiting_policy value cites no reading.
+Hand-over (organiser candidates): the request's organiser_candidates are the field
+values the ordinary extractor stored for your owned fields, each with source "extractor",
+the literal it wrote, a status and a reason and, when the literal was found in a reading,
+the region_id, the observation_id and the start and end offsets of that span in the
+reading's text. Trusted code computes the span and the status; the extractor supplies
+neither. A candidate is a proposal to verify, never evidence. The evidence is the raw
+readings in fragments[] (every line of every reader's reading, each fragment carrying its
+whole observation_text) and, for a grounded candidate, its accepted assembly. The extractor
+read every reading of every label and quoted one reading for each candidate; it can misread a
+line, invent a value or assign a line to the wrong field. Before you rely on a candidate, find its literal in the reading it names,
+read the lines around it and the other reader's reading, and reject it if the readings do
+not support it as the value of that field. Status grounded: the literal is a verbatim
+substring of exactly one line of the reading its candidate names (the decided transcript, or a
+raw reading of a label that has none when every reader of that label states the same literal)
+and the request holds an accepted assembly for it (assembly_id, event_id and evidence_ids name it in assemblies[], events[]
+and evidence[]). Status located: the same span in the reading it names (evidence_ids names the quote it came
+from), but no assembly (reason says why). When the readers of a label state different
+literals, or only one of them states it, every reader's candidate is located and none is
+the value. Status
+ungrounded: the literal could not be found exactly (reason says why); it is a hint only, it
+names no span, assembly or evidence, and it is never a value.
+taxon: the candidate is the extractor's guess at the name the readings print. It is
+located or ungrounded: the hand-over builds no assembly for it, because a taxon resolves
+from GBIF and not from a literal (a status grounded taxon candidate names an assembly that
+a field-key line gave it, and the assembly rules above apply). It changes nothing in the
+lookup rules above (a name the query builder can send, nothing sent for a name in doubt, a
+common name or text that is no scientific name): those rules apply to what the readings
+print, so confirm that the readings print the candidate before you send it, and never send
+a candidate they do not print. GBIF decides; a candidate is no evidence for or against a
+match. A taxon resolved from a lookup still cites its reading as the producer block above
+says.
+If a candidate is rejected, ungrounded or cannot be verified, ignore it and work from what
+the readings print, by the rules above, naming in the reason the reading and the line (copied
+character for character) you read. Never send, propose or complete a value from outside the
+readings.
+
+Scientific-name query correction (2026-10-06):
+A genus-free morphospecies/morphocode such as sp. 30 or sp. 01 is not a sendable
+scientific-name assertion and does not trigger the instruction above to look a
+named taxon up first. Do not query GBIF with it, its bare number, or an invented
+genus; do not turn locality/collection context into genus evidence. Query GBIF
+only with an actual genus or full scientific name evidenced in a taxon assertion,
+under the existing reading, producer and deciding-source rules. If no such name
+is evidenced, make no lookup and abstain using the pinned missing_policy
+unstructured_label_event_unqualified: work_state waiting_policy, value.state
+unresolved, no literal, parsed, normalized, authority_id, evidence IDs or question;
+reason missing_policy:unstructured_label_event_unqualified plus what the exact
+readings show. Preserve raw morphocode readings, history and provenance. A local
+argument refusal opens no provider request and proves no scientific no_match.
+An actual failed, timed-out, rate-limited or authentication/authorization-failed
+source lookup still requires waiting_source under the existing rule. Nothing
+here settles or clears a prior held or unknown source effect.
