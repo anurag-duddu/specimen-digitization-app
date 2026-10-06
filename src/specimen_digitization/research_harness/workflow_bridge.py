@@ -114,19 +114,33 @@ class NativeResearchWorkflow:
         if not isinstance(binding, CanonicalReadBindingV2):
             return None
         native, bundle = binding.native, binding.read_bundle
+        # These blocked states are failures or unfinished retries, not source
+        # or policy questions. The current job can be newer than its last save.
+        operational_states = {"operational_failed", "cancelled", "retry_scheduled"}
         if (binding.research_scope() != outcome.scope or not native.causal_chain
                 or str(native.head_receipt_id) not in outcome.publication_receipt_ids
                 or str(native.canonical.canonical_run_id) != before.run.id
                 or bundle.halted or bundle.paused or bundle.hold_reasons
                 or bundle.job.get("lease") is not None
+                or any(field.get("work_state") in operational_states
+                    for field in bundle.job["fields"].values())
                 or any(effect.get("status") in {"reserved", "sending", "held_unknown"}
                     or effect.get("actual_micro_usd") is None for effect in bundle.effects.values())):
             return None
         head = native.causal_chain[-1]
+        progress = head.progress_receipt
+        # Progress calls even scientific field waits "operational" reasons.
+        # Allow only those exact waits; retain real lookup/grounding failures.
+        field_holds = {f"research_work:{key}:{state}"
+            for key, state in progress.canonical_field_work.items()
+            if state in {"waiting_source", "waiting_policy"}}
+        if (set(progress.operational_reason_codes) - field_holds
+                or operational_states.intersection(progress.research_field_work.values())
+                or operational_states.intersection(progress.canonical_field_work.values())):
+            return None
         current = await asyncio.to_thread(self.ordinary.repository.get, principal.scope, before.id)
         info = await asyncio.to_thread(self.ordinary.repository.version_info,
             principal.scope, current.id, current.version)
-        progress = head.progress_receipt
         if (current.id != before.id or current.scope != principal.scope
                 or current.run.id != before.run.id or current.version <= before.version
                 or current.version != native.canonical.record_revision

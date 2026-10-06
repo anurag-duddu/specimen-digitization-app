@@ -141,6 +141,43 @@ def test_only_the_exact_current_native_blocked_snapshot_can_return(publication):
     assert not workflow.completed_side_work(case.current)
 
 
+@pytest.mark.parametrize("state", ["operational_failed", "cancelled", "retry_scheduled"])
+def test_a_later_current_field_failure_is_not_hidden_by_an_earlier_publication(publication, state):
+    # The actual head and its current saved snapshot still prove the earlier
+    # source hold. A later role failure need not have published another field.
+    def later_failure(case):
+        case.binding.read_bundle.job["fields"]["city"]["work_state"] = state
+
+    workflow, case = observed_step(publication, change=later_failure)
+    head = case.binding.native.causal_chain[-1].progress_receipt
+    assert "operational_failed" not in head.research_field_work.values()
+    assert case.outcome.reason_code is None and case.outcome.publication_receipt_ids
+    with supervised(), pytest.raises(OperationalBlock, match="^native_research_operational_hold$"):
+        workflow.step(publication.principal, case.before.id)
+
+
+@pytest.mark.parametrize("change", [
+    {"operational_reason_codes": ("source_operational_failure:retained-lookup:unavailable",)},
+    {"research_field_work": {"city": "operational_failed"}},
+    {"canonical_field_work": {"city": "operational_failed"}},
+], ids=["source-failure-reason", "research-failure-state", "canonical-failure-state"])
+def test_a_head_operational_failure_is_not_a_scientific_field_hold(publication, change):
+    def failed_head(case):
+        native = case.binding.native
+        head = native.causal_chain[-1]
+        progress = head.progress_receipt
+        updates = {key: ({**getattr(progress, key), **value} if isinstance(value, dict) else value)
+            for key, value in change.items()}
+        # A controlled bad proof read exercises rejection without creating a
+        # replacement receipt, source capture, scientific value or valid chain.
+        head = head.model_copy(update={"progress_receipt": progress.model_copy(update=updates)})
+        case.binding.native = native.model_copy(update={"causal_chain": (*native.causal_chain[:-1], head)})
+
+    workflow, case = observed_step(publication, change=failed_head)
+    with supervised(), pytest.raises(OperationalBlock, match="^native_research_operational_hold$"):
+        workflow.step(publication.principal, case.before.id)
+
+
 @pytest.mark.parametrize("code", [
     "accepted_output_proof_unavailable", "native_publication_requires_reconciliation",
     "research_worker_custody_requires_reconciliation", "research_program_headroom_unavailable",
