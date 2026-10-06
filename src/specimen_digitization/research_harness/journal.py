@@ -6,7 +6,10 @@ import asyncio
 from dataclasses import asdict
 import hashlib
 
-from .accepted_output import AcceptedOutputProofV1, AcceptedCheckpointProofV1, validation_boundary_pins, MAX_ACCEPTED_PROOF_BYTES
+from .accepted_output import (
+    AcceptedOutputProofV1, AcceptedCheckpointProofV1, validation_boundary_pins,
+    MAX_ACCEPTED_PROOF_BYTES, VALIDATOR_VERSION, VALIDATOR_SOURCE_SHA256,
+)
 from collections.abc import Sequence
 
 from .contracts import ROLE_FIELDS, DependencyPin, FieldCheckpoint, FieldKey, FieldResolution, ResearchScope, SpecialistRequest, digest
@@ -70,6 +73,13 @@ class DurableResearchJournal:
                 or job["paused"]
             ):
                 raise StaleWork("journal_runtime_binding_mismatch")
+            expected_boundary = {"contract_version":"research-acceptance-boundary/v1",
+                "validator_version":VALIDATOR_VERSION, "validator_source_sha256":VALIDATOR_SOURCE_SHA256,
+                **validation_boundary_pins()}
+            retained_boundary = pins["sources"].get("acceptance_boundary")
+            if ((retained_boundary is not None or document.state["budget_policy"].get("live_authorized") is True)
+                and retained_boundary != expected_boundary):
+                raise StaleWork("journal_acceptance_boundary_mismatch")
         await asyncio.to_thread(check)
 
     async def field_revisions(self, scope: ResearchScope) -> dict[FieldKey, int]:
@@ -234,7 +244,13 @@ class DurableResearchJournal:
         if accepted_output is not None:
             accepted_output = AcceptedOutputProofV1.model_validate(accepted_output.model_dump(mode="json"))
             boundary = validation_boundary_pins()
+            expected_boundary = {"contract_version":"research-acceptance-boundary/v1",
+                "validator_version":VALIDATOR_VERSION, "validator_source_sha256":VALIDATOR_SOURCE_SHA256, **boundary}
+            retained_boundary = job["pins"]["sources"].get("acceptance_boundary")
             if (accepted_output.original_request != request or accepted_output.resolutions != resolutions
+                or (retained_boundary is not None and retained_boundary != expected_boundary)
+                or accepted_output.validator_version != VALIDATOR_VERSION
+                or accepted_output.validator_source_sha256 != VALIDATOR_SOURCE_SHA256
                 or accepted_output.effect_ids != tuple(receipt_ids)
                 or accepted_output.engine_source_sha256 != boundary["engine_source_sha256"]
                 or accepted_output.journal_source_sha256 != boundary["journal_source_sha256"]

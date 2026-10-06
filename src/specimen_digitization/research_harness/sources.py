@@ -57,6 +57,17 @@ def canonical_json(value: object) -> str:
 SETTLEMENT_UTILITY_VERSION = "deterministic-settlement-v1"
 
 
+class UtilityInputError(ValueError):
+    """A model supplied an argument outside the immutable utility inputs."""
+
+
+def _utility_field_key(value):
+    try:
+        return FieldKey(value)
+    except (ValueError, TypeError):
+        raise UtilityInputError("Utility field is outside the reviewed roster") from None
+
+
 def local_settlement_result(request: SpecialistRequest, tool_id: str, arguments: dict) -> SourceResult:
     """Return the validator's exact event/assembly settlement, with no model authority.
 
@@ -68,33 +79,33 @@ def local_settlement_result(request: SpecialistRequest, tool_id: str, arguments:
 
     if tool_id == "settle_temporal":
         if request.role != SpecialistRole.TEMPORAL or set(arguments) != {"field_key", "event_id"}:
-            raise ValueError("Temporal settlement requires its exact owned event")
-        field_key = FieldKey(arguments["field_key"])
+            raise UtilityInputError("Temporal settlement requires its exact owned event")
+        field_key = _utility_field_key(arguments["field_key"])
         event_id = arguments["event_id"]
         if field_key not in request.field_keys or not isinstance(event_id, str):
-            raise ValueError("Temporal settlement exceeds scoped request")
+            raise UtilityInputError("Temporal settlement exceeds scoped request")
         source_revision = request.field_revisions.get(FieldKey.DATE_VISITED_FROM, 0)
         resolutions = temporal_resolutions(request, event_id=event_id, source_revision=source_revision)
         if resolutions[0].field_key != field_key:
-            raise ValueError("Temporal event does not establish the requested field")
+            raise UtilityInputError("Temporal event does not establish the requested field")
         assembly_ids = tuple(item.id for item in request.assemblies if item.event_id == event_id)
         if not assembly_ids or any(item.field_key not in request.field_keys
                                    for item in request.assemblies if item.event_id == event_id):
-            raise ValueError("Temporal event has no complete scoped assembly")
+            raise UtilityInputError("Temporal event has no complete scoped assembly")
     elif tool_id == "settle_elevation":
         if request.role != SpecialistRole.MEASUREMENT or set(arguments) != {
             "field_key", "event_id", "assembly_ids"}:
-            raise ValueError("Elevation settlement requires exact owned assemblies")
-        field_key = FieldKey(arguments["field_key"])
+            raise UtilityInputError("Elevation settlement requires exact owned assemblies")
+        field_key = _utility_field_key(arguments["field_key"])
         event_id, ids = arguments["event_id"], arguments["assembly_ids"]
         if (field_key not in request.field_keys or not isinstance(event_id, str)
             or not isinstance(ids, list) or not ids or any(not isinstance(item, str) for item in ids)):
-            raise ValueError("Elevation settlement exceeds scoped request")
+            raise UtilityInputError("Elevation settlement exceeds scoped request")
         assemblies = tuple(item for item in request.assemblies
                            if item.event_id == event_id and item.field_key in request.field_keys)
         if (not assemblies or tuple(ids) != tuple(item.id for item in assemblies)
             or assemblies[0].field_key != field_key):
-            raise ValueError("Elevation settlement needs every assembly in immutable request order")
+            raise UtilityInputError("Elevation settlement needs every assembly in immutable request order")
         # G41 always derives from a written From quantity of the matching unit,
         # even when the organiser's original proposal named a To slot.
         from .evidence import parse_measurement
@@ -1069,14 +1080,14 @@ class SourceBroker:
                    "parse_temporal": SpecialistRole.TEMPORAL,
                    "catalog_number": SpecialistRole.COLLECTION}
         if tool_id not in allowed or request.role != allowed[tool_id]:
-            raise ValueError("Utility is outside reviewed role/tool roster")
+            raise UtilityInputError("Utility is outside reviewed role/tool roster")
         if set(arguments) != {"text", "field_key"}:
-            raise ValueError("Utility accepts only typed measurement text/field")
-        field_key = FieldKey(arguments["field_key"])
+            raise UtilityInputError("Utility accepts only typed measurement text/field")
+        field_key = _utility_field_key(arguments["field_key"])
         if field_key not in request.field_keys:
-            raise ValueError("Utility field exceeds scoped request")
+            raise UtilityInputError("Utility field exceeds scoped request")
         if not any(arguments["text"] == assembly.interpreted_text for assembly in request.assemblies):
-            raise ValueError("Utility text must come from an available evidenced assembly")
+            raise UtilityInputError("Utility text must come from an available evidenced assembly")
         if tool_id == "catalog_number":
             parsed = {"field_key": str(field_key), "value": catalog_literal(arguments["text"]),
                       "rule_version": "catalog-number-v1"}

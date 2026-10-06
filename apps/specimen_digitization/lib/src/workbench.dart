@@ -1857,6 +1857,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
     busy: widget.busy,
     pendingCount: _pending.length,
     onSavePending: _savePending,
+    saveBlockedReason: blockedReason('field'),
     onConfirmCoverage: () => _decide(
       'coverage',
       'Confirm label coverage?',

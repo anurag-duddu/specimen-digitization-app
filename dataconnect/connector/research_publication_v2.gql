@@ -1,6 +1,10 @@
 # SOURCE UNRUN: V2 is additive. Compiler/physical mapping/transaction/CEL/IAM unqualified.
 # SOURCE ONLY: the native feature/schema/physical mapping/compiler/CEL/atomicity
 # and restricted backend IAM remain qualification gates. No old operation changes.
+# Preparation writes retain the full String, with a preparation_digest metadata
+# member, alongside a JSONB body that omits only that member. Check that custody
+# before removing metadata through JSON (not JSONB): scalar kinds and duplicate
+# body keys must survive for the strict HTTP/model decoders.
 # Receipt replay authorizes current access but deliberately reads no current job,
 # registration, lease/outbox or budget. Partial native/request pairs are returned
 # as incomplete objects and fail closed in the adapter, never treated as absence.
@@ -44,7 +48,11 @@ query GetResearchPublicationReceiptV2($organizationId: UUID!, $collectionId: UUI
     CASE WHEN a.id IS NULL THEN NULL ELSE jsonb_build_object('actorUid',a.actor_uid,'revision',a.revision,'requestSha256',a.request_sha256) END AS audit,
     CASE WHEN o.id IS NULL THEN NULL ELSE jsonb_build_object('aggregateRevision',o.aggregate_revision,'deduplicationKey',o.deduplication_key) END AS outbox,
     CASE WHEN intent.payload_json::jsonb=intent.payload THEN intent.payload_json::json END AS intent,
-    CASE WHEN prep.payload_json::jsonb=prep.payload THEN prep.payload_json::json END AS preparation, (pair.p).causal_proof AS causal,
+    CASE WHEN (SELECT count(*) FROM json_each(prep.payload_json::json) e WHERE e.key='preparation_digest')=1
+          AND prep.payload_json::jsonb->'preparation_digest'=to_jsonb(prep.preparation_digest)
+          AND (prep.payload_json::jsonb-'preparation_digest')=prep.payload
+        THEN (SELECT json_object_agg(e.key,e.value) FROM json_each(prep.payload_json::json) e
+          WHERE e.key<>'preparation_digest') END AS preparation, (pair.p).causal_proof AS causal,
     CASE WHEN attempt.id IS NULL THEN NULL ELSE jsonb_build_object('id',attempt.id,'preparation_id',attempt.preparation_id,'operation_digest',attempt.operation_digest,'preparation_digest',attempt.preparation_digest,'admission_digest',attempt.admission_digest) END AS attempt, (pair.p).prepack_proof AS prepack
     FROM pair JOIN public.specimen s ON s.organization_id=$1 AND s.collection_id=$2 AND s.id=$3
     JOIN public.organization_member om ON om.organization_id=$1 AND om.uid=$4 AND om.active
@@ -678,7 +686,11 @@ query GetResearchPublicationIntentV2($organizationId: UUID!, $collectionId: UUID
         AND p.collection_id=$2 AND p.intent_id=i.id) AS preparation_count,
       CASE WHEN (SELECT count(*) FROM public.research_publication_preparation_v2 p WHERE p.organization_id=$1
         AND p.collection_id=$2 AND p.intent_id=i.id)<=20 THEN
-        (SELECT COALESCE(json_agg(CASE WHEN p.payload_json::jsonb=p.payload THEN p.payload_json::json END ORDER BY p.ordinal),'[]'::json) FROM public.research_publication_preparation_v2 p
+        (SELECT COALESCE(json_agg(CASE WHEN (SELECT count(*) FROM json_each(p.payload_json::json) e WHERE e.key='preparation_digest')=1
+          AND p.payload_json::jsonb->'preparation_digest'=to_jsonb(p.preparation_digest)
+          AND (p.payload_json::jsonb-'preparation_digest')=p.payload
+        THEN (SELECT json_object_agg(e.key,e.value) FROM json_each(p.payload_json::json) e
+          WHERE e.key<>'preparation_digest') END ORDER BY p.ordinal),'[]'::json) FROM public.research_publication_preparation_v2 p
           WHERE p.organization_id=$1 AND p.collection_id=$2 AND p.intent_id=i.id) ELSE NULL END AS preparations,
       CASE WHEN a.id IS NULL THEN NULL ELSE jsonb_build_object('id',a.id,'preparation_id',a.preparation_id,
         'operation_digest',a.operation_digest,'preparation_digest',a.preparation_digest,'admission_digest',a.admission_digest) END AS attempt
