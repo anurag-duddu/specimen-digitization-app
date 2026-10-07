@@ -40,15 +40,17 @@ from .contracts import (
     EvidenceItem, EventHypothesis, EventKind, FieldKey, Geometry, OrganiserCandidate, PromptPin,
     SourceFragment, SpecialistRequest, SpecialistRole, digest,
 )
-from .evidence import EvidenceError, assemble_field, catalog_literal, parse_measurement, parse_temporal
+from .evidence import (
+    EvidenceError, _MEASUREMENT, assemble_field, catalog_literal, parse_measurement, parse_temporal,
+)
 from .persistence import StaleWork
 
 # The proposer behind the hand-over today: the ordinary extraction step (application/harness.py).
 ORGANISER_SOURCE = "extractor"
 # What an organiser event's "accepted" status means: extractor-proposed, verbatim in its named
 # reading, and qualified by the field's trusted settlement rule. Existing proof objects keep
-# their original version; this adapter creates new v4 events and fragments only.
-ORGANISER_RULE = "organiser-verbatim-span/v4"
+# their original version; this adapter creates new v5 events and fragments only.
+ORGANISER_RULE = "organiser-verbatim-span/v5"
 # The fields an extractor literal becomes an accepted assembly for: the five literal fields that
 # no source this deployment offers can ground and that the validator resolves from a complete
 # literal assembly alone (evidence.py literal_fields). Date/elevation fields require the
@@ -68,6 +70,12 @@ _COLLECTING_DATE_LINE = re.compile(
 _DETERMINATION_DATE_LINE = re.compile(
     r"^\s*(?:determination date|date identified|date determined|identified on|determined on)\s*[:=]\s*",
     re.IGNORECASE)
+# Scan with the settlement parser's own grammar, without its whole-input anchors.
+# Boundaries force complete numeric groups and unit words rather than allowing a
+# prefix such as "1" from "1,300", or "m" from "meters". Parsing each match still
+# proves the unit, complete range and uncertainty; this scan grants no assembly.
+_RETAINED_MEASUREMENT = re.compile(
+    r"(?<![\w.])" + _MEASUREMENT.pattern[1:-1] + r"(?!\w|[.,]\d)", re.IGNORECASE)
 # At most this many candidates of one field are handed over (twenty fields x five = the contract's cap of 100,
 # so the cap never starves a field). The organiser (#262) stores one row per reading: more than five for a field
 # means several labels or readers. The ones kept are, in order: the field's own stored value, the other rows that
@@ -563,6 +571,19 @@ def _qualified_elevation_assemblies(specimen, by_field, reading_map, decided, ke
         citing.add(observation.id)
     if not expected <= citing:
         return {}
+    # Extractor rows are proposals, not an exhaustive inventory of the reading.
+    # Check every retained reader of the same label, including an unclaimed peer
+    # of a decided transcript, before treating one proposed assertion as settled.
+    # A silent reader remains allowed by the decided-transcript rule; a contrary
+    # written unit assertion does not become silent just because extraction omitted it.
+    for observation in readers:
+        for match in _RETAINED_MEASUREMENT.finditer(observation.literal_text):
+            try:
+                retained = parse_measurement(match.group().strip())
+            except EvidenceError:
+                continue
+            if _measurement_identity(retained) != identity:
+                return {}
     eligible = [claim for claim in claims if selected is None or claim.observation.id == selected[1].id]
     if not eligible:
         return {}

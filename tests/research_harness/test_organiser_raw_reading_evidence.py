@@ -43,7 +43,7 @@ from specimen_digitization.research_harness.evidence import (
     validate_assembly, validate_resolution,
 )
 from specimen_digitization.research_harness.initial_requests import (
-    ASSEMBLY_FIELDS, ORGANISER_RULE, NativeGenerationRequestFactory,
+    ASSEMBLY_FIELDS, ELEVATION_FIELDS, ORGANISER_RULE, NativeGenerationRequestFactory,
 )
 from specimen_digitization.research_harness.local_utility_proof_v2 import verify_local_utility_v2
 from specimen_digitization.research_harness.prompts import resolve_prompt
@@ -754,6 +754,42 @@ def test_a_partial_elevation_span_never_discards_written_qualifiers_signs_ranges
     assert {item.status for item in candidates(built)} <= {"located", "ungrounded"}
     assert not [item for item in built.graph[2] if item.field_key in {
         FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M}]
+
+
+@pytest.mark.parametrize("other", (
+    "Camp at 1200 m; ridge 1300 m",
+    "Camp at 1200 m\nRidge 1300 meters",
+    "Camp at 1200 m; ridge ca. 1300 m",
+    "Camp at 1200 m; ridge 1200-1300 m",
+    "Camp at 1200 m; ridge 1300 m ± 5 m",
+))
+@pytest.mark.parametrize("decided", ("a", None))
+def test_unclaimed_competing_elevation_in_retained_reading_prevents_grounding(other, decided):
+    # Extraction omitted the second assertion. The raw reading remains evidence.
+    built = build(two_labels(a=other, decided=decided), [
+        ("elevation_from_m", "2A", "1200 m", other),
+        ("elevation_from_m", "2B", "1200 m", other),
+    ])
+    assert {item.status for item in candidates(built)} == {"located"}
+    assert not [item for item in built.graph[2] if item.field_key in ELEVATION_FIELDS]
+
+
+@pytest.mark.parametrize("other", ("Camp at 1300 m", "Camp at 1,300 metres", "Camp at 1200 ft"))
+def test_unclaimed_contrary_peer_reading_prevents_decided_elevation_grounding(other):
+    line = "Camp at 1200 m"
+    built = build(two_labels(a=line, b=other, decided="a"), [
+        ("elevation_from_m", "2A", "1200 m", line),
+    ])
+    assert {item.status for item in candidates(built)} == {"located"}
+    assert not [item for item in built.graph[2] if item.field_key in ELEVATION_FIELDS]
+
+
+def test_unclaimed_formatting_equivalent_peer_keeps_decided_elevation_grounding():
+    line = "Camp at 1,200 m"
+    built = build(two_labels(a=line, b="Camp at 1200 meters", decided="a"), [
+        ("elevation_from_m", "2A", "1,200 m", line),
+    ])
+    assert {item.status for item in candidates(built)} == {"grounded"}
 
 
 @pytest.mark.parametrize(("role", "tool_id", "field", "line", "literal"), (
