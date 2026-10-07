@@ -758,6 +758,8 @@ def test_a_partial_elevation_span_never_discards_written_qualifiers_signs_ranges
 
 @pytest.mark.parametrize("other", (
     "Camp at 1200 m; ridge 1300 m",
+    "Camp at 1200 m.1300 m",
+    "Camp at 1200 m.1,300 meters",
     "Camp at 1200 m\nRidge 1300 meters",
     "Camp at 1200 m; ridge ca. 1300 m",
     "Camp at 1200 m; ridge 1200-1300 m",
@@ -774,7 +776,10 @@ def test_unclaimed_competing_elevation_in_retained_reading_prevents_grounding(ot
     assert not [item for item in built.graph[2] if item.field_key in ELEVATION_FIELDS]
 
 
-@pytest.mark.parametrize("other", ("Camp at 1300 m", "Camp at 1,300 metres", "Camp at 1200 ft"))
+@pytest.mark.parametrize("other", (
+    "Camp at 1300 m", "Camp at 1,300 metres", "Camp at 1200 ft",
+    "Camp at 1300 m.1400 m", "Camp at -1.300 m.1300 m",
+))
 def test_unclaimed_contrary_peer_reading_prevents_decided_elevation_grounding(other):
     line = "Camp at 1200 m"
     built = build(two_labels(a=line, b=other, decided="a"), [

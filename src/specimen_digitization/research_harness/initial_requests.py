@@ -41,7 +41,8 @@ from .contracts import (
     SourceFragment, SpecialistRequest, SpecialistRole, digest,
 )
 from .evidence import (
-    EvidenceError, _MEASUREMENT, assemble_field, catalog_literal, parse_measurement, parse_temporal,
+    EvidenceError, _MEASUREMENT, _MEASUREMENT_NUMBER, assemble_field, catalog_literal,
+    parse_measurement, parse_temporal,
 )
 from .persistence import StaleWork
 
@@ -71,11 +72,14 @@ _DETERMINATION_DATE_LINE = re.compile(
     r"^\s*(?:determination date|date identified|date determined|identified on|determined on)\s*[:=]\s*",
     re.IGNORECASE)
 # Scan with the settlement parser's own grammar, without its whole-input anchors.
-# Boundaries force complete numeric groups and unit words rather than allowing a
-# prefix such as "1" from "1,300", or "m" from "meters". Parsing each match still
-# proves the unit, complete range and uncertainty; this scan grants no assembly.
+# Number boundaries force complete numeric groups instead of a prefix such as
+# "1" from "1,300". Unit boundaries force full words rather than "m" from
+# "meters", while permitting punctuation-separated OCR assertions like
+# "1200 m.1300 m". A scanner hit can only veto grounding, never grant an assembly;
+# the selected candidate still has the stricter complete-span qualification.
 _RETAINED_MEASUREMENT = re.compile(
-    r"(?<![\w.])" + _MEASUREMENT.pattern[1:-1] + r"(?!\w|[.,]\d)", re.IGNORECASE)
+    r"(?<!\w)" + _MEASUREMENT.pattern[1:-1].replace(
+        _MEASUREMENT_NUMBER, _MEASUREMENT_NUMBER + r"(?![\d.,])") + r"(?!\w)", re.IGNORECASE)
 # At most this many candidates of one field are handed over (twenty fields x five = the contract's cap of 100,
 # so the cap never starves a field). The organiser (#262) stores one row per reading: more than five for a field
 # means several labels or readers. The ones kept are, in order: the field's own stored value, the other rows that
