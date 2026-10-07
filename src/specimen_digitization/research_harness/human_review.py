@@ -14,10 +14,12 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Literal
 
+from pydantic import Field, field_validator
+
 from specimen_digitization.application.domain import Evidence, ValueState
 from specimen_digitization.application.storage import Conflict, Missing, canonical_json, digest
 from .candidate_selection import DerivedCandidateMetadata, retained_candidate
-from .canonical_binding import BindingUnavailable, CanonicalIdentity
+from .canonical_binding import BindingUnavailable, CanonicalIdentity, Identifier, native_uuid
 from .compatibility import PublicationUnavailable
 from .contracts import FieldKey, FrozenRecord, ResearchScope, WorkState
 from .discovery import DiscoveryCapabilities
@@ -315,9 +317,27 @@ class QualifiedProposalService:
         return await self.service.retry_field(*args)
 
 
+class HistoricalCurrentHost(FrozenRecord):
+    """Authorized current host, separate from the immutable source-native tuple."""
+
+    organization_id: Identifier
+    collection_id: Identifier
+    specimen_id: Identifier
+    canonical_run_id: Identifier
+    record_revision: int = Field(strict=True, ge=1)
+    host_record_version_id: str = Field(strict=True, min_length=1, max_length=200)
+    sensitive: bool = Field(strict=True)
+
+    @field_validator("organization_id", "collection_id", "specimen_id", "canonical_run_id")
+    @classmethod
+    def canonical_uuid(cls, value: str) -> str:
+        return native_uuid(value)
+
+
 class HistoricalResearchDiscovery(FrozenRecord):
     contract_version: Literal["canonical-binding/v2", "canonical-binding/v1"]
     canonical: CanonicalIdentity
+    current_host: HistoricalCurrentHost
     scope: ResearchScope
     human_locked_fields: tuple[FieldKey, ...]
     capabilities: DiscoveryCapabilities
@@ -345,8 +365,14 @@ class HistoricalReviewDiscovery:
         except Missing:
             raise BindingUnavailable("historical_research_report_unavailable") from None
         metadata = specimen.run.dependencies.get(REPORT_KEY)
-        if (not isinstance(metadata, dict) or metadata.get("run_id") != specimen.run.id
-                or metadata.get("review_saved_revision", specimen.version + 1) > specimen.version):
+        if not isinstance(metadata, dict) or metadata.get("run_id") != specimen.run.id:
+            raise BindingUnavailable("historical_research_report_unavailable")
+        source_revision = metadata.get("source_revision")
+        saved_revision = metadata.get("review_saved_revision")
+        if (type(source_revision) is not int or source_revision < 1
+                or type(saved_revision) is not int or saved_revision != source_revision + 1):
+            raise BindingUnavailable("historical_research_report_integrity")
+        if saved_revision > specimen.version:
             raise BindingUnavailable("historical_research_report_unavailable")
         try:
             raw = await asyncio.to_thread(self.blobs.get_bounded, metadata["blob_ref"], REPORT_LIMIT)
@@ -360,8 +386,19 @@ class HistoricalReviewDiscovery:
         if (thread.scope.organization_id != principal.scope.organization_id
                 or thread.scope.collection_id != principal.scope.collection_id
                 or thread.scope.specimen_id != specimen.id or payload["run_id"] != specimen.run.id
-                or not thread.historical or thread.canonical_revision != metadata["source_revision"]
-                or thread.review_saved_revision != metadata["review_saved_revision"]):
+                or canonical.organization_id != thread.scope.organization_id
+                or canonical.collection_id != thread.scope.collection_id
+                or canonical.specimen_id != thread.scope.specimen_id
+                or canonical.canonical_run_id != specimen.run.id
+                or canonical.record_revision != source_revision
+                or canonical.host_record_version_id != f"{specimen.run.id}:{source_revision}"
+                or canonical.sensitive != thread.scope.sensitive
+                or (canonical.sensitive and not specimen.asset.sensitive)
+                or not thread.historical or thread.canonical_revision != source_revision
+                or thread.review_saved_revision != saved_revision
+                or any(field.actions or (field.review is not None and any(
+                    candidate.selection_id is not None or candidate.selection_value is not None
+                    for candidate in field.review.candidates)) for field in thread.fields)):
             raise BindingUnavailable("historical_research_report_scope")
         return specimen, thread, canonical
 
@@ -387,6 +424,13 @@ class HistoricalReviewDiscovery:
             locks = specimen.run.dependencies.get("human_review_field_locks", {})
             return HistoricalResearchDiscovery(contract_version=self.contract_version,
                 canonical=canonical, scope=thread.scope,
+                current_host=HistoricalCurrentHost(
+                    organization_id=specimen.scope.organization_id,
+                    collection_id=specimen.scope.collection_id,
+                    specimen_id=specimen.id, canonical_run_id=specimen.run.id,
+                    record_revision=specimen.version,
+                    host_record_version_id=f"{specimen.run.id}:{specimen.version}",
+                    sensitive=specimen.asset.sensitive),
                 human_locked_fields=tuple(key for key in FieldKey if str(key) in locks),
                 capabilities=DiscoveryCapabilities(read=True, retry=False, review=False),
                 canonical_revision=thread.canonical_revision, review_saved_revision=thread.review_saved_revision)

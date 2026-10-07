@@ -34,8 +34,10 @@ final collection = CollectionScope(
 Specimen item([String? id, int revision = 1]) => Specimen({
   'specimen_id': id ?? trusted.specimenId,
   'revision': revision,
+  'active_run_id': canonicalRunId,
   'record_version_id': '$canonicalRunId:$revision',
   'sensitive': trusted.sensitive,
+  'asset': {'sensitive': trusted.sensitive},
 });
 Json discovery([String? id, int revision = 1]) => {
   'contract_version': 'canonical-binding/v2',
@@ -53,6 +55,22 @@ Json discovery([String? id, int revision = 1]) => {
   'scope': {...trusted.json, 'specimen_id': id ?? trusted.specimenId},
   'capabilities': {'read': true, 'retry': false, 'review': false},
   'human_locked_fields': <String>[],
+};
+
+Json historicalDiscovery(int currentRevision) => {
+  ...discovery(),
+  'historical': true,
+  'canonical_revision': 1,
+  'review_saved_revision': 2,
+  'current_host': {
+    'organization_id': collection.organizationId,
+    'collection_id': collection.collectionId,
+    'specimen_id': trusted.specimenId,
+    'canonical_run_id': canonicalRunId,
+    'record_revision': currentRevision,
+    'host_record_version_id': '$canonicalRunId:$currentRevision',
+    'sensitive': trusted.sensitive,
+  },
 };
 
 class HostApi extends ApiSpecimenRepository {
@@ -315,6 +333,147 @@ void main() {
     },
   );
 
+  test(
+    'historical discovery binds a fresh host without rewriting source proof',
+    () async {
+      for (final revision in [2, 3]) {
+        final payload = historicalDiscovery(revision);
+        final source = payload['canonical'] as Map;
+        expect(source['record_revision'], 1);
+        expect(source['record_version_id'], nativeRecordVersions[1]);
+        final repository = ApiResearchRepository(
+          request: (method, path, {body}) async => payload,
+        );
+        final scope = await repository.discover(
+          collection,
+          item(null, revision),
+        );
+        expect(scope.matches(trusted), isTrue);
+      }
+    },
+  );
+
+  test('saved Q21 source reopens at Q22 and later same-run Q23', () async {
+    for (final currentRevision in [22, 23]) {
+      // The connected offline Save returned this source/current revision shape.
+      // The old native UUID and digest remain source proof, not host authority.
+      final payload = historicalDiscovery(currentRevision);
+      final source = payload['canonical'] as Map;
+      source['record_revision'] = 21;
+      source['record_version_id'] = 'ddcff5f7-322d-51a8-96a9-9e7ba36414d7';
+      source['host_record_version_id'] = '$canonicalRunId:21';
+      // Public digest of the retained synthetic offline snapshot.
+      source['snapshot_sha256'] =
+          '28fd17ae53be797563077a9e332184c88f34c98863dc96621013dcdf18b2d9a7'; // pragma: allowlist secret
+      source['sensitive'] = false;
+      (payload['scope'] as Map)['sensitive'] = false;
+      (payload['current_host'] as Map)['sensitive'] = false;
+      payload['canonical_revision'] = 21;
+      payload['review_saved_revision'] = 22;
+      final opened = Specimen({
+        ...item(null, currentRevision).data,
+        'sensitive': false,
+        'asset': {'sensitive': false},
+      });
+      final repository = ApiResearchRepository(
+        request: (method, path, {body}) async => payload,
+      );
+      final scope = await repository.discover(collection, opened);
+      expect(scope.sensitive, isFalse);
+      expect(
+        source['record_version_id'],
+        'ddcff5f7-322d-51a8-96a9-9e7ba36414d7',
+      );
+    }
+  });
+
+  test(
+    'historical discovery refuses stale host, false source or actions',
+    () async {
+      for (final damage in [
+        'missing-host',
+        'stale-host',
+        'foreign-host',
+        'wrong-run',
+        'wrong-sensitive',
+        'source-run',
+        'source-sensitive',
+        'source-host',
+        'source-native-id',
+        'source-digest',
+        'source-revision',
+        'saved-revision',
+        'future-saved',
+        'retry-capability',
+        'review-capability',
+      ]) {
+        final payload = historicalDiscovery(2);
+        final source = payload['canonical'] as Map;
+        final host = payload['current_host'] as Map;
+        switch (damage) {
+          case 'missing-host':
+            payload.remove('current_host');
+          case 'stale-host':
+            host['record_revision'] = 1;
+            host['host_record_version_id'] = '$canonicalRunId:1';
+          case 'foreign-host':
+            host['collection_id'] = secondSpecimenId;
+          case 'wrong-run':
+            host['canonical_run_id'] = secondSpecimenId;
+          case 'wrong-sensitive':
+            host['sensitive'] = !trusted.sensitive;
+          case 'source-run':
+            source['canonical_run_id'] = secondSpecimenId;
+          case 'source-sensitive':
+            source['sensitive'] = !trusted.sensitive;
+          case 'source-host':
+            source['host_record_version_id'] = '$canonicalRunId:2';
+          case 'source-native-id':
+            source['record_version_id'] = 'not-a-native-uuid';
+          case 'source-digest':
+            source['snapshot_sha256'] = 'not-a-digest';
+          case 'source-revision':
+            payload['canonical_revision'] = 2;
+          case 'saved-revision':
+            payload['review_saved_revision'] = 3;
+          case 'future-saved':
+            payload['review_saved_revision'] = 4;
+          case 'retry-capability':
+            (payload['capabilities'] as Map)['retry'] = true;
+          case 'review-capability':
+            (payload['capabilities'] as Map)['review'] = true;
+        }
+        final repository = ApiResearchRepository(
+          request: (method, path, {body}) async => payload,
+        );
+        await expectLater(
+          repository.discover(collection, item(null, 2)),
+          throwsA(
+            isA<ResearchFailure>().having(
+              (error) => error.kind,
+              'kind',
+              ResearchFailureKind.invalidResponse,
+            ),
+          ),
+          reason: damage,
+        );
+      }
+      final stale = ApiResearchRepository(
+        request: (method, path, {body}) async => historicalDiscovery(2),
+      );
+      await expectLater(
+        stale.discover(collection, item(null, 3)),
+        throwsA(
+          isA<ResearchFailure>().having(
+            (error) => error.kind,
+            'kind',
+            ResearchFailureKind.invalidResponse,
+          ),
+        ),
+      );
+    },
+  );
+
   testWidgets('production host discovers once and leaves field reads lazy', (
     tester,
   ) async {
@@ -488,7 +647,7 @@ void main() {
     (tester) async {
       final requestId = 'c' * 64;
       final api = HostApi((path) async {
-        if (path.endsWith('/research/current')) return discovery(null, 2);
+        if (path.endsWith('/research/current')) return historicalDiscovery(2);
         if (path.endsWith('/research/jobs/job/generations/1/thread')) {
           return countryReviewThread(
             historical: true,
@@ -564,7 +723,7 @@ void main() {
     'historical field candidates stay disabled while current capability is available',
     (tester) async {
       final api = HostApi((path) async {
-        if (path.endsWith('/research/current')) return discovery(null, 2);
+        if (path.endsWith('/research/current')) return historicalDiscovery(2);
         if (path.endsWith('/research/jobs/job/generations/1/thread')) {
           return countryReviewThread(
             historical: true,

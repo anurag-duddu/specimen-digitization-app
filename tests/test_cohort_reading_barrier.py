@@ -547,6 +547,9 @@ def test_single_worker_segments_all_ten_then_reads_every_region_and_stops_for_re
     tmp_path, monkeypatch
 ):
     c = cohort(tmp_path, monkeypatch, regions=2, timeout=1)
+    # Generated local reads have no simulated latency. Measure their step time
+    # with the same frozen clock as the fixture, not CI scheduler pauses.
+    c.flow.monotonic = lambda: c.clock[0].timestamp()
     c.repo.due_page = lambda *args: pytest.fail("Frozen cohort never uses discovery")
     original = c.flow.adapters.production.transcribe
 

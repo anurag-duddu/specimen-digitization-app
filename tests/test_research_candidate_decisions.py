@@ -6,6 +6,7 @@ candidate resolution, application evidence, canonical CAS and reopen are real.
 
 import asyncio
 import copy
+import hashlib
 import json
 from types import SimpleNamespace
 from uuid import uuid4
@@ -686,6 +687,72 @@ def test_saved_research_reopens_as_explicit_read_only_history_and_rejects_retry(
     retry = review.client.post(thread_url + "/fields/country/retry", headers=HEADERS,
         json={"expected_checkpoint_revision": 1})
     assert retry.status_code == 409, retry.text
+
+
+def test_historical_discovery_keeps_source_proof_and_names_the_current_saved_host(review):
+    source = review.client.get(research_base(review) + "/current", headers=HEADERS)
+    assert source.status_code == 200, source.text
+    source_identity = source.json()["canonical"]
+    assert post(review, [choice(review)])["applied"] == 1
+
+    current = reopen(review)
+    for step in range(2):
+        response = review.client.get(research_base(review) + "/current", headers=HEADERS)
+        assert response.status_code == 200, response.text
+        history = response.json()
+        assert history["historical"] is True
+        assert history["canonical"] == source_identity
+        assert history["canonical_revision"] == source_identity["record_revision"]
+        assert history["review_saved_revision"] == source_identity["record_revision"] + 1
+        assert history["current_host"] == {
+            "organization_id": review.scope.organization_id,
+            "collection_id": review.scope.collection_id,
+            "specimen_id": current["specimen_id"],
+            "canonical_run_id": current["active_run_id"],
+            "record_revision": current["revision"],
+            "host_record_version_id": current["record_version_id"],
+            "sensitive": current["asset"].get("sensitive", True),
+        }
+        assert history["capabilities"] == {"read": True, "retry": False, "review": False}
+        thread = current_thread(review)
+        assert thread.status_code == 200 and thread.json()["historical"] is True
+        assert all(not field["actions"] for field in thread.json()["fields"])
+        if step == 0:
+            current, _ = post_ordinary_field(review, current)
+
+
+@pytest.mark.parametrize("damage", ["scope", "run", "source_revision", "source_host", "sensitive", "saved_revision", "token"])
+def test_historical_discovery_rejects_retained_identity_or_revision_damage(review, monkeypatch, damage):
+    assert post(review, [choice(review)])["applied"] == 1
+    saved = review.repository.get(review.scope, review.record["specimen_id"])
+    metadata = saved.run.dependencies[REPORT_KEY]
+    payload = json.loads(review.blobs.get(metadata["blob_ref"]))
+    if damage == "scope":
+        payload["canonical"]["collection_id"] = str(uuid4())
+    elif damage == "run":
+        payload["canonical"]["canonical_run_id"] = str(uuid4())
+    elif damage == "source_revision":
+        payload["canonical"]["record_revision"] += 1
+    elif damage == "source_host":
+        payload["canonical"]["host_record_version_id"] = "old-run:1"
+    elif damage == "sensitive":
+        payload["canonical"]["sensitive"] = not payload["canonical"]["sensitive"]
+    elif damage == "saved_revision":
+        metadata["review_saved_revision"] += 1
+        payload["thread"]["review_saved_revision"] += 1
+    else:
+        country = next(field for field in payload["thread"]["fields"] if field["field_key"] == "country")
+        country["review"]["candidates"][0]["selection_id"] = "a" * 64
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    metadata.update(blob_ref=review.blobs.put(raw), sha256=hashlib.sha256(raw).hexdigest(),
+        size_bytes=len(raw))
+    original_get = review.repository.get
+    monkeypatch.setattr(review.repository, "get", lambda scope, ident:
+        saved if scope == saved.scope and ident == saved.id else original_get(scope, ident))
+
+    response = review.client.get(research_base(review) + "/current", headers=HEADERS)
+    assert response.status_code == 503, response.text
+    assert response.json() == {"detail": "research_service_unavailable"}
 
 
 @pytest.mark.parametrize("access_change", ["membership", "sensitive"])
