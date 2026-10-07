@@ -622,8 +622,6 @@ def test_explicit_single_elevation_in_both_readers_has_four_publishable_endpoint
     ("Collection date: 4-5-48", "4-5-48", "date_visited_from", None),
     ("Collection date: 12.V.1948", "12.V.1948", "date_visited_from", "Collection date: 13.V.1948"),
     ("Elev. 1200", "1200", "elevation_from_m", None),
-    ("Elev. 1200-1300 m", "1200-1300 m", "elevation_from_m", None),
-    ("Elev. ca. 1200 m", "ca. 1200 m", "elevation_from_m", None),
     ("Elev. 1200 m", "1200 m", "elevation_from_ft", None),
     ("Elev. 1200 m", "1200 m", "elevation_from_m", "Elev. 1300 m"),
 ))
@@ -646,6 +644,115 @@ def test_a_silent_second_reader_or_a_competing_elevation_field_blocks_qualificat
         ("elevation_to_m", "2A", "1300 m", "Elev. 1300 m"),
         ("elevation_to_m", "2B", "1300 m", "Elev. 1300 m")])
     assert not [item for item in contested.graph[2] if item.field_key in {
+        FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M}]
+
+
+@pytest.mark.parametrize("line", (
+    "6,400 ft",
+    "Camp, 6,400 ft, cloud forest",
+    "Collected at 6,400 ft above sea level.",
+))
+def test_unit_bearing_elevation_on_a_narrative_line_retains_exact_spans_and_fills_four_endpoints(line):
+    literal = "6,400 ft"
+    built = build(two_labels(a=line), [("elevation_from_ft", "2A", literal, line),
+                                       ("elevation_from_ft", "2B", literal, line)])
+    rows = candidates(built, "elevation_from_ft")
+    [grounded] = [item for item in rows if item.status == "grounded"]
+    request = request_for(built, SpecialistRole.MEASUREMENT)
+    for item in rows:
+        reading = next(row for row in built.readings.values() if row.id == item.observation_id)
+        assert reading.literal_text[item.start:item.end] == item.literal == literal
+    assembly = next(item for item in request.assemblies if item.id == grounded.assembly_id)
+    assert assembly.interpreted_text == literal and len(assembly.evidence_ids) == 2
+    resolutions = elevation_resolutions(settle_elevation(request, assembly_ids=(assembly.id,)))
+    assert {item.value.normalized for item in resolutions if str(item.field_key).endswith("_ft")} == {"6400.00"}
+    assert {item.value.normalized for item in resolutions if str(item.field_key).endswith("_m")} == {"1950.72"}
+    assert all(validate_resolution(request, item) == item for item in resolutions)
+
+
+@pytest.mark.parametrize(("literal", "to_value", "qualifiers", "uncertainty"), (
+    ("1200-1300 m", "1300.00", (), None),
+    ("ca. 1200 m", "1200.00", ("ca.",), None),
+    ("1200 m ± 5 m", "1200.00", (), "5"),
+))
+def test_parser_supported_elevation_range_qualifier_and_uncertainty_keep_the_written_metadata(
+        literal, to_value, qualifiers, uncertainty):
+    line = "Camp at " + literal + " above sea level"
+    built = build(two_labels(a=line), [("elevation_from_m", "2A", literal, line),
+                                       ("elevation_from_m", "2B", literal, line)])
+    grounded = next(item for item in candidates(built) if item.status == "grounded")
+    request = request_for(built, SpecialistRole.MEASUREMENT)
+    settled = settle_elevation(request, assembly_ids=(grounded.assembly_id,))
+    assert settled.assertions[0].literal == literal
+    assert settled.assertions[0].qualifiers == qualifiers and settled.assertions[0].uncertainty == uncertainty
+    resolutions = elevation_resolutions(settled)
+    assert next(item for item in resolutions if item.field_key == FieldKey.ELEVATION_FROM_M).value.normalized == "1200.00"
+    assert next(item for item in resolutions if item.field_key == FieldKey.ELEVATION_TO_M).value.normalized == to_value
+    assert all(item.measurement.qualifiers == qualifiers and item.measurement.uncertainty == uncertainty for item in resolutions)
+    assert all(validate_resolution(request, item) == item for item in resolutions)
+
+
+def test_formatting_only_elevation_disagreement_grounds_supported_agreement_without_rewriting_either_reading():
+    first, second = "Camp, 6,400 ft, forest", "Camp, 6400 feet, forest"
+    built = build(two_labels(a=first, b=second), [
+        ("elevation_from_ft", "2A", "6,400 ft", first),
+        ("elevation_from_ft", "2B", "6400 feet", second)])
+    assert built.specimen.run.fields["elevation_from_ft"].state == ValueState.AMBIGUOUS
+    rows = candidates(built, "elevation_from_ft")
+    assert {item.literal for item in rows} == {"6,400 ft", "6400 feet"}
+    [grounded] = [item for item in rows if item.status == "grounded"]
+    request = request_for(built, SpecialistRole.MEASUREMENT)
+    assert {fragment.observation_text for fragment in request.fragments} >= {first, second}
+    assembly = next(item for item in request.assemblies if item.id == grounded.assembly_id)
+    assert assembly.evidence_ids == grounded.evidence_ids
+    assert len(assembly.evidence_ids) == 1
+    assert {item.id for item in request.evidence} >= {item.evidence_ids[0] for item in rows}
+    assert assembly.interpreted_text == "6,400 ft"
+    resolutions = elevation_resolutions(settle_elevation(request, assembly_ids=(assembly.id,)))
+    assert {item.value.normalized for item in resolutions if str(item.field_key).endswith("_m")} == {"1950.72"}
+    assert all(validate_resolution(request, item) == item for item in resolutions)
+
+
+@pytest.mark.parametrize("decided", ("a", None))
+def test_silent_reader_allows_only_a_verified_decided_elevation_transcript(decided):
+    line, other = "Camp at 1200 m", "Camp altitude illegible"
+    built = build(two_labels(a=line, b=other, decided=decided), [
+        ("elevation_from_m", "2A", "1200 m", line)])
+    [candidate] = candidates(built, "elevation_from_m")
+    assert candidate.status == ("grounded" if decided else "located")
+    assert any(fragment.observation_text == other for fragment in built.graph[0])
+    if decided:
+        request = request_for(built, SpecialistRole.MEASUREMENT)
+        [fragment] = [item for item in request.fragments if item.id == candidate.fragment_id]
+        assert fragment.input_source == "decided_transcript"
+        assert all(validate_resolution(request, item) == item for item in elevation_resolutions(
+            settle_elevation(request, assembly_ids=(candidate.assembly_id,))))
+    # A decided transcript is not permission to erase a contrary numeric reading.
+    contrary = "Camp at 1300 m"
+    contested = build(two_labels(a=line, b=contrary, decided=decided), [
+        ("elevation_from_m", "2A", "1200 m", line),
+        ("elevation_from_m", "2B", "1300 m", contrary)])
+    assert {item.literal for item in candidates(contested)} == {"1200 m", "1300 m"}
+    assert {item.status for item in candidates(contested)} == {"located"}
+    unreadable = build(two_labels(a=line, decided=decided, unreadable=("?",)), [
+        ("elevation_from_m", "2A", "1200 m", line),
+        ("elevation_from_m", "2B", "1200 m", line)])
+    assert {item.status for item in candidates(unreadable)} == {"located"}
+
+
+@pytest.mark.parametrize(("line", "literal"), (
+    ("Camp at ca. 1200 m", "1200 m"),
+    ("Camp at -1200 m", "1200 m"),
+    ("Camp at 1200-1300 m", "1300 m"),
+    ("Camp at -6,400 - -6,300 m", "-6,300 m"),
+    ("Camp at 1,200 m", "200 m"),
+    ("Camp at 1200 m ± 5 m", "1200 m"),
+))
+def test_a_partial_elevation_span_never_discards_written_qualifiers_signs_ranges_or_uncertainty(line, literal):
+    built = build(two_labels(a=line), [("elevation_from_m", "2A", literal, line),
+                                       ("elevation_from_m", "2B", literal, line)])
+    assert {item.status for item in candidates(built)} <= {"located", "ungrounded"}
+    assert not [item for item in built.graph[2] if item.field_key in {
         FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M}]
 
 

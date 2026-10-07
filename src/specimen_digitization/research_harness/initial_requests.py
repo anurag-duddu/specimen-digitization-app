@@ -12,8 +12,9 @@ produce deterministic literal assemblies:
    never read from the extractor or from a stored offset, and a literal that cannot be located
    exactly is carried to the specialist as an ungrounded hint (OrganiserCandidate) that never
    becomes an event or assembly. Five literal fields may ground from a decided reading or
-   unanimous raw readers. Explicit collecting/determination date and elevation lines have
-   a narrower two-reader grammar, event/unit and collision check before they may ground.
+   unanimous raw readers. Collecting/determination dates require an explicit event line.
+   Elevation assertions require explicit units, parser-supported agreement or a verified
+   decided transcript, and collision checks before they may ground.
 
 An event or assembly of the second kind is "the extractor proposed this value and
 trusted code found it verbatim in the named reading(s)". For the five literal
@@ -25,6 +26,7 @@ import asyncio
 import hashlib
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 
 from specimen_digitization.application.active_graph import unpack
 from specimen_digitization.application.domain import ValueState
@@ -43,9 +45,10 @@ from .persistence import StaleWork
 
 # The proposer behind the hand-over today: the ordinary extraction step (application/harness.py).
 ORGANISER_SOURCE = "extractor"
-# What an organiser event's "accepted" status means: verbatim in the decided reading and proposed
-# by the extractor. It is stated as the rule and validator version of every such event.
-ORGANISER_RULE = "organiser-verbatim-span/v3"
+# What an organiser event's "accepted" status means: extractor-proposed, verbatim in its named
+# reading, and qualified by the field's trusted settlement rule. Existing proof objects keep
+# their original version; this adapter creates new v4 events and fragments only.
+ORGANISER_RULE = "organiser-verbatim-span/v4"
 # The fields an extractor literal becomes an accepted assembly for: the five literal fields that
 # no source this deployment offers can ground and that the validator resolves from a complete
 # literal assembly alone (evidence.py literal_fields). Date/elevation fields require the
@@ -65,8 +68,6 @@ _COLLECTING_DATE_LINE = re.compile(
 _DETERMINATION_DATE_LINE = re.compile(
     r"^\s*(?:determination date|date identified|date determined|identified on|determined on)\s*[:=]\s*",
     re.IGNORECASE)
-_ELEVATION_LINE = re.compile(
-    r"^\s*(?:elev(?:ation)?|alt(?:itude)?)\.?(?:\s*[:=]\s*|\s+)", re.IGNORECASE)
 # At most this many candidates of one field are handed over (twenty fields x five = the contract's cap of 100,
 # so the cap never starves a field). The organiser (#262) stores one row per reading: more than five for a field
 # means several labels or readers. The ones kept are, in order: the field's own stored value, the other rows that
@@ -243,8 +244,8 @@ class NativeGenerationRequestFactory:
         looked for in the lines of the reading the row cites. Exactly one verbatim hit gives a span whose
         offsets are computed here (a stored offset is never a place); anything else is an ungrounded hint
         (reason names why). A located literal-field span may become an accepted assembly when the
-        ordinary reading settlement agrees. Date/elevation spans additionally require the explicit
-        two-reader event/unit grammar checked by ``_qualified_special_assemblies``. Both kinds append
+        ordinary reading settlement agrees. Date/elevation spans additionally require the event/unit
+        and source-agreement checks in ``_qualified_special_assemblies``. Both kinds append
         their event and assembly through ``assemble_field``; a collision or silent reader cannot be
         hidden by the candidate cap.
         Returns the candidates in field order, at most ``MAX_CANDIDATES_PER_FIELD`` per field
@@ -367,7 +368,7 @@ class NativeGenerationRequestFactory:
         if unreadable:
             return _candidate(key, literal, "located", "reading_has_unreadable_spans", **where,
                 evidence_ids=(row.id,))
-        if not claim.primary:
+        if not claim.primary and not qualified_special:
             return _candidate(key, literal, "located", "states_the_literal_the_grounded_reading_states", **where,
                 evidence_ids=(row.id,))
         if keyed:
@@ -397,7 +398,10 @@ class NativeGenerationRequestFactory:
             else EventKind.UNKNOWN)
         event = EventHypothesis(id="event:" + digest([fragment.id, str(key), ORGANISER_RULE]), scope=scope,
             kind=kind, fragment_ids=(fragment.id,), evidence_ids=supporting_evidence_ids or (row.id,),
-            reason=("explicit_event_or_unit_line_unanimous_across_readers" if qualified_special else
+            reason=(("parser_qualified_elevation_from_decided_transcript" if is_decided else
+                     "parser_qualified_elevation_agreement_across_readers")
+                    if qualified_special and key in ELEVATION_FIELDS else
+                    "explicit_event_or_unit_line_unanimous_across_readers" if qualified_special else
                     "organiser_literal_settled_and_verbatim_in_the_reading"), rule_version=ORGANISER_RULE,
             status="accepted", validator_version=ORGANISER_RULE)
         assembly = assemble_field(assembly_id="assembly:" + digest([fragment.id, str(key), ORGANISER_RULE]),
@@ -411,25 +415,21 @@ class NativeGenerationRequestFactory:
 
 
 def _qualified_special_assemblies(specimen, by_field, reading_map, decided, keyed):
-    """Qualify only complete, single-event date/elevation claims from both readers.
+    """Qualify event-specific dates and complete written elevation assertions.
 
-    An extractor's field assignment is insufficient. Every retained reader of the
-    one label must quote the same literal on a line explicitly naming its event
-    or measurement, and no competing claim for this field group may exist. The
-    deterministic parser must accept the literal. A unitless elevation, numeric
-    date with unresolved order, range, unreadable text or collision stays a
-    located candidate for human review; none can make an accepted event.
+    Dates still require every retained reader to quote the same literal on an
+    explicit collecting/determination line. Elevations use parser-supported
+    complete unit assertions, ranges/qualifiers and harmless formatting agreement,
+    or a verified decided transcript. Missing units, unreadable text or
+    conflicting quantities never ground.
     """
-    qualified = {}
+    qualified = _qualified_elevation_assemblies(specimen, by_field, reading_map, decided, keyed)
     groups = (
-        (COLLECTING_DATE_FIELDS, (FieldKey.DATE_VISITED_FROM,), _COLLECTING_DATE_LINE, "date"),
+        (COLLECTING_DATE_FIELDS, (FieldKey.DATE_VISITED_FROM,), _COLLECTING_DATE_LINE),
         ((FieldKey.DATE_IDENTIFIED,), (FieldKey.DATE_IDENTIFIED,),
-         _DETERMINATION_DATE_LINE, "date"),
-        (ELEVATION_FIELDS, (FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_FROM_FT,
-                            FieldKey.ELEVATION_TO_M, FieldKey.ELEVATION_TO_FT),
-         _ELEVATION_LINE, "elevation"),
+         _DETERMINATION_DATE_LINE),
     )
-    for fields, preferred, marker, kind in groups:
+    for fields, preferred, marker in groups:
         claims = [claim for key in fields for claim in by_field.get(key, ())]
         if not claims or any(item.field_key in fields for item in keyed):
             continue
@@ -443,18 +443,10 @@ def _qualified_special_assemblies(specimen, by_field, reading_map, decided, keye
         if (len(readers) < 2 or len({item.id for item in readers}) != len(readers)
             or any(not item.literal_text.strip() or item.unreadable_spans for item in readers)):
             continue
-        if kind == "date":
-            try:
-                parse_temporal(literal)
-            except EvidenceError:
-                continue
-        else:
-            try:
-                measurement = parse_measurement(literal)
-            except EvidenceError:
-                continue
-            if not measurement.single or measurement.qualifiers or measurement.uncertainty is not None:
-                continue
+        try:
+            parse_temporal(literal)
+        except EvidenceError:
+            continue
         citing = set()
         sound = True
         for claim in claims:
@@ -463,8 +455,7 @@ def _qualified_special_assemblies(specimen, by_field, reading_map, decided, keye
                 or row.asset_id != specimen.asset.id or row.region_id != region_id
                 or observation.region_id != region_id or tuple(row.observation_ids) != (observation.id,)
                 or literal not in row.excerpt or row.excerpt not in observation.literal_text
-                or not _qualified_line(observation.literal_text, literal, marker,
-                                        allow_full_line=kind == "elevation")):
+                or not _qualified_line(observation.literal_text, literal, marker)):
                 sound = False
                 break
             citing.add(observation.id)
@@ -481,8 +472,6 @@ def _qualified_special_assemblies(specimen, by_field, reading_map, decided, keye
                 if selected is not None and (claim.observation is None
                                              or claim.observation.id != selected[1].id):
                     continue
-                if kind == "elevation" and not str(key).endswith("_" + measurement.from_unit):
-                    continue
                 chosen = claim
                 break
             if chosen is not None:
@@ -494,6 +483,99 @@ def _qualified_special_assemblies(specimen, by_field, reading_map, decided, keye
         evidence_ids = tuple(dict.fromkeys(claim.row.id for claim in claims))
         qualified[(chosen.key, chosen.row.id)] = evidence_ids
     return qualified
+
+
+def _measurement_identity(measurement):
+    """Formatting never changes quantities; units and written qualifiers still matter."""
+    return (Decimal(measurement.from_quantity), Decimal(measurement.to_quantity),
+        measurement.from_unit, measurement.to_unit, measurement.single,
+        tuple(item.casefold() for item in measurement.qualifiers),
+        Decimal(measurement.uncertainty) if measurement.uncertainty is not None else None)
+
+
+def _qualified_elevation_line(text, literal):
+    """One complete exact unit-bearing span, including on a narrative locality line.
+
+    The extractor proposes the field meaning; trusted code proves its written
+    assertion. Do not silently discard a sign, qualifier, range or uncertainty
+    next to that span. The specialist still receives the original whole reading.
+    """
+    matching = [(line, at) for _, _, line in _lines(text)
+        for at in range(len(line)) if line.startswith(literal, at)]
+    if len(matching) != 1:
+        return False
+    line, at = matching[0]
+    if _inside_a_token(line, at, literal):
+        return False
+    before, after = line[:at].rstrip(), line[at + len(literal):].lstrip()
+    if (before and before[-1] in "+-–—~≈±"
+        or at and line[at - 1] == "." and literal[0].isdigit()
+        or at > 1 and line[at - 1] == "," and line[at - 2].isdigit() and literal[0].isdigit()
+        or re.search(r"(?:^|\W)(?:c\.?|ca\.?|about|approx\.?|to)\s*$", before, re.IGNORECASE)
+        or re.match(r"(?:[-–—±]|\+/-|to\b)", after, re.IGNORECASE)):
+        return False
+    return True
+
+
+def _qualified_elevation_assemblies(specimen, by_field, reading_map, decided, keyed):
+    """Ground a complete elevation supported by all readers or a decided transcript.
+
+    All retained claims must parse to the same written quantities, units and
+    qualifiers. Every undecided reader must contribute; a verified decided
+    transcript may stand alone. Other readings and conflicting claims remain
+    available as located alternatives rather than being erased or guessed.
+    """
+    if any(item.field_key in ELEVATION_FIELDS for item in keyed):
+        return {}
+    claims = [claim for key in ELEVATION_FIELDS for claim in by_field.get(key, ())]
+    regions = {claim.row.region_id for claim in claims if claim.row is not None}
+    if not claims or len(regions) != 1:
+        return {}
+    region_id = next(iter(regions))
+    readers = [item for item in reading_map.values() if item.region_id == region_id]
+    selected = decided.get(region_id)
+    expected = ({selected[1].id} if selected is not None else {item.id for item in readers})
+    if (not expected or len({item.id for item in readers}) != len(readers)
+        or selected is None and (len(readers) < 2 or any(not item.literal_text.strip()
+                                                      or item.unreadable_spans for item in readers))):
+        return {}
+    identity, citing = None, set()
+    for claim in claims:
+        row, observation, literal = claim.row, claim.observation, claim.literal.strip()
+        if (claim.legacy or row is None or observation is None or not literal
+            or row.asset_id != specimen.asset.id or row.region_id != region_id
+            or observation.region_id != region_id or observation.unreadable_spans
+            or tuple(row.observation_ids) != (observation.id,)
+            or literal not in row.excerpt or row.excerpt not in observation.literal_text
+            or not _qualified_elevation_line(observation.literal_text, literal)):
+            return {}
+        try:
+            measurement = parse_measurement(literal)
+        except EvidenceError:
+            return {}
+        endpoint_unit = measurement.from_unit if "_from_" in str(claim.key) else measurement.to_unit
+        if not str(claim.key).endswith("_" + endpoint_unit):
+            return {}
+        parsed_identity = _measurement_identity(measurement)
+        if identity is not None and identity != parsed_identity:
+            return {}
+        identity = parsed_identity
+        citing.add(observation.id)
+    if not expected <= citing:
+        return {}
+    eligible = [claim for claim in claims if selected is None or claim.observation.id == selected[1].id]
+    if not eligible:
+        return {}
+    # Harmless formatting differences can leave the ordinary field AMBIGUOUS,
+    # with no primary row. Qualify a retained source assertion directly rather
+    # than fabricating a field literal or changing that ordinary field state.
+    chosen = min(eligible, key=lambda claim: not claim.primary)
+    # A grounded candidate's immutable native evidence must contain its exact
+    # literal. Other formatting-equivalent readings retain their own located
+    # candidates and evidence; all were checked above, none is rewritten.
+    evidence_ids = tuple(dict.fromkeys(claim.row.id for claim in claims
+        if claim.literal.strip() == chosen.literal.strip()))
+    return {(chosen.key, chosen.row.id): evidence_ids}
 
 
 def _qualified_line(text, literal, marker, *, allow_full_line=False):
