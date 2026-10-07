@@ -192,10 +192,12 @@ def _acceptance_boundary() -> dict:
 
 
 def _toolset_digest() -> str:
-    # The two tools every specialist registers (SpecialistHarness._register_tools)
-    # and the deterministic utilities behind invoke_utility.
+    # Common tools plus the geography-v9 deterministic progress view. Optional
+    # shared capabilities require their own explicitly composed job toolset pin.
     return digest({"contract_version": "research-toolset/v1",
         "tools": ["lookup_source", "invoke_utility"],
+        "role_tools": {"specimen_geography": ["geography_progress", "geography_hierarchy"]},
+        "geography_strategy_version": "geography-research-progress/v1",
         "utility_roles": {name: str(role) for name, role in sorted(UTILITY_ROLES.items())},
         "utility_version": UTILITY_VERSION,
         "settlement_utility_version": SETTLEMENT_UTILITY_VERSION,

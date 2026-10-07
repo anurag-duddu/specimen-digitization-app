@@ -1049,11 +1049,12 @@ TAXONOMY_SOURCES = ("gbif", "global_names_verifier", "catalogue_of_life")
 # The geography fields the label names; GEOLocate validates each (the v2
 # historian prompt), one query per field, sent together.
 GEOGRAPHY_FIELDS = (FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.COUNTY, FieldKey.CITY)
-# The historian's placement of the label's city, decimal degrees WGS84, and a
-# radius for a city. The place names are the label's own. The four queries send
-# one request; geolocate-glcwrap-chicago.json is GEOLocate's answer to it,
-# recorded live once on 2026-10-03 (sources.json, requested_at).
-PLACEMENT = {"latitude": 41.88, "longitude": -87.63, "radius_km": 15}
+# The place names are the label's own. The four coordinate-free queries send
+# the recorded request; geolocate-glcwrap-chicago.json is its provider answer,
+# recorded once on 2026-10-03 (sources.json, requested_at).
+# Model-origin research never supplies geometry. The captured provider point
+# remains in source evidence; worker-only locked-anchor fixtures own geometry.
+PLACEMENT = {}
 LITERAL_FIELDS = {FieldKey.COLLECTION_CODE, FieldKey.HABITAT, FieldKey.COLLECTION_METHOD,
     FieldKey.COLLECTORS, FieldKey.PRECISE_LOCATION, FieldKey.FMNH_INS_NUMBER}
 ELEVATIONS = (FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M,
@@ -1170,7 +1171,7 @@ def _geolocated(key, results, rows):
             evidence_ids=evidence, assembly_ids=tuple(item.id for item in rows),
             event_id=rows[0].event_id if rows else None,
             reason=f"Label writes {candidate['value']}; GEOLocate confirms {candidate['match_name']} "
-                f"({candidate['match_admin']}) within the placement radius; high confidence")
+                f"({candidate['match_admin']}) in the captured qualified response; high confidence")
     return None
 
 

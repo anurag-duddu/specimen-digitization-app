@@ -127,7 +127,11 @@ def lookup(fixture, field_key, interpretation, value, request=None):
         return 200, (FIXTURES / fixture).read_bytes()
 
     broker = SourceBroker(REGISTRY, transport=FixtureSourceTransport(read), effect_dispatch=completed_effect)
-    result = asyncio.run(broker.query(request or geography_request(), query(field_key, interpretation, value)))
+    # These historical placement fixtures exercise the worker validator, not
+    # authorization to invent a placement through the model's source tool.
+    # Production proves this host-only entry with an immutable derivation command.
+    result = asyncio.run(broker.query(request or geography_request(), query(field_key, interpretation, value),
+                                      trusted_anchor=True))
     assert sent == [MANIFEST[fixture]["url"]], "the adapter must send exactly the recorded request"
     return result
 
@@ -352,7 +356,8 @@ def test_usa_control_and_geojson_format():
     async def read(url, policy):
         return 200, (FIXTURES / "yepocapa-geojson-format.json").read_bytes()
     broker = SourceBroker(REGISTRY, transport=FixtureSourceTransport(read), effect_dispatch=completed_effect)
-    result = asyncio.run(broker.query(geography_request(), query(FieldKey.CITY, YEPOCAPA, "Yepocapa")))
+    result = asyncio.run(broker.query(geography_request(), query(FieldKey.CITY, YEPOCAPA, "Yepocapa"),
+                                      trusted_anchor=True))
     assert result.status == LookupStatus.MALFORMED and result.coverage.state == SourceCoverageState.FAILED
 
 
@@ -361,7 +366,8 @@ def lookup_body(body, field_key=FieldKey.CITY, interpretation=YEPOCAPA, value="Y
         return code, body
 
     broker = SourceBroker(REGISTRY, transport=FixtureSourceTransport(read), effect_dispatch=completed_effect)
-    return asyncio.run(broker.query(geography_request(), query(field_key, interpretation, value)))
+    return asyncio.run(broker.query(geography_request(), query(field_key, interpretation, value),
+                                    trusted_anchor=True))
 
 
 # --- G39: the matched point is candidate metadata, never part of the candidate's identifier ---

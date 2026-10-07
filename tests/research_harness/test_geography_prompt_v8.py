@@ -55,14 +55,12 @@ def test_v8_is_a_new_pin_with_an_explicit_final_result_checklist():
         "accepted precise_location assembly", "Do not send a full label",
     ):
         assert requirement in added
-    assert ROLE_PROMPTS[SpecialistRole.GEOGRAPHY] == (
-        "specimen_geography-v8.txt", GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION)
+    assert ROLE_PROMPTS[SpecialistRole.GEOGRAPHY][0] != "specimen_geography-v8.txt"
     pin = resolve_prompt(SpecialistRole.GEOGRAPHY, profile_digest="0" * 64,
         source_registry_digest="0" * 64, toolset_digest="0" * 64,
         model_route="harness-deepseek", output_schema_digest="0" * 64)
-    assert pin.text == prompt_text("specimen_geography-v8.txt")
-    assert pin.version == "geography-final-result-v8-2026-10-07"
-    assert pin.digest == V8_PIN_SHA256
+    assert hashlib.sha256(prompt_text("specimen_geography-v8.txt").encode()).hexdigest() == V8_PIN_SHA256
+    assert pin.text != prompt_text("specimen_geography-v8.txt")
 
 
 def test_frozen_v7_request_still_replays_its_original_instruction_bytes():

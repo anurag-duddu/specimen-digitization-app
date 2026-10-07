@@ -19,7 +19,7 @@ from .contracts import (
     EventKind, FieldAssemblyCandidate, FieldKey, FieldProfile, FieldResolution,
     FragmentRelation, FrozenRecord, IdentityProof, MeasurementMetadata,
     PolicyException, RelationKind, ResearchScope, SourceCoverageReceipt,
-    SourceCoverageState, SourceFragment, SourceResult, SpecialistRequest,
+    SourceCoverageState, SourceFragment, SourceResult, SpecialistRequest, SpecialistRole,
     WorkState, digest,
 )
 
@@ -724,6 +724,9 @@ def validate_resolution(request: SpecialistRequest, resolution: FieldResolution,
                 return resolution
             if any(item.status == LookupStatus.SUCCESS and any(
                 json.loads(candidate).get("field_key") == str(resolution.field_key) for candidate in item.candidate_json
+                if json.loads(candidate).get("settlement_allowed") is not False
+                and not json.loads(candidate).get("validation_required")
+                and json.loads(candidate).get("automatic_settlement_allowed") is not False
             ) for item in tool_results):
                 raise EvidenceError("Available connected source makes this human review avoidable")
         return resolution
@@ -746,7 +749,7 @@ def validate_resolution(request: SpecialistRequest, resolution: FieldResolution,
         if expected != resolution:
             raise EvidenceError("Date proposal differs from deterministic event/precision derivation")
         return resolution
-    authoritative = []
+    authoritative, geography_context_candidates = [], []
     for result in tool_results:
         if result.status != LookupStatus.SUCCESS or result.receipt is None:
             continue
@@ -759,7 +762,14 @@ def validate_resolution(request: SpecialistRequest, resolution: FieldResolution,
         if result.receipt.result_json != serialized:
             raise EvidenceError("Semantic source result differs from immutable captured receipt")
         if result.coverage.field_key == resolution.field_key:
-            authoritative.extend((result, json.loads(item)) for item in result.candidate_json)
+            for item in result.candidate_json:
+                candidate = json.loads(item)
+                if request.role == SpecialistRole.GEOGRAPHY and (
+                    candidate.get("settlement_allowed") is False or candidate.get("validation_required")
+                    or candidate.get("automatic_settlement_allowed") is False):
+                    geography_context_candidates.append(candidate)
+                else:
+                    authoritative.append((result, candidate))
     if authoritative:
         if not any(_candidate_matches(resolution, candidate) for _, candidate in authoritative):
             raise EvidenceError("Value is not one of the trusted source-supported candidates")
@@ -800,6 +810,8 @@ def validate_resolution(request: SpecialistRequest, resolution: FieldResolution,
                       FieldKey.COLLECTION_METHOD, FieldKey.COLLECTORS, FieldKey.PRECISE_LOCATION,
                       FieldKey.DATE_VISITED_FROM, FieldKey.DATE_VISITED_TO, FieldKey.DATE_IDENTIFIED}
     if resolution.field_key not in literal_fields or not resolution.assembly_ids:
+        if any(_candidate_matches(resolution, candidate) for candidate in geography_context_candidates):
+            raise EvidenceError("Historical geography candidate requires captured deciding validation")
         raise EvidenceError("Supported proposal lacks qualified deciding authority")
     assemblies = {item.id: item for item in request.assemblies}
     accepted = []

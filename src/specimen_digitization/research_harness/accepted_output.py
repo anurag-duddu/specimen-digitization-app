@@ -12,8 +12,9 @@ from .contracts import (
     SpecialistRequest, digest,
 )
 
-VALIDATOR_VERSION = "validate_resolution/v3"
-VALIDATOR_SOURCE_SHA256 = "68e60ffdd8d840933df6f52c50f190f9febc2a72ece05810aa4aa08a32e7caa4"  # pragma: allowlist secret
+VALIDATOR_VERSION = "validate_resolution/v4"
+VALIDATOR_SOURCE_SHA256 = "775b48bbd6e5ae3554af2406d3f3e76ac73cdb6e3a8e96fcac7c3983c75164dd"  # pragma: allowlist secret
+GEOGRAPHY_PREVIOUS_VALIDATOR_SOURCE_SHA256 = "68e60ffdd8d840933df6f52c50f190f9febc2a72ece05810aa4aa08a32e7caa4"  # pragma: allowlist secret
 PREVIOUS_VALIDATOR_SOURCE_SHA256 = "e7e0d101ff0780c314345b1c476649702d076271869bc325736d7914c717a3ff"  # pragma: allowlist secret
 HISTORICAL_VALIDATOR_SOURCE_SHA256 = "dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400"  # pragma: allowlist secret
 JOURNAL_TRANSFORM_VERSION = "sibling-dependency-revision/v1"
@@ -46,8 +47,8 @@ class AcceptedOutputProofV1(FrozenRecord):
     model_settings_digest: Digest
     engine_source_sha256: Digest
     journal_source_sha256: Digest
-    validator_version: Literal["validate_resolution/v1", "validate_resolution/v2", "validate_resolution/v3"] = VALIDATOR_VERSION
-    validator_source_sha256: Literal["dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400", "e7e0d101ff0780c314345b1c476649702d076271869bc325736d7914c717a3ff", "68e60ffdd8d840933df6f52c50f190f9febc2a72ece05810aa4aa08a32e7caa4"] = VALIDATOR_SOURCE_SHA256  # pragma: allowlist secret
+    validator_version: Literal["validate_resolution/v1", "validate_resolution/v2", "validate_resolution/v3", "validate_resolution/v4"] = VALIDATOR_VERSION
+    validator_source_sha256: Literal["dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400", "e7e0d101ff0780c314345b1c476649702d076271869bc325736d7914c717a3ff", "68e60ffdd8d840933df6f52c50f190f9febc2a72ece05810aa4aa08a32e7caa4", "775b48bbd6e5ae3554af2406d3f3e76ac73cdb6e3a8e96fcac7c3983c75164dd"] = VALIDATOR_SOURCE_SHA256  # pragma: allowlist secret
 
     @model_validator(mode="after")
     def exact_acceptance(self):
@@ -55,6 +56,7 @@ class AcceptedOutputProofV1(FrozenRecord):
 
         if (self.validator_version, self.validator_source_sha256) not in {
             (VALIDATOR_VERSION, VALIDATOR_SOURCE_SHA256),
+            ("validate_resolution/v3", GEOGRAPHY_PREVIOUS_VALIDATOR_SOURCE_SHA256),
             ("validate_resolution/v2", PREVIOUS_VALIDATOR_SOURCE_SHA256),
             ("validate_resolution/v1", HISTORICAL_VALIDATOR_SOURCE_SHA256),
         }:
