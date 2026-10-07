@@ -69,7 +69,7 @@ CURRENT_DATA_SOURCE_FILES = {'dataconnect/connector/artifacts.gql': '4d4da17483f
  'dataconnect/connector/research_materialization_inputs_v2.gql': 'f8ae086138926babfd41bedc6556bd79e302cbe4bbd1f78071820a01e0948170',  # pragma: allowlist secret (connector file digest)
  'dataconnect/connector/research_publication_v2.gql': '0dc826a9784422bb82df2a354283d182309bad2374196c5eb20d2eda686b174f',  # pragma: allowlist secret (connector file digest)
  'dataconnect/connector/scheduling.gql': 'c12e53ae48fa342deaa2479c4aeca0298b1caf7e2288550d81ec9796f38c51ef',
- 'dataconnect/connector/search.gql': '4d344d2acfcc0566719268acff25472975c6136977aa31fde2c8ada29983d681',
+ 'dataconnect/connector/search.gql': 'b9cd8b66e4f965c88a9176c22c358261050c6e332febf3979a434757b9e7f378',  # pragma: allowlist secret (public connector source digest)
  'dataconnect/connector/sensitivity.gql': '521774b8dcef9e0c0c1c43481ae19ad808aafbe08b32c3111e2287313cf1db1f',
  'dataconnect/dataconnect.yaml': '8355ece3fb4b1bebf920c05f2cb358229877cca9d0a0abc6e8cdc0da2756423a',
  'dataconnect/schema/canonical_value_lineage_v2.gql': '7725944af2cdb89289f1876ddd9607ef3edc286302c8af4bc3bfb821ee4b1a78',
@@ -77,7 +77,7 @@ CURRENT_DATA_SOURCE_FILES = {'dataconnect/connector/artifacts.gql': '4d4da17483f
  'dataconnect/schema/research_harness.gql': '2195ac06e3584e2b35a324d184a34df221fc0c1374740aabba6b9b87e82b9507',
  'dataconnect/schema/research_publication_v2.gql': 'f5c279f7088cda20d29aa46a0d7f80f85a44fd52dd7cd319f44b97b4ed588766',
  'dataconnect/schema/schema.gql': '26d291d0d229dc4da957477e431e25e0afbb34f5fcb5e9463b389b34f114ca2c',
- 'dataconnect/schema/search.gql': 'a7ff0616ed6045d958f7a35eccffbe51671d395fa43a695ccdca7892e724b32a',
+ 'dataconnect/schema/search.gql': '813b525429606f1ef7394d10017bb6c438a19d7de2a56964383c4b9b44f1abe9',  # pragma: allowlist secret (public schema source digest)
  'dataconnect/sql/checksum-audit.sql': '4ba591e82873c5d829c07267447e792b01f32675575fa00bb2b0b3657c27301c',
  'dataconnect/sql/drop-specimen-unique-1.sql': 'c4fcf4484d43f1021952bc4abfb88307a3af4da66f879996e06043835f9ffb65',
  'dataconnect/sql/paging-indexes.sql': '1fd9ab5a7d9048fc19c6edbaa0bc5081eca632f7b7961e06c5e7e7f714d85480',

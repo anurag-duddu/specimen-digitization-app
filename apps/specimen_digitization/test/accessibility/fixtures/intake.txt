@@ -10,7 +10,7 @@ button enabled=true tap label="Authorized collection, Synthetic Insects. Switch 
 button enabled=true tap label="Close sidebar" tooltip="Close sidebar"
 label="#synthetic-label"
   button enabled=true tap label="#synthetic-label"
-textField enabled=true tap label="Search by full specimen ID" hint="Specimen ID"
+textField enabled=true tap label="Search by specimen ID" hint="Specimen ID"
 selected=true checked=isTrue enabled=true inMutuallyExclusiveGroup tap label="Needs a human"
 selected=false checked=isFalse enabled=true inMutuallyExclusiveGroup tap label="Deferred"
 selected=false checked=isFalse enabled=true inMutuallyExclusiveGroup tap label="Cleared"

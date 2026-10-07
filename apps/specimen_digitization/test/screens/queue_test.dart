@@ -163,18 +163,44 @@ void main() {
     (tester) async {
       final ScriptedRepository repository = ScriptedRepository();
       await pumpQueue(tester, repository);
-      await tester.enterText(find.byType(UiSearchField), 'SD-does-not-exist');
+      await tester.enterText(find.byType(UiSearchField), '105526321');
       await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
       expect(find.text('No matching records'), findsOneWidget);
       expect(find.text('Reset search'), findsWidgets);
-      expect(repository.requests.last['specimen_id'], 'SD-does-not-exist');
+      expect(repository.requests.last['display_reference'], '105526321');
       await tester.tap(find.text('Reset search'));
       await tester.pumpAndSettle();
       expect(find.text('No specimens need a human'), findsOneWidget);
       expect(find.text('Reset search'), findsNothing);
-      expect(repository.requests.last.containsKey('specimen_id'), isFalse);
+      expect(
+        repository.requests.last.containsKey('display_reference'),
+        isFalse,
+      );
       expect(repository.requests.last['disposition'], 'needs_human_review');
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'the search keeps UUID input separate from displayed references',
+    (tester) async {
+      final ScriptedRepository repository = ScriptedRepository();
+      await pumpQueue(tester, repository);
+      await tester.enterText(
+        find.byType(UiSearchField),
+        '10000000-0000-4000-8000-000000000001',
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(
+        repository.requests.last['specimen_id'],
+        '10000000-0000-4000-8000-000000000001',
+      );
+      expect(
+        repository.requests.last.containsKey('display_reference'),
+        isFalse,
+      );
       await tester.pumpWidget(const SizedBox());
     },
   );

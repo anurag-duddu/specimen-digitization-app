@@ -22,10 +22,17 @@ type SpecimenSearch @view(sql: """
     v.snapshot #>> '{run,profile,version}' AS profile_version,
     ARRAY(SELECT value #>> '{}' FROM jsonb_array_elements(CASE WHEN jsonb_typeof(v.snapshot #> '{run,reasons}') = 'array' THEN v.snapshot #> '{run,reasons}' ELSE '[]'::jsonb END) WHERE jsonb_typeof(value) = 'string') AS reason_codes,
     CASE WHEN jsonb_typeof(v.snapshot #> '{run,review_risk,composite}') = 'number' THEN CASE WHEN (v.snapshot #>> '{run,review_risk,composite}')::numeric BETWEEN 0 AND 100 THEN (v.snapshot #>> '{run,review_risk,composite}')::double precision END END AS risk,
-    CASE WHEN jsonb_typeof(v.snapshot #> '{run,profile,synthetic}') = 'boolean' THEN (v.snapshot #>> '{run,profile,synthetic}')::boolean END AS synthetic
+    CASE WHEN jsonb_typeof(v.snapshot #> '{run,profile,synthetic}') = 'boolean' THEN (v.snapshot #>> '{run,profile,synthetic}')::boolean END AS synthetic,
+    CASE WHEN file_reference.stem ~* '^subject_[0-9]+$'
+      THEN substring(file_reference.stem FROM 9)
+      WHEN file_reference.stem <> '' THEN file_reference.stem
+      WHEN s.id::text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN substring(s.id::text FROM 1 FOR 8)
+      ELSE s.id::text
+    END AS display_reference
   FROM public.specimen s JOIN public.specimen_snapshot v
     ON v.organization_id = s.organization_id AND v.collection_id = s.collection_id
     AND v.specimen_id = s.id AND v.revision = s.revision
+  CROSS JOIN LATERAL (SELECT regexp_replace(regexp_replace(replace(btrim(v.snapshot #>> '{asset,filename}'), chr(92), '/'), '^.*/', ''), '[.](jpe?g|png|webp|tiff?|heic|gif)$', '', 'i') AS stem) AS file_reference
 """) {
   allRows: Boolean
   organizationId: UUID
@@ -50,4 +57,5 @@ type SpecimenSearch @view(sql: """
   reasonCodes: [String]
   risk: Float
   synthetic: Boolean
+  displayReference: String
 }

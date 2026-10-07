@@ -2748,7 +2748,9 @@ def create_app(
         discovery_result_model = ResearchDiscoveryResult
     else:
         raise ValueError("explicit_research_publication_version_required")
-    from ..research_harness.human_review import HistoricalResearchDiscovery, HistoricalReviewDiscovery
+    from ..research_harness.human_review import (
+        HistoricalResearchDiscovery, HistoricalReviewDiscovery, QualifiedProposalService,
+    )
     def load_research_specimen(p, specimen_id):
         current_principal, specimen = find(p.user_id, p.scope.organization_id, specimen_id)
         if current_principal.scope != p.scope or current_principal.role != p.role:
@@ -2762,7 +2764,10 @@ def create_app(
         result_model=discovery_result_model,
     ))
     app.include_router(create_research_router(
-        DiscoveredResearchService(discovery), verified_principal_dependency=research_principal,
+        QualifiedProposalService(DiscoveredResearchService(discovery),
+            discovery=discovery, repository=repository, blobs=blobs,
+            capture_blobs=research_capture_blobs, load_specimen=load_research_specimen),
+        verified_principal_dependency=research_principal,
     ))
     from ..research_harness.derivation_api import create_derivation_router
     from ..research_harness.derivation_service import ResearchDerivationService

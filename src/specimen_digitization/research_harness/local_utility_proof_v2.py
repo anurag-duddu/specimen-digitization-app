@@ -129,7 +129,12 @@ def _verify_settlement(request: SpecialistRequest, result: SourceResult) -> Loca
 
 
 def local_utility_replays_v2(request, results, *, accepted_checkpoint_proof):
-    """Require forward acceptance provenance for every local output admission."""
+    """Verify receiptless context; replay only actual deterministic utilities.
+
+    SourceBroker can refuse an unqualified query before dispatch. That empty
+    result remains in the exact accepted context, but supplies neither search
+    authority nor a local utility proof for any field in the specialist batch.
+    """
     local = tuple(row for row in results if row.receipt is None)
     if not local:
         return ()
@@ -141,4 +146,24 @@ def local_utility_replays_v2(request, results, *, accepted_checkpoint_proof):
     if (accepted.acceptance.original_request != request
             or accepted.acceptance.source_results != tuple(results)):
         raise PublicationUnavailable("canonical_local_utility_acceptance_unproved")
-    return tuple(verify_local_utility_v2(request, row) for row in local)
+    return tuple(verify_local_utility_v2(request, row) for row in local
+        if not _unqualified_source_refusal(request, row))
+
+
+def _unqualified_source_refusal(request: SpecialistRequest, result: SourceResult) -> bool:
+    """Recognize only the empty, unsent SourceBroker._unavailable shape.
+
+    Never admit candidate/evidence payloads, search/qualification claims or a
+    failed effect through this exception. The caller first validates the entire
+    accepted checkpoint proof and its exact request/results identity.
+    """
+    coverage = result.coverage
+    if (coverage.source_id in UTILITY_ROLES or coverage.field_key not in request.field_keys
+            or not all(item.strip() for item in
+                (coverage.source_id, coverage.source_version, coverage.reason))):
+        return False
+    expected = SourceResult(status=LookupStatus.POLICY, coverage=SourceCoverageReceipt(
+        source_id=coverage.source_id, field_key=coverage.field_key,
+        state=SourceCoverageState.UNQUALIFIED, source_version=coverage.source_version,
+        coverage_limit="No qualified exact scientific search completed", reason=coverage.reason))
+    return result == expected

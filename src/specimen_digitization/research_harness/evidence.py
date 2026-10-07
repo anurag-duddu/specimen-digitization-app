@@ -28,13 +28,14 @@ MEASUREMENT_RULE = "decimal-elevation-v1"
 DECIMAL_PRECISION = 80
 INVERSE_PRECISION = 34
 _NUMBER = r"[+-]?\d{1,40}(?:\.\d{1,20})?"
+_MEASUREMENT_NUMBER = r"[+-]?(?:\d{1,40}|[1-9]\d{0,2}(?:,\d{3}){1,13})(?:\.\d{1,20})?"
 _UNIT = r"(?:ft|feet|foot)\.?|m\.?|metres?|meters?|'"
 _MEASUREMENT = re.compile(
     rf"^\s*(?:(?:elev(?:ation)?|alt(?:itude)?)\.?\s*[:=]?\s*)?"
     rf"(?P<qual>~|≈|c\.?|ca\.?|about|approx\.?)?\s*"
-    rf"(?P<first>{_NUMBER})\s*(?P<firstunit>{_UNIT})?\s*"
-    rf"(?:(?P<sep>to|[-–—])\s*(?P<last>{_NUMBER})\s*(?P<lastunit>{_UNIT})?)?"
-    rf"\s*(?:[±]\s*(?P<uncertainty>{_NUMBER})\s*(?P<uncunit>{_UNIT})?)?\s*$",
+    rf"(?P<first>{_MEASUREMENT_NUMBER})\s*(?P<firstunit>{_UNIT})?\s*"
+    rf"(?:(?P<sep>to|[-–—])\s*(?P<last>{_MEASUREMENT_NUMBER})\s*(?P<lastunit>{_UNIT})?)?"
+    rf"\s*(?:[±]\s*(?P<uncertainty>{_MEASUREMENT_NUMBER})\s*(?P<uncunit>{_UNIT})?)?\s*$",
     re.IGNORECASE,
 )
 
@@ -208,12 +209,15 @@ def parse_measurement(text: str, *, vertical_datum: str = "unknown", precision: 
         last_unit = last_unit or first_unit
         if first_unit is None or last_unit is None:
             raise EvidenceError("Written elevation range units are required")
-    first = _decimal(groups["first"])
-    last = _decimal(groups["last"] or groups["first"])
+    # The wire pattern permits only complete thousands groups. Internal
+    # quantities keep their existing digit bounds and comma-free Decimal form.
+    first = _decimal(groups["first"].replace(",", ""))
+    last = _decimal((groups["last"] or groups["first"]).replace(",", ""))
     if _metres(first, first_unit) > _metres(last, last_unit):
         raise EvidenceError("Elevation endpoints reversed; sign is not range punctuation")
     uncertainty = groups["uncertainty"]
     if uncertainty is not None:
+        uncertainty = uncertainty.replace(",", "")
         if _decimal(uncertainty) < 0:
             raise EvidenceError("Uncertainty cannot be negative")
         if _unit(groups["uncunit"]) not in {None, first_unit} or first_unit != last_unit:

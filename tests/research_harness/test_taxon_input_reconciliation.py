@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from specimen_digitization.application.domain import FieldValue, LookupStatus, ValueState
 from specimen_digitization.research_harness.accepted_output import (
     AcceptedCheckpointProofV1, AcceptedOutputProofV1, HISTORICAL_VALIDATOR_SOURCE_SHA256,
-    VALIDATOR_SOURCE_SHA256, VALIDATOR_VERSION, read_accepted_checkpoint_proof,
+    PREVIOUS_VALIDATOR_SOURCE_SHA256, VALIDATOR_SOURCE_SHA256, VALIDATOR_VERSION, read_accepted_checkpoint_proof,
     validation_boundary_pins,
 )
 from specimen_digitization.research_harness.contracts import (
@@ -101,6 +101,7 @@ def test_zero_assemblies_cannot_waive_competing_decided_taxon():
     with pytest.raises(EvidenceError, match='each independent taxon assertion'):
         validate_resolution(request, resolution, (result,))
     for version, sha in ((VALIDATOR_VERSION, VALIDATOR_SOURCE_SHA256),
+        ('validate_resolution/v2', PREVIOUS_VALIDATOR_SOURCE_SHA256),
         ('validate_resolution/v1', HISTORICAL_VALIDATOR_SOURCE_SHA256)):
         with pytest.raises(ValidationError, match='each independent taxon assertion'):
             acceptance(request, resolution, (result,), validator_version=version, validator_source_sha256=sha)
@@ -361,6 +362,8 @@ def test_explicit_non_taxon_field_is_not_a_genus_producer():
 @pytest.mark.parametrize('metadata', (
     {'validator_version':'validate_resolution/v1', 'validator_source_sha256':VALIDATOR_SOURCE_SHA256},
     {'validator_version':VALIDATOR_VERSION, 'validator_source_sha256':HISTORICAL_VALIDATOR_SOURCE_SHA256},
+    {'validator_version':VALIDATOR_VERSION, 'validator_source_sha256':PREVIOUS_VALIDATOR_SOURCE_SHA256},
+    {'validator_version':'validate_resolution/v2', 'validator_source_sha256':VALIDATOR_SOURCE_SHA256},
     {'validator_version':'validate_resolution/v99', 'validator_source_sha256':VALIDATOR_SOURCE_SHA256},
     {'validator_version':VALIDATOR_VERSION, 'validator_source_sha256':digest('unknown')},
 ))
@@ -370,10 +373,14 @@ def test_only_exact_known_validator_pairs_decode(metadata):
         acceptance(request, resolution_for(request,(result,)), (result,), **metadata)
 
 
-def test_exact_historical_proof_read_joins_old_pins_and_preserves_body(tmp_path):
+@pytest.mark.parametrize(('version', 'source_sha'), (
+    ('validate_resolution/v1', HISTORICAL_VALIDATOR_SOURCE_SHA256),
+    ('validate_resolution/v2', PREVIOUS_VALIDATOR_SOURCE_SHA256),
+))
+def test_exact_historical_proof_read_joins_old_pins_and_preserves_body(tmp_path, version, source_sha):
     request = request_for(); result = result_for(request,'Epipocus')
     accepted = acceptance(request, resolution_for(request,(result,)), (result,),
-        validator_version='validate_resolution/v1', validator_source_sha256=HISTORICAL_VALIDATOR_SOURCE_SHA256)
+        validator_version=version, validator_source_sha256=source_sha)
     # Original engine/journal hashes are retained, not rewritten as installed bytes.
     accepted = AcceptedOutputProofV1.model_validate({**accepted.model_dump(mode='json'),
         'engine_source_sha256':digest('historical engine'), 'journal_source_sha256':digest('historical journal')})
@@ -406,7 +413,11 @@ def test_exact_historical_proof_read_joins_old_pins_and_preserves_body(tmp_path)
     assert state == before[0] and blobs.get(ref) == raw
 
 
-def test_journal_cannot_mint_a_new_historical_tagged_capture(tmp_path):
+@pytest.mark.parametrize(('version', 'source_sha'), (
+    ('validate_resolution/v1', HISTORICAL_VALIDATOR_SOURCE_SHA256),
+    ('validate_resolution/v2', PREVIOUS_VALIDATOR_SOURCE_SHA256),
+))
+def test_journal_cannot_mint_a_new_historical_tagged_capture(tmp_path, version, source_sha):
     from test_research_harness_journal import setup
     _, requests, journal, settings = setup(tmp_path)
     request = requests[SpecialistRole.TAXONOMY]
@@ -414,8 +425,8 @@ def test_journal_cannot_mint_a_new_historical_tagged_capture(tmp_path):
         value=FieldValue(), reason='No qualified source')
     proof = AcceptedOutputProofV1(original_request=request, native_run_id=str(uuid4()),
         conversation_id='synthetic',resolutions=(resolution,),source_results=(),effect_ids=(),
-        model_settings_digest=settings,**validation_boundary_pins(),validator_version='validate_resolution/v1',
-        validator_source_sha256=HISTORICAL_VALIDATOR_SOURCE_SHA256)
+        model_settings_digest=settings,**validation_boundary_pins(),validator_version=version,
+        validator_source_sha256=source_sha)
     blobs = ImmutableFileBlobs(tmp_path/'blobs'); journal.blobs = blobs
     before = copy.deepcopy(journal.store._read(journal.scope).state)
     with pytest.raises(StaleWork,match='accepted_output_checkpoint_binding_invalid'):

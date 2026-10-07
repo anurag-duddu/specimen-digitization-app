@@ -1,7 +1,7 @@
 """The v5 role prompts: the hand-over block (Lane P W5, 2026-10-04).
 
 Each v5 file is its v4 file (#252: the missing-policy block) byte for byte followed by one block. The
-taxonomy, temporal and measurement roles subsequently pin v6 files, geography v7; parties and collection retain v5. The v5 block
+taxonomy pins v6; geography and temporal pin v7; measurement pins v9; parties and collection retain v5. The v5 block
 tells a specialist what ``SpecialistRequest.organiser_candidates`` are (the ordinary extractor's stored values,
 each located by trusted code or marked ungrounded), that a candidate is a proposal to verify against the raw
 readings and never evidence, how a grounded candidate of the five literal fields resolves from its accepted
@@ -29,7 +29,7 @@ from specimen_digitization.research_harness.contracts import (
 from specimen_digitization.research_harness.initial_requests import ASSEMBLY_FIELDS
 from specimen_digitization.research_harness.prompts import (
     GEOGRAPHY_HISTORY_PROMPT_VERSION, TAXONOMY_QUERY_PROMPT_VERSION, HANDOVER_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION,
-    ROLE_PROMPTS, resolve_prompt,
+    MEASUREMENT_EVIDENCE_PROMPT_VERSION, TEMPORAL_CONTEXT_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 
 ROOT = Path(prompts.__file__).parent
@@ -59,7 +59,11 @@ V6_ROLE_DIGESTS = {
 }
 V7_ROLE_DIGESTS = {
     SpecialistRole.GEOGRAPHY: "71ab1cdee1cc836a3c3127d59d530fca03b4314091fbe7f7618fb6d01e073139",  # pragma: allowlist secret
+    SpecialistRole.MEASUREMENT: "40a20bf9af6494c8a74a7df26cc56fd36fa36a3fe1b42d89c8675cdfbeed3307",  # pragma: allowlist secret
+    SpecialistRole.TEMPORAL: "e0b10dd8e01796863fba405022c6a4f2e4bb2818eff2af060ecfe0ce6478f50c",  # pragma: allowlist secret
 }
+MEASUREMENT_V8_DIGEST = "06310d03a1419ac509d8c23b1c68340b8213ec008d67223dca1840309e64e7f7"  # pragma: allowlist secret
+MEASUREMENT_V9_DIGEST = "65e3c30aeac9d55d165eb147bf36d88c208400238bb206d4361c1f348dc812e7"  # pragma: allowlist secret
 TAXONOMY_V6_DIGEST = "0779190ab08f2fedc0e3e52c3c57e62ada71f2282289922ae140c0b6002eb53c"  # pragma: allowlist secret
 # The roles that carry #257's producer block, and the ones whose own fields can get an assembly from the hand-over.
 CITING_ROLES = (SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY, SpecialistRole.PARTIES, SpecialistRole.COLLECTION)
@@ -76,6 +80,18 @@ def pin(role):
                           model_route="harness-deepseek", output_schema_digest=PIN)
 
 
+def appended_or_frozen_v5_text(role):
+    # Coherent measurement v9 and temporal v7 replace the obsolete chain.
+    # Keep auditing measurement's frozen v7 and temporal's frozen v5 here.
+    if role == SpecialistRole.MEASUREMENT:
+        return (ROOT / "specimen_measurement-v7.txt").read_text()
+    if role == SpecialistRole.TEMPORAL:
+        return ((ROOT / "common-v1.txt").read_text() + "\n"
+            + (ROOT / f"{role.value}-v5.txt").read_text()
+            + "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n")
+    return pin(role).text
+
+
 def block(role):
     v4 = (ROOT / f"{role.value}-v4.txt").read_bytes()
     v5 = (ROOT / f"{role.value}-v5.txt").read_bytes()
@@ -84,12 +100,14 @@ def block(role):
 
 
 # ---------------------------------------------------------------------------- the table, the files, the pins
-def test_one_table_names_two_active_v5_files_three_v6_files_and_geography_v7():
+def test_table_pins_v5_taxonomy_v6_geography_temporal_v7_and_measurement_v9():
     assert HANDOVER_PROMPT_VERSION == "specialists-handover-v5-2026-10-04"
     assert HANDOVER_PROMPT_VERSION != MISSING_POLICY_PROMPT_VERSION
     assert QUALIFIED_PROMPT_VERSION == "specialists-qualified-event-v6-2026-10-04"
-    assert dict(ROLE_PROMPTS) == {role: (f"{role.value}-v{7 if role in V7_ROLE_DIGESTS else 6 if role in V6_ROLE_DIGESTS or role == SpecialistRole.TAXONOMY else 5}.txt",
+    assert dict(ROLE_PROMPTS) == {role: (f"{role.value}-v{9 if role == SpecialistRole.MEASUREMENT else 7 if role in V7_ROLE_DIGESTS else 6 if role in V6_ROLE_DIGESTS or role == SpecialistRole.TAXONOMY else 5}.txt",
         GEOGRAPHY_HISTORY_PROMPT_VERSION if role == SpecialistRole.GEOGRAPHY else
+        MEASUREMENT_EVIDENCE_PROMPT_VERSION if role == SpecialistRole.MEASUREMENT else
+        TEMPORAL_CONTEXT_PROMPT_VERSION if role == SpecialistRole.TEMPORAL else
         TAXONOMY_QUERY_PROMPT_VERSION if role == SpecialistRole.TAXONOMY else
         QUALIFIED_PROMPT_VERSION if role in V6_ROLE_DIGESTS else HANDOVER_PROMPT_VERSION)
         for role in SpecialistRole}
@@ -108,13 +126,18 @@ def test_each_v5_file_remains_immutable_and_each_active_role_resolves_to_its_pin
     expected = common + active + suffix
     assert prompt.version == version and prompt.text == expected
     assert prompt.digest == hashlib.sha256(expected.encode()).hexdigest()
-    assert prompt.digest == (TAXONOMY_V6_DIGEST if role == SpecialistRole.TAXONOMY else
+    assert prompt.digest == (MEASUREMENT_V9_DIGEST if role == SpecialistRole.MEASUREMENT else
+        TAXONOMY_V6_DIGEST if role == SpecialistRole.TAXONOMY else
         V7_ROLE_DIGESTS.get(role, V6_ROLE_DIGESTS.get(role, V5_ROLE_DIGESTS[role])))
     v4 = (ROOT / f"{role.value}-v4.txt").read_text(encoding="utf-8")
     assert v5.startswith(v4) and v5 != v4
     assert block(role).startswith(HEADER) and block(role).endswith("\n")
     # The pinned text still ends with the block and then the owned fields.
-    if role in V6_ROLE_DIGESTS or role == SpecialistRole.TAXONOMY:
+    if role == SpecialistRole.MEASUREMENT:
+        assert (ROOT / "specimen_measurement-v7.txt").read_text().startswith(v5)
+    elif role == SpecialistRole.TEMPORAL:
+        assert "Complete collecting dates need no literal Collected: heading" in active
+    elif role in V6_ROLE_DIGESTS or role == SpecialistRole.TAXONOMY:
         assert active.startswith(v5)
     else:
         assert prompt.text.endswith(block(role) + suffix)
@@ -132,6 +155,8 @@ def test_the_committed_pins_carry_the_active_versions_and_digests():
         collection_id="coll")
     assert {role: (row["version"], row["digest"]) for role, row in pins["prompts"].items()} == {
         str(role): (GEOGRAPHY_HISTORY_PROMPT_VERSION, V7_ROLE_DIGESTS[role]) if role == SpecialistRole.GEOGRAPHY else
+            (MEASUREMENT_EVIDENCE_PROMPT_VERSION, MEASUREMENT_V9_DIGEST) if role == SpecialistRole.MEASUREMENT else
+            (TEMPORAL_CONTEXT_PROMPT_VERSION, V7_ROLE_DIGESTS[role]) if role == SpecialistRole.TEMPORAL else
             (TAXONOMY_QUERY_PROMPT_VERSION, TAXONOMY_V6_DIGEST) if role == SpecialistRole.TAXONOMY else
             (QUALIFIED_PROMPT_VERSION, V6_ROLE_DIGESTS[role]) if role in V6_ROLE_DIGESTS else
             (HANDOVER_PROMPT_VERSION, V5_ROLE_DIGESTS[role]) for role in SpecialistRole}
@@ -259,8 +284,8 @@ def test_a_literal_role_that_rejects_a_candidate_returns_the_unresolved_state_an
 
 # ---------------------------------------------------------------------------- no contradiction among v3, v4 and v5
 @pytest.mark.parametrize("role", tuple(SpecialistRole))
-def test_the_live_text_carries_the_v3_v4_and_v5_blocks_in_that_order(role):
-    text = pin(role).text
+def test_the_legacy_v3_v4_v5_chain_keeps_its_order_in_retained_or_active_text(role):
+    text = appended_or_frozen_v5_text(role)
     assert text.index("Human question evidence (publication):") < text.index("Missing policy (unstructured labels):")
     assert text.index("Missing policy (unstructured labels):") < text.index("Hand-over (organiser candidates):")
     assert text.count("Hand-over (organiser candidates):") == 1
@@ -272,7 +297,7 @@ def test_the_v4_claim_that_the_request_holds_no_accepted_assembly_is_superseded_
     """v4 says: 'No rule yet qualifies an event or an assembly from unstructured label text, so the request can hold
     no accepted assembly for ...'. The hand-over makes that false for the fields in ASSEMBLY_FIELDS, so exactly the
     roles that own such a field replace the sentence for exactly those fields; the others keep it true."""
-    live = flat(pin(role).text)
+    live = flat(appended_or_frozen_v5_text(role))
     assert "can hold no accepted assembly" in live  # the v4 sentence is still in the text
     mine = {str(key) for key in ASSEMBLY_FIELDS & set(ROLE_FIELDS[role])}
     text = flat(block(role))
@@ -334,7 +359,10 @@ def test_the_v4_rules_the_v5_text_leans_on_are_still_in_the_live_text():
     assert geography.count("If a GEOLocate lookup for the field failed or timed out") == 1
     assert geography.count("there is nothing to look up and you do not send such a query") == 1
     for role in SpecialistRole:
-        assert flat(pin(role).text).count("no literal, parsed, normalized or authority_id, no evidence ids, no question") == 1
+        shape = ("no literal, parsed, normalized, authority_id, evidence IDs or human question"
+            if role == SpecialistRole.TEMPORAL else
+            "no literal, parsed, normalized or authority_id, no evidence ids, no question")
+        assert flat(pin(role).text).count(shape) == 1
 
 
 @pytest.mark.parametrize("role", tuple(SpecialistRole))

@@ -11,14 +11,17 @@ import copy
 import hashlib
 import json
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Literal
+
+from pydantic import Field, field_validator
 
 from specimen_digitization.application.domain import Evidence, ValueState
 from specimen_digitization.application.storage import Conflict, Missing, canonical_json, digest
 from .candidate_selection import DerivedCandidateMetadata, retained_candidate
-from .canonical_binding import BindingUnavailable, CanonicalIdentity
+from .canonical_binding import BindingUnavailable, CanonicalIdentity, Identifier, native_uuid
 from .compatibility import PublicationUnavailable
-from .contracts import FieldKey, FrozenRecord, ResearchScope
+from .contracts import FieldKey, FrozenRecord, ResearchScope, WorkState
 from .discovery import DiscoveryCapabilities
 from .journal import DurableResearchJournal
 from .persistence import Lease, StaleWork
@@ -68,6 +71,11 @@ class CandidateReviewContext:
                     document, scope.key, field_key, decision.after["selection_id"])
             except StaleWork:
                 raise Conflict("Research candidate state changed; reopen the record") from None
+            except (KeyError, TypeError, AttributeError):
+                # This pure parser reads the already loaded receipt document.
+                # Malformed receipt shapes cannot confer selection authority;
+                # normalize only here so storage/auth failures still propagate.
+                raise ValueError("Retained research candidate receipt is malformed") from None
         derived = [choice for choice in selections.values() if choice["source_id"] == "georeference_spatial"]
         if derived:
             # The source envelope proves a computation, while the current saved
@@ -199,9 +207,137 @@ class CandidateReviewContext:
             "request_key": request_key, "request_digest": request_digest, "actor": actor}
 
 
+class QualifiedProposalService:
+    """Offer only choices the installed canonical review path can resolve now.
+
+    The journal reader supplies display context, not selection authority. Every
+    token is checked by CandidateReviewContext against the current actor,
+    canonical binding, accepted checkpoint and retained source capture before
+    this read advertises the existing canonical decision action. POST repeats
+    that validation independently and commits through its own canonical CAS.
+    """
+
+    def __init__(self, service, *, discovery, repository, blobs, capture_blobs,
+                 load_specimen):
+        self.service = service
+        self.discovery = discovery
+        self.repository = repository
+        self.blobs = blobs
+        self.capture_blobs = capture_blobs
+        self.load_specimen = load_specimen
+
+    async def thread(self, principal, locator):
+        thread = await self.service.thread(principal, locator)
+        # An unqualified journal projection may still contain a token. Never
+        # return that token to a viewer, stale report or failed proof check.
+        fields = []
+        for field in thread.fields:
+            review = field.review
+            if review is not None:
+                review = review.model_copy(update={"candidates": tuple(
+                    candidate.model_copy(update={"selection_id": None, "selection_value": None})
+                    for candidate in review.candidates)})
+            fields.append(field.model_copy(update={"review": review,
+                "actions": tuple(action for action in field.actions
+                                 if action not in {"supply_information", "review_proposal"})}))
+        if (thread.historical or thread.paused
+                or principal.role not in {"reviewer", "manager", "admin"}):
+            return thread.model_copy(update={"fields": tuple(fields)})
+
+        pending = [(index, field) for index, field in enumerate(thread.fields)
+                   if (field.work_state == WorkState.WAITING_HUMAN
+                       and field.checkpoint is not None and field.review is not None
+                       and field.preserved_human is None
+                       and any(candidate.selection_id for candidate in field.review.candidates))]
+        if not pending:
+            return thread.model_copy(update={"fields": tuple(fields)})
+
+        specimen = await asyncio.to_thread(self.load_specimen, principal, locator.specimen_id)
+        binding = await self.discovery.binding(principal, locator.specimen_id)
+        if (specimen.id != locator.specimen_id or specimen.scope != principal.scope
+                or specimen.version != binding.canonical.record_revision
+                or specimen.run.id != str(binding.canonical.canonical_run_id)
+                or specimen.asset.sensitive is not binding.canonical.sensitive
+                or binding.research_scope() != thread.scope):
+            raise StaleWork("research_state_changed")
+
+        for index, field in pending:
+            target = binding.field_mapping.get(field.field_key)
+            if (not isinstance(target, str) or not target
+                    or sum(value == target for value in binding.field_mapping.values()) != 1):
+                continue
+            qualified = []
+            for candidate in field.review.candidates:
+                token = candidate.selection_id
+                if token is None:
+                    qualified.append(candidate.model_copy(update={
+                        "selection_id": None, "selection_value": None}))
+                    continue
+                probe = SimpleNamespace(kind="research_candidate", target_id=target,
+                    after={"selection_id": token}, before={}, evidence_ids=())
+                try:
+                    context = await CandidateReviewContext.load(self.discovery, principal,
+                        specimen, [probe], repository=self.repository, blobs=self.blobs,
+                        capture_blobs=self.capture_blobs)
+                except (Conflict, StaleWork, ValueError):
+                    # A bad individual capture cannot grant an action or hide
+                    # the rest of the field's display-only source context.
+                    context = None
+                if context is not None:
+                    if (not binding.same_snapshot(context.binding)
+                            or context.thread.scope != thread.scope):
+                        raise StaleWork("research_state_changed")
+                    choice = context.selections.get(target)
+                    current_field = next((item for item in context.thread.fields
+                        if item.field_key == field.field_key), None)
+                    if (choice is not None and current_field is not None
+                            and current_field.checkpoint == field.checkpoint
+                            and current_field.work_state == WorkState.WAITING_HUMAN
+                            and choice["selection_id"] == token
+                            and choice["field_key"] == str(field.field_key)
+                            and choice["value"] == candidate.selection_value
+                            and choice["source_id"] == candidate.source_id
+                            and choice["evidence_id"] == candidate.evidence_id
+                            and choice["authority_id"] == candidate.authority_id):
+                        qualified.append(candidate)
+                        continue
+                qualified.append(candidate.model_copy(update={
+                    "selection_id": None, "selection_value": None}))
+            if any(candidate.selection_id is not None for candidate in qualified):
+                visible = fields[index]
+                fields[index] = visible.model_copy(update={
+                    "actions": (*visible.actions, "review_proposal"),
+                    "review": visible.review.model_copy(update={"candidates": tuple(qualified)}),
+                })
+        if not binding.same_snapshot(await self.discovery.binding(principal, locator.specimen_id)):
+            raise StaleWork("research_state_changed")
+        return thread.model_copy(update={"fields": tuple(fields)})
+
+    async def retry_field(self, *args):
+        return await self.service.retry_field(*args)
+
+
+class HistoricalCurrentHost(FrozenRecord):
+    """Authorized current host, separate from the immutable source-native tuple."""
+
+    organization_id: Identifier
+    collection_id: Identifier
+    specimen_id: Identifier
+    canonical_run_id: Identifier
+    record_revision: int = Field(strict=True, ge=1)
+    host_record_version_id: str = Field(strict=True, min_length=1, max_length=200)
+    sensitive: bool = Field(strict=True)
+
+    @field_validator("organization_id", "collection_id", "specimen_id", "canonical_run_id")
+    @classmethod
+    def canonical_uuid(cls, value: str) -> str:
+        return native_uuid(value)
+
+
 class HistoricalResearchDiscovery(FrozenRecord):
     contract_version: Literal["canonical-binding/v2", "canonical-binding/v1"]
     canonical: CanonicalIdentity
+    current_host: HistoricalCurrentHost
     scope: ResearchScope
     human_locked_fields: tuple[FieldKey, ...]
     capabilities: DiscoveryCapabilities
@@ -229,8 +365,14 @@ class HistoricalReviewDiscovery:
         except Missing:
             raise BindingUnavailable("historical_research_report_unavailable") from None
         metadata = specimen.run.dependencies.get(REPORT_KEY)
-        if (not isinstance(metadata, dict) or metadata.get("run_id") != specimen.run.id
-                or metadata.get("review_saved_revision", specimen.version + 1) > specimen.version):
+        if not isinstance(metadata, dict) or metadata.get("run_id") != specimen.run.id:
+            raise BindingUnavailable("historical_research_report_unavailable")
+        source_revision = metadata.get("source_revision")
+        saved_revision = metadata.get("review_saved_revision")
+        if (type(source_revision) is not int or source_revision < 1
+                or type(saved_revision) is not int or saved_revision != source_revision + 1):
+            raise BindingUnavailable("historical_research_report_integrity")
+        if saved_revision > specimen.version:
             raise BindingUnavailable("historical_research_report_unavailable")
         try:
             raw = await asyncio.to_thread(self.blobs.get_bounded, metadata["blob_ref"], REPORT_LIMIT)
@@ -244,8 +386,19 @@ class HistoricalReviewDiscovery:
         if (thread.scope.organization_id != principal.scope.organization_id
                 or thread.scope.collection_id != principal.scope.collection_id
                 or thread.scope.specimen_id != specimen.id or payload["run_id"] != specimen.run.id
-                or not thread.historical or thread.canonical_revision != metadata["source_revision"]
-                or thread.review_saved_revision != metadata["review_saved_revision"]):
+                or canonical.organization_id != thread.scope.organization_id
+                or canonical.collection_id != thread.scope.collection_id
+                or canonical.specimen_id != thread.scope.specimen_id
+                or canonical.canonical_run_id != specimen.run.id
+                or canonical.record_revision != source_revision
+                or canonical.host_record_version_id != f"{specimen.run.id}:{source_revision}"
+                or canonical.sensitive != thread.scope.sensitive
+                or (canonical.sensitive and not specimen.asset.sensitive)
+                or not thread.historical or thread.canonical_revision != source_revision
+                or thread.review_saved_revision != saved_revision
+                or any(field.actions or (field.review is not None and any(
+                    candidate.selection_id is not None or candidate.selection_value is not None
+                    for candidate in field.review.candidates)) for field in thread.fields)):
             raise BindingUnavailable("historical_research_report_scope")
         return specimen, thread, canonical
 
@@ -271,6 +424,13 @@ class HistoricalReviewDiscovery:
             locks = specimen.run.dependencies.get("human_review_field_locks", {})
             return HistoricalResearchDiscovery(contract_version=self.contract_version,
                 canonical=canonical, scope=thread.scope,
+                current_host=HistoricalCurrentHost(
+                    organization_id=specimen.scope.organization_id,
+                    collection_id=specimen.scope.collection_id,
+                    specimen_id=specimen.id, canonical_run_id=specimen.run.id,
+                    record_revision=specimen.version,
+                    host_record_version_id=f"{specimen.run.id}:{specimen.version}",
+                    sensitive=specimen.asset.sensitive),
                 human_locked_fields=tuple(key for key in FieldKey if str(key) in locks),
                 capabilities=DiscoveryCapabilities(read=True, retry=False, review=False),
                 canonical_revision=thread.canonical_revision, review_saved_revision=thread.review_saved_revision)

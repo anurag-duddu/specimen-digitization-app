@@ -269,6 +269,7 @@ class SqlConnectRepository:
 
         mapping = {
             "specimen_id": "specimenId",
+            "display_reference": "displayReference",
             "asset_id": "assetId",
             "active_run_id": "activeRunId",
             "batch_id": "batchId",

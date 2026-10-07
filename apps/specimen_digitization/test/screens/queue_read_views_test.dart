@@ -182,7 +182,7 @@ void main() {
           expect(
             tester.getTopLeft(filter).dy,
             greaterThanOrEqualTo(
-              tester.getBottomLeft(uiField('Search by full specimen ID')).dy,
+              tester.getBottomLeft(uiField('Search by specimen ID')).dy,
             ),
           );
           await pickSpecimenQueue(tester, entry.key);

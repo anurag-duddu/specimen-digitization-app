@@ -711,7 +711,7 @@ class _QueuePaneState extends State<QueuePane> {
 
   /// The search field's one label, so the control, its hint and the tests
   /// cannot word it three ways.
-  static const String searchLabel = 'Search by full specimen ID';
+  static const String searchLabel = 'Search by specimen ID';
 
   /// Search matches the exact specimen identifier the API accepts.
   static const String searchHint = 'Specimen ID';

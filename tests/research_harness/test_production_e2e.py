@@ -87,13 +87,15 @@ def build_rig(tmp_path, *, first_pass=False):
     repository = SqlConnectRepository(session=fake, graph_blobs=blobs)
     ordinary = Workflow(repository, blobs, SyntheticAdapters(blobs, LABEL_TEXT))
     token = actor_uid.set(WORKER)
-    principal = worker_principal()
-    created = repository.create(principal, specimen_before_adjudication(blobs, first_pass=first_pass),
-        "e2e-intake", "e2e-intake")
-    yield SimpleNamespace(fake=fake, backend=backend, repository=repository, ordinary=ordinary,
-        principal=principal, specimen_id=created.id, research_blobs=ImmutableFileBlobs(tmp_path / "research"),
-        model_calls=[], source_urls=[])
-    actor_uid.reset(token)
+    try:
+        principal = worker_principal()
+        created = repository.create(principal, specimen_before_adjudication(blobs, first_pass=first_pass),
+            "e2e-intake", "e2e-intake")
+        yield SimpleNamespace(fake=fake, backend=backend, repository=repository, ordinary=ordinary,
+            principal=principal, specimen_id=created.id, research_blobs=ImmutableFileBlobs(tmp_path / "research"),
+            model_calls=[], source_urls=[])
+    finally:
+        actor_uid.reset(token)
 
 
 @pytest.fixture
@@ -207,7 +209,8 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     # all six roles. The taxon, precise location, exact temporal and elevation
     # values, collection and parties fields publish. Geography still waits.
     # The geography fields, with no GEOLocate lookup, keep the record
-    # processing_blocked, so the step ends with an operational hold.
+    # processing_blocked. Return that proved native snapshot without an extra
+    # administrative save that would make its research binding stale.
     resumed = compose(rig, geolocate=False)
     routing = []
 
@@ -217,8 +220,10 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
         routing.append((row["state"], row["work_available_at"]))
         rig.fake.fail_before["PublishCanonicalResearchV2"] = observe
     rig.fake.fail_before["PublishCanonicalResearchV2"] = observe
-    with supervised(), pytest.raises(OperationalBlock, match="native_research_operational_hold"):
-        resumed.step(rig.principal, rig.specimen_id)
+    with supervised():
+        held = resumed.step(rig.principal, rig.specimen_id)
+    assert held.run.stage == "processing_blocked" and held.run.blocker is None
+    assert held.version == rig.fake.bindings[rig.specimen_id]["current_canonical_revision"]
     rig.fake.fail_before.pop("PublishCanonicalResearchV2")
     assert rig.fake.calls.count("RegisterCanonicalResearchBindingV2") == 2
 

@@ -50,8 +50,9 @@ from specimen_digitization.application.production import SqlConnectRepository, a
 from specimen_digitization.application.worker_deadline import WorkerDeadline
 from specimen_digitization.application.workflow import OperationalBlock, SyntheticAdapters, Workflow
 from specimen_digitization.research_harness.agents import SpecialistOutput
+from specimen_digitization.research_harness.committed_pins import committed_research_profile
 from specimen_digitization.research_harness.contracts import (
-    FieldKey, FieldResolution, ResearchScope, SpecialistRole, WorkState,
+    FieldKey, FieldResolution, ResearchScope, SpecialistRole, WorkState, digest,
 )
 from specimen_digitization.research_harness.evidence import dts_policy_resolution, missing_irn_resolution
 from specimen_digitization.research_harness.initial_requests import NativeGenerationRequestFactory
@@ -173,16 +174,34 @@ def instructed(request):
     """What the pinned prompt text tells a specialist on a label with no assembly.
 
     The citation fields the producer block names (the text from its heading to the human question
-    block) and the fields the missing-policy block names (the text after 'declares missing_policy
-    "..." for'): the fields for which it says to return waiting_policy. A specialist does what the
-    text says; without the missing-policy block (a v3 text) it names no field, so it answers
-    waiting_source for a field nothing grounds, as the v2 text told it to."""
+    block) and the requested fields for which both the pinned profile and the prompt authorize a
+    missing-policy fallback. Frozen v5 prompts list those fields; temporal v7 and measurement v9
+    refer to the profile instead. A v3 prompt names no fallback, so an ungrounded field remains
+    waiting_source as its earlier text instructed."""
     text = " ".join(request.prompt.text.split())
     start = text.find("Producer and literal without an assembly (publication):")
     producer = text[start:text.find("Human question evidence (publication):")] if start >= 0 else ""
     listed = re.search(rf'Missing policy \(unstructured labels\): .*? declares missing_policy "{POLICY}" for '
         r"(.+?)(?:, and no source|\.)", text)
     named = {FieldKey(name) for name in re.findall(r"[a-z_]+", listed[1]) if name != "and"} if listed else set()
+    requested = set(getattr(request, "field_keys", prompts.ROLE_FIELDS[request.prompt.role]))
+    if hasattr(request, "scope"):
+        profile = committed_research_profile(request.scope.organization_id, request.scope.collection_id)
+        assert digest(profile) == request.scope.profile_digest
+        declared = {row.field_key for row in profile.fields if row.missing_policy == POLICY}
+    else:
+        declared = DECLARED  # prompt-only audit objects have no durable request scope
+    current_fallback = (
+        ("For a declared missing-policy field without an accepted assembly or a qualified "
+         "source-supported resolution, return waiting_policy" in text
+         and f"Name missing_policy:{POLICY}" in text)
+        or ("For requested elevation fields that remain without qualified grounding, follow the "
+            "pinned profile's missing_policy: work_state waiting_policy" in text
+            and f'reason "missing_policy:{POLICY}"' in text)
+    )
+    if current_fallback:
+        named |= requested & declared
+    named &= requested & declared
     return tuple(name for name in CITATION_FIELDS if name in producer), named
 
 
@@ -385,6 +404,18 @@ def run_research(rig, factory, source_transport):
         return parsed, rig.repository.get(rig.principal.scope, rig.specimen_id), hold
 
 
+def assert_current_published_source_hold(rig, parsed, specimen, hold):
+    """A scientific source hold stays at its native published revision."""
+    assert hold is None
+    assert specimen.run.stage == "processing_blocked" and specimen.run.disposition is None
+    binding = rig.fake.active_binding(rig.specimen_id)
+    assert binding is not None and rig.fake.receipts
+    assert specimen.version == parsed.version + len(rig.fake.receipts)
+    assert binding["current_canonical_revision"] == specimen.version
+    assert rig.fake.specimens[rig.specimen_id]["revision"] == specimen.version
+    assert not any(event.action == "lane_block" for event in specimen.audit)
+
+
 def test_the_unkeyed_label_gives_the_request_fragments_and_no_event_or_assembly(unkeyed):
     """The premise, read from the graph the production request factory builds from the ordinary
     snapshot: every line of every reading is a fragment, and nothing is an event or an assembly."""
@@ -446,8 +477,7 @@ def test_waiting_source_on_a_declared_field_still_blocks_the_record(unkeyed):
     reports as waiting on a source blocks the record, as it does on origin/main."""
     parsed, specimen, hold = run_research(unkeyed, specialist_factory(unkeyed.model_calls,
         abstain=WorkState.WAITING_SOURCE), transport(unkeyed.source_urls))
-    assert isinstance(hold, OperationalBlock) and str(hold) == "native_research_operational_hold"
-    assert specimen.run.stage == "processing_blocked" and specimen.run.disposition is None
+    assert_current_published_source_hold(unkeyed, parsed, specimen, hold)
     blocking = {reason for reason in specimen.run.reasons if reason.startswith("research_work:")}
     assert blocking == {f"research_work:{key}:waiting_source" for key in (*LITERALS, "taxon")}
     assert unkeyed.fake.specimens[unkeyed.specimen_id]["state"] == "processing_blocked"
@@ -463,8 +493,7 @@ def test_a_waiting_source_after_a_failed_lookup_blocks_the_record(named_taxon, s
     parsed, specimen, hold = run_research(named_taxon, specialist_factory(named_taxon.model_calls,
         taxon_lookup=True), transport(named_taxon.source_urls, gbif_status=status))
     assert any("gbif" in url for url in named_taxon.source_urls)
-    assert isinstance(hold, OperationalBlock) and str(hold) == "native_research_operational_hold"
-    assert specimen.run.stage == "processing_blocked" and specimen.run.disposition is None
+    assert_current_published_source_hold(named_taxon, parsed, specimen, hold)
     reasons = set(specimen.run.reasons)
     assert {reason for reason in reasons if reason.startswith("research_work:")} == {"research_work:taxon:waiting_source"}
     assert {f"mandatory_unresolved:{key}" for key in (*LITERALS, "verbatim_dts")} <= reasons
@@ -498,7 +527,7 @@ def test_a_specialist_that_corrects_to_waiting_source_after_the_refusal_blocks_a
     parsed, specimen, hold = run_research(named_taxon, specialist_factory(named_taxon.model_calls,
         taxon_lookup=True, after_failure=WorkState.WAITING_POLICY,
         after_retry=WorkState.WAITING_SOURCE), transport(named_taxon.source_urls, gbif_status=503))
-    assert specimen.run.stage == "processing_blocked" and isinstance(hold, OperationalBlock)
+    assert_current_published_source_hold(named_taxon, parsed, specimen, hold)
     reasons = set(specimen.run.reasons)
     assert {reason for reason in reasons if reason.startswith("research_work:")} == {"research_work:taxon:waiting_source"}
     assert "mandatory_unresolved:taxon" not in reasons
@@ -573,6 +602,22 @@ def test_the_specialist_reads_the_citation_fields_and_the_declared_fields_out_of
         assert instructed(pinned(role, f"{role.value}-v3.txt"))[1] == set()
 
 
+def test_rewritten_date_and_elevation_fallbacks_require_the_pinned_policy_and_requested_field():
+    profile = committed_research_profile(ORG, COLLECTION)
+    assert {row.field_key for row in profile.fields if row.missing_policy == POLICY} == DECLARED
+    scope = SimpleNamespace(organization_id=ORG, collection_id=COLLECTION, profile_digest=digest(profile))
+    for role, field in ((SpecialistRole.TEMPORAL, FieldKey.DATE_VISITED_FROM),
+                        (SpecialistRole.MEASUREMENT, FieldKey.ELEVATION_FROM_FT)):
+        # Frozen v5 keeps its explicit field list, while the current rewrite refers to
+        # the pinned profile. Both must narrow to the field actually requested.
+        for prompt in (pinned(role, f"{role.value}-v5.txt").prompt, pinned(role).prompt):
+            request = SimpleNamespace(prompt=prompt, scope=scope, field_keys=(field,))
+            assert instructed(request)[1] == {field}
+            unrelated = prompt.model_copy(update={"text": f"A source failure remains waiting_source. "
+                f"missing_policy:{POLICY} does not authorize an absence."})
+            assert instructed(SimpleNamespace(prompt=unrelated, scope=scope, field_keys=(field,)))[1] == set()
+
+
 def test_a_specialist_reading_the_v3_text_alone_blocks_the_record_and_the_v4_block_is_what_moves_it_to_review(
         unkeyed, monkeypatch):
     """#257's v3 text names no waiting_policy: a specialist reading only it answers waiting_source for the
@@ -581,8 +626,7 @@ def test_a_specialist_reading_the_v3_text_alone_blocks_the_record_and_the_v4_blo
     monkeypatch.setattr(prompts, "ROLE_PROMPTS", v3)
     parsed, specimen, hold = run_research(unkeyed, specialist_factory(unkeyed.model_calls),
         transport(unkeyed.source_urls))
-    assert (specimen.run.stage, specimen.run.disposition) == ("processing_blocked", None)
-    assert isinstance(hold, OperationalBlock) and str(hold) == "native_research_operational_hold"
+    assert_current_published_source_hold(unkeyed, parsed, specimen, hold)
     reasons = set(specimen.run.reasons)
     assert {f"research_work:{key}:waiting_source" for key in (*LITERALS, "taxon")} <= reasons
     assert not {reason for reason in reasons if reason.startswith("mandatory_unresolved:")

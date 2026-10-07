@@ -27,7 +27,7 @@ from .agent_trace import (
 )
 from .contracts import (
     ROLE_FIELDS, FieldKey, FieldResolution, PromptPin, SpecialistRequest, SpecialistRole, SourceQuery, SourceResult,
-    WorkState,
+    WorkState, digest,
 )
 from .gateway import EffectModel, ModelGatewayBlocked, capture_model_run_effects
 from .package_qualification import SERIALIZATION_VERSION, qualify_packages
@@ -427,6 +427,29 @@ class SpecialistHarness:
             fields = tuple(result.field_key for result in output.resolutions)
             if output.role != request.role or len(set(fields)) != len(fields) or set(fields) != set(request.field_keys):
                 raise ModelRetry("specialist_output_does_not_cover_exact_requested_fields")
+            if request.role == SpecialistRole.MEASUREMENT:
+                # Match the journal/checkpoint fence before accepting an output.
+                # Utility context may include a protected source field that the
+                # scoped output cannot turn into a new native checkpoint.
+                consumed = {pin.field_key: pin for pin in request.dependencies}
+                proposed = {item.field_key: item for item in output.resolutions}
+                for resolution in output.resolutions:
+                    for pin in resolution.dependencies:
+                        source = proposed.get(pin.field_key)
+                        available = (consumed[pin.field_key] == pin if pin.field_key in consumed else
+                            source is not None and pin.field_key != resolution.field_key
+                            and resolution.derivation is not None
+                            and resolution.derivation.source_field == pin.field_key
+                            and digest(source) == pin.digest and source.work_state == WorkState.RESOLVED)
+                        if not available:
+                            raise ModelRetry("specialist_output_has_unavailable_native_dependency: "
+                                f"field={resolution.field_key}; source={pin.field_key}; "
+                                "the written assertion remains evidence, but its native source checkpoint "
+                                "is protected, missing or not exactly pinned. Return work_state waiting_policy "
+                                "with value.state unresolved and reason "
+                                f"protected_native_dependency_unavailable:{pin.field_key}; "
+                                "no value, evidence IDs, derivation or human question. Do not manufacture "
+                                "a source checkpoint or change the preserved human outcome")
             results = tuple(ctx.deps.tool_results.get(request.role, ()))
             try:
                 for resolution in output.resolutions:

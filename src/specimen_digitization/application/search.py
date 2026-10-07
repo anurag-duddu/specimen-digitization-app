@@ -5,11 +5,12 @@ from .lane import SQLITE_STATUS
 import base64
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def utc(value):
@@ -22,6 +23,7 @@ def utc(value):
 class SearchFilters(BaseModel):
     model_config = ConfigDict(extra="forbid")
     specimen_id: str | None = None
+    display_reference: str | None = Field(default=None, min_length=1, max_length=255)
     asset_id: str | None = None
     active_run_id: str | None = None
     batch_id: str | None = None
@@ -72,6 +74,18 @@ class SearchFilters(BaseModel):
     risk_min: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
     risk_max: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
 
+    @field_validator("display_reference", mode="before")
+    @classmethod
+    def normalize_display_reference(cls, value):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if normalized.startswith("#"):
+            normalized = normalized[1:]
+        return normalized
+
     @model_validator(mode="after")
     def bounds(self):
         for name in ("specimen_id", "asset_id", "active_run_id", "batch_id"):
@@ -95,6 +109,34 @@ class SearchFilters(BaseModel):
         ):
             raise ValueError("risk_min must not exceed risk_max")
         return self
+
+
+_DISPLAY_IMAGE_EXTENSION = re.compile(
+    r"\.(?:jpe?g|png|webp|tiff?|heic|gif)$", re.IGNORECASE
+)
+_SUBJECT_FILENAME = re.compile(r"^subject_([0-9]+)$", re.IGNORECASE)
+
+
+def display_reference(filename, specimen_id):
+    """Return the exact unprefixed reference displayed for a filename or UUID."""
+    basename = (
+        filename.strip().replace("\\", "/").rsplit("/", 1)[-1]
+        if isinstance(filename, str)
+        else ""
+    )
+    stem = _DISPLAY_IMAGE_EXTENSION.sub("", basename)
+    subject = _SUBJECT_FILENAME.fullmatch(stem)
+    if subject:
+        return subject.group(1)
+    if stem:
+        return stem
+    ident = str(specimen_id or "")
+    uuid_match = re.fullmatch(
+        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+        ident,
+        re.IGNORECASE,
+    )
+    return ident[:8] if uuid_match else ident
 
 
 def binding(scope, filters, actor, sensitive):
@@ -228,6 +270,10 @@ def sqlite_search(
                 + ")"
                 + (">=?" if name == "risk_min" else "<=?")
             )
+        elif name == "display_reference":
+            clauses.append(
+                "display_reference(json_extract(payload,'$.asset.filename'),id)=?"
+            )
         else:
             clauses.append(
                 "(" + projections["status" if name == "state" else name] + ")=?"
@@ -241,6 +287,7 @@ def sqlite_search(
         + " ORDER BY created_at,id LIMIT ?"
     )
     with repository.connect() as db:
+        db.create_function("display_reference", 2, display_reference, deterministic=True)
         rows = db.execute(query, (*values, limit)).fetchall()
     result = []
     for values in rows:

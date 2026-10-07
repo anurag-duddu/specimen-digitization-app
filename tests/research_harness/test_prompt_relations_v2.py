@@ -23,8 +23,8 @@ from specimen_digitization.research_harness.evidence import (
     validate_resolution,
 )
 from specimen_digitization.research_harness.prompts import (
-    HANDOVER_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS,
-    TAXONOMY_QUERY_PROMPT_VERSION, resolve_prompt,
+    HANDOVER_PROMPT_VERSION, MEASUREMENT_EVIDENCE_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS,
+    TAXONOMY_QUERY_PROMPT_VERSION, TEMPORAL_CONTEXT_PROMPT_VERSION, resolve_prompt,
 )
 from specimen_digitization.research_harness.sources import insects_registry
 
@@ -78,8 +78,10 @@ def test_each_v2_file_is_its_v1_text_followed_by_the_relation_rule_and_the_pin_e
     # pins moved to the v3 files (test_prompt_reading_citation_v3.py), then to the v4 files, each the v3
     # file followed by the missing-policy block (test_prompt_missing_policy_v4.py), then to the v5 files,
     # each the v4 file followed by the hand-over block (test_prompt_handover_v5.py); all extend the v2 text.
-    version = 6 if role in SETTLED or role == SpecialistRole.TAXONOMY else 5
+    version = 9 if role == SpecialistRole.MEASUREMENT else 7 if role == SpecialistRole.TEMPORAL else 6 if role == SpecialistRole.TAXONOMY else 5
     assert ROLE_PROMPTS[role] == (f"{role.value}-v{version}.txt",
+        MEASUREMENT_EVIDENCE_PROMPT_VERSION if role == SpecialistRole.MEASUREMENT else
+        TEMPORAL_CONTEXT_PROMPT_VERSION if role == SpecialistRole.TEMPORAL else
         TAXONOMY_QUERY_PROMPT_VERSION if role == SpecialistRole.TAXONOMY else
         QUALIFIED_PROMPT_VERSION if role in SETTLED else HANDOVER_PROMPT_VERSION)
     assert RELATIONS_PROMPT_VERSION == "specialists-relations-v2-2026-10-03"
@@ -89,7 +91,14 @@ def test_each_v2_file_is_its_v1_text_followed_by_the_relation_rule_and_the_pin_e
     prompt = resolve_prompt(role, profile_digest=PIN, source_registry_digest=PIN, toolset_digest=PIN,
                             model_route="harness-deepseek", output_schema_digest=PIN)
     v2 = (ROOT / f"{role.value}-v2.txt").read_text(encoding="utf-8")
-    assert prompt.text.startswith((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n" + v2)
+    if role == SpecialistRole.MEASUREMENT:
+        assert (ROOT / "specimen_measurement-v7.txt").read_text().startswith(v2)
+        assert "evidence relations" in prompt.text
+        assert "without changing those objects or their provenance" in prompt.text
+    elif role == SpecialistRole.TEMPORAL:
+        assert rule.strip() in prompt.text
+    else:
+        assert prompt.text.startswith((ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n" + v2)
     assert prompt.digest == hashlib.sha256(prompt.text.encode()).hexdigest()
 
 

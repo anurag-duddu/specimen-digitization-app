@@ -79,17 +79,16 @@ class ApiResearchRepository implements ResearchRepository {
       }
       final canonical = response['canonical'];
       final capabilities = response['capabilities'];
+      final historical = response['historical'];
       if (canonical is! Map ||
           capabilities is! Map ||
+          (historical != null && historical is! bool) ||
           capabilities['read'] != true ||
           canonical['organization_id'] != collection.organizationId ||
           canonical['collection_id'] != collection.collectionId ||
           canonical['specimen_id'] != specimen.id ||
           canonical['record_revision'] is! int ||
-          canonical['record_revision'] != specimen.revision ||
-          specimen.recordVersionId.isEmpty ||
-          // The native record UUID is distinct from the workspace's run:revision.
-          canonical['host_record_version_id'] != specimen.recordVersionId) {
+          specimen.recordVersionId.isEmpty) {
         throw const ResearchContractException();
       }
       final scope = ResearchScope.fromJson(response['scope']);
@@ -97,7 +96,62 @@ class ApiResearchRepository implements ResearchRepository {
           scope.organizationId != collection.organizationId ||
           scope.collectionId != collection.collectionId ||
           scope.specimenId != specimen.id ||
-          canonical['sensitive'] != scope.sensitive ||
+          canonical['sensitive'] != scope.sensitive) {
+        throw const ResearchContractException();
+      }
+      if (historical == true) {
+        // A saved report keeps the native UUID and digest of its source Q.
+        // It must not be presented as the native binding of the opened Q.
+        final host = response['current_host'];
+        final sourceRevision = canonical['record_revision'] as int;
+        final savedRevision = response['review_saved_revision'];
+        final runId = canonical['canonical_run_id'];
+        final asset = specimen.data['asset'];
+        // Legacy true classifications are omitted from the saved asset JSON.
+        final assetSensitive = asset is Map
+            ? (asset.containsKey('sensitive') ? asset['sensitive'] : true)
+            : null;
+        final nativeId = canonical['record_version_id'];
+        final sourceDigest = canonical['snapshot_sha256'];
+        final nativeUuid = RegExp(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+        );
+        final sha256 = RegExp(r'^[0-9a-f]{64}$');
+        if (host is! Map ||
+            sourceRevision < 1 ||
+            response['canonical_revision'] is! int ||
+            response['canonical_revision'] != sourceRevision ||
+            savedRevision is! int ||
+            savedRevision != sourceRevision + 1 ||
+            savedRevision > specimen.revision ||
+            runId is! String ||
+            !nativeUuid.hasMatch(runId) ||
+            runId != specimen.data['active_run_id'] ||
+            nativeId is! String ||
+            !nativeUuid.hasMatch(nativeId) ||
+            sourceDigest is! String ||
+            !sha256.hasMatch(sourceDigest) ||
+            canonical['host_record_version_id'] != '$runId:$sourceRevision' ||
+            asset is! Map ||
+            assetSensitive is! bool ||
+            host['organization_id'] != collection.organizationId ||
+            host['collection_id'] != collection.collectionId ||
+            host['specimen_id'] != specimen.id ||
+            host['canonical_run_id'] != runId ||
+            host['record_revision'] is! int ||
+            host['record_revision'] != specimen.revision ||
+            host['host_record_version_id'] != specimen.recordVersionId ||
+            host['host_record_version_id'] != '$runId:${specimen.revision}' ||
+            host['sensitive'] is! bool ||
+            host['sensitive'] != assetSensitive ||
+            (canonical['sensitive'] == true && host['sensitive'] != true) ||
+            capabilities['retry'] != false ||
+            capabilities['review'] != false) {
+          throw const ResearchContractException();
+        }
+      } else if (canonical['record_revision'] != specimen.revision ||
+          // The native record UUID is distinct from the workspace's run:revision.
+          canonical['host_record_version_id'] != specimen.recordVersionId ||
           (specimen.data['sensitive'] is bool &&
               specimen.data['sensitive'] != scope.sensitive)) {
         throw const ResearchContractException();

@@ -92,7 +92,7 @@ void main() {
           .getSemantics(find.byType(TextField).first)
           .getSemanticsData()
           .label,
-      contains('Search by full specimen ID'),
+      contains('Search by specimen ID'),
     );
 
     // The destinations, the filters control and the account menu. Read from
@@ -107,7 +107,7 @@ void main() {
       'Deferred',
       'Cleared',
       'Account menu',
-      'Search by full specimen ID',
+      'Search by specimen ID',
     ]) {
       expect(
         spoken.any((String label) => label.contains(name)),

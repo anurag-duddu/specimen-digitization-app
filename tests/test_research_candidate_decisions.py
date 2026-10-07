@@ -5,6 +5,8 @@ candidate resolution, application evidence, canonical CAS and reopen are real.
 """
 
 import asyncio
+import copy
+import hashlib
 import json
 from types import SimpleNamespace
 from uuid import uuid4
@@ -65,7 +67,8 @@ class RetainedResearch:
         backend.grant(self.durable, can_view_sensitive=True)
         self.store = ResearchStore(backend, "offline-review-budget")
         self.store.initialize(self.durable, BudgetPolicy(100))
-        self.store.create_job(self.durable, pins, list(ALL_FIELDS))
+        self.store.create_job(self.durable, pins, list(ALL_FIELDS),
+            record_revision=specimen.version)
         lease = self.store.claim(self.durable, "offline-worker")
         self.journal = DurableResearchJournal(self.store, self.durable, lease)
         broker = DurableEffectBroker(self.store, ImmutableFileBlobs(root / "captures"))
@@ -136,11 +139,28 @@ class BoundDiscovery:
         return (self.snapshot, self.research.store, self.research.durable, document,
             document.state["jobs"][self.research.durable.key])
 
-    async def discover(self, *_):
-        raise BindingUnavailable("canonical_binding_stale")
+    async def discover(self, principal, specimen_id):
+        from specimen_digitization.research_harness.discovery import DiscoveryCapabilities
+        from specimen_digitization.research_harness.discovery_v2 import ResearchDiscoveryResultV2
 
-    async def service(self, *_):
-        raise BindingUnavailable("canonical_binding_stale")
+        await self.binding(principal, specimen_id)
+        return ResearchDiscoveryResultV2(canonical=self.snapshot.canonical,
+            scope=self.research.scope, human_locked_fields=(),
+            capabilities=DiscoveryCapabilities(read=True, retry=False, review=False))
+
+    async def service(self, principal, locator):
+        from specimen_digitization.research_harness.persistence import StaleWork
+        from specimen_digitization.research_harness.service import ResearchService
+
+        await self.binding(principal, locator.specimen_id)
+        async def resolve(actor, requested):
+            if (actor.user_id != principal.user_id or requested.specimen_id != self.research.scope.specimen_id
+                    or requested.job_id != self.research.scope.job_id
+                    or requested.generation != self.research.scope.generation):
+                raise StaleWork("research_state_changed")
+            return self.research.durable
+        return ResearchService(store=self.research.store, resolve_scope=resolve,
+            retry_admission=self.research.store.admit_retry)
 
 
 @pytest.fixture
@@ -155,6 +175,7 @@ def review(tmp_path):
     access = SimpleNamespace(role="reviewer", sensitive=True, member=True)
     app = create_app(mode="emulator", repository=repository, blobs=blobs,
         adapters=SyntheticAdapters(blobs, SYNTHETIC_TEXT),
+        research_version="v2",
         identity_verifier=lambda *_: "synthetic-reviewer",
         memberships=lambda _: [{"organization_id": SYNTHETIC_ORG,
             "collection_id": SYNTHETIC_COLLECTION, "role": access.role,
@@ -192,6 +213,149 @@ def reopen(review):
 def research_base(review):
     return (PREFIX + f"/collections/{SYNTHETIC_COLLECTION}/specimens/{review.record['specimen_id']}"
         + "/research")
+
+
+def current_thread(review):
+    return review.client.get(research_base(review) + "/jobs/offline-review/generations/1/thread",
+        headers=HEADERS)
+
+
+def test_current_report_offers_only_qualified_choices_then_saves_and_reopens(review):
+    current = review.client.get(research_base(review) + "/current", headers=HEADERS)
+    assert current.status_code == 200, current.text
+    assert current.json()["scope"]["job_id"] == "offline-review"
+    response = current_thread(review)
+    assert response.status_code == 200, response.text
+    thread = response.json()
+    assert thread.get("historical") is not True
+    by_field = {field["field_key"]: field for field in thread["fields"]}
+    choices = []
+    for key in ("country", "province_state"):
+        field = by_field[key]
+        assert field["work_state"] == "waiting_human"
+        assert field["actions"] == ["review_proposal"]
+        candidate, = field["review"]["candidates"]
+        assert candidate["selection_id"] == review.research.candidates[key].selection_id
+        assert candidate["selection_value"] == review.research.candidates[key].selection_value
+        assert candidate["evidence_id"] == field["review"]["evidence"][0]["evidence_id"]
+        choices.append(choice(review, key, after={"selection_id": candidate["selection_id"]}))
+    assert all("review_proposal" not in field["actions"] for key, field in by_field.items()
+               if key not in {"country", "province_state"})
+    result = post(review, choices)
+    assert (result["applied"], result["refused"], result["skipped"]) == (2, 0, 0)
+    saved = reopen(review)
+    assert saved["revision"] == review.record["revision"] + 1
+    assert saved["fields"]["country"]["normalized"] == "Philippines"
+    assert saved["fields"]["province_state"]["normalized"] == "Davao del Sur"
+    after = current_thread(review)
+    assert after.status_code == 200 and after.json()["historical"] is True
+    assert all(not field["actions"] for field in after.json()["fields"])
+    assert all(candidate["selection_id"] is None for field in after.json()["fields"]
+               if field["review"] for candidate in field["review"]["candidates"])
+
+
+@pytest.mark.parametrize("role", ["viewer", "operator"])
+def test_current_report_keeps_source_context_but_no_choice_for_non_reviewers(review, role):
+    review.access.role = role
+    response = current_thread(review)
+    assert response.status_code == 200, response.text
+    country = next(item for item in response.json()["fields"] if item["field_key"] == "country")
+    assert country["review"]["evidence"] and country["review"]["candidates"]
+    assert "review_proposal" not in country["actions"]
+    assert all(item["selection_id"] is None and item["selection_value"] is None
+               for item in country["review"]["candidates"])
+
+
+@pytest.mark.parametrize("failure", ["unknown_effect", "uncited_capture", "missing_capture"])
+def test_current_report_cannot_advertise_a_source_choice_that_post_would_refuse(review, failure):
+    original = review.discovery.bound_state
+
+    async def damaged(*args):
+        binding, store, scope, document, job = await original(*args)
+        effect = next(item for item in document.state["effects"].values()
+                      if item["field_keys"] == ["country"])
+        if failure == "unknown_effect":
+            effect["status"] = "held_unknown"
+        elif failure == "uncited_capture":
+            effect["receipt"]["typed_payload"]["coverage"]["receipt_ids"] = []
+        else:
+            effect["receipt"].pop("capture")
+        return binding, store, scope, document, job
+
+    review.discovery.bound_state = damaged
+    response = current_thread(review)
+    assert response.status_code == 200, response.text
+    country = next(item for item in response.json()["fields"] if item["field_key"] == "country")
+    assert country["review"]["candidates"] and country["review"]["evidence"]
+    assert country["review"]["candidates"][0]["selection_id"] is None
+    assert country["review"]["candidates"][0]["selection_value"] is None
+    assert "review_proposal" not in country["actions"]
+    province = next(item for item in response.json()["fields"] if item["field_key"] == "province_state")
+    assert province["actions"] == ["review_proposal"]
+
+
+@pytest.mark.parametrize("failure", ["missing_typed_payload", "non_mapping_receipt"])
+def test_malformed_secondary_receipt_keeps_other_current_choices_readable(review, failure):
+    baseline = current_thread(review)
+    assert baseline.status_code == 200
+    assert next(item for item in baseline.json()["fields"] if item["field_key"] == "country")[
+        "actions"] == ["review_proposal"]
+    original = review.discovery.bound_state
+
+    async def damaged(*args):
+        binding, store, scope, document, job = await original(*args)
+        existing = next(item for item in document.state["effects"].values()
+                        if item["field_keys"] == ["country"])
+        secondary_id = digest({"malformed_secondary_country": failure})
+        secondary = copy.deepcopy(existing)
+        secondary["effect_id"] = secondary_id
+        secondary["operation_key"] = "source_lookup:" + secondary_id
+        secondary["receipt"] = ({"effect_id": secondary_id}
+            if failure == "missing_typed_payload" else ["not a receipt mapping"])
+        document.state["effects"][secondary_id] = secondary
+        stored = job["fields"]["country"]["checkpoint"]
+        stored["payload"]["effect_receipt_ids"].append(secondary_id)
+        stored["receipt_ids"].append(secondary_id)
+        stored["id"] = digest({"scope": stored["scope"], "field": "country",
+            "revision": stored["revision"], "payload": stored["payload"]})
+        return binding, store, scope, document, job
+
+    review.discovery.bound_state = damaged
+    response = current_thread(review)
+    assert response.status_code == 200, response.text
+    country = next(item for item in response.json()["fields"] if item["field_key"] == "country")
+    province = next(item for item in response.json()["fields"] if item["field_key"] == "province_state")
+    assert country["review"]["candidates"] and country["review"]["evidence"]
+    assert country["review"]["candidates"][0]["selection_id"] is None
+    assert "review_proposal" not in country["actions"]
+    assert province["actions"] == ["review_proposal"]
+    assert province["review"]["candidates"][0]["selection_id"]
+
+
+@pytest.mark.parametrize("failure, status", [
+    (PermissionError("research_access_denied"), 403),
+    (OSError("unavailable-private-research-store"), 503),
+])
+def test_proposal_qualification_does_not_hide_auth_or_storage_failure(review, failure, status):
+    async def unavailable(*_):
+        raise failure
+
+    review.discovery.bound_state = unavailable
+    response = current_thread(review)
+    assert response.status_code == status
+    assert "unavailable-private-research-store" not in response.text
+
+
+def test_current_report_refuses_revoked_membership_and_wrong_job_without_a_choice(review):
+    review.access.member = False
+    denied = current_thread(review)
+    assert denied.status_code == 403
+    assert denied.json() == {"detail": "research_access_denied"}
+    review.access.member = True
+    wrong = review.client.get(research_base(review) + "/jobs/old-job/generations/1/thread",
+        headers=HEADERS)
+    assert wrong.status_code == 409
+    assert wrong.json() == {"detail": "research_state_changed"}
 
 
 @pytest.fixture
@@ -523,6 +687,72 @@ def test_saved_research_reopens_as_explicit_read_only_history_and_rejects_retry(
     retry = review.client.post(thread_url + "/fields/country/retry", headers=HEADERS,
         json={"expected_checkpoint_revision": 1})
     assert retry.status_code == 409, retry.text
+
+
+def test_historical_discovery_keeps_source_proof_and_names_the_current_saved_host(review):
+    source = review.client.get(research_base(review) + "/current", headers=HEADERS)
+    assert source.status_code == 200, source.text
+    source_identity = source.json()["canonical"]
+    assert post(review, [choice(review)])["applied"] == 1
+
+    current = reopen(review)
+    for step in range(2):
+        response = review.client.get(research_base(review) + "/current", headers=HEADERS)
+        assert response.status_code == 200, response.text
+        history = response.json()
+        assert history["historical"] is True
+        assert history["canonical"] == source_identity
+        assert history["canonical_revision"] == source_identity["record_revision"]
+        assert history["review_saved_revision"] == source_identity["record_revision"] + 1
+        assert history["current_host"] == {
+            "organization_id": review.scope.organization_id,
+            "collection_id": review.scope.collection_id,
+            "specimen_id": current["specimen_id"],
+            "canonical_run_id": current["active_run_id"],
+            "record_revision": current["revision"],
+            "host_record_version_id": current["record_version_id"],
+            "sensitive": current["asset"].get("sensitive", True),
+        }
+        assert history["capabilities"] == {"read": True, "retry": False, "review": False}
+        thread = current_thread(review)
+        assert thread.status_code == 200 and thread.json()["historical"] is True
+        assert all(not field["actions"] for field in thread.json()["fields"])
+        if step == 0:
+            current, _ = post_ordinary_field(review, current)
+
+
+@pytest.mark.parametrize("damage", ["scope", "run", "source_revision", "source_host", "sensitive", "saved_revision", "token"])
+def test_historical_discovery_rejects_retained_identity_or_revision_damage(review, monkeypatch, damage):
+    assert post(review, [choice(review)])["applied"] == 1
+    saved = review.repository.get(review.scope, review.record["specimen_id"])
+    metadata = saved.run.dependencies[REPORT_KEY]
+    payload = json.loads(review.blobs.get(metadata["blob_ref"]))
+    if damage == "scope":
+        payload["canonical"]["collection_id"] = str(uuid4())
+    elif damage == "run":
+        payload["canonical"]["canonical_run_id"] = str(uuid4())
+    elif damage == "source_revision":
+        payload["canonical"]["record_revision"] += 1
+    elif damage == "source_host":
+        payload["canonical"]["host_record_version_id"] = "old-run:1"
+    elif damage == "sensitive":
+        payload["canonical"]["sensitive"] = not payload["canonical"]["sensitive"]
+    elif damage == "saved_revision":
+        metadata["review_saved_revision"] += 1
+        payload["thread"]["review_saved_revision"] += 1
+    else:
+        country = next(field for field in payload["thread"]["fields"] if field["field_key"] == "country")
+        country["review"]["candidates"][0]["selection_id"] = "a" * 64
+    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    metadata.update(blob_ref=review.blobs.put(raw), sha256=hashlib.sha256(raw).hexdigest(),
+        size_bytes=len(raw))
+    original_get = review.repository.get
+    monkeypatch.setattr(review.repository, "get", lambda scope, ident:
+        saved if scope == saved.scope and ident == saved.id else original_get(scope, ident))
+
+    response = review.client.get(research_base(review) + "/current", headers=HEADERS)
+    assert response.status_code == 503, response.text
+    assert response.json() == {"detail": "research_service_unavailable"}
 
 
 @pytest.mark.parametrize("access_change", ["membership", "sensitive"])
