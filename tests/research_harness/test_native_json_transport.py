@@ -84,8 +84,14 @@ def test_http_text_preserves_exact_number_kinds_and_pin_digest(http_read, adapte
     {'exact_json': '\ud800'},
 ])
 def test_http_refuses_lossy_or_malformed_envelope_before_any_reader(http_read, adapter, row):
-    with pytest.raises(PublicationUnavailable, match='^native_v2_exact_json_unavailable$'):
+    with pytest.raises(PublicationUnavailable) as failure:
         http_read('GetCanonicalResearchBindingV2', {'binding': row}, adapter)
+    # pytest's regex view includes exception notes; the original error contract
+    # and the sanitized native transport context are independent assertions.
+    assert str(failure.value) == 'native_v2_exact_json_unavailable'
+    notes = getattr(failure.value, '__notes__', [])
+    assert notes == (['sql_connect_operation=GetCanonicalResearchBindingV2; '
+                      'phase=response_validation; attempt=1'] if adapter == 'native' else [])
 
 
 def test_http_missing_is_distinct_from_absent_row(http_read):
