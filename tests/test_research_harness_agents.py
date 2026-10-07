@@ -141,7 +141,7 @@ def harness(tmp_path, *, delegate=None, limits=HarnessLimits(), known_cost=True)
 
 def test_exact_package_surface_qualified_without_network():
     result = qualify_packages()
-    assert result.packages["pydantic-ai-harness"] == "0.36.0"
+    assert result.packages["pydantic-ai-harness"] == "0.54.0"
     assert result.provider_qualification == result.cloud_qualification == "not_run"
 
 
@@ -176,9 +176,9 @@ def test_actual_official_delegation_uses_child_role_tools_and_shared_sql_budget(
     child = next(record for record in records if record.agent_name == SpecialistRole.GEOGRAPHY)
     assert child.parent_run_id == run.native_run_id
     assert store.budget(scope)["settled_micro_usd"] == 12
-    # Child's explicit UsageLimits do not aggregate its requests into the parent.
-    # The durable SQL budget above does aggregate all four model effects.
-    assert run.usage.requests == 2
+    # Harness 0.54 forwards a separately capped child's usage into the parent.
+    # Both the request ceiling and SQL budget count all four model effects.
+    assert run.usage.requests == 4
 
 
 def test_model_receipt_replay_ignores_transport_timestamp_and_retains_unknown_cost(tmp_path):

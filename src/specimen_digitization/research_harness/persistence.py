@@ -279,7 +279,7 @@ class PinnedRuntime:
     model: Mapping[str, Any]
     settings: Mapping[str, Any]
     engine_version: str
-    serialization_version: str = "harness-0.36.0/core-2.51.0"
+    serialization_version: str = "harness-0.54.0/core-2.54.0"
 
     def payload(self) -> dict[str, Any]:
         return json.loads(canonical(asdict(self)))

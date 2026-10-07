@@ -12,22 +12,21 @@ from pydantic_ai_harness import ManagedPrompt, StepPersistence, SubAgent, SubAge
 from pydantic_ai_harness.media import MediaStore
 from pydantic_ai_harness.step_persistence import StepStore
 
-SERIALIZATION_VERSION = "pydantic-ai-2.51.0+harness-0.36.0/v1"
+SERIALIZATION_VERSION = "pydantic-ai-2.54.0+harness-0.54.0/v1"
 QUALIFIED_PACKAGES: Mapping[str, str] = MappingProxyType(
     {
-        "pydantic-ai-slim": "2.51.0",
-        "pydantic-evals": "2.51.0",
-        "pydantic-graph": "2.51.0",
-        "pydantic-ai-harness": "0.36.0",
+        "pydantic-ai-slim": "2.54.0",
+        "pydantic-evals": "2.54.0",
+        "pydantic-graph": "2.54.0",
+        "pydantic-ai-harness": "0.54.0",
         "logfire": "5.0.0",
     }
 )
 OFFICIAL_REFERENCES = (
-    "https://github.com/pydantic/pydantic-ai-harness/blob/v0.36.0/pyproject.toml",
-    "https://pypi.org/project/pydantic-ai-harness/0.36.0/",
-    "https://pypi.org/project/pydantic-ai-slim/2.51.0/",
-    "https://github.com/pydantic/pydantic-ai-harness/blob/v0.36.0/docs/subagents.md",
-    "https://github.com/pydantic/pydantic-ai-harness/blob/v0.36.0/docs/step-persistence.md",
+    "https://pypi.org/project/pydantic-ai-harness/0.54.0/",
+    "https://pypi.org/project/pydantic-ai-slim/2.54.0/",
+    "https://pydantic.dev/docs/ai/harness/",
+    "https://github.com/pydantic/pydantic-ai/tree/v2.54.0/pydantic_ai_harness",
 )
 
 STEP_STORE_METHODS = {
