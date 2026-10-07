@@ -1020,11 +1020,9 @@ class SourceBroker:
             return await self._historical_gazetteer(policy, query)
         try:
             if query.source_id == "gbif":
+                from .taxonomy import gbif_query_params
                 parsed = scientific_name(query.query_text)
-                if parsed is None or not parsed.genus:
-                    raise ValueError("Scientific name cannot be parsed at stated rank")
-                params = {"scientificName": parsed.query, "taxonRank": parsed.rank,
-                          "kingdom": "Animalia", "class": "Insecta", "checklistKey": COL_XR, "verbose": "true"}
+                params = gbif_query_params(request, query)
                 url = "https://api.gbif.org/v2/species/match?" + urlencode(params)
             elif query.source_id == "global_names_verifier":
                 from urllib.parse import quote
@@ -1065,7 +1063,7 @@ class SourceBroker:
                 elif synonym or (diagnostics.get("matchType") == "EXACT" and row_one(parsed, usage, classification, alternatives)):
                     status = LookupStatus.SUCCESS
                 chosen = accepted if synonym else usage
-                if isinstance(chosen, dict):
+                if status != LookupStatus.NO_MATCH and isinstance(chosen, dict):
                     candidates.append({"field_key": str(query.field_key), "value": chosen.get("name"),
                                        "authority_id": f"{COL_XR}:{chosen.get('key')}", "rank": chosen.get("rank"),
                                        "authority_role": policy.authority_role, "input_literal": query.query_text,

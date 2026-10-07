@@ -58,6 +58,9 @@ GEOGRAPHY_RESEARCH_PROMPT_VERSION = "geography-research-loop-v9-2026-10-07"
 # Taxonomy v6 excludes genus-free morphocodes from the lookup-first instruction;
 # the declared missing-policy path and historical v5 bytes stay intact.
 TAXONOMY_QUERY_PROMPT_VERSION = "taxonomy-scientific-name-v6-2026-10-06"
+# Taxonomy v7 preserves v6 bytes and adds captured negative reconciliation,
+# source breadth and exact-query recovery. Frozen v6 jobs retain their pin.
+TAXONOMY_RECONCILIATION_PROMPT_VERSION = "taxonomy-reader-reconciliation-v7-2026-10-07"
 # Stated elevation is parser-qualified from exact transcript spans, including
 # ordinary prose, ranges and grouped numbers. v9 requires genuine native
 # dependencies for narrowed requests; frozen v6/v7/v8 jobs retain their exact pins.
@@ -71,7 +74,7 @@ TEMPORAL_CONTEXT_PROMPT_VERSION = "temporal-collecting-context-v7-2026-10-07"
 # changing any other role's text, digest or pin. Superseded files stay on disk
 # for audit.
 ROLE_PROMPTS = MappingProxyType({
-    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v6.txt", TAXONOMY_QUERY_PROMPT_VERSION),
+    SpecialistRole.TAXONOMY: ("specimen_taxonomy-v7.txt", TAXONOMY_RECONCILIATION_PROMPT_VERSION),
     SpecialistRole.GEOGRAPHY: ("specimen_geography-v9.txt", GEOGRAPHY_RESEARCH_PROMPT_VERSION),
     SpecialistRole.TEMPORAL: ("specimen_temporal-v7.txt", TEMPORAL_CONTEXT_PROMPT_VERSION),
     SpecialistRole.MEASUREMENT: ("specimen_measurement-v9.txt", MEASUREMENT_EVIDENCE_PROMPT_VERSION),

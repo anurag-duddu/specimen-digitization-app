@@ -17550,3 +17550,145 @@ Failed approaches corrected: initial sandbox git-ref/cache writes needed routine
 Unresolved integration: production needs provider/pricing registration, verified catalog load/write admission and composer forwarding of optional shared capabilities. Accepted collecting-date/collector context is a tested host interface over current accepted proofs/dependency pins, but production initial requests do not yet populate those cross-domain pins; host proof loading and the same verified context in harness/source broker remain required. Generic TGN/Wikidata admin-type mapping and non-USA county contracts are unqualified. Active/unrecorded process crashes and unresolved effects still require ownership/effect reconciliation. Whole-output sibling salvage in the common engine was not redesigned. Exact shared-file hunks and interfaces are documented in `GEOGRAPHY_HANDOFF.md`; no shared scheduler/writer/journal/CI/release redesign occurred.
 
 Dosu: no read/write knowledge MCP tools were listed. CLI v0.66.1 showed expired authentication and deployment inspection could not save refreshed credentials under the restricted config. The coordinator had already reported exhausted monthly credits, so no knowledge query retry, billing/auth change, knowledge write or receipt finalization occurred. No paid processing, production mutation, budget/effect hold clearing, owned runner cancellation, main merge or other-chat message was performed.
+
+### 2026-10-07 — Taxonomy harness: captured reader negatives and sufficient-evidence stops
+
+Task `taxonomy-harness-2026-10-07` (Taxonomy harness chat; delegated from
+`01a117fb-05bc-77d1-ab59-37333dc642db`), branch `codex/harness-taxonomy`, isolated
+worktree `/Users/anuragduddu/.codex/worktrees/2e67/specimen-digitization-app`.
+Clean detached baseline and remote main verified at
+`7890de551c75fe3b06836c7fb224f85dd2a2423a`. No original dirty checkout was changed.
+Local commit follows this entry and is reported in the chat; PR/push/full canonical
+verification/merge/release/live scientific acceptance: **Not confirmed**. Lane P
+retains integration, reviewed release and paid canary authority.
+
+Concrete source changes: new taxonomy-only `taxonomy.py`; narrow taxon assertion
+and admission hunks in `evidence.py`; GBIF parameter/no-match candidate hunks in
+`sources.py`; exact taxonomy-query outage identity and taxonomy stop feedback in
+`agents.py`; taxonomy v7 prompt/mapping; acceptance v4 composite fingerprint of
+`evidence.py` plus `taxonomy.py`. Other role prompt bytes and frozen taxonomy v1-v6
+bytes remain unchanged. Historical v1-v3 proof pairs remain readable, while a new
+historical-tagged capture and a frozen mismatched acceptance boundary remain
+refused. No runtime/journal/scheduler/contracts, source capture protocol, queue,
+human lock or production configuration redesign.
+
+Durable findings and corrections:
+- G20 needs positive *and negative* captured authority evidence. Exact successful
+  GBIF reconciliation for every alternative incorrectly rejected a confirmed
+  reader beside an honest no-match. Negative admission now checks qualified
+  searched coverage, exact query identity, scope/field/source, completed effect,
+  semantic payload/digest and evidence IDs. Missing, altered, ambiguous, failed,
+  refused, held or different-authority evidence cannot waive an assertion.
+- Reader alternatives must share an aligned printed assertion. Grouping only by
+  label incorrectly discarded two taxa printed by the same reader. Every
+  independent assertion/label needs a positive settlement; same-reader multiple
+  names also cannot be discarded through G20. Existing assembly, producer,
+  original verbatim and alignment checks remain.
+- Useful order/family context is explicit and unanimous whole-line label evidence
+  for the queried name. A rank substring inside locality is not taxonomy.
+  Species-to-genus truncation, contradictory/unreadable context and unrelated
+  label context remain excluded. GBIF rank/status/synonym/homonym rules are
+  unchanged; GNV/COL disagreement does not veto GBIF and BugGuide stays unused.
+- A named unresolved stop cannot skip explicit asserted names, sendable same-line
+  reader alternatives or supporting-source research; it cannot discard a fully
+  admissible GBIF settlement. The same validator checks prospective settlement
+  feedback; no model guess, checkpoint or side-effect is produced by that check.
+  Genus-free sp.30 still makes no query; Danaus sp.30 remains a genus query.
+- Taxonomy completion recovers only the exact failed query, not a different
+  name's lookup from the same source. A cold completed capture replay resends
+  nothing. An interrupted GBIF send retains its unknown hold and budget;
+  correction/restart cannot bypass it.
+- Helper admission bytes must be included in v4 acceptance fingerprinting.
+  Hashing evidence.py alone allowed decisive taxonomy helper drift. V4 hashes
+  an ordered pair of component digests with a version tag. The integrator must
+  recompute the constant and corresponding Literal after composing changes from
+  another lane to either component. This lane does not upgrade old job pins.
+
+Actual verification using this lane's frozen offline environment (Pydantic AI
+2.51.0, harness 0.36.0), no live HTTP/model/provider/connector:
+- Initial G20 regression failed at the expected each-independent-assertion
+  validator boundary before the fix.
+- Final aggregate: **357 passed, 2 existing warnings, 78.62s**, exit 0. Exact
+  command: `.venv/bin/python -m pytest -q` followed by these paths, with
+  `--tb=short --maxfail=5`:
+  `tests/research_harness/test_taxonomy_acceptance_boundary.py`,
+  `test_taxonomy_authority_outcomes.py`, `test_taxonomy_reader_negatives.py`,
+  `test_taxonomy_research_loop.py`, `test_taxonomy_source_context.py`,
+  `test_taxonomy_prompt_v6.py`, `test_taxonomy_prompt_v7.py`,
+  `test_taxon_input_reconciliation.py`, `test_source_argument_preflight.py`,
+  `test_source_capture_v2.py`, `test_prompt_handover_v5.py`,
+  `test_measurement_prompt_v7.py`, `test_unqualified_label_policy.py`,
+  `test_specialist_feedback.py`, `test_preserved_human_outcomes.py`,
+  `test_taxonomy_automatic_publication.py` (all names under
+  `tests/research_harness/`). Log `/private/tmp/taxonomy-harness-focused-tests.log`.
+- Additional new interruption case: `.venv/bin/python -m pytest -q
+  tests/research_harness/test_taxonomy_recovery.py --tb=short --maxfail=2`:
+  **1 passed, 0.15s**, exit 0. Total final focused cases: 358.
+- `git diff --check` and Python compileall of taxonomy.py passed.
+- Composed offline automatic publication case uses real workflow/capture/SQLite/
+  native publisher, scripted FunctionModels, synthetic source replies and an
+  in-memory Data Connect connector. It automatically publishes the taxon after
+  positive reader plus captured alternate GBIF NONE, preserves both independent
+  raw native rows and immutable negative body/query/original input, requests the
+  alternate once, and finalizes Needs Human only for existing D/T/S. No specimen
+  Save is invoked. Negative evidence is retained in the accepted run/capture; it
+  is not falsely claimed as a separate linked native field-evidence row.
+
+Failed approaches: per-label negative grouping was too broad; rank substrings
+were too permissive; a helper outside the validator fingerprint was incomplete;
+breadth-only stops could discard an available settlement. Independent review
+identified these and focused regressions cover their repairs. Initial provider
+fixture keys contained hyphens rejected by the existing documented schema;
+fixtures were corrected to explicit alphanumeric FIXTURE identifiers. Rapid
+same-size hash edits briefly reused stale local bytecode; removed only generated
+worktree research-harness bytecode and reran the final qualification. No guard,
+source schema or acceptance boundary was weakened to make tests pass.
+
+Shared prerequisites remain **unconnected**, not silently mocked as complete:
+browser/source admission and explicit scoped browser models; isolated code/shell
+execution; reviewed tenant/profile/domain procedure memory; model message-history
+restoration; invalid sibling-output salvage; and general cross-label settled
+ dependency population. Installed pinned capability APIs were inspected, but no
+optional browser/Monty dependency or new shared runtime was installed. Details,
+exact shared-file hunks and taxonomy interface needs are in
+`docs/execution/TAXONOMY_HARNESS_PLAN_2026-10-07.md`. Unkeyed ambiguous field
+assignment still depends on organiser/reader assertion qualification. Full stock
+verify and independent exact PR-head review remain the integrator's next gate.
+
+Dosu: no knowledge MCP read/write/finalize tools were listed. CLI 0.66.1 reported
+expired authentication and inability to save refreshed credentials; coordinator
+monthly credit exhaustion was not retried. No billing/auth/deployment mutation,
+knowledge receipt or finalization. No production, paid processing, holds/budget
+reset, human override, runner cancellation, original-checkout switch, push or merge.
+
+
+### 2026-10-07 — Taxonomy harness final qualification correction
+
+Append-only follow-up to "Taxonomy harness: captured reader negatives and
+sufficient-evidence stops" above. Actual chat ID confirmed by the app:
+`01a11840-851e-7f33-a161-dc568b5f2473`; branch/worktree and baseline unchanged.
+Final independent source review found an availability edge in the unused
+`north_american` flag. GBIF/GNV/COL ignore it in their URLs, but the first draft
+matched only false query digests. Domain query binding now recognizes both exact
+captured variants without changing the original query/envelope, and still never
+infers a specimen join into a negative. Added positive-conflict protection: a
+second accepted GBIF identity for the same assertion cannot be ignored beside the
+chosen success. Three focused regressions cover these final changes.
+
+Final postimage qualification: **361 passed, 2 existing warnings, 108.72s**, exit 0.
+Command is the same 16-path aggregate recorded above with the additional
+`tests/research_harness/test_taxonomy_recovery.py`, still
+`.venv/bin/python -m pytest -q ... --tb=short --maxfail=5`.
+Full log `/private/tmp/taxonomy-harness-final-tests.log`. Includes the composed
+no-Save publication, exact negative capture, preserved readers, human-lock
+regressions, cold replay and interrupted GBIF hold. Earlier 357+1 counts remain
+accurate predecessor evidence, not final-head qualification. Final v4 composite
+validator fingerprint:
+`71b283fccd982327b55d749f2659e7cc1418f121ff887451ccf58d972872c9df`.
+`git diff --check`, staged diff check, Python compileall and installed composite
+fingerprint check passed. Source remains offline/local qualification only;
+full canonical verify/push/PR/production/scientific acceptance and shared browser/
+code/memory/model-history/sibling-salvage connection remain **Not confirmed**.
+Local reviewable commit follows; its SHA is reported in the chat. Lane P retains
+all protected integration and release authority. No new Dosu receipt or paid,
+production, hold-clearing or human-override action.

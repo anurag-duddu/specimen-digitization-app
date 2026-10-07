@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from specimen_digitization.application.domain import FieldValue, LookupStatus, ValueState
 from specimen_digitization.research_harness.accepted_output import (
     AcceptedCheckpointProofV1, AcceptedOutputProofV1, HISTORICAL_VALIDATOR_SOURCE_SHA256,
-    PREVIOUS_VALIDATOR_SOURCE_SHA256, VALIDATOR_SOURCE_SHA256, VALIDATOR_VERSION, read_accepted_checkpoint_proof,
+    PREVIOUS_VALIDATOR_SOURCE_SHA256, V3_VALIDATOR_SOURCE_SHA256, VALIDATOR_SOURCE_SHA256, VALIDATOR_VERSION, read_accepted_checkpoint_proof,
     validation_boundary_pins,
 )
 from specimen_digitization.research_harness.contracts import (
@@ -101,6 +101,7 @@ def test_zero_assemblies_cannot_waive_competing_decided_taxon():
     with pytest.raises(EvidenceError, match='each independent taxon assertion'):
         validate_resolution(request, resolution, (result,))
     for version, sha in ((VALIDATOR_VERSION, VALIDATOR_SOURCE_SHA256),
+        ('validate_resolution/v3', V3_VALIDATOR_SOURCE_SHA256),
         ('validate_resolution/v2', PREVIOUS_VALIDATOR_SOURCE_SHA256),
         ('validate_resolution/v1', HISTORICAL_VALIDATOR_SOURCE_SHA256)):
         with pytest.raises(ValidationError, match='each independent taxon assertion'):
@@ -374,6 +375,7 @@ def test_only_exact_known_validator_pairs_decode(metadata):
 
 
 @pytest.mark.parametrize(('version', 'source_sha'), (
+    ('validate_resolution/v3', V3_VALIDATOR_SOURCE_SHA256),
     ('validate_resolution/v1', HISTORICAL_VALIDATOR_SOURCE_SHA256),
     ('validate_resolution/v2', PREVIOUS_VALIDATOR_SOURCE_SHA256),
 ))
@@ -414,6 +416,7 @@ def test_exact_historical_proof_read_joins_old_pins_and_preserves_body(tmp_path,
 
 
 @pytest.mark.parametrize(('version', 'source_sha'), (
+    ('validate_resolution/v3', V3_VALIDATOR_SOURCE_SHA256),
     ('validate_resolution/v1', HISTORICAL_VALIDATOR_SOURCE_SHA256),
     ('validate_resolution/v2', PREVIOUS_VALIDATOR_SOURCE_SHA256),
 ))

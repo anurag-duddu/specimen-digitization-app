@@ -18,7 +18,8 @@ from specimen_digitization.research_harness.contracts import (
     ROLE_FIELDS, FieldKey, PromptPin, SpecialistRole,
 )
 from specimen_digitization.research_harness.prompts import (
-    HANDOVER_PROMPT_VERSION, ROLE_PROMPTS, TAXONOMY_QUERY_PROMPT_VERSION, resolve_prompt,
+    HANDOVER_PROMPT_VERSION, ROLE_PROMPTS, TAXONOMY_QUERY_PROMPT_VERSION,
+    TAXONOMY_RECONCILIATION_PROMPT_VERSION, resolve_prompt,
 )
 
 from test_source_capture_v2 import make_capture_rig
@@ -56,10 +57,11 @@ def test_v6_appends_to_frozen_v5_and_pins_the_declared_no_name_abstention():
     taxon = next(row for row in profile.fields if row.field_key == FieldKey.TAXON)
     assert taxon.missing_policy == UNQUALIFIED_LABEL_POLICY
     assert ROLE_PROMPTS[SpecialistRole.TAXONOMY] == (
-        "specimen_taxonomy-v6.txt", TAXONOMY_QUERY_PROMPT_VERSION)
+        "specimen_taxonomy-v7.txt", TAXONOMY_RECONCILIATION_PROMPT_VERSION)
     current = current_taxonomy_pin()
-    assert current.version == TAXONOMY_QUERY_PROMPT_VERSION == "taxonomy-scientific-name-v6-2026-10-06"
-    assert current.digest == "0779190ab08f2fedc0e3e52c3c57e62ada71f2282289922ae140c0b6002eb53c"  # pragma: allowlist secret
+    assert TAXONOMY_QUERY_PROMPT_VERSION == "taxonomy-scientific-name-v6-2026-10-06"
+    assert current.version == TAXONOMY_RECONCILIATION_PROMPT_VERSION
+    assert current.digest == "ba33889e495c286e089b517366117c5167e788283d8a44eaae02ca14b3a6fc72"  # pragma: allowlist secret
 
 
 def test_frozen_v5_request_uses_its_original_prompt_after_new_jobs_move_to_v6(tmp_path):

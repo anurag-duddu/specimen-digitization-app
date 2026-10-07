@@ -18,7 +18,9 @@ import pytest
 from specimen_digitization.application.collection_profiles import published_registry
 from specimen_digitization.research_harness import committed_pins, evidence, initial_requests
 from specimen_digitization.research_harness.agents import OUTAGE_GUARDED_FIELDS, SOURCE_OUTAGES, masked_outages
-from specimen_digitization.research_harness.accepted_output import VALIDATOR_SOURCE_SHA256
+from specimen_digitization.research_harness.accepted_output import (
+    VALIDATOR_SOURCE_SHA256, installed_validator_source_sha256,
+)
 from specimen_digitization.research_harness.canonical_materialization_v2 import BLOCKED, TERMINAL, _policy_held
 from specimen_digitization.research_harness.committed_pins import build_committed_pins
 from specimen_digitization.research_harness.contracts import (
@@ -78,8 +80,9 @@ def test_evidence_py_declares_verbatim_dts_alone_and_its_current_validator_pin_i
     default = insects_profile(ORG, COLLECTION)
     assert declared(default) == {FieldKey.VERBATIM_DTS: "verbatim_dts_definition_examples"}
     source = Path(evidence.__file__).read_bytes()
-    assert hashlib.sha256(source).hexdigest() == VALIDATOR_SOURCE_SHA256 == EVIDENCE_PY_SHA256
-    assert pins()["sources"]["acceptance_boundary"]["validator_source_sha256"] == EVIDENCE_PY_SHA256
+    assert hashlib.sha256(source).hexdigest() == EVIDENCE_PY_SHA256
+    assert installed_validator_source_sha256(Path(evidence.__file__).parent) == VALIDATOR_SOURCE_SHA256
+    assert pins()["sources"]["acceptance_boundary"]["validator_source_sha256"] == VALIDATOR_SOURCE_SHA256
 
 
 def test_the_job_pins_carry_the_profile_and_every_prompt_pin_its_digest():

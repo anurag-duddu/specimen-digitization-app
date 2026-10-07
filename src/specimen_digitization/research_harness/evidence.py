@@ -547,11 +547,14 @@ def _taxon_assertions(request: SpecialistRequest, resolution: FieldResolution):
         return complete(item.literal)
 
     fragments = {item.id:item for item in request.fragments}
-    assertions, anchors, qualified, assembled = set(), [], {}, []
+    assertions, anchors, qualified, assembled, by_assertion = set(), [], {}, [], {}
+    def align(text, item):
+        by_assertion.setdefault((item.region_id, item.order), {}).setdefault(item.observation_id, set()).add(text)
     def add(text, items):
         assertions.add(text)
         for item in items:
             anchors.append(item)
+            align(text, item)
             qualified.setdefault((item.region_id, item.observation_id, item.order), set()).add(text)
     for assembly in request.assemblies:
         if assembly.field_key != FieldKey.TAXON:
@@ -600,16 +603,18 @@ def _taxon_assertions(request: SpecialistRequest, resolution: FieldResolution):
         # Only the complete assertion actually queried supplies its anchor.
         if not producer:
             raise EvidenceError("G32 taxon deciding query lacks an exact declared reading")
-        return assertions, anchors, producer, name_fragment, complete, qualified
+        return assertions, anchors, producer, name_fragment, complete, qualified, by_assertion
     if not anchors:
         raise EvidenceError("G32 taxon deciding query lacks an explicit field assertion")
-    return assertions, anchors, [], name_fragment, complete, qualified
+    return assertions, anchors, [], name_fragment, complete, qualified, by_assertion
 
 
-def _validate_taxon_inputs(request, resolution, matching):
+def _validate_taxon_inputs(request, resolution, matching, tool_results):
     deciding = [(result, candidate) for result, candidate in matching
         if result.coverage.source_id == "gbif" and candidate.get("authority_role") == "decides"]
-    assertions, anchors, producer, name_fragment, complete, qualified = _taxon_assertions(request, resolution)
+    assertions, anchors, producer, name_fragment, complete, qualified, by_assertion = _taxon_assertions(request, resolution)
+    def align(text, region, order, observation):
+        by_assertion.setdefault((region, order), {}).setdefault(observation, set()).add(text)
     queries = {candidate.get("input_literal") for _, candidate in deciding}
     if producer:
         producer = [(text, leads) for text, leads in producer if text in queries or complete(text) in queries]
@@ -617,6 +622,9 @@ def _validate_taxon_inputs(request, resolution, matching):
             raise EvidenceError("G32 taxon deciding query differs from its declared reading")
         assertions.update(text for text, _ in producer)
         anchors.extend(item for _, leads in producer for item in leads)
+        for text, leads in producer:
+            for item in leads:
+                align(text, item.region_id, item.order, item.observation_id)
     for anchor in anchors:
         # The factory's line ordinal is relative to its immutable observation.
         # Explicit spans still name the containing line; never search unrelated
@@ -626,6 +634,8 @@ def _validate_taxon_inputs(request, resolution, matching):
             explicit = qualified.get((anchor.region_id, observation, anchor.order))
             if explicit:
                 assertions.update(explicit)
+                for text in explicit:
+                    align(text, anchor.region_id, anchor.order, observation)
                 continue
             counterparts = [item for item in request.fragments if
                 item.region_id == anchor.region_id and item.observation_id == observation
@@ -653,11 +663,41 @@ def _validate_taxon_inputs(request, resolution, matching):
                 if context(anchor.observation_id) != context(observation):
                     raise EvidenceError("G32 taxon reader alignment is not independently qualified")
             assertions.add(counterparts[0].literal)
+            align(counterparts[0].literal, anchor.region_id, anchor.order, observation)
     qualified_queries = {text for literal in assertions for text in (literal, complete(literal)) if text}
     if not queries or not queries <= qualified_queries:
         raise EvidenceError("G32 taxon deciding query is not an exact grounded assertion")
+    positively_settled = {literal for literal in assertions if any(
+        candidate.get("input_literal") in {literal, complete(literal)} for _, candidate in deciding)}
+    # G20 permits one confirmed reader and another captured no-match. G32
+    # still requires a positive settlement for each aligned printed assertion.
+    # Two names written by the same reader are independent assertions, even
+    # on one label/line; they cannot be discarded as reader alternatives.
+    for readings in by_assertion.values():
+        names = set().union(*readings.values())
+        if (not names & positively_settled or any(len(literals) > 1
+            and not literals <= positively_settled for literals in readings.values())):
+            raise EvidenceError("G32 each independent taxon assertion needs its own deciding source settlement")
+    from .taxonomy import captured_gbif_no_match, taxonomy_query_digests
     for literal in assertions:
-        if not any(candidate.get("input_literal") in {literal, complete(literal)} for _, candidate in deciding):
+        if any(result.coverage.source_id == "gbif" and result.coverage.field_key == FieldKey.TAXON
+            and result.status == LookupStatus.SUCCESS
+            and any(json.loads(candidate).get("input_literal") in {literal, complete(literal)}
+                and not _candidate_matches(resolution, json.loads(candidate)) for candidate in result.candidate_json)
+            for result in tool_results):
+            raise EvidenceError("G32 each independent taxon assertion needs its own deciding source settlement")
+    for literal in assertions - positively_settled:
+        # A competing accepted identity or tie cannot be erased by retaining
+        # another negative response beside it. It remains structured review.
+        competing = any(result.coverage.source_id == "gbif"
+            and result.coverage.field_key == FieldKey.TAXON
+            and result.status in {LookupStatus.SUCCESS, LookupStatus.AMBIGUOUS}
+            and (any(json.loads(candidate).get("input_literal") in {literal, complete(literal)}
+                     for candidate in result.candidate_json)
+                 or result.coverage.query_digest in taxonomy_query_digests("gbif",
+                     {query for query in (literal, complete(literal)) if query}))
+            for result in tool_results)
+        if competing or not any(captured_gbif_no_match(request, result, literal) for result in tool_results):
             raise EvidenceError("G32 each independent taxon assertion needs its own deciding source settlement")
 
 
@@ -784,7 +824,7 @@ def validate_resolution(request: SpecialistRequest, resolution: FieldResolution,
         ):
             raise EvidenceError("G23 taxonomy requires qualified GBIF deciding assertion")
         if resolution.field_key == FieldKey.TAXON:
-            _validate_taxon_inputs(request, resolution, matching)
+            _validate_taxon_inputs(request, resolution, matching, tool_results)
         if resolution.field_key == FieldKey.DATE_IDENTIFIED and not any(
             result.coverage.exact_join_proven and candidate.get("event_kind") == "determination"
             and candidate.get("precision") == resolution.value.precision

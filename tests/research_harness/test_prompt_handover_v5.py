@@ -1,7 +1,7 @@
 """The v5 role prompts: the hand-over block (Lane P W5, 2026-10-04).
 
 Each v5 file is its v4 file (#252: the missing-policy block) byte for byte followed by one block. The
-taxonomy pins v6; geography pins v8, temporal pins v7 and measurement pins v9; parties and collection retain v5. The v5 block
+taxonomy pins v7; geography pins v8, temporal pins v7 and measurement pins v9; parties and collection retain v5. The v5 block
 tells a specialist what ``SpecialistRequest.organiser_candidates`` are (the ordinary extractor's stored values,
 each located by trusted code or marked ungrounded), that a candidate is a proposal to verify against the raw
 readings and never evidence, how a grounded candidate of the five literal fields resolves from its accepted
@@ -28,7 +28,7 @@ from specimen_digitization.research_harness.contracts import (
 )
 from specimen_digitization.research_harness.initial_requests import ASSEMBLY_FIELDS
 from specimen_digitization.research_harness.prompts import (
-    GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION, TAXONOMY_QUERY_PROMPT_VERSION, HANDOVER_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION,
+    GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION, TAXONOMY_RECONCILIATION_PROMPT_VERSION, HANDOVER_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION,
     MEASUREMENT_EVIDENCE_PROMPT_VERSION, TEMPORAL_CONTEXT_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 
@@ -65,7 +65,7 @@ V7_ROLE_DIGESTS = {
 GEOGRAPHY_V8_DIGEST = "30f5b580a78c53207d8f119f7b4afeaaed815c4b4ba79d8f426542f3adc09bba"  # pragma: allowlist secret
 MEASUREMENT_V8_DIGEST = "06310d03a1419ac509d8c23b1c68340b8213ec008d67223dca1840309e64e7f7"  # pragma: allowlist secret
 MEASUREMENT_V9_DIGEST = "65e3c30aeac9d55d165eb147bf36d88c208400238bb206d4361c1f348dc812e7"  # pragma: allowlist secret
-TAXONOMY_V6_DIGEST = "0779190ab08f2fedc0e3e52c3c57e62ada71f2282289922ae140c0b6002eb53c"  # pragma: allowlist secret
+TAXONOMY_V7_DIGEST = "ba33889e495c286e089b517366117c5167e788283d8a44eaae02ca14b3a6fc72"  # pragma: allowlist secret
 # The roles that carry #257's producer block, and the ones whose own fields can get an assembly from the hand-over.
 CITING_ROLES = (SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY, SpecialistRole.PARTIES, SpecialistRole.COLLECTION)
 ASSEMBLY_ROLES = tuple(role for role in SpecialistRole if ASSEMBLY_FIELDS & set(ROLE_FIELDS[role]))
@@ -101,15 +101,15 @@ def block(role):
 
 
 # ---------------------------------------------------------------------------- the table, the files, the pins
-def test_table_pins_v5_taxonomy_v6_geography_v8_temporal_v7_and_measurement_v9():
+def test_table_pins_v5_taxonomy_v7_geography_v8_temporal_v7_and_measurement_v9():
     assert HANDOVER_PROMPT_VERSION == "specialists-handover-v5-2026-10-04"
     assert HANDOVER_PROMPT_VERSION != MISSING_POLICY_PROMPT_VERSION
     assert QUALIFIED_PROMPT_VERSION == "specialists-qualified-event-v6-2026-10-04"
-    assert dict(ROLE_PROMPTS) == {role: (f"{role.value}-v{8 if role == SpecialistRole.GEOGRAPHY else 9 if role == SpecialistRole.MEASUREMENT else 7 if role in V7_ROLE_DIGESTS else 6 if role in V6_ROLE_DIGESTS or role == SpecialistRole.TAXONOMY else 5}.txt",
+    assert dict(ROLE_PROMPTS) == {role: (f"{role.value}-v{8 if role == SpecialistRole.GEOGRAPHY else 9 if role == SpecialistRole.MEASUREMENT else 7 if role in V7_ROLE_DIGESTS or role == SpecialistRole.TAXONOMY else 6 if role in V6_ROLE_DIGESTS else 5}.txt",
         GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION if role == SpecialistRole.GEOGRAPHY else
         MEASUREMENT_EVIDENCE_PROMPT_VERSION if role == SpecialistRole.MEASUREMENT else
         TEMPORAL_CONTEXT_PROMPT_VERSION if role == SpecialistRole.TEMPORAL else
-        TAXONOMY_QUERY_PROMPT_VERSION if role == SpecialistRole.TAXONOMY else
+        TAXONOMY_RECONCILIATION_PROMPT_VERSION if role == SpecialistRole.TAXONOMY else
         QUALIFIED_PROMPT_VERSION if role in V6_ROLE_DIGESTS else HANDOVER_PROMPT_VERSION)
         for role in SpecialistRole}
 
@@ -129,7 +129,7 @@ def test_each_v5_file_remains_immutable_and_each_active_role_resolves_to_its_pin
     assert prompt.digest == hashlib.sha256(expected.encode()).hexdigest()
     assert prompt.digest == (GEOGRAPHY_V8_DIGEST if role == SpecialistRole.GEOGRAPHY else
         MEASUREMENT_V9_DIGEST if role == SpecialistRole.MEASUREMENT else
-        TAXONOMY_V6_DIGEST if role == SpecialistRole.TAXONOMY else
+        TAXONOMY_V7_DIGEST if role == SpecialistRole.TAXONOMY else
         V7_ROLE_DIGESTS.get(role, V6_ROLE_DIGESTS.get(role, V5_ROLE_DIGESTS[role])))
     v4 = (ROOT / f"{role.value}-v4.txt").read_text(encoding="utf-8")
     assert v5.startswith(v4) and v5 != v4
@@ -159,7 +159,7 @@ def test_the_committed_pins_carry_the_active_versions_and_digests():
         str(role): (GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION, GEOGRAPHY_V8_DIGEST) if role == SpecialistRole.GEOGRAPHY else
             (MEASUREMENT_EVIDENCE_PROMPT_VERSION, MEASUREMENT_V9_DIGEST) if role == SpecialistRole.MEASUREMENT else
             (TEMPORAL_CONTEXT_PROMPT_VERSION, V7_ROLE_DIGESTS[role]) if role == SpecialistRole.TEMPORAL else
-            (TAXONOMY_QUERY_PROMPT_VERSION, TAXONOMY_V6_DIGEST) if role == SpecialistRole.TAXONOMY else
+            (TAXONOMY_RECONCILIATION_PROMPT_VERSION, TAXONOMY_V7_DIGEST) if role == SpecialistRole.TAXONOMY else
             (QUALIFIED_PROMPT_VERSION, V6_ROLE_DIGESTS[role]) if role in V6_ROLE_DIGESTS else
             (HANDOVER_PROMPT_VERSION, V5_ROLE_DIGESTS[role]) for role in SpecialistRole}
 

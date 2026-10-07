@@ -48,10 +48,13 @@ SOURCE_OUTAGES = OPERATIONAL - {LookupStatus.POLICY}
 def masked_outages(resolutions: Sequence[FieldResolution], results: Sequence[SourceResult]) -> tuple[FieldKey, ...]:
     """Guarded fields answered waiting_policy though a source's last lookup of the field failed.
 
-    A later completed answer (success, no_match, ambiguous) from the same source clears its failure.
+    Taxonomy completion clears only the same query's failure. Other domains
+    retain their existing source/field retry semantics.
     It cannot see a model that never called the source."""
-    last = {(item.coverage.source_id, item.coverage.field_key): item.status for item in results}
-    failed = {key for (_, key), status in last.items() if status in SOURCE_OUTAGES}
+    last = {(item.coverage.source_id, item.coverage.field_key,
+             item.coverage.query_digest if item.coverage.field_key == FieldKey.TAXON else None): item.status
+            for item in results}
+    failed = {key for (_, key, _), status in last.items() if status in SOURCE_OUTAGES}
     return tuple(item.field_key for item in resolutions if item.work_state == WorkState.WAITING_POLICY
                  and item.field_key in OUTAGE_GUARDED_FIELDS and item.field_key in failed)
 
@@ -645,6 +648,13 @@ class SpecialistHarness:
                 raise ModelRetry("specialist_output_hides_a_failed_lookup_behind_waiting_policy: a lookup for "
                                  + ", ".join(key.value for key in masked)
                                  + " failed; return waiting_source for it, which blocks the record")
+            if request.role == SpecialistRole.TAXONOMY and any(
+                item.work_state == WorkState.WAITING_POLICY for item in output.resolutions
+            ):
+                from .taxonomy import taxonomy_stop_defect
+                defect = taxonomy_stop_defect(request, results)
+                if defect:
+                    raise ModelRetry(defect)
             return output
 
     async def run_specialist(self, role: SpecialistRole, *,
