@@ -528,9 +528,11 @@ def test_a_refused_publication_logs_its_cause_and_the_drain_records_the_hold(rig
     # The cause is in the log: the class, the code, the file and line that raised
     # it, the field, and the record's last six characters. The connector's own
     # refusal text, the specimen id and the label are not.
-    lines = {record.name.rpartition(".")[2]: record.getMessage() for record in caplog.records
-        if record.levelno == logging.WARNING}
-    assert set(lines) == {"native_worker", "lane_worker"}
+    warnings = [record for record in caplog.records if record.levelno == logging.WARNING]
+    lines = {record.name.rpartition(".")[2]: record.getMessage() for record in warnings}
+    assert len(warnings) == 3 and set(lines) == {"persistence", "native_worker", "lane_worker"}
+    assert lines["persistence"] == ("SQL Connect transport operation=PublishCanonicalResearchV2 "
+        "phase=response_validation attempt=1")
     short = rig.specimen_id[-6:]
     assert lines["native_worker"] == ("native publication failed: PublicationUnavailable "
         f"code=native_v2_commit_outcome_unknown field=date_identified (record ...{short})")
