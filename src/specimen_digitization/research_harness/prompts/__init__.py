@@ -55,6 +55,9 @@ TAXONOMY_QUERY_PROMPT_VERSION = "taxonomy-scientific-name-v6-2026-10-06"
 # ordinary prose, ranges and grouped numbers. v8 also respects narrowed requests;
 # frozen v6/v7 jobs keep their exact text and pins.
 MEASUREMENT_EVIDENCE_PROMPT_VERSION = "measurement-evidence-v8-2026-10-07"
+# Complete collecting dates may be grounded by same-label locality and collector
+# evidence. The coherent v7 instructions replace only the active temporal pin.
+TEMPORAL_CONTEXT_PROMPT_VERSION = "temporal-collecting-context-v7-2026-10-07"
 
 # Role -> (role file, pin version). Each role's text is common-v1.txt, the role
 # file and its owned-fields line. A role moves to a new file and version without
@@ -63,7 +66,7 @@ MEASUREMENT_EVIDENCE_PROMPT_VERSION = "measurement-evidence-v8-2026-10-07"
 ROLE_PROMPTS = MappingProxyType({
     SpecialistRole.TAXONOMY: ("specimen_taxonomy-v6.txt", TAXONOMY_QUERY_PROMPT_VERSION),
     SpecialistRole.GEOGRAPHY: ("specimen_geography-v7.txt", GEOGRAPHY_HISTORY_PROMPT_VERSION),
-    SpecialistRole.TEMPORAL: ("specimen_temporal-v6.txt", QUALIFIED_PROMPT_VERSION),
+    SpecialistRole.TEMPORAL: ("specimen_temporal-v7.txt", TEMPORAL_CONTEXT_PROMPT_VERSION),
     SpecialistRole.MEASUREMENT: ("specimen_measurement-v8.txt", MEASUREMENT_EVIDENCE_PROMPT_VERSION),
     SpecialistRole.PARTIES: ("specimen_parties-v5.txt", HANDOVER_PROMPT_VERSION),
     SpecialistRole.COLLECTION: ("specimen_collection-v5.txt", HANDOVER_PROMPT_VERSION),

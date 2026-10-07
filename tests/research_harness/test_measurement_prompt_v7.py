@@ -12,7 +12,7 @@ from specimen_digitization.research_harness.contracts import (
 from specimen_digitization.research_harness.prompts import (
     GEOGRAPHY_HISTORY_PROMPT_VERSION, HANDOVER_PROMPT_VERSION,
     QUALIFIED_PROMPT_VERSION, ROLE_PROMPTS,
-    TAXONOMY_QUERY_PROMPT_VERSION, resolve_prompt,
+    TAXONOMY_QUERY_PROMPT_VERSION, TEMPORAL_CONTEXT_PROMPT_VERSION, resolve_prompt,
 )
 
 ROOT = Path(prompts.__file__).parent
@@ -74,7 +74,7 @@ def test_measurement_v7_change_is_scoped_to_its_role():
     assert {role: ROLE_PROMPTS[role] for role in SpecialistRole if role != SpecialistRole.MEASUREMENT} == {
         SpecialistRole.TAXONOMY: ("specimen_taxonomy-v6.txt", TAXONOMY_QUERY_PROMPT_VERSION),
         SpecialistRole.GEOGRAPHY: ("specimen_geography-v7.txt", GEOGRAPHY_HISTORY_PROMPT_VERSION),
-        SpecialistRole.TEMPORAL: ("specimen_temporal-v6.txt", QUALIFIED_PROMPT_VERSION),
+        SpecialistRole.TEMPORAL: ("specimen_temporal-v7.txt", TEMPORAL_CONTEXT_PROMPT_VERSION),
         SpecialistRole.PARTIES: ("specimen_parties-v5.txt", HANDOVER_PROMPT_VERSION),
         SpecialistRole.COLLECTION: ("specimen_collection-v5.txt", HANDOVER_PROMPT_VERSION),
     }

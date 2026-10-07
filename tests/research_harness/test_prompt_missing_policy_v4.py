@@ -28,7 +28,7 @@ from specimen_digitization.research_harness.committed_pins import (
 from specimen_digitization.research_harness.contracts import ROLE_FIELDS, FieldKey, SpecialistRole, digest
 from specimen_digitization.research_harness.prompts import (
     GEOGRAPHY_PROMPT_VERSION, GEOGRAPHY_HISTORY_PROMPT_VERSION, TAXONOMY_QUERY_PROMPT_VERSION, HANDOVER_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION, MISSING_POLICY_PROMPT_VERSION,
-    MEASUREMENT_EVIDENCE_PROMPT_VERSION, READING_CITATION_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
+    MEASUREMENT_EVIDENCE_PROMPT_VERSION, TEMPORAL_CONTEXT_PROMPT_VERSION, READING_CITATION_PROMPT_VERSION, RELATIONS_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 
 ROOT = Path(prompts.__file__).parent
@@ -102,9 +102,10 @@ def test_each_role_has_its_v4_file_at_the_missing_policy_version_and_the_live_ta
         READING_CITATION_PROMPT_VERSION}
     # The live table is the v5 files (test_prompt_handover_v5.py); the v4 pin is audited from the file.
     qualified = role in {SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT, SpecialistRole.GEOGRAPHY}
-    assert ROLE_PROMPTS[role] == (f"{role.value}-v{8 if role == SpecialistRole.MEASUREMENT else 7 if role == SpecialistRole.GEOGRAPHY else 6 if qualified or role == SpecialistRole.TAXONOMY else 5}.txt",
+    assert ROLE_PROMPTS[role] == (f"{role.value}-v{8 if role == SpecialistRole.MEASUREMENT else 7 if qualified else 6 if role == SpecialistRole.TAXONOMY else 5}.txt",
         GEOGRAPHY_HISTORY_PROMPT_VERSION if role == SpecialistRole.GEOGRAPHY else
         MEASUREMENT_EVIDENCE_PROMPT_VERSION if role == SpecialistRole.MEASUREMENT else
+        TEMPORAL_CONTEXT_PROMPT_VERSION if role == SpecialistRole.TEMPORAL else
         TAXONOMY_QUERY_PROMPT_VERSION if role == SpecialistRole.TAXONOMY else
         QUALIFIED_PROMPT_VERSION if qualified else HANDOVER_PROMPT_VERSION)
     text = v4_text(role)
@@ -118,6 +119,8 @@ def test_each_role_has_its_v4_file_at_the_missing_policy_version_and_the_live_ta
     if role == SpecialistRole.MEASUREMENT:
         assert (ROOT / "specimen_measurement-v7.txt").read_text().startswith(v4)
         assert "no rule yet qualifies" not in " ".join(pin(role).text.split()).casefold()
+    elif role == SpecialistRole.TEMPORAL:
+        assert UNQUALIFIED_LABEL_POLICY in pin(role).text
     else:
         assert pin(role).text.startswith(common + v4)
 

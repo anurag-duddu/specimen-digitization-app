@@ -25,7 +25,7 @@ from specimen_digitization.research_harness.contracts import (
 )
 from specimen_digitization.research_harness.prompts import (
     GEOGRAPHY_HISTORY_PROMPT_VERSION, TAXONOMY_QUERY_PROMPT_VERSION, HANDOVER_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION, READING_CITATION_PROMPT_VERSION,
-    MEASUREMENT_EVIDENCE_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
+    MEASUREMENT_EVIDENCE_PROMPT_VERSION, TEMPORAL_CONTEXT_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 
 ROOT = Path(prompts.__file__).parent
@@ -123,9 +123,10 @@ def test_the_v3_pin_is_audited_from_the_file_and_the_live_pin_extends_it(role):
     # the live text begins with the v3 text.
     assert READING_CITATION_PROMPT_VERSION == "specialists-reading-citation-v3-2026-10-03"
     qualified = role in {SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT, SpecialistRole.GEOGRAPHY}
-    assert ROLE_PROMPTS[role] == (f"{role.value}-v{8 if role == SpecialistRole.MEASUREMENT else 7 if role == SpecialistRole.GEOGRAPHY else 6 if qualified or role == SpecialistRole.TAXONOMY else 5}.txt",
+    assert ROLE_PROMPTS[role] == (f"{role.value}-v{8 if role == SpecialistRole.MEASUREMENT else 7 if qualified else 6 if role == SpecialistRole.TAXONOMY else 5}.txt",
         GEOGRAPHY_HISTORY_PROMPT_VERSION if role == SpecialistRole.GEOGRAPHY else
         MEASUREMENT_EVIDENCE_PROMPT_VERSION if role == SpecialistRole.MEASUREMENT else
+        TEMPORAL_CONTEXT_PROMPT_VERSION if role == SpecialistRole.TEMPORAL else
         TAXONOMY_QUERY_PROMPT_VERSION if role == SpecialistRole.TAXONOMY else
         QUALIFIED_PROMPT_VERSION if qualified else HANDOVER_PROMPT_VERSION)
     common = (ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
@@ -135,6 +136,8 @@ def test_the_v3_pin_is_audited_from_the_file_and_the_live_pin_extends_it(role):
     if role == SpecialistRole.MEASUREMENT:
         assert (ROOT / "specimen_measurement-v7.txt").read_text().startswith(v3)
         assert flat(QUESTION_BLOCK) in flat(pin(role).text)
+    elif role == SpecialistRole.TEMPORAL:
+        assert QUESTION_BLOCK in pin(role).text
     else:
         assert pin(role).text.startswith(common + v3)
 
