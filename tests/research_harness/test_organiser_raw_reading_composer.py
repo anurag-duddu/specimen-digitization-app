@@ -210,8 +210,7 @@ def test_a_value_both_raw_readers_state_publishes_with_evidence_from_both_reader
 
 
 def test_a_specialist_that_cites_a_reading_that_does_not_hold_the_literal_is_refused(rig, refusals, monkeypatch):
-    """A model that names the assembly right but copies the OTHER LABEL's reading as its source: the publication re-reads
-    the cited reading and refuses: the literal is in no fragment of it (canonical_lineage_literal_unproved)."""
+    """A model names the assembly but cites the other label's reading: the Agent refuses it before publication."""
     original = base.from_assembly
 
     def wrong_reading(request, candidate, rules, *, omit=()):
@@ -222,8 +221,17 @@ def test_a_specialist_that_cites_a_reading_that_does_not_hold_the_literal_is_ref
         return resolution.model_copy(update={"value": value})
     monkeypatch.setattr(base, "from_assembly", wrong_reading)
     parsed, specimen, hold = run(rig, base.hand_over(review.specialist_factory(rig.model_calls)))
-    assert refusals and set(refusals) == {"canonical_lineage_literal_unproved"}
-    assert str(hold) == "native_publication_requires_reconciliation"
+    assert refusals == [] and isinstance(hold, OperationalBlock)
+    assert str(hold) == "native_research_operational_hold"
+    assert [turn for role, turn in rig.model_calls if role == SpecialistRole.COLLECTION.value] == [1, 2]
+    _, state = research_state(rig.fake, rig.specimen_id)
+    fields = list(state["jobs"].values())[0]["fields"]
+    for key in RESOLVED:
+        assert fields[key]["work_state"] == "operational_failed"
+        checkpoint = fields[key]["checkpoint"]
+        assert checkpoint["payload"]["resolution"]["reason"] == "specialist_operational_failure"
+        assert checkpoint["payload"]["resolution"]["value"]["literal"] is None
+        assert not checkpoint.get("accepted_output_proof")
     assert not set(RESOLVED) & set(published(rig))
 
 

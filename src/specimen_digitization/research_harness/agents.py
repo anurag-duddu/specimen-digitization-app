@@ -554,6 +554,13 @@ class SpecialistHarness:
                 raise ModelRetry(f"specialist_output_has_invalid_evidence_or_scope: field={resolution.field_key}; {reason}; "
                     "copy the deciding candidate value and both evidence-id lists exactly") from None
             for resolution in output.resolutions:
+                # D/T/S has an explicitly preserved owner policy: its verbatim
+                # may be held without selecting a reading. It cannot be
+                # published while waiting_policy, and validate_resolution
+                # above has already checked literal membership in the input.
+                if (resolution.field_key == FieldKey.VERBATIM_DTS
+                        and resolution.work_state == WorkState.WAITING_POLICY):
+                    continue
                 if not literal_has_original_request_lineage(request, resolution):
                     raise ModelRetry(f"specialist_output_literal_lacks_original_reading: field={resolution.field_key}; "
                         "cite the exact original fragment and each reading's declared input source in "

@@ -149,6 +149,10 @@ def test_whole_cohort_struct_transport_retains_all_forty_readings(tmp_path, monk
     from test_cohort_reading_barrier import cohort, segment_all
 
     c = cohort(tmp_path, monkeypatch, regions=2, timeout=1)
+    # This immediate fixture proves Struct transport, not elapsed-time limits.
+    # Use the cohort's deterministic clock for both deadline clocks so runner
+    # serialization overhead cannot turn a successful read into an unknown hold.
+    c.flow.monotonic = lambda: c.clock[0].timestamp()
     segment_all(c)
     get, document = c.repo.get, c.repo.document
     monkeypatch.setattr(

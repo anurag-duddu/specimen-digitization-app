@@ -42,15 +42,25 @@ def history():
 
 def human_output(request, result):
     asked = question(result, KEY, "scoped_absence")
+    # This one-reader fixture has an exact original locality fragment. Preserve
+    # its provenance even while the value remains unresolved for human review.
+    [fragment] = request.fragments
     return SpecialistOutput(role=request.role, resolutions=(FieldResolution(field_key=KEY,
         work_state=WorkState.WAITING_HUMAN, value=FieldValue(state=ValueState.UNRESOLVED,
-        literal=MCKINLEY_LABEL), question=asked, reason="Recorded source did not match the label place"),))
+        literal=MCKINLEY_LABEL,
+        verbatim_by_observation={fragment.observation_id: fragment.observation_text},
+        input_source_by_observation={fragment.observation_id: fragment.input_source}),
+        question=asked, reason="Recorded source did not match the label place"),))
 
 
 def source_output(request):
+    [fragment] = request.fragments
     return SpecialistOutput(role=request.role, resolutions=(FieldResolution(field_key=KEY,
         work_state=WorkState.WAITING_SOURCE, value=FieldValue(state=ValueState.UNRESOLVED,
-        literal=MCKINLEY_LABEL), reason="Earlier source refusal remains in the same-field lookup history"),))
+        literal=MCKINLEY_LABEL,
+        verbatim_by_observation={fragment.observation_id: fragment.observation_text},
+        input_source_by_observation={fragment.observation_id: fragment.input_source}),
+        reason="Earlier source refusal remains in the same-field lookup history"),))
 
 
 def assert_source_feedback(messages):

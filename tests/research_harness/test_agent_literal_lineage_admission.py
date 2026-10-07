@@ -22,7 +22,9 @@ from specimen_digitization.research_harness.contracts import (
     OrganiserCandidate, RelationKind, ResearchScope, SourceCoverageReceipt, SourceCoverageState,
     SourceFragment, SourceResult, SpecialistRequest, SpecialistRole, ToolReceipt, WorkState,
 )
-from specimen_digitization.research_harness.evidence import assemble_field, temporal_resolutions
+from specimen_digitization.research_harness.evidence import (
+    assemble_field, dts_policy_resolution, temporal_resolutions,
+)
 from specimen_digitization.research_harness.prompts import resolve_prompt
 from specimen_digitization.research_harness.sources import result_envelope
 
@@ -184,6 +186,34 @@ def test_actual_deterministic_single_reader_temporal_pair_reaches_agent_acceptan
     assert resolutions[0].value.input_source_by_observation == {}
     assert literal_has_original_request_lineage(request, resolutions[0])
     assert _validate(request, None, *resolutions).resolutions == resolutions
+
+
+def test_preserved_dts_policy_literal_passes_only_its_existing_input_membership_rule():
+    scope = _scope()
+    fragment = _fragment(scope, "reader-a", "Synthetic D/T/S", "Synthetic D/T/S")
+    request = SpecialistRequest(scope=scope, role=SpecialistRole.COLLECTION,
+        field_keys=(FieldKey.VERBATIM_DTS,),
+        prompt=resolve_prompt(SpecialistRole.COLLECTION, profile_digest=scope.profile_digest,
+            source_registry_digest="e" * 64, toolset_digest="f" * 64,
+            model_route="harness-deepseek", output_schema_digest=specialist_output_schema_digest()),
+        fragments=(fragment,))
+    held = dts_policy_resolution("Synthetic D/T/S")
+    assert held.work_state == WorkState.WAITING_POLICY
+    assert held.value.verbatim_by_observation == {}
+    assert _validate(request, None, held).resolutions == (held,)
+    assert held.value.source_observation_id is None
+
+    with pytest.raises(ModelRetry, match="specialist_output_has_invalid_evidence_or_scope"):
+        _validate(request, None, dts_policy_resolution("invented D/T/S"))
+
+    with pytest.raises(ValueError, match="Evidence graph cannot cross scoped"):
+        SpecialistRequest(scope=scope.model_copy(update={"specimen_id": "other"}),
+            role=request.role, field_keys=request.field_keys, prompt=request.prompt,
+            fragments=request.fragments)
+
+    # The typed output rejects turning this policy hold into a resolved claim.
+    with pytest.raises(ValueError, match="Resolved requires supported legacy value and evidence"):
+        _validate(request, None, held.model_copy(update={"work_state": WorkState.RESOLVED}))
 
 
 @pytest.mark.parametrize("fault", ("outside_fragment", "wrong_scope", "wrong_digest", "wrong_offset", "duplicate"))

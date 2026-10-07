@@ -644,9 +644,15 @@ def _literal_resolution(request, key, *, normalized=None):
         from specimen_digitization.research_harness.evidence import temporal_resolutions
         return next(item for item in temporal_resolutions(request, event_id=assembly.event_id) if str(item.field_key) == key)
     text = assembly.interpreted_text
+    [fragment] = [item for item in request.fragments if item.id in assembly.fragment_ids]
+    assert text == fragment.literal and fragment.scope == request.scope
     return FieldResolution(field_key=key, work_state="resolved", value=FieldValue(
         state=ValueState.SUPPORTED, literal=text, parsed=normalized or text,
-        normalized=normalized or text, evidence_ids=list(assembly.evidence_ids)),
+        normalized=normalized or text, evidence_ids=list(assembly.evidence_ids),
+        verbatim_by_observation={fragment.observation_id: fragment.observation_text},
+        input_source_by_observation={fragment.observation_id: fragment.input_source},
+        settled_observation_ids=[fragment.observation_id],
+        source_observation_id=fragment.observation_id, source_region_id=fragment.region_id),
         evidence_ids=assembly.evidence_ids, assembly_ids=(assembly.id,), event_id=assembly.event_id,
         reason="Independently annotated complete collecting assertion.")
 
