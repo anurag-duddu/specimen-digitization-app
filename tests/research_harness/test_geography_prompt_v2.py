@@ -138,8 +138,16 @@ def test_the_other_five_roles_keep_their_audited_v2_files_the_v1_text_plus_the_r
     # The v1 files on disk still give the v1 pin digests.
     assert hashlib.sha256((common + v1 + owned).encode()).hexdigest() == V1_ROLE_DIGESTS[role] != RELATION_DIGESTS[role]
     assert PROMPT_VERSION == "specialists-v1-2026-09-29"
-    # The live pin is the v2 text plus the v3 blocks, the v4 block and the v5 block.
-    assert pin(role).text.startswith(common + v2) and pin(role).digest != RELATION_DIGESTS[role]
+    # Frozen v2 assertions above audit the historical text and digest. The active
+    # pin follows the current role table, whose later versions may replace that
+    # text while leaving the audited v1/v2 files intact.
+    live_name, live_version = ROLE_PROMPTS[role]
+    live_text = common + (ROOT / live_name).read_text(encoding="utf-8") + owned
+    live_pin = pin(role)
+    assert live_pin.text == live_text
+    assert live_pin.version == live_version
+    assert live_pin.digest == hashlib.sha256(live_text.encode()).hexdigest()
+    assert live_pin.digest != RELATION_DIGESTS[role]
 
 
 def test_v2_is_ascii_and_names_no_other_geocoder():

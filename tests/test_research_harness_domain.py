@@ -180,10 +180,25 @@ def test_ELEV_SIGNED_every_endpoint_and_replay_preserves_sign_and_order():
         assert all(validate_resolution(req, item) == item for item in results)
 
 
-@pytest.mark.parametrize("bad", ("100", "100 mt", "-5 to -25 ft", "1,000 ft", "25 -- ft", "NaN m"))
+@pytest.mark.parametrize("bad", ("100", "100 mt", "-5 to -25 ft", "25 -- ft", "NaN m"))
 def test_ambiguous_or_unwritten_measurements_never_guess(bad):
     with pytest.raises(EvidenceError):
         parse_measurement(bad)
+
+
+def test_grouped_thousands_elevation_keeps_exact_quantity_conversion_and_provenance():
+    req = measurement_request(("1,000 ft",))
+    settled = settle_elevation(req, assembly_ids=("a0",), source_revision=7)
+    results = elevation_resolutions(settled)
+
+    assert [item.value.parsed for item in results] == ["304.8000", "304.8000", "1000", "1000"]
+    assert [item.value.normalized for item in results] == ["304.80", "304.80", "1000.00", "1000.00"]
+    assert results[0].value.verbatim_by_observation == {"f0": "1,000 ft"}
+    for result in results:
+        assert validate_resolution(req, result) == result
+        if result.derivation:
+            assert result.derivation.source_revision == 7
+            assert result.derivation.source_assembly_ids == ("a0",)
 
 
 def test_original_uncertainty_and_datum_are_not_display_precision():

@@ -247,11 +247,28 @@ SENTENCES = {
                 "copied character for character}",
     "settled": "value.settled_observation_ids = [that observation_id]",
 }
+# The current temporal and measurement prompts express the same requirement to
+# verify extractor proposals against the readings in their coherent rewrites.
+# Both clauses are required: merely mentioning a candidate is not authority.
+CURRENT_VERIFICATION = {
+    SpecialistRole.TEMPORAL: (
+        "An extractor candidate is a proposal, never evidence by itself.",
+        "Verify its exact literal, source span, surrounding lines and competing readings.",
+    ),
+    SpecialistRole.MEASUREMENT: (
+        "Read every retained candidate and the exact source span it names, the surrounding lines and the other readers.",
+        "organiser_candidates are extractor proposals to verify, never independent evidence.",
+    ),
+}
 
 
 def followed(request):
     text = " ".join(request.prompt.text.split())
-    return {name: sentence in text for name, sentence in SENTENCES.items()}
+    rules = {name: sentence in text for name, sentence in SENTENCES.items()}
+    current = CURRENT_VERIFICATION.get(request.prompt.role)
+    if current is not None:
+        rules["verifies"] |= all(clause in text for clause in current)
+    return rules
 
 
 def candidates_of(request):
@@ -487,6 +504,15 @@ def test_the_sentences_the_specialist_acts_on_are_in_the_v5_text_of_the_two_role
         assert not any(followed(old).values()), role
     for role in (SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY, SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT):
         assert followed(pins[role])["verifies"] and not followed(pins[role])["assembly"], role
+    for role, clauses in CURRENT_VERIFICATION.items():
+        assert followed(review.pinned(role, f"{role.value}-v5.txt"))["verifies"]
+        assert not followed(review.pinned(role, f"{role.value}-v4.txt"))["verifies"]
+        for clause in clauses:
+            pin = pins[role].prompt
+            normalized = " ".join(pin.text.split())
+            assert clause in normalized
+            without_clause = pin.model_copy(update={"text": normalized.replace(clause, "")})
+            assert not followed(SimpleNamespace(prompt=without_clause))["verifies"]
 
 
 @pytest.mark.parametrize("sentence", ["assembly", "reading"])
