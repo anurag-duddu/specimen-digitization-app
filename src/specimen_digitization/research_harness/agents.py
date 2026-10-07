@@ -56,6 +56,85 @@ def masked_outages(resolutions: Sequence[FieldResolution], results: Sequence[Sou
                  and item.field_key in OUTAGE_GUARDED_FIELDS and item.field_key in failed)
 
 
+def literal_has_original_request_lineage(request: SpecialistRequest, resolution: FieldResolution) -> bool:
+    """Preflight the literal proof the strict native publisher will require.
+
+    This only rejects a model output before acceptance. It does not choose a
+    reading, add a citation, or rewrite a committed checkpoint. The original
+    request's typed fragments remain the authority for spans and assemblies.
+    """
+    value = resolution.value
+    literal = value.literal
+    if literal is None:
+        return True
+    if not literal or not value.verbatim_by_observation:
+        return False
+    original = {item.id: item for item in request.fragments}
+    if len(original) != len(request.fragments):
+        return False
+    readings = set(value.verbatim_by_observation)
+    if (not set(value.settled_observation_ids) <= readings
+            or value.source_observation_id is not None and (
+                value.source_observation_id not in readings
+                or value.source_observation_id not in value.settled_observation_ids)):
+        return False
+    proven = {}
+    routes = {}
+    regions = {}
+    for observation_id, verbatim in value.verbatim_by_observation.items():
+        fragments = tuple(item for item in request.fragments if item.observation_id == observation_id)
+        route_set = {item.input_source for item in fragments}
+        declared = value.input_source_by_observation.get(observation_id, value.input_source)
+        # A declaration must match; when a deterministic utility omits it, the
+        # one immutable input route still proves the reading, as in _readings.
+        if not fragments or len(route_set) != 1 or declared is not None and declared not in route_set:
+            return False
+        route = next(iter(route_set))
+        region = fragments[0].region_id
+        if (not verbatim or verbatim not in fragments[0].observation_text
+                or value.source_region_id is not None and value.source_region_id != region
+                or any(item.scope != request.scope or item.region_id != region
+                    or item.observation_text != fragments[0].observation_text
+                    or item.observation_digest != hashlib.sha256(item.observation_text.encode()).hexdigest()
+                    or type(item.start) is not int or type(item.end) is not int
+                    or not 0 <= item.start < item.end <= len(item.observation_text)
+                    or item.literal != item.observation_text[item.start:item.end]
+                    for item in fragments)):
+            return False
+        routes[observation_id] = route
+        regions[observation_id] = region
+        proven.update((item.id, item) for item in fragments)
+    if value.input_source == "decided_transcript" and (
+            value.source_region_id is None or not any(
+                route == "decided_transcript" and regions[observation_id] == value.source_region_id
+                for observation_id, route in routes.items())):
+        return False
+    if any(literal in item.literal and literal in value.verbatim_by_observation[item.observation_id]
+           for item in proven.values()):
+        return True
+    if not resolution.assembly_ids:
+        return False
+    from .evidence import validate_assembly
+
+    assemblies = {item.id: item for item in request.assemblies}
+    if len(assemblies) != len(request.assemblies):
+        return False
+    for key in resolution.assembly_ids:
+        assembly = assemblies.get(key)
+        if (assembly is None or assembly.scope != request.scope
+                or assembly.field_key != resolution.field_key
+                or assembly.event_id != resolution.event_id
+                or assembly.interpreted_text != literal
+                or not set(assembly.fragment_ids) <= set(proven)):
+            continue
+        try:
+            validate_assembly(request, assembly)
+        except ValueError:
+            continue
+        return True
+    return False
+
+
 class SpecialistOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     role: SpecialistRole
@@ -474,6 +553,12 @@ class SpecialistHarness:
                     "Value is not one of the trusted source-supported candidates" else "invalid_evidence_or_scope")
                 raise ModelRetry(f"specialist_output_has_invalid_evidence_or_scope: field={resolution.field_key}; {reason}; "
                     "copy the deciding candidate value and both evidence-id lists exactly") from None
+            for resolution in output.resolutions:
+                if not literal_has_original_request_lineage(request, resolution):
+                    raise ModelRetry(f"specialist_output_literal_lacks_original_reading: field={resolution.field_key}; "
+                        "cite the exact original fragment and each reading's declared input source in "
+                        "verbatim_by_observation/input_source_by_observation, or set value.literal=null "
+                        "for an unresolved value. Preserve the human question, reason and captured source coverage")
             masked = masked_outages(output.resolutions, results)
             if masked:
                 raise ModelRetry("specialist_output_hides_a_failed_lookup_behind_waiting_policy: a lookup for "
