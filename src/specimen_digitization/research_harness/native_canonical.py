@@ -31,7 +31,7 @@ from specimen_digitization.application.storage import check_snapshot, digest as 
 from .compatibility import PublicationUnavailable, PublishedResearch
 from .contracts import ALL_FIELDS, Digest, FieldCheckpoint, EvidenceItem as ResearchEvidenceItem, FrozenRecord, ResearchScope, SourceResult, SpecialistRequest, digest
 from .publication import NativeCanonicalResearchAdapter, NativeCapture, NativeReceiptBinding, PreparedNativePublication, validate_native_publication
-from .persistence import BlobRef
+from .persistence import BlobRef, _sql_connect_transport
 
 OPERATION = "research-publication/v1"
 Positive = Annotated[int, Field(strict=True, ge=1)]
@@ -96,11 +96,13 @@ class SqlConnectNativeOperationClient:
     def __init__(self, repository):
         self.repository = repository
 
-    @guarded
     def execute(self, operation, variables, mutation=False):
-        response = deadline_call(self.repository.session.post,
-            self.repository.url + (":impersonateMutation" if mutation else ":impersonateQuery"),
-            json={"operationName":operation,"variables":variables},timeout=30)
+        # The transport owns equivalent before/after deadline checks so an
+        # admission expiry can include the operation before any HTTP send.
+        return _sql_connect_transport(self.repository, operation, variables, mutation,
+            lambda response: self._response(operation, response))
+
+    def _response(self, operation, response):
         if response.status_code in {401,403}:
             raise PermissionError(ACCESS_DENIED)
         if response.status_code != 200:

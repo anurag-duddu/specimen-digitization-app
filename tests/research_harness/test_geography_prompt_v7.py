@@ -13,7 +13,7 @@ from specimen_digitization.research_harness.prompts import (
 from test_geolocate_validator import geography_request
 
 
-def test_v7_appends_to_immutable_v6_and_only_new_geography_jobs_resolve_to_it():
+def test_v7_appends_to_immutable_v6_and_remains_a_frozen_job_pin():
     root = Path(prompts.__file__).parent
     old = (root / "specimen_geography-v6.txt").read_bytes()
     new = (root / "specimen_geography-v7.txt").read_bytes()
@@ -29,13 +29,11 @@ def test_v7_appends_to_immutable_v6_and_only_new_geography_jobs_resolve_to_it():
                    "Preserve all lookup history and captured evidence", "existing one output retry",
                    "do not repeat a provider request", "existing waiting_human rule"):
         assert phrase in added
-    assert ROLE_PROMPTS[SpecialistRole.GEOGRAPHY] == (
-        "specimen_geography-v7.txt", GEOGRAPHY_HISTORY_PROMPT_VERSION)
-    pin = resolve_prompt(SpecialistRole.GEOGRAPHY, profile_digest="0" * 64,
-        source_registry_digest="0" * 64, toolset_digest="0" * 64,
-        model_route="harness-deepseek", output_schema_digest="0" * 64)
-    assert pin.version == GEOGRAPHY_HISTORY_PROMPT_VERSION == "geography-source-history-v7-2026-10-06"
-    assert pin.digest == "71ab1cdee1cc836a3c3127d59d530fca03b4314091fbe7f7618fb6d01e073139"  # pragma: allowlist secret
+    historical = ((root / "common-v1.txt").read_text() + "\n" + new.decode("ascii")
+        + "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[SpecialistRole.GEOGRAPHY])) + ".\n")
+    assert GEOGRAPHY_HISTORY_PROMPT_VERSION == "geography-source-history-v7-2026-10-06"
+    assert hashlib.sha256(historical.encode()).hexdigest() == "71ab1cdee1cc836a3c3127d59d530fca03b4314091fbe7f7618fb6d01e073139"  # pragma: allowlist secret
+    assert ROLE_PROMPTS[SpecialistRole.GEOGRAPHY][0] != "specimen_geography-v7.txt"
 
 
 def test_frozen_v6_request_keeps_its_exact_prompt_after_resolver_moves_to_v7():

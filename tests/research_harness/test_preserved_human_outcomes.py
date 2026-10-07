@@ -16,8 +16,8 @@ from specimen_digitization.application.production import actor_uid
 from specimen_digitization.application.human_field_carry import contract_pin, job_outcomes
 from specimen_digitization.research_harness.api import create_research_router
 from specimen_digitization.research_harness.contracts import (
-    ALL_FIELDS, ROLE_FIELDS, CollectionProfile, FieldProfile, ResearchScope,
-    DependencyPin, FieldResolution, SpecialistRequest, WorkState, digest,
+    ALL_FIELDS, ROLE_FIELDS, CollectionProfile, FieldKey, FieldProfile, ResearchScope,
+    DependencyPin, FieldResolution, SpecialistRequest, SpecialistRole, WorkState, digest,
 )
 from specimen_digitization.application.domain import FieldValue
 from specimen_digitization.research_harness.journal import DurableResearchJournal
@@ -225,10 +225,12 @@ def test_engine_schedules_eighteen_actual_offline_checkpoint_commits_not_two_hum
         preserved_human_outcomes={k: v.model_dump(mode="json") for k, v in carried.verified.outcomes.items()})
     journal = DurableResearchJournal(carried.store, durable, carried.store.claim(durable, "offline-scheduling"))
     called = []
+    offered_by_role = {}
     class Harness:
         def __init__(self, selected): self.selected = selected
         async def run_specialist(self, role):
             request = self.selected[role]
+            offered_by_role[role] = tuple(request.field_keys)
             called.extend(request.field_keys)
             return SimpleNamespace(resolutions=tuple(FieldResolution(field_key=key,
                 work_state=WorkState.RESOLVED, value=FieldValue(state="supported", literal="synthetic"),
@@ -238,6 +240,8 @@ def test_engine_schedules_eighteen_actual_offline_checkpoint_commits_not_two_hum
     result = asyncio.run(engine.run())
     assert len(called) == len(set(called)) == 18
     assert set(map(str, called)).isdisjoint({"city", "elevation_from_m"})
+    assert offered_by_role[SpecialistRole.GEOGRAPHY] == tuple(
+        key for key in ROLE_FIELDS[SpecialistRole.GEOGRAPHY] if key != FieldKey.CITY)
     assert len(result.checkpoints) == result.resolved_count == 18
     assert set(result.preserved_human_outcomes) == {"city", "elevation_from_m"}
     assert all(cp.field_key not in {"city", "elevation_from_m"} for cp in result.checkpoints)

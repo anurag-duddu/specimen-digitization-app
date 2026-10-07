@@ -20,6 +20,7 @@ from specimen_digitization.application.production import actor_uid
 from specimen_digitization.application.worker_deadline import WorkerDeadline
 from specimen_digitization.application.workflow import OperationalBlock
 from specimen_digitization.research_harness import native_worker, provisioning
+from specimen_digitization.research_harness.agents import HarnessLimits
 from specimen_digitization.research_harness.contracts import (
     FieldCheckpoint, FieldKey, FieldResolution, ResearchScope, WorkState, digest,
 )
@@ -169,6 +170,18 @@ def test_the_composer_requires_the_switch_and_mounts_the_production_parts():
     factory = composed.native_worker.runtime_factory
     assert callable(factory.authorize) and factory.state_backend is None
     assert composed.provision.func is provisioning.provision
+    assert factory.limits == HarnessLimits(run_timeout_seconds=240)
+    # Only the role wall clock changes. Production keeps the generic model,
+    # tool, request, delegate and cost admission paths; injected fixture limits
+    # and a directly built harness remain independent of this composition.
+    assert (factory.limits.request_limit, factory.limits.tool_calls_limit,
+            factory.limits.delegated_request_limit, factory.limits.delegate_timeout_seconds,
+            factory.limits.max_delegate_calls) == (8, 12, 4, 30, 1)
+    assert HarnessLimits().run_timeout_seconds == 120
+    custom = HarnessLimits(run_timeout_seconds=37)
+    override = compose_production_research_workflow(ordinary, repository=object(),
+        environ=ON, blobs=object(), limits=custom)
+    assert override.native_worker.runtime_factory.limits is custom
 
 
 @pytest.mark.parametrize("compose", [

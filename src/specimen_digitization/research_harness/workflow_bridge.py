@@ -293,6 +293,18 @@ def compose_production_research_workflow(ordinary, *, repository, environ, actor
     """
     if not research_harness_enabled(environ):
         raise ValueError("research_harness_switch_off")
+    if limits is None:
+        from .agents import HarnessLimits
+        # The observed geography role reached its third model turn 87.7s in,
+        # but the generic 120s wall clock cancelled it before validation.
+        # The final call settled 3.5s after cancellation. 240s admits one
+        # full 120s provider call after that observed start plus a finite
+        # validation/journal margin, below the existing 900s lease and
+        # 3300s worker drain.
+        # This production-only bound leaves per-model, tool, request, cost,
+        # lease and outer worker deadlines unchanged. Explicit fixture limits
+        # and direct harness defaults retain their existing values.
+        limits = HarnessLimits(run_timeout_seconds=240)
     verify_access = membership_verifier(repository)
     from .program_budget import (
         research_liability_micros, reserve_ordinary_liability, settle_ordinary_liability,
