@@ -90,7 +90,7 @@ mutation PublishCanonicalResearchV2($organizationId: UUID!, $collectionId: UUID!
     collectionMember(key: {organizationId: $organizationId, collectionId: $collectionId, uid: $actorUid}) @check(expr: "this.active == true && response.query.organizationMember.active == true && this.role in ['operator','reviewer','manager','admin']") { active role canViewSensitive }
   }
   committed: _execute(sql: """
-    WITH RECURSIVE args AS (SELECT $5::jsonb AS c), ancestors AS (
+    WITH RECURSIVE args AS MATERIALIZED (SELECT $5::jsonb AS c), ancestors AS (
       SELECT p.*,1 AS depth,ARRAY[p.id] AS visited FROM public.canonical_research_binding_v2 pointer
       JOIN public.research_publication_receipt_v2 p ON p.organization_id=pointer.organization_id
         AND p.collection_id=pointer.collection_id AND p.id=pointer.current_receipt_id
