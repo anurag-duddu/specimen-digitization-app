@@ -1,8 +1,8 @@
 """Optional, captured specialist tools; providers must be explicitly registered.
 
-The pinned harness 0.36.0 exposes browser, shell, skills and memory capabilities,
+The pinned harness 0.54.0 exposes browser, shell, skills and memory capabilities,
 but their defaults do not use the application effect boundary. This adapter uses
-the pinned AI 2.51.0 capability/toolset interface and the existing durable broker.
+the pinned AI 2.54.0 capability/toolset interface and the existing durable broker.
 It neither starts a browser nor runs code on the worker host. A production
 composer must supply qualified providers and pin this policy before use.
 """
@@ -55,6 +55,7 @@ class RoleCapabilityPolicy(FrozenRecord):
     role: SpecialistRole
     toolset_digest: Digest
     owner_registration_digest: Digest
+    execution_policy: Literal["offline_only", "free_local_public_http"] = "offline_only"
     browser_sources: tuple[BrowserSourceBinding, ...] = Field(default=(), max_length=8)
     code: IsolatedCodePolicy | None = None
     knowledge_catalog_digest: Digest | None = None
@@ -184,7 +185,10 @@ class SharedResearchAdapters:
                  knowledge: VerifiedKnowledgeCatalog | None = None):
         # Browser subagents and remote executors can bill independently of a
         # free public source. No live price contract is registered by v1.
-        if execution_class != "offline":
+        if execution_class not in {"offline", "live"} or (execution_class == "live"
+                and (policy.execution_policy != "free_local_public_http"
+                    or any(not getattr(provider, "free_operation", False) for provider in browsers)
+                    or code_executor is not None and not getattr(code_executor, "free_operation", False))):
             raise PermissionError("capability_live_pricing_not_qualified")
         self.broker, self.scope, self.lease = broker, scope, lease
         self.registry, self.policy, self.execution_class = registry, policy, execution_class

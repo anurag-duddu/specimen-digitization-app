@@ -20,6 +20,9 @@ QUALIFIED_PACKAGES: Mapping[str, str] = MappingProxyType(
         "pydantic-graph": "2.54.0",
         "pydantic-ai-harness": "0.54.0",
         "logfire": "5.0.0",
+        "pydantic-monty": "1.1.0",
+        "pydantic-monty-client": "1.1.0",
+        "pydantic-monty-runtime": "1.1.0",
     }
 )
 OFFICIAL_REFERENCES = (

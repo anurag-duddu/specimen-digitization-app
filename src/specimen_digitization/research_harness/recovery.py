@@ -51,7 +51,8 @@ class RecoveryContext:
 def _delegate_target(args, request):
     """Only the reviewed named-helper contract can consume this allowance."""
     if (not isinstance(args, dict) or not {"agent_name", "task"} <= set(args)
-            or set(args) - {"agent_name", "task", "model"}
+            or set(args) - {"agent_name", "task", "model", "background", "resume"}
+            or args.get("background", False) is not False or args.get("resume") is not None
             or not isinstance(args["agent_name"], str) or not isinstance(args["task"], str)
             or args.get("model") is not None and not isinstance(args["model"], str)):
         raise RecoveryUnavailable("recovery_delegate_arguments_invalid")

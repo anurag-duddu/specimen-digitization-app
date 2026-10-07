@@ -11,6 +11,7 @@ dependencies = [
     "pillow>=11,<13",
     "pydantic-ai-slim[huggingface]==2.54.0",
     "pydantic-ai-harness==0.54.0",
+    "pydantic-monty==1.1.0",
     "pydantic-evals[logfire]==2.54.0",
     "pydantic-graph==2.54.0",
     "uvicorn>=0.30,<1",

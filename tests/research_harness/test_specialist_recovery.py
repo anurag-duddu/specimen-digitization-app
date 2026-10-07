@@ -194,7 +194,9 @@ def test_delegate_identity_cannot_be_reused_for_a_changed_task(tmp_path):
 @pytest.mark.parametrize("args", [{"task": "scope"}, {"agent_name": 3, "task": "scope"},
     {"agent_name": "other-helper", "task": "scope"}, {"agent_name": str(SpecialistRole.TAXONOMY), "task": None},
     {"agent_name": str(SpecialistRole.GEOGRAPHY), "task": "scope"},
-    {"agent_name": str(SpecialistRole.TAXONOMY), "task": "scope", "shell": "whoami"}])
+    { "agent_name": str(SpecialistRole.TAXONOMY), "task": "scope", "shell": "whoami"},
+    {"agent_name": str(SpecialistRole.TAXONOMY), "task": "scope", "background": True},
+    {"agent_name": str(SpecialistRole.TAXONOMY), "task": "scope", "resume": "foreign-run"}])
 def test_malformed_retained_delegation_never_grants_fresh_allowance(tmp_path, args):
     rig = setup(tmp_path)
     seed(rig, content=with_delegate(messages(rig), args=args), prior_tools=2)

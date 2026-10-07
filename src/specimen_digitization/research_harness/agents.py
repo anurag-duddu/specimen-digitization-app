@@ -668,7 +668,7 @@ class SpecialistHarness:
         usage = None
         recovery_capabilities = []
         from .prompts import GEOGRAPHY_RESEARCH_PROMPT_VERSION
-        if message_history is None and role == SpecialistRole.GEOGRAPHY and request.prompt.version == GEOGRAPHY_RESEARCH_PROMPT_VERSION:
+        if message_history is None:
             from .recovery import load_specialist_recovery
             recovered = await load_specialist_recovery(self.step_stores[role], request,
                 input_text=_research_input(request), serialization_version=SERIALIZATION_VERSION,

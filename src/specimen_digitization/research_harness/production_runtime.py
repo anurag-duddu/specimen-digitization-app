@@ -310,12 +310,15 @@ class NativeResearchRuntimeFactory:
             return NativeResearchRuntime(principal, binding, store, scope, lease, journal,
                 PublicationOnlyEngine(journal, "research_derivation_model_dispatch_forbidden"),
                 service, self.blobs, 0, False, derivation)
+        from .capability_providers import build_capability_factory
+        capabilities = build_capability_factory(broker=effects, scope=scope, lease=lease,
+            registry=registry, source_pins=source_pins, transport=transport, execution_class=execution_class)
         engine = build_research_engine(profile=profile, requests=requests,
             store=store, scope=scope, lease=lease, blobs=self.blobs, tool_broker=tools,
             bindings=bindings, settings=job["pins"]["settings"], source_pins=source_pins,
             base_model_factory=lambda request:model_factory(request, bindings[request.role]),
             actual_cost=prices, request_guard=request_guards, limits=self.limits, max_concurrency=window,
-            effect_broker=effects)
+            effect_broker=effects, extra_capabilities_factory=capabilities)
         service = SqlConnectNativeCanonicalServiceV2(self.repository, engine.journal, blobs=self.blobs,
             materializer=services.materializer, evidence_provider=services.evidence_provider,
             projection_services=services.projection_services)

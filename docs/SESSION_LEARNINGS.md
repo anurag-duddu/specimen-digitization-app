@@ -17692,3 +17692,11 @@ code/memory/model-history/sibling-salvage connection remain **Not confirmed**.
 Local reviewable commit follows; its SHA is reported in the chat. Lane P retains
 all protected integration and release authority. No new Dosu receipt or paid,
 production, hold-clearing or human-override action.
+
+## 2026-10-07 — independent shared research capability implementation
+
+- Task 01a11863-eb40-7ed1-9004-619ed0044cd9; branch codex/harness-independent-integration, managed harness-independent-integration worktree; common package base3288ec80, reused geography2787648d2 and taxonomy a995f530. PR/production: Not confirmed.
+- Connected production composer extension points for all six roles: existing bounded TLS public read transport, real Monty1.1.0 no-mount/no-host-function fresh sessions, official Harness Memory over immutable repository procedures, official Skills over role-scoped committed libraries, captured on-demand reads and tools behind existing journal/effect/lock/allowance gates. Source validators remain deciding authority; no automatic memory writes or weight training. Code/skill/provider bytes are included in new generation toolset pins. No external calls were made by the validation suite.
+- Saved frontier recovery now applies to every specialist. Target Harness's delegate_task injects background=False/resume=None defaults; guard accepts only those synchronous defaults and rejects nondefault background or foreign resumes. Real delegation allowance regressions pass.
+- Validation:63 focused capability/provider/recovery tests passed, one existing no-config telemetry warning. Actual Monty arithmetic, forbidden host-file/process/network operations, bounded infinite loop, fresh session isolation and actual official Memory/Skills injection exercised. Full composer/publication/native/full verifier remains pending final domain composition.
+- Failed approaches: MemoryFile requires operation_id; Harness skill names require hyphens instead of underscores. Corrected both and reran actual injection. Default shared adapter had offline-only registration; new committed free_local_public_http policy admits only free declared providers, preserving the old offline-only default and live rejection tests. No paid/native/production execution and no mutations to Lane P worktrees/jobs.
