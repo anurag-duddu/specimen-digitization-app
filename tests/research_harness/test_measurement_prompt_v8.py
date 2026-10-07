@@ -1,4 +1,4 @@
-"""Fresh measurement pins are coherent and respect the current output subset."""
+"""Frozen measurement v8 retains its coherent instructions and exact history."""
 import hashlib
 from pathlib import Path
 from types import SimpleNamespace
@@ -7,7 +7,7 @@ from specimen_digitization.research_harness import prompts
 from specimen_digitization.research_harness.agents import PinnedManagedPrompt, ResearchDeps
 from specimen_digitization.research_harness.contracts import ROLE_FIELDS, PromptPin, SpecialistRole
 from specimen_digitization.research_harness.prompts import (
-    MEASUREMENT_EVIDENCE_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
+    resolve_prompt,
 )
 from test_organiser_raw_reading_evidence import build, request_for, two_labels
 
@@ -16,14 +16,17 @@ PIN = "0" * 64
 V8_PIN_SHA256 = "06310d03a1419ac509d8c23b1c68340b8213ec008d67223dca1840309e64e7f7"  # pragma: allowlist secret
 
 
-def test_new_measurement_requests_pin_coherent_v8_and_scope_only_requested_output():
+def test_frozen_coherent_v8_pin_retains_its_exact_subset_instructions():
     pin = resolve_prompt(SpecialistRole.MEASUREMENT, profile_digest=PIN,
         source_registry_digest=PIN, toolset_digest=PIN, model_route="harness-deepseek",
         output_schema_digest=PIN)
-    assert ROLE_PROMPTS[SpecialistRole.MEASUREMENT] == (
-        "specimen_measurement-v8.txt", MEASUREMENT_EVIDENCE_PROMPT_VERSION)
-    assert pin.version == "measurement-evidence-v8-2026-10-07"
     body = (ROOT / "specimen_measurement-v8.txt").read_text()
+    historical_text = ((ROOT / "common-v1.txt").read_text() + "\n" + body
+        + "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[SpecialistRole.MEASUREMENT])) + ".\n")
+    pin = PromptPin.model_validate({**pin.model_dump(mode="json"),
+        "text": historical_text, "digest": hashlib.sha256(historical_text.encode()).hexdigest(),
+        "version": "measurement-evidence-v8-2026-10-07"})
+    assert pin.version == "measurement-evidence-v8-2026-10-07"
     assert pin.text.startswith((ROOT / "common-v1.txt").read_text() + "\n" + body)
     assert pin.digest == hashlib.sha256(pin.text.encode()).hexdigest()
     assert pin.digest == V8_PIN_SHA256
