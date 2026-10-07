@@ -508,6 +508,22 @@ class OrganiserCandidate(FrozenRecord):
         return self
 
 
+class SettledFieldContext(FrozenRecord):
+    """Host-read current accepted field, retained as context with an exact pin."""
+    resolution: FieldResolution
+    pin: DependencyPin
+    accepted_proof_digest: Digest
+
+    @model_validator(mode="after")
+    def exact_settled_context(self):
+        if (self.resolution.field_key != self.pin.field_key
+                or digest(self.resolution) != self.pin.digest
+                or self.resolution.work_state != WorkState.RESOLVED
+                or self.resolution.value.state != ValueState.SUPPORTED):
+            raise ValueError("settled_field_context_not_exact_supported_resolution")
+        return self
+
+
 class SpecialistRequest(FrozenRecord):
     scope: ResearchScope
     role: SpecialistRole
@@ -521,6 +537,8 @@ class SpecialistRequest(FrozenRecord):
     source_coverage: tuple[SourceCoverageReceipt, ...] = ()
     accepted_decisions: tuple[str, ...] = ()
     dependencies: tuple[DependencyPin, ...] = ()
+    settled_context: tuple[SettledFieldContext, ...] = Field(
+        default=(), max_length=20, exclude_if=lambda value: not value)
     field_revisions: dict[FieldKey, Annotated[int, Field(strict=True, ge=0)]] = Field(default_factory=FrozenFieldRevisions)
     retry_command_id: Digest | None = None
     organiser_candidates: tuple[OrganiserCandidate, ...] = Field(default=(), max_length=MAX_ORGANISER_CANDIDATES)
@@ -543,6 +561,10 @@ class SpecialistRequest(FrozenRecord):
         for records in (self.fragments, self.relations, self.events, self.assemblies):
             if any(record.scope != self.scope for record in records):
                 raise ValueError("Evidence graph cannot cross scoped specimens/generations")
+        context_keys = tuple(item.pin.field_key for item in self.settled_context)
+        if len(set(context_keys)) != len(context_keys) or any(
+                item.pin not in self.dependencies for item in self.settled_context):
+            raise ValueError("settled_field_context_missing_exact_consumed_pin")
         self._check_organiser_candidates()
         return self
 
