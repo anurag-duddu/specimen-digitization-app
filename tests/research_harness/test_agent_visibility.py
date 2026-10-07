@@ -114,6 +114,7 @@ def tick(tmp_path_factory):
     patch.setattr(observability, "_configured_settings", None)
     patch.setattr(observability, "_bounded_runtime", None)
     patch.setattr(logfire, "configure", configure_offline)
+    generator = None
     try:
         observability.configure_production_observability("specimen-worker")
         tmp = tmp_path_factory.mktemp("visibility")
@@ -152,6 +153,8 @@ def tick(tmp_path_factory):
         yield SimpleNamespace(spans=spans, run_id=parsed.run.id, state=state, received=received,
                               job_id=f"{parsed.run.id}-r3")
     finally:
+        if generator is not None:
+            generator.close()
         patch.undo()
         Agent._instrument_default = previous_default
         real_configure(send_to_logfire=False, console=False)

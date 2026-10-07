@@ -463,18 +463,32 @@ def test_a_human_question_citing_evidence_off_the_question_blocks_the_record(unk
 
 
 def test_a_literal_over_several_lines_is_unproved_without_an_assembly(unkeyed, refusals):
-    """Why the v3 text says to leave value.literal null for text over several lines."""
+    """An unassembled multi-line literal is rejected before a scientific checkpoint or publication."""
     behaviour = Behaviour(fields=CITATION_FIELDS, literal="Chicago\nCook Co., Illinois")
     parsed, specimen, hold, published = run_research(unkeyed, specialist_factory(unkeyed.model_calls, behaviour))
-    assert refusals == ["canonical_lineage_literal_unproved"]
-    assert "precise_location" not in published and str(hold) == "native_publication_requires_reconciliation"
+    assert refusals == [] and isinstance(hold, OperationalBlock)
+    assert str(hold) == "native_research_operational_hold" and specimen.run.stage == "processing_blocked"
+    assert not set(GEOGRAPHY) & set(published)
+    job = list(support.research_state(unkeyed.fake, unkeyed.specimen_id)[1]["jobs"].values())[0]
+    target = job["fields"]["precise_location"]
+    assert target["work_state"] == "operational_failed"
+    assert target["checkpoint"]["payload"]["resolution"]["reason"] == "specialist_operational_failure"
+    assert target["checkpoint"]["payload"]["resolution"]["value"]["literal"] is None
+    assert not target["checkpoint"].get("accepted_output_proof")
 
 
 def test_a_literal_on_a_human_question_needs_the_reading_cited(unkeyed, refusals):
     behaviour = Behaviour(fields=CITATION_FIELDS, human_literal="Chicago")
     parsed, specimen, hold, published = run_research(unkeyed, specialist_factory(unkeyed.model_calls, behaviour))
-    assert refusals == ["canonical_lineage_literal_unproved"]
-    assert "province_state" not in published and str(hold) == "native_publication_requires_reconciliation"
+    assert refusals == [] and isinstance(hold, OperationalBlock)
+    assert str(hold) == "native_research_operational_hold" and specimen.run.stage == "processing_blocked"
+    assert not set(GEOGRAPHY) & set(published)
+    job = list(support.research_state(unkeyed.fake, unkeyed.specimen_id)[1]["jobs"].values())[0]
+    target = job["fields"]["province_state"]
+    assert target["work_state"] == "operational_failed"
+    assert target["checkpoint"]["payload"]["resolution"]["reason"] == "specialist_operational_failure"
+    assert target["checkpoint"]["payload"]["resolution"]["value"]["literal"] is None
+    assert not target["checkpoint"].get("accepted_output_proof")
 
 
 # ---------------------------------------------------------------------------- a label with assemblies

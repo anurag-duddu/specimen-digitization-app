@@ -518,8 +518,7 @@ def test_the_sentences_the_specialist_acts_on_are_in_the_v5_text_of_the_two_role
 @pytest.mark.parametrize("sentence", ["assembly", "reading"])
 def test_a_specialist_that_leaves_out_what_the_v5_text_asks_is_refused(rig, refusals, sentence):
     """Why these two sentences are in the text. Without the assembly the validator finds no deciding authority (the
-    role fails); without the reading the publication cannot ground the literal (canonical_lineage_literal_unproved).
-    (Setting settled_observation_ids without verbatim_by_observation is refused too: canonical_lineage_selected_reading_unproved.)"""
+    role fails); without the reading the Agent rejects the literal before a scientific checkpoint or publication."""
     drop = ("verbatim", "settled") if sentence == "reading" else (sentence,)
     parsed, specimen, hold = run(rig, hand_over(review.specialist_factory(rig.model_calls), drop=drop))
     if sentence == "assembly":
@@ -531,8 +530,19 @@ def test_a_specialist_that_leaves_out_what_the_v5_text_asks_is_refused(rig, refu
         assert fields["fmnh_ins_number"]["work_state"] == "operational_failed"
         assert "fmnh_ins_number" not in {row["causal_proof"]["changed_field"] for row in rig.fake.receipts.values()}
     else:
-        assert refusals == ["canonical_lineage_literal_unproved"]
-        assert str(hold) == "native_publication_requires_reconciliation"
+        assert refusals == [] and isinstance(hold, OperationalBlock)
+        assert str(hold) == "native_research_operational_hold"
+        assert [turn for role, turn in rig.model_calls if role == SpecialistRole.COLLECTION.value] == [1, 2]
+        _, state = research_state(rig.fake, rig.specimen_id)
+        fields = list(state["jobs"].values())[0]["fields"]
+        for key in RESOLVED_FROM_ASSEMBLY:
+            assert fields[key]["work_state"] == "operational_failed"
+            checkpoint = fields[key]["checkpoint"]
+            assert checkpoint["payload"]["resolution"]["reason"] == "specialist_operational_failure"
+            assert checkpoint["payload"]["resolution"]["value"]["literal"] is None
+            assert not checkpoint.get("accepted_output_proof")
+        assert not set(RESOLVED_FROM_ASSEMBLY) & {
+            row["causal_proof"]["changed_field"] for row in rig.fake.receipts.values()}
 
 
 def test_a_hint_is_never_a_value_even_for_a_specialist_that_resolves_it(rig, refusals):
