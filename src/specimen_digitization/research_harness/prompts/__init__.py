@@ -48,6 +48,10 @@ GEOGRAPHY_SOURCE_PROMPT_VERSION = "geography-qualified-sources-v6-2026-10-05"
 # Geography v7 clarifies that correcting a query never clears refused same-field
 # source history. The v6 file stays unchanged for frozen jobs and audit.
 GEOGRAPHY_HISTORY_PROMPT_VERSION = "geography-source-history-v7-2026-10-06"
+# Geography v8 keeps every v7 source-history and publication instruction, then
+# makes the final typed response check explicit after the live role timed out
+# before output feedback. Frozen v7 requests retain their original bytes/pin.
+GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION = "geography-final-result-v8-2026-10-07"
 # Taxonomy v6 excludes genus-free morphocodes from the lookup-first instruction;
 # the declared missing-policy path and historical v5 bytes stay intact.
 TAXONOMY_QUERY_PROMPT_VERSION = "taxonomy-scientific-name-v6-2026-10-06"
@@ -65,7 +69,7 @@ TEMPORAL_CONTEXT_PROMPT_VERSION = "temporal-collecting-context-v7-2026-10-07"
 # for audit.
 ROLE_PROMPTS = MappingProxyType({
     SpecialistRole.TAXONOMY: ("specimen_taxonomy-v6.txt", TAXONOMY_QUERY_PROMPT_VERSION),
-    SpecialistRole.GEOGRAPHY: ("specimen_geography-v7.txt", GEOGRAPHY_HISTORY_PROMPT_VERSION),
+    SpecialistRole.GEOGRAPHY: ("specimen_geography-v8.txt", GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION),
     SpecialistRole.TEMPORAL: ("specimen_temporal-v7.txt", TEMPORAL_CONTEXT_PROMPT_VERSION),
     SpecialistRole.MEASUREMENT: ("specimen_measurement-v9.txt", MEASUREMENT_EVIDENCE_PROMPT_VERSION),
     SpecialistRole.PARTIES: ("specimen_parties-v5.txt", HANDOVER_PROMPT_VERSION),

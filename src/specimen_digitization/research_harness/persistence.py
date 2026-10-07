@@ -12,6 +12,7 @@ import copy
 import hashlib
 import inspect
 import json
+import logging
 import os
 import random
 import re
@@ -37,6 +38,96 @@ MAX_STATE_BYTES = 1_500_000
 MAX_LEASE_TTL_SECONDS = 900
 CAS_PAUSE_FIRST_SECONDS = 0.01
 CAS_PAUSE_MAX_SECONDS = 0.5
+
+# These connector queries have no business-state writes. The separately named
+# clock read updates observedAt only (research_harness.gql:14-23), never a lease,
+# revision, effect, publication or lifecycle state. HTTP POST is not an allowlist.
+_SQL_SEMANTIC_READS = frozenset({"GetCanonicalResearchBindingV2",
+    "GetCanonicalResearchMaterializationInputsV2", "GetResearchPublicationIntentV2",
+    "GetResearchPublicationReceiptV2", "GetRetainedResearchPublicationLocatorsV2"})
+_SQL_CLOCK_READ = "ReadResearchHarnessStateV1"
+_SQL_CONTEXT_OPERATIONS = _SQL_SEMANTIC_READS | {_SQL_CLOCK_READ,
+    "RegisterCanonicalResearchBindingV2", "RetainResearchPublicationIntentV2",
+    "RetainResearchPublicationPreparationV2", "MarkResearchPublicationAttemptV2",
+    "PublishCanonicalResearchV2", "CreateResearchHarnessStateV1", "CompareResearchHarnessStateV1"}
+_SQL_ATTEMPT_TIMEOUT_SECONDS = 30.0
+_SQL_READ_BUDGET_SECONDS = 60.0
+
+
+def _sql_transport_context(error, operation, phase, attempt):
+    """Attach safe context without changing an exception's type or error mapping."""
+    name = operation if type(operation) is str and operation in _SQL_CONTEXT_OPERATIONS else "unlisted"
+    try:
+        logging.getLogger(__name__).warning("SQL Connect transport operation=%s phase=%s attempt=%s", name, phase, attempt)
+    except Exception:
+        pass
+    try:
+        error.add_note(f"sql_connect_operation={name}; phase={phase}; attempt={attempt}")
+    except Exception:
+        pass  # Diagnostics never replace the original denial/deadline/failure.
+
+
+def _sql_connect_transport(repository, operation, variables, mutation, decode, *, clock_read=False, authorize=None):
+    """At most one ReadTimeout retry for an explicitly qualified semantic read.
+
+    Requests' timeout is a socket timeout, not a hard wall clock. The existing
+    worker deadline/supervisor remains authoritative; no clock is renewed here.
+    Admission and successful return check the monotonic 60-second read budget.
+    """
+    from requests.exceptions import ReadTimeout
+    from specimen_digitization.application.worker_deadline import check_deadline, current_deadline, deadline_call
+
+    allowed = type(operation) is str and ((mutation is False and operation in _SQL_SEMANTIC_READS)
+        or (clock_read and mutation is True and operation == _SQL_CLOCK_READ))
+    limit = 2 if allowed else 1
+    parent = current_deadline()
+    clock = parent.monotonic if parent is not None else time.monotonic
+    end = clock() + _SQL_READ_BUDGET_SECONDS if allowed else None
+    body = copy.deepcopy({"operationName": operation, "variables": variables})
+    url = repository.url + (":impersonateMutation" if mutation else ":impersonateQuery")
+    for attempt in range(1, limit + 1):
+        try:
+            check_deadline()
+        except BaseException as error:
+            _sql_transport_context(error, operation, "request_admission", attempt)
+            raise
+        if authorize is not None:
+            try:
+                authorize()
+            except BaseException as error:
+                _sql_transport_context(error, operation, "authorization", attempt)
+                raise
+        remaining = _SQL_ATTEMPT_TIMEOUT_SECONDS
+        if end is not None:
+            remaining = min(remaining, end - clock())
+        if parent is not None:
+            remaining = min(remaining, parent.remaining())
+        if remaining <= 0:
+            try:
+                check_deadline()
+                raise ReadTimeout("SQL Connect semantic read deadline exceeded")
+            except BaseException as error:
+                _sql_transport_context(error, operation, "request_admission", attempt)
+                raise
+        try:
+            response = deadline_call(repository.session.post, url, json=copy.deepcopy(body), timeout=remaining)
+        except ReadTimeout as error:
+            _sql_transport_context(error, operation, "http_request", attempt)
+            check_deadline()
+            if attempt < limit and end is not None and clock() < end:
+                continue
+            raise
+        except BaseException as error:
+            _sql_transport_context(error, operation, "http_request", attempt)
+            raise
+        try:
+            result = deadline_call(decode, response)
+            if end is not None and clock() >= end:
+                raise ReadTimeout("SQL Connect semantic read deadline exceeded")
+            return result
+        except BaseException as error:
+            _sql_transport_context(error, operation, "response_validation", attempt)
+            raise
 
 
 def canonical(value: Any) -> bytes:
@@ -361,8 +452,45 @@ class SqlConnectStateBackend:
             raise PermissionError("Scope actor differs from verified repository context")
         return dict(variables, programKey=program_key, specimenId=scope.specimen_id, sensitive=scope.sensitive)
 
+    def _execute(self, scope: DurabilityScope, program_key: str, operation: str, variables: dict):
+        from specimen_digitization.application.production import SqlConnectRepository
+        # Do not bypass a repository override merely because it has session/url.
+        # Execute-only/custom adapters keep their existing, single-send contract.
+        actual_transport = getattr(self.repository.execute, "__func__", None) is SqlConnectRepository.execute
+        if actual_transport:
+            def authorize():
+                if any(variables.get(key) != value for key, value in self._variables(scope, program_key).items()):
+                    raise PermissionError("Scope actor differs from verified repository context")
+
+            def decode(response):
+                from specimen_digitization.application.worker_deadline import deadline_call
+                from specimen_digitization.application.workflow import OperationalBlock
+                from specimen_digitization.application.storage import Conflict
+                if response.status_code in {401, 403}:
+                    raise PermissionError("SQL Connect access denied")
+                if response.status_code != 200:
+                    raise OperationalBlock("sql_connect_unavailable_or_connector_not_published")
+                body = deadline_call(response.json)
+                if body.get("errors"):
+                    raise Conflict("SQL Connect transaction rejected; reload current revision and membership")
+                from .native_json import decode_native_json
+                data = decode_native_json(operation, body.get("data", {}))
+                if operation == _SQL_CLOCK_READ and (not isinstance(data, dict)
+                    or not isinstance(data.get("read"), dict) or "researchHarnessState" not in data["read"]):
+                    raise ValueError("SQL Connect clock-read response invalid")
+                return data
+
+            return _sql_connect_transport(self.repository, operation, variables, True, decode,
+                clock_read=operation == _SQL_CLOCK_READ, authorize=authorize)
+        else:
+            try:
+                return self.repository.execute(operation, variables, mutation=True)
+            except BaseException as error:
+                _sql_transport_context(error, operation, "adapter_execute", 1)
+                raise
+
     def load(self, scope: DurabilityScope, program_key: str) -> StateDocument | None:
-        data = self.repository.execute("ReadResearchHarnessStateV1", self._variables(scope, program_key), mutation=True)
+        data = self._execute(scope, program_key, _SQL_CLOCK_READ, self._variables(scope, program_key))
         row = data.get("read", {}).get("researchHarnessState")
         if row is None:
             return None
@@ -375,7 +503,7 @@ class SqlConnectStateBackend:
 
     def create(self, scope: DurabilityScope, program_key: str, state: dict[str, Any]) -> None:
         try:
-            self.repository.execute("CreateResearchHarnessStateV1", dict(self._variables(scope, program_key), state=state, stateJson=canonical(state).decode()), mutation=True)
+            self._execute(scope, program_key, "CreateResearchHarnessStateV1", dict(self._variables(scope, program_key), state=state, stateJson=canonical(state).decode()))
         except Exception as exc:
             # Ambiguous transport is not presumed unsent; readback resolves create.
             if self.load(scope, program_key) is not None:
@@ -387,7 +515,7 @@ class SqlConnectStateBackend:
         if send_authorization is not None:
             variables["sendAuthorizationJson"] = canonical(send_authorization).decode()
         try:
-            self.repository.execute("CompareResearchHarnessStateV1", variables, mutation=True)
+            self._execute(scope, program_key, "CompareResearchHarnessStateV1", variables)
         except Exception as exc:
             # Readback handles both concurrent siblings and a committed response
             # lost in transit. No external dispatch is inside this retry loop.
