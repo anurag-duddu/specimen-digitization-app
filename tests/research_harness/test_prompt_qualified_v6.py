@@ -25,12 +25,13 @@ CASES = (
 def test_immutable_v6_file_extends_v5_and_the_active_pin_retains_its_exact_qualification(role, sha, utility, field, qualifier):
     name, version = ROLE_PROMPTS[role]
     expected_version = MEASUREMENT_EVIDENCE_PROMPT_VERSION if role == SpecialistRole.MEASUREMENT else QUALIFIED_PROMPT_VERSION
-    assert name == f"{role.value}-v{7 if role == SpecialistRole.MEASUREMENT else 6}.txt"
+    assert name == f"{role.value}-v{8 if role == SpecialistRole.MEASUREMENT else 6}.txt"
     assert version == expected_version
     old = (ROOT / f"{role.value}-v5.txt").read_bytes()
     new = (ROOT / f"{role.value}-v6.txt").read_bytes()
     assert new.startswith(old) and hashlib.sha256(new).hexdigest() == sha
-    assert (ROOT / name).read_bytes().startswith(new)
+    retained_name = f"{role.value}-v7.txt" if role == SpecialistRole.MEASUREMENT else name
+    assert (ROOT / retained_name).read_bytes().startswith(new)
     added = new[len(old):].decode("ascii")
     assert "supersedes the v4 statement" in added and "v5 statement" in added
     assert "every retained reader" in added and "no external source authority" in added
@@ -38,4 +39,9 @@ def test_immutable_v6_file_extends_v5_and_the_active_pin_retains_its_exact_quali
     assert "Copy" in added and "exactly" in added and "relations" in added
     resolved = resolve_prompt(role, profile_digest=PIN, source_registry_digest=PIN,
         toolset_digest=PIN, model_route="harness-deepseek", output_schema_digest=PIN)
-    assert added in resolved.text and resolved.version == expected_version
+    assert resolved.version == expected_version
+    if role == SpecialistRole.MEASUREMENT:
+        assert "Copy only returned resolutions whose field_key" in resolved.text
+        assert "copy its four exact resolutions" not in resolved.text.casefold()
+    else:
+        assert added in resolved.text

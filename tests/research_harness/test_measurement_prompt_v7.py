@@ -11,7 +11,7 @@ from specimen_digitization.research_harness.contracts import (
 )
 from specimen_digitization.research_harness.prompts import (
     GEOGRAPHY_HISTORY_PROMPT_VERSION, HANDOVER_PROMPT_VERSION,
-    MEASUREMENT_EVIDENCE_PROMPT_VERSION, QUALIFIED_PROMPT_VERSION, ROLE_PROMPTS,
+    QUALIFIED_PROMPT_VERSION, ROLE_PROMPTS,
     TAXONOMY_QUERY_PROMPT_VERSION, resolve_prompt,
 )
 
@@ -24,20 +24,26 @@ V7_PIN_SHA256 = "40a20bf9af6494c8a74a7df26cc56fd36fa36a3fe1b42d89c8675cdfbeed330
 
 
 def pin(role=SpecialistRole.MEASUREMENT):
-    return resolve_prompt(role, profile_digest=PIN, source_registry_digest=PIN,
+    current = resolve_prompt(role, profile_digest=PIN, source_registry_digest=PIN,
         toolset_digest=PIN, model_route="harness-deepseek", output_schema_digest=PIN)
+    if role != SpecialistRole.MEASUREMENT:
+        return current
+    historical = ((ROOT / "common-v1.txt").read_text() + "\n"
+        + (ROOT / "specimen_measurement-v7.txt").read_text()
+        + "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n")
+    return PromptPin.model_validate({**current.model_dump(mode="json"), "text": historical,
+        "digest": hashlib.sha256(historical.encode()).hexdigest(),
+        "version": "measurement-evidence-v7-2026-10-06"})
 
 
-def test_measurement_v7_appends_to_immutable_v6_and_new_requests_resolve_to_it():
+def test_measurement_v7_appends_to_immutable_v6_and_keeps_its_historical_pin():
     old = (ROOT / "specimen_measurement-v6.txt").read_bytes()
     new = (ROOT / "specimen_measurement-v7.txt").read_bytes()
     assert hashlib.sha256(old).hexdigest() == V6_FILE_SHA256
     assert hashlib.sha256(new).hexdigest() == V7_FILE_SHA256
     assert new.startswith(old) and new != old
-    assert ROLE_PROMPTS[SpecialistRole.MEASUREMENT] == (
-        "specimen_measurement-v7.txt", MEASUREMENT_EVIDENCE_PROMPT_VERSION)
     current = pin()
-    assert current.version == MEASUREMENT_EVIDENCE_PROMPT_VERSION == "measurement-evidence-v7-2026-10-06"
+    assert current.version == "measurement-evidence-v7-2026-10-06"
     assert current.digest == V7_PIN_SHA256
     assert current.text.startswith((ROOT / "common-v1.txt").read_text() + "\n" + new.decode("ascii"))
 
