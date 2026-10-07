@@ -13,6 +13,7 @@ import pytest
 
 from specimen_digitization.application.lane_worker import DrainWorker
 from specimen_digitization.application.native_drain import RegisteredNativeDrainWorkflow
+from specimen_digitization.application.production import actor_uid
 from specimen_digitization.application.workflow import OperationalBlock
 from specimen_digitization.research_harness.compatibility import PublicationUnavailable
 from specimen_digitization.research_harness.discovery_v2 import CanonicalReadBindingV2
@@ -42,6 +43,28 @@ def no_network(monkeypatch):
 @pytest.fixture
 def rig(tmp_path):
     yield from build_rig(tmp_path)
+
+
+@pytest.mark.parametrize("prior_actor", [None, "prior-fixture-actor"])
+@pytest.mark.parametrize("finish", ["exhaust", "close", "cancel"])
+def test_native_rig_restores_its_exact_caller_actor(tmp_path, prior_actor, finish):
+    token = actor_uid.set(prior_actor)
+    setup = build_rig(tmp_path)
+    try:
+        next(setup)
+        assert actor_uid.get() == WORKER
+        if finish == "exhaust":
+            with pytest.raises(StopIteration):
+                next(setup)
+        elif finish == "close":
+            setup.close()
+        else:
+            with pytest.raises(asyncio.CancelledError):
+                setup.throw(asyncio.CancelledError())
+        assert actor_uid.get() == prior_actor
+    finally:
+        setup.close()
+        actor_uid.reset(token)
 
 
 def drain(rig, workflow):

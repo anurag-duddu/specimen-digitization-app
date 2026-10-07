@@ -238,8 +238,12 @@ def test_the_production_entry_point_counts_the_ordinary_spend_against_the_ceilin
     workflow = e2e.compose(rig, geolocate=False)
     parsed = e2e.to_plan(workflow, rig)
     assert parsed.run.usage.reserved_cost_micros == 250_000
-    with e2e.supervised(), pytest.raises(OperationalBlock, match="native_research_operational_hold"):
-        workflow.step(rig.principal, rig.specimen_id)
+    with e2e.supervised():
+        blocked = workflow.step(rig.principal, rig.specimen_id)
+    assert blocked.run.stage == "processing_blocked" and blocked.run.disposition is None
+    assert blocked.version == parsed.version + len(rig.fake.receipts)
+    assert blocked.version == rig.fake.active_binding(rig.specimen_id)["current_canonical_revision"]
+    assert not any(event.action == "lane_block" for event in blocked.audit)
     (_, state), binding = e2e.jobs_and_bindings(rig)
     policy, totals = state["budget_policy"], state["budget_totals"]
     assert (policy["ceiling_micro_usd"], policy["external_settled_micro_usd"]) == (CEILING, 250_000)
@@ -278,8 +282,12 @@ def test_a_transcription_correction_after_research_researches_again_on_the_store
     rig = rig_after_40k
     workflow = e2e.compose(rig, geolocate=False)
     e2e.to_plan(workflow, rig)
-    with e2e.supervised(), pytest.raises(OperationalBlock, match="native_research_operational_hold"):
-        workflow.step(rig.principal, rig.specimen_id)
+    with e2e.supervised():
+        first = workflow.step(rig.principal, rig.specimen_id)
+    assert first.run.stage == "processing_blocked" and first.run.disposition is None
+    assert first.version == rig.fake.active_binding(rig.specimen_id)["current_canonical_revision"]
+    assert not any(event.action == "lane_block" for event in first.audit)
+    first_receipts = len(rig.fake.receipts)
     specimen = rig.repository.get(rig.principal.scope, rig.specimen_id)
     first_revision, run = specimen.version, specimen.run
     run.completed_steps = [step for step in run.completed_steps if step not in {
@@ -291,16 +299,27 @@ def test_a_transcription_correction_after_research_researches_again_on_the_store
     assert rig.ordinary.next_step(corrected.run) == "parse"
     workflow = e2e.compose(rig, geolocate=False)
     outcome = None
+    second = None
     for _ in range(3):  # parse, then provisioning and research for the new revision
         with e2e.supervised():
             try:
                 stepped = workflow.step(rig.principal, rig.specimen_id)
+                second = stepped
                 outcome = ("ok", rig.ordinary.next_step(stepped.run))
             except OperationalBlock as error:
                 outcome = ("block", str(error))
                 break
     assert outcome != ("block", "research_provision_state_conflict"), outcome
-    assert outcome == ("block", "native_research_operational_hold"), outcome
+    # The ordinary scheduler still names plan for this blocked run; the native
+    # bridge returns the already-published current specimen before another plan.
+    assert outcome == ("ok", "plan"), outcome
+    assert second is not None and second.run.stage == "processing_blocked"
+    assert second.run.disposition is None
+    # The correction first re-runs ordinary parse (one CAS), then this job
+    # publishes one canonical CAS for each of its new field receipts.
+    assert second.version == corrected.version + 1 + len(rig.fake.receipts) - first_receipts
+    assert second.version == rig.fake.active_binding(rig.specimen_id)["current_canonical_revision"]
+    assert not any(event.action == "lane_block" for event in second.audit)
     (_, state), binding = e2e.jobs_and_bindings(rig)
     assert len(state["jobs"]) == 2 and binding["job_id"].endswith(f"-r{corrected.version + 1}")
     # A complete second job with its retained predecessor exceeded the former

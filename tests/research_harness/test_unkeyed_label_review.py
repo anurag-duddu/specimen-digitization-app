@@ -385,6 +385,18 @@ def run_research(rig, factory, source_transport):
         return parsed, rig.repository.get(rig.principal.scope, rig.specimen_id), hold
 
 
+def assert_current_published_source_hold(rig, parsed, specimen, hold):
+    """A scientific source hold stays at its native published revision."""
+    assert hold is None
+    assert specimen.run.stage == "processing_blocked" and specimen.run.disposition is None
+    binding = rig.fake.active_binding(rig.specimen_id)
+    assert binding is not None and rig.fake.receipts
+    assert specimen.version == parsed.version + len(rig.fake.receipts)
+    assert binding["current_canonical_revision"] == specimen.version
+    assert rig.fake.specimens[rig.specimen_id]["revision"] == specimen.version
+    assert not any(event.action == "lane_block" for event in specimen.audit)
+
+
 def test_the_unkeyed_label_gives_the_request_fragments_and_no_event_or_assembly(unkeyed):
     """The premise, read from the graph the production request factory builds from the ordinary
     snapshot: every line of every reading is a fragment, and nothing is an event or an assembly."""
@@ -446,8 +458,7 @@ def test_waiting_source_on_a_declared_field_still_blocks_the_record(unkeyed):
     reports as waiting on a source blocks the record, as it does on origin/main."""
     parsed, specimen, hold = run_research(unkeyed, specialist_factory(unkeyed.model_calls,
         abstain=WorkState.WAITING_SOURCE), transport(unkeyed.source_urls))
-    assert isinstance(hold, OperationalBlock) and str(hold) == "native_research_operational_hold"
-    assert specimen.run.stage == "processing_blocked" and specimen.run.disposition is None
+    assert_current_published_source_hold(unkeyed, parsed, specimen, hold)
     blocking = {reason for reason in specimen.run.reasons if reason.startswith("research_work:")}
     assert blocking == {f"research_work:{key}:waiting_source" for key in (*LITERALS, "taxon")}
     assert unkeyed.fake.specimens[unkeyed.specimen_id]["state"] == "processing_blocked"
@@ -463,8 +474,7 @@ def test_a_waiting_source_after_a_failed_lookup_blocks_the_record(named_taxon, s
     parsed, specimen, hold = run_research(named_taxon, specialist_factory(named_taxon.model_calls,
         taxon_lookup=True), transport(named_taxon.source_urls, gbif_status=status))
     assert any("gbif" in url for url in named_taxon.source_urls)
-    assert isinstance(hold, OperationalBlock) and str(hold) == "native_research_operational_hold"
-    assert specimen.run.stage == "processing_blocked" and specimen.run.disposition is None
+    assert_current_published_source_hold(named_taxon, parsed, specimen, hold)
     reasons = set(specimen.run.reasons)
     assert {reason for reason in reasons if reason.startswith("research_work:")} == {"research_work:taxon:waiting_source"}
     assert {f"mandatory_unresolved:{key}" for key in (*LITERALS, "verbatim_dts")} <= reasons
@@ -498,7 +508,7 @@ def test_a_specialist_that_corrects_to_waiting_source_after_the_refusal_blocks_a
     parsed, specimen, hold = run_research(named_taxon, specialist_factory(named_taxon.model_calls,
         taxon_lookup=True, after_failure=WorkState.WAITING_POLICY,
         after_retry=WorkState.WAITING_SOURCE), transport(named_taxon.source_urls, gbif_status=503))
-    assert specimen.run.stage == "processing_blocked" and isinstance(hold, OperationalBlock)
+    assert_current_published_source_hold(named_taxon, parsed, specimen, hold)
     reasons = set(specimen.run.reasons)
     assert {reason for reason in reasons if reason.startswith("research_work:")} == {"research_work:taxon:waiting_source"}
     assert "mandatory_unresolved:taxon" not in reasons
@@ -581,8 +591,7 @@ def test_a_specialist_reading_the_v3_text_alone_blocks_the_record_and_the_v4_blo
     monkeypatch.setattr(prompts, "ROLE_PROMPTS", v3)
     parsed, specimen, hold = run_research(unkeyed, specialist_factory(unkeyed.model_calls),
         transport(unkeyed.source_urls))
-    assert (specimen.run.stage, specimen.run.disposition) == ("processing_blocked", None)
-    assert isinstance(hold, OperationalBlock) and str(hold) == "native_research_operational_hold"
+    assert_current_published_source_hold(unkeyed, parsed, specimen, hold)
     reasons = set(specimen.run.reasons)
     assert {f"research_work:{key}:waiting_source" for key in (*LITERALS, "taxon")} <= reasons
     assert not {reason for reason in reasons if reason.startswith("mandatory_unresolved:")

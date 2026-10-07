@@ -87,13 +87,15 @@ def build_rig(tmp_path, *, first_pass=False):
     repository = SqlConnectRepository(session=fake, graph_blobs=blobs)
     ordinary = Workflow(repository, blobs, SyntheticAdapters(blobs, LABEL_TEXT))
     token = actor_uid.set(WORKER)
-    principal = worker_principal()
-    created = repository.create(principal, specimen_before_adjudication(blobs, first_pass=first_pass),
-        "e2e-intake", "e2e-intake")
-    yield SimpleNamespace(fake=fake, backend=backend, repository=repository, ordinary=ordinary,
-        principal=principal, specimen_id=created.id, research_blobs=ImmutableFileBlobs(tmp_path / "research"),
-        model_calls=[], source_urls=[])
-    actor_uid.reset(token)
+    try:
+        principal = worker_principal()
+        created = repository.create(principal, specimen_before_adjudication(blobs, first_pass=first_pass),
+            "e2e-intake", "e2e-intake")
+        yield SimpleNamespace(fake=fake, backend=backend, repository=repository, ordinary=ordinary,
+            principal=principal, specimen_id=created.id, research_blobs=ImmutableFileBlobs(tmp_path / "research"),
+            model_calls=[], source_urls=[])
+    finally:
+        actor_uid.reset(token)
 
 
 @pytest.fixture
