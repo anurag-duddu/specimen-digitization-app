@@ -210,6 +210,11 @@ class WorkspaceController extends ChangeNotifier {
 
   StreamSubscription<ApiFailure>? _accessSubscription;
   Timer? _poll;
+  bool _polling = false;
+  final Set<Object> _pollPauses = <Object>{};
+  Future<Specimen>? _selectedRead;
+  Object? _selectedReadKey;
+  int _selectedRefreshEpoch = 0;
   AppLifecycleListener? _lifecycle;
   bool _foreground = true;
   Timer? _search;
@@ -267,6 +272,18 @@ class WorkspaceController extends ChangeNotifier {
 
   /// The identifier the workbench route asked for.
   String? get selectedId => _selectedId;
+
+  /// A verified detail read also refreshes opened research at the same revision.
+  int get selectedRefreshEpoch => _selectedRefreshEpoch;
+
+  /// A mounted research action pauses automatic reads until its exchange ends.
+  void setPollingPaused(Object owner, bool paused) {
+    if (paused) {
+      _pollPauses.add(owner);
+    } else {
+      _pollPauses.remove(owner);
+    }
+  }
 
   /// A cursor for the next page, or null at the end of the results.
   String? get nextCursor => _nextCursor;
@@ -377,16 +394,111 @@ class WorkspaceController extends ChangeNotifier {
       onStateChange: (AppLifecycleState state) =>
           _foreground = state == AppLifecycleState.resumed,
     );
-    _poll = Timer.periodic(pollInterval, (_) {
-      if (_foreground &&
-          !_mutating &&
-          !_loading &&
-          !_loadingMore &&
-          _scope != null &&
-          _seenCursors.isEmpty) {
-        unawaited(refresh(quiet: true));
+    _poll = Timer.periodic(pollInterval, (_) => unawaited(_pollWorkspace()));
+  }
+
+  Future<void> _pollWorkspace() async {
+    if (_disposed ||
+        !_foreground ||
+        _polling ||
+        _mutating ||
+        _pollPauses.isNotEmpty ||
+        _loading ||
+        _loadingMore ||
+        _recordLoading ||
+        !_scopesVerified ||
+        _scope == null) {
+      return;
+    }
+    _polling = true;
+    try {
+      if (_seenCursors.isEmpty) {
+        await refresh(quiet: true);
+      } else {
+        // Replacing page one would erase the reviewer's paginated queue.
+        // The open canonical record remains independently refreshable.
+        await refreshSelected(quiet: true);
+      }
+    } finally {
+      _polling = false;
+    }
+  }
+
+  Future<Specimen> _readSelected(CollectionScope scope, String id) {
+    final key = (scope, id, _recordGeneration, _mutationEpoch, session.userId);
+    if (_selectedReadKey == key && _selectedRead != null) return _selectedRead!;
+    late final Future<Specimen> pending;
+    pending = repository.specimen(scope, id).whenComplete(() {
+      if (identical(_selectedRead, pending)) {
+        _selectedRead = null;
+        _selectedReadKey = null;
       }
     });
+    _selectedRead = pending;
+    _selectedReadKey = key;
+    return pending;
+  }
+
+  void _acceptSelected(Specimen item) {
+    if (item.id != _selectedId) {
+      throw const ApiFailure(
+        'The requested record could not be verified.',
+        code: 'invalid_response',
+      );
+    }
+    if (_selected != null && item.revision < _selected!.revision) return;
+    _selected = item;
+    _selectedRefreshEpoch++;
+  }
+
+  /// Rereads the open canonical record without replacing loaded queue pages.
+  Future<void> refreshSelected({bool quiet = false}) async {
+    final scope = _scope;
+    final id = _selectedId;
+    if (scope == null ||
+        id == null ||
+        _recordLoading ||
+        _mutating ||
+        !_scopesVerified ||
+        _pollPauses.isNotEmpty ||
+        (quiet && !_foreground)) {
+      return;
+    }
+    final generation = _recordGeneration;
+    final mutationEpoch = _mutationEpoch;
+    final user = session.userId;
+    final recordAtStart = _selected;
+    final selectedEpoch = _selectedRefreshEpoch;
+    bool owns() =>
+        !_disposed &&
+        _scopesVerified &&
+        session.signedIn &&
+        session.userId == user &&
+        identical(_scope, scope) &&
+        _selectedId == id &&
+        generation == _recordGeneration &&
+        selectedEpoch == _selectedRefreshEpoch &&
+        mutationEpoch == _mutationEpoch &&
+        !_mutating &&
+        (!quiet || _foreground && _pollPauses.isEmpty) &&
+        identical(recordAtStart, _selected);
+    try {
+      final item = await _readSelected(scope, id);
+      if (!owns()) return;
+      _acceptSelected(item);
+      if (_holds == 0) {
+        _items = [
+          for (final row in _items)
+            if (row.id == id) item else row,
+        ];
+      }
+      if (!quiet) _error = null;
+      _notify();
+    } catch (error) {
+      if (!owns()) return;
+      _recordFailure(error);
+      _notify();
+    }
   }
 
   /// Invalidates requests, timers and cached permissions when an account
@@ -425,6 +537,7 @@ class WorkspaceController extends ChangeNotifier {
     _holds = 0;
     _deferredPage = null;
     _mutationKeys.clear();
+    _pollPauses.clear();
     _awaitingBatchReadback = null;
     _loading = true;
     _loadingMore = false;
@@ -560,7 +673,12 @@ class WorkspaceController extends ChangeNotifier {
   /// Replaces the list with the current filters.
   Future<void> refresh({bool quiet = false}) async {
     final CollectionScope? scope = _scope;
-    if (scope == null) return;
+    if (scope == null ||
+        _mutating ||
+        _pollPauses.isNotEmpty ||
+        (quiet && !_foreground)) {
+      return;
+    }
     final _QueueRead read = _QueueRead(
       scope: scope,
       generation: ++_listGeneration,
@@ -571,6 +689,7 @@ class WorkspaceController extends ChangeNotifier {
     final int openRecord = _recordGeneration;
     final String? openId = _selectedId;
     final Specimen? recordAtStart = _selected;
+    final selectedEpoch = _selectedRefreshEpoch;
     final bool refreshOpenRecord = !_recordLoading;
     _nextCursor = null;
     _seenCursors.clear();
@@ -592,10 +711,13 @@ class WorkspaceController extends ChangeNotifier {
       final Specimen? selected =
           openId == null ||
               !refreshOpenRecord ||
+              _mutating ||
+              (quiet && (!_foreground || _pollPauses.isNotEmpty)) ||
               openRecord != _recordGeneration ||
+              selectedEpoch != _selectedRefreshEpoch ||
               !identical(recordAtStart, _selected)
           ? null
-          : await repository.specimen(scope, openId);
+          : await _readSelected(scope, openId);
       if (!_ownsQueueRead(read)) return;
       // The open record is the record load's to own. A refresh only carries
       // it along when nothing opened or closed a record meanwhile.
@@ -604,18 +726,21 @@ class WorkspaceController extends ChangeNotifier {
       // no longer owns the selected detail, even if the route is unchanged.
       final bool ownsRecord =
           openRecord == _recordGeneration &&
+          selectedEpoch == _selectedRefreshEpoch &&
+          !_mutating &&
+          (!quiet || _foreground && _pollPauses.isEmpty) &&
           identical(recordAtStart, _selected);
       if (quiet && _holds > 0) {
         // A row has focus or a sheet is open. Keep the answer until it does
         // not, rather than moving the list under the reviewer.
         _deferredPage = _DeferredPage(read, page);
-        if (ownsRecord) _selected = selected ?? _selected;
+        if (ownsRecord && selected != null) _acceptSelected(selected);
         _loading = false;
         _notify();
         return;
       }
       _applyPage(page);
-      if (ownsRecord && selected != null) _selected = selected;
+      if (ownsRecord && selected != null) _acceptSelected(selected);
       _loading = false;
       // A quiet poll is a background process. It may not clear a message the
       // reviewer has not read: that is what the banner's own Dismiss is for

@@ -143,9 +143,9 @@ def jobs_and_bindings(rig):
 def assert_model_calls_in_roster_windows(calls, *, geolocate):
     """Two independent specialists may interleave, but the next window waits for both."""
     expected_windows = (
+        {"specimen_temporal": 1, "specimen_parties": 1},
+        {"specimen_measurement": 1, "specimen_collection": 1},
         {"specimen_taxonomy": 4, "specimen_geography": 2 if geolocate else 1},
-        {"specimen_temporal": 1, "specimen_measurement": 1},
-        {"specimen_parties": 1, "specimen_collection": 1},
     )
     offset = 0
     turns = {}
@@ -183,7 +183,7 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     # Each label line's evidence is on the base record as recorded evidence, so
     # a supported value can link to it (G23).
     label = [row for row in rig.fake.tables["evidence_item"].values() if row["source"] == "label"]
-    assert len(label) == len(LABEL_VALUES) == 20 and {row["outcome"] for row in label} == {"recorded"}
+    assert len(label) == len(LABEL_VALUES) == 17 and {row["outcome"] for row in label} == {"recorded"}
     assert {row["runId"] for row in label} == {parsed.run.id}
 
     # Plan tick 2, a new worker: provisioning replays and registers, then the

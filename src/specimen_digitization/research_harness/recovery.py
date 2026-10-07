@@ -276,6 +276,62 @@ async def _restore_sources(store, request, pairs, verifier):
     return tuple(sources), tuple(attempts)
 
 
+async def _restore_interrupted_pure_utilities(request, messages, unresolved):
+    """Recompute only reviewed no-IO date/elevation work in an exact frontier.
+
+    This never changes old native tool records, application effects or holds.
+    Source/delegation/browser/code/memory interruptions remain unresolved.
+    """
+    from .agents import utility_model_view
+    allowed = {
+        SpecialistRole.TEMPORAL: {"settle_temporal"},
+        SpecialistRole.MEASUREMENT: {"settle_elevation", "combine_elevation_range"},
+    }.get(request.role, set())
+    calls = {}
+    returns = {}
+    for message in messages:
+        for part in message.parts:
+            if isinstance(part, ToolCallPart):
+                if part.tool_call_id in calls:
+                    raise HeldUnknown("recovery_native_tool_effect_unresolved")
+                calls[part.tool_call_id] = part
+            elif isinstance(part, (ToolReturnPart, RetryPromptPart)):
+                if part.tool_call_id in returns:
+                    raise HeldUnknown("recovery_native_tool_effect_unresolved")
+                returns[part.tool_call_id] = (message, part)
+    additions = []
+    for effect in unresolved:
+        call = calls.get(effect.tool_call_id)
+        if (effect.tool_name != "invoke_utility" or call is None or call.tool_name != effect.tool_name):
+            raise HeldUnknown("recovery_native_tool_effect_unresolved")
+        try:
+            args = call.args_as_dict()
+            if set(args) != {"tool_id", "arguments"} or args["tool_id"] not in allowed or type(args["arguments"]) is not dict:
+                raise ValueError
+            # Fresh no-transport broker: the pending call cannot select a source,
+            # provider, capability callback or executable implementation.
+            result = await SourceBroker(SourceRegistry(())).invoke_utility(
+                request, args["tool_id"], args["arguments"])
+            if result.receipt is not None or result.coverage.field_key not in request.field_keys:
+                raise ValueError
+        except Exception:
+            raise HeldUnknown("recovery_native_tool_effect_unresolved") from None
+        restored = ToolReturnPart("invoke_utility", utility_model_view(result),
+            effect.tool_call_id)
+        previous = returns.get(effect.tool_call_id)
+        if previous is None:
+            additions.append(restored)
+        else:
+            message, returned = previous
+            if (not isinstance(returned, ToolReturnPart) or returned.tool_name != call.tool_name
+                    or returned.outcome != "interrupted"):
+                raise HeldUnknown("recovery_native_tool_effect_unresolved")
+            message.parts = [restored if part is returned else part for part in message.parts]
+    if additions:
+        messages.append(ModelRequest(parts=additions))
+    return messages
+
+
 async def load_specialist_recovery(store: StepStore, request: SpecialistRequest, *, input_text: str,
                                     serialization_version: str, request_limit: int, tool_calls_limit: int,
                                     conversation_id: str | None = None,
@@ -304,8 +360,7 @@ async def load_specialist_recovery(store: StepStore, request: SpecialistRequest,
         return None
     if not events or events[-1].kind != "run_failed":
         raise RecoveryUnavailable("recovery_run_is_not_failed")
-    if await store.list_unresolved_tool_effects(run_id=record.run_id):
-        raise HeldUnknown("recovery_native_tool_effect_unresolved")
+    unresolved = await store.list_unresolved_tool_effects(run_id=record.run_id)
     # Native SQL StepStore refuses even an interrupted read while any sending
     # or held effect remains. Never turn that refusal into fresh history.
     snapshot = await store.latest_snapshot(run_id=record.run_id, include_interrupted=True)
@@ -340,6 +395,10 @@ async def load_specialist_recovery(store: StepStore, request: SpecialistRequest,
                 or any(job["fields"][str(key)]["locked"] or job["fields"][str(key)]["revision"] != request.field_revisions.get(key, 0)
                        for key in request.field_keys)):
             raise StaleWork("recovery_job_request_or_field_changed")
+    if unresolved:
+        messages = await _restore_interrupted_pure_utilities(request, messages, unresolved)
+        if len(messages) > MAX_RECOVERY_MESSAGES or len(ModelMessagesTypeAdapter.dump_json(messages)) > MAX_RECOVERY_BYTES:
+            raise RecoveryUnavailable("recovery_frontier_byte_bound_exceeded")
     pairs = _complete_calls(messages)
     sources, attempts = await _restore_sources(store, request, pairs, verify_source_result)
     delegate_calls = _delegate_calls(messages, request)
@@ -373,9 +432,16 @@ async def load_specialist_recovery(store: StepStore, request: SpecialistRequest,
                 prior_inputs = [part.content for message in previous.messages if isinstance(message, ModelRequest)
                     for part in message.parts if isinstance(part, UserPromptPart)
                     and isinstance(part.content, str) and part.content.startswith("Immutable scoped research input")]
-                if not prior_inputs or any(value != input_text for value in prior_inputs):
-                    raise RecoveryUnavailable("recovery_delegate_history_input_changed")
                 prior_calls = _delegate_calls(previous.messages, request)
+                if not prior_inputs or any(value != input_text for value in prior_inputs):
+                    # A completed earlier subset in this same role conversation
+                    # contributes usage only. Never restore its sources/messages
+                    # into the current request or grant a new delegation budget.
+                    completed_subset = (prior_events and prior_events[-1].kind == "run_completed"
+                        and not prior_calls and not any(event.kind == "tool_call_started"
+                            and event.tool_name == "delegate_task" for event in prior_events))
+                    if not prior_inputs or not completed_subset:
+                        raise RecoveryUnavailable("recovery_delegate_history_input_changed")
         for event in prior_events:
             if event.kind == "tool_call_started" and event.tool_name == "delegate_task" and event.tool_call_id not in prior_calls:
                 raise RecoveryUnavailable("recovery_delegate_started_history_missing")
@@ -387,7 +453,7 @@ async def load_specialist_recovery(store: StepStore, request: SpecialistRequest,
     # conservative boundary. Helpers of this role in the same conversation
     # count as well; unrelated role stores do not.
     usage.requests = max(usage.requests, started_requests)
-    usage.tool_calls = max(len(pairs), started_tools)
+    usage.tool_calls = max(len(pairs), started_tools) + len(unresolved)  # Count pure reconstruction too.
     if usage.requests >= request_limit or usage.tool_calls >= tool_calls_limit:
         raise RecoveryUnavailable("recovery_prior_usage_limit_exhausted")
     counts = tuple((target, sum(value[0] == target for value in delegate_calls.values()))

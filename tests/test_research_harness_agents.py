@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import TypeAdapter
 from pydantic_ai import Agent
+from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.messages import ModelMessagesTypeAdapter, ModelRequest, ModelResponse, TextPart, ToolCallPart, UserPromptPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.usage import RequestUsage
@@ -25,7 +26,7 @@ from specimen_digitization.research_harness.contracts import (
     SourceCoverageState, SourceResult, SpecialistRequest, SpecialistRole, WorkState,
 )
 from specimen_digitization.research_harness.gateway import EffectModel, ModelBinding, ModelGatewayBlocked
-from specimen_digitization.research_harness.package_qualification import qualify_packages
+from specimen_digitization.research_harness.package_qualification import SERIALIZATION_VERSION, qualify_packages
 from specimen_digitization.research_harness.persistence import (
     BudgetPolicy, DurabilityScope, DurableEffectBroker, HeldUnknown, ImmutableFileBlobs,
     PinnedRuntime, ResearchStore, SqliteStateBackend,
@@ -141,7 +142,10 @@ def harness(tmp_path, *, delegate=None, limits=HarnessLimits(), known_cost=True)
 
 def test_exact_package_surface_qualified_without_network():
     result = qualify_packages()
-    assert result.packages["pydantic-ai-harness"] == "0.54.0"
+    assert result.packages == {"pydantic-ai-slim": "2.54.0", "pydantic-ai-harness": "0.54.0",
+        "pydantic-evals": "2.54.0", "pydantic-graph": "2.54.0", "logfire": "5.0.0",
+        "pydantic-monty": "1.1.0", "pydantic-monty-client": "1.1.0", "pydantic-monty-runtime": "1.1.0"}
+    assert PinnedRuntime.__dataclass_fields__["serialization_version"].default == SERIALIZATION_VERSION
     assert result.provider_qualification == result.cloud_qualification == "not_run"
 
 
@@ -151,6 +155,9 @@ def test_six_specialists_execute_registered_tool_and_typed_output(tmp_path, role
     run = asyncio.run(runtime.run_specialist(role))
     assert {resolution.field_key for resolution in run.resolutions} == set(ROLE_FIELDS[role])
     assert len(calls[role]) == 2
+    for _, info in calls[role]:
+        assert {tool.name for tool in info.function_tools} == {
+            "lookup_source", "invoke_utility", "delegate_task"}
     assert tools.calls[0][0] == role
     assert len(run.tool_results) == 1
     assert len(run.model_effect_ids) == 2
@@ -176,9 +183,21 @@ def test_actual_official_delegation_uses_child_role_tools_and_shared_sql_budget(
     child = next(record for record in records if record.agent_name == SpecialistRole.GEOGRAPHY)
     assert child.parent_run_id == run.native_run_id
     assert store.budget(scope)["settled_micro_usd"] == 12
-    # Harness 0.54 forwards a separately capped child's usage into the parent.
-    # Both the request ceiling and SQL budget count all four model effects.
+    # Harness 0.54 forwards usage even with explicit child limits. Both the
+    # parent limit and durable SQL budget account for all four model effects.
     assert run.usage.requests == 4
+
+
+def test_forwarded_child_usage_stops_parent_before_an_extra_model_effect(tmp_path):
+    runtime, store, scope, _, _, calls = harness(tmp_path,
+        delegate=SpecialistRole.GEOGRAPHY, limits=HarnessLimits(request_limit=3))
+    with pytest.raises(UsageLimitExceeded, match="request_limit"):
+        asyncio.run(runtime.run_specialist(SpecialistRole.TAXONOMY))
+    assert len(calls[SpecialistRole.TAXONOMY]) == 1
+    assert len(calls[SpecialistRole.GEOGRAPHY]) == 2
+    assert store.budget(scope)["settled_micro_usd"] == 9
+    assert store.budget(scope)["held_micro_usd"] == 0
+    assert len(store._read(scope).state["effects"]) == 3
 
 
 def test_model_receipt_replay_ignores_transport_timestamp_and_retains_unknown_cost(tmp_path):
@@ -283,9 +302,9 @@ def test_tool_failure_body_sanitized_before_sdk_or_child_logs(tmp_path, capfire)
     assert "private_source_body_canary" not in exported
 
 
-def test_actual_240_serialized_tool_history_reads_and_continues_on_251(tmp_path):
+def test_actual_240_serialized_tool_history_reads_and_continues_on_254(tmp_path):
     # Generated with an isolated official pydantic-ai-slim==2.40.0 environment,
-    # not reconstructed by the 2.51 reader under test.
+    # not reconstructed by the 2.54 reader under test.
     historical_json = r'''[{"parts":[{"content":"historical synthetic input","timestamp":"2026-09-29T00:00:00Z","part_kind":"user-prompt"}],"timestamp":null,"instructions":null,"kind":"request","run_id":null,"conversation_id":null,"metadata":null,"state":"complete"},{"parts":[{"tool_name":"lookup","args":{"name":"alpha"},"tool_call_id":"old-call","tool_kind":null,"id":null,"provider_name":null,"provider_details":null,"part_kind":"tool-call"}],"usage":{"input_tokens":0,"cache_write_tokens":0,"cache_read_tokens":0,"output_tokens":0,"input_audio_tokens":0,"cache_audio_read_tokens":0,"output_audio_tokens":0,"details":{},"cost":null},"model_name":null,"timestamp":"2026-09-29T00:00:00Z","kind":"response","provider_name":null,"provider_url":null,"provider_details":null,"provider_response_id":null,"finish_reason":null,"run_id":null,"conversation_id":null,"metadata":null,"state":"complete"},{"parts":[{"tool_name":"lookup","content":"code 7","tool_call_id":"old-call","tool_kind":null,"metadata":null,"timestamp":"2026-09-29T00:00:00Z","outcome":"success","part_kind":"tool-return"}],"timestamp":null,"instructions":null,"kind":"request","run_id":null,"conversation_id":null,"metadata":null,"state":"complete"}]'''
     messages = ModelMessagesTypeAdapter.validate_json(historical_json)
     store, scope, lease, broker = sql_broker(tmp_path)

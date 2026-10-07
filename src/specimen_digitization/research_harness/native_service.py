@@ -37,10 +37,26 @@ class SqlConnectNativeCanonicalServiceV2:
     async def publish_checkpoint(self, principal, prepared: PreparedNativePublication, *,
                                  server_request_identity_digest):
         prepared = PreparedNativePublication.model_validate(prepared.model_dump(mode="json"))
-        return await self.writer.publish_checkpoint(
-            principal, prepared,
-            server_request_identity_digest=server_request_identity_digest,
-        )
+        from .telemetry import ResearchTrace, TraceIdentity
+        scope = prepared.basis.scope
+        trace = ResearchTrace(TraceIdentity(scope.specimen_id, scope.job_id, scope.generation))
+        with trace.span("writer", field_key=str(prepared.basis.field_key),
+                checkpoint_id=prepared.basis.checkpoint_id, binding_digest=prepared.basis.binding_digest) as span:
+            result = await self.writer.publish_checkpoint(principal, prepared,
+                server_request_identity_digest=server_request_identity_digest)
+            try:
+                trace.annotate(span, terminal_state="replayed" if result.replayed else "published",
+                    publication_count=1, revision=result.published.record_revision,
+                    publication_digest=result.published.publication_digest)
+            except Exception:
+                pass  # Diagnostics cannot turn a committed result into a failure.
+        try:
+            with trace.span("finalization", terminal_state=result.causal.progress_receipt.wire_status,
+                    publication_count=1, revision=result.published.record_revision):
+                pass
+        except Exception:
+            pass
+        return result
 
     async def publish_preparation(self, principal, intent, preparation):
         return await self.writer.publish_preparation(principal, intent, preparation)

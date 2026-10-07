@@ -67,12 +67,11 @@ class FieldKey(StrEnum):
 
 
 class SpecialistRole(StrEnum):
-    # Declaration order is run order (engine._batches walks it) and so is
-    # publication order: only a terminal checkpoint publishes, and the whole-record
-    # disposition is computed on the last publication. PARTIES runs last because its
-    # identified_by_irn always ends terminal (the declared EMu exception), so the last
-    # publication sees every other role's work. With COLLECTION last and no terminal
-    # field in it, the record stays research_in_progress after the final publication.
+    # Declaration order retains the canonical roster and publication grouping.
+    # engine.RESEARCH_ROLE_ORDER schedules collecting context before geography.
+    # native_worker defers a genuine unsent terminal checkpoint so the final
+    # native publication carries complete whole-record progress, even when the
+    # last role window has only unresolved outcomes.
     TAXONOMY = "specimen_taxonomy"
     GEOGRAPHY = "specimen_geography"
     TEMPORAL = "specimen_temporal"

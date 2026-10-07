@@ -17,6 +17,30 @@ from .contracts import (
 )
 
 
+def taxonomy_scientific_name(literal: str):
+    """Project only an explicit taxon marker; preserve the original assertion.
+
+    Label keys are case insensitive. Other keys, partial names and unwritten
+    genera still receive the scientific-name parser's existing abstention.
+    """
+    return scientific_name(re.sub(r"^\s*(?i:taxon)\s*:\s*", "", literal))
+
+
+def taxonomy_name_forms(literal: str) -> set[str]:
+    """Exact written name and its qualified lookup projection, without a key."""
+    written = re.sub(r"^\s*(?i:taxon)\s*:\s*", "", literal)
+    name = taxonomy_scientific_name(literal)
+    return {written, name.query} if name and name.genus and name.partly_read is None else set()
+
+
+def _whole_line(item) -> bool:
+    start = item.observation_text.rfind("\n", 0, item.start) + 1
+    end = item.observation_text.find("\n", item.start)
+    end = len(item.observation_text) if end == -1 else end
+    return (item.granularity == "line" and item.start == start
+        and item.literal == item.observation_text[start:end].rstrip("\r"))
+
+
 def taxonomy_query_digests(source: str, queries) -> set[str]:
     """Bind the exact query while accepting either unused regional flag value.
 
@@ -41,16 +65,10 @@ def gbif_query_params(request: SpecialistRequest, query: SourceQuery) -> dict[st
     params = {"scientificName": parsed.query, "taxonRank": parsed.rank,
               "kingdom": "Animalia", "class": "Insecta", "checklistKey": COL_XR, "verbose": "true"}
     fragments = [item for item in request.fragments if item.scope == request.scope]
-    def whole_line(item):
-        start = item.observation_text.rfind("\n", 0, item.start) + 1
-        end = item.observation_text.find("\n", item.start)
-        end = len(item.observation_text) if end == -1 else end
-        return (item.granularity == "line" and item.start == start
-            and item.literal == item.observation_text[start:end].rstrip("\r"))
     regions = set()
     for item in fragments:
-        name = scientific_name(re.sub(r"^\s*taxon\s*:\s*", "", item.literal))
-        if whole_line(item) and not item.unreadable and name and name.partly_read is None and name.query == parsed.query:
+        name = taxonomy_scientific_name(item.literal)
+        if _whole_line(item) and not item.unreadable and name and name.partly_read is None and name.query == parsed.query:
             regions.add(item.region_id)
     for rank in ("order", "family"):
         by_region = []
@@ -60,7 +78,7 @@ def gbif_query_params(request: SpecialistRequest, query: SourceQuery) -> dict[st
             for reading in readings:
                 explicit = set()
                 for item in fragments:
-                    if item.region_id != region or item.observation_id != reading or item.unreadable or not whole_line(item):
+                    if item.region_id != region or item.observation_id != reading or item.unreadable or not _whole_line(item):
                         continue
                     match = re.fullmatch(rf"\s*(?i:{rank})\s*:\s*([A-Z][a-z]+)\s*", item.literal)
                     if match:
@@ -84,10 +102,7 @@ def captured_gbif_no_match(request: SpecialistRequest, result: SourceResult, lit
     """
     from .sources import result_envelope
 
-    name = scientific_name(literal)
-    queries = {literal}
-    if name and name.genus and name.partly_read is None:
-        queries.add(name.query)
+    queries = taxonomy_name_forms(literal)
     receipt, coverage = result.receipt, result.coverage
     payload = result_envelope(result)
     evidence_ids = tuple(item.id for item in result.evidence)
@@ -116,16 +131,14 @@ def taxonomy_stop_defect(request: SpecialistRequest, results: tuple[SourceResult
 
     if available_taxonomy_settlement(request, results):
         return "taxonomy_research_has_settled_candidate: return the exact captured GBIF settlement and its producer; preserve supporting disagreement"
-    def forms(literal):
-        name = scientific_name(literal)
-        return {literal, name.query} if name and name.genus and name.partly_read is None else set()
+    forms = taxonomy_name_forms
 
     literals = {item.interpreted_text for item in request.assemblies if item.field_key == FieldKey.TAXON}
     literals.update(item.literal for item in request.organiser_candidates
         if item.field_key == FieldKey.TAXON and item.status != "ungrounded")
     for item in request.fragments:
-        match = re.fullmatch(r"\s*taxon\s*:\s*(\S.*)", item.literal)
-        if not item.unreadable and match:
+        match = re.fullmatch(r"\s*(?i:taxon)\s*:\s*(\S.*)", item.literal)
+        if item.scope == request.scope and _whole_line(item) and not item.unreadable and match:
             literals.add(match[1])
     explicit = {literal for literal in literals if forms(literal)}
     searched = [item for item in results if item.coverage.field_key == FieldKey.TAXON
@@ -185,9 +198,7 @@ def available_taxonomy_settlement(request: SpecialistRequest, results: tuple[Sou
     from specimen_digitization.application.domain import FieldValue, ValueState
     from .evidence import EvidenceError, validate_resolution
 
-    def forms(text):
-        name = scientific_name(text)
-        return {text, name.query} if name and name.genus and name.partly_read is None else set()
+    forms = taxonomy_name_forms
 
     for result in results:
         if result.status != LookupStatus.SUCCESS or result.coverage.source_id != "gbif":

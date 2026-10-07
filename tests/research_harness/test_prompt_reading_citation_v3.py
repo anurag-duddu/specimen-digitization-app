@@ -123,7 +123,7 @@ def test_the_v3_pin_is_audited_from_the_file_and_the_live_pin_extends_it(role):
     # the live text begins with the v3 text.
     assert READING_CITATION_PROMPT_VERSION == "specialists-reading-citation-v3-2026-10-03"
     qualified = role in {SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT, SpecialistRole.GEOGRAPHY}
-    assert ROLE_PROMPTS[role] == (f"{role.value}-v{8 if role == SpecialistRole.GEOGRAPHY else 9 if role == SpecialistRole.MEASUREMENT else 7 if qualified else 6 if role == SpecialistRole.TAXONOMY else 5}.txt",
+    assert ROLE_PROMPTS[role] == (f"{role.value}-v{8 if role == SpecialistRole.GEOGRAPHY else 10 if role == SpecialistRole.MEASUREMENT else 7 if qualified else 6 if role == SpecialistRole.TAXONOMY else 5}.txt",
         GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION if role == SpecialistRole.GEOGRAPHY else
         MEASUREMENT_EVIDENCE_PROMPT_VERSION if role == SpecialistRole.MEASUREMENT else
         TEMPORAL_CONTEXT_PROMPT_VERSION if role == SpecialistRole.TEMPORAL else

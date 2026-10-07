@@ -181,6 +181,8 @@ def instructed(request):
     text = " ".join(request.prompt.text.split())
     start = text.find("Producer and literal without an assembly (publication):")
     producer = text[start:text.find("Human question evidence (publication):")] if start >= 0 else ""
+    if not producer and "instead cite one original reading on value:" in text:
+        producer = text  # geography v9 preserves exact reader provenance with a new heading
     listed = re.search(rf'Missing policy \(unstructured labels\): .*? declares missing_policy "{POLICY}" for '
         r"(.+?)(?:, and no source|\.)", text)
     named = {FieldKey(name) for name in re.findall(r"[a-z_]+", listed[1]) if name != "and"} if listed else set()
@@ -199,6 +201,9 @@ def instructed(request):
             "pinned profile's missing_policy: work_state waiting_policy" in text
             and f'reason "missing_policy:{POLICY}"' in text)
     )
+    if "connected exact-join source, return waiting_policy" in text and (
+            "reason beginning missing_policy:" + POLICY) in text:
+        current_fallback = True  # parties v6 retains its declared unsupported-identity hold
     if current_fallback:
         named |= requested & declared
     named &= requested & declared
@@ -454,18 +459,16 @@ def test_an_unkeyed_label_lands_in_needs_human_review_on_the_declared_fields(unk
         *map(str, DECLARED - {FieldKey.COUNTY, FieldKey.CITY}), "verbatim_dts"}
 
 
-def test_parties_runs_last_so_the_always_terminal_irn_publishes_the_final_state(unkeyed):
-    """FAILS on origin/main: COLLECTION is last, nothing in it is terminal, and the last publication
-    (identified_by_irn) predates its result, so the record cannot finalize."""
-    assert list(SpecialistRole)[-2:] == [SpecialistRole.COLLECTION, SpecialistRole.PARTIES]
+def test_deferred_irn_publishes_final_state_after_collecting_context_first_windows(unkeyed):
+    """The genuine unsent terminal IRN carries final progress after all six roles."""
     parsed, specimen, hold = run_research(unkeyed, specialist_factory(unkeyed.model_calls), transport(unkeyed.source_urls))
     # The worker completes roster windows in order, while two independent
     # specialists inside each window may call their models in either order.
     roles = [role for role, _ in unkeyed.model_calls]
     assert len(roles) == 7
-    assert Counter(roles[:3]) == {"specimen_taxonomy": 1, "specimen_geography": 2}
-    assert Counter(roles[3:5]) == {"specimen_temporal": 1, "specimen_measurement": 1}
-    assert Counter(roles[5:]) == {"specimen_collection": 1, "specimen_parties": 1}
+    assert Counter(roles[:2]) == {"specimen_temporal": 1, "specimen_parties": 1}
+    assert Counter(roles[2:4]) == {"specimen_measurement": 1, "specimen_collection": 1}
+    assert Counter(roles[4:]) == {"specimen_taxonomy": 1, "specimen_geography": 2}
     assert [turn for role, turn in unkeyed.model_calls if role == "specimen_geography"] == [1, 2]
     receipts = sorted(unkeyed.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
     assert receipts[-1]["causal_proof"]["changed_field"] == "identified_by_irn"

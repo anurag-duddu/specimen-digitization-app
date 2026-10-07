@@ -4,9 +4,9 @@ Fifteen fields (the twelve literals, county, city and taxon) carry the missing
 policy "unstructured_label_event_unqualified", as verbatim_dts carries its own.
 A specialist's waiting_policy on one of them is then the existing
 needs_human_review path (reason mandatory_unresolved:{field}); a waiting_source
-on it, a failed or unconfigured source, is still an operational block. Nothing
-in evidence.py (the validator and its VALIDATOR_SOURCE_SHA256 pin), the
-projector or the connector SQL names a field, so none of them changes.
+on it, a failed or unconfigured source, is still an operational block. The
+temporal v4 validator pin includes explicit event-context and native endpoint
+qualification. The declared missing-policy roster still belongs to the profile.
 """
 import hashlib
 import inspect
@@ -44,7 +44,7 @@ LOOKUPS = {FieldKey.COUNTY, FieldKey.CITY, FieldKey.TAXON}
 DECLARED = LITERALS | LOOKUPS
 NOT_DECLARED = {FieldKey.COUNTRY, FieldKey.PROVINCE_STATE, FieldKey.PRECISE_LOCATION,
     FieldKey.IDENTIFIED_BY_IRN}
-EVIDENCE_PY_SHA256 = "775b48bbd6e5ae3554af2406d3f3e76ac73cdb6e3a8e96fcac7c3983c75164dd"  # pragma: allowlist secret
+EVIDENCE_PY_SHA256 = "c55f0222eed9f4e0dcba038b24b978dda755a6d86e416b137dae86f68464e699"  # pragma: allowlist secret
 
 
 def pins():

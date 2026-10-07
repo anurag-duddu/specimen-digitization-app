@@ -146,7 +146,7 @@ class SpecialistOutput(BaseModel):
 
 def utility_model_view(result: SourceResult) -> SourceResult:
     """Compact presentation only; the broker's exact result remains proof authority."""
-    if (result.coverage.source_id not in {"settle_temporal", "settle_elevation"}
+    if (result.coverage.source_id not in {"settle_temporal", "settle_elevation", "settle_collectors", "settle_collection"}
         or result.status != LookupStatus.SUCCESS):
         return result
     if len(result.candidate_json) != 1:
@@ -524,7 +524,16 @@ class SpecialistHarness:
                 try:
                     result = await ctx.deps.tool_broker.invoke_utility(request, tool_id, arguments)
                     view = utility_model_view(result)
-                except (UtilityInputError, EvidenceError):
+                except (UtilityInputError, EvidenceError) as error:
+                    if (request.role == SpecialistRole.MEASUREMENT
+                        and str(error) == "G32 independent complete elevations disagree"):
+                        raise ModelRetry("research_measurement_assertions_disagree: accepted same-event "
+                            "elevation assertions disagree in exact endpoints, single/range meaning, "
+                            "approximation or written uncertainty. Retain every reading and investigate "
+                            "the conflict; never discard one assertion or invent a tolerance. If it "
+                            "cannot be settled, return the requested fields as waiting_policy with "
+                            "value.state unresolved under missing_policy:unstructured_label_event_unqualified, "
+                            "explain the specific retained conflict, and provide no value or human question") from None
                     # Correct a model argument within the existing one-retry
                     # budget; a missing assertion never becomes a settled value.
                     raise ModelRetry("research_utility_invalid_input: use only an accepted assembly for the requested field and its event; "
@@ -564,15 +573,20 @@ class SpecialistHarness:
 
     @staticmethod
     def _register_output_validation(agent):
-        @agent.output_validator
-        def validate(ctx: RunContext[ResearchDeps], output: SpecialistOutput):
+        def strict(ctx: RunContext[ResearchDeps], output: SpecialistOutput, *, controller_fields=frozenset()):
             from .evidence import validate_resolution
+            from .output_admission import FAILURE_REASON, is_validation_failure
 
             request = ctx.deps.for_agent(ctx.agent.name)
             fields = tuple(result.field_key for result in output.resolutions)
             if output.role != request.role or len(set(fields)) != len(fields) or set(fields) != set(request.field_keys):
                 raise ModelRetry("specialist_output_does_not_cover_exact_requested_fields")
-            if request.role == SpecialistRole.MEASUREMENT:
+            for resolution in output.resolutions:
+                if resolution.reason == FAILURE_REASON and (resolution.field_key not in controller_fields
+                    or not is_validation_failure(resolution)):
+                    raise ModelRetry(f"specialist_output_failure_requires_controller_admission: field={resolution.field_key}; "
+                        "return the original field investigation; the controller records exhausted validation")
+            if request.role in {SpecialistRole.MEASUREMENT, SpecialistRole.TEMPORAL}:
                 # Match the journal/checkpoint fence before accepting an output.
                 # Utility context may include a protected source field that the
                 # scoped output cannot turn into a new native checkpoint.
@@ -645,7 +659,7 @@ class SpecialistHarness:
                         "for an unresolved value. Preserve the human question, reason and captured source coverage")
             masked = masked_outages(output.resolutions, results)
             if masked:
-                raise ModelRetry("specialist_output_hides_a_failed_lookup_behind_waiting_policy: a lookup for "
+                raise ModelRetry(f"specialist_output_hides_a_failed_lookup_behind_waiting_policy: field={masked[0]}; a lookup for "
                                  + ", ".join(key.value for key in masked)
                                  + " failed; return waiting_source for it, which blocks the record")
             if request.role == SpecialistRole.TAXONOMY and any(
@@ -656,6 +670,11 @@ class SpecialistHarness:
                 if defect:
                     raise ModelRetry(defect)
             return output
+
+        @agent.output_validator
+        def validate(ctx: RunContext[ResearchDeps], output: SpecialistOutput):
+            from .output_admission import admit_output
+            return admit_output(ctx, output, strict)
 
     async def run_specialist(self, role: SpecialistRole, *,
                              message_history: Sequence[ModelMessage] | None = None,

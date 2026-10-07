@@ -17700,3 +17700,694 @@ production, hold-clearing or human-override action.
 - Saved frontier recovery now applies to every specialist. Target Harness's delegate_task injects background=False/resume=None defaults; guard accepts only those synchronous defaults and rejects nondefault background or foreign resumes. Real delegation allowance regressions pass.
 - Validation:63 focused capability/provider/recovery tests passed, one existing no-config telemetry warning. Actual Monty arithmetic, forbidden host-file/process/network operations, bounded infinite loop, fresh session isolation and actual official Memory/Skills injection exercised. Full composer/publication/native/full verifier remains pending final domain composition.
 - Failed approaches: MemoryFile requires operation_id; Harness skill names require hyphens instead of underscores. Corrected both and reran actual injection. Default shared adapter had offline-only registration; new committed free_local_public_http policy admits only free declared providers, preserving the old offline-only default and live rejection tests. No paid/native/production execution and no mutations to Lane P worktrees/jobs.
+
+### 2026-10-07 — Dates harness: explicit event context and native To repair
+
+- Task/chat `01a11840-c21a-7a83-b00d-428bb3bd2104` (Dates harness), delegated from `01a117fb-05bc-77d1-ab59-37333dc642db`. Branch `codex/harness-temporal`; isolated managed worktree `/Users/anuragduddu/.codex/worktrees/f732/specimen-digitization-app`. Initial checkout was clean/detached at `7890de551c75fe3b06836c7fb224f85dd2a2423a`; current remote main SHA independently read and matched that baseline. Original dirty checkout preserved. New local reviewable commit pending at append time; PR/push/merge/release/live acceptance: Not confirmed. Resume Lane P research harness remains integration/paid-canary/release owner.
+- Concrete source: additive `temporal_context.py` over existing fragments/events/continuations; production factory enriches only temporal requests. Identical printed collecting/determination event keys and independently quoted date roles qualify cross-label day/year and written DMY/MDY context. Actual reader/excerpt/literal offsets are checked; raw and adjudicated evidence stays retained. G24/G29 precision, G44 support relations and scientific/source digests are reused. Multiple dated event keys (including unsettled competing dates) need event selection proof. A written To, including an ambiguous or unlinked printed To-only event, forbids G44 while a valid From sibling is retained. Written same-event ranges require calendar bounds at written precision.
+- To-only repair: engine injects a resolved native From revision/digest pin; settlement rederives and checks that source. Exact requested output subset and native dependency preflight protect the journal CAS. Real named human From without native dependency proof stays preserved, and To emits structured policy work with no fabricated value/derivation. No user Save is required for validated native results. Current prompt v8 and validator v4 preserve historical v6/v7 prompt bytes and v1/v2/v3 validator source/version registrations; changed validator bytes pin the additive temporal module. Integrators must recompute the qualified validator hash over the final composed source, rather than reuse this lane hash after sibling edits.
+- Reproduction: using the read-only audit archive source with the declared lane interpreter reproduced the old To-only utility refusal even with an exact native From pin: `Temporal event does not establish the requested field`. Focused initial baseline collecting/prompt tests: 22 passed. Final unchanged-tree command: `.venv/bin/python -m pytest -q tests/research_harness/test_temporal_event_links.py tests/research_harness/test_temporal_native_subset.py tests/research_harness/test_temporal_collecting_context.py tests/research_harness/test_temporal_prompt_v7.py tests/research_harness/test_unqualified_label_policy.py tests/research_harness/test_local_utility_publication_v2.py tests/research_harness/test_canonical_projection_v2.py tests/research_harness/test_measurement_native_subset.py tests/research_harness/test_organiser_handover_engine.py tests/research_harness/test_temporal_composer.py` → 314 passed, 2 existing fixture warnings, 54.76s. `git diff --check` passed. Full canonical `scripts/ci/verify.sh` was intentionally not run by this support lane; it is required before any push.
+- Evidence scope: real offline Agent/journal tests verify invalid output feedback, quote/pin tampering, native source retention, a named human Unknown, local-helper interruption and fresh-lease resume. A stale revision fails before model dispatch and cannot write a checkpoint. Two composed synthetic FunctionModel/reader/fake-DataConnect cases exercise the real composer, acceptance, evidence and canonical writer, publish From before G44 To automatically, and finish Needs Human because determination evidence is absent. No HTTP, source-provider qualification, paid processing, authenticated review or live scientific acceptance was performed. No cloud/CI/release/IAM/budget/unknown-send/human-decision changes.
+- Failed approaches/learnings: year context alone must not choose day versus short-year notation (`IV-24`); explicit Day and month support is required. ISO dates and equal numeric readings should retain consistent context. Mixed precision needs calendar bounds rather than string ordering. Final independent read review found both competing-event selection and printed To-only false-copy gaps; regression guards now cover them and retain valid siblings. One intermediate run was invalidated by source/hash edits while tests remained active; its publication-proof failure is not qualified evidence. The final run held executable files unchanged until completion. Existing restored message history, browser sessions and general long-running research are not claimed from step snapshots.
+- Reusable handoff: `docs/research/TEMPORAL_HARNESS_PLAN.md` and `docs/research/TEMPORAL_HARNESS_HANDOFF.md` name exact shared-file hunks, stop rules, evidence levels and procedure requirements. Geography owns shared browser/code/memory/recovery wiring. Pinned local Python 3.11.16 / AI 2.51.0 / harness 0.36.0 installed from cached frozen dependencies; package source exports Memory, Skills, Shell, CodeMode, BrowserUse, but the optional `browser_use` dependency is absent. No duplicate runtime or capability was configured. External exact specimen/date joins, general handwritten event-selection/continuation proof, protected human native dependency basis and candidate-cap/legacy/repeated-span limitations remain shared prerequisites. Verified procedure memory cannot supply missing dates or retrain weights.
+- Dosu: no listed MCP knowledge read/write/finalization tools; CLI v0.66.1 context inspection reported expired auth and inability to safely refresh credentials, while the coordinator had already reported monthly knowledge credit exhaustion. No repeated knowledge query, billing change, knowledge write or receipt/finalization. Session learnings are preserved here append-only.
+
+### 2026-10-07 — Elevation harness: exact assertion agreement and pinned derived-only repair
+
+Task ID: Elevation harness / measurement lane, managed worktree 0934. Branch
+`codex/harness-measurement`, worktree
+`/Users/anuragduddu/.codex/worktrees/0934/specimen-digitization-app`. Clean detached
+baseline and remote default `main` both verified at
+`7890de551c75fe3b06836c7fb224f85dd2a2423a`. Existing dirty checkouts were not
+changed. Reviewable local commit creation follows this entry; its exact SHA is
+reported in the chat. PR, push, merge, canonical verifier, live provider/native
+acceptance and production release: **Not confirmed**; none was initiated here.
+Lane P retains integration, protected release and paid-canary authority.
+
+The actual pre-fix regression returned 9 failed / 14 passed: six scientifically
+conflicting same-event assertions silently settled because only numeric endpoints
+were compared; three ASCII `+/-` assertions were refused. The fix compares exact
+converted endpoints and written uncertainty, single/range meaning, approximation,
+precision and datum. Missing uncertainty differs from explicit zero. Exact equivalent
+complete ft/m assertions can agree only after accepted event grounding. Every
+original unit, literal, qualifier and uncertainty remains in assertion metadata;
+no tolerance or reader/event relation is invented. ASCII `+/-` uses the existing
+nonnegative and applicable-unit constraints.
+
+New additive `measurement.py::pinned_elevation_resolutions` uses a genuine omitted
+source dependency only when its complete native settled-resolution digest exactly
+matches one immutable request pin. It consumes that pin's revision; stale, absent
+or duplicate pins cannot create a native source. `sources.py` now inventories every
+elevation assembly of the accepted event, including omitted source assemblies;
+`local_utility_proof_v2.py` replays the same inventory and excludes other domains'
+assemblies from elevation calculation. Narrowed outputs still return only requested
+fields while retaining the full four-row utility result. Role-specific `agents.py`
+feedback names scientific conflicts instead of treating them as successful numeric
+agreement. Measurement v10 is active; historical v6-v9 bytes are immutable and
+frozen v8/v9 instruction replay is tested. `accepted_output.py` pins validator v4,
+SHA `b5af78b21598200ba6b603b95b7a81fa5f06f5161a95d6d3320120842854f98d`, while
+retaining and revalidating v1-v3 pairs. The integrator must recompute the final
+validator SHA after composing any other lane's evidence.py changes.
+
+Focused checks used this isolated `.venv/bin/python`, synced from the frozen lock:
+`pydantic-ai-slim` 2.51.0, `pydantic-ai-harness` 0.36.0. No stale original interpreter.
+Commands/results (groups overlap; counts are not additive):
+
+- `-m pytest -q tests/research_harness/test_measurement_agreement.py tests/research_harness/test_elevation_transcript_resolution.py`: **33 passed**, 0.59 s. Includes exact equivalent related-label fixtures, ranges/signs/decimal/thousands/qualifiers/uncertainty, absent-v-zero refusal, scientific conflict feedback, real handover of ASCII uncertainty and mixed-domain event replay.
+- `-m pytest -q tests/research_harness/test_measurement_dependencies.py`: **6 passed**, 0.45 s. Actual scripted Agent/utility/acceptance/checkpoint proof with explicit synthetic native pins; stale/missing/duplicate pins refused, invalid final value corrected from retained utility without losing valid siblings, old v3 acceptance revalidated. Production dependency provisioning is not claimed.
+- `-m pytest -q tests/research_harness/test_measurement_native_subset.py tests/test_georef_elevation.py tests/test_georef_harness.py`: **46 passed**, 3.12 s. Actual durable engine/journal and captured model response replay across cancellation after pure local calculation; no uncertain send/hold was cleared. One first model dispatch before cancellation, two total after restart, identical calculation results, three supported unprotected checkpoints and unchanged preserved human Unknown. DEM checks include whole uncertainty-circle extrema, complete tile/no-data coverage and refusal to replace written/unknown label elevation.
+- `-m pytest -q tests/research_harness/test_measurement_agreement.py tests/research_harness/test_elevation_transcript_resolution.py tests/research_harness/test_local_utility_publication_v2.py tests/research_harness/test_canonical_projection_v2.py tests/research_harness/test_production_e2e.py`: **162 passed**, 199.05 s. Composed production entry point with fake Data Connect, scripted models and captured fixture sources publishes all four elevation fields without Save, retains G41 lineage and prevents duplicate publication. Two later added assertion-inventory/absent-v-zero cases are included in the separately recorded 33-test final run above.
+- `-m pytest -q tests/test_research_harness_domain.py tests/research_harness/test_specialist_feedback.py tests/research_harness/test_unqualified_label_policy.py tests/research_harness/test_measurement_dependencies.py tests/research_harness/test_measurement_notation.py tests/research_harness/test_measurement_prompt_v7.py tests/research_harness/test_measurement_prompt_v8.py tests/research_harness/test_measurement_prompt_v9.py tests/research_harness/test_prompt_relations_v2.py tests/research_harness/test_prompt_qualified_v6.py tests/research_harness/test_prompt_reading_citation_v3.py tests/research_harness/test_prompt_missing_policy_v4.py tests/research_harness/test_prompt_handover_v5.py`: **408 passed**, 2.38 s. Domain guards, exact validator boundary and current/historical prompt regressions. The later invalid-final-answer case is in the final 6-test dependency run.
+- `-m pytest -q tests/research_harness/test_taxon_input_reconciliation.py -k 'metadata or validator or historical'`: **19 passed**, 42 deselected, 0.29 s, checking compatibility of the changed shared validator pin.
+- `git diff --check` and current validator-byte qualification passed. Independent subagent review found no actionable scientific, scope, dependency or replay defect. Existing Logfire-not-configured and Starlette deprecation warnings do not establish telemetry evidence; remote traces were not used for these tests.
+
+Stop rules and remaining prerequisites: fields are elevation_from_m, elevation_to_m,
+elevation_from_ft and elevation_to_ft. Written 6,400 ft supplies both feet endpoints
+6400 and both metre endpoints 1950.72 under exact G41. Protected human From-m Unknown
+remains untouched: a written feet source can settle the other three; a lone metres
+assertion with no genuine native From-m pin leaves derived targets waiting_policy,
+with explicit `protected_native_dependency_unavailable:elevation_from_m`, no invented
+value and no conversational question. Final product queues remain exactly Cleared,
+Needs Human, Deferred; outage/unknown-send policies were not changed.
+
+`NativeGenerationRequestFactory` still omits settled request.dependencies and only
+qualifies ordinary elevation within one region with matching written reader units.
+Shared integration must supply current source pins and qualified cross-label event
+relations; this lane tests equivalent measurements on explicitly accepted synthetic
+events, not production relation discovery. Shared browser/code/memory/recovery stay
+geography-owned; constructors/exports were checked against pinned package source.
+CodeMode import requires the currently absent pydantic-monty optional dependency.
+Memory should store reviewed unit procedures, never specimen facts or model weights.
+Existing `GeoreferencingAdapter` / `derivation_source_result` captures verified
+location-revision/dataset/uncertainty-circle DEM proposals, but explicitly requires
+human review and prohibits automatic settlement. No new DEM adapter is necessary
+for that approved route; automatic missing-elevation DEM use needs an approved
+policy change and shared capture/dependency integration. Full implementation
+notes and narrow shared-file hunks are in docs/execution/harness-measurement-plan.md.
+
+Failed setup attempts were bounded: sandbox network could not resolve package/Git
+hosts, then authorized read-only remote lookup and frozen dependency sync succeeded.
+Dosu 0.66.1 reported expired credentials and could not safely save its refresh;
+no knowledge tool is listed, no receipt/finalization occurred, and the coordinator's
+reported exhausted credits were not retried. No billing changes. No shared runtime,
+writer, journal, scheduler, human decisions, effect holds or deployment path changed.
+
+### 2026-10-07 — Isolated elevation completion: current accepted pins and admission repair
+
+Task `01a11840-fd33-7fe3-babb-bd00b5506c4f`, source lane `/root/elevation_completion_sol_ultra`.
+Branch `codex/lane-p-elevation-completion-20261007`; worktree
+`/Users/anuragduddu/.codex/worktrees/lane-p-elevation-completion/specimen-digitization-app`.
+Starts at committed measurement slice `6c3a6bcf13f459f914cbb72fe6cb8f374b11a7b0`,
+parent main `7890de551c75fe3b06836c7fb224f85dd2a2423a`. Original 0934 measurement
+worktree and all other worktrees preserved. This entry is included in the local
+source commit recorded in the handoff. No pull request, push or release in this lane.
+
+Outcome: NativeGenerationRequestFactory now captures measurement-only exact
+settled source dependencies through a service-owned read_accepted_checkpoint_proof
+reader supplied by the production runtime. The domain helper reuses the native
+original/reuse verifier, requires current supported written settlement, original
+accepted capture/checkpoint/pointer equality and matching runtime pins, and keeps
+the actual native revision and complete resolution digest. Missing readers/proofs,
+bare revisions, derived or nonsettled rows and locked/carried human outcomes supply
+no substitute pin. Engine and journal current-dependency/CAS guards are unchanged.
+
+Exact-key elevation admission now has exact-elevation-field-key-line/v1 semantic
+validation. It preserves complete written units and G41, even when a metre target
+contains a feet literal. The same retained-reader check rejects actual unit,
+quantity, range, qualifier or written uncertainty disagreement and explicitly
+headed malformed peers. Both keyed admission and organiser qualification include
+other labels' retained elevation claims/headings, so refusal on one path cannot
+fall through to a different label's unjoined event. Complete headed narrative spans
+remain supported by the existing sign/range/uncertainty span guards. No accepted
+cross-label event relation is invented; actual common-event proof remains absent
+from ordinary snapshots. Every literal reading remains retained.
+
+Final-source validation used this worktree's fresh frozen .venv, AI-slim/Evals/Graph
+2.51.0 and Harness 0.36.0. Bounded offline fixtures and scripted FunctionModels only:
+
+- Keyed admission + ordinary organiser raw-reading/handover regressions: 189 passed,
+  0.67 s. The final two additional fixture-integrity/range cases were then included
+  in the final keyed admission run: 32 passed, 0.12 s. These counts overlap.
+- Real request-factory/Agent/journal accepted capture, derived-only repair, exact
+  native and generation-reuse pins, tampered/absent source refusal, protected human
+  Unknown, interrupted arithmetic replay, exact scientific agreement/notation and
+  DEM reviewer-only controls: 115 passed in the 139.83 s run below. The accompanying
+  composed test failed on the old public fixture and was repaired as described.
+- Current/historical measurement prompt bytes and validator metadata/pair/history
+  controls: 29 passed, 42 deselected, 4.54 s. v1/v2 capture/history and v3 measurement
+  revalidation preserve original version/hash pairs, rather than relabelling them.
+- Definitive corrected composed production-entry/fake-DataConnect final-queue test:
+  1 passed, 72.85 s. Seventeen genuine source lines retain exact20 field slots and
+  produce nineteen scoped field publications, including all four elevations from
+  one 180-181 m range. This is offline fixture publication, not live native proof.
+- git diff --check and validation_boundary_pins passed. Final evidence.py SHA256 is
+  b5af78b21598200ba6b603b95b7a81fa5f06f5161a95d6d3320120842854f98d, unchanged and
+  matching validator v4. evidence.py, accepted_output.py and all prompt bytes are
+  unchanged from 6c3a6bcf. Final source SHA256: initial_requests.py
+  c84e045eaffe1c7eb7a9a3fb5c61c82794ef1858056d92a524e917d59968cc20;
+  measurement.py 56319a0bb8543f6c225f639200a5414498769175cf8c08bdd508beefe435de46;
+  production_runtime.py 740ca1d920fb21a9be4bec64dbb43f3d3681828af22d807088e918d75db60ec2.
+
+Failed approaches and correction: a keyed multi-label veto alone allowed the
+organiser to accept the other label after refusing the keyed span; the shared
+region inventory closes both paths. Full-line parsing of headed narrative prose
+initially refused a legitimate complete span; guarded prefix-span qualification
+restores it. A first broad focused run had 285 passes before these refinements and
+is not a final-source total. Two intermediate batches were interrupted when new
+negative fixtures revealed gaps; their pytest teardown KeyErrors were interruption
+artifacts, not product diagnoses. Initial fixture setup used a bare role name,
+omitted-source utility key and missing synthetic reviewer membership; those were
+corrected without changing product authority. The final composed run initially
+published only fifteen fields: the public synthetic label contained a real range
+plus naked, rounded 181/590.55/593.83 values under three other elevation keys. The
+new admission correctly held these unproved assertions. Root explicitly approved
+correcting only that test-owned fixture to state the genuine range and derive the
+other fields; the old shape stays as a negative control. Product admission was not
+weakened to make nineteen publications pass.
+
+Read-only subagent review found the admission gaps above, then reported no further
+actionable source findings on the final production diff; it did not rerun the
+parent's passing counts. Existing Logfire-not-configured/Starlette deprecation
+warnings do not establish remote trace proof. USD1/run, USD5 programme,
+USD25 combined, human choices, effect/unknown-send holds, writer, scheduler,
+journal and source-quote/publication contracts are unchanged.
+
+Remaining prerequisites: ordinary cross-label measurement requires actual accepted
+event membership spanning all assertion fragments with pinned semantic validation;
+complementary fragments additionally require accepted continuation relations.
+Physical equality alone cannot supply that proof. DEM uses the existing
+GeoreferencingAdapter/derivation_source_result reviewer-only proposal path.
+Automatic missing-elevation DEM needs an approved autonomous scientific producer
+policy superseding the current geography-v8, derivation_worker, evidence validator
+and source-capture proposal-only contract, specifying proved label absence,
+current settled location pins, full pinned-dataset uncertainty-circle/no-data
+coverage and native all-four derived lineage. No automatic DEM was enabled.
+Shared browser/code/memory/recovery remain geography-owned.
+
+The separately owned package-upgrade lane was informed of the synchronous proof
+reader/FunctionModel/native journal seams; latest-package adoption and final
+combined qualification are Not confirmed here. The human's independent harness
+integration stream owns later domain/dependency integration. Current root memory
+repair/source56e, paid/native pilot custody and release ownership were not touched.
+Live provider, live Data Connect/native writes, authenticated Save/reopen, production
+release and original-ten acceptance: Not confirmed in this lane.
+
+Dosu CLI 0.66.1 verified. Root's single newly listed MCP knowledge read returned the
+monthly4,000-credit pause, with no receipt ID. This lane did not retry, change auth,
+Library, billing/overages, write knowledge or finalize an empty session. Consulted
+committed source and durable repository context instead; no sensitive fixture or
+customer data was promoted, and no memory files were written.
+
+### 2026-10-07 — People harness: exact people roles, recovered collectors and offline publication
+
+- Task/chat `01a11841-46c3-73f1-93bc-deadb519c8a7` / `/root`; delegated from `01a117fb-05bc-77d1-ab59-37333dc642db`. Branch `codex/harness-parties`; isolated worktree `/Users/anuragduddu/.codex/worktrees/0ff0/specimen-digitization-app`. Started clean/detached at `7890de551c75fe3b06836c7fb224f85dd2a2423a`; remote main independently matched. Original dirty checkout was not switched, reset or edited. Local reviewable commit follows this entry; PR, push, merge, canonical full verify and release: Not confirmed / not performed.
+- Outcome: additive `research_harness/people.py` qualifies exact collecting versus determination/preparation/locality spans; preserves full multiple-person names/initials and refuses truncated lists, embedded mixed roles, dangling commas and explicit continuations. The graph factory recovers omitted explicit collector lines from a decided reading or agreeing retained readers only when an existing native literal quote covers the exact span. Native evidence rows are reused, never fabricated. Missing quotes, disagreements, unknown roles and initials-only remain located alternatives and structured missing-policy work. Bare names still require an accepted collecting assembly. No historical memory or biography establishes person identity.
+- Existing scoped `invoke_utility` now admits parties-only `settle_collectors(field_key=collectors,event_id=existing accepted event)`. The returned resolution and native publication replay retain exact assembly/event/native evidence IDs, immutable full observation text, spans and raw/decided routes. The people v6 prompt and optional domain Skills procedure document the research/stop rules. `identified_by_irn` remains null Unknown under the unchanged owner G43/G16 nonblocking exception, until qualified read-only eparties identity and a correct specimen determination-row relationship exist. No external people source or IRN adapter was invented.
+- Validator v4 retains historical v1-v3 proof pairs, rechecks current semantics, and pins both evidence.py and imported people policy bytes. Final evidence.py SHA256 `936ab14bbbf43643ec8d4f8d4e3007d4ab2ced53c6c9bd21f92409c8d8216454`; people.py SHA256 `6ed26917b79ce3bb8abae08052e6868c0e64efad32d997fdd4aa952a68acc3ec`. `validation_boundary_pins()` and `git diff --check` pass. Single integrator must recompute the validator hash after composing other lanes' evidence.py changes; copying this lane's hash onto combined source would be wrong.
+- Baseline reproduction used the read-only audit archive `/private/tmp/specimen-harness-audit.RYLi1D/src` with this lane's declared interpreter: `Det. Jane Smith`, `Prep. Jane Smith` and `Locality: Smith` all resolved as collectors before this fix. The new tests exercise organiser qualification and a deliberately false accepted event, so guarding only the factory is insufficient.
+- Final focused command: `.venv/bin/python -m pytest -q tests/research_harness/test_people_evidence.py tests/research_harness/test_people_utility.py tests/research_harness/test_people_publication.py tests/test_people_harness_acceptance.py tests/research_harness/test_organiser_raw_reading_evidence.py tests/research_harness/test_organiser_handover.py tests/research_harness/test_unqualified_label_policy.py tests/research_harness/test_taxon_input_reconciliation.py tests/research_harness/test_committed_pins.py` — **393 passed**, one ordinary Logfire-not-configured warning, 123.58 seconds. Separate focused existing acceptance command: `.venv/bin/python -m pytest -q tests/test_research_harness_acceptance.py -k 'actual_process_loss_after_dispatch or capture_survives_real_process_loss or all_six_actual_specialists or preparation_code_cannot_be_cleared'` — **6 passed**, 35 deselected. These are selected offline checks, not the canonical verification suite.
+- Evidence scope: real Pydantic AI agents, durable SQLite effects/checkpoints, immutable label graph, actual production composer and native writer through a fake connector, scripted models and fixture sources. Tests prove automatic people publication without Save, exact local utility replay, controlled interruption after known-complete checkpoints followed by publication without repeating people model calls, and no duplicate receipts. An already accepted collector survives two invalid pending IRN outputs and restart. Separate process-loss tests preserve unknown sends and replay a captured source response without reissuing it. Live EMu, live native SQL and production acceptance: **Not confirmed**.
+- Failed approaches and corrections: default UV cache write was sandbox-denied; a private temp cache and approved frozen environment sync established AI 2.51.0 / Harness 0.36.0 without the stale original interpreter. A nested ResearchScope digest caused a synthetic recovery serialization failure; hashing the scope first fixed it. An overbroad role-word name rejection broke the synthetic collector fixture; explicit role markers replaced it. Recovery initially added redundant candidates to already accepted keyed/organiser spans; it now leaves those spans stable. Duplicate shape checking prevented the existing forced-validator adversarial fixture; shape policy stays in the shape gate, while contextual role/span checking remains independent. These failed focused runs were not reported as passes.
+- Independent review `/root/people_test_audit` authored utility/publication tests and identified native source restriction and mixed-role aliases. `/root/people_final_review` reproduced mixed-role and partial-list bugs, then rechecked fixes: all original alias/continuation cases stay located; comma truncations stay located; complete `Smith, John; Brown, Anna` remains unchanged. No review findings remain from those targeted source reviews. Formal protected exact-commit PR review: Not confirmed.
+- Shared prerequisites remain explicit in `docs/execution/PEOPLE_HARNESS_PLAN_2026-10-07.md`: Geography owns shared captured browser/code/Memory/Skills/recovery adapters; BrowserUse and CodeMode exports exist but browser_use/pydantic_monty extras are absent. This lane did not attach unrestricted capabilities or change dependencies. Missing native quote capture and multiline/cross-label event relations need shared qualified interfaces. Shared engine message-history restoration and salvage of a newly valid sibling after two invalid final outputs remain unimplemented; successful output correction and previously accepted sibling preservation are tested, not overstated. No human outcome, budget/effect hold, paid runner, production state or queue contract was changed.
+- Dosu skill/CLI v0.66.1 was consulted; status reported expired authentication and deployment inspection could not persist refreshed credentials in the sandbox. No server read_knowledge/write_knowledge tools were listed. The coordinator's reported monthly credit exhaustion was not retried; billing and connections were untouched. No receipt_item_id was produced, so no knowledge finalization call was made.
+- Task: 01a11863-eb40-7ed1-9004-619ed0044cd9; branch codex/harness-independent-integration; managed worktree harness-independent-integration/specimen-digitization-app. Fresh remote main: 7890de551c75fe3b06836c7fb224f85dd2a2423a. PR: Not confirmed.
+- Latest official PyPI metadata: AI-slim/Evals/Graph 2.54.0 and Harness 0.54.0, published 2026-10-03. Harness requires AI-slim exactly 2.54.0. Frozen lock changes only the four package versions/artifact hashes.
+- Validation: uv sync --frozen; tests/test_research_harness_agents.py: 43 passed, one existing no-config telemetry warning. No provider or production execution. Full canonical verifier: Not confirmed.
+- Reusable behavior: Harness 0.54 now forwards a separately capped delegated child usage into the parent when forward_usage=True. Parent request usage counts all four model calls in the actual delegation regression, matching shared SQL accounting. The old 2-request expectation failed and was corrected after reading the installed target implementation.
+- Original dirty project checkout and other active worktrees preserved. Dosu monthly credit exhaustion was injected by coordinator; do not retry the same cap or change billing/credentials. No receipt, no finalize. Six original completed domain artifacts are being reviewed/reused, with disjoint follow-up workers. Shared capability and production composition work remains.
+
+## 2026-10-07 — Independent geography follow-up (`/root/geography`)
+
+- Task/chat: independent six-specialist stream, `/root/geography`, root chat `01a11863-eb40-7ed1-9004-619ed0044cd9`. Branch `codex/harness-geography-independent`, managed worktree `/Users/anuragduddu/.codex/worktrees/harness-geography-independent/specimen-digitization-app`. Clean source `7890de551c75fe3b06836c7fb224f85dd2a2423a`, verified remotely by the independent integrator. Preserved the active `6fc3` owner and original dirty checkout.
+- Reused source `441ad59277e80b32b5b1287749a7b1fdbbf18a13` as local `7d1a5eda1`; adopted integrator package source `3288ec80bfc5eabf0581e1e7f543911130d3a601` as local `9b5dfaae4`. Follow-up source and regression tests are the commit containing this entry. No PR/push/main CI or production release was performed by this worker: Not confirmed.
+- Concrete result: related captured historical city research now informs country/province strategy progress, including after a completed checkpoint narrows requested fields. Contextual captured results remain geography-owned, same scope/generation and exact receipt/semantic closures; the target still requires its own GEOLocate deciding lookup. Unrelated sibling failures do not masquerade as this field's researched absence; relevant failed/refused/unreceipted strategies remain source holds. Historical place/parent date qualification rejects a known accepted locality event from another collecting event, determination or preparation. Undated hierarchy and correctly shared collecting events still work. Guatemala county mapping remains unqualified. Unknown event hypotheses are preserved and no event relation is invented.
+- Validation: an initial regression run reproduced four real failures (one missed related strategy and three event-kind cases) after correcting fixture provenance. A second regression run reproduced two narrowing failures. Final focused command `.venv/bin/python -m pytest -q tests/research_harness/test_geography_independent_regressions.py tests/research_harness/test_geography_context.py tests/research_harness/test_geography_strategy.py tests/research_harness/test_geolocate_placement_provenance.py` passed **75 tests** on AI/Evals/Graph **2.54.0**, Harness **0.54.0**, Logfire **5.0.0**. `git diff --check` passed. Earlier existing-geography baseline passed 63 tests; expanded old-package check passed 70.
+- Composed publication: `test_geography_hierarchy_publication.py` passed within the 98-test latest-package combined run (95 passed, three failures). It exercises actual offline production composition/capture/native publication using recorded NGA/GEOLocate bytes, scripted FunctionModel and in-memory connector; country/province/city/precise locality publish automatically while county remains unresolved. This is composed offline evidence, not a live provider/scientific or authenticated production acceptance claim. The combined failures were the broker fixture's incorrect registry pin (corrected and covered in final 75 pass run) and two shared recovery delegate-argument cases (integrator owns correction).
+- Reusable package gotcha: Harness 0.54 dispatches synchronous delegate arguments with `background=False` and `resume=None`; the old recovery guard rejects those injected defaults. Reported to root, which inspected target package source and reported a focused fix and 27 passing recovery tests. Root's correction was not independently rerun in this worker and is not included in the geography delta.
+- Source contract research: official GEOLocate wrapper documentation, `https://www.geo-locate.org/files/glcJSON.pdf`, describes required country/locality and optional state/county; no latitude/longitude/radius query input is required. The reused implementation's coordinate-free model contract remains appropriate. No paid/model query or direct specimen/data write occurred.
+- Failed approach: Python 3.13 frozen offline environment lacked the cached grpcio wheel. Recreated only this worker's disposable `.venv` using cached Python 3.11 and the frozen lock. Local sandbox DNS could not verify remote main; used the integrator's fresh verified SHA. Dosu monthly credit exhaustion was already injected; no retry, credential/billing change or knowledge receipt occurred.
+- Follow-ups: integrator owns single shared capabilities/recovery/dependency provisioning, truthful final source pins, combined canonical verifier, independent PR review and protected CI/CD. Locality event agreement here protects explicit accepted event contradictions; broader cross-label relation provisioning remains shared work. No other owner's worktree, tests or release was interrupted.
+## 2026-10-07 — independent taxonomy reuse and typed assertion repair
+
+- Task: `/root/taxonomy`, independent stream parent chat
+  `01a11863-eb40-7ed1-9004-619ed0044cd9`. Branch
+  `codex/harness-taxonomy-independent`, managed worktree
+  `/Users/anuragduddu/.codex/worktrees/harness-taxonomy-independent/specimen-digitization-app`.
+  Remote main freshly verified `7890de551c75fe3b06836c7fb224f85dd2a2423a`.
+  PR/push/protected merge/production release: **Not confirmed**, integrator-owned.
+- Reused completed source `8620c41eb2cab7e1b6038d3865713e0d527efed2` as
+  `4b3d6253d`. Existing taxonomy worktree `2e67` and all other owners stayed
+  untouched. Adopted independent common upgrade `3288ec80` as `1f1ab2a3e`.
+  Source follow-up is committed together with this append-only entry and plan;
+  its SHA is reported in the handoff.
+- Authorization correction to the predecessor taxonomy entry: the human's
+  independent stream instruction supersedes its Lane P integration requirement
+  for this stream. Our independent integrator owns composition, protected PR
+  delivery and CI/CD. Lane P's work/jobs/candidate are preserved and are no
+  prerequisite for our completion.
+- Baseline regression for one confirmed reader plus a captured same-assertion
+  GBIF no-match failed at G32 before source reuse. The reused repair passed
+  that case while refusing failed, ambiguous, unreceipted, scope/query-tampered,
+  or conflicting accepted alternatives and independent unresolved labels.
+- New regressions first failed 6 cases: capitalized explicit `Taxon:`/`TAXON:`
+  headers were not recognised for research or context, and their raw assertions
+  could not settle; a misfiled `taxon:` span in a city line was wrongly treated
+  as explicit taxonomy work. One taxonomy-only projection now strips the exact
+  field marker for lookup/admission while preserving the original literal and
+  observation. Whole-line custody excludes misplaced markers. Bare `sp.30`
+  still supplies no genus or query.
+- Validation actually run: baseline G20 fixture failed as expected; after
+  reuse, 69 focused tests passed in 80.58 seconds under 2.51.0/0.36.0, including
+  automatic composed offline publication without Save, captured negatives,
+  context cold replay and unknown-send interruption. After the delta, 70
+  relevant regressions passed. After common upgrade, actual installed
+  AI-slim/Evals/Graph 2.54.0 and Harness 0.54.0 were read with importlib metadata;
+  151 focused taxonomy/input/proof/prompt/recovery tests passed in 1.82 seconds.
+  These groups overlap and are not additive. `git diff --check` passed.
+- Tests executed in this worktree with its `src` first on `PYTHONPATH` and
+  `PYTHONDONTWRITEBYTECODE=1`; library interpreters were read-only from the
+  original taxonomy virtualenv for predecessor checks and the independent
+  integrator virtualenv for the target-version run. No live source/model HTTP,
+  paid canary, data write, budget/hold clearing, human override or deployment.
+  One predecessor LogfireNotConfiguredWarning was observed; canonical trace
+  validation is still the integrator's required check and was not disabled.
+- Reusable contract: field-label case is independent of scientific-name case;
+  the parser still rejects partial names and unwritten genera. The same exact
+  name projection must be used by positive assertion admission, negative
+  query binding, available settlement feedback and source-context anchoring.
+  Verified whole-line `order:`/`family:` context narrows GBIF; it is never an
+  accepted classification. GBIF decides, GNV/COL support, BugGuide not admitted.
+  Official primary API parameters were rechecked at
+  https://techdocs.gbif.org/en/data-processing/taxonomy-interpretation.
+- Local v4 composite validator fingerprint after this delta:
+  `67c3902b9b882a7b3df4f423dc1412019c47d738fbdfe84e2d8aff295072a7fc`.
+  Historical v1-v3 validator pairs and frozen taxonomy v6 bytes are retained.
+  Root must recompute final truthful closure after composing shared source.
+  Target-version full native composition, full canonical verifier, PR checks,
+  main CI/CD, live-provider/scientific acceptance and common browser/code/memory/
+  recovery integration are **Not confirmed** here. No new Dosu receipt exists;
+  the injected monthly credit cap was not retried and no finalize was called.
+### 2026-10-07 — Independent temporal domain completion (`/root/temporal`)
+
+- Task/ownership: independent six-specialist implementation; branch `codex/harness-temporal-independent`; managed worktree `/Users/anuragduddu/.codex/worktrees/harness-temporal-independent/specimen-digitization-app`. Fresh supplied/fetched main baseline `7890de551c75fe3b06836c7fb224f85dd2a2423a`. Existing temporal owner worktrees and every Lane P job/worktree were read-only and untouched. Independent root owns composition, protected main and CI/CD.
+- Reused commits: completed temporal `463a0abf7d3f78c3271a8aebc4d460e481dfbeab` as local `bf27afd29`; matched package upgrade `3288ec80bfc5eabf0581e1e7f543911130d3a601` as local `8e37ff0a3`. No PR, push, paid canary, data mutation or deployment from this domain worker.
+- Outcome: retained explicit cross-label event/year/order context, G24/G29 short years/Roman months/written precision, event/range guards, exact native From checkpoint pins for scoped To repair, protected human decisions, interruption/fresh-lease recovery and automatic G44 publication. Added exact repeated date/year and equal written From/To role recovery from independently retained modern native quotes; qualification is idempotent and refuses changed existing graph identities.
+- Reusable learning: a literal may repeat inside another written date while its explicit temporal role still has one exact independently quoted span. Recover only the verified role/observation/full quote/literal offsets with a matching repeated-literal hint; never globally reinterpret an ungrounded candidate. Shifted, borrowed, missing-reader and legacy quotes still refuse admission. The new composed synthetic repeated Date/Year case publishes From then derived To without human Save.
+- Failed approach/evidence: five initial new regressions failed on the reused slice (repeated year at day/month/year precision, equal range endpoints, duplicate graph enrichment). The shared adapter deliberately declines repeated general literals; temporal enrichment originally repeated that refusal despite exact role locators and appended duplicate graph nodes. Neither general adapter policy nor immutable source readings were weakened to repair it.
+- Validation actually run: reused baseline focused suite 81 passed; regression-first 5 failed then repaired focused event/span suite 50 passed. Expanded old-package suite 266 passed (76.80s): temporal event/native/composer/collecting/prompt and new exact-span/tamper/history, unqualified-label policy, local-utility publication and domain tests. Final target-package focused suite 236 passed (150.09s): temporal exact-role spans/event/native/composer/collecting/prompt, unqualified-label policy and package/Agent tests. Commands used `uv run --offline --frozen pytest -q` with those explicit paths; no broad canonical verifier in this worker. `git diff --check` passed.
+- Exact target environment verified from installed metadata: AI-slim/Evals/Graph 2.54.0; Harness 0.54.0. Final local temporal module SHA256 `410e7495743a1d1ca7762947b6a9b38fcf3ee5c043993530d39c1297c9a08197`; evidence.py SHA256 `b0663f01ec72e88bd079cb13a9727c6b2e66d2d8b4059073cd00e2e3f73583d7`. Current local accepted validator v5 preserves truthful v1-v4 pairs, including temporal v4 `c09840fddab414682a0369015efb7dcc8af95a1a9903c3ffe1f92893ff0e3bc9`. Final integrator must recompute combined closure after sibling hunks and preserve prior pairs.
+- Limits/follow-ups: general handwritten relationships without the explicit temporal grammar remain unqualified; no external specimen/date join is admitted. Protected human From without genuine native checkpoint proof remains intact and yields structured policy work. Common dependency provisioning must retain an exact full checkpoint resolution when From consumed other dependencies; the temporal worker does not manufacture a digest. Source/provider/native-live/scientific acceptance, independent review, required combined verifier, main CI/CD and deployment provenance are Not confirmed in this worker. Offline FunctionModels, synthetic labels, SQLite and fake Data Connect are not live scientific acceptance.
+- Dosu: exhausted monthly-credit context was injected by the coordinator; no duplicate credit-cap read, billing/credential change or receipt was produced, so no finalize call applies. Personal memory was not written.
+
+## 2026-10-07 — independent collection source roles and multiline boundaries
+
+- Task: `/root/taxonomy` collection follow-up, independent stream parent chat
+  `01a11863-eb40-7ed1-9004-619ed0044cd9`. Branch
+  `codex/harness-collection-independent`, managed worktree
+  `/Users/anuragduddu/.codex/worktrees/harness-collection-independent/specimen-digitization-app`.
+  Remote main freshly verified `7890de551c75fe3b06836c7fb224f85dd2a2423a` before
+  managed worktree creation. Source `6ff201f49728070e0039aedaaee76c14f6fccfbd`
+  reused as `ebb3b6849`; independent common `3288ec80` adopted as `b85435ac1`.
+  Source delta and this closeout are committed together; SHA is reported in the
+  handoff. PR/push/merge/production CI/CD: **Not confirmed**, integrator-owned.
+- Original collection worktree `13a6` and every other owner remained untouched.
+  The human's independent-stream instruction supersedes the predecessor source
+  plan's Lane P integration requirement for this stream. Root owns protected
+  delivery; Lane P's work/jobs/candidate are preserved and are no prerequisite.
+- Reused implementation supplies exact omitted/misfiled/multiline span recovery,
+  genuine native quote reuse, independent-reader reconciliation, conservative
+  collection kind qualification, a deterministic scoped settlement utility,
+  and avoidable unresolved-stop feedback. No duplicate shared runtime was added.
+- Independent regressions first failed all 13 cases. Explicit native keys such
+  as country, date, taxon and elevation were missing from the source-role guard.
+  A known collection phrase under those keys could wrongly settle a collection
+  field. Indented foreign-field lines were also swallowed as continuation,
+  falsely appending country/collector text or suppressing a valid catalogue or
+  code. An empty habitat header could falsely consume a country line.
+- Repair: one collection-only marker boundary uses existing native field keys
+  and explicit role aliases. `_check_source_role` refuses other marked fields;
+  `_spans` stops both empty-value and indented-continuation scans at that same
+  boundary. Exact earlier values survive with complete raw/native custody.
+  Aliases delimit source roles only and assign no unapproved field meaning.
+  No shared `evidence.py`, factory, engine or runtime hunk was added by the delta.
+- Validation actually run: reused collection qualification/workflow suite
+  97 passed in 37.31 seconds. Regression-first boundary suite 13 failed before
+  repair. After repair, 320 passed in 28.76 seconds across
+  `test_collection_field_boundaries.py`, `test_collection_qualification.py`,
+  `test_collection_workflow.py`, `test_local_utility_publication_v2.py`,
+  `test_committed_pins.py`, `test_organiser_handover.py`, and
+  `test_unqualified_label_policy.py`. Groups overlap and are not additive.
+  `git diff --check` passed. Actual installed AI-slim/Evals/Graph 2.54.0 and
+  Harness 0.54.0 were verified through importlib metadata.
+- Tests ran in this worktree with its source first on `PYTHONPATH`,
+  `PYTHONDONTWRITEBYTECODE=1`, and a read-only interpreter/library environment
+  from the independent integrator. The composed offline native workflow
+  published qualified catalogue `0010001`, code, multiline habitat and method
+  without Save; interrupted local utility work retained an earlier checkpoint
+  and resumed a narrowed request. These are scripted fixtures and a fake SQL
+  connector, not live provider/native/scientific acceptance. One expected
+  LogfireNotConfiguredWarning occurred; trace checks were not disabled.
+- Catalogue digits remain strings with leading zeros; prefixes remain distinct
+  from collection code and EMu IRN. D/T/S keeps the exact
+  `missing_policy:verbatim_dts_definition_examples` hold. The outstanding
+  prerequisite is an approved definition with examples; no tentative
+  date/time/site expansion or generic external specimen join was admitted.
+  Undefined-kind findings do not erase mandatory missing/unresolved review.
+- Final composed helper qualification/toolset pins, full canonical verifier,
+  independent PR-head review, main CI/CD and common capability integration are
+  root-owned and **Not confirmed** here. Existing toolset pins include
+  collection module bytes/version; root must recompute the truthful final
+  acceptance closure after composition. No provider HTTP, paid model, data
+  mutation, human override, effect/budget clearing or production change occurred.
+  Injected Dosu monthly cap was not retried; no new receipt or finalize exists.
+### 2026-10-07 — Shared official Pydantic package upgrade and same-Run continuation
+
+Task `/root/shared_pydantic_upgrade_astra_ultra`; isolated worktree `/Users/anuragduddu/.codex/worktrees/lane-p-pydantic-upgrade/specimen-digitization-app`, branch `codex/lane-p-pydantic-upgrade-20261007`, base `7890de551c75fe3b06836c7fb224f85dd2a2423a`. Human authorization for latest Pydantic AI/Harness packages was verified by the coordinating chat. The later human-directed Independent harness integration chat owns combined integration; this lane supplies a local commit and preserves its worktree. Commit containing this entry is identified by the branch tip/handoff. PR, combined canonical verification, release, real provider/native/scientific acceptance and authenticated Save/reopen: Not confirmed. No push, PR, cloud/native browser, paid or live provider/model request or broad `scripts/ci/verify.sh` run occurred here.
+
+Official PyPI JSON was fetched with Requests' default verified TLS and confirmed AI Slim/Evals/Graph 2.54.0 and Harness 0.54.0, the latter requiring AI Slim exactly 2.54.0. `uv lock` changed exactly these four package versions and their distribution records plus the project's requirement metadata; no transitive package version, package membership or optional extra changed. Hugging Face and Evals Logfire extras, Logfire 5.0.0, provider prices, reservation maxima, USD1 Run/USD5 program/USD25 combined controls and deadlines remain unchanged. `uv sync --frozen` created this worktree's own environment; `uv lock --check` passed. Runtime package qualification and new-job serialization now identify the new matched set. The simple persistence default stays a literal to avoid importing the SDK into otherwise lightweight consumers; an executable test binds it to the qualifier constant.
+
+The selected ten-method StepStore and five-method MediaStore protocols, ManagedPrompt, StepPersistence, SubAgent and SubAgents signatures remain compatible. All six specialist executions expose exactly lookup_source, invoke_utility and delegate_task. BrowserUse, CodeMode and PlaywrightBrowser imports require absent optional extras. Memory, Shell, FileSystem, SubAgents, core LocalWorkspace, Workspace and LocalWorkspaceBackend are importable but none was newly attached or executed. Shell/FileSystem and file-backed Memory now expect an explicitly provided workspace; availability is not application capability integration or permission. No new unrestricted tools, source authority or workspace access was introduced.
+
+Initial focused run: 121 passed, 9 native-emulator skips, one obsolete usage assertion failed. Harness 0.54 forwards explicit child usage on completion when forward_usage=True, so a two-parent/two-child example now reports four requests; the durable SQL ledger already charged four effects. The assertion was updated and a regression proves that three completed requests prevent a fourth parent model effect, with the existing child/root limits intact. This does not claim synchronous child requests are clamped to the parent's remaining capacity; upstream's stronger concurrent shared-limit behavior is specific to managed DelegationTasks, which this application does not enable.
+
+Upgrade admission distinguishes retained history from new execution. Prior runtime and request-bound serialization identifiers fail closed for new execution. A new synthetic r59-to-r61 test provisions the same ordinary Run/program, retains the old job and every non-jobs aggregate section unchanged, and preserves ordinary 500,000 + settled research 25,000 + unknown hold 100,000 microUSD under the same 1,000,000 ceiling, leaving 375,000. The test reads an actual old SDK StepPersistence journal, preserves its blob bytes, replays a settled effect without a second send and retains the unknown hold. The immutable fixture was generated by official 2.51.0/0.36.0 wheels verified against the prior uv.lock, using only FunctionModel, a synthetic local tool and StepPersistence. Public wheel digests are recorded as narrowly allowlisted provenance comments in the test after the JSON metadata initially triggered four secret-scanner false positives; scanner configuration/baseline was unchanged. Existing validator v1/v2/v3 pairs and historical acceptance/publication readers are unchanged. A new job does not authorize clearing an unresolved effect, relabeling an old artifact, resetting cost or creating a fresh USD1 Run allowance.
+
+Final offline qualification: the 32-file selection passed 553 tests, skipped 9 owned-native-emulator cases and 1 Linux adopted-child reaping case, with 89 existing-style Logfire-not-configured, Starlette deprecation and synthetic enum-serialization warnings in 785.61 seconds. It covers all six specialists, native composer/request models, current/historical prompts, captured effects, lost receipts, persistence/dependencies/replay/cancellation, exact-source publication, protected human outcomes, budget/quote boundaries, tracing, provider adapters, Evals and supervisor behavior. A disjoint four-file continuation/provisioning/program-recovery/historical-validator selection passed 116 tests in 3.30 seconds; the final same-Run marker correction passed its single regression in 1.37 seconds. Combined unique selection: 669 passed, 10 skipped. Both shell QA override variables OTEL_SDK_DISABLED and LOGFIRE_SEND_TO_LOGFIRE were unset; existing deterministic test fixtures own their in-memory instrumentation. These are local scripted/fake-Data-Connect results, not stock combined verification or live qualification.
+
+Independent read-only review by `/root/shared_pydantic_upgrade_astra_ultra/upgrade_review` found no actionable findings in the dependency diff or the added historical fixture/continuation regression. It verified fixture wheel hashes against the prior lock and traced same-Run accounting and historical proof readers; it did not rerun tests or regenerate the fixture. Changed-file pre-commit hooks, including both secret scanners, passed after the documented public-hash annotation, and `git diff --check` passed. Full logs, JUnit results, official package metadata, capability-import signatures and old-wheel provenance remain in ignored `artifacts/pydantic-upgrade/` inside this preserved worktree. Dosu's monthly credit cap/MCP pause was already confirmed by the coordinating chat; no repeated query, auth/Library change, receipt or finalization occurred here.
+
+Adoption: cherry-pick this branch's bounded upgrade commit into the independently owned integration checkout, then frozen-sync that checkout and run the integrator's required combined checks. Requalify new execution/request pins through ordinary new-revision provisioning on the existing Run; retain historical jobs, journals, receipts and holds. Elevation completion and other domain changes are separate candidates and were not silently included in these results.
+## 2026-10-07 — Independent parties follow-up (`/root/geography`, second domain)
+
+- Task/chat: independent six-specialist stream, parties worker `/root/geography`, root chat `01a11863-eb40-7ed1-9004-619ed0044cd9`. Branch `codex/harness-parties-independent`, managed worktree `/Users/anuragduddu/.codex/worktrees/harness-parties-independent/specimen-digitization-app`. Started from integrator-verified default main `7890de551c75fe3b06836c7fb224f85dd2a2423a`; preserved active original `0ff0` worktree and the original dirty checkout.
+- Reused domain source `b8ac3b855aeb20eae871216f75329ab47c4a66fb` as local `2d83aa6b9`; adopted integrator package source `3288ec80bfc5eabf0581e1e7f543911130d3a601` as local `2c0330bdf`. Follow-up source/tests are the commit containing this entry. No worker push, PR, main CI/CD, paid canary or live native/EMu acceptance: Not confirmed.
+- Result: omitted explicit collector spans can qualify from one trusted decided transcript on that label even when retained raw alternatives disagree or an unselected raw reading is unreadable. Every original observation/span/spelling remains in the graph and candidate alternatives remain visible. A raw collector guess cannot override a decided preparer/determiner/place interpretation; selected unreadable spans, multiple selected readings, missing native quote, incomplete lists and unrelated collector assertions on different labels remain unqualified. No cross-label event/name join or person identity is guessed. IRN null/Unknown and its existing nonblocking exception remain unchanged.
+- Reproduced regression: original people recovery rejected both selected-reader spellings because it counted raw disagreements globally; it also allowed a clean selected reading to be blocked by an unreadable unselected reader. Corrected the old test expectation that treated a trusted decided collector as unresolved, preserving undecided disagreement/silent-reader cases. Corrected a test fixture that quoted the wrong native observation when Muse was selected: organiser reading names put the chosen observation first, so tests must use actual observation identity rather than assume `2A` always means Qwen.
+- Validation on AI/Evals/Graph **2.54.0**, Harness **0.54.0**, Logfire **5.0.0**: direct people evidence/regressions first passed 48; semantic/utility controls passed 66 with the proof test explicitly pending qualification. Ran that proof test separately and confirmed the exact `accepted_output_people_policy_source_unqualified` gate on stale bytes; no boundary was disabled. With truthful local qualification, combined `test_people_independent_regressions.py`, `test_people_evidence.py`, `test_people_utility.py`, `test_people_harness_acceptance.py` and `test_people_publication.py` passed **70 tests**, including automatic publication and interruption/restart after a committed collector checkpoint. Two additional new Qwen/Muse decided-collector exact application acceptance tests passed separately: **72 distinct focused tests** in total. `git diff --check` passed.
+- Qualification custody: root authorized local actual-byte repinning for proof/publication checks. The current people's SHA256 is `49aa357d2aa86b3db4ce79e5039c067155723096e7ccdc09e4067d144f4698e2`; local evidence SHA256 after binding that helper is `34d6832baff588aa5886ebcba20d80b125de23bec8dad691af83d22ec03a97f2`. Kept all historical pairs, including prior v4 `936ab14bbbf43643ec8d4f8d4e3007d4ab2ced53c6c9bd21f92409c8d8216454`. Restored common `evidence.py` and `accepted_output.py` bytes after checks, so this delta does not compete with root's final composed qualification. **The integrator must bind the new people helper hash and recompute its combined evidence/validator closure before acceptance/CI.** Standalone proof tests on this component branch intentionally retain that source-qualification prerequisite until composition.
+- Evidence scope: scripted model, captured synthetic exact label graph, real deterministic utility/acceptance/recovery/canonical code, SQLite and fake native connector. Offline composed publication only; no claim that an external identity, paid provider or live scientific acceptance was verified. The eparties route remains unconnected; public biography/memory cannot substitute for its specimen determination relationship.
+- Follow-up owner: root owns source qualification, shared production capability/recovery/dependency provisioning, single composed canonical verifier, independent PR review and protected CI/CD. No factory, scheduler, journal, source adapter or human decision was changed by this delta. Dosu monthly exhaustion remained injected; no retry, credentials/billing mutation or knowledge receipt.
+### 2026-10-07 — Independent measurement exact-context completion (`/root/temporal`, measurement wave)
+
+- Ownership: branch `codex/harness-measurement-independent`, managed worktree `/Users/anuragduddu/.codex/worktrees/harness-measurement-independent/specimen-digitization-app`; clean default-main baseline `7890de551c75fe3b06836c7fb224f85dd2a2423a`. Original measurement and Lane P elevation worktrees were read-only and untouched. Independent root owns common context/capability/recovery composition, final verifier, reviewed PRs and protected main CI/CD.
+- Reused artifacts: `6c3a6bcf13f459f914cbb72fe6cb8f374b11a7b0` as local `0fbf5b4f7`; completed native/keyed evidence follow-up `b59c7b657b2ab9e3f35cff6368974bf0d808e408` as `a0ba09885`; compatible packages `3288ec80bfc5eabf0581e1e7f543911130d3a601` as `6778e5304`; exact settled context contract `5304f42c1214699e068646f5e7e17644fab2a6e3` as `7c4bd188b`. Independent delta is committed with this entry. No domain-worker PR/push/deploy.
+- Outcome: exact native source reconstruction now preserves its actual consumed context dependencies from the root-owned typed settled context. Full source equality remains mandatory; no digest-only relaxation or subset guessing. A source context cannot change the numerical value, measurement qualifier/uncertainty/range/datum, event, assembly or evidence. Retained utility inventory carries the full native source; scoped model output cannot reopen or overwrite that source. Validator compares the same contextual settlement as utility/replay.
+- Durable learning/failed approaches: the bare scientific source and an accepted native source can agree scientifically yet have different resolution digests when the native checkpoint consumed other dependencies. Omitting those dependencies makes derived-only repair fail. Initial regression-first new helper checks: 12 failed, 1 passed. After helper repair, the typed real Agent still rejected valid derived output because evidence.validate_resolution compared raw elevation_resolutions instead of contextual pinned_elevation_resolutions. Both routes must reconstruct the same exact full source, while the G41 scientific digest remains unchanged.
+- Validation actually run on target versions: initial helper/dependency/agreement group 45 passed (0.49s); selected native factory/proof/reuse + human/interruption/keyed group 37 passed (8.90s). After shared typed contract and validator alignment, final focused group 85 passed (6.90s): test_measurement_settled_context.py, test_measurement_dependencies.py, test_measurement_agreement.py, selected factory/proof/reuse tests, test_measurement_native_subset.py, test_measurement_keyed_admission.py and exact source-pin policy test. Groups overlap and are not additive. All used `uv run --offline --frozen pytest -q` with explicit paths; no broad verifier or live provider processing. `git diff --check` passed.
+- Installed metadata verified: AI-slim/Evals/Graph 2.54.0; Harness 0.54.0. measurement.py SHA256 `2d2a7a0a5892aec0311c42175f4f0bc3288552107ddb5d37df96665e2ae8cee2`; evidence.py SHA256 `791626c0f6fce33f701f43cfae4d6f08dce8ef51ec5e97ac7b54edbc7de14605`. Local validator v5 retains measurement v4 `b5af78b21598200ba6b603b95b7a81fa5f06f5161a95d6d3320120842854f98d` and all earlier pairs. Root must recompute the combined final closure including measurement.py, contracts and host context-provisioning source.
+- Preserved boundaries: exact 1 ft = 0.3048 m, complete qualifiers/uncertainty/ranges, every raw/adjudicated reading, human Unknown/locks, unknown-send/budget holds and interruption recovery. No cross-label same-event membership is invented. DEM remains reviewer-only with its existing whole-uncertainty/dataset context; this task grants no automatic DEM application.
+- Evidence limits/prerequisites: new contextual fixtures use synthetic accepted-source context/pins to test semantic boundaries through real offline Agent/acceptance/replay. Existing factory tests verify real native proof readers and checkpoint originals with synthetic snapshots/SQLite. Root owns actual current-context host proof reading and transitive freshness checks; source/provider-live/native-live/scientific acceptance, full verifier, PR review, main CI/CD and provenance are Not confirmed by this worker. No production data write, paid model canary, human Save or personal memory write. Exhausted Dosu context was injected; no receipt or finalize call.
+### 2026-10-07 — Independent temporal full accepted source context (`/root/temporal`, measurement-wave follow-up)
+
+- Branch/worktree: `codex/harness-temporal-independent`, `/Users/anuragduddu/.codex/worktrees/harness-temporal-independent/specimen-digitization-app`. Prior independent delta `7e88cfe208b69aa03c5e3cefa42f07b246acd9d1` remains intact; adopted root-only typed context contract `5304f42c1214699e068646f5e7e17644fab2a6e3` as local `67209d272`. No other owner's worktree was changed. Independent root owns final source composition, host proof/context provisioning, verifier, PR/main and release.
+- Outcome/learning: an accepted native collecting From may retain unrelated consumed dependencies, so its complete resolution digest differs from the dependency-free deterministic scientific source. The new temporal_dependency_source adapter restores only that exact recorded dependency tuple, then requires full deterministic source equality plus exact native pin revision/digest and typed context identity. Calendar value, written precision, century interpretation, event, assemblies, readings/evidence and G44 scientific lineage remain unchanged. A context cannot supply an unwritten date/year/event; a protected human From still requires genuine native proof and is not reopened.
+- Failed approach: seven contextual-date regressions failed against the prior bare-source digest comparison, including a real scripted Agent utility that returned a retry instead of To. Full source context must be retained through utility, validator, acceptance and replay rather than relaxing the source digest.
+- Validation actually run: `uv run --offline --frozen pytest -q` on test_temporal_settled_context.py, test_temporal_native_subset.py, test_temporal_exact_role_spans.py, test_temporal_event_links.py and the exact validator-source policy test: 78 passed (3.96s). Coverage includes exact typed context serialization, successful scoped To Agent/acceptance/replay, coherent-but-forged value/event/assembly/precision/evidence refusal, native recovery, human protections and existing event/role-span rules. `git diff --check` passed. No repeated broad verifier or provider/live/data processing.
+- Exact local source closure: temporal_context.py SHA256 `6f2652e24901700798337280cb294b17825058dc1c6eff0e66a2f383f9cc6ec0`; evidence.py SHA256 `743db08d346d632241945e4c0d35c770166e8f6cc55f8c72d3d5e358b3372885`. Local validator v6 retains v5 temporal `b0663f01ec72e88bd079cb13a9727c6b2e66d2d8b4059073cd00e2e3f73583d7`, v4 temporal `c09840fddab414682a0369015efb7dcc8af95a1a9903c3ffe1f92893ff0e3bc9` and older known pairs. Root must recompute combined source/module closure and choose a truthful final version/hash pair.
+- Evidence limits/follow-ups: new context tests use synthetic native context/pins with real offline Agent/acceptance/replay. Current production host proof reader, context provisioning and transitive currentness are root-owned; no claim of live native/source-provider/scientific acceptance, PR review, canonical full verifier, main CI/CD or production provenance is made by this worker. General handwritten event relationships and external date joins remain unqualified. No paid model canary, direct data write, production deploy, personal memory write or repeated exhausted Dosu read; no receipt/finalize call.
+## 2026-10-07 — bounded common per-field output admission
+
+- Task: `/root/taxonomy` common field salvage, independent stream parent chat
+  `01a11863-eb40-7ed1-9004-619ed0044cd9`. Branch
+  `codex/harness-field-salvage`, managed worktree
+  `/Users/anuragduddu/.codex/worktrees/harness-field-salvage/specimen-digitization-app`.
+  Started from the integrator's committed
+  `5304f42c1214699e068646f5e7e17644fab2a6e3`; root's uncommitted domain
+  composition and every other owner remained untouched. Patch and this entry
+  are committed together; SHA is reported in the handoff. PR/push/protected
+  main/production CI/CD: **Not confirmed**, independent integrator-owned.
+- Reproduced a real offline Agent failure: after the original one correction,
+  an unsupported catalogue output raised UnexpectedModelBehavior and discarded
+  an independently validated habitat sibling. The additive admission helper
+  now preserves original strict validation and first correction, then replaces
+  only an identified failed field with a canonical bare operational outcome.
+  Replacements are bounded by requested fields and every retained sibling is
+  strictly revalidated. No valid sibling means the old whole-role failure path.
+- Failures propagate transitively to original dependent fields through exact
+  dependency keys, derivation source and derived-from declarations. Failed
+  derivatives retain no scientific value, evidence, pins or invented authority.
+  Wrong role/coverage/duplicate/foreign field, unidentified feedback, sensitive
+  or foreign input scope, source/field receipt mismatch, unknown send and changed
+  consumed dependencies remain whole-output failures. No hold or budget resets.
+- Necessary composition seam: an output wrapper alone cannot commit a mixed
+  result because D/T/S and stronger collection/party guards revalidate again in
+  the engine and accepted-output proof. A narrow `evidence.py` entry guard
+  recognises only the exact bare controller failure after field membership,
+  before domain semantics. Strict Agent admission rejects a model-supplied
+  controller marker until its correction is exhausted. The marker conveys no
+  value, authority, provenance, dependency, derivation or human question.
+- Source hunks: `agents.py` keeps its body as a strict validator with a small
+  wrapper and identifies the first masked-outage field explicitly;
+  `output_admission.py` owns bounded replacement/context/causal fences;
+  `evidence.py` adds the canonical bare guard. No engine, journal, scheduler,
+  runtime provider or budget code changes. The local accepted-output closure
+  includes helper bytes, and the byte-drift fixture covers the new helper.
+- Validation actually run: regression-first real Agent failed as expected.
+  Final 67 tests passed in 3.06 seconds across
+  `test_output_field_salvage.py`, `test_taxonomy_acceptance_boundary.py`,
+  `test_specialist_feedback.py`, `test_research_harness_engine.py`,
+  `test_research_harness_journal.py`, `test_research_accepted_output_proof.py`,
+  `test_elevation_transcript_resolution.py`, and `test_taxonomy_research_loop.py`.
+  Actual AI-slim/Evals/Graph 2.54.0 and Harness 0.54.0 were checked through
+  importlib metadata. `git diff --check` passed. One expected unconfigured
+  Logfire warning occurred; trace validation was not disabled.
+- The real scripted EffectModel/Harness/Engine/DurableResearchJournal path
+  retains supported habitat and failed catalogue checkpoints in one linked
+  native accepted-output proof. Cold journal reload and engine restart preserve
+  them, with exactly two model calls total. This is disposable SQLite/immutable
+  blob fixture proof, not live SQL/native publication or scientific acceptance.
+  Common fixtures explicitly preserve frozen collection v5 prompt bytes;
+  composed v6 domain admission remains root's combined-run check.
+- Failed test setup approaches: a generic graph fixture's placeholder schema
+  digest was rejected by the actual Harness, and cold journal ordering differed
+  from engine field order. The fixture now pins the actual output schema and
+  compares checkpoint identities by field. A guessed nonexistent test path
+  produced no run and was removed from the command. Those are fixture repairs,
+  not relaxed source checks.
+- Local v4 closure:
+  `12a9ffe819504808b6bf08d60b4920c5d4210bf33dda0240c1bf94072bb02b41` over
+  validator, taxonomy and output admission. Historical v1-v3 pairs remain.
+  Root must include this helper in the final truthful combined closure and run
+  composed domain/native/full canonical checks plus independent exact-head
+  review and protected CI/CD. No live source/model call, paid canary, data write,
+  protected-field override, unknown-effect replay or production change occurred.
+  Dosu cap was injected; no retry, new receipt or finalize was produced.
+## 2026-10-07 — independent review repair of collection quote occurrence
+
+- Task: `/root/taxonomy` collection review follow-up; parent independent stream
+  `01a11863-eb40-7ed1-9004-619ed0044cd9`. Branch
+  `codex/harness-collection-evidence-review`, managed worktree
+  `/Users/anuragduddu/.codex/worktrees/harness-collection-evidence-review/specimen-digitization-app`.
+  Start: root committed `5304f42c1214699e068646f5e7e17644fab2a6e3`.
+  Bootstrap `71ba3333` seeds only the unchanged collection module from completed
+  `5fd62fab`; it is not an integration delta. Root should cherry-pick only the
+  final repair commit whose SHA is reported in the handoff. Root's uncommitted
+  composition and all other owners remained untouched.
+- Reproduced review findings: `Habitat:\nleg. A. Smith` was accepted as habitat;
+  a native quote at `Locality: forest` could ground the separate identical
+  `Habitat: forest`. Before repair, the new suite had 13 failures and 6 passes.
+  It also exposed unqualified public/memory quote sources being accepted.
+- `leg.` is now a case-insensitive no-colon boundary and prohibited collecting-
+  person context for habitat/method values. Empty habitat stays unresolved;
+  an earlier valid habitat and an independent method survive without consuming
+  the collector line. No name expansion, IRN or role inference is added.
+- Collection's covering-quote helper follows the existing people admission
+  contract with `application.organiser.parse_locator`: modern organiser rows
+  require source `bounded_extraction_v1`, one exact matching reading, exact
+  in-bounds quote bytes and containment of the recovered span. Legacy rows
+  require `region:<region_id>`, source `label` or `bounded_extraction_v1`, a
+  unique quote occurrence and exact span containment. Another occurrence of
+  identical text, malformed/out-of-bounds locator, foreign/duplicate reading
+  membership or public/memory source cannot supply native label evidence.
+  Legacy uniqueness also checks overlapping occurrences. No native row is made.
+- Existing fixture source routes were inspected: FieldSpec defaults and modern/
+  legacy composer rows use `bounded_extraction_v1`; keyed legacy `label` remains
+  admitted. Existing exact raw-reader-only quote recovery remains supported.
+- Validation actually run: 25 new focused cases passed in 0.10 seconds under
+  target package environment. 65 selected existing collection qualification/
+  boundary regressions passed in 0.31 seconds (35 unrelated tests deselected),
+  with two expected pytest assert-rewrite warnings from programmatic startup.
+  The compatibility run used the completed isolated collection source slice
+  with this candidate module overlaid in memory; no source file in that slice
+  changed. It exercises pure qualification/factory/validator compatibility,
+  not source-byte pins, production or native publication qualification.
+  `PYTHONDONTWRITEBYTECODE=1` and no pytest cache were used. `git diff --check`
+  passed. The latest matched package base was inherited from root.
+- Only `collection.py`, the new `test_collection_quote_occurrence.py`, and this
+  append-only closeout change in the integration delta. No shared evidence,
+  qualification, factory, runtime, budget or deployment file was changed.
+  Root's v7 combined closure includes collection bytes and must be rehashed.
+  Full stock verifier, PR-head review, protected main CI/CD and live/scientific
+  acceptance are **Not confirmed**, root-owned. No model/provider call, paid
+  canary, data write, human override, effect replay or production action.
+  Dosu cap was injected; no retry, receipt or finalize was produced.
+
+### 2026-10-07 — Harness UI foreground selected-record refresh
+
+Task `/root/temporal` (Flutter refresh wave), branch `codex/harness-live-refresh`, managed worktree `/Users/anuragduddu/.codex/worktrees/harness-live-refresh/specimen-digitization-app`, base `7890de551c75fe3b06836c7fb224f85dd2a2423a` independently matched GitHub default HEAD and main before worktree creation. Local outcome: selected canonical/status refresh remains active after queue pagination without replacing loaded rows/cursors; one automatic foreground poll and coalesced selected GETs prevent overlaps. Verified selected-read epochs reload already opened research at the same canonical revision and reload revealed disclosures after a version advances. Lazy initial data remains lazy. Research/derivation submitting and accepted-readback states pause automatic workspace reads; background, scope/session/mutation and late-answer ownership guards remain enforced. Completed current immutable suggestion reports are retained. No backend, CI/release, production, model, billing, credentials or Chrome changes in this lane.
+
+Durable learning: draft conflict detection cannot use literal text alone, because normalized/derived content, evidence or human locks can advance while literal text remains null or unchanged. Real field editors and staged research candidates now capture a canonical full-field basis with sorted JSON map keys; legacy draft callers retain literal-only compatibility. Capture the basis in `initState`, since an unused Dart late-final initializer first evaluated at Keep time silently captures the new field. Typed controllers stay mounted during same-record refresh, and keeping an old-basis editor immediately uses the existing stale-conflict display instead of waiting for another version. One coalesced response also needs a selected-read epoch ownership guard: identical returned object identity alone can otherwise accept the same read twice.
+
+Validation actually run: credential-free tracked Firebase CI placeholder copied to the ignored generated path; `flutter pub get --offline --enforce-lockfile`, pinned Flutter 3.38.5 / Dart 3.10.4. Four initial foreground/pagination/overlap/draft regression cases failed on the unmodified baseline. Final `flutter test --no-pub` over `workspace_live_refresh_test`, `research_live_refresh_test`, `screens/field_review_test`, `pending_save_availability_test`, `workspace_deferred_page_test`, `app/request_budget_test`, `research/research_controller_test`, `research/research_host_test`, and `workbench_layout_test`: 92 passed, exit 0 (local log `/private/tmp/harness-live-refresh-focused.log`). `dart analyze --fatal-infos` on all seven changed source files and both new test files: no issues. Targeted `dart format --output=none --set-exit-if-changed`: clean. `git diff --check`: clean. Full stock verifier, commit/PR source review, deployment and authenticated live automatic reflection on specimen #105526321 are Not confirmed in this lane; root owns those gates.
+
+Failed approaches corrected locally: eager re-reading of completed immutable suggestion reports disrupted existing proposal fixtures; completed current reports are now retained. Synthetic retry ACK initially contained an unsupported `scope` property and was corrected to the existing schema. Actual active-editor regression caught the late-final basis capture defect; the foreground/coalescing regression caught duplicate acceptance of an identical response. No repeat paid/live work or workaround production configuration. Dosu exhausted-credit context was already injected; no repeated knowledge call or receipt/finalization. Parent/root receives the local commit SHA in the handoff and integrates this narrow UI delta.
+## 2026-10-07 — collection decided-reading policy correction
+
+- Task: `/root/taxonomy` collection policy follow-up; independent stream parent
+  `01a11863-eb40-7ed1-9004-619ed0044cd9`. Same clean managed worktree
+  `/Users/anuragduddu/.codex/worktrees/harness-collection-evidence-review/specimen-digitization-app`,
+  branch `codex/harness-collection-evidence-review`, predecessor
+  `6cbebc07c5d8f82e57935071f637385d7394704f`. This separate next delta and log
+  are committed together; the next SHA is reported in the handoff. Root's
+  composition, qualification and finalizer work remain untouched.
+- Read `docs/execution/golive/HARNESS.md` around lines 184 and 814 and the
+  people `_effective_readings`/selected-assembly logic. Documented no-tool field
+  policy gives a label's literal to its valid decided reading; differing
+  unselected raw text stays evidence beside the value. Without a decision all
+  readers must agree; decisions never override a different label.
+- Correction to earlier collection consensus notes: unconditional peer
+  agreement in recovery and settlement contradicted that existing policy.
+  Native exact quote, field-role/span and readable selected-source requirements
+  still apply. One exact selected reading now supplies its own label's values;
+  raw alternatives remain unchanged in the immutable request. Multiple selected
+  readings give no authority. The historical raw-only quote route remains
+  available only for an exact assertion also agreeing with the selected reading.
+- Cross-label conflicting qualified values or an independent asserted label
+  lacking a qualified quote remain held. Invalid/unreadable/role-wrong selected
+  text cannot be replaced by a conflicting raw reading. Genuinely undecided
+  disagreement remains held. No source/evidence row, value authority, collector
+  identity, IRN, D/T/S definition or cross-label relation is invented.
+- Regression-first: 5 new failures exposed the unconditional peer veto and
+  acceptance of multiple selected readings. Final focused suite: 37 passed in
+  0.10 seconds, including decided habitat/method beside misread or unreadable
+  unselected peers, invalid selected evidence, no-decision disagreement,
+  multiple decisions, cross-label conflict and missing native quote. The
+  original exact-occurrence/leg/source-route cases also remain green.
+- Existing compatibility: 62 selected collection qualification/boundary cases
+  passed in 0.31 seconds (38 deselected), using the unchanged completed source
+  slice with candidate module overlaid in memory; two expected pytest assert-
+  rewrite warnings. This tests pure fixture compatibility, not byte-qualified
+  native publication or production. Actual installed AI-slim/Evals/Graph 2.54.0
+  and Harness 0.54.0 were checked. No bytecode/pytest cache writes to other
+  worktrees. `git diff --check` passed.
+- Existing tests that deliberately expected a valid decided reading to be
+  vetoed by a raw peer are superseded by HARNESS policy: the decided-positive
+  cases in `test_disagreeing_or_absent_reader_counterpart_stays_structured_review`,
+  `test_unsettled_habitat_does_not_suppress_omitted_method_supported_by_both_readers`,
+  and `test_raw_conflict_on_second_qualified_label_is_not_hidden_by_first_label_agreement`.
+  Root was notified to use supported decided expectations or genuinely
+  undecided fixtures for uncertainty checks. Those shared tests were not edited
+  in this narrow delta.
+- Only collection module, focused test file and this append change. Shared
+  factory/evidence/prompt/qualification files are unchanged. Root must rehash
+  its v7 closure, reconcile composed prompt/test expectations, run full stock
+  verification, review and protected main CI/CD. Those and live/scientific
+  acceptance are **Not confirmed** here. No model/provider calls, paid canaries,
+  data writes, human overrides, effect replay or production actions. Injected
+  Dosu cap was not retried; no receipt or finalize.
+
+
+### 2026-10-07 — Focused native final-progress carrier tests
+
+Task `/root/temporal` (final-progress test wave), root-owned branch `codex/harness-independent-integration`, shared worktree `/Users/anuragduddu/.codex/worktrees/harness-independent-integration/specimen-digitization-app`, committed predecessor `5304f42c1214699e068646f5e7e17644fab2a6e3` with root's integrated/uncommitted candidate. This lane writes only new `tests/research_harness/test_final_progress_carrier.py` and this temporary append-only closeout snippet for the root owner to append to SESSION_LEARNINGS before integration/commit. No product edits, existing test edits, root commit, broad verifier, external/provider/model/native SQL, deployment, credentials, billing or browser action by this lane. New test SHA256 `007dc8d98b21b6531af780053af021f2243429d2b5fca738a6431611be5abbed`; final stable native_worker SHA256 `87e960d5c79c918c7716b4d3873c9028cac9d2bd6363177bf1d8fd40d4f755e7`.
+
+Actual focused validation: `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src:tests/research_harness .venv/bin/python -m pytest -p no:cacheprovider -q tests/research_harness/test_final_progress_carrier.py`: 26 passed, 1 ordinary Logfire-not-configured warning, exit0, 81.24 seconds. Log `/private/tmp/harness-final-progress-carrier-tests.log`. AST parse and new-file whitespace check pass. Ruff was not installed in the root venv; no dependency install attempted. Stock verification, source review, release and live canonical acceptance are Not confirmed in this lane.
+
+Coverage includes IRN preference; locked IRN fallback to a genuine temporal helper DateIdentified with actual event/assembly/evidence; collection fallback; consumed dependency pins and canonical source requirements of unfinished roles; locked/nonpublishable/relation-unproved exclusion; existing pending intent and delivered/retained winner custody; one real checkpoint deferred while work is pending and published last afterward; exact read-only current canonical gate for research_in_progress/running, with finalized and processing_blocked negative controls. Four production-composer offline cases exercise all six roles using real earlier temporal/elevation/collector/qualified collection helper outputs, SQLite and the existing fake native connector, with the taxon assertion omitted rather than hiding an asserted name behind policy. Final taxonomy/geography hold checkpoints do not publish; genuine IRN publishes last exactly once and its progress maps equal all twenty actual job field states. Current profile blanket geography policy remains processing_blocked; a clearly labeled synthetic admitted missing-policy profile reaches finalized/NeedsHuman with completed wire status, no operational reasons and no exportability; WAITING_SOURCE retains processing_blocked; a genuinely established early IRN operation publishes while later roles remain pending, and no new final carrier leaves the explicit final_research_progress_requires_native_publication gate without a fabricated checkpoint or duplicate receipt.
+
+Durable learning: thread status and canonical whole-record progress are separate evidence. Country, province_state and precise_location are not declared missing-policy fields in the shipped profile, so blanket WAITING_POLICY for those fields must block; a synthetic declared-policy case proves the carrier mechanism without changing production policy. Establishing an actual durable early IRN guard is a useful no-carrier reproduction: its operation cannot be deferred, the early publication leaves actual canonical research_in_progress, and final completion of nonpublishable fields needs the explicit native progress gate. The added running-stage negative control exposed the original research_in_progress-only gate; root strengthened product behavior to reject any unfinished canonical stage except finalized/processing_blocked. Early failed approaches were new-test setup only (wrong committed_research_profile signature and nonexistent progress field_count); those were corrected to real pinned profiles and exact twenty-field work maps. No production conclusions are inferred from scripted models or fixture-native SQL. Dosu exhausted-credit context remained injected; no repeat knowledge call or receipt/finalization.
+
+## 2026-10-07 — Known captured source continuation, isolated specialist
+
+Task `/root/known_retry` continued preserved `/root/taxonomy` work in
+`codex/harness-known-source-retry`, managed worktree
+`/Users/anuragduddu/.codex/worktrees/harness-known-source-retry/specimen-digitization-app`,
+base `5304f42c1214699e068646f5e7e17644fab2a6e3`; narrow source artifact and this
+closeout are committed together for the independent integration owner. PR,
+protected merge, deployment and live acceptance: **Not confirmed** by this lane.
+
+- Outcome: current accepted `waiting_source` operational source failures can use
+  the existing same-job field retry only with exact retained checkpoint/run/pins,
+  completed single-field capture, known costs, released/expired custody and
+  remaining Run allowance. Every prior checkpoint/effect/cost and the resolved
+  sibling survives. Unknown/reserved effects, pending canonical publication,
+  current active custody, locks, stale revision/generation and live HOLD remain
+  fenced at admission and consumption; terminal command replay is idempotent.
+- Durable evidence: actual offline EffectModel + Harness + DurableResearchJournal
+  + SourceCapture V2 failure then fresh same-job retry succeeds. Focused final
+  compatibility run: 216 passed / 9 skipped in 28.63s. Final known-source39 plus
+  existing programme-budget22 cases: 61 passed in 15.75s. `git diff --check` passed.
+  Only focused tests ran; root owns final qualification and stock verification.
+- Reusable learning: the research state policy is already Run-scoped and carries
+  ordinary liability; the USD5 programme ledger is a separate later send guard.
+  A real ordinary reservation exhausting the published USD1 Run policy prevents
+  both a retry action and command even while programme headroom remains. Lease
+  expiry also cannot release an undelivered native publication's uncertain outcome.
+- Failed approaches: inherited base5304's V4 literal mismatched its installed
+  component bytes before tests reached the repair. An ephemeral qualified module
+  used the actual V4 closure without changing tracked qualification or semantics.
+  A fixture parameter collided with the capture policy, then was corrected; a
+  live-authorized offline budget test initially omitted the genuine acceptance
+  boundary and correctly failed before dispatch, then was supplied those pins.
+- Follow-up: integrator must requalify aggregate source, review final head and run
+  stock verification. Existing production discovery still refuses field retry
+  without a trusted live authority/dispatcher; this lane did not introduce one.
+  No cloud state, network/model production effect, paid retry or intake rerun occurred.
+
+
+### 2026-10-07 — Same-job retry production seam audit follow-up
+
+Task `/root/known_retry`, branch/worktree as above; completed narrow artifact
+`d6dec1d1e1accba85e5505f4102b2168046582f2`, all normal commit hooks passed and
+worktree was clean. Read-only audit requested by independent integration owner:
+API passes the existing dispatcher but intentionally constructs its retry store
+without live authority. `authorize_live_research()` already supplies verified
+actor/current Run/profile/membership checks; its flag is presently worker-only.
+Existing `DeployedDerivationWorker` verifies the deployed worker's flag/source
+and shape and can be considered as the trusted readiness seam for enqueueing a
+command while retaining that switch placement. Do not manufacture an on flag.
+
+The remaining composition prerequisite is larger than authority injection:
+starting the worker does not schedule a processing_blocked record, ListDueWorkV2
+excludes that state, and the native workflow returns before checking queued field
+commands. A safe production field action requires explicit typed command/native
+queue scheduling, blocked-stage consumption and terminal retirement. Existing
+G38 code demonstrates the scheduling pattern but its derivation-specific command
+checks cannot be repurposed silently. No API/connector/config/cloud mutation or
+additional production/model effect was performed. Deployed same-job API retry:
+**Not confirmed**. Findings and exact source locations were sent to the root;
+root owns further composition. No extra test run was warranted for this audit.
+
+
+
+### 2026-10-07 — Bounded composed queue outcomes /root/queue_coverage
+
+- Task: child `/root/queue_coverage` of independent executor `01a11863-eb40-7ed1-9004-619ed0044cd9`; branch `codex/harness-independent-integration`; managed worktree `/Users/anuragduddu/.codex/worktrees/harness-independent-integration/specimen-digitization-app`; root HEAD at validation `5304f42c1214699e068646f5e7e17644fab2a6e3` with the owner's intentional uncommitted integration. Owned only new `tests/research_harness/test_composed_queue_outcomes.py`; no product edits, commits, broad verifier, cloud writes, paid model/source calls, or release. PR and final frozen-head validation: Not confirmed in this child lane.
+- Terminal validation: normal trace environment (explicitly unset `OTEL_SDK_DISABLED` and `LOGFIRE_SEND_TO_LOGFIRE`), root `.venv/bin/python`, `PYTHONPATH=src:tests:tests/research_harness`, `pytest -q tests/research_harness/test_composed_queue_outcomes.py`: **13 passed**, two warnings, **68.06 seconds**, exit **0**. Private log `/private/tmp/harness-composed-queue-admission-confirmed.log` SHA256 `c703ac6eebefbf205937d636c4c1dffbb4b6dae2e884dcfcd42e932bf75a13ce`. New test file SHA256 `d8310dedf87939fb6393f728b1153f8a15ce56c1273853f276929954812326dc`. Known warnings: Starlette deprecated portal alias and unconfigured local Logfire; no telemetry-disabling flags were introduced.
+- Meaningful native completion: all six production roles execute under actual EffectModel/Harness, durable journal, admission validators, materializer and sole native publication writer. The only seams are scripted FunctionModels, recorded HTTP responses, the existing in-memory native connector and a constructed synthetic image. Its one region covers every pixel; complete coverage is declared explicitly before fixture admission, without replacing science or grounding functions. Nineteen distinct fields publish once, seven source captures finish, actual whole-twenty work rows reach terminal states apart from the admitted DTS policy hold, the genuine IRN checkpoint publishes last, and the final canonical receipt is completed/finalized/Needs Human with exactly `mandatory_unresolved:verbatim_dts`, no operational reason and no export permission. Native repository reopen retains every field/reason/revision; no duplicates or scripted fallbacks occur. A genuinely grounded supported DTS proposal is still refused by actual admission for the owner semantics gate.
+- Cleared limitation, accepted and nonblocking: current `evidence.py` accepts only `waiting_policy` for `verbatim_dts` and the committed Insects profile declares `verbatim_dts_definition_examples`. Protected human carry also deliberately contributes `preserved_human_decision:<field>` to human reasons (`canonical_materialization_v2.py`), so it cannot be relabelled automatic Cleared. A meaningful automatic all-six Cleared positive is therefore unavailable under current admitted policy; it was not fabricated through mocked grounding/science, invented DTS semantics, altered production policy or erased human reasons. Trusted parent confirms the existing unconfirmed-definition hold was accepted by the human and **does not block this release**; no further owner question is needed.
+- Legitimate Deferred coverage: ordinary HTTP `capability_defer` supports `unsupported_script` and `severe_source_damage` only with retained unreadable bytes from both completed independent routes and explicit retry eligibility. Both decisions survive save, new-app reopen, the completed/Deferred queue, predecision history and exact same-key replay without extra audit or revision. Credential, timeout, unknown-send and source-unavailable reason codes are refused before save. Qualified unreadable attempts beside real current operational blockers or a retained rate-limited lookup remain processing_blocked with no disposition and absent from Deferred. Readable sources and incomplete independent attempt proofs are refused. Native delayed IRN publication is a progress carrier; it is not the Deferred disposition.
+- Failed approaches retained as failed: first API assertions incorrectly used `state` instead of the actual workspace `status`, and assumed no additional ordinary phase reasons; first native fixture had unconfirmed coverage, then a new assertion expected unquantized `180` instead of genuine G41 `180.00`. A standalone negative DTS proposal lacked evidence and failed schema before policy admission; it was replaced by the actual request's grounded literal proposal, which reaches the intended validator fence. These were test setup/assertion corrections; production admission/science was not weakened. Private earlier failing logs remain under `/private/tmp/harness-composed-queue-*.log`.
+- Follow-up: integrator must append this entry to shared SESSION_LEARNINGS, include the unique test file in the final source, and run final frozen-head review/stock verifier before protected release. Local fixture success does not establish live model behavior, deployment, authenticated UI or specimen acceptance. This lane is stopped after its terminal bounded run to allow root qualification/source repairs; no additional test or source work is active.
+
+
+## 2026-10-07 — independent six-domain composition before source freeze
+
+Task `01a11863-eb40-7ed1-9004-619ed0044cd9`, root `/root`, branch `codex/harness-independent-integration`, managed checkout `/Users/anuragduddu/.codex/worktrees/harness-independent-integration/specimen-digitization-app`. Predecessor `5304f42c1214699e068646f5e7e17644fab2a6e3`; original dirty checkout and Lane P work are preserved. Latest remote main `7700d85edb84283873504fcd751beeec86fb772c` includes normally merged PR280 SQL args materialization repair; merge ancestry will be reconciled before final review/push. This composition retains each domain lane's appended actual validation and its separate commit provenance. Root source freeze, stock verification, final independent approval, PR, deployment and post-release live acceptance remain **Not confirmed** at this entry.
+
+Integrated six domain repairs, exact accepted dependency context and prior source proofs, strict output admission with independently validated sibling salvage, approved captured HTTP, bounded isolated Monty, official read-only reviewed Memory and role Skills, all-role history/cost recovery and latest matched AI-slim/Evals/Graph2.54.0 + Harness0.54.0. The HTTP capability is normal-TLS bounded GET and captured text/full response, not an interactive rendered browser. Monty1.1.0 has no transport/filesystem/callbacks/dependency installation and runs fresh bounded instances. Qualification binds the complete eleven-file validator closure; historical versions are accepted only as their exact reviewed version/hash pairs. Nothing clears unknown sends, human locks, immutable source captures, cumulative Run/programme costs or old publication operations.
+
+Production role execution now gives accepted collecting date/collector context to geography through the actual native proof reader. Window order is Temporal/Parties, Measurement/Collection, Taxonomy/Geography, rebuilt between windows. Cross-role consumed canonical source materialization uses the source's own scoped immutable lineage and evidence rows, checks current source membership, and retains its original publication-record identity when the same candidate is carried forward. Captured official Memory's text-content envelope remains bounded and cannot turn binary/URL input into admitted text. Pure interrupted date/elevation helpers can be recomputed by a fresh no-transport broker only at their exact saved frontier; source/delegate/unknown interruptions retain the existing hold and inherited usage.
+
+A genuine unsent terminal checkpoint, normally IRN, carries the final whole-twenty canonical progress after all roles finish. Source fields needed by unfinished roles publish normally; established/delivered operations are never repurposed. When no new publication exists, the actual validated native causal head must match this job/generation, exact current field-work bytes/map, field mapping and policy and terminal status. A stale finalized/processing_blocked stage alone is insufficient. No matching current native progress returns `final_research_progress_requires_native_publication`; the existing contract still cannot invent a terminal value or replay a delivered operation just to publish progress. This rare no-carrier prerequisite remains explicit.
+
+Root focused evidence actually run before freeze: collecting native context7 passed; consumed-source/materialization composition71 passed; pure interrupted helpers/recovery/budget37 passed; outcome telemetry17 passed; all-six corrected single-written-date/finalizer2 passed; collection exact qualification/occurrence/boundaries145 passed; people exact quote/evidence/utility/publication73 passed. Initial final-progress28-case run passed all four composed cases but its ten new pure cases had a missing fixture actor; after correcting the fixture,24 pure controls passed (four composed cases deselected). Separate final-progress lane26 passed before root strengthened freshness. Queue lane13 passed proves all-six actual scripted-Harness/native19 publications and honest DTS-only review completion plus legitimate Deferred controls. Known-source retry artifact `d6dec1d1e1accba85e5505f4102b2168046582f2` and audit `1f622d4a3ce66884da99a90dab9155bdca063a9a` are composed; its actual216 passed/9 skipped compatibility and61 expanded retry/programme cases are lane evidence, combined root run pending.
+
+Independent non-author advisory review identified two P2s: no-new-publication stage-only freshness and modern people quote slicing that silently clamped an oversized quote end. Root replaced freshness with current causal whole-record proof and rejected quote coordinates outside the original reading. Two collector overflow regressions preserve original rows/readings and withdraw acceptance. Collection fixtures now separately prove ordinary withdrawn-decision holds, strict stale proposed-event rejection and conflicting-reader holds with an injected stale accepted event; no valid selected-reading policy was weakened. Safety lease fixture timings now explicitly order the first failure before its still-running partner, proving release waits for both.
+
+Queue limits are intentional: unknown D/T/S stays the human-accepted Needs Human policy hold; no definition is invented and no new owner approval is a release prerequisite. Automatic all-six Cleared cannot be claimed under that policy, and protected human carry also retains a human reason. Genuine `capability_defer` is distinct from operational blocking and from delayed checkpoint publication. Safe same-job known-source continuation is qualified at store/journal/engine/thread/controller boundaries. Public V2 field retry intentionally remains unavailable: its API store has no live authority, blocked records are absent from existing due scheduling, and the workflow stops them before command consumption. Wiring authority alone would acknowledge unconsumable work. The audited bounded prerequisites are trusted deployed-worker readiness/authority, native due scheduling, queued-command consumption and terminal retirement; no new scheduling architecture or counterfeit switch is installed here. The one authorized post-release321 acceptance uses the existing ordinary current-revision Retry route, preserves prior Run/history/holds, and does not redo intake.
+
+Native Chrome baseline was inspected through the actual existing `Anurag (infinative.com)` window, authenticated `aduddu@fieldmuseum.org`, Insects, #105526321. Accessibility, structured-field tab and More actions inspection only; no Save, retry, approval or record mutation. Private read-only baseline is `/private/tmp/harness-independent-native321-ui-baseline.json` and is explicitly pre-release/stale-page evidence. A temporary foreground selection returned a different Chrome window; root selected the existing specimen window via native Window menu and reverified profile/account/scope before any app action. No browser-extension/IAB fallback. Source and local fixtures are not live scientific or deployed acceptance.
+
+Remaining required work: combined qualification/targeted retry verification, frozen-head non-author G51 review, stock `scripts/ci/verify.sh`, protected PR/all required checks/main merge, matching three-plane provenance/readiness, then freshly verify cost/custody and run exactly one ordinary harness-only321 continuation with automatic UI/canonical and matching traces. Injected Dosu monthly-credit exhaustion is respected; no retry, billing/auth change, knowledge receipt or empty finalize.

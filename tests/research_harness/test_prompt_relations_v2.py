@@ -78,7 +78,7 @@ def test_each_v2_file_is_its_v1_text_followed_by_the_relation_rule_and_the_pin_e
     # pins moved to the v3 files (test_prompt_reading_citation_v3.py), then to the v4 files, each the v3
     # file followed by the missing-policy block (test_prompt_missing_policy_v4.py), then to the v5 files,
     # each the v4 file followed by the hand-over block (test_prompt_handover_v5.py); all extend the v2 text.
-    version = 9 if role == SpecialistRole.MEASUREMENT else 7 if role == SpecialistRole.TEMPORAL else 6 if role == SpecialistRole.TAXONOMY else 5
+    version = 10 if role == SpecialistRole.MEASUREMENT else 7 if role == SpecialistRole.TEMPORAL else 6 if role == SpecialistRole.TAXONOMY else 5
     assert ROLE_PROMPTS[role] == (f"{role.value}-v{version}.txt",
         MEASUREMENT_EVIDENCE_PROMPT_VERSION if role == SpecialistRole.MEASUREMENT else
         TEMPORAL_CONTEXT_PROMPT_VERSION if role == SpecialistRole.TEMPORAL else

@@ -332,7 +332,10 @@ def _consumed_sources(context, checkpoint, intent, native_inputs, prior, *, reta
             candidate_contract=contract, candidate=copy.deepcopy(candidate), record=copy.deepcopy(record),
             resolved_field=copy.deepcopy(resolved), record_projection=copy.deepcopy(projection),
             record_projection_digest=digest(projection), candidate_digest=digest(candidate), record_digest=digest(record),
-            source_publication_lineage_digest=publication_digest))
+            source_publication_lineage_digest=publication_digest,
+            source_lineage=copy.deepcopy(lineage[0]) if lineage else None,
+            source_evidence_rows=tuple(copy.deepcopy(row) for row in native_inputs["lineage_rows"]["value_evidence"]
+                if lineage and row.get("lineageId") == lineage[0]["id"])))
     return tuple(proofs)
 
 

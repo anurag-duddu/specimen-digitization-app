@@ -179,7 +179,7 @@ class RegisteredTextRequestBoundV1:
             for part in message["parts"]:
                 if (type(part) is not dict or part.get("part_kind") not in allowed
                     or part.get("part_kind") in {"user-prompt","system-prompt"}
-                        and type(part.get("content")) is not str):
+                        and not _literal_text_content(part.get("content"))):
                     raise HeldUnknown("research_input_liability_modality_unqualified")
         try:
             body = json.dumps({"messages":messages,"parameters":parameters,"settings":settings},
@@ -192,6 +192,18 @@ class RegisteredTextRequestBoundV1:
         # transient tool IDs do not cause a duplicate paid request on replay.
         return {"contract_version":"registered-text-request-bound/v1",
             "bound_digest":digest(self.__dict__),"serialization_version":self.serialization_version}
+
+
+def _literal_text_content(content):
+    """Official tagged text stays text; URLs, binary and unknown chunks refuse."""
+    if type(content) is str:
+        return True
+    if type(content) is not list or not content:
+        return False
+    return all(type(item) is str or (type(item) is dict
+        and set(item) <= {"kind", "content", "metadata"}
+        and item.get("kind") == "text-content" and type(item.get("content")) is str)
+        for item in content)
 
 
 def registered_model_request_guards(source_pins, bindings):

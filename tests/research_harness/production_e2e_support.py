@@ -56,10 +56,12 @@ COLLECTION = "00000000-0000-4000-8000-000000000002"
 WORKER = "offline-e2e-worker"
 OPERATOR_ROLES = ("operator", "reviewer", "manager", "admin")
 TERMINAL_WORK = ("resolved", "waiting_human", "nonblocking_exception")
-# The public synthetic label (application.api.SYNTHETIC_VALUES) with a catalog
-# number of the catalog parser's 5 to 9 digits and an elevation with its
-# written unit, so those fields can settle too.
-LABEL_VALUES = {**SYNTHETIC_VALUES, "fmnh_ins_number": "FMNH-INS 0010001",
+# The public synthetic label states one complete native elevation range. The
+# other endpoints/units are G41 outputs, so do not fabricate naked rounded
+# endpoint numbers as additional written label assertions. All twenty requested
+# field slots remain; sixteen source lines support nineteen published fields.
+LABEL_VALUES = {**{key: value for key, value in SYNTHETIC_VALUES.items()
+    if key not in {"date_visited_to", "elevation_to_m", "elevation_from_ft", "elevation_to_ft"}}, "fmnh_ins_number": "FMNH-INS 0010001",
     "elevation_from_m": "180 to 181 m"}
 LABEL_TEXT = "\n".join(f"{key}: {value}" for key, value in LABEL_VALUES.items())
 

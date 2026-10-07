@@ -24,7 +24,7 @@ _ROLES = frozenset(f"specimen_{role}" for role in (
 ))
 _EVENTS = frozenset({
     "research", "specialist", "model", "tool", "effect", "checkpoint", "writer",
-    "resume", "human_decision", "proposal", "failure",
+    "resume", "human_decision", "proposal", "failure", "finalization", "outcome",
 })
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -33,6 +33,7 @@ _JOB_REVISION = re.compile(r"(?P<run>.+)-r\d+\Z")
 _OPTIONAL_IDS = frozenset({"attempt_id", "checkpoint_id", "native_run_id"})
 _OPTIONAL_DIGESTS = frozenset({
     "effect_id", "prompt_digest", "source_registry_digest", "binding_digest",
+    "publication_digest",
 })
 # Settled cost of one model request or of a run, in micro-USD: a bounded integer from the
 # effect receipt (EffectReceipt.actual_micro_usd). USD 1,000 is far above any reservation.
@@ -65,6 +66,14 @@ def _valid(key: str, value: object) -> bool:
         or key == "role" and isinstance(value, str) and value in _ROLES
         or key == "field_key" and isinstance(value, str) and value in _FIELDS
         or key == "field_keys" and _field_keys(value)
+        or key in {"resolved_count", "unresolved_count", "failed_count", "publication_count", "protected_count"}
+            and type(value) is int and 0 <= value <= len(_FIELDS)
+        or key == "terminal_state" and isinstance(value, str) and value in {"validated", "checkpointed", "operational_failed",
+            "mixed", "published", "replayed", "running", "completed", "processing_blocked",
+            "waiting_input", "pending", "blocked"}
+        or key == "stop_states" and isinstance(value, (list, tuple)) and len(value) <= len(_FIELDS)
+            and all(item in {"pending", "resolved", "waiting_policy", "waiting_source", "waiting_human",
+                "operational_failed", "retry_scheduled", "nonblocking_exception", "cancelled", "exhausted"} for item in value)
         or key == "revision" and type(value) is int and value >= 0
         or key == "cost_micro_usd" and type(value) is int and 0 <= value <= _MAX_COST_MICRO_USD
         or key == "cost_unknown_requests" and type(value) is int and 0 <= value <= _MAX_UNKNOWN_REQUESTS
@@ -77,6 +86,17 @@ def metadata_attributes(**metadata: object) -> dict[str, object]:
         raise ValueError("invalid_trace_metadata")
     return {f"research.{key}": [str(item) for item in value] if isinstance(value, (list, tuple)) else value
             for key, value in metadata.items()}
+
+
+def resolution_outcome(resolutions, *, durable=False):
+    states = tuple(str(item.work_state) for item in resolutions)
+    resolved = sum(state == "resolved" for state in states)
+    failed = sum(state == "operational_failed" for state in states)
+    terminal = "operational_failed" if failed == len(states) and states else "mixed" if failed else (
+        "checkpointed" if durable else "validated")
+    return {"terminal_state": terminal, "resolved_count": resolved,
+        "failed_count": failed, "unresolved_count": len(states)-resolved-failed,
+        "stop_states": tuple(dict.fromkeys(state for state in states if state != "resolved"))}
 
 
 @dataclass(frozen=True, slots=True)

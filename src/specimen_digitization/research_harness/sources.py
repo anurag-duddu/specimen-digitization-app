@@ -29,7 +29,7 @@ from specimen_digitization.application.lookup import (
 )
 
 from .contracts import (
-    Digest, EvidenceItem, FieldKey, FrozenRecord, SourceCoverageReceipt,
+    ROLE_FIELDS, Digest, EvidenceItem, FieldKey, FrozenRecord, SourceCoverageReceipt,
     SourceCoverageState, SourceQuery, SourceResult, SpecialistRequest,
     SpecialistRole, ToolReceipt, digest,
 )
@@ -75,21 +75,39 @@ def local_settlement_result(request: SpecialistRequest, tool_id: str, arguments:
     identifiers already in this role's request and never raw model-supplied text,
     source authority, evidence relation or revision.
     """
-    from .evidence import elevation_resolutions, settle_elevation, temporal_resolutions
+    from .evidence import settle_elevation, temporal_resolutions
 
-    if tool_id == "settle_temporal":
+    if tool_id == "settle_collection":
+        from .collection import COLLECTION_FIELDS, collection_resolution
+        if request.role != SpecialistRole.COLLECTION or set(arguments) != {"field_key"}:
+            raise UtilityInputError("Collection settlement requires only its owned field key")
+        field_key = _utility_field_key(arguments["field_key"])
+        if field_key not in request.field_keys or field_key not in COLLECTION_FIELDS:
+            raise UtilityInputError("Collection settlement exceeds scoped request or defined fields")
+        resolutions = (collection_resolution(request, field_key),)
+    elif tool_id == "settle_temporal":
         if request.role != SpecialistRole.TEMPORAL or set(arguments) != {"field_key", "event_id"}:
             raise UtilityInputError("Temporal settlement requires its exact owned event")
         field_key = _utility_field_key(arguments["field_key"])
         event_id = arguments["event_id"]
         if field_key not in request.field_keys or not isinstance(event_id, str):
             raise UtilityInputError("Temporal settlement exceeds scoped request")
-        source_revision = request.field_revisions.get(FieldKey.DATE_VISITED_FROM, 0)
+        source_pin = next((pin for pin in request.dependencies
+                           if pin.field_key == FieldKey.DATE_VISITED_FROM), None)
+        source_revision = (source_pin.revision if source_pin is not None
+                           else request.field_revisions.get(FieldKey.DATE_VISITED_FROM, 0))
         resolutions = temporal_resolutions(request, event_id=event_id, source_revision=source_revision)
-        if resolutions[0].field_key != field_key:
+        selected = next((item for item in resolutions if item.field_key == field_key), None)
+        if selected is None:
             raise UtilityInputError("Temporal event does not establish the requested field")
+        if (field_key == FieldKey.DATE_VISITED_TO and selected.value_layer == "derived"
+                and FieldKey.DATE_VISITED_FROM not in request.field_keys and source_pin is None):
+            raise UtilityInputError("Temporal To repair requires exact native From dependency")
         assembly_ids = tuple(item.id for item in request.assemblies if item.event_id == event_id)
-        if not assembly_ids or any(item.field_key not in request.field_keys
+        context_fields = set(request.field_keys)
+        if field_key == FieldKey.DATE_VISITED_TO:
+            context_fields.add(FieldKey.DATE_VISITED_FROM)
+        if not assembly_ids or any(item.field_key not in context_fields
                                    for item in request.assemblies if item.event_id == event_id):
             raise UtilityInputError("Temporal event has no complete scoped assembly")
     elif tool_id == "settle_elevation":
@@ -101,10 +119,14 @@ def local_settlement_result(request: SpecialistRequest, tool_id: str, arguments:
         if (field_key not in request.field_keys or not isinstance(event_id, str)
             or not isinstance(ids, list) or not ids or any(not isinstance(item, str) for item in ids)):
             raise UtilityInputError("Elevation settlement exceeds scoped request")
+        # Evidence from an omitted native source remains available for a
+        # derived-only retry; output scope and native checkpoint availability
+        # are separate checks. Include every elevation assertion of the event.
         assemblies = tuple(item for item in request.assemblies
-                           if item.event_id == event_id and item.field_key in request.field_keys)
+            if item.event_id == event_id and str(item.field_key).startswith("elevation_"))
+        requested = tuple(item for item in assemblies if item.field_key in request.field_keys)
         if (not assemblies or tuple(ids) != tuple(item.id for item in assemblies)
-            or assemblies[0].field_key != field_key):
+            or requested and requested[0].field_key != field_key):
             raise UtilityInputError("Elevation settlement needs every assembly in immutable request order")
         # G41 always derives from a written From quantity of the matching unit,
         # even when the organiser's original proposal named a To slot.
@@ -113,7 +135,21 @@ def local_settlement_result(request: SpecialistRequest, tool_id: str, arguments:
         source_key = FieldKey(f"elevation_from_{first.from_unit}")
         source_revision = request.field_revisions.get(source_key, 0)
         settled = settle_elevation(request, assembly_ids=ids, source_revision=source_revision)
-        resolutions = elevation_resolutions(settled)
+        from .measurement import pinned_elevation_resolutions
+        resolutions = pinned_elevation_resolutions(request, settled)
+    elif tool_id == "settle_collectors":
+        if request.role != SpecialistRole.PARTIES or set(arguments) != {"field_key", "event_id"}:
+            raise UtilityInputError("Collector settlement requires its exact owned event")
+        field_key = _utility_field_key(arguments["field_key"])
+        event_id = arguments["event_id"]
+        if field_key != FieldKey.COLLECTORS or field_key not in request.field_keys or not isinstance(event_id, str):
+            raise UtilityInputError("Collector settlement exceeds scoped request")
+        assemblies = [item for item in request.assemblies if item.event_id == event_id
+            and item.field_key == FieldKey.COLLECTORS]
+        if not assemblies:
+            raise UtilityInputError("Collector event has no available assembly")
+        from .people import collector_resolution
+        resolutions = (collector_resolution(request, assembly_id=assemblies[0].id),)
     else:
         raise ValueError("Unknown settlement utility")
     return SourceResult(status=LookupStatus.SUCCESS,
@@ -421,7 +457,7 @@ def _captured_geography_results(request: SpecialistRequest,
             raw = result_envelope(result)
             if (receipt is None or receipt.scope != request.scope
                 or coverage.source_id not in {"geolocate", "tgn", "wikidata", "nga"}
-                or coverage.field_key not in request.field_keys
+                or coverage.field_key not in ROLE_FIELDS[SpecialistRole.GEOGRAPHY]
                 or receipt.source_id != coverage.source_id or receipt.field_keys != (coverage.field_key,)
                 or receipt.effect_status != "completed" or receipt.outcome != result.status
                 or not receipt.capture_locator or not receipt.response_digest
@@ -1220,8 +1256,8 @@ class SourceBroker:
                             candidate_json=tuple(canonical_json(item) for item in candidates))
 
     async def invoke_utility(self, request: SpecialistRequest, tool_id: str, arguments: dict) -> SourceResult:
-        from .evidence import catalog_literal, parse_measurement, parse_temporal
-        if tool_id in {"settle_temporal", "settle_elevation"}:
+        from .evidence import catalog_literal, parse_measurement
+        if tool_id in {"settle_temporal", "settle_elevation", "settle_collectors", "settle_collection"}:
             return local_settlement_result(request, tool_id, arguments)
         allowed = {"parse_measurement": SpecialistRole.MEASUREMENT,
                    "parse_temporal": SpecialistRole.TEMPORAL,
@@ -1233,14 +1269,24 @@ class SourceBroker:
         field_key = _utility_field_key(arguments["field_key"])
         if field_key not in request.field_keys:
             raise UtilityInputError("Utility field exceeds scoped request")
-        if not any(arguments["text"] == assembly.interpreted_text for assembly in request.assemblies):
+        if tool_id == "catalog_number" and field_key != FieldKey.FMNH_INS_NUMBER:
+            raise UtilityInputError("Catalogue utility cannot supply collection code or another field")
+        matching = [assembly for assembly in request.assemblies
+            if (tool_id != "catalog_number" or assembly.field_key == field_key)
+            and arguments["text"] == assembly.interpreted_text]
+        if not matching:
             raise UtilityInputError("Utility text must come from an available evidenced assembly")
+        from .evidence import validate_assembly
+        if tool_id == "catalog_number":
+            for assembly in matching:
+                validate_assembly(request, assembly)
         if tool_id == "catalog_number":
             parsed = {"field_key": str(field_key), "value": catalog_literal(arguments["text"]),
                       "rule_version": "catalog-number-v1"}
         else:
+            from .temporal_context import parse_temporal_text
             parsed = (parse_measurement(arguments["text"]) if tool_id == "parse_measurement"
-                      else parse_temporal(arguments["text"])).model_dump(mode="json")
+                      else parse_temporal_text(request, arguments["text"], field_key)).model_dump(mode="json")
         return SourceResult(status=LookupStatus.SUCCESS,
                             coverage=SourceCoverageReceipt(source_id=tool_id, field_key=field_key,
                                 state=SourceCoverageState.SEARCHED, source_version="deterministic-domain-v1",

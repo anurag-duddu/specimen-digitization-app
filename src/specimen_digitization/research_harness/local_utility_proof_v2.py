@@ -14,15 +14,16 @@ from .accepted_output import VALIDATOR_SOURCE_SHA256
 from .compatibility import PublicationUnavailable
 from .contracts import (
     LookupStatus, SourceCoverageReceipt, SourceCoverageState, SourceResult,
-    SpecialistRequest, SpecialistRole, digest,
+    FieldKey, SpecialistRequest, SpecialistRole, digest,
 )
-from .evidence import catalog_literal, parse_measurement, parse_temporal, validate_assembly
+from .evidence import catalog_literal, parse_measurement, validate_assembly
 from .sources import SETTLEMENT_UTILITY_VERSION, canonical_json, local_settlement_result
 
 UTILITY_VERSION = "deterministic-domain-v1"
 UTILITY_ROLES = {"parse_measurement": SpecialistRole.MEASUREMENT,
     "parse_temporal": SpecialistRole.TEMPORAL, "catalog_number": SpecialistRole.COLLECTION,
-    "settle_temporal": SpecialistRole.TEMPORAL, "settle_elevation": SpecialistRole.MEASUREMENT}
+    "settle_temporal": SpecialistRole.TEMPORAL, "settle_elevation": SpecialistRole.MEASUREMENT,
+    "settle_collectors": SpecialistRole.PARTIES, "settle_collection": SpecialistRole.COLLECTION}
 
 
 @dataclass(frozen=True)
@@ -62,7 +63,19 @@ def verify_local_utility_v2(request: SpecialistRequest, result: SourceResult) ->
     if (result.receipt is not None or tool_id not in UTILITY_ROLES
             or request.role != UTILITY_ROLES[tool_id] or field_key not in request.field_keys):
         hold()
-    if tool_id in {"settle_temporal", "settle_elevation"}:
+    if tool_id == "settle_collection":
+        arguments = {"field_key": str(field_key)}
+        try:
+            expected = local_settlement_result(request, tool_id, arguments)
+        except (ValueError, TypeError, KeyError):
+            hold()
+        if result != expected:
+            hold()
+        return LocalUtilityReplayProofV2("research-local-utility-replay/v2", digest(request),
+            digest(result), tool_id, str(field_key), "",
+            tuple(row.id for row in request.assemblies if row.field_key == field_key),
+            utility_version=SETTLEMENT_UTILITY_VERSION, arguments=arguments)
+    if tool_id in {"settle_temporal", "settle_elevation", "settle_collectors"}:
         return _verify_settlement(request, result)
     expected_coverage = SourceCoverageReceipt(source_id=tool_id,field_key=field_key,
         state=SourceCoverageState.SEARCHED,source_version=UTILITY_VERSION,
@@ -72,14 +85,18 @@ def verify_local_utility_v2(request: SpecialistRequest, result: SourceResult) ->
         hold()
     matches = {}
     for assembly in request.assemblies:
+        if tool_id == "catalog_number" and (
+            assembly.field_key != field_key or field_key != FieldKey.FMNH_INS_NUMBER):
+            continue
         try:
             validate_assembly(request, assembly)
             text = assembly.interpreted_text
             if tool_id == "catalog_number":
                 parsed = {"field_key":str(field_key),"value":catalog_literal(text),"rule_version":"catalog-number-v1"}
             else:
+                from .temporal_context import parse_temporal_text
                 parsed = (parse_measurement(text) if tool_id == "parse_measurement"
-                    else parse_temporal(text)).model_dump(mode="json")
+                    else parse_temporal_text(request, text, field_key)).model_dump(mode="json")
             expected = SourceResult(status=LookupStatus.SUCCESS,coverage=expected_coverage,
                 candidate_json=(canonical_json(parsed),))
         except (ValueError, TypeError, KeyError):
@@ -106,10 +123,11 @@ def _verify_settlement(request: SpecialistRequest, result: SourceResult) -> Loca
     matches = []
     event_ids = dict.fromkeys(item.event_id for item in request.assemblies)
     for event_id in event_ids:
-        assemblies = tuple(item for item in request.assemblies if item.event_id == event_id)
+        assemblies = tuple(item for item in request.assemblies if item.event_id == event_id
+            and (tool_id != "settle_elevation" or str(item.field_key).startswith("elevation_")))
         if not assemblies:
             continue
-        if tool_id == "settle_temporal":
+        if tool_id in {"settle_temporal", "settle_collectors"}:
             arguments = {"field_key": str(field_key), "event_id": event_id}
         else:
             arguments = {"field_key": str(field_key), "event_id": event_id,

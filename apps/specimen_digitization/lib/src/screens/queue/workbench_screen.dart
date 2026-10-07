@@ -273,7 +273,14 @@ class _WorkbenchScreenState extends State<WorkbenchScreen> {
                           controller.repository as ApiSpecimenRepository,
                       collection: scope,
                       specimen: specimen,
-                      refreshRecord: () => controller.refresh(),
+                      refreshRecord: () => controller.refreshSelected(),
+                      refreshEpoch: controller.selectedRefreshEpoch,
+                      refreshEnabled:
+                          _active &&
+                          controller.foreground &&
+                          !controller.mutating,
+                      onPollingPaused: (owner, paused) =>
+                          controller.setPollingPaused(owner, paused),
                       builder: (context, researchForField) =>
                           buildFields(researchForField),
                     )

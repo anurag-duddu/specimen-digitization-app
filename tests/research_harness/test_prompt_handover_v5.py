@@ -64,6 +64,7 @@ V7_ROLE_DIGESTS = {
 }
 GEOGRAPHY_V8_DIGEST = "30f5b580a78c53207d8f119f7b4afeaaed815c4b4ba79d8f426542f3adc09bba"  # pragma: allowlist secret
 MEASUREMENT_V8_DIGEST = "06310d03a1419ac509d8c23b1c68340b8213ec008d67223dca1840309e64e7f7"  # pragma: allowlist secret
+MEASUREMENT_V10_DIGEST = "b745c0dae603f181182fbf95ffc47fd50d29a05b69e23f0bd30df0ad83506111"  # pragma: allowlist secret
 MEASUREMENT_V9_DIGEST = "65e3c30aeac9d55d165eb147bf36d88c208400238bb206d4361c1f348dc812e7"  # pragma: allowlist secret
 TAXONOMY_V7_DIGEST = "ba33889e495c286e089b517366117c5167e788283d8a44eaae02ca14b3a6fc72"  # pragma: allowlist secret
 # The roles that carry #257's producer block, and the ones whose own fields can get an assembly from the hand-over.
@@ -82,7 +83,7 @@ def pin(role):
 
 
 def appended_or_frozen_v5_text(role):
-    # Coherent measurement v9 and temporal v7 replace the obsolete chain.
+    # Coherent measurement v10 and temporal v7 replace the obsolete chain.
     # Keep auditing measurement's frozen v7 and temporal's frozen v5 here.
     if role == SpecialistRole.MEASUREMENT:
         return (ROOT / "specimen_measurement-v7.txt").read_text()
@@ -157,7 +158,7 @@ def test_the_committed_pins_carry_the_active_versions_and_digests():
         collection_id="coll")
     assert {role: (row["version"], row["digest"]) for role, row in pins["prompts"].items()} == {
         str(role): (GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION, GEOGRAPHY_V8_DIGEST) if role == SpecialistRole.GEOGRAPHY else
-            (MEASUREMENT_EVIDENCE_PROMPT_VERSION, MEASUREMENT_V9_DIGEST) if role == SpecialistRole.MEASUREMENT else
+            (MEASUREMENT_EVIDENCE_PROMPT_VERSION, MEASUREMENT_V10_DIGEST) if role == SpecialistRole.MEASUREMENT else
             (TEMPORAL_CONTEXT_PROMPT_VERSION, V7_ROLE_DIGESTS[role]) if role == SpecialistRole.TEMPORAL else
             (TAXONOMY_RECONCILIATION_PROMPT_VERSION, TAXONOMY_V7_DIGEST) if role == SpecialistRole.TAXONOMY else
             (QUALIFIED_PROMPT_VERSION, V6_ROLE_DIGESTS[role]) if role in V6_ROLE_DIGESTS else

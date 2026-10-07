@@ -1543,6 +1543,7 @@ class _ReviewWorkbenchState extends State<ReviewWorkbench> {
                   _reconciliationMessage = null;
                 }
               }
+              _reapplyPending();
             });
             _reportNavigationBlocked();
           },

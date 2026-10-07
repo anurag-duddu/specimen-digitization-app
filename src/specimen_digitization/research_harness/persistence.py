@@ -279,7 +279,7 @@ class PinnedRuntime:
     model: Mapping[str, Any]
     settings: Mapping[str, Any]
     engine_version: str
-    serialization_version: str = "harness-0.54.0/core-2.54.0"
+    serialization_version: str = "pydantic-ai-2.54.0+harness-0.54.0/v1"
 
     def payload(self) -> dict[str, Any]:
         return json.loads(canonical(asdict(self)))
@@ -1172,6 +1172,108 @@ class ResearchStore:
             job["paused"], job["lease"] = False, None
         self._mutate(scope, reduce)
 
+    @staticmethod
+    def _completed_source_failure(state, scope, job, field_key) -> bool:
+        """A cited, accepted, current captured failure is safe to try anew.
+
+        Role checkpoints cite sibling receipts too. Only an exact single-field
+        completed source effect can establish this basis; a model failure or an
+        unsent source prerequisite cannot. This grants no dispatch authority.
+        """
+        from .contracts import SourceResult, SourceCoverageState
+        from specimen_digitization.application.domain import LookupStatus
+
+        value = job["fields"].get(field_key, {})
+        checkpoint = value.get("checkpoint") or {}
+        payload = checkpoint.get("payload", {})
+        resolution = payload.get("resolution", {})
+        proof = checkpoint.get("accepted_output_proof") or {}
+        if (digest(job["pins"]) != job["binding_digest"]
+            or checkpoint.get("scope") != scope.identity()
+            or checkpoint.get("binding_digest") != job["binding_digest"]
+            or checkpoint.get("field_key") != field_key
+            or checkpoint.get("revision") != value.get("revision")
+            or payload.get("revision") != value.get("revision")
+            or payload.get("field_key") != field_key
+            or resolution.get("field_key") != field_key
+            or resolution.get("work_state") != "waiting_source"
+            or sum(item == checkpoint for item in job["checkpoints"]) != 1
+            or payload.get("effect_receipt_ids") != checkpoint.get("receipt_ids")
+            or proof.get("contract_version") != "research-accepted-checkpoints/v1"
+            or digest(payload) not in proof.get("checkpoint_payload_digests", ())):
+            return False
+        run = state["journal"].get(proof.get("native_run_id"), {})
+        retained = run.get("accepted_outputs", {}).get(proof.get("proof_digest"), {})
+        capture = proof.get("capture") or {}
+        if (run.get("scope") != scope.identity() or run.get("agent_name") != proof.get("agent_name")
+            or run.get("record", {}).get("conversation_id") != proof.get("conversation_id")
+            or not any(item.get("state") == "complete" for item in run.get("snapshots", ()))
+            or retained.get("proof") != proof or checkpoint.get("id") not in retained.get("checkpoint_ids", ())
+            or capture.get("sha256") != proof.get("proof_digest")
+            or capture.get("locator") != "research-journal/accepted-output/" + digest(scope.identity())
+                + "/" + str(proof.get("proof_digest")) + ".json"):
+            return False
+        operational = {LookupStatus.EMPTY, LookupStatus.RATE_LIMITED, LookupStatus.TIMEOUT,
+            LookupStatus.AUTHENTICATION, LookupStatus.AUTHORIZATION, LookupStatus.PROVIDER,
+            LookupStatus.MALFORMED}
+        for effect_id in checkpoint.get("receipt_ids", ()):
+            effect = state["effects"].get(effect_id, {})
+            receipt = effect.get("receipt") or {}
+            attempts = [item for item in effect.get("attempts", ())
+                if item.get("attempt_id") == receipt.get("attempt_id")]
+            if (effect.get("scope") != scope.identity() or effect.get("job_key") != scope.key
+                or effect.get("binding_digest") != job["binding_digest"]
+                or effect.get("field_keys") != [field_key] or effect.get("status") != "completed"
+                or effect.get("operation_key") != "source_capture_v2:" + effect.get("request_digest", "")
+                or effect.get("effect_id") != effect_id or receipt.get("effect_id") != effect_id
+                or effect_id != digest({"scope": scope.identity(), "operation_key": effect.get("operation_key"),
+                    "request_digest": effect.get("request_digest"), "binding_digest": job["binding_digest"]})
+                or type(receipt.get("actual_micro_usd")) is not int or receipt["actual_micro_usd"] < 0
+                or type(effect.get("actual_micro_usd")) is not int or effect["actual_micro_usd"] < 0
+                or receipt.get("held_micro_usd") != 0 or effect.get("held_micro_usd") != 0
+                or receipt.get("outcome") != "completed" or not receipt.get("raw_capture")
+                or len(attempts) != 1 or attempts[0].get("status") != "completed"
+                or effect.get("attempts", [])[-1] != attempts[0]
+                or effect["actual_micro_usd"] != effect.get("prior_actual_micro_usd", 0) + receipt["actual_micro_usd"]
+                or attempts[0].get("capture") != receipt.get("capture")
+                or receipt["raw_capture"].get("locator") != attempts[0].get("raw_capture_locator")
+                or (receipt.get("capture") or {}).get("locator") != attempts[0].get("capture_locator")):
+                continue
+            try:
+                result = SourceResult.model_validate(receipt["typed_payload"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            policy = job["pins"]["sources"].get("capture_policies", {}).get(result.coverage.source_id, {})
+            if (result.status in operational and result.coverage.field_key == field_key
+                and result.coverage.state in {SourceCoverageState.FAILED, SourceCoverageState.INACCESSIBLE}
+                and result.coverage.qualification_digest == policy.get("source_policy_digest")
+                and policy.get("source_id") == result.coverage.source_id
+                and policy.get("kind") in {"full_response", "pinned_dataset"}
+                and result.coverage.query_digest is not None):
+                return True
+        return False
+
+    def _source_retry_safety(self, state, scope, job, now, *, active_retry=False, execution_class=None):
+        """Keep cumulative liability and custody fences for the new retry class."""
+        if any(effect["job_key"] == scope.key and (
+            effect["status"] in {"reserved", "sending", "held_unknown"}
+            or effect.get("actual_micro_usd") is None
+            or effect.get("receipt") is not None and effect["receipt"]["actual_micro_usd"] is None)
+            for effect in state["effects"].values()):
+            raise HeldUnknown("Source retry cannot bypass unreconciled job effects")
+        if any(item.get("kind") == "canonical_publication_required" and item.get("delivered") is False
+            and item.get("guard", {}).get("scope") == scope.identity()
+            for item in state["outbox"].values()):
+            raise HeldUnknown("Source retry cannot bypass a publication in doubt")
+        budget = self._budget(state)
+        if state["halted"] or budget["remaining_micro_usd"] <= 0:
+            raise BudgetExceeded("Source retry requires remaining cumulative allowance")
+        if execution_class == "live" and (
+            not state["budget_policy"]["live_authorized"] or state["budget_policy"].get("hold_reason")):
+            raise PermissionError("Live dispatch blocked by imported program HOLD")
+        if not active_retry and job.get("lease") and job["lease"]["expires_at"] > now:
+            raise StaleWork("Completed source retry requires released or expired worker custody")
+
     def admit_retry(self, scope: DurabilityScope, field_key: str, *, expected_generation: int, expected_field_revision: int, idempotency_key: str, execution_class: str = "live") -> dict[str, Any]:
         """Atomically queue one failed field; only server-configured fixtures use offline.
 
@@ -1191,8 +1293,13 @@ class ResearchStore:
             failed = {"operational_failed", "retry_scheduled"}
             if expected_generation != job["generation"] or not value or value["revision"] != expected_field_revision or not checkpoint or checkpoint["revision"] != expected_field_revision:
                 raise StaleWork("Retry generation or checkpoint revision changed")
+            waiting_source = isinstance(resolution, dict) and resolution.get("work_state") == "waiting_source"
+            if waiting_source:
+                failed.add("waiting_source")
             if job["paused"] or value["locked"] or value["work_state"] not in failed or not isinstance(resolution, dict) or resolution.get("work_state", resolution.get("state")) not in failed:
                 raise StaleWork("Only an unlocked failed field may be retried")
+            if waiting_source and not self._completed_source_failure(state, scope, job, field_key):
+                raise StaleWork("Waiting source retry requires its accepted completed source failure")
             if state["halted"]:
                 raise BudgetExceeded("Shared program halted")
             for effect in state["effects"].values():
@@ -1203,6 +1310,8 @@ class ResearchStore:
             old = state["outbox"].get("retry/" + command_id)
             if old:
                 return copy.deepcopy(old["command"])
+            if waiting_source:
+                self._source_retry_safety(state, scope, job, now, execution_class=execution_class)
             if value.get("retry_command_id"):
                 raise StaleWork("This checkpoint already has a queued retry command")
             command = {"id": command_id, "kind": "retry_field", "status": "queued", "scope": scope.identity(),
@@ -1255,6 +1364,12 @@ class ResearchStore:
                     raise BudgetExceeded("Shared program halted")
                 if value["revision"] != command["expected_field_revision"] or digest(value["checkpoint"]) != command["checkpoint_digest"] or value.get("retry_command_id") != command_id:
                     raise StaleWork("Retry checkpoint basis changed before claim")
+                resolution = value["checkpoint"]["payload"].get("resolution", {})
+                if resolution.get("work_state") == "waiting_source":
+                    if not self._completed_source_failure(state, scope, job, command["field_key"]):
+                        raise StaleWork("Source retry completion basis changed before claim")
+                    self._source_retry_safety(state, scope, job, now, active_retry=True,
+                        execution_class=command["execution_class"])
                 for effect in state["effects"].values():
                     if effect["job_key"] == scope.key and (not effect["field_keys"] or command["field_key"] in effect["field_keys"]) and (effect["status"] in {"sending", "held_unknown"} or (effect["receipt"] and effect["receipt"]["actual_micro_usd"] is None)):
                         raise HeldUnknown("Retry claim cannot reissue an uncertain effect")

@@ -8,7 +8,7 @@ from collections.abc import Sequence
 
 from specimen_digitization.application.domain import LookupStatus, OPERATIONAL
 
-from .contracts import FieldKey, SourceQuery, SourceResult, SpecialistRequest, digest
+from .contracts import ROLE_FIELDS, FieldKey, SourceQuery, SourceResult, SpecialistRequest, SpecialistRole, digest
 from .sources import geolocate_interpretation, result_envelope
 
 HISTORICAL_SOURCES = frozenset({"tgn", "wikidata", "nga"})
@@ -77,21 +77,28 @@ def geography_progress(request: SpecialistRequest, field_key: FieldKey,
     """
     if field_key not in request.field_keys:
         raise ValueError("geography_progress_outside_requested_field")
-    history = [item for item in attempts if item.query.field_key == field_key]
+    # A captured place-name strategy is useful to its related hierarchy fields.
+    # GEOLocate's deciding result remains target-specific; sibling deciding
+    # candidates cannot settle this field or replace its required lookup.
+    shared_history = [item for item in attempts if item.query.field_key == field_key
+        or (item.query.source_id in HISTORICAL_SOURCES
+            and item.query.field_key in ROLE_FIELDS[SpecialistRole.GEOGRAPHY])]
+    history = [item for item in shared_history if item.query.field_key == field_key]
     if any(item.query.source_id != item.result.coverage.source_id
-           or item.query.field_key != item.result.coverage.field_key for item in history):
+           or item.query.field_key != item.result.coverage.field_key for item in shared_history):
         raise ValueError("geography_attempt_result_mismatch")
     retained = []
     seen = set()
-    for item in history:
+    for item in shared_history:
         identity = _query_identity(item.query)
         if identity not in seen:
             seen.add(identity)
             retained.append(item)  # A replay cannot pretend to be later research.
-    ids = tuple(dict.fromkeys(digest(item.query) for item in history))
-    evidence = tuple(dict.fromkeys(e.id for item in history for e in item.result.evidence))
+    considered = history
 
     def progress(state, reason=None, next_sources=(), review=False):
+        ids = tuple(dict.fromkeys(digest(item.query) for item in considered))
+        evidence = tuple(dict.fromkeys(e.id for item in considered for e in item.result.evidence))
         return GeographyProgress(str(field_key), state, reason, tuple(next_sources), ids, evidence, review)
 
     settling = [item for item in history if captured(request, item.result)
@@ -123,6 +130,10 @@ def geography_progress(request: SpecialistRequest, field_key: FieldKey,
                 return True
         return False
     alternatives = [item for item in retained if item.query.source_id in HISTORICAL_SOURCES and relevant(item)]
+    considered = [item for item in shared_history if item.query.field_key == field_key
+                  or (item.query.source_id in HISTORICAL_SOURCES and relevant(item))]
+    if any(item.result.status in OPERATIONAL or not captured(request, item.result) for item in considered):
+        return progress("waiting_source", "failed_refused_or_unreceipted_strategy")
     if not alternatives and available & HISTORICAL_SOURCES:
         return progress("research_pending", "relevant_place_name_alternative_remaining",
                         sorted(available & HISTORICAL_SOURCES))

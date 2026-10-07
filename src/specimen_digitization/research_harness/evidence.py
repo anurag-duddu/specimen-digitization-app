@@ -24,9 +24,12 @@ from .contracts import (
 )
 
 FEET_TO_METRES = Decimal("0.3048")
+# Accepted-output qualification also verifies the imported people policy bytes.
+PEOPLE_POLICY_SOURCE_SHA256 = "077b6452f1a92588d6549b805464642ab1e697926e9c5dcf7e28b28e1015484f"  # pragma: allowlist secret
 MEASUREMENT_RULE = "decimal-elevation-v1"
 DECIMAL_PRECISION = 80
 INVERSE_PRECISION = 34
+TEMPORAL_CONTEXT_SOURCE_SHA256 = "6f2652e24901700798337280cb294b17825058dc1c6eff0e66a2f383f9cc6ec0"  # pragma: allowlist secret
 _NUMBER = r"[+-]?\d{1,40}(?:\.\d{1,20})?"
 _MEASUREMENT_NUMBER = r"[+-]?(?:\d{1,40}|[1-9]\d{0,2}(?:,\d{3}){1,13})(?:\.\d{1,20})?"
 _UNIT = r"(?:ft|feet|foot)\.?|m\.?|metres?|meters?|'"
@@ -35,7 +38,7 @@ _MEASUREMENT = re.compile(
     rf"(?P<qual>~|≈|c\.?|ca\.?|about|approx\.?)?\s*"
     rf"(?P<first>{_MEASUREMENT_NUMBER})\s*(?P<firstunit>{_UNIT})?\s*"
     rf"(?:(?P<sep>to|[-–—])\s*(?P<last>{_MEASUREMENT_NUMBER})\s*(?P<lastunit>{_UNIT})?)?"
-    rf"\s*(?:[±]\s*(?P<uncertainty>{_MEASUREMENT_NUMBER})\s*(?P<uncunit>{_UNIT})?)?\s*$",
+    rf"\s*(?:(?:±|\+/-)\s*(?P<uncertainty>{_MEASUREMENT_NUMBER})\s*(?P<uncunit>{_UNIT})?)?\s*$",
     re.IGNORECASE,
 )
 
@@ -93,12 +96,19 @@ def temporal_resolutions(request: SpecialistRequest, *, event_id: str, source_re
     if event is None or event.kind not in {EventKind.COLLECTING, EventKind.DETERMINATION}:
         raise EvidenceError("Collecting/determination date cannot use preparation or unknown event")
     field = FieldKey.DATE_IDENTIFIED if event.kind == EventKind.DETERMINATION else FieldKey.DATE_VISITED_FROM
+    dated_events = {item.event_id for item in request.assemblies if item.field_key == field
+        and any(peer.id == item.event_id and peer.status == "accepted" and peer.kind == event.kind
+                for peer in request.events)}
+    from .temporal_context import has_multiple_written_date_events
+    if event.competing_event_ids or len(dated_events) > 1 or has_multiple_written_date_events(request, event.kind):
+        raise EvidenceError("Multiple date events require qualified event selection")
     assertions = [item for item in request.assemblies if item.event_id == event_id and item.field_key == field]
     if not assertions:
         raise EvidenceError("No written event-specific date assertion")
     for assembly in assertions:
         validate_assembly(request, assembly)
-    parsed = [parse_temporal(item.interpreted_text) for item in assertions]
+    from .temporal_context import parse_temporal_assembly
+    parsed = [parse_temporal_assembly(request, item) for item in assertions]
     if len({(item.canonical, item.precision) for item in parsed}) != 1:
         raise EvidenceError("G32 date assertions disagree")
     first = parsed[0]
@@ -119,16 +129,31 @@ def temporal_resolutions(request: SpecialistRequest, *, event_id: str, source_re
     )
     if event.kind == EventKind.DETERMINATION:
         return (base,)
+    source_pin = next((pin for pin in request.dependencies if pin.field_key == field), None)
+    if field not in request.field_keys and source_pin is not None:
+        from .temporal_context import temporal_dependency_source
+        base = temporal_dependency_source(request, base, source_revision)
     explicit_to = [item for item in request.assemblies if item.event_id == event_id and item.field_key == FieldKey.DATE_VISITED_TO]
     if explicit_to:
         for assembly in explicit_to:
             validate_assembly(request, assembly)
-        to_readings = [parse_temporal(item.interpreted_text) for item in explicit_to]
+        to_readings = [parse_temporal_assembly(request, item) for item in explicit_to]
         if len({(item.canonical, item.precision) for item in to_readings}) != 1:
             raise EvidenceError("G32 range endpoint assertions disagree")
         last = to_readings[0]
-        if last.canonical < first.canonical:
+        if first.precision == last.precision and last.canonical < first.canonical:
             raise EvidenceError("Collecting date range endpoints are reversed")
+        if first.precision != last.precision:
+            from calendar import monthrange
+            parts = list(map(int, first.canonical.split("-")))
+            latest_from = date(parts[0], parts[1] if len(parts) > 1 else 12,
+                               parts[2] if len(parts) > 2 else
+                               monthrange(parts[0], parts[1] if len(parts) > 1 else 12)[1])
+            parts = list(map(int, last.canonical.split("-")))
+            earliest_to = date(parts[0], parts[1] if len(parts) > 1 else 1,
+                               parts[2] if len(parts) > 2 else 1)
+            if latest_from > earliest_to:
+                raise EvidenceError("Written range precision does not establish endpoint order")
         end_evidence = tuple(dict.fromkeys(eid for item in explicit_to for eid in item.evidence_ids))
         end = FieldResolution(
             field_key=FieldKey.DATE_VISITED_TO, work_state=WorkState.RESOLVED, value_layer="settled",
@@ -141,6 +166,16 @@ def temporal_resolutions(request: SpecialistRequest, *, event_id: str, source_re
             reason="Preserved written range endpoint",
         )
         return (base, end)
+    from .temporal_context import has_written_collecting_to
+    if has_written_collecting_to(request) or any(item.field_key == FieldKey.DATE_VISITED_TO and item.event_id != event_id
+            and any(peer.id == item.event_id and peer.status == "accepted"
+                    and peer.kind == EventKind.COLLECTING for peer in request.events)
+            for item in request.assemblies):
+        # A written unlinked endpoint is not evidence for a single-date G44
+        # copy. Preserve the valid From sibling and leave To for event review.
+        return (base,)
+    if field not in request.field_keys and source_pin is None:
+        raise EvidenceError("Temporal To repair requires exact native From dependency")
     base_digest = digest(base)
     scientific_digest = digest({"canonical": first.canonical, "precision": first.precision,
                                 "event_id": event_id, "assembly_ids": base.assembly_ids,
@@ -236,6 +271,25 @@ def _metres(number: Decimal, unit: str) -> Decimal:
         return number * FEET_TO_METRES if unit == "ft" else number
 
 
+def _measurement_agreement(value: ParsedMeasurement) -> tuple:
+    """Exact physical agreement of independently grounded complete assertions.
+
+    Missing uncertainty is distinct from explicit zero. Single and range syntax
+    remain distinct because G41 copies only a single value's To endpoint. The
+    parser's supported qualifier spellings all express approximation; each
+    original spelling and unit remain in assertion_metadata, never rewritten.
+    This signature does not ground reader alternatives or authorize event joins.
+    """
+    return (
+        _metres(_decimal(value.from_quantity), value.from_unit),
+        _metres(_decimal(value.to_quantity), value.to_unit),
+        value.single, bool(value.qualifiers),
+        _metres(_decimal(value.uncertainty), value.from_unit)
+        if value.uncertainty is not None else None,
+        value.precision, value.vertical_datum,
+    )
+
+
 def _convert(number: Decimal, source_unit: str, target_unit: str) -> Decimal:
     with localcontext() as context:
         context.prec = DECIMAL_PRECISION if source_unit == "ft" else INVERSE_PRECISION
@@ -319,7 +373,7 @@ def validate_assembly(request: SpecialistRequest, assembly: FieldAssemblyCandida
 def settle_elevation(
     request: SpecialistRequest, *, assembly_ids: Sequence[str], source_revision: int = 0,
 ) -> SettledMeasurement:
-    """Settle independent complete assertions by event and exact canonical quantity."""
+    """Settle only scientifically agreeing complete assertions of one event."""
     selected = {item.id: item for item in request.assemblies}
     try:
         assemblies = tuple(selected[key] for key in assembly_ids)
@@ -341,8 +395,7 @@ def settle_elevation(
             raise EvidenceError("Non-measurement assembly cannot supply elevation")
         validate_assembly(request, assembly)
         value = parse_measurement(assembly.interpreted_text)
-        identity = (_metres(_decimal(value.from_quantity), value.from_unit),
-                    _metres(_decimal(value.to_quantity), value.to_unit))
+        identity = _measurement_agreement(value)
         if canonical is not None and identity != canonical:
             raise EvidenceError("G32 independent complete elevations disagree")
         canonical = identity
@@ -530,10 +583,10 @@ def _taxon_assertions(request: SpecialistRequest, resolution: FieldResolution):
     establish its location. Other readings of that same line must then be
     reconciled; an omitted/shifted/partial counterpart cannot clear the field.
     """
-    from specimen_digitization.application.lookup import scientific_name
+    from .taxonomy import taxonomy_scientific_name
 
     def complete(text):
-        name = scientific_name(text)
+        name = taxonomy_scientific_name(text)
         # The existing parser retains morphology/annotation in the assertion,
         # while qualifying only its written scientific name for lookup. A
         # genus-only query cannot stand in for a complete species assertion.
@@ -542,7 +595,7 @@ def _taxon_assertions(request: SpecialistRequest, resolution: FieldResolution):
     def name_fragment(item):
         start = item.observation_text.rfind("\n", 0, item.start) + 1
         prefix = item.observation_text[start:item.start].strip().rstrip(":").strip()
-        if prefix in {str(key) for key in ALL_FIELDS if key != FieldKey.TAXON}:
+        if prefix.casefold() in {str(key) for key in ALL_FIELDS if key != FieldKey.TAXON}:
             return False
         return complete(item.literal)
 
@@ -705,6 +758,11 @@ def validate_resolution(request: SpecialistRequest, resolution: FieldResolution,
     """Reject false model clearances using only actual broker outputs and immutable inputs."""
     if resolution.field_key not in request.field_keys:
         raise EvidenceError("Specialist output escaped requested fields")
+    from .output_admission import is_validation_failure
+    if is_validation_failure(resolution):
+        # The output controller emits a bare operational outcome after its
+        # existing correction. No scientific value/provenance can hide here.
+        return resolution
     if resolution.work_state == WorkState.NONBLOCKING_EXCEPTION:
         if resolution.field_key != FieldKey.IDENTIFIED_BY_IRN or resolution.exception != emu_irn_exception():
             raise EvidenceError("Only explicitly declared inaccessible IRN exception is enabled")
@@ -722,6 +780,11 @@ def validate_resolution(request: SpecialistRequest, resolution: FieldResolution,
             raise EvidenceError("D/T/S verbatim is not grounded in immutable reading")
         return resolution
     if resolution.work_state != WorkState.RESOLVED:
+        if (request.prompt.version == "collection-qualified-evidence-v6-2026-10-07"
+            and resolution.field_key in {FieldKey.FMNH_INS_NUMBER, FieldKey.COLLECTION_CODE,
+                FieldKey.HABITAT, FieldKey.COLLECTION_METHOD}):
+            from .collection import validate_collection_resolution
+            validate_collection_resolution(request, resolution)
         if resolution.work_state == WorkState.WAITING_HUMAN:
             claimed = resolution.question.coverage if resolution.question else ()
             actual = []
@@ -778,7 +841,9 @@ def validate_resolution(request: SpecialistRequest, resolution: FieldResolution,
     if str(resolution.field_key).startswith("elevation_"):
         settled = settle_elevation(request, assembly_ids=resolution.assembly_ids,
                                   source_revision=resolution.derivation.source_revision if resolution.derivation else 0)
-        expected = next(item for item in elevation_resolutions(settled) if item.field_key == resolution.field_key)
+        from .measurement import pinned_elevation_resolutions
+        expected = next(item for item in pinned_elevation_resolutions(request, settled)
+                        if item.field_key == resolution.field_key)
         if resolution != expected:
             raise EvidenceError("Measurement result differs from exact deterministic settlement")
         return resolution
@@ -846,6 +911,12 @@ def validate_resolution(request: SpecialistRequest, resolution: FieldResolution,
         return resolution
     # No available source authority: only explicitly transcribed collection/party fields
     # and event-qualified dates may be validated from a complete literal assembly.
+    if (request.prompt.version == "collection-qualified-evidence-v6-2026-10-07"
+        and resolution.field_key in {FieldKey.FMNH_INS_NUMBER, FieldKey.COLLECTION_CODE,
+            FieldKey.HABITAT, FieldKey.COLLECTION_METHOD}):
+        from .collection import validate_collection_resolution
+        validate_collection_resolution(request, resolution)
+        return resolution
     literal_fields = {FieldKey.FMNH_INS_NUMBER, FieldKey.COLLECTION_CODE, FieldKey.HABITAT,
                       FieldKey.COLLECTION_METHOD, FieldKey.COLLECTORS, FieldKey.PRECISE_LOCATION,
                       FieldKey.DATE_VISITED_FROM, FieldKey.DATE_VISITED_TO, FieldKey.DATE_IDENTIFIED}
@@ -890,6 +961,8 @@ def validate_resolution(request: SpecialistRequest, resolution: FieldResolution,
         event = next((item for item in request.events if item.id == resolution.event_id), None)
         if event is None or event.kind != EventKind.COLLECTING:
             raise EvidenceError("Collector literal requires accepted collecting-event relationship")
+        from .people import validate_collector_assemblies
+        validate_collector_assemblies(request, accepted)
     if resolution.field_key == FieldKey.COLLECTION_CODE and written.upper().replace(" ", "") in {"FMNHINS", "FMNH-INS"}:
         raise EvidenceError("Catalog prefix is not Collection Code")
     if resolution.field_key in {FieldKey.HABITAT, FieldKey.COLLECTION_METHOD} and (

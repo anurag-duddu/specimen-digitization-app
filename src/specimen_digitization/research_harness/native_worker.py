@@ -12,7 +12,7 @@ from pydantic import Field
 from .accepted_output import read_accepted_checkpoint_proof
 from .canonical_projection_v2 import relation_unproved_fields
 from .contracts import (
-    ROLE_FIELDS, CollectionProfile, Digest, FrozenRecord, ResearchScope, SpecialistRole, WorkState, digest,
+    ROLE_FIELDS, CollectionProfile, Digest, FieldKey, FrozenRecord, ResearchScope, SpecialistRole, WorkState, digest,
 )
 from .persistence import HeldUnknown, StaleWork
 from .publication import prepare_native_publication
@@ -94,6 +94,50 @@ def _publication_order(checkpoints):
         return _sources_first(items)
     return tuple(item for role in SpecialistRole
                  for item in _sources_first([item for item in items if role_of[item.field_key] == role]))
+
+
+
+def _final_progress_carrier(checkpoints, job, events, unpublishable):
+    """Keep one genuine unsent terminal value for the final whole-record progress.
+
+    Source values needed by unfinished roles publish normally. Established
+    publication operations and receipts always take precedence over deferral.
+    """
+    from .dependency_context import CONTEXT_FIELDS
+    pending_roles = {role for role,keys in ROLE_FIELDS.items() if any(
+        job["fields"][str(key)]["work_state"] == "pending" and not job["fields"][str(key)]["locked"]
+        for key in keys)}
+    consumed = {pin.field_key for cp in checkpoints for pin in cp.resolution.dependencies}
+    consumed.update(key for role in pending_roles for key in CONTEXT_FIELDS[role])
+    eligible = {cp.field_key:cp for cp in checkpoints
+        if cp.resolution.work_state in PUBLISHABLE and cp.field_key not in unpublishable
+        and cp.field_key not in consumed and not job["fields"][str(cp.field_key)]["locked"]
+        and not any(event.get("guard",{}).get("checkpoint_id") ==
+            job["fields"][str(cp.field_key)]["checkpoint"]["id"] for event in events)}
+    preference = (FieldKey.IDENTIFIED_BY_IRN, FieldKey.DATE_IDENTIFIED,
+        FieldKey.FMNH_INS_NUMBER, FieldKey.COLLECTION_CODE, FieldKey.HABITAT, FieldKey.COLLECTION_METHOD)
+    return next((eligible[key] for key in (*preference,*eligible) if key in eligible), None)
+
+
+def _current_progress_matches_job(current, scope, job):
+    """Require the validated native head's exact current whole-record proof."""
+    if not current.causal_chain:
+        return False
+    receipt = current.causal_chain[-1]
+    progress = receipt.progress_receipt
+    registration = current.registration
+    return (receipt.receipt_id == current.head_receipt_id
+        and receipt.resulting == current.canonical
+        and receipt.scope_identity == scope.identity()
+        and receipt.job_key == scope.key and progress.job_key == scope.key
+        and progress.generation == scope.generation
+        and registration.job["fields"] == job["fields"]
+        and progress.field_work_digest == digest(job["fields"])
+        and progress.research_field_work == {key: field["work_state"] for key, field in job["fields"].items()}
+        and progress.field_mapping_digest == digest(registration.field_mapping)
+        and progress.policy_digest == registration.policy_digest
+        and progress.run_stage in {"finalized", "processing_blocked"}
+        and progress.wire_status in {"completed", "processing_blocked"})
 
 
 class ImmutablePublicationLocatorV2(FrozenRecord):
@@ -266,8 +310,15 @@ class NativeResearchWorker:
                 reason_code="preserved_human_progress_requires_native_publication")
         events = [event for event in document.state["outbox"].values()
             if event.get("kind") == "canonical_publication_required"]
+        carrier = _final_progress_carrier(typed, job, events, unpublishable)
+        has_pending = any(field["work_state"] == "pending" and not field["locked"] for field in job["fields"].values())
+        if carrier is not None and not has_pending:
+            typed = tuple(cp for cp in typed if cp != carrier) + (carrier,)
         receipts, checkpoint_ids = [], []
+        new_publications = 0
         for checkpoint in typed:
+            if carrier == checkpoint and has_pending:
+                continue
             if checkpoint.resolution.work_state not in PUBLISHABLE or checkpoint.field_key in unpublishable:
                 continue
             native = job["fields"][str(checkpoint.field_key)]["checkpoint"]
@@ -317,6 +368,7 @@ class NativeResearchWorker:
                     checkpoint_ids=tuple(checkpoint_ids), publication_receipt_ids=tuple(receipts),
                     reason_code="native_publication_requires_reconciliation")
             receipts.append(str(published.causal.receipt_id))
+            new_publications += 1
             if publication_progress is not None:
                 publication_progress.append(str(published.causal.receipt_id))
         thread = await self._thread(runtime)
@@ -324,6 +376,15 @@ class NativeResearchWorker:
         profile = CollectionProfile.model_validate(job["pins"]["profile"])
         status = ResearchStatusV1.from_thread(thread, missing_policy_fields=frozenset(
             row.field_key for row in profile.fields if row.missing_policy))
+        if not has_pending and not new_publications:
+            # Thread completion and an older terminal stage do not prove the
+            # current result. Read the validated native causal head; never
+            # replay a delivered operation or invent a terminal value.
+            current = await runtime.canonical_service.read_current_binding(principal, specimen_id)
+            if not _current_progress_matches_job(current, runtime.scope, job):
+                return NativeResearchWorkerOutcomeV2(scope=scope, status="blocked",
+                    checkpoint_ids=tuple(checkpoint_ids), publication_receipt_ids=tuple(receipts),
+                    reason_code="final_research_progress_requires_native_publication")
         return NativeResearchWorkerOutcomeV2(scope=scope, status=status.status,
             checkpoint_ids=tuple(checkpoint_ids), publication_receipt_ids=tuple(receipts))
 

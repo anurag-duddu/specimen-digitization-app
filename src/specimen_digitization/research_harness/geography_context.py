@@ -19,10 +19,10 @@ from specimen_digitization.application.georef_places import Place, Ref
 
 from .accepted_output import AcceptedCheckpointProofV1
 from .contracts import (
-    DependencyPin, EventKind, FieldKey, ResearchScope, SourceQuery, SourceResult,
+    ROLE_FIELDS, DependencyPin, EventKind, FieldKey, ResearchScope, SourceQuery, SourceResult,
     SpecialistRequest, SpecialistRole, WorkState, digest,
 )
-from .sources import result_envelope
+from .sources import _fold_words, result_envelope
 
 CONTEXT_FIELDS = frozenset({FieldKey.DATE_VISITED_FROM, FieldKey.DATE_VISITED_TO, FieldKey.COLLECTORS})
 HISTORICAL_SOURCES = frozenset({"tgn", "wikidata", "nga"})
@@ -88,6 +88,11 @@ def accepted_collecting_context(
             key, resolution = checkpoint.field_key, checkpoint.resolution
             if key not in CONTEXT_FIELDS:
                 continue
+            # A whole-role acceptance proof also retains unresolved siblings;
+            # those supply no context and require no source dependency pin.
+            if key not in pins and (resolution.work_state != WorkState.RESOLVED
+                    or resolution.value.state != ValueState.SUPPORTED):
+                continue
             pin = pins.get(key)
             if pin is None or pin.revision != checkpoint.revision or pin.digest != digest(resolution):
                 raise ValueError("geography_context_dependency_changed_or_unpinned")
@@ -145,7 +150,7 @@ def _captured(request: SpecialistRequest, supplied: SourceResult) -> SourceResul
     ids = tuple(item.id for item in result.evidence)
     if (receipt is None or receipt.scope != request.scope
             or coverage.source_id not in HISTORICAL_SOURCES
-            or coverage.field_key not in request.field_keys
+            or coverage.field_key not in ROLE_FIELDS[SpecialistRole.GEOGRAPHY]
             or receipt.source_id != coverage.source_id
             or receipt.field_keys != (coverage.field_key,)
             or receipt.effect_status != "completed" or receipt.outcome != result.status
@@ -198,6 +203,34 @@ def _place(result: SourceResult, raw: str) -> tuple[Place, str]:
         if endpoint is not None:
             interval(endpoint)
     return place, data["input_literal"]
+
+
+def _locality_event_agrees(request: SpecialistRequest, context: CollectingContext,
+                           written: str) -> bool:
+    """A collecting dependency cannot override a known event-specific locality.
+
+    The host may supply raw-only context. When the organiser has instead
+    accepted a locality's collecting/determination/preparation event, its
+    identity must agree with the accepted dependency before using its date.
+    Unknown event hypotheses remain unknown; no relation is invented here.
+    """
+    words = _fold_words(written)
+    own_events = {item.id: item for item in request.events if item.status == "accepted"}
+    matches = []
+    for assembly in request.assemblies:
+        if assembly.field_key not in {FieldKey.COUNTRY, FieldKey.PROVINCE_STATE,
+                FieldKey.COUNTY, FieldKey.CITY, FieldKey.PRECISE_LOCATION}:
+            continue
+        text = _fold_words(assembly.interpreted_text)
+        if not words or not any(text[index:index + len(words)] == words
+                for index in range(len(text) - len(words) + 1)):
+            continue
+        event = own_events.get(assembly.event_id)
+        if event is not None and event.kind != EventKind.UNKNOWN:
+            matches.append(event)
+    context_events = {item.event_id for item in context.values}
+    return all(event.kind == EventKind.COLLECTING and event.id in context_events
+               for event in matches)
 
 
 def _link_applies(ref: Ref, context: CollectingContext | None) -> bool:
@@ -270,6 +303,15 @@ def hierarchy_research(
     ids = tuple(dict.fromkeys(item.id for source, _, _ in candidates for item in source.evidence))
     receipts = tuple(dict.fromkeys(source.receipt.id for source, _, _ in candidates))
     pins = tuple(item.pin for item in context.values) if context else ()
+    dated = any(candidate.valid_from is not None or candidate.valid_to is not None
+        or any(ref.start is not None or ref.end is not None
+            for ref in ((*candidate.parents, candidate.country) if candidate.country else candidate.parents))
+        for candidate in records.values())
+    if dated and context is not None and any(
+            not _locality_event_agrees(request, context, literal) for _, _, literal in candidates):
+        return GeographyHierarchyResearch(request.scope, (), (),
+            tuple((key, "historical_locality_event_context_unqualified") for key in requested),
+            tuple(unique), pins)
     if any(candidate.valid_from is not None or candidate.valid_to is not None for candidate in records.values()):
         date = context.collected_on if context else None
         if date is None or any(use_on(candidate, date).state not in {"in_use", "undated"}
