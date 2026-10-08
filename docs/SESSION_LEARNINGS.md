@@ -18422,3 +18422,56 @@ Root explicitly narrows the future finite preparation to one necessary reviewed 
 ### 2026-10-07 — Native retry final SQL receipt
 
 - Correction to the preceding `/root/retry_schedule` validation entry: final source artifact `297cdb47df2db0b672e656b3dfd5f47a8562c681` passed hooks, and final SQL SHA `23c3964fca86d4e2d35f0ec9ab1a3752852c8b818515eaa9d223ee9ca172d807` independently passed 118 real PostgreSQL 18.6 controls. The reviewer reran all earlier state/member races, qualified both actual full empty failure defaults, and rejected reason/state mismatches, all 19 filled/provenance attributes, extra keys and partial values. Receipt: `/private/tmp/harness-retry-pg-source-review-20261007/receipt-v3.json`, SHA `1d9e8390306144aec09016599a1f826bf5d34ca478354eb1d02558d607eece11`. The disposable cluster was stopped. This closes the candidate's local SQL guard evidence only; root still owns exact-head final review, full stock verification and the protected release/live acceptance gates.
+
+## 2026-10-07 — Public same-job source retry composition
+
+Task `/root/known_retry`, branch `codex/harness-known-source-retry`, managed
+worktree `/Users/anuragduddu/.codex/worktrees/harness-known-source-retry/specimen-digitization-app`.
+Rebased onto full composed `36593f836427b912f04e72466ecd72b8dd4afe51`; prior
+artifacts d6dec1d1e1accba85e5505f4102b2168046582f2 and
+1f622d4a3ce66884da99a90dab9155bdca063a9a were already present, so exact duplicate
+replays were dropped. Separately owned scheduler artifacts
+c31595d51dbd6cdf10594ebda7422d7e21b30aea,
+f7dbf3af9063bae71fcd0c13c2bbebb6e65301d8 and
+297cdb47df2db0b672e656b3dfd5f47a8562c681 were composed without editing their
+product files. This entry and the narrow API artifact are committed together.
+
+- Outcome: the public field action reuses the existing deployed worker's verified
+  actual flag/source/shape and live authority builder; fresh admission rebuilds
+  actor/membership/current Q/Run/profile/runtime/cost authority after availability.
+  It creates only the same-job command, schedules native due metadata through the
+  existing command seam and starts the existing worker once. Immutable old jobs,
+  unknown starts/costs, active custody, locks, unsupported lifecycle, non-plan work
+  and live HOLD remain unavailable. There is no new API flag, IAM or allowance.
+- Evidence: final public 28-case suite passed in 257.21s. A genuine completed
+  captured429 failure from current qualified six-role state travels through the
+  supported create_app HTTP endpoint and reviewer membership to a live-classified
+  command, exact202 replay, actual local scheduler/drain/native writer, one fresh
+  offline source capture, whole20 completed NeedsHuman and retired due metadata.
+  Original job/generation/Run, captured effects, failed CP and DTS policy sibling
+  survive; cumulative fixture costs increase. Unknown worker-start due consumption
+  refuses before any model/source/Q change. Eight exact lifecycle controls and
+  readiness loss after capability also pass. Existing controls:133 passed in17.31s.
+- Evidence boundary: native SQL HTTP, Firebase verification, deployed-worker GET
+  and provider responses are explicit local stand-ins. Current command classification
+  never relabels the injected offline providers. Production deployment, real model
+  output, scientific/human acceptance and live #321 effects: **Not confirmed** here.
+  Root owns final independent source review, stock verifier and protected release.
+- Failed approaches: first public run17pass/3fail exposed an omitted faithful
+  CompareResearchHarnessStateV1 fixture, a causally inconsistent historical retag
+  expected to remain readable (native503 is correctly retained), and a policy wait
+  mislabeled human. Actual full-image fixture geometry now proves coverage; DTS
+  remains its real waiting_policy sibling. No admission/publication guard was relaxed.
+- Reusable learning: native snapshot SHA is the packed persisted identity; compare
+  through version_info rather than hashing the hydrated Specimen. A public queued
+  command requires fresh admission authority and proved native scheduling before
+  dispatch; API availability alone cannot make a blocked record consumable. Keep
+  uncertain dispatch held in both API and due worker. Do not repin historical jobs.
+- Follow-up:297's strict empty-failure Park correction was applied after the public
+  suite was terminal and is outside those exercised paths; its owner supplies the
+  independent failure/SQL checks. Root stock verification covers the final composition.
+
+- Commit hook correction: detect-secrets identified the public36593 source SHA
+  fixture as high entropy. An inline false-positive pragma documents that public
+  commit identifier; no baseline, hook or source behavior changed. The API and
+  executable test bytes remain those of the terminal28-pass receipt.

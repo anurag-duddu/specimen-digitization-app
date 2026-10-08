@@ -65,3 +65,47 @@ retirement after native terminal publication. G38 derivation demonstrates this
 pattern; its command-specific operations cannot be silently reused for field
 retry. This audit did not modify API, connector, worker, runtime configuration,
 cloud state or budgets. The integrator owns the source completion decision.
+
+
+## Public composition completion (2026-10-07)
+
+The human's follow-up scope required the real public same-job action. The API now
+passes its existing deployed-worker readiness object into V2 discovery. That
+object exposes an immutable environment read from the actual verified worker
+resource; the API does not invent an enabled switch or change runtime flags.
+Availability, fresh command admission and dispatch use the existing live authority
+builder with current verified actor/membership, non-sensitive current Q/Run,
+committed executable runtime pins and immutable Run policy. Unsupported lifecycle,
+non-plan ordinary work, policy/custody/budget holds and uncertain dispatch remain
+unavailable. Admission rebuilds authority after capability checks and retains the
+ordinary liability high-water mark. Existing historical jobs are never repinned.
+
+Dispatch schedules the genuine existing command through the scheduler-owned
+`retry_work_queue.schedule_research_retry` before one CAS-controlled shared-worker
+start. A requested command acknowledges idempotent HTTP replay; sending/unknown
+starts stay held. Separately owned scheduler artifacts c31595d51dbd6cdf10594ebda7422d7e21b30aea,
+f7dbf3af9063bae71fcd0c13c2bbebb6e65301d8 and 297cdb47df2db0b672e656b3dfd5f47a8562c681
+were composed as separate commits, without API-lane edits to their product files.
+
+Actual local public test: current qualified six-role captured state, a genuine
+429 source failure, reviewer Bearer/membership, public HTTP202 command and
+idempotent replay, native due metadata, supervised drain, one fresh capture,
+automatic native publication and whole20 completed NeedsHuman progress with
+retired due work. Job/generation/Run, old failed checkpoint, original effects and
+DTS policy sibling survive; actual fixture model costs increase. The admitted
+command stays classified live while injected FunctionModel/source transports
+remain independently offline. No classification rewriting occurred.
+
+Validation: 133 existing readiness/API/profile/discovery/known-source controls
+passed on the composed base. First public run had 17 pass/3 fixture failures
+(missing native CAS handler, invalid causal retag expected readable, and DTS
+policy wait mislabeled human). Those controls were corrected without weakening
+product contracts. Final public suite: 28 passed in 257.21s, on c315+f7 and exact
+API bytes. The subsequent 297 Park correction affects only bare failure/default
+pairs and was independently validated by its owner; it is not exercised by these
+public success/hold cases. Root owns exact final G51/stock/release qualification.
+
+Local native SQL HTTP, Firebase verification, worker-resource metadata and
+provider responses are explicit stand-ins. Deployed public field retry and real
+model/scientific acceptance are Not confirmed by this lane. No API flag, IAM,
+allowance, cloud state, paid effect, broad verifier or live #321 action changed.
