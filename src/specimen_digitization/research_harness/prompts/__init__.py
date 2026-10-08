@@ -72,6 +72,11 @@ TEMPORAL_CONTEXT_PROMPT_VERSION = "temporal-collecting-context-v7-2026-10-07"
 PARTIES_EVIDENCE_PROMPT_VERSION = "parties-role-evidence-v6-2026-10-07"
 COLLECTION_EVIDENCE_PROMPT_VERSION = "collection-qualified-evidence-v6-2026-10-07"
 
+# Exact utility-row copying retains original-reading custody in the typed final
+# output. Historical v6 texts and pins remain available for their existing jobs.
+PARTIES_PROVENANCE_PROMPT_VERSION = "parties-original-reading-v7-2026-10-08"
+COLLECTION_PROVENANCE_PROMPT_VERSION = "collection-original-reading-v7-2026-10-08"
+
 # Explicit event links and native To-only dependencies; historical v7 bytes remain immutable.
 TEMPORAL_EVENT_LINK_PROMPT_VERSION = "temporal-event-links-v8-2026-10-07"
 
@@ -84,8 +89,8 @@ ROLE_PROMPTS = MappingProxyType({
     SpecialistRole.GEOGRAPHY: ("specimen_geography-v9.txt", GEOGRAPHY_RESEARCH_PROMPT_VERSION),
     SpecialistRole.TEMPORAL: ("specimen_temporal-v8.txt", TEMPORAL_EVENT_LINK_PROMPT_VERSION),
     SpecialistRole.MEASUREMENT: ("specimen_measurement-v10.txt", MEASUREMENT_EVIDENCE_PROMPT_VERSION),
-    SpecialistRole.PARTIES: ("specimen_parties-v6.txt", PARTIES_EVIDENCE_PROMPT_VERSION),
-    SpecialistRole.COLLECTION: ("specimen_collection-v6.txt", COLLECTION_EVIDENCE_PROMPT_VERSION),
+    SpecialistRole.PARTIES: ("specimen_parties-v7.txt", PARTIES_PROVENANCE_PROMPT_VERSION),
+    SpecialistRole.COLLECTION: ("specimen_collection-v7.txt", COLLECTION_PROVENANCE_PROMPT_VERSION),
 })
 
 

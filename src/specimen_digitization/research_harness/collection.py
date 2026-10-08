@@ -14,7 +14,7 @@ from .contracts import (
     ALL_FIELDS, EventHypothesis, EventKind, FieldKey, FieldResolution, SourceFragment,
     SpecialistRequest, WorkState, digest,
 )
-from .evidence import EvidenceError, assemble_field, catalog_literal, validate_assembly
+from .evidence import EvidenceError, assemble_field, catalog_literal, parse_measurement, validate_assembly
 
 COLLECTION_RULE = "collection-qualified-spans/v1"
 COLLECTION_FIELDS = frozenset((FieldKey.FMNH_INS_NUMBER, FieldKey.COLLECTION_CODE,
@@ -39,7 +39,7 @@ _METHOD = re.compile(
     r"|(?:at|by|in)\s+(?:light|uv light)|sweep(?:ing| net)?|beating(?: vegetation)?"
     r"|hand collect(?:ing|ed)?|aspirat(?:or|ion)|netting|sifting(?: litter)?)", re.I)
 _HABITAT = re.compile(
-    r"(?:(?:oak|pine|deciduous|coniferous|mixed|tropical|wet|dry|open|coastal|montane)\s+)*"
+    r"(?:(?:oak|pine|deciduous|coniferous|mixed|tropical|wet|dry|open|coastal|montane|mossy)\s+)*"
     r"(?:woodland|forest|grassland|meadow|marsh|swamp|wetland|scrub|savanna|desert|leaf litter)"
     r"(?:\s+(?:margin|edge|floor|canopy|understory|clearing))?", re.I)
 _WRONG_CONTEXT = re.compile(
@@ -163,6 +163,18 @@ def _spans(fragment):
                 yield FieldKey.COLLECTION_METHOD, start, end
             elif _HABITAT.fullmatch(stripped):
                 yield FieldKey.HABITAT, start, end
+            else:
+                habitat = _HABITAT.match(stripped)
+                if habitat is None or not stripped[habitat.end():].startswith((" ", "\t")):
+                    continue
+                # The ecology and quantity are separate written assertions.
+                # Keep the habitat's original span only when the whole suffix
+                # is an unambiguous measurement, without discarding any token.
+                try:
+                    parse_measurement(stripped[habitat.end():].strip())
+                except EvidenceError:
+                    continue
+                yield FieldKey.HABITAT, start, start + habitat.end()
 
 
 def _reading_assertions(original, key):

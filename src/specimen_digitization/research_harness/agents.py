@@ -654,9 +654,14 @@ class SpecialistHarness:
                     continue
                 if not literal_has_original_request_lineage(request, resolution):
                     raise ModelRetry(f"specialist_output_literal_lacks_original_reading: field={resolution.field_key}; "
-                        "cite the exact original fragment and each reading's declared input source in "
-                        "verbatim_by_observation/input_source_by_observation, or set value.literal=null "
-                        "for an unresolved value. Preserve the human question, reason and captured source coverage")
+                        "value.verbatim_by_observation must retain the exact original observation_text, "
+                        "not only a literal or reading IDs in reason. For a deterministic utility result, "
+                        "copy the complete retained resolutions[] object, including value.verbatim_by_observation, "
+                        "value.input_source_by_observation, value.settled_observation_ids and the resolution's "
+                        "evidence_ids, assembly_ids and event_id. Do not summarize or repeat the completed tool. "
+                        "Otherwise cite the exact original fragment and each reading's declared input source, "
+                        "or set value.literal=null for an honestly unresolved value. Preserve the human "
+                        "question, reason and captured source coverage")
             masked = masked_outages(output.resolutions, results)
             if masked:
                 raise ModelRetry(f"specialist_output_hides_a_failed_lookup_behind_waiting_policy: field={masked[0]}; a lookup for "
