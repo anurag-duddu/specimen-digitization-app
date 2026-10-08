@@ -136,6 +136,7 @@ def _current_progress_matches_job(current, scope, job):
         and progress.research_field_work == {key: field["work_state"] for key, field in job["fields"].items()}
         and progress.field_mapping_digest == digest(registration.field_mapping)
         and progress.policy_digest == registration.policy_digest
+        and progress.canonical_field_work == {registration.field_mapping[key]:field["work_state"] for key,field in job["fields"].items()}
         and progress.run_stage in {"finalized", "processing_blocked"}
         and progress.wire_status in {"completed", "processing_blocked"})
 
@@ -316,13 +317,9 @@ class NativeResearchWorker:
         # each window of a lease.
         document = await asyncio.to_thread(runtime.store._read, runtime.scope)
         job = runtime.store._job(document.state, runtime.scope)
-        if job.get("preserved_human_outcomes") and not any(
-                field["work_state"] == "pending" and not field["locked"] for field in job["fields"].values()) and not any(
-                cp.resolution.work_state in PUBLISHABLE and cp.field_key not in unpublishable for cp in typed):
-            return NativeResearchWorkerOutcomeV2(scope=scope, status="blocked",
-                reason_code="preserved_human_progress_requires_native_publication")
         events = [event for event in document.state["outbox"].values()
-            if event.get("kind") == "canonical_publication_required"]
+            if event.get("kind") == "canonical_publication_required"
+            and event.get("guard", {}).get("operation_kind") != "progress_only"]
         carrier = _final_progress_carrier(typed, job, events, unpublishable)
         has_pending = any(field["work_state"] == "pending" and not field["locked"] for field in job["fields"].values())
         if carrier is not None and not has_pending:
@@ -389,16 +386,31 @@ class NativeResearchWorker:
         profile = CollectionProfile.model_validate(job["pins"]["profile"])
         status = ResearchStatusV1.from_thread(thread, missing_policy_fields=frozenset(
             row.field_key for row in profile.fields if row.missing_policy))
+        native_status = None
         if not has_pending and not new_publications:
             # Thread completion and an older terminal stage do not prove the
             # current result. Read the validated native causal head; never
             # replay a delivered operation or invent a terminal value.
             current = await runtime.canonical_service.read_current_binding(principal, specimen_id)
             if not _current_progress_matches_job(current, runtime.scope, job):
-                return NativeResearchWorkerOutcomeV2(scope=scope, status="blocked",
-                    checkpoint_ids=tuple(checkpoint_ids), publication_receipt_ids=tuple(receipts),
-                    reason_code="final_research_progress_requires_native_publication")
-        return NativeResearchWorkerOutcomeV2(scope=scope, status=status.status,
+                try:
+                    progress = await runtime.canonical_service.publish_progress(principal, specimen_id, scope=scope)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    LOGGER.warning("native progress publication failed: %s %s (record ...%s)",
+                        *_described(error), str(specimen_id)[-6:])
+                    return NativeResearchWorkerOutcomeV2(scope=scope, status="blocked",
+                        checkpoint_ids=tuple(checkpoint_ids), publication_receipt_ids=tuple(receipts),
+                        reason_code="native_progress_publication_requires_reconciliation")
+                native_status = "completed" if progress.causal.progress_receipt.wire_status == "completed" else "blocked"
+                receipts.append(str(progress.causal.receipt_id))
+                if publication_progress is not None:
+                    publication_progress.append(str(progress.causal.receipt_id))
+            elif current.causal_chain:
+                native_status = "completed" if current.causal_chain[-1].progress_receipt.wire_status == "completed" else "blocked"
+                receipts.append(str(current.causal_chain[-1].receipt_id))
+        return NativeResearchWorkerOutcomeV2(scope=scope, status=native_status or status.status,
             checkpoint_ids=tuple(checkpoint_ids), publication_receipt_ids=tuple(receipts))
 
     @staticmethod

@@ -66,8 +66,9 @@ def _valid(key: str, value: object) -> bool:
         or key == "role" and isinstance(value, str) and value in _ROLES
         or key == "field_key" and isinstance(value, str) and value in _FIELDS
         or key == "field_keys" and _field_keys(value)
-        or key in {"resolved_count", "unresolved_count", "failed_count", "publication_count", "protected_count"}
+        or key in {"resolved_count", "unresolved_count", "failed_count", "publication_count", "protected_count", "scientific_publication_count", "progress_receipt_count"}
             and type(value) is int and 0 <= value <= len(_FIELDS)
+        or key == "operation_kind" and value == "progress_only"
         or key == "terminal_state" and isinstance(value, str) and value in {"validated", "checkpointed", "operational_failed",
             "mixed", "published", "replayed", "running", "completed", "processing_blocked",
             "waiting_input", "pending", "blocked"}

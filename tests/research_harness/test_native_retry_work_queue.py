@@ -56,7 +56,16 @@ def install_retry_sql_fixture(rig):
         assert command["scope"]["generation"] == native["generation"]
         assert command["scope"]["job_id"] == native["job_id"]
         assert command["status"] == ("queued" if scheduled else "completed")
-        row["state"] = "retry_scheduled" if scheduled else "completed"
+        if not scheduled and "fieldMappingDigest" in variables:
+            head = fake.receipts[native["current_receipt_id"]]["causal_proof"]
+            progress = head["progress_receipt"]
+            assert progress["field_work_digest"] == digest(document.state["jobs"][native["job_key"]]["fields"])
+            assert progress["field_mapping_digest"] == variables["fieldMappingDigest"]
+            assert progress["policy_digest"] == variables["policyDigest"]
+        elif not scheduled:
+            assert fake.snapshots[(variables["specimenId"], row["revision"])]["snapshot"]["run"]["stage"] == "processing_blocked"
+            progress = {"wire_status":"processing_blocked"}
+        row["state"] = "retry_scheduled" if scheduled else progress["wire_status"]
         row["work_available_at"] = row.get("work_available_at") or support.iso_now() if scheduled else None
         return {"scheduled" if scheduled else "finished": 1, "read": {"specimen": {
             "revision": row["revision"], "activeRunId": row["active_run_id"],
@@ -127,6 +136,8 @@ def failed_native(tmp_path_factory, request):
             return specimen
         patch.setattr(native_fixture, "specimen_before_adjudication", covered)
         rig, token = build_rig(tmp_path_factory.mktemp("native-retry"), patch, (support.LABEL_TEXT,))
+        from test_final_progress_carrier import install_progress_sql_fixture
+        install_progress_sql_fixture(rig)
         recorded = support.fixture_source_transport(rig.source_urls)
         count = 0
         async def read(url, policy):
@@ -302,13 +313,16 @@ def test_supported_native_workflow_consumes_known_retry_and_publishes_current_wh
     progress = binding.native.causal_chain[-1].progress_receipt
     from specimen_digitization.research_harness.native_worker import _current_progress_matches_job
     if f.repeat_failure:
-        assert binding.canonical.record_revision == current.version == f.before["version"]
+        assert binding.canonical.record_revision == current.version == f.before["version"] + 1
         assert progress.wire_status == "processing_blocked"
-        assert _current_progress_matches_job(binding.native, f.bound, job) is False
+        assert _current_progress_matches_job(binding.native, f.bound, job)
         assert job["fields"][f.field]["revision"] == 2
         assert job["fields"][f.field]["work_state"] == "waiting_source"
-        assert rig.fake.calls.count("ParkResearchRetryV1") == 1
-        assert rig.fake.calls.count("FinishResearchRetryV1") == 0
+        assert rig.fake.calls.count("PublishCanonicalResearchProgressV2") == 1
+        assert rig.fake.calls.count("ParkResearchRetryV1") == 0
+        assert rig.fake.calls.count("FinishResearchRetryV1") == 1
+        assert binding.native.causal_chain[-1].contract_version == "native-canonical-progress/v2"
+        assert current.run.fields == current.model_validate(f.before).run.fields
     else:
         assert binding.canonical.record_revision == current.version == f.before["version"] + 1
         assert len(progress.canonical_field_work) == len(progress.research_field_work) == 20
@@ -324,7 +338,7 @@ def test_supported_native_workflow_consumes_known_retry_and_publishes_current_wh
     assert not any(item.action == "lane_block" for item in current.audit)
 
 
-def test_known_whole_output_failure_parks_bare_failure_without_scientific_value(failed_native):
+def test_known_whole_output_failure_publishes_only_current_progress_without_scientific_value(failed_native):
     f, rig = failed_native, failed_native.rig
     if not f.repeat_failure:
         pytest.skip("the second bounded retry starts from the retained completed source failure")
@@ -355,7 +369,8 @@ def test_known_whole_output_failure_parks_bare_failure_without_scientific_value(
         raise AssertionError({"parking_errors": rig.park_errors, "command_status": command_state["status"],
             "work_state": job_state["fields"][f.field]["work_state"], "lease": job_state["lease"] is not None,
             "effects": [(value["status"], value["actual_micro_usd"]) for value in state["effects"].values()]}) from error
-    assert current == before and current.run.stage == "processing_blocked"
+    assert current.version == before.version + 1 and current.run.stage == "processing_blocked"
+    assert current.run.fields == before.run.fields
     state = f.store._read(f.bound).state
     job = state["jobs"][f.bound.key]
     checkpoint = job["fields"][f.field]["checkpoint"]
@@ -366,6 +381,12 @@ def test_known_whole_output_failure_parks_bare_failure_without_scientific_value(
     assert all(effect["status"] == "completed" and effect["actual_micro_usd"] is not None
         for effect in state["effects"].values())
     assert state["outbox"]["retry/" + command["id"]]["command"]["status"] == "completed"
-    assert rig.fake.calls.count("ParkResearchRetryV1") == 2
+    assert rig.fake.calls.count("ParkResearchRetryV1") == 0
+    assert rig.fake.calls.count("FinishResearchRetryV1") == 2
+    assert rig.fake.calls.count("PublishCanonicalResearchProgressV2") == 2
+    binding = asyncio.run(f.factory.discovery.binding(rig.principal, rig.specimen_id))
+    from specimen_digitization.research_harness.native_worker import _current_progress_matches_job
+    assert _current_progress_matches_job(binding.native, f.bound, job)
+    assert binding.native.causal_chain[-1].contract_version == "native-canonical-progress/v2"
     assert rig.repository.oldest_due(rig.principal.scope, support.iso_now()) == []
     assert workflow.completed_side_work(current)
