@@ -224,7 +224,14 @@ mutation ParkResearchRetryV1($organizationId: UUID!, $collectionId: UUID!, $spec
             OR (h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->'checkpoint'->'payload'->'resolution'->>'work_state'='operational_failed'
               AND h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->'checkpoint'->'payload'->'resolution'->>'reason'
                 IN ('specialist_operational_failure','research_output_validation_exhausted')
-              AND h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->'checkpoint'->'payload'->'resolution'->'value'->>'state'='unresolved'))))
+              AND h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->'checkpoint'->'payload'->'resolution'->'value'
+                =jsonb_build_object('authority_id',NULL,'authority_identity',NULL,'century_rule',NULL,'derived_from','[]'::jsonb,
+                  'evidence_ids','[]'::jsonb,'evidence_relations','{}'::jsonb,'input_source',NULL,
+                  'input_source_by_observation','{}'::jsonb,'layer',NULL,'literal',NULL,'normalized',NULL,'parsed',NULL,
+                  'precision',NULL,'reason','No supported source value','settled_observation_ids','[]'::jsonb,
+                  'source_observation_id',NULL,'source_region_id',NULL,'verbatim_by_observation','{}'::jsonb,
+                  'state',CASE WHEN h.state->'jobs'->$9->'fields'->(h.state->'outbox'->('retry/'||$12)->'command'->>'field_key')->'checkpoint'->'payload'->'resolution'->>'reason'='specialist_operational_failure'
+                    THEN 'unknown' ELSE 'unresolved' END)))))
       AND h.state->'jobs'->$9->'lease'='null'::jsonb AND h.state->'jobs'->$9->'paused'='false'::jsonb
       AND NOT EXISTS (SELECT 1 FROM jsonb_each(h.state->'effects') e WHERE e.value->>'job_key'=$9
         AND (e.value->>'status' IN ('reserved','sending','held_unknown') OR e.value->'actual_micro_usd'='null'::jsonb))

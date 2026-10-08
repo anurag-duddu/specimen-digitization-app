@@ -361,7 +361,8 @@ def test_known_whole_output_failure_parks_bare_failure_without_scientific_value(
     checkpoint = job["fields"][f.field]["checkpoint"]
     assert checkpoint["payload"]["resolution"]["work_state"] == "operational_failed"
     assert checkpoint.get("accepted_output_proof") is None
-    assert checkpoint["payload"]["resolution"]["value"]["state"] == "unresolved"
+    from specimen_digitization.application.domain import FieldValue
+    assert checkpoint["payload"]["resolution"]["value"] == FieldValue().model_dump(mode="json")
     assert all(effect["status"] == "completed" and effect["actual_micro_usd"] is not None
         for effect in state["effects"].values())
     assert state["outbox"]["retry/" + command["id"]]["command"]["status"] == "completed"
