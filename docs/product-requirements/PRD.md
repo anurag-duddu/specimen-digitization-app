@@ -526,14 +526,47 @@ Field Museum's currently published active Darwin Core mapping, together with its
 | Date Visited From | `date_visited_from` | Literal text plus a separately parsed date or partial date. |
 | Date Visited To | `date_visited_to` | Literal text plus a separately parsed date or partial date. |
 | Collectors | `collectors` | Verbatim names plus separate person/party candidates when resolution is required. |
-| Verbatim D/T/S | `verbatim_dts` | Transcribed exactly; expansion and internal semantics require confirmation. |
+| Verbatim D/T/S | `verbatim_dts` | Original collection-event date/time expressions that do not fit EMu's standard format, including partial or seasonal dates and qualitative times. Preserve wording and separately supported interpretations; see the 2026-10-07 clarification below. |
 | Taxon | `taxon` | Verbatim scientific name plus separately resolved name, authorship, status, rank, and source identifier. |
 | Identified by IRN | `identified_by_irn` | Internal Record Number of the resolved `eparties` record. Qualify it with source system, tenant/environment, and module; the current production column, expected serialization, and approved lookup path require confirmation. |
 | Date Identified | `date_identified` | Literal text plus a separately parsed date or partial date. |
 
 > 2026-09-23: The "Identified by IRN" row's mandatory status is superseded for the slide pilot by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G16: `identified_by_irn` is recorded as not resolved and does not block clearance until EMu Parties is connected.
 
-The proposed internal keys are implementation candidates, not approved Field Museum mappings. They must be reconciled with the target collection-management schema before development.
+The table above records the existing pilot field contract. The new internal model will use application-owned concepts and value types; a later adapter will reconcile them with approved target-system mappings.
+
+#### Date and time semantics — clarified 2026-10-07
+
+The owner relayed the collection manager's EMu instruction for Verbatim D/T/S:
+"Used to hold non EMu-standard format time and date values." Its examples are
+"Avril 1917; Summer 1914; am; pm". The collection manager explained that it is
+used in Collection Events when there is no exact time or date, including
+"sunrise" and "daylight". This establishes the field's purpose; it does not
+establish an expansion of the acronym or support a date/time/site interpretation.
+
+For the new internal field model, the owner identifies Date Visited From/To
+and Date Identified as the same structural problem as the four elevation
+fields. The design direction is a reusable event date/time value that retains
+the original expressions and their source evidence, with structured
+interpretations where supported. It must represent a single date or time,
+an interval, partial precision, uncertainty, seasonal dates and qualitative
+times. Date and time components may occur together. Collecting and
+identification remain distinct events using this same value type; the date
+on one event does not supply the date of another.
+
+For example, "Avril 1917" can have a month-precision interpretation of
+`1917-04` while retaining the French original. "Summer 1914" retains the
+season and year without inventing exact endpoints. "am", "pm", "sunrise"
+and "daylight" retain their time description without supplying a clock
+time or missing date. A single date does not need two independently editable
+copies. In the new model, the purpose of Verbatim D/T/S belongs in the event's
+date/time source expressions, rather than an additional required EMu-shaped
+field. Target-system mapping remains a later adapter task.
+
+This is a field-model direction, not an implemented schema or a revision of
+the current pilot's requiredness and clearance policy. The policy for
+accepting qualitative temporal expressions, interpreting seasons and handling
+absent event dates still needs to be defined for the new schema version.
 
 #### Source registry and intended use
 
@@ -563,7 +596,7 @@ Source adapters must preserve the exact query, result candidates, source release
 #### Insects-specific items not yet confirmed
 
 - The exact parent path and collection code for Insects in the application's configurable taxonomy.
-- The expansion, format, and business meaning of `Verbatim D/T/S`.
+- The validation and clearance treatment of partial, seasonal and qualitative event date/time expressions. The purpose of `Verbatim D/T/S` was clarified by the collection manager via the owner on 2026-10-07; see the dated clarification above. No acronym expansion is assumed.
 - The current production column, serialization, and approved lookup path for the `eparties` record referenced by `Identified by IRN`; no anonymous public Parties resolver was confirmed in the 2026-09-07 check.
 - Whether the collection manager confirms Parties resolution for every person-name field. Current Field Museum schema evidence supports collector, identifier, and taxonomy-author references, but the production requirement remains unapproved.
 - Whether missing metric or imperial elevation values should be converted, left absent, or both; any conversion must remain visibly derived.
@@ -896,6 +929,7 @@ These questions do not prevent the initial PRD draft, but the starred items must
 2. **What does “cleared” mean institutionally?** ★ Must every pilot record receive human approval, or can a calibrated subset clear automatically after hard gates?
    > 2026-09-23: Answered for the go-live program by [`docs/execution/golive/PLAN.md` section 2.1](../execution/golive/PLAN.md#21-owner-decisions-2026-09-23-chat-with-the-coordinator) G1: a pilot record the agentic harness is able to resolve is cleared without human approval, and a record it cannot resolve goes to human review or deferral as this PRD defines them.
 3. **What does `Verbatim D/T/S` mean in the target system, including its format and validation rules?** ★
+   > 2026-10-07: Its purpose is answered by the collection manager, as relayed by the owner: it holds non-standard collection-event date/time expressions such as "Avril 1917", "Summer 1914", "am", "pm", "sunrise" and "daylight". The new internal model should represent these within a reusable event date/time value. Validation and clearance rules for these expressions remain to be defined; no acronym expansion or exact date/time is inferred.
 4. **Can Field Museum confirm the current production column, serialization, authority-access method, and permitted fields for the `eparties` record referenced by `Identified by IRN`?** ★
 5. **Can the collection manager confirm that Parties resolution is required for every person-name field, including species authors, Collectors, and identifiers?** ★
 6. **What are the acceptable error targets, especially for critical fields, and who approves the gold set?** ★
