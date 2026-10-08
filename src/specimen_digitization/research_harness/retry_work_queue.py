@@ -192,12 +192,12 @@ def park_research_retry(repository, principal, binding, command_id, outcome):
                 raise StaleWork("research_retry_parking_dependency_unproved")
             from .native_materialization_inputs_v2 import _current_checkpoint
             for pin in resolution.dependencies:
-                source, _ = _current_checkpoint(bundle.job, str(pin.field_key), bound)
-                source_proof = (source or {}).get("accepted_output_proof") or {}
-                if (source is None or bundle.job["fields"][str(pin.field_key)]["locked"]
-                    or source.get("revision") != pin.revision
-                    or digest(source.get("payload", {}).get("resolution")) != pin.digest
-                    or source.get("payload", {}).get("resolution", {}).get("work_state") != "resolved"
+                current, pair = _current_checkpoint(bundle.job, str(pin.field_key), binding.research_scope())
+                source = pair["original"] if pair is not None else {}
+                source_proof = source.get("accepted_output_proof") or {}
+                if (current is None or bundle.job["fields"][str(pin.field_key)]["locked"]
+                    or current.revision != pin.revision or digest(current.resolution) != pin.digest
+                    or current.resolution.work_state != WorkState.RESOLVED
                     or source_proof.get("contract_version") != "research-accepted-checkpoints/v1"
                     or digest(source["payload"]) not in source_proof.get("checkpoint_payload_digests", ())):
                     raise StaleWork("research_retry_parking_dependency_unproved")
