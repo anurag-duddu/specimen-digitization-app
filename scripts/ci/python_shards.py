@@ -10,17 +10,50 @@ import sys
 import tempfile
 
 
+# Whole-module lower bounds from the 25 slowest phases of each Linux shard
+# in main CI 37844910372/1 (cb38a8be), 2026-10-08. No runner/network reads.
+# A 100 ms/item floor is a coarse estimate for unmeasured work, not a
+# timeout or promised runtime. New/expanded modules retain that floor.
+DEFAULT_ITEM_COST_MS = 100
+MODULE_COST_MS = {
+    "scripts/ops/test_simple_owner_setup.py": 30620,
+    "tests/research_harness/test_agent_tools_sequential.py": 101540,
+    "tests/research_harness/test_agent_visibility.py": 106200,
+    "tests/research_harness/test_collection_workflow.py": 44090,
+    "tests/research_harness/test_composed_queue_outcomes.py": 90740,
+    "tests/research_harness/test_final_progress_carrier.py": 169860,
+    "tests/research_harness/test_geography_hierarchy_publication.py": 97490,
+    "tests/research_harness/test_native_retry_work_queue.py": 257040,
+    "tests/research_harness/test_organiser_handover_composer.py": 193580,
+    "tests/research_harness/test_organiser_raw_reading_composer.py": 127610,
+    "tests/research_harness/test_parallel_roles.py": 706420,
+    "tests/research_harness/test_people_publication.py": 139400,
+    "tests/research_harness/test_production_e2e.py": 288250,
+    "tests/research_harness/test_production_e2e_sam3_regions.py": 104460,
+    "tests/research_harness/test_public_source_retry_api.py": 146760,
+    "tests/research_harness/test_published_blocked_workflow.py": 137940,
+    "tests/research_harness/test_run_budget_ceiling.py": 286790,
+    "tests/research_harness/test_taxonomy_automatic_publication.py": 108660,
+    "tests/research_harness/test_temporal_composer.py": 87250,
+    "tests/research_harness/test_unkeyed_label_reading_citation.py": 231010,
+    "tests/research_harness/test_unkeyed_label_review.py": 416160,
+    "tests/test_model_runtime.py": 108540
+}
+
+
 def partition(nodeids, count):
-    """Keep module fixtures and their original item order together."""
+    """Balance observed module costs, keeping fixtures and item order together."""
     if type(count) is not int or count < 1 or len(set(nodeids)) != len(nodeids):
         raise ValueError("invalid shard count or duplicate collected node IDs")
     sizes = Counter(node.split("::", 1)[0] for node in nodeids)
+    costs = {module: max(size * DEFAULT_ITEM_COST_MS, MODULE_COST_MS.get(module, 0))
+             for module, size in sizes.items()}
     loads = [0] * count
     owners = {}
-    for module in sorted(sizes, key=lambda name: (-sizes[name], name)):
+    for module in sorted(sizes, key=lambda name: (-costs[name], name)):
         index = min(range(count), key=lambda shard: (loads[shard], shard))
         owners[module] = index
-        loads[index] += sizes[module]
+        loads[index] += costs[module]
     return [[node for node in nodeids if owners[node.split("::", 1)[0]] == index]
             for index in range(count)]
 

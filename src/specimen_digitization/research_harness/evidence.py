@@ -780,7 +780,8 @@ def validate_resolution(request: SpecialistRequest, resolution: FieldResolution,
             raise EvidenceError("D/T/S verbatim is not grounded in immutable reading")
         return resolution
     if resolution.work_state != WorkState.RESOLVED:
-        if (request.prompt.version == "collection-qualified-evidence-v6-2026-10-07"
+        if (request.prompt.version in {"collection-qualified-evidence-v6-2026-10-07",
+                "collection-original-reading-v7-2026-10-08"}
             and resolution.field_key in {FieldKey.FMNH_INS_NUMBER, FieldKey.COLLECTION_CODE,
                 FieldKey.HABITAT, FieldKey.COLLECTION_METHOD}):
             from .collection import validate_collection_resolution
@@ -911,7 +912,8 @@ def validate_resolution(request: SpecialistRequest, resolution: FieldResolution,
         return resolution
     # No available source authority: only explicitly transcribed collection/party fields
     # and event-qualified dates may be validated from a complete literal assembly.
-    if (request.prompt.version == "collection-qualified-evidence-v6-2026-10-07"
+    if (request.prompt.version in {"collection-qualified-evidence-v6-2026-10-07",
+            "collection-original-reading-v7-2026-10-08"}
         and resolution.field_key in {FieldKey.FMNH_INS_NUMBER, FieldKey.COLLECTION_CODE,
             FieldKey.HABITAT, FieldKey.COLLECTION_METHOD}):
         from .collection import validate_collection_resolution

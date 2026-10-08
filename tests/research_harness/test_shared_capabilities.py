@@ -78,8 +78,8 @@ class ExecutorFixture:
                                   self.registration_digest, self.exit_status)
 
 
-def make_rig(tmp_path, *, pin_policy=True, max_effects=8, sensitive=False, qualified=True, human_lock=False):
-    role = SpecialistRole.GEOGRAPHY
+def make_rig(tmp_path, *, pin_policy=True, max_effects=8, sensitive=False, qualified=True, human_lock=False,
+             role=SpecialistRole.GEOGRAPHY, procedure_id="history-loop", additional_procedures=()):
     source = SourcePolicy(id="fixture_authority", version="fixture-v1", roles=(role,),
         fields=(FieldKey.COUNTRY, FieldKey.CITY), allowed_hosts=("authority.example",),
         allowed_path_patterns=(r"/place/\d+",), source_type="reference", license="fixture",
@@ -100,8 +100,12 @@ def make_rig(tmp_path, *, pin_policy=True, max_effects=8, sensitive=False, quali
             role=item_role, content="Historical name research must retain the date context.",
             evidence_refs=("captured:reviewed-procedure",), verified_by="fixture curator",
             verification_digest=digest(ident))
-    knowledge = VerifiedKnowledgeCatalog(items=(item("place-history", "lesson"), item("history-loop", "procedure"),
-        item("other-collection", "lesson", collection="birds"), item("other-role", "lesson", item_role=SpecialistRole.TAXONOMY)))
+    knowledge = VerifiedKnowledgeCatalog(items=(item("place-history", "lesson"), item(procedure_id, "procedure"),
+        item("other-collection", "lesson", collection="birds"), item("other-role", "lesson", item_role=SpecialistRole.TAXONOMY),
+        item("other-collection-procedure", "procedure", collection="birds"),
+        item("other-role-procedure", "procedure",
+             item_role=SpecialistRole.TAXONOMY if role != SpecialistRole.TAXONOMY else SpecialistRole.GEOGRAPHY),
+        *(item(ident, "procedure") for ident in additional_procedures)))
     policy = RoleCapabilityPolicy(organization_id="org", collection_id="insects", profile_digest=scope.profile_digest,
         role=role, toolset_digest=PIN, owner_registration_digest=digest("fixture-owner"), max_effects=max_effects,
         browser_sources=(BrowserSourceBinding(source_id=source.id, source_policy_digest=digest(source),
@@ -295,6 +299,126 @@ def test_catalog_pin_and_role_effect_limit_cannot_be_extended_by_the_model(tmp_p
     rig.adapters.knowledge = VerifiedKnowledgeCatalog()
     with pytest.raises(PermissionError, match="catalog_not_registered"):
         asyncio.run(rig.adapters.read_memory(rig.request, query))
+
+
+def test_unknown_prompt_version_is_captured_context_and_the_agent_can_read_exact_procedure(tmp_path):
+    rig = make_rig(tmp_path, role=SpecialistRole.TAXONOMY, procedure_id="specimen_taxonomy-procedure")
+    capability = SharedResearchCapability(rig.request, rig.adapters)
+    instructions = capability.get_instructions()
+    assert '["specimen_taxonomy-procedure"]' in instructions
+    assert "Prompt versions and Skill names are not procedure IDs" in instructions
+    assert "other-role" not in instructions and "other-collection" not in instructions
+    observed = []
+
+    def model(messages, info):
+        returned = [part for message in messages for part in message.parts if isinstance(part, ToolReturnPart)]
+        if not returned:
+            return ModelResponse([ToolCallPart("read_verified_procedure", {"query": {
+                "field_key": "taxon", "item_id": "taxonomy-reader-reconciliation-v7-2026-10-07"}}, "unknown-procedure")])
+        latest = returned[-1].content
+        latest = latest.model_dump(mode="json") if hasattr(latest, "model_dump") else latest
+        observed.append(latest)
+        if len(returned) == 1:
+            assert latest["trust"] == "context_only" and latest["provenance"]["field_authority"] is False
+            assert latest["content"] == {"status": "unavailable", "reason": "unknown_procedure_id",
+                "available_procedure_ids": ["specimen_taxonomy-procedure"], "available_procedure_count": 1,
+                "procedure_ids_truncated": False}
+            return ModelResponse([ToolCallPart("read_verified_procedure", {"query": {
+                "field_key": "taxon", "item_id": "specimen_taxonomy-procedure"}}, "valid-procedure")])
+        assert latest["content"]["id"] == "specimen_taxonomy-procedure"
+        return ModelResponse([TextPart("Verified procedure context received")])
+
+    agent = Agent(FunctionModel(model), capabilities=[capability], name=str(rig.request.role))
+    result = asyncio.run(agent.run("Read the scoped procedure", deps=SimpleNamespace(for_agent=lambda _: rig.request)))
+    assert result.output == "Verified procedure context received" and len(observed) == 2
+    rows = effects(rig)
+    assert len(rows) == 2 and all(row["status"] == "completed" for row in rows)
+    assert all(row["actual_micro_usd"] == 0 and row["held_micro_usd"] == 0 for row in rows)
+    for observation in observed:
+        saved = rig.store.effect(rig.scope, observation["effect_id"])["receipt"]
+        assert json.loads(rig.blobs.get(BlobRef(**saved["raw_capture"]))) == observation["content"]
+    assert rig.browser.calls == [] and rig.executor.calls == []
+
+
+def test_unknown_procedure_reuses_real_diagnostic_receipt_at_unchanged_effect_limit(tmp_path):
+    rig = make_rig(tmp_path, max_effects=1)
+    query = ProcedureRead(field_key=FieldKey.CITY, item_id="invented-procedure")
+    observation = asyncio.run(rig.adapters.read_procedure(rig.request, query))
+    assert asyncio.run(rig.adapters.read_procedure(rig.request, query)) == observation
+    assert len(effects(rig)) == 1
+    with pytest.raises(ValueError, match="role_effect_limit"):
+        asyncio.run(rig.adapters.read_procedure(rig.request, query.model_copy(update={"item_id": "another-invented"})))
+    assert len(effects(rig)) == 1 and rig.browser.calls == [] and rig.executor.calls == []
+
+
+@pytest.mark.parametrize("spoof", ["organization", "collection", "job", "profile_pin", "source_pin"])
+def test_procedure_advertisement_denies_forged_scope_or_prompt_pins_before_any_read(tmp_path, spoof):
+    rig = make_rig(tmp_path)
+    scope_changes = {"organization": {"organization_id": "other-org"}, "collection": {"collection_id": "birds"},
+        "job": {"job_id": "other-job"}, "profile_pin": {"profile_digest": "1" * 64}}
+    request = rig.request
+    if spoof == "source_pin":
+        request = request.model_copy(update={"prompt": request.prompt.model_copy(update={"source_registry_digest": "1" * 64})})
+    else:
+        request = request.model_copy(update={"scope": request.scope.model_copy(update=scope_changes[spoof])})
+        if spoof == "profile_pin":
+            request = request.model_copy(update={"prompt": request.prompt.model_copy(update={"profile_digest": "1" * 64})})
+    capability = SharedResearchCapability(request, rig.adapters)
+    original_read = rig.store._read
+    rig.store._read = lambda *_: pytest.fail("Procedure advertisement must validate scope without datastore reads")
+    try:
+        with pytest.raises(PermissionError, match="scope_or_request_pin_denied"):
+            capability.get_instructions()
+    finally:
+        rig.store._read = original_read
+    assert effects(rig) == []
+
+
+@pytest.mark.parametrize("denial", ["scope", "catalog", "lock", "known_outside_role", "known_outside_collection"])
+def test_unknown_procedure_diagnostic_cannot_bypass_scope_catalog_or_human_lock(tmp_path, denial):
+    rig = make_rig(tmp_path, human_lock=denial == "lock")
+    request = rig.request
+    query = ProcedureRead(field_key=FieldKey.CITY, item_id="invented-procedure")
+    if denial == "scope":
+        request = request.model_copy(update={"scope": request.scope.model_copy(update={"organization_id": "other-org"})})
+    elif denial == "catalog":
+        rig.adapters.knowledge = VerifiedKnowledgeCatalog()
+    elif denial == "known_outside_role":
+        query = query.model_copy(update={"item_id": "other-role-procedure"})
+    elif denial == "known_outside_collection":
+        query = query.model_copy(update={"item_id": "other-collection-procedure"})
+    with pytest.raises((PermissionError, StaleWork)):
+        asyncio.run(rig.adapters.read_procedure(request, query))
+    assert effects(rig) == [] and rig.browser.calls == [] and rig.executor.calls == []
+
+
+def test_procedure_id_advertisement_and_captured_diagnostic_remain_bounded(tmp_path):
+    ids = tuple(f"procedure-{index:03d}-" + "x" * 140 for index in range(80))
+    rig = make_rig(tmp_path, additional_procedures=ids)
+    capability = SharedResearchCapability(rig.request, rig.adapters)
+    instructions = capability.get_instructions()
+    assert len(instructions.encode()) <= rig.policy.max_view_bytes
+    observation = asyncio.run(rig.adapters.read_procedure(rig.request,
+        ProcedureRead(field_key=FieldKey.CITY, item_id="invented-procedure")))
+    assert observation.content["procedure_ids_truncated"] is True
+    assert observation.content["available_procedure_count"] == 81
+    assert 0 < len(observation.content["available_procedure_ids"]) < 81
+    assert set(observation.content["available_procedure_ids"]) <= {"history-loop", *ids}
+    saved = rig.store.effect(rig.scope, observation.effect_id)["receipt"]
+    assert len(json.dumps(saved["typed_payload"]).encode()) <= rig.policy.max_view_bytes
+    assert saved["actual_micro_usd"] == 0 and saved["held_micro_usd"] == 0
+
+
+def test_unknown_procedure_cannot_clear_or_replay_a_held_unknown_effect(tmp_path):
+    rig = make_rig(tmp_path)
+    rig.browser.interrupt = True
+    with pytest.raises(asyncio.CancelledError):
+        browse(rig)
+    before = effects(rig)
+    with pytest.raises(HeldUnknown):
+        asyncio.run(rig.adapters.read_procedure(rig.request,
+            ProcedureRead(field_key=FieldKey.CITY, item_id="invented-procedure")))
+    assert effects(rig) == before and len(rig.browser.calls) == 1
 
 
 def test_pinned_ai_capability_really_exposes_scoped_sequential_tools(tmp_path):

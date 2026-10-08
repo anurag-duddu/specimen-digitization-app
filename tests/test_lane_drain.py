@@ -801,7 +801,6 @@ def drain_the_ten(lane, native, *, supervised=True, at_plan=False, provision=Non
     ("reason_code", "blocker"),
     [
         ("accepted_output_proof_unavailable", "accepted_output_proof_unavailable"),
-        ("native_publication_requires_reconciliation", "native_publication_requires_reconciliation"),
         ("research_retry_not_completed", "research_retry_not_completed"),
         (
             "research_worker_custody_requires_reconciliation",
@@ -854,7 +853,7 @@ class PublishesThenHolds(NativeLane):
 
 
 def test_a_hold_after_a_publication_blocked_the_record_is_recorded_and_logged(lane, caplog):
-    code = "native_publication_requires_reconciliation"
+    code = "accepted_output_proof_unavailable"
     native = PublishesThenHolds(lane.repository, {TEN[2]: code})
     with caplog.at_level(logging.WARNING, logger="specimen_digitization.application.lane_worker"):
         summary = drain_the_ten(lane, native)
@@ -878,7 +877,7 @@ def test_a_hold_after_a_publication_blocked_the_record_is_recorded_and_logged(la
 @pytest.mark.parametrize("blocker", ["external_outcome_unknown", "pilot_evidence_review_required"])
 def test_a_hold_keeps_the_blocker_an_already_blocked_record_names(lane, blocker):
     native = PublishesThenHolds(
-        lane.repository, {TEN[0]: "native_publication_requires_reconciliation"}, blocker=blocker
+        lane.repository, {TEN[0]: "accepted_output_proof_unavailable"}, blocker=blocker
     )
     drain_the_ten(lane, native)
     held = lane.repository.get(SCOPE, TEN[0])
@@ -889,12 +888,43 @@ def test_a_hold_keeps_the_blocker_an_already_blocked_record_names(lane, blocker)
 @pytest.mark.parametrize("stage", ["finalized", "paused", "cancelled"])
 def test_a_hold_does_not_touch_a_run_that_has_stopped_another_way(lane, stage):
     native = PublishesThenHolds(
-        lane.repository, {TEN[0]: "native_publication_requires_reconciliation"}, stage=stage
+        lane.repository, {TEN[0]: "accepted_output_proof_unavailable"}, stage=stage
     )
     drain_the_ten(lane, native)
     held = lane.repository.get(SCOPE, TEN[0])
     assert (held.run.stage, held.run.blocker) == (stage, None)
     assert "lane_block" not in [event.action for event in held.audit]
+
+
+@pytest.mark.parametrize("published_stage", [None, "processing_blocked", "finalized"])
+def test_unknown_native_publication_preserves_the_original_canonical_snapshot(
+    lane, published_stage
+):
+    class PublicationTimeout(NativeLane):
+        async def run_registered(self, principal, ident, *, owner):
+            if ident == TEN[0]:
+                current = self.repository.get(principal.scope, ident)
+                if published_stage is not None:
+                    current.run.stage = published_stage
+                    current = self.repository.save(
+                        principal, current, current.version, "native-partial-save", ident
+                    )
+                self.retained = current.model_dump(mode="json")
+            return await super().run_registered(principal, ident, owner=owner)
+
+    code = "native_publication_requires_reconciliation"
+    native = PublicationTimeout(lane.repository, {TEN[0]: code})
+    with pytest.raises(OperationalBlock, match=f"^{code}$"):
+        drain_the_ten(lane, native, at_plan=True)
+
+    # Keep the exact last authoritative snapshot, whether the native request
+    # committed before its response was lost or failed before changing Q.
+    retained = lane.repository.get(SCOPE, TEN[0])
+    assert retained.model_dump(mode="json") == native.retained
+    assert "lane_block" not in [event.action for event in retained.audit]
+    assert native.runs == [TEN[0]]
+    assert all(lane.repository.get(SCOPE, ident).run.stage == "pending" for ident in TEN[1:])
+    assert fence(lane).read()["holder"] is None
 
 
 def test_the_drains_stall_blocks_leave_a_blocked_record_as_it_is(lane):
@@ -1153,14 +1183,14 @@ def test_a_hold_on_a_runs_first_step_keeps_its_own_blocker(lane):
     # No step saved before the hold, so the drain also takes the run as not
     # progressing; the hold's blocker stays the one recorded.
     held = TEN[4]
-    native = NativeLane(lane.repository, {held: "native_publication_requires_reconciliation"})
+    native = NativeLane(lane.repository, {held: "research_worker_custody_requires_reconciliation"})
     summary = drain_the_ten(lane, native, at_plan=True)
     assert summary["status"] == "drained"
     assert native.runs == list(TEN)
     run = lane.repository.get(SCOPE, held).run
     assert (run.stage, run.blocker) == (
         "processing_blocked",
-        "native_publication_requires_reconciliation",
+        "research_worker_custody_requires_reconciliation",
     )
     actions = [event.action for event in lane.repository.get(SCOPE, held).audit]
     assert actions.count("lane_block") == 1

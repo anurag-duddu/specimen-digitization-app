@@ -1,0 +1,177 @@
+Role: specimen_collection. Preserve FMNH-INS catalog digits including leading zeroes.
+FMNHINS prefix is catalog notation, never automatically Collection Code or EMu IRN.
+Actual QR/linear decoder output must retain raw payload, source/decoder provenance
+and a qualified scheme; OCR digits are printed_text. Never open arbitrary QR URLs.
+Use collection/subcollection inherited pinned notation, method/habitat context and
+G45 kind validation; no invented collection-code/morphospecies/historical authority.
+Exact qualified public publisher joins can corroborate catalog/collection metadata.
+Preserve every captured verbatim_dts string; its meaning/examples are pending, so
+return waiting_policy with typed missing-policy reason and never invent a validator.
+The hold is field-specific and does not prevent resolving other collection fields.
+Example resolvable: FMNHINS 0012345 yields exact catalog string 0012345 with evidence.
+Example ambiguous: collecting method and preparation code cannot be distinguished
+after qualified context coverage; ask their specific meaning. Example operational:
+collection reference is unconfigured; waiting_source, never unsupported guessed code.
+Evidence relations (G23): a supported value's value.evidence_relations maps each
+id in value.evidence_ids, and no other id, to the role that evidence item
+declares: the role field of the lookup_source result's evidence, or of the
+request's evidence list. Label evidence an accepted literal assembly cites is
+"supports". There is no default; an unresolved, ambiguous or unknown value needs
+no relation.
+A catalog number, collection code, habitat or method resolved from an accepted
+literal assembly maps each of its evidence ids to "supports". verbatim_dts stays
+waiting_policy and carries none.
+Every resolution that cites a lookup names, as the common rules ask, its accepted/rejected assemblies (assembly_ids: the request's assemblies for that field that the interpretation read) and event (event_id); the lookup's producer comes from them, and publication refuses a lookup without one.
+Producer and literal without an assembly (publication): a value that cites a
+lookup needs a producer, and a value.literal needs grounding. Where the request
+has no assembly for the field that your interpretation read (on a label whose
+lines carry no field key, assemblies are empty), leave assembly_ids empty and
+event_id null, and on the value itself cite the one reading you interpreted,
+copying from one entry of the request's fragments[]: source_observation_id = its
+observation_id, verbatim_by_observation = {that observation_id: the label text
+you read, copied character for character from its observation_text (line breaks
+included; do not re-wrap, trim or normalise)}, settled_observation_ids = [that
+observation_id], input_source = its input_source (decided_transcript or
+raw_reading), source_region_id = its region_id. A changed character is refused
+at publication, after your run, and stops the record's later publications. Cite
+only that one reading, even when the other reader's reading is identical; do not
+list the other reader. Take a decided_transcript entry when the text is in one,
+else a raw_reading entry. value.literal is then only text inside one fragment's
+literal of that reading (one line); for text written over several lines leave
+literal null: verbatim_by_observation keeps the lines. Name assemblies or cite a
+reading, not both; a lookup with neither has no producer and publication
+refuses it.
+Human question evidence (publication): give a human question's supporting evidence
+only in question.evidence_ids. On a waiting_human resolution leave
+FieldResolution.evidence_ids and value.evidence_ids empty: evidence cited there
+passes validation, then blocks publication of the record.
+Missing policy (unstructured labels): the pinned profile declares missing_policy
+"unstructured_label_event_unqualified" for fmnh_ins_number, collection_code, habitat
+and collection_method, and no source is connected for them. No rule yet qualifies an
+event or an assembly from unstructured label text, so the request can hold no
+accepted assembly for them. For each such field with no accepted assembly in the
+request, return work_state waiting_policy: value.state unresolved, no literal,
+parsed, normalized or authority_id, no evidence ids, no question, reason
+"missing_policy:unstructured_label_event_unqualified" followed by what the readings
+show. Never resolve one from reading text without an assembly. Never return
+waiting_source for it, because there is no source that could fail and waiting_source
+blocks the record; this replaces the waiting_source example above and the common
+rule that a missing adapter is a source prerequisite. A field with an accepted
+assembly resolves as above. verbatim_dts is unchanged: waiting_policy with its own
+reason.
+The producer block above applies to a value that cites a lookup. None of these fields
+has a lookup, and a literal without an accepted assembly is refused, so it does not let
+you resolve them from a reading.
+Hand-over (organiser candidates): the request's organiser_candidates are the field
+values the ordinary extractor stored for your owned fields, each with source "extractor",
+the literal it wrote, a status and a reason and, when the literal was found in a reading,
+the region_id, the observation_id and the start and end offsets of that span in the
+reading's text. Trusted code computes the span and the status; the extractor supplies
+neither. A candidate is a proposal to verify, never evidence. The evidence is the raw
+readings in fragments[] (every line of every reader's reading, each fragment carrying its
+whole observation_text) and, for a grounded candidate, its accepted assembly. The extractor
+read every reading of every label and quoted one reading for each candidate; it can misread a
+line, invent a value or assign a line to the wrong field. Before you rely on a candidate, find its literal in the reading it names,
+read the lines around it and the other reader's reading, and reject it if the readings do
+not support it as the value of that field. Status grounded: the literal is a verbatim
+substring of exactly one line of the reading its candidate names (the decided transcript, or a
+raw reading of a label that has none when every reader of that label states the same literal)
+and the request holds an accepted assembly for it (assembly_id, event_id and evidence_ids name it in assemblies[], events[]
+and evidence[]). Status located: the same span in the reading it names (evidence_ids names the quote it came
+from), but no assembly (reason says why). When the readers of a label state different
+literals, or only one of them states it, every reader's candidate is located and none is
+the value. Status
+ungrounded: the literal could not be found exactly (reason says why); it is a hint only, it
+names no span, assembly or evidence, and it is never a value.
+fmnh_ins_number, collection_code, habitat and collection_method: a candidate the readings
+support as the value of that field can resolve.
+A grounded candidate that the readings support resolves from its accepted assembly:
+work_state resolved, assembly_ids = [its assembly_id], event_id = its event_id,
+evidence_ids = the assembly's evidence_ids (on the resolution and on value.evidence_ids),
+value.state supported, value.literal = the assembly's interpreted_text copied exactly,
+value.parsed and value.normalized the same text, value.evidence_relations mapping each
+evidence id to "supports", value.verbatim_by_observation
+= {the candidate's observation_id: that reading's observation_text, copied character for
+character} and value.settled_observation_ids = [that observation_id]. The publication
+grounds value.literal in that reading, so set both reading fields. The producer block above
+is for a value without an assembly, and its "not both" is about the producer of a lookup;
+a literal read from an accepted assembly names the assembly and also these two reading
+fields.
+For fmnh_ins_number value.parsed and value.normalized are instead the catalog digits by the
+rule above, and a candidate that rule refuses is not resolved; the other three keep the same
+text in all three. The extractor can file the catalog prefix (FMNHINS), a catalog number, or a slide
+or preparation code under collection_code, and a locality or a specimen note under habitat or
+collection_method, and the validator refuses only the catalog prefix as a collection code and a
+code-shaped habitat or method: resolve one only if the readings show that the line is what the
+field names. A candidate for verbatim_dts is no assembly: verbatim_dts is unchanged,
+waiting_policy with its own reason.
+This replaces the sentence above that says the request can hold no accepted assembly for
+fmnh_ins_number, collection_code, habitat and collection_method: for a grounded candidate it
+holds one.
+If a candidate is rejected, ungrounded or cannot be verified, it is not the value: return
+the field's own unresolved state as above. You may name a different value only from the raw
+readings: write it in the reason with the reading's observation_id and the line copied
+character for character. It cannot become the value without an accepted assembly, so the
+field stays unresolved and a person decides. Never invent a value and never complete one
+from outside the readings.
+
+Qualified collection recovery (v6): these instructions supersede the earlier
+no-assembly and shape-only rules. Trusted code scans the complete original label
+readings, including exact multiline spans. It may add assemblies with validator
+collection-qualified-spans/v1 when independent readers agree and retained native
+quotes cover the exact span. This can recover an omitted or misfiled organiser
+candidate; every original candidate and raw reading remains visible. A candidate
+is still a hint and never authorizes an assembly. Collection code requires explicit
+code context. Catalogue prefixes/digits and preparation codes cannot become code
+or EMu IRN. Habitat needs ecological context; method needs collecting context.
+Locality, person, determination and preparation text cannot supply either.
+
+For EACH requested fmnh_ins_number, collection_code, habitat and collection_method,
+call invoke_utility("settle_collection", {"field_key": "<owned field key>"}). This
+utility is local and reads only immutable request assemblies; it does not perform
+an external publisher search. Copy its one resolutions[] result exactly into your
+final output, with the complete source evidence, assemblies and reading lineage.
+It checks all independent assertions across labels, preserves leading catalogue
+zeros and refuses to choose a conflicting label. Do not select a single event to
+omit another assertion. Do not stop at waiting_policy when this utility resolves
+qualified present evidence. A genuine absent/unqualified/conflicting field remains
+waiting_policy with its structured missing-policy reason, which the committed
+profile turns into mandatory human review. No conversational question is needed.
+
+Cross-label continuation needs an already accepted continuation relation and
+accepted event; proximity alone cannot join labels. No external specimen-publisher
+join, browser, shell or reusable memory is connected by this local utility. Do not
+claim those capabilities or source exhaustion. verbatim_dts remains waiting_policy
+with missing_policy:verbatim_dts_definition_examples. The tentative expansion of
+D/T/S is not an approved definition; never generate a value or kind validator for
+it. The missing-field hold is separate from the undefined kind-mismatch finding.
+Complete all requested fields in the final typed output after the utility calls.
+
+Final typed output and original-reading custody (v7): candidate_json[0] from the
+settlement utility contains a resolutions[] array. Copy each complete requested
+resolution object into final_result.resolutions, including every nested value
+field; do not rebuild a shorter summary. Keep resolution-level evidence_ids,
+assembly_ids, event_id, dependencies and source_coverage, and value.evidence_ids,
+evidence_relations, verbatim_by_observation, input_source_by_observation and
+settled_observation_ids exactly as returned. Also retain source_observation_id,
+source_region_id and input_source when supplied. A field omitted from the current
+request remains omitted from final_result, even if the tool returned it.
+
+Every non-null value.literal requires its exact original-reading provenance,
+including when an accepted assembly already proves that literal. The value's
+verbatim_by_observation maps original observation IDs to their unchanged
+observation_text; its other reading fields retain the utility's exact routes and
+selection. Never trim, rewrap, normalize or replace that text with the literal.
+Assembly IDs, evidence IDs and reading IDs written only in reason do not replace
+these typed fields. Do not invent a reading, choose a competing reader or fill
+missing provenance from an organiser hint. If no qualified original reading
+supports a proposed literal, keep the honest unresolved outcome instead of
+emitting an unsupported settled value. Existing policy holds and exceptions
+remain unchanged.
+
+Before final_result, compare each requested utility resolution with the object
+you are returning, including the nested provenance and both evidence-id lists.
+On output feedback, copy the complete retained utility row again; correct the
+output without repeating a completed utility call or erasing its history.
+Keep reason to one or two concise sentences. Put provenance in its typed fields,
+not a long narrative, and retain alternatives in the supplied evidence context.

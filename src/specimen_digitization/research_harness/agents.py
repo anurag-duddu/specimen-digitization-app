@@ -231,7 +231,7 @@ class ResearchDeps:
                                            request.scope.generation))
 
 
-def _geography_progress(deps: ResearchDeps, request: SpecialistRequest, field_key: FieldKey):
+def _geography_progress(deps: ResearchDeps, request: SpecialistRequest, field_key: FieldKey, *, attempts=None):
     from .geography_strategy import geography_progress
 
     narrowed = SpecialistRequest.model_validate({**request.model_dump(mode="json"),
@@ -240,8 +240,20 @@ def _geography_progress(deps: ResearchDeps, request: SpecialistRequest, field_ke
         "retry_command_id": request.retry_command_id})
     provider = getattr(deps.tool_broker, "available_sources", None)
     available = () if provider is None else provider(narrowed)
-    return geography_progress(request, field_key, deps.source_attempts.get(request.role, ()), available,
+    return geography_progress(request, field_key,
+        deps.source_attempts.get(request.role, ()) if attempts is None else attempts, available,
         collecting_context=deps.collecting_context)
+
+
+def _geography_progress_all(deps: ResearchDeps, request: SpecialistRequest):
+    """Same field views from one retained history and one official tool call."""
+    if (request.role != SpecialistRole.GEOGRAPHY or not request.field_keys
+        or len(request.field_keys) != len(set(request.field_keys))
+        or not set(request.field_keys) <= set(ROLE_FIELDS[SpecialistRole.GEOGRAPHY])):
+        raise ValueError("geography_progress_outside_requested_field")
+    attempts = tuple(deps.source_attempts.get(request.role, ()))
+    return {str(key): _geography_progress(deps, request, key, attempts=attempts).as_dict()
+        for key in request.field_keys}
 
 
 @dataclass(frozen=True)
@@ -544,8 +556,9 @@ class SpecialistHarness:
             return view
 
         # This deterministic view consumes no provider effect. Frozen older
-        # prompts keep their exact tool roster; only the reviewed v9 pin adds it.
-        from .prompts import GEOGRAPHY_RESEARCH_PROMPT_VERSION
+        # prompts keep their exact tool roster. V10 replaces only the progress
+        # call with a batch; all scientific progress semantics stay the same.
+        from .prompts import GEOGRAPHY_RESEARCH_PROMPT_VERSION, GEOGRAPHY_PROGRESS_PROMPT_VERSION
         if pinned_request is not None and pinned_request.role == SpecialistRole.GEOGRAPHY:
             if pinned_request.prompt.version == GEOGRAPHY_RESEARCH_PROMPT_VERSION:
                 @agent.tool(sequential=True)
@@ -554,6 +567,14 @@ class SpecialistHarness:
                     request = ctx.deps.for_agent(ctx.agent.name)
                     return _geography_progress(ctx.deps, request, field_key).as_dict()
 
+            if pinned_request.prompt.version == GEOGRAPHY_PROGRESS_PROMPT_VERSION:
+                @agent.tool(sequential=True)
+                async def geography_progress_all(ctx: RunContext[ResearchDeps]) -> dict[str, Any]:
+                    """List the same retained strategy views for every requested owned field."""
+                    request = ctx.deps.for_agent(ctx.agent.name)
+                    return _geography_progress_all(ctx.deps, request)
+
+            if pinned_request.prompt.version in {GEOGRAPHY_RESEARCH_PROMPT_VERSION, GEOGRAPHY_PROGRESS_PROMPT_VERSION}:
                 @agent.tool(sequential=True)
                 async def geography_hierarchy(ctx: RunContext[ResearchDeps]) -> dict[str, Any]:
                     """Propose place-only validation queries from captured typed authority hierarchy."""
@@ -610,8 +631,9 @@ class SpecialistHarness:
                                 "no value, evidence IDs, derivation or human question. Do not manufacture "
                                 "a source checkpoint or change the preserved human outcome")
             results = tuple(ctx.deps.tool_results.get(request.role, ()))
-            from .prompts import GEOGRAPHY_RESEARCH_PROMPT_VERSION
-            if request.role == SpecialistRole.GEOGRAPHY and request.prompt.version == GEOGRAPHY_RESEARCH_PROMPT_VERSION:
+            from .prompts import GEOGRAPHY_RESEARCH_PROMPT_VERSION, GEOGRAPHY_PROGRESS_PROMPT_VERSION
+            if (request.role == SpecialistRole.GEOGRAPHY and request.prompt.version in {
+                GEOGRAPHY_RESEARCH_PROMPT_VERSION, GEOGRAPHY_PROGRESS_PROMPT_VERSION}):
                 for resolution in output.resolutions:
                     if resolution.work_state == WorkState.WAITING_HUMAN and (
                         resolution.question is None or resolution.question.reason != "derived_proposal"):
@@ -654,9 +676,14 @@ class SpecialistHarness:
                     continue
                 if not literal_has_original_request_lineage(request, resolution):
                     raise ModelRetry(f"specialist_output_literal_lacks_original_reading: field={resolution.field_key}; "
-                        "cite the exact original fragment and each reading's declared input source in "
-                        "verbatim_by_observation/input_source_by_observation, or set value.literal=null "
-                        "for an unresolved value. Preserve the human question, reason and captured source coverage")
+                        "value.verbatim_by_observation must retain the exact original observation_text, "
+                        "not only a literal or reading IDs in reason. For a deterministic utility result, "
+                        "copy the complete retained resolutions[] object, including value.verbatim_by_observation, "
+                        "value.input_source_by_observation, value.settled_observation_ids and the resolution's "
+                        "evidence_ids, assembly_ids and event_id. Do not summarize or repeat the completed tool. "
+                        "Otherwise cite the exact original fragment and each reading's declared input source, "
+                        "or set value.literal=null for an honestly unresolved value. Preserve the human "
+                        "question, reason and captured source coverage")
             masked = masked_outages(output.resolutions, results)
             if masked:
                 raise ModelRetry(f"specialist_output_hides_a_failed_lookup_behind_waiting_policy: field={masked[0]}; a lookup for "

@@ -12,9 +12,9 @@ from specimen_digitization.application.domain import FieldValue, ValueState
 from specimen_digitization.application.organiser import SOURCE, parse_locator
 from .contracts import (
     ALL_FIELDS, EventHypothesis, EventKind, FieldKey, FieldResolution, SourceFragment,
-    SpecialistRequest, WorkState, digest,
+    SpecialistRequest, SpecialistRole, WorkState, digest,
 )
-from .evidence import EvidenceError, assemble_field, catalog_literal, validate_assembly
+from .evidence import EvidenceError, assemble_field, catalog_literal, parse_measurement, validate_assembly
 
 COLLECTION_RULE = "collection-qualified-spans/v1"
 COLLECTION_FIELDS = frozenset((FieldKey.FMNH_INS_NUMBER, FieldKey.COLLECTION_CODE,
@@ -42,6 +42,7 @@ _HABITAT = re.compile(
     r"(?:(?:oak|pine|deciduous|coniferous|mixed|tropical|wet|dry|open|coastal|montane)\s+)*"
     r"(?:woodland|forest|grassland|meadow|marsh|swamp|wetland|scrub|savanna|desert|leaf litter)"
     r"(?:\s+(?:margin|edge|floor|canopy|understory|clearing))?", re.I)
+_ORIGINAL_HABITAT = re.compile(_HABITAT.pattern.replace("|montane)", "|montane|mossy)"), re.I)
 _WRONG_CONTEXT = re.compile(
     r"\b(?:prov(?:ince)?|county|city|town|latitude|longitude|locality|collector|collected by|leg(?=\.)|"
     r"det(?:ermined|ermination)?|identified|prep(?:ared|aration)?|slide|genitalia|terminalia)\b", re.I)
@@ -75,7 +76,7 @@ def _check_source_role(key, fragment):
         raise EvidenceError("Collection span belongs to another marked field or event")
 
 
-def qualify_collection_span(key: FieldKey, fragment: SourceFragment) -> str:
+def qualify_collection_span(key: FieldKey, fragment: SourceFragment, *, original_reading=False) -> str:
     """Return the exact field value, or refuse unsupported kind/event context."""
     text = _compact(fragment.literal)
     if key not in COLLECTION_FIELDS or fragment.unreadable or not text:
@@ -83,7 +84,7 @@ def qualify_collection_span(key: FieldKey, fragment: SourceFragment) -> str:
     explicit = _explicit(key, fragment)
     _check_source_role(key, fragment)
     if key != FieldKey.FMNH_INS_NUMBER and any(candidate_key == key and start == fragment.start
-        and end > fragment.end for candidate_key, start, end in _spans(fragment)):
+        and end > fragment.end for candidate_key, start, end in _spans(fragment, original_reading=original_reading)):
         raise EvidenceError("Collection span omits the rest of a complete written assertion")
     if key == FieldKey.FMNH_INS_NUMBER:
         digits = catalog_literal(fragment.literal)
@@ -103,7 +104,8 @@ def qualify_collection_span(key: FieldKey, fragment: SourceFragment) -> str:
     else:
         if _PREFIX.match(text) or _WRONG_CONTEXT.search(text) or not re.search(r"[^\W\d_]{2}", text):
             raise EvidenceError("Collection assertion has locality/person/preparation kind")
-        method, habitat = bool(_METHOD.fullmatch(text)), bool(_HABITAT.fullmatch(text))
+        habitat_grammar = _ORIGINAL_HABITAT if original_reading else _HABITAT
+        method, habitat = bool(_METHOD.fullmatch(text)), bool(habitat_grammar.fullmatch(text))
         if key == FieldKey.HABITAT and (method or not (explicit or habitat)):
             raise EvidenceError("Habitat requires ecological context; collecting method is a different field")
         if key == FieldKey.COLLECTION_METHOD and (habitat or not (explicit or method)):
@@ -113,7 +115,7 @@ def qualify_collection_span(key: FieldKey, fragment: SourceFragment) -> str:
     return fragment.literal
 
 
-def _spans(fragment):
+def _spans(fragment, *, original_reading=False):
     """Offsets come from the whole original reading, never organiser hints."""
     text = fragment.observation_text
     lines, offset = [], 0
@@ -161,19 +163,31 @@ def _spans(fragment):
                 yield FieldKey.FMNH_INS_NUMBER, start, end
             elif _METHOD.fullmatch(stripped):
                 yield FieldKey.COLLECTION_METHOD, start, end
-            elif _HABITAT.fullmatch(stripped):
+            elif (_ORIGINAL_HABITAT if original_reading else _HABITAT).fullmatch(stripped):
                 yield FieldKey.HABITAT, start, end
+            elif original_reading:
+                habitat = _ORIGINAL_HABITAT.match(stripped)
+                if habitat is None or not stripped[habitat.end():].startswith((" ", "\t")):
+                    continue
+                # The ecology and quantity are separate written assertions.
+                # Keep the habitat's original span only when the whole suffix
+                # is an unambiguous measurement, without discarding any token.
+                try:
+                    parse_measurement(stripped[habitat.end():].strip())
+                except EvidenceError:
+                    continue
+                yield FieldKey.HABITAT, start, start + habitat.end()
 
 
-def _reading_assertions(original, key):
+def _reading_assertions(original, key, *, original_reading=False):
     values = []
-    for candidate_key, start, end in _spans(original):
+    for candidate_key, start, end in _spans(original, original_reading=original_reading):
         if candidate_key != key:
             continue
         span = original.model_copy(update={"start": start, "end": end,
             "literal": original.observation_text[start:end]})
         try:
-            value = qualify_collection_span(key, span)
+            value = qualify_collection_span(key, span, original_reading=original_reading)
         except EvidenceError:
             values.append(("unqualified", digest(span.literal)))
             continue
@@ -215,7 +229,7 @@ def _covering_evidence(span, native_rows, observation_ids):
     return tuple(ids)
 
 
-def recover_collection_graph(scope, fragments, events, assemblies, *, native_rows):
+def recover_collection_graph(scope, fragments, events, assemblies, *, native_rows, original_reading=False):
     """Add qualified omitted/misfiled spans backed by retained native quotes.
 
     One trusted decided reading supplies its label's assertions. Without a
@@ -232,12 +246,12 @@ def recover_collection_graph(scope, fragments, events, assemblies, *, native_row
         by_region[original.region_id].append(original)
         found = []
         if not any(row.unreadable for row in fragments if row.observation_id == observation):
-            for key, start, end in _spans(original):
+            for key, start, end in _spans(original, original_reading=original_reading):
                 span = original.model_copy(update={"id": "fragment:" + digest(
                     [observation, start, end, COLLECTION_RULE]), "start": start, "end": end,
                     "literal": original.observation_text[start:end], "granularity": "span"})
                 try:
-                    value = qualify_collection_span(key, span)
+                    value = qualify_collection_span(key, span, original_reading=original_reading)
                 except EvidenceError:
                     continue
                 found.append((key, span, _compact(value)))
@@ -298,6 +312,9 @@ def collection_resolution(request: SpecialistRequest, key: FieldKey) -> FieldRes
     """Settle all independent collection assertions, preserving exact raw lineage."""
     if key not in COLLECTION_FIELDS or key not in request.field_keys:
         raise EvidenceError("Collection settlement exceeds owned fields")
+    from .prompts import COLLECTION_PROVENANCE_PROMPT_VERSION
+    original_reading = (request.role == SpecialistRole.COLLECTION
+        and request.prompt.version == COLLECTION_PROVENANCE_PROMPT_VERSION)
     assertions = [row for row in request.assemblies if row.field_key == key]
     parts = {row.id: row for row in request.fragments}
     qualified = []
@@ -315,7 +332,8 @@ def collection_resolution(request: SpecialistRequest, key: FieldKey) -> FieldRes
             if len(chosen) > 1:
                 return _held(key, "multiple_decided_collection_readings")
             if chosen and part.observation_id != chosen[0].observation_id and (
-                chosen[0].unreadable or _reading_assertions(chosen[0], key) != _reading_assertions(part, key)
+                chosen[0].unreadable or _reading_assertions(chosen[0], key, original_reading=original_reading)
+                    != _reading_assertions(part, key, original_reading=original_reading)
                 or _compact(part.literal) not in _compact(chosen[0].observation_text)):
                 contrary = True
         if contrary:
@@ -325,7 +343,7 @@ def collection_resolution(request: SpecialistRequest, key: FieldKey) -> FieldRes
         try:
             for part in selected:
                 _check_source_role(key, part)
-            value = qualify_collection_span(key, span)
+            value = qualify_collection_span(key, span, original_reading=original_reading)
         except EvidenceError:
             continue
         qualified.append((assembly, selected, value))
@@ -341,7 +359,8 @@ def collection_resolution(request: SpecialistRequest, key: FieldKey) -> FieldRes
         if region in covered_regions:
             continue
         chosen = [part for part in readings.values() if part.input_source == "decided_transcript"]
-        if any(_reading_assertions(part, key) for part in (chosen if len(chosen) == 1 else readings.values())):
+        if any(_reading_assertions(part, key, original_reading=original_reading)
+            for part in (chosen if len(chosen) == 1 else readings.values())):
             return _held(key, "independent_collection_assertion_lacks_qualified_quote")
     assembly, selected, value = qualified[0]
     complete_parts = {part.id: _compact(asserted_value) for _, fragments, asserted_value in qualified
@@ -352,7 +371,7 @@ def collection_resolution(request: SpecialistRequest, key: FieldKey) -> FieldRes
         peers = {row.observation_id: row for row in request.fragments if row.region_id == fragment.region_id}
         chosen = [row for row in peers.values() if row.input_source == "decided_transcript"]
         effective = chosen if len(chosen) == 1 else list(peers.values())
-        signatures = {_reading_assertions(row, key) for row in effective}
+        signatures = {_reading_assertions(row, key, original_reading=original_reading) for row in effective}
         if (len(chosen) > 1 or not chosen and len({row.reader for row in peers.values()}) < 2
             or any(row.unreadable for row in effective)
             or len(signatures) != 1
