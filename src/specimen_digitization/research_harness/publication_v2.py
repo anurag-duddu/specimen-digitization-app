@@ -197,8 +197,8 @@ class NativeCausalReceiptV2(FrozenRecord):
             or self.progress_receipt.field_work_digest!=digest(self.before_state.get("jobs",{}).get(self.job_key,{}).get("fields"))
             or digest(self.before_state)!=self.before_state_digest or digest(self.after_state)!=self.after_state_digest):
             fail("native_v2_causal_receipt_invalid")
-        expected=outbox_completion(self.before_state,self.publication_outbox_key,self.checkpoint_outbox_key,self.native_commit)
-        if expected!=self.after_state or self.chain_digest!=chain_digest(self):
+        if not outbox_delta_matches(self.before_state,self.after_state,self.publication_outbox_key,
+            self.checkpoint_outbox_key,self.native_commit) or self.chain_digest!=chain_digest(self):
             fail("native_v2_causal_delta_invalid")
         return self
 
@@ -287,6 +287,52 @@ def outbox_completion(state,publication_key,checkpoint_key,native_commit):
     except (KeyError,TypeError):
         fail("native_v2_outbox_unproved")
     return result
+
+
+def _unaliased_json_tree(value):
+    # A comparison view may share unchanged values only for ordinary JSON trees.
+    # Preserve deepcopy behavior for direct Python aliases and custom values.
+    pending=[value];seen=set();none_type=type(None)
+    while pending:
+        item=pending.pop();kind=type(item)
+        if kind is dict or kind is list:
+            if id(item) in seen:
+                return False
+            seen.add(id(item))
+            if kind is dict:
+                for key in item:
+                    if type(key) is not str:
+                        return False
+                pending.extend(item.values())
+            else:
+                pending.extend(item)
+        elif (kind is not str and kind is not int and kind is not float
+            and kind is not bool and kind is not none_type):
+            return False
+    return True
+
+
+def outbox_delta_matches(state,after_state,publication_key,checkpoint_key,native_commit):
+    """Compare the entire permitted delta without copying unchanged JSON branches."""
+    if (type(publication_key) is not str or type(checkpoint_key) is not str
+        or not all(_unaliased_json_tree(value) for value in (state,after_state,native_commit))):
+        return not (outbox_completion(state,publication_key,checkpoint_key,native_commit)!=after_state)
+    try:
+        outbox=state["outbox"]
+        publication=outbox[publication_key];checkpoint=outbox[checkpoint_key]
+        if publication["delivered"] is not False or checkpoint["delivered"] is not False:
+            fail("native_v2_outbox_not_pending")
+        expected=state.copy();expected_outbox=outbox.copy();expected["outbox"]=expected_outbox
+        publication=publication.copy();expected_outbox[publication_key]=publication
+        if publication_key==checkpoint_key:
+            checkpoint=publication
+        else:
+            checkpoint=checkpoint.copy();expected_outbox[checkpoint_key]=checkpoint
+        publication["delivered"]=True;checkpoint["delivered"]=True
+        publication["canonical_commit"]=native_commit
+    except (KeyError,TypeError):
+        fail("native_v2_outbox_unproved")
+    return not (expected!=after_state)
 
 
 def verify_chain(intent,base,current,head_receipt_id,head_chain_digest,chain):
