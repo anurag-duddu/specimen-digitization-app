@@ -910,13 +910,15 @@ def test_the_output_schema_and_pinned_files_match_the_current_contract():
     """The organiser adds no domain fields; later derived review and candidate selection deliberately
     changed the output schema and projector, whose current pins must match exact source bytes."""
     from specimen_digitization.application import active_graph, projection, storage
-    from specimen_digitization.research_harness.accepted_output import VALIDATOR_SOURCE_SHA256
+    from specimen_digitization.research_harness.accepted_output import (
+        VALIDATOR_SOURCE_SHA256, installed_validator_source_sha256,
+    )
     from specimen_digitization.research_harness.native_canonical import CANONICAL_PROJECTOR_SHA256
     assert specialist_output_schema_digest() == (
         "f504ce2d07dd25476381a5fa220121e1dc77cc81a297a16e721c8e95d40770fc")  # pragma: allowlist secret
     assert SpecialistOutput.model_json_schema()["$defs"]["HumanQuestion"]["properties"]["reason"]["enum"] == [
         "evidence_conflict", "scoped_absence", "semantic_ambiguity", "derived_proposal"]
-    assert sha(evidence_module.__file__) == VALIDATOR_SOURCE_SHA256
+    assert installed_validator_source_sha256(Path(evidence_module.__file__).parent) == VALIDATOR_SOURCE_SHA256
     assert sha(projection.__file__) == CANONICAL_PROJECTOR_SHA256 == (
         "aecca227a5ff12948971852bc09b30cc85ec368a67f3a0d0f01195405a07571e")  # pragma: allowlist secret
     assert sha(domain.__file__) == "688b93cd47a8a7df577734c67bbb17f434dc492fc29e269c873d46901aa5c67f"  # pragma: allowlist secret

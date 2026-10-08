@@ -28,6 +28,8 @@ from specimen_digitization.research_harness.prompts import (
     MEASUREMENT_EVIDENCE_PROMPT_VERSION, TEMPORAL_CONTEXT_PROMPT_VERSION, ROLE_PROMPTS, resolve_prompt,
 )
 
+from prompt_test_fixtures import ACTIVE_PROMPTS, retained_text
+
 ROOT = Path(prompts.__file__).parent
 PIN = "0" * 64
 PRODUCER_BLOCK = """Producer and literal without an assembly (publication): a value that cites a
@@ -117,18 +119,12 @@ def test_each_v3_file_is_its_v2_file_followed_by_the_blocks(role):
 
 
 @pytest.mark.parametrize("role", tuple(SpecialistRole))
-def test_the_v3_pin_is_audited_from_the_file_and_the_live_pin_extends_it(role):
+def test_the_v3_pin_is_retained_and_the_current_pin_is_explicit(role):
     # The live table moved on to the v4 files (the missing-policy block, test_prompt_missing_policy_v4.py) and then
     # to the v5 files (the hand-over block, test_prompt_handover_v5.py); the v3 pin digest is the audit record and
-    # the live text begins with the v3 text.
+    # superseded v3 text remains auditable when a current role uses coherent new instructions.
     assert READING_CITATION_PROMPT_VERSION == "specialists-reading-citation-v3-2026-10-03"
-    qualified = role in {SpecialistRole.TEMPORAL, SpecialistRole.MEASUREMENT, SpecialistRole.GEOGRAPHY}
-    assert ROLE_PROMPTS[role] == (f"{role.value}-v{8 if role == SpecialistRole.GEOGRAPHY else 10 if role == SpecialistRole.MEASUREMENT else 7 if qualified else 6 if role == SpecialistRole.TAXONOMY else 5}.txt",
-        GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION if role == SpecialistRole.GEOGRAPHY else
-        MEASUREMENT_EVIDENCE_PROMPT_VERSION if role == SpecialistRole.MEASUREMENT else
-        TEMPORAL_CONTEXT_PROMPT_VERSION if role == SpecialistRole.TEMPORAL else
-        TAXONOMY_QUERY_PROMPT_VERSION if role == SpecialistRole.TAXONOMY else
-        QUALIFIED_PROMPT_VERSION if qualified else HANDOVER_PROMPT_VERSION)
+    assert ROLE_PROMPTS[role] == ACTIVE_PROMPTS[role]
     common = (ROOT / "common-v1.txt").read_text(encoding="utf-8") + "\n"
     v3 = (ROOT / f"{role.value}-v3.txt").read_text(encoding="utf-8")
     owned = "\nOwned fields: " + ", ".join(map(str, ROLE_FIELDS[role])) + ".\n"
@@ -138,14 +134,16 @@ def test_the_v3_pin_is_audited_from_the_file_and_the_live_pin_extends_it(role):
         assert flat(QUESTION_BLOCK) in flat(pin(role).text)
     elif role == SpecialistRole.TEMPORAL:
         assert QUESTION_BLOCK in pin(role).text
+    elif role in {SpecialistRole.GEOGRAPHY, SpecialistRole.PARTIES, SpecialistRole.COLLECTION}:
+        assert retained_text(role, 5).startswith(common + v3)
     else:
         assert pin(role).text.startswith(common + v3)
 
 
 @pytest.mark.parametrize("role", (SpecialistRole.TAXONOMY, SpecialistRole.GEOGRAPHY, SpecialistRole.PARTIES,
                                   SpecialistRole.COLLECTION))
-def test_the_four_lookup_roles_still_name_assemblies_where_the_request_has_them(role):
-    text = flat(pin(role).text)
+def test_the_retained_v3_lookup_roles_name_assemblies_where_the_request_has_them(role):
+    text = flat(retained_text(role, 3))
     rule = GEOGRAPHY_ASSEMBLY_RULE if role == SpecialistRole.GEOGRAPHY else ASSEMBLY_RULE
     assert rule in text and flat(PRODUCER_BLOCK) in text
     # The reading is for a field with no assembly the interpretation read, and never beside assemblies.

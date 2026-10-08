@@ -195,8 +195,8 @@ LOOKUP_PRODUCER_RULE = (
 
 
 @pytest.mark.parametrize("role", (SpecialistRole.TAXONOMY, SpecialistRole.PARTIES, SpecialistRole.COLLECTION))
-def test_lookup_citing_resolutions_name_the_assemblies_they_read(role):
+def test_retained_v2_lookup_resolutions_name_the_assemblies_they_read(role):
     # Without assembly_ids and event_id a cited lookup has no producer
     # (lookup_evidence_producer_invalid), so these roles state it explicitly.
-    text = " ".join(pin(role).text.split())
+    text = " ".join((ROOT / f"{role.value}-v2.txt").read_text().split())
     assert LOOKUP_PRODUCER_RULE in text

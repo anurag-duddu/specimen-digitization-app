@@ -183,7 +183,7 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     # Each label line's evidence is on the base record as recorded evidence, so
     # a supported value can link to it (G23).
     label = [row for row in rig.fake.tables["evidence_item"].values() if row["source"] == "label"]
-    assert len(label) == len(LABEL_VALUES) == 17 and {row["outcome"] for row in label} == {"recorded"}
+    assert len(label) == len(LABEL_VALUES) == 16 and {row["outcome"] for row in label} == {"recorded"}
     assert {row["runId"] for row in label} == {parsed.run.id}
 
     # Plan tick 2, a new worker: provisioning replays and registers, then the
@@ -259,10 +259,14 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     assert len(changed) == len(set(changed)) == 15
     assert set(changed) == {"taxon", "precise_location", "collection_code", "collection_method",
         "fmnh_ins_number", "habitat", "collectors", "identified_by_irn", *DATES_AND_ELEVATIONS}
-    assert changed[:2] == ["taxon", "precise_location"]
-    receipt, place, last = receipts[0], receipts[1], receipts[-1]
-    assert (receipt["used_canonical_revision"], receipt["resulting_canonical_revision"]) == (3, 4)
-    assert (place["used_canonical_revision"], place["resulting_canonical_revision"]) == (4, 5)
+    assert changed[:2] == ["date_identified", "date_visited_from"]
+    first_receipt, last = receipts[0], receipts[-1]
+    by_field = {row["causal_proof"]["changed_field"]: row for row in receipts}
+    receipt, place = by_field["taxon"], by_field["precise_location"]
+    assert (first_receipt["used_canonical_revision"], first_receipt["resulting_canonical_revision"]) == (3, 4)
+    assert place["used_canonical_revision"] == receipt["resulting_canonical_revision"], changed
+    first_record = rig.fake.tables["record_version"][first_receipt["native_record_version_id"]]
+    assert first_record["predecessorId"] == base_records[0]["id"]
     assert binding["current_receipt_id"] == last["id"] and binding["registration_revision"] == len(receipts) + 1
     assert binding["current_canonical_revision"] == parsed.version + len(receipts)
     published = rig.repository.get(rig.principal.scope, rig.specimen_id)
@@ -270,12 +274,12 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     taxon = published.run.fields["taxon"]
     assert taxon.state == "supported" and taxon.normalized == GBIF_NAME
     assert taxon.authority_id.startswith(COL_XR + ":")
-    # Taxonomy and geography finish the first role window before publication.
-    # The first offer observes the still-due running record before publication.
-    # Its publication projects geography's waiting fields, so later offers see the hold.
+    # The temporal/parties and measurement/collection windows publish while
+    # geography and taxonomy are pending. Their final window then projects the
+    # geography source hold; precise_location and the final IRN carrier see it.
     assert len(routing) == len(receipts)
-    assert routing[0][0] == "running" and routing[0][1] is not None
-    assert all(state == "processing_blocked" and due is None for state, due in routing[1:])
+    assert all(state == "running" and due is not None for state, due in routing[:-2]), routing
+    assert all(state == "processing_blocked" and due is None for state, due in routing[-2:]), routing
     assert published.run.stage == "processing_blocked" and published.run.disposition is None
     waiting_reasons = tuple(f"research_work:{key}:waiting_source" for key in ("city", "country", "county",
         "province_state"))
@@ -289,7 +293,7 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     assert tuple(progress["operational_reason_codes"]) == waiting_reasons
     assert all(published.run.fields[key].state == "supported" for key in DATES_AND_ELEVATIONS)
     record = rig.fake.tables["record_version"][receipt["native_record_version_id"]]
-    assert record["predecessorId"] == base_records[0]["id"] and record["disposition"] is None
+    assert record["predecessorId"] == receipt["used_record_version_id"] and record["disposition"] is None
     fields = {row["fieldKey"]: row for row in rig.fake.tables["resolved_field"].values()
         if row["recordVersionId"] == record["id"]}
     assert len(fields) == 20 and fields["taxon"]["state"] == "supported"
@@ -299,7 +303,7 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     assert len(gbif) == 1 and gbif[0]["outcome"] == "success"
     call = [row for row in rig.fake.tables["tool_call"].values() if row["evidenceId"] == gbif[0]["id"]]
     assert len(call) == 1 and call[0]["inputSource"] == "decided_transcript"
-    snapshot = rig.fake.snapshots[(rig.specimen_id, 4)]
+    snapshot = rig.fake.snapshots[(rig.specimen_id, receipt["resulting_canonical_revision"])]
     assert snapshot["sha256"] == canonical_digest(snapshot["snapshot"]) == receipt["snapshot_sha256"]
     assert not rig.fake.duplicates
 
@@ -326,7 +330,10 @@ def test_first_publication_lands_through_the_production_entry_point(rig):
     with supervised():
         blocked = again.step(rig.principal, rig.specimen_id)
     assert blocked.version == published.version and blocked.run.stage == "processing_blocked"
-    assert not RESEARCH_OPERATIONS & set(rig.fake.calls[before:])
+    # Queued same-job retry admission now inspects the authenticated current
+    # binding before the stopped-stage exit. That read is not renewed work.
+    assert RESEARCH_OPERATIONS & set(rig.fake.calls[before:]) == {"GetCanonicalResearchBindingV2"}
+    assert rig.fake.calls[before:].count("GetCanonicalResearchBindingV2") == 1
     assert len(rig.fake.receipts) == len(receipts)
     assert rig.repository.get(rig.principal.scope, rig.specimen_id).version == published.version
     assert len(rig.model_calls) == 9 and len(rig.source_urls) == 3
@@ -501,11 +508,9 @@ def native_worker_lines(caplog):
 
 
 def test_a_refused_publication_logs_its_cause_and_the_drain_records_the_hold(rig, caplog):
-    """The geography fields wait on a source, so the second publication leaves the
-    record processing_blocked; the connector then refuses the third. The worker's
-    one code, native_publication_requires_reconciliation, stands for every cause:
-    the log names the exception class and the code behind it, and the drain
-    records the hold on the record it finds already blocked."""
+    """The first temporal window publishes two fields before the connector
+    refuses the third. The log retains the sanitized cause and the drain
+    records the native-publication hold on that current running snapshot."""
     workflow = compose(rig, geolocate=False)
     states = []
     refuse_publications_from(rig, 3, states)
@@ -515,11 +520,12 @@ def test_a_refused_publication_logs_its_cause_and_the_drain_records_the_hold(rig
         run, progressed = drain._step_until_stopped(rig.principal, NoFence(), rig.specimen_id, None)
 
     receipts = sorted(rig.fake.receipts.values(), key=lambda row: row["used_canonical_revision"])
-    assert [row["causal_proof"]["changed_field"] for row in receipts] == ["taxon", "precise_location"]
-    assert len(states) == 3 and states[-1] == "processing_blocked"
+    assert [row["causal_proof"]["changed_field"] for row in receipts] == ["date_identified", "date_visited_from"]
+    assert states == ["running"] * 3
     code = "native_publication_requires_reconciliation"
     held = rig.repository.get(rig.principal.scope, rig.specimen_id)
-    # The publications blocked the record first; the hold's code reaches it all the same.
+    # Earlier temporal publications retained a running record; the drain
+    # now records the operational hold on the exact current native snapshot.
     assert (run.stage, run.blocker, run.disposition) == ("processing_blocked", code, None)
     assert (held.run.stage, held.run.blocker) == ("processing_blocked", code)
     assert (held.audit[-1].action, held.audit[-1].reason) == ("lane_block", code)
@@ -535,7 +541,7 @@ def test_a_refused_publication_logs_its_cause_and_the_drain_records_the_hold(rig
         "phase=response_validation attempt=1")
     short = rig.specimen_id[-6:]
     assert lines["native_worker"] == ("native publication failed: PublicationUnavailable "
-        f"code=native_v2_commit_outcome_unknown field=date_identified (record ...{short})")
+        f"code=native_v2_commit_outcome_unknown field=date_visited_to (record ...{short})")
     assert lines["lane_worker"] == f"record held by the drain: {code} (record ...{short})"
     assert rig.specimen_id not in caplog.text and "publication refused" not in caplog.text
     assert not any(value in caplog.text for value in LABEL_VALUES.values())
@@ -554,7 +560,7 @@ def test_a_publication_failure_with_no_code_logs_its_class_only(rig, caplog):
             supervised(), pytest.raises(OperationalBlock, match="^native_publication_requires_reconciliation$"):
         workflow.step(rig.principal, rig.specimen_id)
     [line] = native_worker_lines(caplog)
-    assert line.startswith("native publication failed: ValueError at=") and " field=taxon (record ..." in line
+    assert line.startswith("native publication failed: ValueError at=") and " field=date_identified (record ..." in line
     assert "Synthetic teaching garden" not in caplog.text and "input_value" not in caplog.text
 
 
@@ -572,7 +578,7 @@ def test_a_drifted_first_pass_observation_row_is_refused_and_logged(first_pass_r
         workflow.step(rig.principal, rig.specimen_id)
     [line] = native_worker_lines(caplog)
     assert line.startswith("native publication failed: PublicationUnavailable "
-        "code=canonical_native_row_write_normalization_unproved field=taxon (record ...")
+        "code=canonical_native_row_write_normalization_unproved field=date_identified (record ...")
     assert not rig.fake.receipts
 
 

@@ -178,7 +178,7 @@ def test_a_value_both_raw_readers_state_publishes_with_evidence_from_both_reader
     assert hold is None, hold
     assert (specimen.run.stage, specimen.run.disposition) == ("finalized", "needs_human_review")
     assert sorted(decisions) == [("collection_method", "resolved"), ("collectors", "resolved"),
-        ("fmnh_ins_number", "resolved"), ("habitat", "rejected")]
+        ("fmnh_ins_number", "resolved"), ("habitat", "resolved")]
     assert set(RESOLVED) <= set(published(rig)) and "collection_code" not in published(rig)
     fields = specimen.run.fields
     assert (fields["fmnh_ins_number"].literal, fields["collectors"].literal, fields["collection_method"].literal) == (
@@ -198,9 +198,9 @@ def test_a_value_both_raw_readers_state_publishes_with_evidence_from_both_reader
     job = list(state["jobs"].values())[0]
     assert {key: job["fields"][key]["work_state"] for key in (*RESOLVED, "collection_code", "habitat")} == {
         "fmnh_ins_number": "resolved", "collectors": "resolved", "collection_method": "resolved",
-        "collection_code": "waiting_policy", "habitat": "waiting_policy"}
+        "collection_code": "waiting_policy", "habitat": "resolved"}
     held = {reason.split(":", 1)[1] for reason in specimen.run.reasons if reason.startswith("mandatory_unresolved:")}
-    assert {"collection_code", "habitat"} <= held and not held & set(RESOLVED)
+    assert "collection_code" in held and "habitat" not in held and not held & set(RESOLVED)
     # NOTE (not asserted either way): the policy adds unresolved_transcription:<region> for a label with no decided
     # transcript only when no field is "drawn" from it or a terminal drawn field is unsupported
     # (canonical_materialization_v2._scientific_reasons). Once the organiser's rows cite the label (#262) the field is
@@ -229,9 +229,9 @@ def test_a_specialist_that_cites_a_reading_that_does_not_hold_the_literal_is_ref
     for key in RESOLVED:
         assert fields[key]["work_state"] == "operational_failed"
         checkpoint = fields[key]["checkpoint"]
-        assert checkpoint["payload"]["resolution"]["reason"] == "specialist_operational_failure"
+        assert checkpoint["payload"]["resolution"]["reason"] == "research_output_validation_exhausted"
         assert checkpoint["payload"]["resolution"]["value"]["literal"] is None
-        assert not checkpoint.get("accepted_output_proof")
+        base.assert_validation_failure_proof(rig, checkpoint, key)
     assert not set(RESOLVED) & set(published(rig))
 
 

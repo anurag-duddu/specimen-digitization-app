@@ -29,10 +29,11 @@ def test_a_derived_field_is_offered_after_its_source(monkeypatch):
     # Key order, as the journal loads them.
     typed = (county, from_ft, from_m, to_ft, to_m, TAXON)
     runtime, outcome = publish(monkeypatch, typed, thread(*typed))
-    # Taxonomy is the first roster role; measurement still publishes each
-    # source before its derived feet value, despite the journal's key order.
-    assert runtime.prepared == [FieldKey.TAXON, FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M,
-        FieldKey.ELEVATION_FROM_FT, FieldKey.ELEVATION_TO_FT]
+    # Measurement publishes each source before its derived feet value. With
+    # no pending work, the genuine unsent Taxon carrier publishes last so its
+    # native receipt binds final whole-record progress.
+    assert runtime.prepared == [FieldKey.ELEVATION_FROM_M, FieldKey.ELEVATION_TO_M,
+        FieldKey.ELEVATION_FROM_FT, FieldKey.ELEVATION_TO_FT, FieldKey.TAXON]
     assert len(outcome.publication_receipt_ids) == 5 and "native-county" not in outcome.checkpoint_ids
 
 
@@ -40,7 +41,9 @@ def test_a_dependency_outside_the_loaded_checkpoints_keeps_roster_order(monkeypa
     absent = resolved(FieldKey.DATE_VISITED_FROM)
     derived = resolved(FieldKey.DATE_VISITED_TO, absent)
     runtime, _ = publish(monkeypatch, (derived, TAXON), thread(derived, TAXON))
-    assert runtime.prepared == [FieldKey.TAXON, FieldKey.DATE_VISITED_TO]
+    # An absent source does not reorder loaded dependencies; the terminal
+    # Taxon progress carrier is still reserved for the end of this pass.
+    assert runtime.prepared == [FieldKey.DATE_VISITED_TO, FieldKey.TAXON]
 
 
 def test_a_loaded_cross_role_dependency_precedes_its_earlier_roster_role(monkeypatch):
