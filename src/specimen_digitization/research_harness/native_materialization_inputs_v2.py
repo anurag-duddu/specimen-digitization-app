@@ -78,7 +78,7 @@ def exact_types_equal(left, right):
     if type(left) is not type(right):
         return False
     if type(left) is dict:
-        return set(left) == set(right) and all(exact_types_equal(left[k], right[k]) for k in left)
+        return left.keys() == right.keys() and all(exact_types_equal(left[k], right[k]) for k in left)
     if type(left) is list:
         return len(left) == len(right) and all(exact_types_equal(a, b) for a, b in zip(left, right))
     return left == right
@@ -340,15 +340,21 @@ class NativeMaterializationInputsV2:
             effect = state.get('effects', {}).get(item['effect_id'])
             if effect != item['effect'] or effect.get('job_key') != reg.job_key:
                 fail('native_materialization_effect_scope')
-        inputs = copy.deepcopy(raw)
+        # Both aliases are validated above and replaced below. Keep their
+        # slots so copying the retained branches preserves the input key order.
+        inputs = copy.deepcopy({
+            key: None if key in {'checkpoint_inputs', 'private_state_integrity'} else value
+            for key, value in raw.items()
+        })
         inputs['checkpoint_inputs'] = expected_cp
         # Hide the fresh raw program state in this producer integrity alias.
         # Retained immutable preparation CAS proofs remain server-private;
         # neither this DTO nor its intent/preparation is an HTTP response.
-        inputs['private_state_integrity'] = {'revision': revision, 'contract_version': integrity['contract_version'], 'state_digest': digest(state)}
+        state_digest = digest(state)
+        inputs['private_state_integrity'] = {'revision': revision, 'contract_version': integrity['contract_version'], 'state_digest': state_digest}
         guard = {'contract_version': 'native-materialization-guard/v2', 'binding_id': str(reg.binding_id),
             'registration_revision': reg.registration_revision, 'state_revision': revision,
-            'state_digest': digest(state), 'preparation_id': str(preparation.id),
+            'state_digest': state_digest, 'preparation_id': str(preparation.id),
             'preparation_digest': digest(preparation), 'current_canonical': binding.canonical.model_dump(mode='json'),
             'inputs_digest': digest(inputs), 'record_version_ids': sorted(required_versions),
             'projection_rows': copy.deepcopy(projection), 'native_input_rows': copy.deepcopy(native_rows),
