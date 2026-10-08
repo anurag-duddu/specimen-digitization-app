@@ -55,6 +55,9 @@ GEOGRAPHY_FINAL_RESULT_PROMPT_VERSION = "geography-final-result-v8-2026-10-07"
 # Coordinate-free source queries and bounded alternative-strategy progress.
 # Frozen v1-v8 instructions remain byte-identical for their existing jobs.
 GEOGRAPHY_RESEARCH_PROMPT_VERSION = "geography-research-loop-v9-2026-10-07"
+# V10 batches the unchanged field views into one official journal/tool envelope.
+# Frozen v9 instructions and their individual progress tool remain unchanged.
+GEOGRAPHY_PROGRESS_PROMPT_VERSION = "geography-progress-batch-v10-2026-10-08"
 # Taxonomy v6 excludes genus-free morphocodes from the lookup-first instruction;
 # the declared missing-policy path and historical v5 bytes stay intact.
 TAXONOMY_QUERY_PROMPT_VERSION = "taxonomy-scientific-name-v6-2026-10-06"
@@ -86,7 +89,7 @@ TEMPORAL_EVENT_LINK_PROMPT_VERSION = "temporal-event-links-v8-2026-10-07"
 # for audit.
 ROLE_PROMPTS = MappingProxyType({
     SpecialistRole.TAXONOMY: ("specimen_taxonomy-v7.txt", TAXONOMY_RECONCILIATION_PROMPT_VERSION),
-    SpecialistRole.GEOGRAPHY: ("specimen_geography-v9.txt", GEOGRAPHY_RESEARCH_PROMPT_VERSION),
+    SpecialistRole.GEOGRAPHY: ("specimen_geography-v10.txt", GEOGRAPHY_PROGRESS_PROMPT_VERSION),
     SpecialistRole.TEMPORAL: ("specimen_temporal-v8.txt", TEMPORAL_EVENT_LINK_PROMPT_VERSION),
     SpecialistRole.MEASUREMENT: ("specimen_measurement-v10.txt", MEASUREMENT_EVIDENCE_PROMPT_VERSION),
     SpecialistRole.PARTIES: ("specimen_parties-v7.txt", PARTIES_PROVENANCE_PROMPT_VERSION),

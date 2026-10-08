@@ -19,7 +19,9 @@ from specimen_digitization.research_harness.contracts import (
 )
 from specimen_digitization.research_harness.evidence import EvidenceError, validate_resolution
 from specimen_digitization.research_harness.geography_strategy import SourceAttempt, geography_progress
-from specimen_digitization.research_harness.prompts import GEOGRAPHY_RESEARCH_PROMPT_VERSION
+from specimen_digitization.research_harness.prompts import (
+    GEOGRAPHY_PROGRESS_PROMPT_VERSION, GEOGRAPHY_RESEARCH_PROMPT_VERSION,
+)
 from specimen_digitization.research_harness.sources import result_envelope
 
 from test_research_harness_agents import model, requests, sql_broker
@@ -146,8 +148,15 @@ def test_historical_candidate_cannot_settle_but_does_not_hide_valid_human_ambigu
     assert validate_resolution(req, question, (no_match, history)) == question
 
 
-def test_real_agent_cannot_stop_after_first_no_match_and_corrects_with_alternative(tmp_path):
+@pytest.mark.parametrize("historical_v9", [False, True])
+def test_real_agent_cannot_stop_after_first_no_match_and_corrects_with_alternative(tmp_path, historical_v9):
     req = request()
+    if historical_v9:
+        from prompt_test_fixtures import retained_text
+        text = retained_text(req.role, 9)
+        req = req.model_copy(update={"prompt": req.prompt.model_copy(update={
+            "version": GEOGRAPHY_RESEARCH_PROMPT_VERSION, "text": text,
+            "digest": hashlib.sha256(text.encode()).hexdigest()})})
     store, scope, lease, broker = sql_broker(tmp_path)
     records, calls = InMemoryStepStore(), []
     no_match, alternate = capture(req, 'geolocate'), capture(req, 'nga')
@@ -184,12 +193,12 @@ def test_real_agent_cannot_stop_after_first_no_match_and_corrects_with_alternati
     assert len(result.source_results) == 2 and store.budget(scope)['held_micro_usd'] == 0
 
 
-def test_v9_query_and_stop_instructions_are_coherent_and_old_v8_is_unchanged():
+def test_current_query_and_stop_instructions_are_coherent_and_old_v8_is_unchanged():
     req = request()
-    assert req.prompt.version == GEOGRAPHY_RESEARCH_PROMPT_VERSION
+    assert req.prompt.version == GEOGRAPHY_PROGRESS_PROMPT_VERSION
     text = req.prompt.text
     assert 'Do not supply latitude, longitude, radius_km' in text
-    assert 'geography_hierarchy()' in text and 'geography_progress(field_key)' in text
+    assert 'geography_hierarchy()' in text and 'geography_progress_all()' in text
     assert 'there is no required all-provider sequence' in text
     assert 'waiting_source with the precise' in text and 'no specimen-user Save is required' in text
     old = Path('src/specimen_digitization/research_harness/prompts/specimen_geography-v8.txt').read_bytes()

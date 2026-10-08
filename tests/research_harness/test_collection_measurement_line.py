@@ -13,10 +13,17 @@ from specimen_digitization.research_harness.evidence import validate_resolution
 from test_collection_qualification import collection_request, retained, undecided
 
 
+def current_graph(built):
+    from specimen_digitization.research_harness.initial_requests import NativeGenerationRequestFactory
+    built.graph = NativeGenerationRequestFactory._build_graph(built.specimen, built.scope,
+        collection_recovery=True, collection_original_reading=True)
+    return built
+
+
 @pytest.mark.parametrize("quantity", ("6400'", "6,400 ft", "100 m", "100 to 120 m"))
 def test_ecological_prefix_keeps_its_quote_and_excludes_written_elevation(quantity):
     text = "Mossy forest " + quantity
-    built = undecided(retained(text, claimed_key="habitat", claimed_literal="Mossy forest"))
+    built = current_graph(undecided(retained(text, claimed_key="habitat", claimed_literal="Mossy forest")))
     request = collection_request(built)
     before = request.model_dump_json()
     result = collection_resolution(request, FieldKey.HABITAT)
@@ -37,7 +44,7 @@ def test_ecological_prefix_keeps_its_quote_and_excludes_written_elevation(quanti
     "unknown", "light trap", "6400' +/- 1 m", "6400'6401'",
 ))
 def test_unsupported_remainder_does_not_disappear_from_collection_recovery(suffix):
-    built = undecided(retained("Mossy forest " + suffix))
+    built = current_graph(undecided(retained("Mossy forest " + suffix)))
     result = collection_resolution(collection_request(built), FieldKey.HABITAT)
     assert result.work_state == WorkState.WAITING_POLICY
     assert not result.evidence_ids and not result.assembly_ids
@@ -46,7 +53,7 @@ def test_unsupported_remainder_does_not_disappear_from_collection_recovery(suffi
 
 @pytest.mark.parametrize("other", ("Wet forest 6400'", "6400'", ""))
 def test_ecological_recovery_requires_the_other_retained_reader(other):
-    built = undecided(retained("Mossy forest 6400'", raw=other))
+    built = current_graph(undecided(retained("Mossy forest 6400'", raw=other)))
     result = collection_resolution(collection_request(built), FieldKey.HABITAT)
     assert result.work_state == WorkState.WAITING_POLICY
     assert not result.evidence_ids and not result.assembly_ids
@@ -54,7 +61,7 @@ def test_ecological_recovery_requires_the_other_retained_reader(other):
 
 def test_ecological_prefix_needs_native_quote_and_never_overrides_another_field_marker():
     for text, native in (("Mossy forest 6400'", False), ("Locality: Mossy forest 6400'", True)):
-        result = collection_resolution(collection_request(retained(text, native_quote=native)), FieldKey.HABITAT)
+        result = collection_resolution(collection_request(current_graph(retained(text, native_quote=native))), FieldKey.HABITAT)
         assert result.work_state == WorkState.WAITING_POLICY
         assert not result.evidence_ids and not result.assembly_ids
 
@@ -103,6 +110,64 @@ def test_native_factory_keeps_collection_recovery_for_both_qualified_prompt_vers
     requests = asyncio.run(NativeGenerationRequestFactory(repository, verify_access=access, registry=registry)(
         Principal(user_id="offline-fixture", scope=original.scope, role="operator"), binding, job))
     result = collection_resolution(requests[SpecialistRole.COLLECTION], FieldKey.HABITAT)
-    assert result.work_state == WorkState.RESOLVED
-    assert result.value.literal == "Mossy forest"
-    assert set(result.value.verbatim_by_observation.values()) == {"Mossy forest 6400'"}
+    if "v6" in version:
+        assert result.work_state == WorkState.WAITING_POLICY
+        assert not [row for row in requests[SpecialistRole.COLLECTION].assemblies if row.field_key == FieldKey.HABITAT]
+        assert not result.evidence_ids and not result.assembly_ids
+    else:
+        assert result.work_state == WorkState.RESOLVED
+        assert result.value.literal == "Mossy forest"
+        assert set(result.value.verbatim_by_observation.values()) == {"Mossy forest 6400'"}
+
+
+@pytest.mark.parametrize("text", ("Mossy forest", "Mossy forest 6400'", "oak woodland 100 m"))
+def test_retained_v7_acceptance_keeps_v6_ecology_policy_and_original_request(text, monkeypatch):
+    from specimen_digitization.research_harness.accepted_output import AcceptedOutputProofV1, validation_boundary_pins
+    from specimen_digitization.research_harness.contracts import SpecialistRole, SpecialistRequest, digest
+    from specimen_digitization.research_harness.prompts import (
+        COLLECTION_EVIDENCE_PROMPT_VERSION, COLLECTION_PROVENANCE_PROMPT_VERSION,
+    )
+    from test_utility_original_reading_output import retained_text
+
+    literal = "oak woodland" if text.startswith("oak") else "Mossy forest"
+    # Reconstruct the historical synthetic graph with its original event version.
+    with monkeypatch.context() as patch:
+        patch.setattr("specimen_digitization.research_harness.initial_requests.ORGANISER_RULE", "organiser-verbatim-span/v6")
+        built = undecided(retained(text, claimed_key="habitat", claimed_literal=literal))
+    request = collection_request(built)
+    old_text = retained_text(SpecialistRole.COLLECTION, 6)
+    request = SpecialistRequest.model_validate({**request.model_dump(mode="json"),
+        "field_keys": (FieldKey.HABITAT,), "field_revisions": {FieldKey.HABITAT: 0},
+        "prompt": {**request.prompt.model_dump(mode="json"), "version": COLLECTION_EVIDENCE_PROMPT_VERSION,
+            "text": old_text, "digest": hashlib.sha256(old_text.encode()).hexdigest()}})
+    original = request.model_dump_json()
+    old = collection_resolution(request, FieldKey.HABITAT)
+    assert old.work_state == WorkState.WAITING_POLICY
+    assert validate_resolution(request, old) == old
+    proof = AcceptedOutputProofV1(original_request=request,
+        native_run_id="00000000-0000-0000-0000-000000000001", conversation_id="offline-retained-ecology",
+        resolutions=(old,), source_results=(), effect_ids=(), model_settings_digest=digest("synthetic settings"),
+        validator_version="validate_resolution/v7",
+        validator_source_sha256="c6d758fd18566a6941bdb3be07af4d5baaf5cd9d16111c1806409a3c179c9fc1",  # pragma: allowlist secret
+        **validation_boundary_pins())
+    retained_proof = proof.model_dump_json()
+    assert AcceptedOutputProofV1.model_validate_json(retained_proof) == proof
+
+    original_specimen = built.specimen.model_dump_json()
+    fresh = collection_request(current_graph(built))
+    new = SpecialistRequest.model_validate({**fresh.model_dump(mode="json"),
+        "field_keys": (FieldKey.HABITAT,), "field_revisions": {FieldKey.HABITAT: 0}})
+    assert new.prompt.version == COLLECTION_PROVENANCE_PROMPT_VERSION
+    assert {row.observation_id: row.observation_text for row in new.fragments} == {
+        row.observation_id: row.observation_text for row in request.fragments}
+    assert built.specimen.model_dump_json() == original_specimen
+    current = collection_resolution(new, FieldKey.HABITAT)
+    assert current.work_state == WorkState.RESOLVED and current.value.literal == literal
+    assert set(current.value.verbatim_by_observation.values()) == {text}
+    assert validate_resolution(new, current) == current
+    with pytest.raises(ValueError):
+        AcceptedOutputProofV1.model_validate({**proof.model_dump(mode="json"),
+            "resolutions": (current.model_dump(mode="json"),)})
+    assert request.model_dump_json() == original
+    assert proof.model_dump_json() == retained_proof
+    assert AcceptedOutputProofV1.model_validate_json(retained_proof) == proof

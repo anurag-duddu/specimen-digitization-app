@@ -129,7 +129,8 @@ class NativeGenerationRequestFactory:
         collection_pin = job["pins"]["prompts"].get(str(SpecialistRole.COLLECTION), {})
         fragments, events, assemblies, evidence, decisions, candidates = self._build_graph(original, scope,
             collection_recovery=collection_pin.get("version") in {
-                COLLECTION_EVIDENCE_PROMPT_VERSION, COLLECTION_PROVENANCE_PROMPT_VERSION})
+                COLLECTION_EVIDENCE_PROMPT_VERSION, COLLECTION_PROVENANCE_PROMPT_VERSION},
+            collection_original_reading=collection_pin.get("version") == COLLECTION_PROVENANCE_PROMPT_VERSION)
         if not fragments:
             raise StaleWork("research_original_reading_graph_unavailable")
         elevation_dependencies = await asyncio.to_thread(settled_elevation_dependencies, job, scope,
@@ -172,7 +173,7 @@ class NativeGenerationRequestFactory:
         return NativeGenerationRequestFactory._build_graph(specimen, scope)[:5]
 
     @staticmethod
-    def _build_graph(specimen, scope, *, collection_recovery=True):
+    def _build_graph(specimen, scope, *, collection_recovery=True, collection_original_reading=False):
         ref = specimen.asset.blob_ref
         if not re.fullmatch(r"[a-f0-9]{64}:[1-9][0-9]*", ref) or ref.partition(":")[0] != specimen.asset.sha256:
             raise StaleWork("research_original_asset_generation_unproved")
@@ -281,7 +282,8 @@ class NativeGenerationRequestFactory:
         candidates = recover_collectors(specimen, scope, fragments, events, assemblies, candidates)
         if collection_recovery:
             from .collection import recover_collection_graph
-            recover_collection_graph(scope, fragments, events, assemblies, native_rows=specimen.run.evidence)
+            recover_collection_graph(scope, fragments, events, assemblies, native_rows=specimen.run.evidence,
+                original_reading=collection_original_reading)
         return tuple(fragments),tuple(events),tuple(assemblies),tuple(evidence),tuple(decisions),candidates
 
     @staticmethod

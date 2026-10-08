@@ -13,7 +13,7 @@ from .contracts import (
 )
 
 VALIDATOR_VERSION = "validate_resolution/v8"
-VALIDATOR_SOURCE_SHA256 = "1c03ee87e2a0d1e3d09cb7b200b0322b9125ea20560fe6eecbf66403d2264d86"  # pragma: allowlist secret
+VALIDATOR_SOURCE_SHA256 = "4da598a51a8bd0de7da69d92f06853b33542c8c7a63f7e029b8eabe60226db03"  # pragma: allowlist secret
 V3_VALIDATOR_SOURCE_SHA256 = "68e60ffdd8d840933df6f52c50f190f9febc2a72ece05810aa4aa08a32e7caa4"  # pragma: allowlist secret
 PREVIOUS_VALIDATOR_SOURCE_SHA256 = "e7e0d101ff0780c314345b1c476649702d076271869bc325736d7914c717a3ff"  # pragma: allowlist secret
 HISTORICAL_VALIDATOR_SOURCE_SHA256 = "dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400"  # pragma: allowlist secret
@@ -65,7 +65,7 @@ class AcceptedOutputProofV1(FrozenRecord):
     engine_source_sha256: Digest
     journal_source_sha256: Digest
     validator_version: Literal['validate_resolution/v1', 'validate_resolution/v2', 'validate_resolution/v3', 'validate_resolution/v4', 'validate_resolution/v5', 'validate_resolution/v6', 'validate_resolution/v7', 'validate_resolution/v8'] = VALIDATOR_VERSION
-    validator_source_sha256: Literal['12a9ffe819504808b6bf08d60b4920c5d4210bf33dda0240c1bf94072bb02b41', '411222607943d073f585020d70122078d04514f04cf8d3b12828e8b32218fd39', '67c3902b9b882a7b3df4f423dc1412019c47d738fbdfe84e2d8aff295072a7fc', '68e60ffdd8d840933df6f52c50f190f9febc2a72ece05810aa4aa08a32e7caa4', '71b283fccd982327b55d749f2659e7cc1418f121ff887451ccf58d972872c9df', '743db08d346d632241945e4c0d35c770166e8f6cc55f8c72d3d5e358b3372885', '775b48bbd6e5ae3554af2406d3f3e76ac73cdb6e3a8e96fcac7c3983c75164dd', '791626c0f6fce33f701f43cfae4d6f08dce8ef51ec5e97ac7b54edbc7de14605', '936ab14bbbf43643ec8d4f8d4e3007d4ab2ced53c6c9bd21f92409c8d8216454', 'b0663f01ec72e88bd079cb13a9727c6b2e66d2d8b4059073cd00e2e3f73583d7', 'b5af78b21598200ba6b603b95b7a81fa5f06f5161a95d6d3320120842854f98d', 'c09840fddab414682a0369015efb7dcc8af95a1a9903c3ffe1f92893ff0e3bc9', 'c6d758fd18566a6941bdb3be07af4d5baaf5cd9d16111c1806409a3c179c9fc1', 'dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400', 'e7e0d101ff0780c314345b1c476649702d076271869bc325736d7914c717a3ff', '1c03ee87e2a0d1e3d09cb7b200b0322b9125ea20560fe6eecbf66403d2264d86'] = VALIDATOR_SOURCE_SHA256  # pragma: allowlist secret
+    validator_source_sha256: Literal['12a9ffe819504808b6bf08d60b4920c5d4210bf33dda0240c1bf94072bb02b41', '411222607943d073f585020d70122078d04514f04cf8d3b12828e8b32218fd39', '67c3902b9b882a7b3df4f423dc1412019c47d738fbdfe84e2d8aff295072a7fc', '68e60ffdd8d840933df6f52c50f190f9febc2a72ece05810aa4aa08a32e7caa4', '71b283fccd982327b55d749f2659e7cc1418f121ff887451ccf58d972872c9df', '743db08d346d632241945e4c0d35c770166e8f6cc55f8c72d3d5e358b3372885', '775b48bbd6e5ae3554af2406d3f3e76ac73cdb6e3a8e96fcac7c3983c75164dd', '791626c0f6fce33f701f43cfae4d6f08dce8ef51ec5e97ac7b54edbc7de14605', '936ab14bbbf43643ec8d4f8d4e3007d4ab2ced53c6c9bd21f92409c8d8216454', 'b0663f01ec72e88bd079cb13a9727c6b2e66d2d8b4059073cd00e2e3f73583d7', 'b5af78b21598200ba6b603b95b7a81fa5f06f5161a95d6d3320120842854f98d', 'c09840fddab414682a0369015efb7dcc8af95a1a9903c3ffe1f92893ff0e3bc9', 'c6d758fd18566a6941bdb3be07af4d5baaf5cd9d16111c1806409a3c179c9fc1', 'dbaac411e5559241c724bf4df39ad78e8d87afaf668c5363c0efcd4b1709c400', 'e7e0d101ff0780c314345b1c476649702d076271869bc325736d7914c717a3ff', '4da598a51a8bd0de7da69d92f06853b33542c8c7a63f7e029b8eabe60226db03'] = VALIDATOR_SOURCE_SHA256  # pragma: allowlist secret
 
     @model_validator(mode="after")
     def exact_acceptance(self):
