@@ -1189,8 +1189,12 @@ void main() {
         final blockedReadback = Completer<http.Response>();
         final blockedPostAnswer = Completer<http.Response>();
         final inFlightStarted = Completer<void>();
+        final controllerOutcomeReady = Completer<void>();
+        final deliverWidgetOutcome = Completer<void>();
         var serverRevision = 18;
         var posts = 0;
+        var queueReads = 0;
+        var workspaceReads = 0;
         var blockedOnce = false;
         http.Request? postedRequest;
         ReviewBatchSaveOutcome? repositoryOutcome;
@@ -1223,6 +1227,7 @@ void main() {
             );
           }
           if (path.endsWith('/specimens')) {
+            queueReads++;
             return http.Response(
               jsonEncode({
                 'items': [workspace(serverRevision)],
@@ -1231,6 +1236,7 @@ void main() {
             );
           }
           if (path.endsWith('/specimens/s1/workspace')) {
+            workspaceReads++;
             if (!malformedAck && posts > 0 && !blockedOnce) {
               blockedOnce = true;
               inFlightStarted.complete();
@@ -1278,6 +1284,10 @@ void main() {
                             stillApplies: stillApplies,
                           );
                           repositoryOutcome = result;
+                          controllerOutcomeReady.complete();
+                          // Preserve the widget-level ACK race after the
+                          // controller has completed its mutation and ticket.
+                          await deliverWidgetOutcome.future;
                           return result;
                         },
                         verifyBatchReadback:
@@ -1325,19 +1335,28 @@ void main() {
           expect(posts, 1);
           expect(controller.selected?.revision, 18);
 
-          // The poll completes before the save's readback and ticket. Q+2 must
-          // remain unproven even though its original label literals are equal.
+          // The supported controller pauses polls while the CAS is in flight.
+          // It cannot advance Q18 or dispatch a second detail read here.
           serverRevision = quietRevision;
+          final queueReadsBefore = queueReads;
+          final workspaceReadsBefore = workspaceReads;
+          expect(controller.mutating, isTrue);
           await controller.refresh(quiet: true);
           await tester.pump();
-          expect(controller.selected?.revision, quietRevision);
-          expect(controller.selected?.recordVersionId, 'run:$quietRevision');
+          expect(queueReads, queueReadsBefore);
+          expect(workspaceReads, workspaceReadsBefore);
+          expect(controller.selected?.revision, 18);
+          expect(controller.selected?.recordVersionId, 'run:18');
           expect(
-            controller.selected?.fields.map((field) => field['literal_value']),
-            everyElement(isNull),
-            reason:
-                'unchanged label literals cannot prove candidate acceptance',
+            tester
+                .widget<WorkbenchFields>(find.byType(WorkbenchFields))
+                .pending,
+            hasLength(2),
           );
+          expect(find.text('Saved'), findsNothing);
+
+          // Finish the real repository/controller failure, but hold the
+          // callback's answer before ReviewWorkbench creates its ticket.
           if (malformedAck) {
             final answer = answerFor(postedRequest!);
             (answer['results'] as List)[1]['idempotency_key'] = 'invalid';
@@ -1347,9 +1366,37 @@ void main() {
               http.Response(jsonEncode(reviewWorkspace(18)), 200),
             );
           }
-          await tester.pumpAndSettle();
+          await tester.pump();
+          await controllerOutcomeReady.future;
+          await tester.pump();
+          expect(controller.mutating, isFalse);
           expect(repositoryOutcome?.saved, malformedAck ? 0 : 2);
           expect(repositoryOutcome?.requiresReconciliation, isTrue);
+          expect(controller.selected?.revision, 18);
+          expect(
+            tester
+                .widget<WorkbenchFields>(find.byType(WorkbenchFields))
+                .pending,
+            hasLength(2),
+          );
+          expect(find.text('Saved'), findsNothing);
+
+          // A genuine scoped poll can now finish before the widget receives
+          // the failed-save answer. Equal label literals never prove Q+2 or
+          // a malformed ACK; only the exact original batch version can land.
+          await controller.refresh(quiet: true);
+          await tester.pump();
+          expect(queueReads, queueReadsBefore + 1);
+          expect(workspaceReads, workspaceReadsBefore + 1);
+          expect(controller.selected?.revision, quietRevision);
+          expect(controller.selected?.recordVersionId, 'run:$quietRevision');
+          expect(
+            controller.selected?.fields.map((field) => field['literal_value']),
+            everyElement(isNull),
+            reason:
+                'unchanged label literals cannot prove candidate acceptance',
+          );
+          expect(find.text('Saved'), findsNothing);
           if (malformedAck) {
             expect(repositoryOutcome?.acknowledgement, isNull);
           } else {
@@ -1361,6 +1408,8 @@ void main() {
               quietCase == 'matching-ack',
             );
           }
+          deliverWidgetOutcome.complete();
+          await tester.pumpAndSettle();
           final reconciled = tester.widget<WorkbenchStatusStrip>(
             find.byType(WorkbenchStatusStrip),
           );
@@ -1410,6 +1459,8 @@ void main() {
           }
           expect(posts, 1);
         } finally {
+          if (!deliverWidgetOutcome.isCompleted)
+            deliverWidgetOutcome.complete();
           await tester.pumpWidget(const SizedBox());
           controller.dispose();
           repo.close();
